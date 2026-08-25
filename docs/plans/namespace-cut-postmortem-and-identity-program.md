@@ -1919,60 +1919,53 @@ brands is upstream, in the model: `type Brand = String` admits
 `take_string(s: b)` with zero diagnostics, so there is no distinction for any
 predicate to read.
 
-**The axis is the SOURCE→TARGET SEAM, and it is three-valued.** An earlier
-revision of this section sorted the instances into *routing edge* versus
-*model fact*. That was refined once on `warm-hawk-909`'s challenge, and then
-corrected again by external adversarial review probing `sole_constructor`
-specifically — which found a state neither reading had. Both corrections are
-kept rather than folded away, because the sequence is the evidence: two people
-holding the right axis still mis-sorted the specimen twice.
+**CLASSIFY BY THE FIRST MISSING PREREQUISITE IN THE PATH.** This section has
+now been re-sorted three times — routing-vs-model, then source-vs-target seam,
+and now this — and the sequence is kept because it is the evidence: three
+people holding progressively better axes still mis-filed the specimens each
+time. The partition that survives, from `warm-hawk-909` after external review:
 
-| instance | source model | target realization | the missing piece |
-|---|---|---|---|
-| nominal identity | **absent** — `type Brand = String` admits `take_string(s: b)` with 0 diagnostics | n/a | the model distinction (C0) |
-| `char_at_ascii_aware` | **absent** — `RcStr` occurs twice in stage0, both the comment naming it | n/a | the carrier |
-| `sole_constructor` | **present** — authored ×79, parsed, consumed by inference | **unresolved** | the target-side semantics |
-| — | present | present | **the edge — no confirmed member** |
+> authorable subject → semantic fact → carrier for that fact → target
+> realization rule → consumer routing edge
 
-**My own error is the one worth recording, because it is subtle and I made it
-while writing the section that warns about it.** I measured that
-`05_emit_rust.dag` calls `find_property(props: n.properties, …)` **29 times**
-and concluded `sole_constructor` was a routing case: the emitter can read a
-declaration property, so consuming this one is one more call of a form the file
-already makes. That measurement is correct and it does not support the
-conclusion. **Being able to READ the fact and knowing WHAT TO EMIT for it are
-different questions, and the first does not settle the second.** DESIGN's own
-§4b row already recorded the second half — the wall is real on the `.dag`
-acceptance path while the emitted mirror is forgeable — which is this same seam
-seen from the guarantee side, and I had read that row.
+**The FIRST absent element determines the repair and its cost — not the dormant
+function's diff**, which looks identical in all five cases. On that partition:
 
-So the 29 calls are still the right measurement; they just bound a different
-thing than I claimed. They establish that the READ side is free, which is what
-makes the remaining work the *decision* — private fields, public accessors,
-dropped `Deserialize`, field access routed to the accessor — rather than
-plumbing. That decision is in flight in Track A now, which is precisely why the
-target realization reads as unresolved rather than absent.
+| instance | first missing prerequisite | why |
+|---|---|---|
+| nominal identity | **subject classifier** | consumers already exist across item emittability, alias and type-declaration emission, and typed data rendering; the authority itself returns `false` unconditionally |
+| `char_at_ascii_aware` | **carrier fact** | routing it today makes the caller fabricate or recompute the very fact whose retention justifies the function |
+| `sole_constructor` | **does not classify once** | its source-semantic path is a genuine routing defect (coproduct construction is unwired to an existing fact and an existing refusal producer); its Rust-exposure path lacks a target realization *contract* — nobody has decided whether it realizes as field privacy, constructor privacy, module placement, an opaque factory, or no target restriction at all, so adding an emitter read is speculative routing |
 
-**The empty bucket is empty, not abolished, and the distinction is
-load-bearing** — it is DESIGN's *reachability read as occupancy* applied to a
-taxonomy instead of a guard. No confirmed member today is a finding about how
-this tree fails, not a proof that a forgotten edge cannot happen. A stronger
-law was available and was withdrawn by the person who proposed it: *this tree
-does not produce dormant repairs by forgetting an edge, it produces them by
-shipping capability ahead of the model it consumes.* Three instances do not
-carry that, and the weaker statement is the one the evidence supports — **the
-tree fails at the source→target seam in two distinct ways, and the pure
-forgotten-edge case is rarer than it looks from a diff.**
+**MY CONCLUSION HELD AND MY SPECIMEN DID NOT.** An earlier revision argued the
+pure-missing-edge bucket was not empty, against a proposal that it was, and
+offered `sole_constructor` as its member. The conclusion is confirmed — by a
+different instance. **gunbc#9018, merged 2026-08-24**, is the real one: the
+emitter already knew how to render `Parent::Variant`, and
+`collect_value_ref_names` recursed children, params, uses, properties, body,
+transport and type_annotation but **never `match_pattern`**, so a nested field
+pattern was reachable through no edge and the enum name was rendered without
+ever being proposed as an import candidate. One producer edge removed seven
+`E0433`s. That is a pure missing call edge with every prerequisite present.
 
-A missing model distinction is a language change. A missing carrier is a
+So the permitted statement is narrower than any of the three sorts, and nothing
+stronger belongs in this document: **among these three candidates, no
+target-emission or runtime repair is yet established as a pure missing call
+edge; two are blocked by absent model or carrier facts; the third decomposes
+into a known source-semantic routing gap and an unmodeled target-realization
+question.** An empty observed bucket is a result, never a theorem about what
+this tree produces — and #9018 is why that distinction was worth keeping rather
+than hardening into a law twice.
+
+A missing subject classifier is a language change. A missing carrier is a
 representation change that closes six entry points at once — `scan_while`,
 `skip_horizontal_ws`, `scan_to_eol`, `scan_string_end`, `substring` and
 `char_at` all route through the same bridge table to plain entry points whose
-bodies open with `if s.is_ascii()`, so anyone sizing that lane by counting
-`char_at` references is measuring the wrong symbol; the denominator is calls to
-any of the six. An unresolved target realization is neither: the source is
-done, the read is free, and what remains is a semantic decision about the
-emitted form.
+bodies open with `if s.is_ascii()`, so sizing that lane by counting `char_at`
+references measures the wrong symbol. A missing target realization rule is a
+semantic decision nobody has taken. A missing edge is an afternoon. **The four
+differ by an order of magnitude and their diffs are indistinguishable from the
+outside**, which is the whole reason the partition earns its keep.
 
 The operative rule, and it applies before any lane sizes a population:
 **ask whether the mechanism already exists and is merely unrouted — and if it
