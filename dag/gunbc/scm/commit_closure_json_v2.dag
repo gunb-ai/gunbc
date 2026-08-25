@@ -736,7 +736,7 @@ type EdgeAcc {
 // arm is broken. Conflating them sent a target carrying `at` twice into the uncontained read, where
 // `uncontained` is legitimately absent, and the document was refused as a wrong-shape `uncontained`
 // -- a diagnostic naming the wrong key, for a defect in the other one, with the duplication never
-// mentioned. The comment above target_arm_count asserted the opposite was already true; it was not
+// mentioned. The arm-count comment in gunbc.scm.target_reference asserted the opposite was already
 // (found by review, and the witness that now executes it is the reason the claim is worth anything).
 //
 fn decode_edge_step(positions: DecodePositions, acc: EdgeAcc, edge_value: JsonValue) -> EdgeAcc {

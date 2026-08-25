@@ -23,6 +23,7 @@ import gunbc.scm.load_standing {
   standing_may_supersede_generation, standing_loaded,
 }
 import gunbc.scm.json_member { MemberReadSubjectNotObject }
+import gunbc.scm.target_reference { TargetReferenceNotOneArm }
 import gunbc.scm.commit_closure_json_v2 {
   ClosureDocRefusal, ClosureDocFormatUnrecognized, ClosureDocObjectCollision,
   ClosureDocMemberReadRefused, ClosureDocUnknownKindTag,

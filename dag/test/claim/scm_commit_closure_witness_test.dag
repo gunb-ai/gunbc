@@ -34,17 +34,19 @@ import v2.std.collection { empty_map }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string, JsonValue, JsonObject }
 import extdeps.languages.json.parse { parse_json }
 import gunbc.scm.json_member { MemberReadDuplicated, MemberReadWrongShape }
-import gunbc.scm.commit_closure_json_v2 {
-  ClosureDocRefusal,
-  ClosureDocIncompleteWithoutAdmission,
-  ClosureDocEncodeRefusal,
-  ClosureDocMemberReadRefused,
+import gunbc.scm.target_reference {
   TargetContainedAt,
   TargetUncontained,
   TargetReferenceRefused,
   TargetReferenceNotOneArm,
   TargetReferenceMemberReadRefused,
   decode_target_reference,
+}
+import gunbc.scm.commit_closure_json_v2 {
+  ClosureDocRefusal,
+  ClosureDocIncompleteWithoutAdmission,
+  ClosureDocEncodeRefusal,
+  ClosureDocMemberReadRefused,
   ClosureDocEncodeOutcome,
   ClosureDocEncoded,
   ClosureDocEncodeRefused,
