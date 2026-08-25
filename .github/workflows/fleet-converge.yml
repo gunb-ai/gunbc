@@ -10,7 +10,7 @@ on:
       mode:
         description: plan shows membership hunks; apply executes a prior plan artifact; spark_linger enables linger on target spark via FleetSsh typed argv from executor; spark_observe is a read-only observation of both Sparks
         required: true
-        options: [plan, apply, spark_linger, spark_observe, spark_reboot, spark_grants, spark_durability]
+        options: [plan, apply, grants_observe, spark_linger, spark_observe, spark_reboot, spark_grants, spark_durability]
         type: choice
       target:
         description: Spark target host for spark_linger mode (srv5 or srv6)
@@ -282,6 +282,26 @@ jobs:
           SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
         if: github.event.inputs.mode == 'spark_durability'
         timeout-minutes: 60
+      - name: "Executor grant observation (READ-ONLY: sudo -n -l for the job user and the ssh principal; mutates nothing)"
+        run: |
+          set -uo pipefail
+          echo "=== acting identity on this host ==="
+          echo "whoami: $(whoami)   uid: $(id -u)   groups: $(id -Gn)"
+          echo
+          echo "=== what THIS account may sudo without a password (the account converge apply runs as) ==="
+          if sudo -n -l 2>&1; then echo "(exit $?)"; else echo "REFUSED exit=$? -- this account holds no NOPASSWD grants"; fi
+          echo
+          echo "=== can the in-run fleet key reach the deploy row's ssh principal, and what may IT sudo? ==="
+          SSH_TARGET="briansrls@192.168.1.221"
+          if ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$SSH_TARGET" 'echo "reached: $(whoami)@$(hostname)"; sudo -n -l 2>&1 || echo "REFUSED: no NOPASSWD grants for this principal"' 2>&1; then
+            echo "(ssh route usable)"
+          else
+            echo "SshRouteUnavailable exit=$? -- the fleet key does not authenticate as $SSH_TARGET, so it is not a bootstrap principal"
+          fi
+          echo
+          echo "OBSERVATION ONLY -- no file was written and no privileged command was attempted."
+        if: github.event.inputs.mode == 'grants_observe'
+        timeout-minutes: 5
       - name: Kill the in-run ssh-agent (key never outlives the job)
         run: |
           if [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k || true; fi
