@@ -1,0 +1,4 @@
+module test.fixture.borrowed_census_unique_entry
+
+import test.fixture.borrowed_census_unique_provider
+import test.fixture.borrowed_census_unique_caller

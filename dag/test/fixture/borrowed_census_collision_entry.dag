@@ -1,0 +1,5 @@
+module test.fixture.borrowed_census_collision_entry
+
+import test.fixture.borrowed_census_collision_one
+import test.fixture.borrowed_census_collision_two
+import test.fixture.borrowed_census_collision_caller
