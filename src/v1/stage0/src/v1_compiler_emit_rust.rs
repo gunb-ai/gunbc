@@ -13,6 +13,16 @@ pub use crate::extdeps_languages_rust_emit::{
     rust_method_wraps_result, rust_serde_rename_all_screaming_snake_case,
     rust_serde_rename_all_snake_case, rust_trait_derive_attr_from_traits,
 };
+use crate::gunbc_cli_dispatch_surface::CliOptionArity::{CliAtMostOne, CliRepeated, CliRequired};
+use crate::gunbc_cli_dispatch_surface::CliOptionValue::{
+    CliMillisecondValue, CliPortValue, CliTextValue, CliToggleValue,
+};
+pub use crate::gunbc_cli_dispatch_surface::{
+    cli_subcommand_emitted_options, gunbc_cli_emitted_subcommands,
+};
+pub use crate::gunbc_cli_dispatch_surface::{
+    CliOptionArity, CliOptionRow, CliOptionValue, CliSubcommandRow,
+};
 pub use crate::gunbc_rust_decl_type_overlay::rust_decl_type_container_overlay_is_admitted;
 pub use crate::gunbc_stage0_crate_layout_generated::generated_pub_mod_block;
 pub use crate::gunbc_stage0_emitted_population_manifest::{
@@ -33421,67 +33431,19 @@ pub fn emit_subcommand_enum(
             }
             __result
         });
-        let compile_variant = if has_pipeline.clone() {
-            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("/// Compile .dag source files to a target language\n".to_string(), make_indent((depth.clone() + 1))), "Compile {\n".to_string()), make_indent((depth.clone() + 2))), "/// Source root directories (searched recursively for .dag files).\n".to_string()), make_indent((depth.clone() + 2))), "/// Module imports are resolved transitively from these roots.\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long = \"source-root\")]\n".to_string()), make_indent((depth.clone() + 2))), "source_roots: Vec<String>,\n".to_string()), make_indent((depth.clone() + 2))), "/// Legacy: single source directory (all .dag files loaded, no import resolution)\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long = \"source-dir\")]\n".to_string()), make_indent((depth.clone() + 2))), "source_dir: Option<String>,\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long)]\n".to_string()), make_indent((depth.clone() + 2))), "output_dir: String,\n".to_string()), make_indent((depth.clone() + 2))), "/// Target language: rust, python, go, dag, or + separated set such as rust+dag\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long, default_value = \"rust\")]\n".to_string()), make_indent((depth.clone() + 2))), "target: String,\n".to_string()), make_indent((depth.clone() + 2))), "#[arg(long = \"dependency-pool-index\", default_value = \"strict\")]\n".to_string()), make_indent((depth.clone() + 2))), "dependency_pool_index: String,\n".to_string()), make_indent((depth.clone() + 1))), "},".to_string())
+        let modeled_rows = if has_pipeline.clone() {
+            gunbc_cli_emitted_subcommands()
         } else {
-            "".to_string()
+            Rc::new(vec![])
         };
-        let run_variant_lines = Rc::new(vec![
-            "/// Execute a .dag program directly (interpreter)\n".to_string(),
-            make_indent((depth.clone() + 1)),
-            "Run {\n".to_string(),
-            make_indent((depth.clone() + 2)),
-            "/// Source root directories (searched recursively for .dag files)\n".to_string(),
-            make_indent((depth.clone() + 2)),
-            "#[arg(long = \"source-root\")]\n".to_string(),
-            make_indent((depth.clone() + 2)),
-            "source_roots: Vec<String>,\n".to_string(),
-            make_indent((depth.clone() + 2)),
-            "/// Entry function to execute (default: \"main\")\n".to_string(),
-            make_indent((depth.clone() + 2)),
-            "#[arg(long, default_value = \"main\")]\n".to_string(),
-            make_indent((depth.clone() + 2)),
-            "function: String,\n".to_string(),
-            make_indent((depth.clone() + 2)),
-            "/// Entry `.dag` file: load only this module and its transitive imports\n".to_string(),
-            make_indent((depth.clone() + 2)),
-            "/// (not every file under --source-root). Required for scoped TestClaim runs.\n"
-                .to_string(),
-            make_indent((depth.clone() + 2)),
-            "#[arg(long)]\n".to_string(),
-            make_indent((depth.clone() + 2)),
-            "entry: Option<String>,\n".to_string(),
-            make_indent((depth.clone() + 2)),
-            "/// TestClaim / witness run: Bool false → exit 1; requires --entry\n".to_string(),
-            make_indent((depth.clone() + 2)),
-            "#[arg(long)]\n".to_string(),
-            make_indent((depth.clone() + 2)),
-            "claim_run: bool,\n".to_string(),
-            make_indent((depth.clone() + 2)),
-            "/// Named argument for the entry function, repeatable: `--arg name=value`.\n"
-                .to_string(),
-            make_indent((depth.clone() + 2)),
-            "/// Values enter as String; a missing `=` refuses rather than guessing.\n".to_string(),
-            make_indent((depth.clone() + 2)),
-            "#[arg(long = \"arg\")]\n".to_string(),
-            make_indent((depth.clone() + 2)),
-            "args: Vec<String>,\n".to_string(),
-            make_indent((depth.clone() + 1)),
-            "},".to_string(),
-        ]);
-        let run_variant = if has_pipeline.clone() {
-            run_variant_lines.clone().join(&"".to_string())
-        } else {
-            "".to_string()
-        };
-        let all_variants = if has_pipeline.clone() {
-            v1_rt::concat(
-                variants.clone(),
-                Rc::new(vec![compile_variant.clone(), run_variant.clone()]),
-            )
-        } else {
-            variants.clone()
-        };
+        let modeled = Rc::new({
+            let mut __result = Vec::new();
+            for sub in modeled_rows.iter().cloned() {
+                __result.push(emit_modeled_subcommand_variant(sub.clone(), depth.clone()));
+            }
+            __result
+        });
+        let all_variants = v1_rt::concat(variants.clone(), modeled.clone());
         let variants_str = all_variants.clone().join(&"\n".to_string());
         v1_rt::concat(
             v1_rt::concat(
@@ -33499,6 +33461,155 @@ pub fn emit_subcommand_enum(
             ),
             "}".to_string(),
         )
+    }
+}
+
+pub fn emit_modeled_subcommand_variant(sub: Rc<CliSubcommandRow>, depth: i64) -> String {
+    {
+        let doc_lines = Rc::new({
+            let mut __result = Vec::new();
+            for d in sub.doc.clone().iter().cloned() {
+                __result.push(v1_rt::concat("/// ".to_string(), d.clone()));
+            }
+            __result
+        });
+        let doc_str = if ((doc_lines.clone().len() as i64) == 0) {
+            "".to_string()
+        } else {
+            v1_rt::concat(
+                doc_lines.clone().join(&v1_rt::concat(
+                    "\n".to_string(),
+                    make_indent((depth.clone() + 1)),
+                )),
+                "\n".to_string(),
+            )
+        };
+        let emitted_options = cli_subcommand_emitted_options(sub.clone());
+        if ((emitted_options.clone().len() as i64) == 0) {
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(doc_str.clone(), make_indent((depth.clone() + 1))),
+                    sub.variant.clone(),
+                ),
+                ",".to_string(),
+            )
+        } else {
+            {
+                let field_str = Rc::new({
+                    let mut __result = Vec::new();
+                    for opt in emitted_options.iter().cloned() {
+                        __result.push(emit_modeled_option_field(opt.clone(), (depth.clone() + 2)));
+                    }
+                    __result
+                })
+                .join(&"".to_string());
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        doc_str.clone(),
+                                        make_indent((depth.clone() + 1)),
+                                    ),
+                                    sub.variant.clone(),
+                                ),
+                                " {\n".to_string(),
+                            ),
+                            field_str.clone(),
+                        ),
+                        make_indent((depth.clone() + 1)),
+                    ),
+                    "},".to_string(),
+                )
+            }
+        }
+    }
+}
+
+pub fn emit_modeled_option_field(opt: Rc<CliOptionRow>, depth: i64) -> String {
+    {
+        let indent = make_indent(depth.clone());
+        let doc_str = Rc::new({
+            let mut __result = Vec::new();
+            for d in opt.doc.clone().iter().cloned() {
+                __result.push(v1_rt::concat(
+                    v1_rt::concat(v1_rt::concat(indent.clone(), "/// ".to_string()), d.clone()),
+                    "\n".to_string(),
+                ));
+            }
+            __result
+        })
+        .join(&"".to_string());
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(doc_str.clone(), indent.clone()),
+                                        "#[arg(".to_string(),
+                                    ),
+                                    cli_option_arg_attribute_body(opt.clone()),
+                                ),
+                                ")]\n".to_string(),
+                            ),
+                            indent.clone(),
+                        ),
+                        opt.field.clone(),
+                    ),
+                    ": ".to_string(),
+                ),
+                cli_option_rust_type(opt.clone()),
+            ),
+            ",\n".to_string(),
+        )
+    }
+}
+
+pub fn cli_option_arg_attribute_body(opt: Rc<CliOptionRow>) -> String {
+    {
+        let derived_long = v1_rt::replace(opt.field.clone(), "_".to_string(), "-".to_string());
+        let long_part = if (derived_long.clone() == opt.long.clone()) {
+            "long".to_string()
+        } else {
+            v1_rt::concat(
+                v1_rt::concat("long = \"".to_string(), opt.long.clone()),
+                "\"".to_string(),
+            )
+        };
+        match opt.default_value.clone() {
+            Some(v) => v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(long_part.clone(), ", default_value = \"".to_string()),
+                    v.clone(),
+                ),
+                "\"".to_string(),
+            ),
+            None => long_part.clone(),
+        }
+    }
+}
+
+pub fn cli_option_rust_type(opt: Rc<CliOptionRow>) -> String {
+    {
+        let base = match opt.value.clone() {
+            CliOptionValue::CliTextValue => "String".to_string(),
+            CliOptionValue::CliToggleValue => "bool".to_string(),
+            CliOptionValue::CliPortValue => "u16".to_string(),
+            CliOptionValue::CliMillisecondValue => "u64".to_string(),
+        };
+        match opt.arity.clone() {
+            CliOptionArity::CliRequired => base,
+            CliOptionArity::CliAtMostOne => {
+                v1_rt::concat(v1_rt::concat("Option<".to_string(), base), ">".to_string())
+            }
+            CliOptionArity::CliRepeated => {
+                v1_rt::concat(v1_rt::concat("Vec<".to_string(), base), ">".to_string())
+            }
+        }
     }
 }
 
