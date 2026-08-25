@@ -24,7 +24,7 @@ test fn string_length_counts_code_points_not_bytes() -> Bool {
   string_length(s: ae_b_sample()) == 3
 }
 
-data char_at_ascii_prefix_fast_path_note: String = "STRING-INDEX-0 discriminating control for the prefix-bounded ASCII fast path. char_at/substring no longer rescan the whole string for ASCII-ness; they test only the bytes up to the requested position, so a string whose ASCII PREFIX is followed by a multibyte char now takes the byte-indexed path for positions inside that prefix and the code-point path beyond it. On \"ab\" + U+00E9 + \"c\" (5 bytes, 4 code points) a byte-offset implementation returns U+00A9 at index 3 and \"c\" at index 4; code-point indexing returns \"c\" at index 3 and nothing at index 4."
+data char_at_ascii_prefix_fast_path_note: String = "STRING-INDEX-0 discriminating control for the prefix-bounded ASCII fast path. char_at/substring no longer rescan the whole string for ASCII-ness; they test only the bytes up to the requested position, so a string whose ASCII PREFIX is followed by a multibyte char now takes the byte-indexed path for positions inside that prefix and the code-point path beyond it. On \"ab\" + U+00E9 + \"c\" (5 bytes, 4 code points) a byte-offset implementation returns U+00A9 at index 3 and \"c\" at index 4; code-point indexing returns \"c\" at index 3 and nothing at index 4. These two claims cover char_at only: substring takes the same prefix-bounded fast path, but removing its prefix check left every witness green, so no discriminating control for it is asserted here rather than one that has never been seen to fail."
 
 fn ab_e_c_sample() -> String {
   concat("ab", concat(from_code_point(cp: 233), "c"))
@@ -41,11 +41,4 @@ test fn char_at_agrees_across_the_ascii_prefix_boundary() -> Bool {
 test fn char_at_past_the_multibyte_char_is_not_a_byte_offset() -> Bool {
   let s = ab_e_c_sample()
   char_at(s: s, pos: 3) != from_code_point(cp: 169) && char_at(s: s, pos: 4) == ""
-}
-
-test fn substring_agrees_across_the_ascii_prefix_boundary() -> Bool {
-  let s = ab_e_c_sample()
-  substring(s: s, start: 0, end: 2) == "ab"
-    && string_length(s: substring(s: s, start: 0, end: 3)) == 3
-    && substring(s: s, start: 3, end: 4) == "c"
 }
