@@ -273,14 +273,38 @@ fn witness_floor_build_step() -> Step {
   }
 }
 
-// ONE INVOCATION OF OUR OWN BINARY. Everything the run decides -- which witnesses exist, what
-// identity each has, which frame it needs, and whether the roster is admissible at all -- is
-// decided in .dag by v2.workflow.required_floor. This step passes the source roots and
-// nothing else: there is no plan entry, no plan function, no batch id, no worker role and no
-// selection flag, because the fold has no such concepts to configure.
-// ONE INVOCATION, FOUR PHASES, AND THE ORDER IS THE PROGRAM'S RATHER THAN THE JOB'S
+// ONE INVOCATION OF OUR OWN BINARY PER JOB. Everything the run decides -- which witnesses
+// exist, what identity each has, which frame it needs, and whether the roster is admissible at
+// all -- is decided in .dag by v2.workflow.required_floor. This step passes the source roots
+// and a LANE WORD, and nothing else: there is no plan entry, no plan function, no batch id, no
+// worker role and no selection flag, because the fold has no such concepts to configure.
+//
+// A LANE IS NOT A SELECTION. It names which JOB owns a phase, not which phases exist or which
+// witnesses run; every phase is owned by exactly one lane and both lanes run on every push and
+// pull request. Conflating the two would be the reading that turns a scheduling fact into a
+// coverage claim, and it is the reason the lane word is the only thing the transport carries.
+//
+// ONE INVOCATION PER LANE, AND THE ORDER WITHIN A LANE IS THE PROGRAM'S RATHER THAN THE JOB'S
 // (operator directive, 2026-08-20: "i would much prefer if it was all handled within the
 // witnesses step and within the gunbc binary, not at a github actions job level").
+//
+// **THAT DIRECTIVE IS NOW PARTLY SUPERSEDED, BY THE SAME OPERATOR, ON 2026-08-25** -- "we can
+// add it as a parallel job in github actions - we can do the same for regen now, we have more
+// runners". The half that SURVIVES is "within the gunbc binary": the phases still live there,
+// each job names a lane rather than a phase list, and no step's precondition reads another
+// phase's verdict, so the step-ladder defect the paragraphs below describe cannot return. The
+// half that is SUPERSEDED is "not at a github actions job level", and it is superseded by a
+// fact about the transport rather than by a change of taste: PARALLELISM IS NOT EXPRESSIBLE IN
+// THE BINARY. Two phases running concurrently means two runners, two checkouts and two
+// toolchains, and one process on one runner can thread but cannot acquire a second machine.
+// What the directive was protecting against -- SEQUENCING and PRECONDITIONS leaking into YAML
+// -- is exactly what does not cross the new boundary: the two jobs carry no `needs` edge and
+// no condition on each other, which is the whole content of running them in parallel.
+//
+// So the paragraphs below describe a step ladder that is still gone and a consolidation that
+// still holds WITHIN a lane. They are kept rather than rewritten because what they establish
+// -- why a YAML step list is the wrong place for a phase order -- is unchanged by the split,
+// and deleting them would take the reasoning with them.
 //
 // WHAT THIS REPLACES: four steps -- parse, regen, regen-fixed-point, floor -- each its own
 // process, their ORDER a YAML list, and each one's precondition an `if:` naming another
@@ -295,7 +319,12 @@ fn witness_floor_build_step() -> Step {
 // phase -- and a phase that could not run reports SKIPPED as its own state, never as silence
 // and never as a pass.
 //
-// THE ROSTER IS THREE PHASES, NOT FOUR (operator ruling, 2026-08-21): the src/v1 .dag parse
+// THE ROSTER IS FOUR PHASES ACROSS TWO LANES. The paragraph below records the 2026-08-21 cut
+// to three; #9035 then added v2-emission, and the 2026-08-25 split partitioned the four into
+// `build` (regen, v2-emission) and `witnesses` (parse, floor). The cut phases that paragraph
+// enumerates stay cut -- neither the addition nor the split restored any of them.
+//
+// THE ROSTER WAS THREE PHASES, NOT FOUR (operator ruling, 2026-08-21): the src/v1 .dag parse
 // sweep, the regen first-generation comparison, and the witness floor. The fixed point left
 // the required mode with the four other cut phases, and the in-memory digest handoff that
 // justified collapsing it went with it -- so the paragraph above describes the step ladder
