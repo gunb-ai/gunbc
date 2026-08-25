@@ -487,7 +487,7 @@ fn test_sig_or_none(
 
 #[cfg(test)]
 mod bare_reference_scanner_tests {
-    use super::{bare_identifier_candidates, module_self_declared_names};
+    use super::{module_self_declared_names, parsed_reference_candidates};
 
     /// Every coproduct shape the corpus actually writes. The multiline form is the one
     /// review 55386 caught being missed, and it is how `std.spatial_frame` declares
@@ -657,14 +657,14 @@ mod bare_reference_scanner_tests {
                        Present { value: v } => v\n\
                      }\n\
                    }\n";
-        let c = bare_identifier_candidates(src);
+        let c = parsed_reference_candidates("std/probe.dag", src).expect("parses");
         assert!(
-            c.bound.contains("t"),
-            "lambda parameter not treated as a binder"
+            !c.names.contains("t"),
+            "lambda parameter published as a reference"
         );
         assert!(
-            !c.bound.contains("Absent"),
-            "match arm head bound — this would silently drop a real closure edge"
+            c.names.contains("Absent"),
+            "match arm head suppressed — this would silently drop a real closure edge"
         );
     }
 
@@ -675,8 +675,8 @@ mod bare_reference_scanner_tests {
                    fn f(xs: List<Int>) -> Int {\n\
                      fold(xs, init: 0, f: acc => acc)\n\
                    }\n";
-        let c = bare_identifier_candidates(src);
-        assert!(c.bound.contains("acc"));
+        let c = parsed_reference_candidates("std/probe.dag", src).expect("parses");
+        assert!(!c.names.contains("acc"));
     }
 }
 #[cfg(test)]
@@ -7761,35 +7761,15 @@ struct BareCandidates {
     /// its provider module. The consumer tries each dot-prefix of the chain
     /// against the services census.
     dotted_chains: BTreeSet<String>,
-    /// Names seen in BINDING position (`let repo`, `data x`) or KEY position
-    /// (`repo:` — field init, named arg, param decl) anywhere in the file. A
-    /// dotted-chain head in this set is a local/param/field projection
-    /// (`repo.operation_name`), never a cross-module data-const reference —
-    /// consulted to keep dotted-head pulls from re-opening the over-pull the
-    /// binder/key lexer closed for bare names.
-    bound: BTreeSet<String>,
 }
 
-/// Byte offsets of `(` that open an arrow-lambda param list (`(a, b) => ...`,
-/// no `fn` keyword) and of `{` that open a match/destructuring PATTERN
-/// (`Variant { field: name } => ...`) — both shapes bind every leaf identifier
-/// inside, but the single-pass scanner below only recognizes them once it has
-/// already passed the opening delimiter, so a lookahead pre-pass locates the
-/// delimiters whose matching close is followed by `=>`. Measured: `(acc,
-/// step) =>` (no `fn`) in `extdeps/communication/fidelity_carriers.dag` leaked
-/// bare `step`, and `HeadFound { value: h2 } =>` in
-/// `std/cross_tree/resolution.dag` leaked bare `h2` — both census-unique-bound
-/// to unrelated fn decls (`test.claim.materialization_ladder_witness.step`,
-/// `gunbc.plans.md_helpers.h2`), over-pulling those modules into 13 unrelated
-/// compiler-closure entries. String literals are skipped, matching the main
-/// scan.
 /// Blank every source-annotation (`//` to end of line) region, preserving byte
 /// offsets and line structure so a scanner's spans stay valid.
 ///
 /// DESIGN §4c: semantic passes receive only the annotation-erased projection.
-/// The three raw-text scanners below (`referenced_module_paths_in_text`,
-/// `destructuring_bound_spans`, `bare_identifier_candidates`) already skip
-/// string literals; annotations were the remaining unerased region, so prose
+/// The raw-text scanners that consume this (`referenced_module_paths_in_text`,
+/// `module_self_declared_names`) already skip string literals; annotations were
+/// the remaining unerased region, so prose
 /// carried in an annotation was lexed as program text. Measured on the M1C
 /// prose migration: moving rationale out of a `data _note: String` — a region
 /// the string skip already erased — into the sanctioned `//` form made the
@@ -7834,321 +7814,166 @@ fn annotation_erased_scan_text(content: &str) -> String {
     String::from_utf8(out).unwrap_or_else(|_| content.to_string())
 }
 
-fn destructuring_bound_spans(content: &str) -> (BTreeSet<usize>, BTreeSet<usize>) {
-    let content: &str = &annotation_erased_scan_text(content);
-    let bytes = content.as_bytes();
-    let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
-    let matching_close = |open_at: usize, open: u8, close: u8| -> Option<usize> {
-        let mut depth = 0i32;
-        let mut j = open_at;
-        while j < bytes.len() {
-            match bytes[j] {
-                b'"' => {
-                    j += 1;
-                    while j < bytes.len() && bytes[j] != b'"' {
-                        if bytes[j] == b'\\' && j + 1 < bytes.len() {
-                            j += 1;
-                        }
-                        j += 1;
-                    }
-                }
-                b if b == open => depth += 1,
-                b if b == close => {
-                    depth -= 1;
-                    if depth == 0 {
-                        return Some(j);
-                    }
-                }
-                _ => {}
-            }
-            j += 1;
-        }
-        None
+/// Reference facts for one file, DERIVED FROM THE PARSED TREE.
+///
+/// This replaced a byte scanner that answered the same question lexically -- with its own
+/// binder-keyword table, a `destructuring_bound_spans` pre-pass, and an open-paren depth
+/// heuristic for lambda parameters. Two producers for one fact is the DESIGN 3 violation, and
+/// the tie-break is not preference: a scanner can be WRONG about which names a file
+/// references, and being wrong in the missing direction removes a module from the closure,
+/// which by measurement decides which of several declarations a homonym binds to. The tree
+/// the compiler already built cannot be wrong about it, and DESIGN 4 says the heuristic was
+/// never necessary while the richer source existed.
+///
+/// MEASURED BEFORE THE SWAP, over `dag` + `src/v2` (650 import-less files, the only files
+/// this pull reaches): the two producers agreed on the pulled path set for 448 files; the
+/// scanner pulled paths the tree does not for 151; the tree pulls paths the scanner MISSED
+/// for 70. At name grain the scanner missed 59 names, of which 21 are declared once in the
+/// corpus (unresolvable if the closure is the only route), 37 are declared nowhere, and ONE
+/// is a homonym whose other declaration is reachable -- `List`, declared in both `std.types`
+/// and `v2.std.collection`, referenced from a v2 test claim. That single site is a reference
+/// to the most-used collection type in the language whose meaning was decided by a lexical
+/// miss.
+///
+/// There is no `bound` set here and that absence is structural, not an omission. The scanner
+/// produced one because it could not tell a binder from a reference and had to subtract them
+/// afterwards; the traversal suppresses bound occurrences as it walks, so a bound name is
+/// never in the output to be removed. A post-hoc subtraction concedes the bad state is
+/// writable (DESIGN 5) -- here it is not.
+fn parsed_reference_candidates(file_rel: &str, content: &str) -> Result<BareCandidates, String> {
+    let Some(tree) = parse_module_node_tolerant(file_rel, content) else {
+        // FAIL CLOSED. Answering "this file references nothing" because the file did not
+        // parse is the empty-observation narrow: it renders "no references" and "could not
+        // ask" identically, and the consumer silently narrows the closure to nothing. The
+        // producer that used to be here could not fail, which is not the same as never
+        // being ignorant -- it simply had no way to say so.
+        return Err(format!(
+            "bare_reference_closure: '{file_rel}' did not parse, so its reference set is              unknown; refusing rather than reporting an empty one (fail-closed)"
+        ));
     };
-    let mut lambda_paren_starts = BTreeSet::new();
-    let mut pattern_brace_starts = BTreeSet::new();
-    let mut i = 0usize;
-    while i < bytes.len() {
-        if bytes[i] == b'"' {
-            i += 1;
-            while i < bytes.len() && bytes[i] != b'"' {
-                if bytes[i] == b'\\' && i + 1 < bytes.len() {
-                    i += 1;
-                }
-                i += 1;
-            }
-            i += 1;
-            continue;
-        }
-        if bytes[i] == b'(' && (i == 0 || !is_ident(bytes[i - 1])) {
-            if let Some(close) = matching_close(i, b'(', b')') {
-                let mut j = close + 1;
-                while j < bytes.len() && bytes[j].is_ascii_whitespace() {
-                    j += 1;
-                }
-                if content.as_bytes()[j..].starts_with(b"=>") {
-                    lambda_paren_starts.insert(i);
-                }
-            }
-        } else if bytes[i] == b'{' {
-            if let Some(close) = matching_close(i, b'{', b'}') {
-                let mut j = close + 1;
-                while j < bytes.len() && bytes[j].is_ascii_whitespace() {
-                    j += 1;
-                }
-                if content.as_bytes()[j..].starts_with(b"=>") {
-                    pattern_brace_starts.insert(i);
-                }
-            }
-        }
-        i += 1;
-    }
-    (lambda_paren_starts, pattern_brace_starts)
-}
-
-fn bare_identifier_candidates(content: &str) -> BareCandidates {
-    let content: &str = &annotation_erased_scan_text(content);
-    let bytes = content.as_bytes();
-    let is_ident_start = |c: u8| c.is_ascii_alphabetic() || c == b'_';
-    let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
-    let mut out = BareCandidates {
-        names: BTreeSet::new(),
-        call_position: BTreeSet::new(),
-        dotted_chains: BTreeSet::new(),
-        bound: BTreeSet::new(),
+    let mut file_indices: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
+    file_indices.insert(
+        file_rel.to_string(),
+        crate::v1_std_core::build_newline_index(file_rel.to_string(), content.to_string()),
+    );
+    let file_indices = Rc::new(file_indices);
+    let mut tally: BTreeMap<ExprVarClass, usize> = BTreeMap::new();
+    let mut unclassified: Vec<String> = Vec::new();
+    let mut classify = ExprVarClassification {
+        decl_index: None,
+        tally: &mut tally,
+        unclassified: &mut unclassified,
+        module: extract_module_path(content).unwrap_or_default(),
+        occurrences: 0,
+        free_reference_edges: 0,
+        bound_occurrences_suppressed: 0,
+        chain_head_occurrences: 0,
+        refusals: Vec::new(),
+        calls: BTreeSet::new(),
     };
-    let (lambda_paren_starts, pattern_brace_starts) = destructuring_bound_spans(content);
-    let mut i = 0usize;
-    // Previous identifier token on the same run (whitespace-separated): a name
-    // directly after a BINDER keyword is a binding occurrence, not a reference —
-    // `let repo = ...` must not pull the module that declares a census-unique
-    // `data repo` (measured: it coupled the gunbhub witness to the review-agent
-    // tooling's health). Cleared by any non-ident, non-whitespace byte.
-    let mut prev_token: Option<&str> = None;
-    let binder_keywords = [
-        "let",
-        "data",
-        "fn",
-        "type",
-        "import",
-        "module",
-        "service",
-        "transport",
-    ];
-    // Depth of an open `fn(`-literal parameter list, OR an arrow-lambda param
-    // list (`(a, b) => ...`, no `fn` — see `destructuring_bound_spans`): every
-    // ident inside is a BINDER (untyped lambda params carry no `:` so the
-    // key-position rule never sees them; measured: rust_test.dag's `fn(acc,
-    // edge)` param leaked 'edge' into the reference set and pulled the
-    // unresolvable ownership_movable test module into an unrelated entry).
-    // Typed idents inside (`p: T`, and type names in `fn(A) -> B` annotations)
-    // over-bind harmlessly: a suppressed pull fails LOUD at typecheck.
-    let mut fn_params_depth: usize = 0;
-    // Depth of an open match/destructuring PATTERN brace (`Variant { field:
-    // name } => ...` — see `destructuring_bound_spans`): a bare leaf identifier
-    // directly after `:` inside is a new local binding, not a reference. A
-    // nested variant tag (`field: OtherType { .. }`, itself followed by `{`)
-    // stays a real reference — the declaring module's runtime construction and
-    // variant-tag identity still need it loaded.
-    let mut pattern_depth: usize = 0;
-    let mut just_saw_colon = false;
-    while i < bytes.len() {
-        if bytes[i] == b'"' {
-            i += 1;
-            while i < bytes.len() && bytes[i] != b'"' {
-                if bytes[i] == b'\\' && i + 1 < bytes.len() {
-                    i += 1;
-                }
-                i += 1;
-            }
-            i += 1;
-            prev_token = None;
-            just_saw_colon = false;
-            continue;
-        }
-        if !is_ident_start(bytes[i]) || (i > 0 && (is_ident(bytes[i - 1]) || bytes[i - 1] == b'.'))
-        {
-            if bytes[i] == b'(' {
-                if prev_token == Some("fn") || lambda_paren_starts.contains(&i) {
-                    fn_params_depth = 1;
-                } else if fn_params_depth > 0 {
-                    fn_params_depth += 1;
-                }
-            } else if bytes[i] == b')' && fn_params_depth > 0 {
-                fn_params_depth -= 1;
-            } else if bytes[i] == b'{' && (pattern_depth > 0 || pattern_brace_starts.contains(&i)) {
-                pattern_depth += 1;
-            } else if bytes[i] == b'}' && pattern_depth > 0 {
-                pattern_depth -= 1;
-            }
-            if bytes[i] == b':' {
-                just_saw_colon = true;
-            } else if !bytes[i].is_ascii_whitespace() {
-                just_saw_colon = false;
-            }
-            if !bytes[i].is_ascii_whitespace() {
-                prev_token = None;
-            }
-            i += 1;
-            continue;
-        }
-        let start = i;
-        while i < bytes.len() && is_ident(bytes[i]) {
-            i += 1;
-        }
-        // Part of a dotted chain → the dotted scan owns module-path chains, but
-        // record the FULL chain: a service reference (`cron.Tab.List()`) is a
-        // dotted chain whose prefix is a services-census key, not a module path.
-        if i < bytes.len() && bytes[i] == b'.' {
-            while i < bytes.len()
-                && bytes[i] == b'.'
-                && i + 1 < bytes.len()
-                && is_ident_start(bytes[i + 1])
-            {
-                i += 1;
-                while i < bytes.len() && is_ident(bytes[i]) {
-                    i += 1;
-                }
-            }
-            out.dotted_chains.insert(content[start..i].to_string());
-            prev_token = None;
-            just_saw_colon = false;
-            continue;
-        }
-        let name = &content[start..i];
-        // A PARENTHESIS-FREE arrow lambda binds its single parameter: `any(t => ...)`,
-        // `map(rm => ...)`, `fold(xs, init: 0, f: acc => ...)`. `destructuring_bound_spans`
-        // only recognises the parenthesised form `(a, b) =>` and the pattern form
-        // `{ .. } =>`, so this one leaked its binder into the reference set — and a
-        // one-letter binder resolves against the WHOLE POOL, where some module
-        // somewhere declares `fn t`. Receipt: `dag/std/algebra.dag`'s
-        // `any(t => t.name == name)` pulled `dag/test/claim/pcb_footprint_witness_test.dag`
-        // (which declares `fn t(component, terminal)`) and through it the entire PCB
-        // product corpus into the v1 seed's compile closure.
-        //
-        // The guard is the PRECEDING token, not the arrow alone: a match arm head is
-        // also `ident =>` but is preceded by `{`, `}` or a newline, whereas a lambda
-        // parameter sits in argument position — after `(`, `,` or a named-argument
-        // `:`. Measured over the corpus, all 4397 sites matching that shape are
-        // lambdas; no match-arm head is preceded by any of the three.
-        let is_bare_arrow_lambda_param = {
-            let mut j = i;
-            while j < bytes.len() && bytes[j].is_ascii_whitespace() {
-                j += 1;
-            }
-            let arrow = content.as_bytes()[j..].starts_with(b"=>");
-            let mut k = start;
-            while k > 0 && bytes[k - 1].is_ascii_whitespace() {
-                k -= 1;
-            }
-            let prev = if k > 0 { bytes[k - 1] } else { b'\0' };
-            arrow && matches!(prev, b'(' | b',' | b':')
-        };
-        if is_bare_arrow_lambda_param {
-            out.bound.insert(name.to_string());
-            prev_token = Some(name);
-            just_saw_colon = false;
-            continue;
-        }
-        let was_after_colon = just_saw_colon;
-        just_saw_colon = false;
-        // Binding occurrence (`let repo`, `data repo`) — a name being BOUND is
-        // never a reference to another module's decl.
-        if fn_params_depth > 0 {
-            out.bound.insert(name.to_string());
-            prev_token = Some(name);
-            continue;
-        }
-        if prev_token.is_some_and(|t| binder_keywords.contains(&t)) {
-            out.bound.insert(name.to_string());
-            prev_token = Some(name);
-            continue;
-        }
-        // Pattern-value leaf (`Variant { field: name } => ...`): a bare leaf
-        // directly after `:` inside a destructuring pattern brace introduces a
-        // new local binding, never a reference — see `destructuring_bound_spans`.
-        // A nested variant tag (itself followed by `{` or `(`) stays a real
-        // reference.
-        if pattern_depth > 0 && was_after_colon {
-            let mut peek = i;
-            while peek < bytes.len() && (bytes[peek] == b' ' || bytes[peek] == b'\t') {
-                peek += 1;
-            }
-            let is_leaf = !(peek < bytes.len() && (bytes[peek] == b'{' || bytes[peek] == b'('));
-            if is_leaf {
-                out.bound.insert(name.to_string());
-                prev_token = Some(name);
-                continue;
-            }
-        }
-        // Key position (`repo: value` — field init, named arg, param decl):
-        // the name labels a slot; it never references a decl.
-        let mut peek = i;
-        while peek < bytes.len() && (bytes[peek] == b' ' || bytes[peek] == b'\t') {
-            peek += 1;
-        }
-        if peek < bytes.len() && bytes[peek] == b':' {
-            out.bound.insert(name.to_string());
-            // A key is not a binder-keyword context: `type: User` must leave
-            // `User` a collectable reference — carrying `type` forward as
-            // prev_token made the binder-keyword rule swallow the VALUE after
-            // any key that happens to spell a keyword.
-            prev_token = None;
-            continue;
-        }
-        if i < bytes.len() && bytes[i] == b'(' {
-            out.call_position.insert(name.to_string());
-        }
-        out.names.insert(name.to_string());
-        prev_token = Some(name);
+    let mut bare: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut chains: Vec<Vec<String>> = Vec::new();
+    for item in tree.children.iter() {
+        collect_node_refs(item, &mut bare, &mut chains, &file_indices, &mut classify);
     }
-    out
+    // An unsupported binder form means the binder set is incomplete, so a name that IS bound
+    // can be published as a free reference or the reverse; a reconciliation miss means the
+    // occurrences do not add up. Neither is survivable for a set that is about to decide a
+    // closure, and both are the same refusal `reference_resolution_facts` already makes.
+    if !classify.refusals.is_empty() {
+        return Err(format!(
+            "bare_reference_closure: '{file_rel}' reference collection refused: {}",
+            classify.refusals.join("; ")
+        ));
+    }
+    let mut names: BTreeSet<String> = BTreeSet::new();
+    for n in bare {
+        // A dotted spelling arrives whole; the census is keyed on the head segment.
+        names.insert(n.split('.').next().unwrap_or(&n).to_string());
+    }
+    // THE CHAIN LIST CONTRIBUTES THE SERVICE SPELLING AND NOT THE HEAD NAME. A chain's head is
+    // already decided by the traversal -- `collect_node_refs_inner` classifies a chain receiver
+    // and publishes it into `bare` only when it is FREE -- so re-inserting every head here
+    // re-derives that judgment and gets it wrong for a bound receiver: `xs |> any(t => t.name)`
+    // has `t` bound by the lambda, and inserting the head of `t.name` republished it as a
+    // reference to whatever module declares a census-unique `t`. That is the same over-pull the
+    // deleted scanner needed a `bound` subtraction to survive, reintroduced by asking a second
+    // time a question the walk had already answered.
+    let mut dotted_chains: BTreeSet<String> = BTreeSet::new();
+    for ch in chains.iter() {
+        if ch.len() > 1 {
+            dotted_chains.insert(ch.join("."));
+        }
+    }
+    Ok(BareCandidates {
+        names,
+        call_position: classify.calls.clone(),
+        dotted_chains,
+    })
 }
 
 #[cfg(test)]
-mod bare_identifier_candidates_tests {
-    use super::bare_identifier_candidates;
+mod parsed_reference_candidates_tests {
+    use super::parsed_reference_candidates;
 
-    // Green-by-execution + discriminating RED for the two over-pull shapes fixed by
-    // `destructuring_bound_spans` (measured: `(acc, step) =>` in
-    // `extdeps/communication/fidelity_carriers.dag` and `HeadFound { value: h2 } =>` in
-    // `std/cross_tree/resolution.dag` census-unique-bound `step`/`h2` to unrelated fn
-    // decls, over-pulling 13 compiler-closure entries — `extend_with_bare_reference_closure`
-    // subtracts `candidates.bound` from `candidates.names` file-wide, so a name absent
-    // from `bound` here is a name that still pulls its census homonym downstream).
+    // THESE ARE THE BYTE SCANNER'S OWN DISCRIMINATING INPUTS, RE-AIMED AT THE PRODUCER THAT
+    // REPLACED IT. The scanner needed a `destructuring_bound_spans` pre-pass to survive them
+    // (measured: `(acc, step) =>` in `extdeps/communication/fidelity_carriers.dag` and
+    // `HeadFound { value: h2 } =>` in `std/cross_tree/resolution.dag` leaked bare `step`/`h2`,
+    // which were census-unique-bound to unrelated decls and over-pulled 13 compiler-closure
+    // entries). The evidence outlives the machinery: a climb deletes the production code it
+    // obsoletes and KEEPS the probe that shows the higher rung is real (DESIGN 4b(4)).
+    //
+    // The assertions are restated positively rather than translated. The scanner published a
+    // `bound` set and was asked whether a binder was IN it; the traversal never emits a bound
+    // occurrence at all, so the question is whether the name is ABSENT from the references.
+
     #[test]
-    fn arrow_lambda_param_is_bound_not_referenced() {
+    fn arrow_lambda_param_is_not_a_reference() {
         let content = "module test.lambda_user\n\nfn use_it() -> Bool {\n  fold_list(\n    xs: something,\n    empty: true,\n    cons: (acc, step) => decode_fidelity_merge(left: acc, right: step)\n  )\n}\n";
-        let candidates = bare_identifier_candidates(content);
+        let c = parsed_reference_candidates("test/lambda_user.dag", content).expect("parses");
         assert!(
-            candidates.bound.contains("step"),
-            "an arrow-lambda param (`(acc, step) => ...`, no `fn`) must be recorded as \
-             bound — a reader that only recognized `fn(...)` params would miss this"
+            !c.names.contains("step"),
+            "an arrow-lambda param (`(acc, step) => ...`, no `fn`) must not be published as a              reference — it would pull whichever module declares a census-unique `step`"
         );
         assert!(
-            candidates.bound.contains("acc"),
-            "both arrow-lambda params must be bound, not just the first"
+            !c.names.contains("acc"),
+            "both arrow-lambda params, not just the first"
+        );
+        assert!(
+            c.names.contains("decode_fidelity_merge"),
+            "the applied callee IS a reference — a producer that dropped it would under-pull"
+        );
+        assert!(
+            c.call_position.contains("decode_fidelity_merge"),
+            "call position comes from the tree (`ExprData::ExprCall`), not from a lexical              open-paren scan — this is the projection that let the byte scanner die"
         );
     }
 
     #[test]
-    fn pattern_value_leaf_is_bound_not_referenced() {
+    fn pattern_value_leaf_is_not_a_reference_but_its_tag_is() {
         let content = "module test.pattern_user\n\nfn use_it() -> Bool {\n  match something {\n    HeadFound { value: h2 } => h2\n    HeadAbsent => true\n  }\n}\n";
-        let candidates = bare_identifier_candidates(content);
+        let c = parsed_reference_candidates("test/pattern_user.dag", content).expect("parses");
         assert!(
-            candidates.bound.contains("h2"),
-            "a pattern-value leaf (`HeadFound {{ value: h2 }} => ...`) must be recorded as \
-             bound — it introduces a new local binding, not a reference to an unrelated \
-             `h2` decl"
+            !c.names.contains("h2"),
+            "a pattern-value leaf introduces a local binding, not a reference to an              unrelated `h2` declaration"
         );
         assert!(
-            !candidates.bound.contains("HeadFound"),
-            "a nested variant TAG inside a pattern brace is still a real reference to its \
-             declaring module — only the post-colon leaf is bound"
+            c.names.contains("HeadFound"),
+            "the variant TAG is a real reference to its declaring module — only the              post-colon leaf binds, and collapsing the two would drop a live closure edge"
         );
+    }
+
+    // The refusal that replaced an arm which could not fail. The scanner returned an empty
+    // set for an unparseable file, which renders "references nothing" and "could not ask"
+    // identically — the empty-observation narrow (DESIGN 5), and strictly worse than a widen
+    // because the closure silently shrinks instead of growing.
+    #[test]
+    fn an_unparseable_file_refuses_rather_than_reporting_no_references() {
+        let content = "module test.broken\n\nfn f( -> {{{\n";
         assert!(
-            candidates.names.contains("HeadFound"),
-            "the variant tag must remain a collectable name candidate"
+            parsed_reference_candidates("test/broken.dag", content).is_err(),
+            "a file whose reference set is UNKNOWN must refuse, never answer 'none'"
         );
     }
 }
@@ -8366,7 +8191,7 @@ fn bare_reference_pull_paths_for_source(
     });
     let referencing_module = extract_module_path(&sf.content).unwrap_or_default();
     let cand_started = std::time::Instant::now();
-    let candidates = bare_identifier_candidates(&sf.content);
+    let candidates = parsed_reference_candidates(&file_rel, &sf.content)?;
     resolve_stage_slot_add(|st| st.edge_index_bare_candidates += cand_started.elapsed().as_nanos());
     // The name-universe fold: dotted-chain prefixes, builtin service keys, and the
     // unbound-name join that produces the roster the resolve loop below walks. Split
@@ -8399,13 +8224,12 @@ fn bare_reference_pull_paths_for_source(
         .dotted_chains
         .iter()
         .filter_map(|chain| chain.split('.').next())
-        .filter(|h| !candidates.bound.contains(*h) && !candidates.names.contains(*h))
+        .filter(|h| !candidates.names.contains(*h))
         .map(|h| h.to_string())
         .collect();
     let all_names: Vec<(String, bool)> = candidates
         .names
         .iter()
-        .filter(|n| !candidates.bound.contains(*n))
         .map(|n| (n.clone(), false))
         .chain(dotted_head_refs.into_iter().map(|n| (n, false)))
         .chain(service_prefixes.into_iter().map(|n| (n, true)))
@@ -13541,7 +13365,7 @@ pub struct ResolveStageNanos {
     pub pool_parse_builds: u128,
     /// Modules parsed by those cold builds.
     pub pool_parse_modules: u128,
-    /// `bare_identifier_candidates` — the per-file identifier scan.
+    /// `parsed_reference_candidates` — the per-file reference projection.
     pub edge_index_bare_candidates: u128,
     pub edge_index_bare_name_universe: u128,
     pub edge_index_bare_resolve_loop: u128,
@@ -32960,6 +32784,12 @@ struct ExprVarClassification<'a> {
     bound_occurrences_suppressed: usize,
     chain_head_occurrences: usize,
     refusals: Vec<String>,
+    /// CALL POSITION, PUBLISHED FROM THE TREE. A call is a node kind (`ExprData::ExprCall`),
+    /// so whether a reference is applied is a structural fact the traversal already has --
+    /// it was simply not projected out, which is why a byte scanner was maintained beside
+    /// this one to re-derive it lexically. Widening the projection is what lets that scanner
+    /// die (DESIGN 3: one producer per fact).
+    calls: BTreeSet<String>,
     /// `None` where the caller has no declaration index — see `reference_resolution_facts`,
     /// which runs before any subject is prepared. Absent is spelled as absent rather than as an
     /// empty map, because an empty map would answer "no module declares this name" to every
@@ -33200,6 +33030,7 @@ fn collect_node_refs_inner(
             ExprData::ExprCall { .. } => {
                 if !node.name.is_empty() {
                     bare.insert(node.name.clone());
+                    classify.calls.insert(node.name.clone());
                 }
             }
             ExprData::ExprRecordLit { .. } => {
@@ -33553,6 +33384,7 @@ pub fn reference_resolution_facts(
                 bound_occurrences_suppressed: 0,
                 chain_head_occurrences: 0,
                 refusals: Vec::new(),
+                calls: BTreeSet::new(),
             };
             for item in tree.children.iter() {
                 collect_node_refs(item, &mut bare, &mut chains, &file_indices, &mut classify);
@@ -41221,6 +41053,7 @@ mod peel_alias_fixpoint_termination {
                 source_indices: crate::v1_rt::rc_empty_map(),
                 intern_table: crate::v1_std_core::empty_intern_table(),
                 source_visible_names: crate::v1_rt::rc_empty_map(),
+                authored_import_names: crate::v1_rt::rc_empty_map(),
                 symbol_index,
             });
             // The pre-fix firing set: the old peel called this same resolver,
@@ -42023,7 +41856,7 @@ mod annotation_erased_scan_projection {
     #[test]
     fn annotation_prose_is_not_scanned_as_a_reference() {
         let src = "module m\n// the identity edge is a tag\nfn f() -> Bool { true }\n";
-        let c = bare_identifier_candidates(src);
+        let c = parsed_reference_candidates("m.dag", src).expect("parses");
         assert!(
             !c.names.contains("edge"),
             "annotation prose leaked a reference"
@@ -42034,7 +41867,7 @@ mod annotation_erased_scan_projection {
     #[test]
     fn the_same_word_outside_an_annotation_is_still_scanned() {
         let src = "module m\nfn f() -> Bool { edge }\n";
-        let c = bare_identifier_candidates(src);
+        let c = parsed_reference_candidates("m.dag", src).expect("parses");
         assert!(
             c.names.contains("edge"),
             "erasure must not blank real program text"
@@ -43042,6 +42875,7 @@ fn reference_closure_index(
         bound_occurrences_suppressed: 0,
         chain_head_occurrences: 0,
         refusals: Vec::new(),
+        calls: BTreeSet::new(),
     };
     for m in prepared.graph.modules.iter() {
         let name = m.func_env.name.clone();
@@ -47249,6 +47083,7 @@ mod reference_collector_binder_fixtures {
             bound_occurrences_suppressed: 0,
             chain_head_occurrences: 0,
             refusals: Vec::new(),
+            calls: BTreeSet::new(),
         };
         for item in tree.children.iter() {
             collect_node_refs(item, &mut bare, &mut chains, &indices, &mut classify);
