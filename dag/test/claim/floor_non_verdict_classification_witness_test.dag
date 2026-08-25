@@ -1,0 +1,49 @@
+module test.claim.floor_non_verdict_classification_witness
+
+import gunbc.floor_non_verdict_classification {
+  classified_non_verdict_identities_are_unique,
+  classified_non_verdict_row_count,
+  every_row_carries_measured_evidence,
+  honest_debt_count,
+  stale_enrolment_count,
+  unmeasured_count
+}
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// SubstrateInputsOnly is truthful: this reads the classification carrier and nothing else.
+// It guards the carrier's STRUCTURE -- population, uniqueness, evidence present, an exact
+// partition -- and never the classifications themselves, which are measurements and not
+// properties any witness can re-derive.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// 15 is not a tree-copied census: it is the size of v2.workflow.floor_non_verdict's roster, an
+// externally fixed population this carrier joins to by identity. If the roster shrinks, this
+// reds and names itself, which is the intended coupling.
+test fn classification_covers_the_fifteen_non_verdict_identities() -> Bool {
+  classified_non_verdict_row_count() == 15
+}
+
+test fn classified_non_verdict_identities_are_distinct() -> Bool {
+  classified_non_verdict_identities_are_unique()
+}
+
+test fn every_classified_non_verdict_row_carries_measured_evidence() -> Bool {
+  every_row_carries_measured_evidence()
+}
+
+test fn standing_partition_is_exact_over_the_population() -> Bool {
+  (stale_enrolment_count() + honest_debt_count() + unmeasured_count())
+    == classified_non_verdict_row_count()
+}
+
+// The result this carrier exists to make unmissable: nine of the fifteen PASS when they reach
+// their subject, so their expected-red enrolment asserts a semantic red that does not exist.
+test fn nine_enrolments_assert_a_red_that_does_not_exist() -> Bool {
+  stale_enrolment_count() == 9
+}
+
+// And the two that were not measured stay countable rather than being folded into a neighbour.
+test fn two_identities_remain_unmeasured() -> Bool {
+  unmeasured_count() == 2
+}

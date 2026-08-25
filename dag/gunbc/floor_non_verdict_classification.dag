@@ -1,0 +1,247 @@
+module gunbc.floor_non_verdict_classification
+
+import std.types { String }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.algebra { any, count_where, fold_list, length, list_snoc_item }
+
+// WHY THIS CARRIER EXISTS. v2.workflow.floor_non_verdict carries fifteen identities that the
+// required floor EXECUTES and that produce no verdict -- they throw before reaching their
+// assertion. That roster's job is to GATE (observed == roster, at identity grain); it does not
+// say what is wrong with any row, and until this pass nobody had measured it. A cause and a
+// disposition per identity are machine-consumed facts, so DESIGN 4c puts them in a carrier.
+//
+// THIS IS NOT A SECOND ROSTER AND MUST NEVER GATE. v2.workflow.floor_non_verdict remains the
+// single authority for WHICH identities produce no verdict and for the growth freeze over them.
+// This module joins to that population by identity and adds a classification; if the two ever
+// disagree, the roster is right and this is stale.
+//
+// THE GROUPING THAT ARRIVED WITH THE WORK WAS BY ERROR TEXT -- twelve saying
+// `atom_identity_hash requires exactly one string argument` and three saying something else --
+// and IT IS NOT THE CAUSAL SPLIT. Measured, the split is 4 / 9 / 2 and it cuts across the error
+// text: two of the three "separate" rows share a cause with seven of the twelve, and the four
+// that share the twelve's error message are the ones that do NOT share its cause.
+
+type NonVerdictIdentity {
+  module_path: String
+  function: String
+}
+
+// The measured cause, at the grain where the remedy differs.
+type NonVerdictCause =
+    // The witness passes under a small resolved closure and loses its verdict only under the
+    // floor's whole-corpus prepared subject. The established defect of that shape is the
+    // local-binding shadowing class (see local_binding_shadow_probe_note).
+    ClosureDependentResolution
+    // The witness throws under every closure. Independent of what else is loaded.
+  | ClosureIndependent { subject: String }
+    // No small closure exists for this witness, so the discriminating A/B cannot be run outside
+    // a full floor run. Carried as a first-class state rather than folded into a neighbour.
+  | Unmeasured { obstacle: String }
+
+// What the expected-red enrolment turns out to be worth, once the row reaches its subject.
+type EnrolmentStanding =
+    // It PASSES. The enrolment asserts a semantic red that does not exist.
+    AssertsARedThatDoesNotExist
+    // It is real debt, and the enrolment names cause and repair trigger.
+  | HonestDebtWithStatedTrigger
+  | StandingUnmeasured
+
+type ClassifiedNonVerdictRow {
+  identity: NonVerdictIdentity
+  cause: NonVerdictCause
+  standing: EnrolmentStanding
+  measured_evidence: String
+}
+
+fn non_verdict_row_identity(module_path: String, function: String) -> NonVerdictIdentity {
+  NonVerdictIdentity { module_path: module_path, function: function }
+}
+
+data closure_ab_note: String = "THE DISCRIMINATOR, AND IT IS THE WHOLE METHOD: run the witness under claim_batch --hermetic (the floor's own execution mode) with a narrow --entry closure, and compare against its behaviour on the floor's whole-corpus prepared subject. A row that PASSES narrow and throws on the floor is closure-dependent: nothing about the witness or its subject changed, only which names were in scope. A row that throws under both is closure-independent and its cause is in the code it names."
+
+data local_binding_shadow_probe_note: String = "THE DEFECT BEHIND THE CLOSURE-DEPENDENT ROWS, established on a complete grid by two lanes independently (calm-boar-150 and silent-bear-842) and enrolled as v2.test.claim.local_binding_shadow local_named_function_binding_is_what_the_call_reaches: a call site spelling a name held by BOTH a local binding and a module-level free function reaches the FREE FUNCTION when the local's value is a reference to a named top-level function. let, parameter and pattern bindings behave identically; a local bound to a LAMBDA reaches the local. The collision is decided at the CALL SITE by the spelling used there, which is why a rename repairs it. Where the shadowing symbol's arity DIFFERS the call refuses loudly; where it AGREES a plausible wrong value returns with no diagnostic. It is closure-sensitive by construction, which is exactly why these rows only lose their verdict once the pool is big enough to contain the colliding name."
+
+data unjoined_inference_note: String = "WHAT IS NOT CLAIMED, and it is the join rather than either half. Closure-dependence is MEASURED for the nine rows below. The shadowing defect is MEASURED, on its own grid. That the shadowing defect is what makes THESE NINE lose their verdict is INFERENCE, not measurement -- no specific colliding name has been identified for the six srv3 rows or the two staging rows, and a check for duplicate free functions among the names those witnesses call found none across dag and src/v2. The cheapest instrument for the join is the repair itself: fix the resolver and re-run, at which point recovery measures the join and non-recovery isolates a second cause with no ambiguity."
+
+data host_phase_unmeasured_note: String = "THE TWO host_phase_status ROWS ARE UNMEASURED AND STAY THAT WAY IN THIS CARRIER. Their witness file carries ONE import and resolves everything else from the pool, so a narrow closure cannot even resolve them -- claim_batch refuses with `no declaration named host_phase_reconcile in this execution's loaded index`. There is therefore no small-closure arm to compare, and assigning them the neighbouring cause because they share an error message would be exactly the by-error-text grouping this carrier exists to replace."
+
+data gating_answer_note: String = "DOES known_red_runtime_errored GATE, AND SHOULD IT? It does not, and that is a DELIBERATE BOUNDARY rather than an omission. claim_executor required_floor_outcome_is_clean excludes both non-verdict arms, and v2.workflow.floor_non_verdict's header argues why: the arms are honest observations, and gating on them directly would red every lane holding a row of an unrepaired population. What gates instead is GROWTH at identity grain (non_verdict_unenrolled: an observed non-verdict identity the roster does not carry) and STALENESS (stale_non_verdict: a rostered identity the run did not observe), which together pin observed == roster. So a green main alongside fifteen unanswered enrolments is the debt being enrolled at identity grain, not something overlooked. THE ONE LIVE AXIS is already declared on that carrier and is not a finding of this pass: nothing compares the roster at HEAD against the roster at the BASE, so an author whose change makes a NEW identity stop producing a verdict may add its row in the SAME change -- the row becomes the permission. The carrier rates itself mitigatable there and names its next-rung trigger."
+
+data closure_dependent_evidence: String = "PASSES under a narrow claim_batch --hermetic closure; produces no verdict on the floor's whole-corpus subject"
+
+data closure_dependent_rows: List<ClassifiedNonVerdictRow> = [
+  ClassifiedNonVerdictRow {
+    identity: non_verdict_row_identity(module_path: "test.claim.srv3_subsumption", function: "comment_only_drift_is_one_change_not_remove_add"),
+    cause: ClosureDependentResolution,
+    standing: AssertsARedThatDoesNotExist,
+    measured_evidence: closure_dependent_evidence
+  },
+  ClassifiedNonVerdictRow {
+    identity: non_verdict_row_identity(module_path: "test.claim.srv3_subsumption", function: "reconcile_would_teardown_only_if_ownership_claimed_it"),
+    cause: ClosureDependentResolution,
+    standing: AssertsARedThatDoesNotExist,
+    measured_evidence: closure_dependent_evidence
+  },
+  ClassifiedNonVerdictRow {
+    identity: non_verdict_row_identity(module_path: "test.claim.srv3_subsumption", function: "srv3_and_srv4_disagree_on_convergence"),
+    cause: ClosureDependentResolution,
+    standing: AssertsARedThatDoesNotExist,
+    measured_evidence: closure_dependent_evidence
+  },
+  ClassifiedNonVerdictRow {
+    identity: non_verdict_row_identity(module_path: "test.claim.srv3_subsumption", function: "srv3_reconcile_adds_exactly_the_missing_fleet_key"),
+    cause: ClosureDependentResolution,
+    standing: AssertsARedThatDoesNotExist,
+    measured_evidence: closure_dependent_evidence
+  },
+  ClassifiedNonVerdictRow {
+    identity: non_verdict_row_identity(module_path: "test.claim.srv3_subsumption", function: "srv3_reconcile_refuses_both_unowned_keys_never_teardown"),
+    cause: ClosureDependentResolution,
+    standing: AssertsARedThatDoesNotExist,
+    measured_evidence: closure_dependent_evidence
+  },
+  ClassifiedNonVerdictRow {
+    identity: non_verdict_row_identity(module_path: "test.claim.srv3_subsumption", function: "srv4_reconcile_is_converged_empty_plan"),
+    cause: ClosureDependentResolution,
+    standing: AssertsARedThatDoesNotExist,
+    measured_evidence: closure_dependent_evidence
+  },
+  ClassifiedNonVerdictRow {
+    identity: non_verdict_row_identity(module_path: "v2.test.claim.staging", function: "cached_stage_hit_skips_stage"),
+    cause: ClosureDependentResolution,
+    standing: AssertsARedThatDoesNotExist,
+    measured_evidence: "PASSES narrow; on the floor throws `cannot access field 'raw' on Int` -- an error text shared with nothing else in the population and a cause shared with the eight rows above it"
+  },
+  ClassifiedNonVerdictRow {
+    identity: non_verdict_row_identity(module_path: "v2.test.claim.staging", function: "cached_stage_miss_runs_stage"),
+    cause: ClosureDependentResolution,
+    standing: AssertsARedThatDoesNotExist,
+    measured_evidence: closure_dependent_evidence
+  },
+  ClassifiedNonVerdictRow {
+    identity: non_verdict_row_identity(module_path: "v2.test.emit.produced_decl_support_preserved", function: "produced_decl_support_survives_augmentation"),
+    cause: ClosureDependentResolution,
+    standing: AssertsARedThatDoesNotExist,
+    measured_evidence: "PASSES narrow; on the floor throws `call contract mismatch calling 'render': missing required argument 'proto'`. Its `render` is PATTERN-BOUND out of ProducedDeclWired and std.layout declares a free `fn render(doc, proto)`, so this row is the shadowing class in its loud, different-arity face"
+  }
+]
+
+data closure_independent_rows: List<ClassifiedNonVerdictRow> = [
+  ClassifiedNonVerdictRow {
+    identity: non_verdict_row_identity(module_path: "v2.test.manual.bootstrap_footprint_anchor", function: "bootstrap_footprint_canonical_holds"),
+    cause: ClosureIndependent { subject: "Atom.identity is DECLARED Symbol in v2.std.node and carries Int character CODE POINTS, put there by semantic_decl_string_to_bundle_node folding a String; content_hash's atom fold routes that into atom_identity_hash, which requires a string" },
+    standing: HonestDebtWithStatedTrigger,
+    measured_evidence: "throws under BOTH a narrow closure and the floor; with the intrinsic's refusal widened to print its argument it reports `TMPDEBUG got 1 arg(s): [Int(10)]`"
+  },
+  ClassifiedNonVerdictRow {
+    identity: non_verdict_row_identity(module_path: "v2.test.manual.bootstrap_footprint_anchor", function: "bootstrap_footprint_non_canonical_violates"),
+    cause: ClosureIndependent { subject: "same Int-in-a-Symbol-field path; every bootstrap_footprint input hashes a closure embedding rust_target_model().bundle" },
+    standing: HonestDebtWithStatedTrigger,
+    measured_evidence: "throws under both closures"
+  },
+  ClassifiedNonVerdictRow {
+    identity: non_verdict_row_identity(module_path: "v2.test.manual.bootstrap_footprint_anchor", function: "bootstrap_footprint_bad_content_hash_violates"),
+    cause: ClosureIndependent { subject: "same Int-in-a-Symbol-field path" },
+    standing: HonestDebtWithStatedTrigger,
+    measured_evidence: "throws under both closures"
+  },
+  ClassifiedNonVerdictRow {
+    identity: non_verdict_row_identity(module_path: "v2.test.manual.bootstrap_footprint_anchor", function: "bootstrap_footprint_bad_runtime_same_identity_violates"),
+    cause: ClosureIndependent { subject: "same Int-in-a-Symbol-field path" },
+    standing: HonestDebtWithStatedTrigger,
+    measured_evidence: "throws under both closures"
+  }
+]
+
+data unmeasured_rows: List<ClassifiedNonVerdictRow> = [
+  ClassifiedNonVerdictRow {
+    identity: non_verdict_row_identity(module_path: "test.claim.host_phase_status", function: "witness_reconcile_covers_upsert_teardown_and_noop"),
+    cause: Unmeasured { obstacle: host_phase_unmeasured_note },
+    standing: StandingUnmeasured,
+    measured_evidence: "no small-closure arm exists: claim_batch refuses the narrow run with `no declaration named host_phase_reconcile in this execution's loaded index`"
+  },
+  ClassifiedNonVerdictRow {
+    identity: non_verdict_row_identity(module_path: "test.claim.host_phase_status", function: "witness_remaining_work_counts_every_unfinished_cell"),
+    cause: Unmeasured { obstacle: host_phase_unmeasured_note },
+    standing: StandingUnmeasured,
+    measured_evidence: "no small-closure arm exists: claim_batch refuses the narrow run with `no declaration named fleet_subsumption_enrollments in this execution's loaded index`"
+  }
+]
+
+data no_classified_non_verdict_rows: List<ClassifiedNonVerdictRow> = []
+
+data no_non_verdict_keys: List<String> = []
+
+fn classified_non_verdict_rows() -> List<ClassifiedNonVerdictRow> {
+  fold_list(
+    xs: [closure_dependent_rows, closure_independent_rows, unmeasured_rows],
+    empty: no_classified_non_verdict_rows,
+    cons: fn(acc, group) {
+      fold_list(xs: group, empty: acc, cons: fn(inner, row) { list_snoc_item(xs: inner, item: row) })
+    }
+  )
+}
+
+fn classified_non_verdict_row_count() -> Int {
+  length(xs: classified_non_verdict_rows())
+}
+
+fn non_verdict_identity_key(i: NonVerdictIdentity) -> String {
+  concat(i.module_path, concat(".", i.function))
+}
+
+fn classified_non_verdict_keys() -> List<String> {
+  fold_list(
+    xs: classified_non_verdict_rows(),
+    empty: no_non_verdict_keys,
+    cons: fn(acc, row) { list_snoc_item(xs: acc, item: non_verdict_identity_key(i: row.identity)) }
+  )
+}
+
+fn non_verdict_key_occurrences(key: String) -> Int {
+  count_where(xs: classified_non_verdict_keys(), predicate: fn(k) { k == key })
+}
+
+fn classified_non_verdict_identities_are_unique() -> Bool {
+  !any(xs: classified_non_verdict_keys(), predicate: fn(k) { non_verdict_key_occurrences(key: k) != 1 })
+}
+
+fn row_asserts_a_red_that_does_not_exist(row: ClassifiedNonVerdictRow) -> Bool {
+  match row.standing {
+    AssertsARedThatDoesNotExist => true
+    HonestDebtWithStatedTrigger => false
+    StandingUnmeasured => false
+  }
+}
+
+fn stale_enrolment_count() -> Int {
+  count_where(xs: classified_non_verdict_rows(), predicate: row_asserts_a_red_that_does_not_exist)
+}
+
+fn row_is_unmeasured(row: ClassifiedNonVerdictRow) -> Bool {
+  match row.standing {
+    StandingUnmeasured => true
+    AssertsARedThatDoesNotExist => false
+    HonestDebtWithStatedTrigger => false
+  }
+}
+
+fn unmeasured_count() -> Int {
+  count_where(xs: classified_non_verdict_rows(), predicate: row_is_unmeasured)
+}
+
+fn honest_debt_count() -> Int {
+  count_where(xs: classified_non_verdict_rows(), predicate: fn(row) {
+    match row.standing {
+      HonestDebtWithStatedTrigger => true
+      AssertsARedThatDoesNotExist => false
+      StandingUnmeasured => false
+    }
+  })
+}
+
+fn every_row_carries_measured_evidence() -> Bool {
+  !any(xs: classified_non_verdict_rows(), predicate: fn(row) { string_length(s: row.measured_evidence) == 0 })
+}

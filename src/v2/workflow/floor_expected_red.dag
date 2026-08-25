@@ -497,8 +497,39 @@ fn floor_expected_red_chunk_21() -> List<String> {
   Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_extra_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_missing_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_wrong_argument_type_must_refuse_at_compile", tail: Empty {} } } }
 }
 
+// ONE IDENTITY ENROLLED 2026-08-25, and it carries a per-row reason because the nine rows this
+// lane just examined do not, and that absence is what let a thrown claim be filed as a semantic
+// red for weeks.
+//
+// THE CLASS: a call site spelling a name held by BOTH a local binding and a module-level free
+// function reaches the FREE FUNCTION when the local's value is a reference to a named top-level
+// function. Measured on a complete grid by two lanes independently -- let, parameter and pattern
+// bindings all behave the same, and a local bound to a LAMBDA reaches the local -- so the binding
+// form is not the axis and the value is. The collision is decided at the CALL SITE by the spelling
+// used there: the same value handed to a differently-named parameter reaches the local, which is
+// why a rename repairs it.
+//
+// WHY BELOW FLOOR RATHER THAN A NAMING HAZARD: where the shadowing symbol's arity DIFFERS the call
+// refuses loudly, and where it AGREES a plausible wrong value is returned with no diagnostic.
+// Reproduced twice on live corpus symbols before the fixture existed -- a displaced predicate
+// returning a ParagraphBlock, and a fold over three elements answering 3 where the direct fold
+// counts 2.
+//
+// THE ROW ASSERTS THE DESIRED LAW, not today's behaviour, so it reds now and greens on repair. Its
+// three conjuncts return Bools and never throw, so this is an OBSERVED semantic red and never
+// no-verdict debt.
+//
+// DISSOLUTION: it FLIPS TO A PERMANENT REGRESSION CONTROL when local bindings win, and is not
+// deleted then. DESIGN 4b(4) -- a climb dissolves the lower-rung production machinery and KEEPS
+// the discriminating evidence; deleting the probe on repair would recreate
+// specification-without-execution one rung up. Its two green controls (the lambda column and the
+// call-site rename) are already permanent for the same reason.
+fn floor_expected_red_chunk_22() -> List<String> {
+  Cons { head: "v2.test.claim.local_binding_shadow.local_named_function_binding_is_what_the_call_reaches", tail: Empty {} }
+}
+
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_22(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}
 }
 
 // Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import
