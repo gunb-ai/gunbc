@@ -9955,6 +9955,8 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut required_v2_emission_selftest_mode = false;
     let mut corpus_type_judgment_mode = false;
     let mut required_regen_mode = false;
+    let mut emit_partition_crates_mode = false;
+    let mut emit_partition_crates_write = false;
     let mut required_regen_fixed_point_mode = false;
     let mut heads_reading_differential_mode = false;
     let mut behavioral_receipt_plan_mode = false;
@@ -10014,6 +10016,15 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--required-regen" => {
                 required_regen_mode = true;
+            }
+            // THE SANCTIONED PRODUCER for the derived partition's boundary files. Named by the
+            // phase's own refusal, because a stop whose only remedy does not exist is what
+            // produced this class in the first place.
+            "--emit-partition-crates" => {
+                emit_partition_crates_mode = true;
+            }
+            "--write" => {
+                emit_partition_crates_write = true;
             }
             "--heads-reading-differential" => {
                 heads_reading_differential_mode = true;
@@ -10257,10 +10268,59 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Ok(ExitCode::SUCCESS);
     }
 
+    // ORDERED AHEAD OF THE SOURCE-ROOT REQUIREMENT, for the reason the corpus-type-judgment
+    // mode above is: this mode takes NO roots. It renders from the emitted authority carrier
+    // and reads only the files it is adjudicating, so the generic guard below would refuse the
+    // only invocation it has. MEASURED, NOT REASONED -- the first remote run of this entry point
+    // exited 2 with `provide at least one --source-root` before the branch was moved here.
+    //
+    // THE PRODUCER, AS ITS OWN ENTRY POINT. `--write` installs; without it the run reports and
+    // changes nothing, so the read-only form is safe to run anywhere and the `written` list is
+    // empty BY CONSTRUCTION rather than by a caller remembering not to ask.
+    if emit_partition_crates_mode {
+        let outcome =
+            v1_compiler::cli_run::run_partition_crate_boundary(emit_partition_crates_write);
+        match &outcome {
+            v1_compiler::cli_run::PartitionCrateBoundaryOutcome::CarrierRefused { cause } => {
+                eprintln!("emit-partition-crates: CarrierRefused cause={cause}");
+                return Err(ExitCode::from(1));
+            }
+            v1_compiler::cli_run::PartitionCrateBoundaryOutcome::Rendered { files, written } => {
+                for file in files {
+                    eprintln!(
+                        "emit-partition-crates: {} {}",
+                        file.disposition().name(),
+                        file.path
+                    );
+                }
+                eprintln!(
+                    "emit-partition-crates: rendered={} written={} mode={}",
+                    files.len(),
+                    written.len(),
+                    if emit_partition_crates_write {
+                        "write"
+                    } else {
+                        "read-only"
+                    }
+                );
+                // A READ-ONLY RUN THAT FOUND DRIFT EXITS NONZERO; the write form is what closes
+                // it. Exiting zero here would make the producer's own entry point disagree with
+                // the phase that names it as the remedy.
+                let unresolved = outcome.divergent().len();
+                return if emit_partition_crates_write || unresolved == 0 {
+                    Ok(ExitCode::SUCCESS)
+                } else {
+                    Err(ExitCode::from(1))
+                };
+            }
+        }
+    }
+
     if source_roots.is_empty() {
         eprintln!("claim_executor: provide at least one --source-root");
         return Err(ExitCode::from(2));
     }
+
     let _phase_profile = PhaseProfile::install_from_env();
 
     // THE REQUIRED WITNESS FLOOR: one repository preparation, one immutable scope per distinct
@@ -10479,6 +10539,84 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             }
             ran.push("v2-emission");
+        }
+
+        // PHASE — the derived stage0 partition's crate boundary.
+        //
+        // WHAT IT ANSWERS, and it is deliberately not what a reader assumes from the name: the
+        // committed `lib.rs` and `Cargo.toml` of the seven partition crates are exactly what
+        // `v1.compiler.stage0_crates` renders from the authority. It is a DRIFT question, not a
+        // compile question, and the two are independent — the incident that produced this phase
+        // was a stale AUTHORITY, whose projection was byte-perfect and did not compile. So this
+        // phase is necessary and NOT sufficient; the compile half is the partition crates being
+        // built, which `-p v1-compiler --bins` does not reach (a `-p` selector scopes `--bins`
+        // to that one package, and these are separate packages).
+        //
+        // A CARRIER REFUSAL IS NOT A CLEAN RUN. The outcome type reaches every verdict THROUGH
+        // the rendered population, so `refused before rendering` cannot inhabit the same arm as
+        // `rendered, nothing drifted`. Reporting a zero here without that distinction is the
+        // execution-provenance loss DESIGN names: an unreached observation reading as a pass.
+        if required_ci_phase_selected(RequiredCiPhase::PartitionCrates, required_ci_lane) {
+            eprintln!(
+                "required-ci: phase partition-crates (the derived stage0 partition's boundary files)"
+            );
+            match v1_compiler::cli_run::run_partition_crate_boundary(false) {
+                v1_compiler::cli_run::PartitionCrateBoundaryOutcome::CarrierRefused { cause } => {
+                    eprintln!(
+                        "required-ci: partition-crates CarrierRefused cause={cause} \
+                         (the authority declined to render; nothing was compared)"
+                    );
+                    phase_failures.push(format!("partition-crates carrier refused: {cause}"));
+                }
+                outcome @ v1_compiler::cli_run::PartitionCrateBoundaryOutcome::Rendered {
+                    ..
+                } => {
+                    let divergent = outcome.divergent();
+                    if let v1_compiler::cli_run::PartitionCrateBoundaryOutcome::Rendered {
+                        files,
+                        ..
+                    } = &outcome
+                    {
+                        eprintln!(
+                            "required-ci: partition-crates rendered={} matches={} drifted={} absent={}",
+                            files.len(),
+                            files.len() - divergent.len(),
+                            divergent
+                                .iter()
+                                .filter(|f| f.disposition()
+                                    == v1_compiler::cli_run::BoundaryFileDisposition::Drifted)
+                                .count(),
+                            divergent
+                                .iter()
+                                .filter(|f| f.disposition()
+                                    == v1_compiler::cli_run::BoundaryFileDisposition::Absent)
+                                .count(),
+                        );
+                    }
+                    for file in &divergent {
+                        eprintln!(
+                            "required-ci: partition-crates {} {}",
+                            file.disposition().name(),
+                            file.path
+                        );
+                    }
+                    if !divergent.is_empty() {
+                        // THE REFUSAL NAMES A ROUTE THAT EXISTS. The header on these files used
+                        // to name `regen_stage0`, deleted 2026-08-20, so the only move the stop
+                        // offered was unavailable and the author hand-edited instead.
+                        eprintln!(
+                            "required-ci: partition-crates these are GENERATED projections of \
+                             v2.workflow.rust_crate_partition — do not hand-edit; regenerate with: {}",
+                            v1_compiler::cli_run::PARTITION_CRATE_PRODUCING_COMMAND
+                        );
+                        phase_failures.push(format!(
+                            "partition-crates ({} boundary file(s) not derived)",
+                            divergent.len()
+                        ));
+                    }
+                }
+            }
+            ran.push("partition-crates");
         }
 
         // PHASE 4 — the witness floor. Independent; runs whatever happened above.
@@ -12052,6 +12190,7 @@ enum RequiredCiPhase {
     Parse,
     Regen,
     V2Emission,
+    PartitionCrates,
     Floor,
 }
 
@@ -12061,6 +12200,7 @@ impl RequiredCiPhase {
             RequiredCiPhase::Parse => "parse",
             RequiredCiPhase::Regen => "regen",
             RequiredCiPhase::V2Emission => "v2-emission",
+            RequiredCiPhase::PartitionCrates => "partition-crates",
             RequiredCiPhase::Floor => "floor",
         }
     }
@@ -12076,15 +12216,21 @@ impl RequiredCiPhase {
             RequiredCiPhase::Parse => RequiredCiLane::Witnesses,
             RequiredCiPhase::Regen => RequiredCiLane::Build,
             RequiredCiPhase::V2Emission => RequiredCiLane::Build,
+            // A DRIFT COMPARISON OVER DERIVED RUST, so it belongs beside regen and
+            // v2-emission rather than beside the witness corpus. The two lanes carry no
+            // `needs` edge, so this costs nothing until the build lane exceeds the floor's
+            // wall clock; beside the floor it would be pure addition to the critical path.
+            RequiredCiPhase::PartitionCrates => RequiredCiLane::Build,
             RequiredCiPhase::Floor => RequiredCiLane::Witnesses,
         }
     }
 }
 
-const REQUIRED_CI_PHASES: [RequiredCiPhase; 4] = [
+const REQUIRED_CI_PHASES: [RequiredCiPhase; 5] = [
     RequiredCiPhase::Parse,
     RequiredCiPhase::Regen,
     RequiredCiPhase::V2Emission,
+    RequiredCiPhase::PartitionCrates,
     RequiredCiPhase::Floor,
 ];
 

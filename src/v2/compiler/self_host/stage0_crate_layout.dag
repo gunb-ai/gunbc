@@ -92,6 +92,7 @@ data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistrati
   SeedRetainedIntrinsicRegistration { basename: "v2_compiler_use_site_verdict", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "cssl_seed_linked_closure_assembly", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "required_regen_host", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "partition_crate_boundary_host", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "v2_compiler_compile", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "v2_compiler_program_assembly", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "v2_compiler_source_authority", has_pub_mod: true, is_dir: false }

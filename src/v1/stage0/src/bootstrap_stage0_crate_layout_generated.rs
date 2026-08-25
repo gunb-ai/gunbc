@@ -26,6 +26,7 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "v2_compiler_use_site_verdict.rs",
     "cssl_seed_linked_closure_assembly.rs",
     "required_regen_host.rs",
+    "partition_crate_boundary_host.rs",
     "v2_compiler_compile.rs",
     "v2_compiler_program_assembly.rs",
     "v2_compiler_source_authority.rs",

@@ -53,6 +53,9 @@ pub(crate) mod materialization_provider_consumer;
 mod phase_profile;
 #[path = "required_regen_host.rs"]
 mod required_regen_host;
+
+#[path = "partition_crate_boundary_host.rs"]
+mod partition_crate_boundary_host;
 pub(crate) mod shared_fill;
 pub(crate) mod terminal_ledger_publish;
 pub(crate) mod test_module_hygiene_bridge;
@@ -47017,6 +47020,15 @@ pub fn run_required_regen_fixed_point(
 /// producer the regen path uses -- so the bytes a behavioural receipt compiles are the bytes
 /// regen compared. A second emit here would be a second producer of the candidate itself.
 pub use required_regen_host::emitted_generated_sources;
+
+/// The derived stage0 partition's crate boundary files, produced from the authority.
+///
+/// Re-exported here rather than reached directly so every required phase addresses the
+/// producer through one surface, the way the regen path does.
+pub use partition_crate_boundary_host::{
+    run_partition_crate_boundary, BoundaryFileDisposition, PartitionCrateBoundaryOutcome,
+    RenderedBoundaryFile, PARTITION_CRATE_PRODUCING_COMMAND,
+};
 
 /// The authority's own declared module path, for consumers outside this module.
 ///
