@@ -83,6 +83,23 @@ type PopulationBasis
 // arms sum to the total, and 119+13+9+1 == 142 stays true however far the population moves away
 // from it. A sum is an internal consistency check, never a binding to the run it claims.
 //
+// THESE ROWS ARE A HISTORICAL OBSERVATION, NOT A PROPERTY OF THE TREE, AND THEY ARE STALE AT
+// BIRTH BY CONSTRUCTION. A measurement committed INTO the tree it measures cannot name its own
+// commit: authoring the row makes a new one, so `head_commit` is always an ANCESTOR of the commit
+// the row lives in. That is unavoidable for any authored snapshot rather than a defect in this
+// one, and it decides how every row below must be READ.
+//
+// So read them in this voice: ON RUN 32799641240 AT 4ab80676e7a, THE NON-VERDICT POPULATION WAS
+// 15. That sentence stays true forever, including after the population moves again. "The
+// non-verdict population IS 15" goes false silently, and it is the sentence a reader will take
+// from a row named `floor_non_verdict_measured_total` unless this paragraph stops them -- the
+// name is a third surface and it reads present-tense whatever the value says.
+//
+// A CONSUMER WANTING THE CURRENT POPULATION MUST RE-RUN THE FLOOR, never read these. The floor
+// prints `[floor-non-verdict] roster carries N enrolled identity(ies)` and observes the live
+// population on every required run; that is the instrument, and these rows are one of its old
+// outputs kept on purpose.
+//
 // THE FALSE REGRESSION AN EARLIER REVISION NAMED, kept because deleting the superseded figures
 // around it would otherwise take it with them: the brief was that 99 witnesses went PASSED ->
 // RUNTIME-ERRORED across 330f63c514..5482863b4e while the floor reported failed=0. An identity-set
@@ -231,7 +248,7 @@ data floor_non_verdict_dominant_cause_specimen: DeclarationRef = decl_ref(module
 //
 // The rung is therefore MITIGATABLE and the mitigation is authorship diligence, which is what
 // failed here: gunbc#9161 deleted the population and left the rows describing it.
-data floor_non_verdict_census_derivation_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: floor_non_verdict_measured_total and floor_non_verdict_cause_census are DERIVED from the run floor_non_verdict_population_basis names -- read from that run's own receipt rather than authored beside it -- at which point a transcribed count has no spelling and the rows cannot disagree with the tree. This is DESIGN's 2026-08-24 ruling applied to this carrier: name the instrument, never transcribe its output. Established by execution against a discriminating red: a basis naming a run whose observed non-verdict population differs from the authored census, refused. Not satisfied by a second sum check over the same authored fields, which is the check that already cannot see the defect; and not satisfied by re-measuring by hand, which is what produced the correction this trigger exists to make unnecessary.")
+data floor_non_verdict_census_derivation_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: floor_non_verdict_measured_total and floor_non_verdict_cause_census are DERIVED from the run floor_non_verdict_population_basis names -- read from that run's own receipt rather than authored beside it -- at which point a transcribed count has no spelling and the rows cannot disagree with the tree. This is DESIGN's 2026-08-24 ruling applied to this carrier: name the instrument, never transcribe its output. THE TARGET IS NOT THAT OLD MEASUREMENTS STOP EXISTING -- storing one is legitimate and useful, and this row is one. It is that STALENESS REMAINS REPRESENTABLE WHILE STALE-AS-CURRENT BECOMES UNREPRESENTABLE: a consumer asking about the CURRENT subject must not be able to read an observation of an OLD one and get a value back, and the mismatch must be a typed refusal rather than a stale answer that still reads. Three orthogonal laws are in play and the enrolled witness proves only the first: INTERNAL COHERENCE (the arms sum to the total), PROVENANCE (the payload really was produced by the named observer over the named subject -- authoring both fields side by side does not bind them, only a producer-minted receipt does), and APPLICABILITY (the receipt's subject is the subject the consumer is asking about). At identity grain the four authored figures here -- total, histogram, dominant cause, specimen -- all DERIVE from the observed rows, and the stale dominant-cause specimen this change repairs could not have survived authoring, because its membership would be checked against the population it claims to exemplify. Established by execution against a discriminating red: a basis naming a run whose observed non-verdict population differs from the authored census, refused. Not satisfied by a second sum check over the same authored fields, which is the check that already cannot see the defect; and not satisfied by re-measuring by hand, which is what produced the correction this trigger exists to make unnecessary.")
 
 data floor_non_verdict_roster_growth_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the required floor establishes H subset-of B -- the roster in the COMPOSED RESULT is a subset of the roster at that result's CURRENT TARGET-BASE PARENT -- refusing when it is not, established by execution against a discriminating red: one composed result carrying a row for an identity the base roster does not carry, refused. NOT the merge base: a merge-base baseline admits exemption resurrection, where main repairs an identity and deletes its row while a stale branch reintroduces it, and it also false-reds a row main legitimately added after the fork. Identity grain, for the same reason the observed-vs-roster admission is: an addition and a deletion in one change leave every count unmoved. RECEIPT THE CUT PINS: target_base_sha, composed_result_sha, base_roster_identity_set, result_roster_identity_set, added_exemptions = result - base; and it refuses when the base subject or its roster cannot be evaluated, the same read-failure polarity the executing arms already carry.")
 
