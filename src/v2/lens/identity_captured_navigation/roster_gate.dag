@@ -101,8 +101,10 @@ fn source_findings(source_text: String) -> SourceFindingsStanding {
   }
 }
 
-fn ingest_findings(path: String) -> Optional<List<Finding>> {
-  source_findings(source_text: filesystem_read(path: path).content)
+fn ingest_findings(path: String) -> SourceFindingsStanding {
+  v2.lens.identity_captured_navigation.roster_gate.source_findings(
+    source_text: filesystem_read(path: path).content
+  )
 }
 
 fn count_matching(fs: List<Finding>, pred: fn(Finding) -> Bool) -> Int {
@@ -119,8 +121,8 @@ type RosterVerdict
 
 fn file_verdict(path: String, refusal_ceiling: Int) -> RosterVerdict {
   match ingest_findings(path: path) {
-    Absent => RosterIngestRegressed
-    Present { value: fs } =>
+    SourceFindingsNotEstablished { cause: _ } => RosterIngestRegressed
+    SourceFindingsEstablished { findings: fs } =>
       if count_matching(fs: fs, pred: v2.lens.identity_captured_navigation.analyze.finding_is_suspect) > 0 {
         RosterSuspectFound
       } else {
@@ -136,15 +138,15 @@ fn file_verdict(path: String, refusal_ceiling: Int) -> RosterVerdict {
 
 fn file_suspect_count(path: String) -> Int {
   match ingest_findings(path: path) {
-    Absent => -1
-    Present { value: fs } => count_matching(fs: fs, pred: v2.lens.identity_captured_navigation.analyze.finding_is_suspect)
+    SourceFindingsNotEstablished { cause: _ } => -1
+    SourceFindingsEstablished { findings: fs } => count_matching(fs: fs, pred: v2.lens.identity_captured_navigation.analyze.finding_is_suspect)
   }
 }
 
 fn file_refusal_count(path: String) -> Int {
   match ingest_findings(path: path) {
-    Absent => -1
-    Present { value: fs } => count_matching(fs: fs, pred: v2.lens.identity_captured_navigation.analyze.finding_is_refusal)
+    SourceFindingsNotEstablished { cause: _ } => -1
+    SourceFindingsEstablished { findings: fs } => count_matching(fs: fs, pred: v2.lens.identity_captured_navigation.analyze.finding_is_refusal)
   }
 }
 
@@ -164,7 +166,7 @@ fn file_gate(path: String, refusal_ceiling: Int) -> Bool {
 // against FALSE POSITIVES: if their snippet ever stopped parsing they asserted "not flagged" about
 // a source nobody read, and the anti-false-positive guarantee would have evaporated in silence.
 fn source_finding_standing(source_text: String) -> FindingStanding {
-  match source_findings(source_text: source_text) {
+  match v2.lens.identity_captured_navigation.roster_gate.source_findings(source_text: source_text) {
     SourceFindingsNotEstablished { cause: cause } => FindingNotEstablished { cause: cause }
     SourceFindingsEstablished { findings: fs } => {
       let suspects = count_matching(fs: fs, pred: v2.lens.identity_captured_navigation.analyze.finding_is_suspect)
