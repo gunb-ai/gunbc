@@ -471,3 +471,38 @@ test fn the_enrolment_wall_reads_the_denominators_the_carrier_was_folded_over() 
       GatingRefusedDenominator { missing: _ } => false
     }
 }
+
+// A ZERO-FILE TREE IS NOT A CLEAN ENTRY.
+//
+// THE REASON IS AN INHERITED DEPENDENCY, not a general suspicion of zero. `EmittedFileCount` does
+// not ASSERT the emitted/not-written distinction: `FilesNotWritten` is what the ABSENCE of the
+// compiler's `compiled:` summary line decodes to, and the compiler prints that line only on the
+// path that wrote a tree. So the distinction is inherited from the producer's printing discipline,
+// which nothing pins — and if the seed ever printed a summary on a path that wrote nothing, the
+// population would arrive here as `FilesEmitted { count: 0 }`.
+//
+// Reading that as CLEAN would be this ratchet's own failure mode, committed through its own
+// load-bearing arm: a run that emitted nothing reported as a run that emitted zero, and a subject
+// reading clean when it was never evaluated. So the zero refuses, and the hypothesised misprint
+// lands in NotEvaluated either way rather than in a verdict.
+//
+// The control is the line beside it: a NONZERO count with the same empty population IS clean, so
+// the refusal is about the zero and not about the fixture.
+test fn a_zero_file_tree_is_not_evaluated_rather_than_clean() -> Bool {
+  emit_outcome_of_population(ds: [fixture_advisory_diagnostic], files: FilesEmitted { count: 0 })
+    == EmitSubjectNotEvaluated { cause: EmittedNothing }
+    && emit_outcome_of_population(ds: [fixture_advisory_diagnostic], files: FilesEmitted { count: 1 })
+      == EmitSubjectClean
+}
+
+// AND THE THREE NOT-EVALUATED CAUSES STAY DISTINCT, because they have three different owners: the
+// instrument never ran, the emitter returned before writing a tree, or the emitter wrote a tree of
+// nothing. Collapsing them would send three different repairs to one place.
+test fn the_three_not_evaluated_causes_are_not_collapsed() -> Bool {
+  emit_outcome_of_population(ds: [], files: FilesNotWritten)
+    == EmitSubjectNotEvaluated { cause: ExtentUnestablished }
+    && !(
+      emit_outcome_of_population(ds: [], files: FilesEmitted { count: 0 })
+        == EmitSubjectNotEvaluated { cause: ExtentUnestablished }
+    )
+}

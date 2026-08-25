@@ -15,7 +15,6 @@ import gunbc.emit_diagnostic_observation {
   EmitPopulationComplete,
   EmitPopulationCompletenessUnestablished,
   emit_blocking_count,
-  emit_population_extent_of,
   emit_population_extent_text
 }
 import tools.emission_entry_instrument {
@@ -414,6 +413,7 @@ fn emit_blocker_cause_text(cause: EmitBlockerCause) -> String {
 type EmitNotEvaluatedCause
   = PopulationUnproduced { stage: EmissionStage, cause: String }
   | ExtentUnestablished
+  | EmittedNothing
 
 fn emit_not_evaluated_cause_text(cause: EmitNotEvaluatedCause) -> String {
   match cause {
@@ -427,6 +427,8 @@ fn emit_not_evaluated_cause_text(cause: EmitNotEvaluatedCause) -> String {
         "the population carries no blocking diagnostic AND no established extent: ",
         emit_population_extent_text(extent: EmitPopulationCompletenessUnestablished)
       )
+    EmittedNothing =>
+      "emit reported a tree of ZERO files and printed no blocking diagnostic — an entry that produced no output and no complaint has not been shown to emit, and reading it as clean would be the strongest possible verdict drawn from the weakest possible observation"
   }
 }
 
@@ -447,6 +449,36 @@ fn emit_subject_outcome_text(outcome: EmitSubjectOutcome) -> String {
   }
 }
 
+// AN INHERITED DEPENDENCY, NAMED BECAUSE A READER OF THIS CARRIER WOULD OTHERWISE ASSUME IT IS NOT
+// THERE. The three-valued outcome is structural HERE and inherited in the carrier feeding it, and
+// that difference is exactly the kind that gets lost between two modules.
+//
+// `gunbc.emit_diagnostic_observation` `EmittedFileCount` does not ASSERT the
+// emitted/not-written distinction -- `FilesNotWritten` is what the ABSENCE of the compiler's
+// `compiled:` summary line decodes to, and the compiler prints that line only on the path that
+// wrote a tree. The distinction is therefore inherited from the producer's PRINTING DISCIPLINE,
+// which nothing pins. That module's author measured and declared this rather than leaving it to be
+// found, and their statement of the consequence is exact: if v1 ever printed a summary on a path
+// that wrote nothing, the carrier would report `FilesEmitted { count: 0 }` and be WRONG, and their
+// witnesses would not catch it, because they are controlled fixtures over the DECODER rather than
+// observations of the compiler's printing.
+//
+// WHY THAT LANDS HERE HARDEST: `NotEvaluated` is the load-bearing row of this whole ratchet -- an
+// upstream refusal turning downstream blockers into ABSENCE, with absence reading as zero, is the
+// failure the arm exists to prevent. If the arm were populated ONLY from `FilesNotWritten`, then
+// the row that makes this ratchet honest would rest on an unpinned convention in a frozen seed, and
+// the failure would be precisely the one it guards against: a run that emitted nothing reported as
+// a run that emitted zero, and a subject reading CLEAN when it was never evaluated.
+//
+// SO THIS DERIVATION DOES NOT DEPEND ON THAT CONVENTION FOR THE DANGEROUS DIRECTION. A zero-file
+// tree is `EmittedNothing`, not `Clean`, so the hypothesised misprint lands in NotEvaluated and
+// refuses either way. The convention still decides WHICH not-evaluated cause is reported, and that
+// residual is a rendering difference rather than a verdict difference.
+//
+// WHAT IS NOT CLOSED, stated so this note is not read as more than it is: pinning the printing
+// discipline itself needs a probe on a path that emits no tree, asserting the summary line is
+// ABSENT rather than present-with-zero. That belongs beside the decoder, not inside this ratchet.
+//
 // THE ONE DERIVATION FROM A POPULATION, so the extent cannot be dropped at one call site and
 // honoured at another. A blocking diagnostic found in a prefix is still a blocking diagnostic, so
 // the extent decides only the ZERO case: zero-so-far over a population of unknown length is not a
@@ -456,10 +488,14 @@ fn emit_outcome_of_population(ds: List<GunbcDiagnostic>, files: EmittedFileCount
   if blocking > 0 {
     EmitSubjectBlocked { cause: BlockingDiagnostics { blocking: blocking } }
   } else {
-    match emit_population_extent_of(files: files) {
-      EmitPopulationComplete => EmitSubjectClean
-      EmitPopulationCompletenessUnestablished =>
-        EmitSubjectNotEvaluated { cause: ExtentUnestablished }
+    match files {
+      FilesNotWritten => EmitSubjectNotEvaluated { cause: ExtentUnestablished }
+      FilesEmitted { count: n } =>
+        if n == 0 {
+          EmitSubjectNotEvaluated { cause: EmittedNothing }
+        } else {
+          EmitSubjectClean
+        }
     }
   }
 }
@@ -718,6 +754,10 @@ type EmitSubjectCleanRatchet {
   malformed_admission_subjects: List<String>
 }
 
+// CLASSIFICATION READINGS ARE FOLDED FIRST so a measurement can never overwrite one. An
+// unclassified file has no compile to run, so a reading claiming to have measured one is
+// incoherent -- and `lookup_subject_reading` takes the FIRST match, which makes the ordering the
+// enforcement rather than a check beside it.
 fn fold_emit_subject_clean_ratchet_over_readings(
   universe: RatchetUniverse,
   admissions: List<EmitDebtAdmission>,
@@ -725,9 +765,6 @@ fn fold_emit_subject_clean_ratchet_over_readings(
 ) -> EmitSubjectCleanRatchet {
   let keys = map(admissions, a => emit_debt_admission_entry(admission: a))
   let roster = universe_subjects(u: universe)
-  // CLASSIFICATION READINGS COME FIRST so a measurement can never overwrite them. An unclassified
-  // file has no compile to run, so a reading claiming to have measured one is incoherent — and
-  // lookup takes the first match, which makes the ordering the enforcement rather than a check.
   let all_readings = concat(universe_classification_readings(u: universe), readings)
   EmitSubjectCleanRatchet {
     roster: universe_roster_identity(u: universe),
