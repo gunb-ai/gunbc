@@ -5052,6 +5052,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
     let class = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { .. } => "UnresolvedImport",
         CompilerDiagnostic::MissingExport { .. } => "MissingExport",
+        CompilerDiagnostic::ImportShadowedByLocalDefinition { .. } => {
+            "ImportShadowedByLocalDefinition"
+        }
         CompilerDiagnostic::UnresolvedType { .. } => "UnresolvedType",
         CompilerDiagnostic::TypeMismatch { .. } => "TypeMismatch",
         CompilerDiagnostic::ArityMismatch { .. } => "ArityMismatch",
@@ -5107,6 +5110,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
         CompilerDiagnostic::MissingExport { name, .. } => name.clone(),
+        CompilerDiagnostic::ImportShadowedByLocalDefinition { name, .. } => name.clone(),
         CompilerDiagnostic::UnresolvedType { name, .. } => name.clone(),
         CompilerDiagnostic::TypeMismatch { got, .. } => got.clone(),
         CompilerDiagnostic::ArityMismatch { name, .. } => name.clone(),
