@@ -187,6 +187,7 @@ type ImportResolveResult {
 }
 
 fn resolve_import(
+  import: v1.std.core.Node,
   module_index: Map<String, v1.std.core.Node>,
   importing_module: String,
   export_sets: Map<String, Map<String, Bool>>,
@@ -213,6 +214,7 @@ fn resolve_import(
         Absent => empty_map()
       }
       let name_diags = if v1.std.core.import_is_all(n: import) { [] } else {
+        import.children
           |> filter(child => map_has(m: exported_set, key: v1.std.core.authored_name_at(source_indices: source_indices, node: child)) == false)
           |> map(child =>
             v1.std.core.make_error_node(diagnostic: v1.std.core.MissingExport { name: v1.std.core.authored_name_at(source_indices: source_indices, node: child), module_path: import_path, importing_module: importing_module, span: child.span }, module_name: importing_module)
