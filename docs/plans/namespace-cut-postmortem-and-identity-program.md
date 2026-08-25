@@ -1748,435 +1748,6 @@ RUNNING the wall over the corpus and none by reasoning about it. Two lanes, two
 subjects, one conclusion: **the corpus is the instrument, and a witness is a
 hypothesis about it.**
 
-### 11.2e RULING — anonymous record literals resolve from their expected type
-
-**Decided 2026-08-25. (b), the compiler.** An anonymous record literal is
-grounded by its expected nominal type; the author is not obliged to annotate it.
-
-The alternative was to annotate the 8 sites blocking whole-corpus emission. It
-is refused, and **not** because annotation is laborious — because the corpus
-authority already committed to the opposite. `04_infer.dag`
-`declared_type_conformance_note` class (3) IS anonymous record literals, and its
-dissolve-on names the terminal verbatim: *"grounds an anonymous literal against
-its expected nominal type."* Annotating would author around a defect the tree
-has on record as the thing to fix.
-
-Three further findings, each of which corrected something:
-
-**One root, two stages.** Inference sees `Product(<anon>)`, emission sees
-`Absent`, for the identical reason — the expected nominal type does not reach
-the literal. So (b) does not merely unblock emission, it **retires class (3)**,
-one of the four false-positive classes that forced the conformance wall down to
-ground kernel scalars. The note is explicit that this is the mechanism: *"Each
-numbered class above is a promotion trigger, and each promotion should be
-visible as a drop in that count."* With the bound that makes it usable: **that
-count is not live on main** — measured at 3005, corrected to 1566, then excluded
-entirely (codex 45767), so the receipt needs the measurement re-derived and
-cannot be read off the current tree.
-
-**The `count == 0` arm refuses.** A record literal matching no nominal type does
-not silently become a positional tuple: `{ a: 1, b: 2 }` emitted as `(1, 2)`
-discards field identity and substitutes position, which is §3b's class, and
-fabricating at the exact point the compiler has established it knows nothing is
-§5's plainest failure. Under (b) that population may fall to zero on its own.
-*Not decided here:* whether some target genuinely IS an anonymous tuple, which
-would make that emission correct — if the work surfaces one, it comes back
-rather than being routed around.
-
-**The diagnostic text is part of the defect.** It ends `— add a nominal type`: a
-compiler instructing the author to work around the compiler's own unresolved
-obligation. A message surviving a (b) fix keeps teaching authors to annotate for
-a reason that no longer exists. And the three-valued carrier is what makes the
-replacement possible rather than merely better-worded — ADD A NOMINAL TYPE
-(ambiguous) and THIS RECORD MATCHES NO DECLARED TYPE (no candidate) are
-different instructions to an author, currently one message.
-
-**The deliverable is the carrier, not the propagation.** `String?` collapsing
-AMBIGUOUS and NO-CANDIDATE into one `Absent` is state-space conflation in a
-return type, and the consumer recomputing the whole fold over `type_summaries`
-is its symptom, not a separate cost defect. Three-valued —
-resolved-with-name / ambiguous / no-candidate — and the fold runs once.
-
-**THE POPULATION, AND WHAT IT IS NOT.** The 8 sites are **3 distinct ambiguity
-pairs**; 5 of the 8 are one pair repeated in one file. Site count is the wrong
-denominator, because what recurs is TYPE PAIRS — the same collision fires
-wherever those types are written. On that denominator one pair is test-only, one
-is extdeps-only, and one spans both: **`DeclarationRef` vs
-`RustItemDeclarationRef`**, where `DeclarationRef` is declared in
-`dag/std/decl_ref.dag` and referenced by **573 files, 509 of them outside
-`dag/test/`**. Annotating there makes a `std` carrier permanently
-annotation-requiring.
-
-That replaces an earlier and wrong version of the same argument, retracted by
-its own author: *the sites are in production modules, so annotation is a
-treadmill.* **6 of the 8 are in `dag/test/claim/`** — three quarters is
-fixture-shaped code, which is the condition under which annotation would have
-been cheap and fine. The original was inferred from a truncated log that
-happened to show 3 of the 5 repeated sites, making the split look 3-vs-3. The
-lesson is the sharper half: **the truncation was declared and then reasoned from
-anyway**, which is worse than not declaring it.
-
-And one argument that depends on none of this: `dag/extdeps/git/versioning.dag`
-matches **four** candidates, not two. A four-way collision among version-shaped
-structs says the field-name heuristic degrades as the corpus accumulates
-structurally similar types — so it gets worse with growth regardless of where
-the sites live.
-
-*Sequenced after #9209 (Resolution lane), which is in flight and unproven until
-regen. No annotation as an interim — not one site: editing the corpus so
-whole-corpus emission finishes is mutating the subject to complete the
-observation, and the resulting green would mean only "this corpus, after we
-changed it, emits."*
-
-### 11.2d Two fabricated citations inside a prose row, and how far one travelled
-
-`witty-crane-181` reported, and this section verifies: `declared_type_conformance_note`
-cites **`conformance_expansion_depth_note`** and **`conformance_unjudged_live_hole_note`**,
-and *neither exists*. Measured with
-`grep -rnE '^\s*(data|fn|type)\s+conformance_expansion_depth_note' dag/ src/ --include=*.dag`
-→ **0**, same for the second. They occur only inside the prose of the note that
-cites them.
-
-**THE INTERESTING PART IS NOT THAT THEY ARE FABRICATED, IT IS THAT NOTHING
-COULD HAVE CAUGHT THEM.** DESIGN's 2026-08-23 rung-drop row records that the
-cited-symbol census was removed from CI, and it would be easy — and wrong — to
-file this as an instance of that declared exposure. The census checked authored
-`DeclarationRef` rows. **These citations are bare words inside a
-`data …: String` prose row, which that census never read.** So they were
-unchecked before the drop and unchecked after it; the drop is not the cause,
-and claiming it would be the authority-substitution failure this document
-already names — borrowing a declared exposure to explain a defect it does not
-cover.
-
-What they actually are is §4c's warning arriving with a bill: *plain source
-annotations are modeling debt*, and *an annotation is never evidence that a
-machine claim holds*. A citation inside a `String` is invisible to every
-mechanism that validates citations, by construction, because it is program data
-that happens to read like a reference.
-
-**AND IT TRAVELLED, WHICH IS THE MEASUREMENT.** This document's author read
-`conformance_expansion_depth_note` in that prose, believed it, and cited it
-onward as the authority for a pre-check — to `warm-hawk-909` ("the place to
-check before running") and into `witty-crane-181`'s dispatch brief as a required
-step. A lane was directed to consult a symbol that does not exist. It cost
-nothing only because that lane checked instead of complying, and answered the
-underlying question by construction rather than by lookup.
-
-So the class is not "a stale citation rots quietly." It is: **an unverifiable
-citation is laundered into an authority by the act of being repeated**, and each
-repetition is harder to challenge than the last, because it now has a
-provenance. The repair is the same one §3 already prescribes — cite the symbol,
-and a symbol inside a prose string is not a citation — with the addition that
-prose rows in load-bearing authorities are exactly where an unresolvable
-citation survives longest, since they are read by people and by nothing else.
-
-### 11.2g THE CUT'S SUCCESS CONDITION IS ALREADY AN EXECUTABLE TEST, WRITTEN BY SOMEONE ELSE
-
-`dag/test/claim/import_admission_closure_membership_witness_test.dag` measured
-this program's central question before this program existed, and its headline is
-the answer to it:
-
-> **THE IMPORT LIST DOES NOT GATE A BARE FREE CALL; CLOSURE MEMBERSHIP DOES.**
-
-Four arms, one instrument, one binary, differing only in how the probe reaches
-the provider:
-
-| arm | reaches provider via | result |
-|---|---|---|
-| (1) listed | imports provider AND names the fn | resolves — **the only correct green** |
-| (2) selective-unlisted | imports provider, does NOT name the fn | resolves — **pinned defect** |
-| (3) pool-coincidence | never imports provider, only a carrier that does | resolves — **pinned defect** |
-| (4) absent-from-closure | nothing reaches the provider | **REFUSES** |
-
-Arm (4) is the discriminating control, and it is what makes the other three
-readable: the instrument *can* go red on this exact proposition, so three greens
-are measurements rather than vacuous passes.
-
-**IT ALSO CLOSES §11.2c's LAST GAP.** This document's two-module fixture — which
-refused where the single-candidate rule said it should resolve — **is arm (4)**.
-No import edge means the consumer's transitive closure is just the consumer, so
-the provider is in the *pool* but never in the *compiled closure*, and the census
-only serves what the closure loads. Nothing contradicted the single-candidate
-rule: the candidate was never in the census the rule runs over. And
-`cool-hawk-324`'s whole-tree case is **arm (3)** — `review_codex.dag` is an entry
-under the first root, and the modules declaring `Step` and
-`upsert_tagged_cron_tab` are dragged into the closure by an unrelated carrier.
-The fixture and the corpus differed in exactly one thing, and it was closure
-membership.
-
-**ARMS (2) AND (3) FLIPPING TO BLOCKING IS THIS CUT'S SUCCESS CONDITION**, stated
-as a pinned executable test with its control already built. The witness says so
-itself: *"when the admission wall lands they must FLIP to blocking, and a flip is
-the wall landing rather than this witness breaking."* The receipt does not need
-authoring.
-
-**AND ITS MOST VALUABLE CONTENT IS NEGATIVE — TWO PLACEMENTS BUILT, MEASURED,
-AND WITHDRAWN.** This is where not to put the wall, paid for already:
-
-- **At the whole-pool census seams** (`borrowed_census_decl`,
-  `global_bare_callable_node`) it is a **decoration**: the closure regenerated to
-  a byte-identical fixed point, 134 of 134, `first_generation_equal=true`, and
-  arm (2) still did not fire — because a selectively-imported module's unlisted
-  fn is served EARLIER, by the unfiltered parent `func_env` and the
-  `ancestry_str_bindings` overlay, so the census fallback is never reached.
-  **gunbc#9075's parent-env filter, applied on top and measured, does not create
-  that miss either — the ancestry overlay still serves the name.**
-- **At the admission seam** (`lookup_func_sig`) it *bites* — three hard
-  diagnostics on the same closure — but it bites by returning an unresolved
-  signature, degrading into *"if branches resolve to incompatible types:
-  Primitive(cost_constant) vs Primitive(CostBound)"*, which names neither the
-  unadmitted call nor the import that declined it. **A silent widen wearing a
-  type error**, not the typed located refusal §5 requires.
-
-So the machinery was deleted rather than shipped unproven, and the measurement is
-what landed. That is the scaffold-admission doctrine executed correctly by
-someone with a working wall in hand.
-
-**THE NEXT INCREMENT IS ONE AUTHORITY EXTENDED, NOT A SECOND WALL MINTED.**
-`UnlistedImportUse` already covers TYPE positions — `04_resolve.dag`'s
-`resolve_node` emits it advisory when masked and the name is outside
-`source_visible_names`, with `resolve_node_bounded_masked_boundary` declaring its
-promotion to a hard refusal once the corpus burndown reaches zero. **The
-value/call position emits nothing**, which is why that half of the class has no
-count. Extending the same diagnostic to the call seam — same predicate, same
-advisory posture, same burndown — is the increment, and it is the witness's own
-declared next-rung trigger.
-
-**SIZING, WITH THE PROVENANCE THAT MAKES IT USABLE.** The selective-unlisted half
-is **186 call sites across 118 modules** over `dag`, `src/v2` and `src/v1` — a
-static join, an upper bound, blind to local binders that shadow a name. The
-pool-coincidence half has **no trustworthy number**: the same join reports 4784,
-but arm (4) proves the census only serves what the closure loads, so that figure
-counts providers that may never be in any real closure. **It is recorded as an
-unbounded class rather than a count** — someone declining to publish a number
-they could not defend, which is the discipline this document spent a day
-rediscovering from the other direction.
-
-**RUNG: outside the ladder — silent wrongness.** *"A bare call's meaning depends
-on which modules the closure happened to load, and no diagnostic reports it at
-the value position."* Ceiling: structurally guaranteed, since admission is
-decidable from the consumer's own `resolved_imports` joined to the census
-candidate's owner module, both already carried.
-
-### 11.2f BLOCKING PREREQUISITE — v2's grammar cannot parse a qualified record literal
-
-**`a.b.C { f: v }` does not parse.** `fierce-ram-94` established it by execution
-against a five-way cause ladder, and it is the single most consequential finding
-for this program so far, because **the cut's own target spelling produces this
-construct everywhere.**
-
-The dispatched hypothesis — a tail-position `if`/`match` nesting — is
-**FALSIFIED**, and cleanly: `port_reading` transcribed exactly into a bare
-module, same nesting, every arm a coproduct value, with constructors written
-**unqualified**, parses and normalizes clean. Every ablation of the
-tail-position axis is green (nested `if` with `Int` arms, no match at all, flat
-`if`, match alone at fn tail, no preceding lets).
-
-What discriminates is **qualification CROSSED WITH braces**, and the minimal
-case is two lines:
-
-```dag
-match arg_value_symbol(arg_capture: arg_capture) {
-  Present { value: sym } => a.b.c.PortBareName { name: sym }
-  Absent => PortComputedExpression { mentions: mentions }
-}
-```
-
-Qualified-bare: green. Unqualified-braced: green. **Qualified-braced: red.**
-`warm-hawk-909`'s correction was load-bearing — the three earlier fixtures
-probed variant *spelling* and the axis is spelling × braces.
-
-*(Cell precision, self-corrected by the lane before this was written up:
-qualified-bare is measured green in three positions — if-branch tail, plain fn
-tail, and let-bound — but **not yet in a match arm**; that cell sat in a batch
-whose entry points were never appended, so six runs returned `NoSuchFunction`
-and a truncated grep of the output was read as green. "An absence downstream of
-a failure is undefined, not a green" — their words, and the same class this
-document keeps recording. It is re-running. **The conclusion does not rest on
-it**: the root below is read directly from the grammar and is independent of
-every fixture cell.)*
-
-**THE ROOT, verified in `src/v2/extdeps/languages/dag.dag`:**
-
-- `dag_grammar_primary_ident_suffix_expr` — a bare ident's suffix is
-  `optional(choice(call_suffix, lbrace field_init_list rbrace))`. **Both
-  alternatives.**
-- `dag_grammar_postfix_expr_expr` — each dotted `.name` suffix is
-  `optional(postfix_call_suffix)`. **Call only. No brace alternative.**
-
-So `a.b.C` consumes as a complete postfix expression and `{ f: v }` is left
-over — which is exactly the `parse_g0_tokens_remain` leftover, and it is **a
-missing alternative in one production**, not a traversal failing to descend.
-
-**WHY THIS BLOCKS M6.** §7a settles the target spelling as the fully qualified
-declaring identity. Every cross-module constructor in a post-cut corpus is
-therefore `a.b.C { … }`, and **v2's modeled parser cannot read it.** v1 accepts
-the form (measured independently on main), so this is a v1/v2 divergence rather
-than a corpus-wide break today — but v2 cannot read a post-cut corpus, and v2 is
-the destination. This is a hard prerequisite of the semantic cutover, not
-post-cut cleanup, and it moves ahead of everything else in the F set.
-
-**NOT YET MEASURED, and explicitly not asserted:** whether adding the brace
-alternative to the dotted suffix is *safe*. It puts `if a.b { … }` into the same
-condition-versus-block ambiguity class that `if x { … }` already occupies, for
-which the grammar already carries an overlap-residue diagnostic. That
-measurement precedes any accept-versus-refuse proposal, and `dag.dag` is not
-touched before it.
-
-**A DIAGNOSTIC-READING TRAP FOUND ON THE WAY, worth more than the aside it
-arrived as.** On a rejected `parse_module` the HEAD diagnostic is
-`parse_grammar_choice_overlap_residue` — a grammar *advisory* that
-`rejected_with_pending` prepends ahead of the real refusal. A probe reading
-`d.head.reason` gets the advisory, not the parse cause. **Anything keying on the
-head diagnostic of a v2 parse rejection is reading the wrong one**, which is
-execution-provenance loss wearing a different hat: two distinct states rendering
-identically to a consumer that takes the first row.
-
-**AND THE FIVE-WAY LADDER EARNED ITSELF ON THIS ONE.** The same qualified record
-literal as a plain fn tail expression is not parse-rejected — it is
-`source_normalization_rejected`, because there the orphaned `{ f: v }` re-parses
-as a standalone anonymous record statement and dies one stage later. Same
-leftover, different rung. **A two-way accepted/rejected probe scores those two
-cells identically and reports the wrong construct**, with a green receipt behind
-it — which is precisely the failure the ladder was mandated to prevent, caught
-by the mandate rather than by luck.
-
-### 11.2c RESOLVED — a single candidate resolves from anywhere, and the flip is declared downstream of this cut
-
-**Now established, after being asserted, retracted, and resolved inside two
-hours.** The sequence is preserved because each step was wrong in an
-instructive way.
-
-**THE PHASE LINES SETTLE IT.** `cool-hawk-324`'s whole-tree log, verbatim
-thirteen: `indexed 3928 modules from 2 source roots` · `resolved 2866 sources
-(transitive import closure)` · `[census] 1062 indexed modules outside the
-closure enter the name census only (not compiled)` · frontend 47s · normalize
-3s · reconcile 16min · analyses 1s · **emit 44s** · 2 hard diagnostics.
-
-Every phase completed, emit included. So the corpus-wide zero is **a stage that
-ran clean, not a stage that never ran** — the discriminating question §11.2c was
-retracted for lacking. `review_codex.dag` was compiled, and `llm`,
-`upsert_tagged_cron_tab` and `Step` bind there while an `--entry` compile of the
-same file at the same commit refuses all three.
-
-**THE MECHANISM WAS DOCUMENTED IN THE SEAM ALL ALONG.** `v1.04_env`
-`global_bare_fallback_invariant`:
-
-> *"Resolution (`global_bare_lookup`): **a single candidate resolves from
-> anywhere** (the one-candidate degenerate case of the walk); multiple
-> candidates resolve by nearest-ancestor containment under `ImportScoped`, while
-> `NamespaceOnlyY` filters to the referencing module's containment chain…"*
-
-**That reconciles both readings, and neither was wrong.** The chain-prefix rule
-is real — and it governs the **multi-candidate** case only. A single candidate
-short-circuits ahead of it and resolves from anywhere, no prefix relationship
-required. Each of the three names is presumably corpus-unique, so each is a
-one-candidate case. And the census is built over `graph.modules`, which line 3
-shows includes the 1062 modules that are **indexed but never compiled**; under
-`--entry` the census covers the closure only, so the same names are absent and
-correctly refuse. Same compiler, different census population, opposite answers.
-
-**THE TERMINAL IS DECLARED, AND IT IS THIS PROGRAM'S OWN WORK.** Same note, last
-clause: *"The production flip that removes the corpus fallback is **downstream
-of reference-derived closure**."* So this is not an undiscovered defect but a
-documented interim whose removal is sequenced behind exactly this cut. §11.2c
-therefore has a named terminal rather than an open hazard — better news than the
-prediction, the retraction, or the confirmation.
-
-**TWO NARROWINGS, BOTH FROM THE MEASURING SIDE.** The corpus-wide zero covers
-the **2866 compiled** modules, not 3928; whether the 1062 census-only modules
-would produce name-resolution diagnostics is unmeasured and a grep cannot speak
-for them. And "whole-tree" compiles the transitive closure of the **first source
-root only** — additional roots are dependency pools — so `--source-root dag
---source-root src/v2` made `src/v2` a pool.
-
-**ONE GAP REMAINS AND IT IS THIS DOCUMENT'S FIXTURE.** Two import-free modules
-in one pool, provider declaring and consumer referencing, should be a
-one-candidate case and should resolve. It refuses — measured across **all four
-forms**: bare function call, bare `data` reference, bare type, and bare variant,
-under `--source-dir` and `--source-root` alike. The proposed explanation was
-`listed_import_required_bare_call_blocked`, which sits directly on that path;
-**refuted by reading it** — `bare_free_call_requires_listed_import(name) = name
-== "trim"`, a single hardcoded name that no fixture symbol matches. A lead, not
-an answer: my runs print no `[census]` line at all, so the census-only
-population step appears not to engage at that invocation, which would explain
-the divergence but is not established.
-
-The gap is smaller and better named than it was, and it is recorded rather than
-closed with a plausible story — the same discipline applied to the
-`pr_owner`/`pr_repo` asymmetry, whose bare-name-collision explanation was
-likewise refuted by grep (`data owner` and `data repo` each have exactly one
-module-scope declaration corpus-wide) and which stays **unexplained**.
-
-### 11.2c-orig The mechanism, as originally traced### 11.2c-orig The mechanism, as originally traced### 11.2c-orig The mechanism, as originally traced — `authored_import_names`
-
-Found while unblocking a lane on an unrelated red, and it is the most direct
-threat to this program's own premise that has surfaced so far.
-
-`v1.04_lookup` `author_named_visibility` is correctly three-valued —
-`AuthorNamedThisName | AuthorNamedNothingForThisName | VisibilityUnobservable` —
-and its header is careful about exactly the right distinction: membership in
-`source_visible_names` is *necessary* for "the author named this" and not
-*sufficient*, because an `is_all` import contributes names the author never
-wrote. So it reads `authored_import_names`, the listed-import arm alone.
-
-**But the carrier is `Map<String, bool>`, and the reader synthesizes its third
-state from EMPTINESS:**
-
-```
-if map_is_empty(m: type_env.authored_import_names) { VisibilityUnobservable }
-else { if map_has(…) { AuthorNamedThisName } else { AuthorNamedNothingForThisName } }
-```
-
-A two-valued carrier cannot supply a three-valued answer, so *observed, and the
-author named nothing* and *nothing populated this* are the same bytes. This is
-the identical shape found the same day in the emitter, where `String?` collapsed
-AMBIGUOUS and NO-CANDIDATE into one `Absent` and the consumer recomputed the
-whole fold to recover what the producer had discarded. Two stages, one defect.
-
-**THE CONSEQUENCE IS NOT SILENCE — IT IS A DIFFERENT ANSWER, PRODUCED
-CONFIDENTLY.** An earlier revision of this section said the wall "stops
-discriminating, silently, with no diagnostic and no count." `deep-ant-102`
-traced the consumer and that framing understates it. `author_named_visibility`
-has exactly one caller, `callable_lookup_over_candidates`, where
-`VisibilityUnobservable` takes **the same arm as `AuthorNamedThisName`**
-(`builtin_admissible = vec![]`). With nothing declared in the parent closure the
-lookup then falls through to `func_sig_from_global_bare`, which resolves through
-`borrowed_census_decl` — **the whole-tree flat census borrow, last-write-wins
-across the entire corpus.**
-
-So deleting imports does not disarm a guard into an unanswered question. It
-hands every bare call to a resolver with no import context at all, and that
-resolver answers. The failure mode is not a missing refusal but **a wrong
-binding that typechecks** — the absorbing fallback with a resolution attached,
-which is §5's named trap rather than a gap.
-
-**AND IT IS LIVE TODAY, WHICH REQUIRED CORRECTING A CORRECTION.** The same
-trace reported that the whole branch is gated behind
-`name_resolution_policy_is_namespace_only()`, whose in-tree comment reads
-"default false = production fail-open path" — concluding that this is a
-precondition on a future policy flip rather than a present obligation. That is
-false. `v1_rt.rs:164` is `Cell::new(true)`, `cli_run.rs` records that the flag
-"now defaults to true (§13 unique-on-chain)" as the thing that turned a test
-red, and `v1_compiler_infer_env.rs` names the ratification: "step-4 default ON =
-NamespaceOnlyY", operator-ratified 2026-07-21. **`false` is the bracket, not the
-default.** Namespace-only is the production policy and has been since July.
-
-The quoted comment is real, and it sits immediately after that function's
-closing brace while documenting the **next** declaration — the N1a measurement
-arm, `type_ref_hit_ne_bind_measure_active`, which its own first words name. So a
-careful reader attached prose to the wrong subject because it was adjacent, and
-concluded the opposite of the truth about a live production policy. That is
-§11.2d's class arriving a second time in one afternoon by a different route:
-there a citation named a symbol that does not exist, here a comment named a
-neighbour. **In both cases the code was right, the reader was careful, and the
-prose was the only thing that lied.**
-
-The immediate corollary for anyone filling a `TypeEnv` initializer: **an empty
-`authored_import_names` is a claim that visibility is UNOBSERVABLE, not a claim
-that the module has no imports.** Supplying `rc_empty_map()` because a
-constructor demands a value is asserting the first while meaning the second.
-
 ### 11.2b The dormant repair — three instances in one day
 
 A pattern surfaced three times on 2026-08-25, by three lanes, on three
@@ -2300,6 +1871,435 @@ a thing is claimed done and never runs. Here, a thing is genuinely done,
 genuinely correct, and never runs — so it accrues no evidence of its own
 absence, and the defect it repairs keeps its full frequency while the repair
 sits in the tree being cited as coverage.
+
+### 11.2c RESOLVED — a single candidate resolves from anywhere, and the flip is declared downstream of this cut
+
+**Now established, after being asserted, retracted, and resolved inside two
+hours.** The sequence is preserved because each step was wrong in an
+instructive way.
+
+**THE PHASE LINES SETTLE IT.** `cool-hawk-324`'s whole-tree log, verbatim
+thirteen: `indexed 3928 modules from 2 source roots` · `resolved 2866 sources
+(transitive import closure)` · `[census] 1062 indexed modules outside the
+closure enter the name census only (not compiled)` · frontend 47s · normalize
+3s · reconcile 16min · analyses 1s · **emit 44s** · 2 hard diagnostics.
+
+Every phase completed, emit included. So the corpus-wide zero is **a stage that
+ran clean, not a stage that never ran** — the discriminating question §11.2c was
+retracted for lacking. `review_codex.dag` was compiled, and `llm`,
+`upsert_tagged_cron_tab` and `Step` bind there while an `--entry` compile of the
+same file at the same commit refuses all three.
+
+**THE MECHANISM WAS DOCUMENTED IN THE SEAM ALL ALONG.** `v1.04_env`
+`global_bare_fallback_invariant`:
+
+> *"Resolution (`global_bare_lookup`): **a single candidate resolves from
+> anywhere** (the one-candidate degenerate case of the walk); multiple
+> candidates resolve by nearest-ancestor containment under `ImportScoped`, while
+> `NamespaceOnlyY` filters to the referencing module's containment chain…"*
+
+**That reconciles both readings, and neither was wrong.** The chain-prefix rule
+is real — and it governs the **multi-candidate** case only. A single candidate
+short-circuits ahead of it and resolves from anywhere, no prefix relationship
+required. Each of the three names is presumably corpus-unique, so each is a
+one-candidate case. And the census is built over `graph.modules`, which line 3
+shows includes the 1062 modules that are **indexed but never compiled**; under
+`--entry` the census covers the closure only, so the same names are absent and
+correctly refuse. Same compiler, different census population, opposite answers.
+
+**THE TERMINAL IS DECLARED, AND IT IS THIS PROGRAM'S OWN WORK.** Same note, last
+clause: *"The production flip that removes the corpus fallback is **downstream
+of reference-derived closure**."* So this is not an undiscovered defect but a
+documented interim whose removal is sequenced behind exactly this cut. §11.2c
+therefore has a named terminal rather than an open hazard — better news than the
+prediction, the retraction, or the confirmation.
+
+**TWO NARROWINGS, BOTH FROM THE MEASURING SIDE.** The corpus-wide zero covers
+the **2866 compiled** modules, not 3928; whether the 1062 census-only modules
+would produce name-resolution diagnostics is unmeasured and a grep cannot speak
+for them. And "whole-tree" compiles the transitive closure of the **first source
+root only** — additional roots are dependency pools — so `--source-root dag
+--source-root src/v2` made `src/v2` a pool.
+
+**ONE GAP REMAINS AND IT IS THIS DOCUMENT'S FIXTURE.** Two import-free modules
+in one pool, provider declaring and consumer referencing, should be a
+one-candidate case and should resolve. It refuses — measured across **all four
+forms**: bare function call, bare `data` reference, bare type, and bare variant,
+under `--source-dir` and `--source-root` alike. The proposed explanation was
+`listed_import_required_bare_call_blocked`, which sits directly on that path;
+**refuted by reading it** — `bare_free_call_requires_listed_import(name) = name
+== "trim"`, a single hardcoded name that no fixture symbol matches. A lead, not
+an answer: my runs print no `[census]` line at all, so the census-only
+population step appears not to engage at that invocation, which would explain
+the divergence but is not established.
+
+The gap is smaller and better named than it was, and it is recorded rather than
+closed with a plausible story — the same discipline applied to the
+`pr_owner`/`pr_repo` asymmetry, whose bare-name-collision explanation was
+likewise refuted by grep (`data owner` and `data repo` each have exactly one
+module-scope declaration corpus-wide) and which stays **unexplained**.
+
+### 11.2c-orig The mechanism, as originally traced — `authored_import_names`
+
+Found while unblocking a lane on an unrelated red, and it is the most direct
+threat to this program's own premise that has surfaced so far.
+
+`v1.04_lookup` `author_named_visibility` is correctly three-valued —
+`AuthorNamedThisName | AuthorNamedNothingForThisName | VisibilityUnobservable` —
+and its header is careful about exactly the right distinction: membership in
+`source_visible_names` is *necessary* for "the author named this" and not
+*sufficient*, because an `is_all` import contributes names the author never
+wrote. So it reads `authored_import_names`, the listed-import arm alone.
+
+**But the carrier is `Map<String, bool>`, and the reader synthesizes its third
+state from EMPTINESS:**
+
+```
+if map_is_empty(m: type_env.authored_import_names) { VisibilityUnobservable }
+else { if map_has(…) { AuthorNamedThisName } else { AuthorNamedNothingForThisName } }
+```
+
+A two-valued carrier cannot supply a three-valued answer, so *observed, and the
+author named nothing* and *nothing populated this* are the same bytes. This is
+the identical shape found the same day in the emitter, where `String?` collapsed
+AMBIGUOUS and NO-CANDIDATE into one `Absent` and the consumer recomputed the
+whole fold to recover what the producer had discarded. Two stages, one defect.
+
+**THE CONSEQUENCE IS NOT SILENCE — IT IS A DIFFERENT ANSWER, PRODUCED
+CONFIDENTLY.** An earlier revision of this section said the wall "stops
+discriminating, silently, with no diagnostic and no count." `deep-ant-102`
+traced the consumer and that framing understates it. `author_named_visibility`
+has exactly one caller, `callable_lookup_over_candidates`, where
+`VisibilityUnobservable` takes **the same arm as `AuthorNamedThisName`**
+(`builtin_admissible = vec![]`). With nothing declared in the parent closure the
+lookup then falls through to `func_sig_from_global_bare`, which resolves through
+`borrowed_census_decl` — **the whole-tree flat census borrow, last-write-wins
+across the entire corpus.**
+
+So deleting imports does not disarm a guard into an unanswered question. It
+hands every bare call to a resolver with no import context at all, and that
+resolver answers. The failure mode is not a missing refusal but **a wrong
+binding that typechecks** — the absorbing fallback with a resolution attached,
+which is §5's named trap rather than a gap.
+
+**AND IT IS LIVE TODAY, WHICH REQUIRED CORRECTING A CORRECTION.** The same
+trace reported that the whole branch is gated behind
+`name_resolution_policy_is_namespace_only()`, whose in-tree comment reads
+"default false = production fail-open path" — concluding that this is a
+precondition on a future policy flip rather than a present obligation. That is
+false. `v1_rt.rs:164` is `Cell::new(true)`, `cli_run.rs` records that the flag
+"now defaults to true (§13 unique-on-chain)" as the thing that turned a test
+red, and `v1_compiler_infer_env.rs` names the ratification: "step-4 default ON =
+NamespaceOnlyY", operator-ratified 2026-07-21. **`false` is the bracket, not the
+default.** Namespace-only is the production policy and has been since July.
+
+The quoted comment is real, and it sits immediately after that function's
+closing brace while documenting the **next** declaration — the N1a measurement
+arm, `type_ref_hit_ne_bind_measure_active`, which its own first words name. So a
+careful reader attached prose to the wrong subject because it was adjacent, and
+concluded the opposite of the truth about a live production policy. That is
+§11.2d's class arriving a second time in one afternoon by a different route:
+there a citation named a symbol that does not exist, here a comment named a
+neighbour. **In both cases the code was right, the reader was careful, and the
+prose was the only thing that lied.**
+
+The immediate corollary for anyone filling a `TypeEnv` initializer: **an empty
+`authored_import_names` is a claim that visibility is UNOBSERVABLE, not a claim
+that the module has no imports.** Supplying `rc_empty_map()` because a
+constructor demands a value is asserting the first while meaning the second.
+
+### 11.2d Two fabricated citations inside a prose row, and how far one travelled
+
+`witty-crane-181` reported, and this section verifies: `declared_type_conformance_note`
+cites **`conformance_expansion_depth_note`** and **`conformance_unjudged_live_hole_note`**,
+and *neither exists*. Measured with
+`grep -rnE '^\s*(data|fn|type)\s+conformance_expansion_depth_note' dag/ src/ --include=*.dag`
+→ **0**, same for the second. They occur only inside the prose of the note that
+cites them.
+
+**THE INTERESTING PART IS NOT THAT THEY ARE FABRICATED, IT IS THAT NOTHING
+COULD HAVE CAUGHT THEM.** DESIGN's 2026-08-23 rung-drop row records that the
+cited-symbol census was removed from CI, and it would be easy — and wrong — to
+file this as an instance of that declared exposure. The census checked authored
+`DeclarationRef` rows. **These citations are bare words inside a
+`data …: String` prose row, which that census never read.** So they were
+unchecked before the drop and unchecked after it; the drop is not the cause,
+and claiming it would be the authority-substitution failure this document
+already names — borrowing a declared exposure to explain a defect it does not
+cover.
+
+What they actually are is §4c's warning arriving with a bill: *plain source
+annotations are modeling debt*, and *an annotation is never evidence that a
+machine claim holds*. A citation inside a `String` is invisible to every
+mechanism that validates citations, by construction, because it is program data
+that happens to read like a reference.
+
+**AND IT TRAVELLED, WHICH IS THE MEASUREMENT.** This document's author read
+`conformance_expansion_depth_note` in that prose, believed it, and cited it
+onward as the authority for a pre-check — to `warm-hawk-909` ("the place to
+check before running") and into `witty-crane-181`'s dispatch brief as a required
+step. A lane was directed to consult a symbol that does not exist. It cost
+nothing only because that lane checked instead of complying, and answered the
+underlying question by construction rather than by lookup.
+
+So the class is not "a stale citation rots quietly." It is: **an unverifiable
+citation is laundered into an authority by the act of being repeated**, and each
+repetition is harder to challenge than the last, because it now has a
+provenance. The repair is the same one §3 already prescribes — cite the symbol,
+and a symbol inside a prose string is not a citation — with the addition that
+prose rows in load-bearing authorities are exactly where an unresolvable
+citation survives longest, since they are read by people and by nothing else.
+
+### 11.2e RULING — anonymous record literals resolve from their expected type
+
+**Decided 2026-08-25. (b), the compiler.** An anonymous record literal is
+grounded by its expected nominal type; the author is not obliged to annotate it.
+
+The alternative was to annotate the 8 sites blocking whole-corpus emission. It
+is refused, and **not** because annotation is laborious — because the corpus
+authority already committed to the opposite. `04_infer.dag`
+`declared_type_conformance_note` class (3) IS anonymous record literals, and its
+dissolve-on names the terminal verbatim: *"grounds an anonymous literal against
+its expected nominal type."* Annotating would author around a defect the tree
+has on record as the thing to fix.
+
+Three further findings, each of which corrected something:
+
+**One root, two stages.** Inference sees `Product(<anon>)`, emission sees
+`Absent`, for the identical reason — the expected nominal type does not reach
+the literal. So (b) does not merely unblock emission, it **retires class (3)**,
+one of the four false-positive classes that forced the conformance wall down to
+ground kernel scalars. The note is explicit that this is the mechanism: *"Each
+numbered class above is a promotion trigger, and each promotion should be
+visible as a drop in that count."* With the bound that makes it usable: **that
+count is not live on main** — measured at 3005, corrected to 1566, then excluded
+entirely (codex 45767), so the receipt needs the measurement re-derived and
+cannot be read off the current tree.
+
+**The `count == 0` arm refuses.** A record literal matching no nominal type does
+not silently become a positional tuple: `{ a: 1, b: 2 }` emitted as `(1, 2)`
+discards field identity and substitutes position, which is §3b's class, and
+fabricating at the exact point the compiler has established it knows nothing is
+§5's plainest failure. Under (b) that population may fall to zero on its own.
+*Not decided here:* whether some target genuinely IS an anonymous tuple, which
+would make that emission correct — if the work surfaces one, it comes back
+rather than being routed around.
+
+**The diagnostic text is part of the defect.** It ends `— add a nominal type`: a
+compiler instructing the author to work around the compiler's own unresolved
+obligation. A message surviving a (b) fix keeps teaching authors to annotate for
+a reason that no longer exists. And the three-valued carrier is what makes the
+replacement possible rather than merely better-worded — ADD A NOMINAL TYPE
+(ambiguous) and THIS RECORD MATCHES NO DECLARED TYPE (no candidate) are
+different instructions to an author, currently one message.
+
+**The deliverable is the carrier, not the propagation.** `String?` collapsing
+AMBIGUOUS and NO-CANDIDATE into one `Absent` is state-space conflation in a
+return type, and the consumer recomputing the whole fold over `type_summaries`
+is its symptom, not a separate cost defect. Three-valued —
+resolved-with-name / ambiguous / no-candidate — and the fold runs once.
+
+**THE POPULATION, AND WHAT IT IS NOT.** The 8 sites are **3 distinct ambiguity
+pairs**; 5 of the 8 are one pair repeated in one file. Site count is the wrong
+denominator, because what recurs is TYPE PAIRS — the same collision fires
+wherever those types are written. On that denominator one pair is test-only, one
+is extdeps-only, and one spans both: **`DeclarationRef` vs
+`RustItemDeclarationRef`**, where `DeclarationRef` is declared in
+`dag/std/decl_ref.dag` and referenced by **573 files, 509 of them outside
+`dag/test/`**. Annotating there makes a `std` carrier permanently
+annotation-requiring.
+
+That replaces an earlier and wrong version of the same argument, retracted by
+its own author: *the sites are in production modules, so annotation is a
+treadmill.* **6 of the 8 are in `dag/test/claim/`** — three quarters is
+fixture-shaped code, which is the condition under which annotation would have
+been cheap and fine. The original was inferred from a truncated log that
+happened to show 3 of the 5 repeated sites, making the split look 3-vs-3. The
+lesson is the sharper half: **the truncation was declared and then reasoned from
+anyway**, which is worse than not declaring it.
+
+And one argument that depends on none of this: `dag/extdeps/git/versioning.dag`
+matches **four** candidates, not two. A four-way collision among version-shaped
+structs says the field-name heuristic degrades as the corpus accumulates
+structurally similar types — so it gets worse with growth regardless of where
+the sites live.
+
+*Sequenced after #9209 (Resolution lane), which is in flight and unproven until
+regen. No annotation as an interim — not one site: editing the corpus so
+whole-corpus emission finishes is mutating the subject to complete the
+observation, and the resulting green would mean only "this corpus, after we
+changed it, emits."*
+
+### 11.2f BLOCKING PREREQUISITE — v2's grammar cannot parse a qualified record literal
+
+**`a.b.C { f: v }` does not parse.** `fierce-ram-94` established it by execution
+against a five-way cause ladder, and it is the single most consequential finding
+for this program so far, because **the cut's own target spelling produces this
+construct everywhere.**
+
+The dispatched hypothesis — a tail-position `if`/`match` nesting — is
+**FALSIFIED**, and cleanly: `port_reading` transcribed exactly into a bare
+module, same nesting, every arm a coproduct value, with constructors written
+**unqualified**, parses and normalizes clean. Every ablation of the
+tail-position axis is green (nested `if` with `Int` arms, no match at all, flat
+`if`, match alone at fn tail, no preceding lets).
+
+What discriminates is **qualification CROSSED WITH braces**, and the minimal
+case is two lines:
+
+```dag
+match arg_value_symbol(arg_capture: arg_capture) {
+  Present { value: sym } => a.b.c.PortBareName { name: sym }
+  Absent => PortComputedExpression { mentions: mentions }
+}
+```
+
+Qualified-bare: green. Unqualified-braced: green. **Qualified-braced: red.**
+`warm-hawk-909`'s correction was load-bearing — the three earlier fixtures
+probed variant *spelling* and the axis is spelling × braces.
+
+*(Cell precision, self-corrected by the lane before this was written up:
+qualified-bare is measured green in three positions — if-branch tail, plain fn
+tail, and let-bound — but **not yet in a match arm**; that cell sat in a batch
+whose entry points were never appended, so six runs returned `NoSuchFunction`
+and a truncated grep of the output was read as green. "An absence downstream of
+a failure is undefined, not a green" — their words, and the same class this
+document keeps recording. It is re-running. **The conclusion does not rest on
+it**: the root below is read directly from the grammar and is independent of
+every fixture cell.)*
+
+**THE ROOT, verified in `src/v2/extdeps/languages/dag.dag`:**
+
+- `dag_grammar_primary_ident_suffix_expr` — a bare ident's suffix is
+  `optional(choice(call_suffix, lbrace field_init_list rbrace))`. **Both
+  alternatives.**
+- `dag_grammar_postfix_expr_expr` — each dotted `.name` suffix is
+  `optional(postfix_call_suffix)`. **Call only. No brace alternative.**
+
+So `a.b.C` consumes as a complete postfix expression and `{ f: v }` is left
+over — which is exactly the `parse_g0_tokens_remain` leftover, and it is **a
+missing alternative in one production**, not a traversal failing to descend.
+
+**WHY THIS BLOCKS M6.** §7a settles the target spelling as the fully qualified
+declaring identity. Every cross-module constructor in a post-cut corpus is
+therefore `a.b.C { … }`, and **v2's modeled parser cannot read it.** v1 accepts
+the form (measured independently on main), so this is a v1/v2 divergence rather
+than a corpus-wide break today — but v2 cannot read a post-cut corpus, and v2 is
+the destination. This is a hard prerequisite of the semantic cutover, not
+post-cut cleanup, and it moves ahead of everything else in the F set.
+
+**NOT YET MEASURED, and explicitly not asserted:** whether adding the brace
+alternative to the dotted suffix is *safe*. It puts `if a.b { … }` into the same
+condition-versus-block ambiguity class that `if x { … }` already occupies, for
+which the grammar already carries an overlap-residue diagnostic. That
+measurement precedes any accept-versus-refuse proposal, and `dag.dag` is not
+touched before it.
+
+**A DIAGNOSTIC-READING TRAP FOUND ON THE WAY, worth more than the aside it
+arrived as.** On a rejected `parse_module` the HEAD diagnostic is
+`parse_grammar_choice_overlap_residue` — a grammar *advisory* that
+`rejected_with_pending` prepends ahead of the real refusal. A probe reading
+`d.head.reason` gets the advisory, not the parse cause. **Anything keying on the
+head diagnostic of a v2 parse rejection is reading the wrong one**, which is
+execution-provenance loss wearing a different hat: two distinct states rendering
+identically to a consumer that takes the first row.
+
+**AND THE FIVE-WAY LADDER EARNED ITSELF ON THIS ONE.** The same qualified record
+literal as a plain fn tail expression is not parse-rejected — it is
+`source_normalization_rejected`, because there the orphaned `{ f: v }` re-parses
+as a standalone anonymous record statement and dies one stage later. Same
+leftover, different rung. **A two-way accepted/rejected probe scores those two
+cells identically and reports the wrong construct**, with a green receipt behind
+it — which is precisely the failure the ladder was mandated to prevent, caught
+by the mandate rather than by luck.
+
+### 11.2g THE CUT'S SUCCESS CONDITION IS ALREADY AN EXECUTABLE TEST, WRITTEN BY SOMEONE ELSE
+
+`dag/test/claim/import_admission_closure_membership_witness_test.dag` measured
+this program's central question before this program existed, and its headline is
+the answer to it:
+
+> **THE IMPORT LIST DOES NOT GATE A BARE FREE CALL; CLOSURE MEMBERSHIP DOES.**
+
+Four arms, one instrument, one binary, differing only in how the probe reaches
+the provider:
+
+| arm | reaches provider via | result |
+|---|---|---|
+| (1) listed | imports provider AND names the fn | resolves — **the only correct green** |
+| (2) selective-unlisted | imports provider, does NOT name the fn | resolves — **pinned defect** |
+| (3) pool-coincidence | never imports provider, only a carrier that does | resolves — **pinned defect** |
+| (4) absent-from-closure | nothing reaches the provider | **REFUSES** |
+
+Arm (4) is the discriminating control, and it is what makes the other three
+readable: the instrument *can* go red on this exact proposition, so three greens
+are measurements rather than vacuous passes.
+
+**IT ALSO CLOSES §11.2c's LAST GAP.** This document's two-module fixture — which
+refused where the single-candidate rule said it should resolve — **is arm (4)**.
+No import edge means the consumer's transitive closure is just the consumer, so
+the provider is in the *pool* but never in the *compiled closure*, and the census
+only serves what the closure loads. Nothing contradicted the single-candidate
+rule: the candidate was never in the census the rule runs over. And
+`cool-hawk-324`'s whole-tree case is **arm (3)** — `review_codex.dag` is an entry
+under the first root, and the modules declaring `Step` and
+`upsert_tagged_cron_tab` are dragged into the closure by an unrelated carrier.
+The fixture and the corpus differed in exactly one thing, and it was closure
+membership.
+
+**ARMS (2) AND (3) FLIPPING TO BLOCKING IS THIS CUT'S SUCCESS CONDITION**, stated
+as a pinned executable test with its control already built. The witness says so
+itself: *"when the admission wall lands they must FLIP to blocking, and a flip is
+the wall landing rather than this witness breaking."* The receipt does not need
+authoring.
+
+**AND ITS MOST VALUABLE CONTENT IS NEGATIVE — TWO PLACEMENTS BUILT, MEASURED,
+AND WITHDRAWN.** This is where not to put the wall, paid for already:
+
+- **At the whole-pool census seams** (`borrowed_census_decl`,
+  `global_bare_callable_node`) it is a **decoration**: the closure regenerated to
+  a byte-identical fixed point, 134 of 134, `first_generation_equal=true`, and
+  arm (2) still did not fire — because a selectively-imported module's unlisted
+  fn is served EARLIER, by the unfiltered parent `func_env` and the
+  `ancestry_str_bindings` overlay, so the census fallback is never reached.
+  **gunbc#9075's parent-env filter, applied on top and measured, does not create
+  that miss either — the ancestry overlay still serves the name.**
+- **At the admission seam** (`lookup_func_sig`) it *bites* — three hard
+  diagnostics on the same closure — but it bites by returning an unresolved
+  signature, degrading into *"if branches resolve to incompatible types:
+  Primitive(cost_constant) vs Primitive(CostBound)"*, which names neither the
+  unadmitted call nor the import that declined it. **A silent widen wearing a
+  type error**, not the typed located refusal §5 requires.
+
+So the machinery was deleted rather than shipped unproven, and the measurement is
+what landed. That is the scaffold-admission doctrine executed correctly by
+someone with a working wall in hand.
+
+**THE NEXT INCREMENT IS ONE AUTHORITY EXTENDED, NOT A SECOND WALL MINTED.**
+`UnlistedImportUse` already covers TYPE positions — `04_resolve.dag`'s
+`resolve_node` emits it advisory when masked and the name is outside
+`source_visible_names`, with `resolve_node_bounded_masked_boundary` declaring its
+promotion to a hard refusal once the corpus burndown reaches zero. **The
+value/call position emits nothing**, which is why that half of the class has no
+count. Extending the same diagnostic to the call seam — same predicate, same
+advisory posture, same burndown — is the increment, and it is the witness's own
+declared next-rung trigger.
+
+**SIZING, WITH THE PROVENANCE THAT MAKES IT USABLE.** The selective-unlisted half
+is **186 call sites across 118 modules** over `dag`, `src/v2` and `src/v1` — a
+static join, an upper bound, blind to local binders that shadow a name. The
+pool-coincidence half has **no trustworthy number**: the same join reports 4784,
+but arm (4) proves the census only serves what the closure loads, so that figure
+counts providers that may never be in any real closure. **It is recorded as an
+unbounded class rather than a count** — someone declining to publish a number
+they could not defend, which is the discipline this document spent a day
+rediscovering from the other direction.
+
+**RUNG: outside the ladder — silent wrongness.** *"A bare call's meaning depends
+on which modules the closure happened to load, and no diagnostic reports it at
+the value position."* Ceiling: structurally guaranteed, since admission is
+decidable from the consumer's own `resolved_imports` joined to the census
+candidate's owner module, both already carried.
 
 ### 11.3 The dispatch protocol
 
