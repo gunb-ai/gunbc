@@ -230,6 +230,34 @@ So the law in §5 is not "peel everything to its minimal form". It is *name the
 domain the key ranges over, and make only that domain spellable in key position*.
 Two consumers in the table want **more** than the leaf, not less.
 
+`crisp-crab-430`, who executed the cut, states the domains as a closed set — and
+this is the version to use, because it names one the consumer table does not:
+
+```
+AuthoredPath     the full source spelling. Good for diagnostics, nothing else.
+DeclarationLeaf  the unqualified declared name.
+DeclarationId    exact owner module + declaration.
+KernelSpelling   the closed intrinsic vocabulary — List / Map / Set.
+```
+
+`KernelSpelling` is the one that makes a uniform sweep dangerous rather than
+merely imprecise: the kernel container names are a **closed vocabulary**, not
+declarations, so they are neither peelable nor identity-bearing, and a rule
+phrased over declarations has nothing correct to say about them.
+
+**And the law has two halves, which is the sharpest statement of it anyone has
+produced:**
+
+> **same identity, different spelling → must behave the SAME**
+> **same spelling, different identity → must remain DIFFERENT**
+
+The first half is this branch's defects. The second is `smart-wolf-868`'s #9075,
+arrived at from the opposite side — two accepted functions both spelled
+`contains` requiring different emitted authorities. **A repair aimed at one half
+alone breaks the other**, which is why every fixture in this program carries the
+converse control, and why `qualified_last_segment` applied uniformly repairs some
+sites and silently collapses others.
+
 This also prices the leverage honestly: one file, one line — `render_node_type`
 keying `shared_types` on the peeled leaf — closed 2493 of 2529 E0308. **Diagnostic
 count and defect count are not the same quantity**, and any plan that sizes this
@@ -866,6 +894,21 @@ stage0. F.2 repoint the last import *readers* — `source_visible_names`,
 `topological_sort`'s ordering. G delete the grammar, AST, keyword and
 productions.
 
+**G carries one disposition it cannot skip.**
+`dag/test/claim/import_shadowed_by_local_definition_witness_test.dag` holds the
+last import in the corpus, and **its import is its subject**: it witnesses an
+explicit import silently discarded by a same-name local definition — the class
+main made refusable in #9166. `crisp-crab-430` states this as *one import must
+survive any cut*. That is right for every vehicle up to G and **wrong at G**,
+where keeping one file's import alive would leave the grammar half-deleted for a
+single test. The honest disposition is the one the ratified plan already applies
+to its own order-dependent obligation, and DESIGN §3 step 6 states generally:
+**evidence whose only subject is retired is retired with it, carrying a
+receipt.** #9166's refusal retires in the same motion for the same reason. A cut
+that deletes the witness silently leaves something that parses, passes, and tests
+nothing — which is the failure the witness itself was written to catch, one level
+up.
+
 F.1 stays one motion because that is the authority transition. F.2 and G are the
 trailing steps the operator's framing makes safe: after F.1 no consumer reads an
 import, so they are deletions of dead surface rather than a cutover.
@@ -988,6 +1031,30 @@ So the split is clean, and it falls exactly along the line that clause draws:
 
 **What survives from the dissent regardless, and should be adopted:**
 
+- **The nine commits are three kinds of thing and must not ride one label**
+  (`crisp-crab-430`, who authored them):
+  - **general compiler corrections**, true on main today and unrelated to imports
+    — the empty-list `List<Unit>` fabrication, open as gunbc#9200 with a
+    red-first two-arm receipt. Its mechanism is worth reading past its size:
+    `List<Unit>` **reads as fully resolved**, so the fabrication switched *off*
+    the if-join's own re-inference repair. **The defect consumed the mechanism
+    that existed to correct it** — a shape worth watching for elsewhere, because
+    it makes a defect self-masking rather than merely present.
+  - **spelling-equivalence corrections** — real compiler defects reachable only
+    *through* a qualified reference, so latent on main rather than false there:
+    `render_node_type`'s unpeeled key, the resolver replacing an alias
+    declaration's identity with its RHS target's, `trait_derive_emit` losing K/V
+    `Clone` bounds for a qualified generic head, `is_container_type`, and the
+    parser's qualified constructor literal in no-brace position.
+  - **migration-generator corrections** — defects in the cut's own tooling, which
+    **must never become PRs**. The `collection.Present` class is this: the
+    qualifier wrote the module where a name was *reached* as though it were where
+    the declaration *lives*. It dies when the cut is re-derived.
+  Two of the nine are additionally a repair plus its own dissolution
+  (`56dbb62` → `cf432d1`), and the use-line pair is worse than that — the second
+  **restores the prefix the first peeled**, because the bare registry is
+  last-write-wins. Main takes the final construction as one PR, never a
+  known-incomplete step followed by its correction.
 - Extract **mechanisms**, not the nine commit boundaries. Several of those commits
   are a repair plus its own later dissolution (`56dbb62c3f3` → `cf432d1922a`
   dissolves into `with_authored_identity`); main wants only the final
