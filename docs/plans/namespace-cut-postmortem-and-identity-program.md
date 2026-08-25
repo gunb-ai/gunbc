@@ -1041,14 +1041,78 @@ absorption*. Until then an unqualified "Track A" across the two documents is
 ambiguous; cite this one as **Track A (realization)**.
 
 ```
-A0  target capability — emit a distinct nominal carrier; equality, ordering,
-                        hash, serde, rendering. No production eligibility yet.
+A0  the Rust emitter consumes `sole_constructor` — a carrier's construction
+                        contract is derived from its declaration, so a
+                        cross-module forge does not compile.
 C0  semantic carrier identity — exact declaration → carrier kind.
-                        No String-name whitelist.
-A1  activation        — exact carrier facts drive emission; brand-only and
-                        validated-construction policies kept distinct.
+                        No String-name whitelist, and no eligibility
+                        predicate at all.
+A1  gap 2 + gap 3     — `Hash` on the carrier derive; the two carrier kinds
+                        kept distinct with different construction contracts.
 D   repoint production key relations                       [gated on A1]
-``` A.2 the `UriValidatedScalar`
+```
+
+**A0's subject was corrected on 2026-08-25, and the correction is recorded
+rather than silently applied because the earlier specification was mine and it
+was unbuildable.** A0 previously read *target capability — emit a distinct
+nominal carrier … no production eligibility yet*, with activation deferred to
+A1. `silent-eagle-146` measured that specification and it does not stand, in
+two independent ways.
+
+First, **activation alone emits a dead struct.** Patching the eligibility
+predicate to admit one fixture name emits `pub struct Brand(pub String);` while
+*every reference position still renders `String`* — `resolved_type` follows
+`.inferred` to the alias RHS, so the brand name is gone before the emitter sees
+the use site. The emitted crate still `cargo check`s. That is not a partial
+win: it is an unreferenced decoration that looks like a win in a diff, which is
+§4b's worse-than-absent shape arrived at from a new direction.
+
+Second, and this is what moved the subject rather than merely repairing it:
+**the brand arm has no model fact behind it.** Measured on unpatched main,
+`type Brand = String` admits `take_string(s: b)` with **zero** diagnostics.
+Brands are transparent *in the model*, not merely erased in Rust. So gap 4 is
+not a defect beside the erasure — it is the erasure's mechanism, and the
+emitter follows the alias RHS because in the model there is nothing else to
+follow. Building brand rendering would be the realization half of a model fact
+that does not exist.
+
+What replaced it was already sitting in the corpus. `sole_constructor` is
+authored at **176 production sites** (`dag/` + `src/v2`, excluding
+`dag/test/`), parsed (17 occurrences in `02_parse.dag`), consumed by inference
+(12 in `04_infer.dag`) — and read by the emitter **zero** times, in both
+`05_emit.dag` and `05_emit_rust.dag`. The consequence is visible in the
+committed mirror:
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct UriUnicodeScalar   { pub cp: i64 }          // plain record
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct UriValidatedScalar { pub admitted_cp: i64 } // sole_constructor
+```
+
+Byte-identical. So the validated arm's defect is not that it fails to emit
+nominally — it already does — but that the nominal carrier is **forgeable**,
+and this is the single **below-floor** item in DESIGN.md's §4b paragraph, the
+one with an executed receipt reaching produced output. Everything else there is
+a decidable gap in a working wall.
+
+Three things follow, and together they are why the correction improves A0 rather
+than shrinking it. The eligibility predicate is **deleted**, not repaired, so a
+spelling roster has no name in scope to be written against — construction rather
+than discipline. The fact is already in production at 176 sites, so
+`compile_dag_rust_emit_check`, which *does* run in the required floor over
+emitted bytes, sees the change directly: no dependency on `src/v1/tests/claim`
+(which the floor does not run), no floor-root widening, and no §4b(2) trigger
+naming the namespace cut. And **the inertness proof inverts** — regen divergence
+0 was to have been the evidence that A0 was safely dormant; under the corrected
+subject it is the evidence of *failure*, because if the emitter consumes the
+fact and nothing changes, the fact did not reach emission.
+
+The standing requirement on A0 is therefore a measurement before a shape: the
+production fan-out of private-field-plus-no-`Deserialize` across 176
+declarations is the delete-first census, and a forging call site it breaks is a
+finding rather than an obstacle — never repaired by widening what the mint
+admits, and never by an escape hatch. A.2 the `UriValidatedScalar`
 forgery becomes A.1's enrolled regression control (§4b(4)). *Precedes every key
 repointing, because it is invisible to model-side checks.*
 
@@ -1526,6 +1590,39 @@ Concretely: `#9182` is a semantic object (it changes emitted bytes) held here; i
 **(4) No evidence laundering, and no collapsed absence.** A measurement is cited by naming the producer that re-derives it. A row reporting *the check passed* may not share a carrier with *the check did not run* — six distinct inhabitants are in play across this program's measurements (`ran and clean`, `ran and found`, `refused upstream`, `declined by home policy`, `no route at the hermetic boundary`, `not discovered`) and every pair of them has been conflated by something in this repository within the last week. deep-ant's own stale-base catch is invariant (4) applied by hand: a diagnostic measured on a 23-commit-stale base and one measured on main render identically, and only provenance separates them.
 
 Invariant (4) has a live consequence worth recording rather than leaving to be rediscovered. DESIGN.md's 2026-08-25 emit-stage rung-drop row names `gcloud.Auth.ReadADC` as its specimen; the declaration is **gone from `origin/main`** — the only surviving mentions are a retrospective comment in `gunbc.auth.credentials`, stale fixtures under `dag/test/fixture/`, and the row itself. This does **not** falsify the row, which anticipated exactly this and states its own restoration trigger as *a required phase that emits over a closure*, explicitly **not** the specimen's repair. The point is the reverse and it is the stronger one: the specimen was repaired along the read-then-decode line the row itself ruled, and **no mechanism updated the row or noticed**. A rung-drop declaration whose specimens rot silently is a measurement with no producer, which is what invariant (4) exists to forbid. The row's *class* claim stands; its *present-tense specimen* does not.
+
+Invariant (4) also has a coordination-layer form that cost two lanes real time
+on the same afternoon, and it is recorded here because the two halves fail in
+**opposite** directions, which is what makes either one alone misleading:
+
+- The dashboard summary rendered a **lawfully cancelled** run — superseded by a
+  newer push — as a failure.
+- The dashboard summary rendered a **succeeded** run as `checks=pending`,
+  `mergeable=UNKNOWN`, on a head where the Actions API said
+  `conclusion=success` and GitHub said `CLEAN`. Polled three times over sixty
+  seconds without converging, so not a race.
+
+So neither surface dominates and neither is the oracle. The split that holds:
+**the dashboard for review facts** — counts, distinct approving providers,
+request-changes, artifact links, all of which matched exactly — and **the
+Actions API keyed to the head sha for the run conclusion.**
+
+With one trap inside the remedy, which is the part worth carrying: the Actions
+API **silently accepts an abbreviated sha and returns an empty list** — no
+error, no warning, `workflow_runs` length 0. An until-loop waiting on that
+result polls forever, and *a loop whose exit condition can never be met is
+indistinguishable from a job that has not finished*. Pass the full forty
+characters. Replacing a lying reader with a silent one is not an improvement,
+and it is invariant (4) reproduced one layer inside its own fix.
+
+One near-miss belongs beside it, because it is the failure mode of *warning
+people about instruments*. A lane primed that a reader lies then read a
+correct green as a false green, and was minutes from reporting a fabricated
+defect against an honest projection. A warning about an unreliable instrument
+makes the next ambiguous reading look like the failure that was warned about.
+The remedy is the same one this whole section keeps arriving at: name the
+producer, key it exactly, and let the reading come from the thing that owns the
+fact rather than from a prior about which reader is trustworthy.
 
 ### 11.3 The dispatch protocol
 
