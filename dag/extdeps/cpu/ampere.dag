@@ -2,13 +2,14 @@ module extdeps.cpu.ampere
 
 import std.types { String, List }
 import std.measure { ByteSize, byte_size, celsius, hardware_thread_count, hertz, watt }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, FactCitation }
+import std.decl_ref { decl_field_ref }
 import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.vendor.ampere { ampere_vendor }
 import extdeps.cpu.types {
   ProcessorCoolingMount,
-  SocketedLandGrid, CacheGeometryCitation, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, ProcessorThermalLimits, SocketFactCitation }
+  SocketedLandGrid, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, ProcessorThermalLimits }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -49,18 +50,18 @@ data ampere_altra_l1_cache_geometry: CpuL1CacheGeometry = CpuL1CacheGeometry {
   line_size: ampere_altra_l1_line_size,
 }
 
-data ampere_altra_l1_cache_citations: List<CacheGeometryCitation> = [
-  {
-    field: "data_capacity_per_core"
-    authority: ampere_altra_rev_a1_datasheet_authority
+data ampere_altra_l1_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_l1_cache_geometry", field_name: "data_capacity_per_core"),
+    authority: ampere_altra_rev_a1_datasheet_authority,
   },
-  {
-    field: "instruction_capacity_per_core"
-    authority: ampere_altra_rev_a1_datasheet_authority
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_l1_cache_geometry", field_name: "instruction_capacity_per_core"),
+    authority: ampere_altra_rev_a1_datasheet_authority,
   },
-  {
-    field: "line_size"
-    authority: ampere_altra_rev_a1_datasheet_authority
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_l1_cache_geometry", field_name: "line_size"),
+    authority: ampere_altra_rev_a1_datasheet_authority,
   },
 ]
 
@@ -72,14 +73,14 @@ data ampere_altra_l2_cache_geometry: CpuL2CacheGeometry = CpuL2CacheGeometry {
   line_size: ampere_altra_l2_line_size,
 }
 
-data ampere_altra_l2_cache_citations: List<CacheGeometryCitation> = [
-  {
-    field: "capacity_per_core"
-    authority: ampere_altra_rev_a1_datasheet_authority
+data ampere_altra_l2_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_l2_cache_geometry", field_name: "capacity_per_core"),
+    authority: ampere_altra_rev_a1_datasheet_authority,
   },
-  {
-    field: "line_size"
-    authority: ampere_altra_rev_a1_datasheet_authority
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_l2_cache_geometry", field_name: "line_size"),
+    authority: ampere_altra_rev_a1_datasheet_authority,
   },
 ]
 
@@ -91,14 +92,14 @@ data ampere_altra_max_l3_cache_geometry: CpuL3CacheGeometry = CpuL3CacheGeometry
   line_size: ampere_altra_l3_line_size,
 }
 
-data ampere_altra_max_l3_cache_citations: List<CacheGeometryCitation> = [
-  {
-    field: "capacity"
-    authority: ampere_altra_rev_a1_datasheet_authority
+data ampere_altra_max_l3_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_max_l3_cache_geometry", field_name: "capacity"),
+    authority: ampere_altra_rev_a1_datasheet_authority,
   },
-  {
-    field: "line_size"
-    authority: ampere_altra_rev_a1_datasheet_authority
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_max_l3_cache_geometry", field_name: "line_size"),
+    authority: ampere_altra_rev_a1_datasheet_authority,
   },
 ]
 
@@ -109,14 +110,14 @@ data ampere_altra_classic_l3_cache_geometry: CpuL3CacheGeometry = CpuL3CacheGeom
   line_size: ampere_altra_l3_line_size,
 }
 
-data ampere_altra_classic_l3_cache_citations: List<CacheGeometryCitation> = [
-  {
-    field: "capacity"
-    authority: ampere_altra_classic_rev_a1_datasheet_authority
+data ampere_altra_classic_l3_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_classic_l3_cache_geometry", field_name: "capacity"),
+    authority: ampere_altra_classic_rev_a1_datasheet_authority,
   },
-  {
-    field: "line_size"
-    authority: ampere_altra_classic_rev_a1_datasheet_authority
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_altra_classic_l3_cache_geometry", field_name: "line_size"),
+    authority: ampere_altra_classic_rev_a1_datasheet_authority,
   },
 ]
 
@@ -154,13 +155,13 @@ data ampere_lga4926_socket: CpuSocket = CpuSocket {
 
 // The citations sit beside the family socket they ground, not on each SKU row, because the fact
 // they cite is the family's.
-data socket_lga4926_citations: List<SocketFactCitation> = [
-  SocketFactCitation {
-    field: "package",
+data socket_lga4926_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_lga4926_socket", field_name: "termination"),
     authority: ampere_altra_rev_a1_datasheet_authority,
   },
-  SocketFactCitation {
-    field: "contact_count",
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_lga4926_socket", field_name: "contact_count"),
     authority: ampere_altra_rev_a1_datasheet_authority,
   },
 ]

@@ -3,11 +3,11 @@ module extdeps.gpu.nvidia
 import extdeps.gpu.types { GpuModelCatalogRow, GpuComputeCapability, GpuRuntime, GpuSmCacheGeometry, Cuda, cuda_compute_capabilities_authority }
 import extdeps.memory.types { MemoryFacts, Dram }
 import extdeps.storage.types { PcieLink, PcieGeneration }
-import extdeps.cpu.types { CacheGeometryCitation }
 import extdeps.vendor.nvidia { nvidia }
 import std.measure { ByteSize, byte_size, hardware_thread_count, bandwidth, hertz, watt, gibibyte, gibibyte_to_byte_size }
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, FactCitation }
+import std.decl_ref { decl_field_ref }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -27,14 +27,14 @@ data rtx_5090_sm_cache_geometry: GpuSmCacheGeometry = GpuSmCacheGeometry {
   register_file_per_sm: rtx_5090_sm_register_file,
 }
 
-data rtx_5090_sm_cache_citations: List<CacheGeometryCitation> = [
-  {
-    field: "shared_memory_per_sm"
-    authority: cuda_compute_capabilities_authority
+data rtx_5090_sm_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "rtx_5090_sm_cache_geometry", field_name: "shared_memory_per_sm"),
+    authority: cuda_compute_capabilities_authority,
   },
-  {
-    field: "register_file_per_sm"
-    authority: cuda_compute_capabilities_authority
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "rtx_5090_sm_cache_geometry", field_name: "register_file_per_sm"),
+    authority: cuda_compute_capabilities_authority,
   },
 ]
 
