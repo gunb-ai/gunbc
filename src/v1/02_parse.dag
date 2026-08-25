@@ -4277,7 +4277,7 @@ fn parse_pipe_rhs(tokens: TokenStream, ctx: ParseContext, receiver: Node, span: 
   let method = callee.method
   let leading = match callee.spine {
     Absent => [receiver]
-    Present { value: qualifier } => [qualifier, make_arg_node(name: none, value: receiver, span: receiver.span, name_span: no_span())]
+    Present { value: qualifier } => [qualifier, make_arg_node(name: none, value: receiver, span: receiver.span, name_span: receiver.span)]
   }
   let tokens = skip_newlines(tokens: callee.tokens)
 
