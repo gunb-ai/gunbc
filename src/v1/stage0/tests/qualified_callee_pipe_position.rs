@@ -52,7 +52,7 @@ fn diagnostics_of(sources: &[(&str, &str)]) -> Vec<String> {
             })
         })
         .collect();
-    compile_sources(Rc::new(files), RenderTarget::Rust)
+    compile_sources(Rc::new(files.into()), RenderTarget::Rust)
         .diagnostics
         .iter()
         .map(|d| diagnostic_to_message(d.diagnostic.clone()))
