@@ -3,6 +3,7 @@ module gunbc.seed_growth_admission
 import gunbc.anonymous_record_resolution_seed_growth { anonymous_record_resolution_seed_growth_justification }
 import gunbc.reference_closure_binder_seed_growth { reference_closure_binder_seed_growth_justification }
 import gunbc.bare_reference_scanner_admission { bare_reference_scanner_seed_growth_justification }
+import gunbc.declaration_index_seed_growth { declaration_index_seed_growth_justification }
 import gunbc.parse_refusal_location_seed_growth { parse_refusal_location_seed_growth_justification }
 import gunbc.roadmap_authority { observation_scoped_run_seed_growth_justification }
 import gunbc.witness_runtime_cause_seed_growth { witness_runtime_cause_seed_growth_justification }
@@ -81,7 +82,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     reference_closure_binder_seed_growth_justification,
     bare_reference_scanner_seed_growth_justification,
     witness_runtime_cause_seed_growth_justification,
-    parse_refusal_location_seed_growth_justification
+    parse_refusal_location_seed_growth_justification,
+    declaration_index_seed_growth_justification
   ]
 }
 

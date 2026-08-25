@@ -63,13 +63,14 @@ fn main() -> ExitCode {
             let findings = v1_compiler::cli_run::declaration_index::index_findings(&sweep.index);
             eprintln!(
                 "v1_src_dag_parse: {} file(s) parse-clean; declarations modules={} \
-                 declared={} import_members={} citations={} in_fixtures={} outside_index={} \
+                 declared={} import_members={} citations={} debt={} in_fixtures={} outside_index={} \
                  lens_modules={}",
                 sweep.parse_clean,
                 population.modules,
                 population.declarations,
                 population.import_members,
                 population.citations,
+                population.citations_pre_existing_debt,
                 population.citations_in_fixtures,
                 population.citations_outside_index,
                 population.lens_modules,

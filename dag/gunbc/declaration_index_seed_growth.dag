@@ -1,0 +1,292 @@
+module gunbc.declaration_index_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+
+data declaration_index_seed_growth_note: String = "Seed-growth obligation for the ingestion-time per-module declaration index (gunbc#9211). Homed here, beside the obligation it declares, rather than inside gunbc.seed_growth_admission, which owns the ROSTER and the join.\n\nWHAT THE CHANGE IS. v1_compiler.cli_run run_dag_parse_sweep already parses every .dag under DAG_PARSE_SWEEP_ROOTS -- src/v1, dag and src/v2, 3991 files -- once, in parallel, on every required run, and threw every parse tree away. It now builds one ModuleDeclarationRecord per module from that same parse, and three integrity questions are answered from that single keyed index rather than by three corpus-wide walks: import-member claim integrity, the cited-symbol wall, and the lens authorship fact. --required-cited-symbol is DELETED in the same change, so the replacement has one route and not two.\n\nTHE EXHIBITED COST, WHICH IS WHAT ADMITS THIS RATHER THAN THE TWO DESIGN TRIGGERS. v1_maintenance_loaded_index_noun_admission_note states the axis: reachability with exhibited cost, and the argv-fabrication row was refused because it exhibits nothing today. This exhibits, measured on the live tree at 46 sites over 38 distinct targets: authored citations naming declarations that do not exist, unguarded since the operator removed the cited-symbol job on 2026-08-23. And it exhibits a class no mechanism in the repository covers at all: v1's own MissingExport is a function of the COMPILE CLOSURE it is handed, so an ORPHAN module's import claims are checked by nothing -- DESIGN's 2026-08-25 row records gunbc.auth.credentials standing on main with four hard errors for exactly that reason. That premise is MEASURED rather than inferred: orphan_import_claim_is_refused_here_and_nowhere_else holds the identical false claim in a module the resolver sees (MissingExport fires, the index agrees) and in one no closure reaches (the resolver is never asked, the index refuses alone).\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE, ON PRECEDENT RATHER THAN ANALOGY. gunbc.v1_maintenance_standing v1_seed_standing admits by PURPOSE -- does the change serve the v2 self-host program -- and the purpose test reaches the INSTRUMENT that measures that program, not only the program. gunbc.parse_refusal_location_seed_growth admits hand-Rust growth in this same run_dag_parse_sweep on that exact ground: a required-CI phase that cannot locate its own refusals taxes every lane INCLUDING THE SELF-HOST WORK. gunbc.floor_non_verdict_enrollment admits on the same footing: the required floor is the INSTRUMENT that guards that program.\n\nCLASSIFIED AGAINST ALL FIVE REFUSED CLASSES, because a refusal dominates every admission and the nearest one has to be answered rather than skipped. NewLanguageBehavior: no. The compile pipeline is byte-untouched -- no diagnostic is added, moved or removed, and resolve, infer and emit are not edited. NewCompatibilityObligation: no. Nothing is kept working for an old caller; a mode is deleted. NewEscapeHatchOrAdmissionRow: no, and the direction is opposite -- this adds a wall and removes a route. There is no flag, env var or mode that skips it. SeedFeatureCompletion: no. The seed COMPILER gains no capability; it compiles exactly what it compiled before. PublicSurfaceGrowth: this is the nearest, and the test v1_maintenance_rung_note states is a diff over THE EMITTED SEED'S EXPORTED DECLARATIONS. Checked rather than asserted: declaration_index.rs is wired by #[path] mod inside cli_run.rs, exactly as phase_profile.rs and required_regen_host.rs are, so it contributes no pub mod line to the emitted lib.rs -- its SeedRetainedIntrinsicRegistration carries has_pub_mod: false, and the emitted crate's exported surface is unchanged. What grows is the SeedRetained roster, enumerated here.\n\nHAND-ITEM DELTA: +55, all enumerated below rather than counted, and ZERO of them uncitable -- there is not one impl block in either file, which is deliberate: the first draft carried four, and every impl method is uncitable as a DeclarationRef because std.decl_ref offers WholeDeclaration or NamedField and neither names a method on an impl block, so it would have grown the class gunbc.seed_growth_admission reports as seed_growth_uncitable_item_keys. MEASURED FROM THE MERGE BASE 58a15c7eef5702668ae3464be4d9b20c836d3573, not against the moving tip, because a branch delta taken against the tip renders main's own commits as deletions the author did not make. src/v1/stage0/src/cli_run.rs is +70/-10 and adds ZERO declarations -- the change is inside the existing run_dag_parse_sweep plus one #[path] mod line and one returned struct -- so its disposition is ExistingSeedItemModified and listing it would net a modification into an addition census. src/v1/stage0/src/bin/claim_executor.rs and bin/v1_src_dag_parse.rs likewise add no declaration; claim_executor NETS DOWN, deleting three functions with the --required-cited-symbol mode.\n\nRUNG, STATED AT THE HONEST GRAIN AND NOT INFLATED. The class -- an authored claim about another module that names nothing real -- moves from MITIGATABLE (review diligence, which is where DESIGN's 2026-08-23 row left it) to MECHANICALLY PREVENTABLE: a real wall, armed on every required run, whose red is authorable at the FIXTURE boundary and is authored there, in tests/declaration_index_integrity.rs, one planted violation per arm beside a positive control that must stay clean. It is NOT structurally guaranteed and this row does not claim it: the invalid state stays perfectly writable and safety depends on the phase executing. WHAT IS DISCHARGED AND WHAT IS NOT, because the two DESIGN triggers have two halves and only one moves here: the CORPUS-WALK half is discharged -- one module's facts now come from one module's source at ingestion, and decl_facts is no longer consulted by any required check. The HAND-RUST half is not: the index is host Rust rather than a modeled ingestion operation, which is why this carrier exists at all.\n\nWHAT THE ARMS DO NOT COVER, named rather than left to be discovered. A citation authored INSIDE a witness or fixture carrier is not enrolled, because a witness proving the resolver refuses an absent module has to author an absent module -- test.claim.annotation_carrier cites extdeps.network.mac parse_mac_addres on purpose, one letter short. The property is read off the module's own path, not from an exemption list, and the population is counted (in_fixtures) rather than dropped. A citation naming a namespace no swept module declares -- v1_compiler.cli_run and its siblings name hand-Rust -- is likewise counted (outside_index) rather than refused, and the line between it and a DELETED .dag module is the namespace root, which is decidable from the index itself. And the field arm resolves against the union over a declaration's subtree, so a field belonging to a different variant of the same coproduct resolves; that weakening is confined to the field arm and its next rung is a lookup that descends the declared TYPE."
+
+data declaration_index_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "SourceLocation",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "source_location_of",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "CONSTRUCTION_JUSTIFICATION_DECL",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "DECLARATION_REF_TYPE",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "DECL_REF_FN",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "DECL_FIELD_REF_FN",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "CitedSymbol",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "ImportClaim",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "ModuleDeclarationRecord",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "import_surface_has",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "DeclarationIntegrityKind",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "integrity_kind_label",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "DeclarationIntegrityFinding",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "module_is_fixture_carrier",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "is_top_level_lens_module",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "for_each_node",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "is_record_literal",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "is_call",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "bound_value",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "citation_from_record_literal",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "named_field_name",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "citation_from_constructor_call",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "declaration_field_names",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "record_from_module",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "DeclarationIndex",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "DeclarationIndexPopulation",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "index_insert",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "index_get",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "index_records",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "index_population",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "resolve_cited_module",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "citation_is_outside_index",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "import_member_findings",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "PRE_EXISTING_CITATION_DEBT",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "citation_is_pre_existing_debt",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "citation_debt_findings",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "cited_symbol_findings",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "citation_resolution_refusal",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "lens_authorship_findings",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "duplicate_findings",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "index_findings",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "span_offset_in",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "render_finding",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.declaration_index_integrity",
+      decl_name: "scratch_root",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.declaration_index_integrity",
+      decl_name: "author",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.declaration_index_integrity",
+      decl_name: "findings_over",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.declaration_index_integrity",
+      decl_name: "AUTHORITY",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.declaration_index_integrity",
+      decl_name: "import_member_absent_is_refused_and_located",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.declaration_index_integrity",
+      decl_name: "import_member_present_stays_clean",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.declaration_index_integrity",
+      decl_name: "orphan_import_claim_is_refused_here_and_nowhere_else",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.declaration_index_integrity",
+      decl_name: "missing_export_names",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.declaration_index_integrity",
+      decl_name: "stale_citation_is_refused",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.declaration_index_integrity",
+      decl_name: "citation_to_a_deleted_module_is_refused_and_a_foreign_namespace_is_not",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.declaration_index_integrity",
+      decl_name: "lens_without_construction_justification_is_refused",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.declaration_index_integrity",
+      decl_name: "lens_with_construction_justification_stays_clean",
+      field: WholeDeclaration
+    }
+  ],
+  reason: "WHY RUST IS STILL NEEDED, and it is a REACHABILITY limit rather than a modeling gap: the subject is INGESTION -- the moment a .dag file is read off the filesystem and parsed -- and the only ingestion that executes today is host Rust. A .dag witness cannot reach it: run_required_floor's hermetic envelope refuses host effects during preparation, so a witness whose subject is a filesystem walk is counted executed while its assertion never runs. Asserting the index's behaviour from a mocked file tree would assert the mock, which is the specification-without-execution trap, so the construction and its discriminating evidence both have to live where the walk does.\n\nTHE CONSEQUENCE OF REFUSING IT, stated second because it is not the admitting argument: there is no second executing ingestion to re-home this to, so a refusal would leave both of DESIGN's next-rung triggers -- section 6's module-authorship trigger and section 3's cited-symbol restoration trigger -- undischargeable until v2 is the compiler.\n\nWHAT THE GROWTH BUYS, at identity grain rather than as a category: three walls on one construction, replacing one deleted corpus-walk census and two obligations that had no mechanism at all. It also NETS DOWN inside claim_executor, which loses the --required-cited-symbol mode and its three helper functions.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete all 55 when INGESTION is itself modeled -- when the .dag source walk and the per-module record it derives are expressed as a .dag operation over a typed filesystem transport, the index becomes an ordinary substrate fold and these declarations move to the substrate. A PARTIAL migration IS admissible and is the expected shape: the moment the RECORD DERIVATION is modeled (record_from_module is a pure function of one parse tree and needs no host effect at all), the record builder and every finding function follow it, while the directory walk and the parse-clean plumbing stay behind for as long as the WALK is host-only; delete those on the second step. What does NOT dissolve them is the checks moving to another host entry point, and what does NOT dissolve them is a hermetic witness asserting a fabricated module tree -- that would retire the evidence while retiring nothing it guards.",
+  current_boundary: "src/v1/stage0/src/declaration_index.rs; src/v1/stage0/src/cli_run.rs run_dag_parse_sweep; src/v1/stage0/tests/declaration_index_integrity.rs; src/v1/stage0/src/bin/claim_executor.rs; src/v1/stage0/src/bin/v1_src_dag_parse.rs; dag/gunbc/declaration_index_seed_growth.dag"
+}

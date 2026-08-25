@@ -158,6 +158,8 @@ pub enum DeclarationIntegrityKind {
     LensAuthorshipAbsent,
     /// Two swept files declaring one module path — the index cannot key on it.
     DuplicateModuleDeclaration,
+    /// A `PRE_EXISTING_CITATION_DEBT` row whose citation no longer refuses.
+    CitationDebtRowStale,
 }
 
 pub fn integrity_kind_label(kind: &DeclarationIntegrityKind) -> &'static str {
@@ -168,6 +170,7 @@ pub fn integrity_kind_label(kind: &DeclarationIntegrityKind) -> &'static str {
         DeclarationIntegrityKind::CitedFieldAbsent => "CITED-FIELD-ABSENT",
         DeclarationIntegrityKind::LensAuthorshipAbsent => "LENS-AUTHORSHIP-ABSENT",
         DeclarationIntegrityKind::DuplicateModuleDeclaration => "DUPLICATE-MODULE",
+        DeclarationIntegrityKind::CitationDebtRowStale => "CITATION-DEBT-ROW-STALE",
     }
 }
 
@@ -483,6 +486,9 @@ pub struct DeclarationIndexPopulation {
     pub declarations: usize,
     pub import_members: usize,
     pub citations: usize,
+    /// Citations suppressed by an enumerated `PRE_EXISTING_CITATION_DEBT` row. Counted, so
+    /// a reader can watch the contract shrink rather than take the roster on trust.
+    pub citations_pre_existing_debt: usize,
     /// Citations authored inside a witness or fixture carrier, where deliberately false
     /// text is the evidence rather than a defect. Counted, never silently dropped.
     pub citations_in_fixtures: usize,
@@ -532,6 +538,13 @@ pub fn index_population(index: &DeclarationIndex) -> DeclarationIndexPopulation 
             .map(|i| i.members.len())
             .sum(),
         citations: index.modules.values().map(|r| r.cited.len()).sum(),
+        citations_pre_existing_debt: index
+            .modules
+            .values()
+            .filter(|r| !r.is_fixture_carrier)
+            .flat_map(|r| r.cited.iter())
+            .filter(|c| citation_is_pre_existing_debt(c))
+            .count(),
         citations_in_fixtures: index
             .modules
             .values()
@@ -629,11 +642,206 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
     out
 }
 
+/// THE PRE-EXISTING CITATION DEBT, ENUMERATED AT IDENTITY GRAIN.
+///
+/// WHY A ROSTER EXISTS AT ALL. Nothing has checked an authored citation since 2026-08-23,
+/// when the operator removed the `cited-symbol` job (DESIGN records that drop and states its
+/// future exposure as unbounded). This wall's first execution therefore lands on a corpus
+/// that has been accumulating the exact class §3's rule names, and every row below is a REAL
+/// DEFECT: a citation naming a declaration that does not exist. Measured on the live tree,
+/// they are 38 distinct targets across 46 sites.
+///
+/// WHY THEY ARE NOT REPAIRED HERE. The repair for a citation is a judgement about what its
+/// author MEANT, and guessing it is how a stale citation becomes a confidently wrong one.
+/// `extdeps.docker.container_stats` `Stats` is probably `ContainerStats`; `gunbc.ci_workflow`
+/// was deleted by the floor cut and its citation may want a different module or no citation
+/// at all. Those are 38 separate subjects with 38 separate owners, and bundling them into
+/// the change that builds the wall would make the wall unreviewable.
+///
+/// WHY THIS IS A DEBT CONTRACT AND NOT A QUIETER SNAPSHOT. DESIGN §5 admits a monotone debt
+/// contract on four conditions, and all four are met here rather than argued: the subject
+/// universe is INDEPENDENTLY DISCOVERED (by this index, from the corpus's own text, not
+/// hand-listed); it is CLOSED (every authored citation in a non-fixture module); membership
+/// is checked at IDENTITY GRAIN, not by count; and the direction is one-way — see
+/// `citation_debt_findings`, which REFUSES a row that no longer reproduces. That last one is
+/// the teeth: repairing a citation forces deleting its row, so the roster can only shrink,
+/// and a roster that has rotted stops the line exactly like a violation does.
+///
+/// FOUR ROWS AT THE END ARE NOT DEBT, AND THEY ARE MARKED RATHER THAN QUIETLY MIXED IN.
+/// They are the DELETED census's own planted controls — citations authored to refuse, in
+/// `gunbc.doc_graph_roots` and in `v2.lens.cited_symbol_resolution` itself, so that census
+/// could prove its resolver refused. They are not defects and repairing them would be
+/// wrong. They leave when the lens does, and their discriminating job is already re-done at
+/// the fixture boundary in `tests/declaration_index_integrity.rs`, where DESIGN §4b wants
+/// it — which is why this wall does not need them and does not keep them.
+///
+/// WHY THE LENS IS NOT DELETED IN THIS CHANGE, stated plainly rather than left as an
+/// omission. `v2.lens.cited_symbol_resolution` is invoked by nothing: the operator removed
+/// its CI job on 2026-08-23 and this change removes `--required-cited-symbol`, its last
+/// caller. So it is dead code, not a competing authority — §3's attractor argument is about
+/// a live X answering the same question, and after this change nothing asks it anything.
+/// Its deletion cascades through sixteen witnesses, the lens registry, the deferral freeze
+/// and the doc-graph population, which is a second cut with its own review surface, and
+/// bundling it here would put the wall and its predecessor's funeral in one unreviewable
+/// diff. That is the staged form §3's replacement doctrine admits, and these four rows are
+/// its declared residue: they delete with the lens, not before it.
+const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str)] = &[
+    ("extdeps.cloud.gcp.secret_manager", "AccessVersion", ""),
+    ("extdeps.cloud.gcp.secret_manager", "AddVersion", ""),
+    ("extdeps.docker.container_inspect", "Inspect", ""),
+    (
+        "extdeps.docker.container_stats",
+        "ContainerStats",
+        "cpu_percent",
+    ),
+    ("extdeps.docker.container_stats", "Stats", ""),
+    (
+        "extdeps.git.publication_transport",
+        "PublicationTransport",
+        "",
+    ),
+    (
+        "extdeps.llm.anthropic",
+        "AnthropicImageBlock",
+        "cache_control",
+    ),
+    (
+        "extdeps.llm.anthropic",
+        "AnthropicTextBlock",
+        "cache_control",
+    ),
+    ("extdeps.llm.anthropic", "AnthropicTextBlock", "citations"),
+    (
+        "extdeps.llm.anthropic",
+        "AnthropicToolReferenceBlock",
+        "cache_control",
+    ),
+    ("extdeps.llm.anthropic", "CacheControl", "ttl"),
+    ("extdeps.mediawiki", "extdeps_external_authority_anchor", ""),
+    ("extdeps.network.ipv6", "parse_ipv6_address", ""),
+    ("extdeps.network.mac", "parse_mac_address", ""),
+    ("extdeps.tcgplayer.store", "UpdateSkuPrice", ""),
+    (
+        "gunbc.ci_floor_measurement",
+        "gunbc_ci_legacy_host_modeled_residents",
+        "",
+    ),
+    (
+        "gunbc.ci_floor_measurement",
+        "gunbc_ci_managed_host_quiescent_meminfo_read",
+        "",
+    ),
+    (
+        "gunbc.ci_runner_placement",
+        "ci_runner_placement_authority",
+        "",
+    ),
+    ("gunbc.ci_workflow", "ci_heal_generated_artifacts_job", ""),
+    ("gunbc.ci_workflow", "ci_workflow", ""),
+    ("gunbc.fleet_host_budget", "fleet_host_budget_authority", ""),
+    (
+        "gunbc.host_budget_source",
+        "host_budget_source_emitted_into_stage0",
+        "",
+    ),
+    ("gunbc.host_effect", "host_effect_apply", ""),
+    ("gunbc.roadmap_authority", "roadmap_document", ""),
+    ("gunbc.runner_lifecycle", "EnsureRunnerJitWrapper", ""),
+    (
+        "gunbc.tailscale_acl_phase2_credential",
+        "tailscale_acl_upsert_wet",
+        "",
+    ),
+    (
+        "product.build_selection",
+        "build_constructible_ceiling_axis",
+        "",
+    ),
+    ("product.build_selection", "build_incremental_cash_axis", ""),
+    ("product.build_selection", "build_memory_bandwidth_axis", ""),
+    ("product.build_selection", "build_memory_capacity_axis", ""),
+    ("product.build_selection", "build_wall_power_axis", ""),
+    ("product.fabric.supply", "Offer", ""),
+    ("std.bytes", "builtin_function_registry", ""),
+    ("tools.rust_stage0_gates", "per_unit_test_selector", ""),
+    ("v1.compiler.05_emit", "emit_literal", ""),
+    ("v1.compiler.infer_emit_info", "type_summary_reaches_fn", ""),
+    (
+        "v2.compiler.self_host.emitter_producer_provenance",
+        "v2_self_hosted_promotions",
+        "",
+    ),
+    (
+        "v2.test.workflow.claim_witness_corpus_ci_runner",
+        "ClaimWitnessCorpusClaimRunRow",
+        "",
+    ),
+];
+
+/// Whether a citation names one of the enumerated pre-existing targets.
+fn citation_is_pre_existing_debt(cited: &CitedSymbol) -> bool {
+    let field = cited.field.as_deref().unwrap_or("");
+    PRE_EXISTING_CITATION_DEBT.iter().any(|(module, decl, f)| {
+        *module == cited.module_path && *decl == cited.decl_name && *f == field
+    })
+}
+
+/// THE CONTRACT'S OWN REFUSAL — a roster row that no longer reproduces.
+///
+/// Without this the roster is the "quieter snapshot" DESIGN §5 rejects: rows would survive
+/// their subjects, the population would drift from the corpus, and a reader would take the
+/// list for a measurement when it had become a memory. With it the roster is monotone by
+/// construction: the only way to remove a violation is to repair it AND delete its row, and
+/// the only way to keep a row is for the violation to still be there.
+pub fn citation_debt_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegrityFinding> {
+    let mut live: BTreeSet<(String, String, String)> = BTreeSet::new();
+    for record in index.modules.values() {
+        if record.is_fixture_carrier {
+            continue;
+        }
+        for cited in &record.cited {
+            if citation_resolution_refusal(index, record, cited).is_some() {
+                live.insert((
+                    cited.module_path.clone(),
+                    cited.decl_name.clone(),
+                    cited.field.clone().unwrap_or_default(),
+                ));
+            }
+        }
+    }
+    PRE_EXISTING_CITATION_DEBT
+        .iter()
+        .filter(|(module, decl, field)| {
+            !live.contains(&(module.to_string(), decl.to_string(), field.to_string()))
+        })
+        .map(|(module, decl, field)| DeclarationIntegrityFinding {
+            kind: DeclarationIntegrityKind::CitationDebtRowStale,
+            rel_path: "src/v1/stage0/src/declaration_index.rs".to_string(),
+            offset: None,
+            message: format!(
+                "PRE_EXISTING_CITATION_DEBT still lists `{module}` `{decl}`{} — that citation \
+                 no longer refuses, so the row is spent and must be deleted; the roster only \
+                 shrinks",
+                if field.is_empty() {
+                    String::new()
+                } else {
+                    format!(" field `{field}`")
+                }
+            ),
+        })
+        .collect()
+}
+
 /// (2) The cited-symbol wall — §3's cite-the-symbol rule, executing.
 ///
 /// A citation resolves against the DECLARED surface of the module it names, never against
 /// that module's re-exports: a citation names where a fact LIVES, and a module that merely
 /// imports a name is not its authority (§3).
+///
+/// ONE RESOLUTION, TWO CONSUMERS. The wall and the debt contract both read
+/// `citation_resolution_refusal` — a second predicate that agreed today is a fork that
+/// disagrees later, which is the objection `v2.lens.cited_symbol_resolution` already
+/// recorded against writing a second resolver beside the first.
 pub fn cited_symbol_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegrityFinding> {
     let mut out = Vec::new();
     for record in index.modules.values() {
@@ -642,55 +850,66 @@ pub fn cited_symbol_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegri
             continue;
         }
         for cited in &record.cited {
-            let Some(target) = resolve_cited_module(index, &cited.module_path) else {
-                if citation_is_outside_index(index, &cited.module_path) {
-                    continue;
-                }
-                out.push(DeclarationIntegrityFinding {
-                    kind: DeclarationIntegrityKind::CitedModuleAbsent,
-                    rel_path: record.rel_path.clone(),
-                    offset: span_offset_in(&cited.location, &record.rel_path),
-                    message: format!(
-                        "`{}` cites `{}` `{}`, and no module declares `{}`",
-                        record.module_path, cited.module_path, cited.decl_name, cited.module_path
-                    ),
-                });
-                continue;
-            };
-            if !target.declared.contains(&cited.decl_name)
-                && !target.variants.contains(&cited.decl_name)
-            {
-                out.push(DeclarationIntegrityFinding {
-                    kind: DeclarationIntegrityKind::CitedDeclarationAbsent,
-                    rel_path: record.rel_path.clone(),
-                    offset: span_offset_in(&cited.location, &record.rel_path),
-                    message: format!(
-                        "`{}` cites `{}` `{}`, which that module does not declare",
-                        record.module_path, cited.module_path, cited.decl_name
-                    ),
-                });
+            if citation_is_pre_existing_debt(cited) {
                 continue;
             }
-            if let Some(field) = cited.field.as_ref() {
-                let present = target
-                    .decl_fields
-                    .get(&cited.decl_name)
-                    .is_some_and(|fields| fields.contains(field));
-                if !present {
-                    out.push(DeclarationIntegrityFinding {
-                        kind: DeclarationIntegrityKind::CitedFieldAbsent,
-                        rel_path: record.rel_path.clone(),
-                        offset: span_offset_in(&cited.location, &record.rel_path),
-                        message: format!(
-                            "`{}` cites field `{field}` of `{}` `{}`, which has no such field",
-                            record.module_path, cited.module_path, cited.decl_name
-                        ),
-                    });
-                }
+            if let Some(finding) = citation_resolution_refusal(index, record, cited) {
+                out.push(finding);
             }
         }
     }
     out
+}
+
+/// The typed refusal one citation earns, or `None` if it resolves.
+fn citation_resolution_refusal(
+    index: &DeclarationIndex,
+    record: &ModuleDeclarationRecord,
+    cited: &CitedSymbol,
+) -> Option<DeclarationIntegrityFinding> {
+    let Some(target) = resolve_cited_module(index, &cited.module_path) else {
+        if citation_is_outside_index(index, &cited.module_path) {
+            return None;
+        }
+        return Some(DeclarationIntegrityFinding {
+            kind: DeclarationIntegrityKind::CitedModuleAbsent,
+            rel_path: record.rel_path.clone(),
+            offset: span_offset_in(&cited.location, &record.rel_path),
+            message: format!(
+                "`{}` cites `{}` `{}`, and no module declares `{}`",
+                record.module_path, cited.module_path, cited.decl_name, cited.module_path
+            ),
+        });
+    };
+    if !target.declared.contains(&cited.decl_name) && !target.variants.contains(&cited.decl_name) {
+        return Some(DeclarationIntegrityFinding {
+            kind: DeclarationIntegrityKind::CitedDeclarationAbsent,
+            rel_path: record.rel_path.clone(),
+            offset: span_offset_in(&cited.location, &record.rel_path),
+            message: format!(
+                "`{}` cites `{}` `{}`, which that module does not declare",
+                record.module_path, cited.module_path, cited.decl_name
+            ),
+        });
+    }
+    if let Some(field) = cited.field.as_ref() {
+        let present = target
+            .decl_fields
+            .get(&cited.decl_name)
+            .is_some_and(|fields| fields.contains(field));
+        if !present {
+            return Some(DeclarationIntegrityFinding {
+                kind: DeclarationIntegrityKind::CitedFieldAbsent,
+                rel_path: record.rel_path.clone(),
+                offset: span_offset_in(&cited.location, &record.rel_path),
+                message: format!(
+                    "`{}` cites field `{field}` of `{}` `{}`, which has no such field",
+                    record.module_path, cited.module_path, cited.decl_name
+                ),
+            });
+        }
+    }
+    None
 }
 
 /// (3) Module authorship — one module's fact, from one module's source.
@@ -732,6 +951,7 @@ pub fn index_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegrityFindi
     let mut out = duplicate_findings(index);
     out.extend(import_member_findings(index));
     out.extend(cited_symbol_findings(index));
+    out.extend(citation_debt_findings(index));
     out.extend(lens_authorship_findings(index));
     out.sort();
     out
