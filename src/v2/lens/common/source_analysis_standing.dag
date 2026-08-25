@@ -8,3 +8,39 @@ type SourceAnalysisNotEstablishedCause
   | SourceParseRejected
   | SourceNormalizationRejected
 
+
+// WHETHER THE FINDING ANALYSIS ESTABLISHED A STANDING OVER ITS SUBJECT. Hoisted here rather than
+// left in one lens because two lenses now ask it and the concept names neither of them: it carries
+// no lens-specific payload, only a count and a cause that is already shared. A cross-lens import
+// would have made one lens the authority for the other's standings, and a second copy would have
+// been one concept with two homes.
+//
+// THE THIRD ARM IS THE WHOLE POINT. "The instrument could not establish a standing" is not
+// "the instrument established that there is no suspect". Collapsing them renders an unreadable
+// subject as the CLEAN verdict, which is worse than a sentinel: a sentinel never compares equal to
+// the passing value, and `false` IS the passing value.
+type FindingStanding
+  = NoSuspect
+  | SuspectObserved { suspects: Int }
+  | FindingNotEstablished { cause: SourceAnalysisNotEstablishedCause }
+
+// TOTAL, AND FAIL-CLOSED ON THE THIRD ARM. Not-established answers FALSE: a caller asking "does this
+// subject hold" must not receive a pass from an instrument that never read it.
+fn finding_standing_established_clean(standing: FindingStanding) -> Bool {
+  match standing {
+    NoSuspect => true
+    SuspectObserved { suspects: _ } => false
+    FindingNotEstablished { cause: _ } => false
+  }
+}
+
+// The positive direction, and it is NOT the negation of the above: a not-established standing is
+// false in BOTH, because it is neither a clean subject nor an observed suspect. A control asserting
+// "the planted defect still alarms" must go red on an unread subject, not green.
+fn finding_standing_observed_suspect(standing: FindingStanding) -> Bool {
+  match standing {
+    NoSuspect => false
+    SuspectObserved { suspects: _ } => true
+    FindingNotEstablished { cause: _ } => false
+  }
+}

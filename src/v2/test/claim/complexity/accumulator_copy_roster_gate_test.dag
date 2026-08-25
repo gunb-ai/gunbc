@@ -2,7 +2,14 @@ module v2.test.claim.complexity.accumulator_copy_roster_gate
 
 import v2.lens.complexity_accumulator_copy.roster_gate {
   file_gate,
-  source_has_suspect
+  source_finding_standing
+}
+import v2.lens.common.source_analysis_standing {
+  finding_standing_observed_suspect,
+  NoSuspect,
+  SuspectObserved,
+  FindingNotEstablished,
+  SourceTokenizationRejected
 }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -43,6 +50,44 @@ test fn roster_std_algebra_zero_suspects_within_ratchet() -> Bool {
 
 data planted_copy_snippet: String = "module planted\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
 
+// ASSERTED AS *SUSPECT OBSERVED*, NOT AS "NOT CLEAN". Those differ on exactly the state this change
+// exists for: a subject the lens could not read is neither clean nor suspect, and a control written
+// as `not clean` would be satisfied by it -- the planted defect would appear to still alarm on a
+// build where nothing was analysed at all.
 test fn red_control_planted_copy_still_alarms() -> Bool {
-  source_has_suspect(source_text: planted_copy_snippet)
+  finding_standing_observed_suspect(
+    standing: source_finding_standing(source_text: planted_copy_snippet)
+  )
 }
+
+data unreadable_snippet: String = "@@@ not dag source @@@ )( unterminated \""
+
+// THE CLAIM THIS CHANGE EXISTS FOR. Before it, source_has_suspect answered `false` here -- and
+// `false` is the value that means NO SUSPECT, so a subject the lens could not read was reported as
+// the CLEAN verdict, indistinguishable from one it read and found clean.
+//
+// It asserts the CAUSE, not merely that the standing is not-established: a lens that answered
+// not-established for every input would satisfy a cause-blind claim while establishing nothing, and
+// the positive control below is what stops that reading. And the not-established arm is reachable
+// from a FIXTURE -- three of the five causes are source-dependent -- so this needs no grammar
+// outage to execute, which is precisely why the old collapse was not a theoretical risk.
+test fn an_unreadable_subject_is_not_established_rather_than_clean() -> Bool {
+  match source_finding_standing(source_text: unreadable_snippet) {
+    FindingNotEstablished { cause: cause } => cause == SourceTokenizationRejected
+    NoSuspect => false
+    SuspectObserved { suspects: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE CLAIM ABOVE: a readable subject with nothing wrong still reaches
+// NoSuspect. Without it, "not established" could become the answer for everything and the claim
+// above would still pass.
+test fn a_readable_clean_subject_is_established_clean() -> Bool {
+  match source_finding_standing(source_text: sanctioned_clean_snippet) {
+    NoSuspect => true
+    SuspectObserved { suspects: _ } => false
+    FindingNotEstablished { cause: _ } => false
+  }
+}
+
+data sanctioned_clean_snippet: String = "module clean_probe\n\nfn g(n: Int) -> Int {\n  n + 1\n}\n"
