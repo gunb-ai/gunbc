@@ -22,7 +22,6 @@ use crate::v1_compiler_infer_env::{
     symbol_index_lookup, GlobalBareLookupState, SymbolIndex, TypeEnv,
 };
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
-use crate::v1_compiler_infer_lookup::func_sig_if_resolved;
 use crate::v1_compiler_infer_lookup::global_bare_callable_node;
 use crate::v1_compiler_infer_method::infer_builtin_call_type;
 use crate::v1_compiler_infer_sigs::{lookup_resolved_sig, ResolvedFuncEnv, ResolvedFuncSig};
@@ -462,6 +461,23 @@ pub fn project_roadmap_acceptance_event_history_from_authority_text_builtin(
 }
 
 pub mod roadmap_acceptance_history_carrier;
+
+#[cfg(test)]
+/// The erasing projection `func_sig_if_resolved` was deleted from production in the
+/// callable-candidate cut: mapping `FuncSigAmbiguous` onto the same `None` that means "no such
+/// signature" is what kept the ambiguity arm unreachable for its consumers. These tests are the
+/// eleventh consumer, and they are the one place the collapse is legitimate -- they PIN the
+/// legacy `ImportScoped` policy and assert its first-hit behaviour, where an ambiguity cannot
+/// arise, and the other assertion is a genuine miss. Keeping the collapse here, named and local
+/// to the tests, is what stops it from becoming a production projection again.
+fn test_sig_or_none(
+    lookup: Rc<crate::v1_compiler_infer_sigs::FuncSigLookup>,
+) -> Option<Rc<crate::v1_compiler_infer_sigs::ResolvedFuncSig>> {
+    match (*crate::v1_compiler_infer_sigs::func_sig_for_derivation(lookup)).clone() {
+        crate::v1_compiler_infer_sigs::DerivedCalleeSig::DerivedFromSig { sig, .. } => Some(sig),
+        crate::v1_compiler_infer_sigs::DerivedCalleeSig::NoDerivableSig { .. } => None,
+    }
+}
 
 #[cfg(test)]
 mod bare_reference_scanner_tests {
@@ -3328,9 +3344,28 @@ const COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY: &str = "dag/gunbc/compile_clean_dia
 /// `resolve_virtual_source_with_imports`, whose BFS silently SKIPS an import it cannot resolve;
 /// a silent skip here would narrow the policy closure and answer from a graph missing the very
 /// module the answer depends on.
-fn compile_clean_policy_entry_closure_sources(
+/// PRECONDITION, UNCHECKED AND UNTIL NOW UNSTATED: THE ENTRY'S CLOSURE MUST BE IMPORT-COMPLETE.
+///
+/// This walks `extract_import_paths` — EXPLICIT IMPORT EDGES ONLY. This corpus also resolves BARE
+/// references through the tree census (namespace Rule-1), which is what
+/// `extend_sources_to_both_closure_fixpoint` exists to do and what this deliberately does not do.
+/// So an entry whose closure reaches any name it does not import will typecheck to
+/// `function '<name>' not found in scope` here, and the failure is a property of the ENTRY, not of
+/// this function.
+///
+/// MEASURED, and the reason this comment exists: `dag/gunbc/output_policy.dag` was routed through
+/// here and broke on `dag/std/observation.dag` reaching `fold_list` with no import for it. The one
+/// surviving caller, `compile_clean_unlisted_import_use_blocks_from_policy`, is sound BY LUCK —
+/// its closure happens to be import-complete, and import-completeness is not a property this
+/// corpus guarantees. One bare reference authored into that closure and it breaks too.
+///
+/// It breaks LOUDLY there, which is the one thing that makes the luck survivable: that caller
+/// returns `Result<bool, String>` and propagates with `?`. Same fragility, opposite failure mode
+/// from the silent arm this helper's other caller used to have.
+fn policy_entry_closure_sources(
     roots: &[String],
     entry_rel: &str,
+    policy_module: &str,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
     let ws = process_workspace_root();
     let module_index = build_module_path_index(roots);
@@ -3338,7 +3373,7 @@ fn compile_clean_policy_entry_closure_sources(
         let abs = ws.join(rel);
         std::fs::read_to_string(&abs).map_err(|e| {
             format!(
-                "compile_clean_diagnostic_policy closure: cannot read `{}` ({e})",
+                "{policy_module} closure: cannot read `{}` ({e})",
                 abs.display()
             )
         })
@@ -3351,7 +3386,7 @@ fn compile_clean_policy_entry_closure_sources(
         for module_path in extract_import_paths(&content) {
             let Some(rel_path) = module_index.get(&module_path) else {
                 return Err(format!(
-                    "compile_clean_diagnostic_policy closure: import `{module_path}` \
+                    "{policy_module} closure: import `{module_path}` \
                      (reached from `{entry_rel}`) names no module in the source roots"
                 ));
             };
@@ -3387,7 +3422,8 @@ pub fn compile_clean_unlisted_import_use_blocks_from_policy() -> Result<bool, St
     let roots = default_source_roots();
     let entry = resolve_entry_file_under_roots(&roots, COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY)
         .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
-    let sources = compile_clean_policy_entry_closure_sources(&roots, &entry)?;
+    let sources =
+        policy_entry_closure_sources(&roots, &entry, "gunbc.compile_clean_diagnostic_policy")?;
     let (graph, indices) = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
         .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
@@ -5052,6 +5088,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::AdmitCallersEntryNotDeclRef { .. } => "AdmitCallersEntryNotDeclRef",
         CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
         CompilerDiagnostic::AmbiguousReference { .. } => "AmbiguousReference",
+        CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { .. } => {
+            "AmbiguousAnonymousRecordLiteral"
+        }
         CompilerDiagnostic::CallArgumentNameUnknown { .. } => "CallArgumentNameUnknown",
         CompilerDiagnostic::CallPositionalSurplus { .. } => "CallPositionalSurplus",
         CompilerDiagnostic::CallPositionalDeficit { .. } => "CallPositionalDeficit",
@@ -5104,6 +5143,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         } => constructor_decl_name.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
+        CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { candidates, .. } => {
+            candidates.iter().cloned().collect::<Vec<_>>().join("|")
+        }
         CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),
         CompilerDiagnostic::CallPositionalSurplus { callee, .. } => callee.clone(),
         CompilerDiagnostic::CallPositionalDeficit { parameter, .. } => parameter.clone(),
@@ -8593,6 +8635,139 @@ fn both_closure_edge_index(index: &MultiEntryIndex) -> Result<Rc<BothClosureEdge
     Ok(built)
 }
 
+/// ONE observation of ONE shared preparation build — the unit whose cost is being
+/// attributed. Reported per phase, never prorated across the claims that consume the
+/// artifact: a per-row fraction would change whenever the roster changes, making a
+/// row's admissibility depend on how many unrelated consumers happen to be enrolled.
+/// TRIGGERED_BY IS NOT OWNED_BY. Mirrors `v2.workflow.required_floor` `SharedBuildProvenance`.
+///
+/// A `bool` was the wrong carrier and this replaces it: "already warm" records that SOMEONE ELSE
+/// went first while discarding WHO, which is the one fact an attribution model exists to keep.
+/// `BuiltByPreparation` is the intended state — trigger and owner coincide, which is what the warm
+/// buys. `AlreadyWarmOnEntry` names the site that got there first, as PROVENANCE and never as an
+/// assignment of cost: a run reporting it is reporting a defect in ordering.
+pub enum SharedBuildProvenance {
+    BuiltByPreparation,
+    AlreadyWarmOnEntry { triggered_by: &'static str },
+}
+
+impl SharedBuildProvenance {
+    /// The report form. Structural rather than prose: a reader (and a grep) sees which arm, and
+    /// the `AlreadyWarmOnEntry` arm cannot be printed without naming its trigger.
+    pub fn render(&self) -> String {
+        match self {
+            SharedBuildProvenance::BuiltByPreparation => "built-by-preparation".to_string(),
+            SharedBuildProvenance::AlreadyWarmOnEntry { triggered_by } => {
+                format!("already-warm-on-entry triggered_by={triggered_by}")
+            }
+        }
+    }
+}
+
+pub struct SharedBuildObservation {
+    pub cpu_ms: u64,
+    pub wall_ms: u64,
+    pub rss_growth_bytes: u64,
+    pub source_files: usize,
+    pub bare_eligible: usize,
+    pub provenance: SharedBuildProvenance,
+}
+
+/// Build the bare-reference edge index (and, through it, the per-root tree bare census)
+/// for `index` NOW, so that the one-time cost is paid by the caller that prepares the
+/// subject rather than by whichever claim happens to reach it first.
+///
+/// WHY THIS EXISTS, and why it is the third warm in this file rather than an optimization:
+/// `both_closure_edge_index` is memoized per `MultiEntryIndex` and `tree_bare_census_for_root`
+/// per (index, root), so the work is already done exactly once per process — the trace
+/// (`GUNBC_EDGE_INDEX_CENSUS_TRACE=1`) reports two misses on two roots against ONE index
+/// address, with `edge_index_construction { builds: 1 }`. Memoization is therefore correct
+/// and complete, and the defect is not duplication: it is ATTRIBUTION. The first claim to
+/// resolve an entry paid the whole ~28s build inside its own per-claim timer and was
+/// refused against a 5000ms per-claim safety limit that answers a different question, while
+/// its sibling — reaching the identical computation milliseconds later — ran free.
+/// Quarantining the payer only hands the bill to the next claim in evaluation order; the
+/// module-path-index and shared-index warms directly above are the same repair, and the
+/// three modules quarantined down that chain are the receipt for why relocation is not one.
+///
+/// This does NOT make the build cheaper and does not claim to. It moves the charge to the
+/// unit that incurs it, where it is bounded by its own limits (`FloorPreparationRefused`)
+/// instead of by a per-claim ceiling that was never about shared setup.
+/// MEASURE ANY SHARED PREPARATION BUILD THE SAME WAY, so a phase declared protected by
+/// `v2.workflow.required_floor` `FloorPreparationPhase` is protected by execution and not by the
+/// type merely listing it (review 55338, and the finding was correct: the model named three phases
+/// while exactly one was measured and adjudicated — two modeled safety walls were informational).
+///
+/// The closure runs between the same clock and RSS reads the edge-index warm uses, so all three
+/// phases produce one comparable observation and go through one refusal.
+fn observe_shared_build<T>(
+    already_built: bool,
+    triggered_by: &'static str,
+    build: impl FnOnce() -> T,
+) -> (T, SharedBuildObservation) {
+    let provenance = if already_built {
+        SharedBuildProvenance::AlreadyWarmOnEntry { triggered_by }
+    } else {
+        SharedBuildProvenance::BuiltByPreparation
+    };
+    let rss_before = current_rss_bytes().unwrap_or(0);
+    let cpu_before = v1_interpreter::thread_cpu_nanos();
+    let wall_before = std::time::Instant::now();
+    let out = build();
+    let wall_ms = wall_before.elapsed().as_millis() as u64;
+    let cpu_ms =
+        ((v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_before)) / 1_000_000) as u64;
+    let rss_growth_bytes = current_rss_bytes()
+        .unwrap_or(rss_before)
+        .saturating_sub(rss_before);
+    (
+        out,
+        SharedBuildObservation {
+            cpu_ms,
+            wall_ms,
+            rss_growth_bytes,
+            source_files: 0,
+            bare_eligible: 0,
+            provenance,
+        },
+    )
+}
+
+pub fn warm_bare_reference_edge_index(
+    index: &MultiEntryIndex,
+) -> Result<SharedBuildObservation, String> {
+    // NAMED, not a bool. If the index is already built when preparation reaches it, some EARLIER
+    // site triggered it — an ordering defect this line must locate rather than merely note. The
+    // trigger is not identified per call site here (the memo records no author), so the arm names
+    // the boundary that is knowable: something ahead of preparation. That is honestly weaker than a
+    // call-site name and is why the string is a fixed label rather than a fabricated attribution.
+    let provenance = if index.both_closure_edges.borrow().is_some() {
+        SharedBuildProvenance::AlreadyWarmOnEntry {
+            triggered_by: "a-site-ahead-of-floor-preparation",
+        }
+    } else {
+        SharedBuildProvenance::BuiltByPreparation
+    };
+    let rss_before = current_rss_bytes().unwrap_or(0);
+    let cpu_before = v1_interpreter::thread_cpu_nanos();
+    let wall_before = std::time::Instant::now();
+    let edges = both_closure_edge_index(index)?;
+    let wall_ms = wall_before.elapsed().as_millis() as u64;
+    let cpu_ms =
+        ((v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_before)) / 1_000_000) as u64;
+    let rss_growth_bytes = current_rss_bytes()
+        .unwrap_or(rss_before)
+        .saturating_sub(rss_before);
+    Ok(SharedBuildObservation {
+        cpu_ms,
+        wall_ms,
+        rss_growth_bytes,
+        source_files: index.source_files.len(),
+        bare_eligible: edges.bare_scan_eligible.len(),
+        provenance,
+    })
+}
+
 /// Extend the closure with the modules the tree census resolves each source's
 /// BARE references to (namespace Rule-1 direction: deps derived from names, not
 /// import statements — the import-stripped corpus has no import edges to follow,
@@ -8932,6 +9107,115 @@ impl BudgetKind {
     }
 }
 
+/// Mirror of `gunbc.observation_ci_render CiWitnessRuntimeCause`. One arm per
+/// `v1_interpreter::InterpError` variant that can reach the witness boundary's untyped arm, and
+/// no vocabulary of its own (DESIGN §3): the cause already exists upstream, this is it surviving
+/// the seam.
+///
+/// FIVE `InterpError` VARIANTS ARE DELIBERATELY ABSENT. `HostToolUnresolved`,
+/// `HermeticHostEffectRefused`, `EvalBudgetExceeded`, `WitnessWallBudgetExceeded` and the
+/// pre-mapped `EvaluationBudgetExceeded` each have their OWN `ClaimOutcome` arm and are consumed
+/// by earlier arms of the match in `run_claim`, so they cannot reach this classifier. They are
+/// not silently folded into a neighbour: all five map to `MappedOutcomeEscaped`, a typed,
+/// countable diagnostic meaning the mapper let one through. One arm rather than five because all
+/// five share ONE remedy — repair the mapper — and the descend-or-collapse rule turns on shared
+/// remedy, not on arm count.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum WitnessRuntimeCause {
+    NoSuchFunction,
+    NoSuchVariable,
+    NoSuchField,
+    TypeError,
+    CrossRepresentationEquality,
+    StringRealizationStraddle,
+    PoolRootContributesNothing,
+    PatternMatchFailure,
+    DivisionByZero,
+    IntegerOverflow,
+    Unimplemented,
+    EarlyReturn,
+    AuthDeclaredButUnwired,
+    ServiceConfigUnresolved,
+    ServiceConfigMissing,
+    ArgvExceedsHostArgMax,
+    HostToolRelativePathAmbiguous,
+    ShellOutputLimitExceeded,
+    CallContractMismatch,
+    /// An `InterpError` with its own `ClaimOutcome` arm reached the untyped classifier anyway.
+    /// Loud rather than absorbed: this is a defect in the mapping above, and a run that produces
+    /// it should say so on the row rather than presenting the throw as an ordinary one.
+    MappedOutcomeEscaped,
+}
+
+impl WitnessRuntimeCause {
+    /// Mirror of `ci_witness_runtime_cause_token`. Stable kebab tokens — the grep key a reader
+    /// uses to pair an identity with its cause.
+    pub fn token(self) -> &'static str {
+        match self {
+            WitnessRuntimeCause::NoSuchFunction => "no-such-function",
+            WitnessRuntimeCause::NoSuchVariable => "no-such-variable",
+            WitnessRuntimeCause::NoSuchField => "no-such-field",
+            WitnessRuntimeCause::TypeError => "type-error",
+            WitnessRuntimeCause::CrossRepresentationEquality => "cross-representation-equality",
+            WitnessRuntimeCause::StringRealizationStraddle => "string-realization-straddle",
+            WitnessRuntimeCause::PoolRootContributesNothing => "pool-root-contributes-nothing",
+            WitnessRuntimeCause::PatternMatchFailure => "pattern-match-failure",
+            WitnessRuntimeCause::DivisionByZero => "division-by-zero",
+            WitnessRuntimeCause::IntegerOverflow => "integer-overflow",
+            WitnessRuntimeCause::Unimplemented => "unimplemented",
+            WitnessRuntimeCause::EarlyReturn => "early-return",
+            WitnessRuntimeCause::AuthDeclaredButUnwired => "auth-declared-but-unwired",
+            WitnessRuntimeCause::ServiceConfigUnresolved => "service-config-unresolved",
+            WitnessRuntimeCause::ServiceConfigMissing => "service-config-missing",
+            WitnessRuntimeCause::ArgvExceedsHostArgMax => "argv-exceeds-host-arg-max",
+            WitnessRuntimeCause::HostToolRelativePathAmbiguous => {
+                "host-tool-relative-path-ambiguous"
+            }
+            WitnessRuntimeCause::ShellOutputLimitExceeded => "shell-output-limit-exceeded",
+            WitnessRuntimeCause::CallContractMismatch => "call-contract-mismatch",
+            WitnessRuntimeCause::MappedOutcomeEscaped => "mapped-outcome-escaped",
+        }
+    }
+
+    /// TOTAL over `InterpError`. Totality is the point rather than a formality: a new interpreter
+    /// error variant must fail to compile HERE, where someone decides what its cause token is,
+    /// rather than inheriting a neighbour's or falling into a wildcard.
+    pub fn of_interp_error(err: &v1_interpreter::InterpError) -> Self {
+        use v1_interpreter::InterpError as E;
+        match err {
+            E::NoSuchFunction { .. } => WitnessRuntimeCause::NoSuchFunction,
+            E::NoSuchVariable { .. } => WitnessRuntimeCause::NoSuchVariable,
+            E::NoSuchField { .. } => WitnessRuntimeCause::NoSuchField,
+            E::TypeError { .. } => WitnessRuntimeCause::TypeError,
+            E::CrossRepresentationEquality { .. } => {
+                WitnessRuntimeCause::CrossRepresentationEquality
+            }
+            E::StringRealizationStraddle { .. } => WitnessRuntimeCause::StringRealizationStraddle,
+            E::PoolRootContributesNothing { .. } => WitnessRuntimeCause::PoolRootContributesNothing,
+            E::PatternMatchFailure { .. } => WitnessRuntimeCause::PatternMatchFailure,
+            E::DivisionByZero => WitnessRuntimeCause::DivisionByZero,
+            E::IntegerOverflow { .. } => WitnessRuntimeCause::IntegerOverflow,
+            E::Unimplemented { .. } => WitnessRuntimeCause::Unimplemented,
+            E::EarlyReturn { .. } => WitnessRuntimeCause::EarlyReturn,
+            E::AuthDeclaredButUnwired { .. } => WitnessRuntimeCause::AuthDeclaredButUnwired,
+            E::ServiceConfigUnresolved { .. } => WitnessRuntimeCause::ServiceConfigUnresolved,
+            E::ServiceConfigMissing { .. } => WitnessRuntimeCause::ServiceConfigMissing,
+            E::ArgvExceedsHostArgMax { .. } => WitnessRuntimeCause::ArgvExceedsHostArgMax,
+            E::HostToolRelativePathAmbiguous { .. } => {
+                WitnessRuntimeCause::HostToolRelativePathAmbiguous
+            }
+            E::ShellOutputLimitExceeded { .. } => WitnessRuntimeCause::ShellOutputLimitExceeded,
+            E::CallContractMismatch { .. } => WitnessRuntimeCause::CallContractMismatch,
+            // The five that should never arrive. See the type comment.
+            E::HostToolUnresolved { .. }
+            | E::HermeticHostEffectRefused { .. }
+            | E::EvalBudgetExceeded { .. }
+            | E::WitnessWallBudgetExceeded { .. }
+            | E::EvaluationBudgetExceeded { .. } => WitnessRuntimeCause::MappedOutcomeEscaped,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimOutcome {
     Pass,
@@ -8939,7 +9223,26 @@ pub enum ClaimOutcome {
     NotBool {
         got: String,
     },
+    /// A THROW, WITH THE REASON IT THREW KEPT AS A TYPE.
+    ///
+    /// `message` used to be the whole content of this arm, built by `format!("{other}")` over
+    /// `v1_interpreter::InterpError` — which is ALREADY a closed 24-arm coproduct. So the cause
+    /// was known at this seam, destroyed here, and then guessed back downstream by slicing the
+    /// first twelve whitespace-separated words off the prose (`known_red_runtime_error_causes`).
+    /// That key embeds the missing NAME, so `no declaration named X` and `no declaration named Y`
+    /// counted as two causes: on main `f9963a762` the floor reported **65 distinct signatures**
+    /// across 142 identities for a population with about four actual causes. The number was an
+    /// artifact of the key, and it said "many roots" where the truth is "one root, many names".
+    ///
+    /// This is the same repair `TimedOut` and `HostToolUnresolved` above already received, for
+    /// the same stated reason, and the third instance is the argument for doing it by type
+    /// rather than case by case.
+    ///
+    /// `message` SURVIVES beside the cause and is not redundant with it: the cause says WHICH
+    /// class, the message says which name, which type, which arity. Two facts, two fields — the
+    /// defect was never that prose existed, it was that prose was the only representation.
     RuntimeError {
+        cause: WitnessRuntimeCause,
         message: String,
     },
     /// A budget refusal, with the pair that explains it kept as data.
@@ -15344,7 +15647,21 @@ fn parse_module_heads_for_pool_census(
         m.insert(source.path.clone(), nl_index.clone());
         m
     });
-    let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
+    // The HEADS reading of the grammar, not the full one. Every declaration head is
+    // parsed by the same productions; a brace-delimited fn body is skipped at token
+    // grain instead of being built, because `census_heads_module_node` two lines below
+    // replaces every body with the shared stand-in anyway. Building 3875 modules' worth
+    // of function bodies for a consumer that discards them was the largest single term
+    // in `pool_parse` (7.15s of 14.24s, `docs/probes/edge_index_tree_census_attribution_2026-08-24.md`)
+    // — a cost-shape defect DESIGN §6's bare-minimum-cost rule says is always fixed.
+    //
+    // The strip below is KEPT rather than folded into the parser, and that is load-bearing
+    // rather than leftover: it is what makes the two readings agree BY CONSTRUCTION. The
+    // exact shape of the stand-in the parser substitutes is then not a fact any consumer
+    // can depend on, because the normalizer overwrites it — so the heads reading cannot
+    // drift from the full reading through the body slot, only through the heads, which is
+    // the surface the differential receipt measures.
+    let parsed = v1_compiler_parse::parse_heads_with_table(tokens, single_si, current_table);
     *index.intern_table.borrow_mut() = parsed.intern_table.clone();
     // Pool census needs declaration heads only — do NOT install full-body ASTs into
     // `parse_cache` here. Closure resolve retains full bodies on its own cache miss.
@@ -15469,6 +15786,128 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
         st.pool_parse_modules += modules;
     });
     Ok(parsed)
+}
+
+/// One module read BOTH ways and normalized by the census, so the two readings can be
+/// compared as an identity rather than described as similar.
+///
+/// `census_heads_module_node` is applied to both sides. That is what makes the comparison
+/// meaningful rather than trivially false: the body slot is the one slot the heads reading
+/// deliberately fills differently, the normalizer overwrites it on both sides, and what
+/// remains is exactly the declaration heads the pool census consumes. A skip that swallowed
+/// a declaration, mis-counted a brace depth, or left the token stream one token off changes
+/// the head list and diverges here.
+///
+/// Both readings start from the SAME intern-table snapshot and neither writes back, so the
+/// sides are symmetric — a difference is the reading, never the order they ran in.
+fn census_heads_both_readings(
+    index: &MultiEntryIndex,
+    source: &Rc<v1_compiler_compile::SourceFile>,
+) -> (
+    (Result<Rc<Node>, String>, u128),
+    (Result<Rc<Node>, String>, u128),
+) {
+    let table = index.intern_table.borrow().clone();
+    let read = |heads_only: bool| -> (Result<Rc<Node>, String>, u128) {
+        let tokens = v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
+        let nl_index = build_newline_index(source.path.clone(), source.content.clone());
+        let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
+            let mut m = HashMap::new();
+            m.insert(source.path.clone(), nl_index);
+            m
+        });
+        // Only the parse is inside the timer: tokenize, newline index and setup are
+        // identical work in both readings and sit outside it on purpose.
+        let started = std::time::Instant::now();
+        let parsed = if heads_only {
+            v1_compiler_parse::parse_heads_with_table(tokens, single_si, table.clone())
+        } else {
+            v1_compiler_parse::parse_with_table(tokens, single_si, table.clone())
+        };
+        let nanos = started.elapsed().as_nanos();
+        if let Some(err) = &parsed.result.error {
+            return (Err(diagnostic_to_message(err.diagnostic.clone())), nanos);
+        }
+        match &parsed.result.module {
+            Some(module) => (Ok(census_heads_module_node(module.clone())), nanos),
+            None => (Err("no module in parse result".to_string()), nanos),
+        }
+    };
+    (read(false), read(true))
+}
+
+/// The corpus-scale differential receipt for the heads reading.
+///
+/// `divergent` is the population that must be empty for the heads reading to be a reading
+/// of the same grammar rather than a second, weaker parser. `narrowed` is NOT a defect and
+/// is reported separately on purpose: it is the declared, bounded scope narrowing — a body
+/// the full reading refuses on grammar and the heads reading never hands to the expression
+/// grammar at all. DESIGN §5 requires a degradation to be COUNTED rather than absorbed, so
+/// it gets its own row instead of being folded into either the pass or the failure count.
+/// `regressed` is its mirror and must also be empty: the heads reading may never refuse
+/// something the full reading accepts.
+pub struct HeadsReadingDifferential {
+    pub modules_compared: usize,
+    pub divergent: Vec<String>,
+    pub narrowed: Vec<String>,
+    pub regressed: Vec<String>,
+    pub both_refused: Vec<String>,
+    /// Wall spent in the FULL reading, summed over every module, and the same for the
+    /// heads reading. Both are taken in ONE process, on ONE machine, over the SAME module
+    /// list, alternating per module — so the ratio compares two READINGS, not two builds,
+    /// two hosts, or two corpus states. A before/after figure from two separately-built
+    /// binaries would have to argue all three of those away; this one has nothing to argue
+    /// away.
+    ///
+    /// It measures the PARSE only. `tokenize`, `build_newline_index` and the per-file
+    /// setup sit outside both timers and are untouched by this repair, so this figure is
+    /// not the whole-`pool_parse` saving and must never be quoted as one.
+    pub full_reading_nanos: u128,
+    pub heads_reading_nanos: u128,
+}
+
+impl HeadsReadingDifferential {
+    pub fn holds(&self) -> bool {
+        self.divergent.is_empty() && self.regressed.is_empty()
+    }
+}
+
+/// Read every indexed module both ways and classify. Deterministic (sorted paths).
+pub fn heads_reading_differential(source_roots: &[String]) -> HeadsReadingDifferential {
+    let index = build_multi_entry_index(source_roots);
+    let mut paths: Vec<String> = index.source_files.keys().cloned().collect();
+    paths.sort();
+    let mut out = HeadsReadingDifferential {
+        modules_compared: 0,
+        divergent: Vec::new(),
+        narrowed: Vec::new(),
+        regressed: Vec::new(),
+        both_refused: Vec::new(),
+        full_reading_nanos: 0,
+        heads_reading_nanos: 0,
+    };
+    for path in paths {
+        let source = match index.source_files.get(&path) {
+            Some(s) => s.clone(),
+            None => continue,
+        };
+        out.modules_compared += 1;
+        let ((full_read, full_nanos), (heads_read, heads_nanos)) =
+            census_heads_both_readings(&index, &source);
+        out.full_reading_nanos += full_nanos;
+        out.heads_reading_nanos += heads_nanos;
+        match (full_read, heads_read) {
+            (Ok(full), Ok(heads)) => {
+                if full != heads {
+                    out.divergent.push(path);
+                }
+            }
+            (Err(_), Ok(_)) => out.narrowed.push(path),
+            (Ok(_), Err(_)) => out.regressed.push(path),
+            (Err(_), Err(_)) => out.both_refused.push(path),
+        }
+    }
+    out
 }
 
 fn pool_qualified_fill(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, String> {
@@ -16282,7 +16721,10 @@ pub enum CiWitnessVerdict {
     Passed,
     Failed,
     NotBool,
-    RuntimeError,
+    /// Carries the cause as a PAYLOAD rather than beside the verdict, so "a PASSED row with a
+    /// cause" and "an ERROR row without one" have no spelling (DESIGN §4b: structurally
+    /// impossible, not merely checked).
+    RuntimeError(WitnessRuntimeCause),
     BudgetRefused,
     /// THE CLAIM PASSED AND WAS THEN RECLASSIFIED ON COST. Distinct from `BudgetRefused`
     /// because it reached a verdict: the remedy is to pay the cost down, not to find out what
@@ -16305,7 +16747,7 @@ impl CiWitnessVerdict {
             CiWitnessVerdict::Passed => "PASSED",
             CiWitnessVerdict::Failed => "FAILED",
             CiWitnessVerdict::NotBool => "NOT-BOOL",
-            CiWitnessVerdict::RuntimeError => "ERROR",
+            CiWitnessVerdict::RuntimeError(_) => "ERROR",
             CiWitnessVerdict::BudgetRefused => "BUDGET-REFUSED",
             CiWitnessVerdict::PassedOverBudget => "PASSED-OVER-BUDGET",
             CiWitnessVerdict::HostToolUnresolved => "TOOL-UNRESOLVED",
@@ -16354,7 +16796,7 @@ impl CiWitnessVerdict {
             ClaimOutcome::Pass => CiWitnessVerdict::Passed,
             ClaimOutcome::Fail => CiWitnessVerdict::Failed,
             ClaimOutcome::NotBool { .. } => CiWitnessVerdict::NotBool,
-            ClaimOutcome::RuntimeError { .. } => CiWitnessVerdict::RuntimeError,
+            ClaimOutcome::RuntimeError { cause, .. } => CiWitnessVerdict::RuntimeError(*cause),
             // SITE 1 OF THE FIVE THAT DROPPED THE AXIS. `BudgetRefused` is true only of the
             // interrupted arm; a completed-over-budget row REACHED ITS VERDICT and was refused
             // nothing, so reporting it as a refusal erased the verdict it had already produced.
@@ -16386,8 +16828,22 @@ pub fn render_witness_claim_result_text_mirror(
         )
     };
     let token = verdict.token();
+    // Mirror of `ci_witness_cause_field`: trailing and key-tagged, so a reader pairs identity
+    // with cause by KEY and never by column offset. Empty for every arm that has no cause,
+    // which keeps every existing line byte-identical.
+    let cause = match verdict {
+        CiWitnessVerdict::RuntimeError(cause) => format!(" cause={}", cause.token()),
+        CiWitnessVerdict::Passed
+        | CiWitnessVerdict::Failed
+        | CiWitnessVerdict::NotBool
+        | CiWitnessVerdict::BudgetRefused
+        | CiWitnessVerdict::HostToolUnresolved
+        | CiWitnessVerdict::KnownRed
+        | CiWitnessVerdict::PassedOverBudget
+        | CiWitnessVerdict::RouteGap => String::new(),
+    };
     format!(
-        "{padded}{token} in {}",
+        "{padded}{token} in {}{cause}",
         crate::v1_rt::obs_human_elapsed(wall_nanos)
     )
 }
@@ -16553,21 +17009,45 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<usize, Ve
                 // the parse diagnostics and the annotation refusals in one population. Called
                 // with a single source, so files stay independent and nothing resolves across
                 // them.
+                let path_str = path.to_string_lossy().to_string();
                 let fill = crate::v1_compiler_compile::parse_census_fill_sources(std::rc::Rc::new(
                     vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-                        path: path.to_string_lossy().to_string(),
-                        content,
+                        path: path_str.clone(),
+                        content: content.clone(),
                     })]
                     .into(),
                 ));
                 if fill.diagnostics.is_empty() {
                     count.fetch_add(1, Ordering::Relaxed);
                 } else {
+                    // THE SPAN IS CARRIED, NOT DROPPED. Every `CompilerDiagnostic` answers
+                    // `diagnostic_to_span`, and an annotation refusal carries the origin of the
+                    // exact `//` line that could not attach -- but this printer used to render
+                    // only the file and the message, so 52 refusals in one file arrived as 52
+                    // byte-identical sentences with no way to tell which annotation was at
+                    // fault. A typed, LOCATED diagnostic rendered as untyped prose is the
+                    // opposite of what DESIGN section 5 requires of a refusal.
+                    //
+                    // The index is built from the same `content` the parse consumed, and
+                    // `byte_to_line_col` reads CHAR offsets -- which is what spans carry, since
+                    // `build_newline_index` indexes `chars()` and the tokenizer's positions are
+                    // char positions. A synthetic span (`no_span()`, file `<synthetic>`) names
+                    // no position in this file, so it renders as the path alone rather than as
+                    // a fabricated `1:1`.
+                    let index = crate::v1_std_core::build_newline_index(path_str.clone(), content);
                     let mut lock = errors.lock().expect("parse error lock");
                     for d in fill.diagnostics.iter() {
+                        let span = crate::v1_std_core::diagnostic_to_span(d.diagnostic.clone());
+                        let located = if span.file == path_str {
+                            let lc =
+                                crate::v1_std_core::byte_to_line_col(index.clone(), span.start);
+                            format!("{path_str}:{}:{}", lc.line, lc.col)
+                        } else {
+                            path_str.clone()
+                        };
                         lock.push(format!(
                             "{}: {}",
-                            path.display(),
+                            located,
                             crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()),
                         ));
                     }
@@ -16637,13 +17117,16 @@ fn output_policy_value_shape(value: &v1_interpreter::Value) -> &'static str {
     }
 }
 
-/// Stop the line, located at the module and symbol that could not answer.
+/// THE REFUSAL TEXT, SEPARATED FROM THE ACT OF STOPPING, AND THAT SPLIT IS THE MERGE.
 ///
-/// This is the same remedy the undecodable-channel arm below already takes — one refusal
-/// shape for one class, rather than a second control flow for a cause discovered earlier
-/// in the same install.
-fn refuse_output_policy_install(refusal: OutputPolicyInstallRefusal) -> ! {
-    let located = match refusal {
+/// Two lanes made this class fail closed from opposite ends and both repairs are kept. `main`
+/// partitioned the causes and located each one; #9046 changed the STANDALONE entry point's
+/// signature so a caller can receive the refusal instead of the process ending underneath it.
+/// Those are not competing designs — the message is one fact and the disposition is another, so
+/// the message is built here once and each caller chooses how the line stops. Fusing them (a
+/// renderer that also exits) is what forced the choice in the first place.
+fn output_policy_install_refusal_message(refusal: OutputPolicyInstallRefusal) -> String {
+    match refusal {
         OutputPolicyInstallRefusal::AuthorityUnresolved {
             entry,
             source_roots,
@@ -16664,34 +17147,79 @@ fn refuse_output_policy_install(refusal: OutputPolicyInstallRefusal) -> ! {
              ChannelPolicy record this seed decodes. The .dag authority and its seed \
              realization disagree; refusing rather than running with the policy uninstalled."
         ),
-    };
-    eprintln!("::error::output policy install refused: {located}");
+    }
+}
+
+/// Stop the line, located at the module and symbol that could not answer.
+///
+/// This is the remedy for the arms reached from `install_output_policy_in`, which is called from
+/// contexts holding a prepared subject and has no caller-side arm to return into. The standalone
+/// entry point below returns the same message as `Err` instead — same class, same text, different
+/// disposition, and `node://adhoc-4456c93f-bf3` tracks converting these arms too.
+fn refuse_output_policy_install(refusal: OutputPolicyInstallRefusal) -> ! {
+    eprintln!(
+        "::error::output policy install refused: {}",
+        output_policy_install_refusal_message(refusal)
+    );
     std::process::exit(1);
 }
 
-pub fn install_output_policy(source_roots: &[String]) {
+/// FAILS CLOSED, and the signature is the reason it can (review 55298).
+///
+/// This function answered its failure modes with `Err(_) => return`: an unreadable or unresolvable
+/// policy was indistinguishable from a valid policy decision, and the process continued under
+/// whatever output behaviour was in force. That is the §5 silent widen — the deficit's frequency is
+/// zero by construction, so it never ranks for fixing. The repair is the signature, not a check: a
+/// typed located refusal nobody can receive is not a refusal, and while this returned `()` there
+/// was no arm a caller could take. Both callers now stop the line.
+///
+/// THE SILENT ARM WAS HIDING A LIVE DEFECT, WHICH IS THE WHOLE ARGUMENT FOR §5 IN ONE RECEIPT.
+/// A change landed here that resolved the policy through its own IMPORT closure
+/// (`policy_entry_closure_sources`) instead of `resolve_entry_graph_shared`, to stop this
+/// five-decision read from being the accidental first toucher of the bare-reference edge index.
+/// The intent was right and the mechanism cannot work: that helper walks `extract_import_paths`,
+/// i.e. explicit import edges only, while this corpus resolves BARE references through the tree
+/// census (namespace Rule-1) — which is exactly what `extend_sources_to_both_closure_fixpoint`
+/// exists to do. `dag/std/observation.dag` reaches `fold_list` with no import for it, so the narrow
+/// closure typechecked to `function 'fold_list' not found in scope` and this function returned
+/// silently. Measured: `OUTPUT-POLICY REFUSAL cause=PolicyResolveFailed ... observation.dag:1231:3`,
+/// surfaced the moment the arm was made to refuse, having been invisible before it.
+/// `compile_clean_diagnostic_policy` survives that helper only because its closure happens to be
+/// import-complete; import-completeness is not a property this corpus guarantees.
+///
+/// So the resolve is back on `resolve_entry_graph_shared`, which runs the both-closure fixpoint and
+/// resolves bare references. The first-toucher concern it was trying to answer is answered instead
+/// by `warm_bare_reference_edge_index` running ahead of this call — attribution fixed at the owner
+/// rather than by narrowing a closure that cannot be narrowed.
+///
+/// SCOPE, DECLARED: this fixes the STANDALONE form only. `install_output_policy_in` below carries
+/// the same silent pattern in further arms and reaches the required floor's path — a different
+/// blast radius, tracked separately as `node://adhoc-4456c93f-bf3`.
+pub fn install_output_policy(source_roots: &[String]) -> Result<(), String> {
     let entry = "dag/gunbc/output_policy.dag";
-    let (graph, indices) = match resolve_entry_graph_shared(source_roots, entry) {
-        Ok(g) => g,
-        Err(cause) => {
-            refuse_output_policy_install(OutputPolicyInstallRefusal::AuthorityUnresolved {
-                entry: entry.to_string(),
-                source_roots: source_roots.to_vec(),
-                cause,
-            })
-        }
-    };
+    let (graph, indices) = resolve_entry_graph_shared(source_roots, entry).map_err(|cause| {
+        format!(
+            "OUTPUT-POLICY REFUSAL cause=PolicyResolveFailed — {}",
+            output_policy_install_refusal_message(
+                OutputPolicyInstallRefusal::AuthorityUnresolved {
+                    entry: entry.to_string(),
+                    source_roots: source_roots.to_vec(),
+                    cause,
+                }
+            )
+        )
+    })?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     install_output_policy_in(&ctx, source_roots);
+    Ok(())
 }
 
 /// INSTALL THE POLICY FROM AN ALREADY-PREPARED CONTEXT.
 ///
-/// `install_output_policy` above resolves `dag/gunbc/output_policy.dag` on its own, which on
-/// the floor cost a separate whole-entry resolve to read five channel decisions out of a world
-/// the run was about to build anyway. The required floor calls this form with the one prepared
-/// repository instead: the policy module is already in the subject, so reading it is an
-/// evaluation and nothing more.
+/// `install_output_policy` above resolves `dag/gunbc/output_policy.dag`'s own import closure when
+/// no prepared subject exists. The required floor calls this form with the one prepared repository
+/// instead: the policy module is already in the subject, so reading it is an evaluation and
+/// nothing more.
 ///
 /// The two forms share every decision below deliberately — a second copy of the decode would be
 /// a second policy, and the divergence would show up as two runs disagreeing about what
@@ -17884,7 +18412,12 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
                     kind: BudgetKind::Wall,
                 }
             }
+            // THE CLASSIFICATION HAPPENS HERE, where `other` is still a typed `InterpError`.
+            // It is a projection of a value in hand, not a derivation: nothing is parsed,
+            // matched or guessed, and there is no site downstream that could do this at all
+            // once the `format!` has run.
             other => ClaimOutcome::RuntimeError {
+                cause: WitnessRuntimeCause::of_interp_error(&other),
                 message: format!("{other}"),
             },
         },
@@ -18281,7 +18814,7 @@ pub fn claim_terminal_detail(outcome: &ClaimOutcome) -> String {
     match outcome {
         ClaimOutcome::Pass | ClaimOutcome::Fail => String::new(),
         ClaimOutcome::NotBool { got } => got.clone(),
-        ClaimOutcome::RuntimeError { message } => message.clone(),
+        ClaimOutcome::RuntimeError { message, .. } => message.clone(),
         ClaimOutcome::BudgetInterrupted { kind, .. }
         | ClaimOutcome::CompletedOverBudget { kind, .. } => kind.label().to_string(),
         ClaimOutcome::HostToolUnresolved { name, .. } => name.clone(),
@@ -20734,7 +21267,7 @@ pub fn project_witness_cost_receipt(
                     ));
                     "witness_cost_seed_refused_event"
                 }
-                ClaimOutcome::RuntimeError { message } => {
+                ClaimOutcome::RuntimeError { message, .. } => {
                     args.push((
                         Some("error".to_string()),
                         str_value(format!("runtime error: {message}")),
@@ -26590,7 +27123,7 @@ fn run_discovery_rows(
                 "{} ({}) returned `{}`, not Bool",
                 row.function, row.entry, got
             )),
-            ClaimOutcome::RuntimeError { message } => summary.failures.push(format!(
+            ClaimOutcome::RuntimeError { message, .. } => summary.failures.push(format!(
                 "{} ({}) runtime error: {}",
                 row.function, row.entry, message
             )),
@@ -34793,6 +35326,25 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
         if decl_count.get(name).copied().unwrap_or(0) != 1 {
             continue;
         }
+        // INTENDED SCOPE GATE, not an oversight. This lens answers ONE question --
+        // DESIGN §5 coverage-by-illusion: a carrier that a test makes look exercised
+        // while no production code reads it. A carrier that is referenced by NOTHING,
+        // test included, is a different class with a different remedy (delete it, or
+        // write the missing test and let it land here), so it cannot share this
+        // roster: a roster row means "modeled ahead of its consumer, tested, awaiting
+        // one", and every one of these would be a row asserting a test that does not
+        // exist. That class is owned by the still-unbuilt run-root reachability cut
+        // (gunbc.plans.inert_layer_lens, `v2.lens.inert_layer`), whose retirement
+        // condition names it. Measured over `dag` + `src/v2` at 32597358f16 on
+        // 2026-08-24: 8821 declared carriers, 14 flagged here, 270 skipped by this
+        // line -- the same order the plan predicted for a raw sweep ("hundreds"),
+        // which is why the two are separate cuts and not one roster. A dated
+        // observation, not a bound: nothing gates on either number.
+        // `green_control_untested_unused_carrier_is_not_flagged` below is the
+        // executing control that keeps this exclusion deliberate rather than latent:
+        // it plants exactly this carrier and asserts it stays off the roster, so
+        // deleting this line goes red -- executed both ways 2026-08-24: gate present,
+        // 12 passed; gate deleted, that one control fails with got ["Staged"].
         if !self_tested.contains(name) {
             continue;
         }
@@ -40190,6 +40742,7 @@ mod peel_alias_fixpoint_termination {
                 global_bare,
                 services: crate::v1_rt::rc_empty_map(),
                 transparent_alias_rep: crate::v1_rt::rc_empty_map(),
+                type_head_exposures: crate::v1_rt::rc_empty_map(),
             });
             let env = std::rc::Rc::new(crate::v1_compiler_infer_env::TypeEnv {
                 module_path: "".to_string(),
@@ -40409,18 +40962,15 @@ mod sigs_env_flat_parents {
                 let b = w2_env(&format!("b{i}"), &[], vec![prev.clone()]);
                 prev = w2_env(&format!("j{i}"), &[], vec![a, b]);
             }
-            let deep_hit = crate::v1_compiler_infer_lookup::func_sig_if_resolved(
-                crate::v1_compiler_infer_sigs::lookup_resolved_sig(
+            let deep_hit =
+                super::test_sig_or_none(crate::v1_compiler_infer_sigs::lookup_resolved_sig(
                     prev.clone(),
                     "bottom_fn".to_string(),
-                ),
-            );
-            let miss = crate::v1_compiler_infer_lookup::func_sig_if_resolved(
-                crate::v1_compiler_infer_sigs::lookup_resolved_sig(
-                    prev.clone(),
-                    "absent_fn".to_string(),
-                ),
-            );
+                ));
+            let miss = super::test_sig_or_none(crate::v1_compiler_infer_sigs::lookup_resolved_sig(
+                prev.clone(),
+                "absent_fn".to_string(),
+            ));
             let _ = tx.send((
                 prev.parents.len(),
                 deep_hit.map(|s| s.inferred.name.clone()),
@@ -40469,9 +41019,10 @@ mod sigs_env_flat_parents {
         crate::v1_rt::name_resolution_policy_set_namespace_only(false);
 
         let read = |env: &Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>, f: &str| {
-            crate::v1_compiler_infer_lookup::func_sig_if_resolved(
-                crate::v1_compiler_infer_sigs::lookup_resolved_sig(env.clone(), f.to_string()),
-            )
+            super::test_sig_or_none(crate::v1_compiler_infer_sigs::lookup_resolved_sig(
+                env.clone(),
+                f.to_string(),
+            ))
             .map(|s| s.inferred.name.clone())
         };
 
@@ -42602,6 +43153,24 @@ pub struct RequiredFloorOutcome {
     /// either lets an enrollment cover a witness that has not actually run since the day it was
     /// enrolled.
     pub known_red_runtime_errored: Vec<String>,
+    /// BLOCKING. An enrolled expected-red identity that produced no verdict and is not enrolled
+    /// in `v2.workflow.floor_non_verdict`. This is the conjunct that makes the composition
+    /// honest: the arms above are true observations, and returning CLEAN over them while an
+    /// enrolled assertion has stopped asserting is what was below floor.
+    pub non_verdict_unenrolled: Vec<String>,
+    /// BLOCKING, and an earlier revision of this field had it reported-only on the argument that
+    /// refusing a repaid row "punishes the fix". That argument was wrong, and review 55361 found
+    /// why: a stale row is a LIVE EXEMPTION. The identity is repaired, the row stays, and if the
+    /// witness later stops producing a verdict again it is ALREADY ROSTERED — so the regression
+    /// this wall exists to refuse is admitted in silence. Repayment without deletion converts a
+    /// bounded debt row into a permanent licence, which is the absorbing fallback wearing the
+    /// word "diagnostic".
+    ///
+    /// Refusing does not punish a repair; it requires the repair to be COMPLETE. The diagnostic
+    /// names every row to delete, deletion is mechanical, and this is exactly the discipline
+    /// `stale_route_gap` and the expected-red staleness join already enforce. Consistency with
+    /// them turned out to be the correct answer rather than the lazy one.
+    pub stale_non_verdict: Vec<String>,
     /// See `known_red_runtime_errored`.
     pub known_red_observation_unreadable: Vec<String>,
     /// Host tool could not be resolved — infra undecided, not budget-refused.
@@ -42999,6 +43568,45 @@ fn floor_value_shape(v: Option<&v1_interpreter::Value>) -> String {
 /// One nullary `.dag` Int authority, decoded. The floor's per-claim thresholds are authored in
 /// `v2.workflow.required_floor` and read here rather than re-spelled in Rust: the host owns when
 /// a budget is applied, never what it is.
+/// READ A `std.measure` MEASURE-TYPED CONSTANT AND RETURN ITS COUNT.
+///
+/// `Measure<Q, S, M> { count: M }` is a single-field record, so a `Millisecond` or `ByteSize`
+/// constant arrives here as `Record { count: Int }` and `floor_required_int` — which demands a bare
+/// `Int` — cannot read it. This is the host half of carrying units on the carrier rather than in a
+/// field name: the unit lives in the `.dag` type, and the host unwraps exactly one level to get the
+/// magnitude it compares.
+///
+/// SAME STRICTLY-POSITIVE WALL AS `floor_required_int`, and for the same reason: a zero ceiling is
+/// not a lenient policy, it refuses every subject before it measures one. The refusal names the
+/// shape it actually got, so a constant that stops being a Measure fails loudly here instead of
+/// being read as some other number.
+fn floor_required_measure_count(
+    ctx: &v1_interpreter::InterpContext,
+    func: &str,
+) -> Result<u64, String> {
+    let qualified = format!("v2.workflow.required_floor.{func}");
+    let value = v1_interpreter::run_in_context(ctx, &qualified, false)
+        .map_err(|e| format!("{qualified}: {e}"))?;
+    let v1_interpreter::Value::Record { fields, .. } = &value else {
+        return Err(format!(
+            "{qualified}: expected a std.measure Measure record, got {}",
+            floor_value_shape(Some(&value))
+        ));
+    };
+    let Some(count) = ctx.field(fields, "count") else {
+        return Err(format!(
+            "{qualified}: std.measure Measure record carries no `count` field"
+        ));
+    };
+    match count {
+        v1_interpreter::Value::Int(n) if *n > 0 => Ok(*n as u64),
+        other => Err(format!(
+            "{qualified}: expected a positive Int count, got {}",
+            floor_value_shape(Some(other))
+        )),
+    }
+}
+
 fn floor_required_int(ctx: &v1_interpreter::InterpContext, func: &str) -> Result<u64, String> {
     let qualified = format!("v2.workflow.required_floor.{func}");
     // STRICTLY POSITIVE, because the deleted admission decoder refused non-positive budgets and
@@ -43242,6 +43850,61 @@ fn floor_cgroup_envelope(when: &str) {
     }
 }
 
+/// The non-verdict admission, as a PURE FUNCTION OF TWO IDENTITY SETS.
+///
+/// It is written this way so it can be exercised without a floor run, a fixture, or a witness
+/// that actually throws — the thing that decides admission should be a pure function of two
+/// sets, and the seed's discriminating red lives in `tests` below rather than only in the
+/// modeled admission it mirrors.
+///
+/// `added` is what the run observed and the roster does not carry: the growth this wall exists
+/// to refuse. `repaid` is what the roster carries and the run did not observe: a debt paid,
+/// REPORTED and never refused, because refusing it makes the merge that repairs the population
+/// the merge that reds the floor.
+///
+/// SETS, NEVER COUNTS. The case that decides the shape is a swap — one identity repaired while a
+/// different identity begins producing no verdict — where `added` and `repaid` are both nonempty
+/// and every count in the run is unchanged. A length comparison admits exactly that trade, which
+/// is a repaired witness buying permission for an unrelated witness to lose its verdict.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct NonVerdictAdmission {
+    pub added: Vec<String>,
+    pub repaid: Vec<String>,
+}
+
+pub fn non_verdict_admission(
+    observed: &HashSet<String>,
+    roster: &HashSet<String>,
+) -> NonVerdictAdmission {
+    let mut added: Vec<String> = observed
+        .iter()
+        .filter(|q| !roster.contains(q.as_str()))
+        .cloned()
+        .collect();
+    let mut repaid: Vec<String> = roster
+        .iter()
+        .filter(|q| !observed.contains(q.as_str()))
+        .cloned()
+        .collect();
+    added.sort();
+    repaid.sort();
+    NonVerdictAdmission { added, repaid }
+}
+
+/// The admission itself: `added` AND `repaid` are both empty. Kept separate from the sets so a
+/// caller reads the rule rather than reconstructing it. Both arms refuse for different reasons: a
+/// row in `added` is an unenrolled non-verdict, and a row in `repaid` is a STALE ROW — the
+/// identity answers again while the roster still names it, which is a live exemption if it later
+/// regresses. Repaying and deleting the row are one act, so the repaired population is admitted
+/// only once the roster row goes with it.
+///
+/// CORRECTED 2026-08-24 (review 55577): this docstring and the body both described an asymmetry in
+/// which `repaid` was admitted, while the executing gate already refused it via
+/// `stale_non_verdict`.
+pub fn non_verdict_admits(admission: &NonVerdictAdmission) -> bool {
+    admission.added.is_empty() && admission.repaid.is_empty()
+}
+
 pub fn run_required_floor(
     source_roots: &[String],
     commit: &str,
@@ -43314,12 +43977,21 @@ pub fn run_required_floor(
     // and `languages_decl_records_from_inventory` is the existing precedent for the
     // inventory-sourced form of a census that used to scan. When that lands this warm call is
     // unnecessary rather than merely redundant, because there is no second authority to warm.
-    let index_warm_started = std::time::Instant::now();
-    let warmed_modules = build_module_path_index_from_witness_roots().len();
+    // MEASURED AND ADJUDICATED like the edge-index warm below, because `FloorPreparationPhase`
+    // declares this phase protected and a declared wall that nothing enforces is worse than an
+    // absent one — it is cited as coverage (review 55338).
+    let (warmed_modules, module_path_index_warm) =
+        observe_shared_build(false, "floor-preparation", || {
+            build_module_path_index_from_witness_roots().len()
+        });
     eprintln!(
-        "[floor-phase] phase=module-path-index-warm state=completed wall_ms={} modules={}",
-        index_warm_started.elapsed().as_millis(),
-        warmed_modules
+        "[floor-phase] phase=module-path-index-warm state=completed cpu_ms={} wall_ms={} \
+         rss_growth_bytes={} modules={} provenance={}",
+        module_path_index_warm.cpu_ms,
+        module_path_index_warm.wall_ms,
+        module_path_index_warm.rss_growth_bytes,
+        warmed_modules,
+        module_path_index_warm.provenance.render(),
     );
     // WARM THE SHARED MultiEntryIndex HERE, for the same reason as the module-path index
     // above: otherwise ONE ARBITRARY CLAIM PAYS FOR IT (witness cost class 2).
@@ -43351,15 +44023,94 @@ pub fn run_required_floor(
     // dissolve-on: same as the module-path-index warm above — when the shared index derives
     // from the prepared inventory instead of a second disk walk, this warm call becomes
     // unnecessary rather than merely redundant, because there is no second authority to warm.
-    let shared_index_warm_started = std::time::Instant::now();
-    let warmed_shared_index_modules = process_shared_index(&witness_layer_roots())
-        .source_files
-        .len();
+    let (warmed_shared_index_modules, shared_index_warm) =
+        observe_shared_build(false, "floor-preparation", || {
+            process_shared_index(&witness_layer_roots())
+                .source_files
+                .len()
+        });
     eprintln!(
-        "[floor-phase] phase=shared-index-warm state=completed wall_ms={} modules={}",
-        shared_index_warm_started.elapsed().as_millis(),
-        warmed_shared_index_modules
+        "[floor-phase] phase=shared-index-warm state=completed cpu_ms={} wall_ms={} \
+         rss_growth_bytes={} modules={} provenance={}",
+        shared_index_warm.cpu_ms,
+        shared_index_warm.wall_ms,
+        shared_index_warm.rss_growth_bytes,
+        warmed_shared_index_modules,
+        shared_index_warm.provenance.render(),
     );
+    // ── SHARED-BUILD ATTRIBUTION: the bare-reference edge index ───────────────────────────
+    //
+    // THIRD WARM, SAME REPAIR AS THE TWO ABOVE. The bare-reference edge index
+    // (`both_closure_edge_index`, and through it `tree_bare_census_for_root` per root) is a fact
+    // of the SUBJECT, not of any claim: memoized once per index — the census trace reports two
+    // misses over two source roots against ONE index address, `edge_index_construction {
+    // builds: 1 }` — so the work is already done exactly once per process. It was simply BILLED
+    // to whichever claim resolved an entry first:
+    // `test.claim.qualified_spelling_identity_witness_test.qualified_spelling_takes_the_shared_layer`
+    // at 57193ms CPU against a 5000ms per-claim limit, while its sibling reaching the identical
+    // computation milliseconds later measured 5ms.
+    //
+    // WHAT THIS DOES NOT DO: it does not make the build cheaper, and nothing here claims the run
+    // gets faster. The same work happens once either way; what changes is WHO IS CHARGED.
+    // Quarantining a first toucher would only hand the bill to the next claim in evaluation
+    // order — three modules were quarantined down exactly that chain before the pattern was read
+    // correctly (docs/plans/witness-cost-first-touch-attribution.md).
+    //
+    // PRODUCTION PRECEDES ADJUDICATION, and the placement is deliberate in both directions. The
+    // build happens HERE, as early as any consumer could reach it and ahead of the published-mock
+    // projection and the output-policy install, so no earlier phase can become an accidental
+    // first toucher (measured in `claim_batch`, where exactly that happened on the PRE-FIX
+    // installer: the warm placed after `install_output_policy` reported `already-warm-on-entry
+    // cpu_ms=0` while a ~30.8s span sat billed to an output-policy read. That installer has since
+    // been scoped to the policy's own import closure and no longer enters the shared index, so
+    // that specific toucher is gone — the placement rule is not, because the next one will not
+    // announce itself either). The REFUSAL is adjudicated further down, at the first point where
+    // `hermetic` exists to read the three `.dag` limits — so every reported outcome carries the
+    // observation it was computed against, and a refusal with no observation has no spelling.
+    //
+    // NO PRORATION. The cost is never divided across the claims that consume the artifact: a
+    // per-row fraction would change whenever the roster changes, making a row's admissibility
+    // depend on how many unrelated consumers happen to be enrolled.
+    //
+    // Both index identities the floor's own resolves can reach. `canonical_shared_index_roots`
+    // normalizes the two spellings, so when the roots coincide the second call is a memo hit and
+    // reports `provenance=already-warm-on-entry` — which is PROVENANCE (where the build was
+    // triggered), never ownership (what is charged for it).
+    // ONE COLLECTION, ONE REFUSAL, ALL THREE DECLARED PHASES. `FloorPreparationPhase` is closed at
+    // three members and every one of them is now measured and adjudicated here. The two earlier
+    // warms were previously reported and never judged, which made two of the three modeled walls
+    // decorative — permanently green by construction and citable as coverage (review 55338).
+    let mut shared_build_warms: Vec<(&'static str, SharedBuildObservation)> = vec![
+        ("ModulePathIndexBuild", module_path_index_warm),
+        ("SharedModuleIndexBuild", shared_index_warm),
+    ];
+    shared_build_warms.push((
+        "BareReferenceEdgeIndexBuild/source-roots",
+        warm_bare_reference_edge_index(&process_shared_index(source_roots))?,
+    ));
+    shared_build_warms.push((
+        "BareReferenceEdgeIndexBuild/witness-layer-roots",
+        warm_bare_reference_edge_index(&process_shared_index(&witness_layer_roots()))?,
+    ));
+    // The two earlier phases already printed their own lines at the point they ran; only the
+    // edge-index entries are reported here, so a phase is reported exactly once and under its own
+    // name. Every entry — all three phases — is adjudicated together further down.
+    for (which, warm) in shared_build_warms
+        .iter()
+        .filter(|(which, _)| which.starts_with("BareReferenceEdgeIndexBuild"))
+    {
+        eprintln!(
+            "[floor-phase] phase=bare-reference-edge-index-warm state=completed roots={which} \
+             cpu_ms={} wall_ms={} rss_growth_bytes={} source_files={} bare_eligible={} \
+             provenance={}",
+            warm.cpu_ms,
+            warm.wall_ms,
+            warm.rss_growth_bytes,
+            warm.source_files,
+            warm.bare_eligible,
+            warm.provenance.render(),
+        );
+    }
     let prepare_ms = prepare_started.elapsed().as_millis();
     eprintln!(
         "floor: active sources = {}",
@@ -43479,6 +44230,51 @@ pub fn run_required_floor(
         None,
         published.clone(),
     );
+    // THE SAFETY WALL MOVES WITH THE COST. Leaving the shared build outside the claim timer while
+    // reporting it as merely informational would be accounting laundering — no row blocks, the
+    // real cost still occurs, and nothing owns the refusal. So the shared unit gets its OWN
+    // limits, from `v2.workflow.required_floor`, and its own blocking outcome. They are NOT the
+    // per-claim 5000ms: that number answers a claim-level question, and a shared whole-corpus
+    // build is a different unit whose limits are derived from the resources they protect (the CI
+    // job budget and the host memory cap), never from what the build was measured to cost.
+    //
+    // THE NUMBERS HAVE ONE AUTHORITY (the `.dag` constants); the three-axis COMPARISON below is a
+    // hand-written mirror of `floor_preparation_outcome`, which is *mitigatable* and carries its
+    // own dissolution obligation (`floor_preparation_host_mirror_dissolve_on`).
+    let preparation_cpu_limit_ms =
+        floor_required_measure_count(&hermetic, "required_floor_preparation_cpu_safety_limit")?;
+    let preparation_wall_limit_ms =
+        floor_required_measure_count(&hermetic, "required_floor_preparation_wall_safety_limit")?;
+    let preparation_rss_growth_limit_bytes =
+        floor_required_measure_count(&hermetic, "required_floor_preparation_rss_growth_limit")?;
+    // Any ONE axis crossing stops the line: three independent bounds on one unit, never tiers.
+    // There is no warn arm — a shared build that "ran long but was allowed to continue" is an
+    // observation with no remedy attached, which is exactly what the deleted per-claim warn tier
+    // cost this module once. And because this returns before the claim loop, a refused
+    // preparation produces NO per-witness sheet at all: a roster of zero-cost rows beside a
+    // refused preparation would read as measured and passing while nothing had run them.
+    for (which, warm) in &shared_build_warms {
+        if warm.cpu_ms > preparation_cpu_limit_ms
+            || warm.wall_ms > preparation_wall_limit_ms
+            || warm.rss_growth_bytes > preparation_rss_growth_limit_bytes
+        {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=FloorPreparationRefused \
+                 phase={which} observed_cpu_ms={} \
+                 observed_wall_ms={} observed_rss_growth_bytes={} cpu_limit_ms={} \
+                 wall_limit_ms={} rss_growth_limit_bytes={} — the shared bare-reference edge \
+                 index build exceeded its own preparation limits (v2.workflow.required_floor); \
+                 no claim executed, so every claim in this run is NotExecuted rather than \
+                 zero-cost",
+                warm.cpu_ms,
+                warm.wall_ms,
+                warm.rss_growth_bytes,
+                preparation_cpu_limit_ms,
+                preparation_wall_limit_ms,
+                preparation_rss_growth_limit_bytes,
+            ));
+        }
+    }
     // The output policy is installed FROM the prepared subject. Resolving
     // `dag/gunbc/output_policy.dag` on its own cost a separate whole-entry resolve to read
     // five channel decisions out of a world this function had already built.
@@ -43842,6 +44638,88 @@ pub fn run_required_floor(
         }
     }
 
+    // THE NON-VERDICT ROSTER. See `v2.workflow.floor_non_verdict` for the contract; the short
+    // form is that an enrolled expected-red identity which produces NO VERDICT — it throws, or
+    // answers a non-Bool — must be enrolled here, and an unenrolled one STOPS THE LINE.
+    //
+    // THE POLARITY IS THE CONSTRUCTION. An identity that is not enrolled BLOCKS, so an EMPTY
+    // roster is the STRICTEST state rather than the most permissive one, and a read failure
+    // here cannot flatter a run — it can only red one that would otherwise be green. The
+    // opposite polarity (a roster of things to gate ON) would have made losing the roster
+    // produce a greener answer, which is the absorbing-fallback shape rebuilt inside the
+    // mechanism written to close an absorbing fallback.
+    let non_verdict_roster: HashSet<String> = {
+        let value = v1_interpreter::run_in_context(
+            &hermetic,
+            "v2.workflow.floor_non_verdict.floor_non_verdict_roster",
+            false,
+        )
+        .map_err(|e| format!("floor_non_verdict_roster: {e}"))?;
+        let items = floor_decode_list(&hermetic, Some(&value))
+            .map_err(|e| format!("floor_non_verdict_roster: {e}"))?;
+        let mut out = HashSet::new();
+        for item in items {
+            match item {
+                v1_interpreter::Value::Str(s) => {
+                    if !out.insert(s.to_string()) {
+                        return Err(format!(
+                            "floor_non_verdict_roster: duplicate enrolled identity: {s}"
+                        ));
+                    }
+                }
+                other => {
+                    return Err(format!(
+                        "floor_non_verdict_roster: expected a qualified name, got {}",
+                        floor_value_shape(Some(other))
+                    ));
+                }
+            }
+        }
+        out
+    };
+    eprintln!(
+        "[floor-non-verdict] roster carries {} enrolled identity(ies)",
+        non_verdict_roster.len()
+    );
+
+    // AND THIS ROSTER NEEDS NO SEPARATE FREEZE-DISJOINTNESS CHECK, which is worth saying because
+    // the wall below now covers three rosters and this is a fourth. The refusal immediately
+    // beneath enforces non-verdict SUBSET-OF expected-red, and expected-red is already
+    // cross-referenced against `frozen_path_deferrals` there — so an identity claiming both
+    // "produced no verdict while executing" and "never executes" is already refused, transitively
+    // and by construction. A fourth arm would be a second representation of a fact the subset
+    // relation already carries.
+
+    // A NON-VERDICT ROW THAT IS NOT ALSO EXPECTED-RED CAN NEVER FIRE, so it is refused rather
+    // than left in the tree. Only an ENROLLED identity reaches the arms this roster classifies;
+    // an unenrolled one that throws goes through the ordinary failure path. So such a row is not
+    // a guard sitting quiet — the mechanism cannot produce the state it names — and DESIGN's
+    // reachability rule is explicit that unreachable is not empty: a check whose red cannot be
+    // authored is a decoration, worse than absent, because it is cited as coverage.
+    {
+        let mut orphans: Vec<&String> = non_verdict_roster
+            .iter()
+            .filter(|q| !expected_red_roster.contains(q.as_str()))
+            .collect();
+        orphans.sort();
+        if !orphans.is_empty() {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=NonVerdictRowUnreachable count={} — these \
+                 identities are enrolled in v2.workflow.floor_non_verdict but NOT in \
+                 v2.workflow.floor_expected_red. Only an enrolled identity can reach the \
+                 non-verdict arms, so these rows can never classify anything: they read as debt \
+                 while being incapable of being debt. Enroll the identity as expected-red, or \
+                 delete the row: {}",
+                orphans.len(),
+                orphans
+                    .iter()
+                    .map(|q| q.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+    }
+
     // CONTRADICTORY-INTERSECTION WALL: both executing-roster classifications and
     // `witness_deferral_freeze`'s
     // `frozen_path_deferrals` (`LegacyFrozenPathDeferral` — admitted as NEVER EXECUTED) make
@@ -43978,6 +44856,8 @@ pub fn run_required_floor(
         interrupted_before_verdict: Vec::new(),
         completed_over_cost_requirement: Vec::new(),
         known_red_runtime_errored: Vec::new(),
+        non_verdict_unenrolled: Vec::new(),
+        stale_non_verdict: Vec::new(),
         known_red_observation_unreadable: Vec::new(),
         host_tool_unresolved: Vec::new(),
         route_gap: Vec::new(),
@@ -44058,13 +44938,17 @@ pub fn run_required_floor(
     // accounting while being wrong about the SHAPE of the problem, and a later reader prices
     // N repairs against what may be one fix. Grouping here costs a HashMap and answers it on
     // the same run that produces the count.
-    let mut known_red_runtime_error_causes: HashMap<String, usize> = HashMap::new();
+    let mut known_red_runtime_error_causes: HashMap<&'static str, usize> = HashMap::new();
     let mut known_red_observation_unreadable_count: usize = 0;
     // WHICH ENROLLED ROUTE-GAP IDENTITIES ACTUALLY GAPPED, for the reverse join below. Without
     // it the roster is a one-way lookup that only ever asks "is this gap enrolled" and never
     // "is this enrollment still real", which is exactly how a skip list rots.
     let mut route_gap_seen: HashSet<String> = HashSet::new();
     let mut route_gap_held: usize = 0;
+    // IDENTITY GRAIN, NEVER COUNTS. The whole point of the roster is the case where one
+    // identity is repaired while a different one begins throwing and the COUNT DOES NOT MOVE.
+    let mut non_verdict_seen: HashSet<String> = HashSet::new();
+    let mut non_verdict_detail: BTreeMap<String, String> = BTreeMap::new();
     let mut expected_red_seen: HashSet<String> = HashSet::new();
     let mut claim_rss_kb_max: u64 = 0;
     let mut claim_rss_kb_max_row = String::new();
@@ -44424,29 +45308,36 @@ pub fn run_required_floor(
                 // strength of an error, which is the exact rot this lane exists to surface.
                 ExpectedRedArm::RuntimeErrored => {
                     known_red_runtime_errored_count += 1;
+                    // KEYED ON THE TYPED CAUSE, NOT ON THE PROSE. The previous key was the
+                    // first twelve whitespace-separated words of the message — which EMBEDS THE
+                    // MISSING NAME, so `no declaration named X` and `no declaration named Y`
+                    // counted as two distinct causes. Measured on main `f9963a762`: 65 distinct
+                    // "signatures" across 142 identities, for a population with four actual
+                    // causes. That is not an imprecise number, it is an inverted one — it told
+                    // every reader "many roots" where the truth is "one root, many names", and
+                    // pointed them away from the single repair that closes most of the
+                    // population. The comment it replaced described the key as normalizing away
+                    // per-row identities; it did the opposite.
                     let detail = match &result {
-                        ClaimOutcome::RuntimeError { message } => {
-                            // NORMALIZED TO A SIGNATURE, not kept verbatim: identities, paths and
-                            // offsets differ per row and would make every throw its own "cause",
-                            // which is the answer the census exists to avoid assuming.
-                            let signature: String = message
-                                .split_whitespace()
-                                .take(12)
-                                .collect::<Vec<_>>()
-                                .join(" ");
+                        ClaimOutcome::RuntimeError { cause, message } => {
                             *known_red_runtime_error_causes
-                                .entry(signature.chars().take(140).collect())
+                                .entry(cause.token())
                                 .or_insert(0) += 1;
-                            format!("runtime error: {message}")
+                            format!("runtime error [{}]: {message}", cause.token())
                         }
+                        // NOT a fallback that guesses. Only `RuntimeErrored` reaches this arm and
+                        // only `RuntimeError` produces it, so this is unreachable in fact; it is
+                        // kept, and kept LOUD, because unreachable is not the same as absent and
+                        // a silent `_ => ()` here would hide a real routing defect.
                         other => {
-                            let rendered = format!("{other:?}");
                             *known_red_runtime_error_causes
-                                .entry(rendered.chars().take(140).collect())
+                                .entry("routing-defect-non-runtime-error-in-runtime-errored-arm")
                                 .or_insert(0) += 1;
-                            rendered
+                            format!("{other:?}")
                         }
                     };
+                    non_verdict_seen.insert(claim.qualified.clone());
+                    non_verdict_detail.insert(claim.qualified.clone(), detail.clone());
                     outcome.known_red_runtime_errored.push(format!(
                         "{} is enrolled as expected-red but RUNTIME-ERRORED, not failed: {}. \
                          Enrollment asserts an expected verdict; a claim that threw \
@@ -44459,6 +45350,11 @@ pub fn run_required_floor(
                 }
                 ExpectedRedArm::ObservationUnreadable => {
                     known_red_observation_unreadable_count += 1;
+                    non_verdict_seen.insert(claim.qualified.clone());
+                    non_verdict_detail.insert(
+                        claim.qualified.clone(),
+                        format!("returned {result:?}, which is not a Bool"),
+                    );
                     outcome.known_red_observation_unreadable.push(format!(
                         "{} is enrolled as expected-red but returned something that is NOT A \
                          VERDICT ({:?}), so it is neither the enrolled failure nor a \
@@ -44492,7 +45388,7 @@ pub fn run_required_floor(
             ClaimOutcome::NotBool { got } => outcome
                 .failures
                 .push(format!("{} answered {got}, not a Bool", claim.qualified)),
-            ClaimOutcome::RuntimeError { message } => outcome
+            ClaimOutcome::RuntimeError { message, .. } => outcome
                 .failures
                 .push(format!("{} errored: {message}", claim.qualified)),
             ClaimOutcome::HostToolUnresolved { name, probed } => outcome.failures.push(format!(
@@ -44658,17 +45554,39 @@ pub fn run_required_floor(
     // per-identity report runs — on precisely the run where the evidence matters, it would be
     // computed and dropped.
     if !known_red_runtime_error_causes.is_empty() {
-        let mut causes: Vec<(&String, &usize)> = known_red_runtime_error_causes.iter().collect();
+        let mut causes: Vec<(&&'static str, &usize)> =
+            known_red_runtime_error_causes.iter().collect();
         causes.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
         eprintln!(
-            "[floor-known-red-causes] {} distinct signature(s) across {} non-verdict enrolled \
+            "[floor-known-red-causes] {} distinct cause(s) across {} non-verdict enrolled \
              identity(ies)",
             causes.len(),
             known_red_runtime_errored_count + known_red_observation_unreadable_count
         );
-        for (signature, count) in causes.iter().take(20) {
-            eprintln!("[floor-known-red-causes] {count} × {signature}");
+        // THE CAP IS PRINTED, NOT RAISED, AND IT IS PRINTED WHETHER OR NOT IT BIT. Truncating at
+        // 20 was not wrong because 20 is small; it was wrong because nothing said anything had
+        // been dropped, so a reader tallying the printed rows got a short total with no way to
+        // know it — 93 of 142 on main `f9963a762`, and an experienced reader looked straight at
+        // that line without noticing the rows did not sum. Raising the cap would fix one run and
+        // leave the same silence for the next.
+        //
+        // `not_listed=0` IS THE LOAD-BEARING CASE. A drop notice that appears only when
+        // something drops requires the reader to know the field exists in order to miss it,
+        // which is the same silence one step quieter. Printing it always makes a complete
+        // listing say so, in the same place and the same shape as a truncated one.
+        const CAUSE_ROWS: usize = 20;
+        let dropped_rows = causes.len().saturating_sub(CAUSE_ROWS);
+        let dropped_identities: usize = causes.iter().skip(CAUSE_ROWS).map(|(_, c)| **c).sum();
+        let listed_identities: usize = causes.iter().take(CAUSE_ROWS).map(|(_, c)| **c).sum();
+        for (cause, count) in causes.iter().take(CAUSE_ROWS) {
+            eprintln!("[floor-known-red-causes] {count} × {cause}");
         }
+        eprintln!(
+            "[floor-known-red-causes] listed={} listing_cap={CAUSE_ROWS} \
+             not_listed={dropped_rows} not_listed_identities={dropped_identities} \
+             listed_identities={listed_identities}",
+            causes.len().min(CAUSE_ROWS)
+        );
     }
     eprintln!(
         "[floor-claim-memory] worst single claim grew rss by {:.2}GB at={}",
@@ -44716,6 +45634,48 @@ pub fn run_required_floor(
     // row — and separating them would ask the reader to learn two names for it. An identity
     // that executed and did not gap, and an identity that did not execute at all (renamed,
     // deleted, or declined), are distinguished in the message rather than in the mechanism.
+    // ONE DECISION POINT, TAKEN AFTER THE FOLD, over the two identity sets. The arms above only
+    // RECORD what they observed; nothing there decides admission, so there is no second place
+    // where the rule could drift from the one written in
+    // `v2.workflow.floor_non_verdict_admission`.
+    {
+        let admission = non_verdict_admission(&non_verdict_seen, &non_verdict_roster);
+        for identity in &admission.added {
+            let detail = non_verdict_detail
+                .get(identity)
+                .map(|d| d.as_str())
+                .unwrap_or("no verdict");
+            outcome.non_verdict_unenrolled.push(format!(
+                "{identity} is enrolled as expected-red and produced NO VERDICT ({detail}), and \
+                 it is NOT enrolled in v2.workflow.floor_non_verdict. Enrollment as expected-red \
+                 admits a known SEMANTIC VERDICT -- this witness reaches its subject and answers \
+                 false -- and is not permission for the subject to stop evaluating. Repair the \
+                 witness or its subject. Enrolling the identity records the debt; it does not \
+                 make the missing verdict acceptable, and the roster is frozen against growth."
+            ));
+        }
+        // REFUSED, NOT MERELY REPORTED. A repaid row left standing is a live exemption: the
+        // identity is fixed today, and if it regresses tomorrow it is already rostered and the
+        // wall admits it. So repayment and roster deletion are one act.
+        for identity in &admission.repaid {
+            let ran = receipted.contains(identity.as_str());
+            outcome.stale_non_verdict.push(if ran {
+                format!(
+                    "{identity} is enrolled in v2.workflow.floor_non_verdict but PRODUCED A \
+                     VERDICT this run -- it reaches its subject again. Delete the row; the debt \
+                     is repaid."
+                )
+            } else {
+                format!(
+                    "{identity} is enrolled in v2.workflow.floor_non_verdict but did not \
+                     execute at all, so no non-verdict could be observed. It was renamed, \
+                     deleted, or declined. Delete the row or restore the identity to the routed \
+                     roster."
+                )
+            });
+        }
+    }
+
     {
         let mut stale: Vec<&String> = route_gap_roster
             .iter()
@@ -45438,7 +46398,7 @@ fn witness_eval_verdict_from_claim_outcome(
                 got: got.clone(),
             }
         }
-        ClaimOutcome::RuntimeError { message } => {
+        ClaimOutcome::RuntimeError { message, .. } => {
             crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::RuntimeError {
                 message: message.clone(),
             }
@@ -45617,6 +46577,7 @@ mod terminal_ledger_completeness_law {
             (ClaimOutcome::Fail, true, KnownRedHeld),
             (
                 ClaimOutcome::RuntimeError {
+                    cause: WitnessRuntimeCause::TypeError,
                     message: "boom".into(),
                 },
                 false,

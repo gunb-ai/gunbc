@@ -2,15 +2,21 @@ module v2.test.lens_determinism.reach_witness
 
 import v2.lens.determinism { determinism_axis_for_node, determinism_contract_witness, determinism_compile_gate }
 import std.determinism { Determinism, Deterministic, NonDeterministic }
-import std.types { NonEmptyStr }
 import std.primitive_identity {
+  CanonicalOrder,
   PrimitiveDefinition,
   PrimitiveSemanticContract,
+  SignatureUngrounded,
   primitive_definitions_missing_traversal_fact_in,
+  primitive_identity_eq,
+  primitive_identity_for_canonical_name,
   primitive_identity_slug,
   primitive_map_keys_definition,
+  primitive_sorted_map_keys,
+  primitive_traversal_order_for_identity,
   primitive_traversal_denominator_is_closed,
 }
+import std.types { NonEmptyStr }
 import v2.std.determinism { DeterminismFact }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node {
@@ -27,6 +33,7 @@ import v2.std.node {
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -105,6 +112,18 @@ test fn determinism_flags_map_values_reach() -> Bool {
 
 test fn determinism_holds_sorted_map_keys_sibling() -> Bool {
   witness_holds(w: determinism_contract_witness(signature: ^emit_fixture, n: sorted_map_keys_call_fixture()))
+}
+
+test fn sorted_map_keys_acceptance_is_caused_by_declared_canonical_order() -> Bool {
+  match primitive_identity_for_canonical_name(authored_symbol: "sorted_map_keys") {
+    Present { value: identity } =>
+      primitive_identity_eq(left: identity, right: primitive_sorted_map_keys)
+        && match primitive_traversal_order_for_identity(identity: identity) {
+          Present { value: CanonicalOrder } => true
+          _ => false
+        }
+    Absent => false
+  }
 }
 
 test fn determinism_holds_clean_call() -> Bool {
@@ -228,7 +247,10 @@ fn unclassified_planted_definition() -> PrimitiveDefinition {
   PrimitiveDefinition {
     identity: primitive_identity_slug(name: "planted_primitive_with_no_traversal_fact"),
     semantic_contract: PrimitiveSemanticContract {
-      canonical_name: "planted_primitive_with_no_traversal_fact" as NonEmptyStr
+      canonical_name: "planted_primitive_with_no_traversal_fact" as NonEmptyStr,
+      signature: SignatureUngrounded {
+        reason: "planted fixture with no algebra template arm; this definition exists to leave the TRAVERSAL denominator open, and grounding a signature on it would fabricate one for a primitive that does not exist." as NonEmptyStr
+      }
     }
   }
 }

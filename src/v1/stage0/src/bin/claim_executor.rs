@@ -2635,11 +2635,14 @@ fn claim_result_for_outcome(
             host_dependency_refusal: None,
             resolve_realization,
         },
-        ClaimOutcome::RuntimeError { message } => ClaimResult {
+        ClaimOutcome::RuntimeError { cause, message } => ClaimResult {
             function,
             entry: entry.clone(),
             ok: false,
-            detail: format!("runtime error: {}", message),
+            // The cause token leads the detail on this path too. `claim_batch` is the OTHER
+            // reader of a throw, and leaving it prose-only would rebuild the same asymmetry the
+            // floor just lost — one consumer able to partition, one not.
+            detail: format!("runtime error [{}]: {}", cause.token(), message),
             wall_nanos,
             resolve_nanos,
             corpus_resolve_nanos: 0,
@@ -9952,6 +9955,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut corpus_type_judgment_mode = false;
     let mut required_regen_mode = false;
     let mut required_regen_fixed_point_mode = false;
+    let mut heads_reading_differential_mode = false;
     let mut behavioral_receipt_plan_mode = false;
     let mut behavioral_receipt_selftest_mode = false;
     let mut behavioral_receipt_census_mode = false;
@@ -9995,6 +9999,9 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--required-regen" => {
                 required_regen_mode = true;
+            }
+            "--heads-reading-differential" => {
+                heads_reading_differential_mode = true;
             }
             "--required-regen-fixed-point" => {
                 required_regen_fixed_point_mode = true;
@@ -10607,6 +10614,52 @@ fn run() -> Result<ExitCode, ExitCode> {
         };
     }
 
+    // The heads reading's own instrument. It is not enrolled in the required run and this
+    // clause does not pretend otherwise: reading 3875 modules TWICE is precisely the cost
+    // the heads reading exists to remove, so paying it on every push would spend more than
+    // the repair saves. It is a re-runnable receipt — the differential this change was
+    // landed on can be re-taken by anyone, on any tree, rather than being a number quoted
+    // from a run nobody can repeat.
+    if heads_reading_differential_mode {
+        let roots = if source_roots.is_empty() {
+            vec!["dag".to_string(), "src/v2".to_string()]
+        } else {
+            source_roots.clone()
+        };
+        let d = v1_compiler::cli_run::heads_reading_differential(&roots);
+        eprintln!(
+            "heads-reading-differential: compared={} divergent={} narrowed={} regressed={} both_refused={}",
+            d.modules_compared,
+            d.divergent.len(),
+            d.narrowed.len(),
+            d.regressed.len(),
+            d.both_refused.len(),
+        );
+        // The two readings' summed parse wall, from the same process over the same
+        // modules. This is the PARSE term only — not the whole `pool_parse` row, which
+        // also pays tokenize, newline indexing and per-file setup that neither reading
+        // changes.
+        eprintln!(
+            "heads-reading-differential: full_reading_parse_ms={} heads_reading_parse_ms={}",
+            d.full_reading_nanos / 1_000_000,
+            d.heads_reading_nanos / 1_000_000,
+        );
+        for path in d.divergent.iter().take(20) {
+            eprintln!("heads-reading-differential: DIVERGENT {path}");
+        }
+        for path in d.regressed.iter().take(20) {
+            eprintln!("heads-reading-differential: REGRESSED {path}");
+        }
+        for path in d.narrowed.iter().take(20) {
+            eprintln!("heads-reading-differential: narrowed (declared scope) {path}");
+        }
+        return if d.holds() {
+            Ok(ExitCode::SUCCESS)
+        } else {
+            Err(ExitCode::from(1))
+        };
+    }
+
     if required_regen_mode {
         return match v1_compiler::cli_run::run_required_regen(
             &regen_candidate_dir,
@@ -10727,7 +10780,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     // requirement is unchanged by #8140: the walk moved AFTER plan evaluation (it is now
     // demand-directed on `schedules_discovery`), so this install precedes it by even
     // more, and the walk's whole-tree read is still policy-funnelled.
-    v1_compiler::cli_run::install_output_policy(&source_roots);
+    if let Err(why) = v1_compiler::cli_run::install_output_policy(&source_roots) {
+        eprintln!("claim_executor: {why}");
+        return Err(ExitCode::from(1));
+    }
     // Install the per-target group-marker syntax (GitHub Actions `::group::` vs a
     // plain-terminal header) from the .dag authority, so the parallel walk folds each
     // batch's host-effect traces into a collapsible group.
@@ -11978,27 +12034,82 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     for unreadable in &outcome.known_red_observation_unreadable {
         eprintln!("required-floor: KNOWN-RED-OBSERVATION-UNREADABLE {unreadable}");
     }
+    for unenrolled in &outcome.non_verdict_unenrolled {
+        eprintln!("required-floor: NON-VERDICT-UNENROLLED {unenrolled}");
+    }
+    for stale in &outcome.stale_non_verdict {
+        eprintln!("required-floor: STALE-NON-VERDICT {stale}");
+    }
     for gap in &outcome.route_gap {
         eprintln!("required-floor: ROUTE-GAP {gap}");
     }
     for stale in &outcome.stale_route_gap {
         eprintln!("required-floor: STALE-ROUTE-GAP {stale}");
     }
+    // THE VERDICT LINE, AND WHY A ZERO NEEDED A SENTENCE BESIDE IT.
+    //
+    // `failed=0` is a sentence a reader can finish alone, and finishes wrongly: it says nothing
+    // about whether the population that was supposed to answer actually answered. This exact
+    // misreading dispatched a session against a regression that did not exist — a run was
+    // compared to a baseline carrying a fix, `planned` matched on both sides, and `failed=0`
+    // supplied the confidence that the rest was equivalent. Separating the two questions removes
+    // the ability to finish that sentence: `unexpected_failures` is how many claims answered
+    // WRONG, `verdict_incomplete` is how many never answered AT ALL, and a run can be admitted
+    // while the second is large.
+    //
+    // ADMITTED IS NOT CLEAN, and the word carries that. `FloorAdmittedWithNonVerdictDebt` gates
+    // nothing by itself — the conjunct that gates is growth in the non-verdict population — but
+    // it refuses to let a run with 142 unanswered assertions render identically to one with
+    // none.
+    let verdict_incomplete =
+        outcome.known_red_runtime_errored.len() + outcome.known_red_observation_unreadable.len();
+    let verdict = if !required_floor_outcome_is_clean(outcome) {
+        "FloorRefused"
+    } else if verdict_incomplete > 0 {
+        "FloorAdmittedWithNonVerdictDebt"
+    } else {
+        "FloorClean"
+    };
+    eprintln!(
+        "required-floor: verdict={verdict} unexpected_failures={} verdict_incomplete={} \
+         non_verdict_unenrolled={} stale_non_verdict={}",
+        outcome.failures.len(),
+        verdict_incomplete,
+        outcome.non_verdict_unenrolled.len(),
+        outcome.stale_non_verdict.len()
+    );
 }
 
 /// Whether the floor outcome permits a green run.
 ///
-/// SEVEN CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
+/// NINE CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
 /// caller, because a mode that forgot one of them would green a run the other refused. (The
 /// count is stated because a reader checks it; it was five before main added `route_gap` and
 /// `stale_route_gap`, and the sentence went on saying five through the merge that added them.
 /// It briefly said nine while `known_red_runtime_errored` and `known_red_observation_unreadable`
-/// were wired in here; they are REPORTED and deliberately NOT gating, so the count is seven
-/// again. Making them block reds lanes with no connection to the defect, which needs an
-/// approved design and a shadow phase rather than an author's judgement — and the honest
-/// reporting half does not have to wait for that decision.)
+/// were wired in here directly; that was reverted and the count returned to seven.)
+///
+/// THE EIGHTH IS `non_verdict_unenrolled`, AND IT IS NOT THOSE TWO ARMS MADE GATING. The
+/// distinction is the whole design. Those arms are HONEST OBSERVATIONS — they say correctly that
+/// an enrolled claim produced no verdict — and gating on them directly would red every lane
+/// holding a row of a population nobody has repaired. What was below floor is the COMPOSITION:
+/// this function returned CLEAN while an enrolled expected-red assertion had ceased to assert
+/// anything, so a true diagnostic sat beside a false conclusion drawn from it. The conjunct
+/// therefore gates on GROWTH at identity grain — an identity producing no verdict that
+/// `v2.workflow.floor_non_verdict` does not carry — which admits 142 → 0 in any order and
+/// refuses 142 → 143, and refuses a swap that leaves the count untouched.
+///
+/// THE NINTH IS `stale_non_verdict`, AND IT GATES FOR THE REASON THE EIGHTH DOES. A row whose
+/// identity has been repaired is a LIVE EXEMPTION until it is deleted: the witness is fixed
+/// today and, should it stop producing a verdict again, it is already rostered and the eighth
+/// conjunct admits it. Repayment and deletion are therefore one act, which is what
+/// `stale_route_gap` and the expected-red staleness join already require. This shipped as
+/// report-only for one commit under the argument that refusing "punishes the fix"; it does not
+/// — it requires the fix to be complete, and the diagnostic names every row to delete.
 fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloorOutcome) -> bool {
     outcome.failures.is_empty()
+        && outcome.non_verdict_unenrolled.is_empty()
+        && outcome.stale_non_verdict.is_empty()
         && outcome.stale_quarantine.is_empty()
         && outcome.interrupted_before_verdict.is_empty()
         && outcome.completed_over_cost_requirement.is_empty()
@@ -13396,6 +13507,7 @@ mod tests {
         // not papered over by sniffing the message.
         for o in [
             ClaimOutcome::RuntimeError {
+                cause: v1_compiler::cli_run::WitnessRuntimeCause::NoSuchVariable,
                 message: "undefined variable: X".into(),
             },
             ClaimOutcome::NotBool {
@@ -13449,6 +13561,7 @@ mod tests {
                 kind: BudgetKind::Wall,
             },
             ClaimOutcome::RuntimeError {
+                cause: v1_compiler::cli_run::WitnessRuntimeCause::TypeError,
                 message: "boom".into(),
             },
             ClaimOutcome::NotBool { got: "Int".into() },
@@ -15024,6 +15137,7 @@ mod tests {
         subject: &str,
         function: &str,
         variant_name: &str,
+        cause: Option<&str>,
         wall_nanos: u128,
     ) -> Option<String> {
         let entry = source_roots
@@ -15055,7 +15169,17 @@ mod tests {
                     Value::Variant {
                         type_name: ctx.sym("CiWitnessVerdict"),
                         variant_name: ctx.sym(variant_name),
-                        fields: std::rc::Rc::new(Vec::new()),
+                        fields: std::rc::Rc::new(match cause {
+                            None => Vec::new(),
+                            Some(cause) => vec![(
+                                ctx.sym("cause"),
+                                Value::Variant {
+                                    type_name: ctx.sym("CiWitnessRuntimeCause"),
+                                    variant_name: ctx.sym(cause),
+                                    fields: std::rc::Rc::new(Vec::new()),
+                                },
+                            )],
+                        }),
                     },
                 ),
                 (Some("wall".to_string()), wall),
@@ -15132,6 +15256,7 @@ mod tests {
             "test.claim.observation_ci_render_witness_test",
             "w_witness_claim_line_from_module_path_holds",
             "WitnessPassed",
+            None,
             230_000_000,
         )
         .expect("ci_witness_claim_result_text must resolve and render");
@@ -15159,6 +15284,7 @@ mod tests {
             "test.claim.foo",
             "w_bar",
             "WitnessPassed",
+            None,
             89_000_000_000,
         )
         .expect("89s boundary oracle");
@@ -15167,6 +15293,7 @@ mod tests {
             "test.claim.foo",
             "w_bar",
             "WitnessPassed",
+            None,
             90_000_000_000,
         )
         .expect("90s boundary oracle");
@@ -15216,7 +15343,9 @@ mod tests {
             ),
             (
                 "WitnessRuntimeError",
-                v1_compiler::cli_run::CiWitnessVerdict::RuntimeError,
+                v1_compiler::cli_run::CiWitnessVerdict::RuntimeError(
+                    v1_compiler::cli_run::WitnessRuntimeCause::NoSuchVariable,
+                ),
             ),
             (
                 "WitnessBudgetRefused",
@@ -15235,13 +15364,23 @@ mod tests {
                 v1_compiler::cli_run::CiWitnessVerdict::RouteGap,
             ),
         ];
+        let arm_count = arms.len();
         let mut rendered: Vec<String> = Vec::new();
         for (variant, verdict) in arms {
+            // The cause rides inside the arm on BOTH sides, so the oracle call carries it too:
+            // a fieldless `WitnessRuntimeError` is not constructible in the `.dag` type any more.
+            let cause = match verdict {
+                v1_compiler::cli_run::CiWitnessVerdict::RuntimeError(_) => {
+                    Some("WitnessCauseNoSuchVariable")
+                }
+                _ => None,
+            };
             let oracle_arm = run_seed_witness_claim_result_text(
                 &roots,
                 "test.claim.foo",
                 "w_bar",
                 variant,
+                cause,
                 1_000_000,
             )
             .unwrap_or_else(|| panic!("oracle must render {variant}"));
@@ -15260,9 +15399,21 @@ mod tests {
         let mut distinct = rendered.clone();
         distinct.sort();
         distinct.dedup();
+        // WAS THE LITERAL `7` AGAINST AN EIGHT-ARM TABLE, and it did not start failing with this
+        // change -- it was already red on `main`. The Rust suite has not run in CI since
+        // 2026-07-11 (operator ruling, recorded at `gunbc.commit_workflow`
+        // `commit_gate_rust_suite_removed_disposition`), so a stale literal here is invisible
+        // until someone runs the bin's tests by hand. Executed receipt: this assertion reports
+        // `left: 8 right: 7`, and the eight lines it prints are pairwise distinct with or
+        // without the cause field, which the `.dag` side asserts independently in
+        // `w_every_verdict_arm_renders_a_distinct_token`.
+        //
+        // Pinned to `arm_count` rather than to a new literal `8`, so adding a ninth arm cannot
+        // reproduce this: the fixture is the table, and a count copied out of it by hand is the
+        // second representation that went stale in the first place.
         assert_eq!(
             distinct.len(),
-            7,
+            arm_count,
             "every verdict arm must render a distinct line: {rendered:?}"
         );
         assert!(

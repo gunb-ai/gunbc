@@ -1,10 +1,17 @@
 module std.primitive_identity
 
 import std.algebra {
+  AlgebraFieldTemplate,
+  AlgebraProfile,
+  AlgebraTypeTemplate,
   CostShape,
+  FinitelySupportedFunctionProfile,
   ShapeIterateBody,
   ShapeLinearScan,
+  algebra_templates_for_profile,
+  ShapeSortBody,
   all_algebra_field_templates,
+  all_algebra_profiles,
   all_algebra_template_names,
 }
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_ref, decl_field_ref }
@@ -53,8 +60,160 @@ data primitive_interpreter_surface_unenumerable_finding_note: String = "Finding 
 data primitive_fold_list_spelling_fork_note: String = "Named finding — SPELLING FORK, not alias: contract/algebra carry fold while interpreter/emit carry fold_list. Distinct from alias groups (length/count/size are one eval_builtin_inner arm with three spellings — aliases sharing an arm cannot disagree). fold and fold_list are separate surfaces that CAN disagree; fold_list additionally lives on eval_call intercept before eval_builtin_inner, so it never reaches builtin_function_registry."
 
 // Named finding — first two-realizations-one-name specimen: lookup has eval_method_call short-circuit AND an algebra template arm; the short-circuit shadows the algebra arm. Better join specimen than index_by for SurfaceJoinsTwoIdentities / realization reconciliation. keys and values DO have algebra template arms — determinism undetectability is about the lens view of unqualified symbols, not absence of algebra arms.
+// WHY THE SIGNATURE IS A GROUNDING AND NOT A COPY. The semantic half of a primitive --
+// what it takes and what it returns -- already exists for part of the population, on
+// std.algebra AlgebraFieldTemplate.param_types. Landing a second param_types here would
+// answer "what does map take" from two sets of bytes, which is the section 3 fork this
+// carrier exists to remove. So the contract carries a KEY into the one authority, never
+// its contents, and every parameter fact is read back through primitive_signature.
+type PrimitiveSignatureGrounding
+  = GroundedInAlgebraTemplate { profile: AlgebraProfile }
+  | SignatureUngrounded { reason: NonEmptyStr }
+
+// WHY THE KEY CARRIES A PROFILE. Measured over the 90 AlgebraFieldTemplate rows: 23 of the
+// 59 distinct names carry more than one row, and several disagree in what they take --
+// get is [ReceiverSelf, NamedTemplate{Int}] on the List profile and [ReceiverSelf, ReceiverKey]
+// on the two Map-shaped profiles; join carries three signatures; member disagrees in ARITY OUTRIGHT
+// (2 on FinitePowerSet, 1 on PointwisePower). Those are receiver-polymorphic operations, not
+// duplicates: both readings of get are correct. A projection keyed on canonical_name alone
+// would therefore have to pick one silently, which is the same last-import-wins shape the
+// namespace lane already carries as a structural hole. The profile is what makes the
+// projection a function.
 type PrimitiveSemanticContract {
   canonical_name: NonEmptyStr
+  signature: PrimitiveSignatureGrounding
+}
+
+// The four states of asking a contract for its signature, kept apart on purpose. Absent and
+// Ambiguous are different failures with opposite repairs -- Absent means the named template
+// does not exist on that profile (a wrong key), Ambiguous means the profile did not
+// disambiguate (a key that is not specific enough) -- and NotGrounded is neither: it is a
+// contract that never claimed an algebra signature at all. Collapsing any pair of these into
+// one reason symbol is the not-applicable-versus-malformed conflation.
+type PrimitiveSignatureResolution
+  = SignatureResolved {
+      parameters: List<AlgebraTypeTemplate>
+      result: AlgebraTypeTemplate
+    }
+  | SignatureAmbiguousOnProfile {
+      canonical_name: NonEmptyStr
+      candidate_count: Int
+    }
+  | SignatureAbsentFromProfile { canonical_name: NonEmptyStr }
+  | SignatureNotGrounded { reason: NonEmptyStr }
+
+// The resolver takes its candidate rows as a PARAMETER rather than reaching for
+// algebra_templates_for_profile itself, and that is a correctness requirement, not a style
+// choice. SignatureAmbiguousOnProfile is unoccupied today -- measured, zero duplicate names
+// within any of the eight profiles -- but the mechanism that would occupy it is live, because
+// the template lists are hand-authored and nothing forbids a repeated row. An arm whose RED
+// cannot be produced is a decoration (DESIGN section 4b); threading the candidates through a
+// parameter is what keeps that RED authorable by a fixture, which is the boundary section 4b
+// says decides the question. Zero occupancy is a quiet guard, not a dead one.
+fn algebra_signature_from_candidates(
+  canonical_name: NonEmptyStr,
+  candidates: List<AlgebraFieldTemplate>
+) -> PrimitiveSignatureResolution {
+  let matches = candidates |> filter(t => t.name == canonical_name)
+  let n = matches |> count
+  if n == 0 {
+    SignatureAbsentFromProfile { canonical_name: canonical_name }
+  } else if n > 1 {
+    SignatureAmbiguousOnProfile { canonical_name: canonical_name, candidate_count: n }
+  } else {
+    match matches |> first {
+      Present { value: t } =>
+        SignatureResolved { parameters: t.param_types, result: t.return_type }
+      Absent =>
+        SignatureAbsentFromProfile { canonical_name: canonical_name }
+    }
+  }
+}
+
+// Total over every contract: a contract that never claimed an algebra signature answers
+// NotGrounded, which is a different state from a claim that failed to resolve.
+fn primitive_signature(contract: PrimitiveSemanticContract) -> PrimitiveSignatureResolution {
+  match contract.signature {
+    SignatureUngrounded { reason: r } => SignatureNotGrounded { reason: r }
+    GroundedInAlgebraTemplate { profile: p } =>
+      algebra_signature_from_candidates(
+        canonical_name: contract.canonical_name,
+        candidates: algebra_templates_for_profile(profile: p)
+      )
+  }
+}
+
+// ARITY IS DERIVED AND HAS NO FIELD. There is deliberately no arity: Int anywhere in this
+// module. A stored arity is a hand transcription that rots the first time the signature it
+// describes changes -- the decorative-roster failure gunbc.v1_interpreter_primitive_surface
+// arm_accepted_shape_gap_note refuses an Int for -- so arity exists only as the length of the
+// parameter list it is the length of. An unresolved signature therefore has NO arity rather
+// than a guessed one: the absent arm returns Absent, not zero, because a primitive taking no
+// arguments and a primitive whose signature did not resolve are different facts.
+fn primitive_arity(contract: PrimitiveSemanticContract) -> Int? {
+  match primitive_signature(contract: contract) {
+    SignatureResolved { parameters: ps, result: _ } => Present { value: ps |> count }
+    SignatureAmbiguousOnProfile { canonical_name: _, candidate_count: _ } => none
+    SignatureAbsentFromProfile { canonical_name: _ } => none
+    SignatureNotGrounded { reason: _ } => none
+  }
+}
+
+fn primitive_signature_is_resolved(contract: PrimitiveSemanticContract) -> Bool {
+  match primitive_signature(contract: contract) {
+    SignatureResolved { parameters: _, result: _ } => true
+    SignatureAmbiguousOnProfile { canonical_name: _, candidate_count: _ } => false
+    SignatureAbsentFromProfile { canonical_name: _ } => false
+    SignatureNotGrounded { reason: _ } => false
+  }
+}
+
+// THE POPULATION IS DERIVED, NOT ENUMERATED. Zero rows are authored here: the semantic
+// contracts ARE the algebra template rows, read at their own grain. That is what keeps this
+// surface off the parallel-hand-roster failure the sibling surfaces carry (see
+// primitive_d0_derived_surface_drift_audit_note) -- there is no second list to drift from,
+// because there is no second list. 87 rows over 59 distinct names; the gap is the 21
+// receiver-polymorphic names, and it is the reason the key is a pair.
+fn algebra_grounded_semantic_contracts() -> List<PrimitiveSemanticContract> {
+  all_algebra_profiles()
+    |> flat_map(profile =>
+        algebra_templates_for_profile(profile: profile)
+          |> map(t => PrimitiveSemanticContract {
+               canonical_name: t.name as NonEmptyStr,
+               signature: GroundedInAlgebraTemplate { profile: profile }
+             })
+      )
+}
+
+fn algebra_grounded_semantic_contract_count() -> Int {
+  algebra_grounded_semantic_contracts() |> count
+}
+
+// TOTALITY: every derived contract resolves to exactly one signature. This is the (a) claim,
+// and its RED is authorable as data at the fixture boundary -- a grounding naming a
+// (canonical_name, profile) pair carrying no template resolves Absent and reds this.
+fn algebra_grounded_signatures_all_resolve() -> Bool {
+  algebra_grounded_semantic_contracts() |> all(c => primitive_signature_is_resolved(contract: c))
+}
+
+// THE GROUNDINGS THAT CAN ACTUALLY BE WRONG. The fold above walks contracts DERIVED from the
+// template rows, so it can only fail if the derivation itself breaks -- it is nearly
+// tautological. The declared definitions are the opposite: their profile is authored BY HAND,
+// so a template that moves between profiles upstream leaves the hand-written key pointing at
+// nothing, and the resolution silently becomes Absent. That is not hypothetical -- it happened:
+// map_keys and map_values were relocated from PartialFunction to FinitelySupportedFunction
+// upstream, and nothing in this module noticed until a merge forced a recompile. This fold is
+// the guard that would have caught it, and it covers exactly the rows a human typed.
+fn declared_definition_groundings_all_dispose() -> Bool {
+  primitive_declared_definitions()
+    |> all(d =>
+        match primitive_signature(contract: d.semantic_contract) {
+          SignatureResolved { parameters: _, result: _ } => true
+          SignatureNotGrounded { reason: _ } => true
+          SignatureAmbiguousOnProfile { canonical_name: _, candidate_count: _ } => false
+          SignatureAbsentFromProfile { canonical_name: _ } => false
+        }
+      )
 }
 
 type PrimitiveDefinition {
@@ -147,32 +306,60 @@ fn primitive_identity_eq(left: PrimitiveIdentity, right: PrimitiveIdentity) -> B
 }
 
 data primitive_map_keys: PrimitiveIdentity = primitive_identity_slug(name: "map_keys")
+data primitive_sorted_map_keys: PrimitiveIdentity = primitive_identity_slug(name: "sorted_map_keys")
 data primitive_map_values: PrimitiveIdentity = primitive_identity_slug(name: "map_values")
 data primitive_fold_list: PrimitiveIdentity = primitive_identity_slug(name: "fold_list")
 data primitive_index_by: PrimitiveIdentity = primitive_identity_slug(name: "index_by")
 
 data primitive_map_keys_definition: PrimitiveDefinition = PrimitiveDefinition {
   identity: primitive_map_keys,
-  semantic_contract: PrimitiveSemanticContract { canonical_name: "map_keys" as NonEmptyStr },
+  semantic_contract: PrimitiveSemanticContract {
+    canonical_name: "map_keys" as NonEmptyStr,
+    signature: GroundedInAlgebraTemplate { profile: FinitelySupportedFunctionProfile },
+  },
+}
+
+data primitive_sorted_map_keys_definition: PrimitiveDefinition = PrimitiveDefinition {
+  identity: primitive_sorted_map_keys,
+  semantic_contract: PrimitiveSemanticContract {
+    canonical_name: "sorted_map_keys" as NonEmptyStr,
+    signature: SignatureUngrounded {
+      reason: "sorted_map_keys is typed by the v1 inference special case beside map_keys, but std.algebra declares no sorted_map_keys template. Grounding it on FinitelySupportedFunctionProfile would resolve SignatureAbsentFromProfile and would falsely claim an algebra surface that does not exist." as NonEmptyStr
+    },
+  },
 }
 
 data primitive_map_values_definition: PrimitiveDefinition = PrimitiveDefinition {
   identity: primitive_map_values,
-  semantic_contract: PrimitiveSemanticContract { canonical_name: "map_values" as NonEmptyStr },
+  semantic_contract: PrimitiveSemanticContract {
+    canonical_name: "map_values" as NonEmptyStr,
+    signature: GroundedInAlgebraTemplate { profile: FinitelySupportedFunctionProfile },
+  },
 }
 
 data primitive_fold_list_definition: PrimitiveDefinition = PrimitiveDefinition {
   identity: primitive_fold_list,
-  semantic_contract: PrimitiveSemanticContract { canonical_name: "fold_list" as NonEmptyStr },
+  semantic_contract: PrimitiveSemanticContract {
+    canonical_name: "fold_list" as NonEmptyStr,
+    signature: SignatureUngrounded {
+      reason: "spelling fork: algebra carries fold, interpreter and emit carry fold_list, and they are separate surfaces that can disagree -- see primitive_fold_list_spelling_fork_note. Grounding this name on the algebra surface would resolve Absent, and grounding it on the fold row would assert the fork away rather than record it." as NonEmptyStr
+    },
+  },
 }
 
 data primitive_index_by_definition: PrimitiveDefinition = PrimitiveDefinition {
   identity: primitive_index_by,
-  semantic_contract: PrimitiveSemanticContract { canonical_name: "index_by" as NonEmptyStr },
+  semantic_contract: PrimitiveSemanticContract {
+    canonical_name: "index_by" as NonEmptyStr,
+    signature: SignatureUngrounded {
+      reason: "no algebra template arm and no builtin registry row -- index_by is the named registry+algebra dual-absence specimen, so there is no existing signature to project and authoring one here would fabricate it." as NonEmptyStr
+    },
+  },
 }
 
 data primitive_d0_definitions: List<PrimitiveDefinition> = [
   primitive_map_keys_definition,
+  primitive_sorted_map_keys_definition,
   primitive_map_values_definition,
   primitive_fold_list_definition,
   primitive_index_by_definition,
@@ -210,6 +397,11 @@ data primitive_d0_surface_alias_bindings: List<PrimitiveSurfaceAliasBinding> = [
   },
   PrimitiveSurfaceAliasBinding {
     authority: BuiltinRegistry,
+    authored_symbol: "sorted_map_keys" as NonEmptyStr,
+    identity: primitive_sorted_map_keys,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: BuiltinRegistry,
     authored_symbol: "map_values" as NonEmptyStr,
     identity: primitive_map_values,
   },
@@ -240,6 +432,11 @@ data primitive_d0_surface_alias_bindings: List<PrimitiveSurfaceAliasBinding> = [
   },
   PrimitiveSurfaceAliasBinding {
     authority: AlgebraTemplate,
+    authored_symbol: "sorted_map_keys" as NonEmptyStr,
+    identity: primitive_sorted_map_keys,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: AlgebraTemplate,
     authored_symbol: "map_values" as NonEmptyStr,
     identity: primitive_map_values,
   },
@@ -252,6 +449,11 @@ data primitive_d0_surface_alias_bindings: List<PrimitiveSurfaceAliasBinding> = [
     authority: EmitHandler,
     authored_symbol: "map_keys" as NonEmptyStr,
     identity: primitive_map_keys,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: EmitHandler,
+    authored_symbol: "sorted_map_keys" as NonEmptyStr,
+    identity: primitive_sorted_map_keys,
   },
   PrimitiveSurfaceAliasBinding {
     authority: EmitHandler,
@@ -267,6 +469,11 @@ data primitive_d0_surface_alias_bindings: List<PrimitiveSurfaceAliasBinding> = [
     authority: InterpreterDispatch,
     authored_symbol: "map_keys" as NonEmptyStr,
     identity: primitive_map_keys,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: InterpreterDispatch,
+    authored_symbol: "sorted_map_keys" as NonEmptyStr,
+    identity: primitive_sorted_map_keys,
   },
   PrimitiveSurfaceAliasBinding {
     authority: InterpreterDispatch,
@@ -435,6 +642,18 @@ data primitive_map_keys_traversal: PrimitiveTraversalOrderFact = PrimitiveTraver
   order: HostUnspecifiedOrder,
 }
 
+data primitive_sorted_map_keys_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact {
+  primitive: primitive_sorted_map_keys,
+  order: CanonicalOrder,
+}
+
+// The traversal fact is the choice between the two key-list constructors at the
+// mandatory determinism gate: map_keys exposes host map order, while
+// sorted_map_keys sorts by K's declared Ord. Before the sorted primitive joined
+// PrimitiveIdentity, its green witness was acceptance by non-membership rather
+// than an answered order classification. This wall does not claim map_keys caused
+// the emitter's observed byte drift; the corpus sweep found no such path.
+
 data primitive_map_values_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact {
   primitive: primitive_map_values,
   order: HostUnspecifiedOrder,
@@ -452,6 +671,7 @@ data primitive_index_by_traversal: PrimitiveTraversalOrderFact = PrimitiveTraver
 
 data primitive_d0_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_map_keys_traversal,
+  primitive_sorted_map_keys_traversal,
   primitive_map_values_traversal,
   primitive_fold_list_traversal,
   primitive_index_by_traversal,
@@ -460,6 +680,11 @@ data primitive_d0_traversal_facts: List<PrimitiveTraversalOrderFact> = [
 data primitive_map_keys_cost: PrimitiveCostFact = PrimitiveCostFact {
   primitive: primitive_map_keys,
   cost: ShapeLinearScan,
+}
+
+data primitive_sorted_map_keys_cost: PrimitiveCostFact = PrimitiveCostFact {
+  primitive: primitive_sorted_map_keys,
+  cost: ShapeSortBody,
 }
 
 data primitive_map_values_cost: PrimitiveCostFact = PrimitiveCostFact {
@@ -766,7 +991,12 @@ data primitive_declared_population_note: String = "The declared semantic-primiti
 fn primitive_definition_of(name: String) -> PrimitiveDefinition {
   PrimitiveDefinition {
     identity: primitive_identity_slug(name: name),
-    semantic_contract: PrimitiveSemanticContract { canonical_name: name as NonEmptyStr },
+    semantic_contract: PrimitiveSemanticContract {
+      canonical_name: name as NonEmptyStr,
+      signature: SignatureUngrounded {
+        reason: "projection-target identity minted by canonical name alone; no algebra profile is known for it at this grain, and picking one would be a guess." as NonEmptyStr
+      },
+    },
   }
 }
 

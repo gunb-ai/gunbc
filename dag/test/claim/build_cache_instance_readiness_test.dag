@@ -1,0 +1,185 @@
+module test.claim.build_cache_instance_readiness
+
+import std.types { String, NonEmptyStr, Bool }
+import std.measure { gibibyte, gibibyte_to_byte_size }
+import product.placement_supply { HostIdentity }
+import extdeps.cache.sccache { sccache_installed_binary_path }
+import gunbc.host_layout { CompilePoolSliceDeclared, gunbc_managed_compile_pool_slice }
+import gunbc.build_cache_instance {
+  BuildCacheInstance, ProcessIdentity,
+  EndpointOwnerObserved, OwnerInSystemdUnit,
+  BuildCacheStorageObserved, BuildCacheStorageObservationUnavailable,
+  BuildCacheStorageRootConfigured,
+  BuildCacheCapacityObserved, BuildCacheCapacityConfigured,
+  ci_cache_instance, session_cache_instance,
+}
+import gunbc.runner_activation { HostCompilePoolReady }
+import gunbc.build_cache_instance_readiness {
+  derive_build_cache_instance_readiness,
+  BuildCacheInstanceObservedReady, BuildCacheInstanceObservedNotReady,
+  BuildCacheInstanceObservationUnavailable,
+  CacheOwnerOutsidePool, CacheCapacityIntentUndeclared,
+  CacheStorageObservationUnavailable, CacheObservationSubjectMismatch,
+}
+
+fn owner_fixture() -> ProcessIdentity {
+  ProcessIdentity {
+    boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as NonEmptyStr,
+    pid: 3975946,
+    start_time: "79870020" as NonEmptyStr,
+  }
+}
+
+fn declared_session_instance() -> BuildCacheInstance {
+  let base = session_cache_instance(host: "srv1")
+  BuildCacheInstance {
+    identity: base.identity,
+    implementation: base.implementation,
+    endpoint: base.endpoint,
+    intended_unit: base.intended_unit,
+    intended_principal: base.intended_principal,
+    intended_storage: base.intended_storage,
+    intended_capacity: base.intended_capacity,
+    intended_compile_pool: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+  }
+}
+
+fn declared_ci_instance() -> BuildCacheInstance {
+  let base = ci_cache_instance(host: "srv1")
+  BuildCacheInstance {
+    identity: base.identity,
+    implementation: base.implementation,
+    endpoint: base.endpoint,
+    intended_unit: base.intended_unit,
+    intended_principal: base.intended_principal,
+    intended_storage: base.intended_storage,
+    intended_capacity: base.intended_capacity,
+    intended_compile_pool: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+  }
+}
+
+fn ready_pool() -> HostCompilePoolReady {
+  HostCompilePoolReady {
+    host: "srv1" as HostIdentity,
+    slice_unit: gunbc_managed_compile_pool_slice,
+    pool_declared: true,
+    pool_observed: true,
+  }
+}
+
+fn endpoint_for(instance: BuildCacheInstance, cgroup: NonEmptyStr) -> BuildCacheEndpointObservation {
+  EndpointOwnerObserved {
+    instance: instance,
+    owner: owner_fixture(),
+    executable: sccache_installed_binary_path as NonEmptyStr,
+    principal: instance.intended_principal,
+    owner_context: OwnerInSystemdUnit { unit: instance.intended_unit, observed_cgroup: cgroup },
+    memory_limits: none,
+    memory_events: none,
+  }
+}
+
+fn storage_for(instance: BuildCacheInstance) -> BuildCacheStorageObservation {
+  BuildCacheStorageObserved {
+    instance: instance,
+    owner: owner_fixture(),
+    configuration: BuildCacheStorageRootConfigured { root: instance.intended_storage },
+  }
+}
+
+fn capacity_for(instance: BuildCacheInstance) -> BuildCacheCapacityObservation {
+  BuildCacheCapacityObserved {
+    instance: instance,
+    owner: owner_fixture(),
+    configuration: BuildCacheCapacityConfigured { capacity: gibibyte_to_byte_size(g: gibibyte(50)) },
+  }
+}
+
+test fn exact_observations_mint_the_proof_receipt() -> Bool {
+  let instance = declared_session_instance()
+  match derive_build_cache_instance_readiness(
+    endpoint: endpoint_for(instance: instance, cgroup: "/gunbc-compile-pool.slice/gunbc-build-cache-session.service" as NonEmptyStr),
+    storage: storage_for(instance: instance),
+    capacity: capacity_for(instance: instance),
+    pool: ready_pool(),
+  ) {
+    BuildCacheInstanceObservedReady { receipt: r } =>
+      r.instance == instance && r.owner == owner_fixture()
+    BuildCacheInstanceObservedNotReady { reason: _ } => false
+    BuildCacheInstanceObservationUnavailable { reason: _ } => false
+  }
+}
+
+test fn a_ready_slice_beside_the_server_does_not_verify_nesting() -> Bool {
+  let instance = declared_session_instance()
+  match derive_build_cache_instance_readiness(
+    endpoint: endpoint_for(instance: instance, cgroup: "/system.slice/gunbc-build-cache-session.service" as NonEmptyStr),
+    storage: storage_for(instance: instance),
+    capacity: capacity_for(instance: instance),
+    pool: ready_pool(),
+  ) {
+    BuildCacheInstanceObservedNotReady { reason: CacheOwnerOutsidePool } => true
+    BuildCacheInstanceObservedReady { receipt: _ } => false
+    BuildCacheInstanceObservedNotReady { reason: _ } => false
+    BuildCacheInstanceObservationUnavailable { reason: _ } => false
+  }
+}
+
+test fn unavailable_dominates_a_positive_mismatch() -> Bool {
+  let instance = declared_session_instance()
+  match derive_build_cache_instance_readiness(
+    endpoint: endpoint_for(instance: instance, cgroup: "/system.slice/wrong.service" as NonEmptyStr),
+    storage: BuildCacheStorageObservationUnavailable {
+      instance: instance,
+      owner: owner_fixture(),
+      detail: "/proc owner environment read failed" as NonEmptyStr,
+    },
+    capacity: capacity_for(instance: instance),
+    pool: ready_pool(),
+  ) {
+    BuildCacheInstanceObservationUnavailable { reason: CacheStorageObservationUnavailable { detail: d } } =>
+      (d as String).contains("environment")
+    BuildCacheInstanceObservedReady { receipt: _ } => false
+    BuildCacheInstanceObservedNotReady { reason: _ } => false
+    BuildCacheInstanceObservationUnavailable { reason: _ } => false
+  }
+}
+
+test fn foreign_unavailable_observation_cannot_classify_this_instance() -> Bool {
+  let instance = declared_session_instance()
+  match derive_build_cache_instance_readiness(
+    endpoint: endpoint_for(instance: instance, cgroup: "/gunbc-compile-pool.slice/gunbc-build-cache-session.service" as NonEmptyStr),
+    storage: BuildCacheStorageObservationUnavailable {
+      instance: declared_ci_instance(),
+      owner: owner_fixture(),
+      detail: "/proc owner environment read failed" as NonEmptyStr,
+    },
+    capacity: capacity_for(instance: instance),
+    pool: ready_pool(),
+  ) {
+    BuildCacheInstanceObservedNotReady { reason: CacheObservationSubjectMismatch { axis: a } } =>
+      (a as String) == "storage"
+    BuildCacheInstanceObservedReady { receipt: _ } => false
+    BuildCacheInstanceObservedNotReady { reason: _ } => false
+    BuildCacheInstanceObservationUnavailable { reason: _ } => false
+  }
+}
+
+test fn absent_capacity_intent_is_not_vacuously_verified() -> Bool {
+  let instance = declared_ci_instance()
+  match derive_build_cache_instance_readiness(
+    endpoint: endpoint_for(instance: instance, cgroup: "/gunbc-compile-pool.slice/gunbc-build-cache-ci.service" as NonEmptyStr),
+    storage: storage_for(instance: instance),
+    capacity: BuildCacheCapacityObserved {
+      instance: instance,
+      owner: owner_fixture(),
+      configuration: BuildCacheCapacityConfigured { capacity: gibibyte_to_byte_size(g: gibibyte(10)) },
+    },
+    pool: ready_pool(),
+  ) {
+    BuildCacheInstanceObservedNotReady { reason: CacheCapacityIntentUndeclared } => true
+    BuildCacheInstanceObservedReady { receipt: _ } => false
+    BuildCacheInstanceObservedNotReady { reason: _ } => false
+    BuildCacheInstanceObservationUnavailable { reason: _ } => false
+  }
+}

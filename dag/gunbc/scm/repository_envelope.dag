@@ -34,24 +34,23 @@ import extdeps.languages.json.emit {
   json_object,
   json_string,
 }
-import extdeps.languages.json.parse {
-  JsonMemberFound,
-  JsonMemberAbsent,
-  JsonMemberDuplicated,
-  JsonMemberNotAnObject,
-  json_object_unique_member,
-}
 
+import gunbc.scm.json_member {
+  MemberReadRefusal,
+  MemberReadWrongShape,
+  MemberValue,
+  MemberLookupFailed,
+  MemberString,
+  MemberArray,
+  MemberFailed,
+  read_member,
+  read_member_value,
+  read_string_member,
+}
 import gunbc.scm.object_store { ObjectId, ObjectStore, empty_store, object_id_eq }
 import gunbc.scm.commit_closure { uncontained_targets }
 import gunbc.scm.commit_closure_json_v2 {
   ClosureDocRefusal,
-  ClosureDocMemberMissing,
-  ClosureDocMemberDuplicated,
-  ClosureDocMemberWrongShape,
-  ClosureDocNotAnObject,
-  ClosureDocFormatUnrecognized,
-  ClosureDocRootUnresolved,
   ClosureDocEdgeTargetUnresolved,
   DecodeAcc,
   DecodePositions,
@@ -68,11 +67,6 @@ import gunbc.scm.commit_closure_json_v2 {
   TargetDecode,
   TargetDecoded,
   TargetDecodeFailed,
-  read_string_member,
-  MemberString,
-  MemberArray,
-  MemberFailed,
-  read_member,
 }
 
 // THE ENCODING IS NOT CANONICAL WITH RESPECT TO INSERTION HISTORY, and that is declared here rather
@@ -144,8 +138,19 @@ type RepositoryEnvelope {
 // An ObjectId and a wire position are not one type because both render as text. On the encode side
 // the domain type is now carried directly, so the identity no longer round-trips through a string
 // nobody can resolve back.
+// THE ENCODE DOMAIN CARRIES ONLY WHAT ENCODING CAN PRODUCE, and the arm this replaces is the same
+// dishonest-domain shape the codec carried one layer down.
+//
+// RepositoryEncodeClosureDocRefusal wrapped the WHOLE ClosureDocRefusal decode population -- fifteen
+// causes, of which encoding can produce exactly one. A reader could not tell from the type which of
+// them were real, and a consumer matching it had to handle format-tag and unknown-connective causes
+// that no encode path can raise. The type was answering for a domain it does not own.
+//
+// The single producible cause is an uncontained target found in the store being written, so that is
+// the arm. It carries ObjectId rather than a rendered key, which also closes a string round-trip the
+// two sibling arms below never had: an identity left as text is one nobody can resolve back.
 type RepositoryEncodeRefusal
-  = RepositoryEncodeClosureDocRefusal { cause: ClosureDocRefusal }
+  = RepositoryEncodeUncontainedTarget { target: ObjectId }
   | RepositoryCommitRootNotInStore { root: ObjectId }
   | RepositoryCheckoutNotInCommits { selected: ObjectId }
 
@@ -155,6 +160,8 @@ type RepositoryEncodeRefusal
 // reader finds a declared gap instead of re-deriving it.
 type RepositoryDecodeRefusal
   = RepositoryDecodeClosureDocRefusal { cause: ClosureDocRefusal }
+  | RepositoryMemberReadRefused { cause: MemberReadRefusal }
+  | RepositoryFormatUnrecognized { found: String }
   | RepositoryIdentityRuleUnrecognized { found: String }
   | RepositoryCommitRootReferenceUnresolved { reference: String }
   | RepositoryCheckoutReferenceUnresolved { reference: String }
@@ -350,20 +357,28 @@ type RepositoryEncodeOutcome
 // and admitting it here would widen the change beyond what was decided. When a repository-grain
 // partial write is actually wanted, it takes an admission exactly as the closure encoder does; until
 // then this refusal stands rather than being loosened by proximity.
-fn first_uncontained_target(store: ObjectStore) -> String? {
+// AN uncontained target, not THE FIRST one, and the name says only what the evidence establishes.
+//
+// This returns whichever member the fold reaches first, but the refusal needs one ACTIONABLE EXAMPLE
+// and nothing downstream depends on which. Naming it `first_` promised a stable ordering the witness
+// does not check -- and could not cheaply check, since with a single uncontained object every member
+// is also the first. Pinning order here would additionally freeze an incidental traversal order into
+// the interface, which a later keyed or canonical representation of uncontained_targets should not
+// be forced to preserve.
+fn an_uncontained_target(store: ObjectStore) -> ObjectId? {
   fold(uncontained_targets(store: store), init: none, f: fn(acc, id) {
     match acc {
       Present { value: _ } => acc
-      Absent => Present { value: object_id_key(identity: id) }
+      Absent => Present { value: id }
     }
   })
 }
 
 fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcome {
   let acc = encode_object_table(store: repo.store)
-  match first_uncontained_target(store: repo.store) {
-    Present { value: reference } =>
-      RepositoryEncodeRefused { cause: RepositoryEncodeClosureDocRefusal { cause: ClosureDocEdgeTargetUnresolved { reference: reference } } }
+  match an_uncontained_target(store: repo.store) {
+    Present { value: target } =>
+      RepositoryEncodeRefused { cause: RepositoryEncodeUncontainedTarget { target: target } }
     Absent =>
       match unresolved_commit_root(acc: acc, commits: repo.commits) {
         Present { value: root } =>
@@ -493,11 +508,11 @@ fn decode_commit_members(positions: DecodePositions, acc: CommitDecodeAcc, value
                     refusal: acc.refusal,
                   }
                 _ =>
-                  CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryDecodeClosureDocRefusal { cause: ClosureDocMemberWrongShape { key: "message" } } } }
+                  CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "message" } } } }
               }
           }
         _ =>
-          CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryDecodeClosureDocRefusal { cause: ClosureDocMemberWrongShape { key: "root" } } } }
+          CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "root" } } } }
       }
   }
 }
@@ -526,14 +541,14 @@ fn repository_format_of(tag: String) -> RepositoryFormat {
 
 fn decode_repository(v: JsonValue) -> RepositoryDecodeOutcome {
   match read_string_member(v: v, key: "format") {
-    MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryDecodeClosureDocRefusal { cause: c } }
+    MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
     MemberString { value: format } =>
       match repository_format_of(tag: format) {
         RepositoryFormatUnknown { found: f } =>
-          RepositoryDecodeRefused { cause: RepositoryDecodeClosureDocRefusal { cause: ClosureDocFormatUnrecognized { found: f } } }
+          RepositoryDecodeRefused { cause: RepositoryFormatUnrecognized { found: f } }
         RepositoryFormatV1 => decode_repository_v1(v: v)
       }
-    _ => RepositoryDecodeRefused { cause: RepositoryDecodeClosureDocRefusal { cause: ClosureDocMemberWrongShape { key: "format" } } }
+    _ => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "format" } } }
   }
 }
 
@@ -541,7 +556,7 @@ fn decode_repository(v: JsonValue) -> RepositoryDecodeOutcome {
 // exists anywhere.
 fn decode_repository_v1(v: JsonValue) -> RepositoryDecodeOutcome {
   match read_string_member(v: v, key: "identity_rule") {
-    MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryDecodeClosureDocRefusal { cause: c } }
+    MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
     MemberString { value: rule } =>
       if rule != repository_node_identity_rule_tag {
         RepositoryDecodeRefused { cause: RepositoryIdentityRuleUnrecognized { found: rule } }
@@ -555,13 +570,13 @@ fn decode_repository_v1(v: JsonValue) -> RepositoryDecodeOutcome {
           Absent => decode_repository_body(v: v)
         }
       }
-    _ => RepositoryDecodeRefused { cause: RepositoryDecodeClosureDocRefusal { cause: ClosureDocMemberWrongShape { key: "identity_rule" } } }
+    _ => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "identity_rule" } } }
   }
 }
 
 fn decode_repository_body(v: JsonValue) -> RepositoryDecodeOutcome {
   match read_member(v: v, key: "objects") {
-    MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryDecodeClosureDocRefusal { cause: c } }
+    MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
     MemberArray { elements: object_values } =>
       match decode_object_table(object_values: object_values) {
         DecodeAcc { store: store, positions: positions, next: _, refusal: table_refusal } =>
@@ -569,7 +584,7 @@ fn decode_repository_body(v: JsonValue) -> RepositoryDecodeOutcome {
             Present { value: c } => RepositoryDecodeRefused { cause: RepositoryDecodeClosureDocRefusal { cause: c } }
             Absent =>
               match read_member(v: v, key: "commits") {
-                MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryDecodeClosureDocRefusal { cause: c } }
+                MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
                 MemberArray { elements: commit_values } =>
                   match fold(
                     commit_values,
@@ -585,11 +600,11 @@ fn decode_repository_body(v: JsonValue) -> RepositoryDecodeOutcome {
                           )
                       }
                   }
-                _ => RepositoryDecodeRefused { cause: RepositoryDecodeClosureDocRefusal { cause: ClosureDocMemberWrongShape { key: "commits" } } }
+                _ => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "commits" } } }
               }
           }
       }
-    _ => RepositoryDecodeRefused { cause: RepositoryDecodeClosureDocRefusal { cause: ClosureDocMemberWrongShape { key: "objects" } } }
+    _ => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "objects" } } }
   }
 }
 
@@ -603,14 +618,9 @@ fn decode_repository_checkout(
   positions: DecodePositions,
   commits: List<RepositoryCommit>
 ) -> RepositoryDecodeOutcome {
-  match json_object_unique_member(v: v, key: "checked_out") {
-    JsonMemberAbsent =>
-      RepositoryDecodeRefused { cause: RepositoryDecodeClosureDocRefusal { cause: ClosureDocMemberMissing { key: "checked_out" } } }
-    JsonMemberDuplicated { count: _ } =>
-      RepositoryDecodeRefused { cause: RepositoryDecodeClosureDocRefusal { cause: ClosureDocMemberDuplicated { key: "checked_out" } } }
-    JsonMemberNotAnObject =>
-      RepositoryDecodeRefused { cause: RepositoryDecodeClosureDocRefusal { cause: ClosureDocNotAnObject } }
-    JsonMemberFound { value: found } =>
+  match read_member_value(v: v, key: "checked_out") {
+    MemberLookupFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
+    MemberValue { value: found } =>
       match found {
         JsonNull =>
           RepositoryDecoded {
@@ -628,7 +638,7 @@ fn decode_repository_checkout(
               }
           }
         _ =>
-          RepositoryDecodeRefused { cause: RepositoryDecodeClosureDocRefusal { cause: ClosureDocMemberWrongShape { key: "checked_out" } } }
+          RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "checked_out" } } }
       }
   }
 }

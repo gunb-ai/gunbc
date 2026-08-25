@@ -19,7 +19,7 @@ import v1.std.core {
   MatchBoundBinding, CallSemantics, PlainCallSemantics, LookupCallSemantics, FunctionValueCallSemantics, MethodSemantics,
   PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, MatchPattern,
   field_binding_pattern, TextFile, ErrorNode, make_error_node, InternalError,
-  UnlistedImportUse, SourceSpan, resource_use_resource, UnaryOpKind, StringPart, Text,
+  UnlistedImportUse, AmbiguousAnonymousRecordLiteral, SourceSpan, resource_use_resource, UnaryOpKind, StringPart, Text,
   Interpolation, transport_base_url, transport_has_auth, transport_auth_token,
   transport_auth_header_name, transport_headers, transport_env, transport_method,
   transport_path_template, transport_query, transport_request_body, transport_stdin,
@@ -2566,6 +2566,10 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs: workflow_funcs)
   if workflow_default_diags |> count > 0 {
     return EmitResult { files: [], diagnostics: workflow_default_diags }
+  }
+  let anonymous_record_diags = typed.modules |> flat_map(tm => tm.items |> flat_map(item => ambiguous_anonymous_record_literal_diagnostics(n: item, type_summaries: emit_info.type_summaries, source_indices: tm.type_env.source_indices, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))))
+  if anonymous_record_diags |> count > 0 {
+    return EmitResult { files: [], diagnostics: anonymous_record_diags }
   }
   let svc_module_map = typed.modules |> fold(init: empty_map(), f: (acc, tm) =>
     let svc_items = tm.items |> filter(item => is_service_item(item: item))
@@ -7918,6 +7922,22 @@ fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> Bool {
   map_contains_key(rt_ref_map_functions(), function_name)
 }
 
+// The Absent arm returns function_name UNCHANGED, and that is the identity case,
+// not a fallback for an unknown name. rt_bridge_function_names is derived by
+// filter(f => f.name != f.bridge_name) over rt_function_registry, so it holds
+// ONLY the rows that rename; a miss means this bridge's v1_rt symbol is spelled
+// exactly like its .dag name, which is true of most of the registry.
+// The totality of the Absent arm DEPENDS on that derivation: if
+// rt_bridge_function_names ever becomes hand-authored rather than derived from
+// rt_function_registry, a miss stops meaning "spelled the same" and this arm
+// becomes a fabrication, so that change invalidates this argument.
+// An unknown name cannot reach either use of the result, which a reader of this
+// function alone cannot see: emit_typed_call consumes runtime_name only inside
+// `if is_rt`, and is_rt requires map_contains_key(rt_functions(), func); and
+// emit_rust_generic_method_call computes bridge_name only in the else of a guard
+// that already refuses when rt_functions() misses. Registry-vs-derivation
+// agreement is held by test.claim.rt_bridge_registry_witness_test
+// rt_bridge_name_agrees_with_registry_on_every_row.
 fn rust_runtime_bridge_name(function_name: String) -> String {
   match map_get(rt_bridge_function_names(), function_name) {
     Present { value: runtime_name } => runtime_name
@@ -10128,14 +10148,30 @@ fn struct_candidates_by_field_names(field_names: List<String>, type_summaries: M
   )
 }
 
-fn find_struct_name_by_fields(field_names: List<String>, field_type_hints: Map<String, String>, type_summaries: Map<String, TypeSummary>) -> String? {
+// gunbc dashboard node://adhoc-e47d0143-6a2. An anonymous record literal has no authored
+// nominal identity, so the Rust emitter may name a struct only when the literal's field shape
+// (and, when necessary, its inferred field-type hints) identifies exactly one TypeSummary. The
+// old find_struct_name_by_fields fallback sorted multiple shape candidates alphabetically and
+// selected the first whenever hints left zero OR multiple candidates. That made declaration
+// spelling/order decide the runtime type.
+//
+// anonymous_record_struct_candidates is the single candidate authority: an unambiguous typed
+// refinement replaces the broader shape set; otherwise the full shape ambiguity survives.
+// Consumers may project a name only from a singleton.
+// ambiguous_anonymous_record_literal_diagnostics walks the typed module before rendering and
+// returns one located AmbiguousAnonymousRecordLiteral ErrorNode per ambiguous construction
+// through EmitResult.diagnostics, so the deficit is counted at the emitter boundary and emission
+// refuses before target text exists. emit_typed_record_lit's compile_error! arm remains a
+// defensive construction wall if a future caller bypasses emit_rust's diagnostic fold; zero
+// candidates retain the structural tuple realization.
+//
+// RUNG: mechanically preventable at the v1 emitter boundary, not structurally impossible in the
+// source language; the target compiler is never counted as part of this guarantee.
+
+fn anonymous_record_struct_candidates(field_names: List<String>, field_type_hints: Map<String, String>, type_summaries: Map<String, TypeSummary>) -> List<TypeSummary> {
   let candidates = struct_candidates_by_field_names(field_names: field_names, type_summaries: type_summaries)
-  if candidates |> count <= 1 {
-    match candidates |> first {
-      Present { value: s } => Present { value: s.name }
-      Absent => none
-    }
-  } else {
+  if candidates |> count <= 1 { candidates }
+  else {
     let typed_candidates = candidates |> filter(cand =>
       sorted_map_keys(field_type_hints) |> all(fname =>
         match map_get(field_type_hints, fname) {
@@ -10148,18 +10184,49 @@ fn find_struct_name_by_fields(field_names: List<String>, field_type_hints: Map<S
         }
       )
     )
-    if typed_candidates |> count == 1 {
-      match typed_candidates |> first {
-        Present { value: s } => Present { value: s.name }
-        Absent => none
-      }
-    } else {
-      match candidates |> sort_by(c => c.name) |> first {
-        Present { value: s } => Present { value: s.name }
-        Absent => none
-      }
-    }
+    if typed_candidates |> count == 1 { typed_candidates } else { candidates }
   }
+}
+
+fn ambiguous_anonymous_record_literal_diagnostics(n: Node, type_summaries: Map<String, TypeSummary>, source_indices: Map<String, NewlineIndex>, module_name: String) -> List<ErrorNode> {
+  let current = match n.expr_data {
+    ExprRecordLit { parent_enum: _ } =>
+      match record_lit_type_name_at(texpr: n, source_indices: source_indices) {
+        Present { value: _ } => []
+        Absent =>
+          let resolved = resolved_type(n: n)
+          if n.children |> count > 1 && is_product_type(n: resolved) && resolved.ident_span == none {
+            let field_names = n.children |> map(f => field_init_node_name_at(n: f, source_indices: source_indices))
+            let field_type_hints = record_lit_field_type_hints(n: n, source_indices: source_indices)
+            let candidates = anonymous_record_struct_candidates(field_names: field_names, field_type_hints: field_type_hints, type_summaries: type_summaries)
+            if candidates |> count > 1 {
+              let candidate_names = candidates |> map(c => c.name) |> sort_by(name => name)
+              [make_error_node(diagnostic: AmbiguousAnonymousRecordLiteral { candidates: candidate_names, span: n.span }, module_name: module_name)]
+            } else { [] }
+          } else { [] }
+      }
+    _ => []
+  }
+  let direct = concat(n.children |> flat_map(c => ambiguous_anonymous_record_literal_diagnostics(n: c, type_summaries: type_summaries, source_indices: source_indices, module_name: module_name)), n.params |> flat_map(c => ambiguous_anonymous_record_literal_diagnostics(n: c, type_summaries: type_summaries, source_indices: source_indices, module_name: module_name)))
+  let indirect = concat(n.uses |> flat_map(c => ambiguous_anonymous_record_literal_diagnostics(n: c, type_summaries: type_summaries, source_indices: source_indices, module_name: module_name)), n.properties |> flat_map(c => ambiguous_anonymous_record_literal_diagnostics(n: c, type_summaries: type_summaries, source_indices: source_indices, module_name: module_name)))
+  let optional_nodes = concat(
+    match n.body { Present { value: b } => ambiguous_anonymous_record_literal_diagnostics(n: b, type_summaries: type_summaries, source_indices: source_indices, module_name: module_name)  Absent => [] },
+    concat(
+      match n.transport { Present { value: t } => ambiguous_anonymous_record_literal_diagnostics(n: t, type_summaries: type_summaries, source_indices: source_indices, module_name: module_name)  Absent => [] },
+      match n.type_annotation { Present { value: t } => ambiguous_anonymous_record_literal_diagnostics(n: t, type_summaries: type_summaries, source_indices: source_indices, module_name: module_name)  Absent => [] }
+    )
+  )
+  concat(current, concat(direct, concat(indirect, optional_nodes)))
+}
+
+fn find_struct_name_by_fields(field_names: List<String>, field_type_hints: Map<String, String>, type_summaries: Map<String, TypeSummary>) -> String? {
+  let candidates = anonymous_record_struct_candidates(field_names: field_names, field_type_hints: field_type_hints, type_summaries: type_summaries)
+  if candidates |> count == 1 {
+    match candidates |> first {
+      Present { value: s } => Present { value: s.name }
+      Absent => none
+    }
+  } else { none }
 }
 
 fn find_unique_struct_name_by_fields(field_names: List<String>, type_summaries: Map<String, TypeSummary>) -> String? {
@@ -10241,10 +10308,15 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
                 rust_shared_wrap_ctor(inner_expr: struct_lit)
               } else { struct_lit }
             Absent =>
-              let vals = fields |> map(f =>
-                emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-              )
-              concat("(", vals |> join(separator: ", "), ")")
+              let resolution_candidates = anonymous_record_struct_candidates(field_names: lit_field_names, field_type_hints: field_type_hints, type_summaries: emit_info.type_summaries)
+              if resolution_candidates |> count > 1 {
+                "compile_error!(\"ambiguous anonymous record literal shape; add a nominal type\")"
+              } else {
+                let vals = fields |> map(f =>
+                  emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+                )
+                concat("(", vals |> join(separator: ", "), ")")
+              }
           }
         }
       } else {
@@ -11849,9 +11921,31 @@ fn emit_capability_method(cap_node: Node, shared_types: Set<String>, env: TypeEn
   concat(items.async_prefix, items.func_keyword, " ", emit_ident(name: authored_name(env: env, node: cap_node), target: Rust), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
 }
 
+// A CALL IS A REFERENCE TO ANOTHER DECLARATION, SPELLED WITH ARGUMENTS.
+//
+// This predicate answers one question -- does this `data` initializer reference another
+// declaration -- and `emit_data_def` uses it to choose between the JSON serializer (which can
+// render only literals) and `emit_typed_expr` (which can render anything). An `ExprVar` was
+// already answered `true` for exactly the right reason: a bare name is a reference. An
+// `ExprCall` is the same reference with an argument list attached, and it fell through `_` to
+// `false`, sending `data d: R = mk(..)` to a serializer that cannot represent a call. The
+// serializer then refused with `unsupported mock expression`, so the failure surfaced one layer
+// below the judgment that caused it.
+//
+// The match was TOTAL AT THE LEVEL EXAMINED AND BLIND ONE LEVEL DOWN: exhaustive over
+// `expr_data`, no arm missing, nothing for a reviewer or a wildcard-free lens to catch -- the
+// `_` carried the payload. It was wrong by this function's own definition, not incomplete.
+//
+// WHY NOTHING THAT WORKS TODAY MOVES: the JSON branch is guarded by record-shaped-type AND
+// no-cross-refs, and every row currently on it emitted successfully, which by construction means
+// its initializer holds no call. Measured at the time of the repair: 34 rows on the JSON path
+// across the seed, none affected; 9 rows refused, all of them `PrimitiveIdentity` in
+// `std.primitive_projection` -- the first rows in the seed closure's history to satisfy both
+// conditions at once, which is why the defect stood this long unasked.
 fn data_value_has_cross_refs(value: Node) -> Bool {
   match value.expr_data {
     ExprVar { binding_kind: _ } => true
+    ExprCall { call_semantics: _, descent_evidence: _ } => true
     ExprListLit => value.children |> any(c => data_value_has_cross_refs(value: c))
     ExprRecordLit { parent_enum: _ } =>
       value.children |> any(f => data_value_has_cross_refs(value: field_init_node_value(n: f)))

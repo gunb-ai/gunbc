@@ -73,14 +73,13 @@ import gunbc.scm.checkout {
   CheckedOut,
   CheckoutRefused,
 }
+import gunbc.scm.commit_closure { CommitClosure }
 import gunbc.scm.commit_closure_json_v2 {
   ClosureDocLoadOutcome,
   ClosureDocLoaded,
   ClosureDocRefused,
   ClosureDocRefusal,
   ClosureDocFormatUnrecognized,
-  ClosureDocMemberMissing,
-  ClosureDocMemberDuplicated,
   ClosureDocEdgeTargetUnresolved,
   ClosureDocRootUnresolved,
   ClosureDocUnknownConnectiveTag,
@@ -89,7 +88,7 @@ import gunbc.scm.commit_closure_json_v2 {
   ClosureDocEncodeOutcome,
   ClosureDocEncoded,
   ClosureDocEncodeRefused,
-  encode_closure_document_checked,
+  encode_complete_closure_document,
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -495,14 +494,14 @@ fn scm_image_orphan_parent_store() -> ScmImagePut {
 test fn scm_image_a_root_absent_from_the_store_refuses_to_encode() -> Bool {
   let full = scm_image_put(store: empty_store(), n: closure_doc_program())
   scm_image_encode_refused(
-    outcome: encode_closure_document_checked(store: empty_store(), root: full.identity, admission: none)
+    outcome: encode_complete_closure_document(closure: CommitClosure { store: empty_store(), root: full.identity })
   )
 }
 
 test fn scm_image_a_root_whose_child_is_absent_refuses_to_encode() -> Bool {
   let orphan = scm_image_orphan_parent_store()
   scm_image_encode_refused(
-    outcome: encode_closure_document_checked(store: orphan.store, root: orphan.identity, admission: none)
+    outcome: encode_complete_closure_document(closure: CommitClosure { store: orphan.store, root: orphan.identity })
   )
 }
 
@@ -510,7 +509,7 @@ test fn scm_image_a_root_whose_child_is_absent_refuses_to_encode() -> Bool {
 // everything, and DESIGN section 4b requires the accepted arm alongside the discriminating red.
 test fn scm_image_a_complete_closure_encodes() -> Bool {
   let full = scm_image_put(store: empty_store(), n: closure_doc_program())
-  match encode_closure_document_checked(store: full.store, root: full.identity, admission: none) {
+  match encode_complete_closure_document(closure: CommitClosure { store: full.store, root: full.identity }) {
     ClosureDocEncoded { value: v } =>
       serialize_json(v: v) == serialize_json(v: encode_closure_document(store: full.store, root: full.identity))
     ClosureDocEncodeRefused { cause: _ } => false
@@ -654,13 +653,6 @@ fn scm_image_atom_object_members(kind_members: List<JsonKeyValue>, extra: List<J
     ],
     extra
   )
-}
-
-fn scm_image_refused(loaded: ClosureDocLoadOutcome) -> Bool {
-  match loaded {
-    ClosureDocRefused { cause: _ } => true
-    ClosureDocLoaded { store: _, root: _ } => false
-  }
 }
 
 test fn scm_image_an_unknown_envelope_member_refuses() -> Bool {
