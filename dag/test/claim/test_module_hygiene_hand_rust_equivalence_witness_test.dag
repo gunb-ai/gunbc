@@ -6,7 +6,6 @@ import gunbc.test_module_hygiene {
   expand_explicit_pairs_or_refuse,
   failure_receipt_companion,
 }
-import v2.std.optional { Present, Absent }
 import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -46,32 +45,26 @@ test fn test_module_hygiene_file_grain_expand_refuses_empty_test_decls() -> Bool
 }
 
 test fn test_module_hygiene_failure_receipt_companion_derives_suffix() -> Bool {
-  match failure_receipt_companion(function: "witness_holds") {
-    Present { value: companion } => companion == "witness_failure_receipt"
-    Absent => false
-  }
+  failure_receipt_companion(function: "witness_holds") == "witness_failure_receipt"
+    && failure_receipt_companion(function: "witness_passes") == "witness_failure_receipt"
 }
 
-test fn test_module_hygiene_failure_receipt_companion_absent_on_non_witness() -> Bool {
-  match failure_receipt_companion(function: "ordinary_fn") {
-    Absent => true
-    Present { value: _ } => false
-  }
+// THE DISCRIMINATING RED FOR THE 2026-08-24 TOTALITY CHANGE, and the reason this row is
+// rewritten rather than deleted. It used to assert that a name carrying neither suffix has
+// NO companion -- which is exactly the eligibility predicate that change deletes, so the row
+// was the false predicate enshrined as a test. It is kept, inverted, as the permanent
+// regression control that the projection stays total (DESIGN section 4b, meta-obligation 4:
+// a climb deletes the production machinery it obsoletes, never the evidence).
+test fn test_module_hygiene_failure_receipt_companion_is_total() -> Bool {
+  failure_receipt_companion(function: "ordinary_fn") == "ordinary_fn_failure_receipt"
+    && failure_receipt_companion(function: "") == "_failure_receipt"
 }
 
 test fn codex_wet_enrolled_witnesses_resolve_failure_receipt_companion() -> Bool {
-  match failure_receipt_companion(
+  failure_receipt_companion(
     function: "materialize_codex_runtime_bundle_produces_native_executable_holds",
-  ) {
-    Present { value: materialize } =>
-      materialize == "materialize_codex_runtime_bundle_produces_native_executable_failure_receipt"
-    Absent => false
-  }
-    && match failure_receipt_companion(
+  ) == "materialize_codex_runtime_bundle_produces_native_executable_failure_receipt"
+    && failure_receipt_companion(
       function: "press_account_trip_yields_standing_or_typed_refusal_never_turn_started_holds",
-    ) {
-      Present { value: press } =>
-        press == "press_account_trip_yields_standing_or_typed_refusal_never_turn_started_failure_receipt"
-      Absent => false
-    }
+    ) == "press_account_trip_yields_standing_or_typed_refusal_never_turn_started_failure_receipt"
 }

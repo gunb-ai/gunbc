@@ -17,6 +17,7 @@ use self::MatchPattern::*;
 use self::MethodSemantics::*;
 use self::NodeFieldRole::*;
 use self::OperationModifier::*;
+use self::ServiceConfigField::*;
 use self::StringPart::*;
 use self::TokenShape::*;
 use self::TransportKind::*;
@@ -37,10 +38,10 @@ pub use crate::std_occurrence_identity::{
     authored_token_ordinal_space_from_allocator, authored_token_ordinal_space_initial,
     occurrence_id_allocator_advance_to,
 };
-pub use crate::std_occurrence_identity::{AuthoredTokenOrdinal, OccurrenceId, OccurrenceRole};
 pub use crate::std_occurrence_identity::{
     AuthoredTokenOrdinalSpace, OccurrenceIdAllocator, OccurrenceTransportRefusal,
 };
+pub use crate::std_occurrence_identity::{OccurrenceId, OccurrenceRole};
 pub use crate::std_source_annotation::AnnotationAttachmentRefusal;
 use crate::std_source_annotation::AnnotationAttachmentRefusal::*;
 pub use crate::std_source_annotation::{
@@ -392,6 +393,12 @@ pub enum CompilerDiagnostic {
         importing_module: String,
         span: Rc<SourceSpan>,
     },
+    ImportShadowedByLocalDefinition {
+        name: String,
+        module_path: String,
+        importing_module: String,
+        span: Rc<SourceSpan>,
+    },
     UnresolvedType {
         name: String,
         span: Rc<SourceSpan>,
@@ -536,6 +543,10 @@ pub enum CompilerDiagnostic {
         candidates: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
+    AmbiguousAnonymousRecordLiteral {
+        candidates: Rc<Vec<String>>,
+        span: Rc<SourceSpan>,
+    },
     CallArgumentNameUnknown {
         callee: String,
         argument: String,
@@ -571,6 +582,12 @@ pub enum CompilerDiagnostic {
     ContainerSpellingUnrecognized {
         name: String,
         container_leaf: String,
+        span: Rc<SourceSpan>,
+    },
+    ServiceConfigReferenceJudgmentDeferred {
+        field: String,
+        referenced_name: String,
+        trigger: String,
         span: Rc<SourceSpan>,
     },
     TransportEmissionNotModeled {
@@ -649,6 +666,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
     match (*d.clone()).clone() {
         CompilerDiagnostic::UnresolvedImport { span: s, .. } => s.clone(),
         CompilerDiagnostic::MissingExport { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ImportShadowedByLocalDefinition { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnresolvedType { span: s, .. } => s.clone(),
         CompilerDiagnostic::TypeMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::ArityMismatch { span: s, .. } => s.clone(),
@@ -680,6 +698,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::AdmitCallersEntryNotDeclRef { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnlistedImportUse { span: s, .. } => s.clone(),
         CompilerDiagnostic::AmbiguousReference { span: s, .. } => s.clone(),
+        CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallPositionalSurplus { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallArgumentDuplicate { span: s, .. } => s.clone(),
@@ -692,6 +711,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
             None => no_span(),
         },
         CompilerDiagnostic::ContainerSpellingUnrecognized { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { span: s, .. } => s.clone(),
         CompilerDiagnostic::TransportEmissionNotModeled { span: s, .. } => s.clone(),
     }
 }
@@ -700,6 +720,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     match (*d.clone()).clone() {
     CompilerDiagnostic::UnresolvedImport { module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("unresolved import: module '".to_string(), m.clone()), "' not found (imported by '".to_string()), i.clone()), "')".to_string()),
     CompilerDiagnostic::MissingExport { name: n, module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("name '".to_string(), n.clone()), "' not found in module '".to_string()), m.clone()), "' (imported by '".to_string()), i.clone()), "')".to_string()),
+    CompilerDiagnostic::ImportShadowedByLocalDefinition { name: n, module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("import of '".to_string(), n.clone()), "' from module '".to_string()), m.clone()), "' is discarded: '".to_string()), i.clone()), "' also defines '".to_string()), n.clone()), "' at module scope, and the LOCAL DEFINITION binds every bare use of the name. The import you wrote is not the binding you get. Qualify the call as '".to_string()), m.clone()), ".".to_string()), n.clone()), "(...)' to reach the imported one, or rename one of the two.".to_string()),
     CompilerDiagnostic::UnresolvedType { name: n, .. } => v1_rt::concat(v1_rt::concat("unresolved type '".to_string(), n.clone()), "'".to_string()),
     CompilerDiagnostic::TypeMismatch { expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type mismatch: expected '".to_string(), e.clone()), "', got '".to_string()), g.clone()), "'".to_string()),
     CompilerDiagnostic::ArityMismatch { name: n, expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type ".to_string(), n.clone()), " expects ".to_string()), (e.clone()).to_string()), " type arguments, got ".to_string()), (g.clone()).to_string()),
@@ -729,6 +750,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::AdmitCallersEntryNotDeclRef { constructor_decl_name: cn, .. } => v1_rt::concat(v1_rt::concat("admit_callers entry on '".to_string(), cn.clone()), "' is not a decl_ref(module_path: \"...\", decl_name: \"...\") call: an entry that cannot be interpreted would otherwise be dropped, silently shrinking the permitted-caller roster below what was authored".to_string()),
     CompilerDiagnostic::UnlistedImportUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted import use '".to_string(), n.clone()), "' (referenced but not in any import's name list)".to_string()),
     CompilerDiagnostic::AmbiguousReference { name: n, candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous reference '".to_string(), n.clone()), "': ".to_string()), ((cs.clone().len() as i64)).to_string()), " candidates: ".to_string()), cs.clone().join(&", ".to_string())), " — qualify by containment path, alias, or rename".to_string()),
+    CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous anonymous record literal shape matches ".to_string(), ((cs.clone().len() as i64)).to_string()), " structs: ".to_string()), cs.clone().join(&", ".to_string())), " — add a nominal type".to_string()),
     CompilerDiagnostic::CallArgumentNameUnknown { callee: c, argument: a, declared: ds, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': no parameter named '".to_string()), a.clone()), "' (declared: [".to_string()), ds.clone().join(&", ".to_string())), "])".to_string()),
     CompilerDiagnostic::CallPositionalSurplus { callee: c, supplied: s, capacity: cap, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': too many positional arguments: ".to_string()), (s.clone()).to_string()), " supplied, ".to_string()), (cap.clone()).to_string()), " positional parameter(s) declared".to_string()),
     CompilerDiagnostic::CallArgumentDuplicate { callee: c, argument: a, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': argument '".to_string()), a.clone()), "' supplied more than once".to_string()),
@@ -736,6 +758,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::CallNamedArgOnFunctionValue { callee: c, argument: a, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling function value '".to_string(), c.clone()), "': named argument '".to_string()), a.clone()), "' is not supported — use positional arguments".to_string()),
     CompilerDiagnostic::OccurrenceTransportViolation { refusal: refusal, .. } => occurrence_transport_refusal_diagnostic_message(refusal.clone()),
     CompilerDiagnostic::ContainerSpellingUnrecognized { name: n, container_leaf: leaf, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("unrecognized container spelling '".to_string(), n.clone()), "': its last segment '".to_string()), leaf.clone()), "' names a container, but no arity is declared for '".to_string()), n.clone()), "' in std.types container_type_arity — declare the row or spell the container by a declared name".to_string()),
+    CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { field: f, referenced_name: n, trigger: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("service config field '".to_string(), f.clone()), "' carries the reference '".to_string()), n.clone()), "', and the reference judgment does not yet run on this field -- ".to_string()), t.clone()), ". This is a counted deferral, not a pass: nothing has established that '".to_string()), n.clone()), "' names anything".to_string()),
     CompilerDiagnostic::TransportEmissionNotModeled { transport_kind: kind, service: svc, operation: op, declaring_module: m, target: tgt, missing_realization_fact: missing, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("'".to_string(), kind.clone()), "' transport emission is not modeled: operation '".to_string()), svc.clone()), ".".to_string()), op.clone()), "' declared in '".to_string()), m.clone()), "' cannot be emitted for target '".to_string()), tgt.clone()), "' -- ".to_string()), missing.clone()), ". Bind a realization handler for the '".to_string()), kind.clone()), "' transport (DESIGN §3: interface shape and transport are two facts); do not add a per-target renderer".to_string()),
 }
 }
@@ -752,7 +775,7 @@ pub fn is_where_refinement_unenforced_advisory_reason(reason: String) -> bool {
 pub fn compiler_diagnostic_seed_projection_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "HAND-RUST GATE receipt for the CompilerDiagnostic seed projection (codex reviews 45469, 45481). Adding a variant to this coproduct forces arms in two TOTAL matches in the hand-maintained seed transport, cli_run.rs's compile_clean_diagnostic_histogram_key and its method-name extractor; without them the seed does not compile, so the arms are the mechanical consequence of the .dag change, not host-side capability someone chose to write in Rust. THIS IS A DIFFERENT CLASS FROM THE GATE'S USUAL SUBJECT and the distinction is the whole receipt: the gate's other explicit deferrals — the emit-surface retirement rows — are DECISION SURFACES that could live in .dag and are deferred for a stated reason, so they owe a dissolution schedule of their own. This clause used to name cli_run::selection_control_input_sources alongside them; that symbol was DELETED with affected-set selection (2026-08-15), so the deferral it recorded was discharged by deletion rather than by a schedule, and the citation was left naming nothing — the DESIGN section 3 stale-citation class, inside a receipt whose own argument is that an unverifiable figure rots silently. An exhaustiveness arm owes none, because it cannot live anywhere but the seed's projection of the coproduct, and it disappears exactly when the seed does. CHECKABLE RECEIPT for the FIVE variants this lane adds (MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded). It read SIX until the unjudged conformance advisory was excluded from this PR (codex review 45767); DeclaredTypeConformanceUnjudged and its arms are gone with it, which is why the figures below moved again. Two commands, and the receipt is exactly their output — EACH FIGURE NAMES THE COMMAND THAT PRODUCES IT, because a number with no command behind it cannot be checked and rots silently. (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 747 at origin/main and 747 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 23 added / 0 removed, and `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line is inside an existing fn and none declares one. The 23 lines are the five diagnostic arms plus the advisory-classification entries described next. THE NUMBERS IN A RECEIPT MUST TRACK THE DIFF THEY CERTIFY: this row read five variants and 13 lines after a sixth variant landed (codex review 45501), and then read a fn census of 742 that NO command reproduced — 501 bare `fn` and 245 `pub fn` on either side, never 742 — so the figure certifying that hand-Rust had not grown was itself unverifiable. A receipt whose number cannot be re-derived is indistinguishable from one that is wrong. Re-derive all three figures from the commands above whenever this coproduct changes, rather than carrying them forward. THE ADVISORY CLASSIFICATION IS PART OF THIS RECEIPT AND WAS THE DEFECT IT ALMOST HID: compile_clean_diagnostic_is_advisory is a CLOSED ALLOWLIST, not the complement of is_hard, so the two non-blocking variants this lane adds were counted by NEITHER predicate — rendered to the terminal while the gate reported zero of them. The residue was described as counted while nothing in the repository counted it, and the population figures quoted in review came from a grep over log text rather than from any mechanism (found by executing the gate before and after and seeing its advisory total sit unchanged at 4590 while the printed population halved). Adding a non-blocking variant to the coproduct therefore obliges a matching entry in that allowlist, or the frontier it represents is invisible to the gate that is supposed to bound it. Lane: compiler-static-failure-closure (v1-method-existence-wall / v1-declared-type-conformance-wall). Dissolves with the seed itself, ROADMAP hand-MAINTAINED to zero at v2 self-host; no separate trigger, because there is no separable work to schedule. Not migration debt and not a delete candidate.".to_string()
+            "HAND-RUST GATE receipt for the CompilerDiagnostic seed projection (codex reviews 45469, 45481). Adding a variant to this coproduct forces arms in two TOTAL matches in the hand-maintained seed transport, cli_run.rs's compile_clean_diagnostic_histogram_key and its method-name extractor; without them the seed does not compile, so the arms are the mechanical consequence of the .dag change, not host-side capability someone chose to write in Rust. THIS IS A DIFFERENT CLASS FROM THE GATE'S USUAL SUBJECT and the distinction is the whole receipt: the gate's other explicit deferrals — the emit-surface retirement rows — are DECISION SURFACES that could live in .dag and are deferred for a stated reason, so they owe a dissolution schedule of their own. This clause used to name cli_run::selection_control_input_sources alongside them; that symbol was DELETED with affected-set selection (2026-08-15), so the deferral it recorded was discharged by deletion rather than by a schedule, and the citation was left naming nothing — the DESIGN section 3 stale-citation class, inside a receipt whose own argument is that an unverifiable figure rots silently. An exhaustiveness arm owes none, because it cannot live anywhere but the seed's projection of the coproduct, and it disappears exactly when the seed does. CHECKABLE RECEIPT for the FIVE variants this lane adds (MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded). It read SIX until the unjudged conformance advisory was excluded from this PR (codex review 45767); DeclaredTypeConformanceUnjudged and its arms are gone with it, which is why the figures below moved again. Two commands, and the receipt is exactly their output — EACH FIGURE NAMES THE COMMAND THAT PRODUCES IT, because a number with no command behind it cannot be checked and rots silently. (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 747 at origin/main and 747 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 23 added / 0 removed, and `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line is inside an existing fn and none declares one. The 23 lines are the five diagnostic arms plus the advisory-classification entries described next. THE NUMBERS IN A RECEIPT MUST TRACK THE DIFF THEY CERTIFY: this row read five variants and 13 lines after a sixth variant landed (codex review 45501), and then read a fn census of 742 that NO command reproduced — 501 bare `fn` and 245 `pub fn` on either side, never 742 — so the figure certifying that hand-Rust had not grown was itself unverifiable. A receipt whose number cannot be re-derived is indistinguishable from one that is wrong. Re-derive all three figures from the commands above whenever this coproduct changes, rather than carrying them forward. THE ADVISORY CLASSIFICATION IS PART OF THIS RECEIPT AND WAS THE DEFECT IT ALMOST HID: compile_clean_diagnostic_is_advisory is a CLOSED ALLOWLIST, not the complement of is_hard, so the two non-blocking variants this lane adds were counted by NEITHER predicate — rendered to the terminal while the gate reported zero of them. The residue was described as counted while nothing in the repository counted it, and the population figures quoted in review came from a grep over log text rather than from any mechanism (found by executing the gate before and after and seeing its advisory total sit unchanged at 4590 while the printed population halved). Adding a non-blocking variant to the coproduct therefore obliges a matching entry in that allowlist, or the frontier it represents is invisible to the gate that is supposed to bound it. Lane: compiler-static-failure-closure (v1-method-existence-wall / v1-declared-type-conformance-wall). Dissolves with the seed itself, ROADMAP hand-MAINTAINED to zero at v2 self-host; no separate trigger, because there is no separable work to schedule. Not migration debt and not a delete candidate. SECOND LANE, SECOND EXPANSION (review 55680, finding 2). ImportShadowedByLocalDefinition is a SIXTH variant, added by a different lane for the import-shadow wall, and it forces one arm in each of the same two total matches. The five-variant figures above were measured against THAT lane's base and do not reproduce here -- (a) alone now answers 884 rather than 747 -- which is the rot this receipt exists to make visible: a figure survives its own truth by naming a command nobody re-runs. RE-MEASURED ON THIS HEAD, same three commands: (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 884 at origin/main and 884 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 4 added / 0 removed. (c) `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line sits inside an existing fn and none declares one. The 4 lines are this variant's two arms, one per total match, as rustfmt renders them. NO HOST CAPABILITY IS ADDED: both arms are the mechanical consequence of the .dag coproduct gaining a member, and they disappear exactly when the seed does.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -825,6 +848,7 @@ pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
         CompilerDiagnostic::UnlistedImportUse { .. } => false,
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => false,
         CompilerDiagnostic::ReceiverTypeUnestablished { .. } => false,
+        CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => false,
         _ => true,
     }
 }
@@ -834,6 +858,7 @@ pub fn is_discovery_corpus_advisory_typecheck_diagnostic(d: Rc<CompilerDiagnosti
         CompilerDiagnostic::UnlistedImportUse { .. } => true,
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => true,
         CompilerDiagnostic::ReceiverTypeUnestablished { .. } => true,
+        CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => true,
         CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
             is_where_refinement_unenforced_advisory_reason(r.clone())
         }
@@ -3399,25 +3424,70 @@ pub fn expr_has_non_tail_self_call(
     })
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum ServiceConfigField {
+    SvcEndpoint,
+    SvcAuth,
+    SvcAuthInput,
+    SvcAuthSource,
+    SvcRateLimit,
+}
+
+pub fn service_config_field_property_name(field: ServiceConfigField) -> String {
+    match field.clone() {
+        ServiceConfigField::SvcEndpoint => "svc_endpoint".to_string(),
+        ServiceConfigField::SvcAuth => "svc_auth".to_string(),
+        ServiceConfigField::SvcAuthInput => "svc_auth_input".to_string(),
+        ServiceConfigField::SvcAuthSource => "svc_auth_source".to_string(),
+        ServiceConfigField::SvcRateLimit => "svc_rate_limit".to_string(),
+    }
+}
+
+pub fn service_config_known_fields() -> Rc<Vec<ServiceConfigField>> {
+    Rc::new(vec![
+        ServiceConfigField::SvcEndpoint,
+        ServiceConfigField::SvcAuth,
+        ServiceConfigField::SvcAuthInput,
+        ServiceConfigField::SvcAuthSource,
+        ServiceConfigField::SvcRateLimit,
+    ])
+}
+
+pub fn service_config_field_for_property_name(name: String) -> Option<ServiceConfigField> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for f in service_config_known_fields().iter().cloned() {
+            if (service_config_field_property_name(f.clone()) == name.clone()) {
+                __result.push(f);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+}
+
 pub fn service_config_properties(
     endpoint: Rc<Node>,
     auth: Option<Rc<Node>>,
     auth_input: Option<Rc<Node>>,
     auth_source: Option<Rc<Node>>,
     rate_limit: Option<Rc<Node>>,
-    retry: Option<Rc<Node>>,
 ) -> Rc<Vec<Rc<Node>>> {
     {
         let zero_span = no_span();
         let ep_prop = Rc::new(vec![make_field_init_node(
-            "svc_endpoint".to_string(),
+            service_config_field_property_name(ServiceConfigField::SvcEndpoint),
             endpoint.clone(),
             zero_span.clone(),
             zero_span.clone(),
         )]);
         let auth_prop = match auth.clone() {
             Some(a) => Rc::new(vec![make_field_init_node(
-                "svc_auth".to_string(),
+                service_config_field_property_name(ServiceConfigField::SvcAuth),
                 a.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
@@ -3426,7 +3496,7 @@ pub fn service_config_properties(
         };
         let auth_input_prop = match auth_input.clone() {
             Some(ai) => Rc::new(vec![make_field_init_node(
-                "svc_auth_input".to_string(),
+                service_config_field_property_name(ServiceConfigField::SvcAuthInput),
                 ai.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
@@ -3435,7 +3505,7 @@ pub fn service_config_properties(
         };
         let auth_source_prop = match auth_source.clone() {
             Some(src) => Rc::new(vec![make_field_init_node(
-                "svc_auth_source".to_string(),
+                service_config_field_property_name(ServiceConfigField::SvcAuthSource),
                 src.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
@@ -3444,16 +3514,7 @@ pub fn service_config_properties(
         };
         let rate_prop = match rate_limit.clone() {
             Some(r) => Rc::new(vec![make_field_init_node(
-                "svc_rate_limit".to_string(),
-                r.clone(),
-                zero_span.clone(),
-                zero_span.clone(),
-            )]),
-            None => Rc::new(vec![]),
-        };
-        let retry_prop = match retry.clone() {
-            Some(r) => Rc::new(vec![make_field_init_node(
-                "svc_retry".to_string(),
+                service_config_field_property_name(ServiceConfigField::SvcRateLimit),
                 r.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
@@ -3463,15 +3524,12 @@ pub fn service_config_properties(
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(ep_prop.clone(), auth_prop.clone()),
-                        auth_input_prop.clone(),
-                    ),
-                    auth_source_prop.clone(),
+                    v1_rt::concat(ep_prop.clone(), auth_prop.clone()),
+                    auth_input_prop.clone(),
                 ),
-                rate_prop.clone(),
+                auth_source_prop.clone(),
             ),
-            retry_prop.clone(),
+            rate_prop.clone(),
         )
     }
 }
@@ -3523,17 +3581,6 @@ pub fn service_config_rate_limit(
     find_property(
         n.properties.clone(),
         "svc_rate_limit".to_string(),
-        source_indices.clone(),
-    )
-}
-
-pub fn service_config_retry(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
-    find_property(
-        n.properties.clone(),
-        "svc_retry".to_string(),
         source_indices.clone(),
     )
 }
@@ -4528,3 +4575,13 @@ pub struct ChildrenListField;
 pub struct SubValueField;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MetadataField;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SvcEndpoint;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SvcAuth;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SvcAuthInput;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SvcAuthSource;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SvcRateLimit;

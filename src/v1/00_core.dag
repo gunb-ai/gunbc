@@ -161,6 +161,7 @@ type TextFile {
 type CompilerDiagnostic
   = UnresolvedImport   { module_path: String, importing_module: String, span: SourceSpan }
   | MissingExport      { name: String, module_path: String, importing_module: String, span: SourceSpan }
+  | ImportShadowedByLocalDefinition { name: String, module_path: String, importing_module: String, span: SourceSpan }
   | UnresolvedType     { name: String, span: SourceSpan }
   | TypeMismatch       { expected: String, got: String, span: SourceSpan }
   | ArityMismatch      { name: String, expected: Int, got: Int, span: SourceSpan }
@@ -197,6 +198,7 @@ type CompilerDiagnostic
   | AdmitCallersEntryNotDeclRef { constructor_decl_name: String, span: SourceSpan }
   | UnlistedImportUse { name: String, span: SourceSpan }
   | AmbiguousReference { name: String, candidates: List<String>, span: SourceSpan }
+  | AmbiguousAnonymousRecordLiteral { candidates: List<String>, span: SourceSpan }
   | CallArgumentNameUnknown { callee: String, argument: String, declared: List<String>, span: SourceSpan }
   | CallPositionalSurplus { callee: String, supplied: Int, capacity: Int, span: SourceSpan }
   | CallArgumentDuplicate { callee: String, argument: String, span: SourceSpan }
@@ -204,6 +206,12 @@ type CompilerDiagnostic
   | CallNamedArgOnFunctionValue { callee: String, argument: String, span: SourceSpan }
   | OccurrenceTransportViolation { refusal: OccurrenceTransportRefusal }
   | ContainerSpellingUnrecognized { name: String, container_leaf: String, span: SourceSpan }
+  | ServiceConfigReferenceJudgmentDeferred {
+      field: String,
+      referenced_name: String,
+      trigger: String,
+      span: SourceSpan
+    }
   | TransportEmissionNotModeled {
       transport_kind: String,
       service: String,
@@ -300,6 +308,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
   match d {
     UnresolvedImport   { module_path: _, importing_module: _, span: s } => s
     MissingExport      { name: _, module_path: _, importing_module: _, span: s } => s
+    ImportShadowedByLocalDefinition { name: _, module_path: _, importing_module: _, span: s } => s
     UnresolvedType     { name: _, span: s }                    => s
     TypeMismatch       { expected: _, got: _, span: s }        => s
     ArityMismatch      { name: _, expected: _, got: _, span: s } => s
@@ -336,6 +345,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     AdmitCallersEntryNotDeclRef { constructor_decl_name: _, span: s } => s
     UnlistedImportUse { name: _, span: s } => s
     AmbiguousReference { name: _, candidates: _, span: s } => s
+    AmbiguousAnonymousRecordLiteral { candidates: _, span: s } => s
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: s } => s
     CallPositionalSurplus { callee: _, supplied: _, capacity: _, span: s } => s
     CallArgumentDuplicate { callee: _, argument: _, span: s } => s
@@ -347,6 +357,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
         Absent => no_span()
       }
     ContainerSpellingUnrecognized { name: _, container_leaf: _, span: s } => s
+    ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: s } => s
     TransportEmissionNotModeled { transport_kind: _, service: _, operation: _, declaring_module: _, target: _, missing_realization_fact: _, span: s } => s
   }
 }
@@ -355,6 +366,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
   match d {
     UnresolvedImport   { module_path: m, importing_module: i, span: _ } => concat("unresolved import: module '", m, "' not found (imported by '", i, "')")
     MissingExport      { name: n, module_path: m, importing_module: i, span: _ } => concat("name '", n, "' not found in module '", m, "' (imported by '", i, "')")
+    ImportShadowedByLocalDefinition { name: n, module_path: m, importing_module: i, span: _ } => concat("import of '", n, "' from module '", m, "' is discarded: '", i, "' also defines '", n, "' at module scope, and the LOCAL DEFINITION binds every bare use of the name. The import you wrote is not the binding you get. Qualify the call as '", m, ".", n, "(...)' to reach the imported one, or rename one of the two.")
     UnresolvedType     { name: n, span: _ }                       => concat("unresolved type '", n, "'")
     TypeMismatch       { expected: e, got: g, span: _ }           => concat("type mismatch: expected '", e, "', got '", g, "'")
     ArityMismatch      { name: n, expected: e, got: g, span: _ }  => concat("type ", n, " expects ", to_string(value: e), " type arguments, got ", to_string(value: g))
@@ -409,6 +421,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("admit_callers entry on '", cn, "' is not a decl_ref(module_path: \"...\", decl_name: \"...\") call: an entry that cannot be interpreted would otherwise be dropped, silently shrinking the permitted-caller roster below what was authored")
     UnlistedImportUse { name: n, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
     AmbiguousReference { name: n, candidates: cs, span: _ } => concat("ambiguous reference '", n, "': ", to_string(value: cs |> count), " candidates: ", join(cs, separator: ", "), " — qualify by containment path, alias, or rename")
+    AmbiguousAnonymousRecordLiteral { candidates: cs, span: _ } => concat("ambiguous anonymous record literal shape matches ", to_string(value: cs |> count), " structs: ", join(cs, separator: ", "), " — add a nominal type")
     CallArgumentNameUnknown { callee: c, argument: a, declared: ds, span: _ } =>
       concat("call shape mismatch calling '", c, "': no parameter named '", a, "' (declared: [", join(ds, separator: ", "), "])")
     CallPositionalSurplus { callee: c, supplied: s, capacity: cap, span: _ } =>
@@ -423,6 +436,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       occurrence_transport_refusal_diagnostic_message(refusal: refusal)
     ContainerSpellingUnrecognized { name: n, container_leaf: leaf, span: _ } =>
       concat("unrecognized container spelling '", n, "': its last segment '", leaf, "' names a container, but no arity is declared for '", n, "' in std.types container_type_arity — declare the row or spell the container by a declared name")
+    ServiceConfigReferenceJudgmentDeferred { field: f, referenced_name: n, trigger: t, span: _ } =>
+      concat("service config field '", f, "' carries the reference '", n, "', and the reference judgment does not yet run on this field -- ", t, ". This is a counted deferral, not a pass: nothing has established that '", n, "' names anything")
     TransportEmissionNotModeled { transport_kind: kind, service: svc, operation: op, declaring_module: m, target: tgt, missing_realization_fact: missing, span: _ } =>
       concat("'", kind, "' transport emission is not modeled: operation '", svc, ".", op, "' declared in '", m, "' cannot be emitted for target '", tgt, "' -- ", missing, ". Bind a realization handler for the '", kind, "' transport (DESIGN §3: interface shape and transport are two facts); do not add a per-target renderer")
   }
@@ -437,7 +452,7 @@ fn is_where_refinement_unenforced_advisory_reason(reason: String) -> Bool {
     || reason == "string predicate not implemented"
 }
 
-data compiler_diagnostic_seed_projection_note: String = "HAND-RUST GATE receipt for the CompilerDiagnostic seed projection (codex reviews 45469, 45481). Adding a variant to this coproduct forces arms in two TOTAL matches in the hand-maintained seed transport, cli_run.rs's compile_clean_diagnostic_histogram_key and its method-name extractor; without them the seed does not compile, so the arms are the mechanical consequence of the .dag change, not host-side capability someone chose to write in Rust. THIS IS A DIFFERENT CLASS FROM THE GATE'S USUAL SUBJECT and the distinction is the whole receipt: the gate's other explicit deferrals — the emit-surface retirement rows — are DECISION SURFACES that could live in .dag and are deferred for a stated reason, so they owe a dissolution schedule of their own. This clause used to name cli_run::selection_control_input_sources alongside them; that symbol was DELETED with affected-set selection (2026-08-15), so the deferral it recorded was discharged by deletion rather than by a schedule, and the citation was left naming nothing — the DESIGN section 3 stale-citation class, inside a receipt whose own argument is that an unverifiable figure rots silently. An exhaustiveness arm owes none, because it cannot live anywhere but the seed's projection of the coproduct, and it disappears exactly when the seed does. CHECKABLE RECEIPT for the FIVE variants this lane adds (MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded). It read SIX until the unjudged conformance advisory was excluded from this PR (codex review 45767); DeclaredTypeConformanceUnjudged and its arms are gone with it, which is why the figures below moved again. Two commands, and the receipt is exactly their output — EACH FIGURE NAMES THE COMMAND THAT PRODUCES IT, because a number with no command behind it cannot be checked and rots silently. (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 747 at origin/main and 747 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 23 added / 0 removed, and `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line is inside an existing fn and none declares one. The 23 lines are the five diagnostic arms plus the advisory-classification entries described next. THE NUMBERS IN A RECEIPT MUST TRACK THE DIFF THEY CERTIFY: this row read five variants and 13 lines after a sixth variant landed (codex review 45501), and then read a fn census of 742 that NO command reproduced — 501 bare `fn` and 245 `pub fn` on either side, never 742 — so the figure certifying that hand-Rust had not grown was itself unverifiable. A receipt whose number cannot be re-derived is indistinguishable from one that is wrong. Re-derive all three figures from the commands above whenever this coproduct changes, rather than carrying them forward. THE ADVISORY CLASSIFICATION IS PART OF THIS RECEIPT AND WAS THE DEFECT IT ALMOST HID: compile_clean_diagnostic_is_advisory is a CLOSED ALLOWLIST, not the complement of is_hard, so the two non-blocking variants this lane adds were counted by NEITHER predicate — rendered to the terminal while the gate reported zero of them. The residue was described as counted while nothing in the repository counted it, and the population figures quoted in review came from a grep over log text rather than from any mechanism (found by executing the gate before and after and seeing its advisory total sit unchanged at 4590 while the printed population halved). Adding a non-blocking variant to the coproduct therefore obliges a matching entry in that allowlist, or the frontier it represents is invisible to the gate that is supposed to bound it. Lane: compiler-static-failure-closure (v1-method-existence-wall / v1-declared-type-conformance-wall). Dissolves with the seed itself, ROADMAP hand-MAINTAINED to zero at v2 self-host; no separate trigger, because there is no separable work to schedule. Not migration debt and not a delete candidate."
+data compiler_diagnostic_seed_projection_note: String = "HAND-RUST GATE receipt for the CompilerDiagnostic seed projection (codex reviews 45469, 45481). Adding a variant to this coproduct forces arms in two TOTAL matches in the hand-maintained seed transport, cli_run.rs's compile_clean_diagnostic_histogram_key and its method-name extractor; without them the seed does not compile, so the arms are the mechanical consequence of the .dag change, not host-side capability someone chose to write in Rust. THIS IS A DIFFERENT CLASS FROM THE GATE'S USUAL SUBJECT and the distinction is the whole receipt: the gate's other explicit deferrals — the emit-surface retirement rows — are DECISION SURFACES that could live in .dag and are deferred for a stated reason, so they owe a dissolution schedule of their own. This clause used to name cli_run::selection_control_input_sources alongside them; that symbol was DELETED with affected-set selection (2026-08-15), so the deferral it recorded was discharged by deletion rather than by a schedule, and the citation was left naming nothing — the DESIGN section 3 stale-citation class, inside a receipt whose own argument is that an unverifiable figure rots silently. An exhaustiveness arm owes none, because it cannot live anywhere but the seed's projection of the coproduct, and it disappears exactly when the seed does. CHECKABLE RECEIPT for the FIVE variants this lane adds (MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded). It read SIX until the unjudged conformance advisory was excluded from this PR (codex review 45767); DeclaredTypeConformanceUnjudged and its arms are gone with it, which is why the figures below moved again. Two commands, and the receipt is exactly their output — EACH FIGURE NAMES THE COMMAND THAT PRODUCES IT, because a number with no command behind it cannot be checked and rots silently. (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 747 at origin/main and 747 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 23 added / 0 removed, and `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line is inside an existing fn and none declares one. The 23 lines are the five diagnostic arms plus the advisory-classification entries described next. THE NUMBERS IN A RECEIPT MUST TRACK THE DIFF THEY CERTIFY: this row read five variants and 13 lines after a sixth variant landed (codex review 45501), and then read a fn census of 742 that NO command reproduced — 501 bare `fn` and 245 `pub fn` on either side, never 742 — so the figure certifying that hand-Rust had not grown was itself unverifiable. A receipt whose number cannot be re-derived is indistinguishable from one that is wrong. Re-derive all three figures from the commands above whenever this coproduct changes, rather than carrying them forward. THE ADVISORY CLASSIFICATION IS PART OF THIS RECEIPT AND WAS THE DEFECT IT ALMOST HID: compile_clean_diagnostic_is_advisory is a CLOSED ALLOWLIST, not the complement of is_hard, so the two non-blocking variants this lane adds were counted by NEITHER predicate — rendered to the terminal while the gate reported zero of them. The residue was described as counted while nothing in the repository counted it, and the population figures quoted in review came from a grep over log text rather than from any mechanism (found by executing the gate before and after and seeing its advisory total sit unchanged at 4590 while the printed population halved). Adding a non-blocking variant to the coproduct therefore obliges a matching entry in that allowlist, or the frontier it represents is invisible to the gate that is supposed to bound it. Lane: compiler-static-failure-closure (v1-method-existence-wall / v1-declared-type-conformance-wall). Dissolves with the seed itself, ROADMAP hand-MAINTAINED to zero at v2 self-host; no separate trigger, because there is no separable work to schedule. Not migration debt and not a delete candidate. SECOND LANE, SECOND EXPANSION (review 55680, finding 2). ImportShadowedByLocalDefinition is a SIXTH variant, added by a different lane for the import-shadow wall, and it forces one arm in each of the same two total matches. The five-variant figures above were measured against THAT lane's base and do not reproduce here -- (a) alone now answers 884 rather than 747 -- which is the rot this receipt exists to make visible: a figure survives its own truth by naming a command nobody re-runs. RE-MEASURED ON THIS HEAD, same three commands: (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 884 at origin/main and 884 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 4 added / 0 removed. (c) `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line sits inside an existing fn and none declares one. The 4 lines are this variant's two arms, one per total match, as rustfmt renders them. NO HOST CAPABILITY IS ADDED: both arms are the mechanical consequence of the .dag coproduct gaining a member, and they disappear exactly when the seed does."
 
 type FrontierOccurrenceKey {
   method: String
@@ -477,6 +492,7 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
     UnlistedImportUse { name: _, span: _ } => false
     MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => false
     ReceiverTypeUnestablished { method: _, span: _ } => false
+    ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: _ } => false
     _ => true
   }
 }
@@ -486,6 +502,7 @@ fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> B
     UnlistedImportUse { name: _, span: _ } => true
     MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => true
     ReceiverTypeUnestablished { method: _, span: _ } => true
+    ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: _ } => true
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
       is_where_refinement_unenforced_advisory_reason(reason: r)
     _ => false
@@ -1646,30 +1663,80 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool, sour
   }
 }
 
-fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?, retry: Node?) -> List<Node> {
+// THE SERVICE-CONFIG FIELD SET IS ONE AUTHORITY, and it is a coproduct rather than a list of
+// string literals because the property spellings had THREE copies before this: minted here,
+// matched in `04_infer` `service_config_field_judgment`, and (in authored spelling) matched in
+// `02_parse` `parse_config_fields`. Review 55463 on gunbc#9028 caught the cost exactly: the
+// judgment claimed a new field would fail to compile, and it would not — it was an `if/else if`
+// chain over string literals whose else-arm classified any unrecognised property as carrying no
+// reference, so a field added to the parser without a matching arm routed silently to
+// `diagnostics: []`. That recreates the fail-open the change exists to close, one level up.
+//
+// With the spellings derived from this coproduct and the judgment matching it totally, a new
+// variant forces an arm in `service_config_field_property_name` AND in the judgment. The residue
+// is declared rather than papered over: `service_config_known_fields` is a hand-authored roster,
+// so a variant added without a row there is unreachable from the judgment and lands in the
+// carries-no-reference arm. Its next-rung trigger is a variant-enumeration primitive; until one
+// exists, the roster is the one place that must be edited and every other site refuses.
+type ServiceConfigField
+  = SvcEndpoint
+  | SvcAuth
+  | SvcAuthInput
+  | SvcAuthSource
+  | SvcRateLimit
+
+fn service_config_field_property_name(field: ServiceConfigField) -> String {
+  match field {
+    SvcEndpoint => "svc_endpoint"
+    SvcAuth => "svc_auth"
+    SvcAuthInput => "svc_auth_input"
+    SvcAuthSource => "svc_auth_source"
+    SvcRateLimit => "svc_rate_limit"
+  }
+}
+
+fn service_config_known_fields() -> List<ServiceConfigField> {
+  [SvcEndpoint, SvcAuth, SvcAuthInput, SvcAuthSource, SvcRateLimit]
+}
+
+fn service_config_field_for_property_name(name: String) -> ServiceConfigField? {
+  service_config_known_fields()
+    |> filter(f => service_config_field_property_name(field: f) == name)
+    |> first
+}
+
+// `retry` WAS A FIELD HERE AND IS DELETED AT THE ROOT, not left parsed-and-unread.
+// Measured before removal: `service_config_retry` had zero callers in the whole tree, and
+// NEITHER realization retries anything -- `05_emit_rust.dag` has no occurrence of retry or
+// backoff, and the interpreter's only match for either word is an unrelated doc comment. So
+// the field was declared policy with no consumer (DESIGN section 5, specification without
+// execution). It was also in the wrong layer: `max_attempts: 3` is OUR policy authored
+// inside a cited upstream module, which is the literal-where-a-parameter-should-be-received
+// tell for the section 3 layer inversion. `rate_limit` is deliberately NOT deleted beside
+// it -- a published request ceiling is a fact ABOUT the dependency and belongs in extdeps;
+// a retry policy is a fact about how WE call it and belongs to the caller. When a retrying
+// realization exists, its policy arrives as a workflow-layer carrier parameterized per call
+// site, not as a literal frozen into a dependency's module.
+fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?) -> List<Node> {
   let zero_span = no_span()
-  let ep_prop = [make_field_init_node(name: "svc_endpoint", value: endpoint, span: zero_span, name_span: zero_span)]
+  let ep_prop = [make_field_init_node(name: service_config_field_property_name(field: SvcEndpoint), value: endpoint, span: zero_span, name_span: zero_span)]
   let auth_prop = match auth {
-    Present { value: a } => [make_field_init_node(name: "svc_auth", value: a, span: zero_span, name_span: zero_span)]
+    Present { value: a } => [make_field_init_node(name: service_config_field_property_name(field: SvcAuth), value: a, span: zero_span, name_span: zero_span)]
     Absent => []
   }
   let auth_input_prop = match auth_input {
-    Present { value: ai } => [make_field_init_node(name: "svc_auth_input", value: ai, span: zero_span, name_span: zero_span)]
+    Present { value: ai } => [make_field_init_node(name: service_config_field_property_name(field: SvcAuthInput), value: ai, span: zero_span, name_span: zero_span)]
     Absent => []
   }
   let auth_source_prop = match auth_source {
-    Present { value: src } => [make_field_init_node(name: "svc_auth_source", value: src, span: zero_span, name_span: zero_span)]
+    Present { value: src } => [make_field_init_node(name: service_config_field_property_name(field: SvcAuthSource), value: src, span: zero_span, name_span: zero_span)]
     Absent => []
   }
   let rate_prop = match rate_limit {
-    Present { value: r } => [make_field_init_node(name: "svc_rate_limit", value: r, span: zero_span, name_span: zero_span)]
+    Present { value: r } => [make_field_init_node(name: service_config_field_property_name(field: SvcRateLimit), value: r, span: zero_span, name_span: zero_span)]
     Absent => []
   }
-  let retry_prop = match retry {
-    Present { value: r } => [make_field_init_node(name: "svc_retry", value: r, span: zero_span, name_span: zero_span)]
-    Absent => []
-  }
-  concat(ep_prop, auth_prop, auth_input_prop, auth_source_prop, rate_prop, retry_prop)
+  concat(ep_prop, auth_prop, auth_input_prop, auth_source_prop, rate_prop)
 }
 
 fn has_service_config(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -1686,10 +1753,6 @@ fn service_config_auth(n: Node, source_indices: Map<String, NewlineIndex>) -> No
 
 fn service_config_rate_limit(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
   find_property(props: n.properties, prop_name: "svc_rate_limit", source_indices: source_indices)
-}
-
-fn service_config_retry(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  find_property(props: n.properties, prop_name: "svc_retry", source_indices: source_indices)
 }
 
 fn service_config_auth_input(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {

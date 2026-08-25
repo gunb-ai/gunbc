@@ -1,13 +1,14 @@
 module gunbc.host_hygiene_reaper_observe
 
 import std.types { String, NonEmptyStr, Bool, List, FilePath }
+import gunbc.host_effect { LocalShell }
 import std.disposition { Disposition, Terminal }
 import std.realization_reconcile { ShowEffectiveRead, ReadObserved, ReadAbsent, Reconciliation }
 import extdeps.systemd { SystemdUnitActiveState, ActiveState, ControlGroup, parse_systemd_unit_active_state }
 import extdeps.shell
 import gunbc.host_converge { gunbc_runner_all_slots_unit_glob }
 import gunbc.systemctl_show_read {
-  systemctl_show_property_read_local,
+  systemctl_show_property_read,
   SystemdPropertyCaptured,
   SystemdPropertyCaptureRefused,
 }
@@ -33,14 +34,14 @@ data host_hygiene_cgroupfs_root: String = "/sys/fs/cgroup"
 data host_hygiene_build_cache_cmdline_marker: String = "sccache"
 
 fn host_hygiene_read_active_state(unit: NonEmptyStr) -> SystemdUnitActiveState? {
-  match systemctl_show_property_read_local(unit: unit, property: ActiveState) {
+  match systemctl_show_property_read(transport: LocalShell, unit: unit, property: ActiveState) {
     SystemdPropertyCaptured { value: raw } => parse_systemd_unit_active_state(raw: raw)
     SystemdPropertyCaptureRefused { reason: _ } => none
   }
 }
 
 fn host_hygiene_read_control_group(unit: NonEmptyStr) -> String? {
-  match systemctl_show_property_read_local(unit: unit, property: ControlGroup) {
+  match systemctl_show_property_read(transport: LocalShell, unit: unit, property: ControlGroup) {
     SystemdPropertyCaptured { value: cg } => if cg == "" { none } else { Present { value: cg } }
     SystemdPropertyCaptureRefused { reason: _ } => none
   }

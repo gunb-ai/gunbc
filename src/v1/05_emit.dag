@@ -37,7 +37,10 @@ import std.types { is_container_type }
 
 import v1.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix, type_reference_decl_file }
 
-import v1.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
+import v1.compiler.infer_sigs {
+  ResolvedFuncSig, ResolvedFuncEnv,
+  DerivedCalleeSig, DerivedFromSig, NoDerivableSig, func_sig_for_derivation
+}
 
 import v1.compiler.infer_items {
   TypedModule, ResolvedGraph, ItemInfo
@@ -45,11 +48,11 @@ import v1.compiler.infer_items {
 
 import v1.compiler.infer_service { UniqueAccum, OpEntry, is_typed_service_call_receiver, extract_typed_service_name }
 
-import v1.compiler.infer_lookup { lookup_func_sig, func_sig_if_resolved }
+import v1.compiler.infer_lookup { lookup_func_sig }
 
 import v1.compiler.infer {
   InferScope,
-  build_params_scope, extend_scope
+  build_params_scope, extend_scope, call_param_caller_labels
 }
 
 import v1.compiler.infer_emit_info { TypeSummary, EmitGraphInfo }
@@ -252,7 +255,7 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget, sour
 
 fn empty_emit_scope() -> InferScope {
   InferScope {
-    type_env: TypeEnv { module_path: "", bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: empty_map(), intern_table: empty_intern_table(), source_visible_names: empty_map(), symbol_index: empty_symbol_index() },
+    type_env: TypeEnv { module_path: "", bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: empty_map(), intern_table: empty_intern_table(), source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index() },
     func_env: ResolvedFuncEnv { name: "", local: empty_map(), parents: [] },
     locals: empty_map(),
     body_locals: empty_map(),
@@ -299,19 +302,27 @@ fn lookup_item(registry: Map<String, ItemInfo>, name: String) -> ItemInfo? {
   map_get(registry, name)
 }
 
+// THE ARM IS NAMED HERE RATHER THAN IN A SHARED PROJECTION THAT FORGETS IT.
+//
+// `order_typed_call_args` is the only consumer: it reorders NAMED actuals into declared
+// parameter order and leaves the argument list untouched when there is no one signature to order
+// against. An ambiguous callee has no such signature -- and cannot reach emit in an `Accepted`
+// program, because the ExprCall decision seam refuses it -- so the answer is the same as the
+// unresolved case and the two are written as separate arms rather than collapsed by a projection
+// that returns `Absent` for both.
 fn lookup_func_sig_in_scope(scope: InferScope, name: String) -> ResolvedFuncSig? {
-  func_sig_if_resolved(lookup: lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: name))
-}
-
-fn typed_named_arg_matches(arg: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let n = arg_name_at(n: arg, source_indices: source_indices)
-  if n == none {
-    false
-  } else {
-    n.value == name
+  match func_sig_for_derivation(
+    lookup: lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: name)
+  ) {
+    DerivedFromSig { sig: sig } => Present { value: sig }
+    NoDerivableSig { reason: _ } => Absent
   }
 }
 
+// Translate named source arguments to target positional order through infer's
+// accepted-label authority. `_args` accepts exact `_args` and caller-facing
+// `args`; anonymous `_` has no reorderable identity. Both indexes consume that
+// bounded label set, keeping construction and lookup linear.
 fn order_typed_call_args(args: List<Node>, func: String, scope: InferScope) -> List<Node> {
   let has_unnamed = args |> any(arg => arg_name_at(n: arg, source_indices: scope.type_env.source_indices) == none)
   if has_unnamed {
@@ -324,11 +335,18 @@ fn order_typed_call_args(args: List<Node>, func: String, scope: InferScope) -> L
           let n = arg_name_at(n: arg, source_indices: scope.type_env.source_indices)
           if n != none { map_insert(acc, n.value, arg) } else { acc }
         )
-        let param_name_set = sig.params |> fold(init: empty_map(), f: (acc, param) =>
-          map_insert(acc, param_node_name_at(n: param, source_indices: scope.type_env.source_indices), true)
+        let param_label_set = sig.params |> fold(init: empty_map(), f: (acc, param) =>
+          call_param_caller_labels(param_name: param_node_name_at(n: param, source_indices: scope.type_env.source_indices))
+            |> fold(init: acc, f: (labels, label) => map_insert(labels, label, true))
         )
         let ordered = sig.params |> flat_map(param =>
-          match map_get(arg_map, param_node_name_at(n: param, source_indices: scope.type_env.source_indices)) {
+          let param_name = param_node_name_at(n: param, source_indices: scope.type_env.source_indices)
+          let matching = call_param_caller_labels(param_name: param_name)
+            |> flat_map(label => match map_get(arg_map, label) {
+              Present { value: arg } => [arg]
+              Absent => []
+            })
+          match matching |> first {
             Present { value: arg } => [arg]
             Absent => []
           }
@@ -338,7 +356,7 @@ fn order_typed_call_args(args: List<Node>, func: String, scope: InferScope) -> L
           if n == none {
             true
           } else {
-            emit_map_has(m: param_name_set, key: n.value) == false
+            emit_map_has(m: param_label_set, key: n.value) == false
           }
         )
         concat(ordered, leftovers)

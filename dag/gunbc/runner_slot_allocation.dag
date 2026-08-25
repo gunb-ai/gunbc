@@ -109,6 +109,95 @@ fn host_cpu_admitted_width(host: HostIdentity) -> Int {
 
 data width_minimum_now_spans_three_axes_note: String = "THE MINIMUM IS OVER THREE AXES AND THE THIRD ONE IS WHY THIS CHANGE IS SAFE. Memory admits 29 on the upgraded hosts, CPU admits 21, disk admits nothing numeric, so the commitment is 21 -- and the two answers coexist under their own names instead of one of them being suppressed to keep the other honest. width_is_a_minimum_over_axes_note records what happens when they are collapsed: gunbc_runner_slots_per_host once returned the memory verdict under a name that read as the full commitment, and srv4's roster and its prose disagreed as a result.\n\nSo host_memory_admitted_width saying 29 is not a claim that 29 runners may exist. It is the true answer to the question that function asks, and it is the minimum's job -- not the literal's -- to keep the fleet from acting on it."
 
+// WHICH AXIS ACTUALLY BOUND THE WIDTH, WHICH THE MINIMUM DISCARDS.
+//
+// gunbc_runner_slots_per_host takes a minimum over three axes and returns a number. That number
+// cannot say what would unblock more capacity, and the answer differs per host: where memory binds
+// the remedy is DIMMs, where cores bind it is a different machine, and the two are unrelated
+// purchases. A reader given only the total assumes one binding axis across the fleet and plans
+// against the wrong one -- which is now the live situation rather than a future one, since the CPU
+// axis above makes srv1/srv3/srv4 core-bound while srv2 stays memory-bound on its reverted DIMMs.
+//
+// THE UNMEASURED AXIS IS REPORTED AS UNMEASURED, NOT AS ADMITTING EVERYTHING. Disk currently
+// returns DiskWidthUnconstrained on every host, and this module's own reason string is explicit
+// that this is "an unmeasured axis, not a measured all-clear". Rendering that as "disk admits any
+// width" would turn an absence of observation into a positive clearance -- the state-space
+// conflation this corpus keeps finding, where not-applicable and not-observed wear one symbol.
+type WidthAxisStanding
+  = AxisAdmits { axis: NonEmptyStr, slots: Int }
+  | AxisUnmeasured { axis: NonEmptyStr, reason: NonEmptyStr }
+
+fn width_axis_standing_label(standing: WidthAxisStanding) -> String {
+  match standing {
+    AxisAdmits { axis: a, slots: n } =>
+      join([a as String, " admits ", to_string(n)], "")
+    AxisUnmeasured { axis: a, reason: _ } =>
+      join([a as String, " unmeasured"], "")
+  }
+}
+
+fn host_width_axes(host: HostIdentity) -> List<WidthAxisStanding> {
+  let memory = AxisAdmits {
+    axis: "memory" as NonEmptyStr,
+    slots: host_memory_admitted_width(host: host),
+  }
+  let cpu = AxisAdmits {
+    axis: "cores" as NonEmptyStr,
+    slots: host_cpu_admitted_width(host: host),
+  }
+  let disk = match host_disk_admitted_width(host: host) {
+    DiskAdmitsWidth { slots: d, provenance: _ } =>
+      AxisAdmits { axis: "disk" as NonEmptyStr, slots: d }
+    DiskWidthUnconstrained { reason: r } =>
+      AxisUnmeasured { axis: "disk" as NonEmptyStr, reason: r as NonEmptyStr }
+  }
+  [memory, cpu, disk]
+}
+
+fn width_axis_binds_at(standing: WidthAxisStanding, committed: Int) -> Bool {
+  match standing {
+    AxisAdmits { axis: _, slots: n } => n == committed
+    AxisUnmeasured { axis: _, reason: _ } => false
+  }
+}
+
+// THE BINDING AXES ARE THOSE SITTING AT THE COMMITTED WIDTH, AND THERE MAY BE MORE THAN ONE.
+//
+// Returning a single winner would have to break ties arbitrarily, and a tie is real information:
+// two axes at the same number means relieving either one alone buys nothing. An unmeasured axis is
+// never binding -- it cannot be, since it states no width -- which is why the predicate above
+// answers false for it rather than treating absence as a bound.
+fn host_binding_width_axes(host: HostIdentity) -> List<WidthAxisStanding> {
+  let committed = gunbc_runner_slots_per_host(host: host)
+  filter(host_width_axes(host: host), a => width_axis_binds_at(standing: a, committed: committed))
+}
+
+fn host_width_binding_label(host: HostIdentity) -> String {
+  let binding = host_binding_width_axes(host: host)
+  let unmeasured = filter(host_width_axes(host: host), a =>
+    match a {
+      AxisAdmits { axis: _, slots: _ } => false
+      AxisUnmeasured { axis: _, reason: _ } => true
+    })
+  join([
+    "bound by ",
+    join(map(binding, a =>
+      match a {
+        AxisAdmits { axis: x, slots: _ } => x as String
+        AxisUnmeasured { axis: x, reason: _ } => x as String
+      }), "+"),
+    if (unmeasured |> count) > 0 {
+      join([" · ", join(map(unmeasured, a =>
+        match a {
+          AxisAdmits { axis: x, slots: _ } => x as String
+          AxisUnmeasured { axis: x, reason: _ } => x as String
+        }), "+"), " unmeasured"], "")
+    } else {
+      ""
+    },
+  ], "")
+}
+
 fn gunbc_runner_slots_per_host(host: HostIdentity) -> Int {
   let by_memory = host_memory_admitted_width(host: host)
   let by_cpu = host_cpu_admitted_width(host: host)

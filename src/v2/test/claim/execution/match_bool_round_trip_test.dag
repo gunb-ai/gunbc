@@ -155,7 +155,7 @@ fn match_bool_facts_lookup(key: Node) -> Optional<InferredFacts> {
 
 data match_bool_inferred_tree: InferredTree = InferredTree {
   root: match_bool_emitted_root,
-  facts: Map {
+  facts: PartialFunction {
     lookup: match_bool_facts_lookup
   }
 }

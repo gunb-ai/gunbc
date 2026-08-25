@@ -1,0 +1,181 @@
+module gunbc.emitter_shared_layer_producer_census
+
+import std.types { List, String, Bool, Int }
+import std.decl_ref { DeclarationRef, decl_ref }
+
+// THE ROSTER OF PLACES THE v1 RUST EMITTER DECIDES, AT A VALUE-PRODUCING POSITION, WHETHER TO PUT A
+// CONSTRUCTED VALUE AT THE SHARED REFERENCE LAYER. The type/declaration side of this question was
+// already unified: v1.compiler.emit_rust rust_carrier_is_at_shared_layer is the authority, and its
+// own leading annotation records the four positions it collapsed and why. THAT NOTE STOPS AT THE
+// TYPE SIDE. Nothing collapsed the positions that decide the same fact about a VALUE, and this
+// carrier is that population, at the grain of the deciding expression.
+//
+// WHY THE POPULATION IS THE DELIVERABLE AND NOT A SWEEP. The type-side note names the failure this
+// class produces: one carrier answered differently at two positions emits a program that carries a
+// type error no compiler stage located, in BOTH directions -- an over-wrap where the producer
+// wrapped and the declaration did not, an under-wrap where it did not and the declaration did.
+// A sweep that re-pointed every row at once would change ten emitted decisions in one motion with
+// no way to attribute a regen drift to any of them. So the roster is established first and exactly
+// one row is routed, which is what the accompanying change does.
+//
+// EVERY ROW WAS ESTABLISHED BY READING THE DECIDING EXPRESSION IN src/v1/05_emit_rust.dag ON
+// 2026-08-25. No row claims an emitted-corpus measurement it did not take: the divergence column
+// below distinguishes a divergence DERIVED from the two predicates' bodies -- decidable by reading
+// them, and the strongest claim available without an emit -- from one that was executed.
+
+// THE TWO AUTHORITIES, named as a type so a row cannot describe one in prose and be counted as the
+// other. CarrierKeyed is rust_carrier_is_at_shared_layer: leaf-reduced name, machine-scalar
+// realization excluded, optional cardinality excluded. SpellingKeyed is a bare
+// set_contains(shared_types, <name>) with none of those three conjuncts -- so it is not a second
+// reading of one authority, it is a second authority, and the three conjuncts are exactly where the
+// two can disagree about one carrier.
+type LayerAuthority
+  = CarrierKeyed
+  | SpellingKeyed { key_expression: String }
+
+// WHERE THE TWO ANSWERS CAN COME APART, per row. Recorded per row rather than asserted once for the
+// class, because the three conjuncts are not all reachable at every site: a site whose key is
+// already leaf-reduced cannot diverge on spelling, and a site that never sees an optional carrier
+// cannot diverge on cardinality. A row claiming a divergence it cannot reach would inflate the
+// class exactly the way DESIGN 4b names.
+type Divergence
+  = DivergesOnSpelling { why: String }
+  | DivergesOnScalarOrCardinality { why: String }
+  | DivergesOnAllThree { why: String }
+  | NoDivergenceReachable { why: String }
+
+// WHETHER THE CARRIER NODE THE OTHER AUTHORITY NEEDS IS IN SCOPE AT THE DECIDING EXPRESSION. This
+// is the column that decides whether a row is a ROUTING question or a threading question, and it is
+// the difference between a one-line repair and a signature change. A row may not claim the node is
+// available without naming the expression that holds it.
+type CarrierNodeAtSite
+  = NodeInScope { holder_expression: String }
+  | NodeReachableFromValue { holder_expression: String, caveat: String }
+  | NoNodeInScope { what_is_in_scope_instead: String }
+
+type SharedLayerProducer {
+  producer: DeclarationRef
+  position: String
+  authority: LayerAuthority
+  divergence: Divergence
+  carrier_node: CarrierNodeAtSite
+}
+
+// THE SINGLE-AXIS INTERVENTION THIS CARRIER IS LANDED WITH, and why it is emit_data_def rather than
+// any other row. Three reasons, in the order they were applied. It is the only row where BOTH
+// authorities are already live inside one producer, so routing it removes a disagreement rather than
+// relocating one. Its carrier node is the very expression the spelling key is taken from, so the
+// repair is a predicate swap with no signature change and no new threading. And its divergence is
+// DivergesOnAllThree, so a single swap closes all three axes at one site instead of one axis at
+// three sites -- which is what makes it single-AXIS in the sense that matters: one authority
+// substitution, not one conjunct.
+//
+// WHAT THE SWAP ALONE DID NOT DO, recorded because the first attempt landed it and it was wrong.
+// Re-keying needs_rc by itself turned `-> Rc<ZzNode>` into `-> ZzNode` over the same
+// `Some(Rc::new(..))` body: one wrong answer traded for another, because the spelling key had been
+// half-compensating for a cardinality the brand-preserving render arm drops before the key is
+// consulted. So the repair routes that arm through render_rust_shared_type_with_optional -- the same
+// carrier authority, which decides layer AND cardinality together -- and deletes the spelling key
+// rather than keeping it beside the authority. That is still one authority substitution at one
+// producer; it is not a second axis.
+//
+// EVIDENCE, both directions, EXECUTED BUT NOT ENROLLED, and the distinction is stated here because
+// it is the difference between a receipt and a gate. test.claim.data_row_shared_layer_authority_
+// witness_test holds the repair and its two controls. Against the pre-repair binary the repair arm
+// returns false and both controls return true; against the post-repair binary all three return
+// true -- taken by running each test fn directly, which is a real execution receipt. It is NOT a
+// standing one: that file declares ReadsLiveTree truthfully, and v2.workflow.required_floor's
+// retained DeclinedLiveTree arm therefore discovers and declines it, so nothing re-takes these
+// measurements until that arm's staged deletion lands. BLAST RADIUS: a full required-regen over the
+// 135-module seed subject drifted exactly one file, v1_compiler_emit_rust.rs -- the repair's own
+// mirror -- and re-ran first_generation_equal=true once that mirror was installed.
+//
+// WHAT THE OTHER TEN ROWS ARE NOT. They are not scheduled by this carrier and no dissolution trigger
+// is claimed for them. Three of them (the emit_typed_record_lit arms) cannot be routed at all
+// without first answering what carrier an anonymous record literal HAS, which is a modeling question
+// upstream of this file. Recording that here is the point of the carrier_node column: it separates
+// the rows a reader could repair this afternoon from the rows that need a model first.
+
+// THE ROSTER: eleven deciding expressions across nine producers. The count is stated at the grain of
+// the EXPRESSION, not the function, because emit_typed_record_lit alone decides this three times on
+// three different keys -- collapsing those to one row would report a smaller population than a
+// person repairing it has to touch.
+data emitter_shared_layer_producers: List<SharedLayerProducer> = [
+  {
+    producer: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_var_ref"),
+    position: "a bare variant reference in value position, wrapped via variant_ref_self_wraps",
+    authority: SpellingKeyed { key_expression: "set_contains(shared_types, enum_name), inside variant_ref_self_wraps" },
+    divergence: DivergesOnSpelling { why: "enum_name arrives from the variant-parent lookup unreduced, and shared_types is keyed on the bare declared name" },
+    carrier_node: NodeReachableFromValue { holder_expression: "resolved_type, from the resolved_type: InferredNode? parameter", caveat: "the parameter is optional and the wrap arm does not currently read it" },
+  },
+  {
+    producer: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_typed_expr_base"),
+    position: "the SECOND variant-reference wrap, a copy of the emit_var_ref decision on the typed path",
+    authority: SpellingKeyed { key_expression: "set_contains(shared_types, enum_name)" },
+    divergence: DivergesOnSpelling { why: "same key as emit_var_ref, and this copy does not even route through variant_ref_self_wraps, so the freemonoid arm and this one are separately spelled" },
+    carrier_node: NodeReachableFromValue { holder_expression: "texpr.inferred", caveat: "read for other decisions in the same function but not at this arm" },
+  },
+  {
+    producer: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_rust_expr_record_lit"),
+    position: "a nominal record literal in expression position",
+    authority: SpellingKeyed { key_expression: "set_contains(shared_types, rc_name), rc_name being the variant parent or the expanded resolved name" },
+    divergence: DivergesOnScalarOrCardinality { why: "rc_name is already reduced on the arms that compute it from the resolved node, so spelling is not the reachable axis here" },
+    carrier_node: NodeInScope { holder_expression: "resolved_type(n: expr)" },
+  },
+  {
+    producer: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_typed_call"),
+    position: "the record-update form with(base, { .. }) in call position",
+    authority: SpellingKeyed { key_expression: "set_contains(shared_types, type_name), type_name from qualified_last_segment(authored_name_at(resolved_type(base_arg)))" },
+    divergence: DivergesOnScalarOrCardinality { why: "the key is leaf-reduced at this site, so the reachable divergence is the two missing conjuncts" },
+    carrier_node: NodeInScope { holder_expression: "resolved_type(n: base_arg)" },
+  },
+  {
+    producer: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_rust_with_method_call"),
+    position: "the record-update form receiver.with({ .. }) in method position",
+    authority: SpellingKeyed { key_expression: "set_contains(shared_types, type_name)" },
+    divergence: DivergesOnScalarOrCardinality { why: "same decision as emit_typed_call, spelled a second time for the method syntax rather than shared with it" },
+    carrier_node: NodeInScope { holder_expression: "the resolved record type the enclosing match already bound to produce type_name" },
+  },
+  {
+    producer: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_field_value_with_context"),
+    position: "a record literal appearing as another record's field value",
+    authority: SpellingKeyed { key_expression: "set_contains(shared_types, qualified_last_segment(name: rc_name))" },
+    divergence: DivergesOnScalarOrCardinality { why: "the leaf reduction here is the repair qualified_spelling_identity_witness_test defends, so the spelling axis is closed at this row and the other two are not" },
+    carrier_node: NodeInScope { holder_expression: "resolved_type(n: field_value), computed on the line that builds raw" },
+  },
+  {
+    producer: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_typed_record_lit"),
+    position: "an ANONYMOUS single-field record literal resolved to a nominal struct by field name",
+    authority: SpellingKeyed { key_expression: "set_contains(shared_types, r_sn), r_sn from find_unique_struct_name_by_fields" },
+    divergence: DivergesOnScalarOrCardinality { why: "r_sn is a declared struct name from the type-summary roster, so it is bare by construction" },
+    carrier_node: NoNodeInScope { what_is_in_scope_instead: "a struct NAME recovered from the field-name search; the literal's own resolved_type is the anonymous product, not the struct" },
+  },
+  {
+    producer: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_typed_record_lit"),
+    position: "an ANONYMOUS multi-field record literal resolved to a nominal struct by field names",
+    authority: SpellingKeyed { key_expression: "set_contains(shared_types, resolved_sn), resolved_sn from find_struct_name_by_fields" },
+    divergence: DivergesOnScalarOrCardinality { why: "same shape as the single-field arm, spelled separately because the two arms build their struct literal differently" },
+    carrier_node: NoNodeInScope { what_is_in_scope_instead: "a struct NAME recovered from the field-name search" },
+  },
+  {
+    producer: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_typed_record_lit"),
+    position: "a NOMINAL record literal, the ordinary construction path",
+    authority: SpellingKeyed { key_expression: "ctor_alias_resolved && set_contains(shared_types, ctor_name)" },
+    divergence: DivergesOnAllThree { why: "ctor_name is the authored constructor spelling, and no conjunct excludes a machine-scalar or optional carrier" },
+    carrier_node: NodeInScope { holder_expression: "the resolved_type: Node parameter" },
+  },
+  {
+    producer: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_data_def"),
+    position: "a module-scope data row: ONE needs_rc decides both the emitted return type and, threaded into emit_data_def_body, the value",
+    authority: SpellingKeyed { key_expression: "set_contains(shared_types, authored_name_at(node: type_node))" },
+    divergence: DivergesOnAllThree { why: "MEASURED, not derived. The key is the ANNOTATION's authored spelling with none of the authority's three conjuncts, and on the brand-preserving arm the rendered declared type has already lost its cardinality, so the spelling key then added a reference layer on top of the loss. Executed on the pre-repair emitter: a row at a SHARED carrier and OPTIONAL cardinality emitted `-> Rc<ZzNode>` over a body of `Some(Rc::new(..))`, at 0 diagnostics -- silent wrongness below the DESIGN section 5 floor. The single-axis control is the same shape at an UNSHARED carrier, which emitted `Option<ZzPlain>` correctly" },
+    carrier_node: NodeInScope { holder_expression: "type_node, the annotation node the key is already taken from" },
+  },
+  {
+    producer: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "value_inferred_type_is_rc_wrapped"),
+    position: "whether a data row's initializer value is already at the shared layer",
+    authority: CarrierKeyed,
+    divergence: NoDivergenceReachable { why: "this row IS the other authority; it is on the roster because it sits inside emit_data_def's own closure, so one declaration consults both authorities about one carrier" },
+    carrier_node: NodeInScope { holder_expression: "value.inferred" },
+  },
+]
