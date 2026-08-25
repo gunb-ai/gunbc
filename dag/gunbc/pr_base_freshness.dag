@@ -234,6 +234,17 @@ fn pull_request_run_started_at(owner: String, repo: String, head_sha: CommitSha)
 // default. The forge computes the test-merge asynchronously, a commit can have no parents, and a
 // head can carry no run at all; a version of this that filled any of those in would be answering
 // from ignorance in exactly the direction that reads as fresh.
+// WHY THE FOUR ABSENCES BELOW CANNOT BE FIXTURED, AND WHAT THAT MEANS FOR READING THEM.
+//
+// `MergeRefRecomputed` is produced by `classify_base_freshness` from a provenance a caller hands
+// it, so a fixture reaches it directly and its witnesses do. The four reasons produced HERE are
+// different in kind: each one fires on an ABSENCE in a live forge response, so authoring the input
+// that triggers it means standing up a github mock, not writing a value. Their refusal logic is
+// reachable at source -- `first_parent` and `parse_comparison_status` are pure and both are
+// witnessed -- but the step from an absent upstream fact to the reason naming it is not.
+//
+// SO THE FOUR ARE DESCRIBED RATHER THAN WALLED, and a reader counting five labelled reasons should
+// not read five guarded paths. Building that mock is what changes it; nothing in this module can.
 fn observe_pull_request_base_freshness(
   owner: String,
   repo: String,

@@ -187,3 +187,41 @@ test fn first_parent_is_the_merge_base_side() -> Bool {
     Absent {} => false
   }
 }
+
+// AN UNMODELED COMPARISON STATUS MUST DECODE TO NOTHING, because this is the one producer of
+// `UnrecognizedComparisonStatus` that a fixture can reach without a forge. The alternative a
+// decoder is tempted into — defaulting an unknown string to `Identical`, the only status that
+// reads as fresh — would answer "this base is current" from a word it does not know.
+test fn unmodeled_comparison_status_decodes_to_absent() -> Bool {
+  match parse_comparison_status(raw: "sideways") {
+    Absent {} => true
+    Present { value: _ } => false
+  }
+}
+
+fn decoded_status_label(raw: String) -> String {
+  match parse_comparison_status(raw: raw) {
+    Absent {} => "absent"
+    Present { value: s } => comparison_status_label(s: s)
+  }
+}
+
+fn comparison_status_label(s: ComparisonStatus) -> String {
+  match s {
+    Identical => "identical"
+    Ahead => "ahead"
+    Behind => "behind"
+    Diverged => "diverged"
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE ARM ABOVE. Without it the refusal witness is satisfied by a decoder
+// that returns `Absent` for everything, which would refuse the whole comparison axis while looking
+// correctly fail-closed. Each of the four modeled statuses must decode to ITS OWN variant, so a
+// decoder that collapses two of them — or shifts them by one — reds here.
+test fn each_modeled_comparison_status_decodes_to_its_own_variant() -> Bool {
+  decoded_status_label(raw: "identical") == "identical"
+    && decoded_status_label(raw: "ahead") == "ahead"
+    && decoded_status_label(raw: "behind") == "behind"
+    && decoded_status_label(raw: "diverged") == "diverged"
+}
