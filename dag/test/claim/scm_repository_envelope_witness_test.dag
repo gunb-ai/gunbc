@@ -1,6 +1,6 @@
 module test.claim.scm_repository_envelope_witness
 
-// The repository envelope, executed. What is under test is the layer image.dag deliberately is not:
+// The repository envelope, executed. What is under test is the layer commit_closure_json_v2 deliberately is not:
 // an empty initialized repository with NO root, several commits over ONE shared node population, and
 // a checked-out selection that may be absent but may never dangle.
 //
@@ -23,16 +23,18 @@ import v2.std.node {
 import gunbc.scm.object_store {
   ObjectId, ObjectStore, StoreOutcome, Stored, LocatorCollision,
   empty_store, object_id_eq, store_node, store_object_count,
+  CopyOutcome, Copied, CopySourceAbsent, CopyLocatorCollision, copy_object,
 }
+import gunbc.scm.commit_closure { uncontained_targets }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope, RepositoryCommit,
   RepositoryDecodeOutcome, RepositoryDecoded, RepositoryDecodeRefused,
   empty_repository, encode_repository, decode_repository,
   repository_envelope_format_tag, repository_node_identity_rule_tag,
   RepositoryEncodeOutcome, RepositoryEncoded, RepositoryEncodeRefused,
-  RepositoryEncodeRefusal, RepositoryEncodeImageRefusal,
+  RepositoryEncodeRefusal, RepositoryEncodeUncontainedTarget,
   RepositoryCommitRootNotInStore, RepositoryCheckoutNotInCommits,
-  RepositoryDecodeRefusal, RepositoryDecodeImageRefusal,
+  RepositoryDecodeRefusal, RepositoryDecodeClosureDocRefusal, RepositoryMemberReadRefused, RepositoryFormatUnrecognized,
   RepositoryIdentityRuleUnrecognized,
   RepositoryCommitRootReferenceUnresolved, RepositoryCheckoutReferenceUnresolved,
   RepositoryUnexpectedMember, RepositoryMemberContext,
@@ -176,7 +178,7 @@ test fn scm_env_the_root_signature_distinguishes_order() -> Bool {
 //
 // This is the THIRD time this stack has shipped an observation structurally incapable of producing
 // its own negative, and the second time the identical defect was fixed one layer down and then
-// reintroduced one layer up -- image.dag's sharing claim had exactly this shape and exactly this
+// reintroduced one layer up -- commit_closure_json_v2's sharing claim had exactly this shape and exactly this
 // repair. Recorded here rather than silently corrected, because the pattern is the finding: a claim
 // whose subject is an encoding must observe the ENCODED form, and deduplicating consumers make any
 // downstream count agree with itself.
@@ -293,7 +295,7 @@ test fn scm_env_a_dangling_commit_root_refuses() -> Bool {
           elements: [
             json_object(
               members: [
-                json_kv(key: "root", value: json_string(s: "4242")),
+                json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: "4242"))])),
                 json_kv(key: "message", value: json_string(s: "dangling")),
               ]
             )
@@ -425,7 +427,7 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
     RepositoryEncoded { value: _ } => "encoded"
     RepositoryEncodeRefused { cause: cause } =>
       match cause {
-        RepositoryEncodeImageRefusal { cause: _ } => "image"
+        RepositoryEncodeUncontainedTarget { target: _ } => "uncontained_target"
         RepositoryCommitRootNotInStore { root: _ } => "commit_root"
         RepositoryCheckoutNotInCommits { selected: _ } => "checked_out"
       }
@@ -450,6 +452,49 @@ fn scm_env_non_commit_checkout_repository() -> RepositoryEnvelope {
     store: second.store,
     commits: [RepositoryCommit { root: first.identity, message: "first" }],
     checked_out: Present { value: second.identity },
+  }
+}
+
+// AN UNCONTAINED TARGET REFUSES TO ENCODE, AND THE REFUSAL NAMES IT.
+//
+// This claim exists because the arm it drives had no witness at all: the encode-cause helper
+// enumerated it, and every test asserted one of the OTHER two tags. The arm was reachable -- a
+// grafted store whose root's children were never copied produces it -- and simply unoccupied, so
+// changing its payload from a rendered String to an ObjectId would have compiled green with nothing
+// establishing that the identity survives.
+//
+// So the tag is not the whole assertion. It also checks the CARRIED target against the store's own
+// uncontained population, which is the property the type change was for: an identity left as text is
+// one nobody can resolve back, and a tag-only claim could not tell the two apart.
+test fn scm_env_an_uncontained_target_refuses_to_encode_and_names_it() -> Bool {
+  let full = scm_env_put(store: empty_store(), n: scm_env_program_two())
+  let grafted = match copy_object(from: full.store, to: empty_store(), identity: full.identity) {
+    Copied { store: s, identity: _ } => s
+    CopySourceAbsent { identity: _ } => empty_store()
+    CopyLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
+  }
+  let repo = RepositoryEnvelope {
+    store: grafted,
+    commits: [RepositoryCommit { root: full.identity, message: "grafted" }],
+    checked_out: none,
+  }
+  let outcome = encode_repository_checked(repo: repo)
+  (scm_env_encode_cause_tag(outcome: outcome) == "uncontained_target")
+    && scm_env_named_target_is_uncontained(outcome: outcome, store: grafted)
+}
+
+fn scm_env_named_target_is_uncontained(outcome: RepositoryEncodeOutcome, store: ObjectStore) -> Bool {
+  match outcome {
+    RepositoryEncoded { value: _ } => false
+    RepositoryEncodeRefused { cause: c } =>
+      match c {
+        RepositoryEncodeUncontainedTarget { target: t } =>
+          fold(uncontained_targets(store: store), init: false, f: fn(acc, id) {
+            acc || object_id_eq(left: id, right: t)
+          })
+        RepositoryCommitRootNotInStore { root: _ } => false
+        RepositoryCheckoutNotInCommits { selected: _ } => false
+      }
   }
 }
 
@@ -491,7 +536,9 @@ fn scm_env_decode_cause_tag(outcome: RepositoryDecodeOutcome) -> String {
     RepositoryDecoded { envelope: _ } => "decoded"
     RepositoryDecodeRefused { cause: cause } =>
       match cause {
-        RepositoryDecodeImageRefusal { cause: _ } => "image"
+        RepositoryDecodeClosureDocRefusal { cause: _ } => "closure_document"
+        RepositoryMemberReadRefused { cause: _ } => "member_read"
+        RepositoryFormatUnrecognized { found: _ } => "format"
         RepositoryIdentityRuleUnrecognized { found: _ } => "identity_rule"
         RepositoryCommitRootReferenceUnresolved { reference: _ } => "commit_root"
         RepositoryCheckoutReferenceUnresolved { reference: _ } => "checked_out"
@@ -551,4 +598,43 @@ test fn scm_env_an_unknown_commit_member_refuses() -> Bool {
       )
     )
   ) == "unexpected_member"
+}
+
+// THE MISATTRIBUTION THIS CLAIM EXISTS FOR, and it went uncovered until the member-read refusal got
+// its own authority. Dropping the envelope's OWN identity_rule member refused as
+// RepositoryDecodeClosureDocRefusal -- reported to an operator as "the closure document is
+// malformed" -- for a document whose closure was never reached, because the shared member reader
+// was homed in the closure-document module and carried that module's vocabulary. Nothing asserted
+// was false in either half; the arrow between them was invented, which is why review reads past it.
+//
+// The claim is written against the tag rather than the arm so it stays red for the right reason: a
+// decoder that refused for some unrelated cause reports that cause's own tag, not this one.
+test fn scm_env_a_missing_envelope_member_is_not_blamed_on_the_closure_document() -> Bool {
+  scm_env_decode_cause_tag(
+    outcome: scm_env_decode_members(
+      members: scm_env_drop_key(
+        members: scm_env_wire_of(repo: scm_env_two_commit_repository()),
+        key: "identity_rule"
+      )
+    )
+  ) == "member_read"
+}
+
+// THE SAME BORROWING, ONE CONCEPT OVER. The repository envelope's own format tag was refused as
+// ClosureDocFormatUnrecognized, so a repository written by a FUTURE VERSION OF THIS TOOL reported
+// that the closure document was in an unrecognized format. That is the misattribution above with a
+// worse blast radius: unsupported-protocol is the standing that tells an operator to upgrade, and
+// pointing it at the wrong document points the upgrade at the wrong thing.
+test fn scm_env_an_unrecognized_repository_format_is_the_repositorys_own_refusal() -> Bool {
+  scm_env_decode_cause_tag(
+    outcome: scm_env_decode_members(
+      members: concat(
+        scm_env_drop_key(
+          members: scm_env_wire_of(repo: scm_env_two_commit_repository()),
+          key: "format"
+        ),
+        [json_kv(key: "format", value: json_string(s: "gunbc.repository.v2"))]
+      )
+    )
+  ) == "format"
 }

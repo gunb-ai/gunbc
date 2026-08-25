@@ -468,7 +468,7 @@ fn facts_closure_entries_fold(
   )
 }
 
-fn facts_closure_fold(partition: ProgramPartition) -> Outcome<Map<Node, InferredFacts>> {
+fn facts_closure_fold(partition: ProgramPartition) -> Outcome<PartialFunction<Node, InferredFacts>> {
   match partition.boundary {
     AmbientContextAvailable =>
       outcome_accepted(value: partition.ambient.facts)

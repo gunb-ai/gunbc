@@ -1,8 +1,0 @@
-module ish.control
-
-import std.types { String }
-import std.algebra { trim }
-
-fn trim_wrapper(value: String) -> String {
-  trim(value)
-}

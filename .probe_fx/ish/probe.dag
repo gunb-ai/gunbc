@@ -1,8 +1,0 @@
-module ish.probe
-
-import std.types { String }
-import std.algebra { trim }
-
-fn trim(value: String) -> String {
-  trim(value)
-}

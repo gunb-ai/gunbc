@@ -61,14 +61,16 @@ test fn srv4_runner_installer_command_cites_installer_with_env() -> Bool {
     installer_path: "/tmp/install-actions-runner.sh",
     pem_src_path: "/tmp/app.pem",
   )
-  let c = match outcome {
-    RunnerCommandReady { command: cmd } => shell_command_render(command: cmd)
-    RunnerCommandRefused { host_label: _, reason: _ } => ""
+  match outcome {
+    RunnerCommandRefused { host_label: _, reason: _ } => false
+    RunnerCommandReady { command: cmd } => {
+      let c = shell_command_render(command: cmd)
+      string_contains(s: c, pattern: "'CTRL_RUNNER_HOST_LABEL=srv4'")
+        && string_contains(s: c, pattern: "'CTRL_RUNNER_JOB_USER=ghrunner'")
+        && string_contains(s: c, pattern: "'CTRL_RUNNER_APP_PEM_SRC=/tmp/app.pem'")
+        && string_contains(s: c, pattern: "'/usr/bin/sudo' '-E' 'bash' '/tmp/install-actions-runner.sh'")
+    }
   }
-  string_contains(s: c, pattern: "'CTRL_RUNNER_HOST_LABEL=srv4'")
-    && string_contains(s: c, pattern: "'CTRL_RUNNER_JOB_USER=ghrunner'")
-    && string_contains(s: c, pattern: "'CTRL_RUNNER_APP_PEM_SRC=/tmp/app.pem'")
-    && string_contains(s: c, pattern: "'/usr/bin/sudo' '-E' 'bash' '/tmp/install-actions-runner.sh'")
 }
 
 test fn srv4_runner_app_from_secret_manager() -> Bool {
@@ -105,29 +107,31 @@ test fn srv4_runner_app_from_secret_manager() -> Bool {
 // discriminating, and a command that listed the units without the verb still fails here.
 test fn srv4_enables_its_declared_runner_instances() -> Bool {
   let names = runner_instance_names(deploy: srv4_runner_host_deploy)
-  let enable = match runner_activate_command(admission: admit_runner_activation(host_admission: admit_runner_host(deploy: srv4_runner_host_deploy), cache_ready: witness_ready_receipt(), pool_ready: witness_ready_pool())) {
-    RunnerCommandReady { command: cmd } => shell_command_render(command: cmd)
-    RunnerCommandRefused { host_label: _, reason: _ } => ""
+  match runner_activate_command(admission: admit_runner_activation(host_admission: admit_runner_host(deploy: srv4_runner_host_deploy), cache_ready: witness_ready_receipt(), pool_ready: witness_ready_pool())) {
+    RunnerCommandRefused { host_label: _, reason: _ } => false
+    RunnerCommandReady { command: cmd } => {
+      let enable = shell_command_render(command: cmd)
+      list_length(items: names) == srv4_runner_host_deploy.runner_count
+        && string_contains(s: enable, pattern: "'actions-runner@srv4-01.service'")
+        && string_contains(s: enable, pattern: "'actions-runner@srv4-05.service'")
+        && all(names, n => string_contains(s: enable, pattern: n))
+        && !string_contains(
+             s: enable,
+             pattern: concat("srv4-", runner_slot_index_suffix(index: srv4_runner_host_deploy.runner_count + 1)),
+           )
+        && string_contains(
+             s: enable,
+             pattern: concat(
+               concat("'", sudo_binary_path as String),
+               concat("' '", concat(sudo_non_interactive_flag as String, "'")),
+             ),
+           )
+        && string_contains(
+             s: enable,
+             pattern: concat(concat("'", systemctl_program as String), "' 'enable' '--now'"),
+           )
+    }
   }
-  list_length(items: names) == srv4_runner_host_deploy.runner_count
-    && string_contains(s: enable, pattern: "'actions-runner@srv4-01.service'")
-    && string_contains(s: enable, pattern: "'actions-runner@srv4-05.service'")
-    && all(names, n => string_contains(s: enable, pattern: n))
-    && !string_contains(
-         s: enable,
-         pattern: concat("srv4-", runner_slot_index_suffix(index: srv4_runner_host_deploy.runner_count + 1)),
-       )
-    && string_contains(
-         s: enable,
-         pattern: concat(
-           concat("'", sudo_binary_path as String),
-           concat("' '", concat(sudo_non_interactive_flag as String, "'")),
-         ),
-       )
-    && string_contains(
-         s: enable,
-         pattern: concat(concat("'", systemctl_program as String), "' 'enable' '--now'"),
-       )
 }
 
 data unenrolled_host_fixture: RunnerHostDeploy = RunnerHostDeploy {
@@ -187,21 +191,36 @@ test fn red_control_admission_blind_builder_rejected_by_gate() -> Bool {
 
 data activation_moved_note: String = "runner_enable_command was deleted with the materialization/activation split; these rows now drive runner_activate_command through a readiness receipt. The receipt below is a fixture, and the enrollment assertions it supports are unchanged: an unenrolled host still refuses, and the refusal still carries no command. What changed is that enrollment alone is no longer sufficient, which is the whole point of the split — so these witnesses now assert the WEAKER half of a stronger wall, and the wall's own controls live in test.claim.runner_activation_wall."
 
+// DEFINED LOCALLY RATHER THAN SHARED WITH runner_activation_wall_test, which carries the same fixture
+// and the full reasoning for it. A cross-test-module reference resolves under the floor -- it prepares
+// one subject over every module, so the other test module is loaded -- and fails NoSuchFunction under a
+// targeted `gunbc run` whose entry closure does not reach it. Twelve duplicated lines are cheaper than a
+// witness whose resolvability depends on which harness runs it.
+fn pool_declared_instance_fixture(host: HostIdentity) -> BuildCacheInstance {
+  let base = ci_cache_instance(host: host)
+  BuildCacheInstance {
+    identity: base.identity,
+    implementation: base.implementation,
+    endpoint: base.endpoint,
+    intended_unit: base.intended_unit,
+    intended_principal: base.intended_principal,
+    intended_storage: base.intended_storage,
+    intended_capacity: base.intended_capacity,
+    intended_compile_pool: CompilePoolSliceDeclared {
+      slice_unit: gunbc_managed_compile_pool_slice as String,
+    },
+  }
+}
+
 fn witness_ready_receipt() -> BuildCacheInstanceReady {
   BuildCacheInstanceReady {
-    instance: ci_cache_instance(host: srv4_runner_host_deploy.host_label as HostIdentity),
+    instance: pool_declared_instance_fixture(host: srv4_runner_host_deploy.host_label as HostIdentity),
     owner: ProcessIdentity {
       boot_id: "fixture-boot" as NonEmptyStr,
       pid: 4242,
       start_time: "80000000" as NonEmptyStr,
     },
     managed_unit: ci_cache_instance(host: srv4_runner_host_deploy.host_label as HostIdentity).intended_unit,
-    endpoint_verified: true,
-    executable_verified: true,
-    principal_verified: true,
-    storage_verified: true,
-    capacity_verified: true,
-    compile_pool_verified: true,
   }
 }
 

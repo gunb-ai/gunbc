@@ -1,10 +1,18 @@
 module test.claim.host_reach_identity_probe_witness
 
+import gunbc.network_identity_subsumption { srv3_post_install_lease_table_fixture }
+import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
 import std.types { Bool, String, NonEmptyStr, List }
 import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused }
 import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
-import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3, operator_host_srv5 }
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for, spark_endpoint_for_binding }
+import gunbc.spark.dgx_procurement {
+  DgxSparkRouterBinding,
+  SlotUnassigned,
+  srv5_router_binding,
+  srv6_router_binding,
+}
 import gunbc.host_reach_identity_probe {
   ReachProbeOutcome,
   ProbeReachable,
@@ -193,4 +201,43 @@ test fn spark_probe_targets_are_modeled_addresses_not_names() -> Bool {
   fleet_probe_endpoint_for(host: "srv5") == "192.168.1.222"
     && fleet_probe_endpoint_for(host: "srv6") == "192.168.1.223"
     && fleet_probe_endpoint_for(host: "srv1") == "srv1"
+}
+
+// The undecided slot exists only as a fixture: both production bindings are SlotAssigned, so this
+// arm has zero live occupancy. Per DESIGN's reachability-read-as-occupancy rule that is a healthy
+// guard being quiet — SlotUnassigned is a constructible variant a third unit lands in before its
+// allocation is decided, and it is reachable from this projection's denominator, which is any
+// binding at all.
+data fixture_undecided_spark_slot: DgxSparkRouterBinding = SlotUnassigned { identity: operator_host_srv5 }
+
+fn spark_endpoint_or_empty(binding: DgxSparkRouterBinding) -> String {
+  match spark_endpoint_for_binding(binding: binding) {
+    Absent => ""
+    Present { value: endpoint } => endpoint
+  }
+}
+
+// AN UNDECIDED SLOT YIELDS NO ENDPOINT — not a fabricated address and not a placeholder. This is
+// the refusal spark_endpoint_for_binding's header claims, asserted through the projection rather
+// than about it, and it is why the fold below must CALL that function instead of re-deriving:
+// enforcing the refusal in a copy nothing consumes leaves the probe path unguarded.
+test fn undecided_spark_slot_projects_no_endpoint() -> Bool {
+  match spark_endpoint_for_binding(binding: fixture_undecided_spark_slot) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE DISCRIMINATING CONTROL FOR THE 2026-08-23 DUPLICATE REMOVAL. fleet_probe_endpoint_for used
+// to re-derive the projection with its own inline render instead of calling
+// spark_endpoint_for_binding, so the two could silently drift. Each side of this comparison is
+// computed by a DIFFERENT entry point over the same binding, which is the whole content: a mutant
+// that restores the inline derivation and changes it — a different render, a dropped cast, a
+// stale address — TYPECHECKS and reds here. After the repair one implementation feeds both, so
+// this is a permanent regression control rather than a probe that retires: it stays enrolled as
+// the executing evidence that the two entry points have not forked again (§4b meta-obligation 4 —
+// a climb deletes the redundant production machinery, never the evidence).
+test fn probe_endpoint_agrees_with_the_projection_it_consumes() -> Bool {
+  fleet_probe_endpoint_for(host: "srv5") == spark_endpoint_or_empty(binding: srv5_router_binding)
+    && fleet_probe_endpoint_for(host: "srv6") == spark_endpoint_or_empty(binding: srv6_router_binding)
 }

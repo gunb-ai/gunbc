@@ -1,8 +1,0 @@
-module probe.control
-
-import std.types { Bool }
-import probe.lib { target_symbol }
-
-fn wrapper_distinct_name() -> Bool {
-  target_symbol()
-}

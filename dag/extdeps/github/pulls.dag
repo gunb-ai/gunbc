@@ -41,6 +41,12 @@ type PullRequestRef {
   label: String
 }
 
+// `merge_commit_sha` IS THE TEST-MERGE FOR AN OPEN PULL REQUEST, not the commit a merge produced.
+// GitHub computes a merge of the head into the base and reports it here, and for a pull request
+// that has actually merged the same field instead names the resulting commit. Two meanings on one
+// upstream field is the upstream's shape, not ours to rename — but it is optional because GitHub
+// omits it while mergeability is still being computed, and that `Absent` is a real state a consumer
+// must decide about rather than a value to wait for.
 type PullRequest {
   number: Int
   title: String
@@ -54,6 +60,7 @@ type PullRequest {
   updated_at: Timestamp
   merged_at: Timestamp?
   draft: Bool
+  merge_commit_sha: CommitSha?
 }
 
 data pull_timing_observation_provenance_note: String = "One-time GitHub REST pull on 2026-08-01 under this module's existing GET-pull authority. Each row is the PullRequest.created_at and PullRequest.merged_at pair returned by github.Pulls.Get, normalized once from the wire Timestamp strings to Unix epoch milliseconds so arithmetic consumers do not pretend Timestamp is subtractable. The source URL remains on every row and fetched_on makes staleness inspectable. PullRequest stays the one wire-response authority; PullTimingObservation is its cited, immutable arithmetic projection, not a second endpoint or response model."
@@ -175,8 +182,6 @@ service github.Pulls {
     auth_source: EnvVar { name: "GITHUB_TOKEN" }
 
     rate_limit: { requests: 5000, per: hour, scope: core }
-
-    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503, 504] }
   }
 
   operation List {

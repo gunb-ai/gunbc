@@ -1,0 +1,770 @@
+module gunbc.fabric_cell_converge
+
+import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
+import std.nat { Nat }
+import std.disposition { Disposition, SingleAuthority }
+import v2.std.optional { Optional, Present, Absent }
+import std.measure { byte_size_count }
+import product.placement_supply { HostIdentity }
+import product.fabric.sanitation { CellId }
+import gunbc.ownership { Ownership, Owned }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name, runner_slot_identity_equal }
+import gunbc.runner_slot_allocation {
+  fabric_execution_slot_identities,
+  gunbc_runner_slot_desired,
+  runner_slot_membership,
+  CommittedSlotMember,
+  SlotOutsideCommittedPopulation,
+  SlotServesFabricExecution,
+  SlotServesGitHubActions,
+}
+
+data fabric_cell_converge_authority_disposition: Disposition = SingleAuthority
+
+// THIS MODULE ANSWERS ONE QUESTION AND IT IS NOT THE ONE gunbc.runner_lifecycle ANSWERS.
+// runner_lifecycle owns the GitHub Actions runner lifecycle and permanently refuses fabric slots;
+// that refusal stays, and it stays a REFUSAL rather than gaining a fabric success arm. A sibling
+// family here plus a success arm there would be two provisioning authorities for one cell -- the
+// single-authority violation arrived at by addition rather than by nicknaming, which is the harder
+// form to see because neither half looks like a duplicate on its own.
+//
+// THE MEMBER GRAIN IS A RESOURCE ADDRESS, NOT A CELL-WIDE DIGEST, and that follows the Spark
+// serving family rather than inventing a second shape beside it. One digest over the whole cell
+// would produce a wrong REMEDY, not merely a coarse report: a drifted resource boundary and a
+// missing attempt-state root would hash differently and both select "provision the cell", so a host
+// needing only its cgroup limits reapplied would pay for a full installation. Separate addresses
+// mean a missing root creates a root and a drifted boundary repairs limits.
+//
+// AN EARLIER REVISION OF THIS MODULE CARRIED A PARALLEL `FabricCellProvisionStep` VOCABULARY beside
+// these addresses -- privilege, root, attempt root, boundary, principal -- which was a second
+// spelling of what parts a cell has, and would have had to be kept in step with this one by hand.
+// It is gone: the addresses are the parts, each with its own observation and its own remedy, and
+// ownership is a member field rather than a step.
+data fabric_cell_substrate_is_not_offerable_note: String = "Substrate-provisioned establishes that the cell root, its attempt-state root and its resource boundary exist as declared. It does NOT mean an executor is ready, and this module publishes no SupplierOffer, exposes no member to an allocator, and starts no process. There is no fabric agent in this tree; when an executable entry and its configuration exist, its unit and registration become establishable facts and enter as their own addresses. Offerability is a separate join over host capacity standing, cell readiness and admitted capacity class, and it lives with supply publication."
+
+// THE CELL'S IDENTITY IS THE SLOT'S IDENTITY. gunbc.build_cache_instance runner_slot_instance_name
+// is already the single authority for how a slot identity is spelled ("srv3-06"), and a fabric cell
+// is that slot seen by the fabric. The exact physical identity carried on the member is the
+// RunnerSlotIdentity itself, never a unit name or a path parsed back into one.
+fn fabric_cell_id_for_slot(slot: RunnerSlotIdentity) -> CellId {
+  runner_slot_instance_name(slot: slot) as CellId
+}
+
+data fabric_cell_base_dir: String = "/opt/fabric-cells"
+
+fn fabric_cell_root_path(slot: RunnerSlotIdentity) -> String {
+  join([fabric_cell_base_dir, "/", runner_slot_instance_name(slot: slot)], "")
+}
+
+fn fabric_cell_attempt_root_path(slot: RunnerSlotIdentity) -> String {
+  join([fabric_cell_root_path(slot: slot), "/attempts"], "")
+}
+
+fn fabric_cell_slice_name(slot: RunnerSlotIdentity) -> String {
+  join(["fabric-cell-", runner_slot_instance_name(slot: slot), ".slice"], "")
+}
+
+// THREE ADDRESSES, EACH WITH A REAL DESIRED VALUE AND A REAL OBSERVATION TODAY. An address is added
+// here only when the thing it names exists to be observed; an executor unit, a control-plane
+// binding and a materialization endpoint are deliberately absent because no fabric agent exists in
+// this tree, and naming them would make "provisioned" mean "an executor is ready" while the only
+// establishable facts are a directory, a directory and a cgroup.
+type FabricCellResourceAddress
+  = FabricCellRootAddress
+  | FabricCellAttemptRootAddress
+  | FabricCellResourceBoundaryAddress
+
+fn fabric_cell_resource_address_wire(address: FabricCellResourceAddress) -> String {
+  match address {
+    FabricCellRootAddress => "cell-root"
+    FabricCellAttemptRootAddress => "attempt-root"
+    FabricCellResourceBoundaryAddress => "resource-boundary"
+  }
+}
+
+fn fabric_cell_resource_addresses() -> List<FabricCellResourceAddress> {
+  [FabricCellRootAddress, FabricCellAttemptRootAddress, FabricCellResourceBoundaryAddress]
+}
+
+// `host` IS NOT A FIELD HERE, AND ITS ABSENCE IS THE POINT. An earlier cut carried both
+// `host: HostIdentity` and `slot: RunnerSlotIdentity`, and `RunnerSlotIdentity` already contains
+// the host -- so the record admitted `member.host = srv4` beside `member.slot.host = srv3`, a
+// disagreement no consumer could detect and no fold could refuse. The stable member identity is
+// exactly RunnerSlotIdentity x FabricCellResourceAddress; the host is DERIVED from the slot
+// wherever it is needed. That makes the disagreement unrepresentable rather than validated
+// (DESIGN section 5, construction over validation), which is strictly stronger than the equality
+// check the two-field shape would have needed.
+type FabricCellMember {
+  slot: RunnerSlotIdentity
+  address: FabricCellResourceAddress
+  state_digest: NonEmptyStr
+}
+
+fn fabric_cell_member_key(member: FabricCellMember) -> String {
+  join([
+    member.slot.host as String,
+    "|",
+    runner_slot_instance_name(slot: member.slot),
+    "|",
+    fabric_cell_resource_address_wire(address: member.address),
+  ], "")
+}
+
+fn fabric_cell_member_key_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn fabric_cell_member_value_eq(a: FabricCellMember, b: FabricCellMember) -> Bool {
+  a.state_digest == b.state_digest
+}
+
+// EVERY DESIRED MEMBER IS Owned, WHICH IS A CLAIM ABOUT TEARDOWN ELIGIBILITY AND IS MADE
+// DELIBERATELY. These resources are created by this family and by nothing else -- the paths sit
+// under a base directory no other family writes, and the slice is named for the cell. An Ensured
+// member would say "required present but not ours"; nothing here is in that position yet.
+// OWNERSHIP IS DERIVED FROM THE ADMITTED IDENTITY, NOT CARRIED BY THE OBSERVATION. An earlier cut
+// made `ownership` a member field, so an OBSERVED member -- a record built from what a host reported
+// -- authored the very fact that licenses its own teardown: reconcile consults this function when
+// deciding whether an observed extra may be removed. This family's namespace is closed
+// (RunnerSlotIdentity x FabricCellResourceAddress, both authority-owned), so every member inside it
+// is Owned by construction and the field was a writable restatement of a fact the identity already
+// settles. If ownership ever depends on provenance, that provenance is separately admitted
+// evidence, not a field the observed side fills in.
+fn fabric_cell_member_ownership(member: FabricCellMember) -> Optional<Ownership> {
+  Present { value: Owned }
+}
+
+// THE BOUNDARY'S DESIRED STATE CONSUMES THE EXISTING SLOT AUTHORITY RATHER THAN RE-SPELLING IT, so
+// a change to the fleet's per-slot resource row shows up here as MemberChanged at exactly one
+// address instead of drifting silently. The digest is over the values the boundary will carry.
+fn fabric_cell_resource_boundary_state_digest() -> NonEmptyStr {
+  let desired = gunbc_runner_slot_desired()
+  join([
+    "memory_max=", to_string(byte_size_count(b: desired.memory_max)),
+    ";memory_high=", to_string(byte_size_count(b: desired.memory_high)),
+    ";memory_swap_max=", to_string(byte_size_count(b: desired.memory_swap_max)),
+    ";tasks_max=", to_string(desired.tasks_max),
+    ";cpu_weight=", to_string(desired.cpu_weight),
+  ], "") as NonEmptyStr
+}
+
+fn fabric_cell_desired_state_digest(slot: RunnerSlotIdentity, address: FabricCellResourceAddress) -> NonEmptyStr {
+  match address {
+    FabricCellRootAddress => fabric_cell_root_path(slot: slot) as NonEmptyStr
+    FabricCellAttemptRootAddress => fabric_cell_attempt_root_path(slot: slot) as NonEmptyStr
+    FabricCellResourceBoundaryAddress =>
+      join([
+        fabric_cell_slice_name(slot: slot),
+        ";",
+        fabric_cell_resource_boundary_state_digest() as String,
+      ], "") as NonEmptyStr
+  }
+}
+
+fn fabric_cell_desired_members_for_slot(slot: RunnerSlotIdentity) -> List<FabricCellMember> {
+  map(
+    fabric_cell_resource_addresses(),
+    a => FabricCellMember {
+      slot: slot,
+      address: a,
+      state_digest: fabric_cell_desired_state_digest(slot: slot, address: a),
+    }
+  )
+}
+
+// THE DESIRED POPULATION CONSUMES THE EXACT IDENTITY AUTHORITY AND DOES NOT RE-SPELL IT. A second
+// fabric member added to gunbc.runner_slot_allocation appears here without an edit, and cannot be
+// forgotten. Filtering by host is the fleet-converge spine's question, not this one's.
+fn fabric_cell_desired_members(host: HostIdentity) -> List<FabricCellMember> {
+  fold(
+    fabric_execution_slot_identities(),
+    init: [],
+    f: (acc, slot) =>
+      if (slot.host as String) == (host as String) {
+        concat(acc, fabric_cell_desired_members_for_slot(slot: slot))
+      } else {
+        acc
+      }
+  )
+}
+
+type FabricCellFamilyMembership
+  = FabricCellIsAFamilyMember { cell: CellId }
+  | SlotIsNotAFabricExecutionMember { reason: String }
+  | SlotIsNotACommittedMemberOfItsHost { reason: String }
+
+// MEMBERSHIP PRECEDES PURPOSE, for the same reason it does in runner_slot_membership: asking what a
+// cell's resources are only means something once the slot exists on the host at all. The two
+// refusals are separate variants because they have opposite repairs -- one is "this host was never
+// admitted to carry that slot index", the other is "that slot is a GitHub Actions member and its
+// lifecycle lives in gunbc.runner_lifecycle".
+fn fabric_cell_family_membership(host: HostIdentity, slot_index: Nat) -> FabricCellFamilyMembership {
+  match runner_slot_membership(host: host, slot_index: slot_index) {
+    SlotOutsideCommittedPopulation { identity: _, committed_width: _ } =>
+      SlotIsNotACommittedMemberOfItsHost {
+        reason: "slot index is outside the host committed population derived by gunbc.runner_slot_allocation: a cell cannot be provisioned onto a slot the host was never admitted to carry"
+      }
+    CommittedSlotMember { identity: id, purpose: p } =>
+      match p {
+        SlotServesGitHubActions =>
+          SlotIsNotAFabricExecutionMember {
+            reason: "slot serves GitHub Actions: its lifecycle is gunbc.runner_lifecycle, and answering with fabric cell resources would place a fabric cell on a slot the planner registers with GitHub"
+          }
+        SlotServesFabricExecution => FabricCellIsAFamilyMember { cell: fabric_cell_id_for_slot(slot: id) }
+      }
+  }
+}
+
+// OBSERVATION IS PER ADDRESS, AND AN UNREADABLE RESOURCE NEVER ARRIVES AS AN ABSENT ONE.
+//
+// The failure this shape exists to prevent is the empty-observation narrow: a probe that cannot read
+// a unit tree, a cgroup or a path returning nothing, and the reconcile reading "nothing observed" as
+// "the host has none of it" and planning a full provision over a cell it could not see. Absent and
+// unreadable are different states with different remedies, so they are different variants.
+//
+// CONTRADICTION REFUSES RATHER THAN RESOLVING BY ORDER. A readback can carry two observations of one
+// address -- a stale reader, two attesters, a retried probe. The tempting fold takes the first
+// match, which makes the verdict a function of LIST ORDER and lets a favourable observation win by
+// arriving first. Every observation of an address is folded and any doubt dominates: refusal beats
+// contradiction, contradiction beats absence, absence beats presence. Presence is therefore the only
+// disposition requiring every observation of that address to agree.
+type FabricCellAddressObservation
+  = AddressObserved { member: FabricCellMember }
+  | AddressAbsent { slot: RunnerSlotIdentity, address: FabricCellResourceAddress }
+  | AddressObservationRefused { slot: RunnerSlotIdentity, address: FabricCellResourceAddress, cause: String }
+
+fn observation_slot(o: FabricCellAddressObservation) -> RunnerSlotIdentity {
+  match o {
+    AddressObserved { member: m } => m.slot
+    AddressAbsent { slot: s, address: _ } => s
+    AddressObservationRefused { slot: s, address: _, cause: _ } => s
+  }
+}
+
+fn observation_address(o: FabricCellAddressObservation) -> FabricCellResourceAddress {
+  match o {
+    AddressObserved { member: m } => m.address
+    AddressAbsent { slot: _, address: a } => a
+    AddressObservationRefused { slot: _, address: a, cause: _ } => a
+  }
+}
+
+// IDENTITY IS COMPARED AT ITS OWN AUTHORITY, NOT THROUGH A RENDERED NAME. An earlier cut
+// compared two `runner_slot_instance_name` strings, which makes a DISPLAY projection the backward
+// identity test for a type that already carries exact coordinates -- a second naming scheme for a
+// fact the identity authority owns (DESIGN section 3), and one that silently inherits every future
+// change to how a slot renders. `runner_slot_identity_equal` compares host and index directly.
+fn observation_targets(o: FabricCellAddressObservation, slot: RunnerSlotIdentity, address: FabricCellResourceAddress) -> Bool {
+  runner_slot_identity_equal(a: observation_slot(o: o), b: slot)
+    && fabric_cell_resource_address_wire(address: observation_address(o: o))
+        == fabric_cell_resource_address_wire(address: address)
+}
+
+// THE READBACK NAMES ITS SUBJECT ONCE. An earlier cut carried `cell: CellId` here while every
+// function that interpreted the readback took a separate `slot: RunnerSlotIdentity`, and nothing
+// compared them -- so a readback branded srv4-06 could carry observations about srv3-06 and return
+// a verdict naming srv4-06 for a decision derived from srv3-06. Two writable identities for one
+// subject is the pair DESIGN section 3 forbids; the CellId is DERIVED from the slot wherever it is
+// needed (fabric_cell_id_for_slot), so the disagreement has no spelling rather than needing a check.
+type FabricCellReadback {
+  slot: RunnerSlotIdentity
+  observations: List<FabricCellAddressObservation>
+}
+
+// THE OBSERVATION'S SUBJECT IS A HOST, BECAUSE THE POPULATION IT PRODUCES IS. An earlier cut fed a
+// host-scoped population from a constructor that evaluated ONE slot's three addresses -- correct
+// only while srv3 declares exactly one fabric cell, and silently wrong the moment it declares two:
+// the second cell's resources are unobserved, and a host-scoped population reports them as ABSENT,
+// so reconcile plans them as additions against a host nobody read for them. That is the
+// empty-observation narrow at cell grain, reintroduced underneath the type that exists to prevent
+// it. The host readback carries one entry per cell read; the fold below decides completeness
+// against the AUTHORITY'S expected subjects, not against what the caller happened to supply.
+type FabricCellHostReadback {
+  host: HostIdentity
+  cell_readbacks: List<FabricCellReadback>
+}
+
+fn fabric_cell_expected_slots(host: HostIdentity) -> List<RunnerSlotIdentity> {
+  fold(
+    fabric_execution_slot_identities(),
+    init: [],
+    f: (acc, s) => if (s.host as String) == (host as String) { concat(acc, [s]) } else { acc }
+  )
+}
+
+// A CELL WITH NO READBACK IS UNOBSERVED, NOT EMPTY, and that is decided here rather than by the
+// caller remembering to supply one. The expected subjects come from the slot authority; a slot the
+// caller did not read folds to an observation-less readback, whose addresses are all
+// AddressUnobserved, which StandingBlocked routes to the refused arm.
+// EVERY READBACK FOR A SLOT IS MERGED; NONE IS DISCARDED BY ARRIVING EARLIER. An earlier cut folded
+// with `if matches { r } else { acc }`, so when `cell_readbacks` carried two entries for one slot --
+// a retried probe, two attesters, a re-read after a timeout -- the LAST one silently won and the
+// earlier one was thrown away unexamined. That is the favourable-reading-by-position hazard the
+// address-level evidence fold was written to eliminate, reintroduced one level up where that fold
+// could never see it: it only ever received the surviving readback (codex review 55453).
+//
+// THE REPAIR IS TO MERGE RATHER THAN TO REJECT, and the reason is that the address level already
+// decides this correctly. Concatenating the observations puts every reading in front of
+// fabric_cell_address_evidence, whose join then answers the question properly per address: two
+// probes agreeing on a digest are Present, two disagreeing are Contradicted, one refusing makes the
+// address Unreadable whatever the other said. Rejecting duplicate slot entries outright would have
+// been a coarser wall -- it would refuse a redundant probe that agrees with its twin, which is
+// exactly the healthy case, and it would decide at slot grain a question whose facts are per
+// address.
+fn fabric_cell_readback_for_slot(
+  readback: FabricCellHostReadback,
+  slot: RunnerSlotIdentity,
+) -> FabricCellReadback {
+  FabricCellReadback {
+    slot: slot,
+    observations: fold(
+      readback.cell_readbacks,
+      init: [],
+      f: (acc, r) =>
+        if runner_slot_identity_equal(a: r.slot, b: slot) { concat(acc, r.observations) } else { acc }
+    ),
+  }
+}
+
+fn fabric_cell_host_standings(readback: FabricCellHostReadback) -> List<FabricCellAddressStanding> {
+  fold(
+    fabric_cell_expected_slots(host: readback.host),
+    init: [],
+    f: (acc, s) => concat(
+      acc,
+      fabric_cell_address_standings(
+        readback: fabric_cell_readback_for_slot(readback: readback, slot: s),
+        slot: s,
+      )
+    )
+  )
+}
+
+// AN ADDRESS REFERENCE NAMES ITS CELL, AND UNTIL THIS REVISION IT DID NOT.
+//
+// The dispositions carried a bare FabricCellResourceAddress, so "resource-boundary unreadable" could
+// not say WHICH cell was unreadable. That was invisible while exactly one fabric cell exists and it
+// falsified this module's own extension claim -- that a second identity added to
+// fabric_execution_slot_identities flows through without an edit. It would flow through the desired
+// side and arrive at the blocked side anonymous.
+type FabricCellAddressRef {
+  slot: RunnerSlotIdentity
+  address: FabricCellResourceAddress
+}
+
+fn fabric_cell_address_ref_wire(ref: FabricCellAddressRef) -> String {
+  join([
+    runner_slot_instance_name(slot: ref.slot),
+    "|",
+    fabric_cell_resource_address_wire(address: ref.address),
+  ], "")
+}
+
+type FabricCellAddressDisposition
+  = AddressPresent { ref: FabricCellAddressRef, member: FabricCellMember }
+  | AddressMissingOnHost { ref: FabricCellAddressRef }
+  | AddressUnobserved { ref: FabricCellAddressRef }
+  | AddressContradicted { ref: FabricCellAddressRef }
+  | AddressUnreadable { ref: FabricCellAddressRef, cause: String }
+
+fn observations_for_address(
+  readback: FabricCellReadback,
+  slot: RunnerSlotIdentity,
+  address: FabricCellResourceAddress,
+) -> List<FabricCellAddressObservation> {
+  fold(
+    readback.observations,
+    init: [],
+    f: (acc, o) => if observation_targets(o: o, slot: slot, address: address) { concat(acc, [o]) } else { acc }
+  )
+}
+
+// ONE FOLD OVER THE OBSERVATIONS, ONE TYPED RESULT, AND NO PREDICATE WALKING THE COPRODUCT BESIDE
+// IT. This replaces FOUR independent traversals of the same observation list -- any_refused,
+// first_refusal_cause, any_absent and observed_digest_agreement -- three of which projected the
+// coproduct down to a Bool or a String. That is the predicate-dissolution shape: one lossy renaming
+// of a distinction the coproduct already carries, per question asked, each of which has to be kept
+// exhaustive by hand as arms are added, and none of which can see what the others concluded. A new
+// observation arm now fails to compile HERE, once, instead of silently inheriting whatever three
+// separate matches happened to answer (codex review 55419).
+//
+// WHAT THE REPLACED CODE GOT WRONG, KEPT BECAUSE THE DEFECT IS INSTRUCTIVE AND THE FIX IS NOW
+// STRUCTURAL. Before the agreement fold existed, this path took the FIRST observed member and,
+// finding no absence and no refusal, answered AddressPresent with that member's digest -- so two
+// attesters reporting different digests for one address resolved to whichever arrived first, under
+// an annotation asserting that presence requires every observation to agree. The witness did not
+// catch it because its contradiction fixture paired an observation with an ABSENCE; the
+// conflicting-positive case had no row at all, and it is the more likely readback of the two: a
+// stale reader and a fresh one both see the resource and disagree about its value. The row that
+// closes it is witness_fabric_cell_conflicting_positive_observations_contradict, which authors the
+// DESIRED member FIRST so a first-match implementation goes green on it.
+//
+// THE JOIN IS THE SAFETY PROPERTY, AND IT IS ORDER-FREE BY CONSTRUCTION RATHER THAN BY ARM ORDER.
+// A refusal absorbs every other state whenever it arrives, so an unreadable address can never be
+// reported as present or absent because a favourable reading came first. Conflict likewise absorbs:
+// a positive reading meeting an absence, or meeting a positive reading with a different digest,
+// collapses to Conflict for good. Presence therefore survives only when nothing refused, nothing was
+// absent, at least one observation carried a member, and every observation carrying one agreed.
+type FabricCellAddressEvidence
+  = NoEvidence
+  | EvidenceRefused { cause: String }
+  | EvidenceAbsent
+  | EvidenceObserved { member: FabricCellMember }
+  | EvidenceConflict
+
+fn fabric_cell_address_evidence(
+  observations: List<FabricCellAddressObservation>,
+) -> FabricCellAddressEvidence {
+  fold(observations, init: NoEvidence, f: (acc, o) =>
+    match o {
+      AddressObservationRefused { slot: _, address: _, cause: c } =>
+        match acc {
+          EvidenceRefused { cause: first } => EvidenceRefused { cause: first }
+          NoEvidence => EvidenceRefused { cause: c }
+          EvidenceAbsent => EvidenceRefused { cause: c }
+          EvidenceObserved { member: _ } => EvidenceRefused { cause: c }
+          EvidenceConflict => EvidenceRefused { cause: c }
+        }
+      AddressAbsent { slot: _, address: _ } =>
+        match acc {
+          EvidenceRefused { cause: c } => EvidenceRefused { cause: c }
+          NoEvidence => EvidenceAbsent
+          EvidenceAbsent => EvidenceAbsent
+          EvidenceObserved { member: _ } => EvidenceConflict
+          EvidenceConflict => EvidenceConflict
+        }
+      AddressObserved { member: m } =>
+        match acc {
+          EvidenceRefused { cause: c } => EvidenceRefused { cause: c }
+          NoEvidence => EvidenceObserved { member: m }
+          EvidenceAbsent => EvidenceConflict
+          EvidenceObserved { member: seen } =>
+            if (seen.state_digest as String) == (m.state_digest as String) {
+              EvidenceObserved { member: seen }
+            } else {
+              EvidenceConflict
+            }
+          EvidenceConflict => EvidenceConflict
+        }
+    })
+}
+
+// THE ORDER OF THESE ARMS IS THE SAFETY PROPERTY, NOT A STYLE CHOICE. AddressPresent is reachable
+// only when nothing refused, nothing was absent, at least one observation carried a member, and every
+// observation that carried one agreed on its digest -- so a favourable observation can never win by
+// arriving first, whether the thing it is winning against is an absence or another positive reading.
+fn fabric_cell_address_disposition(
+  readback: FabricCellReadback,
+  slot: RunnerSlotIdentity,
+  address: FabricCellResourceAddress,
+) -> FabricCellAddressDisposition {
+  let observations = observations_for_address(readback: readback, slot: slot, address: address)
+  let ref = FabricCellAddressRef { slot: slot, address: address }
+  match fabric_cell_address_evidence(observations: observations) {
+    EvidenceRefused { cause: c } => AddressUnreadable { ref: ref, cause: c }
+    EvidenceConflict => AddressContradicted { ref: ref }
+    EvidenceObserved { member: m } => AddressPresent { ref: ref, member: m }
+    EvidenceAbsent => AddressMissingOnHost { ref: ref }
+    NoEvidence => AddressUnobserved { ref: ref }
+  }
+}
+
+fn fabric_cell_address_dispositions(
+  readback: FabricCellReadback,
+  slot: RunnerSlotIdentity,
+) -> List<FabricCellAddressDisposition> {
+  map(
+    fabric_cell_resource_addresses(),
+    a => fabric_cell_address_disposition(readback: readback, slot: slot, address: a)
+  )
+}
+
+// ONE DESCENT OVER THE DISPOSITION, THREE NAMED OUTCOMES, AND NO BOOLEAN PROJECTION BESIDE IT.
+//
+// This replaces three predicates that each matched the whole FabricCellAddressDisposition coproduct
+// and answered a Bool or a list -- disposition_is_present, disposition_blocks_verdict and
+// disposition_member. Those are the predicate-dissolution shape: a second, lossy naming of a
+// distinction the coproduct already carries, one per question asked, each of which has to be kept
+// exhaustive by hand as arms are added. A new disposition arm now fails to compile HERE, once,
+// instead of silently inheriting whichever Bool three separate matches happened to give it.
+//
+// AN UNOBSERVED ADDRESS BLOCKS; IT DOES NOT COUNT AS ABSENT. This is the seam that reopened the
+// empty-observation narrow one layer in from where the typed population closed it. An earlier
+// revision mapped AddressUnobserved to a non-blocking standing, so a readback holding
+// NO observations produced FabricCellPopulationObserved with an empty member list -- and reconcile
+// reads an empty observed population as "the host has none of these" and answers with three ADDs.
+// A host nobody read would have been planned as a host with nothing on it, which is the exact
+// failure FabricCellPopulation was introduced to prevent, arrived at from inside instead of from
+// the caller.
+//
+// MissingOnHost and Unobserved are therefore on opposite sides of this line even though both are
+// "not present": one is an observation that the resource is absent, which is a fact reconcile may
+// act on, and the other is the absence of an observation, which is not a fact about the host at all.
+//
+// THE VERDICT MOVES WITH IT, AND THAT CORRECTION IS DELIBERATE. A readback with no observations now
+// reports FabricCellSubstrateObservationRefused rather than Unprovisioned, naming the unobserved
+// addresses. An earlier revision called it Unprovisioned on the reasoning that "we hold no
+// observations" is a statement about our evidence rather than about the host refusing to be read.
+// That distinction is real and it survives -- in the DISPOSITION, where AddressUnobserved and
+// AddressUnreadable stay separate arms with different remedies -- but it does not belong in the
+// verdict, because both are the same answer to the question the verdict asks: the host was not
+// read, so its substrate state is unknown. Unprovisioned would have been a claim about a host
+// nobody looked at.
+//
+// THE STANDING IS ALSO WHERE DRIFT IS DECIDED, which is why it takes the slot. A present address
+// whose observed digest differs from the desired one is NOT satisfied -- it is a resource carrying
+// the wrong value, and the remedy is a repair rather than a create. Folding that judgment in here
+// keeps it on the same descent as the rest, rather than in a fourth predicate applied afterwards.
+// DRIFT AND ABSENCE ARE DIFFERENT STANDINGS BECAUSE THEY HAVE OPPOSITE REMEDIES, and one arm held
+// both until #9122 had already merged. `StandingUnmet` covered a resource that is MISSING and a
+// resource that is PRESENT WITH THE WRONG VALUE, and the observed-member fold kept only
+// `StandingSatisfied` -- so both produced an identical observed population, reconcile answered
+// `MemberAdded` for both, and `MemberChanged` was unreachable for a drifted address. The model
+// chose CREATE against a resource that already existed, which inverts the entire reason the
+// membership is resource-addressed.
+//
+// NOTHING WAS GOING TO CATCH IT, and that is the part worth keeping. The fold was TOTAL over
+// `FabricCellAddressStanding` -- every arm matched, no wildcard, no warning -- so there was no
+// missing case for a reviewer or a lens to see. The distinction that picks the remedy lived INSIDE
+// the arm's disposition, which the fold bound and discarded, and the discarded disposition still
+// carried the member. Two approvals and a GREEN required floor stood behind the defect
+// simultaneously. It is the repository's `total at the level examined, blind one level down` class
+// with a receipt.
+//
+// THE SPLIT IS WHY THIS CANNOT RECUR RATHER THAN BEING TESTED AGAINST: with two arms, a fold that
+// wants to drop absent members must now NAME the drift arm to drop it too, so the collapsed form
+// fails to compile here instead of quietly inheriting one remedy for two states.
+// ONE CANONICAL PAIR, TWO DERIVED VIEWS, AND THE DISAGREEMENT HAS NO SPELLING. The drift arm's
+// first cut carried `observed_member` AND the whole `FabricCellAddressDisposition` it came from --
+// and that disposition is `AddressPresent \{ ref, member \}`, so the observed member was stored
+// twice and the two copies could disagree, with the population fold reading one and the verdict
+// fold reading the other (codex review 55651). Repairing the state-space collapse by minting a
+// parallel representation of the member would have traded one DESIGN failure for another.
+//
+// The arm therefore carries the SUBJECT and the OBSERVED VALUE and nothing else: `ref` is
+// authority-derived (the address the fold is answering about) and `observed_state_digest` is what
+// the host reported for it. A member is DERIVED from that pair here, once, and both consumers call
+// this -- so a member claiming a different slot or address than the ref it is filed under cannot be
+// constructed at all, rather than being constructible and checked.
+fn fabric_cell_observed_member_at(ref: FabricCellAddressRef, state_digest: NonEmptyStr) -> FabricCellMember {
+  FabricCellMember { slot: ref.slot, address: ref.address, state_digest: state_digest }
+}
+
+type FabricCellAddressStanding
+  = StandingSatisfied { address: FabricCellResourceAddress, member: FabricCellMember }
+  | StandingObservedDrift { ref: FabricCellAddressRef, observed_state_digest: NonEmptyStr }
+  | StandingExplicitlyAbsent { ref: FabricCellAddressRef }
+  | StandingBlocked { disposition: FabricCellAddressDisposition }
+
+fn fabric_cell_address_standing(
+  slot: RunnerSlotIdentity,
+  d: FabricCellAddressDisposition,
+) -> FabricCellAddressStanding {
+  match d {
+    AddressUnreadable { ref: _, cause: _ } => StandingBlocked { disposition: d }
+    AddressContradicted { ref: _ } => StandingBlocked { disposition: d }
+    AddressMissingOnHost { ref: r } => StandingExplicitlyAbsent { ref: r }
+    AddressUnobserved { ref: _ } => StandingBlocked { disposition: d }
+    AddressPresent { ref: r, member: m } =>
+      if (m.state_digest as String) == (fabric_cell_desired_state_digest(slot: r.slot, address: r.address) as String) {
+        StandingSatisfied { address: r.address, member: m }
+      } else {
+        StandingObservedDrift { ref: r, observed_state_digest: m.state_digest }
+      }
+  }
+}
+
+fn fabric_cell_address_standings(
+  readback: FabricCellReadback,
+  slot: RunnerSlotIdentity,
+) -> List<FabricCellAddressStanding> {
+  map(
+    fabric_cell_address_dispositions(readback: readback, slot: slot),
+    d => fabric_cell_address_standing(slot: slot, d: d)
+  )
+}
+
+// THE OBSERVED POPULATION IS A TYPED RESULT, NOT A BARE LIST, so that an unreadable resource cannot
+// reach the reconcile as an empty observation. Only FabricCellPopulationObserved carries members
+// into membership_reconcile; the refused arm stops the line and names the address it could not read.
+// THE POPULATION IS HOST-SCOPED BECAUSE THE DESIRED SIDE IS. It previously carried one CellId while
+// fabric_cell_desired_members folds every declared fabric slot for a host, the observed arm ignored
+// the field entirely, and the unobserved constructor filled it with a synthetic
+// "fabric-cell-population" identity that names nothing. One subject per population, and it is the
+// host; per-cell identity lives on the members and on the address refs, where it discriminates.
+// ONLY A COMPLETED OBSERVATION MAY ASSERT WHAT WAS OBSERVED, AND THAT IS ENFORCED BY THE CARRIER
+// RATHER THAN BY ANYONE'S DISCIPLINE. An earlier cut declared the observed arm as a bare
+// `members: List<FabricCellMember>`, which named the distinction between "the host was read and
+// holds nothing" and "no usable observation was produced" without controlling who may assert it:
+// any module could write `FabricCellPopulationObserved { host: h, members: [] }` and obtain
+// observed-empty for free. The spine witness in fact did exactly that. A type that names a
+// distinction it does not own is the shape DESIGN section 4b calls cosmetic -- a `Validated<T>`
+// whose construction enforces nothing -- and the repair is construction, not a check: the member
+// list now arrives inside a `sole_constructor` carrier that only this module can mint, and the only
+// mint is the readback fold below. A cross-module record literal is refused at compile time.
+//
+// WHAT THIS DOES NOT ESTABLISH, said here because the wall's real scope is narrower than its name
+// suggests (gap analysis item 1a): `sole_constructor` confines WHO CONSTRUCTS, not WHAT IS TRUE of
+// the value constructed. It is exactly right here because the fold is the module's own fixed law
+// with no caller-supplied predicate to lie -- every member in the list came from a
+// `StandingSatisfied` or a `StandingObservedDrift`, and blocked standings divert the whole
+// population to the refused arm before this carrier is reached. It would establish much less if the
+// mint took a caller's validator.
+type FabricCellObservedMembers sole_constructor { members: List<FabricCellMember> }
+
+fn fabric_cell_observed_members(observed: FabricCellObservedMembers) -> List<FabricCellMember> {
+  observed.members
+}
+
+type FabricCellPopulation
+  = FabricCellPopulationObserved { host: HostIdentity, observed: FabricCellObservedMembers }
+  | FabricCellPopulationObservationRefused { host: HostIdentity, blocked: List<FabricCellAddressDisposition> }
+
+fn fabric_cell_population(readback: FabricCellHostReadback) -> FabricCellPopulation {
+  let standings = fabric_cell_host_standings(readback: readback)
+  let blocked = fold(standings, init: [], f: (acc, st) =>
+    match st {
+      StandingBlocked { disposition: d } => concat(acc, [d])
+      StandingObservedDrift { ref: _, observed_state_digest: _ } => acc
+      StandingExplicitlyAbsent { ref: _ } => acc
+      StandingSatisfied { address: _, member: _ } => acc
+    })
+  if list_length(items: blocked) > 0 {
+    FabricCellPopulationObservationRefused { host: readback.host, blocked: blocked }
+  } else {
+    let satisfied_members = fold(standings, init: [], f: (acc, st) =>
+      match st {
+        StandingSatisfied { address: _, member: m } => concat(acc, [m])
+        StandingObservedDrift { ref: r, observed_state_digest: g } =>
+          concat(acc, [fabric_cell_observed_member_at(ref: r, state_digest: g)])
+        StandingExplicitlyAbsent { ref: _ } => acc
+        StandingBlocked { disposition: _ } => acc
+      })
+    FabricCellPopulationObserved {
+      host: readback.host,
+      observed: FabricCellObservedMembers { members: satisfied_members },
+    }
+  }
+}
+
+// THE THREE VERDICTS THE BRIEF NAMES, DERIVED FROM THE PER-ADDRESS OBSERVATION RATHER THAN BEING ITS
+// ONLY INPUT. Unprovisioned NAMES the addresses that are missing or drifted rather than reporting a
+// count, because the remedy differs per address and a count cannot be acted on. ObservationRefused
+// is not a worse Unprovisioned: it says the host was not read, so the substrate's state is UNKNOWN
+// and no consumer may treat it as either.
+type FabricCellSubstrateVerdict
+  = FabricCellSubstrateProvisioned { cell: CellId }
+  | FabricCellSubstrateUnprovisioned { cell: CellId, missing_or_drifted: List<FabricCellAddressDisposition> }
+  | FabricCellSubstrateObservationRefused { cell: CellId, blocked: List<FabricCellAddressDisposition> }
+
+fn fabric_cell_substrate_verdict(readback: FabricCellReadback) -> FabricCellSubstrateVerdict {
+  let cell = fabric_cell_id_for_slot(slot: readback.slot)
+  let standings = fabric_cell_address_standings(readback: readback, slot: readback.slot)
+  let blocked = fold(standings, init: [], f: (acc, st) =>
+    match st {
+      StandingBlocked { disposition: d } => concat(acc, [d])
+      StandingObservedDrift { ref: _, observed_state_digest: _ } => acc
+      StandingExplicitlyAbsent { ref: _ } => acc
+      StandingSatisfied { address: _, member: _ } => acc
+    })
+  if list_length(items: blocked) > 0 {
+    FabricCellSubstrateObservationRefused { cell: cell, blocked: blocked }
+  } else {
+    let unmet = fold(standings, init: [], f: (acc, st) =>
+      match st {
+        StandingObservedDrift { ref: r, observed_state_digest: g } =>
+          concat(acc, [AddressPresent { ref: r, member: fabric_cell_observed_member_at(ref: r, state_digest: g) }])
+        StandingExplicitlyAbsent { ref: r } => concat(acc, [AddressMissingOnHost { ref: r }])
+        StandingBlocked { disposition: d } => concat(acc, [d])
+        StandingSatisfied { address: _, member: _ } => acc
+      })
+    if list_length(items: unmet) > 0 {
+      FabricCellSubstrateUnprovisioned { cell: cell, missing_or_drifted: unmet }
+    } else {
+      FabricCellSubstrateProvisioned { cell: cell }
+    }
+  }
+}
+
+// A READBACK THAT WAS NEVER TAKEN IS AN UNKNOWN SUBSTRATE, NOT AN UNPROVISIONED ONE. Every address
+// folds to AddressUnobserved, which StandingBlocked routes to ObservationRefused -- so a cell nobody
+// read is refused, never planned against.
+//
+// THIS COMMENT SAID THE OPPOSITE UNTIL codex review 55453, and it is worth recording why rather than
+// quietly correcting it. It described the behaviour before the empty-observation narrow was closed,
+// when AddressUnobserved was unmet and therefore Unprovisioned; the fix changed the code and left
+// the prose asserting the old answer, three functions below the annotation that describes the fix.
+// A stale comment in substrate documentation is not cosmetic here: Unprovisioned means "plan the
+// missing members" and Refused means "plan nothing until this host is read", so a reader who trusted
+// this sentence would have concluded the module does exactly what it was repaired not to do.
+fn fabric_cell_readback_without_observations(slot: RunnerSlotIdentity) -> FabricCellReadback {
+  FabricCellReadback { slot: slot, observations: [] }
+}
+
+fn fabric_cell_ids() -> List<CellId> {
+  map(fabric_execution_slot_identities(), s => fabric_cell_id_for_slot(slot: s))
+}
+
+// NO FABRIC CELL OBSERVER IS WIRED YET, AND THIS IS HOW THAT FACT ENTERS THE SPINE.
+//
+// The sibling families' callers pass an empty list when they have no observation, which reconcile
+// reads as "the host has none of these" and answers with a full install plan. For a family whose
+// resources are a cgroup and two directories, that is the empty-observation narrow with real
+// consequences: a host nobody read would be planned as a host with nothing on it.
+//
+// So the absence of an observer is a REFUSAL carrying its cause, not an empty population. It stops
+// the fabric family at the plan boundary, it renders a line the reviewer can see, and it changes the
+// observed baseline -- so a plan produced while no observer existed cannot silently admit later
+// against a host that has since been read.
+//
+// DISSOLVE-ON: a real fabric cell observer, at which point this function has no callers and goes.
+fn fabric_cell_unreadable_dispositions_for_slot(
+  slot: RunnerSlotIdentity,
+) -> List<FabricCellAddressDisposition> {
+  map(
+    fabric_cell_resource_addresses(),
+    a => AddressUnreadable {
+      ref: FabricCellAddressRef { slot: slot, address: a },
+      cause: fabric_cell_no_observer_cause,
+    }
+  )
+}
+
+data fabric_cell_no_observer_cause: String = "no fabric cell observer is wired: this host has not been read for fabric cell resources, and an unread host is not an empty one"
+
+// AN UNREAD HOST IS ONLY UNREAD FOR THE CELLS IT IS EXPECTED TO HAVE, and this function projected
+// the GLOBAL slot roster into every host until codex review 55439 caught it. Because that authority
+// holds exactly one member today, planning ANY host -- srv4, or a host with no fabric cells at all
+// -- fabricated an srv3-06 unreadable-resource refusal and stopped the line over resources that
+// host was never expected to carry. The CLI calls this on every plan, so the defect was in
+// production planning rather than latent (`gunbc.fleet_converge_plan_cli` `fleet_converge_plan_cli_main`).
+//
+// TWO SEPARATE ERRORS, and only fixing the filter would have left the second. The roster is now
+// host-filtered through the same fabric_cell_expected_slots the observing fold uses -- one authority
+// for "which cells does this host expect", not two. And a host expecting NO fabric cells converges
+// OBSERVED-EMPTY rather than refused: there is nothing unread about a host with nothing to read, and
+// answering Refused there is fabricating an obligation, which is the mirror of the fabricated
+// plausible output DESIGN section 5 forbids -- a refusal invented where no fact was missing.
+//
+// THE TWO ROUTES NOW AGREE BY CONSTRUCTION: fabric_cell_population_unobserved(srv4) and
+// fabric_cell_population(FabricCellHostReadback { host: srv4, cell_readbacks: [] }) both answer
+// observed-empty, because both derive the expected set from the same authority. Before this they
+// disagreed -- the observing fold was already host-exact and this constructor was not.
+fn fabric_cell_population_unobserved(host: HostIdentity) -> FabricCellPopulation {
+  let expected = fabric_cell_expected_slots(host: host)
+  if list_length(items: expected) == 0 {
+    FabricCellPopulationObserved {
+      host: host,
+      observed: FabricCellObservedMembers { members: [] },
+    }
+  } else {
+    FabricCellPopulationObservationRefused {
+      host: host,
+      blocked: fold(
+        expected,
+        init: [],
+        f: (acc, slot) => concat(acc, fabric_cell_unreadable_dispositions_for_slot(slot: slot))
+      )
+    }
+  }
+}

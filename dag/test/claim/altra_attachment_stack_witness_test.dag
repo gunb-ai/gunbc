@@ -91,14 +91,27 @@ test fn w_the_board_side_termination_population_follows_the_package() -> Bool {
 // claim this test was always trying to make. The package sitting in an already-cited datasheet is
 // exactly what makes the conflation tempting, and asserting it from the established side is a
 // stronger statement than asserting it from two unknowns.
+// INVERTED 2026-08-23 BY THE SOCKET-BODY DRAWING, AND THE CLAIM IT DEFENDS IS UNCHANGED. This
+// witness never asserted that the land pattern is unobtainable; it asserted that the PROCESSOR
+// PACKAGE does not establish it. Both facts are established now, so the discriminating content
+// moved to where it always belonged: they are established by DIFFERENT authorities. A future edit
+// that derives the board land pattern from the package's underside -- the exact category error
+// this module's header exists to make unwritable -- collapses those two authorities into one and
+// fails here.
 test fn w_a_public_package_does_not_establish_the_board_land_pattern() -> Bool {
   fact_is_established(f: processor_package_standing.fact)
-    && !fact_is_established(f: board_land_pattern_standing.fact)
+    && fact_is_established(f: board_land_pattern_standing.fact)
     && match board_land_pattern_standing.fact {
-      FactAccessGated { subject: _, access_route: _ } => true
+      FactEstablished { authority: land_auth, subject: _ } =>
+        match processor_package_standing.fact {
+          FactEstablished { authority: pkg_auth, subject: _ } => land_auth != pkg_auth
+          FactAccessGated { subject: _, access_route: _ } => false
+          FactUnresolved { what_is_missing: _ } => false
+          FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => false
+        }
+      FactAccessGated { subject: _, access_route: _ } => false
       FactUnresolved { what_is_missing: _ } => false
       FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => false
-      FactEstablished { authority: _, subject: _ } => false
     }
 }
 
@@ -144,6 +157,11 @@ test fn w_an_unresolved_fact_carries_no_carriage_decision() -> Bool {
 // asking WHERE to obtain the collateral was told WHAT it is. Both are checked, and the
 // route is checked as an authority rather than as text — which is what makes the swap
 // unwritable now rather than merely absent.
+//
+// The land-pattern blocker went from "commercial" to "none" on 2026-08-23 when the socket vendor
+// supplied the drawing. The witness still discriminates all three blocker KINDS -- that is what it
+// is named for -- and the reference-board collateral below still carries the commercial one, so
+// no arm of blocker_kind lost its coverage when this layer stopped being blocked.
 test fn w_the_three_blocker_kinds_are_distinct() -> Bool {
   let package_blocker = match layer_blocker(row: processor_package_standing) {
     Absent => "none"
@@ -154,7 +172,7 @@ test fn w_the_three_blocker_kinds_are_distinct() -> Bool {
     Present { value: b } => blocker_kind(b: b)
   }
   package_blocker == "none"
-    && land_blocker == "commercial"
+    && land_blocker == "none"
     && undecided_carriage_blocker() == "redistribution"
     && match reference_board_collateral_standing() {
       FactAccessGated { subject: sub, access_route: route } =>
@@ -183,10 +201,19 @@ fn undecided_carriage_blocker() -> String {
   }
 }
 
-// THE NDA BOUNDARY IS THE REFERENCE BOARDS, NOT THE PACKAGE. Stated as an executed comparison
-// rather than as prose, because the prose version of this claim was already believed once while
-// being false.
-test fn w_exactly_one_attachment_layer_is_behind_the_nda_boundary() -> Bool {
+// NO ATTACHMENT LAYER IS BEHIND THE NDA BOUNDARY ANY MORE, AND THAT IS THE POINT OF THE RENAME.
+// This asserted "exactly one" while the board land pattern's only route ran through Ampere
+// Customer Connect. The socket vendor answered on 2026-08-23, so the count is now zero and the
+// witness is renamed rather than edited in place: a witness whose name says ONE while it asserts
+// ZERO is a stale claim that greps as a live one, which is the positional-citation failure applied
+// to test names.
+//
+// The claim it defends survives intact and is still executed rather than asserted in prose: the
+// land pattern is reached through a route this repository can publish, so the layer that was
+// gated is now established. If any layer regresses to FactAccessGated -- a future part whose only
+// geometry sits behind Customer Connect -- the count goes non-zero and this fails, which is
+// exactly the alarm the original witness existed to raise.
+test fn w_no_attachment_layer_is_behind_the_nda_boundary() -> Bool {
   let nda_layers = fold(attachment_stack, init: 0, f: fn(acc, row) {
     match row.fact {
       FactAccessGated { subject: _, access_route: _ } => acc + 1
@@ -195,10 +222,10 @@ test fn w_exactly_one_attachment_layer_is_behind_the_nda_boundary() -> Bool {
       FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => acc
     }
   })
-  nda_layers == 1
+  nda_layers == 0
     && match board_land_pattern_standing.fact {
-      FactAccessGated { subject: _, access_route: _ } => true
-      FactEstablished { authority: _, subject: _ } => false
+      FactEstablished { authority: _, subject: _ } => true
+      FactAccessGated { subject: _, access_route: _ } => false
       FactUnresolved { what_is_missing: _ } => false
       FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => false
     }
@@ -223,7 +250,7 @@ test fn w_every_attachment_layer_is_open_and_says_why() -> Bool {
       }
     }
   })
-  layers == 6 && count_of(xs: open_blockers()) == 5 && package_resolved && others_blocked
+  layers == 6 && count_of(xs: open_blockers()) == 4 && package_resolved && others_blocked
 }
 
 // The layers are distinguishable rather than six spellings of one thing.

@@ -146,7 +146,7 @@ fn c_add_facts_lookup(key: Node) -> Optional<InferredFacts> {
 
 data c_add_inferred_tree: InferredTree = InferredTree {
   root: c_add_emitted_root,
-  facts: Map { lookup: c_add_facts_lookup }
+  facts: PartialFunction { lookup: c_add_facts_lookup }
 }
 
 fn c_add_emit_accepts() -> Outcome<Medium<String>> {
@@ -193,7 +193,7 @@ test fn c_add_serialize_rejects_missing_translation_rules_holds() -> Bool {
 test fn c_add_emit_wrong_node_refuses_holds() -> Bool {
   let wrong_tree = InferredTree {
     root: c_add_wrong_emitted_root,
-    facts: Map { lookup: c_add_facts_lookup }
+    facts: PartialFunction { lookup: c_add_facts_lookup }
   }
   match emit(tree: wrong_tree, target: c_add_target_model) {
     Accepted { value: source, diagnostics: d } =>

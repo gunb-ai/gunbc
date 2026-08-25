@@ -14,12 +14,12 @@ use crate::std_occurrence_identity::OccurrenceCategory::{
     CallableOccurrence, FieldOccurrence, LexicalValueOccurrence, MethodOccurrence,
     NamespaceSegmentOccurrence, TypeOccurrence,
 };
+pub use crate::std_occurrence_identity::OccurrenceRole;
 use crate::std_occurrence_identity::OccurrenceRole::*;
 pub use crate::std_occurrence_identity::{
     alloc_occurrence_id, authored_token_ordinal_space_from_allocator,
     occurrence_id_allocator_advance_to, occurrence_id_allocator_initial,
 };
-pub use crate::std_occurrence_identity::{AuthoredTokenOrdinal, OccurrenceRole};
 pub use crate::std_occurrence_identity::{
     AuthoredTokenOrdinalSpace, DeclarationOccurrence, OccurrenceCategory,
     OccurrenceContainmentPath, OccurrenceId, OccurrenceIdAllocResult, OccurrenceIdAllocator,
@@ -144,6 +144,7 @@ pub struct ParseContext {
     pub occurrence_index: Option<Rc<OccurrenceIndex>>,
     pub declaration_occurrences: Option<Rc<Vec<Rc<DeclarationOccurrence>>>>,
     pub reference_occurrences: Option<Rc<Vec<Rc<ReferenceOccurrence>>>>,
+    pub heads_only: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -255,6 +256,7 @@ pub fn parse_context_with_occurrence_state(
         occurrence_index: occurrence_index.clone(),
         declaration_occurrences: declaration_occurrences.clone(),
         reference_occurrences: reference_occurrences.clone(),
+        heads_only: ctx.heads_only.clone(),
     })
 }
 
@@ -269,6 +271,7 @@ pub fn parse_context_with_intern_table(
         occurrence_index: ctx.occurrence_index.clone(),
         declaration_occurrences: ctx.declaration_occurrences.clone(),
         reference_occurrences: ctx.reference_occurrences.clone(),
+        heads_only: ctx.heads_only.clone(),
     })
 }
 
@@ -518,7 +521,6 @@ pub struct ServiceConfig {
     pub auth_input: Option<Rc<Node>>,
     pub auth_source: Option<Rc<Node>>,
     pub rate_limit: Option<Rc<Node>>,
-    pub retry: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2788,6 +2790,7 @@ pub fn parse_with_table_at(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     occurrence_base: Rc<AuthoredTokenOrdinalSpace>,
+    heads_only: bool,
 ) -> Rc<ParseWithTableResult> {
     {
         let occurrence_allocator = occurrence_id_allocator_advance_to(
@@ -2804,6 +2807,7 @@ pub fn parse_with_table_at(
             })),
             declaration_occurrences: Some(Rc::new(vec![])),
             reference_occurrences: Some(Rc::new(vec![])),
+            heads_only: heads_only.clone(),
         });
         let r = parse_module(token_stream_new(tokens.clone()), ctx.clone());
         if has_err(r.err.clone()) {
@@ -2864,6 +2868,7 @@ pub fn parse_with_table_in_occurrence_scope(
         source_indices.clone(),
         intern_table.clone(),
         authored_token_ordinal_space_from_allocator(occurrence_allocator.clone()),
+        false,
     )
 }
 
@@ -2877,6 +2882,21 @@ pub fn parse_with_table(
         source_indices.clone(),
         intern_table.clone(),
         intern_table.authored_token_ordinals.clone(),
+        false,
+    )
+}
+
+pub fn parse_heads_with_table(
+    tokens: Rc<Vec<Rc<Token>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+) -> Rc<ParseWithTableResult> {
+    parse_with_table_at(
+        tokens.clone(),
+        source_indices.clone(),
+        intern_table.clone(),
+        intern_table.authored_token_ordinals.clone(),
+        true,
     )
 }
 
@@ -3974,6 +3994,7 @@ pub fn parse_type_after_kw(
                             name_span.clone(),
                             start_span.clone(),
                             type_params.clone(),
+                            is_sole_constructor.clone(),
                         )
                     }
                     EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -4131,6 +4152,7 @@ pub fn parse_type_body_from_prefix(
                             name_span.clone(),
                             start_span.clone(),
                             type_params.clone(),
+                            is_sole_constructor.clone(),
                         )
                     }
                     EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -4169,6 +4191,83 @@ pub fn parse_type_body_from_prefix(
     }
 }
 
+pub fn alias_rhs_is_anonymous_record(te: Rc<Node>) -> bool {
+    (((te.connective.clone() == Connective::Conj) && (te.ident_span.clone() == None))
+        && (te.type_annotation.clone() == None))
+}
+
+pub fn type_item_from_alias_rhs(
+    name: String,
+    name_span: Rc<SourceSpan>,
+    start_span: Rc<SourceSpan>,
+    type_params: Rc<Vec<Rc<Node>>>,
+    te: Rc<Node>,
+    is_sole_constructor: bool,
+) -> Rc<Node> {
+    if alias_rhs_is_anonymous_record(te.clone()) {
+        {
+            let sole_ctor_prop = if is_sole_constructor.clone() {
+                Rc::new(vec![make_field_init_node(
+                    "sole_constructor".to_string(),
+                    make_expr_node(
+                        Rc::new(ExprData::ExprLiteral {
+                            value: Rc::new(LiteralValue::LitBool { value: true }),
+                        }),
+                        Rc::new(vec![]),
+                        None,
+                        start_span.clone(),
+                    ),
+                    start_span.clone(),
+                    no_span(),
+                )])
+            } else {
+                Rc::new(vec![])
+            };
+            Rc::new(Node {
+                name: name.clone(),
+                span: start_span.clone(),
+                ident_span: Some(name_span.clone()),
+                children: te.children.clone(),
+                connective: Connective::Conj,
+                params: type_params.clone(),
+                inferred: None,
+                return_cardinality: Cardinality::Required,
+                uses: Rc::new(vec![]),
+                body: None,
+                transport: None,
+                properties: sole_ctor_prop.clone(),
+                type_annotation: None,
+                is_self_recursive: false,
+                has_non_tail_self_call: false,
+                match_pattern: None,
+                expr_data: Rc::new(ExprData::NoExprData),
+                ident: None,
+            })
+        }
+    } else {
+        Rc::new(Node {
+            name: name.clone(),
+            span: start_span.clone(),
+            ident_span: Some(name_span.clone()),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: type_params.clone(),
+            inferred: Some(Rc::new(InferredNode::Resolved { node: te.clone() })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
+}
+
 pub fn parse_type_body_after_eq(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
@@ -4176,6 +4275,7 @@ pub fn parse_type_body_after_eq(
     name_span: Rc<SourceSpan>,
     start_span: Rc<SourceSpan>,
     type_params: Rc<Vec<Rc<Node>>>,
+    is_sole_constructor: bool,
 ) -> Rc<ItemResult> {
     {
         let dummy = Rc::new(Node {
@@ -4390,28 +4490,14 @@ pub fn parse_type_body_after_eq(
                                         err: wr.err.clone(),
                                     });
                                 }
-                                let item = Rc::new(Node {
-                                    name: name.clone(),
-                                    span: start_span.clone(),
-                                    ident_span: Some(name_span.clone()),
-                                    children: Rc::new(vec![]),
-                                    connective: Connective::NoConnective,
-                                    params: type_params.clone(),
-                                    inferred: Some(Rc::new(InferredNode::Resolved {
-                                        node: wr.type_expr.clone(),
-                                    })),
-                                    return_cardinality: Cardinality::Required,
-                                    uses: Rc::new(vec![]),
-                                    body: None,
-                                    transport: None,
-                                    properties: Rc::new(vec![]),
-                                    type_annotation: None,
-                                    is_self_recursive: false,
-                                    has_non_tail_self_call: false,
-                                    match_pattern: None,
-                                    expr_data: Rc::new(ExprData::NoExprData),
-                                    ident: None,
-                                });
+                                let item = type_item_from_alias_rhs(
+                                    name.clone(),
+                                    name_span.clone(),
+                                    start_span.clone(),
+                                    type_params.clone(),
+                                    wr.type_expr.clone(),
+                                    is_sole_constructor.clone(),
+                                );
                                 Rc::new(ItemResult {
                                     item: item.clone(),
                                     tokens: skip_newlines(wr.tokens.clone()),
@@ -4446,28 +4532,14 @@ pub fn parse_type_body_after_eq(
                                 err: wr.err.clone(),
                             });
                         }
-                        let item = Rc::new(Node {
-                            name: name.clone(),
-                            span: start_span.clone(),
-                            ident_span: Some(name_span.clone()),
-                            children: Rc::new(vec![]),
-                            connective: Connective::NoConnective,
-                            params: type_params.clone(),
-                            inferred: Some(Rc::new(InferredNode::Resolved {
-                                node: wr.type_expr.clone(),
-                            })),
-                            return_cardinality: Cardinality::Required,
-                            uses: Rc::new(vec![]),
-                            body: None,
-                            transport: None,
-                            properties: Rc::new(vec![]),
-                            type_annotation: None,
-                            is_self_recursive: false,
-                            has_non_tail_self_call: false,
-                            match_pattern: None,
-                            expr_data: Rc::new(ExprData::NoExprData),
-                            ident: None,
-                        });
+                        let item = type_item_from_alias_rhs(
+                            name.clone(),
+                            name_span.clone(),
+                            start_span.clone(),
+                            type_params.clone(),
+                            wr.type_expr.clone(),
+                            is_sole_constructor.clone(),
+                        );
                         Rc::new(ItemResult {
                             item: item.clone(),
                             tokens: skip_newlines(wr.tokens.clone()),
@@ -6149,7 +6221,7 @@ pub fn parse_fn_after_kw(
         let inferred = ret.inferred.clone();
         let tokens = ret.tokens.clone();
         let ctx = ret.ctx.clone();
-        let r = parse_block(skip_newlines(tokens.clone()), ctx.clone());
+        let r = parse_item_block_body(skip_newlines(tokens.clone()), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy.clone(),
@@ -6308,7 +6380,7 @@ pub fn parse_fn_body_from_prefix(
             }
         } else {
             if tok_is_lbrace(token_stream_first(tokens.clone())) {
-                parse_block(tokens.clone(), ctx.clone())
+                parse_item_block_body(tokens.clone(), ctx.clone())
             } else {
                 {
                     let span = token_span(token_stream_first(tokens.clone()));
@@ -6555,7 +6627,7 @@ pub fn parse_block_item_after_kw(
         let uses = uses_r.uses.clone();
         let tokens = uses_r.tokens.clone();
         let ctx = uses_r.ctx.clone();
-        let r = parse_block(skip_newlines(tokens.clone()), ctx.clone());
+        let r = parse_item_block_body(skip_newlines(tokens.clone()), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy.clone(),
@@ -6625,7 +6697,7 @@ pub fn parse_block_body_from_prefix(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let r = parse_block(skip_newlines(prefix.tokens.clone()), ctx.clone());
+        let r = parse_item_block_body(skip_newlines(prefix.tokens.clone()), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy.clone(),
@@ -7149,7 +7221,6 @@ pub fn parse_service_after_kw(
                 cfg.auth_input.clone(),
                 cfg.auth_source.clone(),
                 cfg.rate_limit.clone(),
-                cfg.retry.clone(),
             ),
             None => Rc::new(vec![]),
         };
@@ -7371,16 +7442,7 @@ pub fn parse_service_config_block(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
 ) -> Rc<ConfigResult> {
-    parse_config_fields(
-        tokens.clone(),
-        ctx.clone(),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-    )
+    parse_config_fields(tokens.clone(), ctx.clone(), None, None, None, None, None)
 }
 
 pub fn parse_config_fields(
@@ -7391,7 +7453,6 @@ pub fn parse_config_fields(
     mut auth_input: Option<Rc<Node>>,
     mut auth_source: Option<Rc<Node>>,
     mut rate_limit: Option<Rc<Node>>,
-    mut retry: Option<Rc<Node>>,
 ) -> Rc<ConfigResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -7416,7 +7477,6 @@ pub fn parse_config_fields(
                 auth_input: auth_input.clone(),
                 auth_source: auth_source.clone(),
                 rate_limit: rate_limit.clone(),
-                retry: retry.clone(),
             });
             break Rc::new(ConfigResult {
                 config: cfg.clone(),
@@ -7440,7 +7500,6 @@ pub fn parse_config_fields(
                 auth_input: None,
                 auth_source: None,
                 rate_limit: None,
-                retry: None,
             });
             let r = expect_ident(tokens.clone());
             if has_err(r.err.clone()) {
@@ -7503,17 +7562,12 @@ pub fn parse_config_fields(
                     rate_limit = __tco_0;
                     continue;
                 }
-                "retry" => {
-                    let __tco_0 = Some(r3.expr.clone());
-                    retry = __tco_0;
-                    continue;
-                }
                 _ => {
                     break Rc::new(ConfigResult {
     config: dummy_cfg.clone(),
     tokens: tokens.clone(),
     ctx: ctx.clone(),
-    err: Some(parse_error(v1_rt::concat(v1_rt::concat("service config has no field `".to_string(), fname.clone()), "`; the declared fields are `endpoint`, `auth`, `auth_input`, `auth_source`, `rate_limit` and `retry`".to_string()), r.span.clone())),
+    err: Some(parse_error(v1_rt::concat(v1_rt::concat("service config has no field `".to_string(), fname.clone()), "`; the declared fields are `endpoint`, `auth`, `auth_input`, `auth_source` and `rate_limit`".to_string()), r.span.clone())),
 });
                 }
             }
@@ -10812,6 +10866,130 @@ pub fn parse_param(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ParamRe
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct HeadsBlockSkipResult {
+    pub tokens: Rc<TokenStream>,
+    pub err: Option<Rc<ErrorNode>>,
+}
+
+pub fn heads_skip_block_tokens(
+    mut tokens: Rc<TokenStream>,
+    mut depth: i64,
+) -> Rc<HeadsBlockSkipResult> {
+    loop {
+        if (depth.clone() == 0) {
+            return Rc::new(HeadsBlockSkipResult {
+                tokens: tokens.clone(),
+                err: None,
+            });
+        }
+        let tok = token_stream_first(tokens.clone());
+        if tok_is_eof(tok.clone()) {
+            break Rc::new(HeadsBlockSkipResult {
+                tokens: tokens.clone(),
+                err: Some(parse_error(
+                    "heads-only parse: unterminated function body".to_string(),
+                    token_span(tok.clone()),
+                )),
+            });
+        } else {
+            match tok.clone() {
+                None => {
+                    break Rc::new(HeadsBlockSkipResult {
+                        tokens: tokens.clone(),
+                        err: Some(parse_error(
+                            "heads-only parse: unterminated function body".to_string(),
+                            no_span(),
+                        )),
+                    });
+                }
+                Some(t) => {
+                    if is_lbrace_shape(t.shape.clone()) {
+                        {
+                            let __tco_0 = token_stream_advance(tokens, 1);
+                            let __tco_1 = (depth + 1);
+                            tokens = __tco_0;
+                            depth = __tco_1;
+                            continue;
+                        }
+                    } else {
+                        if is_rbrace_shape(t.shape.clone()) {
+                            {
+                                let __tco_0 = token_stream_advance(tokens, 1);
+                                let __tco_1 = (depth - 1);
+                                tokens = __tco_0;
+                                depth = __tco_1;
+                                continue;
+                            }
+                        } else {
+                            {
+                                let __tco_0 = token_stream_advance(tokens, 1);
+                                tokens = __tco_0;
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn census_heads_body_stand_in_message() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "pool census heads-only: function body stripped -- refuse to interpret".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn census_heads_body_stand_in() -> Rc<Node> {
+    make_expr_error_node(
+        ExprErrorKind::CensusHeadsBodyStripped,
+        census_heads_body_stand_in_message(),
+        no_span(),
+    )
+}
+
+pub fn parse_block_heads_only(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+    {
+        let dummy_expr = parse_recovery_placeholder();
+        let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace));
+        if has_err(r.err.clone()) {
+            return Rc::new(ExprResult {
+                expr: dummy_expr.clone(),
+                tokens: r.tokens.clone(),
+                ctx: ctx.clone(),
+                err: r.err.clone(),
+            });
+        }
+        let skipped = heads_skip_block_tokens(r.tokens.clone(), 1);
+        if has_err(skipped.err.clone()) {
+            return Rc::new(ExprResult {
+                expr: dummy_expr.clone(),
+                tokens: skipped.tokens.clone(),
+                ctx: ctx.clone(),
+                err: skipped.err.clone(),
+            });
+        }
+        Rc::new(ExprResult {
+            expr: census_heads_body_stand_in(),
+            tokens: skipped.tokens.clone(),
+            ctx: ctx.clone(),
+            err: None,
+        })
+    }
+}
+
+pub fn parse_item_block_body(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+    if ctx.heads_only.clone() {
+        parse_block_heads_only(tokens.clone(), ctx.clone())
+    } else {
+        parse_block(tokens.clone(), ctx.clone())
+    }
+}
+
 pub fn parse_block(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let dummy_expr = parse_recovery_placeholder();
@@ -12857,12 +13035,50 @@ pub fn parse_expr_bp_no_brace(
     min_bp: i64,
 ) -> Rc<ExprResult> {
     {
+        let tok = token_stream_first(tokens.clone());
+        let next = token_stream_first(token_stream_advance(tokens.clone(), 1));
         let r = parse_prefix(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return r;
         }
-        let lhs = r.expr.clone();
-        parse_expr_loop_no_brace(r.tokens.clone(), r.ctx.clone(), lhs.clone(), min_bp.clone())
+        let parsed = parse_expr_loop_no_brace(
+            r.tokens.clone(),
+            r.ctx.clone(),
+            r.expr.clone(),
+            min_bp.clone(),
+        );
+        let leading_ident_brace = (match tok.clone() {
+            Some(t) => is_ident_shape(t.shape.clone()),
+            None => false,
+        } && tok_is_lbrace(next.clone()));
+        let stopped_at_infix = match infix_bp(parsed.tokens.clone()) {
+            Some(_) => true,
+            None => false,
+        };
+        if (((leading_ident_brace.clone() && !has_err(parsed.err.clone()))
+            && !tok_is_lbrace(token_stream_first(parsed.tokens.clone())))
+            && !stopped_at_infix.clone())
+        {
+            {
+                let span = token_span(tok.clone());
+                let lhs = make_named_expr_node(
+                    tok.clone().unwrap().text.clone(),
+                    Rc::new(ExprData::ExprVar { binding_kind: None }),
+                    Rc::new(vec![]),
+                    None,
+                    span.clone(),
+                    span.clone(),
+                );
+                parse_expr_loop_no_brace(
+                    token_stream_advance(tokens.clone(), 1),
+                    ctx.clone(),
+                    lhs.clone(),
+                    min_bp.clone(),
+                )
+            }
+        } else {
+            parsed
+        }
     }
 }
 

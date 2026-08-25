@@ -1,8 +1,0 @@
-module probe.reexport
-
-import std.types { Bool }
-import probe.lib { target_symbol }
-
-fn passthrough() -> Bool {
-  target_symbol()
-}

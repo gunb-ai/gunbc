@@ -41,18 +41,20 @@ pub use crate::v1_compiler_emit_core_support::{
 };
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
-pub use crate::v1_compiler_infer::{build_params_scope, extend_scope};
+pub use crate::v1_compiler_infer::{build_params_scope, call_param_caller_labels, extend_scope};
 pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index};
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
-pub use crate::v1_compiler_infer_lookup::{func_sig_if_resolved, lookup_func_sig};
+pub use crate::v1_compiler_infer_lookup::lookup_func_sig;
 pub use crate::v1_compiler_infer_service::{
     extract_typed_service_name, is_typed_service_call_receiver,
 };
 pub use crate::v1_compiler_infer_service::{OpEntry, UniqueAccum};
-pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
+pub use crate::v1_compiler_infer_sigs::func_sig_for_derivation;
+use crate::v1_compiler_infer_sigs::DerivedCalleeSig::{DerivedFromSig, NoDerivableSig};
+pub use crate::v1_compiler_infer_sigs::{DerivedCalleeSig, ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, for_each_element_type_node,
     is_declared_container_alias_spelling, is_product_type, is_unit_like, node_is_collection,
@@ -578,6 +580,7 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
             source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
             intern_table: empty_intern_table(),
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
+            authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
             symbol_index: empty_symbol_index(),
         }),
         func_env: Rc::new(ResolvedFuncEnv {
@@ -651,25 +654,15 @@ pub fn lookup_func_sig_in_scope(
     scope: Rc<InferScope>,
     name: String,
 ) -> Option<Rc<ResolvedFuncSig>> {
-    func_sig_if_resolved(lookup_func_sig(
+    match (*func_sig_for_derivation(lookup_func_sig(
         scope.func_env.clone(),
         scope.type_env.clone(),
         name.clone(),
-    ))
-}
-
-pub fn typed_named_arg_matches(
-    arg: Rc<Node>,
-    name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
+    )))
+    .clone()
     {
-        let n = arg_name_at(arg.clone(), source_indices.clone());
-        if (n.clone() == None) {
-            false
-        } else {
-            (n.clone().unwrap() == name.clone())
-        }
+        DerivedCalleeSig::DerivedFromSig { sig: sig, .. } => Some(sig.clone()),
+        DerivedCalleeSig::NoDerivableSig { reason: _, .. } => None,
     }
 }
 
@@ -710,16 +703,20 @@ pub fn order_typed_call_args(
                             }
                         },
                     );
-                    let param_name_set = sig.params.clone().iter().cloned().fold(
+                    let param_label_set = sig.params.clone().iter().cloned().fold(
                         v1_rt::rc_empty_map::<String, bool>(),
                         |acc: Rc<HashMap<String, bool>>, param: Rc<Node>| {
-                            v1_rt::rc_map_insert(
+                            call_param_caller_labels(param_node_name_at(
+                                param.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ))
+                            .iter()
+                            .cloned()
+                            .fold(
                                 acc,
-                                param_node_name_at(
-                                    param.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
-                                ),
-                                true,
+                                |labels: Rc<HashMap<String, bool>>, label: String| {
+                                    v1_rt::rc_map_insert(labels, label.clone(), true)
+                                },
                             )
                         },
                     );
@@ -727,15 +724,32 @@ pub fn order_typed_call_args(
                         let mut __result = Vec::new();
                         for param in sig.params.clone().iter().cloned() {
                             __result.extend(
-                                (*match v1_rt::map_get(
-                                    &arg_map,
-                                    param_node_name_at(
+                                (*{
+                                    let param_name = param_node_name_at(
                                         param.clone(),
                                         scope.type_env.clone().source_indices.clone(),
-                                    ),
-                                ) {
-                                    Some(arg) => Rc::new(vec![arg.clone()]),
-                                    None => Rc::new(vec![]),
+                                    );
+                                    let matching = Rc::new({
+                                        let mut __result = Vec::new();
+                                        for label in call_param_caller_labels(param_name.clone())
+                                            .iter()
+                                            .cloned()
+                                        {
+                                            __result.extend(
+                                                (*match v1_rt::map_get(&arg_map, label.clone()) {
+                                                    Some(arg) => Rc::new(vec![arg.clone()]),
+                                                    None => Rc::new(vec![]),
+                                                })
+                                                .iter()
+                                                .cloned(),
+                                            );
+                                        }
+                                        __result
+                                    });
+                                    match matching.clone().first().cloned() {
+                                        Some(arg) => Rc::new(vec![arg.clone()]),
+                                        None => Rc::new(vec![]),
+                                    }
                                 })
                                 .iter()
                                 .cloned(),
@@ -754,7 +768,7 @@ pub fn order_typed_call_args(
                                 if (n.clone() == None) {
                                     true
                                 } else {
-                                    (emit_map_has(param_name_set.clone(), n.clone().unwrap())
+                                    (emit_map_has(param_label_set.clone(), n.clone().unwrap())
                                         == false)
                                 }
                             } {
