@@ -123,10 +123,10 @@ fn file_verdict(path: String, refusal_ceiling: Int) -> RosterVerdict {
   match v2.lens.identity_captured_navigation.roster_gate.ingest_findings(path: path) {
     SourceFindingsNotEstablished { cause: _ } => RosterIngestRegressed
     SourceFindingsEstablished { findings: fs } =>
-      if count_matching(fs: fs, pred: v2.lens.identity_captured_navigation.analyze.finding_is_suspect) > 0 {
+      if v2.lens.identity_captured_navigation.roster_gate.count_matching(fs: fs, pred: v2.lens.identity_captured_navigation.analyze.finding_is_suspect) > 0 {
         RosterSuspectFound
       } else {
-        let refusals = count_matching(fs: fs, pred: v2.lens.identity_captured_navigation.analyze.finding_is_refusal)
+        let refusals = v2.lens.identity_captured_navigation.roster_gate.count_matching(fs: fs, pred: v2.lens.identity_captured_navigation.analyze.finding_is_refusal)
         if refusals > refusal_ceiling {
           RosterRatchetExceeded { refusals: refusals, ceiling: refusal_ceiling }
         } else {
@@ -155,7 +155,7 @@ fn source_finding_standing(source_text: String) -> FindingStanding {
   match v2.lens.identity_captured_navigation.roster_gate.source_findings(source_text: source_text) {
     SourceFindingsNotEstablished { cause: cause } => FindingNotEstablished { cause: cause }
     SourceFindingsEstablished { findings: fs } => {
-      let suspects = count_matching(fs: fs, pred: v2.lens.identity_captured_navigation.analyze.finding_is_suspect)
+      let suspects = v2.lens.identity_captured_navigation.roster_gate.count_matching(fs: fs, pred: v2.lens.identity_captured_navigation.analyze.finding_is_suspect)
       if suspects > 0 { SuspectObserved { suspects: suspects } } else { NoSuspect }
     }
   }

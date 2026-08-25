@@ -171,7 +171,7 @@ fn arg_nth_value_symbol(
   match list_at_optional(xs: call_args_in_order(call_capture: call_capture), index: index) {
     Absent => Absent
     Present { value: arg_cap } =>
-      arg_value_symbol(arg_capture: arg_cap, span_index: span_index, source_text: source_text)
+      v2.lens.identity_captured_navigation.analyze.arg_value_symbol(arg_capture: arg_cap, span_index: span_index, source_text: source_text)
   }
 }
 

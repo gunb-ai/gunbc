@@ -106,8 +106,8 @@ fn file_standing(path: String, refusal_ceiling: Int) -> RosterStanding {
   match v2.lens.complexity_accumulator_copy.roster_gate.ingest_findings(path: path) {
     SourceFindingsNotEstablished { cause: cause } => not_established_standing(cause: cause)
     SourceFindingsEstablished { findings: fs } => standing_from_counts(
-      suspects: count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect),
-      refusals: count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_refusal),
+      suspects: v2.lens.complexity_accumulator_copy.roster_gate.count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect),
+      refusals: v2.lens.complexity_accumulator_copy.roster_gate.count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_refusal),
       refusal_ceiling: refusal_ceiling
     )
   }
@@ -189,7 +189,7 @@ fn source_finding_standing(source_text: String) -> FindingStanding {
   match v2.lens.complexity_accumulator_copy.roster_gate.source_findings(source_text: source_text) {
     SourceFindingsNotEstablished { cause: cause } => FindingNotEstablished { cause: cause }
     SourceFindingsEstablished { findings: fs } => {
-      let suspects = count_matching(
+      let suspects = v2.lens.complexity_accumulator_copy.roster_gate.count_matching(
         fs: fs,
         pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect
       )
