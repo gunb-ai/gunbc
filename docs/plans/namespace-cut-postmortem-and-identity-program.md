@@ -2239,7 +2239,18 @@ are measurements rather than vacuous passes.
 refused where the single-candidate rule said it should resolve — **is arm (4)**.
 No import edge means the consumer's transitive closure is just the consumer, so
 the provider is in the *pool* but never in the *compiled closure*, and the census
-only serves what the closure loads. Nothing contradicted the single-candidate
+only serves what the closure loads.
+
+**The invariant's domain, stated exactly, because the loose form is wrong:** *a
+single candidate **in the loaded global-bare census** resolves from anywhere* —
+NOT *a single declaration anywhere in the source pool*. Candidate-pool membership
+and loaded-closure membership are two facts, and the resolver's cardinality
+policy ranges only over the second. **And the corollary matters more than the
+correction: pool-only does NOT uniformly refuse.** Arm (3) resolves cleanly
+whenever ANY loaded module pulls the provider in, without the consumer naming
+it. So the discriminating relation is **reachability into the loaded closure**,
+never the presence of an import statement in the consumer's own text — and that
+is the relation any visibility-keyed law in this program must key on. Nothing contradicted the single-candidate
 rule: the candidate was never in the census the rule runs over. And
 `cool-hawk-324`'s whole-tree case is **arm (3)** — `review_codex.dag` is an entry
 under the first root, and the modules declaring `Step` and
@@ -2300,6 +2311,35 @@ on which modules the closure happened to load, and no diagnostic reports it at
 the value position."* Ceiling: structurally guaranteed, since admission is
 decidable from the consumer's own `resolved_imports` joined to the census
 candidate's owner module, both already carried.
+
+### 11.2i A resolver policy keyed on spelling — `trim`
+
+`04_env.dag` `bare_free_call_requires_listed_import(name: String) -> Bool` is,
+in its entirety, `name == "trim"`. It is a **declared** interim —
+`closure_independent_bare_free_call_note` gives it a dissolve-on (the
+`PrimitiveDefinition` identity-join) and the closure-membership witness records
+what it patches (arm (3), not arm (2)) — so it is not an ad-hoc carve-out, and
+that objection was raised and correctly withdrawn.
+
+**The ground that survives is this program's own law.** The carrier takes a
+`String`. A legitimate debt admission needs declaration identity, cause, owner,
+exact population and retirement condition, and **a `String` cannot express
+declaration identity at all** — so the function is structurally incapable of
+proving it holds the one canonical `trim` rather than an unrelated homonym. It
+keys policy on **spelling**, in a **resolver**, in a corpus whose entire current
+defect is that spellings collide.
+
+Read against §5's biconditional: `key_R(x) = key_R(y) ⟺ same_R(x, y)`. The
+forward direction is broken — two distinct `trim` declarations receive the same
+key — which is **under-keying**, the exact class this program exists to remove,
+sitting inside the resolver that decides the question.
+
+And the interim cannot be discharged where it lives: its own dissolve-on is a
+`PrimitiveDefinition` identity-join, which is precisely what the `String` carrier
+cannot represent. **Not urgent, and not to be cited as part of the namespace
+design.** If this program passes near it, it gets an identity-grain admission —
+never a wider `String` predicate. A one-line spelling check in a resolver is the
+cheapest thing in the tree to widen and the hardest to notice widening.
 
 ### 11.2h A scoped guarantee written as a global one — and a call path that cannot see locals
 
