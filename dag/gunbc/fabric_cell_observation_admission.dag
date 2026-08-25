@@ -6,7 +6,6 @@ import product.placement_supply { HostIdentity }
 import gunbc.fabric_cell_converge {
   FabricCellMember,
   FabricCellObservedMembers,
-  FabricCellHostReadback,
   FabricCellObservationRefusal,
   ExpectedAddressBlocked,
   UnexpectedCellEvidence,
@@ -80,22 +79,22 @@ type FabricCellObservationDecision
   | FabricCellObservationDenied { host: HostIdentity, blocked: List<FabricCellObservationRefusal> }
   | FabricCellObservationNotApplicable { host: HostIdentity }
 
-// THE PRODUCTION MINT. One probe, both halves, one decision.
+// THE PRODUCTION MINT, AND THE ONLY ENTRY POINT. One probe, both halves, one decision.
+//
+// THE JOIN IS INLINE HERE AND THAT IS NOT A STYLE CHOICE. It was briefly a separate
+// fabric_cell_admit_observation(readback, discovered), annotated in this file as "private to the
+// mint's own reasoning, not a second route, not exported". THAT ANNOTATION WAS FALSE AND A PROBE
+// PROVED IT: a scratch module in another namespace imported the name, called it with a hand-built
+// readback and a literal empty discovered list, and the row PASSED. So the recut had deleted the
+// two-writable-halves constructor from gunbc.fabric_cell_converge and I had rebuilt it one module
+// downstream, inside the very file whose job is to make that shape unreachable.
+//
+// There is no module-private modifier to reach for here, so the construction move is to have no
+// second function at all: one entry point, and the halves exist only as expressions inside it.
 fn admit_fabric_cell_probe(probe: FabricCellHostProbe) -> FabricCellObservationDecision {
   let projection = fabric_cell_observe(probe: probe)
-  fabric_cell_admit_observation(
-    readback: projection.expected_readback,
-    discovered: fabric_cell_projection_refusals(projection: projection),
-  )
-}
-
-// THE JOIN ITSELF IS PRIVATE TO THE MINT'S OWN REASONING AND IS NOT A SECOND ROUTE: it is not
-// exported, so the only way into it from another module is through admit_fabric_cell_probe. Keeping
-// it separate is what lets the mint be read as three steps rather than one twenty-line expression.
-fn fabric_cell_admit_observation(
-  readback: FabricCellHostReadback,
-  discovered: List<FabricCellObservationRefusal>,
-) -> FabricCellObservationDecision {
+  let readback = projection.expected_readback
+  let discovered = fabric_cell_projection_refusals(projection: projection)
   let classification = classify_fabric_cell_host(
     expected_slots: fabric_cell_expected_slots(host: readback.host),
     readback: readback,
