@@ -1,5 +1,8 @@
 module v2.lens.identity_captured_navigation.roster_gate
 
+import extdeps.filesystem.filesystem_io
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
 import v2.lens.common.source_analysis_standing {
   FindingStanding,
   NoSuspect,
