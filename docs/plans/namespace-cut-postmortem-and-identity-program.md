@@ -2053,18 +2053,34 @@ declaring module path is made a strict prefix of the referencing one, which
 refuses its positive control measures nothing, so no kind column was taken from
 it.
 
-**The reason is the finding.** `gunbc compile` never populates the census-only
-pool at all. The `[census] N indexed modules outside the closure enter the name
-census only` line — the line §11.2c's mechanism rests on — is emitted from
-`v1_compiler.cli_run` `compile_clean_census_only_sources_for_compiled` and from
-`main.rs`, i.e. from the compile-clean and whole-tree routes. It appeared in no
-run of the fixture under any root arrangement. The seam states the design in one
-line: **"fill = whole tree; policy gates lookup, never fill."** Fill is
-unconditional; the policy gates only the lookup against what was filled. So the
-variable that produces entry-vs-whole-tree divergence is the **route**, and a
-fixture driven through `gunbc compile` cannot reach the mechanism however the
-roots are arranged. That is a reachability fact about the CLI, not a fact about
-kind, and it is why the discriminator is still owed.
+**The reason is CLOSURE MEMBERSHIP, and this paragraph is the corrected one.**
+It first read that `gunbc compile` never populates the census pool and that the
+divergence variable is therefore the *route*. `deep-ant-102` refuted the
+conclusion: the fixture's declaring modules were outside the closure of the
+first source root, and arm (4) of
+`test.claim.import_admission_closure_membership_witness_test` predicts precisely
+that — **a bare free call is gated by CLOSURE membership, not census
+membership** — so all three positive-control names refuse for one reason and
+kind never enters it. The strict-prefix variant changed nothing for the same
+reason: on-chain containment filters a candidate set the declaring modules were
+never in. The harness measured the single-candidate-absent case, which was
+already closed. The seam's own comment says the same thing from the other side:
+**"fill = whole tree; policy gates lookup, never fill"** — fill is into the
+CENSUS, never into the closure, and the policy gates only the lookup.
+
+Two residues are kept because they are checkable and were not settled. The
+refuting message located the fill in `gunbc compile --entry`; **`compile` has no
+`--entry` flag** (`error: unexpected argument '--entry' found`), so that branch
+is not reachable from the invocation described, and the run took the
+whole-first-root arm at `main.rs` printing `transitive import closure` rather
+than the reference-derived sentence. And in that same arm the `[census] N …`
+line prints whenever index-minus-closure is non-empty — 9 indexed, 4 resolved —
+**and it did not print**, confirmed unfiltered. So whether the declaring modules
+were census-only or simply absent is open; arm (4) explains the refusals either
+way, and the mechanism under it does not. The discriminator is still owed, and
+its fixture needs declaring modules reachable by a reference chain from the
+entry, so that both homonyms are candidates and the multi-candidate filter is
+what is under test.
 
 **Two harness defects, both caught by controls and neither by reasoning.**
 Module-scope `data` initializers refused a unique name where `fn` bodies were the
