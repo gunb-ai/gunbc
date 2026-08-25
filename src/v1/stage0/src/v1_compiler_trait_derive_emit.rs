@@ -55,7 +55,7 @@ use crate::v1_std_core::MatchPattern::*;
 use crate::v1_std_core::UnaryOpKind::*;
 pub use crate::v1_std_core::{
     authored_container_spelling_verdict, authored_name_at, generic_param_name_at,
-    param_node_type_expr,
+    param_node_type_expr, qualified_last_segment,
 };
 pub use crate::v1_std_core::{Connective, ContainerSpellingVerdict, NewlineIndex, Node};
 pub use crate::v1_std_core::{MatchPattern, UnaryOpKind};
@@ -3045,7 +3045,8 @@ pub fn v1_type_expr_clone_undecided_head(
     item_generic_params: Rc<BTreeSet<String>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let name = authored_name_at(source_indices.clone(), type_expr.clone());
+        let name =
+            qualified_last_segment(authored_name_at(source_indices.clone(), type_expr.clone()));
         if ((type_expr.children.clone().len() as i64) == 0) {
             "".to_string()
         } else {
@@ -3276,7 +3277,8 @@ pub fn v1_type_expr_wf_needs_clone_param(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let name = authored_name_at(source_indices.clone(), type_expr.clone());
+        let name =
+            qualified_last_segment(authored_name_at(source_indices.clone(), type_expr.clone()));
         if ((type_expr.children.clone().len() as i64) == 0) {
             false
         } else {
