@@ -1943,79 +1943,74 @@ cells identically and reports the wrong construct**, with a green receipt behind
 it — which is precisely the failure the ladder was mandated to prevent, caught
 by the mandate rather than by luck.
 
-### 11.2c OPEN — does whole-tree bind what entry refuses? One discriminating test, not yet run
+### 11.2c RESOLVED — a single candidate resolves from anywhere, and the flip is declared downstream of this cut
 
-**RETRACTED, WITHIN THE HOUR, BY BOTH PARTIES.** An earlier revision of this
-section was titled *CONFIRMED BY EXECUTION* and asserted three scopes with three
-answers. **It is not confirmed.** The retraction is kept in place of a quiet
-edit because the failure is this document's own most-repeated class, committed
-by its author in the authority that names it.
+**Now established, after being asserted, retracted, and resolved inside two
+hours.** The sequence is preserved because each step was wrong in an
+instructive way.
 
-**WHAT IS MEASURED.** `cool-hawk-324`'s whole-tree log — `gunbc compile
---source-root dag --source-root src/v2 --target rust`, no `--entry` — is
-thirteen lines with exactly two diagnostics, both workflow-CLI defaults.
-Grepped for `undefined variable`, `cannot be resolved` and `not found in scope`:
-**ZERO, corpus-wide.** That much is real.
+**THE PHASE LINES SETTLE IT.** `cool-hawk-324`'s whole-tree log, verbatim
+thirteen: `indexed 3928 modules from 2 source roots` · `resolved 2866 sources
+(transitive import closure)` · `[census] 1062 indexed modules outside the
+closure enter the name census only (not compiled)` · frontend 47s · normalize
+3s · reconcile 16min · analyses 1s · **emit 44s** · 2 hard diagnostics.
 
-**WHY IT SETTLES NOTHING.** *An absence is compatible with both explanations.*
-Zero diagnostics from a stage that ran clean and zero from a stage that never
-ran render identically. That is execution-provenance loss — this document's
-§11.2(4) — and it was quoted at a third party two messages before both of us
-reasoned straight past it.
+Every phase completed, emit included. So the corpus-wide zero is **a stage that
+ran clean, not a stage that never ran** — the discriminating question §11.2c was
+retracted for lacking. `review_codex.dag` was compiled, and `llm`,
+`upsert_tagged_cron_tab` and `Step` bind there while an `--entry` compile of the
+same file at the same commit refuses all three.
 
-**AND THE PREMISE THE CONFIRMATION RESTED ON WAS FALSE.** The claim was that the
-whole-tree run "reached the workflow-CLI-default check, which sits downstream of
-typecheck, since that is where my entry compile stopped." The entry compile did
-not stop at typecheck. Its phase lines show `compile.frontend`,
-`compile.normalize`, `compile.reconcile`, `compile.analyses` all completing, then
-`refused at emit … produced 4 hard diagnostic(s)`. It completed every phase and
-refused **at emit** — the name-resolution errors are produced during inference
-and *collected* at the emit gate. The relative-phase-order inference was built on
-a misreading of the reporter's own output.
+**THE MECHANISM WAS DOCUMENTED IN THE SEAM ALL ALONG.** `v1.04_env`
+`global_bare_fallback_invariant`:
 
-**THE DISCRIMINATING TEST, NAMED AND NOT YET RUN:** does `cool-hawk-324`'s
-whole-tree log show `compile.analyses` completing?
+> *"Resolution (`global_bare_lookup`): **a single candidate resolves from
+> anywhere** (the one-candidate degenerate case of the walk); multiple
+> candidates resolve by nearest-ancestor containment under `ImportScoped`, while
+> `NamespaceOnlyY` filters to the referencing module's containment chain…"*
 
-- **completes** → both runs reached the same gate, theirs reported 2 where an
-  entry compile reports 4, so inference genuinely never produced the name errors
-  and the names resolved.
-- **stops earlier** → the two runs simply refuse at different stages, and there
-  is no resolver divergence here at all.
+**That reconciles both readings, and neither was wrong.** The chain-prefix rule
+is real — and it governs the **multi-candidate** case only. A single candidate
+short-circuits ahead of it and resolves from anywhere, no prefix relationship
+required. Each of the three names is presumably corpus-unique, so each is a
+one-candidate case. And the census is built over `graph.modules`, which line 3
+shows includes the 1062 modules that are **indexed but never compiled**; under
+`--entry` the census covers the closure only, so the same names are absent and
+correctly refuse. Same compiler, different census population, opposite answers.
 
-**MY OWN PREDICTION IS FALSIFIED AND MY ARGUMENT IS NOT, WHICH ARE DIFFERENT
-THINGS.** I predicted the grep would come back PRESENT. It came back ABSENT. But
-the prediction and the mechanism argument were separable: I also argued from
-`unique_on_chain_policy_note` that `llm.*` and `extdeps.cron.*` cannot be
-leading-segment prefixes of `gunbc.tools.review_codex`, so those references
-cannot reach it through the chain **no matter what the pool contains**. If the
-phase lines show analyses completing, that argument does not fall — it sharpens
-the conclusion, from *the pool was permissive* to **the chain policy was not
-applied on that path**, which is the larger finding of the two.
+**THE TERMINAL IS DECLARED, AND IT IS THIS PROGRAM'S OWN WORK.** Same note, last
+clause: *"The production flip that removes the corpus fallback is **downstream
+of reference-derived closure**."* So this is not an undiscovered defect but a
+documented interim whose removal is sequenced behind exactly this cut. §11.2c
+therefore has a named terminal rather than an open hazard — better news than the
+prediction, the retraction, or the confirmation.
 
-**AND MY FIXTURE PROVED LESS THAN I CLAIMED FOR IT.** It tested a **bare
-function name** across two import-free modules. Only one of the three real
-references is that shape (`upsert_tagged_cron_tab`). `Step` is a type reached
-through `extdeps.cron.schedule_model.Step`; and `llm.Codex.Review` fails as
-**`undefined variable 'llm'`** — `llm` is being resolved as a *variable*, not
-walked as a module path, which may be a different lookup entirely. So the
-fixture disconfirms the bare-function case, which is also the case the chain
-argument already covers cleanly, and says least about the one that looks
-strangest.
+**TWO NARROWINGS, BOTH FROM THE MEASURING SIDE.** The corpus-wide zero covers
+the **2866 compiled** modules, not 3928; whether the 1062 census-only modules
+would produce name-resolution diagnostics is unmeasured and a grep cannot speak
+for them. And "whole-tree" compiles the transitive closure of the **first source
+root only** — additional roots are dependency pools — so `--source-root dag
+--source-root src/v2` made `src/v2` a pool.
 
-**WHAT DOES NOT DEPEND ON ANY OF THIS**, and is therefore what the F set carries
-today: the orphan finding (`gunbc.tools.review_codex` has zero importers
-corpus-wide, every mention inside prose or an annotation, four blocking errors
-standing unseen because nothing typechecks it) and `review_cycle_default_scope_note`
-— a hazard written down *with* its safety condition, where the condition is "no
-in-corpus caller" and the whole-tree programme's entire purpose is to become that
-caller.
+**ONE GAP REMAINS AND IT IS THIS DOCUMENT'S FIXTURE.** Two import-free modules
+in one pool, provider declaring and consumer referencing, should be a
+one-candidate case and should resolve. It refuses — measured across **all four
+forms**: bare function call, bare `data` reference, bare type, and bare variant,
+under `--source-dir` and `--source-root` alike. The proposed explanation was
+`listed_import_required_bare_call_blocked`, which sits directly on that path;
+**refuted by reading it** — `bare_free_call_requires_listed_import(name) = name
+== "trim"`, a single hardcoded name that no fixture symbol matches. A lead, not
+an answer: my runs print no `[census]` line at all, so the census-only
+population step appears not to engage at that invocation, which would explain
+the divergence but is not established.
 
-**THE SEQUENCING ARGUMENT ALSO SURVIVES INTACT, AND DELIBERATELY SO.** A
-whole-tree count enrolled as a merge-blocking ratchet would be a gate whose input
-nobody can currently characterise — which is a reason to wait that does not
-depend on which explanation wins. `cool-hawk-324` stopped rather than enrol it.
+The gap is smaller and better named than it was, and it is recorded rather than
+closed with a plausible story — the same discipline applied to the
+`pr_owner`/`pr_repo` asymmetry, whose bare-name-collision explanation was
+likewise refuted by grep (`data owner` and `data repo` each have exactly one
+module-scope declaration corpus-wide) and which stays **unexplained**.
 
-### 11.2c-orig The mechanism, as originally traced### 11.2c-orig The mechanism, as originally traced — `authored_import_names`
+### 11.2c-orig The mechanism, as originally traced### 11.2c-orig The mechanism, as originally traced### 11.2c-orig The mechanism, as originally traced — `authored_import_names`
 
 Found while unblocking a lane on an unrelated red, and it is the most direct
 threat to this program's own premise that has surfaced so far.
