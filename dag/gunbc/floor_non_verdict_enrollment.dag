@@ -215,6 +215,24 @@ data floor_non_verdict_dominant_cause_specimen: DeclarationRef = decl_ref(module
 // CANNOT ESTABLISH THIS LAW. It needs the composed result AND that result's base parent, which
 // is strictly stronger than "read the roster at another commit".
 
+// THE CENSUS ROWS ARE AUTHORED BESIDE THEIR RUN, NOT DERIVED FROM IT, AND THAT IS THE CLASS
+// RATHER THAN THIS INSTANCE. Stated as its own trigger because this number has now been corrected
+// twice and the third person to correct it should not think they are the first.
+//
+// `non_verdict_cause_census_sums_to_the_measured_total` CANNOT DETECT A STALE CENSUS. It checks
+// the arms against the total, so 119+13+9+1 == 142 stays true however far the population drifts
+// from the tree it claims to describe -- a sum is an internal consistency check over the row's own
+// fields and is never a binding to the run named in `floor_non_verdict_population_basis`. With
+// respect to the defect it appears to guard, its RED IS UNREACHABLE: no authored value of these
+// rows that is WRONG ABOUT THE TREE makes it fail. That is DESIGN section 4b's decoration -- worse
+// than absent, because it is cited as coverage -- and it is why the basis arm carries a run and a
+// head at all. The witness is not deleted: it still refuses an internally incoherent row, which is
+// a real if narrow subject, and it is honest about being that.
+//
+// The rung is therefore MITIGATABLE and the mitigation is authorship diligence, which is what
+// failed here: gunbc#9161 deleted the population and left the rows describing it.
+data floor_non_verdict_census_derivation_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: floor_non_verdict_measured_total and floor_non_verdict_cause_census are DERIVED from the run floor_non_verdict_population_basis names -- read from that run's own receipt rather than authored beside it -- at which point a transcribed count has no spelling and the rows cannot disagree with the tree. This is DESIGN's 2026-08-24 ruling applied to this carrier: name the instrument, never transcribe its output. Established by execution against a discriminating red: a basis naming a run whose observed non-verdict population differs from the authored census, refused. Not satisfied by a second sum check over the same authored fields, which is the check that already cannot see the defect; and not satisfied by re-measuring by hand, which is what produced the correction this trigger exists to make unnecessary.")
+
 data floor_non_verdict_roster_growth_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the required floor establishes H subset-of B -- the roster in the COMPOSED RESULT is a subset of the roster at that result's CURRENT TARGET-BASE PARENT -- refusing when it is not, established by execution against a discriminating red: one composed result carrying a row for an identity the base roster does not carry, refused. NOT the merge base: a merge-base baseline admits exemption resurrection, where main repairs an identity and deletes its row while a stale branch reintroduces it, and it also false-reds a row main legitimately added after the fork. Identity grain, for the same reason the observed-vs-roster admission is: an addition and a deletion in one change leave every count unmoved. RECEIPT THE CUT PINS: target_base_sha, composed_result_sha, base_roster_identity_set, result_roster_identity_set, added_exemptions = result - base; and it refuses when the base subject or its roster cannot be evaluated, the same read-failure polarity the executing arms already carry.")
 
 data floor_non_verdict_seed_mirror_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: v1_compiler.cli_run non_verdict_admission is DERIVED from v2.workflow.floor_non_verdict_admission rather than written beside it -- the same trigger v1_compiler.required_regen_host carries for its hand-mirrored ordering -- at which point the two implementations become one and the minimum-across-paths rung stops being pinned by the seed. Not satisfied by the seed's unit test alone: a discriminating red proves the mirror is correct TODAY, which is what mitigatable means, and does not make a divergence unwritable.")
