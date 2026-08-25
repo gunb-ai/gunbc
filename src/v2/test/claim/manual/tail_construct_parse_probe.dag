@@ -46,95 +46,95 @@ fn tcp_subject_analyze() -> Symbol {
 }
 
 fn tcp_f0_port_reading() -> Symbol {
-  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f0_port_reading.dag")
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f0_port_reading.txt")
 }
 
 fn tcp_f1_nested_if_int_arms() -> Symbol {
-  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f1_nested_if_int_arms.dag")
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f1_nested_if_int_arms.txt")
 }
 
 fn tcp_f2_flat_if_match_else() -> Symbol {
-  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f2_flat_if_match_else.dag")
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f2_flat_if_match_else.txt")
 }
 
 fn tcp_f3_nested_if_no_match() -> Symbol {
-  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f3_nested_if_no_match.dag")
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f3_nested_if_no_match.txt")
 }
 
 fn tcp_f4_match_only_tail() -> Symbol {
-  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f4_match_only_tail.dag")
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f4_match_only_tail.txt")
 }
 
 fn tcp_f5_nested_if_no_lets() -> Symbol {
-  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f5_nested_if_no_lets.dag")
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f5_nested_if_no_lets.txt")
 }
 
 fn tcp_f6_bare_variant_if_branch() -> Symbol {
-  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f6_bare_variant_if_branch.dag")
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f6_bare_variant_if_branch.txt")
 }
 
 fn tcp_f7_flat_if_int() -> Symbol {
-  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f7_flat_if_int.dag")
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f7_flat_if_int.txt")
 }
 
 fn tcp_f8_exact_qualified() -> Symbol {
-  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f8_exact_qualified.dag")
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f8_exact_qualified.txt")
 }
 
 fn tcp_f9_qualified_bare_variant_if_tail() -> Symbol {
-  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f9_qualified_bare_variant_if_tail.dag")
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f9_qualified_bare_variant_if_tail.txt")
 }
 
 fn tcp_f10_qualified_record_match_arm_tail() -> Symbol {
-  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f10_qualified_record_match_arm_tail.dag")
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f10_qualified_record_match_arm_tail.txt")
 }
 
 fn tcp_f11_qualified_bare_variant_in_let() -> Symbol {
-  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f11_qualified_bare_variant_in_let.dag")
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f11_qualified_bare_variant_in_let.txt")
 }
 
 fn tcp_f12_qualified_bare_variant_fn_tail() -> Symbol {
-  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f12_qualified_bare_variant_fn_tail.dag")
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f12_qualified_bare_variant_fn_tail.txt")
 }
 
 fn tcp_f13_qualified_record_fn_tail() -> Symbol {
-  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f13_qualified_record_fn_tail.dag")
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f13_qualified_record_fn_tail.txt")
 }
 
 fn tcp_f14_qualified_record_if_branch() -> Symbol {
-  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f14_qualified_record_if_branch.dag")
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f14_qualified_record_if_branch.txt")
 }
 
 fn tcp_f15_one_segment_qualified_record_match_arm() -> Symbol {
-  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f15_one_segment_qualified_record_match_arm.dag")
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f15_one_segment_qualified_record_match_arm.txt")
 }
 
 fn tcp_f16_qualified_record_call_arg() -> Symbol {
-  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f16_qualified_record_call_arg.dag")
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f16_qualified_record_call_arg.txt")
 }
 
 fn tcp_f17_qualified_record_let_rhs() -> Symbol {
-  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f17_qualified_record_let_rhs.dag")
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f17_qualified_record_let_rhs.txt")
 }
 
 fn tcp_f18_qualified_bare_variant_match_arm() -> Symbol {
-  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f18_qualified_bare_variant_match_arm.dag")
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f18_qualified_bare_variant_match_arm.txt")
 }
 
 fn tcp_f19_qualified_call_match_arm() -> Symbol {
-  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f19_qualified_call_match_arm.dag")
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f19_qualified_call_match_arm.txt")
 }
 
 fn tcp_g1_if_dotted_condition() -> Symbol {
-  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/g1_if_dotted_condition.dag")
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/g1_if_dotted_condition.txt")
 }
 
 fn tcp_g2_if_bare_condition() -> Symbol {
-  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/g2_if_bare_condition.dag")
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/g2_if_bare_condition.txt")
 }
 
 fn tcp_g3_if_dotted_call_condition() -> Symbol {
-  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/g3_if_dotted_call_condition.dag")
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/g3_if_dotted_call_condition.txt")
 }
 
 fn tcp_established_at(path: String) -> Int {
