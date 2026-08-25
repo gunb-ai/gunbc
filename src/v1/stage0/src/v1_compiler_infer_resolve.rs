@@ -1672,9 +1672,14 @@ pub fn resolve_node_bounded(
                                                                 .resolved
                                                                 .clone()
                                                             } else {
-                                                                with_authored_identity(
+                                                                preserve_nominal_brand_on_resolve(
                                                                     resolved.clone(),
                                                                     target.clone(),
+                                                                    authored_name_at(
+                                                                        env.source_indices.clone(),
+                                                                        resolved.clone(),
+                                                                    ),
+                                                                    env.source_indices.clone(),
                                                                 )
                                                             }
                                                         }
