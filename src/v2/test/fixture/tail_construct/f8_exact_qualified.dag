@@ -1,0 +1,24 @@
+module v2.test.fixture.tail_construct.f8_exact_qualified
+
+
+type PortReading
+  = PortPureLiteral
+  | PortBareName { name: Symbol }
+  | PortComputedExpression { mentions: List<Symbol> }
+
+fn port_reading(arg_capture: Node) -> v2.test.fixture.tail_construct.f8_exact_qualified.PortReading {
+  let mentions = collect_value_identifiers(n: arg_capture)
+  let idents = symbol_list_length(xs: mentions)
+  if idents == 0 {
+    v2.test.fixture.tail_construct.f8_exact_qualified.PortPureLiteral
+  } else {
+    if idents == 1 {
+      match arg_value_symbol(arg_capture: arg_capture) {
+        Present { value: sym } => v2.test.fixture.tail_construct.f8_exact_qualified.PortBareName { name: sym }
+        Absent => v2.test.fixture.tail_construct.f8_exact_qualified.PortComputedExpression { mentions: mentions }
+      }
+    } else {
+      v2.test.fixture.tail_construct.f8_exact_qualified.PortComputedExpression { mentions: mentions }
+    }
+  }
+}

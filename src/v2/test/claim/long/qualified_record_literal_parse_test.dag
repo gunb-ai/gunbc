@@ -1,0 +1,76 @@
+module v2.test.long.qualified_record_literal_parse
+
+import extdeps.filesystem.filesystem_io
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { grammar_validate_for_parse, parse_production }
+import v2.compiler.tokenize { tokenize }
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data qrl_subject: Symbol = ^qualified_record_literal_probe_subject
+
+fn qrl_cause(source_text: String) -> Symbol {
+  let lm = dag_language_model()
+  let at = port_locus(port: ^parse_stage_locus_port)
+  match lm.grammar {
+    VoidGrammar => ^language_grammar_unavailable
+    ModeledGrammar { root: root } =>
+      match grammar_validate_for_parse(root: root, at: at) {
+        Rejected { diagnostics: _ } => ^language_grammar_rejected
+        Accepted { value: validated, diagnostics: _ } =>
+          match tokenize(text: source_text, file: qrl_subject, rules: lm.lex) {
+            Rejected { diagnostics: _ } => ^source_tokenization_rejected
+            Accepted { value: stream, diagnostics: _ } =>
+              match parse_production(
+                tokens: token_stream_remaining(stream: stream),
+                validated: validated,
+                production_name: validated.root.start
+              ) {
+                Rejected { diagnostics: _ } => ^source_parse_rejected
+                Accepted { value: artifact, diagnostics: _ } =>
+                  match normalize(parse_tree: artifact.tree) {
+                    Rejected { diagnostics: _ } => ^source_normalization_rejected
+                    Accepted { value: _, diagnostics: _ } => ^source_analysis_established
+                  }
+              }
+          }
+      }
+  }
+}
+
+data qrl_qualified_match_arm_source: String = "module m.t\nfn f(cap: Node, ms: List<Symbol>) -> R {\n  match g(cap: cap) {\n    Present { value: sym } => a.b.C { name: sym }\n    Absent => D { mentions: ms }\n  }\n}\n"
+
+data qrl_unqualified_match_arm_source: String = "module m.t\nfn f(cap: Node, ms: List<Symbol>) -> R {\n  match g(cap: cap) {\n    Present { value: sym } => C { name: sym }\n    Absent => D { mentions: ms }\n  }\n}\n"
+
+data qrl_qualified_bare_variant_match_arm_source: String = "module m.t\nfn f(cap: Node, ms: List<Symbol>) -> R {\n  match g(cap: cap) {\n    Present { value: sym } => a.b.C\n    Absent => D { mentions: ms }\n  }\n}\n"
+
+data qrl_qualified_fn_tail_source: String = "module m.t\nfn f(ms: List<Symbol>) -> R {\n  a.b.C { mentions: ms }\n}\n"
+
+data qrl_nested_tail_if_match_unqualified_source: String = "module m.t\nfn f(cap: Node, ms: List<Symbol>) -> R {\n  let n = len(xs: ms)\n  if n == 0 {\n    P\n  } else {\n    if n == 1 {\n      match g(cap: cap) {\n        Present { value: sym } => C { name: sym }\n        Absent => D { mentions: ms }\n      }\n    } else {\n      D { mentions: ms }\n    }\n  }\n}\n"
+
+test fn qualified_record_literal_in_match_arm_is_established_holds() -> Bool {
+  qrl_cause(source_text: qrl_qualified_match_arm_source) == ^source_analysis_established
+}
+
+test fn unqualified_record_literal_in_match_arm_is_established_holds() -> Bool {
+  qrl_cause(source_text: qrl_unqualified_match_arm_source) == ^source_analysis_established
+}
+
+test fn qualified_bare_variant_in_match_arm_is_established_holds() -> Bool {
+  qrl_cause(source_text: qrl_qualified_bare_variant_match_arm_source) == ^source_analysis_established
+}
+
+test fn qualified_record_literal_at_fn_tail_is_established_holds() -> Bool {
+  qrl_cause(source_text: qrl_qualified_fn_tail_source) == ^source_analysis_established
+}
+
+test fn nested_tail_if_match_unqualified_is_established_holds() -> Bool {
+  qrl_cause(source_text: qrl_nested_tail_if_match_unqualified_source) == ^source_analysis_established
+}
+
+data qrl_malformed_qualified_record_source: String = "module m.t\nfn f(cap: Node) -> R {\n  match g(cap: cap) {\n    Present { value: sym } => a.b.C { name: }\n    Absent => D\n  }\n}\n"
+
+test fn malformed_qualified_record_literal_still_refuses_holds() -> Bool {
+  qrl_cause(source_text: qrl_malformed_qualified_record_source) == ^source_parse_rejected
+}

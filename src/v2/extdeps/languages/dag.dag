@@ -1102,6 +1102,17 @@ fn dag_formal_productions() -> List<FormalProduction> {
       ]
     ),
     grammar_formal_production(
+      lhs: ^dag_production_postfix_expr_repeat_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: ^dag_token_dot),
+        grammar_formal_terminal_free(identity: ^dag_token_ident),
+        grammar_formal_terminal(identity: ^dag_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_comma_field_init_list),
+        grammar_formal_terminal(identity: ^dag_token_rbrace),
+        grammar_formal_nonterminal_occurrence(identity: ^dag_production_postfix_expr_repeat_suffix)
+      ]
+    ),
+    grammar_formal_production(
       lhs: ^dag_production_postfix_call_suffix,
       rhs: [
         grammar_formal_terminal(identity: ^dag_token_lparen),
@@ -2467,6 +2478,12 @@ fn dag_grammar_postfix_call_suffix_expr() -> GrammarExpr {
   )
 }
 
+// A dotted suffix takes the SAME optional suffix a bare ident takes (dag_grammar_primary_ident_suffix_expr):
+// a call suffix OR a brace field-init list. Before this the dotted arm admitted a call suffix only, so
+// `a.b.C` consumed as a complete postfix expression and the `{ f: v }` after it was left over -- which is
+// why v2 could not read a fully-qualified record literal that v1 accepts. The leftover surfaced at a
+// different stage per position (parse in a match arm, normalize at a fn tail, and in a call argument it
+// parsed as a SECOND argument), so the spelling axis and the position axis had to be crossed to see it.
 fn dag_grammar_postfix_expr_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_nonterminal(production: ^dag_production_primary_expr),
@@ -2475,7 +2492,7 @@ fn dag_grammar_postfix_expr_expr() -> GrammarExpr {
         left: dag_grammar_terminal(token_class: ^dag_token_dot),
         right: dag_grammar_sequence(
           left: dag_grammar_binding_name_terminal(),
-          right: dag_grammar_optional(element: dag_grammar_postfix_call_suffix_expr())
+          right: dag_grammar_primary_ident_suffix_expr()
         )
       )
     )

@@ -1,0 +1,188 @@
+module v2.test.manual.tail_construct_parse_probe
+
+import extdeps.filesystem.filesystem_io
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { grammar_validate_for_parse, parse_production }
+import v2.compiler.tokenize { tokenize }
+
+
+data tcp_subject: Symbol = ^tail_construct_probe_subject
+
+fn tcp_cause(source_text: String) -> Symbol {
+  let lm = dag_language_model()
+  let at = port_locus(port: ^parse_stage_locus_port)
+  match lm.grammar {
+    VoidGrammar => ^language_grammar_unavailable
+    ModeledGrammar { root: root } =>
+      match grammar_validate_for_parse(root: root, at: at) {
+        Rejected { diagnostics: _ } => ^language_grammar_rejected
+        Accepted { value: validated, diagnostics: _ } =>
+          match tokenize(text: source_text, file: tcp_subject, rules: lm.lex) {
+            Rejected { diagnostics: _ } => ^source_tokenization_rejected
+            Accepted { value: stream, diagnostics: _ } =>
+              match parse_production(
+                tokens: token_stream_remaining(stream: stream),
+                validated: validated,
+                production_name: validated.root.start
+              ) {
+                Rejected { diagnostics: _ } => ^source_parse_rejected
+                Accepted { value: artifact, diagnostics: _ } =>
+                  match normalize(parse_tree: artifact.tree) {
+                    Rejected { diagnostics: _ } => ^source_normalization_rejected
+                    Accepted { value: _, diagnostics: _ } => ^source_analysis_established
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn tcp_cause_path(path: String) -> Symbol {
+  tcp_cause(source_text: filesystem_read(path: path).content)
+}
+
+fn tcp_subject_analyze() -> Symbol {
+  tcp_cause_path(path: "src/v2/lens/complexity_accumulator_copy/analyze.dag")
+}
+
+fn tcp_f0_port_reading() -> Symbol {
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f0_port_reading.dag")
+}
+
+fn tcp_f1_nested_if_int_arms() -> Symbol {
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f1_nested_if_int_arms.dag")
+}
+
+fn tcp_f2_flat_if_match_else() -> Symbol {
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f2_flat_if_match_else.dag")
+}
+
+fn tcp_f3_nested_if_no_match() -> Symbol {
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f3_nested_if_no_match.dag")
+}
+
+fn tcp_f4_match_only_tail() -> Symbol {
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f4_match_only_tail.dag")
+}
+
+fn tcp_f5_nested_if_no_lets() -> Symbol {
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f5_nested_if_no_lets.dag")
+}
+
+fn tcp_f6_bare_variant_if_branch() -> Symbol {
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f6_bare_variant_if_branch.dag")
+}
+
+fn tcp_f7_flat_if_int() -> Symbol {
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f7_flat_if_int.dag")
+}
+
+fn tcp_f8_exact_qualified() -> Symbol {
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f8_exact_qualified.dag")
+}
+
+fn tcp_f9_qualified_bare_variant_if_tail() -> Symbol {
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f9_qualified_bare_variant_if_tail.dag")
+}
+
+fn tcp_f10_qualified_record_match_arm_tail() -> Symbol {
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f10_qualified_record_match_arm_tail.dag")
+}
+
+fn tcp_f11_qualified_bare_variant_in_let() -> Symbol {
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f11_qualified_bare_variant_in_let.dag")
+}
+
+fn tcp_f12_qualified_bare_variant_fn_tail() -> Symbol {
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f12_qualified_bare_variant_fn_tail.dag")
+}
+
+fn tcp_f13_qualified_record_fn_tail() -> Symbol {
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f13_qualified_record_fn_tail.dag")
+}
+
+fn tcp_f14_qualified_record_if_branch() -> Symbol {
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f14_qualified_record_if_branch.dag")
+}
+
+fn tcp_f15_one_segment_qualified_record_match_arm() -> Symbol {
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f15_one_segment_qualified_record_match_arm.dag")
+}
+
+fn tcp_f16_qualified_record_call_arg() -> Symbol {
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f16_qualified_record_call_arg.dag")
+}
+
+fn tcp_f17_qualified_record_let_rhs() -> Symbol {
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f17_qualified_record_let_rhs.dag")
+}
+
+fn tcp_f18_qualified_bare_variant_match_arm() -> Symbol {
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f18_qualified_bare_variant_match_arm.dag")
+}
+
+fn tcp_f19_qualified_call_match_arm() -> Symbol {
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/f19_qualified_call_match_arm.dag")
+}
+
+fn tcp_g1_if_dotted_condition() -> Symbol {
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/g1_if_dotted_condition.dag")
+}
+
+fn tcp_g2_if_bare_condition() -> Symbol {
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/g2_if_bare_condition.dag")
+}
+
+fn tcp_g3_if_dotted_call_condition() -> Symbol {
+  tcp_cause_path(path: "src/v2/test/fixture/tail_construct/g3_if_dotted_call_condition.dag")
+}
+
+fn tcp_established_at(path: String) -> Int {
+  if tcp_cause_path(path: path) == ^source_analysis_established { 1 } else { 0 }
+}
+
+fn tcp_corpus_sample_established_count() -> Int {
+    tcp_established_at(path: "src/v2/std/algebra.dag") +
+    tcp_established_at(path: "src/v2/std/anti_unification.dag") +
+    tcp_established_at(path: "src/v2/std/artifact.dag") +
+    tcp_established_at(path: "src/v2/std/bounded_lattice_completeness.dag") +
+    tcp_established_at(path: "src/v2/std/cardinality.dag") +
+    tcp_established_at(path: "src/v2/std/change.dag") +
+    tcp_established_at(path: "src/v2/std/coercion.dag") +
+    tcp_established_at(path: "src/v2/std/collection.dag") +
+    tcp_established_at(path: "src/v2/std/concept_index.dag") +
+    tcp_established_at(path: "src/v2/std/constraint_satisfaction_predicate.dag") +
+    tcp_established_at(path: "src/v2/std/constraints.dag") +
+    tcp_established_at(path: "src/v2/std/data_index.dag") +
+    tcp_established_at(path: "src/v2/lens/affected_set.dag") +
+    tcp_established_at(path: "src/v2/lens/affected_set_examples.dag") +
+    tcp_established_at(path: "src/v2/lens/application.dag") +
+    tcp_established_at(path: "src/v2/lens/application_serializer.dag") +
+    tcp_established_at(path: "src/v2/lens/cited_symbol_resolution.dag") +
+    tcp_established_at(path: "src/v2/lens/complexity.dag") +
+    tcp_established_at(path: "src/v2/lens/complexity_accumulator_copy.dag") +
+    tcp_established_at(path: "src/v2/lens/complexity_accumulator_copy_test.dag") +
+    tcp_established_at(path: "dag/std/abi.dag") +
+    tcp_established_at(path: "dag/std/access.dag") +
+    tcp_established_at(path: "dag/std/affine_space.dag") +
+    tcp_established_at(path: "dag/std/algebra.dag") +
+    tcp_established_at(path: "dag/std/algebra_law.dag") +
+    tcp_established_at(path: "dag/std/approximate_field.dag") +
+    tcp_established_at(path: "dag/std/artifact_store.dag") +
+    tcp_established_at(path: "dag/std/artifact_store_scratch_grant.dag") +
+    tcp_established_at(path: "dag/std/attribution.dag") +
+    tcp_established_at(path: "dag/std/authorization_profile.dag") +
+    tcp_established_at(path: "src/v2/compiler/00_compile.dag") +
+    tcp_established_at(path: "src/v2/compiler/01_tokenize.dag") +
+    tcp_established_at(path: "src/v2/compiler/02_parse.dag") +
+    tcp_established_at(path: "src/v2/compiler/03_body_producer.dag") +
+    tcp_established_at(path: "src/v2/compiler/03_ingest.dag") +
+    tcp_established_at(path: "src/v2/compiler/03_name_resolve.dag") +
+    0
+}
+
+data tcp_corpus_sample_size: Int = 36
+
+fn tcp_corpus_sample_size_report() -> Int {
+  tcp_corpus_sample_size
+}
