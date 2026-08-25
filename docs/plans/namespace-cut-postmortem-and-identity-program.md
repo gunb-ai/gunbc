@@ -1693,6 +1693,36 @@ The remedy is the same one this whole section keeps arriving at: name the
 producer, key it exactly, and let the reading come from the thing that owns the
 fact rather than from a prior about which reader is trustworthy.
 
+**(5) A fix needs a whole-corpus arm, not only its own witness.** A red-on-main
+fixture proves the DEFECT is real; it does not prove the FIX is safe, and the
+two are separate claims that a red→green witness silently merges.
+
+The receipt is `crisp-crab-430`'s #9200, retracted by its own author against
+themselves after two approvals. The fix was correct in direction — it removed a
+fabricated `List<Unit>` from an unresolved fold step — and it regressed real
+corpus code: `dag/extdeps/render/terminal.dag` goes from 0 blocking on pristine
+main to 1 (`no field 'kept' on type 'Unit'`). The mechanism is worth keeping
+because it is counter-intuitive: **the fabrication was load-bearing for exactly
+the reason it was worth removing.** `List<Unit>` was WRONG BUT CONCRETE, so
+`st.kept` type-checked; a fresh type variable is HONEST BUT UNRESOLVED, and the
+join across the step's arms cannot close it, so it renders as `Unit` and the
+field access fails. Removing it stays right; it has to land with the resolution
+path rather than ahead of it.
+
+What makes this an invariant rather than an anecdote is that **no fixture the
+author could have written would have caught it** — it took the real corpus — and
+**two approvals could not have caught it either, because it is invisible in a
+diff.** So the arm is not a review practice or a better-witness practice; it is
+a different instrument, and nothing cheaper substitutes.
+
+The same requirement arrived independently the same day from the opposite
+direction: the coproduct-field widening (§11.2b's neighbour) is admissible only
+at zero false positives over `dag/` + `src/v2`, because `declared_type_conformance_note`
+records that all four of its predecessor false-positive classes were found by
+RUNNING the wall over the corpus and none by reasoning about it. Two lanes, two
+subjects, one conclusion: **the corpus is the instrument, and a witness is a
+hypothesis about it.**
+
 ### 11.2b The dormant repair — three instances in one day
 
 A pattern surfaced three times on 2026-08-25, by three lanes, on three
@@ -1753,27 +1783,66 @@ brands is upstream, in the model: `type Brand = String` admits
 `take_string(s: b)` with zero diagnostics, so there is no distinction for any
 predicate to read.
 
-**So the axis is not *routing edge vs model fact*, it is WHERE the missing
-piece lives**, and the three instances land in three different places rather
-than two:
+**The axis is the SOURCE→TARGET SEAM, and it is three-valued.** An earlier
+revision of this section sorted the instances into *routing edge* versus
+*model fact*. That was refined once on `warm-hawk-909`'s challenge, and then
+corrected again by external adversarial review probing `sole_constructor`
+specifically — which found a state neither reading had. Both corrections are
+kept rather than folded away, because the sequence is the evidence: two people
+holding the right axis still mis-sorted the specimen twice.
 
-| instance | fact | carrier | consumer can read it | missing piece |
-|---|---|---|---|---|
-| `sole_constructor` | authored ×79 | node property | yes — 29 existing calls | the edge |
-| nominal identity | none | — | yes, sibling proves it | the **model distinction** |
-| `char_at_ascii_aware` | — | **`RcStr` does not exist** | n/a | the **carrier** |
+| instance | source model | target realization | the missing piece |
+|---|---|---|---|
+| nominal identity | **absent** — `type Brand = String` admits `take_string(s: b)` with 0 diagnostics | n/a | the model distinction (C0) |
+| `char_at_ascii_aware` | **absent** — `RcStr` occurs twice in stage0, both the comment naming it | n/a | the carrier |
+| `sole_constructor` | **present** — authored ×79, parsed, consumed by inference | **unresolved** | the target-side semantics |
+| — | present | present | **the edge — no confirmed member** |
 
-A missing edge is an afternoon. A missing distinction is a language change. A
-missing carrier is a representation change that closes six entry points at
-once — `scan_while`, `skip_horizontal_ws`, `scan_to_eol`, `scan_string_end`,
-`substring` and `char_at` all route through the same bridge table to plain
-entry points whose bodies open with `if s.is_ascii()`. Anyone sizing that lane
-by counting `char_at` references is measuring the wrong symbol: the denominator
-is calls to any of the six.
+**My own error is the one worth recording, because it is subtle and I made it
+while writing the section that warns about it.** I measured that
+`05_emit_rust.dag` calls `find_property(props: n.properties, …)` **29 times**
+and concluded `sole_constructor` was a routing case: the emitter can read a
+declaration property, so consuming this one is one more call of a form the file
+already makes. That measurement is correct and it does not support the
+conclusion. **Being able to READ the fact and knowing WHAT TO EMIT for it are
+different questions, and the first does not settle the second.** DESIGN's own
+§4b row already recorded the second half — the wall is real on the `.dag`
+acceptance path while the emitted mirror is forgeable — which is this same seam
+seen from the guarantee side, and I had read that row.
+
+So the 29 calls are still the right measurement; they just bound a different
+thing than I claimed. They establish that the READ side is free, which is what
+makes the remaining work the *decision* — private fields, public accessors,
+dropped `Deserialize`, field access routed to the accessor — rather than
+plumbing. That decision is in flight in Track A now, which is precisely why the
+target realization reads as unresolved rather than absent.
+
+**The empty bucket is empty, not abolished, and the distinction is
+load-bearing** — it is DESIGN's *reachability read as occupancy* applied to a
+taxonomy instead of a guard. No confirmed member today is a finding about how
+this tree fails, not a proof that a forgotten edge cannot happen. A stronger
+law was available and was withdrawn by the person who proposed it: *this tree
+does not produce dormant repairs by forgetting an edge, it produces them by
+shipping capability ahead of the model it consumes.* Three instances do not
+carry that, and the weaker statement is the one the evidence supports — **the
+tree fails at the source→target seam in two distinct ways, and the pure
+forgotten-edge case is rarer than it looks from a diff.**
+
+A missing model distinction is a language change. A missing carrier is a
+representation change that closes six entry points at once — `scan_while`,
+`skip_horizontal_ws`, `scan_to_eol`, `scan_string_end`, `substring` and
+`char_at` all route through the same bridge table to plain entry points whose
+bodies open with `if s.is_ascii()`, so anyone sizing that lane by counting
+`char_at` references is measuring the wrong symbol; the denominator is calls to
+any of the six. An unresolved target realization is neither: the source is
+done, the read is free, and what remains is a semantic decision about the
+emitted form.
 
 The operative rule, and it applies before any lane sizes a population:
 **ask whether the mechanism already exists and is merely unrouted — and if it
-is, ask whether the thing that would route to it exists either.** A dormant
+is, ask whether the thing that would route to it exists, ON BOTH SIDES OF THE
+SEAM.** Source-side: is there a fact to read. Target-side: is the emitted form
+decided. Either one missing produces the same diff-shaped silence. A dormant
 repair looks like missing work and is usually a missing edge; a dormant repair
 whose parameter has no producer looks like a missing edge and is a missing
 model fact. The three cost estimates differ by an order of magnitude and the
