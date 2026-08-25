@@ -120,6 +120,17 @@ import gunbc.runner_host_deploy {
   RunnerHostDeployFound,
   RunnerHostDeployUnmodeled,
   runner_host_deploy_for,
+  admit_runner_host,
+}
+import gunbc.runner_service_activation {
+  RunnerActivationReadiness,
+  RunnerTransitionPlan,
+  runner_activation_plans_for_deploy,
+  runner_transition_apply_lines,
+  runner_transition_plan_line,
+  runner_activation_refusal_count,
+  runner_activation_reachability_report,
+  runner_activation_safety_report,
 }
 import gunbc.spark.serving_membership {
   SparkServingMember,
@@ -609,6 +620,165 @@ fn fleet_converge_slot_refusal_count(
     SlotFamilyArtifactUnpublished { host: _ } => 1
     SlotFamilyPlanned { plan: p } => membership_refusal_count(plan: p.membership)
   }
+}
+
+// THE ACTIVATION FAMILY, AND IT IS A SEPARATE FAMILY FROM THE SLOT FAMILY RATHER THAN TWO MORE
+// LINES INSIDE IT. Materializing a slot writes files under a directory the converging principal
+// already owns; activating one lets it accept work, and the first cache-miss compile of that work
+// spawns a build-cache server in whichever cgroup the slot sits in. The two have different
+// prerequisites and different refusal causes, so a reviewer reading plan.txt must be able to see
+// that materialization was planned and activation was refused -- which one merged family would
+// render as a single verdict over both.
+//
+// AN UNMODELED HOST YIELDS NO PLANS AT ALL, and that is not the silence this module elsewhere
+// forbids: the slot family ALREADY stops the script for an unmodeled host, one axis earlier and
+// with the louder diagnostic, so emitting a second refusal here would report one host's single
+// defect twice and inflate the refusal count that a reviewer reads as a magnitude.
+//
+// WHAT THE ACTIVATION FAMILY DOES NOT CONTRIBUTE, DECLARED RATHER THAN LEFT TO BE FOUND. The
+// readiness observation is NOT part of observed_baseline_text, so it is in neither the subject's
+// member-set fingerprint nor the compare-and-swap baseline. That is deliberate on the first count
+// and a residual on the second: readiness is not a MEMBER, and the two fingerprints are the same
+// text today, so folding it in would silently redefine subject identity to include an observation
+// that is not part of the subject.
+//
+// THE RESIDUAL IT LEAVES: the transitions are frozen into apply.sh at plan time, so if a readiness
+// that produced an ADMITTED enable stopped holding between plan and apply, the lease would still
+// admit and apply would activate against an observation that had lapsed. That is the same class the
+// Spark population's own baseline note records and closed for itself. It is not closed here, and
+// the exposure is currently zero rather than small: every caller in the tree supplies
+// ActivationReadinessUnobserved, so no admitted transition exists to go stale. Saying "zero" is not
+// the same as saying "safe" -- the mechanism is real and the first observed readiness arms it.
+// DISSOLVE-ON: the host observation transaction lands (docs/plans/runner-service-capacity-
+// convergence.md, "the shared blocker"), at which point the readiness has a subject and a currency
+// of its own and belongs in the baseline as a bound row rather than as a verdict.
+fn fleet_converge_activation_plans(
+  host: NonEmptyStr,
+  readiness: RunnerActivationReadiness,
+) -> List<RunnerTransitionPlan> {
+  match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployUnmodeled { host: _ } => []
+    RunnerHostDeployFound { deploy: d } =>
+      runner_activation_plans_for_deploy(
+        host_admission: admit_runner_host(deploy: d),
+        deploy: d,
+        readiness: readiness,
+      )
+  }
+}
+
+fn fleet_converge_activation_lines(
+  host: NonEmptyStr,
+  readiness: RunnerActivationReadiness,
+) -> List<String> {
+  map(
+    fleet_converge_activation_plans(host: host, readiness: readiness),
+    p => runner_transition_plan_line(plan: p),
+  )
+}
+
+fn fleet_converge_activation_refusal_count(
+  host: NonEmptyStr,
+  readiness: RunnerActivationReadiness,
+) -> Int {
+  runner_activation_refusal_count(
+    plans: fleet_converge_activation_plans(host: host, readiness: readiness),
+  )
+}
+
+// THE TWO DECLARED ROWS ARE RENDERED INTO THE PLAN A HUMAN REVIEWS, WHICH IS WHAT MAKES THEM
+// EVIDENCE RATHER THAN PROSE WITH A TYPE. A GuaranteeStall nothing reads is exactly the inert-lens
+// tier DESIGN section 6 names -- the machinery exists and nothing consumes it -- and it decays in a
+// specific way: the row goes stale while the refusal printed beside it keeps naming a different
+// cause, so the two disagree and no mechanism notices. Rendering them into plan.txt puts the
+// declared blocker and the executed refusal in front of the same reader in the same artifact, and
+// test.claim.runner_service_activation asserts they agree.
+//
+// BOTH ROWS, NOT ONE. The reachability row says why the admission cannot say yes here; the safety
+// row says what it would guarantee if it did, and that the raw systemctl grants leave a door beside
+// the wall. A reviewer approving a converge plan needs the second as much as the first -- it is the
+// difference between "this refusal is temporary" and "and even when it lifts, the host boundary is
+// mitigated rather than structural".
+// APPLY COULD NOT SAY "PARTIALLY APPLIED", AND ITS TERMINAL WAS THE SHELL'S EXIT STATUS. Every axis
+// already counted its refusals and rendered them, but the CONCLUSION a consumer reads is whether the
+// script exited zero -- and a script that refused an axis and continued exits zero, so "converged"
+// and "converged except for the axis nobody could admit" were the same terminal. That is the
+// fabricated plausible output at the reporting seam: not a wrong number anywhere, a missing state.
+//
+// THE PROJECTION IS DERIVED FROM THE REFUSAL COUNTS, NEVER STORED. A stored terminal is a second
+// authority for what the counts already say, and the two would drift in the ordinary direction --
+// someone adds an axis, the counts include it and the terminal does not. So there is no field to
+// transcribe: the arms are a fold over the same numbers plan.txt prints.
+//
+// IT CHANGES NO EXIT CODE. The line stop stays where it is -- an unmodeled host still exits, a
+// refused sibling axis still continues -- because withdrawing an authorized effect over an unrelated
+// refusal is the trade this lane refused in the first place. What changes is that the terminal is
+// now SAYABLE, so a consumer that wants to gate on full convergence has a state to read instead of
+// an exit code that cannot express one.
+type FleetConvergeApplyTerminal
+  = FullyApplied
+  | PartiallyApplied { refused_axis_count: Int, detail: String }
+
+fn fleet_converge_apply_terminal(
+  host: NonEmptyStr,
+  observed_slots: List<RunnerSlotMember>,
+  observed_caps: List<CapMember>,
+  timer_plan: MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>,
+  cap_plan: MembershipPlan<CapMember, CapMemberAt>,
+  observed_fabric_cells: FabricCellPopulation,
+  observed_activation_readiness: RunnerActivationReadiness,
+) -> FleetConvergeApplyTerminal {
+  let slot_refused = fleet_converge_slot_refusal_count(host: host, observed_slots: observed_slots)
+  let cap_refused = membership_refusal_count(plan: cap_plan)
+  let timer_refused = membership_refusal_count(plan: timer_plan)
+  let fabric_refused = fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells)
+  let activation_refused = fleet_converge_activation_refusal_count(host: host, readiness: observed_activation_readiness)
+  let total = slot_refused + cap_refused + timer_refused + fabric_refused + activation_refused
+  if total == 0 {
+    FullyApplied
+  } else {
+    PartiallyApplied {
+      refused_axis_count: total,
+      detail: join(
+        [
+          "slot=", to_string(slot_refused),
+          " cap=", to_string(cap_refused),
+          " timer=", to_string(timer_refused),
+          " fabric-cell=", to_string(fabric_refused),
+          " activation=", to_string(activation_refused),
+        ],
+        "",
+      ),
+    }
+  }
+}
+
+fn fleet_converge_apply_terminal_line(terminal: FleetConvergeApplyTerminal) -> String {
+  match terminal {
+    FullyApplied => "# apply-terminal: FullyApplied"
+    PartiallyApplied { refused_axis_count: n, detail: d } =>
+      concat(
+        concat("# apply-terminal: PartiallyApplied refusals=", to_string(n)),
+        concat(" ", d),
+      )
+  }
+}
+
+fn fleet_converge_activation_declaration_lines() -> List<String> {
+  [
+    concat("# activation-reachability: ", runner_activation_reachability_report()),
+    concat("# activation-safety: ", runner_activation_safety_report()),
+  ]
+}
+
+fn activation_apply_lines(
+  host: NonEmptyStr,
+  readiness: RunnerActivationReadiness,
+) -> List<String> {
+  flat_map(
+    fleet_converge_activation_plans(host: host, readiness: readiness),
+    p => runner_transition_apply_lines(plan: p),
+  )
 }
 
 fn slot_apply_lines(
@@ -1462,6 +1632,8 @@ fn fleet_converge_apply_shell(
   host: NonEmptyStr,
   observed_slots: List<RunnerSlotMember>,
   observed_fabric_cells: FabricCellPopulation,
+  observed_activation_readiness: RunnerActivationReadiness,
+  terminal: FleetConvergeApplyTerminal,
 ) -> String {
   join(
     concat(
@@ -1477,7 +1649,16 @@ fn fleet_converge_apply_shell(
       ["# runner-slot membership (gunbc.runner_slot_provision) — ADD only; see slot_apply_lines"],
       concat(
         slot_apply_lines(host: host, observed_slots: observed_slots),
-        fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells),
+        concat(
+          ["# runner-service activation (gunbc.runner_service_activation) — enable then start, separately admitted"],
+          concat(
+            activation_apply_lines(host: host, readiness: observed_activation_readiness),
+            concat(
+              fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells),
+              [fleet_converge_apply_terminal_line(terminal: terminal)],
+            ),
+          ),
+        ),
       ),
     ),
     "\n",
@@ -1517,6 +1698,7 @@ fn fleet_converge_plan_artifact(
   observed_spark: List<SparkServingMember>,
   observed_slots: List<RunnerSlotMember>,
   observed_fabric_cells: FabricCellPopulation,
+  observed_activation_readiness: RunnerActivationReadiness,
 ) -> FleetConvergePlanArtifact? {
   let subject = fleet_converge_plan_subject(
     host: host,
@@ -1559,13 +1741,28 @@ fn fleet_converge_plan_artifact(
       cap_lines,
       ["# runner-slot"],
       fleet_converge_slot_lines(host: host, observed_slots: observed_slots),
+      ["# runner-service-activation"],
+      fleet_converge_activation_lines(host: host, readiness: observed_activation_readiness),
+      fleet_converge_activation_declaration_lines(),
       ["# fabric-cell"],
       fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells),
       [
         concat("# slot-refusals=", to_string(fleet_converge_slot_refusal_count(host: host, observed_slots: observed_slots))),
+        concat("# activation-refusals=", to_string(fleet_converge_activation_refusal_count(host: host, readiness: observed_activation_readiness))),
         concat("# cap-refusals=", to_string(membership_refusal_count(plan: cap_plan))),
         concat("# timer-refusals=", to_string(membership_refusal_count(plan: timer_plan))),
         concat("# fabric-cell-refusals=", to_string(fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells))),
+        fleet_converge_apply_terminal_line(
+          terminal: fleet_converge_apply_terminal(
+            host: host,
+            observed_slots: observed_slots,
+            observed_caps: observed_caps,
+            timer_plan: timer_plan,
+            cap_plan: cap_plan,
+            observed_fabric_cells: observed_fabric_cells,
+            observed_activation_readiness: observed_activation_readiness,
+          ),
+        ),
       ],
     ),
     "\n",
@@ -1581,6 +1778,16 @@ fn fleet_converge_plan_artifact(
     host: host,
     observed_slots: observed_slots,
     observed_fabric_cells: observed_fabric_cells,
+    observed_activation_readiness: observed_activation_readiness,
+    terminal: fleet_converge_apply_terminal(
+      host: host,
+      observed_slots: observed_slots,
+      observed_caps: observed_caps,
+      timer_plan: timer_plan,
+      cap_plan: cap_plan,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: observed_activation_readiness,
+    ),
   )
   match content_hash_of_value(value: baseline as NonEmptyStr) {
     Fnv1a64(structural) =>

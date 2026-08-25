@@ -22,7 +22,7 @@ func bmc_read_telemetry() -> ProcessExit
               let netrc_file = netrc_v as NonEmptyStr
               let chassis = asrock_altrad8ud_redfish_chassis_id
 
-              system_resp = redfish.Http.GetSystemWithNetrc(bmc_host: bmc, netrc_file: netrc_file)
+              system_resp = redfish.Http.GetSystem(bmc_host: bmc, netrc_file: netrc_file)
               if system_resp.success == false {
                 return exit_failure(reason: system_resp.body)
               }

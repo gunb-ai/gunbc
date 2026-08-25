@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
-import std.types { Bool, NonEmptyStr, Secret, String }
+import std.types { Bool, NonEmptyStr, String }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -26,6 +26,34 @@ data redfish_http_hardwired_transport_note: String = "§3(b) declared debt: ever
 
 data redfish_http_success_semantics_note: String = "LOAD-BEARING: success:Bool derives from exit_success, so curl MUST fail-close on HTTP status. Every argv carries --fail-with-body (curl >=7.76). WITHOUT it curl exits 0 on 401/403/404/5xx and `success` reads a rejected auth or a missing resource as TRUE — a §5 fail-open: a factory-401 misreads as FactoryCredentialActive (so an already-rotated BMC gets re-rotated), and a rotation PATCH that 401s reports rotated while changing nothing (the 'secret populated, server never rotated' state). --fail-with-body (not bare --fail) keeps the OpenBMC error body in `body` for diagnosis (e.g. PropertyValueFormatError on a rejected password). Do not drop the flag; a new redfish op without it re-opens the arm. Found by execution against srv4 2026-07-23."
 
+// EVERY REDFISH OPERATION AUTHENTICATES BY FILE, AND THE ABSENCE OF `Secret` IN THIS MODULE'S
+// IMPORTS IS THE RECEIPT. GetSystem, GetPower and GetThermal each declared `password: Secret` and
+// then interpolated it into an argv token -- `-u {username}:{password}` -- so the credential became
+// a word in curl's command line. On the fleet hosts that is not a theoretical exposure: /proc is
+// mounted with no hidepid, /proc/PID/cmdline is mode 0444, and the CI runner slots are ordinary host
+// systemd services sharing the host pid namespace, so any job payload reads it with an unprivileged
+// ps. bmc_onboard called GetSystem with the FRESHLY ROTATED password, which put the new credential
+// in argv at the exact moment the old one was being retired.
+//
+// THIS WAS A HALF-FINISHED REPLACEMENT MIGRATION, NOT A NEW DISCOVERY, and that is the part worth
+// recording. Every MUTATING operation here already used --netrc-file, and a GetSystemWithNetrc sat
+// directly beside the leaking GetSystem answering the identical question. So the correct shape was
+// already present and already understood; what kept the leak alive was that the old form was left
+// standing next to the new one instead of being cut at the root. While X stands, callers keep
+// reaching for it -- five call sites did.
+//
+// The cut is therefore at the root rather than at the leaves: the three argv-borne arms are DELETED,
+// not deprecated, and GetSystemWithNetrc is deleted too because once GetSystem no longer takes a
+// password the `WithNetrc` suffix distinguishes nothing and is a second name for one concept. One
+// operation per resource, authenticating one way. A future operation cannot reintroduce the class by
+// copying a neighbour, because no neighbour spells it any more.
+//
+// WHAT THIS DOES NOT CLAIM: the module is clean by CONSTRUCTION nowhere. Nothing refuses a new
+// `password: Secret` interpolated into an argv token -- v2.std.operation_argv's binding wall refuses
+// undeclared names and a non-literal executable position, but ShellTransportOperationRow carries
+// declared_inputs as a List<String>, names without types, so the binder cannot see that an input is
+// Secret and could not refuse it. That missing declared-input TYPE on the row is this class's
+// next-rung trigger; until it lands the class sits at mitigatable and this note is diligence.
 service redfish.Http {
 
   operation GetServiceRoot {
@@ -42,19 +70,6 @@ service redfish.Http {
   }
 
   operation GetSystem {
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: Secret }
-    output { body: String from "stdout", success: Bool from "exit_success" }
-    readonly
-    transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "-u", "{username}:{password}", "https://{bmc_host}/redfish/v1/Systems/system"]
-    }
-    exit {
-      0 => Unit
-      nonzero => String "redfish system GET failed"
-    }
-  }
-
-  operation GetSystemWithNetrc {
     input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -63,7 +78,7 @@ service redfish.Http {
     }
     exit {
       0 => Unit
-      nonzero => String "redfish system GET (netrc) failed"
+      nonzero => String "redfish system GET failed"
     }
   }
 
@@ -81,11 +96,11 @@ service redfish.Http {
   }
 
   operation GetPower {
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: Secret }
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "-u", "{username}:{password}", "https://{bmc_host}/redfish/v1/Chassis/Self/Power"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Chassis/Self/Power"]
     }
     exit {
       0 => Unit
@@ -94,11 +109,11 @@ service redfish.Http {
   }
 
   operation GetThermal {
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: Secret }
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "-u", "{username}:{password}", "https://{bmc_host}/redfish/v1/Chassis/Self/Thermal"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Chassis/Self/Thermal"]
     }
     exit {
       0 => Unit
