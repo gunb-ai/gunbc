@@ -9091,6 +9091,115 @@ impl BudgetKind {
     }
 }
 
+/// Mirror of `gunbc.observation_ci_render CiWitnessRuntimeCause`. One arm per
+/// `v1_interpreter::InterpError` variant that can reach the witness boundary's untyped arm, and
+/// no vocabulary of its own (DESIGN §3): the cause already exists upstream, this is it surviving
+/// the seam.
+///
+/// FIVE `InterpError` VARIANTS ARE DELIBERATELY ABSENT. `HostToolUnresolved`,
+/// `HermeticHostEffectRefused`, `EvalBudgetExceeded`, `WitnessWallBudgetExceeded` and the
+/// pre-mapped `EvaluationBudgetExceeded` each have their OWN `ClaimOutcome` arm and are consumed
+/// by earlier arms of the match in `run_claim`, so they cannot reach this classifier. They are
+/// not silently folded into a neighbour: all five map to `MappedOutcomeEscaped`, a typed,
+/// countable diagnostic meaning the mapper let one through. One arm rather than five because all
+/// five share ONE remedy — repair the mapper — and the descend-or-collapse rule turns on shared
+/// remedy, not on arm count.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum WitnessRuntimeCause {
+    NoSuchFunction,
+    NoSuchVariable,
+    NoSuchField,
+    TypeError,
+    CrossRepresentationEquality,
+    StringRealizationStraddle,
+    PoolRootContributesNothing,
+    PatternMatchFailure,
+    DivisionByZero,
+    IntegerOverflow,
+    Unimplemented,
+    EarlyReturn,
+    AuthDeclaredButUnwired,
+    ServiceConfigUnresolved,
+    ServiceConfigMissing,
+    ArgvExceedsHostArgMax,
+    HostToolRelativePathAmbiguous,
+    ShellOutputLimitExceeded,
+    CallContractMismatch,
+    /// An `InterpError` with its own `ClaimOutcome` arm reached the untyped classifier anyway.
+    /// Loud rather than absorbed: this is a defect in the mapping above, and a run that produces
+    /// it should say so on the row rather than presenting the throw as an ordinary one.
+    MappedOutcomeEscaped,
+}
+
+impl WitnessRuntimeCause {
+    /// Mirror of `ci_witness_runtime_cause_token`. Stable kebab tokens — the grep key a reader
+    /// uses to pair an identity with its cause.
+    pub fn token(self) -> &'static str {
+        match self {
+            WitnessRuntimeCause::NoSuchFunction => "no-such-function",
+            WitnessRuntimeCause::NoSuchVariable => "no-such-variable",
+            WitnessRuntimeCause::NoSuchField => "no-such-field",
+            WitnessRuntimeCause::TypeError => "type-error",
+            WitnessRuntimeCause::CrossRepresentationEquality => "cross-representation-equality",
+            WitnessRuntimeCause::StringRealizationStraddle => "string-realization-straddle",
+            WitnessRuntimeCause::PoolRootContributesNothing => "pool-root-contributes-nothing",
+            WitnessRuntimeCause::PatternMatchFailure => "pattern-match-failure",
+            WitnessRuntimeCause::DivisionByZero => "division-by-zero",
+            WitnessRuntimeCause::IntegerOverflow => "integer-overflow",
+            WitnessRuntimeCause::Unimplemented => "unimplemented",
+            WitnessRuntimeCause::EarlyReturn => "early-return",
+            WitnessRuntimeCause::AuthDeclaredButUnwired => "auth-declared-but-unwired",
+            WitnessRuntimeCause::ServiceConfigUnresolved => "service-config-unresolved",
+            WitnessRuntimeCause::ServiceConfigMissing => "service-config-missing",
+            WitnessRuntimeCause::ArgvExceedsHostArgMax => "argv-exceeds-host-arg-max",
+            WitnessRuntimeCause::HostToolRelativePathAmbiguous => {
+                "host-tool-relative-path-ambiguous"
+            }
+            WitnessRuntimeCause::ShellOutputLimitExceeded => "shell-output-limit-exceeded",
+            WitnessRuntimeCause::CallContractMismatch => "call-contract-mismatch",
+            WitnessRuntimeCause::MappedOutcomeEscaped => "mapped-outcome-escaped",
+        }
+    }
+
+    /// TOTAL over `InterpError`. Totality is the point rather than a formality: a new interpreter
+    /// error variant must fail to compile HERE, where someone decides what its cause token is,
+    /// rather than inheriting a neighbour's or falling into a wildcard.
+    pub fn of_interp_error(err: &v1_interpreter::InterpError) -> Self {
+        use v1_interpreter::InterpError as E;
+        match err {
+            E::NoSuchFunction { .. } => WitnessRuntimeCause::NoSuchFunction,
+            E::NoSuchVariable { .. } => WitnessRuntimeCause::NoSuchVariable,
+            E::NoSuchField { .. } => WitnessRuntimeCause::NoSuchField,
+            E::TypeError { .. } => WitnessRuntimeCause::TypeError,
+            E::CrossRepresentationEquality { .. } => {
+                WitnessRuntimeCause::CrossRepresentationEquality
+            }
+            E::StringRealizationStraddle { .. } => WitnessRuntimeCause::StringRealizationStraddle,
+            E::PoolRootContributesNothing { .. } => WitnessRuntimeCause::PoolRootContributesNothing,
+            E::PatternMatchFailure { .. } => WitnessRuntimeCause::PatternMatchFailure,
+            E::DivisionByZero => WitnessRuntimeCause::DivisionByZero,
+            E::IntegerOverflow { .. } => WitnessRuntimeCause::IntegerOverflow,
+            E::Unimplemented { .. } => WitnessRuntimeCause::Unimplemented,
+            E::EarlyReturn { .. } => WitnessRuntimeCause::EarlyReturn,
+            E::AuthDeclaredButUnwired { .. } => WitnessRuntimeCause::AuthDeclaredButUnwired,
+            E::ServiceConfigUnresolved { .. } => WitnessRuntimeCause::ServiceConfigUnresolved,
+            E::ServiceConfigMissing { .. } => WitnessRuntimeCause::ServiceConfigMissing,
+            E::ArgvExceedsHostArgMax { .. } => WitnessRuntimeCause::ArgvExceedsHostArgMax,
+            E::HostToolRelativePathAmbiguous { .. } => {
+                WitnessRuntimeCause::HostToolRelativePathAmbiguous
+            }
+            E::ShellOutputLimitExceeded { .. } => WitnessRuntimeCause::ShellOutputLimitExceeded,
+            E::CallContractMismatch { .. } => WitnessRuntimeCause::CallContractMismatch,
+            // The five that should never arrive. See the type comment.
+            E::HostToolUnresolved { .. }
+            | E::HermeticHostEffectRefused { .. }
+            | E::EvalBudgetExceeded { .. }
+            | E::WitnessWallBudgetExceeded { .. }
+            | E::EvaluationBudgetExceeded { .. } => WitnessRuntimeCause::MappedOutcomeEscaped,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimOutcome {
     Pass,
@@ -9098,7 +9207,26 @@ pub enum ClaimOutcome {
     NotBool {
         got: String,
     },
+    /// A THROW, WITH THE REASON IT THREW KEPT AS A TYPE.
+    ///
+    /// `message` used to be the whole content of this arm, built by `format!("{other}")` over
+    /// `v1_interpreter::InterpError` — which is ALREADY a closed 24-arm coproduct. So the cause
+    /// was known at this seam, destroyed here, and then guessed back downstream by slicing the
+    /// first twelve whitespace-separated words off the prose (`known_red_runtime_error_causes`).
+    /// That key embeds the missing NAME, so `no declaration named X` and `no declaration named Y`
+    /// counted as two causes: on main `f9963a762` the floor reported **65 distinct signatures**
+    /// across 142 identities for a population with about four actual causes. The number was an
+    /// artifact of the key, and it said "many roots" where the truth is "one root, many names".
+    ///
+    /// This is the same repair `TimedOut` and `HostToolUnresolved` above already received, for
+    /// the same stated reason, and the third instance is the argument for doing it by type
+    /// rather than case by case.
+    ///
+    /// `message` SURVIVES beside the cause and is not redundant with it: the cause says WHICH
+    /// class, the message says which name, which type, which arity. Two facts, two fields — the
+    /// defect was never that prose existed, it was that prose was the only representation.
     RuntimeError {
+        cause: WitnessRuntimeCause,
         message: String,
     },
     /// A budget refusal, with the pair that explains it kept as data.
@@ -15503,7 +15631,21 @@ fn parse_module_heads_for_pool_census(
         m.insert(source.path.clone(), nl_index.clone());
         m
     });
-    let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
+    // The HEADS reading of the grammar, not the full one. Every declaration head is
+    // parsed by the same productions; a brace-delimited fn body is skipped at token
+    // grain instead of being built, because `census_heads_module_node` two lines below
+    // replaces every body with the shared stand-in anyway. Building 3875 modules' worth
+    // of function bodies for a consumer that discards them was the largest single term
+    // in `pool_parse` (7.15s of 14.24s, `docs/probes/edge_index_tree_census_attribution_2026-08-24.md`)
+    // — a cost-shape defect DESIGN §6's bare-minimum-cost rule says is always fixed.
+    //
+    // The strip below is KEPT rather than folded into the parser, and that is load-bearing
+    // rather than leftover: it is what makes the two readings agree BY CONSTRUCTION. The
+    // exact shape of the stand-in the parser substitutes is then not a fact any consumer
+    // can depend on, because the normalizer overwrites it — so the heads reading cannot
+    // drift from the full reading through the body slot, only through the heads, which is
+    // the surface the differential receipt measures.
+    let parsed = v1_compiler_parse::parse_heads_with_table(tokens, single_si, current_table);
     *index.intern_table.borrow_mut() = parsed.intern_table.clone();
     // Pool census needs declaration heads only — do NOT install full-body ASTs into
     // `parse_cache` here. Closure resolve retains full bodies on its own cache miss.
@@ -15628,6 +15770,128 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
         st.pool_parse_modules += modules;
     });
     Ok(parsed)
+}
+
+/// One module read BOTH ways and normalized by the census, so the two readings can be
+/// compared as an identity rather than described as similar.
+///
+/// `census_heads_module_node` is applied to both sides. That is what makes the comparison
+/// meaningful rather than trivially false: the body slot is the one slot the heads reading
+/// deliberately fills differently, the normalizer overwrites it on both sides, and what
+/// remains is exactly the declaration heads the pool census consumes. A skip that swallowed
+/// a declaration, mis-counted a brace depth, or left the token stream one token off changes
+/// the head list and diverges here.
+///
+/// Both readings start from the SAME intern-table snapshot and neither writes back, so the
+/// sides are symmetric — a difference is the reading, never the order they ran in.
+fn census_heads_both_readings(
+    index: &MultiEntryIndex,
+    source: &Rc<v1_compiler_compile::SourceFile>,
+) -> (
+    (Result<Rc<Node>, String>, u128),
+    (Result<Rc<Node>, String>, u128),
+) {
+    let table = index.intern_table.borrow().clone();
+    let read = |heads_only: bool| -> (Result<Rc<Node>, String>, u128) {
+        let tokens = v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
+        let nl_index = build_newline_index(source.path.clone(), source.content.clone());
+        let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
+            let mut m = HashMap::new();
+            m.insert(source.path.clone(), nl_index);
+            m
+        });
+        // Only the parse is inside the timer: tokenize, newline index and setup are
+        // identical work in both readings and sit outside it on purpose.
+        let started = std::time::Instant::now();
+        let parsed = if heads_only {
+            v1_compiler_parse::parse_heads_with_table(tokens, single_si, table.clone())
+        } else {
+            v1_compiler_parse::parse_with_table(tokens, single_si, table.clone())
+        };
+        let nanos = started.elapsed().as_nanos();
+        if let Some(err) = &parsed.result.error {
+            return (Err(diagnostic_to_message(err.diagnostic.clone())), nanos);
+        }
+        match &parsed.result.module {
+            Some(module) => (Ok(census_heads_module_node(module.clone())), nanos),
+            None => (Err("no module in parse result".to_string()), nanos),
+        }
+    };
+    (read(false), read(true))
+}
+
+/// The corpus-scale differential receipt for the heads reading.
+///
+/// `divergent` is the population that must be empty for the heads reading to be a reading
+/// of the same grammar rather than a second, weaker parser. `narrowed` is NOT a defect and
+/// is reported separately on purpose: it is the declared, bounded scope narrowing — a body
+/// the full reading refuses on grammar and the heads reading never hands to the expression
+/// grammar at all. DESIGN §5 requires a degradation to be COUNTED rather than absorbed, so
+/// it gets its own row instead of being folded into either the pass or the failure count.
+/// `regressed` is its mirror and must also be empty: the heads reading may never refuse
+/// something the full reading accepts.
+pub struct HeadsReadingDifferential {
+    pub modules_compared: usize,
+    pub divergent: Vec<String>,
+    pub narrowed: Vec<String>,
+    pub regressed: Vec<String>,
+    pub both_refused: Vec<String>,
+    /// Wall spent in the FULL reading, summed over every module, and the same for the
+    /// heads reading. Both are taken in ONE process, on ONE machine, over the SAME module
+    /// list, alternating per module — so the ratio compares two READINGS, not two builds,
+    /// two hosts, or two corpus states. A before/after figure from two separately-built
+    /// binaries would have to argue all three of those away; this one has nothing to argue
+    /// away.
+    ///
+    /// It measures the PARSE only. `tokenize`, `build_newline_index` and the per-file
+    /// setup sit outside both timers and are untouched by this repair, so this figure is
+    /// not the whole-`pool_parse` saving and must never be quoted as one.
+    pub full_reading_nanos: u128,
+    pub heads_reading_nanos: u128,
+}
+
+impl HeadsReadingDifferential {
+    pub fn holds(&self) -> bool {
+        self.divergent.is_empty() && self.regressed.is_empty()
+    }
+}
+
+/// Read every indexed module both ways and classify. Deterministic (sorted paths).
+pub fn heads_reading_differential(source_roots: &[String]) -> HeadsReadingDifferential {
+    let index = build_multi_entry_index(source_roots);
+    let mut paths: Vec<String> = index.source_files.keys().cloned().collect();
+    paths.sort();
+    let mut out = HeadsReadingDifferential {
+        modules_compared: 0,
+        divergent: Vec::new(),
+        narrowed: Vec::new(),
+        regressed: Vec::new(),
+        both_refused: Vec::new(),
+        full_reading_nanos: 0,
+        heads_reading_nanos: 0,
+    };
+    for path in paths {
+        let source = match index.source_files.get(&path) {
+            Some(s) => s.clone(),
+            None => continue,
+        };
+        out.modules_compared += 1;
+        let ((full_read, full_nanos), (heads_read, heads_nanos)) =
+            census_heads_both_readings(&index, &source);
+        out.full_reading_nanos += full_nanos;
+        out.heads_reading_nanos += heads_nanos;
+        match (full_read, heads_read) {
+            (Ok(full), Ok(heads)) => {
+                if full != heads {
+                    out.divergent.push(path);
+                }
+            }
+            (Err(_), Ok(_)) => out.narrowed.push(path),
+            (Ok(_), Err(_)) => out.regressed.push(path),
+            (Err(_), Err(_)) => out.both_refused.push(path),
+        }
+    }
+    out
 }
 
 fn pool_qualified_fill(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, String> {
@@ -16441,7 +16705,10 @@ pub enum CiWitnessVerdict {
     Passed,
     Failed,
     NotBool,
-    RuntimeError,
+    /// Carries the cause as a PAYLOAD rather than beside the verdict, so "a PASSED row with a
+    /// cause" and "an ERROR row without one" have no spelling (DESIGN §4b: structurally
+    /// impossible, not merely checked).
+    RuntimeError(WitnessRuntimeCause),
     BudgetRefused,
     /// THE CLAIM PASSED AND WAS THEN RECLASSIFIED ON COST. Distinct from `BudgetRefused`
     /// because it reached a verdict: the remedy is to pay the cost down, not to find out what
@@ -16464,7 +16731,7 @@ impl CiWitnessVerdict {
             CiWitnessVerdict::Passed => "PASSED",
             CiWitnessVerdict::Failed => "FAILED",
             CiWitnessVerdict::NotBool => "NOT-BOOL",
-            CiWitnessVerdict::RuntimeError => "ERROR",
+            CiWitnessVerdict::RuntimeError(_) => "ERROR",
             CiWitnessVerdict::BudgetRefused => "BUDGET-REFUSED",
             CiWitnessVerdict::PassedOverBudget => "PASSED-OVER-BUDGET",
             CiWitnessVerdict::HostToolUnresolved => "TOOL-UNRESOLVED",
@@ -16513,7 +16780,7 @@ impl CiWitnessVerdict {
             ClaimOutcome::Pass => CiWitnessVerdict::Passed,
             ClaimOutcome::Fail => CiWitnessVerdict::Failed,
             ClaimOutcome::NotBool { .. } => CiWitnessVerdict::NotBool,
-            ClaimOutcome::RuntimeError { .. } => CiWitnessVerdict::RuntimeError,
+            ClaimOutcome::RuntimeError { cause, .. } => CiWitnessVerdict::RuntimeError(*cause),
             // SITE 1 OF THE FIVE THAT DROPPED THE AXIS. `BudgetRefused` is true only of the
             // interrupted arm; a completed-over-budget row REACHED ITS VERDICT and was refused
             // nothing, so reporting it as a refusal erased the verdict it had already produced.
@@ -16545,8 +16812,22 @@ pub fn render_witness_claim_result_text_mirror(
         )
     };
     let token = verdict.token();
+    // Mirror of `ci_witness_cause_field`: trailing and key-tagged, so a reader pairs identity
+    // with cause by KEY and never by column offset. Empty for every arm that has no cause,
+    // which keeps every existing line byte-identical.
+    let cause = match verdict {
+        CiWitnessVerdict::RuntimeError(cause) => format!(" cause={}", cause.token()),
+        CiWitnessVerdict::Passed
+        | CiWitnessVerdict::Failed
+        | CiWitnessVerdict::NotBool
+        | CiWitnessVerdict::BudgetRefused
+        | CiWitnessVerdict::HostToolUnresolved
+        | CiWitnessVerdict::KnownRed
+        | CiWitnessVerdict::PassedOverBudget
+        | CiWitnessVerdict::RouteGap => String::new(),
+    };
     format!(
-        "{padded}{token} in {}",
+        "{padded}{token} in {}{cause}",
         crate::v1_rt::obs_human_elapsed(wall_nanos)
     )
 }
@@ -18091,7 +18372,12 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
                     kind: BudgetKind::Wall,
                 }
             }
+            // THE CLASSIFICATION HAPPENS HERE, where `other` is still a typed `InterpError`.
+            // It is a projection of a value in hand, not a derivation: nothing is parsed,
+            // matched or guessed, and there is no site downstream that could do this at all
+            // once the `format!` has run.
             other => ClaimOutcome::RuntimeError {
+                cause: WitnessRuntimeCause::of_interp_error(&other),
                 message: format!("{other}"),
             },
         },
@@ -18488,7 +18774,7 @@ pub fn claim_terminal_detail(outcome: &ClaimOutcome) -> String {
     match outcome {
         ClaimOutcome::Pass | ClaimOutcome::Fail => String::new(),
         ClaimOutcome::NotBool { got } => got.clone(),
-        ClaimOutcome::RuntimeError { message } => message.clone(),
+        ClaimOutcome::RuntimeError { message, .. } => message.clone(),
         ClaimOutcome::BudgetInterrupted { kind, .. }
         | ClaimOutcome::CompletedOverBudget { kind, .. } => kind.label().to_string(),
         ClaimOutcome::HostToolUnresolved { name, .. } => name.clone(),
@@ -20941,7 +21227,7 @@ pub fn project_witness_cost_receipt(
                     ));
                     "witness_cost_seed_refused_event"
                 }
-                ClaimOutcome::RuntimeError { message } => {
+                ClaimOutcome::RuntimeError { message, .. } => {
                     args.push((
                         Some("error".to_string()),
                         str_value(format!("runtime error: {message}")),
@@ -26797,7 +27083,7 @@ fn run_discovery_rows(
                 "{} ({}) returned `{}`, not Bool",
                 row.function, row.entry, got
             )),
-            ClaimOutcome::RuntimeError { message } => summary.failures.push(format!(
+            ClaimOutcome::RuntimeError { message, .. } => summary.failures.push(format!(
                 "{} ({}) runtime error: {}",
                 row.function, row.entry, message
             )),
@@ -35000,6 +35286,25 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
         if decl_count.get(name).copied().unwrap_or(0) != 1 {
             continue;
         }
+        // INTENDED SCOPE GATE, not an oversight. This lens answers ONE question --
+        // DESIGN §5 coverage-by-illusion: a carrier that a test makes look exercised
+        // while no production code reads it. A carrier that is referenced by NOTHING,
+        // test included, is a different class with a different remedy (delete it, or
+        // write the missing test and let it land here), so it cannot share this
+        // roster: a roster row means "modeled ahead of its consumer, tested, awaiting
+        // one", and every one of these would be a row asserting a test that does not
+        // exist. That class is owned by the still-unbuilt run-root reachability cut
+        // (gunbc.plans.inert_layer_lens, `v2.lens.inert_layer`), whose retirement
+        // condition names it. Measured over `dag` + `src/v2` at 32597358f16 on
+        // 2026-08-24: 8821 declared carriers, 14 flagged here, 270 skipped by this
+        // line -- the same order the plan predicted for a raw sweep ("hundreds"),
+        // which is why the two are separate cuts and not one roster. A dated
+        // observation, not a bound: nothing gates on either number.
+        // `green_control_untested_unused_carrier_is_not_flagged` below is the
+        // executing control that keeps this exclusion deliberate rather than latent:
+        // it plants exactly this carrier and asserts it stays off the roster, so
+        // deleting this line goes red -- executed both ways 2026-08-24: gate present,
+        // 12 passed; gate deleted, that one control fails with got ["Staged"].
         if !self_tested.contains(name) {
             continue;
         }
@@ -40397,6 +40702,7 @@ mod peel_alias_fixpoint_termination {
                 global_bare,
                 services: crate::v1_rt::rc_empty_map(),
                 transparent_alias_rep: crate::v1_rt::rc_empty_map(),
+                type_head_exposures: crate::v1_rt::rc_empty_map(),
             });
             let env = std::rc::Rc::new(crate::v1_compiler_infer_env::TypeEnv {
                 module_path: "".to_string(),
@@ -44437,7 +44743,7 @@ pub fn run_required_floor(
     // accounting while being wrong about the SHAPE of the problem, and a later reader prices
     // N repairs against what may be one fix. Grouping here costs a HashMap and answers it on
     // the same run that produces the count.
-    let mut known_red_runtime_error_causes: HashMap<String, usize> = HashMap::new();
+    let mut known_red_runtime_error_causes: HashMap<&'static str, usize> = HashMap::new();
     let mut known_red_observation_unreadable_count: usize = 0;
     // WHICH ENROLLED ROUTE-GAP IDENTITIES ACTUALLY GAPPED, for the reverse join below. Without
     // it the roster is a one-way lookup that only ever asks "is this gap enrolled" and never
@@ -44803,27 +45109,32 @@ pub fn run_required_floor(
                 // strength of an error, which is the exact rot this lane exists to surface.
                 ExpectedRedArm::RuntimeErrored => {
                     known_red_runtime_errored_count += 1;
+                    // KEYED ON THE TYPED CAUSE, NOT ON THE PROSE. The previous key was the
+                    // first twelve whitespace-separated words of the message — which EMBEDS THE
+                    // MISSING NAME, so `no declaration named X` and `no declaration named Y`
+                    // counted as two distinct causes. Measured on main `f9963a762`: 65 distinct
+                    // "signatures" across 142 identities, for a population with four actual
+                    // causes. That is not an imprecise number, it is an inverted one — it told
+                    // every reader "many roots" where the truth is "one root, many names", and
+                    // pointed them away from the single repair that closes most of the
+                    // population. The comment it replaced described the key as normalizing away
+                    // per-row identities; it did the opposite.
                     let detail = match &result {
-                        ClaimOutcome::RuntimeError { message } => {
-                            // NORMALIZED TO A SIGNATURE, not kept verbatim: identities, paths and
-                            // offsets differ per row and would make every throw its own "cause",
-                            // which is the answer the census exists to avoid assuming.
-                            let signature: String = message
-                                .split_whitespace()
-                                .take(12)
-                                .collect::<Vec<_>>()
-                                .join(" ");
+                        ClaimOutcome::RuntimeError { cause, message } => {
                             *known_red_runtime_error_causes
-                                .entry(signature.chars().take(140).collect())
+                                .entry(cause.token())
                                 .or_insert(0) += 1;
-                            format!("runtime error: {message}")
+                            format!("runtime error [{}]: {message}", cause.token())
                         }
+                        // NOT a fallback that guesses. Only `RuntimeErrored` reaches this arm and
+                        // only `RuntimeError` produces it, so this is unreachable in fact; it is
+                        // kept, and kept LOUD, because unreachable is not the same as absent and
+                        // a silent `_ => ()` here would hide a real routing defect.
                         other => {
-                            let rendered = format!("{other:?}");
                             *known_red_runtime_error_causes
-                                .entry(rendered.chars().take(140).collect())
+                                .entry("routing-defect-non-runtime-error-in-runtime-errored-arm")
                                 .or_insert(0) += 1;
-                            rendered
+                            format!("{other:?}")
                         }
                     };
                     outcome.known_red_runtime_errored.push(format!(
@@ -44871,7 +45182,7 @@ pub fn run_required_floor(
             ClaimOutcome::NotBool { got } => outcome
                 .failures
                 .push(format!("{} answered {got}, not a Bool", claim.qualified)),
-            ClaimOutcome::RuntimeError { message } => outcome
+            ClaimOutcome::RuntimeError { message, .. } => outcome
                 .failures
                 .push(format!("{} errored: {message}", claim.qualified)),
             ClaimOutcome::HostToolUnresolved { name, probed } => outcome.failures.push(format!(
@@ -45037,17 +45348,39 @@ pub fn run_required_floor(
     // per-identity report runs — on precisely the run where the evidence matters, it would be
     // computed and dropped.
     if !known_red_runtime_error_causes.is_empty() {
-        let mut causes: Vec<(&String, &usize)> = known_red_runtime_error_causes.iter().collect();
+        let mut causes: Vec<(&&'static str, &usize)> =
+            known_red_runtime_error_causes.iter().collect();
         causes.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
         eprintln!(
-            "[floor-known-red-causes] {} distinct signature(s) across {} non-verdict enrolled \
+            "[floor-known-red-causes] {} distinct cause(s) across {} non-verdict enrolled \
              identity(ies)",
             causes.len(),
             known_red_runtime_errored_count + known_red_observation_unreadable_count
         );
-        for (signature, count) in causes.iter().take(20) {
-            eprintln!("[floor-known-red-causes] {count} × {signature}");
+        // THE CAP IS PRINTED, NOT RAISED, AND IT IS PRINTED WHETHER OR NOT IT BIT. Truncating at
+        // 20 was not wrong because 20 is small; it was wrong because nothing said anything had
+        // been dropped, so a reader tallying the printed rows got a short total with no way to
+        // know it — 93 of 142 on main `f9963a762`, and an experienced reader looked straight at
+        // that line without noticing the rows did not sum. Raising the cap would fix one run and
+        // leave the same silence for the next.
+        //
+        // `not_listed=0` IS THE LOAD-BEARING CASE. A drop notice that appears only when
+        // something drops requires the reader to know the field exists in order to miss it,
+        // which is the same silence one step quieter. Printing it always makes a complete
+        // listing say so, in the same place and the same shape as a truncated one.
+        const CAUSE_ROWS: usize = 20;
+        let dropped_rows = causes.len().saturating_sub(CAUSE_ROWS);
+        let dropped_identities: usize = causes.iter().skip(CAUSE_ROWS).map(|(_, c)| **c).sum();
+        let listed_identities: usize = causes.iter().take(CAUSE_ROWS).map(|(_, c)| **c).sum();
+        for (cause, count) in causes.iter().take(CAUSE_ROWS) {
+            eprintln!("[floor-known-red-causes] {count} × {cause}");
         }
+        eprintln!(
+            "[floor-known-red-causes] listed={} listing_cap={CAUSE_ROWS} \
+             not_listed={dropped_rows} not_listed_identities={dropped_identities} \
+             listed_identities={listed_identities}",
+            causes.len().min(CAUSE_ROWS)
+        );
     }
     eprintln!(
         "[floor-claim-memory] worst single claim grew rss by {:.2}GB at={}",
@@ -45817,7 +46150,7 @@ fn witness_eval_verdict_from_claim_outcome(
                 got: got.clone(),
             }
         }
-        ClaimOutcome::RuntimeError { message } => {
+        ClaimOutcome::RuntimeError { message, .. } => {
             crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::RuntimeError {
                 message: message.clone(),
             }
@@ -45996,6 +46329,7 @@ mod terminal_ledger_completeness_law {
             (ClaimOutcome::Fail, true, KnownRedHeld),
             (
                 ClaimOutcome::RuntimeError {
+                    cause: WitnessRuntimeCause::TypeError,
                     message: "boom".into(),
                 },
                 false,

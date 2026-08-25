@@ -55,6 +55,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+import v2.test.algebra_laws.nat_semiring { nat_add_left_identity_input }
 import v2.test.nat_semiring.rung_5 {
   claim_phase1_nat_semiring_rung5_rust_add_left_identity_emit_equals_eval
 }

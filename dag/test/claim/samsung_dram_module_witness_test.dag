@@ -1,5 +1,7 @@
 module test.claim.samsung_dram_module
 
+import extdeps.memory.jedec { ddr4_generation_catalog, ddr5_generation_catalog }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // The negative control is the SAME capacity, generation and vendor with the
