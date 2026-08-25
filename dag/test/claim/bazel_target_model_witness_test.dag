@@ -56,7 +56,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_t
 // LABEL GRAMMAR
 // ---------------------------------------------------------------------------------------------
 
-fn parses_to(text: String, rendered: String) -> Bool {
+fn label_parses_to(text: String, rendered: String) -> Bool {
   match parse_label(text: text) {
     LabelParsed { label: l } => render_label(l: l) == rendered
     LabelRefused { cause: _ } => false
@@ -68,7 +68,7 @@ fn parses_to(text: String, rendered: String) -> Bool {
 // form parse to the same value and render to one spelling. Asserting the false direction would
 // have forced `render_label` to remember which spelling it was handed, which is not a fact a
 // target identity carries.
-fn round_trips(text: String) -> Bool {
+fn label_round_trips(text: String) -> Bool {
   match parse_label(text: text) {
     LabelRefused { cause: _ } => false
     LabelParsed { label: l } =>
@@ -80,11 +80,11 @@ fn round_trips(text: String) -> Bool {
 }
 
 test fn w_label_parse_render_round_trips() -> Bool {
-  round_trips(text: "//:required")
-    && round_trips(text: "//src/v2/workflow:required_floor")
-    && round_trips(text: "//my/app/lib")
-    && parses_to(text: "//:required", rendered: "//:required")
-    && parses_to(text: "//src/v2/workflow:required_floor", rendered: "//src/v2/workflow:required_floor")
+  label_round_trips(text: "//:required")
+    && label_round_trips(text: "//src/v2/workflow:required_floor")
+    && label_round_trips(text: "//my/app/lib")
+    && label_parses_to(text: "//:required", rendered: "//:required")
+    && label_parses_to(text: "//src/v2/workflow:required_floor", rendered: "//src/v2/workflow:required_floor")
 }
 
 // THE SHORTHAND IS THE CITED SEMANTICS, NOT A CONVENIENCE THIS REPOSITORY INVENTED: the authority
@@ -104,7 +104,7 @@ test fn w_label_shorthand_expands_to_final_segment() -> Bool {
   }
 }
 
-fn refuses_with(text: String, expected: LabelRefusal) -> Bool {
+fn label_refuses_with(text: String, expected: LabelRefusal) -> Bool {
   match parse_label(text: text) {
     LabelParsed { label: _ } => false
     LabelRefused { cause: c } => c == expected
@@ -118,25 +118,25 @@ fn refuses_with(text: String, expected: LabelRefusal) -> Bool {
 // exactly the state-space conflation the refusal vocabulary exists to prevent. Comparing the cause
 // makes the arms load-bearing: merge two of them and this goes red.
 test fn w_label_subset_refuses_each_excluded_family_by_its_own_cause() -> Bool {
-  refuses_with(text: "@rules_go//go:def", expected: RepositoryQualifiedLabel { repository_text: "@rules_go//go:def" })
-    && refuses_with(text: ":local", expected: MissingRepositoryRootPrefix { text: ":local" })
-    && refuses_with(text: "bare", expected: MissingRepositoryRootPrefix { text: "bare" })
-    && refuses_with(text: "//a:b:c", expected: MultipleColonSeparators { text: "//a:b:c" })
-    && refuses_with(text: "//a//b:c", expected: EmptyPackageSegment { text: "a//b" })
-    && refuses_with(text: "//a/../b:c", expected: DotSegment { segment: ".." })
-    && refuses_with(text: "//a:all", expected: TargetPattern { pattern: "all" })
-    && refuses_with(text: "//a/...:x", expected: TargetPattern { pattern: "..." })
-    && refuses_with(text: "//a:b/c.txt", expected: TargetNameContainsSlash { name: "b/c.txt" })
-    && refuses_with(text: "//", expected: EmptyTargetName { text: "" })
-    && refuses_with(text: "//a:", expected: EmptyTargetName { text: "" })
+  label_refuses_with(text: "@rules_go//go:def", expected: RepositoryQualifiedLabel { repository_text: "@rules_go//go:def" })
+    && label_refuses_with(text: ":local", expected: MissingRepositoryRootPrefix { text: ":local" })
+    && label_refuses_with(text: "bare", expected: MissingRepositoryRootPrefix { text: "bare" })
+    && label_refuses_with(text: "//a:b:c", expected: MultipleColonSeparators { text: "//a:b:c" })
+    && label_refuses_with(text: "//a//b:c", expected: EmptyPackageSegment { text: "a//b" })
+    && label_refuses_with(text: "//a/../b:c", expected: DotSegment { segment: ".." })
+    && label_refuses_with(text: "//a:all", expected: TargetPattern { pattern: "all" })
+    && label_refuses_with(text: "//a/...:x", expected: TargetPattern { pattern: "..." })
+    && label_refuses_with(text: "//a:b/c.txt", expected: TargetNameContainsSlash { name: "b/c.txt" })
+    && label_refuses_with(text: "//", expected: EmptyTargetName { text: "" })
+    && label_refuses_with(text: "//a:", expected: EmptyTargetName { text: "" })
 }
 
 // A TRAILING SLASH AND A LEADING SLASH REACH THE SAME ARM AS THE DOUBLED ONE, BY CONSTRUCTION.
 // The authority names three malformed package shapes; splitting on `/` makes all three produce an
 // empty segment, so one arm covers them and this witness is what says so out loud.
 test fn w_label_malformed_package_shapes_share_one_arm() -> Bool {
-  refuses_with(text: "///a:b", expected: EmptyPackageSegment { text: "/a" })
-    && refuses_with(text: "//a/:b", expected: EmptyPackageSegment { text: "a/" })
+  label_refuses_with(text: "///a:b", expected: EmptyPackageSegment { text: "/a" })
+    && label_refuses_with(text: "//a/:b", expected: EmptyPackageSegment { text: "a/" })
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -198,7 +198,7 @@ test fn w_abort_reason_preserves_upstream_numbering() -> Bool {
 // TARGET IDENTITY
 // ---------------------------------------------------------------------------------------------
 
-fn label_of(package_segments: List<String>, target: String) -> Label {
+fn bazel_label_of(package_segments: List<String>, target: String) -> Label {
   if (package_segments |> count) == 0 {
     Label { package: RootPackage {}, target: TargetName { name: target } }
   } else {
@@ -206,21 +206,21 @@ fn label_of(package_segments: List<String>, target: String) -> Label {
   }
 }
 
-fn floor_target(name: String) -> BuildTarget {
+fn floor_test_target(name: String) -> BuildTarget {
   BuildTarget {
-    label: label_of(package_segments: ["src", "v2", "workflow"], target: name)
+    label: bazel_label_of(package_segments: ["src", "v2", "workflow"], target: name)
     kind: TestRule {}
     dependencies: []
   }
 }
 
 test fn w_target_identity_is_the_label_and_nothing_beside_it() -> Bool {
-  let t = floor_target(name: "required_floor")
+  let t = floor_test_target(name: "required_floor")
   (target_identity(t: t) == "//src/v2/workflow:required_floor")
     && target_eq(
          a: t,
          b: BuildTarget {
-           label: label_of(package_segments: ["src", "v2", "workflow"], target: "required_floor")
+           label: bazel_label_of(package_segments: ["src", "v2", "workflow"], target: "required_floor")
            kind: BuildRule {}
            dependencies: [required_aggregate_label()]
          }
@@ -232,15 +232,15 @@ test fn w_target_identity_is_the_label_and_nothing_beside_it() -> Bool {
 // target seen twice, not two targets. The discriminating half is here — a different target name in
 // the same package is a different target.
 test fn w_target_identity_discriminates_on_the_label() -> Bool {
-  !target_eq(a: floor_target(name: "required_floor"), b: floor_target(name: "floor_discovery"))
+  !target_eq(a: floor_test_target(name: "required_floor"), b: floor_test_target(name: "floor_discovery"))
 }
 
 test fn w_required_aggregate_is_the_root_package_target() -> Bool {
   let l = required_aggregate_label()
   (render_label(l: l) == "//:required")
     && is_required_aggregate(t: required_aggregate_target(dependencies: []))
-    && !is_required_aggregate(t: floor_target(name: "required_floor"))
-    && round_trips(text: "//:required")
+    && !is_required_aggregate(t: floor_test_target(name: "required_floor"))
+    && label_round_trips(text: "//:required")
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -264,20 +264,20 @@ test fn w_claim_disposition_policy_is_stated_arm_by_arm() -> Bool {
     && !claim_disposition_satisfies(d: ObservationUnreadableBeforeVerdict {})
 }
 
-fn standing(l: Label, build: BuildStanding, test: TestStanding) -> TargetStanding {
+fn target_standing_of(l: Label, build: BuildStanding, test: TestStanding) -> TargetStanding {
   TargetStanding { target: l, build: build, test: test }
 }
 
-fn built(l: Label, test: TestStanding) -> TargetStanding {
-  standing(l: l, build: TargetCompleted { success: true }, test: test)
+fn built_target_standing(l: Label, test: TestStanding) -> TargetStanding {
+  target_standing_of(l: l, build: TargetCompleted { success: true }, test: test)
 }
 
 // BUILD DOMINATES TEST, AND THE FIXTURE IS BUILT SO THE DOMINANCE IS THE ONLY THING THAT CAN
 // EXPLAIN THE ANSWER: the test standing here is a PASS. If the verdict consulted the test first,
 // or merged the two, this row would be satisfied. It is not, and the cause names the abort.
 test fn w_build_standing_dominates_test_standing() -> Bool {
-  let l = label_of(package_segments: ["a"], target: "b")
-  let aborted = standing(
+  let l = bazel_label_of(package_segments: ["a"], target: "b")
+  let aborted = target_standing_of(
     l: l,
     build: TargetAborted { reason: AbortAnalysisFailure {} },
     test: TestRunByFloor { disposition: Passed {} }
@@ -286,7 +286,7 @@ test fn w_build_standing_dominates_test_standing() -> Bool {
     StandingUnsatisfied { cause: c } => c == BuildWasAborted { reason: AbortAnalysisFailure {} }
     StandingSatisfied => false
   }
-  let positive_control = match target_standing_verdict(s: built(l: l, test: TestRunByFloor { disposition: Passed {} })) {
+  let positive_control = match target_standing_verdict(s: built_target_standing(l: l, test: TestRunByFloor { disposition: Passed {} })) {
     StandingSatisfied => true
     StandingUnsatisfied { cause: _ } => false
   }
@@ -297,13 +297,13 @@ test fn w_build_standing_dominates_test_standing() -> Bool {
 // `NO_STATUS` are the two states this asserts apart — collapsing them would make every unrun test
 // in the graph read as a target with nothing to run.
 test fn w_not_a_test_target_is_not_no_status() -> Bool {
-  let l = label_of(package_segments: ["a"], target: "lib")
-  let library_ok = match target_standing_verdict(s: built(l: l, test: NotATestTarget {})) {
+  let l = bazel_label_of(package_segments: ["a"], target: "lib")
+  let library_ok = match target_standing_verdict(s: built_target_standing(l: l, test: NotATestTarget {})) {
     StandingSatisfied => true
     StandingUnsatisfied { cause: _ } => false
   }
   let unrun_test_blocks = match target_standing_verdict(
-    s: built(l: l, test: TestReportedByBazel { status: TestStatusNoStatus {} })
+    s: built_target_standing(l: l, test: TestReportedByBazel { status: TestStatusNoStatus {} })
   ) {
     StandingUnsatisfied { cause: c } => c == BazelTestStatusUnsatisfied { status: TestStatusNoStatus {} }
     StandingSatisfied => false
@@ -315,19 +315,19 @@ test fn w_not_a_test_target_is_not_no_status() -> Bool {
 // THE //:required AGGREGATE
 // ---------------------------------------------------------------------------------------------
 
-fn dep_a() -> Label { label_of(package_segments: ["src", "v2"], target: "alpha") }
-fn dep_b() -> Label { label_of(package_segments: ["src", "v2"], target: "beta") }
-fn dep_c() -> Label { label_of(package_segments: ["src", "v2"], target: "gamma") }
+fn bazel_dep_a() -> Label { bazel_label_of(package_segments: ["src", "v2"], target: "alpha") }
+fn bazel_dep_b() -> Label { bazel_label_of(package_segments: ["src", "v2"], target: "beta") }
+fn bazel_dep_c() -> Label { bazel_label_of(package_segments: ["src", "v2"], target: "gamma") }
 
 fn three_dep_aggregate() -> BuildTarget {
-  required_aggregate_target(dependencies: [dep_a(), dep_b(), dep_c()])
+  required_aggregate_target(dependencies: [bazel_dep_a(), bazel_dep_b(), bazel_dep_c()])
 }
 
 test fn w_required_aggregate_holds_when_every_dependency_holds() -> Bool {
   let standings = [
-    built(l: dep_a(), test: TestRunByFloor { disposition: Passed {} }),
-    built(l: dep_b(), test: TestRunByFloor { disposition: KnownRedHeld {} }),
-    built(l: dep_c(), test: NotATestTarget {})
+    built_target_standing(l: bazel_dep_a(), test: TestRunByFloor { disposition: Passed {} }),
+    built_target_standing(l: bazel_dep_b(), test: TestRunByFloor { disposition: KnownRedHeld {} }),
+    built_target_standing(l: bazel_dep_c(), test: NotATestTarget {})
   ]
   match required_aggregate_standing(aggregate: three_dep_aggregate(), standings: standings) {
     AggregateSatisfied { dependency_count: n } => (n == 3) && !aggregate_standing_blocks(
@@ -344,19 +344,19 @@ test fn w_required_aggregate_holds_when_every_dependency_holds() -> Bool {
 // is red for it.
 test fn w_required_aggregate_reports_every_unsatisfied_dependency() -> Bool {
   let standings = [
-    built(l: dep_a(), test: TestRunByFloor { disposition: Failed {} }),
-    standing(l: dep_b(), build: TargetCompleted { success: false }, test: NotATestTarget {}),
-    built(l: dep_c(), test: TestRunByFloor { disposition: Passed {} })
+    built_target_standing(l: bazel_dep_a(), test: TestRunByFloor { disposition: Failed {} }),
+    target_standing_of(l: bazel_dep_b(), build: TargetCompleted { success: false }, test: NotATestTarget {}),
+    built_target_standing(l: bazel_dep_c(), test: TestRunByFloor { disposition: Passed {} })
   ]
   match required_aggregate_standing(aggregate: three_dep_aggregate(), standings: standings) {
     AggregateRefused { finding_count: n, findings: fs } =>
       (n == 2)
         && (fs == [
              DependencyUnsatisfied {
-               target: dep_a()
+               target: bazel_dep_a()
                cause: FloorDispositionUnsatisfied { disposition: Failed {} }
              },
-             DependencyUnsatisfied { target: dep_b(), cause: BuildDidNotSucceed {} }
+             DependencyUnsatisfied { target: bazel_dep_b(), cause: BuildDidNotSucceed {} }
            ])
         && aggregate_standing_blocks(a: AggregateRefused { finding_count: n, findings: fs })
     AggregateSatisfied { dependency_count: _ } => false
@@ -370,12 +370,12 @@ test fn w_required_aggregate_reports_every_unsatisfied_dependency() -> Bool {
 // "the target failed" and "nobody looked" send a reader to different places.
 test fn w_unobserved_dependency_refuses_in_its_own_arm() -> Bool {
   let standings = [
-    built(l: dep_a(), test: TestRunByFloor { disposition: Passed {} }),
-    built(l: dep_b(), test: TestRunByFloor { disposition: Passed {} })
+    built_target_standing(l: bazel_dep_a(), test: TestRunByFloor { disposition: Passed {} }),
+    built_target_standing(l: bazel_dep_b(), test: TestRunByFloor { disposition: Passed {} })
   ]
   match required_aggregate_standing(aggregate: three_dep_aggregate(), standings: standings) {
     AggregateRefused { finding_count: n, findings: fs } =>
-      (n == 1) && (fs == [DependencyStandingAbsent { target: dep_c() }])
+      (n == 1) && (fs == [DependencyStandingAbsent { target: bazel_dep_c() }])
     AggregateSatisfied { dependency_count: _ } => false
     AggregateNoDependencies => false
   }
@@ -397,8 +397,8 @@ test fn w_aggregate_over_zero_dependencies_refuses() -> Bool {
     AggregateRefused { finding_count: _, findings: _ } => false
   }
   let one_dependency_can_still_hold = match required_aggregate_standing(
-    aggregate: required_aggregate_target(dependencies: [dep_a()]),
-    standings: [built(l: dep_a(), test: NotATestTarget {})]
+    aggregate: required_aggregate_target(dependencies: [bazel_dep_a()]),
+    standings: [built_target_standing(l: bazel_dep_a(), test: NotATestTarget {})]
   ) {
     AggregateSatisfied { dependency_count: n } => n == 1
     AggregateNoDependencies => false
