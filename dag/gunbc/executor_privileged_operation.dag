@@ -19,6 +19,8 @@ module gunbc.executor_privileged_operation
 // facts, not one carrier. This module owns exactly the second, and projects from the first.
 
 import std.types { String, NonEmptyStr, List }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import v2.std.algebra { fold_list }
 import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
@@ -136,6 +138,30 @@ fn runner_slot_privileged_operations(
         }
       ]
   )
+}
+
+// THE STRING RENDERING IS A TRANSPORT SCAFFOLD, MARKED AS ONE. Review 55676 is right that a modeled
+// argv must not launder an unmarked string realization: shell is one transport among N, and a
+// function that concatenates a program is a realization detail that the canonical emitter should
+// eventually own.
+//
+// WHAT THIS CHANGE ACTUALLY DID TO THE STRING SURFACE, because "introduces" would overstate it:
+// extdeps.github.actions_runner on main already carries THREE inline join(["sudo ", ...])
+// concatenations, under this module's sibling scaffold row
+// (actions_runner_slot_extract_script_scaffold), and this PR replaced them with ONE derived
+// rendering. The debt predates the diff and the diff reduces its authorings from three to one; what
+// was missing was the marker on the new home, which is what this row supplies.
+//
+// It binds to the same dissolution target the sibling binds to, because they dissolve together or
+// not at all: when host_effect_apply owns the actuation, neither this renderer nor the extract
+// script needs to spell a program.
+data executor_privileged_operation_shell_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect",
+    decl_name: "host_effect_apply",
+    field: WholeDeclaration,
+  }
 }
 
 // THE SHELL RENDERING IS THE SAME ARGV, QUOTED. Quoting is a property of the shell that carries the
