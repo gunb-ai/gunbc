@@ -1748,6 +1748,48 @@ RUNNING the wall over the corpus and none by reasoning about it. Two lanes, two
 subjects, one conclusion: **the corpus is the instrument, and a witness is a
 hypothesis about it.**
 
+### 11.2d Two fabricated citations inside a prose row, and how far one travelled
+
+`witty-crane-181` reported, and this section verifies: `declared_type_conformance_note`
+cites **`conformance_expansion_depth_note`** and **`conformance_unjudged_live_hole_note`**,
+and *neither exists*. Measured with
+`grep -rnE '^\s*(data|fn|type)\s+conformance_expansion_depth_note' dag/ src/ --include=*.dag`
+→ **0**, same for the second. They occur only inside the prose of the note that
+cites them.
+
+**THE INTERESTING PART IS NOT THAT THEY ARE FABRICATED, IT IS THAT NOTHING
+COULD HAVE CAUGHT THEM.** DESIGN's 2026-08-23 rung-drop row records that the
+cited-symbol census was removed from CI, and it would be easy — and wrong — to
+file this as an instance of that declared exposure. The census checked authored
+`DeclarationRef` rows. **These citations are bare words inside a
+`data …: String` prose row, which that census never read.** So they were
+unchecked before the drop and unchecked after it; the drop is not the cause,
+and claiming it would be the authority-substitution failure this document
+already names — borrowing a declared exposure to explain a defect it does not
+cover.
+
+What they actually are is §4c's warning arriving with a bill: *plain source
+annotations are modeling debt*, and *an annotation is never evidence that a
+machine claim holds*. A citation inside a `String` is invisible to every
+mechanism that validates citations, by construction, because it is program data
+that happens to read like a reference.
+
+**AND IT TRAVELLED, WHICH IS THE MEASUREMENT.** This document's author read
+`conformance_expansion_depth_note` in that prose, believed it, and cited it
+onward as the authority for a pre-check — to `warm-hawk-909` ("the place to
+check before running") and into `witty-crane-181`'s dispatch brief as a required
+step. A lane was directed to consult a symbol that does not exist. It cost
+nothing only because that lane checked instead of complying, and answered the
+underlying question by construction rather than by lookup.
+
+So the class is not "a stale citation rots quietly." It is: **an unverifiable
+citation is laundered into an authority by the act of being repeated**, and each
+repetition is harder to challenge than the last, because it now has a
+provenance. The repair is the same one §3 already prescribes — cite the symbol,
+and a symbol inside a prose string is not a citation — with the addition that
+prose rows in load-bearing authorities are exactly where an unresolvable
+citation survives longest, since they are read by people and by nothing else.
+
 ### 11.2c A wall that dissolves silently at the cut — `authored_import_names`
 
 Found while unblocking a lane on an unrelated red, and it is the most direct
