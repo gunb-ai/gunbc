@@ -298,10 +298,33 @@ test fn one_micro_over_a_zero_ceiling_refuses() -> Bool {
 
 // THE COMMAND. Derived facts, not restatements.
 
+// The length clause counts the mode flag, the lane flag and its value, and two words per
+// declared root: `--required-ci --source-root <r>... --required-lane <lane>`. It is what keeps
+// the row from being satisfied by an argv that names the roots and also carries a word nobody
+// declared.
 test fn floor_argv_carries_every_declared_source_root() -> Bool {
-  let argv = argv_words(command: floor_run_command())
+  let argv = argv_words(command: witnesses_lane_run_command())
   all(witness_layer_roots, r => any(argv, a => a == r))
-    && length(xs: argv) == 2 + 2 * length(xs: witness_layer_roots)
+    && length(xs: argv) == 4 + 2 * length(xs: witness_layer_roots)
+}
+
+// THE TWO LANES DIFFER IN EXACTLY ONE WORD, and that is the claim the split rests on.
+//
+// If the lanes ever diverge in the binary path, the mode flag, the source roots or the
+// argument ORDER, they have become two invocations rather than one command parameterized by a
+// lane -- which is the fork #8629 removed once already, returning through a new door. The
+// discriminating clause is the last one: two argvs that agreed on everything BUT the lane word
+// would satisfy the first two and fail the third only if the lane words themselves differ,
+// which is what makes this a partition rather than a duplicate.
+test fn the_two_lanes_are_one_command_differing_only_in_the_lane_word() -> Bool {
+  let build = argv_words(command: build_lane_run_command())
+  let witnesses = argv_words(command: witnesses_lane_run_command())
+  length(xs: build) == length(xs: witnesses)
+    && any(build, a => a == required_ci_lane_build)
+    && any(witnesses, a => a == required_ci_lane_witnesses)
+    && !any(build, a => a == required_ci_lane_witnesses)
+    && !any(witnesses, a => a == required_ci_lane_build)
+    && required_ci_lane_build != required_ci_lane_witnesses
 }
 
 // THE EMITTED STEP IS DERIVED FROM THE FABRIC'S COMMAND, NOT AGREED WITH IT.
@@ -311,7 +334,7 @@ test fn floor_argv_carries_every_declared_source_root() -> Bool {
 // standing where construction was available (DESIGN §5) -- it stayed green over a second
 // binary path, a second --required-floor spelling and any argument ORDER, because agreeing on
 // the roots is not agreeing on the command. witness_floor_run_script now RENDERS
-// floor_run_command, so there is one producer and nothing left to agree.
+// the lane command, so there is one producer and nothing left to agree.
 //
 // The second clause is the discriminating half and the reason this is not a restatement of the
 // implementation: '$ROOT/dag' was the old fork's exact spelling, and it is unrenderable from an
@@ -320,7 +343,7 @@ test fn floor_argv_carries_every_declared_source_root() -> Bool {
 // only way the fork returns.
 test fn workflow_step_renders_the_fabric_command_and_does_not_respell_it() -> Bool {
   let script = witness_floor_run_script()
-  string_contains(s: script, pattern: shell_command_render(command: floor_run_command()))
+  string_contains(s: script, pattern: shell_command_render(command: witnesses_lane_run_command()))
     && !string_contains(s: script, pattern: "$ROOT/dag")
     && !string_contains(s: script, pattern: "$ROOT/target")
 }
@@ -336,13 +359,13 @@ test fn every_declared_source_root_reaches_the_emitted_step() -> Bool {
 //
 // Rendering the script FROM the argv makes script-vs-argv agreement automatic -- that is the
 // point of the row above. It says nothing about whether the argv names the RIGHT mode, which
-// is a fact about floor_run_command alone and stays independently falsifiable. #8647 found
+// is a fact about the lane command alone and stays independently falsifiable. #8647 found
 // exactly this live: both sides were re-pointed at `--required-ci` while the argv still said
 // `--required-floor`, and the agreement witness of the day was green throughout. Deleting that
 // witness in favour of construction would have dropped the one clause that caught it, so the
 // clause is carried here rather than lost with its old carrier.
 test fn fabric_command_names_the_consolidated_mode() -> Bool {
-  let argv = argv_words(command: floor_run_command())
+  let argv = argv_words(command: witnesses_lane_run_command())
   any(argv, a => a == "--required-ci") && !any(argv, a => a == "--required-floor")
 }
 

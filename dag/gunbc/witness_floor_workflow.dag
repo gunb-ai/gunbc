@@ -30,8 +30,8 @@ import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.ci_layer_roots { witness_layer_roots }
-import gunbc.fabric_witness_run { floor_run_command }
-import extdeps.exec.command { shell_command_render }
+import gunbc.fabric_witness_run { witnesses_lane_run_command, build_lane_run_command, required_ci_lane_build }
+import extdeps.exec.command { ArgvCommand, shell_command_render }
 import std.types { List, String, Int }
 
 // THE ONLY CI EMISSION THIS REPOSITORY HAS.
@@ -81,7 +81,45 @@ import std.types { List, String, Int }
 // would emit for THEM). The two steps below add a third, unrelated failure surface to the job;
 // they do not change what the drift gate covers.
 
+// THE REQUIRED CONTEXT'S NAME, AND AS OF 2026-08-25 IT NAMES THE AGGREGATION JOB RATHER THAN
+// THE FLOOR JOB. The distinction is the whole of what keeps the split fail-closed, so it is
+// stated here rather than left to be inferred from the job list below.
+//
+// WHAT WAS WRONG WITH THE FIRST CUT OF THE SPLIT, measured rather than argued (found in review
+// of gunbc#9203, and confirmed against the live ruleset rather than against the workflow): the
+// repository's `passing CI` ruleset is ACTIVE, has NO bypass actors, and names exactly ONE
+// required status check -- `witnesses`. A GitHub required context is produced by the JOB, not
+// by the workflow, so a second job publishes its own check under its own name and that check is
+// not required. The first cut therefore moved regen and v2-emission into a `build` job whose
+// failure COULD NOT BLOCK A MERGE: the required `witnesses` check would go green over a regen
+// drift or a v2 emission break, and the PR would be mergeable. That is fail-open (DESIGN §5) --
+// and worse than the serial run it replaced, because the serial run's single job carried every
+// phase into the one context that gates.
+//
+// WHY AN AGGREGATION JOB AND NOT A RULESET EDIT. The ruleset is not a `.dag` fact and no wall
+// inside this repository can constrain what GitHub admits to main (the same boundary the
+// merge_group note below records). Landing a change whose safety depends on someone editing a
+// setting afterwards is a coverage gap with a promise attached, and it has a real window: until
+// the context is added, the lane is unguarded. An aggregation job needs no setting change and
+// no window -- the context that already gates keeps its name and now answers for BOTH lanes.
+//
+// WHAT IT COSTS, and it is not the parallelism. The two lane jobs still carry no `needs` edge
+// on each other and still start together; only the aggregator waits, and it does nothing but
+// read two results. The floor job is renamed to `floor` so its log is still findable by lane
+// name, and the aggregator's own output names which lane to open.
 data witness_floor_workflow_job_id: String = "witnesses"
+
+// The witness floor lane's job id. It was `witnesses` until the aggregation job took that name;
+// the check it publishes is not required and is not meant to be -- `witnesses` answers for it.
+data floor_lane_job_id: String = "floor"
+
+// THE BUILD LANE'S JOB ID, and it is the lane word from `gunbc.fabric_witness_run` rather than
+// a second name for the same thing. The job id is what GitHub publishes as the check name and
+// what a required-status-check rule names; spelling it differently from the lane the job passes
+// to the binary would be the §3 fork, and it would fail in the quiet direction -- a check name
+// that no longer matches a branch-protection rule stops being required without anything going
+// red.
+data build_lane_job_id: String = required_ci_lane_build
 
 // The workflow's own name, hoisted to a declaration because a second consumer now joins on
 // it. gunbc.fleet_desired_admission refuses a workflow_run payload whose workflow_name is
@@ -132,6 +170,22 @@ data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.p
 // The binary itself stays in the tree: running the parse sweep alone is the cheapest check
 // available while editing src/v1, and it is a thin caller of the same function, not a second
 // implementation. What it no longer is, is CI's business.
+// WHAT "FULL COMPILE" DOES AND DOES NOT MEAN, named here because the 2026-08-25 split puts a
+// job called `build` beside a phase called `v2-emission` and the pair invites exactly one wrong
+// inference. The v2 emission phase compiles a `.dag` ENTRY TO RUST SOURCE and stops before
+// cargo; this step cargo-builds exactly the two bins named below, because they are the two the
+// jobs run. NEITHER COMPILES THE REST OF THE RUST WORKSPACE. A declared `[[bin]]` outside this
+// list is not built by any required phase, so a hand-authored Rust bin can fall behind a
+// generated struct and sit on main indefinitely -- which is not hypothetical: measured
+// 2026-08-25, `infer_semantics_witness` fails to compile on main with six `E0063`s against
+// `TypeEnv`, and nothing in the required run sees it.
+//
+// WIDENING THIS TO `--bins` IS NOT TAKEN HERE, and the reason is scope rather than cost: it
+// changes what the required check COVERS, which is an operator decision, and it would land red
+// on a pre-existing defect this change did not cause. It is named rather than absorbed so the
+// gap stays countable -- DESIGN's 2026-08-25 row already declares the class, and this is a
+// specimen of it escaping by a mode that row does not enumerate (the `.dag` side is clean and
+// the drifted artifact is hand-authored Rust).
 data witness_floor_required_bins: List<String> = ["claim_executor", "gunbc"]
 
 fn witness_floor_checkout_step() -> Step {
@@ -249,14 +303,38 @@ fn witness_floor_build_step() -> Step {
   }
 }
 
-// ONE INVOCATION OF OUR OWN BINARY. Everything the run decides -- which witnesses exist, what
-// identity each has, which frame it needs, and whether the roster is admissible at all -- is
-// decided in .dag by v2.workflow.required_floor. This step passes the source roots and
-// nothing else: there is no plan entry, no plan function, no batch id, no worker role and no
-// selection flag, because the fold has no such concepts to configure.
-// ONE INVOCATION, FOUR PHASES, AND THE ORDER IS THE PROGRAM'S RATHER THAN THE JOB'S
+// ONE INVOCATION OF OUR OWN BINARY PER JOB. Everything the run decides -- which witnesses
+// exist, what identity each has, which frame it needs, and whether the roster is admissible at
+// all -- is decided in .dag by v2.workflow.required_floor. This step passes the source roots
+// and a LANE WORD, and nothing else: there is no plan entry, no plan function, no batch id, no
+// worker role and no selection flag, because the fold has no such concepts to configure.
+//
+// A LANE IS NOT A SELECTION. It names which JOB owns a phase, not which phases exist or which
+// witnesses run; every phase is owned by exactly one lane and both lanes run on every push and
+// pull request. Conflating the two would be the reading that turns a scheduling fact into a
+// coverage claim, and it is the reason the lane word is the only thing the transport carries.
+//
+// ONE INVOCATION PER LANE, AND THE ORDER WITHIN A LANE IS THE PROGRAM'S RATHER THAN THE JOB'S
 // (operator directive, 2026-08-20: "i would much prefer if it was all handled within the
 // witnesses step and within the gunbc binary, not at a github actions job level").
+//
+// **THAT DIRECTIVE IS NOW PARTLY SUPERSEDED, BY THE SAME OPERATOR, ON 2026-08-25** -- "we can
+// add it as a parallel job in github actions - we can do the same for regen now, we have more
+// runners". The half that SURVIVES is "within the gunbc binary": the phases still live there,
+// each job names a lane rather than a phase list, and no step's precondition reads another
+// phase's verdict, so the step-ladder defect the paragraphs below describe cannot return. The
+// half that is SUPERSEDED is "not at a github actions job level", and it is superseded by a
+// fact about the transport rather than by a change of taste: PARALLELISM IS NOT EXPRESSIBLE IN
+// THE BINARY. Two phases running concurrently means two runners, two checkouts and two
+// toolchains, and one process on one runner can thread but cannot acquire a second machine.
+// What the directive was protecting against -- SEQUENCING and PRECONDITIONS leaking into YAML
+// -- is exactly what does not cross the new boundary: the two jobs carry no `needs` edge and
+// no condition on each other, which is the whole content of running them in parallel.
+//
+// So the paragraphs below describe a step ladder that is still gone and a consolidation that
+// still holds WITHIN a lane. They are kept rather than rewritten because what they establish
+// -- why a YAML step list is the wrong place for a phase order -- is unchanged by the split,
+// and deleting them would take the reasoning with them.
 //
 // WHAT THIS REPLACES: four steps -- parse, regen, regen-fixed-point, floor -- each its own
 // process, their ORDER a YAML list, and each one's precondition an `if:` naming another
@@ -271,7 +349,12 @@ fn witness_floor_build_step() -> Step {
 // phase -- and a phase that could not run reports SKIPPED as its own state, never as silence
 // and never as a pass.
 //
-// THE ROSTER IS THREE PHASES, NOT FOUR (operator ruling, 2026-08-21): the src/v1 .dag parse
+// THE ROSTER IS FOUR PHASES ACROSS TWO LANES. The paragraph below records the 2026-08-21 cut
+// to three; #9035 then added v2-emission, and the 2026-08-25 split partitioned the four into
+// `build` (regen, v2-emission) and `witnesses` (parse, floor). The cut phases that paragraph
+// enumerates stay cut -- neither the addition nor the split restored any of them.
+//
+// THE ROSTER WAS THREE PHASES, NOT FOUR (operator ruling, 2026-08-21): the src/v1 .dag parse
 // sweep, the regen first-generation comparison, and the witness floor. The fixed point left
 // the required mode with the four other cut phases, and the in-memory digest handoff that
 // justified collapsing it went with it -- so the paragraph above describes the step ladder
@@ -307,14 +390,22 @@ fn witness_floor_build_step() -> Step {
 // after all; it completed as a side effect of two changes meeting. Recorded rather than
 // silently dropped, because a paragraph that once justified keeping something is evidence a
 // reader will reuse, and the justification expired before the thing did.
-fn witness_floor_run_script() -> String {
+fn required_lane_run_script(command: ArgvCommand) -> String {
   concat(
     concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
     concat(
       "cd \"$ROOT\"\n",
-      concat(shell_command_render(command: floor_run_command()), "\n")
+      concat(shell_command_render(command: command), "\n")
     )
   )
+}
+
+fn witness_floor_run_script() -> String {
+  required_lane_run_script(command: witnesses_lane_run_command())
+}
+
+fn build_lane_run_script() -> String {
+  required_lane_run_script(command: build_lane_run_command())
 }
 
 // THE FLOOR RUNS LAST AND THEREFORE DECLARES ITS PRECONDITION TOO (operator directive,
@@ -362,7 +453,14 @@ fn witness_floor_run_script() -> String {
 // A PREFIX, NOT A GUARD, despite the name: the value ends in `&& ` and is meant to be
 // concatenated in front of a condition. Used bare it emits a YAML expression ending in `&&`.
 fn witness_step_status_guard() -> String {
-  "!cancelled() && "
+  concat(witness_step_status_guard_expression(), " && ")
+}
+
+// The status function itself, without the conjunction tail. The job-level condition needs it
+// bare; the step-level prefix above needs it with `&& `. One spelling, two shapes -- a second
+// literal would be the fork that drifts the moment the guard is reconsidered.
+fn witness_step_status_guard_expression() -> String {
+  "!cancelled()"
 }
 
 fn witness_floor_precondition() -> String {
@@ -434,9 +532,25 @@ fn witness_toolchain_environment_probe_step() -> Step {
   }
 }
 
+// THE BUILD LANE'S RUN STEP. Same binary, same mode, same source roots, one word different --
+// which is the whole point of the lane being a parameter rather than a second invocation.
+fn build_lane_run_step() -> Step {
+  RunStep {
+    name: Present { value: "Required CI: build lane (regen, v2 emission)" },
+    id: none,
+    run: build_lane_run_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: witness_floor_precondition() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 fn witness_floor_run_step() -> Step {
   RunStep {
-    name: Present { value: "Required CI: parse, regen, witness floor" },
+    name: Present { value: "Required CI: witnesses lane (parse, witness floor)" },
     id: none,
     run: witness_floor_run_script(),
     shell: none,
@@ -673,6 +787,47 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
   )
 }
 
+// THE BUILD LANE'S BOUND STEPS. Preparation is `prepared_bound_steps` -- the SAME rows the
+// witnesses job uses -- and this job appends only the two that distinguish it: the environment
+// recorder (regen spawns rustfmt, so the probe is wanted exactly where that spawn happens) and
+// the lane's run step. No TSV uploads: the three receipt files are written by the FLOOR, so a
+// build-lane job naming them would demand files this lane never produces and `if-no-files-found:
+// error` would redden it for a receipt that was never its to write.
+fn build_lane_bound_steps() -> List<WitnessFloorBoundStep> {
+  append(
+    prepared_bound_steps(),
+    items: [
+      WitnessFloorBoundStep {
+        step: witness_toolchain_environment_probe_step(),
+        role: capability_neutral,
+        step_name: "Record the toolchain environment",
+      },
+      WitnessFloorBoundStep {
+        step: build_lane_run_step(),
+        role: consumes_only(capabilities: [RustfmtCapability]),
+        step_name: "Required CI: build lane (regen, v2 emission)",
+      },
+    ],
+  )
+}
+
+fn build_lane_steps() -> List<Step> {
+  list_map(xs: build_lane_bound_steps(), f: fn(b) { b.step })
+}
+
+fn build_lane_step_annotations() -> List<CapabilityAnnotatedStep> {
+  list_map(
+    xs: build_lane_bound_steps(),
+    f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+  )
+}
+
+fn build_lane_capability_closure_holds() -> Bool {
+  capability_closure_is_closed(
+    v: workflow_job_capability_closure(steps: build_lane_step_annotations()),
+  )
+}
+
 fn witness_floor_steps() -> List<Step> {
   list_map(xs: witness_floor_bound_steps(), f: fn(b) { b.step })
 }
@@ -706,7 +861,7 @@ fn witness_floor_capability_closure_holds() -> Bool {
 // reading as coverage.
 fn witness_floor_job() -> Job {
   Job {
-    id: witness_floor_workflow_job_id,
+    id: floor_lane_job_id,
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
     steps: witness_floor_steps(),
@@ -747,6 +902,213 @@ fn witness_floor_job() -> Job {
 // that passed the required checks. A merge queue establishes it by construction; requiring branches
 // to be up to date approximates it at the cost of a re-run of the ~30-minute floor for every PR
 // behind a merge.
+// A PROVISIONAL BOUND, DERIVED FROM MEASUREMENTS THAT DO NOT YET INCLUDE THIS JOB.
+//
+// The two phases this lane owns have been measured on a session worktree, not on a CI runner:
+// regen ~9 minutes, and the v2 emission compile of `src/v2/compiler/00_compile.dag` ~7 minutes.
+// Serial inside one job that is ~16 minutes, against the witnesses lane's ~30-40. 90 is above
+// every measured sequence with room for a slower runner, and low enough that a hung job's log
+// arrives the same working hour -- the same reasoning the witnesses job's 180 carries, applied
+// to a smaller subject rather than copied from it.
+//
+// It is NOT derived from a completed CI run of this job, because there has not been one. Calling
+// it derived would be the fabricated plausible output DESIGN §5 forbids.
+//
+// RESTORATION TRIGGER: the first CI run that completes this lane. A real wall time replaces the
+// constant and this note dissolves with it.
+//
+// NO `needs` EDGE, AND THAT IS THE ENTIRE CHANGE. Two jobs that name each other in `needs` are
+// the serial run with extra checkouts; two that do not are the parallel one. The lanes share no
+// data -- regen's receipt is consumed by nothing outside its own process, and the floor's three
+// TSVs are written and uploaded inside the witnesses job -- so there is nothing an ordering edge
+// could be protecting.
+fn build_lane_job() -> Job {
+  Job {
+    id: build_lane_job_id,
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: build_lane_steps(),
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: 90,
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
+// THE ONE JOB THAT GATES, AND THE ONLY PLACE IN THIS FILE THAT AUTHORS SHELL TEXT.
+//
+// Every other step in this workflow renders a modeled value -- an ArgvCommand through
+// `shell_command_render`, or `repo_self_build_command` -- and this one cannot, because there is
+// no modeled value for it to render: GitHub has no declarative "this job fails unless those
+// jobs succeeded". The nearest declarative form, a job-level `if` on the two results, is
+// exactly the fail-open being closed -- a job whose `if` is false is SKIPPED, and a skipped
+// required check does not stop a merge. So the refusal has to be a step that exits nonzero, and
+// a step that exits nonzero is shell.
+//
+// IT IS BUILT FROM THE JOB IDS RATHER THAN SPELLING THEM. A hand-typed `needs.build.result`
+// would be a second spelling of a name this file already declares, free to drift the moment
+// either job is renamed -- and it would drift SILENTLY, because an unknown `needs` context
+// renders as the empty string, which is not `success`, so the gate would refuse every run and
+// read as a broken lane rather than as a broken reference.
+//
+// THE JOB-LEVEL CONDITION IS THE LOAD-BEARING ONE, AND THE FIRST CUT OF THE AGGREGATOR PUT IT
+// ONLY ON THE STEP. Found in review of gunbc#9203 (review 55795), and it is the same fail-open
+// this job exists to close, committed one level in -- which is exactly the failure mode DESIGN
+// names as total at the level examined and blind one level down.
+//
+// `needs` carries an IMPLICIT JOB-LEVEL CONDITION: a job that declares `needs` and no `if` is
+// SKIPPED when any needed job fails, is skipped, or is cancelled. A skipped job never starts,
+// so it never reaches its steps, so a step-level `always()` cannot rescue it -- and a SKIPPED
+// required check does not stop a merge. The aggregator would therefore have gone skipped-and-
+// mergeable over precisely the failed lane it was introduced to catch.
+//
+// So the job declares a condition, which displaces that implicit default the same way a status
+// function displaces a step's implicit `success()` (the substitution rule the floor's
+// precondition paragraph records, and the reason a bare `needs.*.result` comparison would not
+// have worked here either).
+//
+// IT IS `always()` AND NOT `!cancelled()`, WHICH IS THE ONE PLACE IN THIS FILE THAT DEPARTS
+// FROM THE HOUSE GUARD -- stated explicitly, because a reader who knows the convention will
+// otherwise correct it back and reopen the hole. Every other guard here is about whether a STEP
+// should run inside a job that is already running, and there `!cancelled()` is right: a
+// cancelled run should stop. This condition decides something else -- whether the REQUIRED
+// CONTEXT EXISTS AT ALL -- and under `!cancelled()` a cancelled run leaves the aggregator
+// skipped, so the context is reported as skipped rather than as a verdict.
+//
+// That is the same question one layer out, and it is a question about GITHUB rather than about
+// this repository: does a skipped or cancelled required check block a merge? NOBODY HERE HAS
+// EXECUTED THAT, and the right response is not to go and measure it -- it is to make the
+// outcome not depend on it. Under `always()` the job runs unconditionally, always reads both
+// results, and always reports success or failure ON ITS OWN TERMS, so SKIPPED disappears from
+// the required context entirely. That is construction over validation (§5): the ambiguous state
+// becomes unrepresentable rather than tested, and a third-party behaviour becomes a property of
+// our own file.
+//
+// WHAT IT COSTS, named rather than glossed: a lawfully superseded run now reports this context
+// RED instead of cancelled, because a cancelled lane is not `success`. Measured on run
+// 32883390033, where a fleet event ended both lanes and this job duly published `failure`.
+//
+// THE STRONGEST ARGUMENT AGAINST THIS CHOICE IS RECORDED HERE RATHER THAN ANSWERED AWAY, so
+// that the next person who wants `!cancelled()` finds the case already made instead of
+// rediscovering it (raised by a peer session, 2026-08-25, from GitHub's own documented
+// semantics rather than from a measurement). The objection: `always()` is the one condition that
+// survives workflow cancellation, `cancel-in-progress` is armed on every pull_request, so this
+// fires on the MODAL event in the repository -- and it destroys the cancelled/failed distinction
+// at the RECORD level rather than at the reader's, where nothing can recover it afterwards. That
+// ambiguity cost a peer session hours in one day, diagnosing 38 lawful supersessions as a
+// false-red epidemic.
+//
+// THAT OBJECTION IS RECORDED WITH ITS ANSWER ATTACHED, because half of it standing alone is what
+// would send a future reader back to `!cancelled()` -- and the answer is in this job's own step.
+// THE CONCLUSION LOSES THE DISTINCTION; THE ANNOTATION PRESERVES IT. The step echoes
+// `required lanes: build=$BUILD floor=$FLOOR` and repeats both values inside its `::error::`, so
+// on every single occurrence, permanently and machine-readably, the log says WHICH state each
+// lane was in. A red whose cause is printed in its own error annotation is not the ambiguity the
+// objection warns about: the hours lost that day were lost because `cancelled` and `failure` were
+// indistinguishable at the reader with NOTHING UNDERNEATH to recover, and here there is always
+// something underneath, one line away. The loss is real at conclusion grain and repaired at the
+// grain anyone actually diagnoses from. (Withdrawn to this weight by the session that raised it,
+// after reading the step body.)
+//
+// The house-style half does not survive either, and it is worth saying why rather than just
+// noting the departure: counting `!cancelled()` occurrences infers a rule from shapes, while
+// what each guard DECIDES is the fact. Every other one decides whether a step runs inside a job
+// that is already running; this one decides whether the required context exists at all.
+//
+// WHY IT IS NOT TAKEN: THE ASYMMETRY IS ABOUT WHICH HEAD PAYS. Checks are tracked per head SHA,
+// so a superseded run's red lands on a head that by construction will never be merged -- the
+// push that superseded it created the head that will. `always()` is therefore NOISY ON ABANDONED
+// HEADS. `!cancelled()` moves the cost onto the LIVE one: a lane killed with no replacement run
+// coming -- observed twice on 2026-08-25, once with `runner_name` empty and zero steps, once with
+// both lanes ended at 18:43 and no push involved -- leaves this context SKIPPED on the head that
+// is still the merge candidate, and whether a skipped required check blocks a merge is exactly
+// the unmeasured GitHub behaviour the paragraph above exists to stop depending on. Quiet-and-
+// unknown on a live head is worse than loud-and-definite on a dead one.
+fn required_lanes_aggregate_job_condition() -> String {
+  "always()"
+}
+//
+// THE STEP-LEVEL `always()` STAYS, and it guards a different thing rather than restating this
+// one. It is about EARLIER STEPS IN THIS JOB: there are none today, so the implicit `success()`
+// would be true anyway, but a step added ahead of it later would silently acquire the power to
+// skip the refusal. Two conditions, two failure modes, neither a second spelling of the other.
+fn required_lane_result_expression(job_id: String) -> String {
+  concat("${{ needs.", concat(job_id, ".result }}"))
+}
+
+// THE COMPARISON IS `!= "success"` AND NOT A LIST OF BAD STATES, and that is now a measured
+// fact rather than a preference. Run 32883390033 (2026-08-25) had both lanes ended by a fleet
+// event with no push involved, and the aggregator read:
+//
+//     BUILD="cancelled"   FLOOR="abandoned"
+//
+// `abandoned` is a `needs.*.result` value nobody here knew was reachable. An enumerated guard
+// -- `== "failure" || == "cancelled"`, which is the form a reader's instinct reaches for -- would
+// have admitted it and reported the required context GREEN over two lanes that never ran. The
+// strict inequality admits exactly one state and refuses every other, including the ones the
+// author has never heard of, which is the whole difference between a closed vocabulary and a
+// remembered one (DESIGN §5).
+//
+// The same run is this gate's first executing receipt: the aggregator ran under `always()` with
+// both lanes non-success, refused, and published `witnesses` as a FAILURE, which is the
+// behaviour the job exists for and the behaviour the pre-repair shape could not produce.
+fn required_lanes_aggregate_script() -> String {
+  concat(
+    concat("BUILD=\"", concat(required_lane_result_expression(job_id: build_lane_job_id), "\"\n")),
+    concat(
+      concat("FLOOR=\"", concat(required_lane_result_expression(job_id: floor_lane_job_id), "\"\n")),
+      concat(
+        "echo \"required lanes: build=$BUILD floor=$FLOOR\"\n",
+        concat(
+          concat("if [ \"$BUILD\" != \"success\" ] || [ \"$FLOOR\" != \"success\" ]; then\n", ""),
+          concat(
+            "  echo \"::error::a required lane did not succeed (build=$BUILD floor=$FLOOR) — open that job's log\" >&2\n",
+            concat("  exit 1\n", "fi\n")
+          )
+        )
+      )
+    )
+  )
+}
+
+fn required_lanes_aggregate_step() -> Step {
+  RunStep {
+    name: Present { value: "Both required lanes must have succeeded" },
+    id: none,
+    run: required_lanes_aggregate_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// It checks out nothing, installs nothing and builds nothing: it reads two results. A five
+// minute bound is an order of magnitude above anything that can take, and it stops a stuck
+// aggregator from holding a runner for the inherited six hours.
+fn required_lanes_aggregate_job() -> Job {
+  Job {
+    id: witness_floor_workflow_job_id,
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: [required_lanes_aggregate_step()],
+    needs: [build_lane_job_id, floor_lane_job_id],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: required_lanes_aggregate_job_condition() },
+    timeout_minutes: 5,
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
 data witness_floor_workflow: Workflow = {
   name: witness_floor_workflow_name,
   on: [
@@ -786,7 +1148,7 @@ data witness_floor_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: [witness_floor_job()]
+  jobs: [build_lane_job(), witness_floor_job(), required_lanes_aggregate_job()]
 }
 
 // THE CLOSURE HAS A PRODUCTION CONSUMER, which is the difference between a check and a claim.
@@ -799,14 +1161,21 @@ data witness_floor_workflow: Workflow = {
 // workflow. This is the deploy.yml failure made unemittable rather than merely detectable: that
 // workflow ran `cargo build` as step two with no toolchain provider anywhere in the file, and
 // nothing in this repository could refuse it.
-data witness_floor_capability_closure_refusal: String = "REFUSED gunbc.witness_floor_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in witness_floor_bound_steps or the order of the steps themselves."
+data witness_floor_capability_closure_refusal: String = "REFUSED gunbc.witness_floor_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in witness_floor_bound_steps or build_lane_bound_steps, or the order of the steps themselves."
+
+// THE CLOSURE IS CHECKED PER JOB, AND BOTH JOBS ARE CHECKED. A capability is provided by a step
+// INSIDE a job -- the toolchain install does not reach across a job boundary -- so a
+// whole-workflow closure would be the wrong shape, and checking only the job that existed first
+// would leave the new one guarded by nothing while the emission still refused on its behalf.
+// That is the inert half DESIGN §6 names: machinery that exists and gates nothing.
+data witness_floor_capability_closure_per_job_note: String = "expected_witness_floor_yml conjoins witness_floor_capability_closure_holds and build_lane_capability_closure_holds; adding a third job without adding its conjunct would emit that job unchecked."
 
 type WitnessFloorGenerationOutcome
   = WitnessFloorGenerated { content: String }
   | WitnessFloorGenerationRefused
 
 fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
-  if witness_floor_capability_closure_holds() {
+  if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() {
     WitnessFloorGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow)) }
   } else {
     WitnessFloorGenerationRefused
