@@ -26,12 +26,36 @@ module gunbc.scm.object_table_json
 // THIS MODULE OWNS ITS OWN CLASSIFIER, which is a deliberate departure from the sibling extraction.
 // gunbc.scm.json_member carries no classifier: the closure classifier descends into MemberReadRefusal
 // in place, as it also does into TargetReferenceRefusal. Descent would be correct here too. It is not
-// what this module does, for two reasons. First, delegation is what makes the collapse
-// UNREPRESENTABLE rather than merely caught: once the closure classifier's parameter can no longer
-// name an object-table cause, "classify an object-table cause at closure grain" has no spelling
-// (DESIGN section 4b's top rung). Second, descent-in-place makes the closure module grow a new inner
-// arm every time THIS module gains a cause, so it would pay maintenance for a population it does not
-// own. Delegation is the only form where adding an object-table cause is one edit in one module.
+// what this module does, because descent-in-place makes the closure module grow a new inner arm every
+// time THIS module gains a cause, so it would pay maintenance for a population it does not own.
+// Delegation is the only form where adding an object-table cause is one edit in one module.
+//
+// WHAT THE DELEGATION DOES AND DOES NOT MAKE UNREPRESENTABLE, stated precisely because an earlier
+// revision of this paragraph overclaimed it and a reviewer was right to catch that (review 55811).
+//
+// UNREPRESENTABLE: naming an INDIVIDUAL object-table cause in a match over ClosureDocRefusal. A
+// consumer cannot write `ObjectTableObjectCollision => LoadDocumentMalformed`, because the closure
+// type's arms do not include it. That is the specific misclassification that was writable before this
+// cut and is not writable after it, and it is the dangerous one: it targets exactly one cause, needs
+// no wildcard, and reads as total.
+//
+// STILL WRITABLE: collapsing the whole population behind the wrapper binding --
+// `ClosureDocObjectTableRefused { cause: _ } => LoadDocumentMalformed`. That would give a collision
+// the supersession-permitting standing just as surely. This cut does NOT wall it, and the rung for
+// that class is MECHANICALLY PREVENTABLE, not structural: what changed is that the collapse now
+// requires a bare binding over a foreign authority's population, which is the tell DESIGN already
+// names, rather than an innocuous-looking per-cause arm.
+//
+// WHY NOT WALL IT HERE: the proposed remedy -- have decode_object_table expose its own outcome
+// boundary before translation -- rests on a premise that is false as measured. decode_object_step
+// produces four ClosureDocMemberReadRefused causes and a ClosureDocUnexpectedMember cause alongside
+// the object-table ones, so that operation's failure population is genuinely MIXED. Narrowing its
+// result to ObjectTableDecodeRefusal would make the type claim an owner for causes it does not own --
+// the same defect this module exists to remove, pointing the other way.
+//
+// NEXT-RUNG TRIGGER: a decode_object_table whose member-read and unexpected-member causes are
+// themselves owned elsewhere, leaving a residue this module can own outright. That is a separate cut
+// with its own census, not a line in this one.
 
 import std.types { String }
 import gunbc.scm.object_store { ObjectId }
