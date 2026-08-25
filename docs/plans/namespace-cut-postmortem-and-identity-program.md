@@ -507,6 +507,62 @@ One restatement makes it top-rung:
 > **A key is the element's declared identity carrier. Nothing else is spellable
 > in key position.**
 
+**That phrasing is wrong, and it was refuted by adversarial review before anything
+was built on it** (`neat-fox-901`, 2026-08-25). It is right about the two error
+terms and wrong about the quantifier. Two legitimate key roles violate it:
+
+- **A cache determinant** answers *is the prior result semantically reusable for
+  this computation*. Its minimal correct form includes **every result-determining
+  input** — source or semantic digest, direct dependency interfaces, compiler
+  identity, target realization, any option that changes the result. That is
+  deliberately *more* than the subject's identity and it is correct, not
+  over-keyed. DESIGN already carries the role independently in its recurring
+  failure modes — *cache impurity (key on declared-input content)* — so the
+  sentence above contradicts the repository's own vocabulary, and a program
+  enforcing it literally would break every cache in the tree.
+- **A grouping key** partitions into equivalence classes. Multiplicity is
+  *expected*, and it must never pass through a unique roster — which T1/T3's
+  route through `keyed_roster_build` would force on it.
+
+### The phrasing that survives
+
+```
+key_R(x) = key_R(y)   ⟺   same_R(x, y)
+```
+
+**Forward direction broken → under-keying** (collapse: two subjects share a key).
+**Reverse direction broken → over-keying** (aliasing: one subject spells two
+keys). Because **R is a parameter**, cache determinants, grouping keys and
+locators are *ordinary instances* rather than exceptions carved out of a
+subject-identity rule. The earlier version had to name subject identity
+specifically, which is exactly why it needed a carve-out it did not have.
+
+This is strictly better on two counts: it **generates** both error terms instead
+of asserting them, and it kills the degenerate outcome where a keying program
+becomes *wrap every map key in `SubjectKey`* — **the role must be classified
+before the carrier is chosen.**
+
+It is also what `keying-relation-design.md` said from the beginning — *keying is a
+relation, not an `id` field*, and "the key of X" is not well formed while "the key
+of X under relation R in scope S" is. Both independent derivations
+under-generalized a law the ratified design already had, which is a caution worth
+carrying: convergence between two sessions is evidence about a restatement's
+shape, and it is **not** evidence that the restatement is complete.
+
+Three derivations now agree, and the third makes the biconditional legible:
+`crisp-crab-430`'s two halves — *same identity, different spelling → behave the
+same* and *same spelling, different identity → remain different* — are precisely
+its two directions, arrived at from executed defects rather than from the census.
+
+**Occupancy is zero and the counts do not move**: exactly one genuine cache-keyed
+`String` map exists corpus-wide (`census_cache` in `v2.lens.reference_deps`), and
+it is outside the v1+`dag` denominator; the memo-sounding population (`seen`,
+`visited`, `depth_map`, `accepted_map`, the `*_index` family) keys on declared
+identities and was already classified correctly. The vocabulary gap is real even
+though nothing occupies it, and it is recorded rather than papered over —
+**a bucket that does not exist cannot receive a site, so its absence is invisible
+in the counts and would otherwise have been cited as coverage.**
+
 Minimality stops being a search and becomes a definition — §3, one fact one home.
 **Two sessions derived that sentence independently on 2026-08-25**, from
 different evidence — this lane from the emitter's `shared_types` lookup,
@@ -644,7 +700,12 @@ consumer needs it, authoring five arms would be authoring three carriers ahead o
 any consumer. The two that land are not interchangeable at a single site, so both
 do real work immediately.
 
-**T3 — `KeyedRoster` construction wall.** Success arm reachable only through
+**T3 — `KeyedRoster` construction wall.** **Only for relations declared unique.**
+A grouping relation expects multiplicity and must not pass through a unique
+roster at all — `keying-relation-design.md` already states this as multiplicity
+being *declared, not discovered*, with `keyed_roster_build`'s duplicate refusal a
+legitimate policy for relations declared unique rather than a law imposed on
+relations that were never unique. Success arm reachable only through
 `keyed_roster_build`/`insert`. Already declared as
 `feature:keyed-roster-construction-wall`.
 
@@ -898,13 +959,19 @@ domain/remedy table. C.4 the `OccurrenceBinding` ledger (T7).
 
 **Track D — substrate, parallel with C, gated on A.** D.1 key algebra in
 `dag/std/` → D.2 impostor separation (two arms) → D.3 `KeyedRoster` construction
-wall. **Sized in decisions, not sites: ~238, not 2093.** 238 distinct binding
+wall. **Sized in decisions, not sites: ~238, not 2093 — and CONTESTED.** 238 distinct binding
 names cover the 1958 named sites; the top name is 37% of them and the top five are
 61%. `source_indices` (726) plus its abbreviation `si` (106) is 832 sites that are
 **one** `Map<String, NewlineIndex>` threaded through the compiler by parameter
 passing — one keying decision replicated by threading, not 832 decisions. 132
 names occur exactly once. Pricing this track per site overstates it by more than a
-third.
+third. **Contested by the census's own adversarial review**: 832 threaded
+positions may still each need editing even though they express one decision, so
+238 may be the flattering denominator rather than the honest one. Treat it as an
+upper bound on *judgments* and a lower bound on *edits* until that resolves.
+A second open judgment moves the largest bucket: whether path-as-key for
+`source_indices` (838 sites, 36%) is a `ResourceLocator` or is genuinely the
+file's identity under the filesystem relation.
 
 **Track E — the migration (chain steps 4–5).** E.1 the derived projection.
 E.2 the acceptance gates, each naming its producing stage per step 0. E.3 the
