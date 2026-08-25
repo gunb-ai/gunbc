@@ -1,0 +1,356 @@
+module gunbc.build_target
+
+import extdeps.bazel.label { Label, RootPackage, TargetName, render_label, label_eq }
+import extdeps.bazel.test_status {
+  BlazeTestStatus,
+  TestStatusNoStatus, TestStatusPassed, TestStatusTimeout,
+  TestStatusFailed, TestStatusIncomplete,
+  blaze_test_status_is_pass,
+}
+import extdeps.bazel.build_event_stream { AbortReason }
+import v2.workflow.floor_terminal_ledger {
+  ClaimDisposition,
+  Passed, Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict,
+  PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict,
+  RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, ObservationUnreadableBeforeVerdict,
+}
+import std.types { String, Bool, NonEmptyStr }
+import std.integer { Int }
+
+// WHAT THIS MODULE IS AND WHAT IT DELIBERATELY IS NOT.
+//
+// It is the TARGET-GRAIN carrier: one identity per buildable or testable thing, the edges between
+// them, and the standing each one currently holds. It is NOT a second observer. Nothing here
+// runs a witness, compiles a module, or decides whether an attempt reached its subject — every
+// standing arrives already decided by the authority that made the observation, and this layer's
+// whole content is the JOIN: which identity, which edges, and does the aggregate hold.
+//
+// That split is why `TestStanding` carries `ClaimDisposition` rather than copying its arms. The
+// floor's per-identity disposition vocabulary is complete and owned one module away; a parallel
+// eleven-arm coproduct here would be one concept forked by layer — DESIGN §3 nicknaming — and a
+// fork gets consolidated later at someone else's cost. What this module adds is the POLICY over
+// that vocabulary, which is a downstream fact by the same section: whether an enrolled expected
+// red satisfies `//:required` is not something the floor's vocabulary may decide for its
+// consumers, and it is stated once, here, in `claim_disposition_satisfies`.
+
+// ---------------------------------------------------------------------------------------------
+// TARGET IDENTITY
+// ---------------------------------------------------------------------------------------------
+
+// IDENTITY IS THE LABEL AND NOTHING BESIDE IT. There is no `id`, `slug`, or `name` field, and the
+// absence is the design: a target carrying both a label and a separate identifier would be two
+// answers to one question, and the moment they can disagree a consumer has to pick. `BuildTarget`
+// has one key, `label_eq` is the one comparison, and `target_identity` renders it for a human
+// without ever becoming a second key — it is derived from the label on every call, so it cannot
+// drift from it.
+type TargetKind
+  = BuildRule
+  | TestRule
+  | AggregateAlias
+
+type BuildTarget {
+  label: Label
+  kind: TargetKind
+  dependencies: List<Label>
+}
+
+fn target_identity(t: BuildTarget) -> String {
+  render_label(l: t.label)
+}
+
+fn target_eq(a: BuildTarget, b: BuildTarget) -> Bool {
+  label_eq(a: a.label, b: b.label)
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE //:required AGGREGATE
+// ---------------------------------------------------------------------------------------------
+
+// `//:required` IS AN ORDINARY TARGET IN THE ROOT PACKAGE, and that is the point of spelling it as
+// a `Label` rather than as a distinguished constant of some `AggregateId` type. The repository's
+// required set is the thing every other target is ultimately built for, and modelling it as a
+// special case outside the target vocabulary would put the most important node in the graph
+// outside every operation the graph supports.
+fn required_aggregate_target_name() -> NonEmptyStr { "required" }
+
+fn required_aggregate_label() -> Label {
+  Label {
+    package: RootPackage {}
+    target: TargetName { name: required_aggregate_target_name() }
+  }
+}
+
+fn required_aggregate_target(dependencies: List<Label>) -> BuildTarget {
+  BuildTarget {
+    label: required_aggregate_label()
+    kind: AggregateAlias {}
+    dependencies: dependencies
+  }
+}
+
+fn is_required_aggregate(t: BuildTarget) -> Bool {
+  label_eq(a: t.label, b: required_aggregate_label())
+}
+
+// ---------------------------------------------------------------------------------------------
+// STANDINGS
+// ---------------------------------------------------------------------------------------------
+
+// BUILD STANDING, GROUNDED ON THE TWO EVENTS THE CITED BUILD EVENT STREAM ACTUALLY EMITS.
+//
+// Upstream says one of two things about a target: `TargetComplete { success }` — it was built and
+// here is whether that succeeded — or `Aborted { abort_reason }` — it never reached that question.
+// The distinction is not cosmetic and it is not derivable from a `Bool`: a target whose analysis
+// failed and a target that compiled and failed have different owners and different repairs, and a
+// single `built: Bool` reports them identically. So the carrier is the upstream pair, and
+// `TargetAborted` keeps the whole cited reason vocabulary rather than the two or three arms a
+// current consumer reads.
+type BuildStanding
+  = TargetCompleted { success: Bool }
+  | TargetAborted { reason: AbortReason }
+
+// TEST STANDING, WITH THE PRODUCER AS THE OUTER DISTINCTION.
+//
+// Two different mechanisms in this repository can answer "did this test target hold", and they
+// answer in two different vocabularies: the required floor answers in `ClaimDisposition`, and a
+// Bazel-shaped runner answers in `BlazeTestStatus`. `NotATestTarget` is the third state and it is
+// NOT `TestStatusNoStatus`: upstream's `NO_STATUS` means a test that did not run, and a library
+// with no test to run at all is a different fact with a different remedy — one is a run to
+// schedule, the other is a question that does not apply. Rendering them as one symbol is the
+// not-applicable-as-malformed conflation this repository keeps finding.
+type TestStanding
+  = NotATestTarget
+  | TestRunByFloor { disposition: ClaimDisposition }
+  | TestReportedByBazel { status: BlazeTestStatus }
+
+type TargetStanding {
+  target: Label
+  build: BuildStanding
+  test: TestStanding
+}
+
+// ---------------------------------------------------------------------------------------------
+// SATISFACTION
+// ---------------------------------------------------------------------------------------------
+
+// WHY THE CAUSE IS CARRIED AND NOT A Bool. A dependency that failed to build, one that was
+// skipped, one whose witness answered false, and one whose witness never reached its subject all
+// make `//:required` refuse — and they have four different owners. A `Bool` sends every one of
+// them to the same place, which is nowhere.
+type StandingCause
+  = BuildDidNotSucceed
+  | BuildWasAborted { reason: AbortReason }
+  | FloorDispositionUnsatisfied { disposition: ClaimDisposition }
+  | BazelTestStatusUnsatisfied { status: BlazeTestStatus }
+
+type StandingVerdict
+  = StandingSatisfied
+  | StandingUnsatisfied { cause: StandingCause }
+
+// THE POLICY ROW, AND EVERY ARM IS NAMED RATHER THAN DEFAULTED.
+//
+// There is no wildcard here and there must not be one: a twelfth `ClaimDisposition` arm added
+// upstream must make THIS function fail to compile, so that the question "does the new state
+// satisfy the required aggregate" is answered by whoever adds it rather than inherited from
+// whichever arm a `_` happened to name. That is the descend-one-level rule DESIGN records, applied
+// at the seam where a collapsed match would be totally exhaustive and completely wrong.
+//
+// TWO ARMS ARE POLICY DECISIONS RATHER THAN READINGS, and both mirror what the required floor
+// already does with its counters rather than inventing a second stance:
+//
+//   `KnownRedHeld` SATISFIES. An enrolled expected red that failed exactly as enrolled is
+//   agreement between the roster and the tree. The floor reports it in its own counter, apart
+//   from `passed`, and does not fail the run on it; the aggregate takes the same position, and
+//   `TestRunByFloor` keeps the disposition so a consumer that wants a stricter line has the fact.
+//
+//   `PassedOverBudget` SATISFIES on the correctness axis. The claim reached a verdict and the
+//   verdict held; that it completed past a safety limit is a COST fact with its own authority and
+//   its own reporting line. Folding cost into the correctness verdict here would give the cost
+//   axis a second home and make a slow green witness indistinguishable from a wrong one.
+//
+// `KnownRedNowPassing` does NOT satisfy, and it is the arm most likely to be argued about: the
+// witness passed, so nothing is broken in the tree — what is broken is the ROSTER, which still
+// enrols it as expected-red. Admitting it would let a stale enrolment survive indefinitely,
+// because the only signal it ever produces is this one.
+fn claim_disposition_satisfies(d: ClaimDisposition) -> Bool {
+  match d {
+    Passed => true
+    PassedOverBudget => true
+    KnownRedHeld => true
+    Failed => false
+    KnownRedNowPassing => false
+    BudgetRefusedBeforeVerdict => false
+    BudgetTerminalWithoutSafetyCause => false
+    HostToolUnresolvedBeforeVerdict => false
+    RouteGapBeforeVerdict => false
+    RuntimeErroredBeforeVerdict => false
+    ObservationUnreadableBeforeVerdict => false
+  }
+}
+
+fn build_standing_verdict(b: BuildStanding) -> StandingVerdict {
+  match b {
+    TargetCompleted { success: s } =>
+      if s { StandingSatisfied {} } else { StandingUnsatisfied { cause: BuildDidNotSucceed {} } }
+    TargetAborted { reason: r } => StandingUnsatisfied { cause: BuildWasAborted { reason: r } }
+  }
+}
+
+fn test_standing_verdict(t: TestStanding) -> StandingVerdict {
+  match t {
+    NotATestTarget => StandingSatisfied {}
+    TestRunByFloor { disposition: d } =>
+      if claim_disposition_satisfies(d: d) {
+        StandingSatisfied {}
+      } else {
+        StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: d } }
+      }
+    TestReportedByBazel { status: s } =>
+      if blaze_test_status_is_pass(s: s) {
+        StandingSatisfied {}
+      } else {
+        StandingUnsatisfied { cause: BazelTestStatusUnsatisfied { status: s } }
+      }
+  }
+}
+
+// BUILD IS JUDGED FIRST, AND THE ORDER IS NOT A STYLE CHOICE. A target that did not build cannot
+// have run its test, so reporting the test standing of an unbuilt target would name a downstream
+// symptom as the cause. Upstream agrees with itself here: `FAILED_TO_BUILD` exists in
+// `BlazeTestStatus` precisely because the build answer dominates the test answer.
+fn target_standing_verdict(s: TargetStanding) -> StandingVerdict {
+  match build_standing_verdict(b: s.build) {
+    StandingUnsatisfied { cause: c } => StandingUnsatisfied { cause: c }
+    StandingSatisfied => test_standing_verdict(t: s.test)
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE AGGREGATE FOLD
+// ---------------------------------------------------------------------------------------------
+
+// A DEPENDENCY WITH NO STANDING IS NOT SATISFIED, AND IT IS NOT A FAILURE EITHER.
+//
+// `DependencyStandingAbsent` is its own arm because "the target failed" and "nobody observed the
+// target" have opposite remedies, and because collapsing the second into silence is the
+// empty-observation narrow: an aggregate over a standing list that lost half its rows would
+// report the surviving half as the whole answer and go green on a run that observed almost
+// nothing.
+type AggregateFinding
+  = DependencyUnsatisfied { target: Label, cause: StandingCause }
+  | DependencyStandingAbsent { target: Label }
+
+// AN AGGREGATE OVER ZERO DEPENDENCIES REFUSES, IN ITS OWN ARM.
+//
+// `fold` over an empty list returns the identity, and for a conjunction the identity is TRUE — so
+// the natural implementation reports a `//:required` that requires nothing as fully satisfied.
+// That is the strongest possible green produced by the weakest possible evidence, and it is the
+// exact reading a mis-wired discovery pass would produce. `AggregateNoDependencies` makes the
+// vacuous case unrepresentable as a satisfied one rather than caught downstream by a count.
+type AggregateStanding
+  = AggregateSatisfied { dependency_count: Int }
+  | AggregateNoDependencies
+  | AggregateRefused { finding_count: Int, findings: List<AggregateFinding> }
+
+fn standing_for_label(standings: List<TargetStanding>, wanted: Label) -> List<TargetStanding> {
+  filter(standings, s => label_eq(a: s.target, b: wanted))
+}
+
+fn dependency_finding(standings: List<TargetStanding>, dep: Label) -> List<AggregateFinding> {
+  let matched = standing_for_label(standings: standings, wanted: dep)
+  match matched |> first {
+    Absent => [DependencyStandingAbsent { target: dep }]
+    Present { value: s } =>
+      match target_standing_verdict(s: s) {
+        StandingSatisfied => []
+        StandingUnsatisfied { cause: c } => [DependencyUnsatisfied { target: dep, cause: c }]
+      }
+  }
+}
+
+// THE FOLD REPORTS EVERY UNSATISFIED DEPENDENCY, NOT THE FIRST ONE. Stopping at the first would
+// make the aggregate a bisection tool: each repair reveals one more refusal, and the number of
+// runs needed to learn what is actually broken is the number of broken things. The count is
+// carried beside the list for the reason the floor's outcome carries its planned population
+// beside its executed one — a list a reader may truncate is not a number a reader may compare.
+fn aggregate_findings(
+  aggregate: BuildTarget,
+  standings: List<TargetStanding>,
+) -> List<AggregateFinding> {
+  fold(aggregate.dependencies, init: [], f: fn(acc, dep) {
+    concat(acc, dependency_finding(standings: standings, dep: dep))
+  })
+}
+
+fn required_aggregate_standing(
+  aggregate: BuildTarget,
+  standings: List<TargetStanding>,
+) -> AggregateStanding {
+  let dependency_count = aggregate.dependencies |> count
+  if dependency_count == 0 {
+    AggregateNoDependencies {}
+  } else {
+    let findings = aggregate_findings(aggregate: aggregate, standings: standings)
+    let finding_count = findings |> count
+    if finding_count == 0 {
+      AggregateSatisfied { dependency_count: dependency_count }
+    } else {
+      AggregateRefused { finding_count: finding_count, findings: findings }
+    }
+  }
+}
+
+// THE ONE PREDICATE A GATE READS, AND IT DESCENDS. `AggregateNoDependencies` blocks: an aggregate
+// that requires nothing has proven nothing.
+fn aggregate_standing_blocks(a: AggregateStanding) -> Bool {
+  match a {
+    AggregateSatisfied { dependency_count: _ } => false
+    AggregateNoDependencies => true
+    AggregateRefused { finding_count: _, findings: _ } => true
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// BAZEL-COMPATIBLE EXPORT
+// ---------------------------------------------------------------------------------------------
+
+// RENDERING A FLOOR DISPOSITION AS A BLAZE TEST STATUS IS LOSSY, AND THE LOSS IS DECLARED HERE
+// RATHER THAN DISCOVERED BY A READER.
+//
+// This is an EXPORT — the direction a Bazel-shaped consumer reads — and it is deliberately not the
+// carrier: `TestStanding` keeps the disposition, so nothing internal ever loses the distinction
+// this function drops. What it drops, precisely:
+//
+//   `KnownRedHeld` HAS NO UPSTREAM MEMBER. Bazel's vocabulary has no "expected to fail and did";
+//   it becomes `FAILED`, which is what the run literally observed, and the ENROLMENT — the fact
+//   that makes it acceptable here — is not exportable. A consumer reading only the exported
+//   status therefore sees a failing test, which is honest about the observation and silent about
+//   the policy. Exporting it as `PASSED` was rejected: that would fabricate an observation.
+//
+//   `HostToolUnresolvedBeforeVerdict` and `RouteGapBeforeVerdict` BOTH become `INCOMPLETE`. Their
+//   remedies differ, so this collapse would be a defect in a carrier; it is admissible in an
+//   export because the distinguishing fact stays on the `TestStanding` the export was computed
+//   from, one dereference away, and the export is never fed back into a decision.
+fn blaze_test_status_of_claim_disposition(d: ClaimDisposition) -> BlazeTestStatus {
+  match d {
+    Passed => TestStatusPassed {}
+    PassedOverBudget => TestStatusPassed {}
+    Failed => TestStatusFailed {}
+    KnownRedHeld => TestStatusFailed {}
+    KnownRedNowPassing => TestStatusPassed {}
+    BudgetRefusedBeforeVerdict => TestStatusTimeout {}
+    BudgetTerminalWithoutSafetyCause => TestStatusIncomplete {}
+    HostToolUnresolvedBeforeVerdict => TestStatusIncomplete {}
+    RouteGapBeforeVerdict => TestStatusIncomplete {}
+    RuntimeErroredBeforeVerdict => TestStatusFailed {}
+    ObservationUnreadableBeforeVerdict => TestStatusIncomplete {}
+  }
+}
+
+fn blaze_test_status_of_test_standing(t: TestStanding) -> BlazeTestStatus {
+  match t {
+    NotATestTarget => TestStatusNoStatus {}
+    TestReportedByBazel { status: s } => s
+    TestRunByFloor { disposition: d } => blaze_test_status_of_claim_disposition(d: d)
+  }
+}

@@ -1,0 +1,235 @@
+module extdeps.bazel.label
+
+import extdeps.bazel.bazel { bazel_subject }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope }
+import extdeps.uri { Uri, Https }
+import std.types { NonEmptyStr, String, Bool }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "bazel.build/concepts/labels"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: extdeps.bazel.bazel.bazel_subject,
+  first_citation: extdeps.bazel.label.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// A SUBSET OF BAZEL'S LABEL GRAMMAR, AND THE WORD SUBSET IS THE CONTRACT.
+//
+// The cited authority admits four families this module does NOT: the canonical repository form
+// `@@repo//pkg:t`, the apparent form `@repo//pkg:t`, the package-relative forms `:t` and `t`, and
+// the target PATTERNS (`...`, `:all`, `:*`) that denote a set rather than a target. Every one of
+// them refuses here with its own named cause. That is the §5 shape rather than a limitation
+// apologised for in prose: a form outside the subset produces a typed, located refusal, never a
+// best-effort reading, so widening the subset later is adding a constructor to `Label` and an arm
+// to `parse_label` — it is not repairing values that silently parsed wrong in the meantime.
+//
+// WHY THE REPOSITORY AXIS IS ABSENT FROM THE CARRIER AND NOT MERELY REFUSED AT THE PARSER: a
+// `Label` here denotes a target in the MAIN repository, and there is no field in which a
+// different repository could be written. An `@repo//` string cannot become a `Label` that later
+// readers must remember to check the repository of, because the state has no representation
+// (DESIGN §4b, structural impossibility) rather than a validator standing over a writable one.
+
+// THE PACKAGE, WITH THE ROOT PACKAGE AS ITS OWN ARM.
+//
+// `//:required` names a target in the root package, and the root package is NOT "the package
+// whose segment list happens to be empty" — an empty `PackagePath` would be a second spelling of
+// the same value, so `render_package` would have two inputs for one output and `package_eq` would
+// have to normalise before comparing. The arm removes the duplicate spelling instead.
+type PackageName
+  = RootPackage
+  | PackagePath { segments: List<NonEmptyStr> }
+
+type TargetName { name: NonEmptyStr }
+
+type Label {
+  package: PackageName
+  target: TargetName
+}
+
+// WHY EACH REFUSAL IS ITS OWN ARM RATHER THAN ONE `MalformedLabel { text }`.
+//
+// The four families above have four different remedies — write the label against the main repo,
+// make the relative label absolute, name a target instead of a pattern, fix the path — and a
+// collapsed arm makes them read alike (DESIGN, state-space conflation). `EmptyPackageSegment`
+// and `DotSegment` are separated for the same reason: `//a//b:c` is a typo and `//a/../b:c` is an
+// escape attempt.
+type LabelRefusal
+  = RepositoryQualifiedLabel { repository_text: String }
+  | MissingRepositoryRootPrefix { text: String }
+  | MultipleColonSeparators { text: String }
+  | EmptyTargetName { text: String }
+  | EmptyPackageSegment { text: String }
+  | DotSegment { segment: String }
+  | TargetPattern { pattern: String }
+  | TargetNameContainsSlash { name: String }
+
+type LabelParse
+  = LabelParsed { label: Label }
+  | LabelRefused { cause: LabelRefusal }
+
+fn label_root_prefix() -> String { "//" }
+
+// THE PATTERN VOCABULARY, HELD ONCE. `...` is refused wherever it appears — as a package segment
+// and as a target name — because in both positions it denotes a set of targets, and a `Label`
+// denotes exactly one.
+fn label_pattern_target_names() -> List<String> { ["all", "*", "...", "all-targets"] }
+
+fn label_dot_segments() -> List<String> { [".", ".."] }
+
+fn segment_is_dot(s: String) -> Bool {
+  fold(label_dot_segments(), init: false, f: fn(acc, d) { acc || (s == d) })
+}
+
+fn target_name_is_pattern(s: String) -> Bool {
+  fold(label_pattern_target_names(), init: false, f: fn(acc, p) { acc || (s == p) })
+}
+
+// THE PACKAGE SEGMENTS, DECIDED AS A LIST AND NOT AS A STRING TEST. Splitting on `/` makes the
+// three malformed package shapes the cited authority names — a leading `/`, a trailing `/`, and an
+// embedded `//` — all produce the SAME observable: an empty segment. So one arm covers all three
+// by construction rather than three string predicates covering them by enumeration.
+type PackageSegmentsParse
+  = PackageSegmentsOk { segments: List<NonEmptyStr> }
+  | PackageSegmentsRefused { cause: LabelRefusal }
+
+fn parse_package_segments(package_text: String) -> PackageSegmentsParse {
+  let raw = split(s: package_text, delimiter: "/")
+  let empty_found = fold(raw, init: false, f: fn(acc, s) { acc || (s.length() == 0) })
+  if empty_found {
+    PackageSegmentsRefused { cause: EmptyPackageSegment { text: package_text } }
+  } else {
+    let dotted = fold(raw, init: "", f: fn(acc, s) {
+      if acc.length() > 0 { acc } else if segment_is_dot(s: s) { s } else { acc }
+    })
+    if dotted.length() > 0 {
+      PackageSegmentsRefused { cause: DotSegment { segment: dotted } }
+    } else {
+      let patterned = fold(raw, init: "", f: fn(acc, s) {
+        if acc.length() > 0 { acc } else if s == "..." { s } else { acc }
+      })
+      if patterned.length() > 0 {
+        PackageSegmentsRefused { cause: TargetPattern { pattern: patterned } }
+      } else {
+        PackageSegmentsOk { segments: raw }
+      }
+    }
+  }
+}
+
+fn parse_target_name(text: String) -> LabelParse {
+  if text.length() == 0 {
+    LabelRefused { cause: EmptyTargetName { text: text } }
+  } else if target_name_is_pattern(s: text) {
+    LabelRefused { cause: TargetPattern { pattern: text } }
+  } else if string_contains(s: text, pattern: "/") {
+    // The authority admits `/` in a target name (a source file in a package subdirectory). It is
+    // refused HERE and named as its own cause, because this subset's consumers name rule targets:
+    // admitting it would make `//a/b` ambiguous between the shorthand for `//a/b:b` and a package
+    // `//a` holding a file `b`, and the shorthand is what `//:required` and its dependencies use.
+    LabelRefused { cause: TargetNameContainsSlash { name: text } }
+  } else {
+    LabelParsed {
+      label: Label { package: RootPackage {}, target: TargetName { name: text } }
+    }
+  }
+}
+
+fn label_with_package(parsed: LabelParse, package: PackageName) -> LabelParse {
+  match parsed {
+    LabelParsed { label: l } =>
+      LabelParsed { label: Label { package: package, target: l.target } }
+    LabelRefused { cause: c } => LabelRefused { cause: c }
+  }
+}
+
+// THE SHORTHAND IS EXPANSION, NOT A SECOND LABEL SHAPE. `//my/app/lib` IS `//my/app/lib:lib` per
+// the cited authority, so it is folded into the same `Label` at parse time and no consumer ever
+// has to ask which spelling it was handed. `//` alone has no final segment to expand from, which
+// is why the root package with no colon is an empty target name rather than a fourth arm.
+fn parse_label_body(body: String, original: String) -> LabelParse {
+  let parts = split(s: body, delimiter: ":")
+  let part_count = parts |> count
+  if part_count > 2 {
+    LabelRefused { cause: MultipleColonSeparators { text: original } }
+  } else {
+    let package_text_head = match parts |> first {
+      Present { value: v } => v
+      Absent => ""
+    }
+    if package_text_head.length() == 0 {
+      // Root package: `//:target`, or `//` with nothing after it.
+      let target_text = if part_count == 2 {
+        match parts |> last {
+          Present { value: v } => v
+          Absent => ""
+        }
+      } else { "" }
+      parse_target_name(text: target_text)
+    } else {
+      match parse_package_segments(package_text: package_text_head) {
+        PackageSegmentsRefused { cause: c } => LabelRefused { cause: c }
+        PackageSegmentsOk { segments: segs } => {
+          let target_text = if part_count == 2 {
+            match parts |> last {
+              Present { value: v } => v
+              Absent => ""
+            }
+          } else {
+            fold(segs, init: "", f: fn(_, s) { s })
+          }
+          label_with_package(
+            parsed: parse_target_name(text: target_text),
+            package: PackagePath { segments: segs }
+          )
+        }
+      }
+    }
+  }
+}
+
+fn parse_label(text: String) -> LabelParse {
+  if starts_with(s: text, prefix: "@") {
+    LabelRefused { cause: RepositoryQualifiedLabel { repository_text: text } }
+  } else if !starts_with(s: text, prefix: label_root_prefix()) {
+    LabelRefused { cause: MissingRepositoryRootPrefix { text: text } }
+  } else {
+    parse_label_body(
+      body: substring(s: text, start: 2, end: text.length()),
+      original: text
+    )
+  }
+}
+
+fn render_package(p: PackageName) -> String {
+  match p {
+    RootPackage => ""
+    PackagePath { segments: segs } =>
+      fold(segs, init: "", f: fn(acc, s) {
+        if acc.length() == 0 { s as String } else { concat(concat(acc, "/"), s as String) }
+      })
+  }
+}
+
+// RENDER IS THE STRUCTURAL INVERSE OF PARSE, AND IT ALWAYS WRITES THE EXPLICIT COLON FORM.
+// Rendering the shorthand back would make `render_label` non-total on the question "what did the
+// author write", which is not a fact a `Label` carries; the round-trip witness therefore asserts
+// `parse(render(l)) == l`, not `render(parse(t)) == t`.
+fn render_label(l: Label) -> String {
+  concat(
+    concat(concat(label_root_prefix(), render_package(p: l.package)), ":"),
+    l.target.name as String
+  )
+}
+
+fn package_eq(a: PackageName, b: PackageName) -> Bool {
+  render_package(p: a) == render_package(p: b)
+}
+
+fn label_eq(a: Label, b: Label) -> Bool {
+  package_eq(a: a.package, b: b.package) && ((a.target.name as String) == (b.target.name as String))
+}

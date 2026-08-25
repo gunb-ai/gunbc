@@ -1,0 +1,89 @@
+module extdeps.bazel.build_event_stream
+
+import extdeps.bazel.bazel { bazel_subject }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope }
+import extdeps.uri { Uri, Https }
+import std.types { String }
+import std.integer { Int }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "raw.githubusercontent.com/bazelbuild/bazel/master/src/main/java/com/google/devtools/build/lib/buildeventstream/proto/build_event_stream.proto"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: extdeps.bazel.bazel.bazel_subject,
+  first_citation: extdeps.bazel.build_event_stream.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// `Aborted.AbortReason`, MODELLED WHOLE FOR THE REASON `BlazeTestStatus` IS.
+//
+// This is the vocabulary in which upstream says WHY a target has no completion event. It is the
+// half a `success: bool` cannot carry: `TargetComplete.success = false` says the target was built
+// and the build failed, and an `Aborted` event says the target never reached that question. The
+// wire numbers are NOT contiguous upstream — NO_ANALYZE and NO_BUILD are 8 and 9, sitting after
+// SKIPPED = 7 — and they are reproduced as declared rather than renumbered into a tidy sequence,
+// because a renumbered mirror of a wire vocabulary is a decode that silently lies.
+//
+// Every arm carries an `Abort` prefix for the reason `extdeps.bazel.test_status` states at
+// length: the downstream target model names these constructors in the same module as the floor's
+// own disposition vocabulary, and this compiler resolves an ambiguous name by silent
+// last-import-wins. The upstream spelling lives in `abort_reason_proto_name`, verbatim.
+type AbortReason
+  = AbortUnknown
+  | AbortUserInterrupted
+  | AbortTimeOut
+  | AbortRemoteEnvironmentFailure
+  | AbortInternal
+  | AbortLoadingFailure
+  | AbortAnalysisFailure
+  | AbortSkipped
+  | AbortNoAnalyze
+  | AbortNoBuild
+  | AbortIncomplete
+  | AbortOutOfMemory
+
+fn abort_reason_wire_number(r: AbortReason) -> Int {
+  match r {
+    AbortUnknown => 0
+    AbortUserInterrupted => 1
+    AbortTimeOut => 2
+    AbortRemoteEnvironmentFailure => 3
+    AbortInternal => 4
+    AbortLoadingFailure => 5
+    AbortAnalysisFailure => 6
+    AbortSkipped => 7
+    AbortNoAnalyze => 8
+    AbortNoBuild => 9
+    AbortIncomplete => 10
+    AbortOutOfMemory => 11
+  }
+}
+
+fn abort_reason_proto_name(r: AbortReason) -> String {
+  match r {
+    AbortUnknown => "UNKNOWN"
+    AbortUserInterrupted => "USER_INTERRUPTED"
+    AbortTimeOut => "TIME_OUT"
+    AbortRemoteEnvironmentFailure => "REMOTE_ENVIRONMENT_FAILURE"
+    AbortInternal => "INTERNAL"
+    AbortLoadingFailure => "LOADING_FAILURE"
+    AbortAnalysisFailure => "ANALYSIS_FAILURE"
+    AbortSkipped => "SKIPPED"
+    AbortNoAnalyze => "NO_ANALYZE"
+    AbortNoBuild => "NO_BUILD"
+    AbortIncomplete => "INCOMPLETE"
+    AbortOutOfMemory => "OUT_OF_MEMORY"
+  }
+}
+
+fn abort_reason_roster() -> List<AbortReason> {
+  [
+    AbortUnknown {}, AbortUserInterrupted {}, AbortTimeOut {}, AbortRemoteEnvironmentFailure {},
+    AbortInternal {}, AbortLoadingFailure {}, AbortAnalysisFailure {}, AbortSkipped {},
+    AbortNoAnalyze {}, AbortNoBuild {}, AbortIncomplete {}, AbortOutOfMemory {}
+  ]
+}

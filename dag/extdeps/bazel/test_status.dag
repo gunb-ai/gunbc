@@ -1,0 +1,128 @@
+module extdeps.bazel.test_status
+
+import extdeps.bazel.bazel { bazel_subject }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope }
+import extdeps.uri { Uri, Https }
+import std.types { String, Bool }
+import std.integer { Int }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "raw.githubusercontent.com/bazelbuild/bazel/master/src/main/protobuf/test_status.proto"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: extdeps.bazel.bazel.bazel_subject,
+  first_citation: extdeps.bazel.test_status.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// `BlazeTestStatus`, MODELLED AT ITS UPSTREAM NAMES AND ITS UPSTREAM ARITY.
+//
+// Nine arms, because the cited proto declares nine. The temptation this module exists to refuse
+// is modelling the three or four a consumer currently reads and calling that the enum: the wire
+// numbers below are the whole point of a cited vocabulary — a value we cannot name is a value we
+// would have to fabricate a reading for, and DESIGN §3 says model what the API actually returns.
+// The upstream spelling is SCREAMING_SNAKE; the arms carry the repo's constructor casing and the
+// wire number is what makes the correspondence checkable rather than asserted by spelling.
+//
+// THE ARMS CARRY A `TestStatus` PREFIX AND THE PREFIX IS LOAD-BEARING, NOT DECORATION. `Passed`
+// and `Failed` are also arms of `v2.workflow.floor_terminal_ledger` `ClaimDisposition`, and the
+// downstream target model imports BOTH vocabularies in one module to state the relation between
+// them. DESIGN §4b records that a census-AMBIGUOUS type name in this compiler resolves by silent
+// last-import-wins rather than refusing, so an unprefixed collision here would not have been a
+// diagnostic — it would have been a projection quietly reading the wrong enum. The upstream
+// spelling is not lost: `blaze_test_status_proto_name` carries it verbatim and is what a wire
+// comparison joins on.
+type BlazeTestStatus
+  = TestStatusNoStatus
+  | TestStatusPassed
+  | TestStatusFlaky
+  | TestStatusTimeout
+  | TestStatusFailed
+  | TestStatusIncomplete
+  | TestStatusRemoteFailure
+  | TestStatusFailedToBuild
+  | TestStatusHaltedBeforeTesting
+
+fn blaze_test_status_wire_number(s: BlazeTestStatus) -> Int {
+  match s {
+    TestStatusNoStatus => 0
+    TestStatusPassed => 1
+    TestStatusFlaky => 2
+    TestStatusTimeout => 3
+    TestStatusFailed => 4
+    TestStatusIncomplete => 5
+    TestStatusRemoteFailure => 6
+    TestStatusFailedToBuild => 7
+    TestStatusHaltedBeforeTesting => 8
+  }
+}
+
+fn blaze_test_status_proto_name(s: BlazeTestStatus) -> String {
+  match s {
+    TestStatusNoStatus => "NO_STATUS"
+    TestStatusPassed => "PASSED"
+    TestStatusFlaky => "FLAKY"
+    TestStatusTimeout => "TIMEOUT"
+    TestStatusFailed => "FAILED"
+    TestStatusIncomplete => "INCOMPLETE"
+    TestStatusRemoteFailure => "REMOTE_FAILURE"
+    TestStatusFailedToBuild => "FAILED_TO_BUILD"
+    TestStatusHaltedBeforeTesting => "BLAZE_HALTED_BEFORE_TESTING"
+  }
+}
+
+fn blaze_test_status_roster() -> List<BlazeTestStatus> {
+  [
+    TestStatusNoStatus {}, TestStatusPassed {}, TestStatusFlaky {}, TestStatusTimeout {}, TestStatusFailed {},
+    TestStatusIncomplete {}, TestStatusRemoteFailure {}, TestStatusFailedToBuild {}, TestStatusHaltedBeforeTesting {}
+  ]
+}
+
+// INGEST IS FAIL-CLOSED ON AN UNKNOWN NUMBER, AND THAT IS NOT THE SAME AS `NO_STATUS`.
+//
+// `NO_STATUS = 0` is upstream's answer for "this test did not run". A wire value of 47 is our
+// answer for "this reader does not understand what the producer said" — a proto enum grows, and a
+// newer Bazel sending a tenth status must not be silently read as a test that never ran (DESIGN
+// §5: ⊥-as-answer conflated with ⊥-as-ignorance). The two states have opposite remedies: one is
+// a test to schedule, the other is this module to update.
+type BlazeTestStatusDecode
+  = BlazeTestStatusDecoded { status: BlazeTestStatus }
+  | BlazeTestStatusUnknownWireNumber { wire_number: Int }
+
+fn blaze_test_status_of_wire_number(n: Int) -> BlazeTestStatusDecode {
+  fold(
+    blaze_test_status_roster(),
+    init: BlazeTestStatusUnknownWireNumber { wire_number: n },
+    f: fn(acc, s) {
+      match acc {
+        BlazeTestStatusDecoded { status: _ } => acc
+        BlazeTestStatusUnknownWireNumber { wire_number: _ } =>
+          if blaze_test_status_wire_number(s: s) == n {
+            BlazeTestStatusDecoded { status: s }
+          } else { acc }
+      }
+    }
+  )
+}
+
+// THE ONLY UPSTREAM ARM THAT MEANS "THIS TARGET IS FINE". `FLAKY` is deliberately NOT green here:
+// upstream reports it for a test that failed at least one attempt and passed another, and a
+// consumer that treats it as a pass has decided a policy question this vocabulary does not own.
+// Where a consumer wants flaky to be tolerable, it says so at ITS layer, over this fact.
+fn blaze_test_status_is_pass(s: BlazeTestStatus) -> Bool {
+  match s {
+    TestStatusPassed => true
+    TestStatusNoStatus => false
+    TestStatusFlaky => false
+    TestStatusTimeout => false
+    TestStatusFailed => false
+    TestStatusIncomplete => false
+    TestStatusRemoteFailure => false
+    TestStatusFailedToBuild => false
+    TestStatusHaltedBeforeTesting => false
+  }
+}

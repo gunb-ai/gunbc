@@ -124,6 +124,10 @@ fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, ma
 }
 
 data scope_carrier_paths: List<String> = [
+  "dag/extdeps/bazel/bazel.dag",
+  "dag/extdeps/bazel/label.dag",
+  "dag/extdeps/bazel/test_status.dag",
+  "dag/extdeps/bazel/build_event_stream.dag",
   "dag/extdeps/vendor/amphenol.dag",
   "dag/extdeps/vendor/lotes.dag",
   "dag/extdeps/vendor/microchip_technology.dag",
