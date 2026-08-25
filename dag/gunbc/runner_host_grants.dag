@@ -17,7 +17,7 @@ import gunbc.executor_privileged_operation {
   executor_privileged_operations_sudoers_body,
   runner_slot_privileged_operations,
 }
-import gunbc.runner_host_deploy { RunnerHostDeploy }
+import gunbc.runner_host_deploy { RunnerHostDeploy, srv3_runner_host_deploy }
 import gunbc.runner_slot_provision { desired_runner_slot_members }
 
 // THE MANAGED STATE DIRECTORY, DECLARED ONCE. It is currently spelled THREE times in
@@ -74,3 +74,13 @@ fn runner_host_sudoers_content(deploy: RunnerHostDeploy) -> String {
   ], "")
 }
 
+
+// THE RENDERED ARTIFACT, REACHABLE BY NAME. Without this the sudoers file can only be produced by
+// hand-writing an entry module, which makes the one artifact an operator has to install
+// unreproducible from the repository -- exactly the hand-authored host state this module exists to
+// avoid. Run it with:
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/runner_host_grants.dag --function srv3_runner_host_sudoers
+fn srv3_runner_host_sudoers() -> String {
+  runner_host_sudoers_content(deploy: srv3_runner_host_deploy)
+}
