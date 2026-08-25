@@ -1992,6 +1992,11 @@ fn module_path_segments(path: String) -> List<String> {
   if path == "" { [] } else { path |> split(delimiter: ".") }
 }
 
+fn qualified_module_prefix(name: String) -> String {
+  let segs = module_path_segments(path: name)
+  if (segs |> count) <= 1 { "" } else { segs |> take(n: (segs |> count) - 1) |> join(separator: ".") }
+}
+
 fn qualified_last_segment(name: String) -> String {
   match module_path_segments(path: name) |> last {
     Present { value: s } => s

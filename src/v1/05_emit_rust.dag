@@ -3304,12 +3304,18 @@ fn reference_derived_use_lines(items: List<v1.std.core.Node>, unlisted_type_name
     let emitter_attested_anon_heads = v1.compiler.emit_core_support.unique_strings(items: items |> flat_map(item => collect_anonymous_record_lit_heads(n: item, source_indices: source_indices, type_summaries: emit_info.type_summaries)))
     let realized_surface_names = v1.compiler.emit_core_support.unique_strings(items: items |> flat_map(item => collect_item_realized_surface_names(item: item, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)))
     let emitted_source_tokens = rust_identifier_tokens(s: emitted_source)
-    let candidates = v1.compiler.emit_core_support.unique_strings(items: concat(concat(concat(concat(concat(unlisted_type_names, value_names), type_surface_names), field_surface_names), variant_payload_structs), realized_surface_names))
+    let candidates_qualified = v1.compiler.emit_core_support.unique_strings(items: concat(concat(concat(concat(concat(unlisted_type_names, value_names), type_surface_names), field_surface_names), variant_payload_structs), realized_surface_names))
       |> filter(name =>
         reference_derived_candidate_authored(module_source: module_source, name: name, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
           || emitter_attested_anon_heads |> any(h => h == name)
           || (emitted_source_tokens |> any(t => t == name)))
       |> filter(name => !reference_is_host_realized_builtin(name: name))
+      |> unique_strings
+    let authored_provider = candidates_qualified |> fold(init: empty_map(), f: (acc, nm) =>
+      let prefix = v1.std.core.qualified_module_prefix(name: nm)
+      if prefix == "" { acc } else { map_insert(acc, v1.std.core.qualified_last_segment(name: nm), prefix) }
+    )
+    let candidates = candidates_qualified
       |> map(name => v1.std.core.qualified_last_segment(name: name))
       |> unique_strings
     let local_decl_names = items |> flat_map(item =>
@@ -3322,26 +3328,38 @@ fn reference_derived_use_lines(items: List<v1.std.core.Node>, unlisted_type_name
       if v1.compiler.infer_types.emit_map_has(m: already, key: name) || std.types.is_kernel_type(name: name) {
         []
       } else {
-        match map_get(registry, name) {
-          Present { value: info } =>
-            if info.module_name != this_module_name
-              && provider_proven_exports_symbol(name: name, provider_module: info.module_name, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
-            { [name] } else { [] }
-          Absent => []
+        let provider_module = match map_get(authored_provider, name) {
+          Present { value: m } => m
+          Absent =>
+            match map_get(registry, name) {
+              Present { value: info } => info.module_name
+              Absent => ""
+            }
         }
+        if provider_module != "" && provider_module != this_module_name
+          && provider_proven_exports_symbol(name: name, provider_module: provider_module, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+        { [name] } else { [] }
       }
     )
     let providers = v1.compiler.emit_core_support.unique_strings(items: unlisted |> flat_map(name =>
-      match map_get(registry, name) {
-        Present { value: info } => [info.module_name]
-        Absent => []
+      match map_get(authored_provider, name) {
+        Present { value: m } => [m]
+        Absent =>
+          match map_get(registry, name) {
+            Present { value: info } => [info.module_name]
+            Absent => []
+          }
       }
     ))
     providers |> flat_map(provider =>
       let names = unlisted |> filter(name =>
-        match map_get(registry, name) {
-          Present { value: info } => info.module_name == provider
-          Absent => false
+        match map_get(authored_provider, name) {
+          Present { value: m } => m == provider
+          Absent =>
+            match map_get(registry, name) {
+              Present { value: info } => info.module_name == provider
+              Absent => false
+            }
         }
       )
       let block = emit_specific_import_block(import_module: provider, mod_name: v1.compiler.emit_core_support.module_to_filename(name: provider), filtered_names: names, emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
