@@ -1,0 +1,98 @@
+module gunbc.scm.json_member
+
+// READING A NAMED MEMBER OFF A JSON OBJECT IS ONE OPERATION WITH ONE FAILURE POPULATION, and this
+// module owns both. It was previously homed inside gunbc.scm.commit_closure_json_v2 with its failure
+// typed as THAT module's ClosureDocRefusal, which is the layer inversion DESIGN section 3 names: a
+// domain-neutral facility carrying a domain's vocabulary. The measured cost was not stylistic. Every
+// repository-envelope member read -- `checked_out`, `identity_rule`, `root`, `message` -- had to
+// report its failure as RepositoryDecodeClosureDocRefusal, so "the repository envelope names no
+// checked_out member" was reported to the operator as "the closure document is malformed". That is
+// authority substitution: one carrier's vocabulary borrowed to answer for another's, with nothing
+// false in either half and the arrow between them invented.
+//
+// The refusal population here is exactly what reading a named member can fail with, and nothing
+// wider. A domain wraps it in one arm rather than restating its members, so a new member-read
+// failure mode is added once here and every domain's classifier refuses to compile until it says
+// what the new mode means for it.
+
+import std.types { Bool, Int, List, String }
+import extdeps.languages.json.parse {
+  JsonMemberLookup,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+  json_object_unique_member,
+}
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonNull,
+  JsonBool,
+  JsonNumber,
+  JsonString,
+  JsonArray,
+  JsonObject,
+}
+
+// FOUR DISTINCT FACTS, NEVER AN ABSENT VALUE. json_object_unique_member already separates a missing
+// member from a duplicated one from a non-object subject, and collapsing them into an Optional here
+// would be the state-space conflation DESIGN section 5 names. The duplicate arm is the one that
+// earns its keep on its own: a JSON object carrying the key twice is precisely the shape a naive
+// last-wins reader accepts while holding two answers, so it must refuse rather than pick.
+//
+// MemberReadWrongShape is produced BOTH here and by callers, and that is deliberate rather than a
+// leak. read_member narrows only as far as the three shapes it can name; a caller wanting a string
+// where an array is equally well-formed JSON narrows the rest of the way and reports the same fact.
+// The fact is "reading member K off this object did not yield what the format declares", and who
+// finished the narrowing does not change it.
+type MemberReadRefusal
+  = MemberReadSubjectNotObject
+  | MemberReadMissing { key: String }
+  | MemberReadDuplicated { key: String }
+  | MemberReadWrongShape { key: String }
+
+// The shape-AGNOSTIC read: the member is present and unique, or it is one of the three lookup
+// failures. A caller whose format admits several JSON shapes at one key -- a nullable reference,
+// say -- matches the value itself rather than re-inlining the three failure arms.
+type MemberPresence
+  = MemberValue { value: JsonValue }
+  | MemberLookupFailed { cause: MemberReadRefusal }
+
+fn read_member_value(v: JsonValue, key: String) -> MemberPresence {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberAbsent => MemberLookupFailed { cause: MemberReadMissing { key: key } }
+    JsonMemberDuplicated { count: _ } => MemberLookupFailed { cause: MemberReadDuplicated { key: key } }
+    JsonMemberNotAnObject => MemberLookupFailed { cause: MemberReadSubjectNotObject }
+    JsonMemberFound { value: found } => MemberValue { value: found }
+  }
+}
+
+type MemberRead
+  = MemberString { value: String }
+  | MemberArray { elements: List<JsonValue> }
+  | MemberObject { value: JsonValue }
+  | MemberFailed { cause: MemberReadRefusal }
+
+fn read_member(v: JsonValue, key: String) -> MemberRead {
+  match read_member_value(v: v, key: key) {
+    MemberLookupFailed { cause: c } => MemberFailed { cause: c }
+    MemberValue { value: found } =>
+      match found {
+        JsonString { value: s } => MemberString { value: s }
+        JsonArray { elements: es } => MemberArray { elements: es }
+        JsonObject { members: _ } => MemberObject { value: found }
+        JsonNull => MemberFailed { cause: MemberReadWrongShape { key: key } }
+        JsonBool { value: _ } => MemberFailed { cause: MemberReadWrongShape { key: key } }
+        JsonNumber { lexeme: _ } => MemberFailed { cause: MemberReadWrongShape { key: key } }
+      }
+  }
+}
+
+fn read_string_member(v: JsonValue, key: String) -> MemberRead {
+  match read_member(v: v, key: key) {
+    MemberString { value: s } => MemberString { value: s }
+    MemberFailed { cause: c } => MemberFailed { cause: c }
+    MemberArray { elements: _ } => MemberFailed { cause: MemberReadWrongShape { key: key } }
+    MemberObject { value: _ } => MemberFailed { cause: MemberReadWrongShape { key: key } }
+  }
+}

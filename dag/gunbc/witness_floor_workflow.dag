@@ -2,6 +2,7 @@ module gunbc.witness_floor_workflow
 
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
 import gunbc.roadmap_execution_contract { CargoCapability, RustfmtCapability }
+import gunbc.repo_self_build { repo_self_build_command }
 import gunbc.workflow_capability_closure {
   CapabilityAnnotatedStep,
   StepCapabilityRole,
@@ -231,11 +232,7 @@ fn witness_floor_toolchain_step() -> Step {
 // an sccache deficit unobservable by construction (DESIGN section 5, the absorbing fallback), so
 // it is not re-derived. A build failure is a build failure and stops the line.
 fn witness_floor_build_script() -> String {
-  fold(
-    witness_floor_required_bins,
-    init: "cargo build --release -p v1-compiler",
-    f: fn(acc, bin) { concat(acc, concat(" --bin ", bin)) }
-  )
+  repo_self_build_command(bins: witness_floor_required_bins)
 }
 
 fn witness_floor_build_step() -> Step {
@@ -724,10 +721,37 @@ fn witness_floor_job() -> Job {
   }
 }
 
+// MERGE_GROUP IS ENROLLED SO THE REQUIRED CHECK CAN RUN ON THE COMPOSED COMMIT, NOT ONLY ON EACH
+// BRANCH HEAD. Without this trigger a merge queue would create its merge-group commit and this
+// workflow would never schedule for it, so the required check would be pending forever -- the
+// prerequisite has to exist BEFORE the queue is enabled, not alongside it.
+//
+// WHY IT IS NEEDED AT ALL, measured rather than argued. Three pairs of PRs have each been
+// independently green and jointly broken main: gunbc#9049 with #9114, #9057 with #9062, and
+// #8919 with #8992. None involved a textual conflict. In each case the first change altered a
+// semantic API and the second was checked against a base where the old API still existed, so both
+// greens were true of trees that never existed together. The #9057/#9062 pair took the whole fleet
+// red for about an hour on 2026-08-24 and produced four uncoordinated repair PRs plus a fifth
+// branch, two of which proposed deleting live code.
+//
+// THIS ROW IS THE IN-REPOSITORY HALF AND IT IS INERT ON ITS OWN. With no merge queue configured the
+// merge_group event never fires, so this changes nothing about how CI runs today; it is a no-op
+// until a repository setting is changed, which is deliberate -- the prerequisite lands first so the
+// setting can be flipped without a window in which the required check cannot schedule. The other
+// half is not a .dag fact and cannot be one: the ruleset currently carries
+// strict_required_status_checks_policy false, no merge-queue rule, and an always-bypass role, and
+// no wall inside this repository can constrain what GitHub admits to main. That is an operator
+// decision, recorded here so the two halves are legible as one change rather than rediscovered.
+//
+// THE INVARIANT BOTH HALVES SERVE: the commit admitted to main must be the exact composed commit
+// that passed the required checks. A merge queue establishes it by construction; requiring branches
+// to be up to date approximates it at the cost of a re-run of the ~30-minute floor for every PR
+// behind a merge.
 data witness_floor_workflow: Workflow = {
   name: witness_floor_workflow_name,
   on: [
     WorkflowDispatch { inputs: [] },
+    MergeGroup,
     Push { branches: [gunbc_default_branch_name], paths: [] },
     PullRequest {
       branches: [gunbc_default_branch_name],

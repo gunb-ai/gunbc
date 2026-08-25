@@ -31746,6 +31746,7 @@ pub fn data_value_has_cross_refs(value: Rc<Node>) -> bool {
             ExprData::ExprVar {
                 binding_kind: _, ..
             } => true,
+            ExprData::ExprCall { .. } => true,
             ExprData::ExprListLit => {
                 let mut __found = false;
                 for c in value.children.clone().iter().cloned() {
@@ -31877,17 +31878,24 @@ pub fn emit_data_def(
             raw_ty_str.clone()
         };
         let fn_name = to_snake(name.clone());
-        let needs_rc = v1_rt::set_contains(
-            &shared_types,
-            authored_name_at(
-                scope.type_env.clone().source_indices.clone(),
-                type_node.clone(),
-            ),
+        let needs_rc = rust_carrier_is_at_shared_layer(
+            type_node.clone(),
+            scope.type_env.clone().source_indices.clone(),
+            shared_types.clone(),
         );
-        let ty_str = if (needs_rc.clone() && !rust_type_is_rc_wrapped(ty_str.clone())) {
-            wrap_shared_type(RenderTarget::Rust, ty_str.clone())
+        let ty_str = if preserves_declared_brand.clone() {
+            render_rust_shared_type_with_optional(
+                type_node.clone(),
+                ann_name.clone(),
+                ty_str.clone(),
+                shared_types.clone(),
+            )
         } else {
-            ty_str.clone()
+            if (needs_rc.clone() && !rust_type_is_rc_wrapped(ty_str.clone())) {
+                wrap_shared_type(RenderTarget::Rust, ty_str.clone())
+            } else {
+                ty_str.clone()
+            }
         };
         if (is_simple_type_node(
             type_node.clone(),

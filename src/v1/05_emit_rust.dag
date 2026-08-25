@@ -7922,6 +7922,22 @@ fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> Bool {
   map_contains_key(rt_ref_map_functions(), function_name)
 }
 
+// The Absent arm returns function_name UNCHANGED, and that is the identity case,
+// not a fallback for an unknown name. rt_bridge_function_names is derived by
+// filter(f => f.name != f.bridge_name) over rt_function_registry, so it holds
+// ONLY the rows that rename; a miss means this bridge's v1_rt symbol is spelled
+// exactly like its .dag name, which is true of most of the registry.
+// The totality of the Absent arm DEPENDS on that derivation: if
+// rt_bridge_function_names ever becomes hand-authored rather than derived from
+// rt_function_registry, a miss stops meaning "spelled the same" and this arm
+// becomes a fabrication, so that change invalidates this argument.
+// An unknown name cannot reach either use of the result, which a reader of this
+// function alone cannot see: emit_typed_call consumes runtime_name only inside
+// `if is_rt`, and is_rt requires map_contains_key(rt_functions(), func); and
+// emit_rust_generic_method_call computes bridge_name only in the else of a guard
+// that already refuses when rt_functions() misses. Registry-vs-derivation
+// agreement is held by test.claim.rt_bridge_registry_witness_test
+// rt_bridge_name_agrees_with_registry_on_every_row.
 fn rust_runtime_bridge_name(function_name: String) -> String {
   match map_get(rt_bridge_function_names(), function_name) {
     Present { value: runtime_name } => runtime_name
@@ -11905,9 +11921,31 @@ fn emit_capability_method(cap_node: Node, shared_types: Set<String>, env: TypeEn
   concat(items.async_prefix, items.func_keyword, " ", emit_ident(name: authored_name(env: env, node: cap_node), target: Rust), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
 }
 
+// A CALL IS A REFERENCE TO ANOTHER DECLARATION, SPELLED WITH ARGUMENTS.
+//
+// This predicate answers one question -- does this `data` initializer reference another
+// declaration -- and `emit_data_def` uses it to choose between the JSON serializer (which can
+// render only literals) and `emit_typed_expr` (which can render anything). An `ExprVar` was
+// already answered `true` for exactly the right reason: a bare name is a reference. An
+// `ExprCall` is the same reference with an argument list attached, and it fell through `_` to
+// `false`, sending `data d: R = mk(..)` to a serializer that cannot represent a call. The
+// serializer then refused with `unsupported mock expression`, so the failure surfaced one layer
+// below the judgment that caused it.
+//
+// The match was TOTAL AT THE LEVEL EXAMINED AND BLIND ONE LEVEL DOWN: exhaustive over
+// `expr_data`, no arm missing, nothing for a reviewer or a wildcard-free lens to catch -- the
+// `_` carried the payload. It was wrong by this function's own definition, not incomplete.
+//
+// WHY NOTHING THAT WORKS TODAY MOVES: the JSON branch is guarded by record-shaped-type AND
+// no-cross-refs, and every row currently on it emitted successfully, which by construction means
+// its initializer holds no call. Measured at the time of the repair: 34 rows on the JSON path
+// across the seed, none affected; 9 rows refused, all of them `PrimitiveIdentity` in
+// `std.primitive_projection` -- the first rows in the seed closure's history to satisfy both
+// conditions at once, which is why the defect stood this long unasked.
 fn data_value_has_cross_refs(value: Node) -> Bool {
   match value.expr_data {
     ExprVar { binding_kind: _ } => true
+    ExprCall { call_semantics: _, descent_evidence: _ } => true
     ExprListLit => value.children |> any(c => data_value_has_cross_refs(value: c))
     ExprRecordLit { parent_enum: _ } =>
       value.children |> any(f => data_value_has_cross_refs(value: field_init_node_value(n: f)))
@@ -11920,6 +11958,17 @@ fn data_def_annotation_is_named_refinement(annotation: Node, source_indices: Map
   ann_name != "" && annotation.type_annotation != none && !is_container_type(name: ann_name) && !is_host_text_carrier_type(n: annotation, source_indices: source_indices)
 }
 
+// ONE AUTHORITY FOR THIS DECLARATION'S REFERENCE LAYER. This key was
+// set_contains(shared_types, authored_name_at(node: type_node)) -- a second authority beside
+// rust_carrier_is_at_shared_layer, which this same function's closure already consults through
+// value_inferred_type_is_rc_wrapped. The two disagree on three axes and every one of them is
+// reachable from this position: the authored spelling is unreduced, so a dotted annotation missed
+// the bare-keyed set; no conjunct excluded a carrier that realizes as a machine scalar; and none
+// excluded optional cardinality, while render_rust_type_with_applied_binding -- which renders the
+// declared type for the same row -- does apply the optional template. So one data row had its
+// declared type decided by the carrier and its wrap decided by the spelling, and needs_rc is
+// threaded into emit_data_def_body, so the value took the same answer as the signature. Routed to
+// the carrier authority; the spelling key is deleted rather than kept beside it.
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let annotation_type_node = type_node
   let ann_name = authored_name_at(source_indices: scope.type_env.source_indices, node: annotation_type_node)
@@ -11952,9 +12001,11 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
     }
   } else { raw_ty_str }
   let fn_name = to_snake(name: name)
-  let needs_rc = set_contains(shared_types, authored_name_at(source_indices: scope.type_env.source_indices, node: type_node))
+  let needs_rc = rust_carrier_is_at_shared_layer(n: type_node, source_indices: scope.type_env.source_indices, shared_types: shared_types)
 
-  let ty_str = if needs_rc && !rust_type_is_rc_wrapped(type_name: ty_str) {
+  let ty_str = if preserves_declared_brand {
+    render_rust_shared_type_with_optional(n: type_node, type_name: ann_name, rendered: ty_str, shared_types: shared_types)
+  } else if needs_rc && !rust_type_is_rc_wrapped(type_name: ty_str) {
     wrap_shared_type(target: Rust, inner: ty_str)
   } else {
     ty_str

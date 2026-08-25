@@ -149,7 +149,12 @@ import v1.compiler.infer_resolve {
 import v1.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult,
   resolve_func_sigs, flatten_parent_envs,
-  FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous
+  FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous,
+  CallableCandidate, CallableIdentity, DeclaredCallable, BuiltinCallable,
+  callable_identity_label, callable_candidate_labels,
+  DerivedCalleeSig, DerivedFromSig, NoDerivableSig,
+  NoDerivableSigReason, DerivationSigUnresolved, DerivationSigAmbiguous,
+  func_sig_for_derivation
 }
 import v1.compiler.infer_emit_info {
   TypeRepr, StructRepr, EnumRepr,
@@ -187,7 +192,7 @@ import v1.compiler.infer_lookup {
   field_summary_for_type,
   lookup_field_type_node, lookup_coproduct_common_field_node, product_field_result_type,
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
-  lookup_in_scope, lookup_func_sig, func_sig_if_resolved,
+  lookup_in_scope, lookup_func_sig,
   global_bare_callable_node, func_decl_binding_for_call,
   ConstructorDeclarationLookup, ExactConstructorDeclaration,
   NotAdmissionBearingReference, AdmissionBearingDeclarationUnavailable,
@@ -923,15 +928,111 @@ fn conformance_ground_type(n: Node, source_indices: Map<String, NewlineIndex>) -
     || conformance_ground_element_collection(n: n, source_indices: source_indices)
 }
 
-data conformance_unjudged_live_hole_note: String = "PROVEN LIVE HOLE, AND THE REASON THE UNJUDGED ADVISORY IS EXCLUDED FROM THIS PR (codex reviews 45647, 45767). The branch now returns [] for the unjudged case, matching origin/main exactly, so this PR neither closes nor worsens the class; it lands with the identity capability instead. The record below is kept because the witness and the five measured attempts are what that lane starts from. The unjudged branch is not merely unmeasured — a program that is simply WRONG reaches emission through it. Executed witness: `type R \{ x: Int \}` `type S \{ y: String \}` `fn wrong_record() -> R \{ S \{ y: \"a\" \} \}` compiles EXIT 0 and EMITS TWO FILES, on this branch and on origin/main alike. Two structurally unrelated named records is not a representation gap; it is the conformance half of #7479. It was briefly reported as a counted advisory here, and that is precisely what was removed: counting it protects nothing, and a number beside a wrong program is the fabricated success DESIGN 5 forbids, one level up. THE FIX WAS ATTEMPTED AND IS NOT LANDED, and the measurements are recorded because they are the real cost of the next attempt rather than a reason to stop looking. Three successive narrowings of a refuse-when-both-sides-are-named-structured rule were each run against the whole corpus: (1) both sides structured and named -> 90 refusals of CORRECT code, dominated by the two-representation optionality class (24 Node(Optional) vs Primitive(Node), plus Coproduct(X) vs Coproduct(Optional)); (2) narrowed to inhabited named RECORDS with kernel scope names excluded -> 15; (3) additionally guarding the raw nodes -> 27, and the population had by then shifted to a NEW class, produced sides that are let-BINDING names (module_emit_scope, scope_after_expr, lookup_item) rather than types. The count moving 90 -> 15 -> 27 rather than monotonically down is the finding: each guard displaces the false-positive population instead of shrinking it, which is the exemption-accumulation this wall refuses elsewhere, and shipping any of the three would red correct code. So the arm is NOT landed, and with no arm to land the residue is left exactly where main leaves it rather than dressed up as partial coverage. The blocking obstacle is named and is not vague: the produced-side node reaching this branch is not reliably a TYPE — it can be a nominal reference, a kernel encoding of cardinality or absence, an anonymous literal, or a let-binding identity — so no predicate over its shape can separate a real mismatch from a representation gap until produced-side type identity is established upstream. A FOURTH attempt isolated the obstacle exactly, and it is the reason the other three moved the population instead of shrinking it: guarding on `both sides are Conj whose authored name RESOLVES via lookup_type_by_name to a record declaration` still refused 14 seed sites, and every one had a LET-BINDING name on the produced side (module_emit_scope, scope_after_expr, lookup_item, service_fallback_transport). lookup_type_by_name resolves those because bindings and types inhabit ONE name environment, so the guard cannot tell a type identity from a binding identity — which is the stated obstacle, now demonstrated rather than inferred. A FIFTH attempt tested the one discriminator that looked left — requiring the resolved declaration to NAME ITSELF, on the theory that a type declares its own name while a binding resolves to a type named differently — and it returned the IDENTICAL 14 sites, because lookup_type_by_name on a binding returns a node carrying the BINDING's name, not its type's. The name environment does not merely conflate the two lookups; the resolved node itself carries no separable type identity. No predicate over the produced node's shape or name can close this class. Dissolve-on: feature:conformance-produced-type-identity — the produced node carries a resolved type identity rather than a shape to be guessed at, at which point the refusal arm is one predicate over two identities and this row deletes. THE PERMISSION IS NOT THIS PATH'S AND THAT WAS MEASURED, NOT ASSERTED: the identical program built against origin/main compiles EXIT 0, emits 2 files and reports ZERO diagnostics, and this branch now does the same, because the unjudged branch returns the same empty list main returns. So the conformance path neither newly permits the emission nor closes it. THE COUNTED-ADVISORY MIDDLE GROUND WAS TRIED AND REJECTED, and the rejection is the useful part of this row: an advisory made the fail-open visible without making it stop, and review held that visibility is not protection when the program is PROVABLY wrong rather than merely unproven (codex reviews 45647, 45695, 45711, 45767, 45777). Agreed on execution — the R/S witness above emitted two files under the advisory. So the class is left at main's behavior and named here with its trigger, and what ships is the method-existence wall, which does refuse and does emit nothing. That is a judgment about sequencing, not a claim that the hole is acceptable: a declared boundary with an executed witness, an owner-facing trigger and a measured cost, and deliberately NOT a success path with a number beside it."
+// A PLAIN KERNEL VALUE WHERE A DECLARED STRUCTURED TYPE IS REQUIRED, at any position that carries a
+// declared type -- not only the record-literal field the wall below it already guards.
+//
+// This is the ordinary floor invariant DESIGN section 4b names beside name resolution and
+// exact-bijection binding: values inhabit declared types. It is a DIFFERENT class from the
+// coproduct-payload-where-parent wall next door, where the offending value is one of the declared
+// coproduct's own payload types; here the value is an `Int`, a `String` or a `Bool` standing where
+// a record or coproduct is declared. The census that found it measured SEVEN of the fourteen
+// grammar-admitted declared-type positions accepting that value silently.
+//
+// NO SECOND RELATION IS MINTED FOR IT (DESIGN section 3). kernel_value_declared_type_mismatch is
+// already the corpus authority for exactly this judgment -- it is what makes a record-literal field
+// refuse `KH \{ subject: 5 \}` today -- and it already carries the discriminations that keep the
+// judgment honest: a kernel that CASTS to the formal is admitted (dag_can_cast), a structural
+// carrier standing for the kernel is admitted, and a single-child refinement over the kernel (the
+// brand-alias shape) is admitted. What was missing was never the relation; it was that only ONE of
+// the fourteen positions consulted it. This function is the peeling prologue the field seam
+// performs before consulting it, lifted so every position performs the same one.
+//
+// THE POSITIONS THIS RELATION IS NOW CONSULTED AT, and they are the ones that already carry a
+// declared type into inference rather than a new walk: a fn body against its declared return, an
+// early `return` against that same declaration, a module-scope `data` annotation, and an annotated
+// `let`. The annotated `let` is wired in the ExprLet arm of infer_expr_body, which had no
+// conformance judgment at all before this change.
+//
+// OPTIONALITY IS EXCLUDED on both sides, the exclusion its neighbours state and for the same
+// reason: optionality lives in two representations here (a cardinality marker and the nominal
+// `Optional` coproduct), so a difference across them is a representation gap rather than a
+// mismatch, and refusing it would be the fabricated refusal DESIGN section 5 forbids exactly as it
+// forbids a fabricated success.
+fn declared_type_kernel_inhabitance_mismatch(declared: Node, produced: Node, scope: InferScope) -> Bool {
+  if declared.return_cardinality == CardOptional || produced.return_cardinality == CardOptional {
+    false
+  } else {
+    let declared_required = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: declared)) {
+      Present { value: resolved } => resolved
+      Absent => with_required_cardinality(n: declared)
+    }
+    kernel_value_declared_type_mismatch(
+      formal: peel_nominal_alias_identity(n: declared_required, env: scope.type_env, module_name: scope.module_name),
+      actual: peel_nominal_alias_identity(n: produced, env: scope.type_env, module_name: scope.module_name),
+      type_env: scope.type_env,
+      source_indices: scope.type_env.source_indices)
+  }
+}
 
-data conformance_expansion_depth_note: String = "MEASUREMENT RECEIPT FOR THE NEXT LANE, NOT A DESCRIPTION OF LIVE CODE — the expansion-peeling comparison it records was deleted together with the unjudged advisory it fed (codex review 45767), and this row is kept because the measurement is what the next attempt starts from rather than re-derives. A declared type and a produced type routinely arrive at DIFFERENT EXPANSION DEPTHS: the declaration side is a nominal reference to T while the body side is T's already-expanded body, so comparing them as they arrive reads one type as two. Measured over the whole corpus that was the majority of the unjudged residue — 203 Node, 173 Outcome, 46 Witness, 43 Optional, 38 PipelineStep and a long tail, each a reference and its own body — which is why the frontier first read 3005 and then 1566 once each side was resolved through lookup_type_for and peeled through peel_where_refinement_base, the SAME peel the method wall uses (DESIGN section 3: one authority, two consumers, not a second one minted here). Reporting those as unjudged was not a conservative silence but a WRONG COUNT, and an inflated frontier buries the residue that genuinely cannot be decided under pairs that were never in doubt. THE COMPARISON MUST BE THE STRUCTURAL RELATION, NOT A RENDERED SHAPE STRING, and the first version of this got that wrong in a way worth keeping on the record: it compared node_type_shape output, which collapses every anonymous product to the literal text Product(<anon>) and every named product to its OUTER NAME ONLY, discarding fields, variants and their types. So two structurally different records compared EQUAL and were stamped proven-conforming — the exact fail-open this wall exists to delete, reintroduced while removing a different one, and by the same mechanism as the earlier 1.0/0.0 seam: a projection that looks like evidence used where a proof was required (codex review 45600). A display projection is for MESSAGES; a judgment must consume the structural relation. That constraint outlives the deleted code and binds whoever rebuilds it: node_type_compatible recurses into container elements and compares canonical template names, so identity is established rather than rendered, but its known imprecision is only safe where a mismatch costs a count rather than a refusal — it reports MISMATCH for the four classes of correct code enumerated in declared_type_conformance_note, so wiring it to a refusal without first establishing produced-side type identity (feature:conformance-produced-type-identity) reds correct code. That is the trap the five measured attempts in conformance_unjudged_live_hole_note fell into."
+// ONE element peel, and exactly one. A `List<KOuter>` declaration whose value is `[5]` reaches this
+// judgment as a container pair, so the kernel sits one level below the declared name and the check
+// above sees a container on the declared side and never fires. Peeling one level covers the
+// container position the census measured; a NESTED container (`List<List<KOuter>>`) is not judged,
+// which is a narrowing stated rather than implied. It is written out rather than self-recursed
+// because the measured depth is one, and an unbounded recursion here would owe a descent proof for
+// a frontier nobody has measured.
+fn declared_type_kernel_inhabitance_mismatch_at_element(
+  declared: Node,
+  produced: Node,
+  scope: InferScope
+) -> Bool {
+  let si = scope.type_env.source_indices
+  let both_element_collections = node_is_element_collection(n: declared, source_indices: si)
+    && node_is_element_collection(n: produced, source_indices: si)
+    && node_is_keyed_collection(n: declared, source_indices: si) == false
+    && node_is_keyed_collection(n: produced, source_indices: si) == false
+  if both_element_collections == false {
+    false
+  } else {
+    match declared.children |> first {
+      Absent => false
+      Present { value: dl } =>
+        match produced.children |> first {
+          Absent => false
+          Present { value: pr } =>
+            declared_type_kernel_inhabitance_mismatch(
+              declared: child_type_node(ch: dl),
+              produced: child_type_node(ch: pr),
+              scope: scope)
+        }
+    }
+  }
+}
+
+fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
+  declared: Node,
+  produced: Node,
+  scope: InferScope
+) -> Bool {
+  declared_type_kernel_inhabitance_mismatch(declared: declared, produced: produced, scope: scope)
+    || declared_type_kernel_inhabitance_mismatch_at_element(
+      declared: declared, produced: produced, scope: scope)
+}
 
 fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
   let si = scope.type_env.source_indices
   let both_ground = conformance_ground_type(n: declared, source_indices: si)
     && conformance_ground_type(n: produced, source_indices: si)
-  if !both_ground { [] }
+  if declared_type_kernel_inhabitance_mismatch_here_or_at_element(
+      declared: declared, produced: produced, scope: scope) {
+    [type_mismatch_error(
+      expected: node_type_shape(n: declared, source_indices: si),
+      got: node_type_shape(n: produced, source_indices: si),
+      span: span,
+      module_name: scope.module_name
+    )]
+  }
+  else if !both_ground { [] }
   else if node_type_compatible(left: declared, right: produced, source_indices: si) { [] }
   else {
     [type_mismatch_error(
@@ -3669,6 +3770,13 @@ fn qualified_value_projection(texpr: Node, scope: InferScope, span: SourceSpan) 
   }
 }
 
+// ONE ARM OF `infer_expr_body` BELOW IS UNREACHABLE AND SPELLED ANYWAY: at the ExprCall
+// signature lookup, the enclosing match refuses FuncSigAmbiguous before that body runs, so
+// the collapse cannot happen there -- but the arm is written out instead of wildcarded so
+// that a new FuncSigLookup arm is a compile error at this seam rather than a silent Absent,
+// which is exactly how the deleted `func_sig_if_resolved` came to erase the ambiguity in
+// the first place.
+
 fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
   match texpr.expr_data {
     ExprLiteral { value: lit } =>
@@ -3741,7 +3849,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                       ))
                   }
             FuncSigAmbiguous { candidates: ambiguous_fn_candidates } =>
-              ambiguous_reference_refusal(name: name, candidates: ambiguous_fn_candidates, span: span, scope: scope)
+              ambiguous_reference_refusal(name: name, candidates: callable_candidate_labels(candidates: ambiguous_fn_candidates), span: span, scope: scope)
             FuncSigUnresolved =>
               match lookup_binding_by_name(env: scope.type_env, name: name) {
                 Present { value: gbinding } =>
@@ -3908,12 +4016,16 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let call_sig_lookup = body_shadow_aware_func_sig(scope: scope, func_name: func_name)
       match call_sig_lookup {
       FuncSigAmbiguous { candidates: ambiguous_fn_candidates } =>
-        ambiguous_reference_refusal(name: func_name, candidates: ambiguous_fn_candidates, span: span, scope: scope)
+        ambiguous_reference_refusal(name: func_name, candidates: callable_candidate_labels(candidates: ambiguous_fn_candidates), span: span, scope: scope)
       _ =>
       match constructor_reference_admission_unshadowed(callee_name: func_name, span: span, scope: scope) {
         Present { value: refusal } => refusal
         Absent =>
-      let sig = func_sig_if_resolved(lookup: call_sig_lookup)
+      let sig = match call_sig_lookup {
+        FuncSigResolved { sig: resolved_call_sig } => Present { value: resolved_call_sig }
+        FuncSigUnresolved => Absent
+        FuncSigAmbiguous { candidates: _ } => Absent
+      }
       let sig_params = match sig {
         Present { value: s } => s.params
         Absent => []
@@ -4662,8 +4774,15 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       }
       let val_result = infer_expr(texpr: val_expr, scope: scope, expected: val_expected)
       let val_typed = val_result.typed
-      let val_diags = val_result.diagnostics
       let val_type = resolved_type(n: val_typed)
+      let val_annotation_diags = if texpr.type_annotation != none && is_type_expr_annotation(n: texpr.type_annotation.value) {
+        declared_type_conformance_diags(
+          declared: texpr.type_annotation.value,
+          produced: val_type,
+          span: val_expr.span,
+          scope: scope)
+      } else { [] }
+      let val_diags = concat(val_result.diagnostics, val_annotation_diags)
       if body_expr == none {
         let let_texpr = make_named_expr_node(name: let_name, expr_data: ExprLet, children: [val_typed], inferred: Present { value: Resolved { node: val_type } }, span: span, name_span: node_name_span(n: texpr))
         InferResult {
@@ -6044,8 +6163,8 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
   match val.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      match func_sig_if_resolved(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
-        Present { value: sig } =>
+      match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+        DerivedFromSig { sig: sig } =>
           if sig.output_provenance |> count > 1 {
             let return_type = sig.inferred
             let field_map = return_type.children |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
@@ -6058,12 +6177,12 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
               map_insert(ctx.per_field_vars, binding_name, field_map)
             } else { ctx.per_field_vars }
           } else { ctx.per_field_vars }
-        Absent => ctx.per_field_vars
+        NoDerivableSig { reason: _ } => ctx.per_field_vars
       }
     ExprMethodCall { method_semantics: _ } =>
       let callee = expr_method_name_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      match func_sig_if_resolved(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
-        Present { value: sig } =>
+      match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+        DerivedFromSig { sig: sig } =>
           if sig.output_provenance |> count > 1 {
             let return_type = sig.inferred
             let field_map = return_type.children |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
@@ -6076,7 +6195,7 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
               map_insert(ctx.per_field_vars, binding_name, field_map)
             } else { ctx.per_field_vars }
           } else { ctx.per_field_vars }
-        Absent => ctx.per_field_vars
+        NoDerivableSig { reason: _ } => ctx.per_field_vars
       }
     _ => ctx.per_field_vars
   }
@@ -6212,14 +6331,14 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      let from_provenance = match func_sig_if_resolved(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
-        Present { value: sig } =>
+      let from_provenance = match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+        DerivedFromSig { sig: sig } =>
           match sig.output_provenance |> first {
             Present { value: param_map } =>
               classify_call_via_provenance(call: val, param_map: param_map, ctx: ctx)
             Absent => none
           }
-        Absent => none
+        NoDerivableSig { reason: _ } => none
       }
       match from_provenance {
         Present { value: _ } => from_provenance
@@ -6479,14 +6598,14 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
             ArithmeticDescent { param: _, factor: _ } => inner_rel
             PreservedValue =>
               let callee = expr_call_func_at(texpr: arg_expr, source_indices: ctx.type_env.source_indices)
-              let from_provenance = match func_sig_if_resolved(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
-                Present { value: sig } =>
+              let from_provenance = match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+                DerivedFromSig { sig: sig } =>
                   match sig.output_provenance |> first {
                     Present { value: param_map } =>
                       classify_call_via_provenance(call: arg_expr, param_map: param_map, ctx: ctx)
                     Absent => none
                   }
-                Absent => none
+                NoDerivableSig { reason: _ } => none
               }
               match from_provenance {
                 Present { value: prov_rel } => prov_rel
@@ -6802,11 +6921,11 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       let scrut_variant_sig = match scrut.expr_data {
         ExprCall { call_semantics: _, descent_evidence: _ } =>
           let callee = expr_call_func_at(texpr: scrut, source_indices: ctx.type_env.source_indices)
-          match func_sig_if_resolved(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
-            Present { value: sig } =>
+          match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+            DerivedFromSig { sig: sig } =>
               if map_keys(sig.variant_provenance) |> count > 0 { Present { value: sig } }
               else { none }
-            Absent => none
+            NoDerivableSig { reason: _ } => none
           }
         _ => none
       }
@@ -7410,15 +7529,15 @@ fn method_call_args_by_name(call: Node, func_env: ResolvedFuncEnv, type_env: Typ
   let mname = expr_method_name_at(texpr: call, source_indices: source_indices)
   let recv = method_receiver(texpr: call)
   let mc_args = method_arg_nodes(texpr: call)
-  let base = match func_sig_if_resolved(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: mname)) {
-    Present { value: sig } =>
+  let base = match func_sig_for_derivation(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: mname)) {
+    DerivedFromSig { sig: sig } =>
       match sig.params |> first {
         Present { value: first_p } =>
           let first_pname = param_node_name_at(n: first_p, source_indices: source_indices)
           if first_pname != "" { map_insert(empty_map(), first_pname, recv) } else { empty_map() }
         Absent => empty_map()
       }
-    Absent => empty_map()
+    NoDerivableSig { reason: _ } => empty_map()
   }
   fold(mc_args, init: base, f: (acc, arg_node) =>
     match arg_name_at(n: arg_node, source_indices: source_indices) {
@@ -7429,8 +7548,8 @@ fn method_call_args_by_name(call: Node, func_env: ResolvedFuncEnv, type_env: Typ
 }
 
 fn compose_callee_provenance(callee: String, arg_by_name: Map<String, Node>, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_env: ResolvedFuncEnv, let_prov: Map<String, Map<String, SubValueRelation>>) -> Map<String, SubValueRelation> {
-  match func_sig_if_resolved(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: callee)) {
-    Present { value: sig } =>
+  match func_sig_for_derivation(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: callee)) {
+    DerivedFromSig { sig: sig } =>
       match sig.output_provenance |> first {
         Present { value: callee_prov } =>
           fold(callee_prov |> map_keys, init: empty_map(), f: (acc, callee_pname) =>
@@ -7459,7 +7578,7 @@ fn compose_callee_provenance(callee: String, arg_by_name: Map<String, Node>, par
           )
         Absent => empty_map()
       }
-    Absent => empty_map()
+    NoDerivableSig { reason: _ } => empty_map()
   }
 }
 
@@ -7680,8 +7799,8 @@ fn collect_variant_constructors(body: Node, parent_enum: String, param_names: Li
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: body, source_indices: type_env.source_indices)
-      match func_sig_if_resolved(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: callee)) {
-        Present { value: sig } =>
+      match func_sig_for_derivation(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: callee)) {
+        DerivedFromSig { sig: sig } =>
           if authored_name_at(source_indices: type_env.source_indices, node: sig.inferred) == parent_enum
             && (map_keys(sig.variant_provenance) |> count > 0) {
             let call_args = call_args_by_name(call: body, source_indices: type_env.source_indices)
@@ -7707,7 +7826,7 @@ fn collect_variant_constructors(body: Node, parent_enum: String, param_names: Li
               }
             )
           } else { acc }
-        Absent => acc
+        NoDerivableSig { reason: _ } => acc
       }
     ExprMatch =>
       match_arm_nodes(texpr: body) |> fold(init: acc, f: (a, arm) =>
@@ -8551,7 +8670,7 @@ fn type_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv {
       inductive_fields: parent_env.inductive_fields,
       source_indices: parent_env.source_indices,
       intern_table: parent_env.intern_table,
-      source_visible_names: parent_env.source_visible_names,
+      source_visible_names: parent_env.source_visible_names, authored_import_names: parent_env.authored_import_names,
       symbol_index: parent_env.symbol_index
     }
   } else { parent_env }
@@ -8571,7 +8690,7 @@ fn interface_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv
     inductive_fields: filtered.inductive_fields,
     source_indices: filtered.source_indices,
     intern_table: filtered.intern_table,
-    source_visible_names: filtered.source_visible_names,
+    source_visible_names: filtered.source_visible_names, authored_import_names: filtered.authored_import_names,
     symbol_index: filtered.symbol_index
   }
 }
@@ -8591,7 +8710,7 @@ fn interface_env_surface(env: TypeEnv) -> TypeEnv {
     inductive_fields: env.inductive_fields,
     source_indices: env.source_indices,
     intern_table: env.intern_table,
-    source_visible_names: env.source_visible_names,
+    source_visible_names: env.source_visible_names, authored_import_names: env.authored_import_names,
     symbol_index: env.symbol_index
   }
 }
@@ -9241,7 +9360,7 @@ fn census_fn_sig_env(census: SymbolIndex, module_path: String, tp_names: List<St
     inductive_fields: empty_map(),
     source_indices: source_indices,
     intern_table: empty_intern_table(),
-    source_visible_names: empty_map(),
+    source_visible_names: empty_map(), authored_import_names: empty_map(),
     symbol_index: census
   }
   env_with_type_variable_bindings(env: base, tp_names: tp_names)
@@ -9536,6 +9655,21 @@ fn overlay_direct_import_exports(ancestry_str_bindings: Map<String, TypeBinding>
   )
 }
 
+// THE AUTHORED HALF OF THIS FUNCTION'S VISIBILITY MAPS, KEPT SEPARATE BECAUSE THE UNION DESTROYS IT.
+// `build_type_env` folds BOTH import arms into one `source_visible_names` map: an is_all import
+// contributes every name in the imported module's interface AND every name that module itself
+// acquired through ancestry -- so a bare `import v2.std.collection` puts `map_get` in the map
+// without the author ever writing the word, and the ancestry half contributes names
+// TRANSITIVELY, which is the closure-supply case gap-analysis row 30 is about, arriving through
+// a set whose name suggests the opposite.
+//
+// Membership in source_visible_names is therefore NECESSARY for "the author named this
+// declaration" and NOT SUFFICIENT for it, and the sufficient half cannot be recovered by
+// filtering the result: the union already happened. Only the specific_names arm answers the
+// question `v1.compiler.infer_lookup` level 1a asks, so `authored_import_names` is folded
+// separately here rather than derived from the union. Type parameters are deliberately absent --
+// they are authored, but they are not imports, and that map answers "which declaration did an
+// import name", not "what is in lexical scope".
 fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex) -> BuildTypeEnvResult {
   let source_indices = fold(map_keys(kernel_type_set), init: source_indices, f: (acc, name) =>
     map_insert(acc, concat("<kernel:", name, ">"), build_newline_index(file: concat("<kernel:", name, ">"), source: name))
@@ -9568,7 +9702,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
   let kernel_recursive_types = map_keys(compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
   let kernel_recursive_type_set = fold(map_keys(compiler_recursive_types), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
-  let kernel = TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
+  let kernel = TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index() }
 
   let module_name_str = authored_name_at(source_indices: source_indices, node: module.module)
   let import_parents = flat_map(module.resolved_imports, imp =>
@@ -9684,7 +9818,14 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       fold(imp.specific_names, init: acc, f: (x, n) => map_insert(x, n, true))
     }
   )
-  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: all_local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: source_visible_names, symbol_index: symbol_index }
+  let authored_import_names = fold(module.resolved_imports, init: empty_map(), f: (acc, imp) =>
+    if imp.is_all {
+      acc
+    } else {
+      fold(imp.specific_names, init: acc, f: (x, n) => map_insert(x, n, true))
+    }
+  )
+  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: all_local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: source_visible_names, authored_import_names: authored_import_names, symbol_index: symbol_index }
   let resolved = resolve_env_bindings(env: unresolved_env, module_name: module_name_str, local_names: local_name_set, deps_map: all_deps_map)
   let resolved_env_out = resolved.env
   let resolved_diags = resolved.diagnostics
@@ -9698,7 +9839,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     inductive_fields: resolved_env_out.inductive_fields,
     source_indices: resolved_env_out.source_indices,
     intern_table: intern_table,
-    source_visible_names: source_visible_names,
+    source_visible_names: source_visible_names, authored_import_names: authored_import_names,
     symbol_index: resolved_env_out.symbol_index,
   }
   let cache_str_bindings = map_merge(final_env.ancestry_str_bindings, final_env.str_bindings)
@@ -9730,7 +9871,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let absent_variant = Node { name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_optional = Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
-  let kernel = TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
+  let kernel = TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index() }
 
   let module_name_str = authored_name_at(source_indices: source_indices, node: module.module)
   let import_parents = flat_map(module.resolved_imports, imp =>
@@ -9799,7 +9940,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let merged_inductive_fields = merge_inductive_fields(left: parent_inductive_fields, right: local_inductive_fields)
   let ancestry_str_bindings = ancestry_cache.str_bindings
   let visible_str_bindings = map_merge(ancestry_str_bindings, local_str_bindings)
-  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
+  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index() }
   let type_env_cache = TypeEnvCache {
     deps_map: all_deps_map,
     str_bindings: visible_str_bindings,
@@ -10419,7 +10560,7 @@ fn topo_resolve_types(
       }
     )
     return EnvResolveResult {
-      env: TypeEnv { module_path: env.module_path, bindings: stuck_accum.bindings, str_bindings: stuck_accum.str_bindings, ancestry_str_bindings: env.ancestry_str_bindings, parents: env.parents, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_indices: env.source_indices, intern_table: env.intern_table, source_visible_names: env.source_visible_names, symbol_index: env.symbol_index },
+      env: TypeEnv { module_path: env.module_path, bindings: stuck_accum.bindings, str_bindings: stuck_accum.str_bindings, ancestry_str_bindings: env.ancestry_str_bindings, parents: env.parents, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_indices: env.source_indices, intern_table: env.intern_table, source_visible_names: env.source_visible_names, authored_import_names: env.authored_import_names, symbol_index: env.symbol_index },
       diagnostics: concat(diagnostics, stuck_accum.diagnostics)
     }
   }
@@ -10447,7 +10588,7 @@ fn topo_resolve_types(
 
   topo_resolve_types(
     remaining: next_remaining,
-    env: TypeEnv { module_path: env.module_path, bindings: ready_accum.bindings, str_bindings: ready_accum.str_bindings, ancestry_str_bindings: env.ancestry_str_bindings, parents: env.parents, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_indices: env.source_indices, intern_table: env.intern_table, source_visible_names: env.source_visible_names, symbol_index: env.symbol_index },
+    env: TypeEnv { module_path: env.module_path, bindings: ready_accum.bindings, str_bindings: ready_accum.str_bindings, ancestry_str_bindings: env.ancestry_str_bindings, parents: env.parents, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_indices: env.source_indices, intern_table: env.intern_table, source_visible_names: env.source_visible_names, authored_import_names: env.authored_import_names, symbol_index: env.symbol_index },
     module_name: module_name,
     diagnostics: concat(diagnostics, ready_accum.diagnostics),
     local_names: local_names,
@@ -10872,7 +11013,7 @@ fn rewire_type_env_import_str_binding_identity(modules: List<TypedModule>, sourc
         inductive_fields: m.type_env.inductive_fields,
         source_indices: m.type_env.source_indices,
         intern_table: m.type_env.intern_table,
-        source_visible_names: m.type_env.source_visible_names,
+        source_visible_names: m.type_env.source_visible_names, authored_import_names: m.type_env.authored_import_names,
         symbol_index: m.type_env.symbol_index
       },
       type_env_cache: m.type_env_cache,
@@ -10908,7 +11049,7 @@ fn compiler_kernel_type_env(source_indices: Map<String, NewlineIndex>, intern_ta
   let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
   let kernel_recursive_types = map_keys(compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
   let kernel_recursive_type_set = fold(map_keys(compiler_recursive_types), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
-  TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
+  TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index() }
 }
 
 fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
@@ -10949,7 +11090,7 @@ fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<
         inductive_fields: m.type_env.inductive_fields,
         source_indices: m.type_env.source_indices,
         intern_table: m.type_env.intern_table,
-        source_visible_names: m.type_env.source_visible_names,
+        source_visible_names: m.type_env.source_visible_names, authored_import_names: m.type_env.authored_import_names,
         symbol_index: m.type_env.symbol_index
       },
       type_env_cache: m.type_env_cache,

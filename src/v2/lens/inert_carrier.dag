@@ -14,6 +14,28 @@ fn inert_row(unit: String, reason: String) -> FrontierRow {
   frontier_row_path(path: unit, reason: reason, dissolution: inert_carrier_row_dissolve)
 }
 
+// SCOPE, stated on the carrier rather than only in the plan that specified it: this
+// roster holds carriers that are DECLARED + REFERENCED BY A TEST + read by no
+// production code. A carrier referenced by nothing at all -- no consumer and no test
+// -- is invisible here BY CONSTRUCTION (the self_tested gate in the host producer,
+// cli_run.rs compute_inert_carrier_data), and that is intended, not a hole in the
+// lens. The reason is the remedy, not the size of the set: an inert row says "modeled
+// ahead of its consumer, tested, awaiting one" and dissolves when a consumer lands;
+// the unreferenced class dissolves the other way -- delete the carrier, or write the
+// missing test and let it land here -- so folding it in would file hundreds of rows
+// each asserting a test that does not exist. It is owned by the still-unbuilt
+// run-root reachability cut named in gunbc.plans.inert_layer_lens (v2.lens.inert_layer),
+// whose retirement condition already carries it; this lens is not its next rung and
+// must not be read as covering it.
+//
+// Measured over the witness layer roots (dag, src/v2) at 32597358f16 on 2026-08-24:
+// 8821 declared carriers, 14 flagged here (this roster's exact 14), 270 skipped by
+// that gate -- the same order the plan predicted for a raw sweep. A dated observation, not a
+// bound -- nothing gates on either number, and the exclusion itself is pinned by an
+// executing control in the host producer's unit tests
+// (green_control_untested_unused_carrier_is_not_flagged, which plants exactly such a
+// carrier and asserts it stays off this roster; executed both ways 2026-08-24 --
+// gate present, 12 passed; gate deleted, that control alone fails), not by the count.
 data inert_carrier_roster: List<FrontierRow> = [
   inert_row(unit: "DownstreamSupportRoster", reason: "modeled downstream coverage-roster carrier from the extdeps modeling preflight (#7571): it is the declared home for support/coverage rows that an upstream module may not carry, and the plan text names it, but no module constructs or reads one yet"),
   inert_row(unit: "Attempt", reason: "modeled compute-fabric execution carrier from the terminal-contract slice (#8413): one execution attempt with its lineage, declared ahead of the executor that issues attempts against a grant, and referenced only by fabric_terminal_contract_witness_test so far"),

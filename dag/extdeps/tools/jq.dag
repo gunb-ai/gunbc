@@ -21,6 +21,7 @@ import v2.std.node { Atom, Node, Symbol, SyntheticOccurrence, TypeNode }
 import v2.std.optional { Absent, Optional, Present }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.shell.exec { ProcessObservation, process_observation }
 import extdeps.tools { CliTool, SourceApt }
 import extdeps.apt { package_jq }
 
@@ -320,13 +321,12 @@ type JqProcessInput
   = JqProcessStdin { content: String }
   | JqProcessNoStdin
 
-// exit_code and NOT a success Bool beside it: two fields for one fact is a second
-// representation, since success is exactly exit_code == 0, derived where it is decided.
-type JqProcessObservation {
-  exit_code: Int
-  stdout: String
-  stderr: String
-}
+// The raw triple a process hands back is NOT a jq fact, so this module does not declare one.
+// extdeps.shell.exec.ProcessObservation already is that triple, and a jq-named copy of it was a
+// second name for one concept (DESIGN section 3) -- with nothing jq-specific to justify the fork,
+// since exit_code, stdout and stderr are what any process returns. What IS jq's own is how those
+// codes READ, and that stays here: JqExitPolicy and jq_classify_observation below are unchanged,
+// because jq's four-code contract is a genuine property of the tool rather than of processes.
 
 // No `tool` field. A jq-owned handler already fixes the executable, so carrying CliTool here
 // would restate the carrier's own type. It returns when a genuinely generic executor consumes it
@@ -365,7 +365,7 @@ type JqOutcome
 // valid result was ever produced", which is absence. 2 (usage or system error) and 3 (program
 // compile error) remain refusals under both policies. A single "nonzero means broken" rule would
 // mis-decode three of those four codes.
-fn jq_classify_observation(plan: JqAdmittedProcessPlan, observation: JqProcessObservation) -> JqOutcome {
+fn jq_classify_observation(plan: JqAdmittedProcessPlan, observation: ProcessObservation) -> JqOutcome {
   match plan.exit_policy {
     JqProgramExit =>
       if observation.exit_code != 0 {
@@ -460,16 +460,16 @@ fn jq_lowering_refused_diagnostic(cause: JqLoweringRefusal) -> Diagnostic {
 // Nonzero exit is DATA, not failure: a consumer's decoder maps nonzero to its own refusal state,
 // exit-zero with empty stdout to absence, and exit-zero with content to an observation. A handler
 // that treated nonzero as an error would collapse that three-state decode into two.
-fn jq_execute_admitted_plan(plan: JqAdmittedProcessPlan) -> JqProcessObservation {
+fn jq_execute_admitted_plan(plan: JqAdmittedProcessPlan) -> ProcessObservation {
   let arguments = process_argv_expansion(surface: plan.surface)
   match plan.process_input {
     JqProcessStdin { content: payload } => {
       let ran = jq.Process.RunWithStdin(arguments: arguments, stdin_payload: payload)
-      JqProcessObservation { exit_code: ran.exit_code, stdout: ran.stdout, stderr: ran.stderr }
+      process_observation(exit_code: ran.exit_code, stdout: ran.stdout, stderr: ran.stderr)
     }
     JqProcessNoStdin => {
       let ran = jq.Process.RunWithoutStdin(arguments: arguments)
-      JqProcessObservation { exit_code: ran.exit_code, stdout: ran.stdout, stderr: ran.stderr }
+      process_observation(exit_code: ran.exit_code, stdout: ran.stdout, stderr: ran.stderr)
     }
   }
 }

@@ -1,6 +1,6 @@
 module std.types
 
-import std.algebra { FinitePowerSet, FinitelySupportedFunction, FreeMonoid, kernel_algebra_profile, algebra_type_param_names }
+import std.algebra { FinitePowerSet, FinitelySupportedFunction, FreeMonoid, kernel_algebra_profile, algebra_type_param_names, carrier_container_algebra_rows, carrier_container_alias_rows, carrier_container_arity_rows, carrier_container_roster_map }
 
 data kernel_type_set: Map<String, Bool> = {
   "String": true, "Int": true, "Bool": true, "Float": true,
@@ -14,9 +14,18 @@ fn is_kernel_type(name: String) -> Bool {
   }
 }
 
-data container_type_arity: Map<String, Int> = {
-  "List": 1, "Set": 1, "Map": 2, "Witness": 1
-}
+// DERIVED FROM THE CARRIER ROSTER, not restated. Every row but one is a spelling that declared
+// `container_arity_row` on its carrier in `std.algebra`, and its arity comes from that carrier's
+// own `algebra_type_param_names` -- so a carrier cannot be listed here with an arity its algebra
+// contradicts, and an eleventh carrier reaches this map by declaring the row rather than by
+// someone remembering to edit it.
+//
+// `Witness` is appended because it is NOT an algebra carrier: it has no profile and no template
+// set, and its parameter name is special-cased in `container_param_names_for` directly below.
+// It is the one hand-authored row left in this map, and it is the reason the memberships in
+// `std.algebra` are declared rather than derived from the profile -- grounding `Witness` as a
+// carrier is that class's next-rung trigger.
+data container_type_arity: Map<String, Int> = map_insert(carrier_container_arity_rows(), "Witness", 1)
 
 fn is_container_type(name: String) -> Bool {
   match container_expected_arity(name: name) {
@@ -56,57 +65,20 @@ fn is_ordered_element_collection(name: String) -> Bool {
   map_contains_key(ordered_element_collections, name)
 }
 
-data container_template_algebra_rows: Map<String, String> = {
-  "List": "FreeMonoid",
-  "list": "FreeMonoid",
-  "Set": "FinitePowerSet",
-  "set": "FinitePowerSet",
-  "Map": "FinitelySupportedFunction",
-  "map": "FinitelySupportedFunction",
-  "FreeMonoid": "FreeMonoid",
-  "free_monoid": "FreeMonoid",
-  "BooleanAlgebra": "BooleanAlgebra",
-  "boolean_algebra": "BooleanAlgebra",
-  "FinitePowerSet": "FinitePowerSet",
-  "finite_power_set": "FinitePowerSet",
-  "FinitelySupportedFunction": "FinitelySupportedFunction",
-  "finitely_supported_function": "FinitelySupportedFunction",
-  "PartialFunction": "PartialFunction",
-  "partial_function": "PartialFunction",
-  "PointwisePower": "PointwisePower",
-  "pointwise_power": "PointwisePower"
-}
+// BOTH MAPS ARE DERIVED FROM THE CARRIER ROSTER in `std.algebra`. What stood here was two
+// spelling-keyed literals, and the note they carried explained -- correctly -- exactly why each
+// row was present or absent: `PartialFunction` had to be in the alias map because that map decides
+// what resolves as a container at all, and `FinitelySupportedFunction` had to stay out of it
+// because `container_alias_canonical_spelling` returns the first sorted key for an algebra and
+// that key would sort ahead of `"Map"`. Those reasons are now FIELDS on the spelling rows they
+// govern (`container_alias_row`, with its `RowAbsent` reason), so they travel with the carrier
+// instead of living in prose beside a literal that a later author edits without reading it.
+//
+// A self-mapping row is not a nickname: the value is the ALGEBRA and the key is a SPELLING that
+// resolves to it, which is why `List` and `Set` are keys at all.
+data container_template_algebra_rows: Map<String, String> = carrier_container_algebra_rows()
 
-// PARTIALFUNCTION IS HERE BECAUSE THIS MAP DECIDES WHAT RESOLVES AS A CONTAINER, not merely what
-// is an alias for something else. `is_declared_container_alias_spelling` reads it, and
-// `resolve_method_receiver_type` short-circuits on that predicate to return the receiver AS
-// AUTHORED, type arguments intact. A spelling absent from here takes the other branch, resolves to
-// the carrier's own record shape, and arrives at method lookup as a bare leaf -- so
-// `lookup`'s declared `OptionalOf { inner: ReceiverValue }` has no `ReceiverValue` to substitute
-// and the optional collapses. Measured: `tree.facts.lookup(node)` on a `PartialFunction` receiver
-// produced four `variant 'Present' not found in type 'InferredFacts'` refusals, the Optional's
-// cardinality dropped and the inner product arriving in its place -- which is one of the four
-// receiver-resolution shapes `unresolved_method_frontier` already names as residue.
-//
-// A self-mapping row is not a nickname. The value is the ALGEBRA and the key is a SPELLING that
-// resolves to it; `FreeMonoid` and `PointwisePower` are equally absent and would fail the same way
-// if written directly, which is why `List` and `Set` exist as keys at all. The carriers this lane
-// makes directly writable therefore need their own keys.
-//
-// Only `PartialFunction` is added, and the reason is `container_alias_canonical_spelling`: it
-// returns the FIRST sorted key mapping to an algebra, so a `"FinitelySupportedFunction"` key would
-// sort ahead of `"Map"` and silently become the canonical spelling for that algebra everywhere it
-// is emitted. No existing key maps to `PartialFunction`, so this addition competes with nothing.
-data container_template_alias_rows: Map<String, String> = {
-  "List": "FreeMonoid",
-  "list": "FreeMonoid",
-  "Set": "FinitePowerSet",
-  "set": "FinitePowerSet",
-  "Map": "FinitelySupportedFunction",
-  "map": "FinitelySupportedFunction",
-  "PartialFunction": "PartialFunction",
-  "partial_function": "PartialFunction"
-}
+data container_template_alias_rows: Map<String, String> = carrier_container_alias_rows()
 
 fn container_template_algebra(name: String) -> String? {
   map_get(container_template_algebra_rows, name)
@@ -116,20 +88,16 @@ fn container_template_alias_algebra(name: String) -> String? {
   map_get(container_template_alias_rows, name)
 }
 
-// THE COMPLETE ROSTER, and completing it is what lets its consumer stop patching it. This list
-// feeds `v1.compiler.coercion` `inhabitant_test_names`, which used to read
-// `concat(canonical_container_names(), ["PointwisePower"])` -- a hand-appended name compensating
-// for one this list omitted. That append is deleted with this change: a caller patching its
-// authority's answer is the authority being wrong, not the caller being thorough.
+// THE COMPLETE ROSTER, DERIVED. This list feeds `v1.compiler.coercion` `inhabitant_test_names`,
+// which used to read `concat(canonical_container_names(), ["PointwisePower"])` -- a hand-appended
+// name compensating for one this list omitted. A caller patching its authority's answer is the
+// authority being wrong, not the caller being thorough; the append is gone and the name now
+// arrives from the carrier that declares it.
 //
-// TWO CORRECTIONS THE CARRIER SPLIT FORCED, both of which an unedited list would have got wrong in
-// opposite directions. `BooleanAlgebra` LEAVES: its container inhabitant row moved to
-// `FinitePowerSet`, so it names no container any more -- it is the lattice, and a lattice in a
-// container roster is the misfiling this change exists to end. `PartialFunction` STAYS: it keeps a
-// row and is now reachable as a declared spelling in its own right, so dropping it would have
-// silently retired its coercion coverage at the moment it acquired real callers.
+// `sorted_map_keys` gives the same ASCII order the hand-written literal held, and `Witness` is
+// appended for the reason `container_type_arity` above states: it is not an algebra carrier.
 fn canonical_container_names() -> List<String> {
-  ["FinitePowerSet", "FinitelySupportedFunction", "FreeMonoid", "List", "Map", "PartialFunction", "PointwisePower", "Set", "Witness"]
+  sorted_map_keys(map_insert(carrier_container_roster_map(), "Witness", true))
 }
 
 type Bool = True | False
