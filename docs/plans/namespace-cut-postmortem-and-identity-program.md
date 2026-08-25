@@ -1361,47 +1361,50 @@ So the split is clean, and it falls exactly along the line that clause draws:
 
 ## 9. Open, and owned elsewhere
 
-- **`undefined variable 'v2'` × 95** — the largest unattributed share of the
-  branch's 410. Relayed as *not* the pipe case; deep-ant-102 reports testing and
-  **refuting** the obvious cascade hypothesis (a broken provider module does not
-  degrade a consumer's qualified reference to a variable lookup). The only
-  remaining candidate this document knows of that could still be structural.
-  **Now owned by this lane** (seam ruling, 2026-08-25) precisely because it could
-  be structural. **Narrowed here to two arms of one function, by source read
-  (2026-08-25); not yet reproduced.**
+- ~~`undefined variable 'v2'` × 95~~ — **CLOSED, and it was never a distinct
+  defect** (`crisp-crab-430`, 2026-08-25, four arms by execution). It is the
+  **bootstrap trap wearing a resolution diagnostic's clothes**, and the reason
+  three sessions could not reproduce it is that **it is not reproducible from
+  source at all.**
 
-  The diagnostic is produced in `v1.04_infer` at the `ExprVar` arm when a name
-  resolves nowhere, so a *qualified* reference `v2.std.x.y` must have been lowered
-  to a **variable of its root segment**. Expression-position qualified references
-  arrive as `ExprFieldAccess`, and that arm calls **`qualified_value_projection`
-  first and short-circuits on `Present`** — so all 95 are references for which it
-  returned `Absent` and execution fell through to ordinary variable inference. It
-  returns `none` exactly three ways:
+  The offending construct is a **qualified constructor literal in no-brace
+  (condition) position** at `coercion_widening.dag` — this ledger's defect I, the
+  parser guard. That guard **exists in the `.dag` authority and was never carried
+  into the committed mirror**, because regen was blocked by the very defects the
+  branch was fixing. A parse failure at that site degrades the qualified path to a
+  bare-variable lookup, so `v2.std.algebra.filter(…)` resolves its first segment
+  as a variable named `v2` — 95 identical diagnostics, all in files carrying
+  qualified references, none reproducible in a fixture, **because every fixture
+  was compiled by a compiler that could parse.** The discriminator is decisive:
+  `src/v1/02_parse.dag` carries `qualified_ctor_literal_here` twice and the
+  committed mirror `v1_compiler_parse.rs` carries it **zero** times.
 
-  1. `field_access_spine` gives `Absent` — the expression is not a clean dotted
-     spine. **This is the pipe class's sibling** (§3a): same failure to recognise
-     a qualified head, different position.
-  2. `spine_root_is_shadowed` — some local binding is named `v2`.
-  3. `symbol_index_lookup` misses on the full dotted name.
+  Three consequences, and the second is the one that reaches past this row:
 
-  **Arm 2 is eliminated by construction and the elimination is the useful part.**
-  If `v2` were in `scope.locals` the fall-through would *find* it, so the
-  diagnostic would not say **undefined**. The corpus does contain `let v2 = …`
-  (three in `extdeps/formats/elf/encode.dag`, two in test modules), so the arm is
-  occupied and reachable — it simply cannot produce *this* message. A shadowed
-  namespace root is a real defect of this document's class (*same spelling,
-  different identity*) and deserves its own row; it is not this one.
+  1. The 95 collapse into **defect I** and are **not separately extractable**.
+     Defect I is thereby promoted from a tail item to **the highest-leverage
+     remaining one**, because it is the only one of the nine whose absence
+     **masks other measurements**.
+  2. **Every diagnostic measured on that branch with the committed mirror
+     describes a compiler that pre-dates the fixes in its own tree.** That is a
+     stronger caveat than "the branch is at 13 errors" and belongs beside that
+     figure wherever it is quoted. On any branch where regen is blocked, the
+     committed mirror is an *older compiler*, and its output is evidence about
+     that compiler rather than about the source.
+  3. `deep-ant-102`'s refutation of the cascade hypothesis stands untouched: this
+     is not fallout from a broken *provider*, it is fallout from a broken
+     **parser**.
 
-  That leaves 1 and 3, which have opposite owners. **Arm 3 is the hypothesis
-  deep-ant-102's refutation does not cover**: they tested whether a *broken*
-  provider degrades a consumer's qualified reference and showed it does not.
-  Arm 3 is an **absent** provider — a module never admitted to the symbol index at
-  all, which is §3.3(a)'s graph-construction problem, and broken-but-present is
-  not the same state as absent. Discriminating tests, both cheap: for arm 1,
-  whether the 95 sit in syntactic positions that break the spine; for arm 3,
-  whether `symbol_index` contains the dotted names they reference. If arm 3, the
-  class is a cascade of closure construction and dissolves with B.1 rather than
-  being structural.
+  **Why four sessions missed it, including this one.** Everyone varied the
+  *source* — named versus positional arguments, with and without imports, one
+  versus two source roots, with and without a lambda. This lane's own contribution
+  was a source read that narrowed the class to two arms of
+  `qualified_value_projection` and correctly eliminated a third; the dichotomy was
+  right and **the variable was wrong.** The variable was never the source. It was
+  the **compiler**, and specifically `.dag`/mirror skew. This is the **third false
+  finding the bootstrap trap produced in this program in one day**, and the most
+  expensive.
+
 - **Witness disposition gap** — a missing declaration fail-closes to
   `ReadsLiveTree`, so the witness never runs; 476 of 1514 witness files declare
   none, carrying 3906 test fns, against a floor reporting `declined_live=830`.
