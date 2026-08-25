@@ -2031,6 +2031,53 @@ closed with a plausible story — the same discipline applied to the
 likewise refuted by grep (`data owner` and `data repo` each have exactly one
 module-scope declaration corpus-wide) and which stays **unexplained**.
 
+### 11.2c-fill The census fill is a property of the ROUTE, not the scope — and the fixture that was supposed to settle kind could not reach it
+
+`deep-ant-102` and `cool-hawk-324` proposed that whole-tree-only refusals
+discriminate on declaration KIND: `owner` (a `fn` and a `data`) refuses, while
+`default_model` (two `data`) does not. §11.2b's method applied to their own
+control killed it — `default_model`'s only two reference positions are
+default-argument expressions, which `review_cycle_default_scope_note` already
+records as evaluated in the *caller's* scope and as having **no in-corpus
+caller**, so the non-refusal is a query that never ran. Two arms and a blank.
+
+**The control was authored and run, and it refuses its own positive arm.** Nine
+modules, two source roots, every use site an evaluated position: `samekind_name`
+declared twice as `data` with divergent values, `crosskind_name` as one `fn` and
+one `data`, and `unique_name`/`unique_fn`/`UniqueType` declared once each as the
+positive control, plus an absent name as the negative. Under
+primary=uses/census=probe (9 indexed, 4 resolved, 5 outside the closure) **all
+of them refuse, the corpus-unique control included** — and still refuse when the
+declaring module path is made a strict prefix of the referencing one, which
+`unique_on_chain_policy_note` states is the on-chain condition. A harness that
+refuses its positive control measures nothing, so no kind column was taken from
+it.
+
+**The reason is the finding.** `gunbc compile` never populates the census-only
+pool at all. The `[census] N indexed modules outside the closure enter the name
+census only` line — the line §11.2c's mechanism rests on — is emitted from
+`v1_compiler.cli_run` `compile_clean_census_only_sources_for_compiled` and from
+`main.rs`, i.e. from the compile-clean and whole-tree routes. It appeared in no
+run of the fixture under any root arrangement. The seam states the design in one
+line: **"fill = whole tree; policy gates lookup, never fill."** Fill is
+unconditional; the policy gates only the lookup against what was filled. So the
+variable that produces entry-vs-whole-tree divergence is the **route**, and a
+fixture driven through `gunbc compile` cannot reach the mechanism however the
+roots are arranged. That is a reachability fact about the CLI, not a fact about
+kind, and it is why the discriminator is still owed.
+
+**Two harness defects, both caught by controls and neither by reasoning.**
+Module-scope `data` initializers refused a unique name where `fn` bodies were the
+intended position, so the first arms measured a position nobody chose. And
+`--source-dir uses --source-root probe` reported **9 files emitted, 0
+diagnostics** — a clean green — because `--source-dir` contributed no sources and
+the using modules were never in the subject; the emitted file list is five
+`probe_decl_*.rs` and no use module. The absent-name control caught it by failing
+to produce the error it must produce. **A false green from an empty subject reads
+exactly like a pass** — §11's execution-provenance rule with the polarity
+flipped: if an unreached subject and a clean subject produce the same output, the
+green is not an observation either.
+
 ### 11.2c-orig The mechanism, as originally traced — `authored_import_names`
 
 Found while unblocking a lane on an unrelated red, and it is the most direct
