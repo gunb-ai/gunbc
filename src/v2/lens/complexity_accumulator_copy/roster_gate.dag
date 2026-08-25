@@ -111,6 +111,41 @@ fn file_standing(path: String, refusal_ceiling: Int) -> RosterStanding {
   }
 }
 
+// WHAT THE GATE ANSWERED, NOT MERELY WHETHER IT HELD. The three arms below carry three different
+// remedies and the Bool that used to stand here carried none of them: a suspect is a defect IN THE
+// SUBJECT and the author edits the subject; an exceeded refusal budget is a coverage debt and the
+// author raises the ceiling or grounds the refusals; a not-established standing is a defect in the
+// INSTRUMENT'S REACH -- the lens could not read the file at all -- and the author fixes the lens or
+// the path, never the subject. Collapsing all three onto `false` was total over the standing and
+// blind one level down, with `cause: _` as the tell.
+//
+// The cause is not reconstructed here. file_standing already computes it and hands it over; what
+// changed is that this fold stops discarding it.
+type RosterGateDisposition
+  = GateClean
+  | GateSuspectObserved { suspects: Int }
+  | GateRefusalBudgetExceeded { refusals: Int, ceiling: Int }
+  | GateNotEstablished { cause: SourceAnalysisNotEstablishedCause }
+
+fn roster_gate_disposition(standing: RosterStanding) -> RosterGateDisposition {
+  match standing.finding {
+    FindingNotEstablished { cause: cause } => GateNotEstablished { cause: cause }
+    SuspectObserved { suspects: suspects } => GateSuspectObserved { suspects: suspects }
+    NoSuspect =>
+      match standing.analysis {
+        AnalysisNotEstablished { cause: cause } => GateNotEstablished { cause: cause }
+        RefusalBudgetExceeded { refusals: refusals, ceiling: ceiling } =>
+          GateRefusalBudgetExceeded { refusals: refusals, ceiling: ceiling }
+        Within { refusals: _, ceiling: _ } => GateClean
+      }
+  }
+}
+
+// RETAINED AS PROJECTIONS, NOT AS THE ONLY SURFACE (operator ruling, 2026-08-25). A Bool projection
+// over a typed standing is a convenience and is legitimate exactly while the typed standing stays
+// reachable by callers; it is the defect only when it is the sole surface and a caller has no way to
+// tell cannot-analyze from analyzed-and-clean. RosterGateDisposition is that reachable surface, so
+// these two stay.
 fn finding_standing_holds(standing: FindingStanding) -> Bool {
   match standing {
     NoSuspect => true
@@ -127,16 +162,36 @@ fn analysis_standing_holds(standing: AnalysisStanding) -> Bool {
   }
 }
 
-fn file_gate(path: String, refusal_ceiling: Int) -> Bool {
-  let standing = file_standing(path: path, refusal_ceiling: refusal_ceiling)
-  finding_standing_holds(standing: standing.finding)
-    && analysis_standing_holds(standing: standing.analysis)
+fn file_gate_disposition(path: String, refusal_ceiling: Int) -> RosterGateDisposition {
+  roster_gate_disposition(standing: file_standing(path: path, refusal_ceiling: refusal_ceiling))
 }
 
-fn source_has_suspect(source_text: String) -> Bool {
+// THE ONE PLACE THE COLLAPSE TO Bool IS ALLOWED TO HAPPEN, and it is written out so that a fourth
+// disposition fails to compile HERE rather than inheriting whichever arm it lands beside. A caller
+// that needs to tell an unreadable subject from a suspect one asks file_gate_disposition; this
+// answers only "did the gate come back clean", which is a narrower question than it used to look.
+fn file_gate(path: String, refusal_ceiling: Int) -> Bool {
+  match file_gate_disposition(path: path, refusal_ceiling: refusal_ceiling) {
+    GateClean => true
+    GateSuspectObserved { suspects: _ } => false
+    GateRefusalBudgetExceeded { refusals: _, ceiling: _ } => false
+    GateNotEstablished { cause: _ } => false
+  }
+}
+
+// REPLACES source_has_suspect, WHICH ANSWERED false FOR A SOURCE IT COULD NOT READ. source_findings
+// returns the typed cause; the old predicate matched `SourceFindingsNotEstablished { cause: _ }` and
+// threw it away, so an unreadable source was reported as the CLEAN verdict -- not a sentinel that a
+// caller might check, but the affirmative answer "no suspect here".
+fn source_finding_standing(source_text: String) -> FindingStanding {
   match source_findings(source_text: source_text) {
-    SourceFindingsNotEstablished { cause: _ } => false
-    SourceFindingsEstablished { findings: fs } =>
-      count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect) > 0
+    SourceFindingsNotEstablished { cause: cause } => FindingNotEstablished { cause: cause }
+    SourceFindingsEstablished { findings: fs } => {
+      let suspects = count_matching(
+        fs: fs,
+        pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect
+      )
+      if suspects > 0 { SuspectObserved { suspects: suspects } } else { NoSuspect }
+    }
   }
 }
