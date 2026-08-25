@@ -1943,7 +1943,91 @@ cells identically and reports the wrong construct**, with a green receipt behind
 it — which is precisely the failure the ladder was mandated to prevent, caught
 by the mandate rather than by luck.
 
-### 11.2c A wall that dissolves silently at the cut — `authored_import_names`
+### 11.2c CONFIRMED BY EXECUTION — three scopes, three answers, and the loosest is the middle one
+
+**This section was written as a prediction and is now a measurement.** It is
+also the place where this document's author predicted wrongly and the lane was
+right, which is recorded because the wrong prediction was the safe-sounding one.
+
+`cool-hawk-324`'s whole-tree log — `gunbc compile --source-root dag
+--source-root src/v2 --target rust`, no `--entry`, ~19 min, peak 9.06 GiB — is
+thirteen lines and carries exactly two diagnostics, both workflow-CLI defaults.
+Grepped for `undefined variable`, `cannot be resolved` and `not found in
+scope`: **ZERO, corpus-wide.**
+
+On `dag/gunbc/tools/review_codex.dag` that run REACHED the workflow-CLI-default
+check — which sits downstream of typecheck — and reported none of the four
+typecheck refusals an `--entry` compile produces on the same file at the same
+commit. `llm`, `Review` and `upsert_tagged_cron_tab` **bind under whole-tree and
+refuse under entry.** Corroborated independently: `smart-ram-730` compiled the
+same file on a different machine with a different binary built from source and
+got the same four.
+
+So on one corpus at one commit:
+
+| scope | answer |
+|---|---|
+| entry compile (import closure only) | **refuses** undeclared references |
+| whole-tree `gunbc compile` | **binds** them — zero name-resolution diagnostics corpus-wide |
+| floor strict preparation | **~185** undefined-variable diagnostics, 151 of them one name |
+
+**Three scopes, three answers, and the loosest is the one in the middle.** Two
+of these could plausibly carry a gate and they differ by 185 diagnostics on
+identical input.
+
+DESIGN's own clause misleads on the direction: it contrasts the old per-entry
+path's pool-membership-coincidence looseness against strict preparation's
+strictness, and does not mention that whole-tree `gunbc compile` is looser than
+**both**. A reader predicts two scopes ordered one way and finds three ordered
+another.
+
+**WHERE MY PREDICTION FAILED, AND WHY IT MATTERS MORE THAN BEING WRONG.** I
+tested the mechanism with a two-module fixture — no imports, both in the pool,
+targeting the function path — and it **refused**, under `--source-dir` and
+`--source-root` alike. I reasoned further that under namespace-only (the
+production default) `llm.*` is not a leading-segment prefix of
+`gunbc.tools.review_codex`, so the chain policy forbids the binding regardless
+of pool contents, and predicted the grep would come back PRESENT with a phase
+difference as the real explanation. **It came back ABSENT.**
+
+The fixture and the policy argument were both correct and both irrelevant: two
+modules under one flag is not the regime, and *something at whole-tree scale
+binds what the chain policy forbids*. I flagged that limit when I sent the
+prediction — "disconfirming evidence, NOT a refutation, and the grep still
+settles it" — which is the only reason this cost nothing. **A small-scale
+reproduction that refuses does not establish that the mechanism is absent at
+scale; it establishes that the mechanism is not scale-free.** That is the same
+denominator error this document keeps recording, committed here against a
+mechanism rather than a population.
+
+**WHY IT IS ON THE CRITICAL PATH.** The cut's end state is that every module's
+scope IS the whole-tree scope. That is the middle row — the one that binds
+undeclared references. So §11.2c is no longer a hazard to watch for; it is the
+measured behaviour of the regime this program is steering into, and the F set
+must carry its replacement rather than discover it. And a whole-tree count
+proposed as a merge-blocking ratchet would be a number taken over a program a
+stricter scope refuses: **a gate derived from a permissive resolver.**
+`cool-hawk-324` has stopped rather than enrol it; the sequencing question is
+`warm-hawk-909`'s.
+
+**A LATENT DEFECT THAT ACTIVATES ON SUCCESS.** `default_model` is declared in
+both `review.dag` (`"claude-sonnet-4-6-20250929"`) and `review_codex.dag`
+(`"gpt-5.4"`), both consumed as workflow param defaults, so under whole-corpus
+fold order one review tool receives the other's model. It is latent **only
+because whole-corpus emission currently refuses and emits zero files** — it
+arms exactly when emission starts succeeding, which is what two other lanes are
+working toward.
+
+**ONE EXPLANATION RETRACTED, THE GAP LEFT NAMED.** The asymmetry where
+`pr_owner` refuses as a param default and `pr_repo` does not was attributed to
+bare-name collision, on the strength of `build_data_body_index` keying on bare
+names across every module. Grepped and **refuted**: `data owner` and `data repo`
+each have exactly one module-scope declaration corpus-wide. Neither collides.
+The asymmetry between two structurally identical declarations is **unexplained**
+and is carried as an open loose end, because a wrong explanation in this seam is
+worse than a named gap.
+
+### 11.2c-orig The mechanism, as originally traced — `authored_import_names`
 
 Found while unblocking a lane on an unrelated red, and it is the most direct
 threat to this program's own premise that has surfaced so far.
