@@ -228,6 +228,40 @@ fn stall_report_message(s: GuaranteeStall) -> String {
 // OCCURRENCES, and a class that mentions its trigger three times is one stall, while a witness
 // asserting the phrase is none. The population has no identity to count at, and that is the finding
 // rather than a gap in the sweep.
+// A REFERENCE THAT RESOLVES UNDER ONE IMPORT LIST AND REFUSES UNDER A SUPERSET OF IT.
+// Filed as a class because the specimen is user-visible and nobody had filed it: adding an import
+// of an UNRELATED module silently breaks a bare reference that resolved without it. The failure is
+// loud at the reference -- an undefined-variable diagnostic -- but the CAUSAL relation is
+// unreachable from it, since nothing in the message connects the new import line to the broken
+// name and no author's model of what an import does predicts it. Loud failure with an unreachable
+// cause is the shape that costs the most time per incident.
+//
+// MECHANISM, measured rather than inferred. cli_run build_both_closure_edge_index skips a file
+// before populating bare_out for it when source_declares_import_lines is true, and the struct
+// field's own doc calls bare_scan_eligible the import-stripped files that may originate
+// bare-reference edges. So a bare reference is a closure edge ONLY from a zero-import file.
+// Confirmed by discriminator rather than by reading the predicate: one four-file fixture, one
+// binary, one line varied -- with no import the provider is pulled and the name resolves clean;
+// with one import of an unrelated carrier the provider is not pulled and the name refuses.
+//
+// WHY THE CEILING IS GUARANTEED AND NOT IMPOSSIBLE: eligibility is decided from the file text the
+// compiler already holds, so a closure relation that does not vary with import-declaration is
+// derivable. It is not IMPOSSIBLE, because both programs remain writable -- the source can express
+// a file with imports and one without; what a repair removes is the DIVERGENCE between them, not
+// the ability to author either.
+data import_eligibility_resolution_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a bare reference resolves under one import list and refuses under a superset of it, because bare-reference closure edges originate only from zero-import files",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding {
+    grounding: "the ClosureBoundResolution ruling -- whether candidacy for a subject is asked against the CENSUS population or the CLOSURE population. Until that is decided the class cannot climb, because the repair direction depends on it: bounding lookup leaves the loader admitting providers by bare reference, and bounding load changes which files enter the subject. The class waits on a DECISION rather than on construction"
+  },
+  population: UncountedNotEnumerable {
+    reason: "the AFFECTED population is references whose resolution would change, and nothing enumerates them -- a reference that resolves today emits no diagnostic to count and a reference that refuses is indistinguishable in the message from a genuinely absent declaration. What IS measured is the ELIGIBLE FILE count, 650 of 3933 .dag files carrying no import line at the time of filing, and that is a denominator for where the mechanism can originate rather than a count of what it affects. Quoting the eligible count as the class size is the conflation this row exists to prevent. The eligible count is also RISING by construction: the namespace cut takes modules to zero imports, so each wave switches bare-edge origination on for the modules it strips"
+  },
+  next_rung_trigger: "ClosureBoundResolution lands as a namespace-cut PREREQUISITE rather than a post-cut repair, bounding which modules may supply a resolution candidate for a subject. Reclassified from post-cut to prerequisite because the cut is what makes the mechanism universal -- a repair scheduled after the event that generalises it is scheduled backwards. Not satisfied by bounding lookup alone: the closure constructor extends by bare reference to a fixpoint before any lookup runs, so a wall placed only at lookup sits downstream of the door that already opened"
+}
+
 data next_rung_trigger_enforcement_stall: GuaranteeStall = GuaranteeStall {
   subject: "DESIGN section 4b(2) next-rung trigger enforcement",
   current: Mitigatable,
