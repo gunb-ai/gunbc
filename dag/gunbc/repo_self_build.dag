@@ -1,0 +1,53 @@
+module gunbc.repo_self_build
+
+import std.types { String, List, NonEmptyStr }
+
+// THE SINGLE POINT THROUGH WHICH THIS REPOSITORY BUILDS ITS OWN BINARIES.
+// Before this module the same operation was spelled independently in three
+// workflow authorities and hand-authored in a fourth, with the bin sets
+// differing and nothing relating them, so "how this repo builds its compiler"
+// had four owners and could be changed inconsistently -- which it already had
+// been. Operator ruling 2026-08-24: everything compiles through the same
+// point, no forks allowed.
+//
+// The split follows DESIGN section 3. The cargo BUILD SHAPE is upstream's and
+// belongs to extdeps.rust.cargo. WHICH package and WHICH bins is business
+// policy and lives here. How a consumer transports it -- a workflow RunStep, a
+// host effect, an interpreter service call -- is realization and lives with
+// the consumer. A caller that writes the argv itself has taken all three back.
+//
+// The construction is not novel: witness_floor_workflow already folded a bin
+// roster onto one base command, correctly, in private. What was missing was
+// not the idea but its REACH -- three other consumers could not call it. This
+// module is that function promoted to where every consumer can reach it.
+
+data repo_self_build_authority_note: String = "Single authority for the argv this repository uses to build its own binaries. The package is a fact about THIS repository's layout, not about cargo, so it is data here rather than a parameter every caller re-supplies: a caller free to name the package could build a different crate and still look like a conforming call. The BIN SET is a parameter because it genuinely differs by consumer -- the required floor needs claim_executor and gunbc, fleet-desired needs gunbc alone -- and that difference is the only axis on which honest callers disagree."
+
+data repo_self_build_package: NonEmptyStr = "v1-compiler"
+
+data repo_self_build_profile_flag: String = "--release"
+
+data repo_self_build_empty_bins_note: String = "An empty bin set renders the package build with no --bin selector, which is cargo's own meaning for it (build every target in the package) and is a DIFFERENT request from building a named subset -- not a degenerate case of one. It is rendered rather than refused because a fold over an empty roster produces exactly this string in the construction this module promotes, so the state is reachable by an honest caller; a refusal here would break a caller that is asking cargo a legitimate question."
+
+fn repo_self_build_bin_flag(bin: String) -> String {
+  join(["--bin ", bin], "")
+}
+
+fn repo_self_build_bin_selector(bins: List<String>) -> String {
+  join(bins |> map(b => repo_self_build_bin_flag(bin: b)), " ")
+}
+
+fn repo_self_build_package_command() -> String {
+  join(
+    ["cargo build", repo_self_build_profile_flag, "-p", repo_self_build_package as String],
+    " "
+  )
+}
+
+fn repo_self_build_command(bins: List<String>) -> String {
+  if bins |> count == 0 {
+    repo_self_build_package_command()
+  } else {
+    join([repo_self_build_package_command(), repo_self_build_bin_selector(bins: bins)], " ")
+  }
+}
