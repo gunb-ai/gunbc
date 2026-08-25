@@ -1,0 +1,43 @@
+module test.claim.empty_list_element_fabrication_witness
+
+import std.types { String, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import gunbc.compile_diagnostic_census { census_blocking_rows, CensusObserved, CensusNotRunnable }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// AN EMPTY LIST WITH NO EXPECTED TYPE ANSWERED `List<Unit>`, AND THE FABRICATION DISABLED ITS OWN REPAIR.
+//
+// `ExprListLit` cannot know its element type when the literal is empty and nothing expects a
+// type. It answered `unit_type` instead of saying so -- a confident wrong answer where an
+// unknown was the truth.
+//
+// WHY IT SURVIVED, and this is the part worth keeping. `List<Unit>` READS AS FULLY RESOLVED.
+// The if-join already carries re-inference for exactly this case: where one branch is
+// under-resolved and the other is not, re-infer the first against the second. A fabrication
+// that looks resolved switches that repair OFF. So the defect did not merely produce a wrong
+// type, it consumed the mechanism that existed to correct it -- which is why the RED needs
+// BOTH branches empty and the one-typed-branch control is green on main today.
+//
+// The repair answers a fresh type variable, which is what "I do not know the element type yet"
+// is spelled as everywhere else in this module.
+
+data red_both_branches_empty_source: String = "module probe_empty_list_join\ntype Row { label: String }\nfn both_empty(flag: Bool) -> List<String> {\n  let picked = if flag { [] } else { [] }\n  picked |> map(r => r.label)\n}\n"
+
+data green_one_branch_typed_source: String = "module probe_empty_list_typed_arm\ntype Row { label: String }\nfn one_typed(flag: Bool, given: List<Row>) -> List<String> {\n  let picked = if flag { [] } else { given }\n  picked |> map(r => r.label)\n}\n"
+
+fn compiles_with_no_blocking_diagnostic(source: String) -> Bool {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => (census_blocking_rows(rows: rows) |> count) == 0
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+test fn an_empty_list_in_both_branches_does_not_fabricate_a_unit_element() -> Bool {
+  compiles_with_no_blocking_diagnostic(source: red_both_branches_empty_source)
+}
+
+test fn a_typed_branch_beside_an_empty_one_still_resolves() -> Bool {
+  compiles_with_no_blocking_diagnostic(source: green_one_branch_typed_source)
+}
