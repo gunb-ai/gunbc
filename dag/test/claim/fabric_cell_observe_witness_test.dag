@@ -910,22 +910,6 @@ test fn witness_observer_absent_ancestor_with_an_absent_child_stays_absent() -> 
   ))
 }
 
-fn observation_is_refused(o: FabricCellAddressObservation) -> Bool {
-  match o {
-    AddressObservationRefused { slot: _, address: _, cause: _ } => true
-    AddressAbsent { slot: _, address: _ } => false
-    AddressObserved { member: _ } => false
-  }
-}
-
-fn observation_is_absent(o: FabricCellAddressObservation) -> Bool {
-  match o {
-    AddressAbsent { slot: _, address: _ } => true
-    AddressObservationRefused { slot: _, address: _, cause: _ } => false
-    AddressObserved { member: _ } => false
-  }
-}
-
 // LAW 35 -- A COMMITTED SLOT THE FABRIC DOES NOT EXPECT REFUSES THE POPULATION. It was classified
 // correctly in discovery and then projected to nothing, on the reasoning that committed slots reach
 // the kernel through the readback. Only EXPECTED slots do, so the typed distinction existed in

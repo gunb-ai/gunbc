@@ -290,47 +290,38 @@ fn fabric_cell_merge_address_probe(first: FabricCellAddressProbe, second: Fabric
   }
 }
 
-// THE OBSERVATION FOR ONE ADDRESS, AND THE ONLY PLACE `AddressAbsent` IS CONSTRUCTED IN THIS MODULE.
-// Read the arms as the parent-observation rule: absence is reachable only through
-// `NamespaceEnumerated` with the entry missing. Every other combination -- unprobed namespace,
-// refused enumeration, present entry with no state probe, present entry with a refused state read
-// -- is a typed, located refusal naming which of those it was.
+// THE OBSERVATION FOR ONE ADDRESS. The ancestry question is answered by MATCHING THE PARENT'S
+// OBSERVATION, not by a Bool asking whether it was absent. An earlier cut asked
+// `is_absent_by_ancestry(...) -> Bool` and then, in a second function, matched the same coproduct
+// again to decide what to do about it -- two matches over one value, the first of which threw away
+// which state it had seen and could only answer "not absent" for both a REFUSED parent and an
+// OBSERVED one, states with nothing in common (codex review 55778). Descending here instead means a
+// new arm on the observation type fails to compile in this match rather than silently inheriting
+// whichever branch the Bool happened to fall into.
+//
+// ABSENCE DESCENDS, BECAUSE A CHILD OF SOMETHING THAT DOES NOT EXIST DOES NOT EXIST. The attempt
+// root lives inside the cell root; if the cells root enumerated and does not hold this cell, or was
+// itself observed absent, then no probe of the child namespace is possible and none is needed --
+// the answer is already established by the parent's SUCCESSFUL observation. Without this the first
+// real observation of an unprovisioned host blocked instead of planning. It is not a weakening of
+// the parent-observation law but that law applied one level up: the derivation runs only through
+// the arm that IS a successful observation of absence, and a refused parent derives nothing.
 fn fabric_cell_observe_address(
   probe: FabricCellHostProbe,
   slot: RunnerSlotIdentity,
   address: FabricCellResourceAddress,
 ) -> FabricCellAddressObservation {
-  if fabric_cell_address_is_absent_by_ancestry(probe: probe, slot: slot, address: address) {
-    fabric_cell_absent_by_ancestry_unless_contradicted(probe: probe, slot: slot, address: address)
-  } else {
-    fabric_cell_observe_address_directly(probe: probe, slot: slot, address: address)
-  }
-}
-
-// ABSENCE DESCENDS, BECAUSE A CHILD OF SOMETHING THAT DOES NOT EXIST DOES NOT EXIST. The attempt
-// root lives inside the cell root; if the cells root enumerated and does not hold this cell, or was
-// itself observed absent, then no probe of the child namespace is possible and none is needed --
-// the answer is already established by the parent's SUCCESSFUL observation. Without this the first
-// real observation of an unprovisioned host blocked instead of planning, because the child
-// namespace of a directory that does not exist cannot be enumerated and an unsupplied namespace
-// refuses.
-//
-// THIS IS NOT A WEAKENING OF THE PARENT-OBSERVATION LAW, IT IS THAT LAW APPLIED ONE LEVEL UP. The
-// derivation runs only through arms that are themselves successful observations of absence; a
-// REFUSED parent derives nothing and the address falls through to its own refusal.
-fn fabric_cell_address_is_absent_by_ancestry(
-  probe: FabricCellHostProbe,
-  slot: RunnerSlotIdentity,
-  address: FabricCellResourceAddress,
-) -> Bool {
   match address {
-    FabricCellRootAddress => false
-    FabricCellResourceBoundaryAddress => false
+    FabricCellRootAddress => fabric_cell_observe_address_directly(probe: probe, slot: slot, address: address)
+    FabricCellResourceBoundaryAddress => fabric_cell_observe_address_directly(probe: probe, slot: slot, address: address)
     FabricCellAttemptRootAddress =>
       match fabric_cell_observe_address_directly(probe: probe, slot: slot, address: FabricCellRootAddress) {
-        AddressAbsent { slot: _, address: _ } => true
-        AddressObserved { member: _ } => false
-        AddressObservationRefused { slot: _, address: _, cause: _ } => false
+        AddressAbsent { slot: _, address: _ } =>
+          fabric_cell_absent_by_ancestry_unless_contradicted(probe: probe, slot: slot, address: address)
+        AddressObserved { member: _ } =>
+          fabric_cell_observe_address_directly(probe: probe, slot: slot, address: address)
+        AddressObservationRefused { slot: _, address: _, cause: _ } =>
+          fabric_cell_observe_address_directly(probe: probe, slot: slot, address: address)
       }
   }
 }
