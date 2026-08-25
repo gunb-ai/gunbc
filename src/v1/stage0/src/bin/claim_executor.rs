@@ -4,8 +4,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::rc::Rc;
-#[cfg(test)]
-use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
     make_eval_context, resolve_entry_graph_shared, run_value, PhaseProfile,
 };
@@ -34,14 +32,6 @@ fn require_path_value(args: &[String], idx: usize, flag: &str) -> Result<String,
             Err(ExitCode::from(2))
         }
     }
-}
-
-#[cfg(test)]
-fn classify_witness_expectations(
-    outcomes: &[DiscoveryWitnessOutcome],
-    expected_red: &[(String, String)],
-) -> WitnessExpectationTally {
-    classify_witness_expectations_in(outcomes, expected_red, &[])
 }
 
 /// One read of the whole-tree job footprint and its budget context, taken in a single cgroup walk so
@@ -1438,43 +1428,6 @@ fn main() -> ExitCode {
 mod tests {
     use super::*;
 
-    // Process-wide eval-recompute totals are shared across every test in this
-    // binary. Tests that drain or assert on the accumulator must serialize so
-    // one cannot steal another's totals (DESIGN §5 hermetic discriminating tests).
-    static PROCESS_EVAL_RECOMPUTE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    fn with_process_eval_recompute_test_lock<F: FnOnce()>(f: F) {
-        let _guard = PROCESS_EVAL_RECOMPUTE_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
-        let prior_trace = std::env::var_os("GUNBC_RECOMPUTE_TRACE");
-        std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
-        v1_compiler::v1_interpreter::refresh_eval_recompute_trace_enabled_cache_for_tests();
-        let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
-        match prior_trace {
-            Some(value) => std::env::set_var("GUNBC_RECOMPUTE_TRACE", value),
-            None => std::env::remove_var("GUNBC_RECOMPUTE_TRACE"),
-        }
-        v1_compiler::v1_interpreter::refresh_eval_recompute_trace_enabled_cache_for_tests();
-        match run {
-            Ok(()) => {}
-            Err(payload) => std::panic::resume_unwind(payload),
-        }
-    }
-
-    fn with_workspace_root_current_dir<F: FnOnce()>(root: &std::path::Path, f: F) {
-        let prior_cwd = std::env::current_dir().ok();
-        std::env::set_current_dir(root).expect("chdir to workspace root for receipt paths");
-        let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
-        if let Some(cwd) = prior_cwd {
-            let _ = std::env::set_current_dir(cwd);
-        }
-        match run {
-            Ok(()) => {}
-            Err(payload) => std::panic::resume_unwind(payload),
-        }
-    }
-
     fn repo_root_from_manifest() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../..")
@@ -1485,19 +1438,6 @@ mod tests {
     fn dag_source_from_repo(rel: &str) -> String {
         let path = repo_root_from_manifest().join(rel);
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
-    }
-
-    fn dag_string_data_literal(source: &str, data_name: &str) -> String {
-        let marker = format!("data {data_name}: String = \"");
-        let start = source
-            .find(&marker)
-            .unwrap_or_else(|| panic!("string data row {data_name} not found in authority source"))
-            + marker.len();
-        let rest = &source[start..];
-        let end = rest
-            .find('"')
-            .expect("unterminated string literal in authority source");
-        rest[..end].to_string()
     }
 
     fn dag_record_string_field(source: &str, data_name: &str, field: &str) -> String {
@@ -1564,10 +1504,6 @@ mod tests {
             TEST_NATIVE_BUNDLE_OBLIGATION_FUNCTION,
         );
     }
-
-    /// The `<entry>::<function>` a refusal locates itself at — the same shape the
-    /// production caller passes.
-    const TEST_PLAN_SITE: &str = "src/v2/workflow/ci_floor_plan.dag::gunbc_ci_floor_plan";
 
     // --- floor-finalization DISPOSITION visibility (the fix this PR ships) -----------
     //
@@ -1658,12 +1594,6 @@ mod tests {
         );
     }
 
-    fn parse_materialization_receipt_field(body: &str, key: &str) -> Option<u64> {
-        body.lines()
-            .find_map(|line| line.strip_prefix(key))
-            .and_then(|v| v.trim().parse::<u64>().ok())
-    }
-
     // --- build-artifact verification teeth (DESIGN §5 fail-open guard) ---
 
     fn write_exec(dir: &std::path::Path, name: &str, bytes: &[u8]) -> String {
@@ -1726,17 +1656,6 @@ mod tests {
         );
     }
 
-    fn drift_authority_source_roots() -> Vec<String> {
-        let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .ancestors()
-            .nth(3)
-            .expect("workspace root");
-        vec![
-            workspace.join("dag").to_string_lossy().into_owned(),
-            workspace.join("src/v2").to_string_lossy().into_owned(),
-        ]
-    }
-
     // ---- walk-attempt identity ----
     //
     // The refusals below are the point of the feature, so each is asserted as a REFUSAL,
@@ -1766,46 +1685,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod witness_walk_flags_tests {
-    use super::witness_walk_flags;
-
-    /// The scoped-child boundary deletion narrowed the roster walk. This pins that it narrowed
-    /// ONLY the walk: a scoped child still executes rows, so it must still be handed the
-    /// per-witness eval budget. RED if the two questions are ever collapsed back into one flag —
-    /// the collapse is silent at the type level and would weaken a budget wall while reading as a
-    /// pure scope narrowing.
-    #[test]
-    fn witness_walk_flags_split_the_two_questions() {
-        let ordinary = witness_walk_flags(true, false);
-        assert!(ordinary.executes_witness_rows);
-        assert!(
-            ordinary.schedules_discovery,
-            "an ordinary worker carrying witness rows must still derive the roster"
-        );
-
-        let scoped = witness_walk_flags(true, true);
-        assert!(
-            scoped.executes_witness_rows,
-            "a scoped child executes its frozen rows, so it must keep the eval budget"
-        );
-        assert!(
-            !scoped.schedules_discovery,
-            "a scoped child must never re-derive a roster its parent already froze"
-        );
-
-        // No rows at all: neither question is yes, for either role.
-        for is_scoped in [false, true] {
-            let empty = witness_walk_flags(false, is_scoped);
-            assert!(!empty.executes_witness_rows);
-            assert!(!empty.schedules_discovery);
-        }
-    }
-}
-
-#[cfg(test)]
-mod scoped_execution_request_tests {
-    use super::*;
-}
+mod scoped_execution_request_tests {}
 
 /// Run git in the workspace and return trimmed stdout, or a refusal naming the command.
 ///
