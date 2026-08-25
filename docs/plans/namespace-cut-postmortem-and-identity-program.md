@@ -2615,15 +2615,42 @@ probe_sub_use.rs:  pub use crate::probe_sub::{samekind_name};
 probe_sub.rs:      pub fn samekind_name() -> String { "from_sub".to_string() }
 ```
 
-**It silently picks the nearer ancestor and compiles clean.** Two declarations,
-divergent values, both on the chain, no diagnostic of any kind; the `probe`
-declaration is never pulled into the closure. `v1.04_env`
-`unique_on_chain_policy_note` states that two-plus on-chain **refuses as typed
-`AmbiguousReference` with the full chain population**. On this path it does not —
-what executes is the nearest-ancestor tiebreak, the arm carrying
-`record_global_bare_ambiguous_silent_pick`. Whether the policy is not in effect
-on the `--entry` route or the bracket is not reached there is **not measured**
-and is not asserted here.
+It compiles clean — **and the reason is NOT that the resolver picked a winner.
+This paragraph is the corrected one; the first revision filed it as a resolver
+fail-open and that was wrong.** `deep-ant-102` read `global_bare_lookup` end to
+end and posed two candidates: (1) the policy was off, so the nearest-ancestor
+arm picked silently, or (2) `global_bare` never held two candidates at all,
+because `probe` sat in the census-only pool and the census does not contribute to
+`symbol_index.global_bare` on this route — in which case the binding was
+`GlobalBareUniqueBinding`, resolution was correct on the index it had, and
+nothing picked anything.
+
+**Their discriminator ran and (2) is right.** Same fixture with one line added
+so reference derivation pulls `probe` into the closure as well
+(`root_only_anchor`), both declarations still on the chain:
+
+```
+resolved 3 sources (reference-derived closure), 0 indexed modules in the name census only
+ambiguous reference 'samekind_name': 2 candidates: probe.samekind_name,
+  probe.sub.samekind_name — qualify by containment path, alias, or rename
+```
+
+So the policy works, `unique_on_chain_policy_note` is accurate, and the resolver
+is not a fail-open. **The defect is that the census — whose stated purpose is to
+make out-of-closure declarations visible to name resolution — did not make one
+visible.** Ambiguity that exists in the corpus is unrepresentable in the index
+the resolver consults, so a program that should refuse compiles instead. Same
+symptom, different owner, different repair, and a wider blast radius than a
+resolver bug: every ambiguity involving a census-only module is invisible
+everywhere, not merely mis-messaged.
+
+**What this costs the C.1 argument, stated because it was sent to a lane as an
+argument before the discriminator ran.** The claim that the pull declines to
+choose while the resolver chooses **dissolves** — the resolver never saw a
+choice. The two seams are not inconsistent in that direction. What survives is
+narrower: the pull leaves ambiguous declaring modules in the census, and the
+census does not surface them to resolution, so the two mechanisms compose into
+invisibility rather than into a disagreement.
 
 **The two arms are ordered by severity and it is not the order the diagnostics
 suggest.** Arm 1 is a bad message on a correct refusal. Arm 2 is a wrong program
