@@ -49,16 +49,14 @@ import extdeps.cargo_version { render_cargo_package_header_prefix }
 import gunbc.stage0_crate_layout_generated { generated_pub_mod_block }
 import gunbc.rust_decl_type_overlay { rust_decl_type_container_overlay_is_admitted }
 import gunbc.cli_dispatch_surface {
-  AbsentFromEmitMainRs,
   CliMillisecondValue,
   CliOptionRow,
   CliPortValue,
   CliSubcommandRow,
-  CliSurfaceEmission,
   CliTextValue,
   CliToggleValue,
-  EmittedByEmitMainRs,
-  gunbc_cli_subcommands
+  cli_subcommand_emitted_options,
+  gunbc_cli_emitted_subcommands
 }
 import std.constructors { Many, Optional, Required }
 import gunbc.stage0_emitted_population_manifest {
@@ -12580,11 +12578,7 @@ fn emit_cli_struct(workflow_funcs: List<WorkflowFunc>, binary_name: String, abou
 fn emit_subcommand_enum(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool) -> String {
   let depth = 0
   let variants = workflow_funcs |> map(wf => emit_subcommand_variant(wf: wf, depth: depth + 1))
-  let modeled_rows = if has_pipeline {
-    gunbc_cli_subcommands() |> filter(sub => cli_row_is_emitted(emission: sub.emission))
-  } else {
-    []
-  }
+  let modeled_rows = if has_pipeline { gunbc_cli_emitted_subcommands() } else { [] }
   let modeled = modeled_rows |> map(sub => emit_modeled_subcommand_variant(sub: sub, depth: depth))
   let all_variants = concat(variants, modeled)
   let variants_str = all_variants |> join(separator: "\n")
@@ -12596,13 +12590,6 @@ fn emit_subcommand_enum(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool) 
   )
 }
 
-fn cli_row_is_emitted(emission: CliSurfaceEmission) -> Bool {
-  match emission {
-    EmittedByEmitMainRs => true
-    AbsentFromEmitMainRs => false
-  }
-}
-
 fn emit_modeled_subcommand_variant(sub: CliSubcommandRow, depth: Int) -> String {
   let doc_lines = sub.doc |> map(d => concat("/// ", d))
   let doc_str = if doc_lines |> count == 0 {
@@ -12610,7 +12597,7 @@ fn emit_modeled_subcommand_variant(sub: CliSubcommandRow, depth: Int) -> String 
   } else {
     concat(doc_lines |> join(separator: concat("\n", make_indent(level: depth + 1))), "\n")
   }
-  let emitted_options = sub.options |> filter(opt => cli_row_is_emitted(emission: opt.emission))
+  let emitted_options = cli_subcommand_emitted_options(sub: sub)
   if emitted_options |> count == 0 {
     concat(doc_str, make_indent(level: depth + 1), sub.variant, ",")
   } else {

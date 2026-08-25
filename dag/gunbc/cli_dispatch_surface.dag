@@ -351,6 +351,27 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
   ]
 }
 
+// THE CANONICAL QUERIES, owned here rather than by whoever is rendering.
+//
+// `CliSurfaceEmission` is this module's coproduct, so the question "does the emitter produce this
+// row" is this module's to answer. A consumer that matched the variants itself would be a second
+// site deciding what each arm means, and a third arm added here would then be answered in two
+// places -- once correctly and once by whichever existing arm the consumer's match happened to
+// widen into. The emitter asks for the population it should render and never sees the tag.
+fn gunbc_cli_emitted_subcommands() -> List<CliSubcommandRow> {
+  gunbc_cli_subcommands() |> filter(sub => match sub.emission {
+    EmittedByEmitMainRs => true
+    AbsentFromEmitMainRs => false
+  })
+}
+
+fn cli_subcommand_emitted_options(sub: CliSubcommandRow) -> List<CliOptionRow> {
+  sub.options |> filter(opt => match opt.emission {
+    EmittedByEmitMainRs => true
+    AbsentFromEmitMainRs => false
+  })
+}
+
 // THE GAP, AS AN IDENTITY JOIN.
 //
 // Every declaration the committed CLI carries that `emit_main_rs` does not produce, named at the
