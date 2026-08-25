@@ -1,0 +1,101 @@
+module test.claim.data_row_shared_layer_authority_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// ReadsLiveTree, and it is declared even though it COSTS admission rather than buying it. Every
+// test below calls compile_dag_rust_emit_check, which resolves its virtual source against
+// build_module_path_index_from_witness_roots -- a walk of the live checkout. Three files on this
+// same surface already adjudicated it in that direction: compile_diagnostic_census_witness_test's
+// census_live_tree_note traced the call and concluded the SubstrateInputsOnly spelling was a
+// mis-declaration rather than a judgment call, transport_script_wall_compile_red_test corrected
+// itself on exactly that finding, and guarantee_floor_class_probe_witness_test states the rule in
+// the direction that binds here -- do not dissolve the cost by relabelling the file.
+//
+// WHAT THAT COSTS, stated rather than left for a reader to discover: v2.workflow.required_floor
+// retains the DeclinedLiveTree arm, so this module is DISCOVERED and DECLINED by the required
+// floor and does not execute there today. It dissolves with that arm's staged deletion, at which
+// point these three become executing evidence with no further authorship. Until then the evidence
+// below is executed rather than enrolled: run it directly with
+// `gunbc run --source-root dag --source-root src/v2 --entry <this file> --function <test fn>`,
+// which is how both directions of its discriminating pair were taken.
+//
+// THE POPULATION THIS CORRECTION DOES NOT REPAIR, named because the split is real and a reader
+// will find it: 24 further files under dag/test/claim call compile_dag_rust_emit_check while
+// declaring SubstrateInputsOnly, against 5 declaring ReadsLiveTree. Those 24 are the un-corrected
+// residue of this same class, not a competing authority for it; correcting them is a sweep with
+// its own admission consequences and is not this change's to make.
+
+// PERMANENT REGRESSION CONTROL for the module-scope data row's reference-layer decision, and the
+// executing evidence behind the one row gunbc.emitter_shared_layer_producer_census routes.
+//
+// THE DEFECT, now repaired. v1.compiler.emit_rust emit_data_def decided whether a data row sits at
+// the shared reference layer with set_contains(shared_types, authored_name_at(node: type_node)) --
+// a bare-spelling membership test -- while rust_carrier_is_at_shared_layer is the authority every
+// TYPE position in the same module already routes through, and while emit_data_def's own closure
+// consults that authority through value_inferred_type_is_rc_wrapped. The two do not answer the same
+// question: the authority additionally excludes a carrier that realizes as a machine scalar and a
+// carrier at optional cardinality, and the spelling key excludes neither.
+//
+// WHAT THAT PRODUCED, MEASURED RATHER THAN REASONED. On the pre-repair emitter a row declared at a
+// SHARED carrier and OPTIONAL cardinality emitted the signature `-> Rc<ZzNode>` over a body of
+// `Some(Rc::new(..))` -- an Option value returned from a non-Option signature, rustc E0308, and the
+// compile reported 0 diagnostics, so it is silent wrongness below the DESIGN section 5 floor rather
+// than a rung on the ladder. The declared type had lost its cardinality on the brand-preserving
+// arm, and the spelling key then added a reference layer on top of the loss.
+//
+// THE AXIS THIS FILE HOLDS FIXED, which is what makes the pair discriminating rather than merely
+// two failing cases. All three rows below are module-scope data rows in one fixture, authored
+// against the same declaration shapes. w_shared_optional_data_row_carries_the_optional is the
+// repair. The other two are the controls that fail if the repair overshot in either direction:
+// w_unshared_optional_data_row_unchanged pins a row at the SAME optional cardinality whose carrier
+// is NOT shared, and w_shared_required_data_row_unchanged pins a row at the SAME shared carrier
+// whose cardinality is NOT optional. So shared-vs-bare and optional-vs-required are separated, and
+// a change that repaired the target by widening either dimension reds one control.
+//
+// ZERO-DRIFT, measured not hoped: a full required-regen over the 135-module seed subject after this
+// repair drifted exactly one file, v1_compiler_emit_rust.rs -- the repair's own mirror. No other
+// emitted module changed, which is the evidence that the authority substitution is behaviour-
+// preserving everywhere the two authorities already agreed.
+//
+// dissolve-on: never -- permanent regression control for the one-authority law at this position.
+
+fn shared_optional_data_row_source() -> String {
+  "module dslshared\n\ntype DslNode = DslNode { child: DslNode? }\n\ndata dsl_opt: DslNode? = Present { value: DslNode { child: none } }\n"
+}
+
+fn unshared_optional_data_row_source() -> String {
+  "module dslplain\n\ntype DslPlain { a: Int }\n\ndata dsl_plain_opt: DslPlain? = Present { value: DslPlain { a: 1 } }\n"
+}
+
+fn shared_required_data_row_source() -> String {
+  "module dslreq\n\ntype DslNode = DslNode { child: DslNode? }\n\ndata dsl_req: DslNode = DslNode { child: none }\n"
+}
+
+test fn w_shared_optional_data_row_carries_the_optional() -> Bool {
+  compile_dag_rust_emit_check(
+    shared_optional_data_row_source(),
+    "src/dslshared.rs",
+    ["pub fn dsl_opt() -> Option<Rc<DslNode>> {", "static CACHED: Option<Rc<DslNode>> = {"],
+    ["pub fn dsl_opt() -> Rc<DslNode> {", "pub fn dsl_opt() -> DslNode {"]
+  )
+}
+
+test fn w_unshared_optional_data_row_unchanged() -> Bool {
+  compile_dag_rust_emit_check(
+    unshared_optional_data_row_source(),
+    "src/dslplain.rs",
+    ["pub fn dsl_plain_opt() -> Option<DslPlain> {"],
+    ["pub fn dsl_plain_opt() -> Option<Rc<DslPlain>> {", "pub fn dsl_plain_opt() -> Rc<"]
+  )
+}
+
+test fn w_shared_required_data_row_unchanged() -> Bool {
+  compile_dag_rust_emit_check(
+    shared_required_data_row_source(),
+    "src/dslreq.rs",
+    ["pub fn dsl_req() -> Rc<DslNode> {"],
+    ["pub fn dsl_req() -> Option<Rc<DslNode>> {", "pub fn dsl_req() -> DslNode {"]
+  )
+}
