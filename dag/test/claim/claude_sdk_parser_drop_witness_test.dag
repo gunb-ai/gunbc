@@ -3,7 +3,12 @@ module test.claim.claude_sdk_parser_drop_witness
 import std.types { Bool }
 import extdeps.llm.claude_agent_sdk_stream {
   claude_sdk_control_response_parser_drop_holds,
-  claude_sdk_parser_drop_receipt_holds,
+  claude_sdk_parser_drop_receipt_standing,
+  ParserDropHolds,
+  ParserDropRefuted,
+  ParserDropNotEstablished,
+  ReceiptMemberMissingOrAmbiguous,
+  ReceiptBytesUnreadable,
   parser_drop_fixture_subprocess_raw_types,
   parser_drop_fixture_sdk_parsed_types,
   parser_drop_red_control_parsed_types,
@@ -12,7 +17,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data claude_sdk_parser_drop_witness_note: String = "Hermetic half of audit §4.1 parser-drop evidence: fixture positive control, RED parsed-surface control, RED forgery controls over claude_sdk_parser_drop_receipt_holds on inline JSON (dropped-array shortcut and absent sdk_parsed_event_types). The wet receipt filesystem_read witness lives in claude_sdk_parser_drop_live_witness_test.dag (ReadsLiveTree)."
+data claude_sdk_parser_drop_witness_note: String = "Hermetic half of audit §4.1 parser-drop evidence: fixture positive control, RED parsed-surface control, RED forgery controls over claude_sdk_parser_drop_receipt_standing on inline JSON (dropped-array shortcut refuted, absent sdk_parsed_event_types unevidenced, unreadable bytes distinguished from both). The wet receipt filesystem_read witness lives in claude_sdk_parser_drop_live_witness_test.dag (ReadsLiveTree)."
 
 test fn witness_control_response_parser_drop_fixture_holds() -> Bool {
   claude_sdk_control_response_parser_drop_holds(
@@ -28,12 +33,42 @@ test fn RED_parsed_surface_including_control_response_does_not_hold() -> Bool {
   )
 }
 
+// ASSERTED AS *REFUTED*, NOT AS "NOT HOLDS". The forgery is a WELL-FORMED, CONFORMING receipt whose
+// recorded comparison simply does not show the drop -- so the honest answer is that the evidence was
+// read and refutes the claim. Written as `not holds` it would also have been satisfied by an
+// unreadable document, which is the collapse this change removes: the forgery control would have
+// passed on a build where the shortcut was never even parsed.
 test fn RED_wet_receipt_dropped_array_alone_is_not_sufficient() -> Bool {
   let forged = "{\"comparison\":{\"event_types_dropped_by_sdk_parser\":[\"control_response\"],\"sdk_subprocess_raw_event_types\":[\"system\"],\"sdk_parsed_event_types\":[\"control_response\",\"system\"]}}"
-  !claude_sdk_parser_drop_receipt_holds(text: forged)
+  match claude_sdk_parser_drop_receipt_standing(text: forged) {
+    ParserDropRefuted => true
+    ParserDropHolds => false
+    ParserDropNotEstablished { cause: _ } => false
+  }
 }
 
-test fn RED_wet_receipt_missing_sdk_parsed_event_types_does_not_hold() -> Bool {
+// THE OTHER SIDE OF THE SAME DISTINCTION, and the reason the pair is kept rather than merged: this
+// forgery is NOT refuted, it is unevidenced -- the document parses and then stops conforming. The
+// member is named in the assertion so the control cannot be satisfied by stalling on some earlier
+// member for an unrelated reason.
+test fn RED_wet_receipt_missing_sdk_parsed_event_types_is_not_established() -> Bool {
   let forged = "{\"comparison\":{\"sdk_subprocess_raw_event_types\":[\"control_response\",\"system\"]}}"
-  !claude_sdk_parser_drop_receipt_holds(text: forged)
+  match claude_sdk_parser_drop_receipt_standing(text: forged) {
+    ParserDropNotEstablished { cause: cause } =>
+      cause == ReceiptMemberMissingOrAmbiguous { member: "sdk_parsed_event_types" }
+    ParserDropHolds => false
+    ParserDropRefuted => false
+  }
+}
+
+// THE CAUSE-DISCRIMINATING CONTROL. Without it, the witness above is satisfied by any
+// not-established answer, including the unreadable one -- so this asserts that bytes which do not
+// parse reach a DIFFERENT cause than a document that parses and does not conform. That is the exact
+// pair the predecessor Bool could not tell apart.
+test fn RED_unreadable_receipt_bytes_are_not_a_conformance_gap() -> Bool {
+  match claude_sdk_parser_drop_receipt_standing(text: "not json at all") {
+    ParserDropNotEstablished { cause: cause } => cause == ReceiptBytesUnreadable
+    ParserDropHolds => false
+    ParserDropRefuted => false
+  }
 }

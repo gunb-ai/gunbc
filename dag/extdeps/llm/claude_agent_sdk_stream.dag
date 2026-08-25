@@ -100,43 +100,94 @@ fn parser_drop_receipt_required_member(v: JsonValue, key: String) -> JsonMemberR
   }
 }
 
-fn claude_sdk_parser_drop_receipt_holds(text: String) -> Bool {
+// THREE ANSWERS, NOT TWO -- AND THE THIRD IS THE ONE THIS FUNCTION USED TO DESTROY.
+//
+// The predecessor returned Bool, and `false` meant BOTH "the receipt was read and it does not
+// establish a parser drop" AND "I could not read the receipt at all". Those are different facts
+// with opposite owners: the first is a claim ABOUT THE SDK, the second is a claim about THIS
+// REPOSITORY'S EVIDENCE. The wet witness is where that mattered -- it hands us
+// `filesystem_read(...).content`, which is the empty string when the committed receipt is missing,
+// so a deleted or renamed probe artifact reported the SDK as not dropping control_response. The
+// evidence vanishing looked exactly like the evidence having been checked and found wanting.
+//
+// The gap is LOCATED at the member it stalled on, because "the receipt does not conform" is not
+// actionable and "the receipt has no sdk_parsed_event_types member" is. The gap deliberately does
+// NOT name the parse cause: a caller acts on whether it holds evidence, and re-spelling a JSON
+// tokenizer's complaint here would make this module's vocabulary a second naming scheme for the
+// codec's (DESIGN section 3). ReceiptBytesUnreadable is a fact about our evidence in our own terms.
+type ParserDropEvidenceGap
+  = ReceiptBytesUnreadable
+  | ReceiptMemberMissingOrAmbiguous { member: String }
+  | ReceiptMemberNotStringArray { member: String }
+
+// ParserDropRefuted is the arm that carries the OLD honest `false`: the document was read, it
+// conforms, and the comparison it records does not show control_response dropped. Keeping it
+// distinct from NotEstablished is the whole content of this change -- a consumer that treats them
+// alike is free to, but it must now say so at its own site rather than inherit the collapse here.
+type ParserDropReceiptStanding
+  = ParserDropHolds
+  | ParserDropRefuted
+  | ParserDropNotEstablished { cause: ParserDropEvidenceGap }
+
+fn claude_sdk_parser_drop_receipt_standing(text: String) -> ParserDropReceiptStanding {
   match parse_json(s: text) {
-    Absent => false
+    Absent => ParserDropNotEstablished { cause: ReceiptBytesUnreadable }
     Present { value: root } =>
       match parser_drop_receipt_required_member(v: root, key: "comparison") {
-        JsonMemberRequiredRefuse => false
+        JsonMemberRequiredRefuse =>
+          ParserDropNotEstablished {
+            cause: ReceiptMemberMissingOrAmbiguous { member: "comparison" },
+          }
         JsonMemberRequiredOk { value: comparison } =>
           match parser_drop_receipt_required_member(
             v: comparison,
             key: "sdk_subprocess_raw_event_types"
           ) {
-            JsonMemberRequiredRefuse => false
+            JsonMemberRequiredRefuse =>
+              ParserDropNotEstablished {
+                cause: ReceiptMemberMissingOrAmbiguous {
+                  member: "sdk_subprocess_raw_event_types",
+                },
+              }
             JsonMemberRequiredOk { value: raw_types_v } =>
               match parser_drop_receipt_required_member(
                 v: comparison,
                 key: "sdk_parsed_event_types"
               ) {
-                JsonMemberRequiredRefuse => false
+                JsonMemberRequiredRefuse =>
+                  ParserDropNotEstablished {
+                    cause: ReceiptMemberMissingOrAmbiguous {
+                      member: "sdk_parsed_event_types",
+                    },
+                  }
                 JsonMemberRequiredOk { value: parsed_types_v } =>
                   match decode_json_string_array(v: raw_types_v) {
+                    JsonStringListFail =>
+                      ParserDropNotEstablished {
+                        cause: ReceiptMemberNotStringArray {
+                          member: "sdk_subprocess_raw_event_types",
+                        },
+                      }
                     JsonStringListOk { values: raw_types } =>
                       match decode_json_string_array(v: parsed_types_v) {
+                        JsonStringListFail =>
+                          ParserDropNotEstablished {
+                            cause: ReceiptMemberNotStringArray {
+                              member: "sdk_parsed_event_types",
+                            },
+                          }
                         JsonStringListOk { values: parsed_types } =>
-                          claude_sdk_control_response_parser_drop_holds(
+                          if claude_sdk_control_response_parser_drop_holds(
                             subprocess_raw_types: raw_types,
                             sdk_parsed_types: parsed_types
-                          )
-                        JsonStringListFail => false
+                          ) { ParserDropHolds } else { ParserDropRefuted }
                       }
-                    JsonStringListFail => false
                   }
               }
           }
       }
   }
 }
-
 fn claude_sdk_control_response_parser_drop_holds(
   subprocess_raw_types: List<String>,
   sdk_parsed_types: List<String>
