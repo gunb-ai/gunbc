@@ -63,6 +63,10 @@ import gunbc.guarantee_probe_corpus {
   ProbeRowDuplicate,
   census_blocking_count_for_class,
   census_any_count_for_class,
+  census_blocking_rows,
+  census_total_count,
+  CensusObserved,
+  CensusNotRunnable,
   guarantee_probe_id_strings,
   probe_ids_are_lexicographically_ordered,
   synthetic_program_subject_revision,
@@ -165,6 +169,12 @@ data call_duplicate_mixed_red_source: String = "module probe_call_duplicate_mixe
 data call_duplicate_named_then_positional_red_source: String = "module probe_call_duplicate_named_then_positional\nfn two(a: Int, b: Int) -> Int { a + b }\nfn f() -> Int { two(a: 1, 2) }\n"
 
 data call_duplicate_green_source: String = "module probe_call_duplicate_green\nfn two(a: Int, b: Int) -> Int { a + b }\nfn ignore_ctx(_ctx: Int, b: Int) -> Int { b }\nfn distinct() -> Int { two(a: 1, b: 2) }\nfn reordered() -> Int { two(b: 2, a: 1) }\nfn positional() -> Int { two(1, 2) }\nfn underscore_idiom() -> Int { ignore_ctx(ctx: 1, b: 2) }\nfn two_unused(keep: Int, _: Int, _: Int) -> Int { keep }\nfn two_anon_positional_direct() -> Int { two_unused(7, 8, 9) }\ntype Claimer { claim: fn(Int, Int, Int) -> Int }\nfn two_anon_positional_via_field(p: Claimer) -> Int { p.claim(7, 8, 9) }\n"
+
+data formal_selection_out_of_order_green_source: String = "module probe_formal_selection_out_of_order\nfn take_list(xs: List<Int>, label: String) -> Int { xs |> count }\nfn out_of_order() -> Int { take_list(label: \"a\", xs: []) }\n"
+
+data formal_selection_declaration_order_green_source: String = "module probe_formal_selection_declaration_order\nfn take_list(xs: List<Int>, label: String) -> Int { xs |> count }\nfn in_declaration_order() -> Int { take_list(xs: [], label: \"a\") }\n"
+
+data formal_selection_note: String = "THE CLASS: which declared formal a call argument binds to was answered in TWO places with DIFFERENT rules. build_call_application_plan matched by AUTHORED LABEL with a positional fallback -- the rule call_function_inner uses -- while the ExprCall inference fold, which chooses the EXPECTED type each argument is inferred under, selected purely by SOURCE POSITION. A call passing named arguments in a different order than declared therefore inferred each argument against its NEIGHBOUR's formal, while the type check ran the other rule and reported nothing. MEASURED ON THE PRE-FIX BINARY, and this is the discriminating fact rather than a prediction: formal_selection_out_of_order_green_source is CORRECT code that main REFUSES with a hard `empty list literal: expected type is not a collection`, because the `[]` sits at source position 1 and was handed `label: String`'s formal. That is a FABRICATED REFUSAL, which DESIGN 5 forbids exactly as it forbids fabricated success, and it is a second, independent symptom of the same fork that produced wrong Rust lambda annotations under the typed-lambda emission route. THE GREEN CONTROL IS TWO-ARMED ON PURPOSE: the declaration-order sibling compiles clean on the pre-fix binary too and emits byte-identical Rust, so a wall that simply admitted every empty list would be indistinguishable from the repair on the out-of-order arm alone -- the pair is what attributes the flip to argument ORDER and to nothing else. Both arms assert GREEN because the defect is a fabricated refusal; the out-of-order arm is the enrolled regression control and goes red again if the two selection rules ever diverge."
 
 data method_missing_source: String = "module probe_method_red\nfn f(xs: List<Int>) -> List<Int> { xs |> filter_map(x => x) }\nfn g(xs: List<Int>) -> Bool { xs |> starts_with(\"x\") }\nfn h(xs: List<Int>) -> String { xs |> to_upper() }\n"
 
@@ -300,6 +310,20 @@ test fn call_shape_green_control_has_zero_diagnostics() -> Bool {
     Present { value: row } =>
       probe_row_expectation_holds(census: census_of(source: call_shape_green_source), row: row)
     Absent => false
+  }
+}
+
+test fn formal_selection_out_of_order_named_args_compile_clean() -> Bool {
+  match census_of(source: formal_selection_out_of_order_green_source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows)) == 0
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+test fn formal_selection_declaration_order_named_args_compile_clean() -> Bool {
+  match census_of(source: formal_selection_declaration_order_green_source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows)) == 0
+    CensusNotRunnable { cause: _ } => false
   }
 }
 
