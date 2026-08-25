@@ -1898,6 +1898,16 @@ Qualified-bare: green. Unqualified-braced: green. **Qualified-braced: red.**
 `warm-hawk-909`'s correction was load-bearing — the three earlier fixtures
 probed variant *spelling* and the axis is spelling × braces.
 
+*(Cell precision, self-corrected by the lane before this was written up:
+qualified-bare is measured green in three positions — if-branch tail, plain fn
+tail, and let-bound — but **not yet in a match arm**; that cell sat in a batch
+whose entry points were never appended, so six runs returned `NoSuchFunction`
+and a truncated grep of the output was read as green. "An absence downstream of
+a failure is undefined, not a green" — their words, and the same class this
+document keeps recording. It is re-running. **The conclusion does not rest on
+it**: the root below is read directly from the grammar and is independent of
+every fixture cell.)*
+
 **THE ROOT, verified in `src/v2/extdeps/languages/dag.dag`:**
 
 - `dag_grammar_primary_ident_suffix_expr` — a bare ident's suffix is
