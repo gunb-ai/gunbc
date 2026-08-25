@@ -69,7 +69,7 @@ test fn not_established_cause_is_preserved_on_both_axes() -> Bool {
 }
 
 test fn malformed_source_reports_tokenization_rejection() -> Bool {
-  match source_findings(source_text: "@@@ not dag source @@@ )( unterminated \"") {
+  match v2.lens.complexity_accumulator_copy.roster_gate.source_findings(source_text: "@@@ not dag source @@@ )( unterminated \"") {
     SourceFindingsNotEstablished { cause: SourceTokenizationRejected } => true
     SourceFindingsNotEstablished { cause: LanguageGrammarUnavailable } => false
     SourceFindingsNotEstablished { cause: LanguageGrammarRejected } => false

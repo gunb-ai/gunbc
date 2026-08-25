@@ -120,7 +120,7 @@ type RosterVerdict
   | RosterRatchetExceeded { refusals: Int, ceiling: Int }
 
 fn file_verdict(path: String, refusal_ceiling: Int) -> RosterVerdict {
-  match ingest_findings(path: path) {
+  match v2.lens.identity_captured_navigation.roster_gate.ingest_findings(path: path) {
     SourceFindingsNotEstablished { cause: _ } => RosterIngestRegressed
     SourceFindingsEstablished { findings: fs } =>
       if count_matching(fs: fs, pred: v2.lens.identity_captured_navigation.analyze.finding_is_suspect) > 0 {
