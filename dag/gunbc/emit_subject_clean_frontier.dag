@@ -201,7 +201,7 @@ type RosterDiscoveryPolicy
 // So the rule "nothing may gate on a single-denominator universe" is carried by
 // `emit_ratchet_gating_admission` below, which REFUSES on this field. Enrolling a single-denominator
 // carrier is then a typed refusal naming the missing denominator, not a missed paragraph — and when
-// the module inventory lands, the field changes and enrolment becomes possible with no note for
+// the file inventory lands, the field changes and enrolment becomes possible with no note for
 // anyone to remember.
 type RosterDenominators
   = DeclarationIndexOnly
