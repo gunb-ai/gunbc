@@ -987,6 +987,25 @@ filtering it to data items closes that. **The key is still a bare name**, so two
 population half closes at 0.3; **the keying half stays open under Track C** —
 recorded here so Resolution does not inherit a wave item it believes is finished.
 
+**And its review found something the program should carry: this class of fix
+silently self-reverts under ordinary branch hygiene failures.** #9207 sat at
+REQUEST_CHANGES because a patch applied from a stale working copy clobbered main's
+newer `05_emit_rust.dag`, and what it silently reverted was *another fix of this
+same class* — `emit_data_def`'s `needs_rc` routed back to a bare-spelling key,
+with the `preserves_declared_brand` branch dropped. Nothing detected it; it
+surfaced in review.
+
+That is worth a row rather than a note, because the vulnerability is structural
+and specific to this program's shape. **An identity-keying repair is typically one
+line, in a large file, changing which key a lookup consumes — semantically
+enormous and visually indistinguishable from noise in a whole-file diff.** So the
+ordinary hygiene failure (copy a file across branches) reverts exactly this class
+in preference to others, and the reverted state still compiles, still passes, and
+reads as the file's normal content. Two consequences: **every fix in this program
+needs its discriminating RED enrolled, not just authored** — an enrolled red
+refuses the revert while a merely-authored fixture does not — and the whole-file
+copy is a specific hazard to name in each lane's brief, not general advice.
+
 Its measurement carries a generalization worth more than the fix. Clearing the two
 blocking diagnostics revealed 8 pre-existing ones behind them, so **the corpus's
 blocking population is not knowable from one run — clear one class, discover the
