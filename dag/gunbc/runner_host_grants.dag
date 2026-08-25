@@ -1,0 +1,158 @@
+module gunbc.runner_host_grants
+
+// THE HOST'S GRANT POPULATION, DERIVED FROM ITS OWN DEPLOY ROW. This is a separate module from
+// gunbc.executor_privileged_operation on purpose, and the reason is structural rather than tidy:
+// the operation authority is consumed by gunbc.runner_slot_provision (which projects its scripts
+// from the same argv), so an operation module that also read the slot ROSTER would close an import
+// cycle -- and acyclicity is the one structural law the import graph has (DESIGN §3). Operations
+// know nothing about hosts; this module joins the two.
+
+import std.types { String, NonEmptyStr, List }
+import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
+import gunbc.executor_privileged_operation {
+  ExecutorPrivilegedOperation,
+  EnsureOwnedDirectory,
+  SystemdDaemonReload,
+  executor_managed_directory_mode,
+  executor_privileged_operations_sudoers_body,
+  runner_slot_privileged_operations,
+}
+import gunbc.runner_host_deploy { RunnerHostDeploy, srv1_runner_host_deploy, srv3_runner_host_deploy, srv4_runner_host_deploy }
+import gunbc.runner_slot_provision { desired_runner_slot_members }
+
+// THE MANAGED STATE DIRECTORY, DECLARED ONCE. It is currently spelled THREE times in
+// gunbc.fleet_converge_plan and named nowhere: once as a bare literal in the lease guard's argv, and
+// twice more as the leading segment of fleet_converge_generation_store_path and
+// fleet_converge_generation_lock_path. The grant below has to name the same directory, which would
+// have made a fourth. §3 RESIDUAL, with a trigger rather than only prose: this row is the authority,
+// and it dissolves when fleet_converge_plan derives all three of its spellings from it instead of
+// re-typing the path. Until then the drift is real -- moving the state directory today requires
+// finding three unrelated string sites, and missing one produces a lease that guards a directory
+// nothing else uses.
+data gunbc_fleet_converge_state_dir: NonEmptyStr = "/var/lib/gunbc/fleet-converge" as NonEmptyStr
+
+// THE HOST'S REQUIRED PRIVILEGED POPULATION, DERIVED FROM ITS OWN DEPLOY ROW. Nothing here is
+// srv-specific: a host's slot roster, job user and runner user decide its grants, so adding a slot
+// or retargeting an account changes the authorization with no second edit. This is the function the
+// emitted sudoers artifact is rendered from.
+fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  let job = deploy.job_user
+  let slot_dirs = map(desired_runner_slot_members(deploy: deploy), m => m.slot_dir)
+  runner_slot_privileged_operations(slot_dirs: slot_dirs, slot_owner: job)
+    + [
+      EnsureOwnedDirectory {
+        path: gunbc_fleet_converge_state_dir,
+        owner: job,
+        group: job,
+        mode: executor_managed_directory_mode,
+      },
+      EnsureOwnedDirectory {
+        path: actions_runner_base_dir as NonEmptyStr,
+        owner: deploy.runner_user,
+        group: deploy.runner_user,
+        mode: executor_managed_directory_mode,
+      },
+      EnsureOwnedDirectory {
+        path: actions_runner_cache_dir as NonEmptyStr,
+        owner: deploy.runner_user,
+        group: deploy.runner_user,
+        mode: executor_managed_directory_mode,
+      },
+      SystemdDaemonReload
+    ]
+}
+
+// THE HEADER IS THE INSTALLED FILE'S ONLY POINTER BACK TO ITS AUTHORITY, so it names the module that
+// defines the renderer AND the entry point that reproduces THIS host's file. It has now been wrong
+// twice, in two different ways, which is why it takes a parameter instead of a constant: it named
+// executor_privileged_operation.dag until the module split moved the function (review 55626), and
+// then named srv3's entry point for every host once srv1 and srv4 rendered through the same function
+// (review 55653) -- so srv1's installed file told a reader to reproduce it with srv3's command.
+// A constant cannot be right here: the reproducing entry point is a fact about the host, not about
+// the renderer, so it is supplied by the caller that knows which host it is rendering.
+fn runner_host_sudoers_header(entry_point: NonEmptyStr) -> String {
+  join([
+    "# GENERATED from dag/gunbc/runner_host_grants.dag ",
+    entry_point as String,
+    " — do not hand-edit\n"
+  ], "")
+}
+
+fn runner_host_sudoers_content(deploy: RunnerHostDeploy, entry_point: NonEmptyStr) -> String {
+  join([
+    runner_host_sudoers_header(entry_point: entry_point),
+    executor_privileged_operations_sudoers_body(
+      grantee: deploy.job_user,
+      ops: runner_host_privileged_operations(deploy: deploy),
+    )
+  ], "")
+}
+
+
+// THE RENDERED ARTIFACT, REACHABLE BY NAME. Without this the sudoers file can only be produced by
+// hand-writing an entry module, which makes the one artifact an operator has to install
+// unreproducible from the repository -- exactly the hand-authored host state this module exists to
+// avoid. Run it with:
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/runner_host_grants.dag --function srv3_runner_host_sudoers
+fn srv3_runner_host_sudoers() -> String {
+  runner_host_sudoers_content(
+    deploy: srv3_runner_host_deploy,
+    entry_point: "srv3_runner_host_sudoers" as NonEmptyStr,
+  )
+}
+
+// THE BOOTSTRAP PRINCIPAL, RECORDED BECAUSE IT WAS DISCOVERED THE EXPENSIVE WAY. A grantee cannot
+// install its own sudoers grant -- the subject receiving authority cannot be the sole source of the
+// authority that grants it -- so the first install on any host is performed by a DIFFERENT principal.
+// On the executor fleet that principal is NOT the deploy row's ssh_target.
+//
+// MEASURED ON srv3, 2026-08-25, with the fleet key (extdeps secret fleet-automation-ssh-key,
+// fingerprint SHA256:mGT7qJsh36VsVb8OPh3m8br3oHedQHxRukRkW5P0CoQ):
+//   briansrls        Permission denied (publickey)  -- the deploy row's ssh_target does NOT accept it
+//   fleet-automation Permission denied (publickey)
+//   root             Permission denied (publickey)
+//   ghrunner         authenticates, then nologin     -- the GRANTEE, a service account
+//   ubuntu           full shell, (ALL) NOPASSWD: ALL -- THE BOOTSTRAP PRINCIPAL
+//
+// WHY THIS ROW EXISTS RATHER THAN A COMMENT IN A RUNBOOK: the operator did not know the briansrls
+// password and reasonably believed the fleet credential already carried sudo. It does -- under
+// ubuntu, not under the ssh_target the deploy row names. That single fact was the whole blocker, it
+// is not derivable from any other row in this repository, and it was recovered by probing five
+// accounts against a live host. Left in prose it would be lost by the next session.
+type ExecutorBootstrapPrincipal {
+  login: NonEmptyStr
+  reachable_with_secret: NonEmptyStr
+}
+
+data srv3_executor_bootstrap_principal: ExecutorBootstrapPrincipal = ExecutorBootstrapPrincipal {
+  login: "ubuntu" as NonEmptyStr,
+  reachable_with_secret: "fleet-automation-ssh-key" as NonEmptyStr,
+}
+
+// THE GRANTEE IS NEVER THE BOOTSTRAP PRINCIPAL. This is the privilege law stated as a predicate so a
+// future edit that points both at one account fails a witness rather than silently creating an
+// account that authorizes itself.
+fn bootstrap_principal_is_not_the_grantee(
+  bootstrap: ExecutorBootstrapPrincipal,
+  deploy: RunnerHostDeploy,
+) -> Bool {
+  bootstrap.login != deploy.job_user
+}
+
+// THE OTHER EXECUTOR HOSTS. Same derivation, different deploy row -- the population follows each
+// host's own slot roster and job user, so these are three call sites of one function rather than
+// three hand-maintained grant lists.
+fn srv1_runner_host_sudoers() -> String {
+  runner_host_sudoers_content(
+    deploy: srv1_runner_host_deploy,
+    entry_point: "srv1_runner_host_sudoers" as NonEmptyStr,
+  )
+}
+
+fn srv4_runner_host_sudoers() -> String {
+  runner_host_sudoers_content(
+    deploy: srv4_runner_host_deploy,
+    entry_point: "srv4_runner_host_sudoers" as NonEmptyStr,
+  )
+}
