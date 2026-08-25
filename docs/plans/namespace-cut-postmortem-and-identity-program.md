@@ -1816,23 +1816,43 @@ the identical shape found the same day in the emitter, where `String?` collapsed
 AMBIGUOUS and NO-CANDIDATE into one `Absent` and the consumer recomputed the
 whole fold to recover what the producer had discarded. Two stages, one defect.
 
-**THE CONSEQUENCE FOR THE CUT, WHICH IS WHY THIS IS ITS OWN SECTION.** Deleting
-imports drives `authored_import_names` empty for *every* module in the corpus.
-Every call then returns `VisibilityUnobservable`, and this wall stops
-discriminating — **silently, with no diagnostic, no count, and no failing
-witness**, because returning the "I cannot observe" state is exactly what it is
-built to do. Nothing in the cut would report it. A guard that answers honestly
-about its own ignorance is indistinguishable from a guard that has been
-switched off, once the input it reads no longer exists.
+**THE CONSEQUENCE IS NOT SILENCE — IT IS A DIFFERENT ANSWER, PRODUCED
+CONFIDENTLY.** An earlier revision of this section said the wall "stops
+discriminating, silently, with no diagnostic and no count." `deep-ant-102`
+traced the consumer and that framing understates it. `author_named_visibility`
+has exactly one caller, `callable_lookup_over_candidates`, where
+`VisibilityUnobservable` takes **the same arm as `AuthorNamedThisName`**
+(`builtin_admissible = vec![]`). With nothing declared in the parent closure the
+lookup then falls through to `func_sig_from_global_bare`, which resolves through
+`borrowed_census_decl` — **the whole-tree flat census borrow, last-write-wins
+across the entire corpus.**
 
-That is not an argument against the cut. It is an argument that **the cut must
-carry this wall's replacement, not discover it afterwards**: whatever answers
-"did the author name this name" after imports are gone has to be identified and
-in place before the semantic cutover (M6), because the alternative is a wall
-that is green and inert on the far side. It joins the F-milestone obligations
-rather than sitting in the post-cut cleanup, and it is a concrete instance of
-the delete-first census producing a *predicted* refusal rather than a discovered
-one — which is the good case, and only because it was found early.
+So deleting imports does not disarm a guard into an unanswered question. It
+hands every bare call to a resolver with no import context at all, and that
+resolver answers. The failure mode is not a missing refusal but **a wrong
+binding that typechecks** — the absorbing fallback with a resolution attached,
+which is §5's named trap rather than a gap.
+
+**AND IT IS LIVE TODAY, WHICH REQUIRED CORRECTING A CORRECTION.** The same
+trace reported that the whole branch is gated behind
+`name_resolution_policy_is_namespace_only()`, whose in-tree comment reads
+"default false = production fail-open path" — concluding that this is a
+precondition on a future policy flip rather than a present obligation. That is
+false. `v1_rt.rs:164` is `Cell::new(true)`, `cli_run.rs` records that the flag
+"now defaults to true (§13 unique-on-chain)" as the thing that turned a test
+red, and `v1_compiler_infer_env.rs` names the ratification: "step-4 default ON =
+NamespaceOnlyY", operator-ratified 2026-07-21. **`false` is the bracket, not the
+default.** Namespace-only is the production policy and has been since July.
+
+The quoted comment is real, and it sits immediately after that function's
+closing brace while documenting the **next** declaration — the N1a measurement
+arm, `type_ref_hit_ne_bind_measure_active`, which its own first words name. So a
+careful reader attached prose to the wrong subject because it was adjacent, and
+concluded the opposite of the truth about a live production policy. That is
+§11.2d's class arriving a second time in one afternoon by a different route:
+there a citation named a symbol that does not exist, here a comment named a
+neighbour. **In both cases the code was right, the reader was careful, and the
+prose was the only thing that lied.**
 
 The immediate corollary for anyone filling a `TypeEnv` initializer: **an empty
 `authored_import_names` is a claim that visibility is UNOBSERVABLE, not a claim
