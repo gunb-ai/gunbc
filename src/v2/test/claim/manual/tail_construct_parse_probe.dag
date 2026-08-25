@@ -6,6 +6,12 @@ import v2.compiler.parse { grammar_validate_for_parse, parse_production }
 import v2.compiler.tokenize { tokenize }
 
 
+// The fixtures under src/v2/test/fixture/tail_construct/ are .txt, not .dag, and that is load-bearing:
+// they are SOURCE TEXT handed to the v2 parser by filesystem_read, not modules. As .dag they are swept,
+// resolved and typechecked with the rest of src/v2, where their deliberately-unbound helper calls are
+// out-of-scope errors and their repeated local type name collides with the lens type it was copied from.
+// A probe that leaves its subject typechecked is a different subject. Same precedent as the .txt fixture
+// v2.test.manual.parse_mechanism_probe already reads.
 data tcp_subject: Symbol = ^tail_construct_probe_subject
 
 fn tcp_cause(source_text: String) -> Symbol {
