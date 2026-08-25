@@ -284,7 +284,7 @@ test fn a_roster_that_lost_a_subject_carries_a_different_digest() -> Bool {
   match roster_identity(policy: fixture_policy(), roster: fixture_roster) {
     RosterEmpty { policy: _ } => false
     RosterIdentified { policy: _, subject_count: _, digest: whole } =>
-      match roster_identity(policy: fixture_policy(), roster: [alpha]) {
+      match roster_identity(policy: fixture_policy(), roster: [fixture_alpha]) {
         RosterEmpty { policy: _ } => false
         RosterIdentified { policy: _, subject_count: _, digest: partial } =>
           !(whole.digest as String == partial.digest as String)
