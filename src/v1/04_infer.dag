@@ -227,8 +227,8 @@ fn classify_field_recursion(field_node: v1.std.core.Node, parent_name: String, r
       CardOptional => Present { value: FieldRecursionResult { shape: std.induction.OptionalRecursion, element_type: parent_name } }
       _ => Present { value: FieldRecursionResult { shape: std.induction.DirectRecursion, element_type: parent_name } }
     }
-  } else if v1.std.core.is_container_type(name: field_type_name) {
-    let arity = match v1.std.core.container_expected_arity(name: field_type_name) {
+  } else if std.types.is_container_type(name: field_type_name) {
+    let arity = match std.types.container_expected_arity(name: field_type_name) {
       Present { value: a } => a
       Absent => 0
     }
@@ -1780,7 +1780,7 @@ fn exposure_is_application(exposure: v1.compiler.type_head_exposure.TypeHeadExpo
 fn literal_introduction_type_mismatch(formal: v1.std.core.Node, actual_expr: v1.std.core.Node, scope: InferScope) -> Bool {
   let expected_name = v1.std.core.authored_name_at(source_indices: scope.type_env.source_indices, node: formal)
   match actual_expr.expr_data {
-    v1.std.core.ExprLiteral { value: v1.std.core.LitInt { value: _ } } => false
+    v1.std.core.ExprLiteral { value: std.syntax.LitInt { value: _ } } => false
     v1.std.core.ExprLiteral { value: _ } =>
       if std.types.is_kernel_type(name: expected_name) { false }
       else { exposure_is_application(exposure: expected_type_head_exposure(formal: formal, scope: scope)) }
@@ -6074,7 +6074,7 @@ fn classify_let_value(val: v1.std.core.Node, ctx: DescentContext) -> std.inducti
     _ =>
       let type_based = match val.inferred {
         Present { value: v1.std.core.Resolved { node: rt } } =>
-          if v1.std.core.is_container_type(name: v1.std.core.authored_name_at(source_indices: ctx.type_env.source_indices, node: rt)) {
+          if std.types.is_container_type(name: v1.std.core.authored_name_at(source_indices: ctx.type_env.source_indices, node: rt)) {
             let elem = match rt.children |> first {
               Present { value: c } => v1.std.core.authored_name_at(source_indices: ctx.type_env.source_indices, node: c)
               Absent => ""
@@ -8784,7 +8784,7 @@ fn transparent_alias_target_name(item: v1.std.core.Node, source_indices: Map<Str
           ""
         } else if target_name == "" || target_name == self_name {
           ""
-        } else if v1.compiler.infer_types.is_declared_container_alias_spelling(name: target_name) || v1.std.core.is_container_type(name: v1.std.core.qualified_last_segment(name: target_name)) {
+        } else if v1.compiler.infer_types.is_declared_container_alias_spelling(name: target_name) || std.types.is_container_type(name: v1.std.core.qualified_last_segment(name: target_name)) {
           ""
         } else {
           target_name
@@ -9316,7 +9316,7 @@ data direct_import_export_precedence_note: String = "Direct-selected exports bea
 
 fn overlay_skips_kernel_name(name: String) -> Bool {
   std.types.is_kernel_type(name: name)
-    || v1.std.core.is_container_type(name: name)
+    || std.types.is_container_type(name: name)
     || name == "Unit"
     || name == "Optional"
     || name == "Present"
@@ -10391,7 +10391,7 @@ fn build_emit_graph_info(modules: List<v1.compiler.infer_items.TypedModule>) -> 
     map_key_required_type_names: empty_set(),
     clone_impl_required_type_params: empty_map(),
     fn_generic_param_names: [],
-    fn_type_env: v1.compiler.infer_emit_info.empty_type_env(),
+    fn_type_env: v1.compiler.infer_env.empty_type_env(),
     fn_return_type: none
   }
 }

@@ -390,7 +390,7 @@ fn v1_freemonoid_impl_type_params(
 ) -> String {
   if (generic_param_names |> count) == 0 { "" } else {
     let entries = generic_param_names |> map(p =>
-      let pascal = v1.compiler.emit.to_pascal(name: p)
+      let pascal = v1.compiler.emit_core_support.to_pascal(name: p)
       let supplemental = if fm_params |> any(f => f == p) { [v1_freemonoid_supplemental_bound_spelling()] } else { [] }
       let structural = if v1_freemonoid_param_in_fields(param_name: p, field_type_exprs: field_type_exprs, source_indices: source_indices) { [structural_spelling] } else { [] }
       let parts = concat(supplemental, structural)
@@ -402,7 +402,7 @@ fn v1_freemonoid_impl_type_params(
 
 fn v1_freemonoid_bare_type_args(generic_param_names: List<String>) -> String {
   if (generic_param_names |> count) == 0 { "" } else {
-    concat("<", generic_param_names |> map(p => v1.compiler.emit.to_pascal(name: p)) |> join(separator: ", "), ">")
+    concat("<", generic_param_names |> map(p => v1.compiler.emit_core_support.to_pascal(name: p)) |> join(separator: ", "), ">")
   }
 }
 
@@ -412,7 +412,7 @@ fn v1_freemonoid_serde_bound_attr(
 ) -> String {
   let supplement = v1_freemonoid_supplemental_bound_spelling()
   let ser_entries = generic_param_names |> map(p =>
-    let pascal = v1.compiler.emit.to_pascal(name: p)
+    let pascal = v1.compiler.emit_core_support.to_pascal(name: p)
     if fm_params |> any(f => f == p) {
       concat(pascal, ": ", supplement, " + serde::Serialize")
     } else {
@@ -420,7 +420,7 @@ fn v1_freemonoid_serde_bound_attr(
     }
   )
   let de_entries = generic_param_names |> map(p =>
-    let pascal = v1.compiler.emit.to_pascal(name: p)
+    let pascal = v1.compiler.emit_core_support.to_pascal(name: p)
     if fm_params |> any(f => f == p) {
       concat(pascal, ": ", supplement, " + serde::Deserialize<'de>")
     } else {
@@ -485,7 +485,7 @@ fn v1_set_serde_bound_attr(
   let ser_supplement = v1_set_supplemental_bound_spelling_for(extdeps.languages.rust.capabilities.RustSerialize)
   let de_supplement = v1_set_supplemental_bound_spelling_for(extdeps.languages.rust.capabilities.RustDeserialize)
   let ser_entries = generic_param_names |> map(p =>
-    let pascal = v1.compiler.emit.to_pascal(name: p)
+    let pascal = v1.compiler.emit_core_support.to_pascal(name: p)
     if set_params |> any(f => f == p) {
       concat(pascal, ": ", ser_supplement, " + serde::Serialize")
     } else {
@@ -493,7 +493,7 @@ fn v1_set_serde_bound_attr(
     }
   )
   let de_entries = generic_param_names |> map(p =>
-    let pascal = v1.compiler.emit.to_pascal(name: p)
+    let pascal = v1.compiler.emit_core_support.to_pascal(name: p)
     if set_params |> any(f => f == p) {
       concat(pascal, ": ", de_supplement, " + serde::Deserialize<'de>")
     } else {
@@ -579,7 +579,7 @@ fn v1_freemonoid_enum_debug_impl(
   let tp = v1_freemonoid_impl_type_params(generic_param_names: generic_param_names, fm_params: fm_params, field_type_exprs: field_type_exprs, structural_spelling: "std::fmt::Debug", source_indices: source_indices)
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
   let arms = children |> map(variant =>
-    let vname = v1.compiler.emit.to_pascal(name: v1.std.core.authored_name_at(source_indices: source_indices, node: variant))
+    let vname = v1.compiler.emit_core_support.to_pascal(name: v1.std.core.authored_name_at(source_indices: source_indices, node: variant))
     if (variant.children |> count) == 0 {
       concat("            Self::", vname, " => f.write_str(\"", vname, "\"),")
     } else {
@@ -611,7 +611,7 @@ fn v1_freemonoid_enum_partial_eq_impl(
   let tp = v1_freemonoid_impl_type_params(generic_param_names: generic_param_names, fm_params: fm_params, field_type_exprs: field_type_exprs, structural_spelling: "PartialEq", source_indices: source_indices)
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
   let arms = children |> map(variant =>
-    let vname = v1.compiler.emit.to_pascal(name: v1.std.core.authored_name_at(source_indices: source_indices, node: variant))
+    let vname = v1.compiler.emit_core_support.to_pascal(name: v1.std.core.authored_name_at(source_indices: source_indices, node: variant))
     if (variant.children |> count) == 0 {
       concat("            (Self::", vname, ", Self::", vname, ") => true,")
     } else {
@@ -644,7 +644,7 @@ fn v1_set_impl_type_params(
 ) -> String {
   if (generic_param_names |> count) == 0 { "" } else {
     let entries = generic_param_names |> map(p =>
-      let pascal = v1.compiler.emit.to_pascal(name: p)
+      let pascal = v1.compiler.emit_core_support.to_pascal(name: p)
       let supplemental = if set_params |> any(f => f == p) { [v1_set_supplemental_bound_spelling_for(derive_trait)] } else { [] }
       let structural = if v1_freemonoid_param_in_fields(param_name: p, field_type_exprs: field_type_exprs, source_indices: source_indices) { [structural_spelling] } else { [] }
       let parts = concat(supplemental, structural)
@@ -665,7 +665,7 @@ fn v1_set_enum_debug_impl(
   let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "std::fmt::Debug", derive_trait: extdeps.languages.rust.capabilities.RustDebug, source_indices: source_indices)
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
   let arms = children |> map(variant =>
-    let vname = v1.compiler.emit.to_pascal(name: v1.std.core.authored_name_at(source_indices: source_indices, node: variant))
+    let vname = v1.compiler.emit_core_support.to_pascal(name: v1.std.core.authored_name_at(source_indices: source_indices, node: variant))
     if (variant.children |> count) == 0 {
       concat("            Self::", vname, " => f.write_str(\"", vname, "\"),")
     } else {
@@ -697,7 +697,7 @@ fn v1_set_enum_partial_eq_impl(
   let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "PartialEq", derive_trait: extdeps.languages.rust.capabilities.RustPartialEq, source_indices: source_indices)
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
   let arms = children |> map(variant =>
-    let vname = v1.compiler.emit.to_pascal(name: v1.std.core.authored_name_at(source_indices: source_indices, node: variant))
+    let vname = v1.compiler.emit_core_support.to_pascal(name: v1.std.core.authored_name_at(source_indices: source_indices, node: variant))
     if (variant.children |> count) == 0 {
       concat("            (Self::", vname, ", Self::", vname, ") => true,")
     } else {
@@ -1973,7 +1973,7 @@ fn v1_emit_type_params_with_bounds(
   else {
     let names = params |> map(p =>
       let pname = v1.std.core.generic_param_name_at(n: p, source_indices: source_indices)
-      let pascal = v1.compiler.emit.to_pascal(name: pname)
+      let pascal = v1.compiler.emit_core_support.to_pascal(name: pname)
       match map_get(bounds_by_param, pname) {
         Present { value: traits } =>
           if (traits |> count) == 0 {

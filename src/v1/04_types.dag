@@ -541,7 +541,7 @@ fn apply_type_substitution(template: std.algebra.AlgebraTypeTemplate, subst: Map
       let receiver_name_str = container_kind_canonical(name: v1.std.core.authored_name_at(source_indices: source_indices, node: receiver))
       let is_bare = std.types.is_container_type(name: receiver_name_str) && (receiver.children |> all(ch =>
         let inner = child_type_node(ch: ch)
-        if inner.inferred != none { is_type_variable(inferred: inner.inferred.value) } else { inner.ident_span == none || !v1.std.core.is_kernel_type(name: v1.std.core.authored_name_at(source_indices: source_indices, node: inner)) }
+        if inner.inferred != none { is_type_variable(inferred: inner.inferred.value) } else { inner.ident_span == none || !std.types.is_kernel_type(name: v1.std.core.authored_name_at(source_indices: source_indices, node: inner)) }
       ))
       if is_bare {
         let arity = std.types.container_expected_arity(name: receiver_name_str)
@@ -741,7 +741,7 @@ fn node_type_shape(n: v1.std.core.Node, source_indices: Map<String, v1.std.core.
       Present { value: v1.std.core.Resolved { node: rt } } =>
         rt.connective == v1.std.core.NoConnective && rt.children |> count == 0
           && rt.ident_span != none && v1.std.core.authored_name_at(source_indices: source_indices, node: rt) != "None"
-          && v1.std.core.is_kernel_type(name: v1.std.core.authored_name_at(source_indices: source_indices, node: rt)) == false
+          && std.types.is_kernel_type(name: v1.std.core.authored_name_at(source_indices: source_indices, node: rt)) == false
       _ => false
     }
     if __is_named_ref {
@@ -1010,7 +1010,7 @@ fn node_type_deps(n: v1.std.core.Node, source_indices: Map<String, v1.std.core.N
       Present { value: v1.std.core.Resolved { node: rt } } =>
         rt.connective == v1.std.core.NoConnective && rt.children |> count == 0
           && rt.ident_span != none && v1.std.core.authored_name_at(source_indices: source_indices, node: rt) != "None"
-          && v1.std.core.is_kernel_type(name: v1.std.core.authored_name_at(source_indices: source_indices, node: rt)) == false
+          && std.types.is_kernel_type(name: v1.std.core.authored_name_at(source_indices: source_indices, node: rt)) == false
       _ => false
     }
   }
@@ -1029,10 +1029,10 @@ fn node_type_deps(n: v1.std.core.Node, source_indices: Map<String, v1.std.core.N
     match n.inferred { Present { value: v1.std.core.Resolved { node: rt } } => node_type_deps(n: rt, source_indices: source_indices)  _ => [] }
   } else if n.children |> count > 0 {
     let child_deps = flat_map(n.children, child => node_type_deps(n: child, source_indices: source_indices))
-    if n.ident_span != none && v1.std.core.is_kernel_type(name: n_name) == false {
+    if n.ident_span != none && std.types.is_kernel_type(name: n_name) == false {
       concat([n_name], child_deps)
     } else { child_deps }
-  } else if v1.std.core.is_kernel_type(name: n_name) || n_name == "None" || n.ident_span == none {
+  } else if std.types.is_kernel_type(name: n_name) || n_name == "None" || n.ident_span == none {
     []
   } else {
     [n_name]
@@ -1042,12 +1042,12 @@ fn node_type_deps(n: v1.std.core.Node, source_indices: Map<String, v1.std.core.N
 fn infer_literal_node(lit: std.syntax.LiteralValue) -> v1.std.core.Node {
   match lit {
     std.syntax.LitStr { value: _ } => v1.std.core.string_type
-    v1.std.core.LitInt { value: _ } => v1.std.core.int_type
-    v1.std.core.LitFloat { value: _ } => v1.std.core.float_type
-    v1.std.core.LitBool { value: _ } => v1.std.core.bool_type
+    std.syntax.LitInt { value: _ } => v1.std.core.int_type
+    std.syntax.LitFloat { value: _ } => v1.std.core.float_type
+    std.syntax.LitBool { value: _ } => v1.std.core.bool_type
     LitNull => v1.std.core.with_optional_cardinality(n: v1.std.core.unit_type)
 
-    v1.std.core.LitSymbol { value: _ } => v1.std.core.string_type
+    std.syntax.LitSymbol { value: _ } => v1.std.core.string_type
   }
 }
 

@@ -1506,7 +1506,7 @@ fn is_list_shrink_expr(expr: v1.std.core.Node, param_name: String, si: Map<Strin
       && match v1.std.core.method_arg_nodes(texpr: expr) |> first {
         Present { value: arg_node } =>
           match v1.std.core.arg_value(n: arg_node).expr_data {
-            v1.std.core.ExprLiteral { value: v1.std.core.LitInt { value: n } } => n > 0
+            v1.std.core.ExprLiteral { value: std.syntax.LitInt { value: n } } => n > 0
             _ => false
           }
         Absent => false
@@ -1526,7 +1526,7 @@ fn is_generalized_shrink(expr: v1.std.core.Node, si: Map<String, v1.std.core.New
       && match v1.std.core.method_arg_nodes(texpr: expr) |> first {
         Present { value: arg_node } =>
           match v1.std.core.arg_value(n: arg_node).expr_data {
-            v1.std.core.ExprLiteral { value: v1.std.core.LitInt { value: n } } => n > 0
+            v1.std.core.ExprLiteral { value: std.syntax.LitInt { value: n } } => n > 0
             _ => false
           }
         Absent => false
@@ -2052,7 +2052,7 @@ fn is_arithmetic_descent_expr(expr: v1.std.core.Node, param_name: String, si: Ma
         v1.std.core.ExprVar { binding_kind: _ } =>
           v1.std.core.expr_var_name_at(texpr: left, source_indices: si) == param_name
           && match right.expr_data {
-            v1.std.core.ExprLiteral { value: v1.std.core.LitInt { value: n } } => n > 0
+            v1.std.core.ExprLiteral { value: std.syntax.LitInt { value: n } } => n > 0
             _ => false
           }
         _ => false

@@ -60,7 +60,7 @@ fn collect_unit_variant_phantom_matches(env: v1.compiler.infer_env.TypeEnv, vari
 
 fn is_width_nat_type_literal(n: v1.std.core.Node) -> Bool {
   match n.expr_data {
-    v1.std.core.ExprLiteral { value: v1.std.core.LitInt { value: _ } } => true
+    v1.std.core.ExprLiteral { value: std.syntax.LitInt { value: _ } } => true
     _ => false
   }
 }
@@ -85,7 +85,7 @@ fn with_authored_identity(identity: v1.std.core.Node, structural: v1.std.core.No
 
 fn is_transparent_primitive_alias_rhs(structural: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   structural.connective == v1.std.core.NoConnective && structural.children |> count == 0
-    && v1.std.core.is_kernel_type(name: v1.std.core.authored_name_at(source_indices: source_indices, node: structural))
+    && std.types.is_kernel_type(name: v1.std.core.authored_name_at(source_indices: source_indices, node: structural))
 }
 
 fn preserve_nominal_brand_on_resolve(
@@ -97,7 +97,7 @@ fn preserve_nominal_brand_on_resolve(
   if brand_name != "" && brand_name != v1.std.core.authored_name_at(source_indices: source_indices, node: structural)
     && !v1.compiler.infer_types.is_declared_container_alias_spelling(name: brand_name)
     && (!is_transparent_primitive_alias_rhs(structural: structural, source_indices: source_indices)
-      || v1.std.core.is_kernel_type(name: v1.std.core.qualified_last_segment(name: brand_name))) {
+      || std.types.is_kernel_type(name: v1.std.core.qualified_last_segment(name: brand_name))) {
     with_authored_identity(identity: identity, structural: structural)
   } else { v1.std.core.preserve_outer_optional_cardinality(outer: identity, inner: structural) }
 }
@@ -119,7 +119,7 @@ fn peel_nominal_alias_identity(n: v1.std.core.Node, env: v1.compiler.infer_env.T
       if brand != "" && brand != v1.std.core.authored_name_at(source_indices: source_indices, node: structural)
         && !v1.compiler.infer_types.is_declared_container_alias_spelling(name: brand)
         && (!is_transparent_primitive_alias_rhs(structural: structural, source_indices: source_indices)
-          || v1.std.core.is_kernel_type(name: v1.std.core.qualified_last_segment(name: brand))) {
+          || std.types.is_kernel_type(name: v1.std.core.qualified_last_segment(name: brand))) {
         with_authored_identity(identity: n, structural: structural)
       } else if resolved.connective == v1.std.core.NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
         match resolved.inferred {
@@ -240,7 +240,7 @@ fn is_user_generic_use_site(n: v1.std.core.Node, env: v1.compiler.infer_env.Type
   else {
     let decl = resolve_generic_use_decl(env: env, n: n)
     if decl.params |> count > 0 {
-      if v1.std.core.is_container_type(name: n.name) { false }
+      if std.types.is_container_type(name: n.name) { false }
       else if decl.inferred != none { true }
       else { true }
     } else { false }
@@ -526,7 +526,7 @@ fn resolve_node_bounded(n: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv,
     }
   } else if n.children |> count == 0 {
     let n_is_callable = n.params |> count > 0
-    let n_target_is_coproduct_container = match n.inferred { Present { value: v1.std.core.Resolved { node: target } } => target.connective == v1.std.core.NoConnective && target.children |> count > 0 && v1.std.core.is_container_type(name: target.name) && resolve_generic_use_decl(env: env, n: target).connective == v1.std.core.Disj  _ => false }
+    let n_target_is_coproduct_container = match n.inferred { Present { value: v1.std.core.Resolved { node: target } } => target.connective == v1.std.core.NoConnective && target.children |> count > 0 && std.types.is_container_type(name: target.name) && resolve_generic_use_decl(env: env, n: target).connective == v1.std.core.Disj  _ => false }
     if n_is_callable || v1.compiler.infer_env.is_recursive_type_for(env: env, node: n) || n_target_is_coproduct_container {
       NodeResolveResult { resolved: n, diagnostics: [] }
     } else {
@@ -548,8 +548,8 @@ fn resolve_node_bounded(n: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv,
           if masked
             && type_ref_hit_ne_bind_measure_active()
             && v1.compiler.infer_env.type_ref_measure_binding_authority(env: env, name: type_name) == false
-            && v1.std.core.is_kernel_type(name: type_name) == false
-            && v1.std.core.is_kernel_type(name: v1.std.core.qualified_last_segment(name: type_name)) == false {
+            && std.types.is_kernel_type(name: type_name) == false
+            && std.types.is_kernel_type(name: v1.std.core.qualified_last_segment(name: type_name)) == false {
             NodeResolveResult {
               resolved: final_resolved,
               diagnostics: [v1.std.core.make_error_node(diagnostic: v1.compiler.infer_env.bare_name_miss_diagnostic(env: env, name: type_name, span: n.span), module_name: module_name)]
@@ -564,7 +564,7 @@ fn resolve_node_bounded(n: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv,
           let n_is_error = if n.inferred != none { v1.std.core.is_compiler_error(inferred: n.inferred.value) } else { false }
           let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
 
-          if is_width_nat_type_literal(n: n) || v1.std.core.is_kernel_type(name: v1.compiler.infer_env.authored_name(env: env, node: n)) || n_is_type_var || n_is_error {
+          if is_width_nat_type_literal(n: n) || std.types.is_kernel_type(name: v1.compiler.infer_env.authored_name(env: env, node: n)) || n_is_type_var || n_is_error {
             NodeResolveResult { resolved: n, diagnostics: [] }
           } else {
             match lookup_unit_variant_phantom_type(env: env, variant_name: v1.compiler.infer_env.authored_name(env: env, node: n)) {

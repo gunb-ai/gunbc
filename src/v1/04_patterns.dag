@@ -381,7 +381,7 @@ fn check_match_exhaustiveness(
           VariantPattern { name: n, parent_enum: _, field_bindings: _ } =>
             map_insert(acc, variant_pattern_coverage_key(name: n), true)
           v1.std.core.LitPattern { value: v } => match v {
-            v1.std.core.LitBool { value: b } => if b { map_insert(acc, "True", true) } else { map_insert(acc, "False", true) }
+            std.syntax.LitBool { value: b } => if b { map_insert(acc, "True", true) } else { map_insert(acc, "False", true) }
             LitNull => map_insert(acc, "Absent", true)
             _ => acc
           }
