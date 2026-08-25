@@ -511,7 +511,7 @@ fn floor_expected_red_chunk_19() -> List<String> {
 // -- when the substrate arm lands, these rows PASS, and a passing enrolled row reds the build
 // naming itself. The file's prose trigger could not do that; this roster does it mechanically.
 fn floor_expected_red_chunk_20() -> List<String> {
-  Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_content_hash_violates", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_runtime_same_identity_violates", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_canonical_holds", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_non_canonical_violates", tail: Cons { head: "v2.test.manual.nominal_distinctness_cross_call.nominal_distinct_control_compiles_ok", tail: Empty {} } } } } }
+  Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_canonical_holds", tail: Cons { head: "v2.test.manual.nominal_distinctness_cross_call.nominal_distinct_control_compiles_ok", tail: Empty {} } }
 }
 
 // THREE IDENTITIES ENROLLED 2026-08-23, and they are the first rows here that were AUTHORED red

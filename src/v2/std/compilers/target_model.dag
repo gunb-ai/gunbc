@@ -3356,7 +3356,7 @@ fn source_atom_char_projection_from_node(source: Node) -> Optional<SourceAtomVal
       if c == ^char_kernel_type_atom {
         optional_absent()
       } else {
-        optional_present(source_atom_char(codepoint: c))
+        optional_present(source_atom_char(codepoint: code_point(s: c)))
       }
     _ => optional_absent()
   }
