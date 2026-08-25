@@ -107,6 +107,16 @@ type RunnerUnitObservation
 // the read happened, and it is what makes "this slot is mid-succession" and "this slot has
 // accumulated a survivor" different observations rather than the same observation at two ages.
 //
+// AND THE ORPHAN IS NOT AN EXCEPTIONAL SHAPE -- IT IS THE SHAPE EVERY OUTGOING INCARNATION TAKES,
+// which was measured after this model was written and is the second, independent reason it is
+// right. On srv4-04, an explicit restart of an idle slot killed the main process and nothing else:
+// the outgoing incarnation's OWN run-helper and listener survived, were reparented, and the slot's
+// population grew from five processes to seven. The restart did not fail to clean up a leftover, it
+// created one out of the live chain it was replacing. With Restart=always making every JIT
+// succession a unit restart, that happens once per completed job -- which is exactly the
+// regeneration rate above, and it means the orphan is born at the SAME INSTANT as its successor.
+// No delay can separate two things that appear together.
+//
 // LineageUnread REFUSES RATHER THAN ASSUMING EITHER. Guessing "in tree" hides a surplus; guessing
 // "orphan" would justify killing a live successor.
 type RunnerListenerLineage

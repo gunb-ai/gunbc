@@ -18,12 +18,15 @@ data gunbc_runner_unit_scope_disposition: Disposition = SingleAuthority
 
 // THE OWNED UNIT CONTRACT: WHICH SYSTEMD UNIT A RUNNER SLOT IS, SPELLED ONCE.
 //
-// The mapping slot -> unit name was SIX independent spellings of one rule. gunbc.runner_lifecycle,
-// gunbc.runner_incarnation, gunbc.runner_host_deploy and gunbc.runner_connectivity_recovery each
-// concatenated the prefix, an instance name and the suffix; gunbc.host_converge spelled the
-// template and a per-host glob; gunbc.build_cache_endpoint_observe carried the prefix a SEVENTH
-// time in order to parse a slot index back OUT of an observed cgroup path. Nothing related them,
-// so nothing could refuse a disagreement.
+// The mapping slot -> unit name was spelled independently in EIGHT modules. Four concatenated the
+// prefix, an instance name and the suffix directly -- gunbc.runner_lifecycle,
+// gunbc.runner_incarnation, gunbc.runner_host_deploy and gunbc.runner_connectivity_recovery. Two
+// more derived a probe unit the same way for a read-back to sample: gunbc.host_runner_memory_cap_verify
+// and gunbc.host_converge_slice1. gunbc.host_converge spelled the template name, an all-slots glob,
+// a per-host glob and four drop-in paths with the unit name embedded in each. And
+// gunbc.build_cache_endpoint_observe held a further copy of the prefix in order to parse a slot
+// index back OUT of an observed cgroup path. Nothing related any of them, so nothing could refuse a
+// disagreement.
 //
 // THIS IS THE SAME DEFECT gunbc.build_cache_instance ALREADY REPAIRED ONE LAYER DOWN, and that
 // repair is the argument for this one. The two-digit index suffix was three implementations, one
