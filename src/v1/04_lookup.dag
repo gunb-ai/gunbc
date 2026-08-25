@@ -463,6 +463,10 @@ fn constructor_declaration_for_admission(
   }
 }
 
+// Admission metadata is readable only from one exact declaration. Ambiguity and absence differ
+// for name resolution, but neither supplies an identity whose admit_callers policy can be read,
+// so both are explicitly non-admission-bearing here; the call-signature seam retains and refuses
+// the ambiguity with its candidate menu.
 fn func_decl_binding_for_call(
   func_env: ResolvedFuncEnv,
   type_env: TypeEnv,
@@ -483,10 +487,6 @@ fn func_decl_binding_for_call(
             owner_module_path: bd.owner_module_path,
             name: name
           )
-        // Admission metadata is readable only from one exact declaration. Ambiguity and
-        // absence differ for name resolution, but neither supplies an identity whose
-        // admit_callers policy can be read, so both are explicitly non-admission-bearing here;
-        // the call-signature seam retains and refuses the ambiguity with its candidate menu.
         BorrowedCensusDeclAmbiguous { candidates: _ } => NotAdmissionBearingReference {}
         BorrowedCensusDeclNotFound => NotAdmissionBearingReference {}
       }
