@@ -33,13 +33,13 @@ import gunbc.scm.object_store {
 import v2.std.collection { empty_map }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string, JsonValue, JsonObject }
 import extdeps.languages.json.parse { parse_json }
+import gunbc.scm.json_member { MemberReadDuplicated, MemberReadWrongShape }
 import gunbc.scm.commit_closure_json_v2 {
   ClosureDocRefusal,
   ClosureDocIncompleteWithoutAdmission,
   ClosureDocEncodeRefusal,
   ClosureDocTargetNotOneArm,
-  ClosureDocMemberDuplicated,
-  ClosureDocMemberWrongShape,
+  ClosureDocMemberReadRefused,
   TargetDecode,
   TargetDecoded,
   TargetDecodeFailed,
@@ -465,7 +465,7 @@ test fn a_duplicated_at_is_refused_against_at() -> Bool {
   ) {
     TargetDecodeFailed { cause: c } =>
       match c {
-        ClosureDocMemberDuplicated { key: k } => k == "at"
+        ClosureDocMemberReadRefused { cause: MemberReadDuplicated { key: k } } => k == "at"
         _ => false
       }
     TargetDecoded { target: _ } => false
@@ -481,7 +481,7 @@ test fn a_non_string_at_is_refused_against_at() -> Bool {
   ) {
     TargetDecodeFailed { cause: c } =>
       match c {
-        ClosureDocMemberWrongShape { key: k } => k == "at"
+        ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: k } } => k == "at"
         _ => false
       }
     TargetDecoded { target: _ } => false
