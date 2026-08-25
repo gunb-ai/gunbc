@@ -284,10 +284,10 @@ test fn the_report_carries_the_discovery_policy_and_the_roster_digest() -> Bool 
 // subjects — and a lost subject is exactly how a count-shaped contract reports progress it did not
 // make.
 test fn a_roster_that_lost_a_subject_carries_a_different_digest() -> Bool {
-  match roster_identity(policy: fixture_policy(), denominators: DeclarationIndexOnly, roster: fixture_roster) {
+  match emit_ratchet_roster_identity(policy: fixture_policy(), denominators: DeclarationIndexOnly, roster: fixture_roster) {
     RosterEmpty { policy: _, denominators: _ } => false
     RosterIdentified { policy: _, denominators: _, subject_count: _, digest: whole } =>
-      match roster_identity(policy: fixture_policy(), denominators: DeclarationIndexOnly, roster: [fixture_alpha]) {
+      match emit_ratchet_roster_identity(policy: fixture_policy(), denominators: DeclarationIndexOnly, roster: [fixture_alpha]) {
         RosterEmpty { policy: _, denominators: _ } => false
         RosterIdentified { policy: _, denominators: _, subject_count: _, digest: partial } =>
           !(whole.digest as String == partial.digest as String)

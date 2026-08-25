@@ -1,6 +1,7 @@
 module gunbc.emit_subject_clean_frontier
 
 import std.types { Bool, Int, String, NonEmptyStr }
+import std.materialization_ladder { string_list_contains }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.dissolution { DissolutionCondition }
 import std.roster_frontier {
@@ -244,7 +245,15 @@ type RosterIdentity
 // THE DIGEST COVERS THE POLICY AS WELL AS THE SUBJECTS, so two runs that discovered the same paths
 // under different roots are not one identity — and so the hashed text is non-empty by construction
 // rather than by the caller having supplied a subject with a name.
-fn roster_identity(
+// NAMED FOR THIS RATCHET RATHER THAN FOR THE CONCEPT, and the reason is a measured one.
+// `dag/tools/frontier_ingestion_probe.dag` already declares `roster_identity` over a different
+// subject (a list of frontier members) returning a different type. Two declarers of one bare name
+// resolve under a per-entry compile -- which sees only one of them -- and fail to resolve under the
+// floor's whole-corpus preparation, which sees both. So the collision is INVISIBLE to the check an
+// author naturally runs and visible only to the one that gates, which is exactly backwards. The
+// repair is §3's: this function is not a second authority for "the identity of a roster", it is the
+// identity of THIS ratchet's roster, and its name now says so.
+fn emit_ratchet_roster_identity(
   policy: RosterDiscoveryPolicy,
   denominators: RosterDenominators,
   roster: List<String>
@@ -266,7 +275,7 @@ fn roster_identity(
   }
 }
 
-fn roster_identity_rows(identity: RosterIdentity) -> List<String> {
+fn emit_ratchet_roster_identity_rows(identity: RosterIdentity) -> List<String> {
   match identity {
     RosterEmpty { policy: p, denominators: dn } => [
       concat("roster_policy\t", roster_discovery_policy_text(policy: p)),
@@ -548,10 +557,6 @@ fn emit_ratchet_verdict_row(v: EmitRatchetVerdict) -> String {
   }
 }
 
-fn list_contains_string(xs: List<String>, target: String) -> Bool {
-  fold(xs, init: false, f: (found, x) => found || (x == target))
-}
-
 fn emit_ratchet_verdict_of_outcome(entry: String, on_frontier: Bool, outcome: EmitSubjectOutcome) -> EmitRatchetVerdict {
   match outcome {
     EmitSubjectClean =>
@@ -640,13 +645,13 @@ fn fold_emit_subject_clean_ratchet_over_readings(
 ) -> EmitSubjectCleanRatchet {
   let keys = map(admissions, a => emit_debt_admission_entry(admission: a))
   EmitSubjectCleanRatchet {
-    roster: roster_identity(policy: policy, denominators: denominators, roster: roster),
+    roster: emit_ratchet_roster_identity(policy: policy, denominators: denominators, roster: roster),
     verdicts: map(
       roster,
       entry =>
         emit_ratchet_verdict_for(
           entry: entry,
-          on_frontier: list_contains_string(xs: keys, target: entry),
+          on_frontier: string_list_contains(xs: keys, wanted: entry),
           readings: readings
         )
     ),
@@ -654,7 +659,7 @@ fn fold_emit_subject_clean_ratchet_over_readings(
     orphan_admission_subjects: fold(
       keys,
       init: [],
-      f: (acc, k) => if list_contains_string(xs: roster, target: k) { acc } else { concat(acc, [k]) }
+      f: (acc, k) => if string_list_contains(xs: roster, wanted: k) { acc } else { concat(acc, [k]) }
     ),
     malformed_admission_subjects: fold(
       admissions,
@@ -789,7 +794,7 @@ fn emit_ratchet_gating_admission_of(denominators: RosterDenominators) -> EmitRat
 fn emit_ratchet_report_rows(r: EmitSubjectCleanRatchet) -> List<String> {
   concat(
     concat(
-      roster_identity_rows(identity: r.roster),
+      emit_ratchet_roster_identity_rows(identity: r.roster),
       [
         concat("admission_rows\t", to_string(r.admission_count)),
         concat("standing\t", emit_ratchet_standing_text(standing: emit_ratchet_standing(r: r)))
