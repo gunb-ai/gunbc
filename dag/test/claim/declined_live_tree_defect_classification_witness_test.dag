@@ -1,0 +1,51 @@
+module test.claim.declined_live_tree_defect_classification_witness
+
+import gunbc.declined_live_tree_defect_classification {
+  all_thirteen_reproduced_on_main,
+  classified_identities_are_unique,
+  classified_row_count,
+  every_row_carries_measured_evidence,
+  real_defect_count,
+  wrong_witness_count
+}
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// SubstrateInputsOnly is truthful here and is the point: this witness reads the
+// classification carrier and nothing else, so unlike the thirteen rows it
+// classifies, it actually executes on the required floor. The rows it guards are
+// structural facts about the carrier (population, uniqueness, evidence present),
+// never the defects themselves -- those are unguarded until the DeclinedLiveTree
+// arm is deleted, and asserting otherwise here would be the authority
+// substitution the carrier's own header refuses.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE LITERAL 13 IS NOT A TREE-COPIED CENSUS, which DESIGN 5's oracle ruling
+// forbids. It is the size of an externally fixed population: the identities
+// routed to this session out of the 27 failures on run 32794539384, named one
+// by one in the carrier. Nothing in this repository can change it, and
+// re-measuring main cannot supply it -- which is exactly the property the
+// ruling asks a literal to have.
+test fn classification_covers_the_thirteen_routed_identities() -> Bool {
+  classified_row_count() == 13
+}
+
+test fn classified_identities_are_distinct() -> Bool {
+  classified_identities_are_unique()
+}
+
+test fn every_classified_row_carries_measured_evidence() -> Bool {
+  every_row_carries_measured_evidence()
+}
+
+test fn no_routed_identity_failed_to_reproduce() -> Bool {
+  all_thirteen_reproduced_on_main()
+}
+
+test fn verdict_partition_is_exact_over_the_population() -> Bool {
+  (real_defect_count() + wrong_witness_count()) == classified_row_count()
+}
+
+test fn exactly_one_pair_is_a_wrong_witness() -> Bool {
+  wrong_witness_count() == 2
+}

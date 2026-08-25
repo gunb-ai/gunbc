@@ -1,0 +1,171 @@
+module gunbc.scm.target_reference
+
+// A TARGET REFERENCE IS SYNTAX; RESOLVING IT IS NOT. This module decodes the two-armed target
+// reference -- a position inside the document, or an uncontained digest -- and DELIBERATELY DOES NOT
+// RESOLVE the contained arm. It receives no position map and could not resolve one if it wanted to.
+//
+// The split is the repair. Three operations decode this same syntax: an edge inside an object
+// record, a closure document's root, and a repository commit's root. Previously one shared decoder
+// resolved the position for all three and reported failure as ClosureDocEdgeTargetUnresolved, so a
+// closure root naming a position nobody defined was reported as an EDGE target unresolved -- an edge
+// that does not exist, inside an object that was never named. The repository then compensated with an
+// adapter that translated that edge cause back into a commit-root cause, recovering by context what
+// the producer had discarded. That adapter was locally correct and structurally backwards: it worked
+// only because the repository happened to make exactly one such call, and it would have gone on
+// answering "commit root unresolved" for any genuine edge failure that later reached it.
+//
+// So the resolution moves to the three callers, each of which knows whose reference it holds, and
+// what stays shared is exactly what IS shared: how the two arms are spelled and how that spelling can
+// be malformed. A caller cannot report the wrong owner because it never receives another owner's
+// cause -- not because it is careful.
+
+import std.types { Int, List, String }
+import std.content_hash { fnv1a64_structural_hex_digest }
+import extdeps.languages.json.emit { JsonValue }
+import extdeps.languages.json.parse {
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+  json_object_unique_member,
+}
+import gunbc.scm.json_member {
+  MemberReadRefusal,
+  MemberReadSubjectNotObject,
+  MemberReadDuplicated,
+  MemberReadWrongShape,
+  MemberString,
+  MemberArray,
+  MemberObject,
+  MemberFailed,
+  read_string_member,
+  unexpected_member_key,
+}
+import gunbc.scm.object_store { ObjectId }
+
+// WHAT CAN BE WRONG WITH THE SPELLING, and nothing about who was asking. Every arm here is a defect
+// in the reference itself, so every arm means the same thing to all three callers. An unresolved
+// position is NOT in this list, and its absence is the whole design: that is the one failure whose
+// meaning depends on whose reference it was.
+type TargetReferenceRefusal
+  = TargetReferenceMemberReadRefused { cause: MemberReadRefusal }
+  | TargetReferenceUnexpectedMember { key: String }
+  | TargetReferenceNotOneArm { found: Int }
+  | TargetReferenceUncontainedDigestInvalid { found: String }
+
+// A WELL-FORMED REFERENCE IS NOT YET AN IDENTITY. The contained arm carries the reference TEXT, not
+// an object -- the caller resolves it against its own positions and names its own refusal when that
+// fails. The uncontained arm needs no resolution at all, because a digest denotes without any
+// document to look in, which is why it alone arrives already answered.
+type TargetReference
+  = TargetContainedAt { reference: String }
+  | TargetUncontained { digest: ObjectId }
+  | TargetReferenceRefused { cause: TargetReferenceRefusal }
+
+fn decode_target_reference(target_value: JsonValue) -> TargetReference {
+  match unexpected_member_key(v: target_value, allowed: ["at", "uncontained"]) {
+    Present { value: key } =>
+      TargetReferenceRefused { cause: TargetReferenceUnexpectedMember { key: key } }
+    Absent => {
+      let arms = target_arm_count(v: target_value)
+      if arms == 1 {
+        decode_target_reference_arm(target_value: target_value)
+      } else {
+        TargetReferenceRefused { cause: TargetReferenceNotOneArm { found: arms } }
+      }
+    }
+  }
+}
+
+// EXACTLY ONE ARM, COUNTED BEFORE EITHER IS READ, and the counting is the whole point rather than a
+// tidier spelling of the same thing.
+//
+// The closed member set admits BOTH keys, because either is individually legal -- so it cannot be
+// what enforces the choice between them. An earlier revision relied on it anyway and then read "at"
+// first, which meant a target carrying BOTH arms resolved to the position and SILENTLY DROPPED the
+// digest: a document saying two contradictory things about one target quietly answered with one of
+// them. That is the last-wins read this module exists to refuse.
+//
+// A duplicated key counts as PRESENT here, so a target carrying `at` twice reaches the arm reader
+// and is refused as a duplicated member rather than being miscounted as two arms; the two
+// failures are different and keep different names.
+fn target_arm_count(v: JsonValue) -> Int {
+  arm_present(v: v, key: "at") + arm_present(v: v, key: "uncontained")
+}
+
+fn arm_present(v: JsonValue, key: String) -> Int {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: _ } => 1
+    JsonMemberDuplicated { count: _ } => 1
+    JsonMemberAbsent => 0
+    JsonMemberNotAnObject => 0
+  }
+}
+
+// THE ARM IS SELECTED ON PRESENCE, NOT ON READ SUCCESS, and that distinction is a repair rather than
+// a refinement.
+//
+// An earlier revision matched `read_string_member(v, "at")` and treated ANY failure as "this is the
+// uncontained arm". But a missing `at` and a MALFORMED `at` both arrive as MemberFailed, and they are
+// opposite facts: absence means the other arm applies, while duplication or a non-string means THIS
+// arm is broken. Conflating them sent a target carrying `at` twice into the uncontained read, where
+// `uncontained` is legitimately absent, and the document was refused as a wrong-shape `uncontained`
+// -- a diagnostic naming the wrong key, for a defect in the other one, with the duplication never
+// mentioned.
+//
+// Presence answers the applicability question and nothing else, so each arm reports its own failures
+// with its own key and neither can be reached by the other's defect.
+fn decode_target_reference_arm(target_value: JsonValue) -> TargetReference {
+  match json_object_unique_member(v: target_value, key: "at") {
+    JsonMemberFound { value: _ } => decode_at_arm(target_value: target_value)
+    JsonMemberDuplicated { count: _ } =>
+      TargetReferenceRefused {
+        cause: TargetReferenceMemberReadRefused { cause: MemberReadDuplicated { key: "at" } },
+      }
+    JsonMemberNotAnObject =>
+      TargetReferenceRefused {
+        cause: TargetReferenceMemberReadRefused { cause: MemberReadSubjectNotObject },
+      }
+    JsonMemberAbsent => decode_uncontained_arm(target_value: target_value)
+  }
+}
+
+// THE CONTAINED ARM STOPS AT THE TEXT. This is the function that used to resolve, and deleting the
+// resolution from it is the cut: it now returns the reference and cannot name a failure it has no
+// standing to name.
+fn decode_at_arm(target_value: JsonValue) -> TargetReference {
+  match read_string_member(v: target_value, key: "at") {
+    MemberString { value: reference } => TargetContainedAt { reference: reference }
+    MemberFailed { cause: c } =>
+      TargetReferenceRefused { cause: TargetReferenceMemberReadRefused { cause: c } }
+    MemberArray { elements: _ } =>
+      TargetReferenceRefused {
+        cause: TargetReferenceMemberReadRefused { cause: MemberReadWrongShape { key: "at" } },
+      }
+    MemberObject { value: _ } =>
+      TargetReferenceRefused {
+        cause: TargetReferenceMemberReadRefused { cause: MemberReadWrongShape { key: "at" } },
+      }
+  }
+}
+
+fn decode_uncontained_arm(target_value: JsonValue) -> TargetReference {
+  match read_string_member(v: target_value, key: "uncontained") {
+    MemberString { value: hex } =>
+      match fnv1a64_structural_hex_digest(hex: hex) {
+        Present { value: digest } => TargetUncontained { digest: digest }
+        Absent =>
+          TargetReferenceRefused { cause: TargetReferenceUncontainedDigestInvalid { found: hex } }
+      }
+    MemberFailed { cause: c } =>
+      TargetReferenceRefused { cause: TargetReferenceMemberReadRefused { cause: c } }
+    MemberArray { elements: _ } =>
+      TargetReferenceRefused {
+        cause: TargetReferenceMemberReadRefused { cause: MemberReadWrongShape { key: "uncontained" } },
+      }
+    MemberObject { value: _ } =>
+      TargetReferenceRefused {
+        cause: TargetReferenceMemberReadRefused { cause: MemberReadWrongShape { key: "uncontained" } },
+      }
+  }
+}
