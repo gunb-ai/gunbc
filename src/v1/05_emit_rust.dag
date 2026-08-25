@@ -19,7 +19,7 @@ import v1.std.core {
   MatchBoundBinding, CallSemantics, PlainCallSemantics, LookupCallSemantics, FunctionValueCallSemantics, MethodSemantics,
   PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, MatchPattern,
   field_binding_pattern, TextFile, ErrorNode, make_error_node, InternalError,
-  UnlistedImportUse, SourceSpan, resource_use_resource, UnaryOpKind, StringPart, Text,
+  UnlistedImportUse, AmbiguousAnonymousRecordLiteral, SourceSpan, resource_use_resource, UnaryOpKind, StringPart, Text,
   Interpolation, transport_base_url, transport_has_auth, transport_auth_token,
   transport_auth_header_name, transport_headers, transport_env, transport_method,
   transport_path_template, transport_query, transport_request_body, transport_stdin,
@@ -138,7 +138,7 @@ import v1.compiler.emit {
   emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
   emit_typed_cast_shared, emit_string_literal, emit_simple_expr, escape_rust_interp_text,
   module_emit_scope, scope_after_expr, lookup_item, has_nested_records_node,
-  emit_data_value_json, EmitterOutcome, Emitted, Refused, is_null_coalesce, has_service_items, typed_named_arg_matches,
+  emit_data_value_json, EmitterOutcome, Emitted, Refused, is_null_coalesce, has_service_items,
   order_typed_call_args, is_tco_eligible, is_self_recursive, emit_shared_tco_expr,
   tco_reassign_core, is_tco_identity_passthrough, service_fallback_transport,
   effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls,
@@ -392,7 +392,7 @@ fn rust_host_string_op_fn_emit(name: String) -> String? {
     Present { value: concat(
       "pub fn string_head(s: String) -> Rc<CharResult> {\n",
       "    match s.chars().next() {\n",
-      "        Some(c) => Rc::new(CharResult::CharFound { value: Box::new(c as i64) }),\n",
+      "        Some(c) => Rc::new(CharResult::CharFound { value: c as i64 }),\n",
       "        None => Rc::new(CharResult::CharAbsent),\n",
       "    }\n",
       "}\n"
@@ -1328,8 +1328,9 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
       match rust_opaque_kernel_alias_carrier(name: name) {
         Present { value: carrier } => carrier
         Absent => {
-          let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
-          render_rust_shared_type_if_needed(type_name: name, rendered: rendered, shared_types: shared_types)
+          let leaf = qualified_last_segment(name: name)
+          let rendered = rust_render_type_leaf_name(name: leaf, variant_to_enum: variant_to_enum)
+          render_rust_shared_type_if_needed(type_name: leaf, rendered: rendered, shared_types: shared_types)
         }
       }
     }
@@ -2566,6 +2567,10 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   if workflow_default_diags |> count > 0 {
     return EmitResult { files: [], diagnostics: workflow_default_diags }
   }
+  let anonymous_record_diags = typed.modules |> flat_map(tm => tm.items |> flat_map(item => ambiguous_anonymous_record_literal_diagnostics(n: item, type_summaries: emit_info.type_summaries, source_indices: tm.type_env.source_indices, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))))
+  if anonymous_record_diags |> count > 0 {
+    return EmitResult { files: [], diagnostics: anonymous_record_diags }
+  }
   let svc_module_map = typed.modules |> fold(init: empty_map(), f: (acc, tm) =>
     let svc_items = tm.items |> filter(item => is_service_item(item: item))
     let mod_filename = module_to_filename(name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))
@@ -3035,6 +3040,24 @@ fn collect_items_field_import_surface_names(items: List<Node>, emit_info: EmitGr
   ))
 }
 
+// A match pattern is carried on Node.match_pattern, a field no reference walk reads, so the
+// enum name the emitter renders in front of a bare variant (Parent::Variant, decided by
+// pattern_parent_enum) was never proposed as an import candidate. Ambiguity refuses: with no
+// scrutinee type available at collection time the parent is resolved only when
+// unique_variant_parent finds exactly one owner, so a homonym variant proposes nothing rather
+// than guessing an enum (the candidate set may under-propose; it must never fabricate).
+fn collect_pattern_ref_names(pattern: MatchPattern, type_summaries: Map<String, TypeSummary>) -> List<String> {
+  match pattern {
+    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
+      let own = match pattern_parent_enum(name: qualified_last_segment(name: n), parent_enum: parent_enum, scrut_type: "", type_summaries: type_summaries) {
+        Present { value: parent } => if parent == "" { [] } else { [parent] }
+        Absent => []
+      }
+      concat(own, fbs |> flat_map(fb => collect_pattern_ref_names(pattern: field_binding_pattern(n: fb), type_summaries: type_summaries)))
+    _ => []
+  }
+}
+
 fn collect_value_ref_names(n: Node, source_indices: Map<String, NewlineIndex>, type_summaries: Map<String, TypeSummary>, variant_to_enum: Map<String, String>) -> List<String> {
   let self_name = match n.expr_data {
     ExprVar { binding_kind: bk } =>
@@ -3068,7 +3091,11 @@ fn collect_value_ref_names(n: Node, source_indices: Map<String, NewlineIndex>, t
       match n.type_annotation { Present { value: t } => collect_value_ref_names(n: t, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum)  Absent => [] }
     )
   )
-  concat(self_name, concat(list_fields, opt_fields))
+  let pattern_names = match n.match_pattern {
+    Present { value: p } => collect_pattern_ref_names(pattern: p, type_summaries: type_summaries)
+    Absent => []
+  }
+  concat(self_name, concat(pattern_names, concat(list_fields, opt_fields)))
 }
 
 fn collect_item_type_surface_names(item: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
@@ -3369,7 +3396,71 @@ fn reference_derived_candidate_authored(module_source: String, name: String, typ
     || reference_derived_variant_induced_parent_spelled(module_source: module_source, enum_name: name, type_summaries: type_summaries, variant_to_enum: variant_to_enum)
 }
 
-fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
+
+// THE CANDIDATE PRODUCER FOR NAMES THE SOURCE NEVER SPELLS.
+//
+// host_realized_builtin_needs_no_import_note and reference_derived_authored_source_gate_note name
+// the same terminal shape from opposite ends: derive use-lines from the EMITTED reference set,
+// because a name the collector never proposes cannot be admitted by any gate decision however wide.
+// This is that producer, at type grain and with no second authority: the realized names are read
+// back out of render_rust_type -- the one function that decides what a type reference becomes --
+// rather than re-derived from a roster of substitutions, so a renderer change cannot leave the
+// import derivation behind.
+//
+// The three substitution mechanisms this reaches, each measured on the 03_ingest board of
+// 2026-08-23 (docs/probes/board_2026-08-23): a host carrier rewrite (Diagnostics renders as
+// Option<NonEmptyDiagnostics>, four E0425 blocks across v2.compiler.normalized_tree and
+// v2.compiler.normalize), an alias expansion (Char renders as Int in v2.std.text, EpochMs as Int
+// in std.state_durability), and a leaf reduction (a qualified reference spelled
+// v2.std.cross_tree.resolution.SourceRootIndex renders as the bare leaf). In every case the SOURCE
+// name is imported or needs no import and the EMITTED name is the one with no provider line.
+//
+// It proposes only; every existing filter still decides. A proposed name must resolve through the
+// registry to another module, pass provider_proven_exports_symbol, and -- the arm below -- be
+// spelled in the module's own EMITTED text. That last attestation is why a misrendered candidate
+// cannot fabricate a use-line: a name the emitter did not write is not attested by the artifact it
+// wrote, which is a strictly stronger witness than the authored-source gate it joins.
+// Splits a Rust TEXT into bare identifier tokens. Two callers with one authority: a rendered TYPE
+// string (Rc<Vec<Int>>, crate::a::B) and a whole emitted MODULE source. The type caller only ever
+// contains the first nine delimiters; the source caller also carries statement and block
+// punctuation, and omitting those is not cosmetic -- `pub type X = Int;` would tokenize to `Int;`
+// and a membership test for `Int` would answer NO for a name the emitter demonstrably wrote,
+// dropping a required use-line and reproducing the E0425 class this producer exists to close.
+// Adding them is expected to be a no-op for the type caller (rendered types contain none of them),
+// so one tokenizer serves both rather than a second near-copy keyed to the caller. That is stated as
+// UNREFUTED rather than proven: the two-arm measurement below moved 20 use-lines and every one is
+// explained by the GATE, so nothing in it exhibits a producer-side change -- but nothing in it
+// positively rules one out either.
+fn rust_identifier_tokens(s: String) -> List<String> {
+  let spaced = replace(replace(replace(replace(replace(replace(replace(replace(replace(s,
+    "<", " "), ">", " "), ",", " "), "(", " "), ")", " "), "[", " "), "]", " "), "&", " "), ":", " ")
+  let unpunctuated = replace(replace(replace(replace(replace(replace(replace(replace(replace(spaced,
+    ";", " "), "\{", " "), "\}", " "), ".", " "), "=", " "), "\n", " "), "\t", " "), "\r", " "), "*", " ")
+  let untokened = replace(replace(replace(replace(replace(unpunctuated,
+    "!", " "), "?", " "), "|", " "), "+", " "), "#", " ")
+  untokened |> split(delimiter: " ") |> map(t => trim(t)) |> filter(t => t != "")
+}
+
+fn collect_type_node_realized_surface_names(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> List<String> {
+  rust_identifier_tokens(s: render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
+}
+
+fn collect_item_realized_surface_names(item: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> List<String> {
+  let from_ann = match item.type_annotation {
+    Present { value: t } => collect_type_node_realized_surface_names(n: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+    Absent => []
+  }
+  let from_params = item.params |> flat_map(p =>
+    collect_type_node_realized_surface_names(n: param_node_type_expr(n: p), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+  )
+  let from_inferred = match item.inferred {
+    Present { value: Resolved { node: rt } } => collect_type_node_realized_surface_names(n: rt, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+    _ => []
+  }
+  unique_strings(items: concat(from_ann, concat(from_params, from_inferred)))
+}
+
+fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> List<String> {
   {
     let module_source = match typed_modules |> filter(tm => authored_name_at(source_indices: source_indices, node: tm.module) == this_module_name) |> first {
       Present { value: tm } => module_authored_source_text(module: tm.module, source_indices: source_indices)
@@ -3380,10 +3471,13 @@ fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<Stri
     let field_surface_names = collect_items_field_import_surface_names(items: items, emit_info: emit_info, source_indices: source_indices)
     let variant_payload_structs = expand_variant_payload_struct_imports(names: type_surface_names, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
     let emitter_attested_anon_heads = unique_strings(items: items |> flat_map(item => collect_anonymous_record_lit_heads(n: item, source_indices: source_indices, type_summaries: emit_info.type_summaries)))
-    let candidates = unique_strings(items: concat(concat(concat(concat(unlisted_type_names, value_names), type_surface_names), field_surface_names), variant_payload_structs))
+    let realized_surface_names = unique_strings(items: items |> flat_map(item => collect_item_realized_surface_names(item: item, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)))
+    let emitted_source_tokens = rust_identifier_tokens(s: emitted_source)
+    let candidates = unique_strings(items: concat(concat(concat(concat(concat(unlisted_type_names, value_names), type_surface_names), field_surface_names), variant_payload_structs), realized_surface_names))
       |> filter(name =>
         reference_derived_candidate_authored(module_source: module_source, name: name, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
-          || emitter_attested_anon_heads |> any(h => h == name))
+          || emitter_attested_anon_heads |> any(h => h == name)
+          || (emitted_source_tokens |> any(t => t == name)))
       |> filter(name => !reference_is_host_realized_builtin(name: name))
     let local_decl_names = items |> flat_map(item =>
       let nm = authored_name_at(source_indices: source_indices, node: item)
@@ -3455,6 +3549,18 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       |> map(item => authored_name(env: scope.type_env, node: item)),
     collect_phantom_zst_marker_names(items: typed_module.items, env: scope.type_env)
   )
+  let module_import_items = module_imports(n: m)
+  let this_module_name = authored_name(env: scope.type_env, node: m)
+  let wire_context_items = concat(typed_module.items, contracts_items_for_module(module_name: this_module_name, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index))
+  let wire_context_imports = concat(module_import_items, contracts_imports_for_module(module_name: this_module_name, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index))
+  let wire_contract_item = wire_context_items
+    |> filter(i =>
+      is_data_def_item(item: i)
+      && authored_name_at(source_indices: scope.type_env.source_indices, node: i) == "wire_contract")
+    |> first
+  let items_str = typed_module.items
+    |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: scoped_data_items, module_items: wire_context_items, imports: wire_context_imports, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index))
+    |> join(separator: "\n\n")
   let prelude = emit_prelude(imported_names: prelude_imported_names, local_type_names: local_type_names)
   let imports_str = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index, supplement_items: typed_module.items)
   let dag_import_lines = if imports_str == "" { [] } else { imports_str |> split(delimiter: "\n") }
@@ -3488,7 +3594,9 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       export_sets: export_sets,
       typed_modules: typed_modules,
       source_indices: scope.type_env.source_indices,
-      module_index: module_index
+      module_index: module_index,
+      shared_types: shared_types,
+      emitted_source: items_str
     )
   let merged_imports = dedupe_rust_import_lines(lines: concat(concat(dag_import_lines, carrier_import_lines), reference_use_lines)) |> join(separator: "\n")
   let imports_section = if merged_imports == "" { "" } else { concat("\n", merged_imports) }
@@ -3516,22 +3624,10 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let local_coproduct_names = typed_module.items
     |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
     |> map(item => authored_name(env: scope.type_env, node: item))
-  let module_import_items = module_imports(n: m)
-  let this_module_name = authored_name(env: scope.type_env, node: m)
-  let wire_context_items = concat(typed_module.items, contracts_items_for_module(module_name: this_module_name, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index))
-  let wire_context_imports = concat(module_import_items, contracts_imports_for_module(module_name: this_module_name, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index))
   let coproduct_wire_contract_validations = emit_coproduct_wire_contract_validations(module_items: wire_context_items, imports: wire_context_imports, local_coproduct_names: local_coproduct_names, source_indices: scope.type_env.source_indices)
   let coproduct_wire_contract_validation_section = if coproduct_wire_contract_validations == "" { "" } else { concat(coproduct_wire_contract_validations, "\n\n") }
   let local_uses_str = if local_enum_uses |> count == 0 { "" }
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
-  let wire_contract_item = wire_context_items
-    |> filter(i =>
-      is_data_def_item(item: i)
-      && authored_name_at(source_indices: scope.type_env.source_indices, node: i) == "wire_contract")
-    |> first
-  let items_str = typed_module.items
-    |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: scoped_data_items, module_items: wire_context_items, imports: wire_context_imports, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index))
-    |> join(separator: "\n\n")
   let phantom_zst_markers = emit_module_phantom_zst_markers(items: typed_module.items, env: scope.type_env)
   let phantom_section = if phantom_zst_markers == "" { "" } else { concat("\n\n", phantom_zst_markers) }
   let raw_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
@@ -4974,6 +5070,9 @@ fn emit_faithful_text_carrier_import_lines(imported_names: List<String>, local_t
   let needs_int = items |> any(item => module_item_references_type_name(item: item, type_name: "Int", source_indices: source_indices))
   let needs_partial_function = items |> any(item =>
     module_item_references_type_name(item: item, type_name: "PartialFunction", source_indices: source_indices)
+  )
+  let needs_finitely_supported_function = items |> any(item =>
+    module_item_references_type_name(item: item, type_name: "FinitelySupportedFunction", source_indices: source_indices)
     || module_item_references_type_name(item: item, type_name: "Map", source_indices: source_indices)
   )
   let needs_measure_phantoms = closure_has_std_measure && items |> any(item => module_item_references_faithful_expanded_type(item: item, source_indices: source_indices))
@@ -5002,6 +5101,11 @@ fn emit_faithful_text_carrier_import_lines(imported_names: List<String>, local_t
   } else {
     [concat(rust_visibility_prefix(), "use crate::std_algebra::PartialFunction;")]
   }
+  let finitely_supported_function = if !needs_finitely_supported_function || rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "FinitelySupportedFunction") {
+    []
+  } else {
+    [concat(rust_visibility_prefix(), "use crate::std_algebra::FinitelySupportedFunction;")]
+  }
   let memory = if !needs_measure_phantoms || rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "Memory") {
     []
   } else {
@@ -5012,7 +5116,7 @@ fn emit_faithful_text_carrier_import_lines(imported_names: List<String>, local_t
   } else {
     [concat(rust_visibility_prefix(), "use crate::std_measure::One;")]
   }
-  concat(free_monoid, char_line, non_empty_str, int_line, partial_function, memory, one)
+  concat(free_monoid, char_line, non_empty_str, int_line, partial_function, finitely_supported_function, memory, one)
 }
 
 fn emit_prelude(imported_names: List<String>, local_type_names: List<String>) -> String {
@@ -8450,7 +8554,7 @@ fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Boo
     let update_arg = arg_value(n: (with_args |> skip(1) |> first).value)
     let base_str = emit_typed_expr(texpr: base_arg, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
     let type_name = if base_arg.inferred != none {
-      authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_type(n: base_arg))
+      qualified_last_segment(name: authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_type(n: base_arg)))
     } else {
       "compile_error!(\"with call missing resolved record type\")"
     }
@@ -8770,7 +8874,7 @@ fn emit_typed_collection_lambda(lambda_expr: Node, elem_type_str: String, regist
   }
 }
 
-fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str: String, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str: String, elem_borrowed: Bool, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match lambda_expr.expr_data {
     ExprLambda =>
       let ps = lambda_param_names_at(texpr: lambda_expr, source_indices: scope.type_env.source_indices)
@@ -8781,7 +8885,10 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
       let fallback_types = ps |> enumerate |> map(pair =>
         if pair.first == 0 { safe_acc_type } else { elem_type_str }
       )
-      let param_strs = lambda_param_type_strs(params: ps, param_nodes: pn, fallback_types: fallback_types, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info, fold_acc_uses_fallback: true, type_env: scope.type_env)
+      let param_strs_raw = lambda_param_type_strs(params: ps, param_nodes: pn, fallback_types: fallback_types, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info, fold_acc_uses_fallback: true, type_env: scope.type_env)
+      let param_strs = if elem_borrowed {
+        param_strs_raw |> enumerate |> map(pair => if pair.first == 1 { "_" } else { pair.second })
+      } else { param_strs_raw }
       let params_str = param_strs |> join(separator: ", ")
       let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: pn)
       let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -8798,6 +8905,26 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
   }
 }
 
+// FOLD'S UNUSED-ELEMENT OPTIMIZATION CHANGES THE ITEM TYPE, AND THE CLOSURE SIGNATURE WAS NOT TOLD.
+// Dropping `.cloned()` when the fold lambda's element parameter is `_` is a real saving -- the clone is
+// paid per element for a value the body never names. But it also changes the ITEM TYPE the iterator
+// yields, from `T` to `&T`, while the lambda's element parameter kept its by-value annotation: rustc
+// E0631, `expected fn(Rc<_>, &Rc<_>)`, `found fn(Rc<_>, Rc<_>)`, with rustc's own help line reading
+// "consider adjusting the signature so it borrows its argument". One fact, derived in two places, and
+// the second place did not know about the first.
+//
+// emit_typed_fold_lambda's elem_borrowed forces `_` at the element position. THE FIRST ATTEMPT AT THIS
+// CHANGED THE FALLBACK TYPE STRING AND MEASURED NO EFFECT: lambda_param_type_strs prefers the parameter
+// node's own RESOLVED type and only falls back when there is none, so the site still emitted
+// `_: Rc<DependencyView>`. The override has to sit where the parameter string is chosen, not where the
+// fallback is supplied. The element is `_` BY CONSTRUCTION --
+// fold_lambda_element_unused is exactly the test that the parameter is named `_` -- so the annotation
+// carries no information for a reader and only has to be ACCEPTED by rustc. Emitting `_` lets inference
+// supply whichever of `T` / `&T` the iterator actually yields, which keeps the two consequences in
+// agreement without the emitter restating the item type at the second site. Emitting `&{elem_type}`
+// instead would restate it, and would then have to be kept in step with any future change to the strip
+// -- reintroducing the shape of this defect while fixing this instance of it. `_` is also the device
+// already used for elem_render_has_spurious_generic a few bindings earlier.
 fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Node?, result_type: InferredNode?, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let recv_str = emit_typed_iter_owned_receiver(receiver: receiver, downstream: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let elem_type_str = collection_element_type(receiver_type: receiver.inferred, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info, type_env: scope.type_env)
@@ -8946,15 +9073,15 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
       }
     Absent => "compile_error!(\"missing fold init argument\")"
   }
-  let fold_fn = match args |> skip(1) |> first {
-    Present { value: a } =>
-      emit_typed_fold_lambda(lambda_expr: arg_value(n: a), acc_type_str: lambda_acc_type_str, elem_type_str: fold_elem_type_str, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: fold_emit_info)
-    Absent => "compile_error!(\"missing fold function argument\")"
-  }
   let sharing = language_spec(target: Rust).sharing
   let elem_unused = match args |> skip(1) |> first {
     Present { value: a } => fold_lambda_element_unused(lambda_expr: arg_value(n: a), source_indices: scope.type_env.source_indices)
     Absent => false
+  }
+  let fold_fn = match args |> skip(1) |> first {
+    Present { value: a } =>
+      emit_typed_fold_lambda(lambda_expr: arg_value(n: a), acc_type_str: lambda_acc_type_str, elem_type_str: fold_elem_type_str, elem_borrowed: elem_unused, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: fold_emit_info)
+    Absent => "compile_error!(\"missing fold function argument\")"
   }
   let iter_template = if elem_unused { replace(sharing.iter_owned, ".cloned()", "") } else { sharing.iter_owned }
   concat(apply_type_template1(template: iter_template, arg0: recv_str), ".fold(", init_str, ", ", fold_fn, ")")
@@ -9103,7 +9230,7 @@ fn emit_rust_with_method_call(receiver: Node, args: List<Node>, registry: Map<St
       let rt_is_error = if rt.inferred != none { is_compiler_error(inferred: rt.inferred.value) } else { false }
       if rt_is_error || rt.ident_span == none {
         "compile_error!(\"with method missing resolved record type\")"
-      } else { authored_name_at(source_indices: scope.type_env.source_indices, node: rt) }
+      } else { qualified_last_segment(name: authored_name_at(source_indices: scope.type_env.source_indices, node: rt)) }
     _ => "compile_error!(\"with method missing resolved record type\")"
   }
   if args |> count == 0 { return "compile_error!(\"with method missing update record\")" }
@@ -10005,14 +10132,30 @@ fn struct_candidates_by_field_names(field_names: List<String>, type_summaries: M
   )
 }
 
-fn find_struct_name_by_fields(field_names: List<String>, field_type_hints: Map<String, String>, type_summaries: Map<String, TypeSummary>) -> String? {
+// gunbc dashboard node://adhoc-e47d0143-6a2. An anonymous record literal has no authored
+// nominal identity, so the Rust emitter may name a struct only when the literal's field shape
+// (and, when necessary, its inferred field-type hints) identifies exactly one TypeSummary. The
+// old find_struct_name_by_fields fallback sorted multiple shape candidates alphabetically and
+// selected the first whenever hints left zero OR multiple candidates. That made declaration
+// spelling/order decide the runtime type.
+//
+// anonymous_record_struct_candidates is the single candidate authority: an unambiguous typed
+// refinement replaces the broader shape set; otherwise the full shape ambiguity survives.
+// Consumers may project a name only from a singleton.
+// ambiguous_anonymous_record_literal_diagnostics walks the typed module before rendering and
+// returns one located AmbiguousAnonymousRecordLiteral ErrorNode per ambiguous construction
+// through EmitResult.diagnostics, so the deficit is counted at the emitter boundary and emission
+// refuses before target text exists. emit_typed_record_lit's compile_error! arm remains a
+// defensive construction wall if a future caller bypasses emit_rust's diagnostic fold; zero
+// candidates retain the structural tuple realization.
+//
+// RUNG: mechanically preventable at the v1 emitter boundary, not structurally impossible in the
+// source language; the target compiler is never counted as part of this guarantee.
+
+fn anonymous_record_struct_candidates(field_names: List<String>, field_type_hints: Map<String, String>, type_summaries: Map<String, TypeSummary>) -> List<TypeSummary> {
   let candidates = struct_candidates_by_field_names(field_names: field_names, type_summaries: type_summaries)
-  if candidates |> count <= 1 {
-    match candidates |> first {
-      Present { value: s } => Present { value: s.name }
-      Absent => none
-    }
-  } else {
+  if candidates |> count <= 1 { candidates }
+  else {
     let typed_candidates = candidates |> filter(cand =>
       sorted_map_keys(field_type_hints) |> all(fname =>
         match map_get(field_type_hints, fname) {
@@ -10025,18 +10168,49 @@ fn find_struct_name_by_fields(field_names: List<String>, field_type_hints: Map<S
         }
       )
     )
-    if typed_candidates |> count == 1 {
-      match typed_candidates |> first {
-        Present { value: s } => Present { value: s.name }
-        Absent => none
-      }
-    } else {
-      match candidates |> sort_by(c => c.name) |> first {
-        Present { value: s } => Present { value: s.name }
-        Absent => none
-      }
-    }
+    if typed_candidates |> count == 1 { typed_candidates } else { candidates }
   }
+}
+
+fn ambiguous_anonymous_record_literal_diagnostics(n: Node, type_summaries: Map<String, TypeSummary>, source_indices: Map<String, NewlineIndex>, module_name: String) -> List<ErrorNode> {
+  let current = match n.expr_data {
+    ExprRecordLit { parent_enum: _ } =>
+      match record_lit_type_name_at(texpr: n, source_indices: source_indices) {
+        Present { value: _ } => []
+        Absent =>
+          let resolved = resolved_type(n: n)
+          if n.children |> count > 1 && is_product_type(n: resolved) && resolved.ident_span == none {
+            let field_names = n.children |> map(f => field_init_node_name_at(n: f, source_indices: source_indices))
+            let field_type_hints = record_lit_field_type_hints(n: n, source_indices: source_indices)
+            let candidates = anonymous_record_struct_candidates(field_names: field_names, field_type_hints: field_type_hints, type_summaries: type_summaries)
+            if candidates |> count > 1 {
+              let candidate_names = candidates |> map(c => c.name) |> sort_by(name => name)
+              [make_error_node(diagnostic: AmbiguousAnonymousRecordLiteral { candidates: candidate_names, span: n.span }, module_name: module_name)]
+            } else { [] }
+          } else { [] }
+      }
+    _ => []
+  }
+  let direct = concat(n.children |> flat_map(c => ambiguous_anonymous_record_literal_diagnostics(n: c, type_summaries: type_summaries, source_indices: source_indices, module_name: module_name)), n.params |> flat_map(c => ambiguous_anonymous_record_literal_diagnostics(n: c, type_summaries: type_summaries, source_indices: source_indices, module_name: module_name)))
+  let indirect = concat(n.uses |> flat_map(c => ambiguous_anonymous_record_literal_diagnostics(n: c, type_summaries: type_summaries, source_indices: source_indices, module_name: module_name)), n.properties |> flat_map(c => ambiguous_anonymous_record_literal_diagnostics(n: c, type_summaries: type_summaries, source_indices: source_indices, module_name: module_name)))
+  let optional_nodes = concat(
+    match n.body { Present { value: b } => ambiguous_anonymous_record_literal_diagnostics(n: b, type_summaries: type_summaries, source_indices: source_indices, module_name: module_name)  Absent => [] },
+    concat(
+      match n.transport { Present { value: t } => ambiguous_anonymous_record_literal_diagnostics(n: t, type_summaries: type_summaries, source_indices: source_indices, module_name: module_name)  Absent => [] },
+      match n.type_annotation { Present { value: t } => ambiguous_anonymous_record_literal_diagnostics(n: t, type_summaries: type_summaries, source_indices: source_indices, module_name: module_name)  Absent => [] }
+    )
+  )
+  concat(current, concat(direct, concat(indirect, optional_nodes)))
+}
+
+fn find_struct_name_by_fields(field_names: List<String>, field_type_hints: Map<String, String>, type_summaries: Map<String, TypeSummary>) -> String? {
+  let candidates = anonymous_record_struct_candidates(field_names: field_names, field_type_hints: field_type_hints, type_summaries: type_summaries)
+  if candidates |> count == 1 {
+    match candidates |> first {
+      Present { value: s } => Present { value: s.name }
+      Absent => none
+    }
+  } else { none }
 }
 
 fn find_unique_struct_name_by_fields(field_names: List<String>, type_summaries: Map<String, TypeSummary>) -> String? {
@@ -10118,10 +10292,15 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
                 rust_shared_wrap_ctor(inner_expr: struct_lit)
               } else { struct_lit }
             Absent =>
-              let vals = fields |> map(f =>
-                emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-              )
-              concat("(", vals |> join(separator: ", "), ")")
+              let resolution_candidates = anonymous_record_struct_candidates(field_names: lit_field_names, field_type_hints: field_type_hints, type_summaries: emit_info.type_summaries)
+              if resolution_candidates |> count > 1 {
+                "compile_error!(\"ambiguous anonymous record literal shape; add a nominal type\")"
+              } else {
+                let vals = fields |> map(f =>
+                  emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+                )
+                concat("(", vals |> join(separator: ", "), ")")
+              }
           }
         }
       } else {

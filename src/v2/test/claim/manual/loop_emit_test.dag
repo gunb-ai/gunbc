@@ -59,7 +59,7 @@ fn loop_emit_facts_lookup(key: Node) -> Optional<InferredFacts> {
 fn loop_emit_inferred_tree_for(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map { lookup: loop_emit_facts_lookup }
+    facts: PartialFunction { lookup: loop_emit_facts_lookup }
   }
 }
 

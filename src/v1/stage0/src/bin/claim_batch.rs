@@ -350,31 +350,33 @@ fn report_outcome(function: &str, outcome: ClaimOutcome, any_failed: &mut bool) 
         // completion, passed, and was reclassified on cost. Same fabrication as the executor's
         // renderer carried; fixed in the same motion so the two transports cannot disagree
         // about one outcome.
-        ClaimOutcome::TimedOut {
+        ClaimOutcome::BudgetInterrupted {
+            elapsed_at_least_ms,
+            budget_ms,
+            kind,
+        } => {
+            println!(
+                "FAIL {} (killed at its {} budget: at least {}ms elapsed against a {}ms budget \
+                 (interrupted, so elapsed bounds the cost and does not measure it))",
+                function,
+                kind.label(),
+                elapsed_at_least_ms,
+                budget_ms
+            );
+            *any_failed = true;
+        }
+        ClaimOutcome::CompletedOverBudget {
             elapsed_ms,
             budget_ms,
             kind,
-            completion,
         } => {
             println!(
-                "FAIL {} ({})",
+                "FAIL {} (completed over its {} budget: exactly {}ms elapsed against a {}ms \
+                 budget (ran to completion and passed, then was reclassified on cost))",
                 function,
-                match completion {
-                    v1_compiler::cli_run::BudgetCompletion::Interrupted => format!(
-                        "killed at its {} budget: at least {}ms elapsed against a {}ms budget \
-                         (interrupted, so elapsed bounds the cost and does not measure it)",
-                        kind.label(),
-                        elapsed_ms,
-                        budget_ms
-                    ),
-                    v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget => format!(
-                        "completed over its {} budget: exactly {}ms elapsed against a {}ms \
-                         budget (ran to completion and passed, then was reclassified on cost)",
-                        kind.label(),
-                        elapsed_ms,
-                        budget_ms
-                    ),
-                }
+                kind.label(),
+                elapsed_ms,
+                budget_ms
             );
             *any_failed = true;
         }
@@ -574,8 +576,49 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Err(ExitCode::from(2));
     }
 
+    // SHARED-BUILD ATTRIBUTION (see `warm_bare_reference_edge_index`). The bare-reference edge
+    // index is a fact of the SUBJECT, not of any witness: memoized once per index, and in the
+    // required floor it was charged in full to whichever claim resolved an entry first.
+    //
+    // PLACED AHEAD OF EVERY CONSUMER, which is the invariant; `install_output_policy` below is no
+    // longer one of them, and the history is worth keeping because it is how the seam was found.
+    //
+    // WHAT WAS MEASURED HERE, ON THE PRE-FIX INSTALLER: with the warm sitting AFTER
+    // `install_output_policy`, the phase line reported `provenance=already-warm-on-entry cpu_ms=0` while a ~30.8s
+    // span sat billed to an output-policy read. That installer resolved
+    // `dag/gunbc/output_policy.dag` through `resolve_entry_graph_shared` -> `process_shared_index`,
+    // so a five-decision policy read was this harness's ACCIDENTAL FIRST TOUCHER of the corpus
+    // index — a cost owned by nothing and bounded by nothing. That is why `claim_batch` never
+    // reproduced the floor's witness row: not because the cost was absent, but because a non-claim
+    // happened to pay it.
+    //
+    // THAT INSTALLER IS NOW FIXED (`Scope the early output-policy read to its own closure`,
+    // still-koi-527): it resolves the policy's own import closure and never enters the shared
+    // index. So the ordering against it is no longer load-bearing, and this comment does not claim
+    // it is. The warm stays HERE because the invariant is "before any consumer", not "before that
+    // one" — and because the next accidental first toucher will not announce itself either.
+    let edge_index_warm =
+        v1_compiler::cli_run::warm_bare_reference_edge_index(&process_shared_index(&source_roots))
+            .map_err(|e| {
+                eprintln!("claim_batch: bare-reference edge index warm failed: {e}");
+                ExitCode::from(1)
+            })?;
+    eprintln!(
+        "[floor-phase] phase=bare-reference-edge-index-warm state=completed cpu_ms={} wall_ms={} \
+         rss_growth_bytes={} source_files={} bare_eligible={} provenance={}",
+        edge_index_warm.cpu_ms,
+        edge_index_warm.wall_ms,
+        edge_index_warm.rss_growth_bytes,
+        edge_index_warm.source_files,
+        edge_index_warm.bare_eligible,
+        edge_index_warm.provenance.render(),
+    );
+
     // Funnel host-effect traces per the .dag output policy (see claim_executor).
-    v1_compiler::cli_run::install_output_policy(&source_roots);
+    if let Err(why) = v1_compiler::cli_run::install_output_policy(&source_roots) {
+        eprintln!("claim_batch: {why}");
+        return Err(ExitCode::from(1));
+    }
     // GUNBC_FLOOR_PHASE_PROFILE support (same as claim_executor): without this,
     // claim_batch diagnostics cannot attribute time to resolve/typecheck/eval
     // phases — a 20-minute silent resolve is uninterpretable.
@@ -650,15 +693,11 @@ fn run() -> Result<ExitCode, ExitCode> {
         total_witnesses,
     );
 
-    // ONE index per (thread, roots), not one per holder. This harness previously built
-    // its own MultiEntryIndex here while `install_output_policy` above had ALREADY warmed
-    // the process-shared one on this same thread (it resolves through
-    // `resolve_entry_graph_shared` -> `process_shared_index`), so the per-source-root bare
-    // census — the dominant cold cost
-    // on this path, measured at ~13.8s per (root, index) — was computed twice for the
-    // same two subjects. The census memo is keyed on the source root alone, with nothing
-    // about the query in the key, so the second index bought no distinction at all: it
-    // paid full price for an identical answer.
+    // ONE index per (thread, roots), not one per holder. The output-policy installer above
+    // resolves only that policy's import closure; it deliberately does not enter or warm this
+    // process-shared corpus index. This is therefore the first place the harness constructs its
+    // real subject, and any cold edge-index build observed after this line belongs to an actual
+    // consumer rather than to policy installation order.
     let index = process_shared_index(&source_roots);
 
     let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(&source_roots) {

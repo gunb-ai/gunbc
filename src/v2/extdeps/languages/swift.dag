@@ -56,7 +56,7 @@ import v2.std.compilers.lexing {
 import v2.std.collection {
   List,
   Map,
-  Set,
+  PointwisePower,
   empty_map,
   map_insert
 }
@@ -1621,11 +1621,7 @@ fn swift_lex_token_symbol(sym: Symbol) -> Bool {
 }
 
 fn swift_empty_primitive_spec_facts() -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      v2.std.optional.Absent
-    }
-  }
+  empty_map()
 }
 
 fn swift_primitive_fact_map_4(
@@ -1817,8 +1813,8 @@ fn swift_catalog_surface_symbol(sym: Symbol) -> Bool {
     swift_nonnumeric_catalog_surface_symbol(sym: sym)
 }
 
-fn swift_language_model_canonical_symbols() -> Set<Symbol> {
-  Set {
+fn swift_language_model_canonical_symbols() -> PointwisePower<Symbol> {
+  PointwisePower {
     member: fn(sym) {
       swift_catalog_surface_symbol(sym: sym) ||
         swift_lex_token_symbol(sym: sym) ||
