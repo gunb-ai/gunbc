@@ -809,6 +809,68 @@ fn fold_emit_subject_clean_ratchet(
 }
 
 // ---------------------------------------------------------------------------------------------
+// THE STANDING. A refusal carries the rows, never a count of them.
+// ---------------------------------------------------------------------------------------------
+
+fn ratchet_failing_verdicts(r: EmitSubjectCleanRatchet) -> List<EmitRatchetVerdict> {
+  fold(r.verdicts, init: [], f: (acc, v) => if emit_ratchet_verdict_holds(v: v) { acc } else { concat(acc, [v]) })
+}
+
+fn ratchet_failing_rows(r: EmitSubjectCleanRatchet) -> List<String> {
+  concat(
+    concat(
+      match r.roster {
+        RosterEmpty { policy: p, denominators: _ } => [
+          concat(
+            "ROSTER-EMPTY\t",
+            concat(
+              roster_discovery_policy_text(policy: p),
+              " discovered no subject — a universe of nothing is a discovery failure, not a standing every claim holds over"
+            )
+          )
+        ]
+        RosterIdentified { policy: _, denominators: _, subject_count: _, digest: _ } => []
+      },
+      map(ratchet_failing_verdicts(r: r), v => emit_ratchet_verdict_row(v: v))
+    ),
+    concat(
+      map(
+        r.orphan_admission_subjects,
+        k => concat(concat("ADMISSION-ORPHAN\t", k), "\tthis admission row names a subject the discovered roster does not contain")
+      ),
+      map(
+        r.malformed_admission_subjects,
+        k => concat(concat("ADMISSION-MALFORMED\t", k), "\tan admission row is missing its owner, reason, subject or dissolution condition")
+      )
+    )
+  )
+}
+
+type EmitRatchetStanding
+  = EmitRatchetHeld { subject_count: Int }
+  | EmitRatchetRefused { failing_rows: List<String> }
+
+fn emit_ratchet_standing(r: EmitSubjectCleanRatchet) -> EmitRatchetStanding {
+  let failing = ratchet_failing_rows(r: r)
+  if count(failing) == 0 {
+    EmitRatchetHeld { subject_count: count(r.verdicts) }
+  } else {
+    EmitRatchetRefused { failing_rows: failing }
+  }
+}
+
+fn emit_ratchet_standing_text(standing: EmitRatchetStanding) -> String {
+  match standing {
+    EmitRatchetHeld { subject_count: n } => concat("held over ", concat(to_string(n), " subject(s)"))
+    EmitRatchetRefused { failing_rows: rows } =>
+      concat("refused — ", concat(to_string(count(rows)), " row(s) below"))
+  }
+}
+
+// COUNTS APPEAR HERE AND NOWHERE ELSE, and they are display: every count on this report is a
+// function of rows the report also prints in full, so a reader can reconstruct it and no consumer
+// has to trust it. Nothing above admits or refuses on one.
+// ---------------------------------------------------------------------------------------------
 // THE ENROLMENT WALL.
 //
 // Any consumer that would let a merge decision ride on this carrier routes through here first, and
