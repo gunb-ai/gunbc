@@ -240,6 +240,20 @@ DeclarationId    exact owner module + declaration.
 KernelSpelling   the closed intrinsic vocabulary — List / Map / Set.
 ```
 
+**A domain being the right one to consume is not the same as it being the right
+one to have been built on.** `shared_types` is genuinely a `DeclarationLeaf` set
+— `build_shared_types` folds type-summary keys and container pascal names, and
+nothing in it is ever dotted — so peeling to the leaf is the correct consumption
+and gunbc#9199 is right to do it. But *that a set of shared types is keyed on
+bare leaves at all* is a latent collision one layer down: two modules declaring
+the same leaf, one shared and one not, collapse into one answer, and no qualified
+reference is needed to reach it. That row is **pre-existing on main, independent
+of the cut, and not #9199's to fix** — the PR makes qualified spellings behave as
+bare ones already do, which is the law's first half and strictly an improvement.
+It belongs on this ledger as its own Track C item: *the registry's key domain is
+correct for its consumers and wrong for its subject*, which is the shape to watch
+for wherever a peel is judged correct.
+
 `KernelSpelling` is the one that makes a uniform sweep dangerous rather than
 merely imprecise: the kernel container names are a **closed vocabulary**, not
 declarations, so they are neither peelable nor identity-bearing, and a rule
