@@ -56,24 +56,36 @@ has no grant on any executor host. `fleet_converge_plan` carries an activation f
 slot family, with its own line in `plan.txt` and its own refusal count.
 
 **What did NOT change, and this is the part to read before quoting a green apply as converged
-capacity.** The admission has no reachable green on any host: `admit_runner_activation` requires a
-`HostCompilePoolReady`, and `derive_host_compile_pool_ready` answers `PoolNotDeclaredInTopology`
-fleet-wide because `gunbc_compile_pool_placement` is `CompilePoolInRunnerSlots`. So both transitions
-refuse on every host today, `apply.sh` prints a typed located refusal for each, and the host's
-serving capacity still does not rise from apply alone. That state is declared as a typed
-`GuaranteeStall` row — `runner_activation_reachable_green_stall` — rather than left in prose, for
-the reason §4b gives: a gate whose only reachable state is refusal has to say so, or a reader
-cannot tell a permanent structural refusal from a transient one.
+capacity.** The admission is unreachable in production, and two blockers sit **in series**:
+first, no host observation transaction exists, so every production caller supplies
+`ActivationReadinessUnobserved` and the admission is never asked; behind that,
+`admit_runner_activation` requires a `HostCompilePoolReady` whose producer answers
+`PoolNotDeclaredInTopology` fleet-wide under `CompilePoolInRunnerSlots`. Flipping the placement
+changes nothing observable while the first stands — the pool receipt is a field *inside* a readiness
+value that is never `Observed`. So both transitions refuse on every host today, `apply.sh` prints a
+typed located refusal for each, and serving capacity still does not rise from apply alone.
+
+That state is declared as a typed `GuaranteeStall` row — `runner_activation_reachable_green_stall`
+— rather than left in prose, for the reason §4b gives: a gate whose only reachable state is refusal
+has to say so, or a reader cannot tell a permanent structural refusal from a transient one. The row
+names the observation transaction as the immediate blocker and the placement behind it, in that
+order, because naming only the second produces a plan that does the fleet-wide topology work and
+measures no change.
+
+**Unreachable in production is not inert.** §4b judges reachability against what a *fixture* may
+author, and `test.claim.runner_service_activation` authors `ActivationReadinessObserved` and drives
+the admitted enable/start path with it — so the emission has an authorable, exercised RED at the
+fixture boundary.
 
 **What the item actually bought,** stated without inflation: an invisible hand loop became a named,
 counted, located refusal. `enable count 0` was indistinguishable from a host with no activation
 work; `activation-refusals=2` with its cause is not.
 
-**Next.** The placement flip — `gunbc_compile_pool_placement` declaring a managed slice, in the same
-motion that shrinks `runner_pool` so the host allocation still conserves (`gunbc.fleet_host_budget`).
-That is a fleet-wide topology decision and its own item; `gunbc_jobserver_token_override_note`
-already records the over-admission it would expose. Until it lands, capacity increases remain
-manual, and the refusal in `apply.sh` is the place that says so.
+**Next.** The host observation transaction — the shared blocker this document already names — and
+only then the placement flip, with a width decision attached and re-derived per host from live
+`nproc`/`MemTotal` rather than from `gunbc_jobserver_token_override_note`, which is stale for srv1.
+Until both land, capacity increases remain manual, and the refusal in `apply.sh` is the place that
+says so.
 
 ### 3. Provider admissibility is unmodeled
 

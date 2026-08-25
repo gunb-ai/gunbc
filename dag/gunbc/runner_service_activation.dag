@@ -273,19 +273,42 @@ fn runner_activation_admitted_operation_count(plans: List<RunnerTransitionPlan>)
   )
 }
 
-// THE ADMISSION HAS NO REACHABLE GREEN ON ANY HOST TODAY, AND THAT IS A TYPED ROW RATHER THAN A
-// SENTENCE IN A PR BODY. Without it the next reader sees enable-count-0 replaced by refuse-count-N
+// THE ADMISSION HAS NO REACHABLE GREEN IN PRODUCTION TODAY, AND THAT IS A TYPED ROW RATHER THAN A
+// SENTENCE IN A PR BODY.
+//
+// "IN PRODUCTION" IS THE WHOLE QUALIFIER AND IT IS NOT A HEDGE. DESIGN section 4b judges a check's
+// reachability against WHAT A FIXTURE MAY AUTHOR, never against what production currently reaches,
+// and test.claim.runner_service_activation authors ActivationReadinessObserved and drives the
+// admitted enable/start path with it. So the admitted arm has an authorable, exercised RED: the
+// emission is proven at the fixture boundary and would go red the moment the emitter stopped
+// emitting activation. That is a wall nothing in production can currently trigger -- categorically
+// different from a decoration whose RED cannot be produced anywhere, which is the reading a reviewer
+// will reach for and which this paragraph exists to refuse. Without it the next reader sees enable-count-0 replaced by refuse-count-N
 // and cannot tell a PERMANENT STRUCTURAL refusal from a transient one -- which is the mirror of
 // DESIGN section 4b's unauthorable-RED question, pointed the other way: a gate whose only reachable
 // state is refusal is not a decoration, it is the laundering shape the Building-&-checks fixed-point
 // entry records, where a gate's only closing move does not exist. The difference between that
 // failure and this row is only that this one says so.
 //
-// THE SINGLE REASON, NAMED: admit_runner_activation requires a HostCompilePoolReady, and its one
-// producer -- gunbc.host_compile_pool derive_host_compile_pool_ready -- answers
-// PoolNotDeclaredInTopology for every host because gunbc.fleet_host_budget's
-// gunbc_compile_pool_placement is CompilePoolInRunnerSlots. That module's own note already states
-// this and calls it the correct answer rather than a gap, so nothing here is being worked around.
+// TWO BLOCKERS IN SERIES, AND NAMING ONLY THE SECOND IS THE ERROR THIS CLAUSE EXISTS TO PREVENT.
+// The immediate blocker is that no host observation transaction exists: every production caller
+// supplies runner_activation_readiness_unobserved_no_transaction, so the refusal is produced by the
+// ActivationReadinessUnobserved arm and the admission is never even asked. BEHIND it sits a second
+// gate that would fire next -- admit_runner_activation requires a HostCompilePoolReady, and its one
+// producer, gunbc.host_compile_pool derive_host_compile_pool_ready, answers PoolNotDeclaredInTopology
+// for every host because gunbc.fleet_host_budget's gunbc_compile_pool_placement is
+// CompilePoolInRunnerSlots.
+//
+// THE ORDER IS LOAD-BEARING FOR ANYONE PLANNING THE CLIMB. Flipping the placement changes nothing
+// observable while the first blocker stands, because the pool receipt is a FIELD INSIDE a readiness
+// value that is never Observed -- so a reader who takes the placement as THE blocker will do the
+// fleet-wide topology work and measure no change. An earlier revision of this row named only the
+// placement and produced exactly that plan; it is corrected here rather than annotated, because two
+// accounts of which gate fires first is worse than the wrong one alone.
+//
+// NEITHER MODULE IS BEING WORKED AROUND: gunbc.host_compile_pool's own note states its answer and
+// calls it correct rather than a gap, and the missing transaction is a declared gap in this
+// repository with a plan of its own.
 //
 // WHY A STALL AND NOT A RUNG DROP, because the distinction decides whether this row is honest. A
 // GuaranteeRungDrop asserts that a guarantee FELL, and nothing fell: before this module the emitted
@@ -304,12 +327,12 @@ data runner_activation_reachable_green_stall: GuaranteeStall = GuaranteeStall {
   current: OutsideTheLadder,
   ceiling: StructurallyGuaranteed,
   blocker: AwaitsOneGrounding {
-    grounding: "gunbc.fleet_host_budget gunbc_compile_pool_placement is CompilePoolInRunnerSlots, so gunbc.host_compile_pool derive_host_compile_pool_ready answers PoolNotDeclaredInTopology fleet-wide and no HostCompilePoolReady receipt can be produced for any host",
+    grounding: "no host observation transaction exists, so every production caller supplies ActivationReadinessUnobserved and the admission is never asked; BEHIND that, and only reachable once it lands, gunbc.fleet_host_budget gunbc_compile_pool_placement is CompilePoolInRunnerSlots, so gunbc.host_compile_pool derive_host_compile_pool_ready answers PoolNotDeclaredInTopology fleet-wide and no HostCompilePoolReady receipt can be produced for any host",
   },
   population: BoundedPopulation {
     members: map(fleet_runner_host_deploys, d => d.host_label as String),
   },
-  next_rung_trigger: "gunbc_compile_pool_placement declares a managed compile-pool slice, in the same motion that shrinks runner_pool so the host allocation still conserves; at that point derive_host_compile_pool_ready can answer ready, the admission has a reachable green, and this row's current rung is the wall's own rung rather than off-ladder",
+  next_rung_trigger: "FIRST the host observation transaction lands and a production caller can supply ActivationReadinessObserved, which is what makes the admission reachable at all; THEN gunbc_compile_pool_placement declares a managed compile-pool slice, in the same motion that shrinks runner_pool so the host allocation still conserves. Both, in that order: the second alone changes nothing observable, because the pool receipt is a field inside a readiness value that is never Observed. At the end of both, the admission has a reachable green and this row's current rung is the wall's own rung rather than off-ladder",
 }
 
 fn runner_activation_stall_report() -> String {
