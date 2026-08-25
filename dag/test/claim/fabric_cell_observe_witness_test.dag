@@ -62,6 +62,7 @@ import gunbc.fabric_cell_observe {
   FabricCellObserverProjection,
   fabric_cell_discovery_refusals,
   fabric_cell_projection_refusals,
+  fabric_cell_observed_population,
   fabric_cell_unconsumed_probe_refusals,
 }
 
@@ -805,4 +806,18 @@ test fn witness_observer_unconsumed_probe_refuses_the_population() -> Bool {
     readback: projection.expected_readback,
     discovered: fabric_cell_projection_refusals(projection: projection),
   ))
+}
+
+// LAW 32 -- THE JOINED ROUTE IS THE HAND-ASSEMBLED ONE. fabric_cell_observed_population exists so a
+// wet caller has a spelling that cannot omit discovery; this row is what keeps it from drifting
+// into a second, differently-behaved answer beside the one the witnesses above measure.
+test fn witness_observer_joined_population_agrees_with_the_assembled_one() -> Bool {
+  let probe = converged_probe_with_foreign()
+  let projection = fabric_cell_observe(probe: probe)
+  population_is_refused(p: fabric_cell_observed_population(probe: probe))
+    && population_is_refused(p: fabric_cell_population(
+      readback: projection.expected_readback,
+      discovered: fabric_cell_projection_refusals(projection: projection),
+    ))
+    && !population_is_refused(p: fabric_cell_observed_population(probe: converged_probe()))
 }

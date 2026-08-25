@@ -597,6 +597,23 @@ fn fabric_cell_observe(probe: FabricCellHostProbe) -> FabricCellObserverProjecti
 // ONE PROJECTION FROM ONE PROBE MEANS ONE CALL PRODUCES EVERY REFUSAL THE PROBE IMPLIES. A caller
 // that has the projection cannot obtain the discovery half without the unconsumed half, which is
 // the same construction the required `discovered` argument applies one layer down.
+// ONE PROBE, ONE POPULATION, ONE CALL. This is the joined route: it is the only function that
+// turns a probe into a population without the caller assembling the two halves by hand, so a wet
+// caller has a spelling that cannot omit discovery. IT IS NOT A WALL AND MUST NOT BE CITED AS ONE.
+// fabric_cell_population stays callable with a hand-built readback and a literal empty discovered
+// list, and gunbc.fabric_cell_converge cannot refuse that without importing this module, which the
+// acyclicity law forbids -- this module imports that one. So the class sits at MITIGATABLE: the
+// omission has no spelling on this route, and a fabricated empty discovered list is still writable
+// on the other one. NEXT-RUNG TRIGGER: the joined fold moving to the downstream side, so that
+// FabricCellPopulation has no constructor a caller can reach with a discovered list it authored.
+fn fabric_cell_observed_population(probe: FabricCellHostProbe) -> FabricCellPopulation {
+  let projection = fabric_cell_observe(probe: probe)
+  fabric_cell_population(
+    readback: projection.expected_readback,
+    discovered: fabric_cell_projection_refusals(projection: projection),
+  )
+}
+
 fn fabric_cell_projection_refusals(projection: FabricCellObserverProjection) -> List<FabricCellObservationRefusal> {
   concat(
     fabric_cell_discovery_refusals(discovery: projection.discovery),
