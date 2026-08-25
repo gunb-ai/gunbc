@@ -157,6 +157,7 @@ import extdeps.github.actions_runner { ActionsRunnerRelease, ActionsRunnerBinary
 import gunbc.roadmap_static_site { roadmap_site_digest_readback_script }
 import gunbc.package_delivery { codex_runtime_version_identity_satisfied }
 import gunbc.cli_invoke { gunbc_run_transport_argv }
+import gunbc.cli_services
 import gunbc.host_codex_runtime_provision_verdict {
   codex_runtime_observe_argv,
   provision_codex_runtime_verdict,
