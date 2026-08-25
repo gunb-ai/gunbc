@@ -433,6 +433,19 @@ fn rust_nominal_identity_carrier_type_eligible(type_name: String) -> Bool {
 
 Three consequences:
 
+Measured on the *emitted* side by `neat-fox-901`, which is the denominator that
+matters for key position: **2,548 `HashMap<String,` against roughly 9 named-key
+maps, every one of those a `String` alias** — and 62 transparent primitive
+aliases against exactly 1 emitted newtype, which is hand-written
+`v1_interpreter.rs` rather than emitted at all. The source side mirrors it and
+confirms the rung split: `type Symbol` in v2 is **bodyless, with zero functions
+returning it and zero casts anywhere in `src/v2`**, so a spelling cannot become a
+`Symbol` in v2 source. Structurally impossible in the model, absent in the
+realization, and per §4b(1) the honest rung is the minimum — *absent*. v2's
+remaining 52 `String`-keyed sites are concentrated rather than diffuse: 50 of them
+in three lens files (`module_impact_query` 28, `reference_deps` 12,
+`module_graph` 10).
+
 1. **v1's 2093 `Map<String, _>` are not sloppiness.** They are the model
    faithfully describing what the realization can express. Repointing them to
    typed keys while the emitter erases brands would move the fork rather than
@@ -465,6 +478,39 @@ One restatement makes it top-rung:
 > in key position.**
 
 Minimality stops being a search and becomes a definition — §3, one fact one home.
+**Two sessions derived that sentence independently on 2026-08-25**, from
+different evidence — this lane from the emitter's `shared_types` lookup,
+`neat-fox-901` from the corpus keying census — and converged on the same wording
+*including the same reason for rejecting the minimality phrasing*. Recorded
+because independent convergence is the only cheap evidence available that a
+restatement is the subject's own shape rather than one author's preference.
+
+### The specimen that puts both error terms in one function
+
+`neat-fox-901`'s tightest statement of the class: `v1.04_infer`
+`nominal_call_arg_brand_mismatch` — **the mechanism that exists to enforce brand
+distinctness** — compares `authored_name_at` (the spelling: over-keyed) under
+`qualified_last_segment` (the leaf: under-keyed). Both error terms, inside the
+wall built to stop exactly this. The namespace cut is the same class one level
+up, which is why peel-to-leaf greens a build and re-arms the defect the cut
+exists to fix.
+
+### The hole is *key position* specifically
+
+`src/v2/lens/module_impact_query.dag` carries a note claiming, on a 2026-08-08
+operator ruling, that `ModuleIdentity` is a record so a path cannot be passed
+where an identity is required — the confusion unwritable rather than merely
+labelled. **That is true at parameter position and false at key position.** The
+carrier is destructured at all 7 sites (`key: module_id.name`, `key: m.name`,
+`key: from.name`) into `Map<String, List<ModuleIdentity>>` and
+`seen: Map<String, String>`. Typed value, `String` key, path perfectly writable.
+
+That is worth more than its site count. It says the repo's existing identity
+walls are not weak — they hold where they were aimed — and that **key position is
+the aim they were never pointed at**. "Nothing but the identity carrier is
+spellable in key position" is therefore not a new discipline but the existing one
+extended to the single position that was skipped.
+
 This is not new doctrine: it is the terminal shape
 [keying-relation-design.md](keying-relation-design.md) already argues for, and
 `dag/std/key_relation.dag` already names its own next-rung trigger,
@@ -537,7 +583,13 @@ is free text — a filename, an env var, an upstream JSON member.
 **T2 — impostor separation.** `SubjectKey<K>` / `StateRevision<R>` /
 `ResourceLocator<L>` / `ContentIdentity<H>` / `DisplayLabel`, with production
 `key_of` returning `SubjectKey` only. This is `key_relation_identity_wall`,
-already declared. A content-derived key stops compiling.
+**declared as a trigger and entirely unbuilt** — measured by `neat-fox-901`:
+`SubjectKey` / `ResourceLocator` / `ContentIdentity` have **zero declarations** in
+the corpus and exist only inside prose strings in `key_relation.dag` itself, as do
+`KeyMultiplicity` and its arms, and **zero `src/v2` modules import
+`key_relation`**. What landed is a naming authority, which its own note says
+plainly. Nothing here is half-done; it is undone, and the trigger is the real
+part. When built, a content-derived key stops compiling.
 
 **T3 — `KeyedRoster` construction wall.** Success arm reachable only through
 `keyed_roster_build`/`insert`. Already declared as
