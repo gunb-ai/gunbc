@@ -27,8 +27,8 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use v1_compiler::cli_run::declaration_index::{
-    citation_debt_findings_against, corpus_findings, index_findings, index_population,
-    DeclarationIntegrityKind,
+    citation_debt_findings_against, cited_symbol_findings_against, corpus_findings, index_findings,
+    index_population, DeclarationIntegrityKind,
 };
 use v1_compiler::cli_run::run_dag_parse_sweep;
 
@@ -422,9 +422,16 @@ fn a_debt_row_whose_citation_still_refuses_is_live() {
     );
     // And while the row stands, the citation itself is suppressed rather than double-counted.
     assert_eq!(
-        index_findings(&sweep.index),
+        cited_symbol_findings_against(&sweep.index, &roster),
         Vec::new(),
         "an enrolled debt row suppresses its own citation's finding"
+    );
+    // The SAME tree with an EMPTY roster must refuse, or the suppression above is not
+    // suppression — it is the wall failing to judge the citation at all.
+    assert_eq!(
+        cited_symbol_findings_against(&sweep.index, &[]).len(),
+        1,
+        "unenrolled, the citation must refuse; otherwise the enrolled case proves nothing"
     );
 }
 
@@ -464,5 +471,49 @@ fn the_debt_arm_is_corpus_scoped_not_index_scoped() {
         !corpus_findings(&sweep.index).is_empty(),
         "corpus_findings carries the debt arm, so the production roster is spent over a \
          fixture tree — which is exactly why the arm may not live in index_findings"
+    );
+}
+
+// THE CLASS, NOT THE INSTANCE.
+//
+// `review 55817` found ONE arm reading a module-scope roster from inside itself. Asking the
+// same question of the other four found a second, and a worse one: `cited_symbol_findings`
+// SUPPRESSED citations against the same constant. A spurious refusal is loud; a spurious
+// SUPPRESSION is a citation the wall quietly declines to judge, so that arm could have
+// stopped enrolling an entire class with every fixture in this file still green.
+//
+// Both rosters are parameters now, and the default is EMPTY rather than the production
+// constant, so `index_findings` judges every citation in whatever tree it is handed. This
+// test is the control on that default: a fixture citation that the production roster happens
+// to name must still be judged by `index_findings`, because the production roster is not a
+// fact about a fixture tree. It reds if either default is ever pointed back at the constant.
+#[test]
+fn the_production_roster_does_not_reach_an_arbitrary_tree() {
+    let dir = scratch_root("roster_default");
+    // `std.bytes` `builtin_function_registry` is a real row of PRE_EXISTING_CITATION_DEBT.
+    author(
+        &dir,
+        "citer.dag",
+        "module probe.citer\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data probe_citation: DeclarationRef = DeclarationRef {\n\
+         \u{20}\u{20}module_path: \"probe.absent\",\n\
+         \u{20}\u{20}decl_name: \"builtin_function_registry\",\n\
+         \u{20}\u{20}field: WholeDeclaration,\n}\n",
+    );
+    author(
+        &dir,
+        "absent.dag",
+        "module probe.absent\n\ndata other: Bool = true\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    let found = index_findings(&sweep.index);
+    assert_eq!(
+        found.len(),
+        1,
+        "index_findings must judge this citation on its own tree, got {found:?}"
+    );
+    assert_eq!(
+        found[0].kind,
+        DeclarationIntegrityKind::CitedDeclarationAbsent
     );
 }

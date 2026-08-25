@@ -546,7 +546,7 @@ pub fn index_population(index: &DeclarationIndex) -> DeclarationIndexPopulation 
             .values()
             .filter(|r| !r.is_fixture_carrier)
             .flat_map(|r| r.cited.iter())
-            .filter(|c| citation_is_pre_existing_debt(c))
+            .filter(|c| citation_in_roster(c, PRE_EXISTING_CITATION_DEBT))
             .count(),
         citations_in_fixtures: index
             .modules
@@ -841,9 +841,14 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str)] = &[
 ];
 
 /// Whether a citation names one of the enumerated pre-existing targets.
-fn citation_is_pre_existing_debt(cited: &CitedSymbol) -> bool {
+/// Whether a citation is enrolled in `roster`, at identity grain.
+///
+/// The roster is a parameter for the reason both callers now state: an enrolled-debt roster
+/// is a fact about ONE corpus, and a predicate that reads it from module scope makes its own
+/// behaviour unauthorable by any fixture.
+fn citation_in_roster(cited: &CitedSymbol, roster: &[(&str, &str, &str)]) -> bool {
     let field = cited.field.as_deref().unwrap_or("");
-    PRE_EXISTING_CITATION_DEBT.iter().any(|(module, decl, f)| {
+    roster.iter().any(|(module, decl, f)| {
         *module == cited.module_path && *decl == cited.decl_name && *f == field
     })
 }
@@ -922,6 +927,27 @@ pub fn citation_debt_findings_against(
 /// disagrees later, which is the objection `v2.lens.cited_symbol_resolution` already
 /// recorded against writing a second resolver beside the first.
 pub fn cited_symbol_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegrityFinding> {
+    cited_symbol_findings_against(index, &[])
+}
+
+/// The citation wall, with the ENROLLED-DEBT roster passed in.
+///
+/// SAME CLASS AS THE DEBT JOIN BELOW, FOUND BY ASKING THE QUESTION ONE LEVEL UP. That arm was
+/// defective because its roster was a constant read from inside the function; this one
+/// suppressed citations against the same constant, silently, and no fixture could vary it
+/// either. The suppression is the more dangerous of the two, because a spurious refusal is
+/// loud while a spurious SUPPRESSION is a citation the wall quietly declines to judge — so
+/// the arm could have stopped enrolling a whole class and every fixture would still pass.
+///
+/// The roster is therefore a parameter here too, and the default is EMPTY rather than the
+/// production constant. That is the denominator argument again: an arbitrary swept tree has
+/// no pre-existing debt, so `index_findings` judges every citation it finds, and only
+/// `corpus_findings` — whose subject IS this repository — passes the roster that suppresses
+/// this repository's enrolled rows. One roster, reachable from one place.
+pub fn cited_symbol_findings_against(
+    index: &DeclarationIndex,
+    roster: &[(&str, &str, &str)],
+) -> Vec<DeclarationIntegrityFinding> {
     let mut out = Vec::new();
     for record in index.modules.values() {
         // A witness's deliberately false citation is its evidence, not its defect.
@@ -929,7 +955,7 @@ pub fn cited_symbol_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegri
             continue;
         }
         for cited in &record.cited {
-            if citation_is_pre_existing_debt(cited) {
+            if citation_in_roster(cited, roster) {
                 continue;
             }
             if let Some(finding) = citation_resolution_refusal(index, record, cited) {
@@ -1060,7 +1086,13 @@ pub fn index_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegrityFindi
 /// contract, whose subject universe is this corpus. This is what the required run and the
 /// standalone sweep call; nothing else should.
 pub fn corpus_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegrityFinding> {
-    let mut out = index_findings(index);
+    let mut out = duplicate_findings(index);
+    out.extend(import_member_findings(index));
+    out.extend(cited_symbol_findings_against(
+        index,
+        PRE_EXISTING_CITATION_DEBT,
+    ));
+    out.extend(lens_authorship_findings(index));
     out.extend(citation_debt_findings(index));
     out.sort();
     out
