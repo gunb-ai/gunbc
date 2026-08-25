@@ -45,6 +45,7 @@ import gunbc.runner_local_state {
   RunnerUnitMainProcess,
   MainProcessUnread,
   NoMainProcess,
+  MainProcessUngrounded,
   MainProcess,
   RunnerListenerPopulation,
   ListenerPopulationUnobserved,
@@ -56,6 +57,10 @@ import gunbc.runner_local_state {
   LineageUnread,
   DescendsFromMainProcess,
   ReparentedOutsideUnitTree,
+  ReparentedParent,
+  ReparentedToInit,
+  ReparentedToProcess,
+  ReparentedParentUngrounded,
   listener_is_orphaned,
   population_orphans,
   RunnerLocalStandingTally,
@@ -107,7 +112,7 @@ fn in_tree(pid: Nat) -> ObservedListener {
 }
 
 fn orphan(pid: Nat) -> ObservedListener {
-  ObservedListener { process: pid_at(pid: pid), lineage: ReparentedOutsideUnitTree { parent_pid: 1 } }
+  ObservedListener { process: pid_at(pid: pid), lineage: ReparentedOutsideUnitTree { parent: ReparentedToInit } }
 }
 
 fn pid_at(pid: Nat) -> ProcessIdentity {
@@ -124,7 +129,7 @@ fn loaded_unit(slot: RunnerSlotIdentity, state: SystemdUnitActiveState) -> Runne
     enabled: true,
     active_state: state,
     control_group: "/system.slice/system-actions.slice/x.service" as NonEmptyStr,
-    main_process: MainProcess { pid: 4001 },
+    main_process: MainProcess { process: pid_at(pid: 4001) },
   }
 }
 
@@ -570,4 +575,62 @@ test fn witness_empty_tally_is_zero_not_healthy() -> Bool {
     && t.slots_with_multiple_listeners == 0
     && t.surplus_orphan_listeners == 0
     && t.slots_undecidable == 0
+}
+
+// EVERY PID THIS MODULE COMPARES IS CARRIED AT IDENTITY GRAIN, AND THE UNGROUNDED ARMS KEEP THEIR
+// RAW NUMBER WHERE NOTHING CAN COMPARE IT.
+//
+// This is the regression control for a defect found in review: the manager's MainPID and a
+// listener's parent were both bare `Nat` while this same module's doctrine says a pid is an
+// identity only relative to a boot and a start time. The witness is written over the RESOLVED arms
+// -- it constructs a main process and an in-tree listener and reads a ProcessIdentity field off
+// each -- so a revision that weakens either back to a number fails to compile here rather than
+// going quietly green.
+test fn witness_compared_pids_are_carried_at_identity_grain() -> Bool {
+  let slot = srv4_slot(index: 1)
+  let unit = loaded_unit(slot: slot, state: Active)
+  let main_ok = match unit {
+    UnitLoaded { unit: _, enabled: _, active_state: _, control_group: _, main_process: mp } =>
+      match mp {
+        MainProcess { process: p } => (p.boot_id as String) != "" && p.pid == 4001
+        MainProcessUngrounded { pid: _, cause: _ } => false
+        NoMainProcess => false
+        MainProcessUnread { cause: _ } => false
+      }
+    _ => false
+  }
+  let listener_ok = (in_tree(pid: 77).process.start_time as String) != ""
+  main_ok && listener_ok
+}
+
+// AN UNGROUNDABLE MAIN PID IS NEITHER AN UNREAD PROPERTY NOR A RESOLVED IDENTITY. Three states, and
+// the middle one is the whole point: the manager answered with a number the observer could not
+// ground, which must not silently become either neighbour.
+test fn witness_ungrounded_main_pid_is_its_own_state() -> Bool {
+  let ungrounded = MainProcessUngrounded {
+    pid: 51,
+    cause: "the process exited between the MainPID read and the /proc/51/stat read" as NonEmptyStr,
+  }
+  match ungrounded {
+    MainProcessUngrounded { pid: n, cause: _ } => n == 51
+    MainProcess { process: _ } => false
+    NoMainProcess => false
+    MainProcessUnread { cause: _ } => false
+  }
+}
+
+// THE REPARENTED PARENT IS TYPED, AND THE INIT CASE CARRIES NO PID AT ALL. A chain reparented to
+// init has one possible parent, so naming it as a number would invite exactly the comparison the
+// identity rule forbids while adding nothing.
+test fn witness_reparented_to_init_carries_no_comparable_pid() -> Bool {
+  listener_is_orphaned(listener: orphan(pid: 9))
+    && match orphan(pid: 9).lineage {
+      ReparentedOutsideUnitTree { parent: p } =>
+        match p {
+          ReparentedToInit => true
+          ReparentedToProcess { process: _ } => false
+          ReparentedParentUngrounded { pid: _, cause: _ } => false
+        }
+      _ => false
+    }
 }

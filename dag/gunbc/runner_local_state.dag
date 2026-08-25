@@ -52,15 +52,32 @@ type RunnerMaterializationObservation
 // 2. THE MANAGER'S VIEW
 // ---------------------------------------------------------------------------
 
-// MainPID IS AN OBSERVATION WITH THREE STATES AND NOT A Nat, because systemd answers `0` for a unit
-// it supervises no process for, and `0` is not a pid. Carrying it as a bare number would make
-// "supervises nothing" arithmetically indistinguishable from a real pid at every consumer, and the
-// two have opposite meanings when joined against a cgroup that holds processes: no main process
-// plus a populated cgroup is exactly the orphan state this lane is chasing.
+// MainPID IS AN OBSERVATION AND NOT A Nat, because systemd answers `0` for a unit it supervises no
+// process for, and `0` is not a pid. Carrying it as a bare number would make "supervises nothing"
+// arithmetically indistinguishable from a real pid at every consumer, and the two have opposite
+// meanings when joined against a cgroup that holds processes: no main process plus a populated
+// cgroup is exactly the orphan state this lane is chasing.
+//
+// THE RESOLVED ARM CARRIES A ProcessIdentity, NOT A pid, AND AN EARLIER REVISION CARRIED A pid.
+// That was this module forking its own doctrine: the block below states that a pid is an identity
+// only relative to a boot and a start time, and gunbc.build_cache_instance already owns that rule.
+// Holding the manager's pid at a WEAKER grain than the listeners it is compared against defeats
+// the comparison this module exists to make -- deciding whether a listener descends from the main
+// process is exactly where a reused pid reads as a survivor. Caught in review on this PR, and it is
+// worth naming as a class: the doctrine was stated correctly one screen away and violated anyway,
+// because the field came from a wire read that hands back a number.
+//
+// UNGROUNDED IS ITS OWN ARM RATHER THAN A FAILURE OR A SILENT DOWNGRADE. The manager can answer
+// with a pid the observer then cannot ground -- the process exited between the two reads, or
+// /proc was unreadable for it. That is not "the property did not answer" (MainProcessUnread) and it
+// is emphatically not a resolved identity. It keeps the raw pid because the number is real and
+// diagnostically useful, and it is typed so that nothing can compare it as though it were an
+// identity: there is no arm in which a bare pid reaches a consumer expecting one.
 type RunnerUnitMainProcess
   = MainProcessUnread { cause: NonEmptyStr }
   | NoMainProcess
-  | MainProcess { pid: Nat }
+  | MainProcessUngrounded { pid: Nat, cause: NonEmptyStr }
+  | MainProcess { process: ProcessIdentity }
 
 type RunnerUnitObservation
   = UnitUnobserved { cause: NonEmptyStr }
@@ -128,10 +145,20 @@ type RunnerUnitObservation
 //
 // LineageUnread REFUSES RATHER THAN ASSUMING EITHER. Guessing "in tree" hides a surplus; guessing
 // "orphan" would justify killing a live successor.
+// THE PARENT IS TYPED FOR THE SAME REASON, and the common case needs no pid at all. A chain
+// reparented to init has ONE possible parent and naming it as a number invites the comparison the
+// paragraph above forbids; ReparentedToInit says the fact exactly. A parent that is some other
+// process is grounded like any other, and one that cannot be grounded keeps its raw pid in an arm
+// that cannot be mistaken for an identity.
+type ReparentedParent
+  = ReparentedToInit
+  | ReparentedToProcess { process: ProcessIdentity }
+  | ReparentedParentUngrounded { pid: Nat, cause: NonEmptyStr }
+
 type RunnerListenerLineage
   = LineageUnread { cause: NonEmptyStr }
   | DescendsFromMainProcess
-  | ReparentedOutsideUnitTree { parent_pid: Nat }
+  | ReparentedOutsideUnitTree { parent: ReparentedParent }
 
 type ObservedListener {
   process: ProcessIdentity
@@ -140,7 +167,7 @@ type ObservedListener {
 
 fn listener_is_orphaned(listener: ObservedListener) -> Bool {
   match listener.lineage {
-    ReparentedOutsideUnitTree { parent_pid: _ } => true
+    ReparentedOutsideUnitTree { parent: _ } => true
     DescendsFromMainProcess => false
     LineageUnread { cause: _ } => false
   }

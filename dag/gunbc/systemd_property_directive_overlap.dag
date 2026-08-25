@@ -8,7 +8,7 @@ import extdeps.systemd {
   SystemdUnitProperty,
   MemoryMax, MemorySwapMax, MemoryHigh, CPUWeight, TasksMax,
   MemoryCurrent, TasksCurrent, ControlGroup,
-  ActiveEnterTimestampMonotonic, ActiveState,
+  ActiveEnterTimestampMonotonic, ActiveState, MainPID,
   systemd_unit_property_wire,
 }
 
@@ -60,6 +60,7 @@ fn systemd_property_writability(property: SystemdUnitProperty) -> SystemdPropert
     ControlGroup => ObservationOnly
     ActiveEnterTimestampMonotonic => ObservationOnly
     ActiveState => ObservationOnly
+    MainPID => ObservationOnly
   }
 }
 
@@ -92,7 +93,7 @@ fn systemd_property_is_settable(property: SystemdUnitProperty) -> Bool {
 // corpus rather than computed from this list.
 data systemd_unit_property_members: List<SystemdUnitProperty> = [
   MemoryMax, MemorySwapMax, MemoryHigh, CPUWeight, TasksMax,
-  MemoryCurrent, TasksCurrent, ControlGroup, ActiveEnterTimestampMonotonic, ActiveState,
+  MemoryCurrent, TasksCurrent, ControlGroup, ActiveEnterTimestampMonotonic, ActiveState, MainPID,
 ]
 
 fn settable_property_wires() -> List<String> {

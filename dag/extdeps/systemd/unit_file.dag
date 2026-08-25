@@ -132,7 +132,6 @@ type SystemdServiceDirective
   | ServiceNice { priority: Int }
   | ServiceIoSchedulingClass { scheduling_class: SystemdIoSchedulingClass }
   | TimeoutStartSec { duration: NonEmptyStr }
-  | RestartSec { duration: NonEmptyStr }
   | ServiceExitType { exit_type: SystemdExitType }
   | ServiceKillMode { mode: SystemdKillMode }
 
@@ -298,7 +297,6 @@ fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String 
     ServiceIoSchedulingClass { scheduling_class: v } =>
       join(["IOSchedulingClass=", systemd_io_scheduling_class_wire(scheduling_class: v)], "")
     TimeoutStartSec { duration: v } => join(["TimeoutStartSec=", v as String], "")
-    RestartSec { duration: v } => join(["RestartSec=", v as String], "")
     ServiceExitType { exit_type: v } => join(["ExitType=", systemd_exit_type_wire(exit_type: v)], "")
     ServiceKillMode { mode: v } => join(["KillMode=", systemd_kill_mode_wire(mode: v)], "")
   }
