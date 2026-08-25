@@ -260,6 +260,17 @@ data roster_registry: List<RosterRegistration> = [
       reason: "emit_fn_def module_path allowlist: List<KeyedRow<..>> value-param type exprs reach emit as opaque containers, so v1_fn_param_type_needs_clone_bound cannot derive K/V; the override emits Clone on every item generic for listed modules only — extending the list is a counted roster edit, not a silent OR branch (trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_note)",
       dissolution: std.dissolution.unbound_dissolution(description: "v1 param_node_type_expr preserves container element applied-type children (or an equivalent typed surface) so v1_fn_generic_clone_bound_via_bounded_container_element / v1_fn_generic_clone_bound_via_referenced_decl derive keyed-row carrier bounds without the module_path arm; then delete the allowlist, its emit_fn_def consumer, and this registration")
     }
+  },
+  RosterRegistration {
+    roster: roster_decl(
+      module_path: "v2.compiler.self_host.seed_retention_frontier",
+      decl_name: "seed_retention_frontier_roster"
+    ),
+    unit_kind: "stage0 crate .rs file that never enters the required-regen comparison, at crate-relative path grain",
+    membership: DeclaredFrontier {
+      reason: "ENROLLED AT AUTHORING, which is the one thing roster_registry_visibility_note says never happens — every other row here was enrolled after someone found it by reading. The roster is a DeclaredFrontier and not ByDerivation on purpose: the retained POPULATION is derived (it is the complement of required-regen's compared population over the observed crate, and seed_retention_census refuses in three directions when roster and tree disagree), but the CAUSE and REASON on each row are asserted, and registering a fold over asserted rows as ByDerivation is the self-referential tautology this taxonomy exists to expose. The growth this registry makes observable is the one that matters most for the v1-exit lane: a new hand-authored .rs added to the seed adds a row here, so the 92-row starting population is a number that must go down.",
+      dissolution: unbound_dissolution(description: "the stage0 crate holds no .rs file outside required-regen's compared population — the v1-exit lane's zero-hand-maintained-Rust finish line — at which point the roster is empty and this registration deletes with it")
+    }
   }
 ]
 

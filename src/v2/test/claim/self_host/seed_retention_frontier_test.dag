@@ -1,0 +1,126 @@
+module v2.test.claim.self_host.seed_retention_frontier_test
+
+
+data fixture_note: String = "THE ORACLE IS A CONTROLLED FIXTURE, not a measurement copied from the current tree (DESIGN section 5). Every probe authors the roster, the observed population and the compared population by hand, plants exactly one defect of one class, and asserts that class alone. The green control and the three planted REDs share one synthetic roster, so no probe can pass by comparing a population against itself, and none of them moves when the live seed gains or loses a file."
+
+data probe_roster: List<SeedRetentionFrontierRow> = [
+  retained_reason_undeclared(path: "src/alpha.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_undeclared(path: "src/beta.rs", cause: SeedRetainedIntrinsicSource),
+  retained_host_binary(path: "src/bin/gamma.rs")
+]
+
+data probe_observed: List<String> = [
+  "src/alpha.rs",
+  "src/beta.rs",
+  "src/bin/gamma.rs",
+  "src/delta_generated.rs"
+]
+
+data probe_compared: List<String> = [
+  "src/delta_generated.rs"
+]
+
+test fn witness_control_population_is_total() -> Bool {
+  seed_retention_frontier_total_holds(
+    roster: probe_roster,
+    observed_crate_rust_paths: probe_observed,
+    compared_crate_rust_paths: probe_compared
+  )
+}
+
+test fn witness_control_classifies_every_retained_path() -> Bool {
+  let census = seed_retention_census(
+    roster: probe_roster,
+    observed_crate_rust_paths: probe_observed,
+    compared_crate_rust_paths: probe_compared
+  )
+  (v2.std.algebra.length(xs: census.rostered) == 3)
+    && (v2.std.algebra.length(xs: census.unrostered) == 0)
+    && (v2.std.algebra.length(xs: census.stale_rows) == 0)
+    && (v2.std.algebra.length(xs: census.compared_collisions) == 0)
+}
+
+data planted_unrostered_observed: List<String> = [
+  "src/alpha.rs",
+  "src/beta.rs",
+  "src/bin/gamma.rs",
+  "src/delta_generated.rs",
+  "src/newly_hand_authored_seed_module.rs"
+]
+
+test fn witness_unrostered_retained_path_refuses() -> Bool {
+  let census = seed_retention_census(
+    roster: probe_roster,
+    observed_crate_rust_paths: planted_unrostered_observed,
+    compared_crate_rust_paths: probe_compared
+  )
+  (v2.std.algebra.length(xs: census.unrostered) == 1)
+    && (v2.std.algebra.length(xs: census.rostered) == 3)
+    && (v2.std.algebra.length(xs: census.stale_rows) == 0)
+    && (v2.std.algebra.length(xs: census.compared_collisions) == 0)
+    && (seed_retention_frontier_total_holds(
+      roster: probe_roster,
+      observed_crate_rust_paths: planted_unrostered_observed,
+      compared_crate_rust_paths: probe_compared
+    ) == false)
+}
+
+data planted_stale_observed: List<String> = [
+  "src/alpha.rs",
+  "src/bin/gamma.rs",
+  "src/delta_generated.rs"
+]
+
+test fn witness_roster_row_without_observed_path_refuses() -> Bool {
+  let census = seed_retention_census(
+    roster: probe_roster,
+    observed_crate_rust_paths: planted_stale_observed,
+    compared_crate_rust_paths: probe_compared
+  )
+  (v2.std.algebra.length(xs: census.stale_rows) == 1)
+    && (v2.std.algebra.length(xs: census.unrostered) == 0)
+    && (v2.std.algebra.length(xs: census.compared_collisions) == 0)
+    && (seed_retention_frontier_total_holds(
+      roster: probe_roster,
+      observed_crate_rust_paths: planted_stale_observed,
+      compared_crate_rust_paths: probe_compared
+    ) == false)
+}
+
+data planted_collision_compared: List<String> = [
+  "src/delta_generated.rs",
+  "src/beta.rs"
+]
+
+test fn witness_rostered_path_inside_compared_population_refuses() -> Bool {
+  let census = seed_retention_census(
+    roster: probe_roster,
+    observed_crate_rust_paths: probe_observed,
+    compared_crate_rust_paths: planted_collision_compared
+  )
+  (v2.std.algebra.length(xs: census.compared_collisions) == 1)
+    && (v2.std.algebra.length(xs: census.rostered) == 2)
+    && (v2.std.algebra.length(xs: census.unrostered) == 0)
+    && (v2.std.algebra.length(xs: census.stale_rows) == 0)
+    && (seed_retention_frontier_total_holds(
+      roster: probe_roster,
+      observed_crate_rust_paths: probe_observed,
+      compared_crate_rust_paths: planted_collision_compared
+    ) == false)
+}
+
+data live_roster_probe_note: String = "These two read the LIVE roster because their subject IS the roster, not the join: uniqueness is the one defect class no synthetic fixture can reach, since a duplicate row satisfies all three refusals above. Neither asserts a count against a tree measurement — one asserts a structural property, the other asserts that both reason populations exist at all, which is the discriminator against a roster that quietly became all-undeclared or all-declared."
+
+test fn witness_live_roster_paths_are_unique() -> Bool {
+  seed_retention_roster_paths_unique()
+}
+
+test fn witness_reason_split_is_total() -> Bool {
+  seed_retention_reason_split_holds()
+}
+
+test fn witness_declared_and_undeclared_populations_are_both_nonempty() -> Bool {
+  (v2.std.algebra.length(xs: declared_reason_rows()) > 0)
+    && (v2.std.algebra.length(xs: undeclared_reason_rows()) > 0)
+    && (v2.std.algebra.length(xs: seed_retention_frontier_roster) > 0)
+}

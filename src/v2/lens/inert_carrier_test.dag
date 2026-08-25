@@ -5,6 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data roster_one: List<String> = ["KnownEntry"]
 data names_with_unknown: List<String> = ["UnknownEntry"]
+data names_known_only: List<String> = ["KnownEntry"]
 
 test fn inert_carrier_no_unrostered_or_stale() -> v2.std.logic.Bool {
   return inert_carrier_clean_holds()
@@ -20,4 +21,36 @@ test fn count_not_in_roster_detects_unrostered() -> v2.std.logic.Bool {
 
 test fn count_stale_roster_detects_stale_entry() -> v2.std.logic.Bool {
   return count_stale_roster(roster: roster_one, inert_names: empty_inert_carrier_names) == 1
+}
+
+test fn verdict_clean_when_roster_matches_live_inert_names() -> Bool {
+  return inert_carrier_verdict_is_clean(v: inert_carrier_roster_verdict(names: names_known_only, roster: roster_one))
+}
+
+test fn unrostered_population_names_the_carrier_needing_a_row() -> Bool {
+  let v = inert_carrier_roster_verdict(names: names_with_unknown, roster: empty_inert_carrier_names)
+  let unrostered = inert_carrier_unrostered_names(v: v)
+  return inert_carrier_verdict_is_clean(v: v) == false
+    && length(xs: unrostered) == 1
+    && list_contains_str(xs: unrostered, target: "UnknownEntry")
+    && length(xs: inert_carrier_stale_row_names(v: v)) == 0
+}
+
+test fn stale_population_names_the_row_needing_deletion() -> Bool {
+  let v = inert_carrier_roster_verdict(names: empty_inert_carrier_names, roster: roster_one)
+  let stale = inert_carrier_stale_row_names(v: v)
+  return inert_carrier_verdict_is_clean(v: v) == false
+    && length(xs: stale) == 1
+    && list_contains_str(xs: stale, target: "KnownEntry")
+    && length(xs: inert_carrier_unrostered_names(v: v)) == 0
+}
+
+test fn the_two_populations_are_reported_separately() -> Bool {
+  let v = inert_carrier_roster_verdict(names: names_with_unknown, roster: roster_one)
+  let unrostered = inert_carrier_unrostered_names(v: v)
+  let stale = inert_carrier_stale_row_names(v: v)
+  return list_contains_str(xs: unrostered, target: "UnknownEntry")
+    && (list_contains_str(xs: unrostered, target: "KnownEntry") == false)
+    && list_contains_str(xs: stale, target: "KnownEntry")
+    && (list_contains_str(xs: stale, target: "UnknownEntry") == false)
 }

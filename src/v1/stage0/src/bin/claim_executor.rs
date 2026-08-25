@@ -9952,6 +9952,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut corpus_type_judgment_mode = false;
     let mut required_regen_mode = false;
     let mut required_regen_fixed_point_mode = false;
+    let mut heads_reading_differential_mode = false;
     let mut behavioral_receipt_plan_mode = false;
     let mut behavioral_receipt_selftest_mode = false;
     let mut behavioral_receipt_census_mode = false;
@@ -9995,6 +9996,9 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--required-regen" => {
                 required_regen_mode = true;
+            }
+            "--heads-reading-differential" => {
+                heads_reading_differential_mode = true;
             }
             "--required-regen-fixed-point" => {
                 required_regen_fixed_point_mode = true;
@@ -10604,6 +10608,52 @@ fn run() -> Result<ExitCode, ExitCode> {
                 eprintln!("cited-symbol: refused: population unreadable: {e}");
                 Err(ExitCode::from(1))
             }
+        };
+    }
+
+    // The heads reading's own instrument. It is not enrolled in the required run and this
+    // clause does not pretend otherwise: reading 3875 modules TWICE is precisely the cost
+    // the heads reading exists to remove, so paying it on every push would spend more than
+    // the repair saves. It is a re-runnable receipt — the differential this change was
+    // landed on can be re-taken by anyone, on any tree, rather than being a number quoted
+    // from a run nobody can repeat.
+    if heads_reading_differential_mode {
+        let roots = if source_roots.is_empty() {
+            vec!["dag".to_string(), "src/v2".to_string()]
+        } else {
+            source_roots.clone()
+        };
+        let d = v1_compiler::cli_run::heads_reading_differential(&roots);
+        eprintln!(
+            "heads-reading-differential: compared={} divergent={} narrowed={} regressed={} both_refused={}",
+            d.modules_compared,
+            d.divergent.len(),
+            d.narrowed.len(),
+            d.regressed.len(),
+            d.both_refused.len(),
+        );
+        // The two readings' summed parse wall, from the same process over the same
+        // modules. This is the PARSE term only — not the whole `pool_parse` row, which
+        // also pays tokenize, newline indexing and per-file setup that neither reading
+        // changes.
+        eprintln!(
+            "heads-reading-differential: full_reading_parse_ms={} heads_reading_parse_ms={}",
+            d.full_reading_nanos / 1_000_000,
+            d.heads_reading_nanos / 1_000_000,
+        );
+        for path in d.divergent.iter().take(20) {
+            eprintln!("heads-reading-differential: DIVERGENT {path}");
+        }
+        for path in d.regressed.iter().take(20) {
+            eprintln!("heads-reading-differential: REGRESSED {path}");
+        }
+        for path in d.narrowed.iter().take(20) {
+            eprintln!("heads-reading-differential: narrowed (declared scope) {path}");
+        }
+        return if d.holds() {
+            Ok(ExitCode::SUCCESS)
+        } else {
+            Err(ExitCode::from(1))
         };
     }
 

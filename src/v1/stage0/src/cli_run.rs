@@ -15503,7 +15503,21 @@ fn parse_module_heads_for_pool_census(
         m.insert(source.path.clone(), nl_index.clone());
         m
     });
-    let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
+    // The HEADS reading of the grammar, not the full one. Every declaration head is
+    // parsed by the same productions; a brace-delimited fn body is skipped at token
+    // grain instead of being built, because `census_heads_module_node` two lines below
+    // replaces every body with the shared stand-in anyway. Building 3875 modules' worth
+    // of function bodies for a consumer that discards them was the largest single term
+    // in `pool_parse` (7.15s of 14.24s, `docs/probes/edge_index_tree_census_attribution_2026-08-24.md`)
+    // — a cost-shape defect DESIGN §6's bare-minimum-cost rule says is always fixed.
+    //
+    // The strip below is KEPT rather than folded into the parser, and that is load-bearing
+    // rather than leftover: it is what makes the two readings agree BY CONSTRUCTION. The
+    // exact shape of the stand-in the parser substitutes is then not a fact any consumer
+    // can depend on, because the normalizer overwrites it — so the heads reading cannot
+    // drift from the full reading through the body slot, only through the heads, which is
+    // the surface the differential receipt measures.
+    let parsed = v1_compiler_parse::parse_heads_with_table(tokens, single_si, current_table);
     *index.intern_table.borrow_mut() = parsed.intern_table.clone();
     // Pool census needs declaration heads only — do NOT install full-body ASTs into
     // `parse_cache` here. Closure resolve retains full bodies on its own cache miss.
@@ -15628,6 +15642,128 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
         st.pool_parse_modules += modules;
     });
     Ok(parsed)
+}
+
+/// One module read BOTH ways and normalized by the census, so the two readings can be
+/// compared as an identity rather than described as similar.
+///
+/// `census_heads_module_node` is applied to both sides. That is what makes the comparison
+/// meaningful rather than trivially false: the body slot is the one slot the heads reading
+/// deliberately fills differently, the normalizer overwrites it on both sides, and what
+/// remains is exactly the declaration heads the pool census consumes. A skip that swallowed
+/// a declaration, mis-counted a brace depth, or left the token stream one token off changes
+/// the head list and diverges here.
+///
+/// Both readings start from the SAME intern-table snapshot and neither writes back, so the
+/// sides are symmetric — a difference is the reading, never the order they ran in.
+fn census_heads_both_readings(
+    index: &MultiEntryIndex,
+    source: &Rc<v1_compiler_compile::SourceFile>,
+) -> (
+    (Result<Rc<Node>, String>, u128),
+    (Result<Rc<Node>, String>, u128),
+) {
+    let table = index.intern_table.borrow().clone();
+    let read = |heads_only: bool| -> (Result<Rc<Node>, String>, u128) {
+        let tokens = v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
+        let nl_index = build_newline_index(source.path.clone(), source.content.clone());
+        let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
+            let mut m = HashMap::new();
+            m.insert(source.path.clone(), nl_index);
+            m
+        });
+        // Only the parse is inside the timer: tokenize, newline index and setup are
+        // identical work in both readings and sit outside it on purpose.
+        let started = std::time::Instant::now();
+        let parsed = if heads_only {
+            v1_compiler_parse::parse_heads_with_table(tokens, single_si, table.clone())
+        } else {
+            v1_compiler_parse::parse_with_table(tokens, single_si, table.clone())
+        };
+        let nanos = started.elapsed().as_nanos();
+        if let Some(err) = &parsed.result.error {
+            return (Err(diagnostic_to_message(err.diagnostic.clone())), nanos);
+        }
+        match &parsed.result.module {
+            Some(module) => (Ok(census_heads_module_node(module.clone())), nanos),
+            None => (Err("no module in parse result".to_string()), nanos),
+        }
+    };
+    (read(false), read(true))
+}
+
+/// The corpus-scale differential receipt for the heads reading.
+///
+/// `divergent` is the population that must be empty for the heads reading to be a reading
+/// of the same grammar rather than a second, weaker parser. `narrowed` is NOT a defect and
+/// is reported separately on purpose: it is the declared, bounded scope narrowing — a body
+/// the full reading refuses on grammar and the heads reading never hands to the expression
+/// grammar at all. DESIGN §5 requires a degradation to be COUNTED rather than absorbed, so
+/// it gets its own row instead of being folded into either the pass or the failure count.
+/// `regressed` is its mirror and must also be empty: the heads reading may never refuse
+/// something the full reading accepts.
+pub struct HeadsReadingDifferential {
+    pub modules_compared: usize,
+    pub divergent: Vec<String>,
+    pub narrowed: Vec<String>,
+    pub regressed: Vec<String>,
+    pub both_refused: Vec<String>,
+    /// Wall spent in the FULL reading, summed over every module, and the same for the
+    /// heads reading. Both are taken in ONE process, on ONE machine, over the SAME module
+    /// list, alternating per module — so the ratio compares two READINGS, not two builds,
+    /// two hosts, or two corpus states. A before/after figure from two separately-built
+    /// binaries would have to argue all three of those away; this one has nothing to argue
+    /// away.
+    ///
+    /// It measures the PARSE only. `tokenize`, `build_newline_index` and the per-file
+    /// setup sit outside both timers and are untouched by this repair, so this figure is
+    /// not the whole-`pool_parse` saving and must never be quoted as one.
+    pub full_reading_nanos: u128,
+    pub heads_reading_nanos: u128,
+}
+
+impl HeadsReadingDifferential {
+    pub fn holds(&self) -> bool {
+        self.divergent.is_empty() && self.regressed.is_empty()
+    }
+}
+
+/// Read every indexed module both ways and classify. Deterministic (sorted paths).
+pub fn heads_reading_differential(source_roots: &[String]) -> HeadsReadingDifferential {
+    let index = build_multi_entry_index(source_roots);
+    let mut paths: Vec<String> = index.source_files.keys().cloned().collect();
+    paths.sort();
+    let mut out = HeadsReadingDifferential {
+        modules_compared: 0,
+        divergent: Vec::new(),
+        narrowed: Vec::new(),
+        regressed: Vec::new(),
+        both_refused: Vec::new(),
+        full_reading_nanos: 0,
+        heads_reading_nanos: 0,
+    };
+    for path in paths {
+        let source = match index.source_files.get(&path) {
+            Some(s) => s.clone(),
+            None => continue,
+        };
+        out.modules_compared += 1;
+        let ((full_read, full_nanos), (heads_read, heads_nanos)) =
+            census_heads_both_readings(&index, &source);
+        out.full_reading_nanos += full_nanos;
+        out.heads_reading_nanos += heads_nanos;
+        match (full_read, heads_read) {
+            (Ok(full), Ok(heads)) => {
+                if full != heads {
+                    out.divergent.push(path);
+                }
+            }
+            (Err(_), Ok(_)) => out.narrowed.push(path),
+            (Ok(_), Err(_)) => out.regressed.push(path),
+            (Err(_), Err(_)) => out.both_refused.push(path),
+        }
+    }
+    out
 }
 
 fn pool_qualified_fill(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, String> {
