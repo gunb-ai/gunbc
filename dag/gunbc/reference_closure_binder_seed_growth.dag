@@ -7,8 +7,15 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // FORWARD-FREEZE RECEIPT for the hand Rust added by the reference-closure binder repair
 // (gunbc#9020). Authored because gunbc.seed_growth_admission
 // seed_growth_forward_freeze_policy_note makes unenumerated hand growth in src/v1 a stop-line,
-// and this change added 853 lines of it while authoring no row. Review 55459 caught the
+// and this change added hand Rust while authoring no row. Review 55459 caught the
 // omission; the receipt is the remedy, not the review's approval of the repair.
+//
+// THE HAND-LOC FIGURE BELOW SHOULD NOT BE AUTHORED AT ALL. gunbc#9151 records this: hand-LOC delta is a function
+// of the diff, so typing it is a second representation of a fact the diff already owns
+// (DESIGN section 2). It is written here because the policy currently requires it and nothing
+// derives it; when rust_item_host_observation lands, the gate should PRINT this number and the
+// author should stop authoring it. This row having already gone stale once inside one PR is
+// the argument, not an anecdote.
 //
 // WHAT THE CHANGE IS. collect_node_refs filtered candidate references on
 // `binding_kind == Some(FunctionValueBinding)`, a field the PREPARED tree never carries -- it is
@@ -31,8 +38,13 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // netted against the additions below; the policy forbids it and none are claimed.
 //
 // HAND-ITEM DELTA: +9 citable declarations (8 production, 1 test module).
-// HAND-LOC DELTA: +853 / -21 in src/v1/stage0/src/cli_run.rs, measured by `git diff --numstat`
-// against the merge subject. The test module reference_collector_binder_fixtures carries 22
+// HAND-LOC DELTA: +887 / -21 in src/v1/stage0/src/cli_run.rs, measured by `git diff --numstat`
+// against the MERGE BASE (`git merge-base origin/main HEAD`), not against main's tip -- a diff
+// against a moving tip counts main's own edits to this file as this change's growth. It read
+// +853 until review 55667 required a second production consumer to enforce the classifier's
+// refusals, adding 34 lines to reference_resolution_facts. Restated in place rather than
+// annotated beside: two counts for one fact in the receipt whose purpose is to enumerate growth
+// would be the exact failure the receipt exists to prevent. The test module reference_collector_binder_fixtures carries 22
 // further hand items inside it, including the two mutation controls
 // (mutation_everything_bound_reds_the_free_reference_family and its `everything_free` sibling)
 // that make the fixture family non-vacuous. They are enumerated as their containing module

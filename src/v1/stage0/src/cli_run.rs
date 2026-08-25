@@ -33525,6 +33525,40 @@ pub fn reference_resolution_facts(
             for item in tree.children.iter() {
                 collect_node_refs(item, &mut bare, &mut chains, &file_indices, &mut classify);
             }
+            // THE SECOND CONSUMER ENFORCES THE SAME REFUSAL THE FIRST ONE DOES. `classify` reports
+            // two failure states and neither is survivable for a graph that is about to be
+            // published: an unsupported binder form means the binder set is incomplete, so a name
+            // that IS bound can be recorded as a free reference (or the reverse); a reconciliation
+            // miss means the occurrences do not add up, which is the same statement arrived at by
+            // counting. Reading them and proceeding anyway would publish an under-bound, possibly
+            // widened graph while the refusal sat unread in a field — the fail-open this
+            // classification exists to remove, one consumer away from the floor path that checks
+            // it correctly (review 55667).
+            //
+            // TWO CAUSES, NOT ONE, because they have different remedies: a binder refusal names a
+            // syntax the collector must learn, and a reconciliation miss names an accounting
+            // defect in the collector itself. Collapsing them would send both to whichever
+            // remedy the shared symbol happened to suggest.
+            //
+            // The file is SKIPPED rather than published, matching this producer's three existing
+            // refusal arms above (`unreadable`, `no-module-line`, `parse-failed`), which also skip
+            // and record. The narrowing is therefore typed, located and countable through
+            // `reference_accounting_refusals`, not silent — a skipped file is visible in that
+            // channel, which is what separates it from the empty-observation narrow.
+            if !classify.refusals.is_empty() {
+                unaccounted.push(ReferenceAccountingRefusal {
+                    path: rel.clone(),
+                    cause: "binder-refusal",
+                });
+                continue;
+            }
+            if !classify.reconciles() {
+                unaccounted.push(ReferenceAccountingRefusal {
+                    path: rel.clone(),
+                    cause: "occurrence-accounting-mismatch",
+                });
+                continue;
+            }
             // Resolve to per-file (target_module → strongest confidence).
             let mut file_edges: std::collections::BTreeMap<String, RefEdgeResolution> =
                 std::collections::BTreeMap::new();
