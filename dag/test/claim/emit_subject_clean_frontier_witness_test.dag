@@ -1,0 +1,293 @@
+module test.claim.emit_subject_clean_frontier_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE RATCHET'S OWN EVIDENCE. Every input here is authored beside its expected verdict, so nothing
+// is compared against a measurement taken from the tree these claims judge — the fold's live-corpus
+// population is a separate claim with a separate cost, and pinning one here would be the tree-copied
+// census DESIGN §5 refuses.
+//
+// THE REDS ARE THE POINT, and they come in three kinds. The ratchet's two directions each have one
+// (an entry that stops being clean refuses; an admission row whose debt was paid refuses), and the
+// third is the one the whole carrier exists for: a reading that established no population must not
+// arrive as CLEAN. That last claim is asserted against a control that differs from it in exactly one
+// field, so a green cannot be an accident of the fixture.
+
+data fixture_roots: List<String> = ["dag", "src/v2"]
+
+fn policy() -> RosterDiscoveryPolicy {
+  DeclarationIndexUnderRoots { roots: fixture_roots }
+}
+
+data alpha: String = "dag/fixture/alpha.dag"
+data beta: String = "dag/fixture/beta.dag"
+
+data fixture_roster: List<String> = [alpha, beta]
+
+data blocking_diagnostic: GunbcDiagnostic = GunbcDiagnostic {
+  severity: "error",
+  location: "dag/fixture/alpha.dag:1",
+  message: "a blocking diagnostic"
+}
+
+data advisory_diagnostic: GunbcDiagnostic = GunbcDiagnostic {
+  severity: "advisory",
+  location: "dag/fixture/alpha.dag:2",
+  message: "an advisory diagnostic"
+}
+
+fn admission_for(entry: String) -> EmitDebtAdmission {
+  emit_debt_admission(
+    entry: entry,
+    owner: "test.claim.emit_subject_clean_frontier_witness",
+    reason: "fixture admission — this entry is admitted as debt so the held arm has an input",
+    dissolution: unbound_dissolution(description: "🟡 dissolve-on: the fixture is deleted with its claims")
+  )
+}
+
+fn reading(entry: String, standing: EmitSubjectStanding) -> EmitSubjectReading {
+  EmitSubjectReading { entry: entry, standing: standing }
+}
+
+fn fold_of(
+  roster: List<String>,
+  admissions: List<EmitDebtAdmission>,
+  readings: List<EmitSubjectReading>
+) -> EmitSubjectCleanRatchet {
+  fold_emit_subject_clean_ratchet_over_readings(
+    policy: policy(),
+    roster: roster,
+    admissions: admissions,
+    readings: readings
+  )
+}
+
+fn verdict_rows(
+  roster: List<String>,
+  admissions: List<EmitDebtAdmission>,
+  readings: List<EmitSubjectReading>
+) -> List<String> {
+  map(
+    fold_of(roster: roster, admissions: admissions, readings: readings).verdicts,
+    v => emit_ratchet_verdict_row(v: v)
+  )
+}
+
+fn standing_holds(
+  roster: List<String>,
+  admissions: List<EmitDebtAdmission>,
+  readings: List<EmitSubjectReading>
+) -> Bool {
+  match emit_ratchet_standing(r: fold_of(roster: roster, admissions: admissions, readings: readings)) {
+    EmitRatchetHeld { subject_count: _ } => true
+    EmitRatchetRefused { failing_rows: _ } => false
+  }
+}
+
+fn failing_rows(
+  roster: List<String>,
+  admissions: List<EmitDebtAdmission>,
+  readings: List<EmitSubjectReading>
+) -> List<String> {
+  match emit_ratchet_standing(r: fold_of(roster: roster, admissions: admissions, readings: readings)) {
+    EmitRatchetHeld { subject_count: _ } => []
+    EmitRatchetRefused { failing_rows: rows } => rows
+  }
+}
+
+fn both_clean() -> List<EmitSubjectReading> {
+  [reading(entry: alpha, standing: EmitSubjectClean), reading(entry: beta, standing: EmitSubjectClean)]
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE DERIVATION: a population becomes a standing, and the extent decides the zero case.
+// ---------------------------------------------------------------------------------------------
+
+test fn a_complete_population_with_no_blocking_diagnostic_is_clean() -> Bool {
+  emit_standing_of_population(ds: [advisory_diagnostic], files: FilesEmitted { count: 12 })
+    == EmitSubjectClean
+}
+
+// THE CENTRAL RED, AND ITS CONTROL IS THE CLAIM ABOVE. The two differ in exactly one field: whether
+// emit reported a tree. A population of zero blocking diagnostics taken from a run that returned
+// before writing one is a prefix of unknown length, and reading it as CLEAN is the defect this whole
+// carrier exists to prevent — the empty observation rendered as the passing verdict.
+test fn a_zero_population_of_unestablished_extent_is_not_clean() -> Bool {
+  emit_standing_of_population(ds: [advisory_diagnostic], files: FilesNotWritten)
+    == EmitSubjectExtentUnestablished
+}
+
+// A blocking diagnostic found in a prefix is still a blocking diagnostic, so the extent must NOT
+// promote a suspect population to unestablished.
+test fn a_blocking_diagnostic_is_suspect_whatever_the_extent() -> Bool {
+  emit_standing_of_population(ds: [blocking_diagnostic], files: FilesNotWritten)
+    == EmitSubjectSuspect { cause: BlockingDiagnostics { blocking: 1 } }
+    && emit_standing_of_population(ds: [blocking_diagnostic], files: FilesEmitted { count: 3 })
+      == EmitSubjectSuspect { cause: BlockingDiagnostics { blocking: 1 } }
+}
+
+// A refusal that PRINTED diagnostics reports them; only one that printed none falls back to the
+// exit code. Reporting the exit code in both cases would discard what the compiler did say.
+test fn a_refusal_reports_its_diagnostics_and_falls_back_only_without_them() -> Bool {
+  emit_standing_of_refusal(exit_code: 1, ds: [blocking_diagnostic])
+    == EmitSubjectSuspect { cause: BlockingDiagnostics { blocking: 1 } }
+    && emit_standing_of_refusal(exit_code: 101, ds: [advisory_diagnostic])
+      == EmitSubjectSuspect { cause: RefusedWithoutBlockingPopulation { exit_code: 101 } }
+}
+
+// RED, ACROSS THE MEASUREMENT SEAM RATHER THAN INSIDE THE DERIVATION: a measurement that never
+// reached the emitter carries no population at all, and the reading it produces must say so rather
+// than reporting an empty one.
+test fn a_measurement_that_never_reached_the_emitter_produces_no_population() -> Bool {
+  emit_subject_reading(
+    m: EmissionSubjectUnestablished {
+      entry: alpha,
+      stage: StageBinaries,
+      cause: "the release binaries are not buildable"
+    }
+  ) == EmitSubjectReading {
+    entry: alpha,
+    standing: EmitSubjectPopulationUnproduced {
+      stage: StageBinaries,
+      cause: "the release binaries are not buildable"
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE JOIN: the two ratchet directions.
+// ---------------------------------------------------------------------------------------------
+
+test fn a_roster_measured_clean_with_no_admissions_holds() -> Bool {
+  standing_holds(roster: fixture_roster, admissions: [], readings: both_clean())
+    && verdict_rows(roster: fixture_roster, admissions: [], readings: both_clean())
+      == ["clean-held\tdag/fixture/alpha.dag", "clean-held\tdag/fixture/beta.dag"]
+}
+
+// RED, DIRECTION ONE: an entry carrying no admission row that stops being clean is the regression
+// the contract exists to prevent, and it refuses at identity grain — the row names the entry.
+test fn an_entry_off_the_frontier_that_stops_being_clean_refuses_by_name() -> Bool {
+  let readings = [
+    reading(entry: alpha, standing: EmitSubjectSuspect { cause: BlockingDiagnostics { blocking: 4 } }),
+    reading(entry: beta, standing: EmitSubjectClean)
+  ]
+  !standing_holds(roster: fixture_roster, admissions: [], readings: readings)
+    && failing_rows(roster: fixture_roster, admissions: [], readings: readings)
+      == ["REGRESSED\tdag/fixture/alpha.dag\t4 blocking diagnostic(s)\tthis entry carries no admission row, so it is expected to emit clean"]
+}
+
+// THE SAME READING, ADMITTED: one admission row is the entire difference between the refusal above
+// and the hold here, which is what makes admission the mechanism rather than the count.
+test fn the_same_suspect_entry_holds_once_it_carries_an_admission_row() -> Bool {
+  let readings = [
+    reading(entry: alpha, standing: EmitSubjectSuspect { cause: BlockingDiagnostics { blocking: 4 } }),
+    reading(entry: beta, standing: EmitSubjectClean)
+  ]
+  standing_holds(roster: fixture_roster, admissions: [admission_for(entry: alpha)], readings: readings)
+    && verdict_rows(roster: fixture_roster, admissions: [admission_for(entry: alpha)], readings: readings)
+      == [
+        "debt-held\tdag/fixture/alpha.dag\t4 blocking diagnostic(s)",
+        "clean-held\tdag/fixture/beta.dag"
+      ]
+}
+
+// RED, DIRECTION TWO, AND IT IS WHAT MAKES THIS A RATCHET RATHER THAN A SNAPSHOT: an admission row
+// whose entry now emits clean is a false statement about the tree, and a debt roster that keeps
+// paid rows stops describing the remaining work.
+test fn an_admission_row_whose_debt_was_paid_refuses_until_it_is_deleted() -> Bool {
+  !standing_holds(roster: fixture_roster, admissions: [admission_for(entry: alpha)], readings: both_clean())
+    && failing_rows(roster: fixture_roster, admissions: [admission_for(entry: alpha)], readings: both_clean())
+      == ["FRONTIER-STALE\tdag/fixture/alpha.dag\tthe entry emits clean and its admission row is now a false statement about the tree — delete the row"]
+}
+
+// RED: an unestablished standing is neither of the two ratchet directions and takes neither's arm.
+// It refuses whether or not the entry carries an admission row, because an admission is a statement
+// about a MEASURED debt and nothing here was measured.
+test fn an_unestablished_standing_refuses_on_and_off_the_frontier() -> Bool {
+  let readings = [
+    reading(entry: alpha, standing: EmitSubjectExtentUnestablished),
+    reading(entry: beta, standing: EmitSubjectExtentUnestablished)
+  ]
+  !standing_holds(roster: fixture_roster, admissions: [], readings: readings)
+    && !standing_holds(roster: fixture_roster, admissions: [admission_for(entry: alpha)], readings: readings)
+}
+
+// RED: a run that measured some of its roster cannot answer a closed-universe claim, and the
+// unmeasured subjects are named rather than absorbed into the ones that were measured.
+test fn a_partial_run_refuses_and_names_the_subjects_it_did_not_measure() -> Bool {
+  let readings = [reading(entry: alpha, standing: EmitSubjectClean)]
+  !standing_holds(roster: fixture_roster, admissions: [], readings: readings)
+    && failing_rows(roster: fixture_roster, admissions: [], readings: readings)
+      == ["UNMEASURED\tdag/fixture/beta.dag\ton_frontier\tfalse\tthe fold was handed no measurement for this roster subject — a partial run cannot answer a closed-universe claim"]
+}
+
+// RED: an admission row naming a subject the discovered roster does not contain is a row to delete,
+// and it is reported as itself rather than as one more unmeasured subject — the two have opposite
+// owners.
+test fn an_admission_row_outside_the_roster_is_an_orphan_not_a_missing_measurement() -> Bool {
+  let admissions = [admission_for(entry: "dag/fixture/departed.dag")]
+  !standing_holds(roster: fixture_roster, admissions: admissions, readings: both_clean())
+    && failing_rows(roster: fixture_roster, admissions: admissions, readings: both_clean())
+      == ["ADMISSION-ORPHAN\tdag/fixture/departed.dag\tthis admission row names a subject the discovered roster does not contain"]
+}
+
+// RED: an admission with no owner is not an admission. The owner is the fact std.roster_frontier's
+// row does not carry and the reason this carrier decomposes it rather than reusing the row bare.
+test fn an_admission_without_an_owner_is_malformed() -> Bool {
+  let admissions = [
+    emit_debt_admission(
+      entry: alpha,
+      owner: "",
+      reason: "a reason with nobody accountable for retiring it",
+      dissolution: unbound_dissolution(description: "🟡 dissolve-on: never, which is the point")
+    )
+  ]
+  count(
+    filter(
+      failing_rows(roster: fixture_roster, admissions: admissions, readings: both_clean()),
+      row => string_contains(s: row, pattern: "ADMISSION-MALFORMED\tdag/fixture/alpha.dag")
+    )
+  ) == 1
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE UNIVERSE ITSELF.
+// ---------------------------------------------------------------------------------------------
+
+// RED, AND IT IS THE EMPTY-OBSERVATION NARROW IN ITS PUREST FORM: a discovery that returned nothing
+// would otherwise report the strongest standing available, because every claim holds vacuously over
+// an empty universe. It refuses instead, and names the policy that discovered nothing.
+test fn a_roster_of_no_subjects_refuses_rather_than_holding_vacuously() -> Bool {
+  !standing_holds(roster: [], admissions: [], readings: [])
+    && count(
+      filter(
+        failing_rows(roster: [], admissions: [], readings: []),
+        row => string_contains(s: row, pattern: "ROSTER-EMPTY")
+      )
+    ) == 1
+}
+
+// The standing travels with the universe it was folded over: a report that carries a verdict
+// without the roster that produced it cannot be joined to any other run.
+test fn the_report_carries_the_discovery_policy_and_the_roster_digest() -> Bool {
+  let rows = emit_ratchet_report_rows(r: fold_of(roster: fixture_roster, admissions: [], readings: both_clean()))
+  count(filter(rows, row => string_contains(s: row, pattern: "roster_policy\tparsed declaration index under dag, src/v2"))) == 1
+    && count(filter(rows, row => string_contains(s: row, pattern: "roster_digest\t"))) == 1
+    && count(filter(rows, row => string_contains(s: row, pattern: "roster_subjects\t2"))) == 1
+}
+
+// TWO DIFFERENT ROSTERS ARE TWO DIFFERENT UNIVERSES, and the digest is what says so. A standing
+// read without it cannot tell a run over the whole roster from a run over a roster that lost
+// subjects — and a lost subject is exactly how a count-shaped contract reports progress it did not
+// make.
+test fn a_roster_that_lost_a_subject_carries_a_different_digest() -> Bool {
+  match roster_identity(policy: policy(), roster: fixture_roster) {
+    RosterEmpty { policy: _ } => false
+    RosterIdentified { policy: _, subject_count: _, digest: whole } =>
+      match roster_identity(policy: policy(), roster: [alpha]) {
+        RosterEmpty { policy: _ } => false
+        RosterIdentified { policy: _, subject_count: _, digest: partial } =>
+          !(whole.digest as String == partial.digest as String)
+      }
+  }
+}

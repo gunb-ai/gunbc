@@ -1,0 +1,620 @@
+module gunbc.emit_subject_clean_frontier
+
+import std.types { Bool, Int, String, NonEmptyStr }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import std.dissolution { DissolutionCondition }
+import std.roster_frontier {
+  FrontierRow,
+  FrontierSubject,
+  PathSubject,
+  frontier_row_path,
+  frontier_row_well_formed,
+  frontier_subject_key
+}
+import gunbc.emit_diagnostic_observation {
+  GunbcDiagnostic,
+  EmittedFileCount,
+  EmitPopulationExtent,
+  EmitPopulationComplete,
+  EmitPopulationCompletenessUnestablished,
+  emit_blocking_count,
+  emit_population_extent_of,
+  emit_population_extent_text
+}
+import tools.emission_entry_instrument {
+  EmissionMeasurement,
+  EmissionSubjectUnestablished,
+  EmissionUnreached,
+  EmissionEmitRefused,
+  EmissionCargoUnreached,
+  EmissionMeasured,
+  EmissionStage,
+  emission_stage_name
+}
+
+// THE EMIT-SUBJECT CLEAN FRONTIER: the ratchet consumer of the per-entry emission instrument.
+//
+// tools.emission_entry_instrument answers ONE question about ONE entry -- what population did the
+// emitter produce -- and stores nothing. It says so itself, and says why: it is the instrument, not
+// a board, and it is deliberately NOT A GATE, with gating named there as a separate decision
+// carrying a separate argument. This module is the other half of that sentence, and it is still not
+// that gate: it takes measurements the instrument produced, joins them to a DISCOVERED roster of
+// entries and to a declared frontier of entries not yet expected to emit clean, and returns a
+// typed standing. Nothing here is enrolled in the required run.
+//
+// WHY A FRONTIER AND NOT A COUNT. DESIGN §5 admits a live-population comparison as a merge-blocking
+// oracle only under a monotone debt contract, and only when four conditions hold together: the
+// subject universe is INDEPENDENTLY DISCOVERED and closed, membership is checked at IDENTITY grain
+// rather than by count, the roadmap justifies the direction, and every removal or exception carries
+// a typed disposition. A count of not-clean entries satisfies none of them. It is a measurement
+// copied from the same tree it judges, automating its update collapses the assertion to
+// measure() == measure(), and worse than either: a count moves for reasons that are not progress --
+// a swapped defect leaves it unchanged, an upstream refusal MASKS downstream sites and makes it
+// FALL, and a discovery that loses subjects makes it fall furthest of all. So counts appear in this
+// module as DISPLAY ONLY and decide nothing. Admission is per-identity: the debt is carried as ROWS,
+// one per entry not yet expected to emit clean, keyed by the entry path, each with its reason, its
+// owner and its dissolution condition. The carrier is std.roster_frontier's FrontierRow rather than
+// a fourth frontier shape minted here.
+//
+// THE RATCHET DIRECTION IS TWO-SIDED, and the second side is what makes it a ratchet rather than a
+// snapshot. An entry OFF the frontier that stops being clean REFUSES: that is the regression the
+// contract exists to prevent, and there is no count-shaped or variant-shaped escape from it -- a
+// newly blocked subject is refused, and the only way past is an operator-authored admission row.
+// An entry ON the frontier that has BECOME clean also refuses, because its row is now a false
+// statement about the tree; a debt roster that keeps rows after the debt is paid stops describing
+// the remaining work, and DESIGN records the exact decay (an exemption roster beside its population
+// drifts silently, and only an exact identity join catches it).
+//
+// AND THE THIRD STANDING IS THE POINT OF THE WHOLE CARRIER. A measurement that did not establish a
+// population is NOT CLEAN and NOT SUSPECT; it is UNESTABLISHED, and it stops the line. DESIGN's
+// execution-provenance-loss failure mode is precisely a count of zero and an unreached stage
+// rendering identically, and gunbc#9188 landed one function over the same defect one level down:
+// `false` IS the passing value, so an instrument that could not read its subject reported the CLEAN
+// verdict. Here that state has its own arms, it is never folded into either verdict, and it refuses.
+//
+// WHAT THIS FRONTIER IS ABOUT, stated so the name cannot be read wider than it is: EMIT-stage
+// cleanliness of one entry -- did the compiler produce a population, and was that population free of
+// blocking diagnostics. Whether the emitted crate then COMPILES is a different claim over a
+// different population (rustc coded diagnostics), and folding it in would make one verdict answer
+// for two authorities. EmissionCargoUnreached is therefore NOT an unestablished emit standing: the
+// emitter ran, its emit population is real, and only the cargo half is absent.
+
+// ---------------------------------------------------------------------------------------------
+// THE UNIVERSE, AND ITS PROVENANCE.
+//
+// A standing is unreadable without the universe it was folded over, so the universe travels with
+// it. The instrument beneath this module binds the compiler that produced each population; this
+// module binds the roster those populations were joined against, because an artifact with no roster
+// has no referent for a roster digest -- the fact is the consumer's, not the instrument's.
+//
+// THE DISCOVERY POLICY IS A CLOSED COPRODUCT rather than a directory string, so a second discovery
+// mode becomes a variant here rather than an unlabelled difference between two runs. Today there is
+// exactly one, and its shape is the load-bearing part: a PARSED DECLARATION INDEX under declared
+// source roots. It is deliberately NOT an import walk, not a resolution result, not a product
+// closure, and not a set of successfully-emitted outputs -- deriving the universe from the edges
+// whose defects it exists to expose is how an orphan stays invisible. The live specimen is
+// `gunbc.auth.credentials`, which zero import edges in the tree reach and which a declaration-index
+// universe covers because its file sits under `dag`.
+//
+// THE HONEST SCOPE IS `dag` AND `src/v2`, NEVER "the corpus". src/v1 is excluded because
+// gunbc.ci_layer_roots rules the floor's source roots out of widening to include it on name
+// resolution grounds, and that ruling is not this module's to reopen.
+type RosterDiscoveryPolicy
+  = DeclarationIndexUnderRoots { roots: List<String> }
+
+fn roster_discovery_policy_text(policy: RosterDiscoveryPolicy) -> String {
+  match policy {
+    DeclarationIndexUnderRoots { roots: rs } =>
+      concat("parsed declaration index under ", join(rs, ", "))
+  }
+}
+
+// A ROSTER OF NO SUBJECTS IS A DISCOVERY FAILURE, NOT AN EMPTY UNIVERSE. Reading it as a universe
+// over which every claim vacuously holds is the empty-observation narrow: a run that discovered
+// nothing would report the strongest possible standing. So it has its own arm and it refuses.
+type RosterIdentity
+  = RosterIdentified {
+      policy: RosterDiscoveryPolicy
+      subject_count: Int
+      digest: Fnv1a64Structural
+    }
+  | RosterEmpty { policy: RosterDiscoveryPolicy }
+
+fn roster_identity(policy: RosterDiscoveryPolicy, roster: List<String>) -> RosterIdentity {
+  if count(roster) == 0 {
+    RosterEmpty { policy: policy }
+  } else {
+    RosterIdentified {
+      policy: policy,
+      subject_count: count(roster),
+      digest: content_hash_atom(value: join(roster, "\n") as NonEmptyStr)
+    }
+  }
+}
+
+fn roster_identity_rows(identity: RosterIdentity) -> List<String> {
+  match identity {
+    RosterEmpty { policy: p } => [
+      concat("roster_policy\t", roster_discovery_policy_text(policy: p)),
+      "roster\t(empty — discovery returned no subject, which is a failure to discover and not a universe)"
+    ]
+    RosterIdentified { policy: p, subject_count: n, digest: d } => [
+      concat("roster_policy\t", roster_discovery_policy_text(policy: p)),
+      concat("roster_subjects\t", to_string(n)),
+      concat("roster_digest\t", d.digest as String)
+    ]
+  }
+}
+
+// A DECLARED LIMITATION, OWNED HERE RATHER THAN LEFT TO BE REDISCOVERED. The instrument actuates an
+// entry by PATH, because `gunbc compile --entry` takes a file path and no identity-keyed entry
+// surface exists. So the subject key in this roster is a path, and a rename reads as a different
+// subject: an entry that moves leaves its frontier row orphaned and arrives as a new subject
+// expected to be clean. Both of those states are typed and both refuse, so the failure is loud
+// rather than silent -- but it is a rename showing up as two unrelated findings, which is the cost.
+//
+// THE JOIN GUARD THAT WOULD CLOSE IT IS NOT BUILDABLE TODAY, and this row says so rather than
+// designing around an input that does not exist: closing it needs the compiler to report WHICH
+// identities it resolved, and it reports a COUNT (`resolved {} sources`). Recording identities is a
+// next-rung trigger on the compiler's side of that seam, not work this module can do.
+data emit_subject_path_keyed_identity_limitation: String = "The frontier is keyed by entry PATH because the compiler's entry surface is a path and there is no identity-keyed alternative. A renamed entry therefore reads as an orphaned frontier row plus a new subject rather than as one moved subject. Both refuse, so nothing goes silent; closing the join properly requires the emitter to report resolved IDENTITIES rather than a count of resolved sources, which is a next-rung trigger owned by the compiler, not by this consumer."
+
+// ---------------------------------------------------------------------------------------------
+// THE PER-SUBJECT STANDING, derived from a measurement rather than stored beside one.
+// ---------------------------------------------------------------------------------------------
+
+// A refusal and a blocking population are both NOT-CLEAN, and they are not the same not-clean: one
+// carries the diagnostics that explain it, the other is a compiler that stopped for a reason this
+// observation could not decode. Collapsing them sends a reader looking for diagnostics that were
+// never printed.
+type EmitSuspectCause
+  = BlockingDiagnostics { blocking: Int }
+  | RefusedWithoutBlockingPopulation { exit_code: Int }
+
+fn emit_suspect_cause_text(cause: EmitSuspectCause) -> String {
+  match cause {
+    BlockingDiagnostics { blocking: n } => concat(to_string(n), " blocking diagnostic(s)")
+    RefusedWithoutBlockingPopulation { exit_code: c } =>
+      concat(
+        concat("the emitter exited ", to_string(c)),
+        " having printed no blocking diagnostic — the cause is outside what the emit observation can decode"
+      )
+  }
+}
+
+// WHY UNESTABLISHED HAS TWO ARMS RATHER THAN ONE. "no population was produced" and "a population
+// was produced whose extent is unknown and which is empty so far" are different facts with
+// different remedies -- the first is fixed by making the instrument run, the second by making emit
+// report the tree it wrote -- and a reader who cannot tell them apart cannot act on either.
+type EmitSubjectStanding
+  = EmitSubjectClean
+  | EmitSubjectSuspect { cause: EmitSuspectCause }
+  | EmitSubjectPopulationUnproduced { stage: EmissionStage, cause: String }
+  | EmitSubjectExtentUnestablished
+
+fn emit_subject_standing_text(standing: EmitSubjectStanding) -> String {
+  match standing {
+    EmitSubjectClean => "clean (emit ran to the end of its body and printed no blocking diagnostic)"
+    EmitSubjectSuspect { cause: c } => concat("suspect — ", emit_suspect_cause_text(cause: c))
+    EmitSubjectPopulationUnproduced { stage: s, cause: c } =>
+      concat(
+        concat("unestablished — no emit population was produced; the instrument stopped at ", emission_stage_name(stage: s)),
+        concat(": ", c)
+      )
+    EmitSubjectExtentUnestablished =>
+      concat(
+        "unestablished — the population carries no blocking diagnostic AND no established extent: ",
+        emit_population_extent_text(extent: EmitPopulationCompletenessUnestablished)
+      )
+  }
+}
+
+// THE ONE DERIVATION FROM A POPULATION, so the extent cannot be dropped at one call site and
+// honoured at another. A blocking diagnostic found in a prefix is still a blocking diagnostic, so
+// the extent decides only the ZERO case: zero-so-far over a population of unknown length is not a
+// clean entry, it is an entry nobody has measured to the end.
+fn emit_standing_of_population(ds: List<GunbcDiagnostic>, files: EmittedFileCount) -> EmitSubjectStanding {
+  let blocking = emit_blocking_count(ds: ds)
+  if blocking > 0 {
+    EmitSubjectSuspect { cause: BlockingDiagnostics { blocking: blocking } }
+  } else {
+    match emit_population_extent_of(files: files) {
+      EmitPopulationComplete => EmitSubjectClean
+      EmitPopulationCompletenessUnestablished => EmitSubjectExtentUnestablished
+    }
+  }
+}
+
+// A REFUSING EMITTER IS A MEASUREMENT, and the population it printed is the answer -- so a refusal
+// carrying blocking diagnostics reports THEM, and only a refusal that printed none falls back to
+// the exit code. Reporting the exit code in both cases would discard what the compiler did say.
+fn emit_standing_of_refusal(exit_code: Int, ds: List<GunbcDiagnostic>) -> EmitSubjectStanding {
+  let blocking = emit_blocking_count(ds: ds)
+  if blocking > 0 {
+    EmitSubjectSuspect { cause: BlockingDiagnostics { blocking: blocking } }
+  } else {
+    EmitSubjectSuspect { cause: RefusedWithoutBlockingPopulation { exit_code: exit_code } }
+  }
+}
+
+fn emit_subject_standing(m: EmissionMeasurement) -> EmitSubjectStanding {
+  match m {
+    EmissionSubjectUnestablished { entry: _, stage: s, cause: c } =>
+      EmitSubjectPopulationUnproduced { stage: s, cause: c }
+    EmissionUnreached { subject: _, stage: s, cause: c } =>
+      EmitSubjectPopulationUnproduced { stage: s, cause: c }
+    EmissionEmitRefused { subject: _, exit_code: code, emit_diagnostics: ds, emitted_files: _ } =>
+      emit_standing_of_refusal(exit_code: code, ds: ds)
+    EmissionCargoUnreached { subject: _, stage: _, cause: _, emit_diagnostics: ds, emitted_files: files } =>
+      emit_standing_of_population(ds: ds, files: files)
+    EmissionMeasured {
+      subject: _,
+      emitted_files: files,
+      emit_diagnostics: ds,
+      cargo_clean: _,
+      cargo_diagnostics: _,
+      cargo_lines_scanned: _
+    } => emit_standing_of_population(ds: ds, files: files)
+  }
+}
+
+// THE ENTRY A MEASUREMENT IS ABOUT, total over the coproduct so a measurement joins to the roster
+// on the identity it already holds. Carrying the pairing in a parallel list beside the measurements
+// would be a second representation of that identity.
+fn emission_measurement_entry(m: EmissionMeasurement) -> String {
+  match m {
+    EmissionSubjectUnestablished { entry: e, stage: _, cause: _ } => e
+    EmissionUnreached { subject: s, stage: _, cause: _ } => s.entry
+    EmissionEmitRefused { subject: s, exit_code: _, emit_diagnostics: _, emitted_files: _ } => s.entry
+    EmissionCargoUnreached { subject: s, stage: _, cause: _, emit_diagnostics: _, emitted_files: _ } => s.entry
+    EmissionMeasured {
+      subject: s,
+      emitted_files: _,
+      emit_diagnostics: _,
+      cargo_clean: _,
+      cargo_diagnostics: _,
+      cargo_lines_scanned: _
+    } => s.entry
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE DEBT ADMISSION.
+//
+// A frontier row is not a note an author may write about their own change. It is an ADMISSION, and
+// admission is external to the diff, because an author who can author a row can equally author the
+// claim that it was approved. So the row carries an OWNER beside its reason and its dissolution
+// condition: the lane accountable for retiring it. std.roster_frontier's FrontierRow already models
+// subject, reason and dissolution; the owner is the fact it does not carry, so it is added here as
+// a decomposition of the admission rather than as a second frontier shape.
+// ---------------------------------------------------------------------------------------------
+type EmitDebtAdmission {
+  row: FrontierRow
+  owner: NonEmptyStr
+}
+
+fn emit_debt_admission(entry: String, owner: String, reason: String, dissolution: DissolutionCondition) -> EmitDebtAdmission {
+  EmitDebtAdmission {
+    row: frontier_row_path(path: entry, reason: reason, dissolution: dissolution),
+    owner: owner as NonEmptyStr
+  }
+}
+
+fn emit_debt_admission_well_formed(admission: EmitDebtAdmission) -> Bool {
+  frontier_row_well_formed(row: admission.row) && !(admission.owner as String == "")
+}
+
+fn emit_debt_admission_entry(admission: EmitDebtAdmission) -> String {
+  frontier_subject_key(subject: admission.row.subject)
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE JOIN: one verdict per roster subject, at identity grain.
+// ---------------------------------------------------------------------------------------------
+
+// SIX VERDICTS, AND FOUR OF THEM STOP THE LINE. The two that hold are the only two the contract
+// describes as steady: an entry expected to be clean and measured clean, and an entry admitted as
+// debt and still carrying it.
+type EmitRatchetVerdict
+  = RatchetCleanHeld { entry: String }
+  | RatchetDebtHeld { entry: String, cause: EmitSuspectCause }
+  | RatchetRegressed { entry: String, cause: EmitSuspectCause }
+  | RatchetFrontierStale { entry: String }
+  | RatchetStandingUnestablished { entry: String, on_frontier: Bool, standing: EmitSubjectStanding }
+  | RatchetSubjectUnmeasured { entry: String, on_frontier: Bool }
+
+fn emit_ratchet_verdict_entry(v: EmitRatchetVerdict) -> String {
+  match v {
+    RatchetCleanHeld { entry: e } => e
+    RatchetDebtHeld { entry: e, cause: _ } => e
+    RatchetRegressed { entry: e, cause: _ } => e
+    RatchetFrontierStale { entry: e } => e
+    RatchetStandingUnestablished { entry: e, on_frontier: _, standing: _ } => e
+    RatchetSubjectUnmeasured { entry: e, on_frontier: _ } => e
+  }
+}
+
+fn emit_ratchet_verdict_holds(v: EmitRatchetVerdict) -> Bool {
+  match v {
+    RatchetCleanHeld { entry: _ } => true
+    RatchetDebtHeld { entry: _, cause: _ } => true
+    RatchetRegressed { entry: _, cause: _ } => false
+    RatchetFrontierStale { entry: _ } => false
+    RatchetStandingUnestablished { entry: _, on_frontier: _, standing: _ } => false
+    RatchetSubjectUnmeasured { entry: _, on_frontier: _ } => false
+  }
+}
+
+fn emit_ratchet_verdict_row(v: EmitRatchetVerdict) -> String {
+  match v {
+    RatchetCleanHeld { entry: e } => concat("clean-held\t", e)
+    RatchetDebtHeld { entry: e, cause: c } =>
+      concat(concat("debt-held\t", e), concat("\t", emit_suspect_cause_text(cause: c)))
+    RatchetRegressed { entry: e, cause: c } =>
+      concat(
+        concat("REGRESSED\t", e),
+        concat(
+          concat("\t", emit_suspect_cause_text(cause: c)),
+          "\tthis entry carries no admission row, so it is expected to emit clean"
+        )
+      )
+    RatchetFrontierStale { entry: e } =>
+      concat(
+        concat("FRONTIER-STALE\t", e),
+        "\tthe entry emits clean and its admission row is now a false statement about the tree — delete the row"
+      )
+    RatchetStandingUnestablished { entry: e, on_frontier: f, standing: s } =>
+      concat(
+        concat(concat("UNESTABLISHED\t", e), concat("\ton_frontier\t", to_string(f))),
+        concat("\t", emit_subject_standing_text(standing: s))
+      )
+    RatchetSubjectUnmeasured { entry: e, on_frontier: f } =>
+      concat(
+        concat(concat("UNMEASURED\t", e), concat("\ton_frontier\t", to_string(f))),
+        "\tthe fold was handed no measurement for this roster subject — a partial run cannot answer a closed-universe claim"
+      )
+  }
+}
+
+fn list_contains_string(xs: List<String>, target: String) -> Bool {
+  fold(xs, init: false, f: (found, x) => found || (x == target))
+}
+
+fn emit_ratchet_verdict_of_standing(entry: String, on_frontier: Bool, standing: EmitSubjectStanding) -> EmitRatchetVerdict {
+  match standing {
+    EmitSubjectClean =>
+      if on_frontier { RatchetFrontierStale { entry: entry } } else { RatchetCleanHeld { entry: entry } }
+    EmitSubjectSuspect { cause: c } =>
+      if on_frontier {
+        RatchetDebtHeld { entry: entry, cause: c }
+      } else {
+        RatchetRegressed { entry: entry, cause: c }
+      }
+    EmitSubjectPopulationUnproduced { stage: s, cause: c } =>
+      RatchetStandingUnestablished {
+        entry: entry,
+        on_frontier: on_frontier,
+        standing: EmitSubjectPopulationUnproduced { stage: s, cause: c }
+      }
+    EmitSubjectExtentUnestablished =>
+      RatchetStandingUnestablished {
+        entry: entry,
+        on_frontier: on_frontier,
+        standing: EmitSubjectExtentUnestablished
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE READING: one entry, one standing, and the seam the join is witnessed across.
+//
+// The join below consumes READINGS, not measurements, and that is a modeling decision rather than a
+// convenience. A measurement carries the whole receipt of the run that produced it -- source
+// revision, working tree, both binary digests -- which the join has no use for and cannot construct
+// in a controlled fixture. Splitting the derivation from the join means each half is witnessed on
+// inputs it can actually be handed: the derivation on authored populations, the join on authored
+// standings. A join that could only be exercised by shelling a compiler would not be exercised.
+// ---------------------------------------------------------------------------------------------
+type EmitSubjectReading {
+  entry: String
+  standing: EmitSubjectStanding
+}
+
+fn emit_subject_reading(m: EmissionMeasurement) -> EmitSubjectReading {
+  EmitSubjectReading {
+    entry: emission_measurement_entry(m: m),
+    standing: emit_subject_standing(m: m)
+  }
+}
+
+type ReadingLookup
+  = ReadingFound { reading: EmitSubjectReading }
+  | ReadingAbsent
+
+// First match wins and later ones are ignored rather than overwriting: the fold is a reader, and
+// reconciling two readings of one subject is not a question it can answer.
+fn lookup_reading(readings: List<EmitSubjectReading>, entry: String) -> ReadingLookup {
+  fold(
+    readings,
+    init: ReadingAbsent,
+    f: (acc, reading) =>
+      match acc {
+        ReadingFound { reading: _ } => acc
+        ReadingAbsent =>
+          if reading.entry == entry { ReadingFound { reading: reading } } else { acc }
+      }
+  )
+}
+
+fn emit_ratchet_verdict_for(entry: String, on_frontier: Bool, readings: List<EmitSubjectReading>) -> EmitRatchetVerdict {
+  match lookup_reading(readings: readings, entry: entry) {
+    ReadingAbsent => RatchetSubjectUnmeasured { entry: entry, on_frontier: on_frontier }
+    ReadingFound { reading: reading } =>
+      emit_ratchet_verdict_of_standing(
+        entry: entry,
+        on_frontier: on_frontier,
+        standing: reading.standing
+      )
+  }
+}
+
+// An admission row naming a subject the roster does not contain is reported as itself rather than
+// as a missing measurement. The two have opposite owners: an orphan row is a row to delete, an
+// unmeasured subject is a run to complete.
+type EmitSubjectCleanRatchet {
+  roster: RosterIdentity
+  verdicts: List<EmitRatchetVerdict>
+  admission_count: Int
+  orphan_admission_subjects: List<String>
+  malformed_admission_subjects: List<String>
+}
+
+fn fold_emit_subject_clean_ratchet_over_readings(
+  policy: RosterDiscoveryPolicy,
+  roster: List<String>,
+  admissions: List<EmitDebtAdmission>,
+  readings: List<EmitSubjectReading>
+) -> EmitSubjectCleanRatchet {
+  let keys = map(admissions, a => emit_debt_admission_entry(admission: a))
+  EmitSubjectCleanRatchet {
+    roster: roster_identity(policy: policy, roster: roster),
+    verdicts: map(
+      roster,
+      entry =>
+        emit_ratchet_verdict_for(
+          entry: entry,
+          on_frontier: list_contains_string(xs: keys, target: entry),
+          readings: readings
+        )
+    ),
+    admission_count: count(admissions),
+    orphan_admission_subjects: fold(
+      keys,
+      init: [],
+      f: (acc, k) => if list_contains_string(xs: roster, target: k) { acc } else { concat(acc, [k]) }
+    ),
+    malformed_admission_subjects: fold(
+      admissions,
+      init: [],
+      f: (acc, a) =>
+        if emit_debt_admission_well_formed(admission: a) {
+          acc
+        } else {
+          concat(acc, [emit_debt_admission_entry(admission: a)])
+        }
+    )
+  }
+}
+
+fn fold_emit_subject_clean_ratchet(
+  policy: RosterDiscoveryPolicy,
+  roster: List<String>,
+  admissions: List<EmitDebtAdmission>,
+  measurements: List<EmissionMeasurement>
+) -> EmitSubjectCleanRatchet {
+  fold_emit_subject_clean_ratchet_over_readings(
+    policy: policy,
+    roster: roster,
+    admissions: admissions,
+    readings: map(measurements, m => emit_subject_reading(m: m))
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE STANDING. A refusal carries the rows, never a count of them.
+// ---------------------------------------------------------------------------------------------
+
+fn ratchet_failing_verdicts(r: EmitSubjectCleanRatchet) -> List<EmitRatchetVerdict> {
+  fold(r.verdicts, init: [], f: (acc, v) => if emit_ratchet_verdict_holds(v: v) { acc } else { concat(acc, [v]) })
+}
+
+fn ratchet_failing_rows(r: EmitSubjectCleanRatchet) -> List<String> {
+  concat(
+    concat(
+      match r.roster {
+        RosterEmpty { policy: p } => [
+          concat(
+            "ROSTER-EMPTY\t",
+            concat(
+              roster_discovery_policy_text(policy: p),
+              " discovered no subject — a universe of nothing is a discovery failure, not a standing every claim holds over"
+            )
+          )
+        ]
+        RosterIdentified { policy: _, subject_count: _, digest: _ } => []
+      },
+      map(ratchet_failing_verdicts(r: r), v => emit_ratchet_verdict_row(v: v))
+    ),
+    concat(
+      map(
+        r.orphan_admission_subjects,
+        k => concat(concat("ADMISSION-ORPHAN\t", k), "\tthis admission row names a subject the discovered roster does not contain")
+      ),
+      map(
+        r.malformed_admission_subjects,
+        k => concat(concat("ADMISSION-MALFORMED\t", k), "\tan admission row is missing its owner, reason, subject or dissolution condition")
+      )
+    )
+  )
+}
+
+type EmitRatchetStanding
+  = EmitRatchetHeld { subject_count: Int }
+  | EmitRatchetRefused { failing_rows: List<String> }
+
+fn emit_ratchet_standing(r: EmitSubjectCleanRatchet) -> EmitRatchetStanding {
+  let failing = ratchet_failing_rows(r: r)
+  if count(failing) == 0 {
+    EmitRatchetHeld { subject_count: count(r.verdicts) }
+  } else {
+    EmitRatchetRefused { failing_rows: failing }
+  }
+}
+
+fn emit_ratchet_standing_text(standing: EmitRatchetStanding) -> String {
+  match standing {
+    EmitRatchetHeld { subject_count: n } => concat("held over ", concat(to_string(n), " subject(s)"))
+    EmitRatchetRefused { failing_rows: rows } =>
+      concat("refused — ", concat(to_string(count(rows)), " row(s) below"))
+  }
+}
+
+// COUNTS APPEAR HERE AND NOWHERE ELSE, and they are display: every count on this report is a
+// function of rows the report also prints in full, so a reader can reconstruct it and no consumer
+// has to trust it. Nothing above admits or refuses on one.
+fn emit_ratchet_report_rows(r: EmitSubjectCleanRatchet) -> List<String> {
+  concat(
+    concat(
+      roster_identity_rows(identity: r.roster),
+      [
+        concat("admission_rows\t", to_string(r.admission_count)),
+        concat("standing\t", emit_ratchet_standing_text(standing: emit_ratchet_standing(r: r)))
+      ]
+    ),
+    concat(
+      map(r.verdicts, v => concat("verdict\t", emit_ratchet_verdict_row(v: v))),
+      map(ratchet_failing_rows(r: r), row => concat("failing\t", row))
+    )
+  )
+}
+
+fn emit_ratchet_report_text(r: EmitSubjectCleanRatchet) -> String {
+  concat(join(emit_ratchet_report_rows(r: r), "\n"), "\n")
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE DECLARED ADMISSION ROSTER.
+//
+// IT IS EMPTY, AND EMPTY IS NOT A CLAIM THAT THE CORPUS EMITS CLEAN. An admission row is a MEASURED
+// admission -- this entry does not emit clean, here is why, here is who owns retiring it, here is
+// what dissolves it -- and no such measurement has been taken over the roster, because taking one
+// builds two release binaries and shells a cargo build per entry. Authoring rows from a guess would
+// be exactly the fabricated plausible output the instrument beneath this module exists to end.
+//
+// SO THE EMPTY ROSTER FAILS CLOSED RATHER THAN OPEN: every roster subject is expected to emit
+// clean, and the first live run over a corpus that does not will REFUSE, row by row, naming each
+// entry and its cause. That refusal IS the measurement this roster is waiting for, and its output
+// is the population the rows are then authored from, one operator-approved admission at a time. An
+// empty roster that greened would be the absorbing fallback; one that refuses is a debt roster with
+// nothing yet admitted to it.
+data emit_subject_clean_admissions: List<EmitDebtAdmission> = []

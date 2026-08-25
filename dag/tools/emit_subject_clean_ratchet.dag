@@ -1,0 +1,137 @@
+module tools.emit_subject_clean_ratchet
+
+import std.types { Bool, Int, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.ci_layer_roots { witness_layer_roots }
+import tools.dag_compile_clean_shard_roster {
+  CompileCleanShardEntryPaths,
+  CompileCleanShardEntryPathsBuilt,
+  CompileCleanShardEntryPathsDuplicatePath,
+  compile_clean_shard_entry_paths
+}
+import tools.emission_entry_instrument { EmissionMeasurement, measure_entry_emission }
+import gunbc.emit_subject_clean_frontier {
+  EmitSubjectCleanRatchet,
+  EmitRatchetStanding,
+  EmitRatchetHeld,
+  EmitRatchetRefused,
+  RosterDiscoveryPolicy,
+  DeclarationIndexUnderRoots,
+  emit_subject_clean_admissions,
+  emit_ratchet_report_text,
+  emit_ratchet_standing,
+  fold_emit_subject_clean_ratchet
+}
+
+// THE RUNNER: the peripheral half of the ratchet, where the host effects live.
+//
+// gunbc.emit_subject_clean_frontier is a pure fold over measurements someone already took. This
+// module is the realization that takes them: it discovers the roster, invokes the per-entry
+// instrument once per subject, and hands both to the fold. The split is deliberate rather than
+// tidy -- the fold is the thing witnessed by execution on controlled fixtures, and a fold that
+// shells a compiler cannot be witnessed at all.
+//
+// A PARTIAL RUN CANNOT ANSWER A CLOSED-UNIVERSE CLAIM, and the carrier already knows it. `entries`
+// selects a SUBSET to measure, which is how a lane measures one entry without an hours-long run;
+// every roster subject the subset omits arrives at the fold as RatchetSubjectUnmeasured and the
+// standing REFUSES. That is not a limitation worked around, it is the contract: the ratchet holds
+// only over a roster measured whole, and a subset run reports exactly which subjects were missing.
+
+data emit_subject_clean_roster_policy: RosterDiscoveryPolicy = DeclarationIndexUnderRoots {
+  roots: witness_layer_roots
+}
+
+// THE ROSTER IS DISCOVERED, NEVER AUTHORED. compile_clean_shard_entry_paths reads the parsed
+// declaration index under the declared source roots, so the universe is not derived from imports,
+// from successful resolution, or from anything the ratchet is measuring -- a module no import edge
+// reaches is still a subject. A duplicate path is a refusal there and stays a refusal here rather
+// than being deduplicated into a smaller universe.
+type EmitRatchetRosterRead
+  = EmitRatchetRosterRead_Roster { entries: List<String> }
+  | EmitRatchetRosterUnreadable { cause: String }
+
+fn emit_ratchet_roster() -> EmitRatchetRosterRead {
+  match compile_clean_shard_entry_paths() {
+    CompileCleanShardEntryPathsBuilt { paths: ps } => EmitRatchetRosterRead_Roster { entries: ps }
+    CompileCleanShardEntryPathsDuplicatePath { path: p, first: f, duplicate: d } =>
+      EmitRatchetRosterUnreadable {
+        cause: concat(
+          concat("the discovered roster carries ", p),
+          concat(
+            concat(" twice — declared by ", f.module),
+            concat(" and by ", d.module)
+          )
+        )
+      }
+  }
+}
+
+fn selected_entries(entries: String, roster: List<String>) -> List<String> {
+  if entries == "" {
+    roster
+  } else {
+    fold(
+      split(s: entries, delimiter: ","),
+      init: [],
+      f: (acc, e) => if e == "" { acc } else { concat(acc, [e]) }
+    )
+  }
+}
+
+fn measure_selected(selection: List<String>) -> List<EmissionMeasurement> {
+  map(selection, entry => measure_entry_emission(entry: entry))
+}
+
+fn run_emit_subject_clean_ratchet(entries: String, roster: List<String>) -> EmitSubjectCleanRatchet {
+  fold_emit_subject_clean_ratchet(
+    policy: emit_subject_clean_roster_policy,
+    roster: roster,
+    admissions: emit_subject_clean_admissions,
+    measurements: measure_selected(selection: selected_entries(entries: entries, roster: roster))
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE CLI SURFACE.
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/tools/emit_subject_clean_ratchet.dag --function check \
+//     --arg entries=dag/std/logic.dag --arg report=/tmp/ratchet.tsv
+//
+// The report is WRITTEN rather than returned for the same reason the instrument's is: `gunbc run`
+// maps a returned value to an exit status and has no value-printing verb.
+//
+// THE EXIT STATUS REPORTS THE RATCHET, and unlike the instrument beneath it that is a statement
+// about the SUBJECT: a refusing standing is a refusing entry, an orphaned admission row, or a run
+// that did not measure its whole roster. An instrument that could not run reaches the fold as
+// RatchetStandingUnestablished and refuses there, so a broken instrument and a dirty corpus are
+// both nonzero -- and the report says which, per subject, on its own row.
+fn check(entries: String, report: String) -> ProcessExit {
+  if report == "" {
+    exit_failure(reason: "check: --arg report=<path> is required — the standing is written, not printed")
+  } else {
+    match emit_ratchet_roster() {
+      EmitRatchetRosterUnreadable { cause: c } =>
+        exit_failure(reason: concat("check: the entry roster could not be read — ", c))
+      EmitRatchetRosterRead_Roster { entries: roster } => {
+        let r = run_emit_subject_clean_ratchet(entries: entries, roster: roster)
+        let write = Filesystem.Write(path: report, content: emit_ratchet_report_text(r: r))
+        if !write.success {
+          exit_failure(reason: concat("check: could not write the standing to ", report))
+        } else {
+          match emit_ratchet_standing(r: r) {
+            EmitRatchetHeld { subject_count: _ } => ExitSuccess
+            EmitRatchetRefused { failing_rows: rows } =>
+              exit_failure(
+                reason: concat(
+                  concat("check: the emit-subject clean ratchet refused — ", to_string(count(rows))),
+                  concat(" row(s), named in ", report)
+                )
+              )
+          }
+        }
+      }
+    }
+  }
+}
