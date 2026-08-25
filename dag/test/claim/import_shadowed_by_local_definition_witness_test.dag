@@ -52,16 +52,31 @@ test fn import_shadowed_by_local_definition_must_refuse() -> Bool {
 }
 
 fn import_shadow_variant_fixture_source() -> String {
-  "module ish.variant\n\nimport std.types { String }\nimport std.algebra { trim }\n\ntype IshVariantHolder\n  = trim { value: String }\n  | IshOther { value: String }\n\nfn ish_variant_use(value: String) -> IshVariantHolder {\n  IshOther { value: value }\n}\n"
+  "module ish.variant\n\nimport std.types { String, Bool }\n\ntype IshVariantHolder\n  = Bool { value: String }\n  | IshOther { value: String }\n\nfn ish_variant_use(value: String) -> IshVariantHolder {\n  IshOther { value: value }\n}\n"
 }
 
-// THE SECOND RED, one level down (review 55680). A module-scope name is an item name OR a coproduct
-// VARIANT name -- get_exported_names has always treated both as exports. The first cut of this wall
-// built its collision set from item names alone, so a local variant could still discard an import
-// in silence: measured at 0 diagnostics before the widening, refused after. The judgment was
-// exhaustive over the question it asked and never descended to the one that decides the outcome.
-test fn import_shadowed_by_local_variant_must_refuse() -> Bool {
-  !compile_dag_rust_emit_check(
+// A LOCAL VARIANT SHARING AN IMPORT'S NAME IS NOT REFUSED, AND THE CORPUS IS WHY.
+//
+// review 55680 asked for the collision set to include coproduct variant names, on the ground that
+// get_exported_names counts them as module-scope names. That widening was implemented, and the
+// corpus refuted it: src/v2/std/grammar.dag imports the `Optional` TYPE from v2.std.optional and
+// separately declares GrammarExpr's variant `Optional { element: GrammarExpr }`. Under the widened
+// predicate the required floor refused that module -- measured, run 32811162568 -- while main's own
+// head run c271b7582 is green with three bare `Optional<...>` annotations in that same file
+// resolving to the imported type. A variant constructor and an imported type sharing a name do not
+// shadow each other, so the widening was reverted rather than the module rewritten: refusing a
+// load-bearing std module for a name pair that provably does not collide is a false wall, and a
+// wall that must be worked around is a model that is wrong.
+//
+// WHAT IS THEREFORE NOT CLAIMED: a local variant sharing an imported FUNCTION's name is still
+// unrefused, and this witness asserts nothing about it. That case may well be harmful; it is not
+// decidable by the predicate this wall uses, because the predicate compares NAMES and the
+// distinguishing fact is KIND. NEXT-RUNG TRIGGER: a kind-aware collision test that consults the
+// exporting module's own declaration of the imported name, so a variant-vs-value collision can be
+// refused while variant-vs-type stays admitted. resolve_import already holds the target module
+// node, so the fact is reachable; deciding it is a separate change with its own evidence.
+test fn local_variant_sharing_an_imported_type_name_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(
     import_shadow_variant_fixture_source(),
     "src/ish_variant.rs",
     [],
