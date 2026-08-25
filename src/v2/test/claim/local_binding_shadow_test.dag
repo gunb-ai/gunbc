@@ -43,6 +43,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // floor folds every witness through one prepared subject, so a module that imports nothing still
 // meets the name. This fixture IMPORTS its shadowing symbol deliberately, so it reds on both
 // paths and needs no whole-corpus pool to reproduce.
+//
+// MEASUREMENT HYGIENE, and it is the reason the qualifier above exists at all
+// (silent-bear-842, from a wrong result they corrected): IMPORTS ARE MODULE-SCOPE, so an arm that
+// adds an import VOIDS EVERY EARLIER ARM'S MEASUREMENT IN THAT FILE. Five arms measured green
+// before the shadowing import was added all failed once it was present -- the arms did not
+// change, the module's name pool did. So an A/B across arms is only valid when the import block
+// is identical at both readings, which is a fact about how this defect is MEASURED rather than
+// about the defect.
 
 fn strictly_positive(n: Int) -> Bool {
   n > 0
