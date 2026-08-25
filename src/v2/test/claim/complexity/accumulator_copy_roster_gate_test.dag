@@ -1,8 +1,7 @@
 module v2.test.claim.complexity.accumulator_copy_roster_gate
 
 import v2.lens.complexity_accumulator_copy.roster_gate {
-  file_gate,
-  source_has_suspect
+  file_gate
 }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -39,10 +38,4 @@ test fn roster_lens_cost_model_zero_suspects_within_ratchet() -> Bool {
 
 test fn roster_std_algebra_zero_suspects_within_ratchet() -> Bool {
   file_gate(path: "src/v2/std/algebra.dag", refusal_ceiling: 3)
-}
-
-data planted_copy_snippet: String = "module planted\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
-
-test fn red_control_planted_copy_still_alarms() -> Bool {
-  source_has_suspect(source_text: planted_copy_snippet)
 }

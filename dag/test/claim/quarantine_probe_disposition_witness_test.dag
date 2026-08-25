@@ -31,19 +31,15 @@ import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // THE LIVE JOIN plus its discriminating controls. The model is in
-// gunbc.quarantine_probe_disposition; this file supplies the four populations from the
+// gunbc.quarantine_probe_disposition; this file supplies the three live populations from the
 // authorities that own them and asserts that every live quarantine probe derives EXACTLY ONE
 // holding disposition.
 //
 // NO `live_tree_disposition` DECLARATION HERE, AND THAT IS DELIBERATE RATHER THAN AN OMISSION.
-// This witness reads the live tree twice (the module-declaration index, and each admission
-// entry's own declaration), so declaring SubstrateInputsOnly would be false. Declaring
-// ReadsLiveTree would be true and would make the required floor DECLINE this witness -- the
-// guard would then never execute, and a green main would mean nothing about it, which is the
-// exact failure this lane exists to expose. Undeclared is the honest position that the floor
-// still executes: the floor's own decline scan (`witness_file_from_source`) fires only on an
-// explicit ReadsLiveTree declaration, while affected-set selection treats undeclared as
-// live-reading and fail-closed. Both consumers get a true answer from the same silence.
+// This witness reads the live tree (the module-declaration index and a declaration control), so
+// declaring SubstrateInputsOnly would be false. Undeclared remains the fail-closed affected-set
+// selection position; the required floor now executes it and lets the interpreter classify the
+// actual effects.
 data quarantine_probe_disposition_witness_note: String = "Live claim plus controls for the total quarantine-probe disposition join. THE LIVE CLAIM IS DELIBERATELY NOT WHERE THE DISCRIMINATION LIVES: it is a universal over the live admission rows, so it stays meaningful at any population size including zero, and it would pass vacuously on an empty roster. The discrimination is carried by the synthetic controls below, which are authored here and cannot lose their subject when a live quarantine dissolves -- each of the five holder arms is shown to derive HeldByExactlyOne on its own, held-by-nothing is shown to derive the alarm, and held-by-two is shown to refuse. The controls therefore prove the fold DISCRIMINATES rather than merely agreeing with today's tree."
 
 fn witness_pool_roots() -> List<String> {
@@ -65,46 +61,12 @@ fn module_for_entry(facts: List<ModuleDeclarationFact>, entry: String) -> String
   )
 }
 
-// THE LIVE-TREE DECLINE FACT, read from the entry file itself.
-//
-// THIS IS A RE-DERIVATION OF A FACT THE PRODUCER OWNS, AND THE FORK IS FORCED RATHER THAN
-// CHOSEN. The floor computes it in Rust because it must decide whether to load a module BEFORE
-// loading it -- the same bootstrap constraint that makes the path-exclusion list unreadable from
-// .dag. This witness has no such constraint, so it reads the same declaration through the
-// substrate. The two computations could diverge, and A DIVERGENCE IS UNDETECTABLE FROM INSIDE
-// THIS FOLD: nothing here observes the floor's own classification. The strongest control
-// available is one anchored point, and it is asserted below
-// (`the_live_tree_declined_row_is_the_one_the_floor_declines`): the single live row this arm
-// classifies must be the row the floor really declines, checked against a named run rather than
-// against this fold's own answer. One anchored point is not proof of agreement; it is better
-// than none, and it is named as such.
-//
-// The required floor declines every site in a file whose source carries a `data` line naming
-// both LiveTreeDisposition and ReadsLiveTree -- `witness_file_from_source` in cli_run.rs, a
-// column-zero text scan in which UNDECLARED MEANS EXECUTES. That is not the same predicate as
-// `reads_live_tree_effective` (which also derives from effect reach and treats undeclared as
-// live-reading); the floor does not consult that one, and the Rust file records the pair as a
-// section 3 defect it deliberately does not fix. This witness reads the declaration the floor
-// reads, so it tracks the arm that actually fires; when the floor's copy is deleted (its own
-// deletion trigger, staged in v2.workflow.required_floor), this derivation and the arm it feeds
-// dissolve together with it.
-fn entry_declares_reads_live_tree(entry: String) -> Bool {
+// `LiveTreeDisposition` still owns affected-set selection eligibility after the required-floor
+// decline is deleted. This scan exercises that surviving declaration question only; it does not
+// predict whether the interpreter can execute the witness hermetically.
+fn entry_declares_reads_live_tree_for_selection(entry: String) -> Bool {
   let source = filesystem_read(path: entry).content
   source.contains("LiveTreeDisposition") && source.contains("ReadsLiveTree")
-}
-
-fn live_tree_declined_entries(rows: List<ExplicitWitnessAdmission>) -> List<String> {
-  fold_list(
-    xs: rows,
-    empty: Empty {},
-    cons: fn(acc, row) {
-      if entry_declares_reads_live_tree(entry: row.witness.entry) {
-        Cons { head: row.witness.entry, tail: acc }
-      } else {
-        acc
-      }
-    }
-  )
 }
 
 fn subject_for_admission(
@@ -132,9 +94,9 @@ fn live_quarantine_probe_facts() -> QuarantineProbeHoldingFacts {
     expected_red_roster: floor_expected_red_roster(),
     route_gap_roster: floor_route_gap_roster(),
     home_prefixes: long_home_prefixes(),
-    live_tree_declined_entries: live_tree_declined_entries(
-      rows: quarantine_probe_admissions(rows: explicit_witness_admissions)
-    ),
+    // Declaring ReadsLiveTree still controls affected-set eligibility, but no longer declines
+    // execution at the required-floor root. This holder population therefore has no live rows.
+    live_tree_declined_entries: Empty {},
     path_exclusion_substrings: Empty {}
   }
 }
@@ -155,20 +117,18 @@ test fn every_quarantine_probe_derives_exactly_one_disposition() -> Bool {
   )
 }
 
-// THE LIVE CLAIM IS NOT VACUOUS, PROVEN BY MUTATION RATHER THAN ASSERTED. Each of the four
-// supplied populations is dropped in turn and the live claim must go RED, then the unmutated
+// THE LIVE CLAIM IS NOT VACUOUS, PROVEN BY MUTATION RATHER THAN ASSERTED. Each of the three
+// supplied live populations is dropped in turn and the live claim must go RED, then the unmutated
 // fold must go green. Without this, a fold that answered "held" for everything -- or a join that
 // silently matched nothing -- would pass the live claim exactly as it does now. Measured on
 // 967b5bc1b92: dropping the expected-red roster unholds 5 probes, the route-gap roster 6, the
-// home prefixes 7, the live-tree entries 1. The path-exclusion axis is not mutated here because
-// it holds nothing live to lose; its derivation is exercised by the fixture control above, which
-// is the honest split between an arm with no inhabitants and an arm with no test.
+// home prefixes 7. The live-tree and path-exclusion axes are not mutated here because the
+// required floor no longer has a live-tree decline and neither arm holds a live row.
 test fn every_supplied_population_is_load_bearing_on_the_live_claim() -> Bool {
   let subjects = live_quarantine_probe_subjects()
   !quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_facts_without_expected_red())
     && !quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_facts_without_route_gap())
     && !quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_facts_without_home_prefixes())
-    && !quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_facts_without_live_tree())
     && quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_quarantine_probe_facts())
 }
 
@@ -205,17 +165,6 @@ fn live_facts_without_home_prefixes() -> QuarantineProbeHoldingFacts {
     route_gap_roster: f.route_gap_roster,
     home_prefixes: probe_no_strings(),
     live_tree_declined_entries: f.live_tree_declined_entries,
-    path_exclusion_substrings: f.path_exclusion_substrings
-  }
-}
-
-fn live_facts_without_live_tree() -> QuarantineProbeHoldingFacts {
-  let f = live_quarantine_probe_facts()
-  QuarantineProbeHoldingFacts {
-    expected_red_roster: f.expected_red_roster,
-    route_gap_roster: f.route_gap_roster,
-    home_prefixes: f.home_prefixes,
-    live_tree_declined_entries: probe_no_strings(),
     path_exclusion_substrings: f.path_exclusion_substrings
   }
 }
@@ -417,17 +366,9 @@ test fn a_roster_row_that_merely_contains_the_identity_does_not_hold_it() -> Boo
     && disposition_is_held_by(disposition: fixture_disposition(facts: facts_with_expected_red()), expected: FloorExpectedRedHeld {})
 }
 
-// THE ANCHORED AGREEMENT POINT WITH THE PRODUCER. legacy_test_behavior_unclassified_frontier_is_zero
-// is the one live row this witness classifies NeverRunDeclinedByLiveTreeRead, and the floor
-// really does decline it: main run 32553487573 (sha 967b5bc1b92) reports
-// `offered=11812 routed=10439 declined_long=543 declined_live=830`, and 10439 + 543 + 830 =
-// 11812 exactly, so the three arms partition the offered sites and the declined population is
-// real rather than inferred. Run directly, the witness FAILS (claim_batch, cpu=183ms) -- so it
-// is a live red control, not a stale row, and the reading that would have deleted it was the
-// destructive one. This test asserts the classification half, which is the half this fold owns;
-// the run receipt above is the producer half and is prose because no .dag consumer can read a
-// workflow log.
-test fn the_live_tree_declined_row_is_the_one_the_floor_declines() -> Bool {
+// The former live-tree specimen now executes and is held by its observed expected-red verdict.
+// Keeping an assertion that it is never routed would restate the deleted floor policy.
+test fn the_former_live_tree_declined_row_is_now_expected_red() -> Bool {
   let facts = live_quarantine_probe_facts()
   let subject = QuarantineProbeSubject {
     module: "test.claim.legacy_test_behavior_disposition_acceptance_test",
@@ -436,9 +377,7 @@ test fn the_live_tree_declined_row_is_the_one_the_floor_declines() -> Bool {
   }
   disposition_is_held_by(
     disposition: quarantine_probe_disposition(subject: subject, facts: facts),
-    expected: NeverRunDeclinedByLiveTreeRead {
-      entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag"
-    }
+    expected: FloorExpectedRedHeld {}
   )
 }
 
@@ -447,6 +386,6 @@ test fn the_live_tree_declined_row_is_the_one_the_floor_declines() -> Bool {
 // that does not declare it reads false. Both are live files, so this control also fails if the
 // read itself stops working.
 test fn the_live_tree_declaration_read_discriminates() -> Bool {
-  entry_declares_reads_live_tree(entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag")
-    && !entry_declares_reads_live_tree(entry: "dag/test/claim/method_arg_declared_contract_witness_test.dag")
+  entry_declares_reads_live_tree_for_selection(entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag")
+    && !entry_declares_reads_live_tree_for_selection(entry: "dag/test/claim/method_arg_declared_contract_witness_test.dag")
 }
