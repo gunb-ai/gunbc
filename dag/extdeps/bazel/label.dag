@@ -121,16 +121,16 @@ fn parse_package_segments(package_text: String) -> PackageSegmentsParse {
   }
 }
 
+// THE SLASH IS ADMITTED UPSTREAM AND REFUSED HERE, WITH ITS OWN CAUSE. The cited authority allows
+// `/` in a target name — a source file in a package subdirectory — and this subset does not,
+// because admitting it makes `//a/b` ambiguous between the shorthand for `//a/b:b` and a package
+// `//a` holding a file `b`, and the shorthand is what `//:required` and its dependencies use.
 fn parse_target_name(text: String) -> LabelParse {
   if text.length() == 0 {
     LabelRefused { cause: EmptyTargetName { text: text } }
   } else if target_name_is_pattern(s: text) {
     LabelRefused { cause: TargetPattern { pattern: text } }
   } else if string_contains(s: text, pattern: "/") {
-    // The authority admits `/` in a target name (a source file in a package subdirectory). It is
-    // refused HERE and named as its own cause, because this subset's consumers name rule targets:
-    // admitting it would make `//a/b` ambiguous between the shorthand for `//a/b:b` and a package
-    // `//a` holding a file `b`, and the shorthand is what `//:required` and its dependencies use.
     LabelRefused { cause: TargetNameContainsSlash { name: text } }
   } else {
     LabelParsed {
@@ -151,6 +151,7 @@ fn label_with_package(parsed: LabelParse, package: PackageName) -> LabelParse {
 // the cited authority, so it is folded into the same `Label` at parse time and no consumer ever
 // has to ask which spelling it was handed. `//` alone has no final segment to expand from, which
 // is why the root package with no colon is an empty target name rather than a fourth arm.
+// The empty package head is the ROOT PACKAGE branch: `//:target`, or `//` with nothing after it.
 fn parse_label_body(body: String, original: String) -> LabelParse {
   let parts = split(s: body, delimiter: ":")
   let part_count = parts |> count
@@ -162,7 +163,6 @@ fn parse_label_body(body: String, original: String) -> LabelParse {
       Absent => ""
     }
     if package_text_head.length() == 0 {
-      // Root package: `//:target`, or `//` with nothing after it.
       let target_text = if part_count == 2 {
         match parts |> last {
           Present { value: v } => v
