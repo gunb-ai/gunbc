@@ -884,6 +884,75 @@ import, so they are deletions of dead surface rather than a cutover.
   reasoning that bankrupted `docs/probes/`. It also settles, without a separate
   argument, why the projection is a lens rather than a branch.
 
+## 7b. Milestones, waves, and the three lanes
+
+### Milestones are verifiable states, not activities
+
+| | milestone | the check that closes it |
+|---|---|---|
+| **M0** | **Measurable.** Compile outcome is a function of a module's content, not the corpus name set | §3c's perturbation control: renaming a private declaration changes no diagnostic elsewhere |
+| **M1** | **Emission preserves identity.** A branded scalar is a distinct Rust type | a `Secret` cannot be passed where a `String` is expected in emitted Rust; `UriValidatedScalar` forgery refused |
+| **M2** | **One closure authority.** Every subject is built the same way | no second `extract_imports`; every closure edge names its occurrence and provider |
+| **M3** | **Identity survives the pipeline.** Resolution's answer reaches emission intact | the 12 censused emitter sites key on declaration identity; `build_emit_graph_info` has a collision arm |
+| **M4** | **Keys are typed.** A spelling is unspellable in key position | `key_eq` is not a parameter anywhere; a content-derived `key_of` does not compile |
+| **M5** | **The projection is green.** A binding-preserving import-free corpus exists, derived | `old_resolved_declaration == projected_resolved_declaration`, 0 binding-identity changes |
+| **M6** | **Authority flipped.** Containment resolution is production | ambient fallback deleted; stage0 regenerated; acceptance set green |
+| **M7** | **Imports unread.** No consumer reads an import | the last readers repointed |
+| **M8** | **Grammar deleted.** | `import` refuses at parse; the AST and productions are gone |
+
+M0–M4 are independently valuable on main *with imports*. M5 onward is the cut.
+
+### Wave order
+
+```
+WAVE 1   0.1 pipe lowering   0.2 arg ordering   0.4 coercion parse
+         A.1 nominal identity switch    A.2 forgery control
+         B.1 closure authority          B.2 edge provenance
+         D.1 key algebra authoring
+         0.3 name-set investigation  (ordering open — see §9)
+
+WAVE 2   B.3 parser-owned reference facts        [needs B.1]
+         C.1 delete ambient + proximity fallback [needs B.1]
+         C.2 build_emit_graph_info collision arm [needs A.1]
+         D.2 impostor separation, two arms       [needs A.1]
+
+WAVE 3   C.3 remaining emitter sites   [needs C.2]
+         C.4 OccurrenceBinding ledger  [needs C.1 — a ledger over a heuristic records the guess]
+         D.3 KeyedRoster wall          [needs D.2]
+
+WAVE 4   E.1 derived projection  [needs C.4]
+         E.2 acceptance gates    [needs E.1]
+         E.3 perturbation falsifier — 0.3's permanent wall
+
+WAVE 5   F.1 the flip                       ← one motion, single owner
+
+WAVE 6   F.2 last import readers    G grammar deletion
+```
+
+The two hard edges: **C.4 must follow C.1** — a ledger built while ambient
+binding is live records a heuristic's guess as truth — and **F.1 is one motion
+with one owner**, because it is the authority transition.
+
+### Three lanes, divided by question rather than by file
+
+The boundary that stays mutually exclusive under pressure is not a directory, it
+is the question each lane answers. Files follow from it.
+
+| lane | the question it owns | surface |
+|---|---|---|
+| **Emission** | *how is an identity rendered into a target* | `05_emit.dag`, `05_emit_rust.dag`, the stage0 mirrors |
+| **Resolution** | *what does this reference denote* | `02_parse`, `03_resolve`, `03_normalize`, `04_infer`, `04_env`, `04_occurrence_binding`, `cli_run.rs` closure, v2 `03_name_resolve` |
+| **Substrate** | *what may be a key at all* | `dag/std/` |
+
+Assignment: Emission owns 0.2, A, C.2, C.3. Resolution owns 0.1, 0.3, 0.4, B, C.1,
+C.4, and F.2. Substrate owns D. E, F.1 and G sit with the integrator, because the
+projection and the flip consume all three lanes and belong to none.
+
+`nominal_call_arg_brand_mismatch` is the boundary case worth stating: it lives in
+`04_infer`, which Emission does not own, and it is a *denotation* question — does
+this argument's brand match — so it is Resolution's, by the question rule rather
+than by proximity to a brand concept.
+
 ## 8. Adjudicating the vehicle: big-bang vs per-subtree
 
 `deep-ant-102` relays a dissent from its side chat and calls it "the single most
