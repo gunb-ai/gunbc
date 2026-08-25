@@ -1,11 +1,11 @@
 module test.claim.spark_serving_boot_provenance_witness
 
 
-fn bad(err: String) -> extdeps.ssh.session.extdeps.ssh.session.SshSessionExecResult {
-  extdeps.ssh.session.extdeps.ssh.session.SshSessionExecResult { exit_code: 1, success: false, stdout: "", stderr: err }
+fn bad(err: String) -> extdeps.ssh.session.SshSessionExecResult {
+  extdeps.ssh.session.SshSessionExecResult { exit_code: 1, success: false, stdout: "", stderr: err }
 }
 
-fn uptime(secs: String) -> extdeps.ssh.session.extdeps.ssh.session.SshSessionExecResult {
+fn uptime(secs: String) -> extdeps.ssh.session.SshSessionExecResult {
   test.claim.spark_serving_boot_provenance_witness.ok(out: join([secs, ".41 90000.00\n"], ""))
 }
 

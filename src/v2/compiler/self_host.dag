@@ -1,7 +1,7 @@
 module v2.std.node.v2.compiler.self_host
 
 
-// `type CoreNode = v2.std.node.v2.std.node.Node` WAS DECLARED HERE AND IS DELETED. The identical alias, onto the identical
+// `type CoreNode = v2.std.node.Node` WAS DECLARED HERE AND IS DELETED. The identical alias, onto the identical
 // target, was also declared in v2.std.node.v2.compiler.compile, and v2.std.node.v2.compiler.ingest already imports it from
 // there -- so one concept had two authorities, which DESIGN 3 forbids independently of anything
 // downstream. This module now asks the same authority ingest does.
@@ -9,9 +9,9 @@ module v2.std.node.v2.compiler.self_host
 // WHAT THE DUPLICATE COST, measured rather than asserted: v1's direct-call argument-type judgment
 // resolves a nominal type by NAME, and a name declared in two modules is census-AMBIGUOUS, so the
 // transparent-alias identity relation (gunbc#8873) excludes it conservatively and cannot decide
-// that v2.compiler.compile.CoreNode and v2.std.node.v2.std.node.Node are the same type. Deleting the v2.std.node.v2.* argument-type exemption over the
+// that v2.compiler.compile.CoreNode and v2.std.node.Node are the same type. Deleting the v2.std.node.v2.* argument-type exemption over the
 // corpus left 67 blocking diagnostics, and 48 of them -- 72% -- were this one duplicate, as
-// `expected Primitive(v2.compiler.compile.CoreNode), got Product(v2.std.node.v2.std.node.Node)` and its reverse across 05_eval.dag,
+// `expected Primitive(v2.compiler.compile.CoreNode), got Product(v2.std.node.Node)` and its reverse across 05_eval.dag,
 // self_host_fixed_point_test.dag, 00_compile.dag and this file.
 //
 // TO BE EXACT ABOUT WHAT THIS DOES AND DOES NOT FIX: it removes this SPECIMEN, not the class. A
@@ -56,16 +56,16 @@ type SourceModels {
 // addition outside the roster, so it reds the freeze gate. Dissolve-on: those two
 // identities leave the frozen roster, at which point the `self_host_` prefix on the
 // staleness machinery goes with them.
-data regen_staleness_authority: v2.std.node.v2.std.node.Symbol = ^canonical_emitted_bytes
+data regen_staleness_authority: v2.std.node.Symbol = ^canonical_emitted_bytes
 
 type SelfHostStageEmission {
   node: v2.compiler.compile.CoreNode
   source: extdeps.communication.medium.Medium<v2.std.text.String>
-  digest: v2.std.node.v2.std.node.Hash
+  digest: v2.std.node.Hash
 }
 
 type SelfHostFixpointEqual {
-  over: v2.std.node.v2.std.node.Symbol
+  over: v2.std.node.Symbol
   stage1: SelfHostStageEmission
   stage2: SelfHostStageEmission
 }
@@ -91,30 +91,30 @@ type PromotionWitness {
   candidate_fixed_point_sub_check: FixedPointCheck
 }
 
-fn self_host_runner_not_realized_diagnostic() -> v2.std.node.v2.std.diagnostic.Diagnostic {
-  v2.std.node.v2.std.diagnostic.Diagnostic {
+fn self_host_runner_not_realized_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^self_host_runner_not_realized,
     at: v2.std.diagnostic.port_locus(port: ^self_host_runner_port),
-    correction: v2.std.node.v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn self_host_fixpoint_digest_mismatch_diagnostic(
   stage1: SelfHostStageEmission,
   stage2: SelfHostStageEmission
-) -> v2.std.node.v2.std.diagnostic.Diagnostic {
-  v2.std.node.v2.std.diagnostic.Diagnostic {
+) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^self_host_fixpoint_digest_mismatch,
     at: v2.std.diagnostic.node_locus(node: stage2.node),
-    correction: v2.std.node.v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
-fn source_text_code_unit_digest(text: v2.std.text.String) -> v2.std.node.v2.std.node.Hash {
+fn source_text_code_unit_digest(text: v2.std.text.String) -> v2.std.node.Hash {
   v2.std.node.symbol_identity_digest(sym: text)
 }
 
-fn canonical_emitted_bytes_digest(source: extdeps.communication.medium.Medium<v2.std.text.String>) -> v2.std.node.v2.std.node.Hash {
+fn canonical_emitted_bytes_digest(source: extdeps.communication.medium.Medium<v2.std.text.String>) -> v2.std.node.Hash {
   v2.std.node.combine_hash(
     a: v2.std.node.symbol_identity_digest(sym: ^canonical_emitted_bytes),
     b: source_text_code_unit_digest(text: source.carried)
@@ -146,7 +146,7 @@ fn self_host_fixpoint_equal(
 fn self_host_snake_closes(
   stage1: SelfHostStageEmission,
   stage2: SelfHostStageEmission
-) -> v2.std.node.v2.std.logic.Bool {
+) -> v2.std.logic.Bool {
   stage1.digest == stage2.digest
 }
 
@@ -155,11 +155,11 @@ fn self_host_fixpoint_witness(
   stage2: SelfHostStageEmission
 ) -> FixedPointCheck {
   if self_host_snake_closes(stage1: stage1, stage2: stage2) {
-    v2.std.node.v2.std.witness.Holds {
+    v2.std.witness.Holds {
       value: self_host_fixpoint_equal(stage1: stage1, stage2: stage2)
     }
   } else {
-    v2.std.node.v2.std.witness.Violates {
+    v2.std.witness.Violates {
       diagnostic: self_host_fixpoint_digest_mismatch_diagnostic(
         stage1: stage1,
         stage2: stage2
@@ -168,7 +168,7 @@ fn self_host_fixpoint_witness(
   }
 }
 
-fn source_models_regen_byte_pair_ready(models: SourceModels) -> v2.std.node.v2.std.logic.Bool {
+fn source_models_regen_byte_pair_ready(models: SourceModels) -> v2.std.logic.Bool {
   !v2.std.text.string_is_empty(s: models.stage1_committed_seed_source.carried)
     && !v2.std.text.string_is_empty(s: models.stage2_regen_emitted_source.carried)
 }
@@ -182,13 +182,13 @@ fn bootstrap_roundtrip_check(
     reference_stage1: expected_stage
   ) {
     v2.std.witness.Holds { value: eq } =>
-      v2.std.node.v2.std.witness.Holds {
+      v2.std.witness.Holds {
         value: BootstrapRoundtripEqual {
           produced_stage: eq.right,
           expected_stage: eq.left
         }
       }
-    v2.std.witness.Violates { diagnostic: d } => v2.std.node.v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
@@ -227,8 +227,8 @@ fn candidate_promotion_witness(
   }
 }
 
-fn stage_emission_closedness(reference_stage1: v2.compiler.compile.CoreNode) -> v2.std.node.v2.std.witness.StructuralPropertyWitness {
-  v2.std.node.v2.std.witness.StructuralPropertyWitness {
+fn stage_emission_closedness(reference_stage1: v2.compiler.compile.CoreNode) -> v2.std.witness.StructuralPropertyWitness {
+  v2.std.witness.StructuralPropertyWitness {
     property: ^stage_emission_equality_closed_candidates,
     evidence: reference_stage1
   }
@@ -238,7 +238,7 @@ fn self_host_fixed_point_digests_match(
   stage1_node: v2.compiler.compile.CoreNode,
   stage2_node: v2.compiler.compile.CoreNode,
   source_models: SourceModels
-) -> v2.std.node.v2.std.logic.Bool {
+) -> v2.std.logic.Bool {
   self_host_snake_closes(
     stage1: self_host_stage_emission(
       node: stage1_node,
@@ -257,25 +257,25 @@ fn stage_emission_equality(
 ) -> StageEmissionEquality {
   match v2.std.find_witness.find_witness(
     source_facts: reference_stage1,
-    candidates: v2.std.node.v2.std.find_witness.CandidateSet {
+    candidates: v2.std.find_witness.CandidateSet {
       candidates: [emitted_candidate],
       closedness: stage_emission_closedness(reference_stage1: reference_stage1)
     },
-    predicate: v2.std.node.v2.std.find_witness.PreservationPredicate {
+    predicate: v2.std.find_witness.PreservationPredicate {
       algebra: reference_stage1,
       preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
     },
     multiplicity_policy: v2.std.find_witness.UniqueOnly
   ) {
     v2.std.diagnostic.Accepted { value: fw, diagnostics: _ } =>
-      v2.std.node.v2.std.witness.Holds {
+      v2.std.witness.Holds {
         value: StructurallyEqual {
           left: reference_stage1,
           right: fw.candidate
         }
       }
     v2.std.diagnostic.Rejected { diagnostics: d } =>
-      v2.std.node.v2.std.witness.Violates { diagnostic: d.head }
+      v2.std.witness.Violates { diagnostic: d.head }
   }
 }
 
@@ -335,7 +335,7 @@ fn self_host_fixed_point_validate(
   reference_stage1: v2.compiler.compile.CoreNode
 ) -> v2.std.diagnostic.Outcome<PromotionWitness> {
   if !source_models_regen_byte_pair_ready(models: source_models) {
-    v2.std.node.v2.std.diagnostic.Rejected {
+    v2.std.diagnostic.Rejected {
       diagnostics: v2.std.diagnostic.diagnostics_singleton(d: self_host_runner_not_realized_diagnostic())
     }
   } else {
@@ -353,7 +353,7 @@ fn self_host_fixed_point_validate(
           )
         )
       v2.std.witness.Violates { diagnostic: d } =>
-        v2.std.node.v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: d) }
+        v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: d) }
     }
   }
 }

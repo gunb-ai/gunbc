@@ -1,4 +1,4 @@
-module v2.extdeps.bmc.lifecycle_fidelity
+module extdeps.bmc.lifecycle_fidelity
 
 
 type SecretEpochNotInQuotient {}
