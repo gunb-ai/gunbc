@@ -40,7 +40,7 @@ re-provisioning. Replacement could only be induced by turning an existing member
 installed artifact -- so it cannot express *same slot, same unit, same registration, different
 release*, which is exactly the state that hurt.
 
-### 2. The install path cannot activate — MODELED AND EMITTED, STILL REFUSING
+### 2. The install path cannot activate — INTENT LANDED, NOTHING ACTIVATES YET
 
 The emitted `apply.sh` carried `daemon-reload` and `disable`. Enable count 0, start count 0.
 
@@ -80,6 +80,16 @@ fixture boundary.
 **What the item actually bought,** stated without inflation: an invisible hand loop became a named,
 counted, located refusal. `enable count 0` was indistinguishable from a host with no activation
 work; `activation-refusals=2` with its cause is not.
+
+**The host boundary is mitigated, not structural, and the safety row says so.** The grants install
+the raw `systemctl enable <unit>` / `systemctl start <unit>` verbs for `ghrunner`, so the grantee can
+run them directly, outside the admission entirely. Three claims must be kept apart: *enable and start
+are separately authorized* is structural (no derived sudoers line matches `enable --now`); *this
+emitter cannot activate without readiness* is structural inside the modeled call graph; *the host
+cannot activate without readiness* is **false**. `runner_activation_safety_guarantee` records
+`Mitigatable` with the next-rung trigger — the job user stops holding the verbs, via a root-owned
+helper that validates a receipt or a root-owned convergence service. A narrower sudoers match cannot
+climb it: any grant that lets the sanctioned path run the command lets the grantee run it too.
 
 **Next.** The host observation transaction — the shared blocker this document already names — and
 only then the placement flip, with a width decision attached and re-derived per host from live

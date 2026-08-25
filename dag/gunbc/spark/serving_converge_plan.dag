@@ -72,6 +72,9 @@ import gunbc.fleet_converge_plan {
   TimerRetirementMember,
   TimerRetirementMemberAt,
   CapMember,
+  CapMemberAt,
+  FleetConvergeApplyTerminal,
+  fleet_converge_apply_terminal,
   timer_retirement_plan,
   membership_plan_lines_timer,
   membership_plan_lines_cap,
@@ -293,6 +296,8 @@ fn spark_serving_fleet_converge_apply_shell(
   timer_plan: MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>,
   host: NonEmptyStr,
   observed_slots: List<RunnerSlotMember>,
+  observed_caps: List<CapMember>,
+  cap_plan: MembershipPlan<CapMember, CapMemberAt>,
   observed_fabric_cells: FabricCellPopulation,
 ) -> String {
   fleet_converge_apply_shell(
@@ -301,6 +306,15 @@ fn spark_serving_fleet_converge_apply_shell(
     observed_slots: observed_slots,
     observed_fabric_cells: observed_fabric_cells,
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    terminal: fleet_converge_apply_terminal(
+      host: host,
+      observed_slots: observed_slots,
+      observed_caps: observed_caps,
+      timer_plan: timer_plan,
+      cap_plan: cap_plan,
+      observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    ),
   )
 }
 
@@ -484,6 +498,8 @@ fn spark_serving_fleet_converge_plan_artifact_from_rows(
       timer_plan: timer_plan,
       host: host,
       observed_slots: observed_slots,
+      observed_caps: observed_caps,
+      cap_plan: cap_plan,
       observed_fabric_cells: observed_fabric_cells,
     )
     let body = join(

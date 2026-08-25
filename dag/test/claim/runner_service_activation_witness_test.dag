@@ -36,17 +36,41 @@ import gunbc.runner_service_activation {
   RunnerTransitionPlan,
   TransitionAdmitted,
   TransitionRefused,
+  RunnerEnableTransition,
   runner_activation_plans_for_deploy,
   runner_transition_apply_lines,
   runner_activation_refusal_count,
   runner_activation_admitted_operation_count,
   runner_activation_readiness_unobserved_no_transaction,
   runner_transition_sequence_label,
+  runner_activation_reachability_stall,
+  runner_activation_safety_guarantee,
+  runner_transition_affected_set_identity,
   runner_host_activation_units,
 }
 import gunbc.fleet_converge_plan {
   fleet_converge_apply_shell,
+  fleet_converge_apply_terminal,
+  fleet_converge_apply_terminal_line,
   timer_retirement_plan,
+  caps_reconcile,
+  fleet_converge_desired_caps,
+  FleetConvergeApplyTerminal,
+  FullyApplied,
+  PartiallyApplied,
+}
+import gunbc.guarantee_rung_drop {
+  GuaranteeStall,
+  AwaitsOneGrounding,
+  ClimbableButUnbuilt,
+  CannotClimbFurther,
+  Mitigatable,
+  OutsideTheLadder,
+  StructurallyGuaranteed,
+  BoundedPopulation,
+  UncountedNotEnumerable,
+  stall_is_below_ceiling,
+  stall_is_permanent,
 }
 import gunbc.fabric_cell_converge { fabric_cell_population_unobserved }
 
@@ -112,6 +136,19 @@ fn witness_apply_text(deploy: RunnerHostDeploy, readiness: RunnerActivationReadi
     timer_plan: timer_retirement_plan(observed: []),
     host: deploy.host_label,
     observed_slots: [],
+    observed_fabric_cells: fabric_cell_population_unobserved(host: deploy.host_label as HostIdentity),
+    observed_activation_readiness: readiness,
+    terminal: witness_terminal(deploy: deploy, readiness: readiness),
+  )
+}
+
+fn witness_terminal(deploy: RunnerHostDeploy, readiness: RunnerActivationReadiness) -> FleetConvergeApplyTerminal {
+  fleet_converge_apply_terminal(
+    host: deploy.host_label,
+    observed_slots: [],
+    observed_caps: [],
+    timer_plan: timer_retirement_plan(observed: []),
+    cap_plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: []),
     observed_fabric_cells: fabric_cell_population_unobserved(host: deploy.host_label as HostIdentity),
     observed_activation_readiness: readiness,
   )
@@ -243,7 +280,7 @@ test fn the_two_refusals_name_their_own_stakes() -> Bool {
     init: 0,
     f: (acc, p) =>
       match p {
-        TransitionRefused { transition: _, host_label: _, reason: r } =>
+        TransitionRefused { transition: _, host_label: _, reason: r, affected_units: _ } =>
           if string_contains(s: r as String, pattern: "durable boot intent") { acc + 1 } else { acc }
         TransitionAdmitted { transition: _, operations: _ } => acc
       },
@@ -295,4 +332,111 @@ test fn the_reserved_fabric_cell_takes_no_activation_grant() -> Bool {
          init: false,
          f: (acc, u) => acc || string_contains(s: u as String, pattern: "srv3-06"),
        )
+}
+
+// THE DECLARED STALL AND THE EXECUTED REFUSAL MUST NAME THE SAME BLOCKER, which is what keeps the
+// row from being prose with a type. A GuaranteeStall nobody reads goes stale in a specific and
+// silent way: the row keeps naming one cause while the refusal printed beside it in the same
+// plan.txt names another, and no mechanism compares them. This row is that comparison.
+//
+// IT ASSERTS THE ORDER, NOT ONLY THE MEMBERSHIP. The reachability row has to name the observation
+// transaction as the IMMEDIATE blocker and the pool placement as the one behind it -- an earlier
+// revision named only the placement, which is the second gate, and a reader planning from it would
+// do the fleet-wide topology work and measure no change. So the assertion is that the executed
+// refusal's cause is the one the row leads with.
+test fn the_declared_stall_agrees_with_the_executed_refusal() -> Bool {
+  let plans = witness_plans(deploy: srv4_runner_host_deploy, readiness: runner_activation_readiness_unobserved_no_transaction)
+  let cause = fold(
+    plans,
+    init: "",
+    f: (acc, p) =>
+      match p {
+        TransitionRefused { transition: _, host_label: _, reason: r, affected_units: _ } => r as String
+        TransitionAdmitted { transition: _, operations: _ } => acc
+      },
+  )
+  match runner_activation_reachability_stall.blocker {
+    AwaitsOneGrounding { grounding: g } =>
+      string_contains(s: g, pattern: "no host observation transaction exists")
+        && string_contains(s: cause, pattern: "no host observation transaction exists")
+        && string_contains(s: g, pattern: "CompilePoolInRunnerSlots")
+        && !string_contains(s: cause, pattern: "CompilePoolInRunnerSlots")
+    CannotClimbFurther { why: _ } => false
+    ClimbableButUnbuilt => false
+  }
+    && stall_is_below_ceiling(s: runner_activation_reachability_stall)
+    && !stall_is_permanent(s: runner_activation_reachability_stall)
+}
+
+// THE SAFETY ROW STATES A MITIGATABLE RUNG, AND THIS IS THE ROW THAT REDS IF SOMEBODY INFLATES IT.
+// The host boundary is not structural: gunbc.runner_host_grants installs the raw systemctl verbs for
+// the job user, so the grantee can run enable and start directly, outside the admission entirely.
+// Claiming StructurallyGuaranteed here would be the section 4b(1) inflation in the module whose job
+// is to stop an unadmitted activation, so the rung is asserted rather than left to a reader's
+// charity -- and asserted as an EQUALITY on the current rung, not merely as below-ceiling, because
+// below-ceiling would still pass at MechanicallyPreventable.
+test fn the_safety_row_does_not_claim_the_host_boundary_is_structural() -> Bool {
+  match runner_activation_safety_guarantee.current {
+    Mitigatable => true
+    OutsideTheLadder => false
+    _ => false
+  }
+    && stall_is_below_ceiling(s: runner_activation_safety_guarantee)
+    && !stall_is_permanent(s: runner_activation_safety_guarantee)
+    && string_contains(s: runner_activation_safety_guarantee.next_rung_trigger, pattern: "root-owned")
+}
+
+// THE REFUSAL CARRIES ITS AFFECTED POPULATION, IN BOTH MAGNITUDE AND IDENTITY. A count alone cannot
+// distinguish two refusals over different rosters at equal size, and this fleet has hosts that
+// differ by exactly one unit -- so the set identity is asserted to DIFFER between srv3 and srv4
+// while both remain present, which a count-only rendering could not establish.
+test fn the_refusal_names_how_many_units_and_which_set() -> Bool {
+  let srv4_units = runner_host_activation_units(deploy: srv4_runner_host_deploy)
+  let srv3_units = runner_host_activation_units(deploy: srv3_runner_host_deploy)
+  let text = witness_apply_text(deploy: srv4_runner_host_deploy, readiness: runner_activation_readiness_unobserved_no_transaction)
+  string_contains(s: text, pattern: concat("units=", to_string(list_length(items: srv4_units))))
+    && string_contains(s: text, pattern: concat("unit_set=", runner_transition_affected_set_identity(units: srv4_units)))
+    && runner_transition_affected_set_identity(units: srv3_units)
+         != runner_transition_affected_set_identity(units: srv4_units)
+}
+
+// A REFUSED AXIS MAKES THE TERMINAL PartiallyApplied, AND AN APPLY THAT REFUSED NOTHING SAYS SO.
+// Before this, the terminal a consumer read was the shell's exit status, and a script that refused
+// an axis and continued exits zero -- so "converged" and "converged except for the axis nobody could
+// admit" were the same terminal. Both poles are asserted because the projection is only evidence if
+// it can say either.
+test fn a_refused_activation_makes_the_terminal_partially_applied() -> Bool {
+  let d = srv4_runner_host_deploy
+  let refused_line = fleet_converge_apply_terminal_line(
+    terminal: witness_terminal(deploy: d, readiness: runner_activation_readiness_unobserved_no_transaction),
+  )
+  let admitted_line = fleet_converge_apply_terminal_line(
+    terminal: witness_terminal(deploy: d, readiness: witness_ready_readiness(deploy: d)),
+  )
+  string_contains(s: refused_line, pattern: "PartiallyApplied")
+    && string_contains(s: refused_line, pattern: "activation=2")
+    && !string_contains(s: admitted_line, pattern: "activation=2")
+}
+
+// THE REFUSAL SURVIVES AN APOSTROPHE IN ITS CAUSE, and this row exists because the first version did
+// not. runner_transition_apply_lines hand-wrapped the reason in single quotes, and every real
+// RunnerActivationRefused cause from admit_runner_activation's host-mismatch arm contains
+// single-quoted host names -- so the first observed readiness would have emitted malformed shell.
+// It was dormant only because the one reason production can currently reach contains no apostrophe,
+// which is what made it invisible to every other row in this file.
+//
+// THE FIXTURE PLANTS THE APOSTROPHE RATHER THAN WAITING FOR ONE. A witness that asserted only over
+// the reachable cause would be green for the same reason the defect was invisible.
+test fn a_refusal_cause_containing_an_apostrophe_stays_well_formed() -> Bool {
+  let plan = TransitionRefused {
+    transition: RunnerEnableTransition,
+    host_label: "srv4" as NonEmptyStr,
+    reason: "names host 'srv3' but activation was requested for 'srv4'" as NonEmptyStr,
+    affected_units: ["actions-runner@srv4-01.service" as NonEmptyStr],
+  }
+  fold(
+    runner_transition_apply_lines(plan: plan),
+    init: false,
+    f: (acc, l) => acc || string_contains(s: l, pattern: "'\\''"),
+  )
 }
