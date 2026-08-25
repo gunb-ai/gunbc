@@ -4377,7 +4377,7 @@ fn witness_layer_roots_compile_clean_sources_for_plan(
 }
 
 /// Test-only inject: append an unresolved-import module to the compile-clean closure so
-/// `install_floor_compile_clean_receipt` + `consume_floor_compile_clean_gate_verdict` can be
+/// `install_floor_compile_clean_receipt` + `install_or_consume_floor_compile_clean_gate_receipt` can be
 /// proven end-to-end (§5 discriminating RED) without mutating the workspace tree.
 fn append_test_floor_compile_clean_inject(sources: &mut Vec<Rc<v1_compiler_compile::SourceFile>>) {
     if std::env::var("GUNBC_TEST_FLOOR_COMPILE_CLEAN_INJECT_UNRESOLVED")
@@ -4401,6 +4401,25 @@ enum FloorCompileCleanReceipt {
     Compiled { ok: bool, failure_detail: String },
 }
 
+/// Host mirror of `gunbc.ci_gate` `GateReceipt` — what a CI gate answers to the substrate.
+///
+/// The three arms are three OWNERS, not three severities. `Clean`/`Failed` are the gate
+/// having reached its subject and decided (`GateObserved`); `NotApplicable` is the gate's
+/// own scope disposition selecting nothing to check; `NotRun` is could-not-measure — the
+/// instrument never arrived at its subject. The predecessors of this type collapsed all
+/// four into a `bool` plus a second `String` builtin over the same global, so "the gate
+/// did not run in this process" and "the compile found hard diagnostics" rendered
+/// identically at the `.dag` call site (DESIGN §5, execution-provenance loss). `NotRun`
+/// still stops the line — `gate_receipt_exit` refuses it — it simply stops it in its own
+/// vocabulary instead of the subject's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GateReceipt {
+    Clean,
+    Failed { detail: String },
+    NotApplicable { reason: String },
+    NotRun { cause: String },
+}
+
 static FLOOR_COMPILE_CLEAN_RECEIPT: Mutex<Option<FloorCompileCleanReceipt>> = Mutex::new(None);
 
 static GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL: Mutex<Option<String>> = Mutex::new(None);
@@ -4411,15 +4430,46 @@ pub fn record_generated_artifact_drift_gate_failure_detail(detail: String) {
     }
 }
 
-pub fn consume_generated_artifact_drift_gate_failure_detail() -> String {
+#[cfg(test)]
+fn reset_generated_artifact_drift_gate_detail_for_test() {
+    if let Ok(mut guard) = GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
+        *guard = None;
+    }
+}
+
+/// The clean-side counterpart of the recorder above. It exists so that "ran, no drift" is
+/// WRITTEN rather than inferred from the absence of a failure detail: without it the
+/// global's `None` carries both "clean" and "never ran", which is the conflation this
+/// retype exists to close, one layer down from the builtin.
+pub fn record_generated_artifact_drift_gate_clean() {
+    if let Ok(mut guard) = GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
+        *guard = Some(String::new());
+    }
+}
+
+/// Gate consumer: the drift gate body records a located reason on the failing side and
+/// records NOTHING on the clean side, so the global's `None` is genuinely two states —
+/// "the body ran and found no drift" is indistinguishable from "the body never ran" at
+/// this seam. The predecessor answered a `String` and papered the second one over with
+/// the prose "gate body did not run in this process", which is a fabricated plausible
+/// output standing exactly where the distinction was lost. It is not reconstructible from
+/// the global alone, so the honest arm is `NotRun`: the gate body is the only thing that
+/// can establish it ran, and it establishes that by recording — the clean side is recorded
+/// by `record_generated_artifact_drift_gate_clean`.
+pub fn consume_generated_artifact_drift_gate_receipt() -> GateReceipt {
     match GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
-        Ok(guard) => guard.clone().unwrap_or_else(|| {
-            "generated-artifact drift failure detail unavailable (gate body did not run in this process)"
-                .to_string()
-        }),
-        Err(e) => format!(
-            "generated-artifact drift failure detail refused: gate detail lock poisoned ({e})"
-        ),
+        Ok(guard) => match guard.as_ref() {
+            Some(detail) if detail.is_empty() => GateReceipt::Clean,
+            Some(detail) => GateReceipt::Failed {
+                detail: detail.clone(),
+            },
+            None => GateReceipt::NotRun {
+                cause: "generated-artifact drift gate: no in-run observation recorded (the gate body did not run in this process)".to_string(),
+            },
+        },
+        Err(e) => GateReceipt::NotRun {
+            cause: format!("generated-artifact drift gate: detail lock poisoned ({e})"),
+        },
     }
 }
 
@@ -4754,16 +4804,31 @@ pub fn floor_compile_clean_receipt_installed() -> bool {
         .unwrap_or(false)
 }
 
-/// Gate consumer: reads the receipt from `install_floor_compile_clean_receipt` only.
-/// Refuses when no receipt exists — never runs a second compile.
-pub fn consume_floor_compile_clean_gate_verdict() -> bool {
+/// Gate consumer for the floor's ONE whole-tree `--target dag` compile.
+///
+/// IT MAY RUN THAT COMPILE. When `claim_executor` armed `FLOOR_COMPILE_CLEAN_LAZY_INSTALL`
+/// this call installs the receipt on first consume, which is a whole-tree compile — the name
+/// says `install_or_consume` for that reason. The two functions this replaces were named
+/// `consume_*` and documented as "reads the receipt only ... never runs a second compile",
+/// which was false of the first of them and invisible at the `.dag` call site; a reader had
+/// no way to see that a `Bool` read could cost a whole-tree compile.
+///
+/// The other half of the replacement is the return type. `consume_floor_compile_clean_gate_verdict`
+/// answered `bool`, folding FIVE states into `false` — lock poisoned, install failed, no
+/// receipt at all, the receipt's typed `Refused`, and a real `Compiled { ok: false }` — and
+/// folding `Skipped` into `true`; its located detail arrived through a SECOND builtin over
+/// the same global, so recovering one fact took two correlated reads. Here the detail rides
+/// the arm that produced it and cannot be read without it, and the three states with
+/// different owners are three arms.
+pub fn install_or_consume_floor_compile_clean_gate_receipt() -> GateReceipt {
     if FLOOR_COMPILE_CLEAN_LAZY_INSTALL.load(Ordering::SeqCst)
         && !floor_compile_clean_receipt_installed()
     {
         if let Err(msg) = install_floor_compile_clean_receipt() {
             if !floor_compile_clean_receipt_installed() {
-                eprintln!("compile-clean gate: refused — receipt install failed ({msg})");
-                return false;
+                return GateReceipt::NotRun {
+                    cause: format!("compile-clean gate: receipt install failed ({msg})"),
+                };
             }
             // Serial `run_walk` today; if a future scheduler fans out batch-1, a concurrent
             // lazy install may win first — consume the installed receipt, do not refuse.
@@ -4772,51 +4837,35 @@ pub fn consume_floor_compile_clean_gate_verdict() -> bool {
     let guard = match FLOOR_COMPILE_CLEAN_RECEIPT.lock() {
         Ok(g) => g,
         Err(e) => {
-            eprintln!("compile-clean gate: refused — receipt lock poisoned ({e})");
-            return false;
+            return GateReceipt::NotRun {
+                cause: format!("compile-clean gate: receipt lock poisoned ({e})"),
+            };
         }
     };
     match guard.as_ref() {
-        None => {
-            eprintln!(
-                "compile-clean gate: refused — no in-run compile receipt (gate must consume the executor's one whole-tree --target dag compile)"
-            );
-            false
-        }
-        Some(FloorCompileCleanReceipt::Skipped { reason }) => {
-            eprintln!("compile-clean gate: skipped ({reason})");
-            true
-        }
-        Some(FloorCompileCleanReceipt::Refused { reason }) => {
-            eprintln!("compile-clean gate: refused ({reason})");
-            false
-        }
-        Some(FloorCompileCleanReceipt::Compiled { ok, .. }) => *ok,
-    }
-}
-
-/// Failure-receipt companion for the compile-clean gate: reads the in-run receipt only.
-pub fn consume_floor_compile_clean_gate_failure_detail() -> String {
-    let guard = match FLOOR_COMPILE_CLEAN_RECEIPT.lock() {
-        Ok(g) => g,
-        Err(e) => {
-            return format!("compile-clean failure detail refused: receipt lock poisoned ({e})");
-        }
-    };
-    match guard.as_ref() {
-        None => "compile-clean failure detail unavailable: no in-run compile receipt".to_string(),
-        Some(FloorCompileCleanReceipt::Skipped { reason }) => {
-            format!("compile-clean gate skipped: {reason}")
-        }
-        Some(FloorCompileCleanReceipt::Refused { reason }) => reason.clone(),
+        None => GateReceipt::NotRun {
+            cause: "compile-clean gate: no in-run compile receipt (the gate consumes the executor's one whole-tree --target dag compile, and it was never installed in this process)".to_string(),
+        },
+        Some(FloorCompileCleanReceipt::Skipped { reason }) => GateReceipt::NotApplicable {
+            reason: reason.clone(),
+        },
+        Some(FloorCompileCleanReceipt::Refused { reason }) => GateReceipt::NotRun {
+            cause: reason.clone(),
+        },
         Some(FloorCompileCleanReceipt::Compiled {
             ok: true,
             failure_detail: _,
-        }) => String::new(),
+        }) => GateReceipt::Clean,
         Some(FloorCompileCleanReceipt::Compiled {
             ok: false,
             failure_detail,
-        }) => failure_detail.clone(),
+        }) => GateReceipt::Failed {
+            detail: if failure_detail.is_empty() {
+                "dag compile-clean gate failed: compile receipt records failure with no located diagnostic".to_string()
+            } else {
+                failure_detail.clone()
+            },
+        },
     }
 }
 
@@ -5265,7 +5314,7 @@ pub fn witness_layer_roots_compile_clean_check() -> bool {
 
 /// Emit leg: `--target dag` compile over witness layer roots without shell or disk write.
 /// Direct-run oracle for non-floor contexts (cargo tests, enrolled witnesses). The CI
-/// floor gate consumes `consume_floor_compile_clean_gate_verdict` instead (Lever A).
+/// floor gate consumes `install_or_consume_floor_compile_clean_gate_receipt` instead (Lever A).
 pub fn witness_layer_roots_compile_clean_emit_check() -> bool {
     match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
         Ok(None) => true,
@@ -37343,9 +37392,15 @@ mod witness_layer_roots_compile_clean_tests {
     fn floor_compile_clean_gate_refuses_without_receipt() {
         with_env_test_lock(|| {
             reset_floor_compile_clean_receipt_for_test();
+            // Sharper than the `!verdict` this replaces: it pins the arm, so a future
+            // change that makes the gate refuse for a DIFFERENT reason (a real failed
+            // compile, say) fails here instead of passing as "still false".
             assert!(
-                !consume_floor_compile_clean_gate_verdict(),
-                "gate must refuse when no in-run compile receipt exists"
+                matches!(
+                    install_or_consume_floor_compile_clean_gate_receipt(),
+                    GateReceipt::NotRun { .. }
+                ),
+                "gate must answer NotRun when no in-run compile receipt exists"
             );
             assert!(!floor_compile_clean_receipt_installed());
         });
@@ -37360,15 +37415,105 @@ mod witness_layer_roots_compile_clean_tests {
                 ok: false,
                 failure_detail: "compile-clean: synthetic hard diagnostic".to_string(),
             });
-            assert!(
-                !consume_floor_compile_clean_gate_verdict(),
-                "gate must refuse when the installed receipt records compile failure"
+            // The discriminating half against the test above: a recorded compile failure
+            // must reach `Failed` carrying its located detail, NOT `NotRun`. Under the
+            // predecessor `bool` these two tests asserted the same value.
+            assert_eq!(
+                install_or_consume_floor_compile_clean_gate_receipt(),
+                GateReceipt::Failed {
+                    detail: "compile-clean: synthetic hard diagnostic".to_string()
+                },
+                "gate must report the receipt's located failure detail, not a bare refusal"
             );
         });
     }
 
+    /// The distinction the predecessor `bool` could not express, asserted in both
+    /// directions in one test: a scope disposition that selected nothing (`Skipped`) and a
+    /// clean compile both used to answer `true`, so no test could tell them apart. They are
+    /// different owners — the first is the disposition's answer, the second is the tree's —
+    /// and only the second is evidence about the tree.
+    #[test]
+    fn floor_compile_clean_gate_separates_not_applicable_from_clean() {
+        with_env_test_lock(|| {
+            reset_floor_compile_clean_receipt_for_test();
+            install_floor_compile_clean_receipt_fixture(FloorCompileCleanReceipt::Skipped {
+                reason: "compile-clean scope: no shard intersection".to_string(),
+            });
+            assert_eq!(
+                install_or_consume_floor_compile_clean_gate_receipt(),
+                GateReceipt::NotApplicable {
+                    reason: "compile-clean scope: no shard intersection".to_string()
+                },
+                "a scope disposition selecting nothing is NotApplicable, never Clean"
+            );
+
+            reset_floor_compile_clean_receipt_for_test();
+            install_floor_compile_clean_receipt_fixture(FloorCompileCleanReceipt::Compiled {
+                ok: true,
+                failure_detail: String::new(),
+            });
+            assert_eq!(
+                install_or_consume_floor_compile_clean_gate_receipt(),
+                GateReceipt::Clean,
+                "a compiled-ok receipt is Clean"
+            );
+
+            // The receipt's own typed Refused arm is ignorance, not a verdict on the tree.
+            reset_floor_compile_clean_receipt_for_test();
+            install_floor_compile_clean_receipt_fixture(FloorCompileCleanReceipt::Refused {
+                reason: "compile-clean: index roots never armed".to_string(),
+            });
+            assert!(
+                matches!(
+                    install_or_consume_floor_compile_clean_gate_receipt(),
+                    GateReceipt::NotRun { .. }
+                ),
+                "a Refused receipt is NotRun, never Failed — nothing was measured about the tree"
+            );
+            reset_floor_compile_clean_receipt_for_test();
+        });
+    }
+
+    /// Same split on the generated-artifact drift gate, whose predecessor answered a
+    /// `String` and FABRICATED the prose "gate body did not run in this process" for the
+    /// state it had lost. Unrecorded is now `NotRun`; the clean side is recorded, so it is
+    /// no longer inferred from the absence of a failure detail.
+    #[test]
+    fn generated_artifact_drift_gate_separates_unrecorded_from_clean() {
+        with_env_test_lock(|| {
+            reset_generated_artifact_drift_gate_detail_for_test();
+            assert!(
+                matches!(
+                    consume_generated_artifact_drift_gate_receipt(),
+                    GateReceipt::NotRun { .. }
+                ),
+                "no recorded observation must read as NotRun, never as clean"
+            );
+
+            record_generated_artifact_drift_gate_clean();
+            assert_eq!(
+                consume_generated_artifact_drift_gate_receipt(),
+                GateReceipt::Clean,
+                "a recorded clean observation is Clean"
+            );
+
+            record_generated_artifact_drift_gate_failure_detail(
+                "generated-artifact drift: docs/plans/x.md".to_string(),
+            );
+            assert_eq!(
+                consume_generated_artifact_drift_gate_receipt(),
+                GateReceipt::Failed {
+                    detail: "generated-artifact drift: docs/plans/x.md".to_string()
+                },
+                "a recorded failure carries its located path"
+            );
+            reset_generated_artifact_drift_gate_detail_for_test();
+        });
+    }
+
     /// §5 discriminating RED (end-to-end): real whole-tree compile with an injected broken module
-    /// must refuse through install_floor_compile_clean_receipt → consume_floor_compile_clean_gate_verdict.
+    /// must refuse through install_floor_compile_clean_receipt → install_or_consume_floor_compile_clean_gate_receipt.
     /// Ignored in CI: ~minutes cold whole-tree compile; recorded execution receipt in PR #6361 body.
     #[test]
     #[ignore = "manual ~minutes whole-tree compile; recorded execution receipt in PR #6361 body (clever-koi demand 1)"]
@@ -37387,8 +37532,11 @@ mod witness_layer_roots_compile_clean_tests {
                 install_floor_compile_clean_receipt()
                     .expect("real whole-tree compile with injected unresolved import");
                 assert!(
-                    !consume_floor_compile_clean_gate_verdict(),
-                    "gate must refuse when the one real compile hits hard errors"
+                    matches!(
+                        install_or_consume_floor_compile_clean_gate_receipt(),
+                        GateReceipt::Failed { .. }
+                    ),
+                    "gate must report Failed when the one real compile hits hard errors"
                 );
             });
         });
@@ -41208,6 +41356,12 @@ mod peel_alias_fixpoint_termination {
                 bindings: crate::v1_rt::rc_empty_map(),
                 str_bindings: crate::v1_rt::rc_empty_map(),
                 ancestry_str_bindings: crate::v1_rt::rc_empty_map(),
+                // Pre-existing on main and unrelated to this change: the field landed on the
+                // GENERATED `TypeEnv` and this hand-written `#[cfg(test)]` constructor was never
+                // updated, so the whole lib-test target failed to compile. No gate could see it
+                // — CI builds the binary, and the Rust suite left CI on 2026-07-11 — which is
+                // why it stood. Repaired here because this PR's evidence cannot execute otherwise.
+                authored_import_names: crate::v1_rt::rc_empty_map(),
                 parents: std::rc::Rc::new(im::vector![]),
                 recursive_types: std::rc::Rc::new(im::vector![]),
                 recursive_type_set: crate::v1_rt::rc_empty_map(),

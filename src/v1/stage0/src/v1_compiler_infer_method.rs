@@ -387,13 +387,8 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "consume_floor_compile_clean_gate_verdict".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "consume_floor_compile_clean_gate_failure_detail".to_string(),
-            string_type(),
+            "install_or_consume_floor_compile_clean_gate_receipt".to_string(),
+            type_variable_node("gate_receipt_result".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -402,8 +397,13 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "consume_generated_artifact_drift_gate_failure_detail".to_string(),
-            string_type(),
+            "record_generated_artifact_drift_gate_clean".to_string(),
+            unit_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "consume_generated_artifact_drift_gate_receipt".to_string(),
+            type_variable_node("gate_receipt_result".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),

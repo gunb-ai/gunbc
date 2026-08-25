@@ -1,0 +1,96 @@
+module test.claim.gate_receipt_witness
+
+import gunbc.ci_gate {
+  GateReceipt, GateOutcome,
+  GateObserved, GateNotApplicable, GateNotRun,
+  GateClean, GateFailed,
+  gate_receipt_exit, gate_receipt_failure_detail
+}
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.types { String, NonEmptyStr, Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data gate_receipt_witness_scope_note: String = "SubstrateInputsOnly, and that is the honest declaration rather than a convenience: every subject here is a hand-constructed GateReceipt, and the projections under test are pure folds over it. Nothing calls the host builtins that PRODUCE a receipt. WHAT THESE PROVE: that the three arms reach three DIFFERENT places, in both the exit projection and the detail projection. WHAT THEY DO NOT PROVE: that the host maps its own states onto the right arms -- that half is asserted by the cargo tests beside the globals in cli_run.rs (floor_compile_clean_gate_separates_not_applicable_from_clean and generated_artifact_drift_gate_separates_unrecorded_from_clean), because only there can a receipt fixture be installed into the process global the builtin reads. The two halves are complementary and neither is the other's substitute: a host that mapped every state to GateNotRun would pass every witness in this file."
+
+data gate_receipt_discrimination_note: String = "THE ASSERTIONS ARE WRITTEN AS DISCRIMINATIONS, not as arm-by-arm value checks, because an arm-by-arm check greens on a projection that collapses two arms as long as each row is read separately. The predecessor of this carrier answered Bool, where NotApplicable and Clean were BOTH true and NotRun and Failed were BOTH false; the pairs asserted below are exactly those two collapses, so each one goes red against the shape this retype replaced. That is the discriminating RED this evidence is enrolled for, and it stays enrolled after the climb rather than retiring with it (DESIGN 4b meta-obligation 4: a climb dissolves the redundant production machinery, never the evidence that the higher rung is still real)."
+
+data clean_receipt: GateReceipt = GateObserved { outcome: GateClean }
+data failed_receipt: GateReceipt = GateObserved {
+  outcome: GateFailed { detail: "dag compile-clean: unresolved import at dag/x.dag" as NonEmptyStr }
+}
+data not_applicable_receipt: GateReceipt = GateNotApplicable {
+  reason: "compile-clean scope: no shard intersection" as NonEmptyStr
+}
+data not_run_receipt: GateReceipt = GateNotRun {
+  cause: "compile-clean gate: no in-run compile receipt" as NonEmptyStr
+}
+
+fn exit_is_success(e: ProcessExit) -> Bool {
+  match e {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+fn exit_reason(e: ProcessExit) -> String {
+  match e {
+    ExitSuccess => ""
+    ExitFailure { code: _, reason: reason } => reason
+  }
+}
+
+test fn clean_and_failed_exit_differently() -> Bool {
+  exit_is_success(e: gate_receipt_exit(r: clean_receipt))
+    && !exit_is_success(e: gate_receipt_exit(r: failed_receipt))
+}
+
+// The first of the two Bool collapses: a scope disposition that selected nothing and a gate
+// that never reached its subject were the SAME false under the predecessor. They must exit
+// differently, because only one of them is a statement about the tree.
+test fn not_applicable_and_not_run_exit_differently() -> Bool {
+  exit_is_success(e: gate_receipt_exit(r: not_applicable_receipt))
+    && !exit_is_success(e: gate_receipt_exit(r: not_run_receipt))
+}
+
+// The second collapse: NotRun and Failed both stopped the line before, and both still do --
+// so an exit-status assertion alone cannot separate them. The REASON is what carries the
+// distinction, and a reader of a red must be able to tell "the gate did not run" from "the
+// gate ran and refused the tree".
+test fn not_run_stops_the_line_in_its_own_vocabulary() -> Bool {
+  let not_run_reason = exit_reason(e: gate_receipt_exit(r: not_run_receipt))
+  let failed_reason = exit_reason(e: gate_receipt_exit(r: failed_receipt))
+  !exit_is_success(e: gate_receipt_exit(r: not_run_receipt))
+    && not_run_reason != failed_reason
+    && not_run_reason != ""
+}
+
+test fn failure_detail_is_empty_only_when_the_gate_ran_clean() -> Bool {
+  gate_receipt_failure_detail(r: clean_receipt) == ""
+    && gate_receipt_failure_detail(r: failed_receipt) != ""
+    && gate_receipt_failure_detail(r: not_applicable_receipt) != ""
+    && gate_receipt_failure_detail(r: not_run_receipt) != ""
+}
+
+// The detail projection must not answer a state's text out of a DIFFERENT state's vocabulary:
+// four distinct receipts, four distinct lines. This is what makes the companion a projection
+// of the receipt rather than a second read that has to guess which state produced it.
+test fn every_arm_projects_its_own_detail() -> Bool {
+  let clean = gate_receipt_failure_detail(r: clean_receipt)
+  let failed = gate_receipt_failure_detail(r: failed_receipt)
+  let not_applicable = gate_receipt_failure_detail(r: not_applicable_receipt)
+  let not_run = gate_receipt_failure_detail(r: not_run_receipt)
+  clean != failed
+    && failed != not_applicable
+    && not_applicable != not_run
+    && not_run != failed
+}
+
+// The failing side carries the LOCATED text the gate produced, not a fixed gate-level string.
+// Before this retype the gate body invented its own constant reason on the false side while
+// the located diagnostic lived in a separate builtin, so the two could not both be true.
+test fn failed_detail_is_the_receipts_own_located_text() -> Bool {
+  gate_receipt_failure_detail(r: failed_receipt)
+    == "dag compile-clean: unresolved import at dag/x.dag"
+}

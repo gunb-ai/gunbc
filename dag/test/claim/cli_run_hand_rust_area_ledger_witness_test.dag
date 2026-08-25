@@ -1,21 +1,92 @@
 module test.claim.cli_run_hand_rust_area_ledger_witness
 
 import gunbc.cli_run_hand_rust_area_ledger {
+  CliRunAreaAnchor,
+  CliRunHandRustAreaDisposition,
+  CliRunHandRustAreaRow,
+  GenerateNow,
+  RetainedKernel,
+  UnclassifiedStopLine,
+  cli_run_area_generate_now_row_count,
+  cli_run_area_stop_line_row_count,
   cli_run_hand_rust_area_ledger_covers_sixteen_areas,
   cli_run_hand_rust_area_ledger_note,
-  cli_run_live_scale_receipt
+  cli_run_hand_rust_area_rows
 }
+import std.types { Int, List, NonEmptyStr }
 import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data ledger_witness_scope_note: String = "WHAT REPLACED THE PREVIOUS SHAPE, AND WHY IT IS NOT AN EQUIVALENT CHECK. This file used to assert that a prose row CONTAINED the substring 'scripts/rust_item_census.py'. That is the prose-self-match antipattern in its purest form -- the assertion's only content was that someone had written a path into a string -- and it was worse than empty, because the path it pinned had been DELETED from the tree by gunbc#9132 and this witness was the thing keeping the dead citation green. A check whose sole failure mode is 'the sentence was edited' cannot tell a repair from a regression, and here it actively defended the regression.\n\nWHAT IS ASSERTED NOW IS STRUCTURE OVER THE ROWS. The load-bearing one is that the LIVE ledger carries no GenerateNow row, because GenerateNow now carries the entry point that emits the area and no such entry point can be named for any of the sixteen. Its RED IS AUTHORABLE and is authored below rather than argued for: the fixture arm constructs a GenerateNow row and requires the counter to see it. Without that arm the live assertion would be a decoration -- permanently green because the counter could be broken in a way that returns zero for every input, which is exactly the shape DESIGN section 4b calls worse than absent. The two arms together are the check: one says the counter can count, the other says the tree has nothing to count."
+
+data fixture_generate_now_row: CliRunHandRustAreaRow = CliRunHandRustAreaRow {
+  area_id: "fixture",
+  area_title: "fixture row asserting the counter can return non-zero",
+  disposition: GenerateNow {
+    emitting_entry: "dag/test/fixture/not-a-real-entry.dag" as NonEmptyStr
+  },
+  hollowing_plan_disposition: "fixture",
+  anchors: [
+    CliRunAreaAnchor {
+      symbol: "fixture_symbol" as NonEmptyStr,
+      anchor_home: "src/v1/stage0/src/cli_run.rs" as NonEmptyStr
+    }
+  ]
+}
+
+data fixture_retained_row: CliRunHandRustAreaRow = CliRunHandRustAreaRow {
+  area_id: "fixture",
+  area_title: "fixture row that must NOT be counted as ready",
+  disposition: RetainedKernel,
+  hollowing_plan_disposition: "fixture",
+  anchors: []
+}
 
 test fn cli_run_area_ledger_covers_sixteen_areas() -> Bool {
   cli_run_hand_rust_area_ledger_covers_sixteen_areas()
 }
 
-test fn cli_run_live_scale_receipt_updates_stale_prose() -> Bool {
-  string_contains(s: cli_run_live_scale_receipt, pattern: "scripts/rust_item_census.py")
-    && string_contains(s: cli_run_live_scale_receipt, pattern: "cli_run_hollowing_plan")
-}
-
 test fn cli_run_area_ledger_is_instrument_not_deletion() -> Bool {
   string_contains(s: cli_run_hand_rust_area_ledger_note, pattern: "NOT a deletion plan")
+}
+
+// The positive control, and it is stated FIRST because the live assertion below is
+// uninterpretable without it: a counter that answered zero for every input would pass that
+// assertion while establishing nothing.
+test fn generate_now_counter_sees_a_generate_now_row() -> Bool {
+  cli_run_area_generate_now_row_count(rows: [fixture_generate_now_row]) == 1
+    && cli_run_area_generate_now_row_count(rows: [fixture_retained_row]) == 0
+    && cli_run_area_generate_now_row_count(
+         rows: [fixture_generate_now_row, fixture_retained_row]
+       ) == 1
+}
+
+// The load-bearing assertion. GenerateNow means the v2 replacement exists and the area can be
+// generated NOW; the variant carries the entry point that would do it, so the claim cannot be
+// written without naming the thing that discharges it. Nothing in the tree can be named today.
+// This goes RED the moment someone re-classifies a row as ready, which is the point: a return
+// to GenerateNow should require naming an emitting entry, not just editing a variant.
+test fn live_ledger_asserts_no_unearned_readiness() -> Bool {
+  cli_run_area_generate_now_row_count(rows: cli_run_hand_rust_area_rows()) == 0
+}
+
+// Stop-line rows must actually be present: the previous shape had eight rows asserting a
+// readiness with no referent, and a retype that quietly emptied the ledger of stop lines would
+// be indistinguishable from one that resolved them.
+test fn live_ledger_records_its_stop_lines() -> Bool {
+  cli_run_area_stop_line_row_count(rows: cli_run_hand_rust_area_rows()) > 0
+    && cli_run_area_stop_line_row_count(rows: [fixture_retained_row]) == 0
+}
+
+// Every anchor names where it lives. The previous shape was a bare List<String>, under which an
+// anchor in cli_run.rs, an anchor elsewhere in the seed, and an anchor naming nothing at all
+// were the same value.
+test fn every_anchor_carries_its_home() -> Bool {
+  fold(cli_run_hand_rust_area_rows(), init: true, f: (acc, r) =>
+    acc && fold(r.anchors, init: true, f: (inner, a) =>
+      inner && (a.anchor_home as String) != "" && (a.symbol as String) != ""
+    )
+  )
 }

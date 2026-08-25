@@ -1,9 +1,10 @@
 module tools.dag_compile_clean_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.ci_gate { gate_receipt_exit, gate_receipt_failure_detail }
 import tools.dag_compile_clean_transport { run_clean_tree_compile }
 
-data dag_compile_clean_failure_receipt_note: String = "The loudness half: the floor witness collapses this gate's ProcessExit to Bool via tools.ci_gates.exit_ok, so compile-clean reds reported only returned Bool(false). The gate consumes the executor's one in-run compile receipt; the failure-receipt companion projects the same receipt's located diagnostic without a second compile."
+data dag_compile_clean_failure_receipt_note: String = "The loudness half: the floor witness collapses this gate's ProcessExit to Bool via tools.ci_gates.exit_ok, so compile-clean reds reported only returned Bool(false). The gate consumes the executor's one in-run compile receipt; the failure-receipt companion projects the same receipt's located diagnostic without a second compile. BOTH HALVES NOW READ ONE RECEIPT. Until this retype the body branched on a Bool and, on the false side, INVENTED its own reason -- the fixed string 'dag compile-clean gate failed: clean-tree compile over witness layer roots' -- while the companion read the located detail from a SECOND builtin over the same process global. So the exit reason a reader saw was a constant that could not distinguish a failed compile from a gate that never ran, and the only text that could was somewhere else. Now the receipt carries its verdict and its detail together and gunbc.ci_gate projects both."
 
 fn dag_compile_clean_failure_reason(exit: ProcessExit) -> String {
   match exit {
@@ -13,13 +14,7 @@ fn dag_compile_clean_failure_reason(exit: ProcessExit) -> String {
 }
 
 func run_dag_compile_clean_gate_body() -> ProcessExit {
-  if run_clean_tree_compile() {
-    ExitSuccess
-  } else {
-    exit_failure(
-      reason: "dag compile-clean gate failed: clean-tree compile over witness layer roots"
-    )
-  }
+  gate_receipt_exit(r: run_clean_tree_compile())
 }
 
 func run_dag_compile_clean_gate() -> ProcessExit {
@@ -27,7 +22,7 @@ func run_dag_compile_clean_gate() -> ProcessExit {
 }
 
 func dag_compile_clean_failure_receipt() -> String {
-  consume_floor_compile_clean_gate_failure_detail()
+  gate_receipt_failure_detail(r: run_clean_tree_compile())
 }
 
 func main() -> ProcessExit {

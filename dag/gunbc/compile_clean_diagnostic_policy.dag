@@ -9,7 +9,7 @@ type UnlistedImportUseEnforcement
   = FloorNotYet
   | Enforced
 
-data unlisted_import_use_enforcement_note: String = "Single policy authority for whether UnlistedImportUse blocks compile-clean (issue 11 / ci-floor-child-spawn-attribution section 7). FloorNotYet = advisory (current namespace-lane staging: the resolver emits UnlistedImportUse but compile-clean does not red). Enforced = blocking (terminal promotion when namespace-only resolution deletes the import grammar — DISSOLVES WHEN UnlistedImportUse promoted to an error per namespace_import_closure_behavioral_transport.dag:15). BOTH the floor receipt path (consume_floor_compile_clean_gate_verdict via floor_compile_clean_emit_ok_via_index) and the standalone CLI transport (gunbc compile --target dag) read this row — never restate the predicate in either consumer (DESIGN section 3)."
+data unlisted_import_use_enforcement_note: String = "Single policy authority for whether UnlistedImportUse blocks compile-clean (issue 11 / ci-floor-child-spawn-attribution section 7). FloorNotYet = advisory (current namespace-lane staging: the resolver emits UnlistedImportUse but compile-clean does not red). Enforced = blocking (terminal promotion when namespace-only resolution deletes the import grammar — DISSOLVES WHEN UnlistedImportUse promoted to an error per namespace_import_closure_behavioral_transport.dag:15). BOTH the floor receipt path (install_or_consume_floor_compile_clean_gate_receipt via floor_compile_clean_emit_ok_via_index) and the standalone CLI transport (gunbc compile --target dag) read this row — never restate the predicate in either consumer (DESIGN section 3)."
 
 data compile_clean_unlisted_import_use_enforcement: UnlistedImportUseEnforcement = FloorNotYet
 
