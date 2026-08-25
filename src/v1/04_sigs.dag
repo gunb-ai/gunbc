@@ -13,7 +13,6 @@ import v1.std.core {
 import v1.compiler.infer_types { emit_map_has }
 
 import v1.compiler.infer_occurrence_binding {
-  ambiguity_labels_from_decide,
   module_path_owner_binding_decide,
   ModulePathBindingProjection,
 }
@@ -73,43 +72,164 @@ type ParentSigScan {
   first_parent: String?
 }
 
+// namespace-resolution-design.md 13 / 8 step 1, fn path. `ResolvedFuncSig?` overloaded Absent as
+// "keep looking" -- the census fallback fires on it -- so a refusal had nowhere to go, and the
+// first-hit over func_env.parents was the fn silent-pick class (fn_parent_first_hit) with NO
+// refusal arm at all. FuncSigLookup is the 3-state outcome: FuncSigResolved binds,
+// FuncSigUnresolved means no admissible callable answered (the census fallback may still run),
+// FuncSigAmbiguous carries every candidate and REFUSES -- it never falls through to a fallback.
+// Under ImportScoped (host bracket false) the first-hit behaviour remains until the downstream
+// production flip; under NamespaceOnlyY the candidates are COLLECTED and then decided.
+// Own-module local hit stays first on both arms.
+//
+// WHAT THE 2026-08-22 CUT CHANGED, because the paragraph above was true when written and
+// described a wall that could not describe the collision it was built for (gap-analysis row 30).
+// Two independent mechanisms kept FuncSigAmbiguous unreachable for a cross-authority collision,
+// and either one alone leaves the class open:
+//
+//   (a) THE CANDIDATE SET WAS NEVER ASSEMBLED. `lookup_func_sig` asked this environment first
+//       and consulted the global/builtin path ONLY on the Unresolved arm, so a declared
+//       `map_get` and the registered builtin `map_get` were never co-candidates -- the declared
+//       one won by SHORT-CIRCUIT, and the arm was reachable only among declarations. The fix is
+//       here and in `v1.compiler.infer_lookup` `callable_lookup_over_candidates`: one admissible
+//       level is collected whole, then decided.
+//   (b) WHERE AMBIGUITY WAS CONSTRUCTED, ONE PROJECTION ERASED IT. `func_sig_if_resolved` mapped
+//       FuncSigAmbiguous to the same Absent that means "no such signature", and ten call sites
+//       read the seed's inference through it. That projection is deleted; see its replacement's
+//       note in `v1.compiler.infer_lookup`.
+//
+// The lesson this file keeps: a variant that exists, is named, and is documented as refusing
+// still establishes nothing while nothing can construct it for the class it was built for. A
+// grep for `FuncSigAmbiguous` reported this wall as built for as long as that was true.
+
+// WHAT A CALLABLE NAME CAN RESOLVE TO, AS AN IDENTITY RATHER THAN A SPELLING.
+//
+// FuncSigAmbiguous carried List<String> and the strings were built at the point of refusal by
+// pasting an owner path onto the referenced name. That is enough to print and not enough to
+// decide with: it cannot represent a REGISTERED BUILTIN at all, and a builtin is one half of
+// the collision this vocabulary exists to describe (gap-analysis row 30 -- `map_get` is both
+// `v2.std.collection.map_get` returning Outcome<Optional<V>> and a builtin returning
+// Optional<V>). So the candidate is the identity, and the label is a projection of it.
+type CallableIdentity
+  = DeclaredCallable { owner_module_path: String, decl_name: String }
+  | BuiltinCallable { primitive_name: String }
+
+type CallableCandidate {
+  identity: CallableIdentity
+  sig: ResolvedFuncSig
+  is_builtin: Bool
+}
+
+// The one rendering of a candidate for human-facing diagnostics. `<builtin:map_get>` is spelled
+// with the brackets deliberately: it is not a qualified name and must not read as one, because
+// the repair for it is not "qualify it" -- there is nothing to qualify.
+fn callable_identity_label(identity: CallableIdentity) -> String {
+  match identity {
+    DeclaredCallable { owner_module_path: owner, decl_name: decl } => concat(owner, ".", decl)
+    BuiltinCallable { primitive_name: prim } => concat("<builtin:", prim, ">")
+  }
+}
+
+fn callable_candidate_labels(candidates: List<CallableCandidate>) -> List<String> {
+  candidates |> map(c => callable_identity_label(identity: c.identity))
+}
 data func_sig_lookup_outcome_note: String = "namespace-resolution-design.md 13 / 8 step 1, fn path: ResolvedFuncSig? overloaded Absent as 'keep looking' (the census fallback fires on it), so a refusal had nowhere to go — the first-hit over func_env.parents was the fn silent-pick class (fn_parent_first_hit) with NO refusal arm at all. FuncSigLookup is the 3-state outcome: FuncSigResolved binds the signature AND its exact owner module, FuncSigUnresolved means genuinely-no-sig (census fallback may still run), FuncSigAmbiguous carries the full candidate list and REFUSES — it never falls through to a fallback. The owner is part of resolution, not reconstructible from admission lookup: emission target identity consumes it directly after inference. Under ImportScoped (host bracket false) the first-hit behavior remains until the downstream production flip; under NamespaceOnlyY exactly-one match across the flat parent closure resolves, two-plus refuses through module_path_owner_binding_decide. Own-module local hit stays first on both arms."
 
 type FuncSigLookup
   = FuncSigResolved { sig: ResolvedFuncSig, owner_module_path: String }
   | FuncSigUnresolved
-  | FuncSigAmbiguous { candidates: List<String> }
+  | FuncSigAmbiguous { candidates: List<CallableCandidate> }
 
-type ChainSigScan {
-  first_sig: ResolvedFuncSig?
-  owners: List<String>
+// THE PROJECTION THAT USED TO ERASE THE AMBIGUITY ARM, SPLIT SO IT CANNOT.
+//
+// `func_sig_if_resolved` returned `ResolvedFuncSig?` and mapped BOTH FuncSigUnresolved and
+// FuncSigAmbiguous onto Absent. Ten call sites read the seed's inference through it -- nine
+// provenance/descent derivations in `v1.compiler.infer` and one argument-ordering projection in
+// `v1.compiler.emit` -- so every one of them read "two authorities answered" as "no authority
+// answered". Those are different states with OPPOSITE repairs (qualify the reference / declare
+// the function), which is DESIGN's not-applicable-versus-malformed conflation in its third
+// recorded form.
+//
+// WHAT THE SITES ACTUALLY DO WITH IT, because the split must not be mistaken for a behaviour
+// change at a seam that has no way to refuse: every one of them derives an OPTIONAL FACT off a
+// signature -- output provenance, variant provenance, a receiver's parameter name, a named-arg
+// ordering -- and contributes nothing when there is no single signature to read. Contributing
+// nothing remains correct for an ambiguous callee: there is no one signature whose facts could
+// be read, and the reference itself is refused at the decision seams (the ExprVar and ExprCall
+// arms of `v1.compiler.infer`), so no `Accepted` program reaches emit carrying one. What the
+// split changes is that the carrier can no longer SPELL the collapse: a site must name the arm
+// it is handling, and a future site that wants to treat ambiguity differently has the candidate
+// list in hand rather than an Absent that has already forgotten it.
+type NoDerivableSigReason
+  = DerivationSigUnresolved
+  | DerivationSigAmbiguous { candidates: List<CallableCandidate> }
+
+type DerivedCalleeSig
+  = DerivedFromSig { sig: ResolvedFuncSig }
+  | NoDerivableSig { reason: NoDerivableSigReason }
+
+fn func_sig_for_derivation(lookup: FuncSigLookup) -> DerivedCalleeSig {
+  match lookup {
+    FuncSigResolved { sig: sig } => DerivedFromSig { sig: sig }
+    FuncSigUnresolved => NoDerivableSig { reason: DerivationSigUnresolved }
+    FuncSigAmbiguous { candidates: cands } =>
+      NoDerivableSig { reason: DerivationSigAmbiguous { candidates: cands } }
+  }
 }
 
 fn lookup_resolved_sig_unique_across_parents(env: ResolvedFuncEnv, name: String) -> FuncSigLookup {
-  let scan = fold(env.parents, init: ChainSigScan { first_sig: none, owners: [] }, f: (acc, p) =>
+  decide_callable_candidates(candidates: parent_closure_callable_candidates(env: env, name: name))
+}
+
+
+// COLLECT, THEN DECIDE -- the whole point of this lane.
+//
+// EVERY member of the flat parent closure that declares the name becomes a candidate. The old
+// shape stopped at the FIRST hit and kept a separate owner list only to count with; the sig it
+// answered with therefore came from a position in a list rather than from a decision, and a
+// second authority that was not a `fn` at all could never appear beside it.
+fn parent_closure_callable_candidates(env: ResolvedFuncEnv, name: String) -> List<CallableCandidate> {
+  fold(env.parents, init: [], f: (acc, p) =>
     match map_get(p.local, name) {
       Present { value: sig } =>
-        ChainSigScan {
-          first_sig: if acc.first_sig != none { acc.first_sig } else { Present { value: sig } },
-          owners: concat(acc.owners, [p.name])
-        }
+        concat(acc, [CallableCandidate {
+          identity: DeclaredCallable { owner_module_path: p.name, decl_name: name },
+          sig: sig,
+          is_builtin: false
+        }])
       Absent => acc
     }
   )
-  match module_path_owner_binding_decide(owners: scan.owners) {
+}
+
+// THE DECISION, AND IT IS ORDER-INDEPENDENT BY CONSTRUCTION.
+//
+// Cardinality routes through module_path_owner_binding_decide exactly as the two existing
+// candidate sites do -- 0/1/many is one authority in this compiler, not a count comparison
+// re-spelled per call site. Position in the list is read ONLY after the count has proven the
+// population is a singleton, which is extraction rather than selection (the rule
+// gunbc.roadmap_publish states for the same move).
+//
+// A LONE BUILTIN ANSWERS UNRESOLVED, DELIBERATELY. The builtin has no declared parameter list
+// in this compiler -- `builtin_function_registry` maps a name to a RETURN TYPE -- so a
+// FuncSigResolved built over it would carry `params: []` and lie about the call's shape to
+// every consumer of a sig. Unresolved is what the ExprCall arm already needs in order to route
+// the call to the known-builtin bridge, which is the path that types builtins correctly. So the
+// builtin is a CANDIDATE in the decision and never an answer: it can make a population
+// ambiguous, and on its own it hands the call back to the bridge exactly as before.
+fn decide_callable_candidates(candidates: List<CallableCandidate>) -> FuncSigLookup {
+  match module_path_owner_binding_decide(
+    owners: candidates |> map(c => callable_identity_label(identity: c.identity))
+  ) {
     ModulePathBindingMiss => FuncSigUnresolved
     ModulePathBindingHit { owner: owner } =>
-      match scan.first_sig {
-        Present { value: sig } => FuncSigResolved { sig: sig, owner_module_path: owner }
+      match candidates |> first {
+        Present { value: only } =>
+          if only.is_builtin { FuncSigUnresolved } else { FuncSigResolved { sig: only.sig, owner_module_path: owner } }
         Absent => FuncSigUnresolved
       }
     ModulePathBindingAmbiguous { owners: _ } =>
-      FuncSigAmbiguous {
-        candidates: ambiguity_labels_from_decide(
-          owners: scan.owners,
-          name: name,
-        ),
-      }
+      FuncSigAmbiguous { candidates: candidates }
   }
 }
 
