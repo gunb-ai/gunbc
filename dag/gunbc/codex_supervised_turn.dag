@@ -445,14 +445,20 @@ type SupervisedThreadIdReading
 // Writing this vocabulary surfaced it: supervised_rpc_from_id_response takes `id: Int` and NEVER
 // INSPECTS THE id MEMBER OF THE DOCUMENT -- the parameter is used only to build message text. So
 // any well-formed response carrying result.<entity>.id is read as the thread-start response
-// whatever id it is answering, and SupervisedRpcAbsent is unreachable from that function.
+// whatever id it is answering, and SupervisedRpcAbsent is UNPRODUCIBLE TODAY from that function.
+//
+// UNPRODUCIBLE-TODAY, NOT UNREACHABLE, and the two read alike while only one is a permanent
+// property. Nothing about this arm is structurally impossible: the moment a reader compares the
+// document's id against the one it asked for, a mis-addressed line has an answer and this arm is
+// the answer. A reviewer who takes it for unreachable concludes the arm should be deleted, which
+// would re-collapse the distinction the next repair depends on.
 //
 // The arm is kept rather than folded into a neighbour, because mapping "this line was addressed
 // elsewhere" onto ThreadIdLineUnreadable would be the state-space conflation this whole change is
 // removing -- it would put a lie in the decoder to avoid an unreachable arm. What is NOT done is
 // write a witness for it: its RED is unauthorable today, and DESIGN section 4b rules such a probe
-// worse than absent because it is cited as coverage. Exhaustiveness requires the arm; evidence does
-// not exist for it, and the difference is stated rather than papered over.
+// worse than absent because it is cited as coverage. Exhaustiveness requires the arm; evidence
+// cannot yet be authored for it, and the difference is stated rather than papered over.
 //
 // The mis-addressed-response class is NOT repaired here -- it is an id-matching defect, not a
 // parse_json fail-open, and repairing it silently inside a decoder-honesty pass would be the
