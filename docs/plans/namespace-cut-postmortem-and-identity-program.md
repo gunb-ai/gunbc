@@ -1798,7 +1798,7 @@ RUNNING the wall over the corpus and none by reasoning about it. Two lanes, two
 subjects, one conclusion: **the corpus is the instrument, and a witness is a
 hypothesis about it.**
 
-### 11.2b The dormant repair — three instances in one day
+### 11.2b The dormant repair — and the sharper form where the only route is a witness
 
 A pattern surfaced three times on 2026-08-25, by three lanes, on three
 unrelated subjects. It is recorded as its own class because each lane found it
@@ -1915,6 +1915,29 @@ repair looks like missing work and is usually a missing edge; a dormant repair
 whose parameter has no producer looks like a missing edge and is a missing
 model fact. The three cost estimates differ by an order of magnitude and the
 diffs are indistinguishable from the outside.
+
+**A fifth member arrived on 2026-08-25 (`cool-swift-307`) and it does not fit
+the partition, which is why it is filed rather than appended.** The four above
+differ by which side of the seam is missing, but they share a premise: the
+capability is reached by nothing. This one **is** reached — only by the artifact
+that reports it works. `name_resolution_policy_is_namespace_only` is mentioned
+**exactly once** anywhere in `cli_run.rs`, inside the `#[cfg(test)]` module
+`v1_compiler.cli_run` `sigs_env_flat_parents`, where
+`flat_parents_preserve_deep_first_last_import_first_shadowing` installs a
+`PolicyGuard` and calls `name_resolution_policy_set_namespace_only(false)`
+around its assertions. The production closure path in that file never consults
+the policy at all.
+
+Two things make it worse than the four, not merely different. **The direction of
+the call:** the sole exercise drives the policy to `false` — the LEGACY arm, the
+one being retired — so the only executing use of the symbol in that file
+exercises the arm the cut deletes. And **the reading it produces:** a lane greps
+the symbol, finds a hit in `cli_run.rs`, and concludes the closure path is
+policy-aware. It is not. That is §6's coverage-by-illusion reached from a new
+direction — not an inert lens nobody runs, but a live test whose only effect is
+to make an unguarded path grep as guarded. A repair reached by nothing accrues
+no evidence of its own absence; a repair reached only by its own witness accrues
+false evidence of its own presence.
 
 This is §5's specification-without-execution with the polarity reversed. There,
 a thing is claimed done and never runs. Here, a thing is genuinely done,
