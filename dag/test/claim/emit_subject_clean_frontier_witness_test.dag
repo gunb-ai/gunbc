@@ -55,9 +55,7 @@ fn fixture_fold_of(
   readings: List<EmitSubjectReading>
 ) -> EmitSubjectCleanRatchet {
   fold_emit_subject_clean_ratchet_over_readings(
-    policy: fixture_policy(),
-    denominators: DeclarationIndexOnly,
-    roster: roster,
+    universe: IndexOnlyUniverse { policy: fixture_policy(), entries: roster },
     admissions: admissions,
     readings: readings
   )
@@ -94,6 +92,21 @@ fn fixture_failing_rows(
     EmitRatchetHeld { subject_count: _ } => []
     EmitRatchetRefused { failing_rows: rows } => rows
   }
+}
+
+fn fixture_dual_fold(
+  inventory: List<String>,
+  readings: List<EmitSubjectReading>
+) -> EmitSubjectCleanRatchet {
+  fold_emit_subject_clean_ratchet_over_readings(
+    universe: DualUniverse {
+      policy: fixture_policy(),
+      entries: fixture_roster,
+      inventory: inventory
+    },
+    admissions: [],
+    readings: readings
+  )
 }
 
 fn fixture_both_clean() -> List<EmitSubjectReading> {
@@ -284,10 +297,10 @@ test fn the_report_carries_the_discovery_policy_and_the_roster_digest() -> Bool 
 // subjects — and a lost subject is exactly how a count-shaped contract reports progress it did not
 // make.
 test fn a_roster_that_lost_a_subject_carries_a_different_digest() -> Bool {
-  match roster_identity(policy: fixture_policy(), denominators: DeclarationIndexOnly, roster: fixture_roster) {
+  match universe_roster_identity(u: IndexOnlyUniverse { policy: fixture_policy(), entries: fixture_roster }) {
     RosterEmpty { policy: _, denominators: _ } => false
     RosterIdentified { policy: _, denominators: _, subject_count: _, digest: whole } =>
-      match roster_identity(policy: fixture_policy(), denominators: DeclarationIndexOnly, roster: [fixture_alpha]) {
+      match universe_roster_identity(u: IndexOnlyUniverse { policy: fixture_policy(), entries: [fixture_alpha] }) {
         RosterEmpty { policy: _, denominators: _ } => false
         RosterIdentified { policy: _, denominators: _, subject_count: _, digest: partial } =>
           !(whole.digest as String == partial.digest as String)
@@ -351,29 +364,63 @@ test fn clean_subject_gaining_a_blocker_refuses_which_is_the_wall_that_holds() -
   !fixture_standing_holds(roster: fixture_roster, admissions: [], readings: regressed)
 }
 
-// HOLE 2. A subject discovered only from the parsed declaration index VANISHES when the index
-// cannot CLASSIFY its file — a fragment, a header preceded by non-comment text, an empty module
-// name — so the fold is never asked about it and the run reports one fewer subject rather than one
-// blocked one. MEASURED 2026-08-25: a broken file whose first line is `module ` refuses LOUDLY
-// (`module index refused`, exit 1); the same breakage behind an unrecognized header exits 0 with
-// zero refusal lines. This claim is about that silent arm only.
+// HOLE 2, NOW CLOSED — AND THIS IS THE SAME CLAIM FLIPPED, NOT A NEW ONE. It was pinned as
+// `a_file_the_index_cannot_classify_vanishes_from_the_universe_instead_of_blocking`, green while
+// the hole was open. The dual denominator turns it red, so per §4b(4) it is converted to the
+// regression control that keeps the closure real rather than deleted with the machinery it
+// obsoleted: the climb deletes the production handling, never the evidence.
 //
-// Here the roster has lost `beta` — and the standing over the shrunken universe HOLDS, with no row
-// naming what disappeared. A regression reading as improvement.
-//
-// The control is the line beside it: the same readings over the WHOLE roster also hold, so the two
-// runs are indistinguishable by their verdicts, and only the roster identity separates them. That
-// is the whole argument for a second denominator — the digest can say two runs differ, it cannot
-// say a file stopped being classifiable.
-//
-// DISSOLVES WHEN: a file inventory supplies ModuleSurface subjects, so an unclassifiable file
-// becomes a BLOCKED subject rather than an absent one. That landing is the precondition for
-// enrolling this carrier anywhere.
-test fn a_file_the_index_cannot_classify_vanishes_from_the_universe_instead_of_blocking() -> Bool {
-  let readings = fixture_both_clean()
-  fixture_standing_holds(roster: [fixture_alpha], admissions: [], readings: readings)
-    && count(fixture_verdict_rows(roster: [fixture_alpha], admissions: [], readings: readings)) == 1
-    && fixture_standing_holds(roster: fixture_roster, admissions: [], readings: readings)
+// A file on disk that the index could not classify is a SUBJECT and it is BLOCKED. The control
+// beside it is the index-only universe, which still loses the file entirely — so the pair shows the
+// second denominator doing the work, and not some other difference between the two runs.
+test fn a_file_the_index_cannot_classify_blocks_instead_of_vanishing() -> Bool {
+  let hidden = "dag/fixture/unclassifiable.dag"
+  let dual = fixture_dual_fold(
+    inventory: [fixture_alpha, fixture_beta, hidden],
+    readings: fixture_both_clean()
+  )
+  count(dual.verdicts) == 3
+    && count(
+      filter(ratchet_failing_rows(r: dual), row => string_contains(s: row, pattern: hidden))
+    ) == 1
+    && count(fixture_fold_of(roster: fixture_roster, admissions: [], readings: fixture_both_clean()).verdicts) == 2
+}
+
+// AND IT BLOCKS RATHER THAN READING AS NOT-EVALUATED, which is the distinction the closure turns
+// on. "The instrument did not reach it" and "nothing can reach it at all" are different facts:
+// nothing can name an unclassified file as an entry, so there is no compile to run, and calling
+// that an unreached measurement would invite someone to go and take one.
+test fn an_unclassified_file_is_blocked_at_classification_not_merely_unmeasured() -> Bool {
+  let hidden = "dag/fixture/unclassifiable.dag"
+  map(
+    universe_classification_readings(
+      u: DualUniverse {
+        policy: fixture_policy(),
+        entries: fixture_roster,
+        inventory: [fixture_alpha, hidden]
+      }
+    ),
+    reading => reading.outcome
+  ) == [EmitSubjectBlocked { cause: UnclassifiedByModuleIndex }]
+}
+
+// A MEASUREMENT CANNOT OVERWRITE A CLASSIFICATION. An unclassified file has no compile to run, so a
+// reading claiming to have measured one is incoherent — and the fold enforces that by ordering
+// rather than by a check, since lookup takes the first match.
+test fn a_measurement_cannot_overwrite_an_unclassified_files_classification() -> Bool {
+  let hidden = "dag/fixture/unclassifiable.dag"
+  let dual = fold_emit_subject_clean_ratchet_over_readings(
+    universe: DualUniverse {
+      policy: fixture_policy(),
+      entries: fixture_roster,
+      inventory: [fixture_alpha, fixture_beta, hidden]
+    },
+    admissions: [],
+    readings: concat(fixture_both_clean(), [fixture_reading(entry: hidden, outcome: EmitSubjectClean)])
+  )
+  count(
+    filter(ratchet_failing_rows(r: dual), row => string_contains(s: row, pattern: hidden))
+  ) == 1
 }
 
 // ACCEPTANCE MUTATION 2, AND IT HOLDS TODAY. An upstream refusal that masks a subject's population
@@ -419,4 +466,8 @@ test fn the_enrolment_wall_reads_the_denominators_the_carrier_was_folded_over() 
     GatingPermitted => false
     GatingRefusedDenominator { missing: _ } => true
   }
+    && match emit_ratchet_gating_admission(r: fixture_dual_fold(inventory: fixture_roster, readings: fixture_both_clean())) {
+      GatingPermitted => true
+      GatingRefusedDenominator { missing: _ } => false
+    }
 }
