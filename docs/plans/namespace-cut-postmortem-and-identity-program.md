@@ -1974,7 +1974,23 @@ same file at the same commit refuses all three.
 **That reconciles both readings, and neither was wrong.** The chain-prefix rule
 is real — and it governs the **multi-candidate** case only. A single candidate
 short-circuits ahead of it and resolves from anywhere, no prefix relationship
-required. Each of the three names is presumably corpus-unique, so each is a
+required.
+
+**"Loaded" is relative to the loader the caller selected, and that qualification
+is load-bearing rather than pedantic** (`warm-hawk-909`, 2026-08-25). The
+fixpoint loader admits providers by BARE reference — a bare reference is a
+closure edge, with a receipt in its own comment (ref-only 3 unresolved-type
+diagnostics, plus-bare 0) — while the raw-pair loader stays the dotted-only base
+for callers without a pool index. So there are **two membership relations,
+selected by the caller**, and a law stated as "the loaded census" without naming
+which loader loaded it is one hop from the over-generalization this document has
+corrected twice tonight. It is also the standing explanation for why the
+two-module fixture refused under both flag forms and why the witness's
+absent-from-closure arm refuses at all. **The relation is unmeasured**: the
+discriminator is one run — the same fixture through a caller with a pool index
+and one without, entry and provider held fixed. §11.2j's arm 1 measured the
+`gunbc compile --entry` path at the default `--dependency-pool-index strict`
+only, so it establishes one cell of that table and not the comparison. Each of the three names is presumably corpus-unique, so each is a
 one-candidate case. And the census is built over `graph.modules`, which line 3
 shows includes the 1062 modules that are **indexed but never compiled**; under
 `--entry` the census covers the closure only, so the same names are absent and
