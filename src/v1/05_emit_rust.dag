@@ -7927,6 +7927,10 @@ fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> Bool {
 // filter(f => f.name != f.bridge_name) over rt_function_registry, so it holds
 // ONLY the rows that rename; a miss means this bridge's v1_rt symbol is spelled
 // exactly like its .dag name, which is true of most of the registry.
+// The totality of the Absent arm DEPENDS on that derivation: if
+// rt_bridge_function_names ever becomes hand-authored rather than derived from
+// rt_function_registry, a miss stops meaning "spelled the same" and this arm
+// becomes a fabrication, so that change invalidates this argument.
 // An unknown name cannot reach either use of the result, which a reader of this
 // function alone cannot see: emit_typed_call consumes runtime_name only inside
 // `if is_rt`, and is_rt requires map_contains_key(rt_functions(), func); and
