@@ -135,6 +135,14 @@ data known_red_class_note: String = "WHAT A KNOWN-RED ADMISSION IS: a witness re
 
 data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
   known_red_probe(
+    entry: "src/v2/test/claim/identity_captured_navigation/long/roster_gate_test.dag",
+    f: "green_control_sanctioned_reader_body_not_flagged",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "Observed assertion-false on parked/twin-source-standing-blocked at 62d6de284c1 after the roster gate's missing filesystem/parse/tokenize imports were restored: the sanctioned reader source reaches SourceFindingsEstablished, then identity_captured_navigation_findings emits a Suspect for the unchanged canonical safe shape. Owner: identity_captured_navigation analyzer repair lane. The separate green_control_sanctioned_reader_analysis_is_established control keeps a future ingest refusal from impersonating this analyzer red.",
+    dissolution: unbound_dissolution(description: "green_control_sanctioned_reader_body_not_flagged executes true while green_control_sanctioned_reader_analysis_is_established remains true — this row deletes in the same change, promoting the unchanged canonical safe-shape witness to an ordinary regression control")
+  ),
+  known_red_probe(
     entry: "dag/test/claim/method_arg_declared_contract_witness_test.dag",
     f: "w_method_arg_infers_against_declared_contract_not_element_type_test",
     kind: CorpusWitnessKind,

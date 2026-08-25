@@ -59,6 +59,13 @@ test fn green_control_sanctioned_reader_body_has_no_findings_at_all() -> Bool {
   }
 }
 
+test fn green_control_sanctioned_reader_analysis_is_established() -> Bool {
+  match v2.lens.identity_captured_navigation.roster_gate.source_findings(source_text: sanctioned_reader_probe_snippet) {
+    SourceFindingsNotEstablished { cause: _ } => false
+    SourceFindingsEstablished { findings: _ } => true
+  }
+}
+
 data unrelated_caret_literal_snippet: String = "module unrelated_caret_literal_probe\n\nfn other_named_lookup(node: Node) -> Optional<Node> {\n  match find_named_child(root: node, name: ^grammar_production_captured_node_projection) {\n    Accepted { value: v, diagnostics: _ } => Present { value: v }\n    Rejected { diagnostics: _ } => Absent\n  }\n}\n"
 
 // Pins the caret-literal text-recovery fix (node_source_symbol) against a false positive: a find_named_child(name: ^grammar_production_captured_node_projection) call - a DIFFERENT caret literal, same StampClass token shape as the identity-edge name - must not be misclassified as the identity-escape shape this lens targets.
@@ -66,6 +73,16 @@ test fn unrelated_caret_literal_call_not_flagged() -> Bool {
   v2.lens.common.source_analysis_standing.finding_standing_established_clean(
     standing: v2.lens.identity_captured_navigation.roster_gate.source_finding_standing(source_text: unrelated_caret_literal_snippet)
   )
+}
+
+data unreadable_source_snippet: String = "@"
+
+test fn unreadable_source_finding_standing_not_established() -> Bool {
+  match v2.lens.identity_captured_navigation.roster_gate.source_finding_standing(source_text: unreadable_source_snippet) {
+    FindingNotEstablished { cause: _ } => true
+    NoSuspect => false
+    SuspectObserved { suspects: _ } => false
+  }
 }
 
 data corpus_sweep_covers_ratchet_note: String = "roster_dag_language_model_zero_suspects_within_ratchet (and its siblings above) already exercise v2.lens.identity_captured_navigation.roster_gate.file_gate end-to-end on src/v2/extdeps/languages/dag.dag and the other corpus-sweep targets - a separate file_suspect_count/file_refusal_count pin on the same file would be a redundant second read of the identical fact (DESIGN.md S2), not an added control."
