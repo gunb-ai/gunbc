@@ -8,7 +8,6 @@ import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_s
 
 type GeneratedArtifact
   = WitnessFloorYamlArtifact
-  | CorpusTypeJudgmentYamlArtifact
   | FleetConvergeYamlArtifact
   | FleetDesiredAdmissionYamlArtifact
   | GitignoreArtifact
@@ -30,7 +29,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [WitnessFloorYamlArtifact, CorpusTypeJudgmentYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact],
+      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_install_server_specs, s => ProxyDhcpDnsmasqArtifact { spec: s })
@@ -51,7 +50,6 @@ type CommitPolicy
 fn artifact_path(a: GeneratedArtifact) -> String {
   match a {
     WitnessFloorYamlArtifact => ".github/workflows/witnesses.yml"
-    CorpusTypeJudgmentYamlArtifact => ".github/workflows/corpus-type-judgment.yml"
     FleetConvergeYamlArtifact => ".github/workflows/fleet-converge.yml"
     FleetDesiredAdmissionYamlArtifact => ".github/workflows/fleet-desired.yml"
     GitignoreArtifact => ".gitignore"
@@ -80,7 +78,6 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     GithooksPreCommitArtifact => CommitRequired { consumer: GitProtocol }
     GeneratedArtifactMergeDriverArtifact => CommitRequired { consumer: GitProtocol }
     WitnessFloorYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
-    CorpusTypeJudgmentYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     FleetConvergeYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     FleetDesiredAdmissionYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     RoadmapArtifact => CommitRequired { consumer: ProjectDocumentation }
@@ -116,7 +113,6 @@ data artifact_eq_disposition_reference_note: String = "Disposition authority (re
 fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
   match a {
     WitnessFloorYamlArtifact => match b { WitnessFloorYamlArtifact => true  _ => false }
-    CorpusTypeJudgmentYamlArtifact => match b { CorpusTypeJudgmentYamlArtifact => true  _ => false }
     FleetConvergeYamlArtifact => match b { FleetConvergeYamlArtifact => true  _ => false }
     FleetDesiredAdmissionYamlArtifact => match b { FleetDesiredAdmissionYamlArtifact => true  _ => false }
     GitignoreArtifact => match b { GitignoreArtifact => true  _ => false }
