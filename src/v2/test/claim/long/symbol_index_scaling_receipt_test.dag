@@ -1,6 +1,12 @@
 module v2.test.long.symbol_index_scaling_receipt
 
-import v2.lens.complexity_accumulator_copy.roster_gate { file_gate, file_suspect_count }
+import v2.lens.complexity_accumulator_copy.roster_gate {
+  file_gate,
+  file_standing,
+  NoSuspect,
+  SuspectObserved,
+  FindingNotEstablished
+}
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -13,14 +19,22 @@ data symbol_index_fill_scaffold_note: String = "SCAFFOLD MARKERS (symbol_index_f
 
 data loyal_heron_empirical_receipt_note: String = "EMPIRICAL (v1 import-chain proxy, 2026-07-13 release): floor_scaling_curve_import_chain_sub_quadratic_receipt — ratio_100/50=2.79 ratio_200/100=2.82 ratio_400/200=3.09 ratio_800/400=3.68 (budget <4.0). Proxy for type-env ancestry on synthetic chains; v2 SymbolIndex fill not yet on the v1 floor path."
 
-data complexity_lens_receipt_note: String = "COMPLEXITY LENS (2026-07-13): Poly2Suspect count is the discriminating gate (copied-accumulator / quadratic-fold). file_suspect_count==0 on symbol_index_fill.dag and 03_name_resolve.dag. Honest Unclassifiable refusals may remain (combiner_unregistered_carrier_reaches on fold_list/cons threading) — counted via file_refusal_count ratchets below, not Poly2."
+data complexity_lens_receipt_note: String = "COMPLEXITY LENS (2026-07-13): Poly2Suspect standing is the discriminating gate (copied-accumulator / quadratic-fold). file_standing reports NoSuspect on symbol_index_fill.dag and 03_name_resolve.dag. Honest Unclassifiable refusals may remain (combiner_unregistered_carrier_reaches on fold_list/cons threading) — carried independently by the analysis standing rather than collapsed into the finding axis."
 
 test fn symbol_index_fill_zero_poly2_suspects_holds() -> Bool {
-  file_suspect_count(path: "src/v2/compiler/symbol_index_fill.dag") == 0
+  match file_standing(path: "src/v2/compiler/symbol_index_fill.dag", refusal_ceiling: 6).finding {
+    NoSuspect => true
+    SuspectObserved { suspects: _ } => false
+    FindingNotEstablished { cause: _ } => false
+  }
 }
 
 test fn name_resolve_fill_path_zero_poly2_suspects_holds() -> Bool {
-  file_suspect_count(path: "src/v2/compiler/03_name_resolve.dag") == 0
+  match file_standing(path: "src/v2/compiler/03_name_resolve.dag", refusal_ceiling: 8).finding {
+    NoSuspect => true
+    SuspectObserved { suspects: _ } => false
+    FindingNotEstablished { cause: _ } => false
+  }
 }
 
 test fn symbol_index_fill_refusal_count_within_ratchet_holds() -> Bool {
