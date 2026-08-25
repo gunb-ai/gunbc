@@ -3184,6 +3184,198 @@ enforces end to end.
    caused by this change, and neither is repairable in `extdeps` — coercing the 19 sites would be
    editing correct source to satisfy a compiler that cannot read it, which is worse than papering over
    a modelling error. Restoration trigger for each: the owning seam closing.
+
+32. **An identifier inside a `transport shell { argv: [...] }` position is NEVER NAME-RESOLVED
+   at compile time — a symbol declared nowhere in the corpus produces ZERO diagnostics.**
+   Measured 2026-08-22 by `still-seal-394` while dissolving the `env`/`chmod` binary-path
+   nicknames; recorded here in its CORRECTED, WEAKER form at the measuring session's own request.
+
+   DISCRIMINATING CONTROL, same file, same run — this is what makes it a finding rather than an
+   observation. An undefined variable in an ordinary `fn` body reds `undefined variable`. The
+   identical undefined name placed in a transport argv produces no diagnostic at all. So the
+   silence is specific to the argv position, not a property of the run.
+
+   WHAT THE POSITION ACTUALLY DOES, read off the emitted AST rather than inferred from the
+   diagnostic count (three arms, one 0-diagnostic run):
+
+   - `argv: [probe_bin, "0700", "{path}"]` → `ExprVar`, `binding_kind` null, no inferred node
+   - `argv: ["chmod", probe_tail(path: path)]` → `ExprCall`, unresolved
+   - `argv: [nowhere_declared_symbol, "{path}"]` → `ExprVar`, unresolved, ZERO diagnostics
+
+   The position PARSES expressions — consistent with `clever-crab-309`'s independent finding that
+   a service argv can splice a function returning `List<String>` — and simply never resolves them.
+
+   THE CLAIM, STATED AT THE STRENGTH THE EVIDENCE CARRIES. The honest form is that citing a symbol
+   in a transport argv is **UNGUARDED**, not that it is impossible. It may resolve correctly at
+   realization. The first version of this finding said the transport layer *cannot* be dissolved
+   by citation; that was stronger than what was measured, and the measuring session retracted it
+   unprompted, in the direction that weakened its own result.
+
+   WHY THE CORRECTED VERSION IS WORSE, NOT BETTER. "Impossible" would at least fail loudly. What
+   was actually measured is that a citation written here emits as a LITERAL TOKEN with nothing
+   refusing — so the failure mode is a SILENTLY WRONG ARGV, not a refusal. That is below floor
+   (§5), not a rung on the ladder: the deficit's frequency is zero by construction because no
+   instrument counts it.
+
+   RUNG: outside the ladder — silent wrongness, forbidden outright rather than ranked. NOT
+   `mitigatable`: nothing contains the harm, because nothing observes it.
+
+   CEILING: *structurally guaranteed* — name resolution over an argv expression is the same
+   decidable `Node`-tree read the namespace authority already performs everywhere else. This is a
+   missing wiring, not an undecidable property.
+
+   THE POSITION DOES NOT MERELY SKIP A CHECK — IT PRODUCES A NODE THE PIPELINE TREATS AS
+   RESOLVED, and this is the half that makes the cheap fix wrong. The undeclared identifier is
+   admitted as `ExprVar` with `binding_kind` null and NO INFERRED NODE. So there are two failures
+   stacked: the loud one (nothing refuses an unknown name) and the silent one (what flows onward
+   is indistinguishable, to every downstream consumer, from a name that resolved). A narrow
+   "refuse unknown identifiers in transport argv" patch closes the loud half and leaves the silent
+   half exactly as it is — a null-binding node still travelling the pipeline under the name of a
+   resolved one. Running the existing expression-resolution and type-inference authority over the
+   argv expression tree closes both at once, because a node that authority produces carries its
+   binding by construction. Recorded because the cheap patch is the tempting one and it would
+   retire this row's visible symptom without retiring the row.
+
+   THE FIX MUST NOT COLLAPSE TWO DIFFERENT FACTS. The existing operation-argv note requires a
+   literal in the executable position because letting an operation INPUT choose the executable is
+   unsafe. That argument does not reach a resolved module declaration:
+
+   - program selected by a resolved declaration → allowed, a compile-time cited authority
+   - program selected by arbitrary runtime operation input → still refused
+
+   So the sites currently unreachable are not sites where citation is unsafe; they are sites where
+   a missing path refuses the safe case along with the unsafe one. A cut that preserves the
+   refusal uniformly would entrench the conflation rather than fix it, and would leave
+   `extdeps.tools.env` `env_path_resolved_program` and `extdeps.tools.chmod` `chmod_binary_path` —
+   declarations authored precisely to be cited — permanently uncitable at the position that needs
+   them. The cut must also NOT introduce a transport-specific symbol resolver: that would be an
+   N-th resolver beside the namespace authority (§2/§3), and it is the reuse of the existing
+   authority that makes this class's ceiling *structurally guaranteed* rather than merely fixable.
+
+   NEXT-RUNG TRIGGER: resolve identifiers in transport argv positions through the ordinary
+   name-resolution path, and refuse an unresolved one with a typed, located diagnostic. Until
+   then every `transport shell` argv is an unchecked string channel wearing expression syntax.
+
+   WHERE THAT RESOLUTION MUST HAPPEN, and this clause exists because the trigger above is
+   ambiguous between two designs whose safety differs (ratified 2026-08-23). The transport cut must
+   CONSUME AN ALREADY-RESOLVED EXACT CALLABLE IDENTITY carried on the node from source resolution
+   — `transport argv expression → ordinary source resolution → exact lookup result → type
+   judgment → resolved expression retained on the node → transport lowering consumes it`. It must
+   NOT reconstruct callable meaning from the emit environment. The reason is measured rather than
+   stylistic: `source_visible_names` is resolve-time only and emit reads an empty map, so the
+   callable wall (gunbc#8952) declares its own rung as refusing on the source→resolve path and
+   SILENT on emit, treating the empty map as `VisibilityUnobservable` — a compatibility fallback,
+   not an authored-binding verdict. A transport cut that re-ran lookup at emit grain would
+   therefore inherit that silent rung at the exact position this row exists to make safe, and
+   would do so while appearing to reuse a repaired authority. Reusing an authority means consuming
+   its RESULT, not re-executing it at a seam where its inputs have vanished.
+
+   BLAST RADIUS, and it is why this blocks a live program rather than sitting in a queue: it puts
+   roughly 15 of 46 bare-`env` sites out of scope for citation-based dissolution, covering
+   `extdeps/{shell,python,gunbc,rust/cargo_build,tools/npm}` and `cli_services`. Those sites are
+   out of scope for want of per-site live execution, NOT out of reach in principle — the
+   corrected claim is what makes that distinction available.
+
+   NOT CLAIMED: that any argv in the corpus is currently wrong. No instrument can answer that
+   today, which is the row's point. It records a blindness, not a defect count.
+
+   THE TERMINAL RULE, RATIFIED 2026-08-22, AND ITS HARD PREREQUISITE. The trigger above says
+   "resolve through the ordinary path"; that is necessary and, on its own, not safe, because the
+   ordinary path currently CHOOSES among competing authorities instead of refusing. The corrected
+   terminal sentence is: **a transport argv expression is lowered only from an exact, uniquely
+   resolved and typechecked semantic expression — zero candidates refuse, multiple candidates
+   refuse naming every authority, and no authored token is ever emitted as a fallback.** The
+   materializer's forbidden arm is stated explicitly because it is the arm that produced this row:
+   *resolution failed or was ambiguous → emit the authored token as text* is the silent-wrong-
+   output behaviour measured above, and reaching it through a REPAIRED resolver would be worse
+   than today's blindness, not better, because the fallback would then wear a resolution step.
+
+   So this row does not land alone. It stacks behind the callable-ambiguity repair, carried by
+   gunbc#8943 and cited BY PR because row numbers have already shifted twice under both rows while
+   they sat in review — this row was drafted as 29, main independently landed a different 29 and
+   30, and it is now 32. A row number is a POSITION in a file many lanes append to concurrently,
+   so citing one is the §3 positional-citation defect with an unusually short half-life: the
+   reference rots without anyone touching either row. It is: one program, two reviewable cuts, inseparable in
+   merge order — the resolver wall merges and turns main green FIRST, then this cut retargets onto
+   main, receives its first real CI run, and merges. Kept as two diffs so that a red is
+   attributable to exactly one population: ordinary-call ambiguities newly EXPOSED by the wall, or
+   transport expressions newly RESOLVED by this cut. One monolithic diff would make every red
+   ambiguous between them, which is a poor shape for a change whose entire subject is ambiguity.
+
+33. **Two definitions of ONE NAME in ONE MODULE are accepted with zero diagnostics, and the
+   SECOND silently wins.** BELOW FLOOR, not a rung that slipped: a name binding to two
+   definitions with no refusal is silent wrongness, which DESIGN §4b places outside the ladder
+   rather than on its bottom rung.
+
+   **Mechanism, confirmed by execution on a controlled fixture, in both directions.** A single
+   `.dag` module carrying `fn which_one() -> Bool { false }` followed by
+   `fn which_one() -> Bool { true }` compiles clean and answers `true`; with the two bodies
+   swapped, the same module compiles clean and answers `false`. Zero diagnostics at either
+   ordering — no error, no warning, no advisory. The direction test is what makes this a
+   binding fact rather than a coincidence: the answer tracks source ORDER, so the last
+   definition is the one that binds.
+
+   **A confirmed production victim, not a hypothetical.** gunbc#9081 commit `29088e133` landed
+   `dag/gunbc/fabric_cell_converge.dag` carrying two definitions each of `fabric_cell_ids` and
+   `fabric_cell_population_unobserved`. The compile was clean, the witness rows were green, and
+   the copy that executed was the second — a §3 single-authority violation running in
+   production, found by a reviewer reading the file and by nothing else. The reviewer's own
+   inference was that it "will fail to parse or typecheck"; that inference was wrong, which is
+   itself part of the finding: the defect defeats the expectation a reader brings to it.
+
+   **A live instance on main.** `dag/test/claim/scm_commit_closure_json_v2_witness_test.dag`
+   defines `scm_image_refused` at two positions with byte-identical bodies and eight call
+   sites — benign today only because the two bodies agree, which is luck rather than structure.
+
+   **Census caveat, stated so the population is not overread.** The live-instance search was a
+   line-anchored regex over module text at main. It is a LOWER BOUND on the population, not a
+   closed census: it cannot see definitions that differ in spacing or that a formatter joined,
+   and it says nothing about `type`/`data` declarations.
+
+   **The boundary measured, and what was not.** Measured: source → `.dag` acceptance, through
+   our own binary, single module, `fn` declarations. NOT measured: the Rust emission path,
+   `type`/`data` declarations, cross-module collisions, and whether a `test fn` collides with a
+   plain `fn` of the same name. Each is its own row when someone measures it; none is claimed
+   here, per DESIGN §4b's rule that a class's rung is the minimum across its in-scope paths and
+   that citing an unmeasured path is inflation.
+
+   **The fix is a WALL, not a ratchet.** Membership is decidable at ingestion, where the
+   module's own declarations are already being folded: two declarations sharing one name in one
+   module is a property of one module's source, needing no corpus walk, no name resolution and
+   no type information. DESIGN §5's decidability test is met, so a lens counting occurrences
+   would be validation standing exactly where construction was available.
+
+   **The evidence, and the honest statement of where it executes.**
+   `dag/test/claim/duplicate_definition_binding_probe.dag` asserts the CORRECT behaviour — the
+   compiler refuses the two-definition module. Written the other way round ("assert the second
+   definition binds") it would be green today and would become a defender of the defect. Run by
+   hand at the branch head it FAILS, while its positive control — the same module with one
+   definition — PASSES; that pair is what establishes the census reached its subject and
+   answered rather than failing to run (`CensusNotRunnable` maps to `-1`, which reds both and
+   greens neither).
+
+   It is NOT enrolled in `v2.workflow.floor_expected_red`, and the reason is this row's own
+   subject one layer out. The census resolves its synthetic source against
+   `build_module_path_index_from_witness_roots`, which walks the live tree, so the module
+   declares `ReadsLiveTree` — and `v1_compiler.cli_run` `run_required_floor` routes every such
+   site to `DeclinedLiveTree`: discovered, counted, never run. Enrolling asserts that a row
+   reaches its subject and answers; a declined row answers nothing, so the enrolment would have
+   been a false assertion wearing the shape of coverage. This is item 28's population
+   (the guarantee-probe corpus, discovered and declined) gaining one more member, not a new
+   condition.
+
+   An earlier revision of this row WAS enrolled, justified by a sibling census probe that
+   declares no disposition and was inferred to route and pass. That inference was wrong twice
+   over: undeclared is `ReadsLiveTree` by the fail-closed default (`cli_run`
+   `parse_entry_live_tree_disposition`), so the sibling is declined too, and its passing was
+   never measured — a population fit standing where mechanism confirmation was required.
+
+   **EXECUTION TRIGGER** (distinct from the next-rung trigger, which is the ingestion wall): the
+   deletion of the `DeclinedLiveTree` arm, which `v2.workflow.required_floor` already carries as
+   retained and staged for deletion at the root. When that lands, this row executes, reds, and
+   belongs on the expected-red roster the same day. When the WALL lands it flips green and
+   converts to a permanent regression control per DESIGN §4b meta-obligation (4).
+
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
 **(2026-07-31 restructure.)** The canonical dependency order now lives in the roadmap

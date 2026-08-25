@@ -21,8 +21,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 service sec.Edgar {
   config {
     endpoint: edgar_data_api_base
-
-    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503] }
   }
 
   operation GetCompanyFacts {

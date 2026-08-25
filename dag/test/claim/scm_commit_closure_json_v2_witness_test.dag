@@ -1,0 +1,783 @@
+module test.claim.scm_commit_closure_json_v2_witness
+
+// The durable repository image, executed. The claim under test is that a store survives the round
+// trip to text and back AS THE SAME PROGRAM, and that every way the text can lie REFUSES rather than
+// producing a plausible store.
+//
+// The identity claims here are the load-bearing ones. The image carries NO object identities -- see
+// gunbc.scm.commit_closure_json_v2's header for why -- so what these witnesses establish is that identity survives
+// anyway, because it is re-derived from structure on load. A round trip that merely produced "some
+// store" would satisfy a weaker test; comparing the reconstructed PROGRAM through checkout is what
+// makes it a claim about meaning rather than about bytes.
+//
+// Every claim is paired with a discriminating control, and the controls are the point: a decoder
+// that refused unconditionally would pass all seven refusal claims, and a comparison that could not
+// say no would pass the round trip.
+
+import std.types { String, Bool, List, Int }
+
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonKeyValue,
+  JsonObject,
+  JsonArray,
+  JsonString,
+  json_kv,
+  json_array,
+  json_object,
+  json_string,
+  serialize_json,
+}
+import extdeps.languages.json.parse { parse_json }
+
+import v2.std.node {
+  Cardinality,
+  Node,
+  Edge,
+  EdgeLabel,
+  Named,
+  Positional,
+  NodeKind,
+  TypeNode,
+  Connective,
+  Atom,
+  Conj,
+  Symbol,
+  node_synthetic,
+  content_hash,
+  canonicalize_node_for_content_hash,
+}
+
+import gunbc.scm.object_store {
+  ObjectId,
+  ObjectStore,
+  StoreOutcome,
+  Stored,
+  LocatorCollision,
+  empty_store,
+  object_id_eq,
+  store_node,
+  store_object_count,
+  CopyOutcome,
+  Copied,
+  CopySourceAbsent,
+  CopyLocatorCollision,
+  copy_object,
+  StoredEdge,
+  insert_from_structure,
+}
+import gunbc.scm.checkout {
+  Commit,
+  commit_of_root,
+  checkout,
+  CheckedOut,
+  CheckoutRefused,
+}
+import gunbc.scm.commit_closure { CommitClosure }
+import gunbc.scm.commit_closure_json_v2 {
+  ClosureDocLoadOutcome,
+  ClosureDocLoaded,
+  ClosureDocRefused,
+  ClosureDocRefusal,
+  ClosureDocFormatUnrecognized,
+  ClosureDocMemberMissing,
+  ClosureDocMemberDuplicated,
+  ClosureDocEdgeTargetUnresolved,
+  ClosureDocRootUnresolved,
+  ClosureDocUnknownConnectiveTag,
+  encode_closure_document,
+  decode_closure_document,
+  ClosureDocEncodeOutcome,
+  ClosureDocEncoded,
+  ClosureDocEncodeRefused,
+  encode_complete_closure_document,
+}
+
+// ------------------------------------------------------------------------------------------------
+// Fixtures. Every name here is prefixed so it cannot collide corpus-wide: a top-level definition is
+// corpus-scoped and the resolver ADMITS duplicates while silently selecting one, so a generic
+// helper name is a live correctness hazard rather than a style question (#8719).
+// ------------------------------------------------------------------------------------------------
+
+fn closure_doc_atom(identity: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
+}
+
+fn closure_doc_named(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn closure_doc_program() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      closure_doc_named(name: ^alpha, target: closure_doc_atom(identity: ^A)),
+      closure_doc_named(name: ^beta, target: closure_doc_atom(identity: ^B)),
+    ],
+  )
+}
+
+// A DIFFERENT program, used only to prove the comparison below can answer no.
+fn scm_image_other_program() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [closure_doc_named(name: ^alpha, target: closure_doc_atom(identity: ^A))],
+  )
+}
+
+// One atom referenced by TWO parents. Sharing is the property positions exist to preserve, so the
+// fixture that proves it must actually share.
+fn scm_image_shared_program() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      closure_doc_named(name: ^left, target: closure_doc_atom(identity: ^S)),
+      closure_doc_named(name: ^right, target: closure_doc_atom(identity: ^S)),
+    ],
+  )
+}
+
+type ScmImagePut {
+  store: ObjectStore
+  identity: ObjectId
+}
+
+fn scm_image_put(store: ObjectStore, n: Node) -> ScmImagePut {
+  match store_node(store: store, n: n) {
+    Stored { store: s, identity: i } => ScmImagePut { store: s, identity: i }
+    LocatorCollision { identity: i, existing: _, incoming: _ } =>
+      ScmImagePut { store: store, identity: i }
+  }
+}
+
+fn scm_image_encoded(n: Node) -> JsonValue {
+  let put = scm_image_put(store: empty_store(), n: n)
+  encode_closure_document(store: put.store, root: put.identity)
+}
+
+// The reconstructed program compared on CONTENT IDENTITY, not on occurrence provenance. checkout
+// rebuilds with SyntheticOccurrence throughout, and the store deliberately does not preserve
+// occurrence identity, so asserting on it would assert the one property the model says must not
+// matter. The expectation is canonicalized for the same reason store_node canonicalizes: named-edge
+// order is not a fact this store preserves.
+fn scm_image_loads_as(loaded: ClosureDocLoadOutcome, expected: Node) -> Bool {
+  match loaded {
+    ClosureDocRefused { cause: _ } => false
+    ClosureDocLoaded { store: store, root: root } =>
+      match checkout(store: store, commit: commit_of_root(root: root)) {
+        CheckoutRefused { cause: _ } => false
+        CheckedOut { program: program } =>
+          (content_hash(n: program).digest as String)
+            == (content_hash(n: canonicalize_node_for_content_hash(n: expected)).digest as String)
+      }
+  }
+}
+
+fn scm_image_refused(loaded: ClosureDocLoadOutcome) -> Bool {
+  match loaded {
+    ClosureDocRefused { cause: _ } => true
+    ClosureDocLoaded { store: _, root: _ } => false
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// The round trip.
+// ------------------------------------------------------------------------------------------------
+
+test fn scm_image_round_trips_to_the_same_program() -> Bool {
+  scm_image_loads_as(
+    loaded: decode_closure_document(v: scm_image_encoded(n: closure_doc_program())),
+    expected: closure_doc_program(),
+  )
+}
+
+// CONTROL for the claim above. Without this, a comparison that always answered true would pass.
+test fn scm_image_round_trip_comparison_can_say_no() -> Bool {
+  !scm_image_loads_as(
+    loaded: decode_closure_document(v: scm_image_encoded(n: closure_doc_program())),
+    expected: scm_image_other_program(),
+  )
+}
+
+// THE TEXT IS THE POINT. Comparing JsonValue to JsonValue would never exercise serialize_json or
+// parse_json, so the durable artifact -- the bytes that actually reach a file -- would be untested.
+test fn scm_image_survives_serialization_to_text_and_back() -> Bool {
+  let text = serialize_json(v: scm_image_encoded(n: closure_doc_program()))
+  match parse_json(s: text) {
+    Absent => false
+    Present { value: reparsed } =>
+      scm_image_loads_as(loaded: decode_closure_document(v: reparsed), expected: closure_doc_program())
+  }
+}
+
+// SHARING IS MEASURED ON THE ENCODED FORM, AND THE FIRST VERSION OF THIS CLAIM WAS NOT.
+//
+// It asserted that the DECODED store held two objects. That observation is structurally incapable of
+// failing: decode routes every object through insert_from_structure, and insert_derived answers the
+// idempotent arm for a record it already holds, so an encoder that inlined the shared atom once per
+// parent would still decode to exactly two objects. The claim would have been green whether or not
+// sharing survived -- measuring the deduplicator rather than the encoding.
+//
+// Counting entries in the emitted `objects` array is the measurement that can go red: an expanding
+// encoder writes three, a sharing one writes two.
+fn scm_image_objects_member_count(acc: Int, m: JsonKeyValue) -> Int {
+  if m.key == "objects" {
+    match m.value {
+      JsonArray { elements: es } => count(es)
+      _ => acc
+    }
+  } else {
+    acc
+  }
+}
+
+fn scm_image_count_objects_member(members: List<JsonKeyValue>) -> Int {
+  fold(members, init: 0, f: fn(acc, m) { scm_image_objects_member_count(acc: acc, m: m) })
+}
+
+fn scm_image_encoded_object_count(v: JsonValue) -> Int {
+  scm_image_count_objects_member(members: scm_image_members(v: v))
+}
+
+test fn scm_image_preserves_sharing_rather_than_expanding_it() -> Bool {
+  scm_image_encoded_object_count(v: scm_image_encoded(n: scm_image_shared_program())) == 2
+}
+
+// CONTROL for the claim above: the counter must be able to report something other than 2, or the
+// assertion above is satisfied by a function that always answers 2. The two-atom program has three
+// distinct objects -- two unequal atoms and the root -- so this pins the counter to the encoding.
+test fn scm_image_the_object_counter_distinguishes_a_larger_program() -> Bool {
+  scm_image_encoded_object_count(v: scm_image_encoded(n: closure_doc_program())) == 3
+}
+
+// ------------------------------------------------------------------------------------------------
+// The refusals. Each mutates ONE thing about an otherwise-valid image.
+// ------------------------------------------------------------------------------------------------
+
+fn scm_image_members(v: JsonValue) -> List<JsonKeyValue> {
+  match v {
+    JsonObject { members: ms } => ms
+    _ => []
+  }
+}
+
+// FIELD ACCESS MOVED OUT OF THE LAMBDA, and the shape is load-bearing rather than indirection.
+// `filter(members, m => m.key != key)` refused here with `no field 'key' on type 'T'` -- the lambda
+// parameter stayed generic. Routing `m` through a typed parameter instead mirrors a spelling that
+// resolves elsewhere in the corpus (extdeps.github.effect `filter(paths, p => ...(path: p))`).
+//
+// THE MECHANISM IS NOT ESTABLISHED, and saying so is the point: extdeps.languages.json.parse
+// `json_object_members_named` uses the refused spelling over this VERY type and resolves, so neither
+// "field access cannot drive inference" nor "imported element types fail" survives contact with the
+// corpus. What is recorded here is the observation and the working alternative, not a rule -- a
+// confident mechanism written from one failure would be a fabricated explanation sitting in the
+// tree, and the next reader would plan against it.
+fn scm_image_key_differs(m: JsonKeyValue, key: String) -> Bool {
+  m.key != key
+}
+
+fn scm_image_drop_key(members: List<JsonKeyValue>, key: String) -> List<JsonKeyValue> {
+  filter(members, m => scm_image_key_differs(m: m, key: key))
+}
+
+fn scm_image_without(v: JsonValue, key: String) -> JsonValue {
+  json_object(members: scm_image_drop_key(members: scm_image_members(v: v), key: key))
+}
+
+fn scm_image_with(v: JsonValue, key: String, value: JsonValue) -> JsonValue {
+  json_object(
+    members: concat(
+      scm_image_drop_key(members: scm_image_members(v: v), key: key),
+      [json_kv(key: key, value: value)]
+    )
+  )
+}
+
+test fn scm_image_an_unrecognized_format_refuses() -> Bool {
+  scm_image_refused(
+    loaded: decode_closure_document(
+      v: scm_image_with(
+        v: scm_image_encoded(n: closure_doc_program()),
+        key: "format",
+        value: json_string(s: "gunbc-scm-commit-closure-v99"),
+      )
+    )
+  )
+}
+
+test fn scm_image_a_missing_format_refuses() -> Bool {
+  scm_image_refused(
+    loaded: decode_closure_document(v: scm_image_without(v: scm_image_encoded(n: closure_doc_program()), key: "format"))
+  )
+}
+
+test fn scm_image_a_missing_objects_member_refuses() -> Bool {
+  scm_image_refused(
+    loaded: decode_closure_document(v: scm_image_without(v: scm_image_encoded(n: closure_doc_program()), key: "objects"))
+  )
+}
+
+// A DUPLICATED key is its own refusal and not a last-wins read. This is the arm a naive decoder
+// silently accepts while the file carries two different answers.
+test fn scm_image_a_duplicated_root_member_refuses() -> Bool {
+  let encoded = scm_image_encoded(n: closure_doc_program())
+  scm_image_refused(
+    loaded: decode_closure_document(
+      v: json_object(
+        members: concat(scm_image_members(v: encoded), [json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: "0"))]))])
+      )
+    )
+  )
+}
+
+test fn scm_image_a_root_naming_no_object_refuses() -> Bool {
+  scm_image_refused(
+    loaded: decode_closure_document(
+      v: scm_image_with(
+        v: scm_image_encoded(n: closure_doc_program()),
+        key: "root",
+        value: json_string(s: "9999"),
+      )
+    )
+  )
+}
+
+// An edge naming a position that has not been decoded yet. Only earlier positions are in scope, so
+// this is the arm that makes back-references safe rather than merely conventional.
+test fn scm_image_an_edge_naming_a_later_position_refuses() -> Bool {
+  scm_image_refused(
+    loaded: decode_closure_document(
+      v: json_object(
+        members: [
+          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v2")),
+          json_kv(
+            key: "objects",
+            value: json_array(
+              elements: [
+                json_object(
+                  members: [
+                    json_kv(
+                      key: "kind",
+                      value: json_object(
+                        members: [
+                          json_kv(key: "kind", value: json_string(s: "type")),
+                          json_kv(key: "connective", value: json_string(s: "conj")),
+                        ]
+                      )
+                    ),
+                    json_kv(
+                      key: "children",
+                      value: json_array(
+                        elements: [
+                          json_object(
+                            members: [
+                              json_kv(key: "label", value: json_string(s: "named")),
+                              json_kv(key: "name", value: json_string(s: "alpha")),
+                              json_kv(key: "target", value: json_object(members: [json_kv(key: "at", value: json_string(s: "1"))])),
+                            ]
+                          )
+                        ]
+                      )
+                    ),
+                  ]
+                )
+              ]
+            )
+          ),
+          json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: "0"))])),
+        ]
+      )
+    )
+  )
+}
+
+test fn scm_image_an_unknown_connective_tag_refuses() -> Bool {
+  scm_image_refused(
+    loaded: decode_closure_document(
+      v: json_object(
+        members: [
+          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v2")),
+          json_kv(
+            key: "objects",
+            value: json_array(
+              elements: [
+                json_object(
+                  members: [
+                    json_kv(
+                      key: "kind",
+                      value: json_object(
+                        members: [
+                          json_kv(key: "kind", value: json_string(s: "type")),
+                          json_kv(key: "connective", value: json_string(s: "not-a-connective")),
+                        ]
+                      )
+                    ),
+                    json_kv(key: "children", value: json_array(elements: [])),
+                  ]
+                )
+              ]
+            )
+          ),
+          json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: "0"))])),
+        ]
+      )
+    )
+  )
+}
+
+// CONTROL for every refusal above: the SAME hand-authored image shape, with nothing wrong with it,
+// must LOAD. Without this, a decoder that refused every hand-built object would pass the two
+// hand-authored refusal claims for the wrong reason -- they would be measuring "hand-authored"
+// rather than "malformed".
+test fn scm_image_the_hand_authored_shape_itself_loads() -> Bool {
+  scm_image_loads_as(
+    loaded: decode_closure_document(
+      v: json_object(
+        members: [
+          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v2")),
+          json_kv(
+            key: "objects",
+            value: json_array(
+              elements: [
+                json_object(
+                  members: [
+                    json_kv(
+                      key: "kind",
+                      value: json_object(
+                        members: [
+                          json_kv(key: "kind", value: json_string(s: "type")),
+                          json_kv(key: "connective", value: json_string(s: "atom")),
+                          json_kv(key: "identity", value: json_string(s: "A")),
+                        ]
+                      )
+                    ),
+                    json_kv(key: "children", value: json_array(elements: [])),
+                  ]
+                )
+              ]
+            )
+          ),
+          json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: "0"))])),
+        ]
+      )
+    ),
+    expected: closure_doc_atom(identity: ^A),
+  )
+}
+
+
+// ------------------------------------------------------------------------------------------------
+// THE CHECKED ENCODER. encode_closure_document cannot refuse -- it returns a JsonValue -- so an incomplete
+// closure encodes to a document carrying the empty reference, which decode rejects. That is correct
+// and it is too late for any writer: the adjudication has to happen BEFORE bytes exist, or a
+// successful write reports success over content that will never load.
+//
+// copy_object copies ONE record without its children, so it is the sanctioned way to build the
+// incomplete closure these claims need -- no hand-authored broken store, no representation reach.
+// ------------------------------------------------------------------------------------------------
+
+fn scm_image_encode_refused(outcome: ClosureDocEncodeOutcome) -> Bool {
+  match outcome {
+    ClosureDocEncodeRefused { cause: _ } => true
+    ClosureDocEncoded { value: _ } => false
+  }
+}
+
+fn scm_image_orphan_parent_store() -> ScmImagePut {
+  let full = scm_image_put(store: empty_store(), n: closure_doc_program())
+  match copy_object(from: full.store, to: empty_store(), identity: full.identity) {
+    Copied { store: s, identity: i } => ScmImagePut { store: s, identity: i }
+    CopySourceAbsent { identity: _ } => ScmImagePut { store: empty_store(), identity: full.identity }
+    CopyLocatorCollision { identity: _, existing: _, incoming: _ } =>
+      ScmImagePut { store: empty_store(), identity: full.identity }
+  }
+}
+
+test fn scm_image_a_root_absent_from_the_store_refuses_to_encode() -> Bool {
+  let full = scm_image_put(store: empty_store(), n: closure_doc_program())
+  scm_image_encode_refused(
+    outcome: encode_complete_closure_document(closure: CommitClosure { store: empty_store(), root: full.identity })
+  )
+}
+
+test fn scm_image_a_root_whose_child_is_absent_refuses_to_encode() -> Bool {
+  let orphan = scm_image_orphan_parent_store()
+  scm_image_encode_refused(
+    outcome: encode_complete_closure_document(closure: CommitClosure { store: orphan.store, root: orphan.identity })
+  )
+}
+
+// THE POSITIVE CONTROL. Without it the two refusals above are satisfied by an encoder that refuses
+// everything, and DESIGN section 4b requires the accepted arm alongside the discriminating red.
+test fn scm_image_a_complete_closure_encodes() -> Bool {
+  let full = scm_image_put(store: empty_store(), n: closure_doc_program())
+  match encode_complete_closure_document(closure: CommitClosure { store: full.store, root: full.identity }) {
+    ClosureDocEncoded { value: v } =>
+      serialize_json(v: v) == serialize_json(v: encode_closure_document(store: full.store, root: full.identity))
+    ClosureDocEncodeRefused { cause: _ } => false
+  }
+}
+
+
+// ------------------------------------------------------------------------------------------------
+// THE NODE IDENTITY PROTOCOL, ACROSS A PERMUTED WIRE ORDER.
+//
+// A decoded image supplies child order from a document nobody in this process authored, and
+// insert_from_structure hands that order to content_hash_of_children. Until content_hash_of_children
+// canonicalized its own input, a hand-edited image listing `beta` before `alpha` minted an ObjectId
+// under the fold of `beta, alpha`, while the SAME reconstructed node's ordinary content_hash folds
+// `alpha, beta` -- so find_object(H1) could answer a node whose content_hash is H2, which is not a
+// stale document or a lossy round trip but a break in the meaning of ObjectId = v2.std.node.Hash.
+//
+// The pair below is what makes the repair falsifiable, and it has to be a PAIR: canonicalizing
+// everything would satisfy the named claim while silently destroying positional structure, where
+// order IS the meaning. Revert the canonicalization in content_hash_of_children and the named claim
+// goes red; canonicalize positional children too and the positional claim goes red.
+// ------------------------------------------------------------------------------------------------
+
+fn scm_image_identity_of(outcome: StoreOutcome, fallback: ObjectId) -> ObjectId {
+  match outcome {
+    Stored { store: _, identity: i } => i
+    LocatorCollision { identity: _, existing: _, incoming: _ } => fallback
+  }
+}
+
+type ScmImageTwoAtoms { store: ObjectStore, first: ObjectId, second: ObjectId }
+
+fn scm_image_two_atoms() -> ScmImageTwoAtoms {
+  let a = scm_image_put(store: empty_store(), n: closure_doc_atom(identity: ^A))
+  let b = scm_image_put(store: a.store, n: closure_doc_atom(identity: ^B))
+  ScmImageTwoAtoms { store: b.store, first: a.identity, second: b.identity }
+}
+
+fn scm_image_insert_children(kind: NodeKind, children: List<StoredEdge>, fallback: ObjectId) -> ObjectId {
+  scm_image_identity_of(
+    outcome: insert_from_structure(store: scm_image_two_atoms().store, kind: kind, children: children),
+    fallback: fallback
+  )
+}
+
+fn scm_image_named_stored(name: Symbol, target: ObjectId) -> StoredEdge {
+  StoredEdge { label: Named { name: name }, target: target }
+}
+
+fn scm_image_positional_stored(target: ObjectId) -> StoredEdge {
+  StoredEdge { label: Positional, target: target }
+}
+
+// NAMED children permuted: the SAME identity, and it is the identity the ordinary content_hash of
+// the assembled node derives -- asserting the two inserts merely agree with EACH OTHER would be
+// satisfied by any consistent wrong rule, including one that hashes wire order on both sides.
+test fn scm_image_permuted_named_children_reconstruct_the_canonical_identity() -> Bool {
+  let atoms = scm_image_two_atoms()
+  let canonical = content_hash(n: closure_doc_program())
+  let forward = scm_image_insert_children(
+    kind: TypeNode { connective: Conj },
+    children: [
+      scm_image_named_stored(name: ^alpha, target: atoms.first),
+      scm_image_named_stored(name: ^beta, target: atoms.second),
+    ],
+    fallback: atoms.first
+  )
+  let swapped = scm_image_insert_children(
+    kind: TypeNode { connective: Conj },
+    children: [
+      scm_image_named_stored(name: ^beta, target: atoms.second),
+      scm_image_named_stored(name: ^alpha, target: atoms.first),
+    ],
+    fallback: atoms.second
+  )
+  object_id_eq(left: forward, right: swapped) && object_id_eq(left: forward, right: canonical)
+}
+
+// POSITIONAL children permuted: a DIFFERENT identity. Under a positional discipline the order is the
+// content, so a canonicalizer that sorted here would fuse `f(x, y)` with `f(y, x)`.
+test fn scm_image_permuted_positional_children_are_a_different_identity() -> Bool {
+  let atoms = scm_image_two_atoms()
+  let forward = scm_image_insert_children(
+    kind: TypeNode { connective: Cardinality },
+    children: [
+      scm_image_positional_stored(target: atoms.first),
+      scm_image_positional_stored(target: atoms.second),
+    ],
+    fallback: atoms.first
+  )
+  let swapped = scm_image_insert_children(
+    kind: TypeNode { connective: Cardinality },
+    children: [
+      scm_image_positional_stored(target: atoms.second),
+      scm_image_positional_stored(target: atoms.first),
+    ],
+    fallback: atoms.second
+  )
+  object_id_eq(left: forward, right: swapped) == false
+}
+
+
+// ------------------------------------------------------------------------------------------------
+// THE CLOSED MEMBER SET. A matched format tag means "I understand this exact schema", not "I
+// understand some subset of whatever this writer may have meant". A silently ignored member is a
+// fact the writer stated, the reader discarded, and the next re-encode deleted -- with every
+// operation reporting success. The controls matter as much as the refusals: member ORDER is still
+// irrelevant, and the members each variant legitimately carries must still load.
+// ------------------------------------------------------------------------------------------------
+
+fn scm_image_kind_object(members: List<JsonKeyValue>) -> JsonKeyValue {
+  json_kv(key: "kind", value: json_object(members: members))
+}
+
+fn scm_image_atom_kind_members() -> List<JsonKeyValue> {
+  [
+    json_kv(key: "kind", value: json_string(s: "type")),
+    json_kv(key: "connective", value: json_string(s: "atom")),
+    json_kv(key: "identity", value: json_string(s: "A")),
+  ]
+}
+
+fn scm_image_one_object_image(object_members: List<JsonKeyValue>, extra: List<JsonKeyValue>) -> JsonValue {
+  json_object(
+    members: concat(
+      [
+        json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v2")),
+        json_kv(key: "objects", value: json_array(elements: [json_object(members: object_members)])),
+        json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: "0"))])),
+      ],
+      extra
+    )
+  )
+}
+
+fn scm_image_atom_object_members(kind_members: List<JsonKeyValue>, extra: List<JsonKeyValue>) -> List<JsonKeyValue> {
+  concat(
+    [
+      scm_image_kind_object(members: kind_members),
+      json_kv(key: "children", value: json_array(elements: [])),
+    ],
+    extra
+  )
+}
+
+fn scm_image_refused(loaded: ClosureDocLoadOutcome) -> Bool {
+  match loaded {
+    ClosureDocRefused { cause: _ } => true
+    ClosureDocLoaded { store: _, root: _ } => false
+  }
+}
+
+test fn scm_image_an_unknown_envelope_member_refuses() -> Bool {
+  scm_image_refused(
+    loaded: decode_closure_document(
+      v: scm_image_one_object_image(
+        object_members: scm_image_atom_object_members(kind_members: scm_image_atom_kind_members(), extra: []),
+        extra: [json_kv(key: "future_field", value: json_string(s: "x"))]
+      )
+    )
+  )
+}
+
+test fn scm_image_an_unknown_object_record_member_refuses() -> Bool {
+  scm_image_refused(
+    loaded: decode_closure_document(
+      v: scm_image_one_object_image(
+        object_members: scm_image_atom_object_members(
+          kind_members: scm_image_atom_kind_members(),
+          extra: [json_kv(key: "identity", value: json_string(s: "0"))]
+        ),
+        extra: []
+      )
+    )
+  )
+}
+
+// `identity` is REQUIRED on an atom and forbidden on every other connective, so this is the claim
+// that the member set is closed PER VARIANT rather than closed over the union of every variant's
+// members -- a union-shaped check would accept this document.
+test fn scm_image_identity_on_a_non_atom_kind_refuses() -> Bool {
+  scm_image_refused(
+    loaded: decode_closure_document(
+      v: scm_image_one_object_image(
+        object_members: scm_image_atom_object_members(
+          kind_members: [
+            json_kv(key: "kind", value: json_string(s: "type")),
+            json_kv(key: "connective", value: json_string(s: "conj")),
+            json_kv(key: "identity", value: json_string(s: "A")),
+          ],
+          extra: []
+        ),
+        extra: []
+      )
+    )
+  )
+}
+
+test fn scm_image_behavior_on_a_type_kind_refuses() -> Bool {
+  scm_image_refused(
+    loaded: decode_closure_document(
+      v: scm_image_one_object_image(
+        object_members: scm_image_atom_object_members(
+          kind_members: concat(
+            scm_image_atom_kind_members(),
+            [json_kv(key: "behavior", value: json_string(s: "value"))]
+          ),
+          extra: []
+        ),
+        extra: []
+      )
+    )
+  )
+}
+
+// THE ORDER CONTROL. Closed member population is not positional parsing: the same members in a
+// different order must still load. Without this, a check that accidentally depended on member order
+// would satisfy every refusal claim above.
+test fn scm_image_the_same_members_in_a_different_order_still_load() -> Bool {
+  scm_image_loads_as(
+    loaded: decode_closure_document(
+      v: json_object(
+        members: [
+          json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: "0"))])),
+          json_kv(
+            key: "objects",
+            value: json_array(
+              elements: [
+                json_object(
+                  members: [
+                    json_kv(key: "children", value: json_array(elements: [])),
+                    scm_image_kind_object(
+                      members: [
+                        json_kv(key: "identity", value: json_string(s: "A")),
+                        json_kv(key: "connective", value: json_string(s: "atom")),
+                        json_kv(key: "kind", value: json_string(s: "type")),
+                      ]
+                    ),
+                  ]
+                )
+              ]
+            )
+          ),
+          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v2")),
+        ]
+      )
+    ),
+    expected: closure_doc_atom(identity: ^A),
+  )
+}
+
+// THE POSITIVE CONTROL FOR THE ATOM VARIANT: `identity` is not merely tolerated on an atom, it is
+// required, so the refusals above cannot be satisfied by a rule that rejects `identity` everywhere.
+test fn scm_image_an_atom_carrying_its_identity_still_loads() -> Bool {
+  scm_image_loads_as(
+    loaded: decode_closure_document(
+      v: scm_image_one_object_image(
+        object_members: scm_image_atom_object_members(kind_members: scm_image_atom_kind_members(), extra: []),
+        extra: []
+      )
+    ),
+    expected: closure_doc_atom(identity: ^A),
+  )
+}
+
+
+
+
+

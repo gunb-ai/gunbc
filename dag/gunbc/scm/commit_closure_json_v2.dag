@@ -1,0 +1,1099 @@
+module gunbc.scm.commit_closure_json_v2
+
+import std.types { Bool, Int, List, String, list_length }
+
+import std.content_hash { fnv1a64_structural_hex_digest }
+import gunbc.scm.commit_closure {
+  CommitClosure,
+  AdmittedPartialCommitClosure,
+  unresolved_identities,
+  closure_is_complete,
+}
+import gunbc.scm.load_standing {
+  LoadStanding,
+  LoadComplete,
+  LoadPartial,
+  LoadUnsupportedProtocol,
+  LoadDocumentMalformed,
+  LoadIdentityCollision,
+}
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonNull,
+  JsonBool,
+  JsonNumber,
+  JsonString,
+  JsonArray,
+  JsonObject,
+  JsonKeyValue,
+  json_kv,
+  json_array,
+  json_object,
+  json_string,
+}
+import extdeps.languages.json.grammar { JsonNumberLexeme, json_int_lexeme }
+import extdeps.languages.json.parse {
+  JsonMemberLookup,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+  json_object_unique_member,
+}
+
+import v2.std.node {
+  EdgeLabel,
+  Named,
+  Positional,
+  NodeKind,
+  TypeNode,
+  ComputationNode,
+  Connective,
+  Atom,
+  Conj,
+  Disj,
+  Arrow,
+  Cardinality,
+  Instantiation,
+  Behavior,
+  Value,
+  Transform,
+  Branch,
+  Loop,
+  Bind,
+  Match,
+  Symbol,
+}
+import v2.std.compilers.lexing { symbol_lexeme, symbol_intern_lexeme }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+
+import gunbc.scm.object_store {
+  ObjectId,
+  ObjectRecord,
+  ObjectStore,
+  StoredEdge,
+  StoreOutcome,
+  Stored,
+  LocatorCollision,
+  empty_store,
+  insert_from_structure,
+  object_id_eq,
+  store_records_in_dependency_order,
+}
+
+// WHY THE IMAGE CARRIES NO OBJECT IDENTITIES AT ALL.
+//
+// insert_derived does NOT re-derive record.identity -- it takes the caller's word for it. Inside
+// this repository that is sound, because store_node is the only producer and it derives the identity
+// from the canonical node it just stored. A DECODER IS A SECOND PRODUCER, and one that reads
+// identities from a file it does not control. Had the image carried identities, a decoder would hand
+// insert_derived a record whose stated identity was a lie and nothing anywhere would refuse it: the
+// store would answer find_object for a locator whose payload was never hashed to it, and checkout
+// would reconstruct a program the commit never named. That is the forgeable-carrier class DESIGN
+// section 4b describes, arriving through persistence rather than through the substrate.
+//
+// The image therefore records STRUCTURE ONLY -- kind, edge labels, and which earlier object each
+// edge points at -- and every ObjectId is re-derived on load by replaying store_node. Forging an
+// identity is then not caught, it is UNWRITABLE: the format has no field to lie in. This is DESIGN
+// section 5's construction-over-validation applied to the one boundary where the store stops being
+// the only author of its own contents.
+//
+// The same move dissolves the integrity check the first design carried. An earlier shape recorded
+// the commit root's digest beside the objects so load could compare it against the re-derived root.
+// With identities gone the root is an INDEX, its identity is derived like every other, and there is
+// no claim left to check -- the comparison disappeared because nothing asserts anything, not because
+// the check was skipped.
+
+// EDGES POINT BACKWARDS BY POSITION, AND THAT IS WHAT PRESERVES SHARING.
+//
+// A nested-tree image would expand a shared subgraph once per reference, so a DAG whose sharing is
+// the whole point of content addressing would serialize exponentially. Recording objects in
+// dependency order and letting each edge name an EARLIER position keeps one entry per distinct
+// object. A position cannot forge an identity the way a digest could, because the identity at that
+// position is still derived from the bytes that follow it; a corrupted position names a different
+// object or no object at all, and the second refuses.
+type ClosureDocRefusal
+  = ClosureDocNotAnObject
+  | ClosureDocMemberMissing { key: String }
+  | ClosureDocMemberDuplicated { key: String }
+  | ClosureDocMemberWrongShape { key: String }
+  | ClosureDocFormatUnrecognized { found: String }
+  | ClosureDocUnknownKindTag { found: String }
+  | ClosureDocUnknownConnectiveTag { found: String }
+  | ClosureDocUnknownBehaviorTag { found: String }
+  | ClosureDocUnknownLabelTag { found: String }
+  | ClosureDocEdgeTargetUnresolved { reference: String }
+  | ClosureDocRootUnresolved { reference: String }
+  | ClosureDocObjectCollision { identity: ObjectId }
+  | ClosureDocUnexpectedMember { context: ClosureDocMemberContext, key: String }
+  | ClosureDocTargetNotOneArm { found: Int }
+  | ClosureDocUncontainedDigestInvalid { found: String }
+
+// THE ENCODE DOMAIN IS ITS OWN TYPE, and this split is a correctness fix rather than tidiness.
+//
+// ClosureDocIncompleteWithoutAdmission is produced by encode_complete_closure_document and by nothing
+// else -- no decode path can reach it. It nevertheless sat in ClosureDocRefusal, which the LOAD
+// classifier matches exhaustively, so closure_document_load_standing was forced to assign a standing
+// to a state the loader cannot produce. It answered LoadDocumentMalformed, and malformed is the ONE
+// standing standing_may_supersede_generation permits to overwrite a newer document. An encode-only
+// state therefore had a route to "may supersede".
+//
+// That is a closed match over a dishonest domain: exhaustiveness is satisfied, the compiler is
+// content, and the arm is answering for something that cannot occur. Splitting the type does not
+// hide the arm -- it makes the question unaskable, because the classifier's parameter can no longer
+// name this cause. DESIGN section 4b's top rung: not validated, not proven, unrepresentable.
+type ClosureDocEncodeRefusal
+  = ClosureDocIncompleteWithoutAdmission { identity: String }
+
+// THE FORMAT TAG MEANS "I UNDERSTAND THIS EXACT SCHEMA", not "I understand some subset of whatever
+// this writer may have meant". So once the tag matches, every JSON object in the document has a
+// closed, variant-specific member set and anything else is a typed refusal.
+//
+// Silently ignoring an unknown member lets a writer state a fact the reader discards while still
+// returning a successful load -- and re-encoding then deletes that fact. That is not forward
+// compatibility, it is successful information loss, which is exactly the fabricated-plausible-output
+// failure DESIGN section 5 forbids: the document loaded, so nothing anywhere reports that a claim in
+// it was thrown away.
+//
+// It does foreclose additive evolution WITHIN a version, and that is the intended cost: a schema
+// that grows a member grows a new format tag, and a decoder that supports both says so by admitting
+// both tags. An open extension point, if one is ever genuinely needed, is a declared member with
+// declared namespacing and retention rules -- never every unrecognized key promoted to one by
+// default.
+//
+// The context is a closed coproduct rather than a String because the member sets differ BY VARIANT:
+// an Atom kind carries `identity` and a Conj kind must not, so "unexpected here" is only meaningful
+// relative to which shape was being read.
+type ClosureDocMemberContext
+  = ClosureDocEnvelopeMembers
+  | ClosureDocObjectRecordMembers
+  | ClosureDocTypeKindMembers
+  | ClosureDocAtomKindMembers
+  | ClosureDocComputationKindMembers
+  | ClosureDocNamedEdgeMembers
+  | ClosureDocPositionalEdgeMembers
+  | ClosureDocTargetMembers
+
+fn member_key_allowed(allowed: List<String>, key: String) -> Bool {
+  fold(allowed, init: false, f: fn(acc, a) { acc || a == key })
+}
+
+fn unexpected_member_step(found: String?, m: JsonKeyValue, allowed: List<String>) -> String? {
+  match found {
+    Present { value: _ } => found
+    Absent =>
+      if member_key_allowed(allowed: allowed, key: m.key) {
+        none
+      } else {
+        Present { value: m.key }
+      }
+  }
+}
+
+// A non-object subject answers `none` here, and that is not a fail-open: every caller reads a
+// required member from the same subject, and read_member refuses a non-object as ClosureDocNotAnObject.
+// Answering an unexpected-member refusal for something that is not an object at all would report the
+// wrong cause for the wrong defect.
+fn unexpected_member_key(v: JsonValue, allowed: List<String>) -> String? {
+  match v {
+    JsonObject { members: ms } =>
+      fold(ms, init: none, f: fn(found, m) {
+        unexpected_member_step(found: found, m: m, allowed: allowed)
+      })
+    _ => none
+  }
+}
+
+fn member_set_refusal(v: JsonValue, allowed: List<String>, context: ClosureDocMemberContext) -> ClosureDocRefusal? {
+  match unexpected_member_key(v: v, allowed: allowed) {
+    Absent => none
+    Present { value: key } => Present { value: ClosureDocUnexpectedMember { context: context, key: key } }
+  }
+}
+
+type ClosureDocLoadOutcome
+  = ClosureDocLoaded { store: ObjectStore, root: ObjectId }
+  | ClosureDocRefused { cause: ClosureDocRefusal }
+
+data closure_document_format_tag: String = "gunbc-scm-commit-closure-v2"
+
+// WHAT THIS MODULE IS AND IS NOT, so the next layer is not built on a wrong assumption.
+//
+// encode_closure_document takes a store AND A ROOT, so what it represents is one commit's closure: a program,
+// identified. It therefore CANNOT represent an empty repository -- the state `gunbc init` creates --
+// because there is no root to designate and decode_closure_document refuses a root that names no object. That
+// refusal is correct at this grain and must not be softened into an empty-store fallback, which
+// would be the empty-observation narrow DESIGN section 5 names: "no objects" and "could not tell
+// what the objects were" would become one state.
+//
+// The repository image is the LAYER ABOVE this one, and it is where optionality belongs: a current
+// commit that may be absent, a list of retained commits, a pending proposal, source projections.
+// Modeling that here by making the root optional would push a repository-lifecycle fact into the
+// commit-closure carrier and give this module two subjects.
+//
+// Not yet modeled, named so the omissions are declared rather than assumed absent:
+//   - REACHABILITY SCOPING. Every record the store holds is serialized, not just the closure
+//     reachable from retained subjects. That is correct while nothing produces unreachable objects,
+//     and it is the natural first garbage-collection rule once something does.
+//   - THE IDENTITY-RULE VERSION. closure_document_format_tag versions the SCHEMA. It does not name the node
+//     identity protocol the reconstruction depends on, and those are separate axes: the schema could
+//     hold still while canonicalize_node_for_content_hash or the fnv1a64 folding changed, and every
+//     stored image would then silently reconstruct to different identities. Naming the rule in the
+//     image is what turns that from a silent reinterpretation into a refusal.
+
+// ---------------------------------------------------------------------------
+// Encoding
+// ---------------------------------------------------------------------------
+
+fn connective_tag(c: Connective) -> String {
+  match c {
+    Atom { identity: _ } => "atom"
+    Conj => "conj"
+    Disj => "disj"
+    Arrow => "arrow"
+    Cardinality => "cardinality"
+    Instantiation => "instantiation"
+  }
+}
+
+fn behavior_tag(b: Behavior) -> String {
+  match b {
+    Value => "value"
+    Transform => "transform"
+    Branch => "branch"
+    Loop => "loop"
+    Bind => "bind"
+    Match => "match"
+  }
+}
+
+// An Atom carries a Symbol and every other connective carries nothing, so the identity member is
+// present exactly when the tag is "atom". Encoding it as an absent member elsewhere -- rather than
+// an empty string -- is what lets the decoder refuse a hand-edited image that supplies one.
+fn encode_connective(c: Connective) -> List<JsonKeyValue> {
+  match c {
+    Atom { identity: id } =>
+      [
+        json_kv(key: "connective", value: json_string(s: connective_tag(c: c))),
+        json_kv(key: "identity", value: json_string(s: symbol_lexeme(sym: id))),
+      ]
+    _ => [json_kv(key: "connective", value: json_string(s: connective_tag(c: c)))]
+  }
+}
+
+fn encode_kind(k: NodeKind) -> JsonValue {
+  match k {
+    TypeNode { connective: c } =>
+      json_object(
+        members: concat(
+          [json_kv(key: "kind", value: json_string(s: "type"))],
+          encode_connective(c: c)
+        )
+      )
+    ComputationNode { behavior: b } =>
+      json_object(
+        members: [
+          json_kv(key: "kind", value: json_string(s: "computation")),
+          json_kv(key: "behavior", value: json_string(s: behavior_tag(b: b))),
+        ]
+      )
+  }
+}
+
+fn encode_label(l: EdgeLabel) -> List<JsonKeyValue> {
+  match l {
+    Named { name: n } =>
+      [
+        json_kv(key: "label", value: json_string(s: "named")),
+        json_kv(key: "name", value: json_string(s: symbol_lexeme(sym: n))),
+      ]
+    Positional => [json_kv(key: "label", value: json_string(s: "positional"))]
+  }
+}
+
+// POSITIONS ARE KEYED, NOT SCANNED, AND THE COST SHAPE IS THE REASON.
+//
+// The first version carried a List and answered position_of by folding it, once per edge, while the
+// list itself grew by concat-at-end inside a fold. That is O(n^2) in accumulator copying and
+// O(objects x edges) in lookup -- the copied-accumulator and quadratic-fold pair DESIGN section 6
+// names under bare minimum cost, where the rule is that a proven cost shape is ALWAYS fixed
+// regardless of the realized n. An earlier revision of this module excused it on the grounds that
+// object_store already scans linearly, which is precisely the "n is small here" reasoning that rule
+// rejects: inheriting a defect is not a licence to add one.
+//
+// WHY A MAP IS ADMISSIBLE HERE WHEN object_store REFUSES ONE. That refusal is about TRAVERSAL: a
+// store whose iteration order leaked into a digest would hash one program two ways. Nothing here
+// iterates a map -- these are point lookups only, and the emitted order comes from
+// store_records_in_dependency_order, not from the map. The determinism hazard is absent because the
+// operation that carries it is absent.
+//
+// The key is the digest STRING rather than the ObjectId record, so lookup identity is exactly the
+// equality object_id_eq already defines, rather than whatever structural equality a record key would
+// impose.
+type EncodePositions {
+  by_identity: Map<String, String>
+  next: Int
+}
+
+fn position_reference(n: Int) -> String {
+  json_int_lexeme(n: n) as String
+}
+
+fn object_id_key(identity: ObjectId) -> String {
+  identity.digest as String
+}
+
+fn position_of(positions: EncodePositions, identity: ObjectId) -> String? {
+  map_lookup(m: positions.by_identity, key: object_id_key(identity: identity))
+}
+
+// A missing position is UNREACHABLE rather than defended against, and the reason is worth stating
+// because the fallback would be invisible: store_records_in_dependency_order yields children before
+// parents, so by the time an edge is encoded its target already holds a position. Answering some
+// plausible reference here would emit an image that decodes to a DIFFERENT program, which is exactly
+// the fabricated plausible output DESIGN section 5 forbids. The empty string is not a sentinel the
+// decoder tolerates -- ClosureDocEdgeTargetUnresolved refuses it -- so an ordering regression surfaces as
+// a typed refusal at load rather than as a silently wrong store.
+// A TARGET IS ONE OF TWO ARMS, AND WHICH ONE IS A FACT ABOUT THIS DOCUMENT, NOT ABOUT THE WORLD.
+//
+//   {"at": "3"}          this document CARRIES that object, at that position
+//   {"uncontained": "<digest>"}   this document does NOT carry it, and here is its content address
+//
+// The two arms exist because they answer different questions and only one of them CAN be answered
+// both ways. A contained object needs no identity on the wire -- it is right there and its identity
+// is derived from its own bytes, so there is no field to lie in. An uncontained object needs one,
+// because a position denotes nothing outside the document that defines it, and that is the single
+// place a digest cannot be mis-bound: no payload here binds to it.
+//
+// Exactly one member, checked. Both arms present, or neither, is a typed refusal rather than a
+// last-wins read -- the same reason every member set in this module is closed.
+fn encode_target(positions: EncodePositions, target: ObjectId) -> JsonValue {
+  match position_of(positions: positions, identity: target) {
+    Present { value: r } => json_object(members: [json_kv(key: "at", value: json_string(s: r))])
+    Absent =>
+      json_object(
+        members: [json_kv(key: "uncontained", value: json_string(s: object_id_key(identity: target)))]
+      )
+  }
+}
+
+fn encode_edge(positions: EncodePositions, e: StoredEdge) -> JsonValue {
+  json_object(
+    members: concat(
+      encode_label(l: e.label),
+      [json_kv(key: "target", value: encode_target(positions: positions, target: e.target))]
+    )
+  )
+}
+
+fn encode_record(positions: EncodePositions, record: ObjectRecord) -> JsonValue {
+  json_object(
+    members: [
+      json_kv(key: "kind", value: encode_kind(k: record.kind)),
+      json_kv(
+        key: "children",
+        value: json_array(
+          elements: map(record.children, e => encode_edge(positions: positions, e: e))
+        )
+      ),
+    ]
+  )
+}
+
+type EncodeAcc {
+  positions: EncodePositions
+  objects: List<JsonValue>
+}
+
+// OBJECTS ACCUMULATE BY PREPEND AND ARE REVERSED ONCE, the corpus idiom (std.markdown, std.realization,
+// std.selected_witness_bundle all reverse a prepending fold). concat-at-end copies the whole
+// accumulator on every step; prepending does not, so the emitted order is restored by one linear
+// reverse instead of being bought with a quadratic.
+fn encode_step(acc: EncodeAcc, record: ObjectRecord) -> EncodeAcc {
+  EncodeAcc {
+    positions: EncodePositions {
+      by_identity: map_insert(
+        m: acc.positions.by_identity,
+        key: object_id_key(identity: record.identity),
+        value: position_reference(n: acc.positions.next),
+      ),
+      next: acc.positions.next + 1,
+    },
+    objects: concat([encode_record(positions: acc.positions, record: record)], acc.objects),
+  }
+}
+
+// THE OBJECT TABLE IS SEPARATE FROM WHATEVER DESIGNATES ROOTS IN IT, and that split is what lets a
+// repository hold SEVERAL commits over ONE node population. Embedding a complete closure per commit
+// would re-serialize every unchanged object once per commit -- the same duplication that backward
+// positions already refuse within a single closure, reintroduced one layer up. Encoding the store
+// once and letting each root be an ordinary reference into that table is the same move at the
+// repository's grain.
+//
+// encode_closure_document below is now one caller of this: the single-root case.
+fn encode_object_table(store: ObjectStore) -> EncodeAcc {
+  match fold(
+    store_records_in_dependency_order(store: store),
+    init: EncodeAcc { positions: EncodePositions { by_identity: empty_map(), next: 0 }, objects: [] },
+    f: fn(acc, record) { encode_step(acc: acc, record: record) }
+  ) {
+    EncodeAcc { positions: positions, objects: reversed } =>
+      EncodeAcc { positions: positions, objects: reverse(reversed) }
+  }
+}
+
+// THE ROOT IS AN ORDINARY REFERENCE, and it takes both arms for the same reason every edge does: a
+// closure may legitimately be shipped without the object its own root names (a delta whose recipient
+// already holds it). The predecessor encoded the root positionally too, so that case was as
+// unnameable as any other.
+fn encoded_root_reference(acc: EncodeAcc, root: ObjectId) -> JsonValue {
+  encode_target(positions: acc.positions, target: root)
+}
+
+type ClosureDocEncodeOutcome
+  = ClosureDocEncoded { value: JsonValue }
+  | ClosureDocEncodeRefused { cause: ClosureDocEncodeRefusal }
+
+// AN INCOMPLETE CLOSURE IS NOW REPRESENTABLE, SO THE QUESTION CHANGES FROM "CAN IT BE WRITTEN" TO
+// "WAS IT DECIDED".
+//
+// The predecessor refused here, because a document with an unresolvable reference could not be
+// loaded and writing it would have reported success for bytes that cannot be read -- a fabricated
+// success. That refusal was right for a format that could not name what it lacked. This one can, so
+// a partial closure is a legitimate document and its wire form is well-formed; whether a partial
+// closure may be PUBLISHED is a policy question that does not belong in a codec (DESIGN section 3).
+//
+// What must NOT happen is the refusal quietly becoming optional -- a caller who forgets, and a
+// partial document written by accident. The two questions are therefore two ENTRY POINTS rather than
+// one entry point with an optional token:
+//
+//   encode_complete_closure_document(closure)      refuses if anything is uncontained
+//   encode_admitted_partial_closure_document(a)    total; the admission IS the decision
+//
+// WHY THE PARTIAL ENTRY TAKES ONE ARGUMENT. Its predecessor took a closure PLUS an optional
+// admission and checked only that the admission was PRESENT -- so an admission minted for closure A
+// authorized encoding closure B, and no amount of checking inside this function could have noticed,
+// because the token carried no subject. The admitted carrier holds its own closure, so there is no
+// second closure to disagree with it and the mismatch has no spelling. That is why this entry
+// performs no validation at all: there is nothing left to validate.
+//
+// RUNG, STATED HONESTLY BECAUSE THE CARRIER'S STRENGTH IS NOT THE PATH'S. The subject binding is
+// structural. This GATE is still only mechanically preventable: encode_closure_document below
+// remains callable directly, so a caller bypassing these entries can emit uncontained arms with no
+// admission at all. The wall is on the carrier now, but the module's front door is still ajar.
+// dissolve-on: module-private functions in .dag, at which point the unchecked encoder stops being
+// reachable and the gate becomes structural. Until then this comment is the only thing saying so.
+fn encode_complete_closure_document(closure: CommitClosure) -> ClosureDocEncodeOutcome {
+  match unresolved_identities(closure: closure) {
+    missing =>
+      if list_length(items: missing) == 0 {
+        ClosureDocEncoded {
+          value: encode_closure_document(store: closure.store, root: closure.root)
+        }
+      } else {
+        ClosureDocEncodeRefused {
+          cause: ClosureDocIncompleteWithoutAdmission {
+            identity: an_uncontained_key(missing: missing)
+          }
+        }
+      }
+  }
+}
+
+// TOTAL, AND THE TOTALITY IS THE CLAIM. Every way of obtaining an AdmittedPartialCommitClosure runs
+// through a mint that derived the unresolved population from this very closure, so by the time one
+// exists there is nothing this function could refuse that the mint did not already settle.
+fn encode_admitted_partial_closure_document(admitted: AdmittedPartialCommitClosure) -> JsonValue {
+  encode_closure_document(store: admitted.closure.store, root: admitted.closure.root)
+}
+
+// The first identity that would have been written as an uncontained arm. Naming one is what makes
+// the refusal actionable; naming all of them is the caller's own query via unresolved_identities.
+// AN uncontained key, not THE FIRST. Same correction as an_uncontained_target in repository_envelope:
+// the refusal needs one actionable example and no consumer depends on which, so the name should not
+// promise an ordering nothing verifies.
+fn an_uncontained_key(missing: List<ObjectId>) -> String {
+  fold(missing, init: "", f: fn(acc, id) {
+    if acc == "" { object_id_key(identity: id) } else { acc }
+  })
+}
+
+fn encode_closure_document(store: ObjectStore, root: ObjectId) -> JsonValue {
+  let acc = encode_object_table(store: store)
+  let root_reference = encoded_root_reference(acc: acc, root: root)
+  json_object(
+    members: [
+      json_kv(key: "format", value: json_string(s: closure_document_format_tag)),
+      json_kv(key: "objects", value: json_array(elements: acc.objects)),
+      json_kv(key: "root", value: root_reference),
+    ]
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Decoding
+// ---------------------------------------------------------------------------
+
+// Every member read goes through this, so a missing member, a duplicated member and a non-object
+// subject are three DIFFERENT typed refusals rather than one absent value. json_object_unique_member
+// already separates them; collapsing them here into an Optional would be the state-space conflation
+// DESIGN section 5 names -- and the duplicate arm matters specifically, because a JSON object with
+// the key twice is the shape a naive last-wins reader accepts while carrying two answers.
+type MemberRead
+  = MemberString { value: String }
+  | MemberArray { elements: List<JsonValue> }
+  | MemberObject { value: JsonValue }
+  | MemberFailed { cause: ClosureDocRefusal }
+
+fn read_member(v: JsonValue, key: String) -> MemberRead {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberAbsent => MemberFailed { cause: ClosureDocMemberMissing { key: key } }
+    JsonMemberDuplicated { count: _ } => MemberFailed { cause: ClosureDocMemberDuplicated { key: key } }
+    JsonMemberNotAnObject => MemberFailed { cause: ClosureDocNotAnObject }
+    JsonMemberFound { value: found } =>
+      match found {
+        JsonString { value: s } => MemberString { value: s }
+        JsonArray { elements: es } => MemberArray { elements: es }
+        JsonObject { members: _ } => MemberObject { value: found }
+        JsonNull => MemberFailed { cause: ClosureDocMemberWrongShape { key: key } }
+        JsonBool { value: _ } => MemberFailed { cause: ClosureDocMemberWrongShape { key: key } }
+        JsonNumber { lexeme: _ } => MemberFailed { cause: ClosureDocMemberWrongShape { key: key } }
+      }
+  }
+}
+
+fn read_string_member(v: JsonValue, key: String) -> MemberRead {
+  match read_member(v: v, key: key) {
+    MemberString { value: s } => MemberString { value: s }
+    MemberFailed { cause: c } => MemberFailed { cause: c }
+    _ => MemberFailed { cause: ClosureDocMemberWrongShape { key: key } }
+  }
+}
+
+type ConnectiveDecode
+  = ConnectiveDecoded { connective: Connective }
+  | ConnectiveDecodeFailed { cause: ClosureDocRefusal }
+
+// The identity member is read ONLY on the atom arm. A non-atom tag never consults it, so an image
+// that supplies one is not silently carrying an ignored field into a program whose identity does not
+// depend on it -- the unknown-tag arm below is the only way a connective name enters at all.
+fn decode_connective(kind_value: JsonValue, tag: String) -> ConnectiveDecode {
+  if tag == "atom" {
+    match read_string_member(v: kind_value, key: "identity") {
+      MemberString { value: lexeme } =>
+        ConnectiveDecoded { connective: Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } }
+      MemberFailed { cause: c } => ConnectiveDecodeFailed { cause: c }
+      _ => ConnectiveDecodeFailed { cause: ClosureDocMemberWrongShape { key: "identity" } }
+    }
+  } else if tag == "conj" { ConnectiveDecoded { connective: Conj } }
+  else if tag == "disj" { ConnectiveDecoded { connective: Disj } }
+  else if tag == "arrow" { ConnectiveDecoded { connective: Arrow } }
+  else if tag == "cardinality" { ConnectiveDecoded { connective: Cardinality } }
+  else if tag == "instantiation" { ConnectiveDecoded { connective: Instantiation } }
+  else { ConnectiveDecodeFailed { cause: ClosureDocUnknownConnectiveTag { found: tag } } }
+}
+
+type BehaviorDecode
+  = BehaviorDecoded { behavior: Behavior }
+  | BehaviorDecodeFailed { cause: ClosureDocRefusal }
+
+fn decode_behavior(tag: String) -> BehaviorDecode {
+  if tag == "value" { BehaviorDecoded { behavior: Value } }
+  else if tag == "transform" { BehaviorDecoded { behavior: Transform } }
+  else if tag == "branch" { BehaviorDecoded { behavior: Branch } }
+  else if tag == "loop" { BehaviorDecoded { behavior: Loop } }
+  else if tag == "bind" { BehaviorDecoded { behavior: Bind } }
+  else if tag == "match" { BehaviorDecoded { behavior: Match } }
+  else { BehaviorDecodeFailed { cause: ClosureDocUnknownBehaviorTag { found: tag } } }
+}
+
+type KindDecode
+  = KindDecoded { kind: NodeKind }
+  | KindDecodeFailed { cause: ClosureDocRefusal }
+
+// THE MEMBER SET IS CHECKED AFTER THE VARIANT IS KNOWN AND BEFORE THE VARIANT IS BUILT. It cannot be
+// checked earlier: `identity` is required on an atom and forbidden on every other connective, so
+// "unexpected" has no meaning until the connective tag has been read. Checking it before building
+// means a Conj carrying an identity refuses rather than decoding into a node whose stated identity
+// silently played no part in the node that resulted.
+fn decode_type_kind(kind_value: JsonValue, ctag: String) -> KindDecode {
+  match member_set_refusal(
+    v: kind_value,
+    allowed: if ctag == "atom" { ["kind", "connective", "identity"] } else { ["kind", "connective"] },
+    context: if ctag == "atom" { ClosureDocAtomKindMembers } else { ClosureDocTypeKindMembers }
+  ) {
+    Present { value: c } => KindDecodeFailed { cause: c }
+    Absent =>
+      match decode_connective(kind_value: kind_value, tag: ctag) {
+        ConnectiveDecodeFailed { cause: c } => KindDecodeFailed { cause: c }
+        ConnectiveDecoded { connective: c } => KindDecoded { kind: TypeNode { connective: c } }
+      }
+  }
+}
+
+fn decode_computation_kind(kind_value: JsonValue, btag: String) -> KindDecode {
+  match member_set_refusal(
+    v: kind_value,
+    allowed: ["kind", "behavior"],
+    context: ClosureDocComputationKindMembers
+  ) {
+    Present { value: c } => KindDecodeFailed { cause: c }
+    Absent =>
+      match decode_behavior(tag: btag) {
+        BehaviorDecodeFailed { cause: c } => KindDecodeFailed { cause: c }
+        BehaviorDecoded { behavior: b } => KindDecoded { kind: ComputationNode { behavior: b } }
+      }
+  }
+}
+
+fn decode_kind(kind_value: JsonValue) -> KindDecode {
+  match read_string_member(v: kind_value, key: "kind") {
+    MemberFailed { cause: c } => KindDecodeFailed { cause: c }
+    MemberString { value: tag } =>
+      if tag == "type" {
+        match read_string_member(v: kind_value, key: "connective") {
+          MemberFailed { cause: c } => KindDecodeFailed { cause: c }
+          MemberString { value: ctag } => decode_type_kind(kind_value: kind_value, ctag: ctag)
+          _ => KindDecodeFailed { cause: ClosureDocMemberWrongShape { key: "connective" } }
+        }
+      } else if tag == "computation" {
+        match read_string_member(v: kind_value, key: "behavior") {
+          MemberFailed { cause: c } => KindDecodeFailed { cause: c }
+          MemberString { value: btag } => decode_computation_kind(kind_value: kind_value, btag: btag)
+          _ => KindDecodeFailed { cause: ClosureDocMemberWrongShape { key: "behavior" } }
+        }
+      } else {
+        KindDecodeFailed { cause: ClosureDocUnknownKindTag { found: tag } }
+      }
+    _ => KindDecodeFailed { cause: ClosureDocMemberWrongShape { key: "kind" } }
+  }
+}
+
+// THE DECODE SIDE CARRIES THE SAME KEYED SHAPE FOR THE SAME REASON. Growing a List by
+// concat-at-end per object and folding it once per edge made load O(objects x edges) for work that
+// is O(n log n); the refusal semantics are unchanged, because a reference still resolves ONLY
+// against positions already decoded -- the map is populated in the same forward order the list was,
+// so a forward or fabricated reference is still absent and still refuses.
+type DecodePositions = Map<String, ObjectId>
+
+fn resolve_reference(positions: DecodePositions, reference: String) -> ObjectId? {
+  map_lookup(m: positions, key: reference)
+}
+
+type LabelDecode
+  = LabelDecoded { label: EdgeLabel }
+  | LabelDecodeFailed { cause: ClosureDocRefusal }
+
+// The member set here is the whole EDGE object, `target` included, because the label tag is what
+// closes it: a positional edge carrying a `name` is refused rather than read as a positional edge
+// whose name went nowhere.
+fn decode_named_label(edge_value: JsonValue) -> LabelDecode {
+  match member_set_refusal(
+    v: edge_value,
+    allowed: ["label", "name", "target"],
+    context: ClosureDocNamedEdgeMembers
+  ) {
+    Present { value: c } => LabelDecodeFailed { cause: c }
+    Absent =>
+      match read_string_member(v: edge_value, key: "name") {
+        MemberFailed { cause: c } => LabelDecodeFailed { cause: c }
+        MemberString { value: lexeme } =>
+          LabelDecoded { label: Named { name: symbol_intern_lexeme(lexeme: lexeme) } }
+        _ => LabelDecodeFailed { cause: ClosureDocMemberWrongShape { key: "name" } }
+      }
+  }
+}
+
+fn decode_positional_label(edge_value: JsonValue) -> LabelDecode {
+  match member_set_refusal(
+    v: edge_value,
+    allowed: ["label", "target"],
+    context: ClosureDocPositionalEdgeMembers
+  ) {
+    Present { value: c } => LabelDecodeFailed { cause: c }
+    Absent => LabelDecoded { label: Positional }
+  }
+}
+
+fn decode_label(edge_value: JsonValue) -> LabelDecode {
+  match read_string_member(v: edge_value, key: "label") {
+    MemberFailed { cause: c } => LabelDecodeFailed { cause: c }
+    MemberString { value: tag } =>
+      if tag == "named" {
+        decode_named_label(edge_value: edge_value)
+      } else if tag == "positional" {
+        decode_positional_label(edge_value: edge_value)
+      } else {
+        LabelDecodeFailed { cause: ClosureDocUnknownLabelTag { found: tag } }
+      }
+    _ => LabelDecodeFailed { cause: ClosureDocMemberWrongShape { key: "label" } }
+  }
+}
+
+// EDGES ACCUMULATE BY PREPEND AND ARE REVERSED ONCE AT THE CONSUMER, and here the order is not
+// merely cosmetic: this list is handed to insert_from_structure, which feeds it to
+// content_hash_of_children. A dropped or doubled reverse would change every derived ObjectId
+// silently, leaving objects unreachable by the identity they were stored under -- so the round-trip
+// claims, not inspection, are what establish this is right.
+type EdgeAcc {
+  edges: List<StoredEdge>
+  refusal: ClosureDocRefusal?
+}
+
+// THE UNRESOLVED-TARGET ARM IS THE ONE THAT MAKES POSITIONS SAFE. Positions are only trustworthy
+// because a reference that names nothing already decoded REFUSES here rather than resolving to some
+// nearby object. Only earlier positions are in scope -- the accumulator holds exactly what has been
+// decoded so far -- so a forward reference and a fabricated one are the same refusal, and neither
+// can quietly bind to whatever happens to sit at that index later.
+// DECODING A TARGET, AND THE ONE ARM THAT IS NOT A FAILURE.
+//
+// A CONTAINED arm resolves against earlier positions exactly as before: only what has already been
+// decoded is in scope, so a forward reference and a fabricated one are the same refusal and neither
+// binds to whatever later sits at that index.
+//
+// An UNCONTAINED arm is NOT a decode failure. It is a well-formed statement that this document does
+// not carry that object, and it decodes to a successful PARTIAL closure whose missing members the
+// consumer finds by joining against the store it has. Treating it as a refusal would put the codec
+// in the business of deciding whether a partial closure is acceptable, which is policy.
+//
+// The digest is MINTED THROUGH A VALIDATOR, never trusted as text: fnv1a64_structural_hex_digest
+// refuses anything that is not canonical lowercase hex of the exact length, so a malformed digest is
+// a typed refusal here rather than an ObjectId that lies about its own shape downstream.
+fn decode_target(positions: DecodePositions, target_value: JsonValue) -> TargetDecode {
+  match member_set_refusal(v: target_value, allowed: ["at", "uncontained"], context: ClosureDocTargetMembers) {
+    Present { value: c } => TargetDecodeFailed { cause: c }
+    Absent => {
+      let arms = target_arm_count(v: target_value)
+      if arms == 1 {
+        decode_target_arm(positions: positions, target_value: target_value)
+      } else {
+        TargetDecodeFailed { cause: ClosureDocTargetNotOneArm { found: arms } }
+      }
+    }
+  }
+}
+
+// EXACTLY ONE ARM, COUNTED BEFORE EITHER IS READ, and the counting is the whole point rather than a
+// tidier spelling of the same thing.
+//
+// The closed member set admits BOTH keys, because either is individually legal -- so it cannot be
+// what enforces the choice between them. An earlier revision relied on it anyway and then read "at"
+// first, which meant a target carrying BOTH arms resolved to the position and SILENTLY DROPPED the
+// digest: a document saying two contradictory things about one target quietly answered with one of
+// them. That is the last-wins read this module exists to refuse, and the docstring above it claimed
+// the opposite was already true (found by review, not by the witnesses -- which is why one now
+// executes it).
+//
+// A duplicated key counts as PRESENT here, so a target carrying `at` twice reaches the arm reader
+// and is refused as ClosureDocMemberDuplicated rather than being miscounted as two arms; the two
+// failures are different and keep different names.
+fn target_arm_count(v: JsonValue) -> Int {
+  arm_present(v: v, key: "at") + arm_present(v: v, key: "uncontained")
+}
+
+fn arm_present(v: JsonValue, key: String) -> Int {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: _ } => 1
+    JsonMemberDuplicated { count: _ } => 1
+    JsonMemberAbsent => 0
+    JsonMemberNotAnObject => 0
+  }
+}
+
+// THE ARM IS SELECTED ON PRESENCE, NOT ON READ SUCCESS, and that distinction is the whole repair.
+//
+// An earlier revision matched `read_string_member(v, "at")` and treated ANY failure as "this is the
+// uncontained arm". But a missing `at` and a MALFORMED `at` both arrive as MemberFailed, and they are
+// opposite facts: absence means the other arm applies, while duplication or a non-string means THIS
+// arm is broken. Conflating them sent a target carrying `at` twice into the uncontained read, where
+// `uncontained` is legitimately absent, and the document was refused as a wrong-shape `uncontained`
+// -- a diagnostic naming the wrong key, for a defect in the other one, with the duplication never
+// mentioned. The comment above target_arm_count asserted the opposite was already true; it was not
+// (found by review, and the witness that now executes it is the reason the claim is worth anything).
+//
+// Presence answers the applicability question and nothing else, so each arm reports its own failures
+// with its own key and neither can be reached by the other's defect.
+fn decode_target_arm(positions: DecodePositions, target_value: JsonValue) -> TargetDecode {
+  match json_object_unique_member(v: target_value, key: "at") {
+    JsonMemberFound { value: _ } => decode_at_arm(positions: positions, target_value: target_value)
+    JsonMemberDuplicated { count: _ } =>
+      TargetDecodeFailed { cause: ClosureDocMemberDuplicated { key: "at" } }
+    JsonMemberNotAnObject => TargetDecodeFailed { cause: ClosureDocNotAnObject }
+    JsonMemberAbsent => decode_uncontained_arm(target_value: target_value)
+  }
+}
+
+fn decode_at_arm(positions: DecodePositions, target_value: JsonValue) -> TargetDecode {
+  match read_string_member(v: target_value, key: "at") {
+    MemberString { value: reference } =>
+      match resolve_reference(positions: positions, reference: reference) {
+        Present { value: identity } => TargetDecoded { target: identity }
+        Absent =>
+          TargetDecodeFailed { cause: ClosureDocEdgeTargetUnresolved { reference: reference } }
+      }
+    MemberFailed { cause: c } => TargetDecodeFailed { cause: c }
+    _ => TargetDecodeFailed { cause: ClosureDocMemberWrongShape { key: "at" } }
+  }
+}
+
+fn decode_uncontained_arm(target_value: JsonValue) -> TargetDecode {
+  match read_string_member(v: target_value, key: "uncontained") {
+    MemberString { value: hex } =>
+      match fnv1a64_structural_hex_digest(hex: hex) {
+        Present { value: digest } => TargetDecoded { target: digest }
+        Absent => TargetDecodeFailed { cause: ClosureDocUncontainedDigestInvalid { found: hex } }
+      }
+    MemberFailed { cause: c } => TargetDecodeFailed { cause: c }
+    _ => TargetDecodeFailed { cause: ClosureDocMemberWrongShape { key: "uncontained" } }
+  }
+}
+
+type TargetDecode
+  = TargetDecoded { target: ObjectId }
+  | TargetDecodeFailed { cause: ClosureDocRefusal }
+
+fn decode_edge_step(positions: DecodePositions, acc: EdgeAcc, edge_value: JsonValue) -> EdgeAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match decode_label(edge_value: edge_value) {
+        LabelDecodeFailed { cause: c } => EdgeAcc { edges: acc.edges, refusal: Present { value: c } }
+        LabelDecoded { label: label } =>
+          match read_member(v: edge_value, key: "target") {
+            MemberFailed { cause: c } =>
+              EdgeAcc { edges: acc.edges, refusal: Present { value: c } }
+            MemberObject { value: target_value } =>
+              match decode_target(positions: positions, target_value: target_value) {
+                TargetDecodeFailed { cause: c } =>
+                  EdgeAcc { edges: acc.edges, refusal: Present { value: c } }
+                TargetDecoded { target: identity } =>
+                  EdgeAcc {
+                    edges: concat([StoredEdge { label: label, target: identity }], acc.edges),
+                    refusal: acc.refusal,
+                  }
+              }
+            _ =>
+              EdgeAcc {
+                edges: acc.edges,
+                refusal: Present { value: ClosureDocMemberWrongShape { key: "target" } },
+              }
+          }
+      }
+  }
+}
+
+type DecodeAcc {
+  store: ObjectStore
+  positions: DecodePositions
+  next: Int
+  refusal: ClosureDocRefusal?
+}
+
+fn decode_acc_refused(acc: DecodeAcc, cause: ClosureDocRefusal) -> DecodeAcc {
+  DecodeAcc {
+    store: acc.store,
+    positions: acc.positions,
+    next: acc.next,
+    refusal: Present { value: cause },
+  }
+}
+
+fn decode_object_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match member_set_refusal(
+        v: object_value,
+        allowed: ["kind", "children"],
+        context: ClosureDocObjectRecordMembers
+      ) {
+        Present { value: c } => decode_acc_refused(acc: acc, cause: c)
+        Absent => decode_object_members(acc: acc, object_value: object_value)
+      }
+  }
+}
+
+fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match read_member(v: object_value, key: "kind") {
+        MemberFailed { cause: c } =>
+          DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: c } }
+        MemberObject { value: kind_value } =>
+          match decode_kind(kind_value: kind_value) {
+            KindDecodeFailed { cause: c } =>
+              DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: c } }
+            KindDecoded { kind: kind } =>
+              match read_member(v: object_value, key: "children") {
+                MemberFailed { cause: c } =>
+                  DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: c } }
+                MemberArray { elements: child_values } =>
+                  match fold(
+                    child_values,
+                    init: EdgeAcc { edges: [], refusal: none },
+                    f: fn(edge_acc, edge_value) {
+                      decode_edge_step(positions: acc.positions, acc: edge_acc, edge_value: edge_value)
+                    }
+                  ) {
+                    EdgeAcc { edges: reversed_edges, refusal: edge_refusal } =>
+                      match edge_refusal {
+                        Present { value: c } =>
+                          DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: c } }
+                        Absent =>
+                          match insert_from_structure(store: acc.store, kind: kind, children: reverse(reversed_edges)) {
+                            LocatorCollision { identity: i, existing: _, incoming: _ } =>
+                              DecodeAcc {
+                                store: acc.store,
+                                positions: acc.positions,
+                                next: acc.next,
+                                refusal: Present { value: ClosureDocObjectCollision { identity: i } },
+                              }
+                            Stored { store: next_store, identity: identity } =>
+                              DecodeAcc {
+                                store: next_store,
+                                positions: map_insert(
+                                  m: acc.positions,
+                                  key: position_reference(n: acc.next),
+                                  value: identity,
+                                ),
+                                next: acc.next + 1,
+                                refusal: acc.refusal,
+                              }
+                          }
+                      }
+                  }
+                _ =>
+                  DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: ClosureDocMemberWrongShape { key: "children" } } }
+              }
+          }
+        _ =>
+          DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: ClosureDocMemberWrongShape { key: "kind" } } }
+      }
+  }
+}
+
+// THE TABLE DECODE, exposed for the same reason the table encode is: a repository resolves SEVERAL
+// roots against one decoded population. Returning the accumulator rather than a finished store means
+// the caller keeps the position-to-identity map it needs to resolve those roots, which a
+// store-only return would have discarded -- forcing the caller to re-derive positions it cannot see.
+fn decode_object_table(object_values: List<JsonValue>) -> DecodeAcc {
+  fold(
+    object_values,
+    init: DecodeAcc { store: empty_store(), positions: empty_map(), next: 0, refusal: none },
+    f: fn(acc, object_value) { decode_object_step(acc: acc, object_value: object_value) }
+  )
+}
+
+// The format tag is checked BEFORE any object is decoded, so a file from a future format refuses as
+// a format mismatch rather than as a pile of unknown-tag errors from the middle of a walk.
+fn decode_closure_document(v: JsonValue) -> ClosureDocLoadOutcome {
+  match read_string_member(v: v, key: "format") {
+    MemberFailed { cause: c } => ClosureDocRefused { cause: c }
+    MemberString { value: format } =>
+      if format != closure_document_format_tag {
+        ClosureDocRefused { cause: ClosureDocFormatUnrecognized { found: format } }
+      } else {
+        match member_set_refusal(
+          v: v,
+          allowed: ["format", "objects", "root"],
+          context: ClosureDocEnvelopeMembers
+        ) {
+          Present { value: c } => ClosureDocRefused { cause: c }
+          Absent => decode_closure_document_body(v: v)
+        }
+      }
+    _ => ClosureDocRefused { cause: ClosureDocMemberWrongShape { key: "format" } }
+  }
+}
+
+fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
+  match read_member(v: v, key: "objects") {
+    MemberFailed { cause: c } => ClosureDocRefused { cause: c }
+    MemberArray { elements: object_values } =>
+      match decode_object_table(object_values: object_values) {
+        DecodeAcc { store: store, positions: positions, next: _, refusal: refusal } =>
+          match refusal {
+            Present { value: c } => ClosureDocRefused { cause: c }
+            Absent =>
+              match read_member(v: v, key: "root") {
+                MemberFailed { cause: c } => ClosureDocRefused { cause: c }
+                MemberObject { value: root_value } =>
+                  match decode_target(positions: positions, target_value: root_value) {
+                    TargetDecodeFailed { cause: c } => ClosureDocRefused { cause: c }
+                    TargetDecoded { target: root } => ClosureDocLoaded { store: store, root: root }
+                  }
+                _ => ClosureDocRefused { cause: ClosureDocMemberWrongShape { key: "root" } }
+              }
+          }
+      }
+    _ => ClosureDocRefused { cause: ClosureDocMemberWrongShape { key: "objects" } }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Publication standing
+// ---------------------------------------------------------------------------
+
+// THIS FORMAT'S REFUSALS, CLASSIFIED BESIDE THE REFUSALS THEMSELVES.
+//
+// The standing vocabulary is format-agnostic and lives in gunbc.scm.load_standing; the mapping from
+// THIS format's causes into it belongs HERE, next to the coproduct it reads, so a new refusal
+// variant fails to compile where its author already is rather than in a consumer that has never
+// heard of it. A consumer computing this by matching on ClosureDocRefusal would be reaching into one
+// format's error enum for a format-agnostic answer -- the placement defect that closed gunbc#8940.
+//
+// WHY UNKNOWN MEMBERS AND UNKNOWN VARIANT TAGS ARE MALFORMED, NOT A NEWER WRITER, which follows from
+// this module's own policy rather than from taste: a schema that grows a member grows a NEW FORMAT
+// TAG. So a conforming newer writer emits a new tag; it does not emit this one carrying extras. A
+// document under a MATCHED tag with an unrecognized member or variant is a broken document of THIS
+// schema, and calling it "needs a compatible reader" would name a remedy that cannot arrive, because
+// no conforming writer produced it.
+//
+// WHY AN UNRESOLVED POSITION IS MALFORMED AND NOT A FETCHABLE ABSENCE. A position denotes nothing
+// outside the document that defines it, so an unresolved `at` names no object anyone could supply.
+// Fetchable absence is the UNCONTAINED arm, which is not a refusal at all and never reaches here.
+//
+// WHY A COLLISION IS ITS OWN STANDING. object_store states both colliding records are legitimate and
+// the forged pairing is prevented by construction, so a collision means the structural locator
+// cannot represent both -- not that either is damaged. Classifying it as malformed would let a
+// reader DISCARD A WRITER'S VALID GENERATION over an honest hash coincidence.
+fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
+  match cause {
+    ClosureDocFormatUnrecognized { found: _ } => LoadUnsupportedProtocol
+    ClosureDocObjectCollision { identity: _ } => LoadIdentityCollision
+    ClosureDocNotAnObject => LoadDocumentMalformed
+    ClosureDocMemberMissing { key: _ } => LoadDocumentMalformed
+    ClosureDocMemberDuplicated { key: _ } => LoadDocumentMalformed
+    ClosureDocMemberWrongShape { key: _ } => LoadDocumentMalformed
+    ClosureDocUnknownKindTag { found: _ } => LoadDocumentMalformed
+    ClosureDocUnknownConnectiveTag { found: _ } => LoadDocumentMalformed
+    ClosureDocUnknownBehaviorTag { found: _ } => LoadDocumentMalformed
+    ClosureDocUnknownLabelTag { found: _ } => LoadDocumentMalformed
+    ClosureDocUnexpectedMember { context: _, key: _ } => LoadDocumentMalformed
+    ClosureDocEdgeTargetUnresolved { reference: _ } => LoadDocumentMalformed
+    ClosureDocRootUnresolved { reference: _ } => LoadDocumentMalformed
+    ClosureDocTargetNotOneArm { found: _ } => LoadDocumentMalformed
+    ClosureDocUncontainedDigestInvalid { found: _ } => LoadDocumentMalformed
+  }
+}
+
+// A LOAD THAT SUCCEEDED STILL HAS A STANDING, and it is not always LoadComplete. This is the arm the
+// predecessor format could not produce: a document whose uncontained references leave objects the
+// store does not hold loads correctly and is PARTIAL, which is a success with an obligation rather
+// than a failure. Completeness is derived from the objects, never a flag beside them.
+fn loaded_closure_standing(store: ObjectStore, root: ObjectId) -> LoadStanding {
+  if closure_is_complete(closure: CommitClosure { store: store, root: root }) {
+    LoadComplete
+  } else {
+    LoadPartial
+  }
+}
+
+fn closure_document_standing(outcome: ClosureDocLoadOutcome) -> LoadStanding {
+  match outcome {
+    ClosureDocLoaded { store: store, root: root } =>
+      loaded_closure_standing(store: store, root: root)
+    ClosureDocRefused { cause: cause } => closure_document_load_standing(cause: cause)
+  }
+}
