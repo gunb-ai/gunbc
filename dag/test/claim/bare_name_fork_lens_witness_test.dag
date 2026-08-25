@@ -1,0 +1,161 @@
+module test.claim.bare_name_fork_lens_witness_test
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EVERY INPUT HERE IS AUTHORED. The lens's one host call sits at its boundary and the verdict does
+// not depend on it, so these claims are about the logic rather than about whatever the tree happened
+// to contain when they ran — which is also what keeps them from being a tree-copied census.
+
+data subject_path: String = "dag/fixture/subject.dag"
+data peer_path: String = "dag/fixture/peer.dag"
+
+fn decl(name: String, qn: String, path: String) -> BareNameDeclaration {
+  BareNameDeclaration { name: name, qualified_name: qn, rel_path: path, kind: FnItem }
+}
+
+fn standing_over(facts: List<BareNameDeclaration>) -> BareNameForkStanding {
+  bare_name_fork_standing_over(
+    subject_rel_path: subject_path,
+    roots: ["dag", "src/v2"],
+    facts: facts
+  )
+}
+
+fn verdict_over(facts: List<BareNameDeclaration>) -> BareNameForkVerdict {
+  bare_name_fork_verdict(standing: standing_over(facts: facts))
+}
+
+// THE MEASURED SPECIMEN, REPRODUCED AS A FIXTURE: one name, two declarers, two files.
+test fn one_name_declared_in_two_files_is_a_fork_that_names_both() -> Bool {
+  match verdict_over(
+    facts: [
+      decl(name: "roster_identity", qn: "fixture.subject.roster_identity", path: subject_path),
+      decl(name: "roster_identity", qn: "fixture.peer.roster_identity", path: peer_path)
+    ]
+  ) {
+    ForkedDeclarations { subject: _, forked: fs } =>
+      match fs[0] {
+        BareNameForked { name: n, kind: _, declarers: ds } =>
+          (n == "roster_identity") && (ds == ["fixture.peer.roster_identity"])
+        BareNameSoleDeclarer { name: _, kind: _ } => false
+      }
+    NoForkedDeclaration { subject: _, checked: _ } => false
+    SubjectContributedNoDeclarations { subject: _, roots: _ } => false
+  }
+}
+
+// ITS CONTROL, differing in exactly one field — the peer declares a DIFFERENT name — so a green
+// above cannot be an accident of the fixture's shape.
+test fn the_same_two_files_declaring_different_names_are_not_a_fork() -> Bool {
+  match verdict_over(
+    facts: [
+      decl(name: "roster_identity", qn: "fixture.subject.roster_identity", path: subject_path),
+      decl(name: "something_else", qn: "fixture.peer.something_else", path: peer_path)
+    ]
+  ) {
+    NoForkedDeclaration { subject: _, checked: n } => n == 1
+    ForkedDeclarations { subject: _, forked: _ } => false
+    SubjectContributedNoDeclarations { subject: _, roots: _ } => false
+  }
+}
+
+// A MODULE IS NOT FORKED WITH ITSELF. Two declarations of one name inside ONE file are a different
+// defect with a different owner, and reporting them here would make every legitimate overload read
+// as a collision.
+test fn two_declarations_of_one_name_inside_the_subject_are_not_a_fork_with_itself() -> Bool {
+  match verdict_over(
+    facts: [
+      decl(name: "helper", qn: "fixture.subject.helper", path: subject_path),
+      decl(name: "helper", qn: "fixture.subject.helper", path: subject_path)
+    ]
+  ) {
+    NoForkedDeclaration { subject: _, checked: _ } => true
+    ForkedDeclarations { subject: _, forked: _ } => false
+    SubjectContributedNoDeclarations { subject: _, roots: _ } => false
+  }
+}
+
+// THE ARM THAT SEPARATES THIS FROM A DECORATION: a subject the index did not read REFUSES. Had it
+// held, the lens would report clean for a mistyped path, a file outside the roots, or a module the
+// index could not classify — the strongest verdict from the weakest observation.
+test fn a_subject_that_contributed_no_declarations_refuses_rather_than_reading_clean() -> Bool {
+  match verdict_over(facts: [decl(name: "x", qn: "fixture.peer.x", path: peer_path)]) {
+    SubjectContributedNoDeclarations { subject: s, roots: _ } => s == subject_path
+    NoForkedDeclaration { subject: _, checked: _ } => false
+    ForkedDeclarations { subject: _, forked: _ } => false
+  }
+}
+
+test fn an_empty_fact_population_refuses_too() -> Bool {
+  match verdict_over(facts: []) {
+    SubjectContributedNoDeclarations { subject: _, roots: _ } => true
+    NoForkedDeclaration { subject: _, checked: _ } => false
+    ForkedDeclarations { subject: _, forked: _ } => false
+  }
+}
+
+// THREE DECLARERS REPORT ALL THE PEERS AND DEDUPLICATE THEM, because the remedy depends on which
+// authority already owns the name and a truncated list picks the wrong one.
+test fn every_peer_declarer_is_reported_and_repeats_are_collapsed() -> Bool {
+  match verdict_over(
+    facts: [
+      decl(name: "n", qn: "fixture.subject.n", path: subject_path),
+      decl(name: "n", qn: "fixture.a.n", path: "dag/fixture/a.dag"),
+      decl(name: "n", qn: "fixture.a.n", path: "dag/fixture/a.dag"),
+      decl(name: "n", qn: "fixture.b.n", path: "dag/fixture/b.dag")
+    ]
+  ) {
+    ForkedDeclarations { subject: _, forked: fs } =>
+      match fs[0] {
+        BareNameForked { name: _, kind: _, declarers: ds } => ds == ["fixture.a.n", "fixture.b.n"]
+        BareNameSoleDeclarer { name: _, kind: _ } => false
+      }
+    NoForkedDeclaration { subject: _, checked: _ } => false
+    SubjectContributedNoDeclarations { subject: _, roots: _ } => false
+  }
+}
+
+// ONLY THE FORKED NAMES ARE REPORTED, so a module with one collision among many declarations does
+// not bury it.
+test fn a_subject_with_one_forked_name_among_several_reports_only_that_one() -> Bool {
+  match verdict_over(
+    facts: [
+      decl(name: "clean_one", qn: "fixture.subject.clean_one", path: subject_path),
+      decl(name: "forked_one", qn: "fixture.subject.forked_one", path: subject_path),
+      decl(name: "clean_two", qn: "fixture.subject.clean_two", path: subject_path),
+      decl(name: "forked_one", qn: "fixture.peer.forked_one", path: peer_path)
+    ]
+  ) {
+    ForkedDeclarations { subject: _, forked: fs } => count(fs) == 1
+    NoForkedDeclaration { subject: _, checked: _ } => false
+    SubjectContributedNoDeclarations { subject: _, roots: _ } => false
+  }
+}
+
+// THE REPORT CARRIES THE DECLARED COVERAGE BOUND on the clean arm, so a passing run states what it
+// did NOT check rather than leaving a reader to infer completeness.
+test fn a_clean_report_states_the_coverage_it_does_not_have() -> Bool {
+  count(
+    bare_name_fork_report(
+      verdict: verdict_over(
+        facts: [decl(name: "only", qn: "fixture.subject.only", path: subject_path)]
+      )
+    )
+  ) == 4
+}
+
+// AND THE REFUSING ARMS DO NOT HOLD, which is the property the entry point's exit code rests on.
+test fn both_refusing_verdicts_fail_the_gate_and_the_clean_one_passes() -> Bool {
+  !bare_name_fork_verdict_holds(verdict: verdict_over(facts: []))
+    && !bare_name_fork_verdict_holds(
+         verdict: verdict_over(
+           facts: [
+             decl(name: "n", qn: "fixture.subject.n", path: subject_path),
+             decl(name: "n", qn: "fixture.peer.n", path: peer_path)
+           ]
+         )
+       )
+    && bare_name_fork_verdict_holds(
+         verdict: verdict_over(facts: [decl(name: "n", qn: "fixture.subject.n", path: subject_path)])
+       )
+}
