@@ -59,10 +59,10 @@ fn runner_ordering_dropin_lines(instance: gunbc.build_cache_instance.BuildCacheI
 // creates such a cgroup implicitly WITH NO LIMITS -- the unbounded compile charge wearing the
 // managed topology's name. Now the field carries the placement itself, so the CompilePoolInRunnerSlots
 // arm has no slice name to render and the bad unit cannot be built.
-fn compile_pool_service_directives(placement: gunbc.fleet_host_budget.CompilePoolPlacement) -> List<extdeps.systemd.unit_file.SystemdServiceDirective> {
+fn compile_pool_service_directives(placement: gunbc.host_layout.CompilePoolPlacement) -> List<extdeps.systemd.unit_file.SystemdServiceDirective> {
   match placement {
-    gunbc.fleet_host_budget.CompilePoolSliceDeclared { slice_unit: u } => [extdeps.systemd.unit_file.ServiceSlice { name: u as std.types.NonEmptyStr }]
-    gunbc.fleet_host_budget.CompilePoolInRunnerSlots => []
+    gunbc.host_layout.CompilePoolSliceDeclared { slice_unit: u } => [extdeps.systemd.unit_file.ServiceSlice { name: u as std.types.NonEmptyStr }]
+    gunbc.host_layout.CompilePoolInRunnerSlots => []
   }
 }
 

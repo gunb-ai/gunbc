@@ -70,7 +70,7 @@ fn live_tree_declined_entries(rows: List<gunbc.explicit_witness_admission.Explic
     empty: v2.std.algebra.Empty {},
     cons: fn(acc, row) {
       if entry_declares_reads_live_tree(entry: row.witness.entry) {
-        v2.std.algebra.Cons { head: row.witness.entry, tail: acc }
+        std.algebra.Cons { head: row.witness.entry, tail: acc }
       } else {
         acc
       }
@@ -94,7 +94,7 @@ fn live_quarantine_probe_subjects() -> List<gunbc.quarantine_probe_disposition.Q
   v2.std.algebra.fold_list(
     xs: gunbc.quarantine_probe_disposition.quarantine_probe_admissions(rows: gunbc.explicit_witness_admission.explicit_witness_admissions),
     empty: v2.std.algebra.Empty {},
-    cons: fn(acc, row) { v2.std.algebra.Cons { head: subject_for_admission(facts: facts, row: row), tail: acc } }
+    cons: fn(acc, row) { std.algebra.Cons { head: subject_for_admission(facts: facts, row: row), tail: acc } }
   )
 }
 
@@ -219,7 +219,7 @@ fn probe_fixture_no_facts() -> gunbc.quarantine_probe_disposition.QuarantineProb
 
 fn facts_with_expected_red() -> gunbc.quarantine_probe_disposition.QuarantineProbeHoldingFacts {
   gunbc.quarantine_probe_disposition.QuarantineProbeHoldingFacts {
-    expected_red_roster: v2.std.algebra.Cons { head: probe_fixture_identity(), tail: v2.std.algebra.Empty {} },
+    expected_red_roster: std.algebra.Cons { head: probe_fixture_identity(), tail: v2.std.algebra.Empty {} },
     route_gap_roster: v2.std.algebra.Empty {},
     home_prefixes: v2.std.algebra.Empty {},
     live_tree_declined_entries: v2.std.algebra.Empty {},
@@ -230,7 +230,7 @@ fn facts_with_expected_red() -> gunbc.quarantine_probe_disposition.QuarantinePro
 fn facts_with_route_gap() -> gunbc.quarantine_probe_disposition.QuarantineProbeHoldingFacts {
   gunbc.quarantine_probe_disposition.QuarantineProbeHoldingFacts {
     expected_red_roster: v2.std.algebra.Empty {},
-    route_gap_roster: v2.std.algebra.Cons { head: probe_fixture_identity(), tail: v2.std.algebra.Empty {} },
+    route_gap_roster: std.algebra.Cons { head: probe_fixture_identity(), tail: v2.std.algebra.Empty {} },
     home_prefixes: v2.std.algebra.Empty {},
     live_tree_declined_entries: v2.std.algebra.Empty {},
     path_exclusion_substrings: v2.std.algebra.Empty {}
@@ -241,7 +241,7 @@ fn facts_with_home_prefix() -> gunbc.quarantine_probe_disposition.QuarantineProb
   gunbc.quarantine_probe_disposition.QuarantineProbeHoldingFacts {
     expected_red_roster: v2.std.algebra.Empty {},
     route_gap_roster: v2.std.algebra.Empty {},
-    home_prefixes: v2.std.algebra.Cons { head: "test.claim.synthetic_", tail: v2.std.algebra.Empty {} },
+    home_prefixes: std.algebra.Cons { head: "test.claim.synthetic_", tail: v2.std.algebra.Empty {} },
     live_tree_declined_entries: v2.std.algebra.Empty {},
     path_exclusion_substrings: v2.std.algebra.Empty {}
   }
@@ -252,7 +252,7 @@ fn facts_with_live_tree_decline() -> gunbc.quarantine_probe_disposition.Quaranti
     expected_red_roster: v2.std.algebra.Empty {},
     route_gap_roster: v2.std.algebra.Empty {},
     home_prefixes: v2.std.algebra.Empty {},
-    live_tree_declined_entries: v2.std.algebra.Cons { head: probe_fixture_entry, tail: v2.std.algebra.Empty {} },
+    live_tree_declined_entries: std.algebra.Cons { head: probe_fixture_entry, tail: v2.std.algebra.Empty {} },
     path_exclusion_substrings: v2.std.algebra.Empty {}
   }
 }
@@ -263,14 +263,14 @@ fn facts_with_path_exclusion() -> gunbc.quarantine_probe_disposition.QuarantineP
     route_gap_roster: v2.std.algebra.Empty {},
     home_prefixes: v2.std.algebra.Empty {},
     live_tree_declined_entries: v2.std.algebra.Empty {},
-    path_exclusion_substrings: v2.std.algebra.Cons { head: "test/claim/synthetic_", tail: v2.std.algebra.Empty {} }
+    path_exclusion_substrings: std.algebra.Cons { head: "test/claim/synthetic_", tail: v2.std.algebra.Empty {} }
   }
 }
 
 fn facts_with_two_holders() -> gunbc.quarantine_probe_disposition.QuarantineProbeHoldingFacts {
   gunbc.quarantine_probe_disposition.QuarantineProbeHoldingFacts {
-    expected_red_roster: v2.std.algebra.Cons { head: probe_fixture_identity(), tail: v2.std.algebra.Empty {} },
-    route_gap_roster: v2.std.algebra.Cons { head: probe_fixture_identity(), tail: v2.std.algebra.Empty {} },
+    expected_red_roster: std.algebra.Cons { head: probe_fixture_identity(), tail: v2.std.algebra.Empty {} },
+    route_gap_roster: std.algebra.Cons { head: probe_fixture_identity(), tail: v2.std.algebra.Empty {} },
     home_prefixes: v2.std.algebra.Empty {},
     live_tree_declined_entries: v2.std.algebra.Empty {},
     path_exclusion_substrings: v2.std.algebra.Empty {}
@@ -359,7 +359,7 @@ test fn a_probe_held_by_nothing_is_an_alarm_and_does_not_hold() -> v2.std.logic.
   disposition_is_now_passing(disposition: fixture_disposition(facts: probe_fixture_no_facts()))
     && !gunbc.quarantine_probe_disposition.quarantine_probe_disposition_holds(disposition: fixture_disposition(facts: probe_fixture_no_facts()))
     && !gunbc.quarantine_probe_disposition.quarantine_probe_dispositions_all_hold(
-      subjects: v2.std.algebra.Cons { head: probe_fixture_subject(), tail: v2.std.algebra.Empty {} },
+      subjects: std.algebra.Cons { head: probe_fixture_subject(), tail: v2.std.algebra.Empty {} },
       facts: probe_fixture_no_facts()
     )
 }
@@ -378,7 +378,7 @@ test fn a_probe_held_by_two_mechanisms_refuses() -> v2.std.logic.Bool {
 // covered, which is the substring weakness the exact-admission authority was built to remove.
 test fn a_roster_row_that_merely_contains_the_identity_does_not_hold_it() -> v2.std.logic.Bool {
   let near_miss = gunbc.quarantine_probe_disposition.QuarantineProbeHoldingFacts {
-    expected_red_roster: v2.std.algebra.Cons { head: concat(probe_fixture_identity(), "_extra"), tail: v2.std.algebra.Empty {} },
+    expected_red_roster: std.algebra.Cons { head: concat(probe_fixture_identity(), "_extra"), tail: v2.std.algebra.Empty {} },
     route_gap_roster: v2.std.algebra.Empty {},
     home_prefixes: v2.std.algebra.Empty {},
     live_tree_declined_entries: v2.std.algebra.Empty {},

@@ -29,7 +29,7 @@ fn pool_declared_instance_fixture(host: product.placement_supply.HostIdentity) -
     intended_principal: base.intended_principal,
     intended_storage: base.intended_storage,
     intended_capacity: base.intended_capacity,
-    intended_compile_pool: gunbc.fleet_host_budget.CompilePoolSliceDeclared {
+    intended_compile_pool: gunbc.host_layout.CompilePoolSliceDeclared {
       slice_unit: gunbc.host_layout.gunbc_managed_compile_pool_slice as String,
     },
   }

@@ -96,9 +96,9 @@ test fn witness_compile_pool_effect_refuses_a_bmc_target() -> Bool {
 // and at that point it becomes an assertion that the pool converges rather than being deleted.
 test fn witness_live_topology_refuses_the_slice_ensure() -> Bool {
   let a = gunbc.compile_pool_ensure.admit_ensure_compile_pool_slice(
-    topology: gunbc.fleet_host_budget.gunbc_compile_pool_placement,
+    topology: gunbc.host_layout.gunbc_compile_pool_placement,
     sizing: gunbc.fleet_host_budget.compile_pool_bytes_for(
-      placement: gunbc.fleet_host_budget.gunbc_compile_pool_placement,
+      placement: gunbc.host_layout.gunbc_compile_pool_placement,
       nproc: std.measure.hardware_thread_count(count: 128),
       host: std.measure.byte_size(134317047808),
       citation: extdeps.jobserver.jobserver_config,

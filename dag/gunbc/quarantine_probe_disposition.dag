@@ -208,10 +208,10 @@ fn first_matching_prefix(module: v2.std.text.String, prefixes: List<v2.std.text.
     empty: v2.std.algebra.Empty {},
     cons: fn(acc, prefix) {
       match acc {
-        v2.std.algebra.Cons { head: h, tail: t } => acc
+        std.algebra.Cons { head: h, tail: t } => acc
         v2.std.algebra.Empty {} =>
           if module.starts_with(prefix: prefix) {
-            v2.std.algebra.Cons { head: prefix, tail: v2.std.algebra.Empty {} }
+            std.algebra.Cons { head: prefix, tail: v2.std.algebra.Empty {} }
           } else {
             acc
           }
@@ -226,10 +226,10 @@ fn first_matching_substring(entry: v2.std.text.String, substrings: List<v2.std.t
     empty: v2.std.algebra.Empty {},
     cons: fn(acc, needle) {
       match acc {
-        v2.std.algebra.Cons { head: h, tail: t } => acc
+        std.algebra.Cons { head: h, tail: t } => acc
         v2.std.algebra.Empty {} =>
           if entry.contains(needle) {
-            v2.std.algebra.Cons { head: needle, tail: v2.std.algebra.Empty {} }
+            std.algebra.Cons { head: needle, tail: v2.std.algebra.Empty {} }
           } else {
             acc
           }
@@ -248,31 +248,31 @@ fn quarantine_probe_holders(
   let identity = quarantine_probe_subject_identity(subject: subject)
   let floor_held =
     if exact_member(needle: identity, population: facts.expected_red_roster) {
-      v2.std.algebra.Cons { head: FloorExpectedRedHeld {}, tail: v2.std.algebra.Empty {} }
+      std.algebra.Cons { head: FloorExpectedRedHeld {}, tail: v2.std.algebra.Empty {} }
     } else {
       v2.std.algebra.Empty {}
     }
   let route_held =
     if exact_member(needle: identity, population: facts.route_gap_roster) {
-      v2.std.algebra.Cons { head: RouteGapHeldNoVerdict {}, tail: v2.std.algebra.Empty {} }
+      std.algebra.Cons { head: RouteGapHeldNoVerdict {}, tail: v2.std.algebra.Empty {} }
     } else {
       v2.std.algebra.Empty {}
     }
   let home_declined = v2.std.algebra.fold_list(
     xs: first_matching_prefix(module: subject.module, prefixes: facts.home_prefixes),
     empty: v2.std.algebra.Empty {},
-    cons: fn(acc, prefix) { v2.std.algebra.Cons { head: NeverRunDeclinedByHomePolicy { matched_prefix: prefix }, tail: acc } }
+    cons: fn(acc, prefix) { std.algebra.Cons { head: NeverRunDeclinedByHomePolicy { matched_prefix: prefix }, tail: acc } }
   )
   let live_declined =
     if exact_member(needle: subject.entry, population: facts.live_tree_declined_entries) {
-      v2.std.algebra.Cons { head: NeverRunDeclinedByLiveTreeRead { entry: subject.entry }, tail: v2.std.algebra.Empty {} }
+      std.algebra.Cons { head: NeverRunDeclinedByLiveTreeRead { entry: subject.entry }, tail: v2.std.algebra.Empty {} }
     } else {
       v2.std.algebra.Empty {}
     }
   let path_excluded = v2.std.algebra.fold_list(
     xs: first_matching_substring(entry: subject.entry, substrings: facts.path_exclusion_substrings),
     empty: v2.std.algebra.Empty {},
-    cons: fn(acc, needle) { v2.std.algebra.Cons { head: NeverRunPathExcluded { matched_substring: needle }, tail: acc } }
+    cons: fn(acc, needle) { std.algebra.Cons { head: NeverRunPathExcluded { matched_substring: needle }, tail: acc } }
   )
   concat_holders(
     a: floor_held,
@@ -289,7 +289,7 @@ fn quarantine_probe_holders(
 fn concat_holders(a: List<QuarantineProbeHolder>, b: List<QuarantineProbeHolder>) -> List<QuarantineProbeHolder> {
   match a {
     v2.std.algebra.Empty {} => b
-    v2.std.algebra.Cons { head: h, tail: t } => v2.std.algebra.Cons { head: h, tail: concat_holders(a: t, b: b) }
+    std.algebra.Cons { head: h, tail: t } => std.algebra.Cons { head: h, tail: concat_holders(a: t, b: b) }
   }
 }
 
@@ -307,13 +307,13 @@ fn quarantine_probe_disposition(
       entry: subject.entry,
       function: subject.function
     }
-    v2.std.algebra.Cons { head: h, tail: t } =>
+    std.algebra.Cons { head: h, tail: t } =>
       match t {
         v2.std.algebra.Empty {} => HeldByExactlyOne {
           identity: quarantine_probe_subject_identity(subject: subject),
           holder: h
         }
-        v2.std.algebra.Cons { head: h2, tail: t2 } => QuarantineProbeHeldByMoreThanOne {
+        std.algebra.Cons { head: h2, tail: t2 } => QuarantineProbeHeldByMoreThanOne {
           identity: quarantine_probe_subject_identity(subject: subject),
           holders: holders
         }
@@ -337,7 +337,7 @@ fn quarantine_probe_dispositions(
     xs: subjects,
     empty: v2.std.algebra.Empty {},
     cons: fn(acc, subject) {
-      v2.std.algebra.Cons { head: quarantine_probe_disposition(subject: subject, facts: facts), tail: acc }
+      std.algebra.Cons { head: quarantine_probe_disposition(subject: subject, facts: facts), tail: acc }
     }
   )
 }
@@ -370,7 +370,7 @@ fn quarantine_probe_admissions(rows: List<gunbc.explicit_witness_admission.Expli
     empty: v2.std.algebra.Empty {},
     cons: fn(acc, row) {
       if admission_is_quarantine_probe(row: row) {
-        v2.std.algebra.Cons { head: row, tail: acc }
+        std.algebra.Cons { head: row, tail: acc }
       } else {
         acc
       }

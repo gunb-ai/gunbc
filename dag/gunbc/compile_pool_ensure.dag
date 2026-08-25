@@ -102,7 +102,7 @@ fn ensure_compile_pool_slice_from_observation(
 }
 
 fn admit_ensure_compile_pool_slice(
-  topology: gunbc.fleet_host_budget.CompilePoolPlacement,
+  topology: gunbc.host_layout.CompilePoolPlacement,
   sizing: gunbc.fleet_host_budget.CompilePoolResolution,
   cache_placement: gunbc.build_cache_instance.BuildCacheServerPlacement,
   observed: gunbc.host_compile_pool.CompilePoolObservation,

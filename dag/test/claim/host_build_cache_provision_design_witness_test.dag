@@ -26,7 +26,7 @@ test fn design_witness_known_non_sccache_catalog_refuses_at_gate() -> Bool {
 test fn design_witness_known_non_sccache_catalog_refuses_at_verdict() -> Bool {
   match provision_build_cache_verdict(
     catalog_id: extdeps.cache.github_actions.gha_actions_cache_id,
-    observed: gunbc.host_build_cache_provision.DaemonStatsOk {
+    observed: gunbc.build_cache_provision_verdict.DaemonStatsOk {
       stats_line: "compile_requests=1",
       placement: gunbc.build_cache_instance.ServerManagedUnitOwned { unit: managed_compile_pool_slice_fixture },
     },
@@ -77,7 +77,7 @@ test fn design_witness_cited_fatal_error_fragment() -> Bool {
 test fn design_witness_converged_not_refused_on_ok_stats() -> Bool {
   match provision_build_cache_verdict(
     catalog_id: sccache_local_id,
-    observed: gunbc.host_build_cache_provision.DaemonStatsOk {
+    observed: gunbc.build_cache_provision_verdict.DaemonStatsOk {
       stats_line: "compile_requests=42",
       placement: gunbc.build_cache_instance.ServerManagedUnitOwned { unit: managed_compile_pool_slice_fixture },
     },
@@ -94,7 +94,7 @@ test fn design_witness_stats_ok_lazy_spawned_refuses() -> Bool {
 test fn design_witness_stats_ok_active_slot_runner_owned_refuses() -> Bool {
   match provision_build_cache_verdict(
     catalog_id: sccache_local_id,
-    observed: gunbc.host_build_cache_provision.DaemonStatsOk {
+    observed: gunbc.build_cache_provision_verdict.DaemonStatsOk {
       stats_line: "compile_requests=42",
       placement: gunbc.build_cache_instance.ServerRunnerOwned {
         slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 2 },
@@ -119,7 +119,7 @@ test fn design_witness_stats_ok_unit_owned_converges() -> Bool {
 fn witness_widen_sketch_fabricates_converged_on_lazy_spawned() -> Bool {
   match provision_build_cache_absorbing_fallback_widen_sketch(
     catalog_id: sccache_local_id,
-    observed: gunbc.host_build_cache_provision.DaemonStatsOk {
+    observed: gunbc.build_cache_provision_verdict.DaemonStatsOk {
       stats_line: "compile_requests=42",
       placement: gunbc.build_cache_instance.ServerRunnerOwned { slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
     },
@@ -135,12 +135,12 @@ test fn witness_red_control_widen_on_lazy_spawned_rejected_by_gate() -> Bool {
       catalog_id: sccache_local_id,
       verdict: provision_build_cache_absorbing_fallback_widen_sketch(
         catalog_id: sccache_local_id,
-        observed: gunbc.host_build_cache_provision.DaemonStatsOk {
+        observed: gunbc.build_cache_provision_verdict.DaemonStatsOk {
           stats_line: "compile_requests=42",
           placement: gunbc.build_cache_instance.ServerRunnerOwned { slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
         },
       ),
-      observed: gunbc.host_build_cache_provision.DaemonStatsOk {
+      observed: gunbc.build_cache_provision_verdict.DaemonStatsOk {
         stats_line: "compile_requests=42",
         placement: gunbc.build_cache_instance.ServerRunnerOwned { slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
       },
@@ -149,12 +149,12 @@ test fn witness_red_control_widen_on_lazy_spawned_rejected_by_gate() -> Bool {
       catalog_id: sccache_local_id,
       verdict: provision_build_cache_verdict(
         catalog_id: sccache_local_id,
-        observed: gunbc.host_build_cache_provision.DaemonStatsOk {
+        observed: gunbc.build_cache_provision_verdict.DaemonStatsOk {
           stats_line: "compile_requests=42",
           placement: gunbc.build_cache_instance.ServerRunnerOwned { slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
         },
       ),
-      observed: gunbc.host_build_cache_provision.DaemonStatsOk {
+      observed: gunbc.build_cache_provision_verdict.DaemonStatsOk {
         stats_line: "compile_requests=42",
         placement: gunbc.build_cache_instance.ServerRunnerOwned { slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot },
       },
@@ -184,8 +184,8 @@ test fn witness_red_control_widen_on_absent_rejected_by_gate() -> Bool {
     && design_witness_authority_gate_accepts_absent_refusal()
 }
 
-fn path_shadow_observation_fixture() -> gunbc.host_build_cache_provision.BuildCacheDaemonObservation {
-  gunbc.host_build_cache_provision.DaemonPathShadowed { resolved: "/usr/bin/sccache", expected: "/usr/local/bin/sccache" }
+fn path_shadow_observation_fixture() -> gunbc.build_cache_provision_verdict.BuildCacheDaemonObservation {
+  gunbc.build_cache_provision_verdict.DaemonPathShadowed { resolved: "/usr/bin/sccache", expected: "/usr/local/bin/sccache" }
 }
 
 test fn design_witness_path_shadow_refuses_fail_closed() -> Bool {
@@ -250,8 +250,8 @@ test fn design_witness_install_is_cited_not_package_manager() -> Bool {
 
 data build_cache_unit_construction_checks_superseded_note: String = "The unit-body-specific construction checks formerly here (execstart-matches-install-path, foreground-supervised, daemon-runs-until-stopped, plus the RED-control unit_self_exiting_sketch fixture reproducing #7206's self-exiting unit) are DROPPED, not relocated, per the A5 grain swap (ProvisionBuildCache -> EnsureBuildCacheInstance): they asserted properties of gunbc.host_build_cache_provision_script's hand-rolled build_cache_systemd_user_unit_body, which no longer exists. The same properties are now independently regression-tested against the real render, gunbc.build_cache_unit render_build_cache_unit, in test.claim.build_cache_ensure (witness_the_rendered_unit_is_foreground_supervised, witness_the_generated_unit_reproduces_the_captured_environment) — asserted against a live srv1 capture (2026-08-01) rather than a hand-authored sketch, which is a stronger oracle than this file's own string-matching RED control ever was. The incident history (#7206, srv3 2026-07-25, Duration 10min 8.215s status 0) is preserved in gunbc.build_cache_unit's own foreground_supervision_note, not duplicated here a second time."
 
-fn unsupervised_observation_fixture() -> gunbc.host_build_cache_provision.BuildCacheDaemonObservation {
-  gunbc.host_build_cache_provision.DaemonUnsupervised { unit: "sccache.service", unit_state: "inactive (dead)" }
+fn unsupervised_observation_fixture() -> gunbc.build_cache_provision_verdict.BuildCacheDaemonObservation {
+  gunbc.build_cache_provision_verdict.DaemonUnsupervised { unit: "sccache.service", unit_state: "inactive (dead)" }
 }
 
 test fn design_witness_unsupervised_refuses_fail_closed() -> Bool {

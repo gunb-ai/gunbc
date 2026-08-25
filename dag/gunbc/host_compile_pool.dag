@@ -28,7 +28,7 @@ type CompilePoolReadiness
   | CompilePoolNotReady { reason: CompilePoolNotReadyReason }
 
 fn derive_compile_pool_readiness(
-  placement: gunbc.fleet_host_budget.CompilePoolPlacement,
+  placement: gunbc.host_layout.CompilePoolPlacement,
   sizing: gunbc.fleet_host_budget.CompilePoolResolution,
   observed: CompilePoolObservation,
 ) -> CompilePoolReadiness {
@@ -112,7 +112,7 @@ fn receipt_admits_pool(receipt: gunbc.runner_activation.HostCompilePoolReady) ->
 }
 
 fn derive_host_compile_pool_ready(
-  placement: gunbc.fleet_host_budget.CompilePoolPlacement,
+  placement: gunbc.host_layout.CompilePoolPlacement,
   sizing: gunbc.fleet_host_budget.CompilePoolResolution,
   observed: CompilePoolObservation,
   intended_slice: std.types.NonEmptyStr,

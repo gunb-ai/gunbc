@@ -19,7 +19,7 @@ fn declared_session_instance() -> gunbc.build_cache_instance.BuildCacheInstance 
     intended_principal: base.intended_principal,
     intended_storage: base.intended_storage,
     intended_capacity: base.intended_capacity,
-    intended_compile_pool: gunbc.fleet_host_budget.CompilePoolSliceDeclared { slice_unit: gunbc.host_layout.gunbc_managed_compile_pool_slice as String },
+    intended_compile_pool: gunbc.host_layout.CompilePoolSliceDeclared { slice_unit: gunbc.host_layout.gunbc_managed_compile_pool_slice as String },
   }
 }
 
@@ -33,7 +33,7 @@ fn declared_ci_instance() -> gunbc.build_cache_instance.BuildCacheInstance {
     intended_principal: base.intended_principal,
     intended_storage: base.intended_storage,
     intended_capacity: base.intended_capacity,
-    intended_compile_pool: gunbc.fleet_host_budget.CompilePoolSliceDeclared { slice_unit: gunbc.host_layout.gunbc_managed_compile_pool_slice as String },
+    intended_compile_pool: gunbc.host_layout.CompilePoolSliceDeclared { slice_unit: gunbc.host_layout.gunbc_managed_compile_pool_slice as String },
   }
 }
 

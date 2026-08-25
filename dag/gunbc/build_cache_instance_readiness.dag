@@ -162,8 +162,8 @@ fn observed_readiness(
                                       BuildCacheInstanceObservedNotReady { reason: CachePoolNotReady }
                                     } else {
                                       match instance.intended_compile_pool {
-                                        gunbc.fleet_host_budget.CompilePoolInRunnerSlots => BuildCacheInstanceObservedNotReady { reason: CachePoolNotDeclared }
-                                        gunbc.fleet_host_budget.CompilePoolSliceDeclared { slice_unit: slice } =>
+                                        gunbc.host_layout.CompilePoolInRunnerSlots => BuildCacheInstanceObservedNotReady { reason: CachePoolNotDeclared }
+                                        gunbc.host_layout.CompilePoolSliceDeclared { slice_unit: slice } =>
                                           if (test.claim.shared_pool_encoding_control.pool.slice_unit as String) != slice {
                                             BuildCacheInstanceObservedNotReady { reason: CachePoolSliceMismatch }
                                           } else if !owner_is_nested_in_pool(observed_cgroup: cgroup, slice: test.claim.shared_pool_encoding_control.pool.slice_unit) {
