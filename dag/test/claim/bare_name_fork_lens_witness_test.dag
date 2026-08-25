@@ -35,9 +35,13 @@ test fn one_name_declared_in_two_files_is_a_fork_that_names_both() -> Bool {
   ) {
     ForkedDeclarations { subject: _, forked: fs } =>
       match fs[0] {
-        BareNameForked { name: n, kind: _, declarers: ds } =>
-          (n == "roster_identity") && (ds == ["fixture.peer.roster_identity"])
-        BareNameSoleDeclarer { name: _, kind: _ } => false
+        Absent => false
+        Present { value: first } =>
+          match first {
+            BareNameForked { name: n, kind: _, declarers: ds } =>
+              (n == "roster_identity") && (ds == ["fixture.peer.roster_identity"])
+            BareNameSoleDeclarer { name: _, kind: _ } => false
+          }
       }
     NoForkedDeclaration { subject: _, checked: _ } => false
     SubjectContributedNoDeclarations { subject: _, roots: _ } => false
@@ -107,8 +111,12 @@ test fn every_peer_declarer_is_reported_and_repeats_are_collapsed() -> Bool {
   ) {
     ForkedDeclarations { subject: _, forked: fs } =>
       match fs[0] {
-        BareNameForked { name: _, kind: _, declarers: ds } => ds == ["fixture.a.n", "fixture.b.n"]
-        BareNameSoleDeclarer { name: _, kind: _ } => false
+        Absent => false
+        Present { value: first } =>
+          match first {
+            BareNameForked { name: _, kind: _, declarers: ds } => ds == ["fixture.a.n", "fixture.b.n"]
+            BareNameSoleDeclarer { name: _, kind: _ } => false
+          }
       }
     NoForkedDeclaration { subject: _, checked: _ } => false
     SubjectContributedNoDeclarations { subject: _, roots: _ } => false
