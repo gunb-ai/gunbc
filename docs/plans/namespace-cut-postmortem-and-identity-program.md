@@ -2326,7 +2326,55 @@ whole-corpus emission finishes is mutating the subject to complete the
 observation, and the resulting green would mean only "this corpus, after we
 changed it, emits."*
 
-### 11.2f BLOCKING PREREQUISITE — v2's grammar cannot parse a qualified record literal
+### 11.2f RESOLVED — the grammar repair landed; the qualified record literal parses, and one cell of the class was below floor
+
+**CLOSED by `fierce-ram-94` in #9237** (two distinct approving providers, no
+request-changes, checks passing). With the fix installed,
+`src/v2/lens/complexity_accumulator_copy/analyze.dag` — the subject file this
+lane started from — returns `source_analysis_established`, reading end to end
+through the modeled v2 pipeline. **The post-cut spelling `a.b.C { … }` is
+readable by v2 rather than only by v1**, so the blocking prerequisite for M6 is
+discharged rather than deferred.
+
+Four things from the closing matrix are worth carrying, and one is more serious
+than a parse refusal:
+
+- **One dot segment is enough** — `m.C { name: sym }` in a match arm is
+  `source_parse_rejected`, so the class was never about long paths.
+- **A qualified CALL in a match arm is established**, which isolates the brace as
+  the variable rather than qualification.
+- **A qualified record literal in a `let` RHS is `source_normalization_rejected`**
+  — the same leftover, one stage later.
+- **A qualified record literal AS A CALL ARGUMENT parses clean and refuses at no
+  rung**, because the orphaned brace group is itself a valid primary expression
+  and the argument list accepts it. That is the same defect delivering a **wrong
+  program instead of a diagnostic** — below floor, and the argument for a cause
+  ladder over a `Bool`.
+
+*Attempted independent reproduction of the last cell, reported because it did NOT
+reproduce and the difference is informative rather than exculpatory.* On a
+pre-fix binary, `take(a: 1, b: probe.prov.Rec { x: 2 })` — arity 2, both
+arguments NAMED — parses clean, emits `take(1, Rec { x: 2 })`, and is **correct**:
+0 blocking, 1 advisory (an unrelated `unlisted import use`). So the wrong-program
+cell is not reached by every qualified-record-literal-in-argument-position; the
+triggering construction is narrower than the description, and what distinguishes
+it is unestablished here. This is a narrowing of the trigger, **not** a
+refutation of the finding — the lane that measured it has the cell and this
+document does not.
+
+**Two limits the PR declares rather than implies.** Its fixtures are `.txt` not
+`.dag` deliberately: as `.dag` the floor resolves and typechecks them with the
+rest of `src/v2`, where deliberately-unbound helper calls are out-of-scope errors
+and twenty-two copies of one local type name left the lens test unable to resolve
+its own unqualified `PortReading` — CI caught that, which is the correct outcome.
+And **there is no corpus-wide no-regression claim**: the base-versus-fixed sweep
+over a 36-file sample was killed three times before returning, so its entry point
+(`tcp_corpus_sample_established_count`) is committed and re-runnable but unrun.
+What is measured is the 23-cell matrix, three ambiguity controls, and the real
+subject file. The formerly-red cells stay enrolled as regression controls per
+§4b(4), with a malformed qualified record literal kept as the discriminating red.
+
+*Original finding, retained because the sequence is the evidence:*
 
 **`a.b.C { f: v }` does not parse.** `fierce-ram-94` established it by execution
 against a five-way cause ladder, and it is the single most consequential finding
