@@ -6,6 +6,7 @@ import v2.std.logic { Bool, True, False }
 import v2.std.text { String }
 import v2.std.integer { Int, int_gt }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
+import v2.workflow.floor_non_verdict { floor_non_verdict_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.nat { Nat }
@@ -129,6 +130,22 @@ fn long_home_storage_agreement(path_is_long: Bool, module_is_long: Bool) -> Long
 // edge the module is not in the world that frame was built from and the call fails with `no
 // such function` — the failure this comment was written to record the first time. The import is
 // reachability, not re-export.
+//
+// `v2.workflow.floor_non_verdict.floor_non_verdict_roster` is the THIRD, and it arrived by
+// making the same mistake a third time — with these two paragraphs already sitting here saying
+// exactly what would happen. CI refused with `no declaration named
+// 'v2.workflow.floor_non_verdict.floor_non_verdict_roster' in this execution's loaded index`,
+// which is the same diagnostic, in the same place, for the same missing edge.
+//
+// THAT IS WORTH RECORDING AS A DEFECT IN THE MECHANISM RATHER THAN IN THREE AUTHORS. A prose
+// note is not a wall: this list is a hand-maintained reachability closure that nothing derives
+// and nothing checks, so every new roster the host evaluates in this frame must be remembered
+// here by whoever adds it, and the failure surfaces only from a full CI run. The refusal is at
+// least loud and located — the roster read fails closed, so the floor stops rather than
+// proceeding with an empty roster — and that polarity is what keeps this a build failure
+// instead of a silently permissive one. The structural repair is for the host's roster
+// evaluations to derive their own reachability from the qualified names they call, at which
+// point this import list and these three paragraphs delete together.
 
 //
 // THREE PREFIXES, NOT ONE, and the count is what found that. A single `test.claim.long.` test

@@ -83,6 +83,7 @@ fn fixture_pull(
     updated_at: "2026-07-31T00:00:00Z",
     merged_at: Absent,
     draft: draft,
+    merge_commit_sha: none,
   }
 }
 

@@ -1,0 +1,23 @@
+module test.claim.rt_bridge_registry_witness_test
+
+import extdeps.languages.rust.emit { rt_function_registry, rt_bridge_name }
+
+// This witness lives in its own module rather than beside the other
+// registry-derivation checks in test.claim.v1_source_audit_witness_test because
+// that module declares ReadsLiveTree, and the required floor DECLINES the whole
+// live-tree arm: measured on run 32778297671, every one of its identities is
+// declined_live_tree -- discovered, counted, folded never. This fold reads no
+// live tree at all (rt_function_registry is an in-corpus declaration), so
+// declining it would have enrolled evidence that cannot execute, which is worse
+// than no evidence because it is cited as coverage.
+//
+// What it holds: rt_bridge_name's Absent arm returns its input UNCHANGED, and
+// that is the IDENTITY case rather than a fallback for an unknown name --
+// rt_bridge_function_names keeps only the rows where name != bridge_name, so a
+// miss means this bridge's v1_rt symbol is spelled like its .dag name. The join
+// is by identity over every row, with no count and no tree-copied literal, so a
+// future row whose override is dropped from the derived map goes red here
+// instead of emitting a call to a v1_rt symbol that does not exist.
+test fn rt_bridge_name_agrees_with_registry_on_every_row() -> Bool {
+  rt_function_registry |> all(entry => rt_bridge_name(name: entry.name) == entry.bridge_name)
+}
