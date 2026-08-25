@@ -760,6 +760,96 @@ needs no repointing: it already keys on typed identity in source and gets a
 correct realization for free once A lands. The seed shrinks toward zero on
 schedule; none of this cements Rust into templates.
 
+## 7a. The PR sequence, derived backward from the goal
+
+Operator framing (2026-08-25): work backward from the goal, and **the grammar
+deletion is the last step, not the first**. That is not a reversal of delete-first
+and the reconciliation is one sentence: **the root being replaced is
+import-derived resolution and closure, not import syntax.** DESIGN §3 says
+"atomic describes the authority transition, not the amount of implementation
+work" — so once nothing reads an import, the grammar is a corpse and deleting a
+corpse is bounded cleanup. The invariant that keeps this honest:
+
+> **No PR may leave a consumer that reads an import *and* a consumer that derives
+> the same fact from references.** Each repoint moves one consumer all the way
+> across. Dual authority is what delete-first forbids; inert syntax is not dual
+> authority.
+
+### The backward chain
+
+| | for this to be true… | …this must already hold |
+|---|---|---|
+| **G** | `import` grammar/AST deleted | nothing reads an import |
+| **6** | nothing reads an import | every import consumer repointed to references |
+| **5** | consumers can repoint | the corpus resolves without imports |
+| **4** | the corpus resolves without imports | the spelling migration was binding-**preserving** |
+| **3** | the migration is binding-preserving | an exact occurrence→declaration ledger exists |
+| **2** | the ledger is truth, not a guess | ambient/whole-pool + proximity fallback is gone |
+| **1** | those delete safely | one closure authority feeds every subject |
+| **0** | any of it is measurable | compile outcome is a function of content, not the name set |
+
+Step 0 is §3c, and it is load-bearing in a way that only appears under backward
+derivation: **if a rename in an untouched file changes diagnostics elsewhere,
+then no ledger is reproducible and no acceptance gate downstream means
+anything.** Its placement is the open question in §9 — it is simultaneously what
+makes the rest measurable and the only item with no known mechanism.
+
+### Tracks
+
+**Track 0 — independent, no ordering cost.** 0.1 pipe-position lowering (§3a,
+fixture red) · 0.2 `order_typed_call_args` (§3b) · 0.3 the reconcile name-set
+dependency (§3c) · 0.4 the `coercion_widening.dag:29:49` parse failure.
+
+**Track A — realization.** A.1 `rust_nominal_identity_carrier_type_eligible`
+becomes a real predicate; brands emit as newtypes. A.2 the `UriValidatedScalar`
+forgery becomes A.1's enrolled regression control (§4b(4)). *Precedes every key
+repointing, because it is invisible to model-side checks.*
+
+**Track B — one closure authority (chain step 1).** B.1 route every subject
+construction through one authority — ordinary compile, test helpers, floor
+preparation, generation, emitter entry (#9088 did regen; the rest remain).
+B.2 every closure edge carries source occurrence + exact provider identity.
+B.3 replace the raw-text reference scanner with parser-owned occurrence and
+binder facts, which #9102 explicitly leaves open.
+
+**Track C — identity through the pipeline (chain steps 2–3).** C.1 delete
+whole-pool-unique and nearest-module fallback. C.2 `build_emit_graph_info` folds
+on declaration identity with a collision arm — **first**, since three of the 12
+censused sites are computed from it. C.3 the remaining sites per §3.4's
+domain/remedy table. C.4 the `OccurrenceBinding` ledger (T7).
+
+**Track D — substrate, parallel with C, gated on A.** D.1 key algebra in
+`dag/std/` → D.2 impostor separation → D.3 `KeyedRoster` construction wall.
+
+**Track E — the migration (chain steps 4–5).** E.1 the derived projection.
+E.2 the acceptance gates. E.3 the perturbation falsifier, which is 0.3's
+permanent wall.
+
+**Track F/G — the flip, then the corpse.** F.1 the one motion: apply the rewrite,
+flip resolution and closure authority, delete every ambient fallback, regenerate
+stage0. F.2 repoint the last import *readers* — `source_visible_names`,
+`resolve_module_imports`, v2 `admit_imports`, translate, body-lowering,
+`topological_sort`'s ordering. G delete the grammar, AST, keyword and
+productions.
+
+F.1 stays one motion because that is the authority transition. F.2 and G are the
+trailing steps the operator's framing makes safe: after F.1 no consumer reads an
+import, so they are deletions of dead surface rather than a cutover.
+
+### Two decisions taken (operator, 2026-08-25)
+
+- **Target spelling: full qualification.** Chosen as the conservative default.
+  Shortest unique suffix stays live evidence from `namespace-resolution-design`
+  §8 and can be revisited, but the sweep is written against full qualification so
+  the transform has one output format.
+- **The projection stays derived, never committed.** From the general rule the
+  operator states, which is worth recording past this case because it decides
+  more than one question here: **commit something only if it is not cheaply
+  derivable.** That is §2 read from the storage side — a committed copy of a
+  derivable fact is a second representation with no authority, and it is the same
+  reasoning that bankrupted `docs/probes/`. It also settles, without a separate
+  argument, why the projection is a lens rather than a branch.
+
 ## 8. Adjudicating the vehicle: big-bang vs per-subtree
 
 `deep-ant-102` relays a dissent from its side chat and calls it "the single most
@@ -824,7 +914,24 @@ So the split is clean, and it falls exactly along the line that clause draws:
   lane; it is not import work and should not be folded into this program.
 - **The reconcile name-set dependency (§3c)** — the separating add/remove
   experiment, then a read of the disambiguation code. Owned here; the instrument
-  is `smart-ram-730`'s.
+  is `smart-ram-730`'s. **Its ORDERING is deliberately left open** (operator,
+  2026-08-25): the backward chain puts it at step 0 because it is what makes
+  everything downstream measurable, and it is simultaneously the only item with
+  no known mechanism, so front-loading it is the least predictable choice on the
+  board. Decided when the separating experiment says what the trigger is.
+- **The FreeText denominator** — of the ~2093 `src/v1` and ~179 `dag/`
+  String-keyed sites, how many are genuinely free text (a filename from a
+  directory walk, an env var, an upstream JSON member) versus a declared identity
+  spelled as text. Track D is priced off this number and nobody has it. Asked of
+  `neat-fox-901`.
+- **`module_skips_direct_call_arg_check`** — read by `neat-fox-901` as disabling
+  the direct-call argument-type judgment for all of `src/v2`. Code reading only;
+  the first harness was non-discriminating and a whole-tree probe is running.
+  Compatible with §4b's existing clause, which scopes the exemption to that
+  judgment and establishes it does not reach `sole_constructor` — this would say
+  the judgment it is scoped to is off corpus-wide, not that a new exemption
+  exists.
+- **Track A has no owner.** The phase everything else is sequenced behind.
 - **Phase D's target spelling** — full qualification vs shortest unique suffix,
   per §8. Needs an operator decision before the sweep is written, not after.
 
