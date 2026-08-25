@@ -1,0 +1,481 @@
+module gunbc.runner_service_activation
+
+import std.types { String, NonEmptyStr, Bool, Int, List, list_length }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import extdeps.posix.shell_command_language { posix_single_quote }
+import std.disposition { Disposition, SingleAuthority }
+import gunbc.executor_privileged_operation {
+  ExecutorPrivilegedOperation,
+  SystemdEnableUnit,
+  SystemdStartUnit,
+  executor_privileged_operation_shell_command,
+}
+import gunbc.runner_host_deploy {
+  RunnerHostDeploy, RunnerHostAdmission, RunnerHostEnrolled, RunnerHostUnenrolled,
+  fleet_runner_host_deploys,
+}
+import gunbc.runner_activation {
+  BuildCacheInstanceReady, HostCompilePoolReady,
+  RunnerActivationAdmission, RunnerActivationAdmitted, RunnerActivationRefused,
+  admit_runner_activation,
+}
+import gunbc.runner_slot_provision { desired_runner_slot_members }
+import gunbc.guarantee_rung_drop {
+  GuaranteeStall,
+  OutsideTheLadder, Mitigatable, StructurallyGuaranteed,
+  AwaitsOneGrounding, ClimbableButUnbuilt,
+  BoundedPopulation,
+  stall_report_message,
+}
+import gunbc.runner_unit { runner_unit_name_of_registration }
+
+data runner_service_activation_scope_disposition: Disposition = SingleAuthority
+
+// ENABLE AND START ARE TWO TRANSITIONS AND THIS MODULE IS THE PLACE THEY STAY TWO. The emitted
+// apply.sh carried daemon-reload and disable and nothing else: enable count zero, start count zero,
+// so convergence materialized runner trees and the host's serving capacity did not move. Every
+// capacity increase of 2026-08-25 -- srv1, srv3 and srv4 each 5 to 21 -- was finished by a hand-run
+// `systemctl enable --now` loop after apply reported success, which is manual application committed
+// to nothing.
+//
+// THE HAND LOOP IS NOT THE SPECIFICATION FOR THE REPAIR, and re-emitting what it did would re-fuse
+// the two facts it fused. `enable` is DURABLE BOOT INTENT: it authorizes a future boot to start the
+// broker under readiness conditions that nobody will re-observe at that boot, which makes it the
+// STRONGER of the two grants rather than the milder-sounding one. `start` is IMMEDIATE ACTIVITY
+// under conditions observable right now. They are separately admitted here, separately granted in
+// gunbc.executor_privileged_operation, and separately rendered, so `enable --now` has no spelling
+// on this path -- not by convention, but because no sudoers line derived from either operation
+// matches the fused argv.
+//
+// BOTH CONSUME THE SAME ACTIVATION ADMISSION, which is gunbc.runner_activation's wall and not a
+// second one. That wall exists because letting a slot accept work is what lets its first cache-miss
+// compile spawn a build-cache server inside the runner's own cgroup, and materializing a slot
+// cannot.
+type RunnerServiceTransition
+  = RunnerEnableTransition
+  | RunnerStartTransition
+
+// THE OBSERVATION ARRIVES AS A PARAMETER AND HAS ITS OWN UNAVAILABLE ARM, rather than being
+// manufactured here. A planner that built its own BuildCacheInstanceReady would be fabricating the
+// observation the receipt exists to carry -- the forgeable-receipt residual
+// gunbc.runner_activation's own note names, committed deliberately instead of inherited. So this
+// module never constructs a receipt; it consumes one or it consumes the reason none was available.
+//
+// WHY THE UNAVAILABLE ARM IS NOT FOLDED INTO A REFUSED ADMISSION AT THE CALLER: `no observation
+// transaction exists to ask` and `the observation answered and disagreed` have different owners and
+// different repairs, and the second is a host fact while the first is a gap in this repository.
+// Collapsing them would make a missing seam read as a converged host failing a check. The arm
+// carries its reason, the admission it produces carries that reason forward, and the emitted script
+// prints it -- so a reader of apply.sh learns which of the two they are looking at.
+//
+// IT ALSO MAKES THE RED AUTHORABLE, which is the property that decides whether the witness below is
+// evidence or decoration (DESIGN section 4b). If this module answered `unobserved` from a constant,
+// no fixture could ever reach the admitted arm, the emitted-activation assertion would be
+// permanently red, and its green counterpart would be unwritable. With the observation as an input,
+// a fixture authors both poles.
+type RunnerActivationReadiness
+  = ActivationReadinessObserved {
+      cache_ready: BuildCacheInstanceReady
+      pool_ready: HostCompilePoolReady
+    }
+  | ActivationReadinessUnobserved { reason: NonEmptyStr }
+
+type RunnerTransitionPlan
+  = TransitionAdmitted {
+      transition: RunnerServiceTransition
+      operations: List<ExecutorPrivilegedOperation>
+    }
+  | TransitionRefused {
+      transition: RunnerServiceTransition
+      host_label: NonEmptyStr
+      reason: NonEmptyStr
+      affected_units: List<NonEmptyStr>
+    }
+
+fn runner_transition_verb_label(transition: RunnerServiceTransition) -> String {
+  match transition {
+    RunnerEnableTransition => "enable"
+    RunnerStartTransition => "start"
+  }
+}
+
+// THE TRANSITION'S OWN STAKE, SPELLED PER MEMBER, because a shared refusal sentence would make the
+// two transitions look like one operation reported twice. What a reader needs from a refusal is what
+// they are being denied, and the two denials are not the same denial.
+fn runner_transition_stake(transition: RunnerServiceTransition) -> String {
+  match transition {
+    RunnerEnableTransition =>
+      "enable is durable boot intent: it authorizes every FUTURE boot to start this unit under readiness conditions nobody re-observes at that boot, so it is the stronger of the two grants and is withheld first"
+    RunnerStartTransition =>
+      "start is immediate activity: it lets this unit accept work now, and the first cache-miss compile of that work is what spawns a build-cache server in whichever cgroup the slot sits in"
+  }
+}
+
+fn runner_transition_operation(
+  transition: RunnerServiceTransition,
+  unit: NonEmptyStr,
+) -> ExecutorPrivilegedOperation {
+  match transition {
+    RunnerEnableTransition => SystemdEnableUnit { unit: unit }
+    RunnerStartTransition => SystemdStartUnit { unit: unit }
+  }
+}
+
+// THE UNITS ARE THE DESIRED SLOT MEMBERS, NOT THE COMMITTED WIDTH. desired_runner_slot_members
+// already removes the fabric execution slot from the roster, and reaching for the raw index
+// sequence here would activate a GitHub Actions unit on top of a slot this fleet carved out for
+// compute fabric -- gunbc.runner_slot_provision records that exact defect as one it already fixed
+// once, and re-deriving the roster locally would reintroduce it in a second place.
+fn runner_host_activation_units(deploy: RunnerHostDeploy) -> List<NonEmptyStr> {
+  map(
+    desired_runner_slot_members(deploy: deploy),
+    m => runner_unit_name_of_registration(registration_name: m.instance_name),
+  )
+}
+
+fn runner_activation_admission_from_readiness(
+  host_admission: RunnerHostAdmission,
+  readiness: RunnerActivationReadiness,
+) -> RunnerActivationAdmission {
+  match readiness {
+    ActivationReadinessObserved { cache_ready: c, pool_ready: p } =>
+      admit_runner_activation(host_admission: host_admission, cache_ready: c, pool_ready: p)
+    ActivationReadinessUnobserved { reason: why } =>
+      match host_admission {
+        RunnerHostEnrolled { deploy: d } =>
+          RunnerActivationRefused {
+            host_label: d.host_label,
+            reason: concat(
+              "runner_service_activation: no activation-readiness observation was available for this host, so neither transition can be admitted. This is an unread question, not a failed check -- ",
+              why as String,
+            ) as NonEmptyStr,
+          }
+        RunnerHostUnenrolled { host_label: l, reason: r } =>
+          RunnerActivationRefused { host_label: l, reason: r }
+      }
+  }
+}
+
+// EACH TRANSITION IS ADMITTED ON ITS OWN CALL. The admission value is shared -- there is one wall,
+// and inventing a second for start would be a nickname for it -- but the ADMISSION EVENT is per
+// transition, so a future policy that grants durable boot intent while withholding immediate
+// activity (or the reverse, which is what a drain does) has a place to sit that is not a rewrite.
+// A single function returning both plans at once would have foreclosed that by construction.
+fn admit_runner_transition(
+  transition: RunnerServiceTransition,
+  admission: RunnerActivationAdmission,
+  units: List<NonEmptyStr>,
+) -> RunnerTransitionPlan {
+  match admission {
+    RunnerActivationAdmitted { deploy: _, cache_ready: _, pool_ready: _ } =>
+      TransitionAdmitted {
+        transition: transition,
+        operations: map(units, u => runner_transition_operation(transition: transition, unit: u)),
+      }
+    RunnerActivationRefused { host_label: l, reason: r } =>
+      TransitionRefused {
+        transition: transition,
+        host_label: l,
+        affected_units: units,
+        reason: concat(
+          concat(
+            concat("systemctl ", runner_transition_verb_label(transition: transition)),
+            " is not admitted on this host: ",
+          ),
+          concat(concat(r as String, " -- "), runner_transition_stake(transition: transition)),
+        ) as NonEmptyStr,
+      }
+  }
+}
+
+// ENABLE PRECEDES START, AND THE ORDER IS THE ONE THE TRANSITIONS THEMSELVES IMPLY rather than a
+// preference: a unit started before it is enabled serves until the next boot and then silently
+// stops being capacity, which is the state this whole lane was dispatched to remove. The list is
+// the emission order.
+fn runner_host_transition_plans(
+  host_admission: RunnerHostAdmission,
+  readiness: RunnerActivationReadiness,
+  units: List<NonEmptyStr>,
+) -> List<RunnerTransitionPlan> {
+  let admission = runner_activation_admission_from_readiness(
+    host_admission: host_admission,
+    readiness: readiness,
+  )
+  [
+    admit_runner_transition(transition: RunnerEnableTransition, admission: admission, units: units),
+    admit_runner_transition(transition: RunnerStartTransition, admission: admission, units: units),
+  ]
+}
+
+fn runner_activation_plans_for_deploy(
+  host_admission: RunnerHostAdmission,
+  deploy: RunnerHostDeploy,
+  readiness: RunnerActivationReadiness,
+) -> List<RunnerTransitionPlan> {
+  runner_host_transition_plans(
+    host_admission: host_admission,
+    readiness: readiness,
+    units: runner_host_activation_units(deploy: deploy),
+  )
+}
+
+// A REFUSED TRANSITION EMITS A REFUSAL LINE AND THE SIBLINGS CONTINUE. It does NOT exit, and that
+// is the deliberate half of the shape rather than the lenient half. Materialization is authorized
+// independently of activation -- writing a slot's files cannot spawn a cache server -- so aborting
+// apply on an activation refusal would withdraw an authorized effect because an unrelated one was
+// denied. What must never happen is the third arm: emitting nothing, which is what the script did
+// before this module existed and is indistinguishable from a host with no activation work. The
+// refusal is typed, located on the host, carries its cause and its affected population, and is
+// counted by the row below.
+//
+// THE DIAGNOSTIC IS POSIX-QUOTED, AND THE FIRST VERSION HAND-WRAPPED IT IN SINGLE QUOTES. That was a
+// latent shell defect of the worst kind: dormant, and dormant precisely BECAUSE the arm that would
+// trigger it is unreachable. Real RunnerActivationRefused reasons contain single-quoted values --
+// admit_runner_activation's host-mismatch arm says "names host 'srv3' but activation was requested
+// for 'srv4'" -- and an apostrophe landing inside a hand-written '...' literal closes the quoting and
+// emits malformed shell. The one reason production can currently reach happens to contain no
+// apostrophe, so no test and no run could have shown it, and the first observed readiness would have
+// armed it. Quoting is a property of the shell that carries the words (the same reasoning
+// gunbc.executor_privileged_operation states for its argv rendering), so it comes from the POSIX
+// authority that owns the encoding and never from an author counting quotes.
+fn runner_transition_refusal_echo(message: String) -> String {
+  concat("echo ", concat(posix_single_quote(spelling: message), " >&2"))
+}
+
+// THE REFUSAL NAMES HOW MANY UNITS IT WITHHELD AND WHICH SET THEY WERE, because "activation was
+// refused" without a population is a verdict whose magnitude a reader has to guess -- and the two
+// hosts in this fleet differ by exactly one unit, so guessing is wrong in a way nobody would notice.
+// The count is the magnitude; the digest is the IDENTITY, so two refusals over different rosters are
+// distinguishable even at equal counts, which a count alone cannot do.
+fn runner_transition_affected_set_identity(units: List<NonEmptyStr>) -> String {
+  serialize_content_hash(
+    hash: content_hash_of_value(
+      value: join(map(units, u => u as String), ",") as NonEmptyStr,
+    ),
+  ) as String
+}
+
+fn runner_transition_affected_population_render(units: List<NonEmptyStr>) -> String {
+  concat(
+    concat(" units=", to_string(list_length(items: units))),
+    concat(" unit_set=", runner_transition_affected_set_identity(units: units)),
+  )
+}
+
+fn runner_transition_apply_lines(plan: RunnerTransitionPlan) -> List<String> {
+  match plan {
+    TransitionAdmitted { transition: _, operations: ops } =>
+      map(ops, op => executor_privileged_operation_shell_command(op: op))
+    TransitionRefused { transition: _, host_label: l, reason: r, affected_units: us } =>
+      [
+        runner_transition_refusal_echo(
+          message: concat(
+            concat("fleet_converge_apply: REFUSED-ACTIVATION host=", l as String),
+            concat(
+              runner_transition_affected_population_render(units: us),
+              concat(" ", r as String),
+            ),
+          ),
+        ),
+      ]
+  }
+}
+
+fn runner_transition_plan_line(plan: RunnerTransitionPlan) -> String {
+  match plan {
+    TransitionAdmitted { transition: t, operations: ops } =>
+      concat(
+        concat("ACTIVATE runner-service ", runner_transition_verb_label(transition: t)),
+        concat(" units=", to_string(list_length(items: ops))),
+      )
+    TransitionRefused { transition: t, host_label: l, reason: r, affected_units: us } =>
+      concat(
+        concat("REFUSED-ACTIVATION runner-service ", runner_transition_verb_label(transition: t)),
+        concat(
+          concat(" host=", l as String),
+          concat(
+            runner_transition_affected_population_render(units: us),
+            concat(" ", r as String),
+          ),
+        ),
+      )
+  }
+}
+
+// THE ONE SPELLING OF "NOBODY CAN ASK THIS YET". Every production caller in the tree supplies this
+// row rather than authoring its own sentence, because the reason is a fact about the REPOSITORY --
+// there is no host observation transaction -- and not about the caller that noticed. Two callers
+// with two wordings would drift the moment the transaction lands for one of them, and the drift
+// would be invisible: both would still say "unobserved".
+//
+// IT IS DATA AND NOT A FUNCTION, so the day the transaction exists this row's deletion is what
+// breaks every caller that was leaning on it, one by one, loudly (DESIGN section 3, delete-first).
+data runner_activation_readiness_unobserved_no_transaction: RunnerActivationReadiness = ActivationReadinessUnobserved {
+  reason: "no host observation transaction exists yet: fleet convergence observes directory membership, the generation store and the hostname, and nothing reads the build-cache endpoint owner or the compile-pool slice, so neither receipt gunbc.runner_activation requires can be produced (docs/plans/runner-service-capacity-convergence.md, the shared blocker)" as NonEmptyStr,
+}
+
+// THE EMISSION ORDER, READABLE AS A VALUE. A consumer that wanted to assert enable-before-start had
+// to destructure the plan list positionally, which reads the ORDER out of the shape of the list
+// rather than out of the transitions themselves. This renders the sequence the transitions name.
+fn runner_transition_plan_transition(plan: RunnerTransitionPlan) -> RunnerServiceTransition {
+  match plan {
+    TransitionAdmitted { transition: t, operations: _ } => t
+    TransitionRefused { transition: t, host_label: _, reason: _, affected_units: _ } => t
+  }
+}
+
+fn runner_transition_sequence_label(plans: List<RunnerTransitionPlan>) -> String {
+  fold(
+    plans,
+    init: "",
+    f: (acc, p) => {
+      let v = runner_transition_verb_label(transition: runner_transition_plan_transition(plan: p))
+      if acc == "" { v } else { concat(acc, concat(",", v)) }
+    },
+  )
+}
+
+fn runner_transition_is_refused(plan: RunnerTransitionPlan) -> Bool {
+  match plan {
+    TransitionAdmitted { transition: _, operations: _ } => false
+    TransitionRefused { transition: _, host_label: _, reason: _, affected_units: _ } => true
+  }
+}
+
+fn runner_activation_refusal_count(plans: List<RunnerTransitionPlan>) -> Int {
+  fold(plans, init: 0, f: (acc, p) => if runner_transition_is_refused(plan: p) { acc + 1 } else { acc })
+}
+
+fn runner_activation_admitted_operation_count(plans: List<RunnerTransitionPlan>) -> Int {
+  fold(
+    plans,
+    init: 0,
+    f: (acc, p) =>
+      match p {
+        TransitionAdmitted { transition: _, operations: ops } => acc + list_length(items: ops)
+        TransitionRefused { transition: _, host_label: _, reason: _, affected_units: _ } => acc
+      },
+  )
+}
+
+// THE ADMISSION HAS NO REACHABLE GREEN IN PRODUCTION TODAY, AND THAT IS A TYPED ROW RATHER THAN A
+// SENTENCE IN A PR BODY.
+//
+// "IN PRODUCTION" IS THE WHOLE QUALIFIER AND IT IS NOT A HEDGE. DESIGN section 4b judges a check's
+// reachability against WHAT A FIXTURE MAY AUTHOR, never against what production currently reaches,
+// and test.claim.runner_service_activation authors ActivationReadinessObserved and drives the
+// admitted enable/start path with it. So the admitted arm has an authorable, exercised RED: the
+// emission is proven at the fixture boundary and would go red the moment the emitter stopped
+// emitting activation. That is a wall nothing in production can currently trigger -- categorically
+// different from a decoration whose RED cannot be produced anywhere, which is the reading a reviewer
+// will reach for and which this paragraph exists to refuse. Without it the next reader sees enable-count-0 replaced by refuse-count-N
+// and cannot tell a PERMANENT STRUCTURAL refusal from a transient one -- which is the mirror of
+// DESIGN section 4b's unauthorable-RED question, pointed the other way: a gate whose only reachable
+// state is refusal is not a decoration, it is the laundering shape the Building-&-checks fixed-point
+// entry records, where a gate's only closing move does not exist. The difference between that
+// failure and this row is only that this one says so.
+//
+// TWO BLOCKERS IN SERIES, AND NAMING ONLY THE SECOND IS THE ERROR THIS CLAUSE EXISTS TO PREVENT.
+// The immediate blocker is that no host observation transaction exists: every production caller
+// supplies runner_activation_readiness_unobserved_no_transaction, so the refusal is produced by the
+// ActivationReadinessUnobserved arm and the admission is never even asked. BEHIND it sits a second
+// gate that would fire next -- admit_runner_activation requires a HostCompilePoolReady, and its one
+// producer, gunbc.host_compile_pool derive_host_compile_pool_ready, answers PoolNotDeclaredInTopology
+// for every host because gunbc.fleet_host_budget's gunbc_compile_pool_placement is
+// CompilePoolInRunnerSlots.
+//
+// THE ORDER IS LOAD-BEARING FOR ANYONE PLANNING THE CLIMB. Flipping the placement changes nothing
+// observable while the first blocker stands, because the pool receipt is a FIELD INSIDE a readiness
+// value that is never Observed -- so a reader who takes the placement as THE blocker will do the
+// fleet-wide topology work and measure no change. An earlier revision of this row named only the
+// placement and produced exactly that plan; it is corrected here rather than annotated, because two
+// accounts of which gate fires first is worse than the wrong one alone.
+//
+// NEITHER MODULE IS BEING WORKED AROUND: gunbc.host_compile_pool's own note states its answer and
+// calls it correct rather than a gap, and the missing transaction is a declared gap in this
+// repository with a plan of its own.
+//
+// WHY A STALL AND NOT A RUNG DROP, because the distinction decides whether this row is honest. A
+// GuaranteeRungDrop asserts that a guarantee FELL, and nothing fell: before this module the emitted
+// script had no activation transition at all and the hand-run `systemctl enable --now` loop that
+// supplied one was ungated, so the class was off the ladder already. What this lane adds is a
+// constructor that cannot activate without an admission, plus the honest report that the admission
+// never greens yet. That is section 4b(2)'s untracked-stall clause exactly -- a class below its
+// ceiling naming what it waits on -- and filing it as a drop would manufacture a regression to make
+// a declaration fit a shape.
+//
+// THE POPULATION IS BOUNDED AND ENUMERATED rather than UncountedNotEnumerable, because it genuinely
+// is: gunbc.runner_host_deploys fleet_runner_host_deploys is the closed roster, every member of it
+// refuses, and a host outside it refuses one wall earlier on enrollment.
+data runner_activation_reachability_stall: GuaranteeStall = GuaranteeStall {
+  subject: "gunbc.runner_service_activation runner_activation_admission_from_readiness -- both service transitions refuse on every enrolled host",
+  current: OutsideTheLadder,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding {
+    grounding: "no host observation transaction exists, so every production caller supplies ActivationReadinessUnobserved and the admission is never asked; BEHIND that, and only reachable once it lands, gunbc.fleet_host_budget gunbc_compile_pool_placement is CompilePoolInRunnerSlots, so gunbc.host_compile_pool derive_host_compile_pool_ready answers PoolNotDeclaredInTopology fleet-wide and no HostCompilePoolReady receipt can be produced for any host",
+  },
+  population: BoundedPopulation {
+    members: map(fleet_runner_host_deploys, d => d.host_label as String),
+  },
+  next_rung_trigger: "FIRST the host observation transaction lands and a production caller can supply ActivationReadinessObserved, which is what makes the admission reachable at all; THEN gunbc_compile_pool_placement declares a managed compile-pool slice, in the same motion that shrinks runner_pool so the host allocation still conserves. Both, in that order: the second alone changes nothing observable, because the pool receipt is a field inside a readiness value that is never Observed. At the end of both, the admission has a reachable green and this row's current rung is the wall's own rung rather than off-ladder",
+}
+
+fn runner_activation_reachability_report() -> String {
+  stall_report_message(s: runner_activation_reachability_stall)
+}
+
+// THE SAFETY ROW IS A SEPARATE FACT FROM THE REACHABILITY ROW, AND ONE ROW COULD NOT STATE BOTH
+// HONESTLY. Reachability answers "can the admission ever say yes here" -- a question about
+// observations and topology. Safety answers "what does the admission actually guarantee once it
+// does" -- a question about who else can perform the transition. They have different blockers,
+// different populations and different triggers, and the single row this file shipped with was
+// answering the first while a reader would take it for both.
+//
+// THE HOST-WIDE RUNG IS MITIGATABLE, NOT STRUCTURAL, AND THE REASON IS A DOOR BESIDE THE WALL.
+// gunbc.runner_host_grants installs `systemctl enable <unit>` and `systemctl start <unit>` as raw
+// per-unit NOPASSWD grants for the job user. So three claims must be kept apart, and only the first
+// two survive:
+//
+//   enable and start are separately authorized     -- STRUCTURAL. No sudoers line derived from
+//                                                     either operation matches `enable --now`, so
+//                                                     the fused form the hand loop ran is refused by
+//                                                     sudo on every executor host.
+//   this emitter cannot activate without readiness -- STRUCTURAL, but only INSIDE the modeled call
+//                                                     graph: runner_activate_command and this
+//                                                     module's transitions have no constructor that
+//                                                     skips the admission.
+//   the host cannot activate without readiness     -- FALSE. The grantee holds the raw verbs and can
+//                                                     run them directly, outside
+//                                                     RunnerActivationAdmission entirely.
+//
+// So the admission is VALIDATION at the host boundary in DESIGN section 5's exact sense: the invalid
+// state remains writable by the principal the grant is installed for. Saying otherwise would be the
+// rung inflation section 4b(1) names -- a carrier claiming the top rung while occupying a lower one --
+// in the module whose whole job is to stop an unadmitted activation.
+//
+// IT IS NAMED FOR THE STALL IT IS, NOT FOR THE GUARANTEE IT WITHHOLDS. This row was
+// runner_activation_safety_guarantee, and the fields were already honest while the NAME asserted the
+// rung they deny -- so a grep for what this repository guarantees about activation returned a symbol
+// saying guarantee whose value says Mitigatable. That is section 4b(1)'s tell verbatim, a carrier
+// named for the top rung while occupying a lower one, and it is worse than sitting low because an
+// inflated class never ranks for climbing. The sibling reachability row was right the first time.
+//
+// WHAT WOULD MAKE IT STRUCTURAL: ghrunner never receives the systemctl verbs at all. Either it
+// invokes only a root-owned helper that takes an activation receipt and validates it before touching
+// systemd, or a root-owned convergence service holds the systemd authority and the job user holds
+// none. Both remove the door rather than posting a sign on it; a narrower sudoers match cannot,
+// because any grant that lets the sanctioned path run the command lets the grantee run it too.
+data runner_activation_safety_stall: GuaranteeStall = GuaranteeStall {
+  subject: "gunbc.runner_service_activation -- a runner unit activated without a RunnerActivationAdmission",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation {
+    members: map(fleet_runner_host_deploys, d => d.host_label as String),
+  },
+  next_rung_trigger: "the job user stops holding the systemctl verbs: activation runs through a root-owned helper that consumes and validates an activation receipt, or through a root-owned convergence service that holds the systemd authority while the job user holds none. A narrower sudoers match does not climb this rung -- any grant that lets the sanctioned path run the command lets the grantee run it directly",
+}
+
+fn runner_activation_safety_report() -> String {
+  stall_report_message(s: runner_activation_safety_stall)
+}

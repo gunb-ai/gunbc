@@ -9949,6 +9949,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut scoped_batch_id: Option<String> = None;
     let mut required_floor_mode = false;
     let mut required_ci_mode = false;
+    let mut required_ci_lane: Option<RequiredCiLane> = None;
     let mut required_cited_symbol_mode = false;
     let mut required_v2_emission_mode = false;
     let mut required_v2_emission_selftest_mode = false;
@@ -9984,6 +9985,20 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--required-ci" => {
                 required_ci_mode = true;
+            }
+            // NAMES A JOB, NOT A PHASE SET. The workflow asks for a lane and this binary decides
+            // which phases that lane owns, so widening or re-routing the roster is a change here
+            // and never an edit to a YAML step list.
+            "--required-lane" => {
+                i += 1;
+                let value = require_value(&args, i, "--required-lane")?;
+                match RequiredCiLane::parse(&value) {
+                    Ok(lane) => required_ci_lane = Some(lane),
+                    Err(e) => {
+                        eprintln!("{e}");
+                        return Err(ExitCode::from(2));
+                    }
+                }
             }
             "--required-cited-symbol" => {
                 required_cited_symbol_mode = true;
@@ -10267,14 +10282,23 @@ fn run() -> Result<ExitCode, ExitCode> {
         return run_behavioral_receipt_plan(&source_roots);
     }
 
-    // THE COMPOSED CI RUN — one process, three phases: the src/v1 .dag parse sweep, the regen
-    // first-generation comparison, and the witness floor.
+    // THE COMPOSED CI RUN — one process per LANE. The roster is four phases: the .dag parse
+    // sweep, the regen first-generation comparison, the v2 emission compile and the witness
+    // floor. `--required-lane` selects which of them this process owns; with no lane, it owns
+    // all four, which is what a local run wants.
     //
     // WHAT IT IS AND IS NOT. Sequencing a program's phases is the program's job (DESIGN §3: the
     // workflow is a realization of the intent, not the place the intent lives), so the order
     // lives here rather than in a YAML step list whose preconditions read each other's
     // `outcome`. What is NOT here is a judgement about which checks CI ought to run: the roster
-    // is an operator decision, and the 2026-08-21 ruling set it to exactly these three.
+    // is an operator decision, and the 2026-08-21 ruling set it to three, with v2-emission
+    // added on 2026-08-23.
+    //
+    // A LANE IS NOT A NARROWING OF THE ROSTER. Both lanes run in the same required workflow, on
+    // every push and pull request, and every phase is owned by exactly one of them
+    // (`RequiredCiPhase::lane`, an exhaustive match). What the lane selects is which JOB takes a
+    // phase, so that independent phases stop queueing behind each other -- see the roster block
+    // beside `RequiredCiLane` for why that boundary is a job boundary of necessity.
     //
     // WHAT WAS DELETED AND WHY IT IS NOT LEFT AS A SKIPPED PHASE (operator ruling, 2026-08-21).
     // Five phases previously ran inside this fold: merge-admission-capture, regen-determinism
@@ -10306,56 +10330,86 @@ fn run() -> Result<ExitCode, ExitCode> {
         let mut phase_failures: Vec<String> = Vec::new();
         let mut ran: Vec<&'static str> = Vec::new();
 
+        // THE ROSTER IS ANNOUNCED BEFORE ANY PHASE RUNS, whole, with each phase's owning lane.
+        // A reader of one job's log sees the complete required roster and where the phases this
+        // job does not own are being measured, so a lane's coverage is legible from inside it
+        // rather than only by holding two logs side by side.
+        eprintln!(
+            "required-ci: lane={}",
+            required_ci_lane
+                .map(|l| l.name())
+                .unwrap_or("all (no --required-lane given)")
+        );
+        for phase in REQUIRED_CI_PHASES {
+            if !required_ci_phase_selected(phase, required_ci_lane) {
+                eprintln!(
+                    "required-ci: phase {} ROUTED to lane {} (not this job)",
+                    phase.name(),
+                    phase.lane().name()
+                );
+            }
+        }
+
         // PHASE 1 — the .dag parse sweep, over every authored root (src/v1, dag, src/v2).
         // Independent of everything below it. The roster is
         // `cli_run::DAG_PARSE_SWEEP_ROOTS`, shared with the standalone bin so the cheapest
         // local check and this phase cover the same files.
-        eprintln!(
-            "required-ci: phase parse (.dag: {})",
-            v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS.join(", ")
-        );
-        match v1_compiler::cli_run::run_dag_parse_sweep(
-            &v1_compiler::cli_run::workspace_root(),
-            &v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS,
-        ) {
-            Ok(count) => eprintln!("required-ci: parse OK {count} file(s) parse-clean"),
-            Err(errors) => {
-                for e in &errors {
-                    eprintln!("required-ci: parse FAIL {e}");
+        if required_ci_phase_selected(RequiredCiPhase::Parse, required_ci_lane) {
+            eprintln!(
+                "required-ci: phase parse (.dag: {})",
+                v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS.join(", ")
+            );
+            match v1_compiler::cli_run::run_dag_parse_sweep(
+                &v1_compiler::cli_run::workspace_root(),
+                &v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS,
+            ) {
+                Ok(count) => eprintln!("required-ci: parse OK {count} file(s) parse-clean"),
+                Err(errors) => {
+                    for e in &errors {
+                        eprintln!("required-ci: parse FAIL {e}");
+                    }
+                    phase_failures.push(format!("parse ({} error(s))", errors.len()));
                 }
-                phase_failures.push(format!("parse ({} error(s))", errors.len()));
             }
+            ran.push("parse");
         }
-        ran.push("parse");
 
         // PHASE 2 — regen first generation: the emitted mirrors against what is committed.
-        eprintln!("required-ci: phase regen (first generation vs committed)");
-        match v1_compiler::cli_run::run_required_regen(&regen_candidate_dir, &regen_receipt_path) {
-            Ok(outcome) => {
-                // Read through accessors, and print `unmeasured` rather than a plausible
-                // default when the pass built the wrong variant (#8650's shape).
-                let fge = outcome
-                    .receipt
-                    .first_generation_equal()
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| "unmeasured".to_string());
-                let candidate = outcome.receipt.candidate_artifact().unwrap_or("unmeasured");
-                eprintln!("required-ci: regen first_generation_equal={fge} candidate={candidate}");
-                for failure in &outcome.failures {
-                    eprintln!("required-ci: regen FAIL {failure}");
+        if required_ci_phase_selected(RequiredCiPhase::Regen, required_ci_lane) {
+            eprintln!("required-ci: phase regen (first generation vs committed)");
+            match v1_compiler::cli_run::run_required_regen(
+                &regen_candidate_dir,
+                &regen_receipt_path,
+            ) {
+                Ok(outcome) => {
+                    // Read through accessors, and print `unmeasured` rather than a plausible
+                    // default when the pass built the wrong variant (#8650's shape).
+                    let fge = outcome
+                        .receipt
+                        .first_generation_equal()
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "unmeasured".to_string());
+                    let candidate = outcome.receipt.candidate_artifact().unwrap_or("unmeasured");
+                    eprintln!(
+                        "required-ci: regen first_generation_equal={fge} candidate={candidate}"
+                    );
+                    for failure in &outcome.failures {
+                        eprintln!("required-ci: regen FAIL {failure}");
+                    }
+                    if !outcome.failures.is_empty() {
+                        phase_failures
+                            .push(format!("regen ({} failure(s))", outcome.failures.len()));
+                    }
                 }
-                if !outcome.failures.is_empty() {
-                    phase_failures.push(format!("regen ({} failure(s))", outcome.failures.len()));
+                Err(e) => {
+                    // A REFUSAL IS NOT A MISMATCH: nothing was emitted, so there is no comparison
+                    // to report, and the refusal is named rather than folded into a drift verdict.
+                    eprintln!("required-ci: regen refused: {e}");
+                    phase_failures.push(format!("regen refused: {e}"));
                 }
             }
-            Err(e) => {
-                // A REFUSAL IS NOT A MISMATCH: nothing was emitted, so there is no comparison
-                // to report, and the refusal is named rather than folded into a drift verdict.
-                eprintln!("required-ci: regen refused: {e}");
-                phase_failures.push(format!("regen refused: {e}"));
-            }
+            ran.push("regen");
         }
-        ran.push("regen");
 
         // PHASE 3 — v2 emission. ENROLLED 2026-08-23 on an operator ruling relayed through
         // the requesting session, after the 2026-08-23 break reached main and stayed for
@@ -10363,82 +10417,98 @@ fn run() -> Result<ExitCode, ExitCode> {
         // compares the regen mirrors and folds the floor, and NONE OF THE THREE COMPILES A
         // v2 ENTRY. Measured cost +135s against the floor's ~30-40 minutes.
         //
-        // ORDERED AHEAD OF THE FLOOR, and the ordering is a report-order fact only: the
-        // phases stay independent and every one runs even after an earlier failure, so
-        // this does not stop the floor starting on an unemittable tree. Making it an early
-        // PREREQUISITE (an exit before the floor) is a scheduling decision that belongs to
-        // the operator with the number attached, and it would change this mode's
-        // stopped-line audit design, so it is not taken here.
+        // IT NO LONGER SHARES A JOB WITH THE FLOOR AT ALL (operator ruling, 2026-08-25).
+        // The phase sits in the `build` lane beside regen; the floor is the other job, and
+        // the two run in parallel. The old paragraph here weighed whether to make this an
+        // early PREREQUISITE of the floor -- an exit before it -- and that question is now
+        // moot rather than answered: a phase in another job cannot precondition this one,
+        // and the run reports both lanes' ledgers whatever either does.
+        //
+        // The SUBJECT widened with the split, which is the same ruling's other half: the
+        // roster is `src/v2/compiler/00_compile.dag`, the v2 pipeline root, where it was
+        // the smallest entry in the tree. The reason is in `gunbc.ci_layer_roots`
+        // `required_v2_emission_entries` -- the cost that argued against it was a cost
+        // against a SERIAL run, and this lane's cost is now free up to the floor's
+        // duration.
         //
         // The subject is the SAME PRODUCER the cargo board runs
         // (cli_run::compile_entry_emission, which `gunbc compile --entry` also calls), so
         // a green here and an emitting board are one fact rather than two.
-        eprintln!("required-ci: phase v2-emission (one entry, the board's producer)");
-        match v1_compiler::cli_run::run_required_v2_emission(&source_roots) {
-            Ok(runs) => {
-                let mut not_completed = 0usize;
-                for run in &runs {
-                    eprintln!("{}", run.measurement_line("required-ci: v2-emission"));
-                    match &run.disposition {
-                        v1_compiler::cli_run::EntryEmissionDisposition::Completed { .. } => {}
-                        v1_compiler::cli_run::EntryEmissionDisposition::Refused {
-                            phase,
-                            cause,
-                        } => {
-                            not_completed += 1;
-                            eprintln!(
-                                "required-ci: v2-emission EmissionRefused entry={} phase={phase} cause={cause}",
-                                run.entry
-                            );
-                        }
-                        v1_compiler::cli_run::EntryEmissionDisposition::NotExecuted {
-                            earlier_phase,
-                            cause,
-                        } => {
-                            not_completed += 1;
-                            eprintln!(
-                                "required-ci: v2-emission EmissionNotExecuted entry={} earlier_phase={earlier_phase} cause={cause}",
-                                run.entry
-                            );
+        if required_ci_phase_selected(RequiredCiPhase::V2Emission, required_ci_lane) {
+            eprintln!("required-ci: phase v2-emission (the v2 compiler entry, full closure)");
+            match v1_compiler::cli_run::run_required_v2_emission(&source_roots) {
+                Ok(runs) => {
+                    let mut not_completed = 0usize;
+                    for run in &runs {
+                        eprintln!("{}", run.measurement_line("required-ci: v2-emission"));
+                        match &run.disposition {
+                            v1_compiler::cli_run::EntryEmissionDisposition::Completed {
+                                ..
+                            } => {}
+                            v1_compiler::cli_run::EntryEmissionDisposition::Refused {
+                                phase,
+                                cause,
+                            } => {
+                                not_completed += 1;
+                                eprintln!(
+                                    "required-ci: v2-emission EmissionRefused entry={} phase={phase} cause={cause}",
+                                    run.entry
+                                );
+                            }
+                            v1_compiler::cli_run::EntryEmissionDisposition::NotExecuted {
+                                earlier_phase,
+                                cause,
+                            } => {
+                                not_completed += 1;
+                                eprintln!(
+                                    "required-ci: v2-emission EmissionNotExecuted entry={} earlier_phase={earlier_phase} cause={cause}",
+                                    run.entry
+                                );
+                            }
                         }
                     }
+                    if not_completed > 0 {
+                        phase_failures.push(format!("v2-emission ({not_completed} not completed)"));
+                    }
                 }
-                if not_completed > 0 {
-                    phase_failures.push(format!("v2-emission ({not_completed} not completed)"));
+                Err(e) => {
+                    eprintln!(
+                        "required-ci: v2-emission EmissionNotExecuted earlier_phase=roster cause={e}"
+                    );
+                    phase_failures.push(format!("v2-emission roster: {e}"));
                 }
             }
-            Err(e) => {
-                eprintln!(
-                    "required-ci: v2-emission EmissionNotExecuted earlier_phase=roster cause={e}"
-                );
-                phase_failures.push(format!("v2-emission roster: {e}"));
-            }
+            ran.push("v2-emission");
         }
-        ran.push("v2-emission");
 
         // PHASE 4 — the witness floor. Independent; runs whatever happened above.
-        eprintln!("required-ci: phase floor (one prepared subject, one fold)");
-        let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
-        match v1_compiler::cli_run::run_required_floor(
-            &source_roots,
-            &commit,
-            v1_compiler::cli_run::ShardStyle::single_shard(),
-        ) {
-            Ok(outcome) => {
-                report_required_floor_outcome(&outcome);
-                if !required_floor_outcome_is_clean(&outcome) {
-                    phase_failures.push("floor".to_string());
+        if required_ci_phase_selected(RequiredCiPhase::Floor, required_ci_lane) {
+            eprintln!("required-ci: phase floor (one prepared subject, one fold)");
+            let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
+            match v1_compiler::cli_run::run_required_floor(
+                &source_roots,
+                &commit,
+                v1_compiler::cli_run::ShardStyle::single_shard(),
+            ) {
+                Ok(outcome) => {
+                    report_required_floor_outcome(&outcome);
+                    if !required_floor_outcome_is_clean(&outcome) {
+                        phase_failures.push("floor".to_string());
+                    }
+                }
+                Err(e) => {
+                    eprintln!("required-ci: floor refused: {e}");
+                    phase_failures.push(format!("floor refused: {e}"));
                 }
             }
-            Err(e) => {
-                eprintln!("required-ci: floor refused: {e}");
-                phase_failures.push(format!("floor refused: {e}"));
-            }
+            ran.push("floor");
         }
-        ran.push("floor");
 
         eprintln!(
-            "required-ci: phases_run={} failed={}",
+            "required-ci: lane={} phases_run={} failed={}",
+            required_ci_lane
+                .map(|l| l.name())
+                .unwrap_or("all (no --required-lane given)"),
             ran.len(),
             phase_failures.len()
         );
@@ -11905,6 +11975,134 @@ fn emit_worker_terminal_before_return(code: ExitCode) -> ExitCode {
 /// Print the floor's complete ledger. ONE implementation, called by `--required-floor` and by
 /// the composed `--required-ci` run, so the two modes cannot drift into reporting the same
 /// outcome differently (DESIGN §3).
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE REQUIRED RUN'S PHASE ROSTER, AND THE TWO LANES IT PARTITIONS INTO.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// WHY A PARTITION EXISTS AT ALL (operator ruling, 2026-08-25). The required run's phases are
+// mutually independent -- that property was already established when the roster was composed
+// into one process -- but they were also SERIAL, because one process runs them one after
+// another. Serial independence is the expensive combination: the witness floor costs ~30-40
+// minutes and every other phase waits behind it for no reason a data dependency can name, so
+// the run's wall clock is the SUM of things that could have been a MAX.
+//
+// The split makes it a max. `build` (parse, regen, v2-emission) and `witnesses` (the floor)
+// run as two GitHub Actions jobs with no `needs` edge between them, so the required check
+// finishes when the slower of the two does, and the build lane's cost is free up to the
+// floor's duration. That headroom is what makes the v2-emission phase's subject a cost
+// decision rather than a cost objection.
+//
+// WHAT THIS SUPERSEDES, AND WHAT IT DOES NOT (2026-08-20 consolidation directive: "i would
+// much prefer if it was all handled within the witnesses step and within the gunbc binary, not
+// at a github actions job level"). That directive has two halves and only one is superseded.
+//
+//   SURVIVES -- "within the gunbc binary". The phases still live here. Each job makes ONE
+//   invocation of this binary and names a LANE; it does not name phases, order them, or wire
+//   one phase's precondition to another step's `outcome`. The step-ladder defect the
+//   consolidation fixed -- an `if:` naming a sibling step, silently conjoined with GitHub's
+//   implicit `success()`, so a regen red disarmed the whole floor -- cannot return, because
+//   there is no step whose condition another step's verdict could reach.
+//
+//   SUPERSEDED -- "not at a github actions job level". PARALLELISM IS NOT EXPRESSIBLE IN THE
+//   BINARY, and that is a property of the transport rather than a preference. Two phases
+//   running concurrently means two runners, two checkouts and two toolchains; a single process
+//   on one runner can thread but cannot acquire a second machine, and the ~9.4 GiB the floor
+//   peaks at is a reason not to want them on one anyway. So the lane boundary is a JOB
+//   boundary of necessity. What the directive was protecting against -- SEQUENCING and
+//   PRECONDITIONS leaking into YAML -- is exactly what does not cross it: the jobs are
+//   unordered and unconditioned on each other, which is the whole content of running them in
+//   parallel.
+//
+// THE PARTITION IS TOTAL BY CONSTRUCTION, which is the point of writing it as a match rather
+// than as two lists. Two hand-authored rosters could drop a phase from both and each would
+// look complete; here every phase has exactly one lane because `RequiredCiPhase::lane` is an
+// exhaustive match, and adding a phase without assigning it fails to compile. A phase silently
+// belonging to no job is the empty-observation narrow (DESIGN, recurring failure modes) at the
+// worst possible grain -- a required check reporting green over a measurement nothing took.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RequiredCiLane {
+    Build,
+    Witnesses,
+}
+
+impl RequiredCiLane {
+    fn name(self) -> &'static str {
+        match self {
+            RequiredCiLane::Build => "build",
+            RequiredCiLane::Witnesses => "witnesses",
+        }
+    }
+
+    /// A REFUSAL, NOT A DEFAULT. An unrecognized lane word names a job that does not exist, and
+    /// the failure mode of guessing is that the run silently covers a different set of phases
+    /// than the workflow believes it asked for -- green over an unmeasured population.
+    fn parse(value: &str) -> Result<RequiredCiLane, String> {
+        match value {
+            "build" => Ok(RequiredCiLane::Build),
+            "witnesses" => Ok(RequiredCiLane::Witnesses),
+            other => Err(format!(
+                "unknown --required-lane: {other} (expected build | witnesses)"
+            )),
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RequiredCiPhase {
+    Parse,
+    Regen,
+    V2Emission,
+    Floor,
+}
+
+impl RequiredCiPhase {
+    fn name(self) -> &'static str {
+        match self {
+            RequiredCiPhase::Parse => "parse",
+            RequiredCiPhase::Regen => "regen",
+            RequiredCiPhase::V2Emission => "v2-emission",
+            RequiredCiPhase::Floor => "floor",
+        }
+    }
+
+    fn lane(self) -> RequiredCiLane {
+        match self {
+            // PARSE RIDES WITH THE FLOOR, and the reason is its subject rather than its cost.
+            // The sweep walks src/v1, dag and src/v2 and answers `does every authored .dag
+            // file tokenize and parse` -- the same corpus the floor then prepares strictly. It
+            // costs seconds, so it is free wherever it sits; putting it in front of the long
+            // lane means the cheapest total refusal over the witness corpus arrives from the
+            // job that owns that corpus.
+            RequiredCiPhase::Parse => RequiredCiLane::Witnesses,
+            RequiredCiPhase::Regen => RequiredCiLane::Build,
+            RequiredCiPhase::V2Emission => RequiredCiLane::Build,
+            RequiredCiPhase::Floor => RequiredCiLane::Witnesses,
+        }
+    }
+}
+
+const REQUIRED_CI_PHASES: [RequiredCiPhase; 4] = [
+    RequiredCiPhase::Parse,
+    RequiredCiPhase::Regen,
+    RequiredCiPhase::V2Emission,
+    RequiredCiPhase::Floor,
+];
+
+/// EVERY PHASE IS ACCOUNTED FOR IN EVERY RUN, whether or not this lane owns it.
+///
+/// A lane that simply omitted the other lane's phases would produce a ledger in which "this
+/// phase passed", "this phase was never reached" and "this phase belongs to the other job" are
+/// one silence. So a run selecting a lane prints a ROUTED line for each phase it does not own,
+/// naming the lane that does. The reader of one job's log can then reconstruct the whole roster
+/// and see exactly which job to look in for the rest, instead of inferring coverage from an
+/// absence.
+fn required_ci_phase_selected(phase: RequiredCiPhase, lane: Option<RequiredCiLane>) -> bool {
+    match lane {
+        None => true,
+        Some(selected) => phase.lane() == selected,
+    }
+}
+
 fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOutcome) {
     eprintln!(
         "required-floor: subject={} modules_resolved={} modules_excluded={}",

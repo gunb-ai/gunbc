@@ -13,12 +13,15 @@ import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation,
   EnsureOwnedDirectory,
   SystemdDaemonReload,
+  SystemdEnableUnit,
+  SystemdStartUnit,
   executor_managed_directory_mode,
   executor_privileged_operations_sudoers_body,
   runner_slot_privileged_operations,
 }
 import gunbc.runner_host_deploy { RunnerHostDeploy, srv1_runner_host_deploy, srv3_runner_host_deploy, srv4_runner_host_deploy }
 import gunbc.runner_slot_provision { desired_runner_slot_members }
+import gunbc.runner_unit { runner_unit_name_of_registration }
 
 // THE MANAGED STATE DIRECTORY, DECLARED ONCE. It is currently spelled THREE times in
 // gunbc.fleet_converge_plan and named nowhere: once as a bare literal in the lease guard's argv, and
@@ -31,6 +34,27 @@ import gunbc.runner_slot_provision { desired_runner_slot_members }
 // nothing else uses.
 data gunbc_fleet_converge_state_dir: NonEmptyStr = "/var/lib/gunbc/fleet-converge" as NonEmptyStr
 
+// THE TWO SERVICE TRANSITIONS ARE GRANTED PER UNIT AND SEPARATELY, one enable line and one start
+// line for every desired slot. That is what makes gunbc.runner_service_activation's separation
+// enforceable rather than stylistic: sudoers matches the whole command, so neither derived line
+// matches `systemctl enable --now <unit>`, and the fused form the hand loop ran has no grant on any
+// executor host. It is refused by sudo, not by anybody remembering.
+//
+// THE ROSTER IS desired_runner_slot_members FOR BOTH POPULATIONS, which is why the fabric cell
+// carries no activation grant: srv3-06 is a reserved compute-fabric identity, it is not a desired
+// runner member, so it contributes neither a directory pair nor a transition pair. srv3 therefore
+// derives one fewer of each than srv4, and the difference is the carve doing its job rather than an
+// omission.
+fn runner_slot_activation_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  flat_map(
+    desired_runner_slot_members(deploy: deploy),
+    m => {
+      let unit = runner_unit_name_of_registration(registration_name: m.instance_name)
+      [SystemdEnableUnit { unit: unit }, SystemdStartUnit { unit: unit }]
+    },
+  )
+}
+
 // THE HOST'S REQUIRED PRIVILEGED POPULATION, DERIVED FROM ITS OWN DEPLOY ROW. Nothing here is
 // srv-specific: a host's slot roster, job user and runner user decide its grants, so adding a slot
 // or retargeting an account changes the authorization with no second edit. This is the function the
@@ -39,6 +63,7 @@ fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorP
   let job = deploy.job_user
   let slot_dirs = map(desired_runner_slot_members(deploy: deploy), m => m.slot_dir)
   runner_slot_privileged_operations(slot_dirs: slot_dirs, slot_owner: job)
+    + runner_slot_activation_operations(deploy: deploy)
     + [
       EnsureOwnedDirectory {
         path: gunbc_fleet_converge_state_dir,

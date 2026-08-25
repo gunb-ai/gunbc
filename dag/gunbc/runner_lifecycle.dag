@@ -192,12 +192,19 @@ fn runner_slot_caps_precede_start() -> Bool {
   runner_slot_add_step_index(step: AddStepMemoryCaps) < runner_slot_add_step_index(step: AddStepStartUnit)
 }
 
-// THE UNIT NAME FUNCTION THAT USED TO LIVE HERE IS DELETED, NOT DELEGATED. It concatenated the
-// prefix, the instance name and the suffix itself -- one of five such spellings -- so
-// gunbc.host_axis_caps set memory caps on a unit name derived independently of the one
-// gunbc.host_converge writes drop-ins for. gunbc.runner_unit runner_slot_unit_name is the single
-// authority; its consumers import it from there. Leaving a one-line forwarder here would keep a
-// second name for one function, which is the nicknaming the consolidation exists to remove.
+// THE UNIT NAME FUNCTIONS THAT USED TO LIVE HERE ARE DELETED, NOT DELEGATED.
+//
+// Two arrived independently. This module concatenated the prefix, the instance name and the suffix
+// for an identity; a later change on main split out runner_unit_name_for_instance for callers that
+// hold an instance NAME and no identity to rebuild one from -- gunbc.runner_slot_provision's member
+// rows and gunbc.runner_host_deploy's instance names. That split identified a real second caller
+// shape and is preserved, but it kept the literal in this module.
+//
+// gunbc.runner_unit is the single authority for both shapes: runner_slot_unit_name for an identity
+// and runner_unit_name_of_registration for a bare instance name, derived from one prefix and one
+// suffix rather than re-spelled per caller shape. Consumers import from there. Leaving one-line
+// forwarders here would keep a second name for each function, which is the nicknaming the
+// consolidation exists to remove.
 
 fn runner_slot_dir_path(slot: RunnerSlotIdentity) -> NonEmptyStr {
   join([actions_runner_base_dir, "/", runner_slot_instance_name(slot: slot)], "") as NonEmptyStr
