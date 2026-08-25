@@ -1,0 +1,10 @@
+module v2.lens.common.source_analysis_standing
+
+
+type SourceAnalysisNotEstablishedCause
+  = LanguageGrammarUnavailable
+  | LanguageGrammarRejected
+  | SourceTokenizationRejected
+  | SourceParseRejected
+  | SourceNormalizationRejected
+

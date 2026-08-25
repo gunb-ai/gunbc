@@ -35,12 +35,12 @@ fn family_cache_root_for(test_id: String) -> String {
   concat(family_cache_root, "/", test_id)
 }
 
-data match_expected_octets: List<v2.std.machine.Byte> = [0, 1, 0, 0, 0]
-data match_alt_expected_octets: List<v2.std.machine.Byte> = [0, 2, 0, 0, 0]
-data loop_expected_octets: List<v2.std.machine.Byte> = [0, 1, 0, 0, 0]
-data loop_alt_expected_octets: List<v2.std.machine.Byte> = [0, 2, 0, 0, 0]
-data fold_expected_octets: List<v2.std.machine.Byte> = [0, 7, 0, 0, 0]
-data fold_alt_expected_octets: List<v2.std.machine.Byte> = [0, 255, 255, 255, 255]
+data match_expected_octets: List<Int> = [0, 1, 0, 0, 0]
+data match_alt_expected_octets: List<Int> = [0, 2, 0, 0, 0]
+data loop_expected_octets: List<Int> = [0, 1, 0, 0, 0]
+data loop_alt_expected_octets: List<Int> = [0, 2, 0, 0, 0]
+data fold_expected_octets: List<Int> = [0, 7, 0, 0, 0]
+data fold_alt_expected_octets: List<Int> = [0, 255, 255, 255, 255]
 
 fn match_fixture_inputs() -> v2.compiler.eval.Inputs {
   v2.compiler.eval.inputs_for_emit_host(
@@ -125,7 +125,7 @@ fn mlf_family_member_run(
   source: extdeps.communication.medium.Medium<String>,
   member_id: String,
   expect_compile_skipped: Bool,
-  expected_octets: List<v2.std.machine.Byte>
+  expected_octets: List<Int>
 ) -> Bool {
   match v2.compiler.emit_host.run_emit_host_cached_with_run_args(
     workspace_dir: workspace,

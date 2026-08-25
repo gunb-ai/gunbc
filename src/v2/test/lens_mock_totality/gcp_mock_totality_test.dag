@@ -12,8 +12,6 @@ data gcp_red_omit_keys: List<String> = ["gcp.SecretManager.AddVersion"]
 fn materialize_gcp_mock(case: PublishedMockCase) -> Outcome<MaterializedGcpMock> {
   if case.operation_key == "gcloud.Auth.Login" {
     v2.std.diagnostic.outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcloud_auth_login })
-  } else if case.operation_key == "gcloud.Auth.ReadADC" {
-    v2.std.diagnostic.outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_gcloud_auth_read_adc })
   } else if case.operation_key == "oauth2.Google.Refresh" {
     v2.std.diagnostic.outcome_accepted(value: MaterializedGcpMock { tag: ^materialized_oauth2_google_refresh })
   } else if case.operation_key == "shell.GCloud.AuthPrintAccessToken" {

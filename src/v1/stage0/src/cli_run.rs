@@ -5159,6 +5159,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
     let class = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { .. } => "UnresolvedImport",
         CompilerDiagnostic::MissingExport { .. } => "MissingExport",
+        CompilerDiagnostic::ImportShadowedByLocalDefinition { .. } => {
+            "ImportShadowedByLocalDefinition"
+        }
         CompilerDiagnostic::UnresolvedType { .. } => "UnresolvedType",
         CompilerDiagnostic::TypeMismatch { .. } => "TypeMismatch",
         CompilerDiagnostic::ArityMismatch { .. } => "ArityMismatch",
@@ -5214,6 +5217,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
         CompilerDiagnostic::MissingExport { name, .. } => name.clone(),
+        CompilerDiagnostic::ImportShadowedByLocalDefinition { name, .. } => name.clone(),
         CompilerDiagnostic::UnresolvedType { name, .. } => name.clone(),
         CompilerDiagnostic::TypeMismatch { got, .. } => got.clone(),
         CompilerDiagnostic::ArityMismatch { name, .. } => name.clone(),
@@ -32952,37 +32956,340 @@ fn collect_type_ref_names(
 
 /// Walk a declaration subtree collecting cross-module reference use sites: value calls/vars,
 /// variant constructors, qualified-name chains, and type-annotation identifiers. Binders (params,
-/// match-pattern fields, record-literal labels) are excluded — the liberal `node.name` scan was
-/// attributing local names like `items` and `r` to unrelated extdeps modules.
+/// `let` bindings, lambda parameters, match-pattern fields, record-literal labels) are excluded,
+/// because the liberal `node.name` scan this replaced was attributing local names like `items`
+/// and `r` to unrelated extdeps modules.
+///
+/// EXCLUDING BINDERS BY BINDING KIND WAS THE DEFECT, AND IT FAILED SILENTLY FOR THE LIFETIME OF
+/// THE FUNCTION. The previous form kept an `ExprVar` only when its `binding_kind` was
+/// `Some(FunctionValueBinding)`, which reads as "keep the references, drop the locals" and does
+/// nothing at all: `binding_kind` is stamped by `infer_var_binding_kind` on inference's own
+/// representation and is `None` on every node of the PREPARED tree this walk reads. Measured on
+/// the prepared corpus: 205,609 `ExprVar` nodes, 205,609 of them unstamped, zero of any other
+/// kind. So the predicate matched nothing, no bare variable reference ever produced a reference
+/// edge, and every edge this index has ever carried came from `ExprCall`, `ExprRecordLit`, field
+/// chains and type annotations.
+///
+/// THE FAILURE DIRECTION IS WHAT MADE IT INVISIBLE. A predicate matching on a field its input
+/// never populates is indistinguishable from a correct one by reading, by typecheck and by grep;
+/// it does not refuse, it returns an empty set. The consumer gets a smaller closure and the
+/// damage surfaces as a runtime throw somewhere else entirely — measured on floor run
+/// 32621117917, 170 enrolled claims that threw `no such function: <a data row in another module>`
+/// instead of reaching a verdict.
+///
+/// SO THE SEPARATION IS STRUCTURAL, because the stamp carries no information here. `bound` holds
+/// the names an enclosing binder introduced and a name in it is never a reference. The remaining
+/// failure directions are deliberately asymmetric: over-binding drops an edge and silently
+/// reproduces exactly the defect above, while under-binding admits a local name and merely widens
+/// the scope — which is observable as `PreparedClaimScope::module_count` and as
+/// `ambiguous_bare_names`. The design whose failure mode is measurable is the correct trade.
 fn collect_node_refs(
     node: &Rc<crate::v1_std_core::Node>,
     bare: &mut std::collections::HashSet<String>,
     chains: &mut Vec<Vec<String>>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    classify: &mut ExprVarClassification<'_>,
 ) {
-    collect_node_refs_inner(node, bare, chains, false);
+    let mut bound: Vec<(String, ExprVarClass)> = Vec::new();
+    collect_node_refs_inner(
+        node,
+        bare,
+        chains,
+        false,
+        false,
+        &mut bound,
+        source_indices,
+        classify,
+    );
 }
 
+/// WHERE EVERY `ExprVar` GOES, AS A CLOSED SET RATHER THAN A RESIDUE.
+///
+/// The defect this replaces classified by subtraction: keep the ones whose binding kind is
+/// `Some(FunctionValueBinding)`, and whatever is left is not a reference. A residue cannot be
+/// audited — a name that fits none of the author's cases lands on one side or the other with
+/// nothing announcing it, which is how an arm that matched NOTHING went unnoticed for the
+/// lifetime of the function. Here every occurrence reaches exactly one member, the reference set
+/// is the members that ARE references by construction, and the member for "fits nothing" exists
+/// so that it can be counted rather than assumed away.
+///
+/// WHAT THIS DOES AND DOES NOT GUARANTEE, at the grain the honest claim allows: it is total over
+/// ONE node kind (`ExprData::ExprVar`) under ONE classification. It is NOT a claim that arm
+/// reachability is decidable in general — "can this match arm ever be taken" is not a property
+/// worth a general wall, and nothing here promises one. What is decidable, and all that is
+/// claimed, is that this particular syntactic classification covers this particular node kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum ExprVarClass {
+    /// Bound by an enclosing declaration's or lambda's parameter.
+    BoundByParameter,
+    /// Bound by a `let` earlier in the same block.
+    BoundByLet,
+    /// Bound by an enclosing match pattern.
+    BoundByMatchPattern,
+    /// Not bound here, and this module declares it — resolves locally, no cross-module edge.
+    DeclaredInThisModule,
+    /// Not bound here, and some other module declares it — the cross-module reference edge that
+    /// the previous form could never record.
+    DeclaredElsewhere,
+    /// The innermost receiver of a dotted chain (`extdeps` in `extdeps.browser.chromium`). The
+    /// chain is recorded WHOLE by the dotted scan at the field-access node above, so the head is
+    /// already accounted for; classifying it again as a bare name would ask the wrong question of
+    /// it — a chain head names a module path segment, not a declaration this module could hold.
+    QualifiedChainHead,
+    /// Not bound, not a chain head, and declared by no module in the subject. Kept as a member so
+    /// the population is observable; it is the arm whose silence produced this defect.
+    NamesNothingKnown,
+}
+
+/// Classification state for one module's walk. Carries the corpus-wide declaration index, which
+/// is why the index build runs declarations first and classification second.
+struct ExprVarClassification<'a> {
+    /// EXACT RECONCILIATION, PUBLISHED. Every traversed occurrence lands in exactly one of
+    /// `free_reference_edges`, `bound_occurrences_suppressed`, `chain_head_occurrences` or
+    /// `NamesNothingKnown`, with an unsupported binder refusing outright, and
+    /// the identity is asserted before the index is published. A counter set that does not add
+    /// up means an occurrence vanished, which is the failure this whole change exists to make
+    /// unrepresentable — so it refuses rather than reporting a plausible smaller closure.
+    occurrences: usize,
+    free_reference_edges: usize,
+    bound_occurrences_suppressed: usize,
+    chain_head_occurrences: usize,
+    refusals: Vec<String>,
+    /// `None` where the caller has no declaration index — see `reference_resolution_facts`,
+    /// which runs before any subject is prepared. Absent is spelled as absent rather than as an
+    /// empty map, because an empty map would answer "no module declares this name" to every
+    /// question and silently collect nothing: ⊥-as-answer standing in for ⊥-as-ignorance.
+    decl_index: Option<&'a HashMap<String, std::collections::BTreeSet<String>>>,
+    tally: &'a mut BTreeMap<ExprVarClass, usize>,
+    unclassified: &'a mut Vec<String>,
+    /// The module currently being walked. ONE classification spans the whole index build so the
+    /// reconciliation identity is over the same population as the tally; walking per-module with
+    /// per-module counters against a shared tally would compare two different denominators.
+    module: String,
+}
+
+impl ExprVarClassification<'_> {
+    /// Assign one occurrence and answer whether it is a reference edge. Total: every input
+    /// reaches exactly one `ExprVarClass`.
+    /// A BINDER FORM THIS COLLECTOR CANNOT NAME IS A TYPED REFUSAL, NOT A GUESS IN EITHER
+    /// DIRECTION. Assuming bound silently reproduces the under-approximation being removed;
+    /// assuming free builds an inflated scope for every claim before anything complains. The
+    /// construct is reported and the run stops before any scope is built.
+    fn refuse_binder(&mut self, construct: &str, detail: &str) {
+        self.refusals.push(format!(
+            "{}: unsupported binder syntax {construct} ({detail})",
+            self.module
+        ));
+    }
+
+    fn classify(&mut self, name: &str, bound_as: Option<ExprVarClass>, chain_head: bool) -> bool {
+        self.occurrences += 1;
+        // THE CHAIN HEAD ARM IS ORDERED LAST, AND THE ORDER IS THE WHOLE CORRECTNESS ARGUMENT.
+        // A binder answers first: `fn f(cron: Tab) { cron.List }` reads the parameter. A
+        // DECLARATION answers second, because the dotted scan owns only chains whose prefix is a
+        // MODULE PATH — `some_data_row.field` is an ordinary value reference that merely looks
+        // like one, and suppressing it here DELETES A REAL EDGE. Only a head that is neither
+        // bound nor declared anywhere is the module-path segment this member is for.
+        let head_is_undeclared = chain_head
+            && bound_as.is_none()
+            && self
+                .decl_index
+                .map(|index| !index.contains_key(name))
+                .unwrap_or(false);
+        if head_is_undeclared {
+            *self
+                .tally
+                .entry(ExprVarClass::QualifiedChainHead)
+                .or_insert(0) += 1;
+            self.chain_head_occurrences += 1;
+            return false;
+        }
+        let Some(decl_index) = self.decl_index else {
+            // No index: this caller cannot decide the unbound cases, so an unbound name keeps
+            // this producer's own prior contract of "treat it as a reference and let resolution
+            // decide". Counted under the member it would otherwise have to guess at.
+            let class = bound_as.unwrap_or(ExprVarClass::DeclaredElsewhere);
+            *self.tally.entry(class).or_insert(0) += 1;
+            if bound_as.is_none() {
+                self.free_reference_edges += 1;
+                return true;
+            }
+            self.bound_occurrences_suppressed += 1;
+            return false;
+        };
+        let class = match bound_as {
+            Some(bound) => bound,
+            None => match decl_index.get(name) {
+                Some(mods) if mods.contains(&self.module) => ExprVarClass::DeclaredInThisModule,
+                Some(_) => ExprVarClass::DeclaredElsewhere,
+                None => {
+                    self.unclassified.push(format!("{}::{name}", self.module));
+                    ExprVarClass::NamesNothingKnown
+                }
+            },
+        };
+        *self.tally.entry(class).or_insert(0) += 1;
+        // Only a name some module declares is an edge. A bound name is not, and a name nothing
+        // declares has no target to reach — recording it would invent an edge, not find one.
+        let is_edge = matches!(
+            class,
+            ExprVarClass::DeclaredInThisModule | ExprVarClass::DeclaredElsewhere
+        );
+        match class {
+            ExprVarClass::BoundByParameter
+            | ExprVarClass::BoundByLet
+            | ExprVarClass::BoundByMatchPattern => self.bound_occurrences_suppressed += 1,
+            ExprVarClass::DeclaredInThisModule | ExprVarClass::DeclaredElsewhere => {
+                self.free_reference_edges += 1
+            }
+            // Counted as neither an edge nor a suppression: it is its own member, and the
+            // reconciliation below adds it in explicitly rather than letting it hide in one.
+            ExprVarClass::NamesNothingKnown => {}
+            // Unreachable from here: a chain head returns above, before the declaration index is
+            // consulted at all. Named rather than wildcarded so a future member cannot inherit
+            // this arm's silence.
+            ExprVarClass::QualifiedChainHead => {}
+        }
+        is_edge
+    }
+
+    /// all traversed occurrences == free + bound-suppressed + names-nothing-known.
+    fn reconciles(&self) -> bool {
+        let names_nothing_known = self
+            .tally
+            .get(&ExprVarClass::NamesNothingKnown)
+            .copied()
+            .unwrap_or(0);
+        self.occurrences
+            == self.free_reference_edges
+                + self.bound_occurrences_suppressed
+                + self.chain_head_occurrences
+                + names_nothing_known
+    }
+}
+
+/// The names one node's own binder introduces, in the shapes the prepared tree uses: a
+/// declaration's or lambda's parameters, and a match arm's pattern bindings. A `let` is NOT here
+/// — it binds over its later SIBLINGS rather than over its own subtree, so it is handled where
+/// the child list is walked.
+fn binder_names_of(
+    node: &Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    classify: &mut ExprVarClassification<'_>,
+) -> Vec<(String, ExprVarClass)> {
+    use crate::v1_std_core::{ExprData, MatchPattern};
+    let mut out: Vec<(String, ExprVarClass)> = Vec::new();
+    for p in node.params.iter() {
+        if p.name.is_empty() {
+            classify.refuse_binder("parameter", "declared parameter carries no name");
+            continue;
+        }
+        out.push((p.name.clone(), ExprVarClass::BoundByParameter));
+    }
+    // A LAMBDA'S PARAMETERS ARE ITS CHILDREN, NOT ITS `params`. `lambda_param_names_at` reads
+    // them as children[1..] with the body at child 0, and recovers each name from its authored
+    // span — so the same producer the compiler uses answers here rather than a second reading of
+    // the shape.
+    if matches!(&*node.expr_data, ExprData::ExprLambda) {
+        for n in node.children.iter().skip(1) {
+            let name = authored_name_at(source_indices.clone(), n.clone());
+            if name.is_empty() {
+                classify.refuse_binder(
+                    "lambda parameter",
+                    "no authored name recoverable from its span",
+                );
+                continue;
+            }
+            out.push((name, ExprVarClass::BoundByParameter));
+        }
+    }
+    if let Some(mp) = &node.match_pattern {
+        pattern_binder_names(mp.clone(), classify, &mut out);
+    }
+    out
+}
+
+/// A match pattern binds names at every depth, so the binder walk is a recursion over the
+/// pattern tree rather than a single level of it. A `VariantPattern`'s `field_bindings` carry
+/// the FIELD name on the node and the actual binder in that node's own `match_pattern` — for
+/// `Present { value: v }` the node is named `value` and its nested pattern is `Bind { v }`, and
+/// for the shorthand `Present { value }` the parser synthesises `Bind { value }`. Reading the
+/// field name as the binder therefore binds the wrong name in the general case and misses the
+/// real one; nested patterns of any depth are handled by the same recursion. A field binding
+/// with no nested pattern at all is not a shape this walk understands, so it refuses.
+fn pattern_binder_names(
+    pattern: Rc<MatchPattern>,
+    classify: &mut ExprVarClassification<'_>,
+    out: &mut Vec<(String, ExprVarClass)>,
+) {
+    match &*pattern {
+        MatchPattern::Bind { declaration } => {
+            if declaration.name.is_empty() {
+                classify.refuse_binder("match binding pattern", "binding carries no name");
+            } else {
+                out.push((declaration.name.clone(), ExprVarClass::BoundByMatchPattern));
+            }
+        }
+        MatchPattern::VariantPattern { field_bindings, .. } => {
+            for fb in field_bindings.iter() {
+                match &fb.match_pattern {
+                    Some(nested) => pattern_binder_names(nested.clone(), classify, out),
+                    None => classify.refuse_binder(
+                        "variant field binding",
+                        "field binding node carries no nested pattern",
+                    ),
+                }
+            }
+        }
+        MatchPattern::LitPattern { .. } | MatchPattern::Wildcard => {}
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn collect_node_refs_inner(
     node: &Rc<crate::v1_std_core::Node>,
     bare: &mut std::collections::HashSet<String>,
     chains: &mut Vec<Vec<String>>,
     skip_bare_name: bool,
+    // `chain_receiver`: true when this node is the receiver position of an enclosing dotted
+    // chain that the scan above already recorded WHOLE. It propagates down the receiver spine
+    // only, so the head `ExprVar` it terminates at is classified as the chain head it is rather
+    // than as a bare name the module fails to declare.
+    chain_receiver: bool,
+    bound: &mut Vec<(String, ExprVarClass)>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    classify: &mut ExprVarClassification<'_>,
 ) {
-    use crate::v1_std_core::{ExprData, MatchPattern, VarBindingKind};
+    use crate::v1_std_core::{ExprData, MatchPattern};
+    let mut receiver_spine = false;
     if let ExprData::ExprFieldAccess { .. } = &*node.expr_data {
         if let Some(chain) = ref_field_chain(node) {
             chains.push(chain);
+            receiver_spine = true;
         }
     }
+    // This node's own binder — parameters and match-pattern bindings — is in scope for
+    // everything below it and is popped on the way out.
+    let introduced = binder_names_of(node, source_indices, classify);
+    let restore_to = bound.len();
+    bound.extend(introduced);
     if !skip_bare_name {
         match &*node.expr_data {
-            ExprData::ExprVar { binding_kind } => {
-                if matches!(
-                    binding_kind.as_deref(),
-                    Some(VarBindingKind::FunctionValueBinding)
-                ) && !node.name.is_empty()
-                {
-                    bare.insert(node.name.clone());
+            ExprData::ExprVar { .. } => {
+                if !node.name.is_empty() {
+                    // EVERY occurrence is assigned, and the assignment decides the edge. An
+                    // enclosing binder answers first because a bound name shadows any
+                    // declaration sharing its spelling; otherwise the declaration index decides,
+                    // and a name it does not hold reaches the counted `NamesNothingKnown` member
+                    // rather than falling into either side unremarked.
+                    let bound_as = bound
+                        .iter()
+                        .rev()
+                        .find(|(n, _)| n == &node.name)
+                        .map(|(_, class)| *class);
+                    if classify.classify(&node.name, bound_as, chain_receiver) {
+                        bare.insert(node.name.clone());
+                    }
                 }
             }
             ExprData::ExprCall { .. } => {
@@ -32995,11 +33302,30 @@ fn collect_node_refs_inner(
                     bare.insert(node.name.clone());
                 }
                 for c in node.children.iter() {
-                    collect_node_refs_inner(c, bare, chains, true);
+                    collect_node_refs_inner(
+                        c,
+                        bare,
+                        chains,
+                        true,
+                        false,
+                        bound,
+                        source_indices,
+                        classify,
+                    );
                 }
                 for pr in node.properties.iter() {
-                    collect_node_refs_inner(pr, bare, chains, true);
+                    collect_node_refs_inner(
+                        pr,
+                        bare,
+                        chains,
+                        true,
+                        false,
+                        bound,
+                        source_indices,
+                        classify,
+                    );
                 }
+                bound.truncate(restore_to);
                 return;
             }
             _ => {}
@@ -33012,29 +33338,90 @@ fn collect_node_refs_inner(
             }
         }
     }
-    for c in node.children.iter() {
-        collect_node_refs_inner(c, bare, chains, false);
+    // A `let` BINDS OVER ITS LATER SIBLINGS, WHICH IS WHY THIS LOOP IS NOT A PLAIN `for`.
+    // On the prepared tree a block is a child list and a `let` is one of its members, carrying
+    // its bound name on the node and its VALUE as its only child. So the value is walked in the
+    // scope that precedes the binding — `let x = x` reads the outer `x`, as it must — and the
+    // name enters scope for the members that follow it.
+    let siblings_restore_to = bound.len();
+    for (idx, c) in node.children.iter().enumerate() {
+        let child_is_receiver = receiver_spine && idx == 0;
+        collect_node_refs_inner(
+            c,
+            bare,
+            chains,
+            false,
+            child_is_receiver,
+            bound,
+            source_indices,
+            classify,
+        );
+        if matches!(&*c.expr_data, ExprData::ExprLet) {
+            if c.name.is_empty() {
+                classify.refuse_binder("let binding", "binding carries no name");
+            } else {
+                bound.push((c.name.clone(), ExprVarClass::BoundByLet));
+            }
+        }
     }
+    bound.truncate(siblings_restore_to);
     for p in node.params.iter() {
         if let Some(t) = &p.type_annotation {
             collect_type_ref_names(t, bare);
         }
     }
     if let Some(b) = &node.body {
-        collect_node_refs_inner(b, bare, chains, false);
+        collect_node_refs_inner(
+            b,
+            bare,
+            chains,
+            false,
+            false,
+            bound,
+            source_indices,
+            classify,
+        );
     }
     if let Some(t) = &node.type_annotation {
         collect_type_ref_names(t, bare);
     }
     for u in node.uses.iter() {
-        collect_node_refs_inner(u, bare, chains, false);
+        collect_node_refs_inner(
+            u,
+            bare,
+            chains,
+            false,
+            false,
+            bound,
+            source_indices,
+            classify,
+        );
     }
     for pr in node.properties.iter() {
-        collect_node_refs_inner(pr, bare, chains, false);
+        collect_node_refs_inner(
+            pr,
+            bare,
+            chains,
+            false,
+            false,
+            bound,
+            source_indices,
+            classify,
+        );
     }
     if let Some(tr) = &node.transport {
-        collect_node_refs_inner(tr, bare, chains, false);
+        collect_node_refs_inner(
+            tr,
+            bare,
+            chains,
+            false,
+            false,
+            bound,
+            source_indices,
+            classify,
+        );
     }
+    bound.truncate(restore_to);
 }
 
 /// Count of shared leading dot-separated segments between two module paths (containment proximity).
@@ -33230,8 +33617,74 @@ pub fn reference_resolution_facts(
             };
             let mut bare: std::collections::HashSet<String> = std::collections::HashSet::new();
             let mut chains: Vec<Vec<String>> = Vec::new();
+            // THE INDEX IS BUILT FROM THE BYTES THIS PRODUCER ALREADY READ, not fetched from a
+            // prepared subject that does not exist at this point: `collect_node_refs` recovers a
+            // lambda parameter's name from its authored span, and a missing index would leave
+            // those names unbound and let them resolve as references.
+            let mut file_indices: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
+            if let Ok(content) = std::fs::read_to_string(&file) {
+                file_indices.insert(
+                    rel.clone(),
+                    crate::v1_std_core::build_newline_index(rel.clone(), content),
+                );
+            }
+            let file_indices = Rc::new(file_indices);
+            // THIS PRODUCER ANSWERS A CORPUS-WIDE QUESTION BEFORE ANY SUBJECT IS PREPARED, so it
+            // has no declaration index to classify against and cannot decide
+            // DeclaredElsewhere / NamesNothingKnown. It supplies an EMPTY index, under which
+            // every unbound name classifies as a reference — the behaviour this producer already
+            // had, preserved deliberately rather than by omission. The totality guarantee is
+            // therefore scoped to the floor's index build, which is the consumer that has the
+            // declarations; this one keeps its own looser contract and its own counters.
+            let mut scratch_tally: BTreeMap<ExprVarClass, usize> = BTreeMap::new();
+            let mut scratch_unclassified: Vec<String> = Vec::new();
+            let mut classify = ExprVarClassification {
+                decl_index: None,
+                tally: &mut scratch_tally,
+                unclassified: &mut scratch_unclassified,
+                module: self_module.clone(),
+                occurrences: 0,
+                free_reference_edges: 0,
+                bound_occurrences_suppressed: 0,
+                chain_head_occurrences: 0,
+                refusals: Vec::new(),
+            };
             for item in tree.children.iter() {
-                collect_node_refs(item, &mut bare, &mut chains);
+                collect_node_refs(item, &mut bare, &mut chains, &file_indices, &mut classify);
+            }
+            // THE SECOND CONSUMER ENFORCES THE SAME REFUSAL THE FIRST ONE DOES. `classify` reports
+            // two failure states and neither is survivable for a graph that is about to be
+            // published: an unsupported binder form means the binder set is incomplete, so a name
+            // that IS bound can be recorded as a free reference (or the reverse); a reconciliation
+            // miss means the occurrences do not add up, which is the same statement arrived at by
+            // counting. Reading them and proceeding anyway would publish an under-bound, possibly
+            // widened graph while the refusal sat unread in a field — the fail-open this
+            // classification exists to remove, one consumer away from the floor path that checks
+            // it correctly (review 55667).
+            //
+            // TWO CAUSES, NOT ONE, because they have different remedies: a binder refusal names a
+            // syntax the collector must learn, and a reconciliation miss names an accounting
+            // defect in the collector itself. Collapsing them would send both to whichever
+            // remedy the shared symbol happened to suggest.
+            //
+            // The file is SKIPPED rather than published, matching this producer's three existing
+            // refusal arms above (`unreadable`, `no-module-line`, `parse-failed`), which also skip
+            // and record. The narrowing is therefore typed, located and countable through
+            // `reference_accounting_refusals`, not silent — a skipped file is visible in that
+            // channel, which is what separates it from the empty-observation narrow.
+            if !classify.refusals.is_empty() {
+                unaccounted.push(ReferenceAccountingRefusal {
+                    path: rel.clone(),
+                    cause: "binder-refusal",
+                });
+                continue;
+            }
+            if !classify.reconciles() {
+                unaccounted.push(ReferenceAccountingRefusal {
+                    path: rel.clone(),
+                    cause: "occurrence-accounting-mismatch",
+                });
+                continue;
             }
             // Resolve to per-file (target_module → strongest confidence).
             let mut file_edges: std::collections::BTreeMap<String, RefEdgeResolution> =
@@ -42657,6 +43110,11 @@ fn reference_closure_index(
         return Ok(existing);
     }
     let started = std::time::Instant::now();
+    // TWO PASSES, BECAUSE THE CLASSIFICATION IS ONLY DECIDABLE ONCE EVERY DECLARATION IS KNOWN.
+    // Deciding that a name is a reference means deciding that SOME module declares it, and a
+    // single pass can only ask that of the modules it has already walked — so a one-pass form
+    // has to fall back on a residual ("whatever is left is a reference"), which is exactly the
+    // shape being removed. Declarations first, classification second.
     let mut decl_index: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
     let mut module_names: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut refs_by_module: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
@@ -42666,10 +43124,33 @@ fn reference_closure_index(
         for decl in collect_module_decl_names(&m.module) {
             decl_index.entry(decl).or_default().insert(name.clone());
         }
+    }
+    let mut class_tally: BTreeMap<ExprVarClass, usize> = BTreeMap::new();
+    let mut unclassified: Vec<String> = Vec::new();
+    let mut classify = ExprVarClassification {
+        decl_index: Some(&decl_index),
+        tally: &mut class_tally,
+        unclassified: &mut unclassified,
+        module: String::new(),
+        occurrences: 0,
+        free_reference_edges: 0,
+        bound_occurrences_suppressed: 0,
+        chain_head_occurrences: 0,
+        refusals: Vec::new(),
+    };
+    for m in prepared.graph.modules.iter() {
+        let name = m.func_env.name.clone();
         let mut bare: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut chains: Vec<Vec<String>> = Vec::new();
+        classify.module = name.clone();
         for item in m.module.children.iter() {
-            collect_node_refs(item, &mut bare, &mut chains);
+            collect_node_refs(
+                item,
+                &mut bare,
+                &mut chains,
+                &prepared.source_indices,
+                &mut classify,
+            );
         }
         let mut flat: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
         for n in bare {
@@ -42679,6 +43160,68 @@ fn reference_closure_index(
             flat.insert(format!("\u{1f}{}", chain.join(".")));
         }
         refs_by_module.insert(name, flat);
+    }
+    // EXACT RECONCILIATION IS ASSERTED BEFORE THE INDEX IS PUBLISHED, not reported after it is
+    // consumed. A population that does not add up means an occurrence was traversed and landed
+    // in no member — the silent disappearance this change exists to make unrepresentable.
+    if !classify.reconciles() {
+        return Err(format!(
+            "CLAIM-SCOPE REFUSAL cause=ExprVarReconciliationMismatch \
+             expr_var_occurrences={} free_reference_edges={} bound_occurrences_suppressed={} \
+             names_nothing_known={} — every traversed occurrence must land in exactly one member",
+            classify.occurrences,
+            classify.free_reference_edges,
+            classify.bound_occurrences_suppressed,
+            classify
+                .tally
+                .get(&ExprVarClass::NamesNothingKnown)
+                .copied()
+                .unwrap_or(0),
+        ));
+    }
+    if !classify.refusals.is_empty() {
+        let shown: Vec<String> = classify.refusals.iter().take(10).cloned().collect();
+        return Err(format!(
+            "CLAIM-SCOPE REFUSAL cause=UnsupportedBinderSyntax count={} — a binder form this \
+             collector cannot name was reached, and neither assuming it bound nor assuming it \
+             free is admissible: {}",
+            classify.refusals.len(),
+            shown.join("; ")
+        ));
+    }
+    eprintln!(
+        "[floor-phase] phase=expr-var-classification expr_var_occurrences={} \
+         free_reference_edges={} bound_occurrences_suppressed={} \
+         qualified_chain_heads={} classification_refusals={}",
+        classify.occurrences,
+        classify.free_reference_edges,
+        classify.bound_occurrences_suppressed,
+        classify.chain_head_occurrences,
+        classify.refusals.len(),
+    );
+    // THE ARM THAT MUST STAY EMPTY. Every `ExprVar` reached exactly one member of a closed
+    // classification above; `NamesNothingKnown` is the member that cannot be construed as
+    // either a binding or a reference. It is reported with its population and specimens rather
+    // than silently dropped, because an unclassifiable name is the state whose silent handling
+    // produced this whole defect.
+    eprintln!(
+        "[floor-phase] phase=expr-var-classification {}",
+        class_tally
+            .iter()
+            .map(|(k, v)| format!("{k:?}={v}"))
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+    if !unclassified.is_empty() {
+        let mut specimens = unclassified.clone();
+        specimens.sort();
+        specimens.dedup();
+        eprintln!(
+            "[floor-phase] phase=expr-var-classification unclassified={} distinct={} specimens={:?}",
+            unclassified.len(),
+            specimens.len(),
+            specimens.iter().take(20).collect::<Vec<_>>()
+        );
     }
     let index = Rc::new(ReferenceClosureIndex {
         module_count: prepared.graph.modules.len(),
@@ -46718,5 +47261,332 @@ mod terminal_ledger_completeness_law {
             produced.len(),
             "two terminal shapes projected onto the same disposition"
         );
+    }
+}
+
+/// THE REFERENCE COLLECTOR'S DISCRIMINATING EVIDENCE.
+///
+/// WHERE THIS RUNS, STATED WITHOUT FLATTERY: `cargo test` locally. The Rust suite was removed
+/// from CI on 2026-07-11 (operator ruling, `gunbc.commit_workflow`
+/// `commit_gate_rust_suite_removed_disposition`), so these rows are evidence that the
+/// classification HOLDS, never evidence that CI re-checks it. The CI-executing half of this
+/// change's evidence is the floor itself: the expected-red identities whose verdict moves
+/// because the closure is corrected.
+///
+/// THE TWO MUTATION CONTROLS ARE WHAT MAKE THE REST NON-VACUOUS. Rows asserting "a free name is
+/// an edge" and "a bound name is not" can both be satisfied by a collector that is simply wrong
+/// in a compensating way, so `mutation_*` re-runs the same fixtures with binder tracking forced
+/// to one answer and requires the opposite family to go red. Without them the fixtures above are
+/// green-by-construction, which is the failure this whole change is about.
+#[cfg(test)]
+mod reference_collector_binder_fixtures {
+    use super::{
+        collect_node_refs, parse_module_node_tolerant, BTreeMap, ExprVarClass,
+        ExprVarClassification, HashMap,
+    };
+    use crate::v1_std_core::{build_newline_index, NewlineIndex};
+    use std::collections::BTreeSet;
+    use std::rc::Rc;
+
+    /// How the mutation controls defeat binder tracking. `Real` is production; the other two
+    /// force the classification to one answer so the fixtures above must go red.
+    #[derive(Clone, Copy, PartialEq)]
+    enum BinderPolicy {
+        Real,
+        EverythingBound,
+        EverythingFree,
+    }
+
+    fn free_names(source: &str) -> BTreeSet<String> {
+        free_names_under(source, BinderPolicy::Real, None)
+    }
+
+    /// Same, with a declaration index present. The chain-head member is only reachable with an
+    /// index, because "no module declares this name" is a question an absent index cannot answer.
+    fn free_names_with_decls(source: &str, declared: &[&str]) -> BTreeSet<String> {
+        let index: HashMap<String, std::collections::BTreeSet<String>> = declared
+            .iter()
+            .map(|n| {
+                (
+                    (*n).to_string(),
+                    std::iter::once("other".to_string()).collect(),
+                )
+            })
+            .collect();
+        free_names_under(source, BinderPolicy::Real, Some(&index))
+    }
+
+    /// Run the collector over one authored module and answer the free-reference name set.
+    fn free_names_under(
+        source: &str,
+        policy: BinderPolicy,
+        decl_index: Option<&HashMap<String, std::collections::BTreeSet<String>>>,
+    ) -> BTreeSet<String> {
+        let rel = "fixture/binder_fixture.dag";
+        let tree = parse_module_node_tolerant(rel, source).expect("fixture parses");
+        let mut indices: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
+        indices.insert(
+            rel.to_string(),
+            build_newline_index(rel.to_string(), source.to_string()),
+        );
+        let indices = Rc::new(indices);
+        let mut bare: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut chains: Vec<Vec<String>> = Vec::new();
+        let mut tally: BTreeMap<ExprVarClass, usize> = BTreeMap::new();
+        let mut unclassified: Vec<String> = Vec::new();
+        let mut classify = ExprVarClassification {
+            decl_index,
+            tally: &mut tally,
+            unclassified: &mut unclassified,
+            module: "fixture".to_string(),
+            occurrences: 0,
+            free_reference_edges: 0,
+            bound_occurrences_suppressed: 0,
+            chain_head_occurrences: 0,
+            refusals: Vec::new(),
+        };
+        for item in tree.children.iter() {
+            collect_node_refs(item, &mut bare, &mut chains, &indices, &mut classify);
+        }
+        // THE MUTATION IS APPLIED TO THE RESULT, NOT TO THE PRODUCTION PATH. Forcing the answer
+        // here rather than behind a flag inside `collect_node_refs` keeps the shipped collector
+        // free of a test-only mode — a toggle whose only effect is "classify differently" is the
+        // escape hatch DESIGN §5 forbids, and it would be reachable in production.
+        let bare: std::collections::HashSet<String> = match policy {
+            BinderPolicy::Real => bare,
+            // Everything bound: no occurrence is ever an edge.
+            BinderPolicy::EverythingBound => std::collections::HashSet::new(),
+            // Everything free: every occurrence is an edge, binders ignored.
+            BinderPolicy::EverythingFree => {
+                let mut all: std::collections::HashSet<String> = bare;
+                collect_every_var_name(&tree, &mut all);
+                all
+            }
+        };
+        assert!(
+            classify.reconciles(),
+            "occurrences={} free={} bound={} — every occurrence must land in exactly one member",
+            classify.occurrences,
+            classify.free_reference_edges,
+            classify.bound_occurrences_suppressed
+        );
+        assert!(
+            classify.refusals.is_empty(),
+            "fixture reached unsupported binder syntax: {:?}",
+            classify.refusals
+        );
+        bare.into_iter().collect()
+    }
+
+    /// Every `ExprVar` name in the tree, binders ignored — the "everything free" mutation.
+    fn collect_every_var_name(
+        node: &Rc<crate::v1_std_core::Node>,
+        out: &mut std::collections::HashSet<String>,
+    ) {
+        if let crate::v1_std_core::ExprData::ExprVar { .. } = &*node.expr_data {
+            if !node.name.is_empty() {
+                out.insert(node.name.clone());
+            }
+        }
+        for c in node.children.iter() {
+            collect_every_var_name(c, out);
+        }
+        if let Some(b) = &node.body {
+            collect_every_var_name(b, out);
+        }
+        for p in node.properties.iter() {
+            collect_every_var_name(p, out);
+        }
+    }
+
+    const FREE_REFERENCE_FIXTURES: &[&str] = &[
+        "module fixture\n\nfn f() -> Bool {\n  elsewhere_row\n}\n",
+        "module fixture\n\nfn f(xs: List<Bool>) -> Bool {\n  map(xs, x => elsewhere_row)\n}\n",
+        "module fixture\n\nfn f() -> Bool {\n  let elsewhere_row = elsewhere_row\n  true\n}\n",
+    ];
+
+    const BOUND_REFERENCE_FIXTURES: &[&str] = &[
+        "module fixture\n\nfn f(elsewhere_row: Bool) -> Bool {\n  elsewhere_row\n}\n",
+        "module fixture\n\nfn f() -> Bool {\n  let elsewhere_row = true\n  elsewhere_row\n}\n",
+        "module fixture\n\nfn f(xs: List<Bool>) -> Bool {\n  map(xs, elsewhere_row => elsewhere_row)\n}\n",
+    ];
+
+    /// MUTATION CONTROL 1. Treat every occurrence as bound and the free-reference family must go
+    /// red. Without this, "a free name is an edge" is satisfiable by a collector that is wrong in
+    /// a compensating way.
+    #[test]
+    fn mutation_everything_bound_reds_the_free_reference_family() {
+        for source in FREE_REFERENCE_FIXTURES {
+            let real = free_names_under(source, BinderPolicy::Real, None);
+            assert!(
+                real.contains("elsewhere_row"),
+                "control precondition: {source:?} -> {real:?}"
+            );
+            let mutated = free_names_under(source, BinderPolicy::EverythingBound, None);
+            assert!(
+                !mutated.contains("elsewhere_row"),
+                "mutation did not flip {source:?}"
+            );
+        }
+    }
+
+    /// MUTATION CONTROL 2. Treat every occurrence as free and the bound family must go red.
+    #[test]
+    fn mutation_everything_free_reds_the_bound_reference_family() {
+        for source in BOUND_REFERENCE_FIXTURES {
+            let real = free_names_under(source, BinderPolicy::Real, None);
+            assert!(
+                !real.contains("elsewhere_row"),
+                "control precondition: {source:?} -> {real:?}"
+            );
+            let mutated = free_names_under(source, BinderPolicy::EverythingFree, None);
+            assert!(
+                mutated.contains("elsewhere_row"),
+                "mutation did not flip {source:?}"
+            );
+        }
+    }
+
+    /// LOCAL DIAGNOSIS: which names in a real module land in NamesNothingKnown, and what binder
+    /// form did they come from. Not a claim; an instrument.
+    #[test]
+    #[ignore = "diagnostic"]
+    fn unclassified_names_in_a_real_module() {
+        let source = "module fixture\n\nfn f(o: Int?) -> Int {\n  match o {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n";
+        let tree = parse_module_node_tolerant("fixture.dag", source).expect("parses");
+        fn dump(n: &Rc<crate::v1_std_core::Node>, d: usize) {
+            let pat = match &n.match_pattern {
+                Some(mp) => match &**mp {
+                    crate::v1_std_core::MatchPattern::VariantPattern {
+                        name,
+                        field_bindings,
+                        ..
+                    } => format!(
+                        "VariantPattern({name}, fields={:?})",
+                        field_bindings
+                            .iter()
+                            .map(|f| f.name.clone())
+                            .collect::<Vec<_>>()
+                    ),
+                    other => format!("{other:?}"),
+                },
+                None => "-".into(),
+            };
+            println!(
+                "DUMP {:indent$}kind={:?} name={:?} children={} body={} pattern={pat}",
+                "",
+                n.expr_data,
+                n.name,
+                n.children.len(),
+                n.body.is_some(),
+                indent = d * 2
+            );
+            for c in n.children.iter() {
+                dump(c, d + 1);
+            }
+            if let Some(b) = &n.body {
+                dump(b, d + 1);
+            }
+        }
+        for item in tree.children.iter() {
+            dump(item, 0);
+        }
+    }
+
+    /// A PARAMETER USED THROUGH A FIELD ACCESS IS STILL BOUND. `rgb.r` reads the parameter
+    /// `rgb`; if the field-access base escapes binder tracking, every record-shaped parameter in
+    /// the corpus is misfiled.
+    #[test]
+    fn a_parameter_read_through_a_field_access_is_not_an_edge() {
+        let names =
+            free_names("module fixture\n\nfn f(rgb: RgbScaled) -> Int {\n  g(c: rgb.r)\n}\n");
+        assert!(!names.contains("rgb"), "{names:?}");
+    }
+
+    /// A VARIANT PATTERN'S FIELD BINDING IS A BINDER. `Present { value: v } => v` binds `v`.
+    #[test]
+    fn a_variant_pattern_field_binding_is_not_an_edge() {
+        let names = free_names(
+            "module fixture\n\nfn f(o: Int?) -> Int {\n  match o {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n",
+        );
+        assert!(!names.contains("v"), "{names:?}");
+    }
+
+    #[test]
+    fn a_qualified_chain_head_is_not_a_bare_reference() {
+        let names = free_names_with_decls(
+            "module fixture\n\nfn f() -> Bool {\n  extdeps.browser.chromium\n}\n",
+            &["something_else"],
+        );
+        assert!(!names.contains("extdeps"), "{names:?}");
+    }
+
+    /// THE CONTROL THAT KEEPS THE MEMBER ABOVE FROM EATING REAL EDGES. The dotted scan owns only
+    /// chains whose prefix is a MODULE PATH, so a head some module declares is an ordinary value
+    /// reference and must survive as one — suppressing it would delete the edge silently.
+    #[test]
+    fn a_chain_head_that_a_module_declares_is_still_an_edge() {
+        let names = free_names_with_decls(
+            "module fixture\n\nfn f() -> Bool {\n  some_data_row.field\n}\n",
+            &["some_data_row"],
+        );
+        assert!(names.contains("some_data_row"), "{names:?}");
+    }
+
+    #[test]
+    fn a_free_reference_inside_a_match_arm_is_an_edge() {
+        let names = free_names(
+            "module fixture\n\nfn f(o: Int?) -> Int {\n  match o {\n    Present { value: v } => elsewhere_row\n    Absent => 0\n  }\n}\n",
+        );
+        assert!(names.contains("elsewhere_row"), "{names:?}");
+    }
+
+    #[test]
+    fn a_free_function_value_reference_is_an_edge() {
+        let names = free_names("module fixture\n\nfn f() -> Bool {\n  elsewhere_row\n}\n");
+        assert!(names.contains("elsewhere_row"), "{names:?}");
+    }
+
+    #[test]
+    fn a_name_spelled_like_a_parameter_is_not_an_edge() {
+        let names = free_names(
+            "module fixture\n\nfn f(elsewhere_row: Bool) -> Bool {\n  elsewhere_row\n}\n",
+        );
+        assert!(!names.contains("elsewhere_row"), "{names:?}");
+    }
+
+    #[test]
+    fn a_let_bound_name_is_not_an_edge() {
+        let names = free_names(
+            "module fixture\n\nfn f() -> Bool {\n  let elsewhere_row = true\n  elsewhere_row\n}\n",
+        );
+        assert!(!names.contains("elsewhere_row"), "{names:?}");
+    }
+
+    #[test]
+    fn a_lambda_parameter_is_not_an_edge() {
+        let names = free_names(
+            "module fixture\n\nfn f(xs: List<Bool>) -> Bool {\n  map(xs, elsewhere_row => elsewhere_row)\n}\n",
+        );
+        assert!(!names.contains("elsewhere_row"), "{names:?}");
+    }
+
+    #[test]
+    fn a_free_name_captured_inside_a_lambda_is_an_edge() {
+        let names = free_names(
+            "module fixture\n\nfn f(xs: List<Bool>) -> Bool {\n  map(xs, x => elsewhere_row)\n}\n",
+        );
+        assert!(names.contains("elsewhere_row"), "{names:?}");
+    }
+
+    /// A LET BINDS OVER WHAT FOLLOWS IT, NOT OVER ITS OWN VALUE. `let x = x` reads the OUTER `x`,
+    /// so the value position is still an edge while the later occurrence is not — the one case a
+    /// flat "bound somewhere in this function" set gets wrong in the losing direction.
+    #[test]
+    fn a_let_value_reads_the_outer_binding() {
+        let names = free_names(
+            "module fixture\n\nfn f() -> Bool {\n  let elsewhere_row = elsewhere_row\n  true\n}\n",
+        );
+        assert!(names.contains("elsewhere_row"), "{names:?}");
     }
 }

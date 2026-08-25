@@ -84,15 +84,19 @@ test fn w_red_one_socket_matches_itself_across_two_constructions() -> Bool {
 //
 // Both axes are checked because the package axis is the one that was wrong: a citation covering
 // only the row would not have covered the field that carried the defect.
-fn row_cites_socket_field(row: extdeps.cpu.types.CpuModelCatalogRow, field: std.types.NonEmptyStr, authority: extdeps.external_authority.ExternalAuthority) -> Bool {
-  count(row.socket_citations |> filter(c => c.field == field && c.authority == authority)) == 1
+fn row_cites_socket_field(row: CpuModelCatalogRow, fact: std.decl_ref.DeclarationRef, authority: ExternalAuthority) -> Bool {
+  count(row.socket_citations |> filter(c => declaration_ref_eq(a: c.fact, b: fact) && c.authority == authority)) == 1
+}
+
+fn amd_socket_fact(decl_name: String, field_name: String) -> std.decl_ref.DeclarationRef {
+  std.decl_ref.decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: decl_name, field_name: field_name)
 }
 
 test fn w_the_am5_catalog_rows_cite_their_socket_termination() -> Bool {
-  row_cites_socket_field(row: extdeps.cpu.amd.ryzen_7_pro_8700ge_catalog, field: "package", authority: extdeps.cpu.amd.socket_am5_authority)
-    && row_cites_socket_field(row: extdeps.cpu.amd.ryzen_7_pro_8700ge_catalog, field: "contact_count", authority: extdeps.cpu.amd.socket_am5_authority)
-    && row_cites_socket_field(row: extdeps.cpu.amd.ryzen_9_7950x3d_catalog, field: "package", authority: extdeps.cpu.amd.socket_am5_authority)
-    && row_cites_socket_field(row: extdeps.cpu.amd.ryzen_9_7950x3d_catalog, field: "contact_count", authority: extdeps.cpu.amd.socket_am5_authority)
+  row_cites_socket_field(row: ryzen_7_pro_8700ge_catalog, fact: amd_socket_fact(decl_name: "amd_socket_am5", field_name: "termination"), authority: socket_am5_authority)
+    && row_cites_socket_field(row: ryzen_7_pro_8700ge_catalog, fact: amd_socket_fact(decl_name: "amd_socket_am5", field_name: "contact_count"), authority: socket_am5_authority)
+    && row_cites_socket_field(row: ryzen_9_7950x3d_catalog, fact: amd_socket_fact(decl_name: "amd_socket_am5", field_name: "termination"), authority: socket_am5_authority)
+    && row_cites_socket_field(row: ryzen_9_7950x3d_catalog, fact: amd_socket_fact(decl_name: "amd_socket_am5", field_name: "contact_count"), authority: socket_am5_authority)
 }
 
 // EVERY CATALOG ROW CITES ITS SOCKET, joined over the modules' own rosters rather than a list
@@ -146,6 +150,6 @@ test fn w_red_a_row_without_citations_fails_the_census() -> Bool {
 // RED control: the join is discriminating. A field the rows do not cite, and an authority that did
 // not issue the claim, must both answer false -- otherwise the checks above would pass on any row.
 test fn w_red_an_uncited_field_or_foreign_authority_does_not_satisfy_the_join() -> Bool {
-  !row_cites_socket_field(row: extdeps.cpu.amd.ryzen_9_7950x3d_catalog, field: "platform_owner", authority: extdeps.cpu.amd.socket_am5_authority)
-    && !row_cites_socket_field(row: extdeps.cpu.amd.ryzen_9_7950x3d_catalog, field: "package", authority: extdeps.cpu.amd.amd_ryzen_5_3600_authority)
+  !row_cites_socket_field(row: extdeps.cpu.amd.ryzen_9_7950x3d_catalog, fact: amd_socket_fact(decl_name: "amd_socket_am5", field_name: "platform_owner"), authority: extdeps.cpu.amd.socket_am5_authority)
+    && !row_cites_socket_field(row: extdeps.cpu.amd.ryzen_9_7950x3d_catalog, fact: amd_socket_fact(decl_name: "amd_socket_am5", field_name: "termination"), authority: extdeps.cpu.amd.amd_ryzen_5_3600_authority)
 }

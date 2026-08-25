@@ -3,39 +3,52 @@ module v2.lens.complexity_accumulator_copy.roster_gate
 
 data offline_roster_gate_claim_batch_recipe: String = "Operator-ruled OFFLINE (NOT CI discovery-enrolled; witness_exclusion_substrings row claim/complexity/accumulator_copy_roster_gate in gunbc.ci_layer_roots — owned by #6452, not duplicated on #6440). Serial wet claim_batch only — do not codify GUNBC_EVAL_MEMO=0 in CI; diagnostic local runs may set it. Std tranche (PR #6440): claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag --function roster_std_change_dag_zero_suspects_within_ratchet --claim-run --wet && claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag --function roster_std_render_repeat_string_bootstrap_within_ratchet --claim-run --wet. Prior roster carriers: accumulator_copy_roster_gate_test.dag, accumulator_copy_roster_gate_swift_test.dag, accumulator_copy_roster_gate_lean_bash_test.dag (same --claim-run --wet shape, per-test-fn entry/function)."
 
-type RosterVerdict
-  = RosterClean
-  | RosterIngestRegressed
-  | RosterSuspectFound
-  | RosterRatchetExceeded { refusals: Int, ceiling: Int }
+type FindingStanding
+  = NoSuspect
+  | SuspectObserved { suspects: Int }
+  | FindingNotEstablished { cause: v2.lens.common.source_analysis_standing.SourceAnalysisNotEstablishedCause }
 
-fn source_findings(source_text: String) -> Optional<List<Finding>> {
+type AnalysisStanding
+  = Within { refusals: Int, ceiling: Int }
+  | RefusalBudgetExceeded { refusals: Int, ceiling: Int }
+  | AnalysisNotEstablished { cause: v2.lens.common.source_analysis_standing.SourceAnalysisNotEstablishedCause }
+
+type RosterStanding {
+  finding: FindingStanding
+  analysis: AnalysisStanding
+}
+
+type SourceFindingsStanding
+  = SourceFindingsEstablished { findings: List<Finding> }
+  | SourceFindingsNotEstablished { cause: v2.lens.common.source_analysis_standing.SourceAnalysisNotEstablishedCause }
+
+fn source_findings(source_text: String) -> SourceFindingsStanding {
   let lm = dag_language_model()
   let at = port_locus(port: ^accumulator_copy_roster_gate_port)
   match lm.grammar {
-    VoidGrammar => Absent
+    VoidGrammar => SourceFindingsNotEstablished { cause: v2.lens.common.source_analysis_standing.LanguageGrammarUnavailable }
     ModeledGrammar { root: root } =>
-      match grammar_validate_for_parse(root: root, at: at) {
-        Rejected { diagnostics: _ } => Absent
+      match v2.compiler.parse.grammar_validate_for_parse(root: root, at: at) {
+        Rejected { diagnostics: _ } => SourceFindingsNotEstablished { cause: v2.lens.common.source_analysis_standing.LanguageGrammarRejected }
         Accepted { value: validated, diagnostics: _ } =>
-          match tokenize(
+          match v2.compiler.tokenize.tokenize(
             text: source_text,
             file: ^accumulator_copy_roster_subject,
             rules: lm.lex
           ) {
-            Rejected { diagnostics: _ } => Absent
+            Rejected { diagnostics: _ } => SourceFindingsNotEstablished { cause: v2.lens.common.source_analysis_standing.SourceTokenizationRejected }
             Accepted { value: stream, diagnostics: _ } =>
-              match parse_production(
+              match v2.compiler.parse.parse_production(
                 tokens: token_stream_remaining(stream: stream),
                 validated: validated,
                 production_name: validated.root.start
               ) {
-                Rejected { diagnostics: _ } => Absent
+                Rejected { diagnostics: _ } => SourceFindingsNotEstablished { cause: v2.lens.common.source_analysis_standing.SourceParseRejected }
                 Accepted { value: artifact, diagnostics: _ } =>
-                  match normalize(parse_tree: artifact.tree) {
-                    Rejected { diagnostics: _ } => Absent
+                  match v2.compiler.normalize.normalize(parse_tree: artifact.tree) {
+                    Rejected { diagnostics: _ } => SourceFindingsNotEstablished { cause: v2.lens.common.source_analysis_standing.SourceNormalizationRejected }
                     Accepted { value: tree, diagnostics: _ } =>
-                      Present { value: v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_findings(root: tree.root) }
+                      SourceFindingsEstablished { findings: v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_findings(root: tree.root) }
                   }
               }
           }
@@ -43,8 +56,8 @@ fn source_findings(source_text: String) -> Optional<List<Finding>> {
   }
 }
 
-fn ingest_findings(path: String) -> Optional<List<Finding>> {
-  v2.lens.complexity_accumulator_copy.roster_gate.source_findings(source_text: filesystem_read(path: path).content)
+fn ingest_findings(path: String) -> SourceFindingsStanding {
+  source_findings(source_text: filesystem_read(path: path).content)
 }
 
 fn count_matching(fs: List<Finding>, pred: fn(Finding) -> Bool) -> Int {
@@ -53,50 +66,65 @@ fn count_matching(fs: List<Finding>, pred: fn(Finding) -> Bool) -> Int {
   })
 }
 
-fn file_verdict(path: String, refusal_ceiling: Int) -> RosterVerdict {
-  match v2.lens.complexity_accumulator_copy.roster_gate.ingest_findings(path: path) {
-    Absent => RosterIngestRegressed
-    Present { value: fs } =>
-      if v2.lens.complexity_accumulator_copy.roster_gate.count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect) > 0 {
-        RosterSuspectFound
+fn standing_from_counts(suspects: Int, refusals: Int, refusal_ceiling: Int) -> RosterStanding {
+  RosterStanding {
+    finding: if suspects > 0 {
+        SuspectObserved { suspects: suspects }
       } else {
-        let refusals = v2.lens.complexity_accumulator_copy.roster_gate.count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_refusal)
-        if refusals > refusal_ceiling {
-          RosterRatchetExceeded { refusals: refusals, ceiling: refusal_ceiling }
-        } else {
-          RosterClean
-        }
+        NoSuspect
+      },
+    analysis: if refusals > refusal_ceiling {
+        RefusalBudgetExceeded { refusals: refusals, ceiling: refusal_ceiling }
+      } else {
+        Within { refusals: refusals, ceiling: refusal_ceiling }
       }
   }
 }
 
-fn file_suspect_count(path: String) -> Int {
-  match v2.lens.complexity_accumulator_copy.roster_gate.ingest_findings(path: path) {
-    Absent => -1
-    Present { value: fs } => v2.lens.complexity_accumulator_copy.roster_gate.count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect)
+fn not_established_standing(cause: v2.lens.common.source_analysis_standing.SourceAnalysisNotEstablishedCause) -> RosterStanding {
+  RosterStanding {
+    finding: FindingNotEstablished { cause: cause },
+    analysis: AnalysisNotEstablished { cause: cause }
   }
 }
 
-fn file_refusal_count(path: String) -> Int {
-  match v2.lens.complexity_accumulator_copy.roster_gate.ingest_findings(path: path) {
-    Absent => -1
-    Present { value: fs } => v2.lens.complexity_accumulator_copy.roster_gate.count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_refusal)
+fn file_standing(path: String, refusal_ceiling: Int) -> RosterStanding {
+  match ingest_findings(path: path) {
+    SourceFindingsNotEstablished { cause: cause } => not_established_standing(cause: cause)
+    SourceFindingsEstablished { findings: fs } => standing_from_counts(
+      suspects: count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect),
+      refusals: count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_refusal),
+      refusal_ceiling: refusal_ceiling
+    )
+  }
+}
+
+fn finding_standing_holds(standing: FindingStanding) -> Bool {
+  match standing {
+    NoSuspect => true
+    SuspectObserved { suspects: _ } => false
+    FindingNotEstablished { cause: _ } => false
+  }
+}
+
+fn analysis_standing_holds(standing: AnalysisStanding) -> Bool {
+  match standing {
+    Within { refusals: _, ceiling: _ } => true
+    RefusalBudgetExceeded { refusals: _, ceiling: _ } => false
+    AnalysisNotEstablished { cause: _ } => false
   }
 }
 
 fn file_gate(path: String, refusal_ceiling: Int) -> Bool {
-  match v2.lens.complexity_accumulator_copy.roster_gate.file_verdict(path: path, refusal_ceiling: refusal_ceiling) {
-    RosterClean => true
-    RosterIngestRegressed => false
-    RosterSuspectFound => false
-    RosterRatchetExceeded { refusals: _, ceiling: _ } => false
-  }
+  let standing = file_standing(path: path, refusal_ceiling: refusal_ceiling)
+  finding_standing_holds(standing: standing.finding)
+    && analysis_standing_holds(standing: standing.analysis)
 }
 
 fn source_has_suspect(source_text: String) -> Bool {
-  match v2.lens.complexity_accumulator_copy.roster_gate.source_findings(source_text: source_text) {
-    Absent => false
-    Present { value: fs } =>
-      v2.lens.complexity_accumulator_copy.roster_gate.count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect) > 0
+  match source_findings(source_text: source_text) {
+    SourceFindingsNotEstablished { cause: _ } => false
+    SourceFindingsEstablished { findings: fs } =>
+      count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect) > 0
   }
 }

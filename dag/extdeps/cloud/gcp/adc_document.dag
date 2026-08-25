@@ -1,0 +1,111 @@
+module extdeps.cloud.gcp.adc_document
+
+
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
+    locator: "cloud.google.com/docs/authentication/application-default-credentials"
+  }
+}
+
+// The authorized-user ADC document is a JSON object, so the seam from a file to
+// these three fields is read-then-decode over two authorities that already
+// exist. A `transport file` carries bytes and models eight channels; naming a
+// document key as a channel would mint a gcp-specific one beside them (§3), and
+// a bytes channel additionally cannot carry that `client_secret` and
+// `refresh_token` are Secret while `client_id` is String -- the distinction this
+// record keeps.
+type GcpApplicationDefaultCredentials {
+  client_id: String
+  client_secret: Secret
+  refresh_token: Secret
+}
+
+type AdcFieldRefusal
+  = AdcFieldAbsent { key: String }
+  | AdcFieldDuplicated { key: String }
+  | AdcFieldNotAString { key: String }
+
+type AdcDocumentRefusal
+  = AdcDocumentNotJson
+  | AdcDocumentNotAnObject
+  | AdcDocumentFieldRefused { cause: AdcFieldRefusal }
+
+type AdcDocumentDecodeOutcome
+  = AdcDocumentDecoded { credentials: GcpApplicationDefaultCredentials }
+  | AdcDocumentDecodeRefused { cause: AdcDocumentRefusal }
+
+type AdcStringFieldOutcome
+  = AdcStringFieldFound { value: String }
+  | AdcStringFieldRefused { cause: AdcFieldRefusal }
+
+data adc_client_id_key: String = "client_id"
+data adc_client_secret_key: String = "client_secret"
+data adc_refresh_token_key: String = "refresh_token"
+
+fn adc_string_field(doc: extdeps.languages.json.emit.JsonValue, key: String) -> AdcStringFieldOutcome {
+  match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: key) {
+    extdeps.languages.json.parse.JsonMemberAbsent => AdcStringFieldRefused { cause: AdcFieldAbsent { key: key } }
+    extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } => AdcStringFieldRefused { cause: AdcFieldDuplicated { key: key } }
+    extdeps.languages.json.parse.JsonMemberNotAnObject => AdcStringFieldRefused { cause: AdcFieldNotAString { key: key } }
+    extdeps.languages.json.parse.JsonMemberFound { value: v } =>
+      match v {
+        extdeps.languages.json.emit.JsonString { value: s } => AdcStringFieldFound { value: s }
+        extdeps.languages.json.emit.JsonNull => AdcStringFieldRefused { cause: AdcFieldNotAString { key: key } }
+        extdeps.languages.json.emit.JsonBool { value: _ } => AdcStringFieldRefused { cause: AdcFieldNotAString { key: key } }
+        extdeps.languages.json.emit.JsonNumber { lexeme: _ } => AdcStringFieldRefused { cause: AdcFieldNotAString { key: key } }
+        extdeps.languages.json.emit.JsonArray { elements: _ } => AdcStringFieldRefused { cause: AdcFieldNotAString { key: key } }
+        extdeps.languages.json.emit.JsonObject { members: _ } => AdcStringFieldRefused { cause: AdcFieldNotAString { key: key } }
+      }
+  }
+}
+
+fn adc_document_from_fields(
+  client_id: String,
+  client_secret: String,
+  refresh_token: String
+) -> AdcDocumentDecodeOutcome {
+  AdcDocumentDecoded {
+    credentials: GcpApplicationDefaultCredentials {
+      client_id: client_id,
+      client_secret: client_secret as Secret,
+      refresh_token: refresh_token as Secret
+    }
+  }
+}
+
+fn adc_document_after_client_id(doc: extdeps.languages.json.emit.JsonValue, client_id: String) -> AdcDocumentDecodeOutcome {
+  match adc_string_field(doc: doc, key: adc_client_secret_key) {
+    AdcStringFieldRefused { cause: cause } => AdcDocumentDecodeRefused { cause: AdcDocumentFieldRefused { cause: cause } }
+    AdcStringFieldFound { value: client_secret } =>
+      match adc_string_field(doc: doc, key: adc_refresh_token_key) {
+        AdcStringFieldRefused { cause: cause } => AdcDocumentDecodeRefused { cause: AdcDocumentFieldRefused { cause: cause } }
+        AdcStringFieldFound { value: refresh_token } =>
+          adc_document_from_fields(
+            client_id: client_id,
+            client_secret: client_secret,
+            refresh_token: refresh_token
+          )
+      }
+  }
+}
+
+fn adc_document_from_json(doc: extdeps.languages.json.emit.JsonValue) -> AdcDocumentDecodeOutcome {
+  match adc_string_field(doc: doc, key: adc_client_id_key) {
+    AdcStringFieldRefused { cause: cause } => AdcDocumentDecodeRefused { cause: AdcDocumentFieldRefused { cause: cause } }
+    AdcStringFieldFound { value: client_id } => adc_document_after_client_id(doc: doc, client_id: client_id)
+  }
+}
+
+// The document is SECRET-BEARING as a whole, not merely in the two fields the
+// record marks: it carries client_secret and refresh_token verbatim. Taking it
+// as Secret keeps the marking at the seam where the bytes actually cross, rather
+// than re-establishing it only on the way out -- an unmarked String parameter
+// here would drop the distinction one layer above the place this module exists
+// to preserve it. The unwrap is confined to this function.
+fn decode_adc_document(document: Secret) -> AdcDocumentDecodeOutcome {
+  match extdeps.languages.json.parse.parse_json(s: document as String) {
+    Absent => AdcDocumentDecodeRefused { cause: AdcDocumentNotJson }
+    Present { value: doc } => adc_document_from_json(doc: doc)
+  }
+}

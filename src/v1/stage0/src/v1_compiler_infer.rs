@@ -1381,22 +1381,83 @@ pub fn conformance_ground_type(
         || conformance_ground_element_collection(n.clone(), source_indices.clone()))
 }
 
-pub fn conformance_unjudged_live_hole_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "PROVEN LIVE HOLE, AND THE REASON THE UNJUDGED ADVISORY IS EXCLUDED FROM THIS PR (codex reviews 45647, 45767). The branch now returns [] for the unjudged case, matching origin/main exactly, so this PR neither closes nor worsens the class; it lands with the identity capability instead. The record below is kept because the witness and the five measured attempts are what that lane starts from. The unjudged branch is not merely unmeasured — a program that is simply WRONG reaches emission through it. Executed witness: `type R { x: Int }` `type S { y: String }` `fn wrong_record() -> R { S { y: \"a\" } }` compiles EXIT 0 and EMITS TWO FILES, on this branch and on origin/main alike. Two structurally unrelated named records is not a representation gap; it is the conformance half of #7479. It was briefly reported as a counted advisory here, and that is precisely what was removed: counting it protects nothing, and a number beside a wrong program is the fabricated success DESIGN 5 forbids, one level up. THE FIX WAS ATTEMPTED AND IS NOT LANDED, and the measurements are recorded because they are the real cost of the next attempt rather than a reason to stop looking. Three successive narrowings of a refuse-when-both-sides-are-named-structured rule were each run against the whole corpus: (1) both sides structured and named -> 90 refusals of CORRECT code, dominated by the two-representation optionality class (24 Node(Optional) vs Primitive(Node), plus Coproduct(X) vs Coproduct(Optional)); (2) narrowed to inhabited named RECORDS with kernel scope names excluded -> 15; (3) additionally guarding the raw nodes -> 27, and the population had by then shifted to a NEW class, produced sides that are let-BINDING names (module_emit_scope, scope_after_expr, lookup_item) rather than types. The count moving 90 -> 15 -> 27 rather than monotonically down is the finding: each guard displaces the false-positive population instead of shrinking it, which is the exemption-accumulation this wall refuses elsewhere, and shipping any of the three would red correct code. So the arm is NOT landed, and with no arm to land the residue is left exactly where main leaves it rather than dressed up as partial coverage. The blocking obstacle is named and is not vague: the produced-side node reaching this branch is not reliably a TYPE — it can be a nominal reference, a kernel encoding of cardinality or absence, an anonymous literal, or a let-binding identity — so no predicate over its shape can separate a real mismatch from a representation gap until produced-side type identity is established upstream. A FOURTH attempt isolated the obstacle exactly, and it is the reason the other three moved the population instead of shrinking it: guarding on `both sides are Conj whose authored name RESOLVES via lookup_type_by_name to a record declaration` still refused 14 seed sites, and every one had a LET-BINDING name on the produced side (module_emit_scope, scope_after_expr, lookup_item, service_fallback_transport). lookup_type_by_name resolves those because bindings and types inhabit ONE name environment, so the guard cannot tell a type identity from a binding identity — which is the stated obstacle, now demonstrated rather than inferred. A FIFTH attempt tested the one discriminator that looked left — requiring the resolved declaration to NAME ITSELF, on the theory that a type declares its own name while a binding resolves to a type named differently — and it returned the IDENTICAL 14 sites, because lookup_type_by_name on a binding returns a node carrying the BINDING's name, not its type's. The name environment does not merely conflate the two lookups; the resolved node itself carries no separable type identity. No predicate over the produced node's shape or name can close this class. Dissolve-on: feature:conformance-produced-type-identity — the produced node carries a resolved type identity rather than a shape to be guessed at, at which point the refusal arm is one predicate over two identities and this row deletes. THE PERMISSION IS NOT THIS PATH'S AND THAT WAS MEASURED, NOT ASSERTED: the identical program built against origin/main compiles EXIT 0, emits 2 files and reports ZERO diagnostics, and this branch now does the same, because the unjudged branch returns the same empty list main returns. So the conformance path neither newly permits the emission nor closes it. THE COUNTED-ADVISORY MIDDLE GROUND WAS TRIED AND REJECTED, and the rejection is the useful part of this row: an advisory made the fail-open visible without making it stop, and review held that visibility is not protection when the program is PROVABLY wrong rather than merely unproven (codex reviews 45647, 45695, 45711, 45767, 45777). Agreed on execution — the R/S witness above emitted two files under the advisory. So the class is left at main's behavior and named here with its trigger, and what ships is the method-existence wall, which does refuse and does emit nothing. That is a judgment about sequencing, not a claim that the hole is acceptable: a declared boundary with an executed witness, an owner-facing trigger and a measured cost, and deliberately NOT a success path with a number beside it.".to_string()
-        };
+pub fn declared_type_kernel_inhabitance_mismatch(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    if ((declared.return_cardinality.clone() == Cardinality::CardOptional)
+        || (produced.return_cardinality.clone() == Cardinality::CardOptional))
+    {
+        false
+    } else {
+        {
+            let declared_required = match lookup_type_for(
+                scope.type_env.clone(),
+                with_required_cardinality(declared.clone()),
+            ) {
+                Some(resolved) => resolved.clone(),
+                None => with_required_cardinality(declared.clone()),
+            };
+            kernel_value_declared_type_mismatch(
+                peel_nominal_alias_identity(
+                    declared_required.clone(),
+                    scope.type_env.clone(),
+                    scope.module_name.clone(),
+                ),
+                peel_nominal_alias_identity(
+                    produced.clone(),
+                    scope.type_env.clone(),
+                    scope.module_name.clone(),
+                ),
+                scope.type_env.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            )
+        }
     }
-    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn conformance_expansion_depth_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "MEASUREMENT RECEIPT FOR THE NEXT LANE, NOT A DESCRIPTION OF LIVE CODE — the expansion-peeling comparison it records was deleted together with the unjudged advisory it fed (codex review 45767), and this row is kept because the measurement is what the next attempt starts from rather than re-derives. A declared type and a produced type routinely arrive at DIFFERENT EXPANSION DEPTHS: the declaration side is a nominal reference to T while the body side is T's already-expanded body, so comparing them as they arrive reads one type as two. Measured over the whole corpus that was the majority of the unjudged residue — 203 Node, 173 Outcome, 46 Witness, 43 Optional, 38 PipelineStep and a long tail, each a reference and its own body — which is why the frontier first read 3005 and then 1566 once each side was resolved through lookup_type_for and peeled through peel_where_refinement_base, the SAME peel the method wall uses (DESIGN section 3: one authority, two consumers, not a second one minted here). Reporting those as unjudged was not a conservative silence but a WRONG COUNT, and an inflated frontier buries the residue that genuinely cannot be decided under pairs that were never in doubt. THE COMPARISON MUST BE THE STRUCTURAL RELATION, NOT A RENDERED SHAPE STRING, and the first version of this got that wrong in a way worth keeping on the record: it compared node_type_shape output, which collapses every anonymous product to the literal text Product(<anon>) and every named product to its OUTER NAME ONLY, discarding fields, variants and their types. So two structurally different records compared EQUAL and were stamped proven-conforming — the exact fail-open this wall exists to delete, reintroduced while removing a different one, and by the same mechanism as the earlier 1.0/0.0 seam: a projection that looks like evidence used where a proof was required (codex review 45600). A display projection is for MESSAGES; a judgment must consume the structural relation. That constraint outlives the deleted code and binds whoever rebuilds it: node_type_compatible recurses into container elements and compares canonical template names, so identity is established rather than rendered, but its known imprecision is only safe where a mismatch costs a count rather than a refusal — it reports MISMATCH for the four classes of correct code enumerated in declared_type_conformance_note, so wiring it to a refusal without first establishing produced-side type identity (feature:conformance-produced-type-identity) reds correct code. That is the trap the five measured attempts in conformance_unjudged_live_hole_note fell into.".to_string()
-        };
+pub fn declared_type_kernel_inhabitance_mismatch_at_element(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    {
+        let si = scope.type_env.clone().source_indices.clone();
+        let both_element_collections =
+            (((node_is_element_collection(declared.clone(), si.clone())
+                && node_is_element_collection(produced.clone(), si.clone()))
+                && (node_is_keyed_collection(declared.clone(), si.clone()) == false))
+                && (node_is_keyed_collection(produced.clone(), si.clone()) == false));
+        if (both_element_collections.clone() == false) {
+            false
+        } else {
+            match declared.children.clone().first().cloned() {
+                None => false,
+                Some(dl) => match produced.children.clone().first().cloned() {
+                    None => false,
+                    Some(pr) => declared_type_kernel_inhabitance_mismatch(
+                        child_type_node(dl.clone()),
+                        child_type_node(pr.clone()),
+                        scope.clone(),
+                    ),
+                },
+            }
+        }
     }
-    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    (declared_type_kernel_inhabitance_mismatch(declared.clone(), produced.clone(), scope.clone())
+        || declared_type_kernel_inhabitance_mismatch_at_element(
+            declared.clone(),
+            produced.clone(),
+            scope.clone(),
+        ))
 }
 
 pub fn declared_type_conformance_diags(
@@ -1409,18 +1470,31 @@ pub fn declared_type_conformance_diags(
         let si = scope.type_env.clone().source_indices.clone();
         let both_ground = (conformance_ground_type(declared.clone(), si.clone())
             && conformance_ground_type(produced.clone(), si.clone()));
-        if !both_ground.clone() {
-            Rc::new(vec![])
+        if declared_type_kernel_inhabitance_mismatch_here_or_at_element(
+            declared.clone(),
+            produced.clone(),
+            scope.clone(),
+        ) {
+            Rc::new(vec![type_mismatch_error(
+                node_type_shape(declared.clone(), si.clone()),
+                node_type_shape(produced.clone(), si.clone()),
+                span.clone(),
+                scope.module_name.clone(),
+            )])
         } else {
-            if node_type_compatible(declared.clone(), produced.clone(), si.clone()) {
+            if !both_ground.clone() {
                 Rc::new(vec![])
             } else {
-                Rc::new(vec![type_mismatch_error(
-                    node_type_shape(declared.clone(), si.clone()),
-                    node_type_shape(produced.clone(), si.clone()),
-                    span.clone(),
-                    scope.module_name.clone(),
-                )])
+                if node_type_compatible(declared.clone(), produced.clone(), si.clone()) {
+                    Rc::new(vec![])
+                } else {
+                    Rc::new(vec![type_mismatch_error(
+                        node_type_shape(declared.clone(), si.clone()),
+                        node_type_shape(produced.clone(), si.clone()),
+                        span.clone(),
+                        scope.module_name.clone(),
+                    )])
+                }
             }
         }
     }
@@ -8278,8 +8352,21 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
             };
             let val_result = infer_expr(val_expr.clone(), scope.clone(), val_expected.clone());
             let val_typed = val_result.typed.clone();
-            let val_diags = val_result.diagnostics.clone();
             let val_type = resolved_type(val_typed.clone());
+            let val_annotation_diags = if ((texpr.type_annotation.clone() != None)
+                && is_type_expr_annotation(texpr.type_annotation.clone().clone().unwrap()))
+            {
+                declared_type_conformance_diags(
+                    texpr.type_annotation.clone().clone().unwrap(),
+                    val_type.clone(),
+                    val_expr.span.clone(),
+                    scope.clone(),
+                )
+            } else {
+                Rc::new(vec![])
+            };
+            let val_diags =
+                v1_rt::concat(val_result.diagnostics.clone(), val_annotation_diags.clone());
             if (body_expr.clone() == None) {
                 {
                     let let_texpr = make_named_expr_node(

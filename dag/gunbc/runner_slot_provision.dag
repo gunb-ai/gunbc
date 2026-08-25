@@ -156,6 +156,35 @@ type RunnerSlotProvisionPlan {
   upsert_extract_scripts: List<String>
 }
 
+// THE ONE PLACE THE GRANT ROSTER MEETS THE INSTALL SHAPE. extdeps.github.actions_runner describes
+// what runner installation IS; this module knows which principal performs it here and therefore
+// which binaries that principal is permitted to execute. Both paths come from the closed
+// CiRunnerSudoBinary vocabulary, so a verb with no grant row has no spelling at this seam.
+// THE COMMANDS THE SCRIPT RUNS ARE PROJECTED FROM THE SAME OPERATION ROW THE SUDOERS GRANT IS.
+// This function is the seam: gunbc.executor_privileged_operation owns the operation, and both the
+// executed shell word-vector and the authorizing sudoers match are DERIVED from its argv. Before
+// this, extdeps rebuilt the argv from two binary paths while the roster granted the binary alone,
+// so the script could name a command the principal was not authorized to run -- measured on srv3,
+// an add-only apply refused at the first sudo with zero slots mutated.
+fn gunbc_runner_slot_privileged_commands(
+  slot_dir: NonEmptyStr,
+  job_user: NonEmptyStr,
+) -> ActionsRunnerSlotPrivilegedCommands {
+  ActionsRunnerSlotPrivilegedCommands {
+    remove_command: executor_privileged_operation_shell_command(
+      op: RemoveDirectoryTree { path: slot_dir },
+    ),
+    install_command: executor_privileged_operation_shell_command(
+      op: EnsureOwnedDirectory {
+        path: slot_dir,
+        owner: job_user,
+        group: job_user,
+        mode: executor_managed_directory_mode,
+      },
+    ),
+  }
+}
+
 fn runner_slot_provision_plan(
   deploy: gunbc.runner_host_deploy.RunnerHostDeploy,
   artifact: extdeps.github.actions_runner.ActionsRunnerBinaryArtifact,
@@ -168,14 +197,34 @@ fn runner_slot_provision_plan(
   RunnerSlotProvisionPlan {
     host_label: deploy.host_label,
     membership: membership,
-    base_dir_script: extdeps.github.actions_runner.actions_runner_base_dir_ensure_script(runner_user: deploy.runner_user),
+    base_dir_script: actions_runner_base_dir_ensure_script(
+      base_install_command: executor_privileged_operation_shell_command(
+        op: gunbc.executor_privileged_operation.EnsureOwnedDirectory {
+          path: actions_runner_base_dir as std.types.NonEmptyStr,
+          owner: deploy.runner_user,
+          group: deploy.runner_user,
+          mode: executor_managed_directory_mode,
+        },
+      ),
+      cache_install_command: executor_privileged_operation_shell_command(
+        op: gunbc.executor_privileged_operation.EnsureOwnedDirectory {
+          path: actions_runner_cache_dir as std.types.NonEmptyStr,
+          owner: deploy.runner_user,
+          group: deploy.runner_user,
+          mode: executor_managed_directory_mode,
+        },
+      ),
+    ),
     upsert_extract_scripts: flat_map(membership.actions, a =>
       match a {
         gunbc.membership_reconcile.MemberAdded { at: _, to: m } =>
           [extdeps.github.actions_runner.actions_runner_slot_extract_script(
             artifact: artifact,
             slot_dir: m.slot_dir,
-            job_user: deploy.job_user,
+            privileged: gunbc_runner_slot_privileged_commands(
+              slot_dir: m.slot_dir,
+              job_user: deploy.job_user,
+            ),
           )]
         gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: _ } => []
         gunbc.membership_reconcile.MemberRemoved { at: _, from: _ } => []

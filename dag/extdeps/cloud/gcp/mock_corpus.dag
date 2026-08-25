@@ -8,13 +8,6 @@ data gcloud_auth_mock_case_login: std.hermetic_replay.PublishedMockCase = std.he
   case_id: 0
 }
 
-data gcloud_auth_mock_case_read_adc: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
-  operation_key: "gcloud.Auth.ReadADC",
-  service: "gcloud.Auth",
-  operation: "ReadADC",
-  case_id: 0
-}
-
 data oauth2_google_mock_case_refresh: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "oauth2.Google.Refresh",
   service: "oauth2.Google",
@@ -94,7 +87,6 @@ data gcp_metadata_mock_case_get_identity_token: std.hermetic_replay.PublishedMoc
 
 data gcp_published_mock_corpus: List<std.hermetic_replay.PublishedMockCase> = [
   gcloud_auth_mock_case_login,
-  gcloud_auth_mock_case_read_adc,
   oauth2_google_mock_case_refresh,
   shell_gcloud_mock_case_auth_print_access_token,
   gcp_iam_mock_case_generate_access_token,

@@ -276,7 +276,7 @@ fn fleet_converge_slot_family(
     gunbc.runner_host_deploy.RunnerHostDeployUnmodeled { host: h } => SlotFamilyUnmodeledHost { host: h }
     gunbc.runner_host_deploy.RunnerHostDeployFound { deploy: d } =>
       match extdeps.github.actions_runner.actions_runner_binary_artifact_for_arch(
-        binary_release: extdeps.github.actions_runner.actions_runner_release_2_334_0,
+        binary_release: actions_runner_release_2_336_0,
         arch: altra_max_m12830_catalog.architecture,
       ) {
         Absent => SlotFamilyArtifactUnpublished { host: host as product.placement_supply.HostIdentity }

@@ -74,5 +74,5 @@ type GpuModelCatalogRow {
   supported_runtimes: List<GpuRuntime>
   interconnect: extdeps.storage.types.PcieLink?
   sm_cache: GpuSmCacheGeometry?
-  sm_cache_citations: List<extdeps.cpu.types.CacheGeometryCitation>
+  sm_cache_citations: List<extdeps.external_authority.FactCitation>
 }

@@ -1,0 +1,83 @@
+module gunbc.reference_closure_binder_seed_growth
+
+
+// FORWARD-FREEZE RECEIPT for the hand Rust added by the reference-closure binder repair
+// (gunbc#9020). Authored because gunbc.seed_growth_admission
+// seed_growth_forward_freeze_policy_note makes unenumerated hand growth in src/v1 a stop-line,
+// and this change added hand Rust while authoring no row. Review 55459 caught the
+// omission; the receipt is the remedy, not the review's approval of the repair.
+//
+// THE HAND-LOC FIGURE BELOW SHOULD NOT BE AUTHORED AT ALL. gunbc#9151 records this: hand-LOC delta is a function
+// of the diff, so typing it is a second representation of a fact the diff already owns
+// (DESIGN section 2). It is written here because the policy currently requires it and nothing
+// derives it; when rust_item_host_observation lands, the gate should PRINT this number and the
+// author should stop authoring it. This row having already gone stale once inside one PR is
+// the argument, not an anecdote.
+//
+// WHAT THE CHANGE IS. collect_node_refs filtered candidate references on
+// `binding_kind == Some(FunctionValueBinding)`, a field the PREPARED tree never carries -- it is
+// stamped only on inference's own tree. The predicate therefore matched nothing, so no bare
+// `ExprVar` reference edge was ever recorded, and every consumer of the reference closure was
+// reading a silently empty answer rather than a wrong one. The repair replaces the
+// subtraction-residue with a lexical binder walk and a closed ExprVarClass classification whose
+// unsupported-binder arm REFUSES rather than guessing in either direction.
+//
+// WHY IT IS RUST AND NOT .dag. The collector runs inside the v1 seed's own resolve path, before
+// any v2 carrier is available to it: it is called by cli_run while building the index that a
+// .dag authority would itself need in order to be evaluated. Modeling it in .dag today would
+// require the very closure it computes. That is a REAL ordering constraint, not a preference,
+// and it is the same constraint that keeps the rest of the collector in the seed.
+//
+// WHAT IS NOT NETTED. Three existing items were MODIFIED rather than added -- collect_node_refs,
+// collect_node_refs_inner and reference_resolution_facts -- and are classified
+// ExistingSeedItemModified so they are not counted as additions, per the disposition
+// gunbc.seed_growth_admission SeedGrowthChangeDisposition already carries. No deletions are
+// netted against the additions below; the policy forbids it and none are claimed.
+//
+// HAND-ITEM DELTA: +5 citable declarations (4 production, 1 test module), PLUS 3 uncitable impl
+// methods enumerated in prose below.
+//
+// IT READ +9 UNTIL review 55673, AND THE OVERCOUNT WAS NOT A MISCOUNT -- IT WAS THREE ROWS THAT
+// CANNOT EXIST. classify, refuse_binder and reconciles are methods on `impl ExprVarClassification`,
+// and std.decl_ref has no ImplMethod field: a std.decl_ref.DeclarationRef naming one is not a row that happens
+// to be wrong, it is a row whose referent the carrier cannot represent. gunbc.seed_growth_admission
+// already states this and already carries a precedent -- stage0_rust_observation_seed_growth_justification
+// documents `impl std::fmt::Display for Stage0CargoBinManifestParseRefusal` as prose for exactly this
+// reason -- so the correction is to follow that precedent, not to invent a spelling.
+//
+// UNCITABLE ITEMS ADDED BY THIS CHANGE (prose-only until std.decl_ref gains ImplMethod), all three
+// in `impl ExprVarClassification<'_>` in v1_compiler.cli_run:
+//   classify        -- assigns one occurrence to exactly one ExprVarClass and answers whether it is an edge
+//   refuse_binder   -- records the typed refusal for a binder form the collector cannot name
+//   reconciles      -- occurrences == free + bound-suppressed + chain-head + names-nothing-known
+// They are hand Rust and they are enumerated; what they are not is CITABLE, and the distinction is the
+// whole point of stating it here rather than counting them in a list of DeclarationRefs.
+//
+// collect_every_var_name WAS ALSO REMOVED FROM THE CITABLE LIST, for a different reason and one this
+// receipt contradicted itself on: it lives INSIDE mod reference_collector_binder_fixtures, which the
+// paragraph below already names as the enumeration unit because the module is what would be deleted.
+// Counting the module AND one of its members double-counts within a census whose value is exactness.
+// HAND-LOC DELTA: +887 / -21 in src/v1/stage0/src/cli_run.rs, measured by `git diff --numstat`
+// against the MERGE BASE (`git merge-base origin/main HEAD`), not against main's tip -- a diff
+// against a moving tip counts main's own edits to this file as this change's growth. It read
+// +853 until review 55667 required a second production consumer to enforce the classifier's
+// refusals, adding 34 lines to reference_resolution_facts. Restated in place rather than
+// annotated beside: two counts for one fact in the receipt whose purpose is to enumerate growth
+// would be the exact failure the receipt exists to prevent. The test module reference_collector_binder_fixtures carries 22
+// further hand items inside it, including the two mutation controls
+// (mutation_everything_bound_reds_the_free_reference_family and its `everything_free` sibling)
+// that make the fixture family non-vacuous. They are enumerated as their containing module
+// rather than one row each because the module is the unit that would be deleted.
+data reference_closure_binder_seed_growth_justification: gunbc.seed_growth.SeedGrowthJustification = gunbc.seed_growth.SeedGrowthJustification {
+  hand_authored_declarations: [
+    std.decl_ref.DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "ExprVarClass", field: std.decl_ref.WholeDeclaration },
+    std.decl_ref.DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "ExprVarClassification", field: std.decl_ref.WholeDeclaration },
+    std.decl_ref.DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "binder_names_of", field: std.decl_ref.WholeDeclaration },
+    std.decl_ref.DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "pattern_binder_names", field: std.decl_ref.WholeDeclaration },
+    std.decl_ref.DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "reference_collector_binder_fixtures", field: std.decl_ref.WholeDeclaration }
+  ],
+  reason: "The reference-closure collector runs inside the v1 seed's own resolve path, building the index that any .dag authority would itself need in order to evaluate. A .dag realization of it would require the closure it computes, so the ordering constraint is real rather than a preference. The repair replaces a predicate that matched nothing on the prepared tree -- binding_kind is stamped only on inference's tree -- with a lexical binder walk and a closed classification whose unsupported-binder arm refuses rather than guessing.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as gunbc.roadmap_model.RoadmapNodeId,
+  trigger: "Delete when the reference closure is derived from a v2 carrier that does not itself require the closure to evaluate -- i.e. when index construction stops being the seed's own bootstrap step. Until that ordering is broken the items above cannot move, and no partial migration of them is admissible: a split between a .dag classifier and a seed walk would be two authorities for one decision.",
+  current_boundary: "Confined to reference-edge collection for bare ExprVar occurrences in v1_compiler.cli_run. The classification is closed (ExprVarClass) and its unsupported-binder arm refuses; it decides no other question and no other caller consumes ExprVarClassification. Three existing items -- collect_node_refs, collect_node_refs_inner, reference_resolution_facts -- were modified rather than added and are ExistingSeedItemModified, not netted against these additions."
+}

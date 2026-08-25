@@ -375,6 +375,52 @@ fn floor_expected_red_chunk_06() -> List<String> {
               std.algebra.Cons { head: "test.claim.source_integration_proof_kernel_acceptance.witness_p1_proof_kernel_acceptance_contract_holds", tail:     std.algebra.Cons { head: "test.claim.srv3_subsumption.comment_only_drift_is_one_change_not_remove_add", tail: std.algebra.Cons { head: "test.claim.srv3_subsumption.reconcile_would_teardown_only_if_ownership_claimed_it", tail: std.algebra.Cons { head: "test.claim.srv3_subsumption.srv3_and_srv4_disagree_on_convergence", tail: std.algebra.Cons { head: "test.claim.srv3_subsumption.srv3_reconcile_adds_exactly_the_missing_fleet_key", tail: std.algebra.Cons { head: "test.claim.srv3_subsumption.srv3_reconcile_refuses_both_unowned_keys_never_teardown", tail: std.algebra.Cons { head: "test.claim.srv3_subsumption.srv4_reconcile_is_converged_empty_plan", tail:               v2.std.algebra.Empty {} } } } } } } }
 }
 
+// SEVENTEEN generated_conformance_floor ROWS LEFT THIS ROSTER BECAUSE THE FIX THIS BRANCH CARRIES
+// MADE THEM PASS, WHICH IS THIS ROSTER'S OWN REMOVAL PATH RATHER THAN A ROSTER EDIT. They were
+// among the identities the required floor reported as KNOWN-RED-RUNTIME-ERRORED -- enrolled as
+// expected-red but throwing rather than failing, so producing no verdict at all -- and every one
+// of them threw for the same reason this branch repairs: the reference-closure collector narrowed
+// on binding metadata its own producer never populates, so a name that was genuinely declared
+// resolved to nothing and the call threw `no such function`.
+//
+// Once the closure is derived from lexical binders instead, the calls resolve and the witnesses
+// answer. Every one of them answered PASS, and the floor duly reported them STALE-QUARANTINE --
+// which IS gating (claim_executor `required_floor_outcome_is_clean` lists seven causes and
+// includes it), unlike the runtime-errored arm, which is reported and deliberately NOT gating. So
+// the fix moved rows from a non-gating arm into a gating one, and this removal is the remedy the
+// floor's own message names.
+//
+// THE POPULATION IS 82, NOT THE SEVENTEEN AN EARLIER REVISION OF THIS BLOCK NAMED, and the
+// correction is recorded here rather than silently swapped because the two numbers are two
+// measurements of one fact and the stale one was load-bearing. Seventeen was measured before this
+// branch carried main; the roster it was measured against no longer exists. Run 32670979986
+// reports `stale_quarantine=82`, and all 82 are removed here.
+//
+// THE FOUR generated_coproduct_exhaustiveness_* ROWS ARE PART OF THAT 82 AND ARE REMOVED WITH IT.
+// An earlier revision of this block retained them and called the pair the discriminating half of
+// the edit, on the ground that they sat in the same generated module and were NOT reported
+// passing. That was true of the measurement it was written against and is false of this one: the
+// same run names all four explicitly as STALE-QUARANTINE. Retaining them on the strength of the
+// older reading would enrol four rows this branch makes pass, which is the gating failure the
+// removal exists to avoid -- so the retention is withdrawn, and the claim that this edit carries a
+// same-module discriminating half is withdrawn with it rather than left standing unsupported.
+//
+// SUPERSEDED BY THE MERGE THAT CARRIES THIS BLOCK, and the block is kept rather than deleted because
+// it records a measurement (run 32670979986, stale_quarantine=82) that nothing else carries. Measured
+// at this merge: main's roster is a strict SUBSET of this branch's -- every identity this branch
+// removed is already absent from main, which removed 127 against this branch's 99 -- so the merged
+// roster is main's 65 and THIS BRANCH NO LONGER PERFORMS A REMOVAL. Resolved by set algebra rather
+// than by choosing a side: base 192, ours 93, theirs 65, additions on neither side, and
+// `comm -13 ours theirs` is empty, which is what establishes the subset and therefore that taking
+// main's rows loses nothing this branch had removed.
+//
+// ONE QUESTION THIS LEAVES OPEN rather than answering, because asserting either way would be
+// invention: the 82 above left because THIS branch's fix made them pass, and main removed them
+// without that fix. Either they pass for an independent reason, or main's larger removal has a
+// different warrant. Both are consistent with what is measured here, and nothing in this merge
+// distinguishes them. The floor run on the merged head is what decides it -- if any of the 82
+// re-appears as a fresh red, this note is where to start.
+
 fn floor_expected_red_chunk_07() -> List<String> {
   v2.std.algebra.Empty {}
 }
@@ -491,7 +537,7 @@ fn floor_expected_red_chunk_20() -> List<String> {
 // The partition of the 164 and the measurements behind this family are
 // docs/plans/receipts/floor-runtime-error-partition-2026-08-23/.
 fn floor_expected_red_chunk_21() -> List<String> {
-  std.algebra.Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_extra_argument_must_refuse_at_compile", tail: std.algebra.Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_missing_argument_must_refuse_at_compile", tail: std.algebra.Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_wrong_argument_type_must_refuse_at_compile", tail: v2.std.algebra.Empty {} } } }
+  std.algebra.Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_extra_argument_must_refuse_at_compile", tail: std.algebra.Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_missing_argument_must_refuse_at_compile", tail: std.algebra.Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_wrong_argument_type_must_refuse_at_compile", tail: std.algebra.Cons { head: "test.claim.fabric_cell_evidence_algebra_witness.evidence_full_value_is_order_independent", tail: v2.std.algebra.Empty {} } } } }
 }
 
 fn floor_expected_red_chunks() -> List<List<String>> {

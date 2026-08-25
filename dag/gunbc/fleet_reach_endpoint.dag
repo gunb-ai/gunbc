@@ -22,16 +22,28 @@ fn spark_endpoint_for_binding(binding: gunbc.spark.dgx_procurement.DgxSparkRoute
 // Fleet-wide: a host with a modeled endpoint probes AT that endpoint; every other host
 // probes by name (srv1-srv4 resolve via the LAN today). The receipt stays keyed by the
 // fleet IDENTITY either way — the endpoint is transport addressing, not identity.
+//
+// THIS FOLD USED TO RE-DERIVE THE PROJECTION INSTEAD OF CALLING IT (repaired 2026-08-23): it
+// matched SlotAssigned itself and carried its own inline `render_ipv4_address(addr:
+// r.ipv4_address) as String`, so one concept — a binding's transport address — had two
+// implementations inside a single file, and the NAMED one was the dead one
+// (spark_endpoint_for_binding had zero callers in the corpus; the only occurrence was its own
+// declaration). That is the §2 failure at its smallest scale, and its cost is specific rather
+// than stylistic: the refusal guarantee spark_endpoint_for_binding states in its header — an
+// unassigned slot yields NO endpoint, never a placeholder — was enforced only in the copy
+// nothing called, so tightening it there would have left the probe path untouched. The fold now
+// consumes the projection, and the identity it dispatches on comes from
+// gunbc.spark.dgx_procurement router_binding_identity, which is total over the coproduct, rather
+// than from an arm that only the assigned variant reaches.
 fn fleet_probe_endpoint_for(host: String) -> String {
-  fold(gunbc.spark.dgx_procurement.dgx_spark_router_bindings, init: host, f: fn(acc, b) {
-    match b {
-      gunbc.spark.dgx_procurement.SlotAssigned { identity: i, reservation: r, allocation: _ } =>
-        if (i as String) == host {
-          extdeps.network.ipv4.render_ipv4_address(addr: r.ipv4_address) as String
-        } else {
-          acc
-        }
-      gunbc.spark.dgx_procurement.SlotUnassigned { identity: _ } => acc
+  fold(dgx_spark_router_bindings, init: host, f: fn(acc, b) {
+    if (router_binding_identity(binding: b) as String) == host {
+      match spark_endpoint_for_binding(binding: b) {
+        Absent => acc
+        Present { value: endpoint } => endpoint
+      }
+    } else {
+      acc
     }
   })
 }

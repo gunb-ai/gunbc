@@ -3,7 +3,7 @@ module v2.test.claim.enforcement_inventory_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
-data enforcement_inventory_witness_offline_note: String = "Operator-ruled OFFLINE (review 47569): seven *_live tests call lens_enforcement_inventory_live which reads decl_facts over the whole corpus. Excluded from per-PR discovery via witness_exclusion_frontier row enforcement_inventory_witness_test.dag (OfflineLocalRecipe, same dissolve_on as enforcement_live_witness_test.dag). Local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/enforcement_inventory_witness_test.dag --functions <csv>. Two frontier-reconciliation tests (enforcement_live specimen + row-count) are cheap but share this file grain."
+data enforcement_inventory_witness_offline_note: String = "Operator-ruled OFFLINE (review 47569): the global inventory receipt calls lens_enforcement_inventory_live, which reads decl_facts over the whole corpus, ONCE and folds the seven assertions over that one value. The former seven-test shape independently rebuilt the same immutable world fact seven times and safety-interrupted every identity before verdict; required-floor run 32794539384 measured the seven interruptions, and this consolidation is their bounded reshape. Excluded from per-PR discovery via witness_exclusion_frontier row enforcement_inventory_witness_test.dag (OfflineLocalRecipe, same dissolve_on as enforcement_live_witness_test.dag). Local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/enforcement_inventory_witness_test.dag --function enforcement_inventory_global_receipt_holds --claim-run --wet. Two frontier-reconciliation tests (enforcement_live specimen + row-count) are cheap but share this file grain."
 
 data enforcement_inventory_self_audit_note: String = "Phase 0B self-audit (operator acceptance 2026-08-02): unbound detection routes through lens_contract_is_unbound -> consumer_enrolled_for (0A, no parallel ConsumerWitnessBinding Bool predicate). Lens inventory rows are a pure fold over lens_contract_registry with no stored ledger. Witness admission inventory rows derive from gunbc.ci_layer_roots witness_exclusion_frontier (no hand-authored scheduling). Support status is on LensEnforcementApplication rows, not lens_id. evaluated_scope and subject_counts evaluated/unavailable are typed absent until Phase 1. Scope leg and whole_corpus_scope constant were not modified. 0A red-control evidence is construction in the production fold; discriminating witnesses execute at offline cadence only (enforcement_live_witness_test.dag frontier row)."
 
@@ -49,46 +49,37 @@ test fn enforcement_inventory_witness_excluded_via_frontier() -> Bool {
   }
 }
 
-test fn inventory_reconciles_registry_both_ways_live() -> Bool {
+// One whole-corpus acquisition, seven inventory assertions. These facts are genuinely global,
+// but acquiring the same `enforcement_corpus_facts` once per test identity made six of seven
+// walks pure repetition and safety-interrupted every row before verdict.
+test fn enforcement_inventory_global_receipt_holds() -> Bool {
   let inventory = lens_enforcement_inventory_live()
   inventory_reconciles_registry_both_ways(
     inventory: inventory,
     contracts: lens_contract_registry
   )
-}
-
-test fn inventory_unbound_rows_match_contract_unbound_live() -> Bool {
-  inventory_unbound_rows_match_contract_unbound(
-    inventory: lens_enforcement_inventory_live(),
+  && inventory_unbound_rows_match_contract_unbound(
+    inventory: inventory,
     contracts: lens_contract_registry
   )
-}
-
-test fn unbound_lenses_remain_in_inventory_live() -> Bool {
-  unbound_contract_count() > 0
+  && unbound_contract_count() > 0
     && inventory_contains_lens_id(
-      inventory: lens_enforcement_inventory_live(),
+      inventory: inventory,
       id: ComplexityDerivedKernel
     )
     && inventory_contains_lens_id(
-      inventory: lens_enforcement_inventory_live(),
+      inventory: inventory,
       id: ComplexityOptimality
     )
     && inventory_contains_lens_id(
-      inventory: lens_enforcement_inventory_live(),
+      inventory: inventory,
       id: EffectReach
     )
-}
-
-test fn cost_has_contract_and_standing_intent_applications_live() -> Bool {
-  inventory_application_count_for_lens(
-    inventory: lens_enforcement_inventory_live(),
+  && inventory_application_count_for_lens(
+    inventory: inventory,
     id: Cost
   ) >= 2
-}
-
-test fn cost_repo_wide_application_reports_support_gap_live() -> Bool {
-  match find_inventory_row(inventory: lens_enforcement_inventory_live(), id: Cost) {
+  && match find_inventory_row(inventory: inventory, id: Cost) {
     InventoryRowAbsent => false
     InventoryRowFound { value: row } =>
       fold_list(
@@ -103,10 +94,7 @@ test fn cost_repo_wide_application_reports_support_gap_live() -> Bool {
         }
       )
   }
-}
-
-test fn cost_contract_consumer_application_support_held_live() -> Bool {
-  match find_inventory_row(inventory: lens_enforcement_inventory_live(), id: Cost) {
+  && match find_inventory_row(inventory: inventory, id: Cost) {
     InventoryRowAbsent => false
     InventoryRowFound { value: row } =>
       fold_list(
@@ -121,10 +109,7 @@ test fn cost_contract_consumer_application_support_held_live() -> Bool {
         }
       )
   }
-}
-
-test fn inventory_rows_report_evaluated_scope_absent_live() -> Bool {
-  for_all(xs: lens_enforcement_inventory_live(), predicate: fn(row) {
+  && for_all(xs: inventory, predicate: fn(row) {
     inventory_row_evaluated_scope_absent(row: row)
   })
 }

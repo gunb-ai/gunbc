@@ -1,0 +1,57 @@
+module v2.test.claim.complexity.accumulator_copy_roster_standing
+
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+// PURE CLASSIFIER EVIDENCE. These fixtures discriminate the product standing without reading or
+// re-parsing the repository. The live file censuses remain a separate, offline coverage question.
+test fn suspect_and_analysis_standings_are_both_preserved() -> v2.std.logic.Bool {
+  match v2.lens.complexity_accumulator_copy.roster_gate.standing_from_counts(suspects: 1, refusals: 1, refusal_ceiling: 0) {
+    v2.lens.complexity_accumulator_copy.roster_gate.RosterStanding {
+      finding: v2.lens.complexity_accumulator_copy.roster_gate.SuspectObserved { suspects: 1 },
+      analysis: v2.lens.complexity_accumulator_copy.roster_gate.RefusalBudgetExceeded { refusals: 1, ceiling: 0 }
+    } => true
+    _ => false
+  }
+}
+
+test fn refusal_above_ceiling_is_analysis_coverage_debt() -> v2.std.logic.Bool {
+  match v2.lens.complexity_accumulator_copy.roster_gate.standing_from_counts(suspects: 0, refusals: 4, refusal_ceiling: 3) {
+    v2.lens.complexity_accumulator_copy.roster_gate.RosterStanding {
+      finding: v2.lens.complexity_accumulator_copy.roster_gate.NoSuspect,
+      analysis: v2.lens.complexity_accumulator_copy.roster_gate.RefusalBudgetExceeded { refusals: 4, ceiling: 3 }
+    } => true
+    _ => false
+  }
+}
+
+test fn refusal_at_ceiling_is_within_standing() -> v2.std.logic.Bool {
+  match v2.lens.complexity_accumulator_copy.roster_gate.standing_from_counts(suspects: 0, refusals: 3, refusal_ceiling: 3) {
+    v2.lens.complexity_accumulator_copy.roster_gate.RosterStanding {
+      finding: v2.lens.complexity_accumulator_copy.roster_gate.NoSuspect,
+      analysis: v2.lens.complexity_accumulator_copy.roster_gate.Within { refusals: 3, ceiling: 3 }
+    } => true
+    _ => false
+  }
+}
+
+test fn not_established_cause_is_preserved_on_both_axes() -> v2.std.logic.Bool {
+  match v2.lens.complexity_accumulator_copy.roster_gate.not_established_standing(cause: v2.lens.common.source_analysis_standing.SourceNormalizationRejected) {
+    v2.lens.complexity_accumulator_copy.roster_gate.RosterStanding {
+      finding: v2.lens.complexity_accumulator_copy.roster_gate.FindingNotEstablished { cause: v2.lens.common.source_analysis_standing.SourceNormalizationRejected },
+      analysis: v2.lens.complexity_accumulator_copy.roster_gate.AnalysisNotEstablished { cause: v2.lens.common.source_analysis_standing.SourceNormalizationRejected }
+    } => true
+    _ => false
+  }
+}
+
+test fn malformed_source_reports_tokenization_rejection() -> v2.std.logic.Bool {
+  match v2.lens.complexity_accumulator_copy.roster_gate.source_findings(source_text: "@@@ not dag source @@@ )( unterminated \"") {
+    v2.lens.complexity_accumulator_copy.roster_gate.SourceFindingsNotEstablished { cause: v2.lens.common.source_analysis_standing.SourceTokenizationRejected } => true
+    v2.lens.complexity_accumulator_copy.roster_gate.SourceFindingsNotEstablished { cause: v2.lens.common.source_analysis_standing.LanguageGrammarUnavailable } => false
+    v2.lens.complexity_accumulator_copy.roster_gate.SourceFindingsNotEstablished { cause: v2.lens.common.source_analysis_standing.LanguageGrammarRejected } => false
+    v2.lens.complexity_accumulator_copy.roster_gate.SourceFindingsNotEstablished { cause: v2.lens.common.source_analysis_standing.SourceParseRejected } => false
+    v2.lens.complexity_accumulator_copy.roster_gate.SourceFindingsNotEstablished { cause: v2.lens.common.source_analysis_standing.SourceNormalizationRejected } => false
+    v2.lens.complexity_accumulator_copy.roster_gate.SourceFindingsEstablished { findings: _ } => false
+  }
+}

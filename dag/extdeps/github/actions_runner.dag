@@ -88,10 +88,20 @@ fn actions_runner_download_url(artifact: ActionsRunnerBinaryArtifact) -> String 
   )
 }
 
-data actions_runner_release_2_334_0: ActionsRunnerRelease = ActionsRunnerRelease {
-  version: "2.334.0",
-  digest_aarch64: extdeps.crypto.hash.sha256_digest(hex: "f44255bd3e80160eb25f71bc83d06ea025f6908748807a584687b3184759f7e4"),
-  digest_x86_64: extdeps.crypto.hash.sha256_digest(hex: "048024cd2c848eb6f14d5646d56c13a4def2ae7ee3ad12122bee960c56f3d271"),
+// WHY 2.334.0 IS GONE RATHER THAN KEPT BESIDE THIS ROW. GitHub retired it server-side: a runner of
+// that version authenticates, reaches "Listening for Jobs", and is then refused with
+// "Runner version v2.334.0 is deprecated and cannot receive messages", exits 0, and is restarted by
+// systemd forever. Measured on srv3 2026-08-25 across all 13 newly provisioned slots. A deprecated
+// pin is not a version that merely lags -- it provisions a runner that CANNOT take work, so keeping
+// it as a selectable row would only preserve a way to build dead slots.
+//
+// THE DIGESTS ARE THE UPSTREAM'S OWN, not recomputed here: actions/runner release v2.336.0 publishes
+// them in its release body, and the emitted install script verifies with sha256sum -c, so a wrong
+// value fails loudly at the host rather than installing an unverified tarball.
+data actions_runner_release_2_336_0: ActionsRunnerRelease = ActionsRunnerRelease {
+  version: "2.336.0",
+  digest_aarch64: extdeps.crypto.hash.sha256_digest(hex: "58b758e420b87093fbd4bfddd368074960053e2f1388f01848c82624b90f27d1"),
+  digest_x86_64: extdeps.crypto.hash.sha256_digest(hex: "04cf0be1aff4c3ec3554466c39124ca250e3effd8873bb7e8d68535aa9505d5d"),
 }
 
 data actions_runner_base_dir: String = "/opt/actions-runner"
@@ -125,10 +135,31 @@ data actions_runner_slot_extract_script_scaffold: std.disposition.Disposition = 
 // install -d -o/-g creates the directory already owned by job_user, so tar and the tarball cleanup
 // need no privilege at all, and the surviving sudo verbs are exactly two roster members.
 
+// THE PRIVILEGED BINARIES ARE SUPPLIED, NOT SPELLED, and that is the whole content of this type.
+// This module knows the SHAPE of runner installation -- fetch, verify, place, own -- and it does
+// not know which POSIX principal will run it or what that principal is permitted to execute. Those
+// are fleet policy, and gunbc.fleet_posix_accounts owns them.
+//
+// The prior form wrote `sudo install` and `sudo rm` as literals here, which made this module a
+// second, silent authoring of "these two verbs are available as root". It was correct only by
+// coincidence: both happen to be roster members. Nothing kept them roster members, and the earlier
+// revision of this same function proved the coincidence is not reliable -- it also wrote `sudo tar`
+// and `sudo chown`, which never were.
+//
+// The alternative was to import the roster accessor here, and that is the wrong direction: an
+// extdeps module describing an upstream product would then depend on this repository's principal
+// policy, so the shape could not be reused by a caller with a different one. Passing the paths in
+// keeps the dependency pointing the way it already does -- gunbc consumes extdeps, chooses the
+// realization, and remains the single place that answers what may run as root.
+type ActionsRunnerSlotPrivilegedCommands {
+  remove_command: String
+  install_command: String
+}
+
 fn actions_runner_slot_extract_script(
   artifact: ActionsRunnerBinaryArtifact,
   slot_dir: std.types.NonEmptyStr,
-  job_user: std.types.NonEmptyStr,
+  privileged: ActionsRunnerSlotPrivilegedCommands,
 ) -> String {
   let url = actions_runner_download_url(artifact: artifact)
   let digest = actions_runner_release_digest(artifact: artifact)
@@ -137,16 +168,8 @@ fn actions_runner_slot_extract_script(
     "set -e",
     join(["curl -fsSL '", url, "' -o /tmp/actions-runner.tar.gz"], ""),
     extdeps.crypto.hash.digest_shell_verify_line(digest: digest, file_path: "/tmp/actions-runner.tar.gz"),
-    join(["sudo rm -rf '", slot_dir as String, "'"], ""),
-    join([
-      "sudo install -d -m 755 -o ",
-      job_user as String,
-      " -g ",
-      job_user as String,
-      " '",
-      slot_dir as String,
-      "'",
-    ], ""),
+    privileged.remove_command,
+    privileged.install_command,
     join(["tar xzf /tmp/actions-runner.tar.gz -C '", slot_dir as String, "'"], ""),
     "rm -f /tmp/actions-runner.tar.gz",
     "",
@@ -162,11 +185,14 @@ data actions_runner_base_dir_ensure_script_scaffold: std.disposition.Disposition
   }
 }
 
-fn actions_runner_base_dir_ensure_script(runner_user: std.types.NonEmptyStr) -> String {
+fn actions_runner_base_dir_ensure_script(
+  base_install_command: String,
+  cache_install_command: String,
+) -> String {
   join([
     "set -e",
-    join(["sudo install -d -m 755 -o ", runner_user as String, " -g ", runner_user as String, " ", actions_runner_base_dir], ""),
-    join(["sudo install -d -m 755 -o ", runner_user as String, " -g ", runner_user as String, " ", actions_runner_cache_dir], ""),
+    base_install_command,
+    cache_install_command,
     "",
   ], "\n")
 }
@@ -175,7 +201,7 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
   subject: extdeps.external_authority.ExternalSubjectRef {
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.github.actions_runner",
-      decl_name: "actions_runner_release_2_334_0",
+      decl_name: "actions_runner_release_2_336_0",
       field: std.decl_ref.WholeDeclaration
     }
   },

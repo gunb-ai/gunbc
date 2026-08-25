@@ -11809,6 +11809,17 @@ fn data_def_annotation_is_named_refinement(annotation: v1.std.core.Node, source_
   ann_name != "" && annotation.type_annotation != none && !std.types.is_container_type(name: ann_name) && !is_host_text_carrier_type(n: annotation, source_indices: source_indices)
 }
 
+// ONE AUTHORITY FOR THIS DECLARATION'S REFERENCE LAYER. This key was
+// set_contains(shared_types, authored_name_at(node: type_node)) -- a second authority beside
+// rust_carrier_is_at_shared_layer, which this same function's closure already consults through
+// value_inferred_type_is_rc_wrapped. The two disagree on three axes and every one of them is
+// reachable from this position: the authored spelling is unreduced, so a dotted annotation missed
+// the bare-keyed set; no conjunct excluded a carrier that realizes as a machine scalar; and none
+// excluded optional cardinality, while render_rust_type_with_applied_binding -- which renders the
+// declared type for the same row -- does apply the optional template. So one data row had its
+// declared type decided by the carrier and its wrap decided by the spelling, and needs_rc is
+// threaded into emit_data_def_body, so the value took the same answer as the signature. Routed to
+// the carrier authority; the spelling key is deleted rather than kept beside it.
 fn emit_data_def(name: String, type_node: v1.std.core.Node, value: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   let annotation_type_node = type_node
   let ann_name = v1.std.core.authored_name_at(source_indices: scope.type_env.source_indices, node: annotation_type_node)
@@ -11841,9 +11852,11 @@ fn emit_data_def(name: String, type_node: v1.std.core.Node, value: v1.std.core.N
     }
   } else { raw_ty_str }
   let fn_name = v1.compiler.emit_core_support.to_snake(name: name)
-  let needs_rc = set_contains(shared_types, v1.std.core.authored_name_at(source_indices: scope.type_env.source_indices, node: type_node))
+  let needs_rc = rust_carrier_is_at_shared_layer(n: type_node, source_indices: scope.type_env.source_indices, shared_types: shared_types)
 
-  let ty_str = if needs_rc && !rust_type_is_rc_wrapped(type_name: ty_str) {
+  let ty_str = if preserves_declared_brand {
+    render_rust_shared_type_with_optional(n: type_node, type_name: ann_name, rendered: ty_str, shared_types: shared_types)
+  } else if needs_rc && !rust_type_is_rc_wrapped(type_name: ty_str) {
     v1.compiler.languages.wrap_shared_type(target: v1.compiler.artifact.Rust, inner: ty_str)
   } else {
     ty_str

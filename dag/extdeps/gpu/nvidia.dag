@@ -19,14 +19,14 @@ data rtx_5090_sm_cache_geometry: extdeps.gpu.types.GpuSmCacheGeometry = extdeps.
   register_file_per_sm: rtx_5090_sm_register_file,
 }
 
-data rtx_5090_sm_cache_citations: List<extdeps.cpu.types.CacheGeometryCitation> = [
-  {
-    field: "shared_memory_per_sm"
-    authority: extdeps.gpu.types.cuda_compute_capabilities_authority
+data rtx_5090_sm_cache_citations: List<extdeps.external_authority.FactCitation> = [
+  extdeps.external_authority.FactCitation {
+    fact: std.decl_ref.decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "rtx_5090_sm_cache_geometry", field_name: "shared_memory_per_sm"),
+    authority: cuda_compute_capabilities_authority,
   },
-  {
-    field: "register_file_per_sm"
-    authority: extdeps.gpu.types.cuda_compute_capabilities_authority
+  extdeps.external_authority.FactCitation {
+    fact: std.decl_ref.decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "rtx_5090_sm_cache_geometry", field_name: "register_file_per_sm"),
+    authority: cuda_compute_capabilities_authority,
   },
 ]
 

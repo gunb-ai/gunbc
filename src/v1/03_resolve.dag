@@ -168,8 +168,11 @@ type ModuleResolveResult {
 }
 
 fn resolve_module_imports(module: v1.std.core.Node, module_index: Map<String, v1.std.core.Node>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> ModuleResolveResult {
+  let local_definition_names = v1.std.core.module_items(n: module)
+    |> map(item => get_item_name(item: v2.test.resolve.qualified_module_projection_g1b_fixture.item, source_indices: source_indices))
+    |> fold(init: v2.std.collection.empty_map(), f: (acc, n) => v2.std.collection.map_insert(acc, n, true))
   let results = v1.std.core.module_imports(n: module) |> map(imp =>
-    resolve_import(import: imp, module_index: module_index, importing_module: v1.std.core.authored_name_at(source_indices: source_indices, node: module), export_sets: export_sets, source_indices: source_indices)
+    resolve_import(import: imp, module_index: module_index, importing_module: v1.std.core.authored_name_at(source_indices: source_indices, node: module), export_sets: export_sets, source_indices: source_indices, local_definition_names: local_definition_names)
   )
   let resolved = results
     |> filter(r => r.resolved.target_module != none && (r.diagnostics |> count == 0))
@@ -191,7 +194,8 @@ fn resolve_import(
   module_index: Map<String, v1.std.core.Node>,
   importing_module: String,
   export_sets: Map<String, Map<String, Bool>>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  source_indices: Map<String, v1.std.core.NewlineIndex>,
+  local_definition_names: Map<String, Bool>
 ) -> ImportResolveResult {
   let import_path = v1.std.core.authored_name_at(source_indices: source_indices, node: import)
   let target = find_module(module_index: module_index, path: import_path)
@@ -213,7 +217,14 @@ fn resolve_import(
         Present { value: set } => set
         Absent => empty_map()
       }
-      let name_diags = if v1.std.core.import_is_all(n: import) { [] } else {
+      let shadow_diags = if import_is_all(n: import) { [] } else {
+        import.children
+          |> filter(child => map_has(m: local_definition_names, key: authored_name_at(source_indices: source_indices, node: child)))
+          |> map(child =>
+            make_error_node(diagnostic: ImportShadowedByLocalDefinition { name: authored_name_at(source_indices: source_indices, node: child), module_path: import_path, importing_module: importing_module, span: child.span }, module_name: importing_module)
+          )
+      }
+      let name_diags = if import_is_all(n: import) { [] } else {
         import.children
           |> filter(child => map_has(m: exported_set, key: v1.std.core.authored_name_at(source_indices: source_indices, node: child)) == false)
           |> map(child =>
@@ -227,7 +238,7 @@ fn resolve_import(
           specific_names: v1.std.core.import_specific_names_at(n: import, source_indices: source_indices),
           target_module: Present { value: target_mod }
         },
-        diagnostics: name_diags
+        diagnostics: concat(name_diags, shadow_diags)
       }
     }
   }

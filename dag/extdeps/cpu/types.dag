@@ -147,19 +147,6 @@ type CpuL3CacheGeometry {
   line_size: std.measure.ByteSize
 }
 
-// A SOCKET FACT CITES ITS SOURCE THE SAME WAY A CACHE FACT DOES. The termination is the axis this
-// corpus already got wrong once -- AM5 carried PGA because 1718 looked right beside it -- and the
-// defect survived precisely because nothing tied the claim to a document anyone could check.
-type SocketFactCitation {
-  field: std.types.NonEmptyStr
-  authority: extdeps.external_authority.ExternalAuthority
-}
-
-type CacheGeometryCitation {
-  field: std.types.NonEmptyStr
-  authority: extdeps.external_authority.ExternalAuthority
-}
-
 type ProcessorThermalLimits {
   maximum_continuous_junction_temperature: std.measure.Celsius
   thermal_throttle_temperature: std.measure.Celsius
@@ -176,14 +163,14 @@ type CpuModelCatalogRow {
   threads: std.measure.HardwareThreadCount
   nominal_sustained_per_thread_hz: std.measure.Hertz
   socket: CpuSocket
-  socket_citations: List<SocketFactCitation>
+  socket_citations: List<extdeps.external_authority.FactCitation>
   tdp_watts: std.measure.Watt
   l1_cache: CpuL1CacheGeometry
-  l1_cache_citations: List<CacheGeometryCitation>
+  l1_cache_citations: List<FactCitation>
   l2_cache: CpuL2CacheGeometry
-  l2_cache_citations: List<CacheGeometryCitation>
+  l2_cache_citations: List<FactCitation>
   l3_cache: CpuL3CacheGeometry
-  l3_cache_citations: List<CacheGeometryCitation>
+  l3_cache_citations: List<FactCitation>
 }
 
 type CpuDeploymentFacts {

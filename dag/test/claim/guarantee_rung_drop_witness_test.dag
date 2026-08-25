@@ -57,3 +57,64 @@ test fn guarantee_rung_labels_are_distinct() -> Bool {
   let c = gunbc.guarantee_rung_drop.guarantee_rung_label(r: gunbc.guarantee_rung_drop.MechanicallyPreventable)
   (a != b) && (b != c) && (a != c)
 }
+
+// A CONTROL STALL DIFFERING FROM THE LIVE ROW IN EVERY DECIDED FIELD, for the reason the control
+// drop above gives: a renderer that ignored its argument, or a predicate that answered a constant,
+// would agree with the live row and go unseen.
+data control_stall: GuaranteeStall = GuaranteeStall {
+  subject: "control.stall.subject",
+  current: StructurallyGuaranteed,
+  ceiling: StructurallyGuaranteed,
+  blocker: CannotClimbFurther { why: "control why" },
+  population: BoundedPopulation { members: ["control.stall.member"] },
+  next_rung_trigger: "control stall trigger"
+}
+
+// THE PERMANENCE FOLD READS THE BLOCKER, in both directions. Only CannotClimbFurther is permanent,
+// and a fold stuck at either constant is a different defect, so one assertion sees only one of them.
+test fn stall_permanence_follows_the_blocker() -> Bool {
+  stall_is_permanent(s: control_stall)
+    && !stall_is_permanent(s: next_rung_trigger_enforcement_stall)
+}
+
+// THE LIVE ROW IS BELOW ITS CEILING AND THE CONTROL IS NOT. This is the assertion that makes the
+// live row a stall rather than a class that already arrived: if it is ever edited so that current
+// equals ceiling, the row stops describing a stall and this reds.
+test fn live_stall_is_below_its_ceiling() -> Bool {
+  stall_is_below_ceiling(s: next_rung_trigger_enforcement_stall)
+    && !stall_is_below_ceiling(s: control_stall)
+}
+
+// THE LADDER ORDER IS STRICT AND TOTAL. A rung index that collapsed two rungs would make
+// stall_is_below_ceiling silently wrong for exactly the pair it collapsed, and nothing else here
+// would notice.
+test fn guarantee_rung_index_is_strictly_ordered() -> Bool {
+  guarantee_rung_index(r: OutsideTheLadder) < guarantee_rung_index(r: Mitigatable)
+    && guarantee_rung_index(r: Mitigatable) < guarantee_rung_index(r: MechanicallyPreventable)
+    && guarantee_rung_index(r: MechanicallyPreventable) < guarantee_rung_index(r: StructurallyGuaranteed)
+    && guarantee_rung_index(r: StructurallyGuaranteed) < guarantee_rung_index(r: StructurallyImpossible)
+}
+
+// AN UNCOUNTED POPULATION RENDERS AS UNCOUNTED, NEVER AS EMPTY. This is the discriminating claim
+// against the empty-observation narrow: a renderer that folded UncountedNotEnumerable through the
+// same path as a bounded list would emit nothing here and the stall would read as affecting no one.
+test fn uncounted_population_does_not_render_as_empty() -> Bool {
+  let live = stall_report_message(s: next_rung_trigger_enforcement_stall)
+  let ctl = stall_report_message(s: control_stall)
+  contains_text(haystack: live, needle: "UNCOUNTED, not enumerable")
+    && !contains_text(haystack: ctl, needle: "UNCOUNTED, not enumerable")
+    && contains_text(haystack: ctl, needle: "control.stall.member")
+}
+
+// THE REPORT READS ITS ARGUMENT AND CARRIES THE ROW'S OWN TRIGGER. The trigger half is the point of
+// the carrier: if the required field is ever emptied or the renderer stops projecting it, the fact
+// section 4b(2) obliges becomes invisible again and this reds.
+test fn stall_report_names_subject_and_trigger() -> Bool {
+  let live = stall_report_message(s: next_rung_trigger_enforcement_stall)
+  let ctl = stall_report_message(s: control_stall)
+  contains_text(haystack: live, needle: "DESIGN section 4b(2) next-rung trigger enforcement")
+    && contains_text(haystack: live, needle: "GuaranteeStall rather than in prose")
+    && contains_text(haystack: live, needle: "climbable now but unbuilt")
+    && !contains_text(haystack: live, needle: "control.stall.subject")
+    && !contains_text(haystack: ctl, needle: "DESIGN section 4b(2)")
+}

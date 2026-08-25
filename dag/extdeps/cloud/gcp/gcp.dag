@@ -161,18 +161,6 @@ service gcloud.Auth {
       nonzero => String "Authentication failed"
     }
   }
-
-  operation ReadADC {
-    input { path: std.types.FilePath = "~/.config/gcloud/application_default_credentials.json" }
-    output {
-      client_id: String
-      client_secret: Secret
-      refresh_token: Secret
-    }
-    readonly
-
-    transport file { path: "\{path\}" }
-  }
 }
 
 type GoogleOAuth2Refresh200Body {
