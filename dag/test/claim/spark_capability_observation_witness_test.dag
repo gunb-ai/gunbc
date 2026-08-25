@@ -5,18 +5,18 @@ fn cred() -> std.content_hash.ContentHash {
   content_hash_of_value(value: "fleet-key" as std.types.NonEmptyStr)
 }
 
-fn subject(host: String, principal: String) -> gunbc.spark_capability_observation.SparkCapabilitySubject {
-  gunbc.spark_capability_observation.SparkCapabilitySubject { host: host as product.placement_supply.HostIdentity, principal: principal as std.types.NonEmptyStr }
+fn subject(host: String, principal: String) -> gunbc.spark.capability_observation.SparkCapabilitySubject {
+  gunbc.spark.capability_observation.SparkCapabilitySubject { host: host as product.placement_supply.HostIdentity, principal: principal as std.types.NonEmptyStr }
 }
 
 fn observation(
   host: String,
   principal: String,
-  capability: gunbc.spark_capability_observation.SparkServingCapability,
-  outcome: gunbc.spark_capability_observation.CapabilityObservationOutcome,
+  capability: gunbc.spark.capability_observation.SparkServingCapability,
+  outcome: gunbc.spark.capability_observation.CapabilityObservationOutcome,
   effect: gunbc.readback_independence.ProbeEffectOnSubject,
-) -> gunbc.spark_capability_observation.SparkCapabilityObservation {
-  gunbc.spark_capability_observation.SparkCapabilityObservation {
+) -> gunbc.spark.capability_observation.SparkCapabilityObservation {
+  gunbc.spark.capability_observation.SparkCapabilityObservation {
     subject: test.claim.spark_capability_observation_witness_test.subject(host: host, principal: principal),
     capability: capability,
     outcome: outcome,
@@ -37,7 +37,7 @@ test fn w_evidence_from_one_principal_does_not_answer_for_another() -> Bool {
       effect: gunbc.readback_independence.ProbeInert,
     ),
   ]
-  match gunbc.spark_capability_observation.observation_for(
+  match gunbc.spark.capability_observation.observation_for(
     observations: observations, host: "srv5" as product.placement_supply.HostIdentity,
     principal: "gunbc-automation" as std.types.NonEmptyStr, capability: gunbc.spark.capability_observation.AcceleratorAccessible,
   ) {
@@ -58,7 +58,7 @@ test fn w_the_exact_principal_gets_its_own_answer() -> Bool {
       effect: gunbc.readback_independence.ProbeInert,
     ),
   ]
-  match gunbc.spark_capability_observation.observation_for(
+  match gunbc.spark.capability_observation.observation_for(
     observations: observations, host: "srv5" as product.placement_supply.HostIdentity,
     principal: "gunbc-automation" as std.types.NonEmptyStr, capability: gunbc.spark.capability_observation.AcceleratorAccessible,
   ) {
@@ -109,7 +109,7 @@ test fn w_an_inert_probe_of_durable_state_is_evidence() -> Bool {
 test fn w_an_absence_survives_a_self_establishing_probe() -> Bool {
   match admitted_capability_outcome(observation: test.claim.spark_capability_observation_witness_test.observation(
     host: "srv5", principal: "gunbc-automation", capability: gunbc.spark.capability_observation.ManagedExecutorReachable,
-    outcome: gunbc.spark_capability_observation.CapabilityAbsent { evidence: "no such account" as std.types.NonEmptyStr },
+    outcome: gunbc.spark.capability_observation.CapabilityAbsent { evidence: "no such account" as std.types.NonEmptyStr },
     effect: user_manager_over_ssh_probe_effect,
   )) {
     CapabilityAbsent { evidence: _ } => true

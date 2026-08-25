@@ -10,7 +10,7 @@ data witness_tmp_scope: gunbc.file_access.FileTreeScope = gunbc.file_access.File
 }
 
 data witness_executor_home_scope: gunbc.file_access.FileTreeScope = gunbc.file_access.FileTreeScope {
-  root_path: gunbc.spark_serving_runtime_receipt.spark_serving_executor_home as std.types.NonEmptyStr,
+  root_path: gunbc.spark.serving_runtime_receipt.spark_serving_executor_home as std.types.NonEmptyStr,
 }
 
 data witness_metachar_payload: String = "alpha beta\ttab $dollar \"dq\"\n; rm -rf /"
@@ -171,7 +171,7 @@ test fn w_content_digest_stable_for_same_bytes() -> Bool {
 test fn w_executor_home_unit_path_seals_for_spark_layout() -> Bool {
   match gunbc.typed_remote_file_write.typed_remote_file_write_seal(
     path: concat(
-      gunbc.spark_serving_runtime_receipt.spark_serving_executor_home as String,
+      gunbc.spark.serving_runtime_receipt.spark_serving_executor_home as String,
       "/.config/systemd/user/gunbc-spark-serving.service",
     ) as std.types.FilePath,
     content: "[Unit]\nDescription=test\n" as String,

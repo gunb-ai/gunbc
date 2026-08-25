@@ -8,50 +8,50 @@ fn w_host() -> product.placement_supply.HostIdentity {
 }
 
 fn w_principal() -> std.types.NonEmptyStr {
-  gunbc.spark_serving_membership.spark_serving_serving_principal()
+  gunbc.spark.serving_membership.spark_serving_serving_principal()
 }
 
-fn w_runtime_member(host: product.placement_supply.HostIdentity, state: std.types.NonEmptyStr) -> gunbc.spark_serving_membership.SparkServingMember {
-  gunbc.spark_serving_membership.spark_serving_member(
+fn w_runtime_member(host: product.placement_supply.HostIdentity, state: std.types.NonEmptyStr) -> gunbc.spark.serving_membership.SparkServingMember {
+  gunbc.spark.serving_membership.spark_serving_member(
     host: host,
     principal: test.claim.spark_serving_member_realization_witness.w_principal(),
-    address: gunbc.spark_serving_membership.SparkServingRuntimeRootAddress,
+    address: gunbc.spark.serving_membership.SparkServingRuntimeRootAddress,
     state_digest: state,
     ownership: gunbc.ownership.Owned,
   )
 }
 
-fn w_unit_member(state: std.types.NonEmptyStr) -> gunbc.spark_serving_membership.SparkServingMember {
-  gunbc.spark_serving_membership.spark_serving_member(
+fn w_unit_member(state: std.types.NonEmptyStr) -> gunbc.spark.serving_membership.SparkServingMember {
+  gunbc.spark.serving_membership.spark_serving_member(
     host: test.claim.spark_serving_member_realization_witness.w_host(),
     principal: test.claim.spark_serving_member_realization_witness.w_principal(),
-    address: gunbc.spark_serving_membership.SparkServingUserUnitAddress,
+    address: gunbc.spark.serving_membership.SparkServingUserUnitAddress,
     state_digest: state,
     ownership: gunbc.ownership.Owned,
   )
 }
 
-fn w_model_member(state: std.types.NonEmptyStr) -> gunbc.spark_serving_membership.SparkServingMember {
-  gunbc.spark_serving_membership.spark_serving_member(
+fn w_model_member(state: std.types.NonEmptyStr) -> gunbc.spark.serving_membership.SparkServingMember {
+  gunbc.spark.serving_membership.spark_serving_member(
     host: test.claim.spark_serving_member_realization_witness.w_host(),
     principal: test.claim.spark_serving_member_realization_witness.w_principal(),
-    address: gunbc.spark_serving_membership.SparkServingModelSlotAddress { slot: gunbc.spark_serving_membership.spark_serving_primary_model_slot },
+    address: gunbc.spark.serving_membership.SparkServingModelSlotAddress { slot: gunbc.spark.serving_membership.spark_serving_primary_model_slot },
     state_digest: state,
     ownership: gunbc.ownership.Owned,
   )
 }
 
-fn w_linger_member(state: std.types.NonEmptyStr) -> gunbc.spark_serving_membership.SparkServingMember {
-  gunbc.spark_serving_membership.spark_serving_member(
+fn w_linger_member(state: std.types.NonEmptyStr) -> gunbc.spark.serving_membership.SparkServingMember {
+  gunbc.spark.serving_membership.spark_serving_member(
     host: test.claim.spark_serving_member_realization_witness.w_host(),
     principal: test.claim.spark_serving_member_realization_witness.w_principal(),
-    address: gunbc.spark_serving_membership.SparkServingLingerAddress,
+    address: gunbc.spark.serving_membership.SparkServingLingerAddress,
     state_digest: state,
     ownership: gunbc.ownership.Ensured,
   )
 }
 
-fn w_runtime_replace_effect() -> gunbc.membership_reconcile.MemberEffect<gunbc.spark_serving_membership.SparkServingMember> {
+fn w_runtime_replace_effect() -> gunbc.membership_reconcile.MemberEffect<gunbc.spark.serving_membership.SparkServingMember> {
   gunbc.membership_reconcile.EffectReplace {
     from: test.claim.spark_serving_member_realization_witness.w_runtime_member(host: test.claim.spark_serving_member_realization_witness.w_host(), state: "ollama-0.32.9" as std.types.NonEmptyStr),
     to: test.claim.spark_serving_member_realization_witness.w_runtime_member(host: test.claim.spark_serving_member_realization_witness.w_host(), state: "ollama-0.33.0" as std.types.NonEmptyStr),
@@ -59,13 +59,13 @@ fn w_runtime_replace_effect() -> gunbc.membership_reconcile.MemberEffect<gunbc.s
 }
 
 test fn w_member_realization_runtime_change_is_install_owned_closure_only() -> Bool {
-  let effects = gunbc.spark_serving_member_realization.spark_serving_install_effects_for_member_effect(effect: w_runtime_replace_effect())
+  let effects = gunbc.spark.serving_member_realization.spark_serving_install_effects_for_member_effect(effect: w_runtime_replace_effect())
   length(effects) == 1
-    && gunbc.spark_serving_member_realization.spark_serving_install_effects_include(
+    && gunbc.spark.serving_member_realization.spark_serving_install_effects_include(
       effects: effects,
-      needle: gunbc.spark_serving_realization.InstallOwnedRuntimeClosure,
+      needle: gunbc.spark.serving_realization.InstallOwnedRuntimeClosure,
     )
-    && !gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: effects, needle: gunbc.spark_serving_realization.WriteSystemUnitFile)
+    && !gunbc.spark.serving_member_realization.spark_serving_install_effects_include(effects: effects, needle: gunbc.spark.serving_realization.WriteSystemUnitFile)
 }
 
 // NARROWED TWICE, and the second narrowing is this one's receipt.
@@ -103,7 +103,7 @@ test fn w_member_realization_model_slot_change_is_pull_model_artifact() -> Bool 
     from: w_model_member(state: "model-a" as std.types.NonEmptyStr),
     to: w_model_member(state: "model-b" as std.types.NonEmptyStr),
   }
-  let effects = gunbc.spark_serving_member_realization.spark_serving_install_effects_for_member_effect(effect: effect)
+  let effects = gunbc.spark.serving_member_realization.spark_serving_install_effects_for_member_effect(effect: effect)
   length(effects) == 1
     && spark_serving_install_effects_include(effects: effects, needle: gunbc.spark.serving_realization.MaterializeModelArtifact)
 }
@@ -113,26 +113,26 @@ test fn w_member_realization_linger_change_is_enable_linger() -> Bool {
     from: test.claim.spark_serving_member_realization_witness.w_linger_member(state: "linger=0" as std.types.NonEmptyStr),
     to: test.claim.spark_serving_member_realization_witness.w_linger_member(state: "linger=1" as std.types.NonEmptyStr),
   }
-  let effects = gunbc.spark_serving_member_realization.spark_serving_install_effects_for_member_effect(effect: effect)
+  let effects = gunbc.spark.serving_member_realization.spark_serving_install_effects_for_member_effect(effect: effect)
   length(effects) == 1
-    && gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: effects, needle: gunbc.spark_serving_realization.EnableLingerForOwnAccount)
+    && gunbc.spark.serving_member_realization.spark_serving_install_effects_include(effects: effects, needle: gunbc.spark.serving_realization.EnableLingerForOwnAccount)
 }
 
 test fn w_member_realization_member_changed_action_matches_effect_replace() -> Bool {
   let from = test.claim.spark_serving_member_realization_witness.w_runtime_member(host: test.claim.spark_serving_member_realization_witness.w_host(), state: "v1" as std.types.NonEmptyStr)
   let to = test.claim.spark_serving_member_realization_witness.w_runtime_member(host: test.claim.spark_serving_member_realization_witness.w_host(), state: "v2" as std.types.NonEmptyStr)
-  match gunbc.spark_serving_member_realization.spark_serving_install_effects_for_member_action(
+  match gunbc.spark.serving_member_realization.spark_serving_install_effects_for_member_action(
     action: gunbc.membership_reconcile.MemberChanged {
-      at: gunbc.spark_serving_membership.spark_serving_member_key(member: to),
+      at: gunbc.spark.serving_membership.spark_serving_member_key(member: to),
       from: from,
       to: to,
     },
   ) {
     Present { value: action_effects } =>
       length(action_effects) == 1
-        && gunbc.spark_serving_member_realization.spark_serving_install_effects_include(
+        && gunbc.spark.serving_member_realization.spark_serving_install_effects_include(
           effects: action_effects,
-          needle: gunbc.spark_serving_realization.InstallOwnedRuntimeClosure,
+          needle: gunbc.spark.serving_realization.InstallOwnedRuntimeClosure,
         )
     Absent => false
   }
@@ -150,19 +150,19 @@ test fn w_member_realization_member_changed_action_matches_effect_replace() -> B
 // could not return true for any input. A negative assertion over a predicate that is false by
 // construction proves nothing, and three of them were standing.
 test fn w_system_scope_install_effects_equal_themselves() -> Bool {
-  gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: [gunbc.spark_serving_realization.WriteSystemUnitFile], needle: gunbc.spark_serving_realization.WriteSystemUnitFile)
-    && gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: [gunbc.spark_serving_realization.ReloadSystemManager], needle: gunbc.spark_serving_realization.ReloadSystemManager)
-    && gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: [gunbc.spark_serving_realization.EnableSystemUnit], needle: gunbc.spark_serving_realization.EnableSystemUnit)
-    && gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: [gunbc.spark_serving_realization.InstallRuntimePackage], needle: gunbc.spark_serving_realization.InstallRuntimePackage)
-    && gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: [gunbc.spark_serving_realization.GrantContainerRuntimeAccess], needle: gunbc.spark_serving_realization.GrantContainerRuntimeAccess)
-    && gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: [gunbc.spark_serving_realization.RunContainerAsOwnUser], needle: gunbc.spark_serving_realization.RunContainerAsOwnUser)
+  gunbc.spark.serving_member_realization.spark_serving_install_effects_include(effects: [gunbc.spark.serving_realization.WriteSystemUnitFile], needle: gunbc.spark.serving_realization.WriteSystemUnitFile)
+    && gunbc.spark.serving_member_realization.spark_serving_install_effects_include(effects: [gunbc.spark.serving_realization.ReloadSystemManager], needle: gunbc.spark.serving_realization.ReloadSystemManager)
+    && gunbc.spark.serving_member_realization.spark_serving_install_effects_include(effects: [gunbc.spark.serving_realization.EnableSystemUnit], needle: gunbc.spark.serving_realization.EnableSystemUnit)
+    && gunbc.spark.serving_member_realization.spark_serving_install_effects_include(effects: [gunbc.spark.serving_realization.InstallRuntimePackage], needle: gunbc.spark.serving_realization.InstallRuntimePackage)
+    && gunbc.spark.serving_member_realization.spark_serving_install_effects_include(effects: [gunbc.spark.serving_realization.GrantContainerRuntimeAccess], needle: gunbc.spark.serving_realization.GrantContainerRuntimeAccess)
+    && gunbc.spark.serving_member_realization.spark_serving_install_effects_include(effects: [gunbc.spark.serving_realization.RunContainerAsOwnUser], needle: gunbc.spark.serving_realization.RunContainerAsOwnUser)
 }
 
 // Positive control for the negative direction: include() must still distinguish variants, so
 // the fix above is not "return true for everything". Without this, an equality that always
 // answered true would satisfy the claim above and break every !include assertion silently.
 test fn w_install_effects_include_still_discriminates_between_variants() -> Bool {
-  !gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: [gunbc.spark_serving_realization.WriteSystemUnitFile], needle: gunbc.spark_serving_realization.EnableSystemUnit)
-    && !gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: [gunbc.spark_serving_realization.EnableLingerForOwnAccount], needle: gunbc.spark_serving_realization.WriteUserUnitFile)
-    && !gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: [], needle: gunbc.spark_serving_realization.WriteSystemUnitFile)
+  !gunbc.spark.serving_member_realization.spark_serving_install_effects_include(effects: [gunbc.spark.serving_realization.WriteSystemUnitFile], needle: gunbc.spark.serving_realization.EnableSystemUnit)
+    && !gunbc.spark.serving_member_realization.spark_serving_install_effects_include(effects: [gunbc.spark.serving_realization.EnableLingerForOwnAccount], needle: gunbc.spark.serving_realization.WriteUserUnitFile)
+    && !gunbc.spark.serving_member_realization.spark_serving_install_effects_include(effects: [], needle: gunbc.spark.serving_realization.WriteSystemUnitFile)
 }

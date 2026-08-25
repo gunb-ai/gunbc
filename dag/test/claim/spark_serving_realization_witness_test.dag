@@ -8,8 +8,8 @@ module test.claim.spark_serving_realization_witness_test
 // which no operator had ever declared -- so this fixture was asserting a requirement about the
 // operator's intent that came from me. Corrected rather than left, because a fabricated requirement
 // sitting in a witness looks exactly like a real one to the next reader.
-fn spark_intent() -> gunbc.spark_serving_realization.SparkServingIntent {
-  gunbc.spark_serving_realization.SparkServingIntent {
+fn spark_intent() -> gunbc.spark.serving_realization.SparkServingIntent {
+  gunbc.spark.serving_realization.SparkServingIntent {
     lifecycle: SurvivesReboot,
     availability: RestartsOnFailure,
     authority: ManagedConvergenceOwned,
@@ -19,17 +19,17 @@ fn spark_intent() -> gunbc.spark_serving_realization.SparkServingIntent {
   }
 }
 
-fn present(evidence: String) -> gunbc.spark_serving_realization.CapabilityObservation {
+fn present(evidence: String) -> gunbc.spark.serving_realization.CapabilityObservation {
   gunbc.spark.serving_realization.CapabilityPresent { evidence: evidence as std.types.NonEmptyStr }
 }
 
-fn refused(cause: String) -> gunbc.spark_serving_realization.CapabilityObservation {
+fn refused(cause: String) -> gunbc.spark.serving_realization.CapabilityObservation {
   gunbc.spark.serving_realization.CapabilityRefused { cause: cause as std.types.NonEmptyStr }
 }
 
 // A host where the least-privileged realization already satisfies the intent.
-fn host_user_unit_capable() -> gunbc.spark_serving_realization.SparkHostCapabilityObservation {
-  gunbc.spark_serving_realization.SparkHostCapabilityObservation {
+fn host_user_unit_capable() -> gunbc.spark.serving_realization.SparkHostCapabilityObservation {
+  gunbc.spark.serving_realization.SparkHostCapabilityObservation {
     host: "srv5" as std.types.NonEmptyStr,
     managed_executor_account: present("fleet automation account observed"),
     no_login_service_identity: present("inference service identity observed"),
@@ -44,8 +44,8 @@ fn host_user_unit_capable() -> gunbc.spark_serving_realization.SparkHostCapabili
 }
 
 // The SAME host after gaining passwordless sudo. Nothing about the intent changed.
-fn host_user_unit_capable_plus_sudo() -> gunbc.spark_serving_realization.SparkHostCapabilityObservation {
-  gunbc.spark_serving_realization.SparkHostCapabilityObservation {
+fn host_user_unit_capable_plus_sudo() -> gunbc.spark.serving_realization.SparkHostCapabilityObservation {
+  gunbc.spark.serving_realization.SparkHostCapabilityObservation {
     host: "srv5" as std.types.NonEmptyStr,
     managed_executor_account: present("fleet automation account observed"),
     no_login_service_identity: present("inference service identity observed"),
@@ -59,8 +59,8 @@ fn host_user_unit_capable_plus_sudo() -> gunbc.spark_serving_realization.SparkHo
   }
 }
 
-fn least_privilege_policy() -> gunbc.spark_serving_realization.SparkServingRealizationPolicy {
-  gunbc.spark_serving_realization.SparkServingRealizationPolicy { privilege: LeastRequiredEffects }
+fn least_privilege_policy() -> gunbc.spark.serving_realization.SparkServingRealizationPolicy {
+  gunbc.spark.serving_realization.SparkServingRealizationPolicy { privilege: LeastRequiredEffects }
 }
 
 // The selection rendered as a comparable label, so the invariance claim can assert that the ANSWER
@@ -68,7 +68,7 @@ fn least_privilege_policy() -> gunbc.spark_serving_realization.SparkServingReali
 // unit is selected in both cases", which fused two claims -- privilege does not change the answer,
 // AND the answer is a user unit -- and the identity contract has since refuted the second. Fusing
 // them meant a correct model change reported as a regression.
-fn selection_label(capabilities: gunbc.spark_serving_realization.SparkHostCapabilityObservation) -> String {
+fn selection_label(capabilities: gunbc.spark.serving_realization.SparkHostCapabilityObservation) -> String {
   match select_spark_serving_realization(
     intent: spark_intent(),
     capabilities: capabilities,
@@ -85,7 +85,7 @@ fn selection_label(capabilities: gunbc.spark_serving_realization.SparkHostCapabi
   }
 }
 
-fn selects_user_unit(capabilities: gunbc.spark_serving_realization.SparkHostCapabilityObservation) -> Bool {
+fn selects_user_unit(capabilities: gunbc.spark.serving_realization.SparkHostCapabilityObservation) -> Bool {
   match select_spark_serving_realization(
     intent: spark_intent(),
     capabilities: capabilities,
@@ -111,8 +111,8 @@ fn selects_user_unit(capabilities: gunbc.spark_serving_realization.SparkHostCapa
 // rootless container satisfies the intent (its identity contract admits a related container identity)
 // with one privileged effect. This fixture is what the invariance claim NEEDS, and building it is
 // what exposed that the claim was previously testing something else.
-fn host_container_capable() -> gunbc.spark_serving_realization.SparkHostCapabilityObservation {
-  gunbc.spark_serving_realization.SparkHostCapabilityObservation {
+fn host_container_capable() -> gunbc.spark.serving_realization.SparkHostCapabilityObservation {
+  gunbc.spark.serving_realization.SparkHostCapabilityObservation {
     host: "srv5" as std.types.NonEmptyStr,
     managed_executor_account: present("fleet automation account observed"),
     no_login_service_identity: present("inference service identity observed"),
@@ -126,8 +126,8 @@ fn host_container_capable() -> gunbc.spark_serving_realization.SparkHostCapabili
   }
 }
 
-fn host_container_capable_plus_sudo() -> gunbc.spark_serving_realization.SparkHostCapabilityObservation {
-  gunbc.spark_serving_realization.SparkHostCapabilityObservation {
+fn host_container_capable_plus_sudo() -> gunbc.spark.serving_realization.SparkHostCapabilityObservation {
+  gunbc.spark.serving_realization.SparkHostCapabilityObservation {
     host: "srv5" as std.types.NonEmptyStr,
     managed_executor_account: present("fleet automation account observed"),
     no_login_service_identity: present("inference service identity observed"),
@@ -177,8 +177,8 @@ test fn w_selection_is_not_constant_across_genuinely_different_hosts() -> Bool {
   selection_label(capabilities: host_container_capable()) != selection_label(capabilities: host_user_unit_capable_plus_sudo())
 }
 
-fn no_managed_executor_host() -> gunbc.spark_serving_realization.SparkHostCapabilityObservation {
-  gunbc.spark_serving_realization.SparkHostCapabilityObservation {
+fn no_managed_executor_host() -> gunbc.spark.serving_realization.SparkHostCapabilityObservation {
+  gunbc.spark.serving_realization.SparkHostCapabilityObservation {
     host: "srv5" as std.types.NonEmptyStr,
     managed_executor_account: test.claim.spark_serving_realization_witness_test.refused("only the human bootstrap account exists"),
     no_login_service_identity: present("inference service identity observed"),
@@ -195,7 +195,7 @@ fn no_managed_executor_host() -> gunbc.spark_serving_realization.SparkHostCapabi
 // A user unit is NOT selected merely because it is what remains. Under SurvivesReboot it needs
 // lingering, and without it the candidate is refused rather than defaulted to.
 test fn w_user_unit_refused_when_it_cannot_satisfy_the_lifecycle() -> Bool {
-  let no_lingering = gunbc.spark_serving_realization.SparkHostCapabilityObservation {
+  let no_lingering = gunbc.spark.serving_realization.SparkHostCapabilityObservation {
     host: "srv5" as std.types.NonEmptyStr,
     managed_executor_account: present("fleet automation account observed"),
     no_login_service_identity: present("inference service identity observed"),
@@ -221,7 +221,7 @@ test fn w_user_unit_refused_when_it_cannot_satisfy_the_lifecycle() -> Bool {
 // UNOBSERVED IS NOT ABSENT AND IS ALSO NOT PRESENT. A capability nobody looked at refuses
 // admission, so a realization is never selected on the strength of a question never asked.
 test fn w_unobserved_capability_refuses_rather_than_admitting() -> Bool {
-  let unobserved = gunbc.spark_serving_realization.SparkHostCapabilityObservation {
+  let unobserved = gunbc.spark.serving_realization.SparkHostCapabilityObservation {
     host: "srv6" as std.types.NonEmptyStr,
     managed_executor_account: present("fleet automation account observed"),
     no_login_service_identity: present("inference service identity observed"),
@@ -247,7 +247,7 @@ test fn w_unobserved_capability_refuses_rather_than_admitting() -> Bool {
 // POSITIVE CONTROL for the pair above: with sudo the ONLY mechanism available, system-unit is
 // selected. Without this, a model that refused everything would pass the sudo-invariance control.
 test fn w_system_unit_selected_when_it_is_the_only_admitted_mechanism() -> Bool {
-  let system_only = gunbc.spark_serving_realization.SparkHostCapabilityObservation {
+  let system_only = gunbc.spark.serving_realization.SparkHostCapabilityObservation {
     host: "srv5" as std.types.NonEmptyStr,
     managed_executor_account: present("fleet automation account observed"),
     no_login_service_identity: present("inference service identity observed"),
@@ -279,7 +279,7 @@ test fn w_system_unit_selected_when_it_is_the_only_admitted_mechanism() -> Bool 
 // account cannot serve under ManagedConvergenceOwned however capable it otherwise is. This is what
 // makes "briansrls plus the fleet key" insufficient rather than merely untidy.
 test fn w_no_managed_executor_refuses_under_managed_authority() -> Bool {
-  let human_only = gunbc.spark_serving_realization.SparkHostCapabilityObservation {
+  let human_only = gunbc.spark.serving_realization.SparkHostCapabilityObservation {
     host: "srv5" as std.types.NonEmptyStr,
     managed_executor_account: test.claim.spark_serving_realization_witness_test.refused("only the human bootstrap account exists"),
     no_login_service_identity: present("inference service identity observed"),
@@ -354,7 +354,7 @@ test fn w_user_unit_is_structurally_inadmissible_under_a_separated_service_ident
 // realization ARE admissible. Without this, the claim above passes on a model that refuses user
 // units unconditionally, which would be wrong in the other direction.
 test fn w_user_unit_is_admissible_when_the_intent_does_not_require_separation() -> Bool {
-  let executor_owned = gunbc.spark_serving_realization.SparkServingIntent {
+  let executor_owned = gunbc.spark.serving_realization.SparkServingIntent {
     lifecycle: SurvivesReboot,
     availability: RestartsOnFailure,
     authority: ManagedConvergenceOwned,

@@ -114,8 +114,8 @@ fn synthetic_envelope_for(host: std.types.NonEmptyStr) -> extdeps.systems.nvidia
 }
 
 // A synthetic reservation fixture, carrying the all-zero MAC so it can never be mistaken for an observed router row (the convention gunbc.network_identity_subsumption's post-install fixture uses). Its only job is to make the router-binding wall a proven discriminator: without a bound fixture the positive control could not exist, and a wall no input can pass proves nothing.
-fn synthetic_bound_binding_for(identity_host: std.types.NonEmptyStr, last_octet: Int) -> gunbc.dgx_spark_procurement.DgxSparkRouterBinding {
-  gunbc.dgx_spark_procurement.SlotAssigned {
+fn synthetic_bound_binding_for(identity_host: std.types.NonEmptyStr, last_octet: Int) -> gunbc.spark.dgx_procurement.DgxSparkRouterBinding {
+  gunbc.spark.dgx_procurement.SlotAssigned {
     identity: identity_host as product.placement_supply.HostIdentity,
     reservation: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow {
       mac_address: "00:00:00:00:00:00" as extdeps.dhcp.v4.MacAddress,
@@ -125,7 +125,7 @@ fn synthetic_bound_binding_for(identity_host: std.types.NonEmptyStr, last_octet:
         status: extdeps.dhcp.v4.Active,
       },
     },
-    allocation: gunbc.dgx_spark_procurement.OperatorAllocation {
+    allocation: gunbc.spark.dgx_procurement.OperatorAllocation {
       decided_by: "synthetic fixture",
       decided_on: "2026-08-07",
       basis: "fixture allocation, not a real slot decision",
@@ -315,7 +315,7 @@ test fn w_red_admission_with_pending_router_binding_refuses() -> Bool {
     identity: operator_host_srv5,
     catalog: extdeps.systems.nvidia.nvidia_dgx_spark_4tb_catalog,
     selection: gunbc.fleet_lifecycle_observation.ObservationUnique { observation: srv5_good_observation() },
-    router_binding: gunbc.dgx_spark_procurement.SlotUnassigned { identity: operator_host_srv5 },
+    router_binding: gunbc.spark.dgx_procurement.SlotUnassigned { identity: operator_host_srv5 },
   ) {
     DgxSparkDeploymentRefused {
       reason: gunbc.spark.dgx_procurement.DeploymentAdmissionRouterBindingPending { requested_identity: i }
@@ -492,7 +492,7 @@ test fn w_red_partial_arrival_does_not_converge() -> Bool {
   match converge_dgx_spark_procurement(
     bindings: [
       synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
-      gunbc.dgx_spark_procurement.SlotUnassigned { identity: operator_host_srv6 },
+      gunbc.spark.dgx_procurement.SlotUnassigned { identity: operator_host_srv6 },
     ],
     observations: [
       srv5_good_observation(),
@@ -567,7 +567,7 @@ fn deployment_with_hardware(
   last_octet: Int,
   attempt_label: std.types.NonEmptyStr,
   hardware: gunbc.fleet_lifecycle_observation.DeviceHardwareIdentity,
-) -> gunbc.dgx_spark_procurement.DgxSparkAdmissionOutcome {
+) -> gunbc.spark.dgx_procurement.DgxSparkAdmissionOutcome {
   admit_dgx_spark_deployment(
     identity: subject_host as product.placement_supply.HostIdentity,
     catalog: extdeps.systems.nvidia.nvidia_dgx_spark_4tb_catalog,
@@ -586,17 +586,17 @@ fn deployment_with_hardware(
 fn pair_outcome_for(
   first_hw: gunbc.fleet_lifecycle_observation.DeviceHardwareIdentity,
   second_hw: gunbc.fleet_lifecycle_observation.DeviceHardwareIdentity,
-) -> gunbc.dgx_spark_procurement.DgxSparkPairAdmissionOutcome {
+) -> gunbc.spark.dgx_procurement.DgxSparkPairAdmissionOutcome {
   match deployment_with_hardware(subject_host: "srv5", last_octet: 222, attempt_label: "pair-a", hardware: first_hw) {
     DgxSparkDeploymentAdmitted { deployment: a } =>
       match deployment_with_hardware(subject_host: "srv6", last_octet: 223, attempt_label: "pair-b", hardware: second_hw) {
         DgxSparkDeploymentAdmitted { deployment: b } =>
           admit_dgx_spark_pair_deployments(first: a, second: b)
         DgxSparkDeploymentRefused { reason: r } =>
-          gunbc.dgx_spark_procurement.DgxSparkPairRefused { reason: gunbc.dgx_spark_procurement.PairUnitNotAdmitted { identity: operator_host_srv6, reason: r } }
+          gunbc.spark.dgx_procurement.DgxSparkPairRefused { reason: gunbc.spark.dgx_procurement.PairUnitNotAdmitted { identity: operator_host_srv6, reason: r } }
       }
     DgxSparkDeploymentRefused { reason: r } =>
-      gunbc.dgx_spark_procurement.DgxSparkPairRefused { reason: gunbc.dgx_spark_procurement.PairUnitNotAdmitted { identity: operator_host_srv5, reason: r } }
+      gunbc.spark.dgx_procurement.DgxSparkPairRefused { reason: gunbc.spark.dgx_procurement.PairUnitNotAdmitted { identity: operator_host_srv5, reason: r } }
   }
 }
 
@@ -657,14 +657,14 @@ test fn w_red_pair_refuses_when_hardware_identity_is_unobserved() -> Bool {
   }
 }
 
-fn unobserved_hw_deployment(subject_host: std.types.NonEmptyStr, last_octet: Int) -> gunbc.dgx_spark_procurement.DgxSparkDeployment {
+fn unobserved_hw_deployment(subject_host: std.types.NonEmptyStr, last_octet: Int) -> gunbc.spark.dgx_procurement.DgxSparkDeployment {
   let observation = synthetic_observation(
     subject_host: subject_host,
     envelope_host: subject_host,
     last_octet: last_octet,
     attempt_label: "unobserved-hw",
   )
-  gunbc.dgx_spark_procurement.DgxSparkDeployment {
+  gunbc.spark.dgx_procurement.DgxSparkDeployment {
     identity: subject_host as product.placement_supply.HostIdentity,
     catalog: extdeps.systems.nvidia.nvidia_dgx_spark_4tb_catalog,
     observation: observation,

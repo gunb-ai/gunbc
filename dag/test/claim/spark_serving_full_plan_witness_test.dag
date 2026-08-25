@@ -6,8 +6,8 @@ data subject_host: product.placement_supply.HostIdentity = "srv6" as product.pla
 // The subject is the DECLARED release, so these claims move with the real authority rather than a
 // fixture that could drift from it. A refused admission has no release to plan against, and the
 // witness says so rather than substituting one.
-fn subject_release() -> gunbc.spark_serving_release.SparkServingRelease? {
-  match gunbc.spark_serving_desired.spark_serving_desired_admission {
+fn subject_release() -> gunbc.spark.serving_release.SparkServingRelease? {
+  match gunbc.spark.serving_desired.spark_serving_desired_admission {
     SparkServingDesiredAdmitted { serving_release: r } => Present { value: r }
     SparkServingDesiredRefused { cause: _ } => none
   }
@@ -61,13 +61,13 @@ fn complete_required_store() -> gunbc.ollama_runtime_bundle.ModelStoreObservatio
   }
 }
 
-fn observed_count(p: gunbc.spark_serving_observed_members.SparkServingObservedMemberProjection) -> Int {
+fn observed_count(p: gunbc.spark.serving_observed_members.SparkServingObservedMemberProjection) -> Int {
   match p {
     SparkServingObservedMembers { members: ms, runtime_observed: _, unit_observed: _, registration_observed: _, enablement_observed: _, linger_observed: _ } => length(ms)
   }
 }
 
-fn plan_writes(p: gunbc.spark_serving_converge_plan.SparkServingFullMembershipPlan) -> Int {
+fn plan_writes(p: gunbc.spark.serving_converge_plan.SparkServingFullMembershipPlan) -> Int {
   match p {
     SparkServingFullMembershipPlanRefused { cause: _ } => 0 - 1
     SparkServingFullMembershipPlanReady { plan: plan, unit_observed: _, enablement_observed: _, linger_observed: _, observed_members: _ } =>
@@ -88,8 +88,8 @@ fn full_plan_writes(
     Absent => 0 - 2
     Present { value: r } =>
       plan_writes(
-        p: gunbc.spark_serving_converge_plan.spark_serving_full_membership_plan(
-          occurrence: gunbc.spark_serving_desired.spark_serving_occurrence(host: test.claim.spark_serving_full_plan_witness_test.subject_host, serving_release: r),
+        p: gunbc.spark.serving_converge_plan.spark_serving_full_membership_plan(
+          occurrence: gunbc.spark.serving_desired.spark_serving_occurrence(host: test.claim.spark_serving_full_plan_witness_test.subject_host, serving_release: r),
           serving_release: r,
           projection: test.claim.spark_serving_full_plan_witness_test.project(host: host, runtime: runtime, store: store, unit: unit, enablement: enablement, activity: activity, linger: linger),
         ),
@@ -109,8 +109,8 @@ fn full_plan_refuses(
   match test.claim.spark_serving_full_plan_witness_test.subject_release() {
     Absent => false
     Present { value: r } =>
-      match gunbc.spark_serving_converge_plan.spark_serving_full_membership_plan(
-        occurrence: gunbc.spark_serving_desired.spark_serving_occurrence(host: test.claim.spark_serving_full_plan_witness_test.subject_host, serving_release: r),
+      match gunbc.spark.serving_converge_plan.spark_serving_full_membership_plan(
+        occurrence: gunbc.spark.serving_desired.spark_serving_occurrence(host: test.claim.spark_serving_full_plan_witness_test.subject_host, serving_release: r),
         serving_release: r,
         projection: test.claim.spark_serving_full_plan_witness_test.project(host: host, runtime: runtime, store: store, unit: unit, enablement: enablement, activity: activity, linger: linger),
       ) {
@@ -128,8 +128,8 @@ test fn the_declared_desired_population_is_seven_members() -> Bool {
   match test.claim.spark_serving_full_plan_witness_test.subject_release() {
     Absent => false
     Present { value: r } =>
-      length(gunbc.spark_serving_membership.spark_serving_desired_members(
-        occurrence: gunbc.spark_serving_desired.spark_serving_occurrence(host: test.claim.spark_serving_full_plan_witness_test.subject_host, serving_release: r),
+      length(gunbc.spark.serving_membership.spark_serving_desired_members(
+        occurrence: gunbc.spark.serving_desired.spark_serving_occurrence(host: test.claim.spark_serving_full_plan_witness_test.subject_host, serving_release: r),
         serving_release: r,
       )) == 7
   }
@@ -154,7 +154,7 @@ test fn a_bare_host_plans_all_seven_members_not_only_linger() -> Bool {
 // The contrast, executed rather than asserted in prose: the superseded plan writes exactly one.
 test fn the_superseded_linger_plan_writes_exactly_one() -> Bool {
   gunbc.membership_reconcile.membership_write_count(
-    plan: gunbc.spark_serving_converge_plan.spark_serving_linger_membership_plan(host: test.claim.spark_serving_full_plan_witness_test.subject_host, linger_enabled: false),
+    plan: gunbc.spark.serving_converge_plan.spark_serving_linger_membership_plan(host: test.claim.spark_serving_full_plan_witness_test.subject_host, linger_enabled: false),
   ) == 1
 }
 
@@ -233,7 +233,7 @@ test fn an_observed_absent_unit_does_support_an_empty_replan() -> Bool {
 }
 
 test fn a_refused_projection_never_supports_an_empty_replan() -> Bool {
-  !gunbc.spark_serving_observed_members.spark_serving_projection_supports_empty_replan(
+  !gunbc.spark.serving_observed_members.spark_serving_projection_supports_empty_replan(
     projection: test.claim.spark_serving_full_plan_witness_test.project(
       host: test.claim.spark_serving_full_plan_witness_test.subject_host,
       runtime: gunbc.ollama_runtime_bundle.RuntimeMaterializationObservationRefused { cause: "probe leg unreachable" as std.types.NonEmptyStr }, store: gunbc.ollama_runtime_bundle.ModelStoreObservationRefused { cause: "probe leg unreachable" as std.types.NonEmptyStr },
@@ -251,10 +251,10 @@ test fn a_refused_projection_never_supports_an_empty_replan() -> Bool {
 // typed rows than its own plan had actions and reported no diagnostic. Its frequency was zero by
 // construction because the only live plan is linger-only and linger always translates -- which is
 // exactly why it is worth an executed witness rather than a reading of the code.
-fn removal_refusing_plan() -> gunbc.membership_reconcile.MembershipPlan<gunbc.spark_serving_membership.SparkServingMember, gunbc.spark_serving_membership.SparkServingMemberAt> {
-  gunbc.spark_serving_membership.spark_serving_membership_reconcile(
+fn removal_refusing_plan() -> gunbc.membership_reconcile.MembershipPlan<gunbc.spark.serving_membership.SparkServingMember, gunbc.spark.serving_membership.SparkServingMemberAt> {
+  gunbc.spark.serving_membership.spark_serving_membership_reconcile(
     desired: [],
-    observed: [gunbc.spark_serving_converge_plan.spark_serving_desired_linger_member(host: test.claim.spark_serving_full_plan_witness_test.subject_host)],
+    observed: [gunbc.spark.serving_converge_plan.spark_serving_desired_linger_member(host: test.claim.spark_serving_full_plan_witness_test.subject_host)],
   )
 }
 
@@ -289,7 +289,7 @@ test fn an_ordinary_linger_plan_still_projects_its_rows() -> Bool {
 // separately, so neither could ever match and a correctly installed host replanned both members on
 // every run. The defect survived review precisely because no witness asserted the zero case -- a
 // roster full of drift-detection claims is satisfied by a projection that reports drift always.
-fn observed_exactly_desired(r: gunbc.spark_serving_release.SparkServingRelease) -> gunbc.spark_serving_observed_members.SparkServingObservedMemberProjection {
+fn observed_exactly_desired(r: gunbc.spark.serving_release.SparkServingRelease) -> gunbc.spark.serving_observed_members.SparkServingObservedMemberProjection {
   spark_serving_observed_members(
     host: test.claim.spark_serving_full_plan_witness_test.subject_host,
     runtime: complete_required_runtime(),

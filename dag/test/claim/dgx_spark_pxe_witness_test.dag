@@ -116,8 +116,8 @@ test fn w_red_network_standing_without_observation_is_unobserved() -> Bool {
   }
 }
 
-fn synthetic_ready_network_observation() -> gunbc.dgx_spark_pxe_boot.PxeNetworkObservation {
-  gunbc.dgx_spark_pxe_boot.PxeNetworkObservation {
+fn synthetic_ready_network_observation() -> gunbc.spark.dgx_pxe_boot.PxeNetworkObservation {
+  gunbc.spark.dgx_pxe_boot.PxeNetworkObservation {
     dhcp_offers_bootloader: true,
     tftp_grub_config_reachable: true,
     tftp_kernel_initrd_reachable: true,
@@ -126,8 +126,8 @@ fn synthetic_ready_network_observation() -> gunbc.dgx_spark_pxe_boot.PxeNetworkO
   }
 }
 
-fn synthetic_ready_firmware_config() -> gunbc.dgx_spark_pxe_boot.SparkUefiPxeConfiguration {
-  gunbc.dgx_spark_pxe_boot.SparkUefiPxeConfiguration {
+fn synthetic_ready_firmware_config() -> gunbc.spark.dgx_pxe_boot.SparkUefiPxeConfiguration {
+  gunbc.spark.dgx_pxe_boot.SparkUefiPxeConfiguration {
     secure_boot: extdeps.systems.nvidia_dgx_spark_pxe.SecureBootDisabledForPxe,
     network_stack_enabled: true,
     ipv4_pxe_support_enabled: true,
@@ -170,7 +170,7 @@ test fn w_red_reachability_without_isolation_not_ready() -> Bool {
 
 test fn w_firmware_intervention_instruction_derives_bootloader_authority() -> Bool {
   match evaluate_spark_pxe_firmware_standing(
-    config: gunbc.dgx_spark_pxe_boot.SparkUefiPxeConfiguration {
+    config: gunbc.spark.dgx_pxe_boot.SparkUefiPxeConfiguration {
       secure_boot: extdeps.systems.nvidia_dgx_spark_pxe.BootloaderEnrolledForPxe { bootloader: "grubnetaa64.efi" },
       network_stack_enabled: true,
       ipv4_pxe_support_enabled: true,
@@ -188,7 +188,7 @@ test fn w_firmware_intervention_instruction_derives_bootloader_authority() -> Bo
 
 test fn w_firmware_standing_refuses_secure_boot_default_without_enrollment() -> Bool {
   match evaluate_spark_pxe_firmware_standing(
-    config: gunbc.dgx_spark_pxe_boot.SparkUefiPxeConfiguration {
+    config: gunbc.spark.dgx_pxe_boot.SparkUefiPxeConfiguration {
       secure_boot: extdeps.systems.nvidia_dgx_spark_pxe.BootloaderEnrolledForPxe { bootloader: "grubnetaa64.efi" },
       network_stack_enabled: true,
       ipv4_pxe_support_enabled: true,
@@ -200,7 +200,7 @@ test fn w_firmware_standing_refuses_secure_boot_default_without_enrollment() -> 
     SparkPxeFirmwareReady => false
   }
     && match evaluate_spark_pxe_firmware_standing(
-      config: gunbc.dgx_spark_pxe_boot.SparkUefiPxeConfiguration {
+      config: gunbc.spark.dgx_pxe_boot.SparkUefiPxeConfiguration {
         secure_boot: extdeps.systems.nvidia_dgx_spark_pxe.BootloaderEnrolledForPxe { bootloader: spark_pxe_bootloader_filename },
         network_stack_enabled: true,
         ipv4_pxe_support_enabled: true,
@@ -277,7 +277,7 @@ test fn w_red_admission_with_network_gap_refuses_before_firmware() -> Bool {
     tftp_root: witness_tftp_root,
     http_image_root: witness_http_root,
     network_observation: Present {
-      value: gunbc.dgx_spark_pxe_boot.PxeNetworkObservation {
+      value: gunbc.spark.dgx_pxe_boot.PxeNetworkObservation {
         dhcp_offers_bootloader: false,
         tftp_grub_config_reachable: true,
         tftp_kernel_initrd_reachable: true,
@@ -309,7 +309,7 @@ test fn w_red_admission_with_firmware_gap_refuses() -> Bool {
     http_endpoint: Present { value: witness_http_endpoint },
     isolation: Present { value: gunbc.spark.dgx_pxe_boot.ProxyDhcpPxeOnly },
     firmware_config: Present {
-      value: gunbc.dgx_spark_pxe_boot.SparkUefiPxeConfiguration {
+      value: gunbc.spark.dgx_pxe_boot.SparkUefiPxeConfiguration {
         secure_boot: extdeps.systems.nvidia_dgx_spark_pxe.SecureBootDisabledForPxe,
         network_stack_enabled: false,
         ipv4_pxe_support_enabled: true,
