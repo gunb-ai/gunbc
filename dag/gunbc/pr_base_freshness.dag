@@ -234,38 +234,6 @@ fn pull_request_run_started_at(owner: String, repo: String, head_sha: CommitSha)
 // default. The forge computes the test-merge asynchronously, a commit can have no parents, and a
 // head can carry no run at all; a version of this that filled any of those in would be answering
 // from ignorance in exactly the direction that reads as fresh.
-// WHAT IS COVERED HERE IS THE REFUSAL LOGIC, NOT THE WIRING THAT REACHES IT, AND THE DIFFERENCE
-// MATTERS BECAUSE FIVE REASONS READ AS FIVE COVERED PATHS.
-//
-// BaseUnknown carries five reasons produced at five distinct sites. Exactly ONE --
-// MergeRefRecomputed -- is reachable from a fixture and occupied by executing witnesses, because
-// classify_base_freshness and tested_base_provenance_from_timestamps are pure over plain arguments
-// and need no forge. Measured 2026-08-25 by mutation: folding the provenance arm so
-// TestedBaseSuperseded consults the comparison reds three witnesses while two controls stay green.
-//
-// THE OTHER FOUR -- NoRunForHead, MergeCommitNotComputed, MergeCommitHasNoParents,
-// UnrecognizedComparisonStatus -- are produced INSIDE this function, downstream of live github
-// calls, so no fixture can author the upstream absence that triggers them. Their refusal LOGIC is
-// covered at source: first_parent's no-parents case is enrolled with its own positive control, and
-// parse_comparison_status is pure and directly testable. What is uncovered is the WIRING -- that an
-// absent upstream fact arrives at the reason naming it.
-//
-// THAT CONSEQUENCE IS MEASURED RATHER THAN INFERRED, because it is the sentence a reader will most
-// want to lean on. Mutation, 2026-08-25: NoRunForHead and MergeCommitNotComputed were SWAPPED at
-// their two sites in this function, so each absence reports the other absence's reason. All
-// thirteen of this module's witnesses still PASS. Nothing reds. The provenance mutation above is
-// this measurement's positive control -- it proves the same instrument DOES catch a defect in this
-// module, so the thirteen greens here are the wiring being unwatched and not the harness being
-// asleep.
-//
-// NEXT-RUNG TRIGGER, so this is a declared gap and not an untracked stall: a github mock at this
-// seam. With one, all four become ordinary enrolled fixtures and this note retires. Until then the
-// honest reading is one reason walled and four described.
-//
-// NOT A DECORATION FINDING, stated because it is the reading this note would otherwise attract: the
-// four reasons are distinguishable, individually labelled and individually consumed, and the pure
-// halves beneath them are tested. This is a coverage gap in the wiring, not a permanently-green
-// check.
 fn observe_pull_request_base_freshness(
   owner: String,
   repo: String,
