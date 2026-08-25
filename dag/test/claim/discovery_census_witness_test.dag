@@ -1,0 +1,393 @@
+module test.claim.discovery_census_witness
+
+import extdeps.bazel.label {
+  Label, LabelParse, LabelParsed, LabelRefused,
+  LabelRefusal, RepositoryQualifiedLabel, MissingRepositoryRootPrefix,
+  MultipleColonSeparators, EmptyTargetName, EmptyPackageSegment, DotSegment,
+  TargetPattern, TargetNameContainsSlash,
+  parse_label, render_label, label_eq,
+}
+import gunbc.build_target {
+  BuildTarget, target_identity, is_required_aggregate,
+  required_aggregate_label,
+  AggregateStanding, AggregateSatisfied, AggregateNoDependencies, AggregateRefused,
+  TargetStanding, BuildStanding, TargetCompleted,
+  TestStanding, TestRunByFloor,
+  required_aggregate_standing, aggregate_standing_blocks,
+}
+import gunbc.discovery_census {
+  DiscoveredSite, CensusRow,
+  CensusRefusal, SiteModulePathEmpty, SiteLabelRefused, DuplicateSiteIdentity,
+  SiteCensus, CensusAccepted, CensusRefused,
+  discovery_census, census_planned_labels, census_counts, CensusCounts,
+  RequiredAggregateDerivation, RequiredAggregateDerived, RequiredAggregateUnderivable,
+  required_aggregate_from_census,
+}
+import v2.workflow.required_floor {
+  RequiredFloorDisposition,
+  Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedLiveTree,
+  required_floor_site_disposition,
+}
+import v2.workflow.floor_terminal_ledger { ClaimDisposition, Passed }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
+import std.types { String, Bool }
+import std.integer { Int }
+
+// EVERY FIXTURE IN THIS MODULE IS AUTHORED IN THE SOURCE, so the whole file is hermetic and says
+// so. Without the declaration the floor's fail-closed default reads the module as live-tree
+// reading and DECLINES it: discovered, counted, never run.
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+// ---------------------------------------------------------------------------------------------
+// FIXTURES
+// ---------------------------------------------------------------------------------------------
+
+fn hermetic_site(module_path: String, function: String) -> DiscoveredSite {
+  DiscoveredSite {
+    module_path: module_path,
+    function: function,
+    reads_live_tree: SubstrateInputsOnly {}
+  }
+}
+
+fn live_tree_site(module_path: String, function: String) -> DiscoveredSite {
+  DiscoveredSite {
+    module_path: module_path,
+    function: function,
+    reads_live_tree: ReadsLiveTree {}
+  }
+}
+
+// A MIXED POPULATION, ONE SITE PER DISPOSITION ARM. The fixture-home member also READS THE LIVE
+// TREE, which is what makes the admission-order assertion below discriminating rather than
+// incidental: reorder the two declines and this row changes arm.
+fn mixed_sites() -> List<DiscoveredSite> {
+  [
+    hermetic_site(module_path: "test.claim.alpha_witness", function: "w_alpha"),
+    hermetic_site(module_path: "test.claim.alpha_witness", function: "w_beta"),
+    hermetic_site(module_path: "test.claim.long.slow_witness", function: "w_slow"),
+    live_tree_site(module_path: "v2.test.fixture.walk_plan_stage.common", function: "w_member"),
+    live_tree_site(module_path: "test.claim.reads_tree_witness", function: "w_reads")
+  ]
+}
+
+fn census_rows_of(sites: List<DiscoveredSite>) -> List<CensusRow> {
+  match discovery_census(sites: sites) {
+    CensusAccepted { rows: rows } => rows
+    CensusRefused { cause: _ } => []
+  }
+}
+
+fn rendered_planned_labels(sites: List<DiscoveredSite>) -> List<String> {
+  fold(census_planned_labels(rows: census_rows_of(sites: sites)), init: [], f: fn(acc, l) {
+    concat(acc, [render_label(l: l)])
+  })
+}
+
+fn list_holds(xs: List<String>, wanted: String) -> Bool {
+  fold(xs, init: false, f: fn(acc, x) { acc || (x == wanted) })
+}
+
+
+// THE REFUSAL CLASSIFIERS ARE WILDCARD-FREE, so a widened label grammar cannot make an assertion
+// below pass by folding a new family into an arm it already names.
+fn refusal_is_empty_package_segment(c: LabelRefusal) -> Bool {
+  match c {
+    EmptyPackageSegment { text: _ } => true
+    RepositoryQualifiedLabel { repository_text: _ } => false
+    MissingRepositoryRootPrefix { text: _ } => false
+    MultipleColonSeparators { text: _ } => false
+    EmptyTargetName { text: _ } => false
+    DotSegment { segment: _ } => false
+    TargetPattern { pattern: _ } => false
+    TargetNameContainsSlash { name: _ } => false
+  }
+}
+
+fn refusal_is_empty_target_name(c: LabelRefusal) -> Bool {
+  match c {
+    EmptyTargetName { text: _ } => true
+    RepositoryQualifiedLabel { repository_text: _ } => false
+    MissingRepositoryRootPrefix { text: _ } => false
+    MultipleColonSeparators { text: _ } => false
+    EmptyPackageSegment { text: _ } => false
+    DotSegment { segment: _ } => false
+    TargetPattern { pattern: _ } => false
+    TargetNameContainsSlash { name: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE SITE -> LABEL MAPPING
+// ---------------------------------------------------------------------------------------------
+
+test fn w_site_label_is_the_module_path_as_package() -> Bool {
+  let rendered = rendered_planned_labels(sites: mixed_sites())
+  list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_alpha")
+    && list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_beta")
+}
+
+// THE LEADING EMPTY SEGMENT IS THE CONTROL THE OBVIOUS JOIN FAILS. An accumulator that skips the
+// separator while it is still empty renders `.a.b` as `a/b` — a perfectly good package — and the
+// malformed module path is silently repaired into a valid target identity. Here it must refuse,
+// and it must refuse with the label grammar's own cause rather than a generic one.
+test fn w_leading_empty_module_segment_refuses_as_empty_package_segment() -> Bool {
+  match discovery_census(sites: [hermetic_site(module_path: ".alpha.beta", function: "w")]) {
+    CensusAccepted { rows: _ } => false
+    CensusRefused { cause: c } =>
+      match c {
+        SiteLabelRefused { module_path: m, function: f, cause: lc } =>
+          (m == ".alpha.beta") && (f == "w") && refusal_is_empty_package_segment(c: lc)
+        SiteModulePathEmpty { function: _ } => false
+        DuplicateSiteIdentity { identity: _ } => false
+      }
+  }
+}
+
+fn census_refuses_with_empty_module_path(sites: List<DiscoveredSite>, function: String) -> Bool {
+  match discovery_census(sites: sites) {
+    CensusAccepted { rows: _ } => false
+    CensusRefused { cause: c } =>
+      match c {
+        SiteModulePathEmpty { function: f } => f == function
+        SiteLabelRefused { module_path: _, function: _, cause: _ } => false
+        DuplicateSiteIdentity { identity: _ } => false
+      }
+  }
+}
+
+fn census_refuses_with_empty_target_name(sites: List<DiscoveredSite>) -> Bool {
+  match discovery_census(sites: sites) {
+    CensusAccepted { rows: _ } => false
+    CensusRefused { cause: c } =>
+      match c {
+        SiteLabelRefused { module_path: _, function: _, cause: lc } =>
+          refusal_is_empty_target_name(c: lc)
+        SiteModulePathEmpty { function: _ } => false
+        DuplicateSiteIdentity { identity: _ } => false
+      }
+  }
+}
+
+// THE TWO EMPTIES REFUSE APART. An empty module path has no package to name and an empty
+// function has no target to name; collapsing them into one `MalformedSite` would send two
+// different repairs to the same place.
+test fn w_empty_module_path_and_empty_function_refuse_apart() -> Bool {
+  census_refuses_with_empty_module_path(
+    sites: [hermetic_site(module_path: "", function: "w")],
+    function: "w"
+  ) && census_refuses_with_empty_target_name(
+    sites: [hermetic_site(module_path: "a.b", function: "")]
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE DISPOSITION, AND ITS ORDER
+// ---------------------------------------------------------------------------------------------
+
+// THE FIXTURE MEMBER READS THE LIVE TREE AND MUST STILL REPORT `DeclinedFixtureMember`. Swap the
+// two decline tests and this arm becomes `DeclinedLiveTree` — a staged prediction standing where
+// a permanent ownership fact belongs, so the site would look like it rejoins the floor when the
+// live-tree arm is deleted. It does not.
+test fn w_fixture_home_dominates_live_tree() -> Bool {
+  match required_floor_site_disposition(
+    module_path: "v2.test.fixture.walk_plan_stage.common",
+    reads_live_tree: ReadsLiveTree {}
+  ) {
+    DeclinedFixtureMember { matched_prefix: p } => p == "v2.test.fixture.walk_plan_stage."
+    Planned => false
+    DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedLiveTree => false
+  }
+}
+
+test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
+  match required_floor_site_disposition(
+    module_path: "test.claim.long.slow_witness",
+    reads_live_tree: SubstrateInputsOnly {}
+  ) {
+    DeclinedLongModule { matched_prefix: p } => p == "test.claim.long."
+    Planned => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+    DeclinedLiveTree => false
+  }
+}
+
+// THE PREFIX IS TESTED ON THE AUTHORED MODULE NAME AND NOT ON A DIRECTORY, so a module whose name
+// merely CONTAINS the long-home spelling later in the path is planned. This is the positive
+// control beside the decline above: without it the decline could pass under a `contains` test.
+test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
+  match required_floor_site_disposition(
+    module_path: "test.claim.not_test_claim_long.witness",
+    reads_live_tree: SubstrateInputsOnly {}
+  ) {
+    Planned => true
+    DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+    DeclinedLiveTree => false
+  }
+}
+
+test fn w_live_tree_site_declines_when_no_home_matched() -> Bool {
+  match required_floor_site_disposition(
+    module_path: "test.claim.reads_tree_witness",
+    reads_live_tree: ReadsLiveTree {}
+  ) {
+    DeclinedLiveTree => true
+    Planned => false
+    DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE PARTITION
+// ---------------------------------------------------------------------------------------------
+
+// THE FOUR ARMS SUM TO THE OFFERED POPULATION. The production fold has no partition check
+// because a row holds exactly one disposition and the counting match has no wildcard, so this is
+// the executing evidence for that construction rather than a second wall beside it.
+test fn w_counts_partition_the_offered_population() -> Bool {
+  let counts = census_counts(rows: census_rows_of(sites: mixed_sites()))
+  (counts.offered == 5)
+    && (counts.planned == 2)
+    && (counts.declined_long_module == 1)
+    && (counts.declined_fixture_member == 1)
+    && (counts.declined_live_tree == 1)
+    && (counts.offered ==
+        counts.planned + counts.declined_long_module
+          + counts.declined_fixture_member + counts.declined_live_tree)
+}
+
+// EVERY DISCOVERED SITE GETS A ROW, DECLINED OR NOT. A census that dropped the declines would
+// still derive the same `//:required` and would still pass every assertion about it — which is
+// exactly why this is asserted separately from the aggregate below.
+test fn w_declined_sites_are_rows_not_omissions() -> Bool {
+  let rows = census_rows_of(sites: mixed_sites())
+  let rendered = fold(rows, init: [], f: fn(acc, row) { concat(acc, [render_label(l: row.label)]) })
+  ((rows |> count) == 5)
+    && list_holds(xs: rendered, wanted: "//test/claim/long/slow_witness:w_slow")
+    && list_holds(xs: rendered, wanted: "//v2/test/fixture/walk_plan_stage/common:w_member")
+    && list_holds(xs: rendered, wanted: "//test/claim/reads_tree_witness:w_reads")
+}
+
+// ---------------------------------------------------------------------------------------------
+// DUPLICATES
+// ---------------------------------------------------------------------------------------------
+
+// THE DUPLICATE IS TWO DECLINED SITES, NOT TWO PLANNED ONES. The host loop this derivation
+// stands beside refuses a duplicate only where it becomes an executable claim, so a declined
+// pair passes there unnoticed; here a census row IS a target identity, and two rows with one
+// identity would make `//:required` name a dependency the standings list can answer twice.
+test fn w_duplicate_identity_refuses_even_when_declined() -> Bool {
+  match discovery_census(sites: [
+    live_tree_site(module_path: "test.claim.dup_witness", function: "w"),
+    live_tree_site(module_path: "test.claim.dup_witness", function: "w")
+  ]) {
+    CensusAccepted { rows: _ } => false
+    CensusRefused { cause: c } =>
+      match c {
+        DuplicateSiteIdentity { identity: i } => i == "//test/claim/dup_witness:w"
+        SiteModulePathEmpty { function: _ } => false
+        SiteLabelRefused { module_path: _, function: _, cause: _ } => false
+      }
+  }
+}
+
+// THE POSITIVE CONTROL BESIDE IT: two sites in one module with DIFFERENT function names are two
+// identities and are both accepted. Without this the duplicate refusal could pass by refusing
+// every module that appears twice.
+test fn w_two_functions_in_one_module_are_two_identities() -> Bool {
+  match discovery_census(sites: [
+    hermetic_site(module_path: "test.claim.alpha_witness", function: "w_alpha"),
+    hermetic_site(module_path: "test.claim.alpha_witness", function: "w_beta")
+  ]) {
+    CensusAccepted { rows: rows } => (rows |> count) == 2
+    CensusRefused { cause: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// //:required, DERIVED
+// ---------------------------------------------------------------------------------------------
+
+// THE AGGREGATE'S DEPENDENCIES ARE THE PLANNED SUBSET AND NOTHING ELSE — asserted as an identity
+// join over the rendered labels, not as a count. A count would pass on any two of the five.
+test fn w_required_aggregate_dependencies_are_exactly_the_planned_subset() -> Bool {
+  match required_aggregate_from_census(census: discovery_census(sites: mixed_sites())) {
+    RequiredAggregateUnderivable { cause: _ } => false
+    RequiredAggregateDerived { aggregate: a } => {
+      let rendered = fold(a.dependencies, init: [], f: fn(acc, l) { concat(acc, [render_label(l: l)]) })
+      is_required_aggregate(t: a)
+        && (target_identity(t: a) == "//:required")
+        && ((a.dependencies |> count) == 2)
+        && list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_alpha")
+        && list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_beta")
+        && !list_holds(xs: rendered, wanted: "//test/claim/long/slow_witness:w_slow")
+        && !list_holds(xs: rendered, wanted: "//v2/test/fixture/walk_plan_stage/common:w_member")
+        && !list_holds(xs: rendered, wanted: "//test/claim/reads_tree_witness:w_reads")
+    }
+  }
+}
+
+// A REFUSED CENSUS DOES NOT PRODUCE AN EMPTY AGGREGATE, AND THE DIFFERENCE IS THE CAUSE A READER
+// IS HANDED. An empty one would refuse downstream as `AggregateNoDependencies` — "requires
+// nothing" — while the real cause was a site that could not be labelled.
+test fn w_refused_census_yields_no_aggregate_and_keeps_the_cause() -> Bool {
+  match required_aggregate_from_census(
+    census: discovery_census(sites: [hermetic_site(module_path: "", function: "w")])
+  ) {
+    RequiredAggregateDerived { aggregate: _ } => false
+    RequiredAggregateUnderivable { cause: c } =>
+      match c {
+        SiteModulePathEmpty { function: f } => f == "w"
+        SiteLabelRefused { module_path: _, function: _, cause: _ } => false
+        DuplicateSiteIdentity { identity: _ } => false
+      }
+  }
+}
+
+// A CENSUS WHOSE EVERY SITE IS DECLINED DERIVES AN AGGREGATE THAT REQUIRES NOTHING, AND THAT
+// AGGREGATE BLOCKS. This is the reading a mis-wired discovery pass produces — every witness
+// declined, `//:required` satisfied over an empty conjunction — and it is refused one module
+// away rather than reported as green here.
+test fn w_all_declined_derives_an_aggregate_that_blocks() -> Bool {
+  let all_declined = [
+    live_tree_site(module_path: "test.claim.reads_tree_witness", function: "w_reads"),
+    hermetic_site(module_path: "test.claim.long.slow_witness", function: "w_slow")
+  ]
+  match required_aggregate_from_census(census: discovery_census(sites: all_declined)) {
+    RequiredAggregateUnderivable { cause: _ } => false
+    RequiredAggregateDerived { aggregate: a } =>
+      match required_aggregate_standing(aggregate: a, standings: []) {
+        AggregateNoDependencies => aggregate_standing_blocks(a: AggregateNoDependencies {})
+        AggregateSatisfied { dependency_count: _ } => false
+        AggregateRefused { finding_count: _, findings: _ } => false
+      }
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE WHOLE CHAIN: the derived aggregate, joined against a standing per
+// planned dependency, is SATISFIED. Without this the blocking assertions above could all pass
+// with a census that never derives anything usable.
+test fn w_derived_aggregate_is_satisfiable_against_standings() -> Bool {
+  match required_aggregate_from_census(census: discovery_census(sites: mixed_sites())) {
+    RequiredAggregateUnderivable { cause: _ } => false
+    RequiredAggregateDerived { aggregate: a } => {
+      let standings = fold(a.dependencies, init: [], f: fn(acc, l) {
+        concat(acc, [
+          TargetStanding {
+            target: l,
+            build: TargetCompleted { success: true },
+            test: TestRunByFloor { disposition: Passed {} }
+          }
+        ])
+      })
+      match required_aggregate_standing(aggregate: a, standings: standings) {
+        AggregateSatisfied { dependency_count: n } => n == 2
+        AggregateNoDependencies => false
+        AggregateRefused { finding_count: _, findings: _ } => false
+      }
+    }
+  }
+}

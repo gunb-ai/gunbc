@@ -1,0 +1,313 @@
+module gunbc.discovery_census
+
+import extdeps.bazel.label {
+  Label,
+  LabelParse, LabelParsed, LabelRefused,
+  LabelRefusal,
+  parse_label, render_label, label_eq,
+}
+import gunbc.build_target {
+  BuildTarget,
+  required_aggregate_target,
+}
+import v2.workflow.required_floor {
+  RequiredFloorDisposition,
+  Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedLiveTree,
+  required_floor_site_disposition,
+  required_floor_disposition_is_planned,
+}
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.optional { Optional, Absent, Present, optional_absent, optional_present }
+import std.types { String, Bool }
+import std.integer { Int }
+
+// EVERY DISCOVERED SITE GETS A ROW, AND THE ROW IS THE JOIN THIS MODULE EXISTS FOR.
+//
+// Two authorities already stand, one module away each: `v2.workflow.required_floor` owns
+// `RequiredFloorDisposition` — which sites the floor executes and why the rest are declined —
+// and `gunbc.build_target` owns target identity and the `//:required` aggregate. What did not
+// exist is the census that joins them: one row per DISCOVERED site, carrying the label that
+// names it and the disposition that decides it, from which `//:required` is DERIVED rather than
+// authored.
+//
+// DERIVED IS THE WHOLE POINT. A hand-authored dependency list for `//:required` would be a
+// second population beside the discovered one, and the two would disagree the first time a
+// witness was added — silently, in the direction that under-runs, because a list nobody
+// regenerated is a list that lost rows. Here the aggregate's dependencies ARE the Planned
+// subset of the census, computed by one fold, so a discovered site is either a dependency of
+// `//:required` or carries the named disposition saying why it is not.
+//
+// WHAT THIS MODULE IS NOT. It observes nothing. It does not walk the corpus, read a file,
+// decide whether a site executed, or hold a verdict — `gunbc.build_target`'s `TargetStanding`
+// carries standings and the floor produces them. This is the roster, not the result: which
+// identities `//:required` is answerable for, before anything runs.
+
+// ---------------------------------------------------------------------------------------------
+// THE DISCOVERED SITE
+// ---------------------------------------------------------------------------------------------
+
+// THE SITE IS IDENTITY-GRAINED — `module.function` — AND NOT PATH-GRAINED, and that is the
+// 2026-08-04 admission ruling `v2.workflow.required_floor` records rather than a fresh choice
+// here: a directory is not the admission authority, the module's own authored name is. That is
+// also why this carrier is not `v2.workflow.floor_discovery` `FloorDiscoveryRow`, which is keyed
+// on the ENTRY PATH a witness was found in and carries no authored module name at all. The two
+// are different keys for different questions — where a declaration was found, versus which
+// identity it is — and the disposition below can only be computed from the second.
+type DiscoveredSite {
+  module_path: String
+  function: String
+  reads_live_tree: LiveTreeDisposition
+}
+
+// THE ROW CARRIES NO IDENTITY FIELD BESIDE THE LABEL, for the reason `gunbc.build_target`
+// `BuildTarget` carries none: a row holding both a label and a qualified name would be two
+// answers to one question, and the moment they can disagree a consumer has to pick. The
+// qualified identity is recoverable from the label — `render_label` is total and the mapping
+// below is injective — so nothing is lost by not storing it.
+type CensusRow {
+  label: Label
+  disposition: RequiredFloorDisposition
+}
+
+// A SITE THAT CANNOT BE LABELLED IS A REFUSAL, NEVER A DROPPED ROW. Silently skipping it would
+// shrink the census and therefore shrink `//:required` — the empty-observation narrow, arriving
+// as a smaller required set that still reports itself satisfied. Both arms name the site, so the
+// refusal is located rather than a count.
+type CensusRefusal
+  = SiteModulePathEmpty { function: String }
+  | SiteLabelRefused { module_path: String, function: String, cause: LabelRefusal }
+  | DuplicateSiteIdentity { identity: String }
+
+type SiteCensus
+  = CensusAccepted { rows: List<CensusRow> }
+  | CensusRefused { cause: CensusRefusal }
+
+// ---------------------------------------------------------------------------------------------
+// THE LABEL OF A SITE
+// ---------------------------------------------------------------------------------------------
+
+// THE MAPPING IS `a.b.c` + `f` -> `//a/b/c:f`, AND IT IS INJECTIVE. The package is the module's
+// segments and the target is the function, so two sites share a label only if they share both —
+// which is the duplicate the fold below refuses by name.
+//
+// THE JOIN IS WRITTEN SO AN EMPTY SEGMENT SURVIVES IT. The obvious accumulator — skip the
+// separator while the accumulator is still empty — silently swallows a LEADING empty segment, so
+// the malformed module path `.a` would join to `a` and parse as a perfectly good package. Here
+// every segment is prefixed with `/` and the leading separator is removed once, so `.a` joins to
+// `/a`, splits back to an empty segment, and `parse_label` refuses it with the cause the label
+// grammar already owns. This module mints no second package grammar: it renders the text and
+// hands it to `parse_label`, so the excluded families that authority names — dot segments,
+// patterns, a target containing `/` — refuse here for free and with their own causes.
+fn module_path_as_package_text(module_path: String) -> String {
+  let joined = fold(split(s: module_path, delimiter: "."), init: "", f: fn(acc, seg) {
+    concat(concat(acc, "/"), seg)
+  })
+  substring(s: joined, start: 1, end: joined.length())
+}
+
+fn site_label_text(site: DiscoveredSite) -> String {
+  concat(
+    concat(concat("//", module_path_as_package_text(module_path: site.module_path)), ":"),
+    site.function
+  )
+}
+
+type SiteLabelParse
+  = SiteLabelParsed { label: Label }
+  | SiteLabelParseRefused { cause: CensusRefusal }
+
+fn site_label(site: DiscoveredSite) -> SiteLabelParse {
+  if site.module_path.length() == 0 {
+    SiteLabelParseRefused { cause: SiteModulePathEmpty { function: site.function } }
+  } else {
+    match parse_label(text: site_label_text(site: site)) {
+      LabelParsed { label: l } => SiteLabelParsed { label: l }
+      LabelRefused { cause: c } =>
+        SiteLabelParseRefused {
+          cause: SiteLabelRefused {
+            module_path: site.module_path,
+            function: site.function,
+            cause: c
+          }
+        }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE CENSUS FOLD
+// ---------------------------------------------------------------------------------------------
+
+// THE FIRST REFUSAL IS STICKY AND THE FOLD RUNS TO THE END, which is deliberate in both halves.
+// It does not abandon the walk, because a partially built row list handed to a consumer is the
+// narrow this module refuses to produce; and it does not overwrite the first cause with the
+// last, because the first refusal is the one an author can act on without repairing three
+// downstream symptoms of it first.
+type CensusFoldState {
+  rows: List<CensusRow>
+  refusal: Optional<CensusRefusal>
+}
+
+fn census_fold_zero() -> CensusFoldState {
+  CensusFoldState { rows: [], refusal: optional_absent() }
+}
+
+fn census_state_refuse(state: CensusFoldState, cause: CensusRefusal) -> CensusFoldState {
+  match state.refusal {
+    Present { value: _ } => state
+    Absent => CensusFoldState { rows: state.rows, refusal: optional_present(value: cause) }
+  }
+}
+
+fn census_rows_hold_label(rows: List<CensusRow>, wanted: Label) -> Bool {
+  fold(rows, init: false, f: fn(acc, row) { acc || label_eq(a: row.label, b: wanted) })
+}
+
+// A DUPLICATE IS REFUSED OVER THE WHOLE CENSUS, NOT ONLY OVER THE PLANNED SUBSET. The host loop
+// this derivation stands beside refuses a duplicate only where it would become an executable
+// claim, so two declined sites sharing an identity pass unnoticed there. They cannot pass here:
+// a census row is a target identity, `label_eq` is the one comparison over it, and two rows with
+// one identity would make `//:required` name a dependency the standings list can answer twice.
+fn census_fold_site(state: CensusFoldState, site: DiscoveredSite) -> CensusFoldState {
+  match site_label(site: site) {
+    SiteLabelParseRefused { cause: c } => census_state_refuse(state: state, cause: c)
+    SiteLabelParsed { label: l } =>
+      if census_rows_hold_label(rows: state.rows, wanted: l) {
+        census_state_refuse(
+          state: state,
+          cause: DuplicateSiteIdentity { identity: render_label(l: l) }
+        )
+      } else {
+        CensusFoldState {
+          rows: concat(state.rows, [
+            CensusRow {
+              label: l,
+              disposition: required_floor_site_disposition(
+                module_path: site.module_path,
+                reads_live_tree: site.reads_live_tree
+              )
+            }
+          ]),
+          refusal: state.refusal
+        }
+      }
+  }
+}
+
+fn discovery_census(sites: List<DiscoveredSite>) -> SiteCensus {
+  let state = fold(sites, init: census_fold_zero(), f: fn(acc, site) {
+    census_fold_site(state: acc, site: site)
+  })
+  match state.refusal {
+    Present { value: c } => CensusRefused { cause: c }
+    Absent => CensusAccepted { rows: state.rows }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// //:required, DERIVED FROM THE PLANNED SUBSET
+// ---------------------------------------------------------------------------------------------
+
+fn census_planned_rows(rows: List<CensusRow>) -> List<CensusRow> {
+  filter(rows, row => required_floor_disposition_is_planned(d: row.disposition))
+}
+
+fn census_planned_labels(rows: List<CensusRow>) -> List<Label> {
+  fold(census_planned_rows(rows: rows), init: [], f: fn(acc, row) { concat(acc, [row.label]) })
+}
+
+// THE AGGREGATE IS UNDERIVABLE FROM A REFUSED CENSUS, IN ITS OWN ARM AND CARRYING THE CAUSE.
+// Deriving `//:required` from the rows a refused walk happened to collect would be exactly the
+// under-run this module is built to prevent, and returning an EMPTY aggregate instead would be
+// worse: `gunbc.build_target` refuses a dependency-free aggregate as `AggregateNoDependencies`,
+// so the reader would be handed a refusal whose stated cause is "requires nothing" when the
+// actual cause was a site that could not be labelled.
+type RequiredAggregateDerivation
+  = RequiredAggregateDerived { aggregate: BuildTarget }
+  | RequiredAggregateUnderivable { cause: CensusRefusal }
+
+fn required_aggregate_from_census(census: SiteCensus) -> RequiredAggregateDerivation {
+  match census {
+    CensusRefused { cause: c } => RequiredAggregateUnderivable { cause: c }
+    CensusAccepted { rows: rows } =>
+      RequiredAggregateDerived {
+        aggregate: required_aggregate_target(dependencies: census_planned_labels(rows: rows))
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// COUNTS
+// ---------------------------------------------------------------------------------------------
+
+// THE COUNTS ARE DERIVED AND THE PARTITION IS EXACT BY CONSTRUCTION, so there is no
+// partition-exactness check here. Each row holds exactly one disposition and the fold below
+// matches it with no wildcard, so `offered` is the sum of the four arms because there is nowhere
+// else for a row to go — a check restating that would be validation standing where construction
+// already holds (DESIGN §5). The floor's own host-side partition check exists because THERE the
+// counters are incremented independently and can drift; here they cannot.
+//
+// A FIFTH DISPOSITION ARM MUST FAIL TO COMPILE IN THIS FOLD. That is the reason the match is
+// written out rather than counted as "planned and everything else": a new decline reason
+// silently joining the non-planned remainder would leave the census reporting a population it no
+// longer distinguishes.
+type CensusCounts {
+  offered: Int
+  planned: Int
+  declined_long_module: Int
+  declined_fixture_member: Int
+  declined_live_tree: Int
+}
+
+fn census_counts_zero() -> CensusCounts {
+  CensusCounts {
+    offered: 0,
+    planned: 0,
+    declined_long_module: 0,
+    declined_fixture_member: 0,
+    declined_live_tree: 0
+  }
+}
+
+fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> CensusCounts {
+  match d {
+    Planned =>
+      CensusCounts {
+        offered: counts.offered + 1,
+        planned: counts.planned + 1,
+        declined_long_module: counts.declined_long_module,
+        declined_fixture_member: counts.declined_fixture_member,
+        declined_live_tree: counts.declined_live_tree
+      }
+    DeclinedLongModule { matched_prefix: _ } =>
+      CensusCounts {
+        offered: counts.offered + 1,
+        planned: counts.planned,
+        declined_long_module: counts.declined_long_module + 1,
+        declined_fixture_member: counts.declined_fixture_member,
+        declined_live_tree: counts.declined_live_tree
+      }
+    DeclinedFixtureMember { matched_prefix: _ } =>
+      CensusCounts {
+        offered: counts.offered + 1,
+        planned: counts.planned,
+        declined_long_module: counts.declined_long_module,
+        declined_fixture_member: counts.declined_fixture_member + 1,
+        declined_live_tree: counts.declined_live_tree
+      }
+    DeclinedLiveTree =>
+      CensusCounts {
+        offered: counts.offered + 1,
+        planned: counts.planned,
+        declined_long_module: counts.declined_long_module,
+        declined_fixture_member: counts.declined_fixture_member,
+        declined_live_tree: counts.declined_live_tree + 1
+      }
+  }
+}
+
+fn census_counts(rows: List<CensusRow>) -> CensusCounts {
+  fold(rows, init: census_counts_zero(), f: fn(acc, row) {
+    census_counts_add(counts: acc, d: row.disposition)
+  })
+}
