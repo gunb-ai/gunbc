@@ -1,0 +1,63 @@
+module test.claim.carrier_derivation_baseline_witness_test
+
+
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+data carrier_derivation_baseline_note: String = "THE ORACLE IS THE COMMITTED PRIOR AUTHORITY, NOT A MEASUREMENT OF THE CURRENT TREE. Every literal below is the exact content of the five hand-authored spelling maps as they stood before the carrier roster replaced them -- kernel_algebra_profile in std.algebra and container_template_algebra_rows, container_template_alias_rows, container_type_arity and canonical_container_names in std.types, at gunbc main 9180ecb174. That is a versioned prior authority in the sense DESIGN.md section 5 requires of a merge-blocking literal, and the assertion is an identity join over key/value pairs rather than a count: a derivation that produced the right NUMBER of rows with a wrong key still fails here.\n\nWHAT IT IS FOR. The roster change is a refactor whose entire claim is that nothing observable moved -- the five maps are now folds over one AlgebraCarrier list instead of five literals, and the compiler consumes them at method-existence, container-arity, alias-resolution and coercion-inhabitant decisions. Those consumers are spread across 04_types, 04_infer and coercion, so a silent one-key drift would surface as an unrelated refusal somewhere else entirely, or not at all. This witness is the join that makes the equality the change asserts an executed fact.\n\nIT IS EXPECTED TO CHANGE WHEN A CARRIER IS ADDED, and that is the point rather than a defect in it. An eleventh carrier legitimately alters these maps; a red here says the author must state which maps it joins, which is exactly the question the five literals let an author skip. What it refuses is a carrier row edited in a way that moves a derived map WITHOUT the author intending it -- a membership flipped while adjusting a neighbouring field, a spelling renamed on one row and not another. The baseline is not a snapshot of whatever the tree currently produces; re-deriving it from the current tree would collapse it to measure() == measure(), which is the change detector DESIGN.md section 5 names and rejects."
+
+fn expected_profile_keys() -> List<String> {
+  ["Bool", "FinitePowerSet", "FinitelySupportedFunction", "Float", "Int", "List", "Map", "PartialFunction", "Set", "String"]
+}
+
+fn expected_algebra_rows() -> Map<String, String> {
+  {
+    "List": "FreeMonoid", "list": "FreeMonoid",
+    "Set": "FinitePowerSet", "set": "FinitePowerSet",
+    "Map": "FinitelySupportedFunction", "map": "FinitelySupportedFunction",
+    "FreeMonoid": "FreeMonoid", "free_monoid": "FreeMonoid",
+    "BooleanAlgebra": "BooleanAlgebra", "boolean_algebra": "BooleanAlgebra",
+    "FinitePowerSet": "FinitePowerSet", "finite_power_set": "FinitePowerSet",
+    "FinitelySupportedFunction": "FinitelySupportedFunction",
+    "finitely_supported_function": "FinitelySupportedFunction",
+    "PartialFunction": "PartialFunction", "partial_function": "PartialFunction",
+    "PointwisePower": "PointwisePower", "pointwise_power": "PointwisePower"
+  }
+}
+
+fn expected_alias_rows() -> Map<String, String> {
+  {
+    "List": "FreeMonoid", "list": "FreeMonoid",
+    "Set": "FinitePowerSet", "set": "FinitePowerSet",
+    "Map": "FinitelySupportedFunction", "map": "FinitelySupportedFunction",
+    "PartialFunction": "PartialFunction", "partial_function": "PartialFunction"
+  }
+}
+
+fn expected_arity() -> Map<String, Int> {
+  { "List": 1, "Set": 1, "Map": 2, "Witness": 1 }
+}
+
+fn expected_roster() -> List<String> {
+  ["FinitePowerSet", "FinitelySupportedFunction", "FreeMonoid", "List", "Map", "PartialFunction", "PointwisePower", "Set", "Witness"]
+}
+
+test fn derived_profile_keys_match() -> Bool {
+  sorted_map_keys(std.algebra.kernel_algebra_profile) == expected_profile_keys()
+}
+
+test fn derived_algebra_rows_match() -> Bool {
+  std.types.container_template_algebra_rows == expected_algebra_rows()
+}
+
+test fn derived_alias_rows_match() -> Bool {
+  std.types.container_template_alias_rows == expected_alias_rows()
+}
+
+test fn derived_arity_matches() -> Bool {
+  std.types.container_type_arity == expected_arity()
+}
+
+test fn derived_roster_matches() -> Bool {
+  std.types.canonical_container_names() == expected_roster()
+}

@@ -35393,6 +35393,25 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
         if decl_count.get(name).copied().unwrap_or(0) != 1 {
             continue;
         }
+        // INTENDED SCOPE GATE, not an oversight. This lens answers ONE question --
+        // DESIGN §5 coverage-by-illusion: a carrier that a test makes look exercised
+        // while no production code reads it. A carrier that is referenced by NOTHING,
+        // test included, is a different class with a different remedy (delete it, or
+        // write the missing test and let it land here), so it cannot share this
+        // roster: a roster row means "modeled ahead of its consumer, tested, awaiting
+        // one", and every one of these would be a row asserting a test that does not
+        // exist. That class is owned by the still-unbuilt run-root reachability cut
+        // (gunbc.plans.inert_layer_lens, `v2.lens.inert_layer`), whose retirement
+        // condition names it. Measured over `dag` + `src/v2` at 32597358f16 on
+        // 2026-08-24: 8821 declared carriers, 14 flagged here, 270 skipped by this
+        // line -- the same order the plan predicted for a raw sweep ("hundreds"),
+        // which is why the two are separate cuts and not one roster. A dated
+        // observation, not a bound: nothing gates on either number.
+        // `green_control_untested_unused_carrier_is_not_flagged` below is the
+        // executing control that keeps this exclusion deliberate rather than latent:
+        // it plants exactly this carrier and asserts it stays off the roster, so
+        // deleting this line goes red -- executed both ways 2026-08-24: gate present,
+        // 12 passed; gate deleted, that one control fails with got ["Staged"].
         if !self_tested.contains(name) {
             continue;
         }

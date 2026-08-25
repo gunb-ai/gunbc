@@ -43,21 +43,43 @@ fn integer_interval_value_set_node(interval: v2.std.node.Node) -> v2.std.node.No
 }
 }
 
-fn integer_value_set_decode_invalid_diagnostic(source_carrier: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
+fn integer_value_set_decode_diagnostic(reason: v2.std.node.Symbol, source_carrier: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
-    reason: ^integer_value_set_decode_invalid,
+    reason: reason,
     at: node_locus(node: source_carrier),
     correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
 
+fn integer_value_set_decode_rejected<T>(reason: v2.std.node.Symbol, source_carrier: v2.std.node.Node) -> v2.std.diagnostic.Outcome<T> {
+  v2.std.diagnostic.Rejected {
+    diagnostics: v2.std.diagnostic.diagnostics_singleton(
+      d: integer_value_set_decode_diagnostic(reason: reason, source_carrier: source_carrier)
+    )
+  }
+}
+
+fn integer_value_set_decode_rejected_with_cause<T>(
+  reason: v2.std.node.Symbol,
+  source_carrier: v2.std.node.Node,
+  cause: v2.std.diagnostic.NonEmptyDiagnostics
+) -> v2.std.diagnostic.Outcome<T> {
+  v2.std.diagnostic.Rejected {
+    diagnostics: v2.std.diagnostic.non_empty_diagnostics_append(
+      a: v2.std.diagnostic.diagnostics_singleton(
+        d: integer_value_set_decode_diagnostic(reason: reason, source_carrier: source_carrier)
+      ),
+      b: cause
+    )
+  }
+}
+
 fn integer_value_set_from_node(value_set: v2.std.node.Node) -> v2.std.diagnostic.Outcome<IntegerValueSet> {
-  if well_formed(n: value_set) == false {
-      v2.std.diagnostic.Rejected {
-        diagnostics: diagnostics_singleton(
-          d: integer_value_set_decode_invalid_diagnostic(source_carrier: value_set)
-        )
-      }
+  if v2.std.node.well_formed(n: value_set) == false {
+      integer_value_set_decode_rejected(
+        reason: ^integer_value_set_carrier_not_well_formed,
+        source_carrier: value_set
+      )
   } else {
     match find_named_child(root: value_set, name: ^integer_value_set_field_kind) {
       Accepted { value: found_kind, diagnostics: kind_ds } =>
@@ -65,20 +87,18 @@ fn integer_value_set_from_node(value_set: v2.std.node.Node) -> v2.std.diagnostic
           if count(value_set.children) == 1 {
             match find_named_child(root: value_set, name: ^integer_value_set_field_interval) {
               v2.std.diagnostic.Accepted { value: _, diagnostics: _ } =>
-                v2.std.diagnostic.Rejected {
-                  diagnostics: diagnostics_singleton(
-                    d: integer_value_set_decode_invalid_diagnostic(source_carrier: value_set)
-                  )
-                }
-              Rejected { diagnostics: _ } =>
+                integer_value_set_decode_rejected(
+                  reason: ^integer_value_set_unbounded_carries_interval_field,
+                  source_carrier: value_set
+                )
+              v2.std.diagnostic.Rejected { diagnostics: _ } =>
                 v2.std.diagnostic.Accepted { value: IntegerValueSetUnbounded, diagnostics: kind_ds }
             }
           } else {
-            v2.std.diagnostic.Rejected {
-              diagnostics: diagnostics_singleton(
-                d: integer_value_set_decode_invalid_diagnostic(source_carrier: value_set)
-              )
-            }
+            integer_value_set_decode_rejected(
+              reason: ^integer_value_set_unbounded_field_count_unexpected,
+              source_carrier: value_set
+            )
           }
         } else if found_kind == integer_value_set_atom(id: ^integer_value_set_kind_interval) {
           if count(value_set.children) == 2 {
@@ -90,39 +110,36 @@ fn integer_value_set_from_node(value_set: v2.std.node.Node) -> v2.std.diagnostic
                     diagnostics: v2.std.diagnostic.diagnostics_merge(outer: kind_ds, inner: interval_ds)
                   }
                 } else {
-                  v2.std.diagnostic.Rejected {
-                    diagnostics: diagnostics_singleton(
-                      d: integer_value_set_decode_invalid_diagnostic(source_carrier: value_set)
-                    )
-                  }
-                }
-              Rejected { diagnostics: _ } =>
-                v2.std.diagnostic.Rejected {
-                  diagnostics: diagnostics_singleton(
-                    d: integer_value_set_decode_invalid_diagnostic(source_carrier: value_set)
+                  integer_value_set_decode_rejected(
+                    reason: ^integer_value_set_interval_spec_malformed,
+                    source_carrier: interval
                   )
                 }
+              v2.std.diagnostic.Rejected { diagnostics: interval_lookup_ds } =>
+                integer_value_set_decode_rejected_with_cause(
+                  reason: ^integer_value_set_interval_field_unresolved,
+                  source_carrier: value_set,
+                  cause: interval_lookup_ds
+                )
             }
           } else {
-            v2.std.diagnostic.Rejected {
-              diagnostics: diagnostics_singleton(
-                d: integer_value_set_decode_invalid_diagnostic(source_carrier: value_set)
-              )
-            }
-          }
-        } else {
-          v2.std.diagnostic.Rejected {
-            diagnostics: diagnostics_singleton(
-              d: integer_value_set_decode_invalid_diagnostic(source_carrier: value_set)
+            integer_value_set_decode_rejected(
+              reason: ^integer_value_set_interval_field_count_unexpected,
+              source_carrier: value_set
             )
           }
-        }
-      Rejected { diagnostics: _ } =>
-        v2.std.diagnostic.Rejected {
-          diagnostics: diagnostics_singleton(
-            d: integer_value_set_decode_invalid_diagnostic(source_carrier: value_set)
+        } else {
+          integer_value_set_decode_rejected(
+            reason: ^integer_value_set_kind_unrecognized,
+            source_carrier: found_kind
           )
         }
+      v2.std.diagnostic.Rejected { diagnostics: kind_lookup_ds } =>
+        integer_value_set_decode_rejected_with_cause(
+          reason: ^integer_value_set_kind_field_unresolved,
+          source_carrier: value_set,
+          cause: kind_lookup_ds
+        )
     }
   }
 }
@@ -152,9 +169,9 @@ fn integer_value_set_contains(container: v2.std.node.Node, contained: v2.std.nod
             container: decoded_container,
             contained: decoded_contained
           )
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

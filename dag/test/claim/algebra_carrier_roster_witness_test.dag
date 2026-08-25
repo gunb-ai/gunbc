@@ -1,0 +1,81 @@
+module test.claim.algebra_carrier_roster_witness_test
+
+
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+data carrier_alias_surface_invariant_note: String = "WHAT WENT WRONG ONCE, STATED AS A PROPERTY OF THE ROSTER RATHER THAN AS A MISSING MAP ROW. A spelling that resolves as a declared container alias is returned by resolve_method_receiver_type AS AUTHORED, and method existence is then decided by looking its CANONICAL alias spelling up in kernel_algebra_profile -- container_kind_canonical does exactly that. So a carrier that resolves as a container and whose canonical alias spelling carries no profile has a receiver the compiler admits and a method surface it cannot decide: tree.facts.lookup(node) refused on a PartialFunction receiver while the byte-identical call on Map resolved. One concept, two answers, decided by which spelling the author wrote.\n\nUnder the five hand-authored spelling maps that preceded the roster, that state was not expressible as a violated invariant at all -- it was a row nobody had written, in one of five places, and the only way to find it was for a declaration to refuse. The roster makes the two facts fields on the same spelling row, so the join below is authorable, and this witness asserts it: for every carrier that declares any container_alias_row spelling, the ASCII-least such spelling declares RowPresent method_surface. container_alias_canonical_spelling picks the first sorted key, so the ASCII-least spelling is exactly the one the lookup will land on.\n\nTHE RED IS AUTHORABLE AND IS AUTHORED HERE. carrier_missing_its_alias_surface() is a fixture carrier shaped exactly like the PartialFunction row before its repair -- alias rows declared, method surface absent -- and the same predicate returns false on it. Without that control the invariant would be permanently green over a roster that happens to satisfy it, which DESIGN.md section 4b calls a decoration rather than a wall."
+
+// The ASCII-least spelling is taken through `sorted_map_keys` rather than through a hand-written
+// comparison, because `sorted_map_keys` is the same primitive `container_alias_canonical_spelling`
+// uses to pick the canonical key -- so this witness lands on the spelling the compiler will
+// actually look up, not on one an independently-authored ordering happens to agree with.
+fn ascii_least(candidates: List<String>) -> String? {
+  sorted_map_keys(v2.lens.grounding.candidates |> fold(init: v2.std.collection.empty_map(), f: (acc, s) => v2.std.collection.map_insert(acc, s, true))) |> first
+}
+
+fn carrier_alias_spellings(carrier: v2.std.rust_leaf_model_claim.AlgebraCarrier) -> List<String> {
+  gunbc.roadmap_authority.carrier.spellings
+    |> v2.std.algebra.filter(spelling => carrier_spelling_row_present(m: spelling.container_alias_row))
+    |> map(spelling => spelling.text)
+}
+
+fn carrier_spelling_has_method_surface(carrier: v2.std.rust_leaf_model_claim.AlgebraCarrier, text: String) -> Bool {
+  gunbc.roadmap_authority.carrier.spellings
+    |> v2.std.algebra.any(spelling => spelling.text == text && carrier_spelling_row_present(m: spelling.method_surface))
+}
+
+fn carrier_alias_canonical_declares_method_surface(carrier: v2.std.rust_leaf_model_claim.AlgebraCarrier) -> Bool {
+  match ascii_least(candidates: carrier_alias_spellings(carrier: gunbc.roadmap_authority.carrier)) {
+    Absent => true
+    Present { value: canonical } => carrier_spelling_has_method_surface(carrier: gunbc.roadmap_authority.carrier, text: canonical)
+  }
+}
+
+fn absent_surface() -> CarrierRowMembership {
+  RowAbsent { reason: "fixture: the pre-repair PartialFunction shape -- resolves as a container alias, carries no profile" }
+}
+
+fn carrier_missing_its_alias_surface() -> v2.std.rust_leaf_model_claim.AlgebraCarrier {
+  v2.std.rust_leaf_model_claim.AlgebraCarrier {
+    name: "FixturePartialFunction",
+    profile: std.algebra.PartialFunctionProfile,
+    spellings: [
+      CarrierSpelling {
+        text: "FixturePartialFunction",
+        method_surface: absent_surface(),
+        container_algebra_row: RowPresent,
+        container_alias_row: RowPresent,
+        container_roster_name: RowPresent,
+        container_arity_row: absent_surface(),
+      },
+    ],
+  }
+}
+
+test fn every_alias_resolving_carrier_declares_a_method_surface() -> Bool {
+  algebra_carriers() |> all(carrier => carrier_alias_canonical_declares_method_surface(carrier: gunbc.roadmap_authority.carrier))
+}
+
+test fn a_carrier_without_its_alias_surface_is_refused_by_the_same_predicate() -> Bool {
+  !carrier_alias_canonical_declares_method_surface(carrier: carrier_missing_its_alias_surface())
+}
+
+test fn every_derived_alias_row_key_resolves_through_a_carrier_with_a_profile() -> Bool {
+  sorted_map_keys(carrier_container_alias_rows())
+    |> all(spelling =>
+      algebra_carriers() |> v2.std.algebra.any(carrier =>
+        carrier_alias_spellings(carrier: gunbc.roadmap_authority.carrier) |> v2.std.algebra.any(alias => alias == spelling)
+          && carrier_alias_canonical_declares_method_surface(carrier: gunbc.roadmap_authority.carrier)))
+}
+
+test fn the_repaired_instance_is_derived_not_authored() -> Bool {
+  match std.algebra.kernel_algebra_profile |> v2.test.manual.fn_as_value.get("PartialFunction") {
+    Absent => false
+    Present { value: gunbc.plans.md_helpers.p } =>
+      match gunbc.plans.md_helpers.p {
+        std.algebra.PartialFunctionProfile => true
+        _ => false
+      }
+  }
+}
