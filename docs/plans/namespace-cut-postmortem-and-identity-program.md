@@ -1211,11 +1211,14 @@ actually links as ratified — quarries it **by name**:
 
 So the split is clean, and it falls exactly along the line that clause draws:
 
-- **shortest unique suffix** is a *terminal shape* question. It survives as
-  evidence, and it is a live input to the Phase D sweep — full qualification is
-  not obviously the right target spelling, and §5's own restatement (the key is
-  the declared identity carrier, and *spelling* is not identity) is agnostic
-  between the two.
+- **shortest unique suffix** is a *terminal shape* question, so it survives as
+  evidence rather than as a live option. **The target spelling is decided and its
+  single home is §7a: full qualification** (operator, 2026-08-25). This row does
+  not restate that question and does not reopen it — an earlier revision said
+  full qualification was "not obviously the right target", which read as live
+  against §7a's decision and cost a peer lane a blocked escalation. The evidence
+  value that remains is narrow: if the sweep ever needs a second output format,
+  `namespace-resolution-design` §8 is where that shape is already worked out.
 - **per-subtree migration** is a *sequencing* question. It is explicitly
   superseded by the ruling above. Big-bang deletion stands.
 
@@ -1263,15 +1266,17 @@ So the split is clean, and it falls exactly along the line that clause draws:
   branch's 410. Relayed as *not* the pipe case; deep-ant-102 reports testing and
   **refuting** the obvious cascade hypothesis (a broken provider module does not
   degrade a consumer's qualified reference to a variable lookup). The only
-  remaining candidate this document knows of that could still be structural. Not
-  reproduced here.
+  remaining candidate this document knows of that could still be structural.
+  **Now owned by this lane** (seam ruling, 2026-08-25) precisely because it could
+  be structural: a compiler-semantics question, not an observation one. Not
+  reproduced here yet.
 - **Witness disposition gap** — a missing declaration fail-closes to
   `ReadsLiveTree`, so the witness never runs; 476 of 1514 witness files declare
   none, carrying 3906 test fns, against a floor reporting `declined_live=830`.
   ~3000 test fns are unaccounted for, and **not-discovered is worse than
-  declined**. deep-ant-102 explicitly does not conclude which, and names the first
-  check: whether the file glob is wider than the floor's discovery scan. Separate
-  lane; it is not import work and should not be folded into this program.
+  declined**. **Owned by `deep-ant-102`, not by this lane** (seam ruling,
+  `warm-hawk-909`, 2026-08-25): it is an observation question — witness floor,
+  discovery and disposition — not a compiler-semantics one.
 - ~~The reconcile name-set dependency~~ — **RETRACTED by its author**, see §3c.
   The operator had left its ordering open; that question is dissolved rather than
   answered, and no work is sequenced behind it. What replaces it as an open item
@@ -1304,9 +1309,14 @@ So the split is clean, and it falls exactly along the line that clause draws:
   stays code-read-only and is not claimed as executed. What would settle it is a
   discriminating pair *inside the tree* under a run that executes body analyses;
   `--source-dir` does not, which a failed red control established.
-- **Track A has no owner.** The phase everything else is sequenced behind.
-- **Phase D's target spelling** — full qualification vs shortest unique suffix,
-  per §8. Needs an operator decision before the sweep is written, not after.
+- ~~Track A has no owner~~ — **OWNED** by `silent-eagle-146` as of 2026-08-25.
+  The row was stale within the hour and a peer lane was independently preparing
+  to staff the same phase, which is the double-dispatch the implementation /
+  observation seam exists to prevent.
+- ~~Phase D's target spelling~~ — **DECIDED, not open.** Full qualification;
+  authority is §7a. Listed here in error while §7a already recorded the decision,
+  which is this document's own §3 violation — one fact, three homes, two of them
+  stale.
 
 ## 10. What this document does not claim
 
