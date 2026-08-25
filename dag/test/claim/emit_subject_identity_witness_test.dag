@@ -12,7 +12,7 @@ import gunbc.emit_subject_identity {
   MembershipInvariantNotEvaluated,
   candidates_within_closure, closure_within_checked, membership_invariant_rows,
   EmitSubjectMatrix, SubjectMatrix, SubjectMatrixRefused,
-  emit_subject_matrix, emit_subject_matrix_keys, emit_subject_kinds,
+  emit_subject_matrix, emit_subject_kinds,
   subject_key_roster_contains, orphan_admission_keys
 }
 
@@ -158,10 +158,10 @@ test fn an_unobservable_outer_side_is_not_evaluated_rather_than_satisfied() -> B
 // THE MATRIX IS INVENTORY-COMPLETE: roots times kinds, so an unmeasured subject is PRESENT and
 // arrives as unmeasured rather than being absent and reading as nothing to say.
 test fn the_matrix_is_every_root_crossed_with_every_kind() -> Bool {
-  let keys = emit_subject_matrix_keys(
-    matrix: emit_subject_matrix(roots: ["dag", "src/v2"], policy: NamespaceOnlyY)
-  )
-  count(keys) == (2 * count(emit_subject_kinds))
+  match emit_subject_matrix(roots: ["dag", "src/v2"], policy: NamespaceOnlyY) {
+    SubjectMatrixRefused { cause: _ } => false
+    SubjectMatrix { keys: ks } => count(ks) == (2 * count(emit_subject_kinds))
+  }
 }
 
 test fn an_empty_inventory_refuses_rather_than_yielding_an_empty_roster() -> Bool {

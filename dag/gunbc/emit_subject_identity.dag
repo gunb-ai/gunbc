@@ -245,12 +245,17 @@ fn emit_subject_matrix(roots: List<String>, policy: NameResolutionPolicy) -> Emi
   }
 }
 
-fn emit_subject_matrix_keys(matrix: EmitSubjectMatrix) -> List<EmitSubjectKey> {
-  match matrix {
-    SubjectMatrix { keys: ks } => ks
-    SubjectMatrixRefused { cause: _ } => []
-  }
-}
+// THERE IS DELIBERATELY NO `keys(matrix)` ACCESSOR, and its absence is the construction rather than
+// an omission. Such a helper has to answer something for `SubjectMatrixRefused`, and the only
+// available answer is `[]` -- which launders the refusal this coproduct exists to carry and hands a
+// caller who asked for "just the keys" an empty roster indistinguishable from a roster of no
+// subjects. That is the empty-observation narrow the prose above forbids, re-introduced by a
+// convenience accessor one screen below where it is forbidden. Callers match the coproduct, so the
+// refused arm has to be answered at every site rather than once, in the wrong direction, here.
+//
+// (Caught in review of gunbc#9238: the accessor was written, it did exactly this, and nothing
+// consumed it yet. Recorded because the shape is more instructive than the fix -- the refusal was
+// modeled correctly and then dissolved by an accessor added for convenience.)
 
 // ---------------------------------------------------------------------------------------------
 // ADMISSION-ORPHAN, CARRIED THROUGH THE KEY CHANGE.
