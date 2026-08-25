@@ -3334,8 +3334,14 @@ const COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY: &str = "dag/gunbc/compile_clean_dia
 /// enormously oversized (the policy module has three imports) and, more seriously, a function
 /// answering a question about the CALLER's world by consulting a DIFFERENT one. Measured, same
 /// probe, only the caller's roots varied: 216ms when the caller's roots happened to match the
-/// whole-tree key, 44886ms when they did not and the resolve paid a cold whole-tree load
-/// (`docs/probes/qualified_name_resolution_cost_2026-08-23.md`).
+/// whole-tree key, 44886ms when they did not and the resolve paid a cold whole-tree load.
+/// THE METHOD DOCUMENT FOR THOSE FIGURES IS NOT IN THIS TREE AND NEVER WAS. It was authored in
+/// #9044, whose squash produced an EMPTY COMMIT because the code had already landed via #9025
+/// minutes earlier -- so the citation this comment used to carry named a path that no reader could
+/// ever have followed. The figures above are the surviving in-tree record; the full four-ordering
+/// method is at refs/pull/9044/head. It is deliberately not restored: docs/probes was bankrupted
+/// 2026-08-24 (d3bebd0072f, every transcription deleted), so re-landing a probe document there
+/// would re-open a corpus this repository just closed.
 ///
 /// FAIL-CLOSED BY CONSTRUCTION (DESIGN §5): every arm that cannot produce the exact closure
 /// REFUSES with a typed, located message naming the module and the file. It must never fall back
