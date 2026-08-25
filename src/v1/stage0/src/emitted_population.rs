@@ -131,7 +131,6 @@
 // src/v1_std_core.rs
 // src/v1_test_non_ascii_perf_fixture.rs
 // src/v1_tests_claim_checkpoint_identity_keying_witness_test.rs
-// src/v1_tests_claim_resolved_call_emission_identity_internal_witness_test.rs
 // src/v1_tests_claim_transport_roster_closure_witness_test.rs
 // src/wt_a.rs
 // src/wt_b.rs

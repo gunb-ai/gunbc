@@ -647,43 +647,22 @@ pub fn make_kernel_record_type(type_name: String, fields: Rc<Vec<Rc<Node>>>) -> 
 }
 
 pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTypeBuild> {
-    if !is_kernel_type(kind_name.clone()) {
-        Rc::new(KernelTypeBuild {
-            ty: nominal_type_ref(kind_name.clone()),
-            diagnostics: Rc::new(vec![]),
-        })
-    } else {
-        match container_param_name(kind_name.clone(), 0) {
-            Some(param_name) => Rc::new(KernelTypeBuild {
-                ty: Rc::new(Node {
-                    name: kind_name.clone(),
-                    span: kernel_span(kind_name.clone()),
-                    ident_span: Some(kernel_span(kind_name.clone())),
-                    children: Rc::new(vec![Rc::new(Node {
-                        name: param_name.clone(),
-                        span: kernel_span(param_name.clone()),
-                        ident_span: Some(kernel_span(param_name.clone())),
-                        children: Rc::new(vec![]),
-                        connective: Connective::NoConnective,
-                        params: Rc::new(vec![]),
-                        inferred: Some(Rc::new(InferredNode::Resolved {
-                            node: element.clone(),
-                        })),
-                        return_cardinality: Cardinality::Required,
-                        uses: Rc::new(vec![]),
-                        body: None,
-                        transport: None,
-                        properties: Rc::new(vec![]),
-                        type_annotation: None,
-                        is_self_recursive: false,
-                        has_non_tail_self_call: false,
-                        match_pattern: None,
-                        expr_data: Rc::new(ExprData::NoExprData),
-                        ident: None,
-                    })]),
+    match container_param_name(kind_name.clone(), 0) {
+        Some(param_name) => Rc::new(KernelTypeBuild {
+            ty: Rc::new(Node {
+                name: kind_name.clone(),
+                span: kernel_span(kind_name.clone()),
+                ident_span: Some(kernel_span(kind_name.clone())),
+                children: Rc::new(vec![Rc::new(Node {
+                    name: param_name.clone(),
+                    span: kernel_span(param_name.clone()),
+                    ident_span: Some(kernel_span(param_name.clone())),
+                    children: Rc::new(vec![]),
                     connective: Connective::NoConnective,
                     params: Rc::new(vec![]),
-                    inferred: None,
+                    inferred: Some(Rc::new(InferredNode::Resolved {
+                        node: element.clone(),
+                    })),
                     return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: None,
@@ -695,16 +674,30 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
-                }),
-                diagnostics: Rc::new(vec![]),
+                })]),
+                connective: Connective::NoConnective,
+                params: Rc::new(vec![]),
+                inferred: None,
+                return_cardinality: Cardinality::Required,
+                uses: Rc::new(vec![]),
+                body: None,
+                transport: None,
+                properties: Rc::new(vec![]),
+                type_annotation: None,
+                is_self_recursive: false,
+                has_non_tail_self_call: false,
+                match_pattern: None,
+                expr_data: Rc::new(ExprData::NoExprData),
+                ident: None,
             }),
-            None => Rc::new(KernelTypeBuild {
-                ty: missing_kernel_container_profile_type(kind_name.clone()),
-                diagnostics: Rc::new(vec![kernel_container_profile_miss_diagnostic(
-                    kind_name.clone(),
-                )]),
-            }),
-        }
+            diagnostics: Rc::new(vec![]),
+        }),
+        None => Rc::new(KernelTypeBuild {
+            ty: missing_kernel_container_profile_type(kind_name.clone()),
+            diagnostics: Rc::new(vec![kernel_container_profile_miss_diagnostic(
+                kind_name.clone(),
+            )]),
+        }),
     }
 }
 
@@ -1645,24 +1638,17 @@ pub fn apply_type_substitution(
                                 source_indices.clone(),
                                 receiver.clone(),
                             ));
-                            if !is_kernel_type(rname.clone()) {
-                                Rc::new(KernelTypeBuild {
-                                    ty: receiver.clone(),
+                            match container_param_name(rname.clone(), 0) {
+                                Some(n) => Rc::new(KernelTypeBuild {
+                                    ty: type_variable_node(n.clone()),
                                     diagnostics: Rc::new(vec![]),
-                                })
-                            } else {
-                                match container_param_name(rname.clone(), 0) {
-                                    Some(n) => Rc::new(KernelTypeBuild {
-                                        ty: type_variable_node(n.clone()),
-                                        diagnostics: Rc::new(vec![]),
-                                    }),
-                                    None => Rc::new(KernelTypeBuild {
-                                        ty: missing_kernel_container_profile_type(rname.clone()),
-                                        diagnostics: Rc::new(vec![
-                                            kernel_container_profile_miss_diagnostic(rname.clone()),
-                                        ]),
-                                    }),
-                                }
+                                }),
+                                None => Rc::new(KernelTypeBuild {
+                                    ty: missing_kernel_container_profile_type(rname.clone()),
+                                    diagnostics: Rc::new(vec![
+                                        kernel_container_profile_miss_diagnostic(rname.clone()),
+                                    ]),
+                                }),
                             }
                         }
                     },
@@ -1683,24 +1669,17 @@ pub fn apply_type_substitution(
                             source_indices.clone(),
                             receiver.clone(),
                         ));
-                        if !is_kernel_type(rname.clone()) {
-                            Rc::new(KernelTypeBuild {
-                                ty: receiver.clone(),
+                        match container_param_name(rname.clone(), 0) {
+                            Some(n) => Rc::new(KernelTypeBuild {
+                                ty: type_variable_node(n.clone()),
                                 diagnostics: Rc::new(vec![]),
-                            })
-                        } else {
-                            match container_param_name(rname.clone(), 0) {
-                                Some(n) => Rc::new(KernelTypeBuild {
-                                    ty: type_variable_node(n.clone()),
-                                    diagnostics: Rc::new(vec![]),
-                                }),
-                                None => Rc::new(KernelTypeBuild {
-                                    ty: missing_kernel_container_profile_type(rname.clone()),
-                                    diagnostics: Rc::new(vec![
-                                        kernel_container_profile_miss_diagnostic(rname.clone()),
-                                    ]),
-                                }),
-                            }
+                            }),
+                            None => Rc::new(KernelTypeBuild {
+                                ty: missing_kernel_container_profile_type(rname.clone()),
+                                diagnostics: Rc::new(vec![
+                                    kernel_container_profile_miss_diagnostic(rname.clone()),
+                                ]),
+                            }),
                         }
                     }
                 },
@@ -1727,24 +1706,17 @@ pub fn apply_type_substitution(
                             source_indices.clone(),
                             receiver.clone(),
                         ));
-                        if !is_kernel_type(rname.clone()) {
-                            Rc::new(KernelTypeBuild {
-                                ty: receiver.clone(),
+                        match container_param_name(rname.clone(), 1) {
+                            Some(n) => Rc::new(KernelTypeBuild {
+                                ty: type_variable_node(n.clone()),
                                 diagnostics: Rc::new(vec![]),
-                            })
-                        } else {
-                            match container_param_name(rname.clone(), 1) {
-                                Some(n) => Rc::new(KernelTypeBuild {
-                                    ty: type_variable_node(n.clone()),
-                                    diagnostics: Rc::new(vec![]),
-                                }),
-                                None => Rc::new(KernelTypeBuild {
-                                    ty: missing_kernel_container_profile_type(rname.clone()),
-                                    diagnostics: Rc::new(vec![
-                                        kernel_container_profile_miss_diagnostic(rname.clone()),
-                                    ]),
-                                }),
-                            }
+                            }),
+                            None => Rc::new(KernelTypeBuild {
+                                ty: missing_kernel_container_profile_type(rname.clone()),
+                                diagnostics: Rc::new(vec![
+                                    kernel_container_profile_miss_diagnostic(rname.clone()),
+                                ]),
+                            }),
                         }
                     }
                 },
