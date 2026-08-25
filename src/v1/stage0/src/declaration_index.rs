@@ -897,6 +897,23 @@ pub fn citation_debt_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// discriminating, and the mechanism it exists to prove has quietly lost its evidence. Same
 /// trigger, opposite meaning, so they are two carriers rather than one with a flag.
 ///
+/// THIS IS A SECOND REPRESENTATION OF FOUR IDENTITIES THE DEAD LENS ALSO CARRIES, AND THE
+/// DUPLICATION IS DELIBERATE, TRANSIENT, AND HAS A NAMED TERMINUS. `v2.lens.cited_symbol_resolution`
+/// holds the same four controls as `cited_symbol_planted_controls`. Measured rather than assumed,
+/// because "it is dead" is exactly the claim shape this branch already got wrong once: of the 27
+/// symbols unique to that lens, the only references outside it are one prose row in
+/// `gunbc.roster_registry`, two prose mentions in fast witnesses (a `String` note and a `//`
+/// comment), and nine real uses in `test.claim.long.cited_symbol_resolution_witness_test` — which
+/// is a `long/` home and is declined before the fold, so it never executes. NO EXECUTING witness
+/// calls any function that lens declares. So it is dead, not competing, and §3's attractor
+/// argument does not bite.
+///
+/// WHAT THIS ROSTER OWES THE CUT THAT DELETES IT: these four identities are the SURVIVING
+/// authority. The lens's deletion is a removal of the dead copy, never of the evidence — DESIGN
+/// §4b(4) keeps a discriminating control enrolled when its machinery goes, and deleting the lens
+/// while treating its controls as part of the funeral would erase the four probes that prove this
+/// wall's refusal arms are real. They live here now; that is the point of moving them.
+///
 /// FOUND BY MEASUREMENT, AND THE PROSE THAT SHOULD HAVE SAID SO WAS FALSE. The roster's own
 /// doc comment claimed "FOUR ROWS AT THE END ARE NOT DEBT ... the deleted census's own planted
 /// controls". Enumerating all 38 rows finds no such row: the rows were never added, only
