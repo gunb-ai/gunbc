@@ -3,10 +3,10 @@ module std.primitive_projection
 
 data primitive_projection_seed_boundary_note: String = "The declaration-to-primitive projection is a seed-consumed substrate authority, so its import closure stops at std.decl_ref/std.types and never reaches a target roster or v2 module. This module is a strict relocation of the projection identity, fidelity, roster, and exact-declaration query formerly declared inside std.primitive_identity. std.primitive_identity consumes this authority for its census and total disposed/undisposed answer; the stage0 resolver consumes the same exact-declaration query. Required regen is the mechanical wall: src/v1 importing the former home reached gunbc.v1_interpreter_primitive_surface and then v2.std.qualified_name, which the src/v1 + dag bootstrap closure correctly refuses. The refusal is the seed-safety boundary working, not build friction."
 
-type PrimitiveIdentity { slug: NonEmptyStr }
+type PrimitiveIdentity { slug: std.types.NonEmptyStr }
 
 fn primitive_identity_slug(name: String) -> PrimitiveIdentity {
-  PrimitiveIdentity { slug: concat("primitive.", name) as NonEmptyStr }
+  PrimitiveIdentity { slug: concat("primitive.", name) as std.types.NonEmptyStr }
 }
 
 data primitive_projection_identity_key_note: String = "The projection is keyed on std.decl_ref DeclarationRef, which is the namespace layer's own identity for a declaration (DESIGN section 3: namespace supplies declaration identity, this carrier supplies semantic primitive identity). No new identity type is minted here. The alternative shape considered and refused was a per-declaration marker row beside each fn: it is a second representation scattered across modules rather than one authority, it keys on a bare name inside a module scope so two same-named declarations collapse into one, and it has no room for a fidelity distinction. Module qualification answers the second; this single carrier answers the first; ProjectionFidelity answers the third."
@@ -16,7 +16,7 @@ data primitive_projection_fidelity_note: String = "HostRealizedSeam and ModeledP
 type ProjectionFidelity
   = HostRealizedSeam
   | ModeledProjection
-  | DivergentProjection { divergence: NonEmptyStr }
+  | DivergentProjection { divergence: std.types.NonEmptyStr }
 
 type PrimitiveProjection {
   primitive: PrimitiveIdentity
@@ -30,7 +30,7 @@ type PrimitiveProjectionAnswer
       fidelity: ProjectionFidelity
     }
   | DeclarationProjectsNoPrimitive
-  | DeclarationPrimitiveUndisposed { authored_symbol: NonEmptyStr }
+  | DeclarationPrimitiveUndisposed { authored_symbol: std.types.NonEmptyStr }
 
 data primitive_length: PrimitiveIdentity = primitive_identity_slug(name: "length")
 data primitive_map_insert: PrimitiveIdentity = primitive_identity_slug(name: "map_insert")
@@ -45,7 +45,7 @@ data primitive_concept_decl_facts_live: PrimitiveIdentity = primitive_identity_s
 data primitive_projection_roster_note: String = "One row per declaration that is the modeled surface of a declared primitive. Every row was established by READING THE DECLARATION, not by matching its name: the HostRealizedSeam rows are declarations whose whole body is a self-call, and the ModeledProjection rows are declarations with a real body that the builtin arm intercepts ahead of. The single DivergentProjection row is v2.std.collection map_get, whose declared return type is Outcome<Optional<V>> against the primitive's Optional<V>; it is carried rather than omitted because omission and divergence are different answers -- omission means nobody has looked, divergence means someone looked and found two authorities. A consumer collecting call candidates must suppress the builtin co-candidate for the first two fidelities and must keep refusing on the third."
 
 fn primitive_projection_row(primitive: PrimitiveIdentity, module_path: String, decl_name: String, fidelity: ProjectionFidelity) -> PrimitiveProjection {
-  PrimitiveProjection { primitive: primitive, declaration: std.decl_ref(module_path: module_path, decl_name: decl_name), fidelity: fidelity }
+  PrimitiveProjection { primitive: primitive, declaration: std.decl_ref.decl_ref(module_path: module_path, decl_name: decl_name), fidelity: fidelity }
 }
 
 fn primitive_projection_roster() -> List<PrimitiveProjection> {
@@ -59,7 +59,7 @@ fn primitive_projection_roster() -> List<PrimitiveProjection> {
     primitive_projection_row(primitive: primitive_length, module_path: "v2.std.algebra", decl_name: "length", fidelity: ModeledProjection),
     primitive_projection_row(primitive: primitive_map_insert, module_path: "v2.std.collection", decl_name: "map_insert", fidelity: ModeledProjection),
     primitive_projection_row(primitive: primitive_empty_map, module_path: "v2.std.collection", decl_name: "empty_map", fidelity: ModeledProjection),
-    primitive_projection_row(primitive: primitive_map_get, module_path: "v2.std.collection", decl_name: "map_get", fidelity: DivergentProjection { divergence: "declared return Outcome<Optional<V>> against the primitive's Optional<V>" as NonEmptyStr }),
+    primitive_projection_row(primitive: primitive_map_get, module_path: "v2.std.collection", decl_name: "map_get", fidelity: DivergentProjection { divergence: "declared return Outcome<Optional<V>> against the primitive's Optional<V>" as std.types.NonEmptyStr }),
   ]
 }
 

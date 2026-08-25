@@ -729,7 +729,7 @@ fn map_lookup_result_type(product: v1.std.core.Node, field: v1.std.core.Node, so
 }
 
 fn lookup_field_in_product(product: v1.std.core.Node, method_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> MethodFieldResult? {
-  let matching = children |> filter(c => v1.std.core.authored_name_at(source_indices: source_indices, node: c) == method_name)
+  let matching = product.children |> filter(c => v1.std.core.authored_name_at(source_indices: source_indices, node: c) == method_name)
   match matching |> first {
     Present { value: field } =>
       match if method_name == "lookup" { map_lookup_result_type(product: product, field: field, source_indices: source_indices) } else { none } {

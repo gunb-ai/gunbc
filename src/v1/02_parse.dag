@@ -1476,7 +1476,7 @@ fn parse_with_table_ready_module_path(parsed: ParseWithTableResult) -> String? {
     Present { value: _ } => none
     Absent =>
       match parsed.result.module {
-        Present { value: v1.std.core.module_node } =>
+        Present { value: module_node } =>
           Present { value: module_node.name }
         Absent => none
       }
@@ -1492,23 +1492,23 @@ fn parse_module(tokens: TokenStream, ctx: ParseContext) -> ModuleResult {
   let start_span = token_span(tok: token_stream_first(stream: tokens))
 
   let r = expect(tokens: tokens, expected: ExpectKeyword { text: "module" })
-  if has_err(err: r.err) { return ModuleResult { module: v1.std.core.module_node(name: "", imports: [], items: [], span: start_span), tokens: r.tokens, ctx: ctx, err: r.err } }
+  if has_err(err: r.err) { return ModuleResult { module: module_node(name: "", imports: [], items: [], span: start_span), tokens: r.tokens, ctx: ctx, err: r.err } }
   let tokens = r.tokens
 
   let r = parse_dotted_ident(tokens: tokens)
-  if has_err(err: r.err) { return ModuleResult { module: v1.std.core.module_node(name: "", imports: [], items: [], span: start_span), tokens: r.tokens, ctx: ctx, err: r.err } }
+  if has_err(err: r.err) { return ModuleResult { module: module_node(name: "", imports: [], items: [], span: start_span), tokens: r.tokens, ctx: ctx, err: r.err } }
   let mod_name = r.name
   let mod_name_span = r.span
   let tokens = skip_newlines(tokens: r.tokens)
 
   let r = parse_imports(tokens: tokens, ctx: ctx)
-  if has_err(err: r.err) { return ModuleResult { module: v1.std.core.module_node(name: "", imports: [], items: [], span: start_span), tokens: r.tokens, ctx: r.ctx, err: r.err } }
+  if has_err(err: r.err) { return ModuleResult { module: module_node(name: "", imports: [], items: [], span: start_span), tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let imports = r.imports
   let tokens = r.tokens
   let ctx = r.ctx
 
   let r = parse_items(tokens: tokens, ctx: ctx)
-  if has_err(err: r.err) { return ModuleResult { module: v1.std.core.module_node(name: "", imports: [], items: [], span: start_span), tokens: r.tokens, ctx: r.ctx, err: r.err } }
+  if has_err(err: r.err) { return ModuleResult { module: module_node(name: "", imports: [], items: [], span: start_span), tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let items = r.items
   let tokens = r.tokens
   let ctx = r.ctx
