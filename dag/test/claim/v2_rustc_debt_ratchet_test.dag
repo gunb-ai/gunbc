@@ -66,9 +66,17 @@ test fn a_repair_with_its_ledger_reduction_passes() -> Bool {
   )
 }
 
-// ONE ERROR REPLACED BY ANOTHER AT AN EQUAL TOTAL REFUSES. This is the arm a count cannot see,
-// and it is the reason the ledger is keyed rather than summed.
-test fn one_error_swapped_for_another_at_the_same_total_refuses() -> Bool {
+// ONE ERROR REPLACED BY ANOTHER *IN A DIFFERENT BUCKET* AT AN EQUAL TOTAL REFUSES. This is the
+// arm a count cannot see, and it is the reason the ledger is keyed rather than summed.
+//
+// THE QUALIFIER IS NOT DECORATION AND THIS TEST WAS NAMED WITHOUT IT. It read
+// `one_error_swapped_for_another_at_the_same_total_refuses`, which claims the general case; what
+// it exercises is a swap that CHANGES the code, so the key changes and the mismatch is found.
+// The same-bucket swap is invisible to this contract, and the arm below is the counterexample
+// that says so by executing it. Named honestly here because a suite that asserts the general
+// claim while testing the special case is worse than one that omits the case: it is cited as
+// coverage. Raised in review of the contract, and correct.
+test fn one_error_swapped_for_another_across_buckets_refuses() -> Bool {
   rustc_debt_verdict_admits(
     v: rustc_debt_verdict(
       observed: a_different_error(),
@@ -77,6 +85,37 @@ test fn one_error_swapped_for_another_at_the_same_total_refuses() -> Bool {
     )
   ) == false
 }
+
+// THE BLIND SPOT, EXECUTED AND EXPECTED TO PASS. Fix one E0308 in a file and introduce a
+// different E0308 in the same file, and both the key and the multiplicity are unchanged --
+// `(src/foo.rs, E0308) -> 1` before and after -- so the contract ADMITS a real substitution.
+//
+// This arm exists to make the ceiling a measured fact rather than a caveat in a comment. It
+// asserts admission, so it goes RED the day the key descends below bucket grain, which is
+// exactly when someone should be forced to come back and read this. It is not a defect being
+// tolerated quietly; it is the boundary of what `(path, code)` can decide, and the contract's
+// declared rung is per-file-per-code multiplicity, NOT individual error identity.
+//
+// NEXT-RUNG TRIGGER: a sidecar from the emitter mapping emitted Rust byte ranges back to a
+// stable Daglang origin (module identity, declaration identity, occurrence identity), keyed as
+// `(emission_unit, cargo_target, dag_source_origin, rustc_code)`. That survives line movement
+// and emitted-file re-layout, which a Rust line/column coordinate does not, and it is the only
+// candidate that does not churn on unrelated edits. Until it exists this arm stays green.
+test fn the_same_bucket_substitution_blind_spot_is_admitted() -> Bool {
+  // Identical observation before and after: one E0308 in one file. The contract cannot see
+  // that it is a DIFFERENT E0308, because nothing in the key distinguishes them.
+  rustc_debt_verdict_admits(
+    v: rustc_debt_verdict(observed: one_error(), admitted: one_error(), baseline: one_error())
+  )
+}
+
+// A SECOND DIMENSION THE KEY DOES NOT CARRY, recorded beside the first because it has the same
+// shape and a different cause: the observation runs `--all-targets`, so cargo may compile one
+// source under several targets, and a change to the TARGET GRAPH can move multiplicity without
+// any source defect changing. The key must eventually carry the cargo target's name and kind,
+// or the observer must deduplicate across targets deliberately rather than by accident. No arm
+// is authored for it here because the observer does not exist yet and a fixture asserting the
+// behaviour of an unwritten decoder would be a decoration.
 
 // MULTIPLICITY GROWTH WITHIN ONE KEY REFUSES. A set-valued ledger would admit this silently.
 test fn multiplicity_growth_within_one_identity_refuses() -> Bool {
