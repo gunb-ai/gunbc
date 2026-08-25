@@ -254,6 +254,7 @@ fn stage0_extdeps_language_modules() -> List<String> {
     "extdeps_languages_python_emit",
     "extdeps_languages_python_syntax",
     "extdeps_languages_python_types",
+    "extdeps_languages_rust_capabilities",
     "extdeps_languages_rust_emit",
     "extdeps_languages_rust_syntax",
     "extdeps_languages_rust_types"
@@ -266,13 +267,15 @@ fn stage0_extdeps_modules() -> List<String> {
 
 fn stage0_v1_infer_modules() -> List<String> {
   [
+    "v1_compiler_coercion",
     "v1_compiler_infer_emit_info",
     "v1_compiler_infer_env",
     "v1_compiler_infer_items",
     "v1_compiler_infer_occurrence_binding",
     "v1_compiler_infer_service",
     "v1_compiler_infer_sigs",
-    "v1_compiler_infer_types"
+    "v1_compiler_infer_types",
+    "v1_compiler_type_head_exposure"
   ]
 }
 
@@ -298,8 +301,8 @@ fn stage0_all_partitioned_modules() -> List<String> {
     |> concat(stage0_std_core_modules())
     |> concat(stage0_std_surface_modules())
     |> concat(stage0_extdeps_modules())
-    |> concat(stage0_v1_infer_modules())
     |> concat(stage0_v1_artifact_modules())
+    |> concat(stage0_v1_infer_modules())
 }
 
 fn stage0_assign_modules_to_unit(
@@ -333,11 +336,11 @@ fn stage0_interim_explicit_assignment() -> Map<ModuleId, CompilationUnitId> {
         modules: stage0_extdeps_language_modules(),
         unit_id: stage0_unit_extdeps_languages
       ),
-      modules: stage0_v1_infer_modules(),
-      unit_id: stage0_unit_v1_infer
+      modules: stage0_v1_artifact_modules(),
+      unit_id: stage0_unit_v1_artifact
     ),
-    modules: stage0_v1_artifact_modules(),
-    unit_id: stage0_unit_v1_artifact
+    modules: stage0_v1_infer_modules(),
+    unit_id: stage0_unit_v1_infer
   )
 }
 
@@ -419,6 +422,10 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "v1_compiler_infer_env", to: "v1_compiler_infer_occurrence_binding"),
     stage0_module_dag_edge(from: "v1_compiler_infer_sigs", to: "v1_compiler_infer_occurrence_binding"),
     stage0_module_dag_edge(from: "v1_compiler_infer_emit_info", to: "v1_compiler_infer_items"),
+    stage0_module_dag_edge(from: "v1_compiler_infer_emit_info", to: "v1_compiler_artifact"),
+    stage0_module_dag_edge(from: "v1_compiler_infer_emit_info", to: "v1_compiler_coercion"),
+    stage0_module_dag_edge(from: "v1_compiler_infer_env", to: "v1_compiler_type_head_exposure"),
+    stage0_module_dag_edge(from: "v1_compiler_coercion", to: "v1_compiler_artifact"),
     stage0_module_dag_edge(from: "v1_compiler_artifact", to: "v1_compiler_languages"),
   ]
 }
@@ -630,20 +637,6 @@ fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
       carries_non_empty_wrappers: false
     },
     Stage0PartitionCrateRow {
-      unit_id: stage0_unit_v1_infer,
-      package_name: "v1-stage0-v1-infer",
-      crate_dir: "src/v1/stage0_v1_infer",
-      kind: Stage0LayeredCoreCrate,
-      modules: stage0_v1_infer_modules(),
-      reexport_packages: [
-        "v1-stage0-runtime",
-        "v1-stage0-std-core",
-        "v1-stage0-std-surface",
-        "v1-stage0-extdeps-languages"
-      ],
-      carries_non_empty_wrappers: false
-    },
-    Stage0PartitionCrateRow {
       unit_id: stage0_unit_v1_artifact,
       package_name: "v1-stage0-v1-artifact",
       crate_dir: "src/v1/stage0_v1_artifact",
@@ -653,8 +646,22 @@ fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
         "v1-stage0-runtime",
         "v1-stage0-std-core",
         "v1-stage0-std-surface",
+        "v1-stage0-extdeps-languages"
+      ],
+      carries_non_empty_wrappers: false
+    },
+    Stage0PartitionCrateRow {
+      unit_id: stage0_unit_v1_infer,
+      package_name: "v1-stage0-v1-infer",
+      crate_dir: "src/v1/stage0_v1_infer",
+      kind: Stage0LayeredCoreCrate,
+      modules: stage0_v1_infer_modules(),
+      reexport_packages: [
+        "v1-stage0-runtime",
+        "v1-stage0-std-core",
+        "v1-stage0-std-surface",
         "v1-stage0-extdeps-languages",
-        "v1-stage0-v1-infer"
+        "v1-stage0-v1-artifact"
       ],
       carries_non_empty_wrappers: false
     }

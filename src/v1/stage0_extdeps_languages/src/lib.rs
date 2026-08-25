@@ -50,6 +50,9 @@ pub mod extdeps_languages_python_syntax;
 #[path = "../../stage0/src/extdeps_languages_python_types.rs"]
 pub mod extdeps_languages_python_types;
 #[rustfmt::skip]
+#[path = "../../stage0/src/extdeps_languages_rust_capabilities.rs"]
+pub mod extdeps_languages_rust_capabilities;
+#[rustfmt::skip]
 #[path = "../../stage0/src/extdeps_languages_rust_emit.rs"]
 pub mod extdeps_languages_rust_emit;
 #[rustfmt::skip]
