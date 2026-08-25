@@ -74,13 +74,13 @@ import v2.std.text { String }
 //     repaid = roster - head_non_verdict_identities
 //     admit  <=> added is empty
 //
-// So 142 -> 43 -> 42 -> 0 is admitted and 142 -> 143 refuses. So does one old identity repaired
-// while a different identity begins throwing, with the count still reading 142 -- and THAT is
-// why both sides are compared as IDENTITY SETS and never as counts. A repaired witness must not
-// buy permission for an unrelated witness to lose its verdict, and a count-based implementation
-// admits exactly that trade in silence. The corpus has already paid for this lesson once in the
-// other direction: the false regression that produced this module was a comparison whose
-// `planned` counts matched on both sides while the trees did not.
+// Shrinking the observed identity set toward empty is admitted; adding any identity refuses. So
+// does one old identity repairing while a different identity begins throwing, even when the two
+// sets have the same cardinality -- and THAT is why both sides are compared as IDENTITY SETS and
+// never as counts. A repaired witness must not buy permission for an unrelated witness to lose
+// its verdict. The corpus has already paid for this lesson once in the other direction: the false
+// regression that produced this module was a comparison whose `planned` counts matched on both
+// sides while the trees did not.
 //
 // REPAYMENT AND ROSTER DELETION ARE ONE ACT, and an earlier revision of this header said the
 // opposite. It argued that refusing a stale row "punishes the fix", because gunbc#9020 repairs
