@@ -215,21 +215,24 @@ test fn allocation_unsound_when_runner_pool_overcommits() -> Bool {
   )
 }
 
-test fn sessions_subtract_from_the_same_budget() -> Bool {
-  !witness_allocation_conserves(
+fn sessions_fixture_at(session_pool: ByteSize) -> Bool {
+  witness_allocation_conserves(
     host: byte_size(134217728000),
     overhead: byte_size(17179869184),
     headroom: byte_size(8589934592),
-    runner_pool: gunbc_runner_pool_budget_for(host: operator_host_srv1),
-    session_pool: gunbc.fleet_host_budget.session_pool_bytes(active_sessions: 40),
+    runner_pool: byte_size(68719476736),
+    session_pool: session_pool,
     compile_pool: byte_size(0),
     control_plane: ControlPlaneNotPlaced
   )
 }
 
-test fn max_concurrent_sessions_falls_out_of_pool() -> Bool {
-  max_concurrent_sessions(session_pool: gunbc.fleet_host_budget.session_pool_bytes(active_sessions: 12)) == 12
+test fn sessions_subtract_from_the_same_budget() -> Bool {
+  sessions_fixture_at(session_pool: byte_size(0))
+    && !sessions_fixture_at(session_pool: byte_size(42949672960))
 }
+
+data sessions_subtract_fixture_note: String = "THIS WITNESS WAS NOT TESTING SESSIONS AT ALL, and the repair is a bigger finding than the deletion that surfaced it.\n\nIT PREVIOUSLY ASSERTED A SINGLE NEGATIVE: that one configuration fails to conserve, with session_pool sourced from session_pool_bytes(active_sessions: 40) and runner_pool read from the LIVE gunbc_runner_pool_budget_for(srv1) against a 125 GiB fixture host. Executed with session_pool perturbed to ZERO it STILL PASSES — measured, not inferred — because srv1 is now a ~502 GiB host whose live runner pool alone (committed width x per-slot MemoryMax) exceeds the 125 GiB fixture by itself. The sessions term contributed nothing to the verdict. The witness has therefore been green-by-coincidence since srv1's memory upgrade, asserting a property it could not observe, and no amount of editing the session literal would have made it fail. That is precisely the failure its own neighbours warn about: differential_witness_note beside it says a one-sided assertion is satisfied by a wall that returns the same answer for everything, and this one was.\n\nMIXING A LIVE AUTHORITY INTO A FIXTURE HOST IS THE ROOT. The host, overhead and headroom were authored constants while the runner pool was read from production, so the two sides of the comparison drifted independently and a fleet hardware change silently redefined what the witness meant. The runner pool is now an authored constant too (64 GiB), which makes the arithmetic closed: 125 - 16 overhead - 8 headroom leaves ~101 GiB, 64 GiB of runner pool fits inside it, and 40 GiB of sessions does not.\n\nAND IT IS NOW TWO-SIDED, which is the whole content. It asserts that the SAME configuration CONSERVES at session_pool 0 and FAILS at session_pool 40 GiB. Only the session term moves, so the pair can only hold if the session pool genuinely draws on the same budget the runner pool draws on — the structural property named in the title. A wall that always conserves fails the second arm; a wall that never conserves fails the first. EXECUTED BOTH WAYS, and both arms are load-bearing: as authored the witness returns true; shrinking the session fixture to 2 GiB (so it fits) returns false; inflating the runner pool to 192 GiB (so the zero-session arm no longer conserves) returns false; restored control returns true. The pre-repair form returned true with the session term at zero, which is the measurement that condemned it.\n\nThe session figure is an AUTHORED FIXTURE and deliberately not a production number, which DESIGN §5 sanctions for a controlled fixture that authors its own input and its own expectation. It previously came from a production literal (gunbc_session_container_memory, 1 GiB), now deleted as an ungrounded second authority; sourcing a structural witness from a capacity constant is what let this witness's meaning move without anyone editing it.\n\nThe deleted companion witness asserted max_concurrent_sessions(session_pool_bytes(12)) == 12 and is NOT replaced, because it tested nothing: it divided by the same constant it had just multiplied by, so it held for every value of that constant including the wrong one it was reading."
 
 data per_host_usable_ram_controls_note: String = "THE GRAIN IS THE CLAIM, so these controls test the SPLIT rather than the number. Every host still resolves to the same substitution figure today — that is deliberate, and committed_width_fits_on_every_host above already pins that the derived widths did not move. What these add is that the lookup is genuinely per-host and that an unclassified host REFUSES instead of borrowing, which is the property the old fleet-level read could not have.\n\nThe refusal control is the load-bearing one. The function it replaces took no host argument at all and summed a synthetic ComputeHost that is not a member of the fold it served, so there was no unclassified-host case to get wrong — and correspondingly no way to notice one. An unknown host reaching this wall now produces a located refusal, the same shape the overhead axis beside it already had."
 

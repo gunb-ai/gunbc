@@ -1,7 +1,6 @@
 module gunbc.fleet_host_budget
 
 import std.types { Int, List, String, Bool }
-import std.nat { Nat }
 import std.measure {
   ByteSize, byte_size, byte_size_count,
   Memory, One, Time, Nano,
@@ -195,11 +194,8 @@ fn gunbc_runner_pool_budget_for(host: HostIdentity) -> ByteSize {
 
 data gunbc_per_runner_memory_cap: ByteSize = gunbc_runner_slot_desired().memory_max
 
-data gunbc_session_container_memory: ByteSize = byte_size(1073741824)
+data session_container_memory_deleted_note: String = "gunbc_session_container_memory (byte_size(1073741824)), session_pool_bytes and max_concurrent_sessions are DELETED, and the deletion is a DESIGN §3 nicknaming repair rather than a capacity decision — no number moved, a second authority was removed.\n\nTHE CONCEPT ALREADY HAD A HOME. 'How much host RAM does an interactive session container require' is answered by gunbc.ci_runner_placement host_session_slice_bytes, which derives the charge from gunbc.ci_floor_measurement gunbc_ci_session_reservation_mode and REFUSES with a located reason when it cannot (SessionSliceUnsized). This row answered the same question with a bare literal carrying no note, no citation and no refusal arm, in a module where every other figure carries its derivation — it was the one ungrounded number in this file.\n\nTHE LITERAL WAS ALSO FALSE ON ITS FACE, which is what makes this decidable rather than a matter of taste. gunbc.ci_runner_placement gunbc_ci_runner_count_from_budget_disposition described it as 'the uniform 1 GiB demand class shared with the ctrl session dashboard'. The ctrl session dashboard's per-container cap is modeled next door as gunbc_ci_dashboard_session_container_cap = 33578549248 (31.27 GiB). The two differ by 31x, so the clause asserting they are the same class was an authority substitution: one carrier borrowed to answer for another's fact, with no relation claimed by either. That clause is corrected in the same change.\n\nAND IT CONTRADICTED THE MEASUREMENTS. The per-session peak distribution cited at this seam is min 0.28 / median ~2.06 / max 8.27 GiB. A 1 GiB per-session charge sits BELOW the median, so any budget folding it charged less than half of what a typical session was already measured to take, and a conservation verdict computed from it certifies as conserving a host that cannot carry the population it admitted. That is the fabricated-plausible-output failure applied to a wall: not a missing check, a check whose premise was invented.\n\nWHY DELETE RATHER THAN RE-POINT. Nothing in production consumed any of the three — the census at deletion found only test.claim.host_allocation_conservation — so re-pointing the literal at the grounded authority would have preserved a second route to a fact that already has one, which is the attractor DESIGN §3's replacement-migration rule exists to uproot. Callers that need the charge call host_session_slice_bytes, which is host-keyed and refuses; callers that need a fixture pass one, which is what the conservation witness now does.\n\nmax_concurrent_sessions went with them on independent grounds: its only witness asserted max_concurrent_sessions(session_pool_bytes(12)) == 12, which divides by the same constant it had just multiplied by. That is the measure() == measure() collapse DESIGN §5 names — it could not fail for any value of the constant, including the wrong one it was carrying, and so it certified the very literal it was reading as its own unit."
 
-fn session_pool_bytes(active_sessions: Nat) -> ByteSize {
-  measure_scale_fraction_floor(m: gunbc_session_container_memory, num: active_sessions, den: 1)
-}
 
 // fabric_control_plane_pool IS A NAMED CHILD RATHER THAN AN ADDITION TO fixed_overhead, because the
 // resident it charges has an exact identity, an exact placement, an explicit lifecycle, a measurable
@@ -308,10 +304,6 @@ fn declared_runner_count_for(host: HostIdentity) -> Int {
     capacity: gunbc_runner_pool_budget_for(host: host),
     each: gunbc_ci_runner_cgroup_memory_cap
   )
-}
-
-fn max_concurrent_sessions(session_pool: ByteSize) -> Int {
-  measure_fit_count_floor(capacity: session_pool, each: gunbc_session_container_memory)
 }
 
 fn runner_slice_cap(host: ByteSize, overhead: ByteSize, session_slice: ByteSize, headroom: ByteSize, compile_pool: ByteSize) -> ByteSize {
