@@ -880,6 +880,8 @@ type FabricCellObservationRefusal
   | ReadbackHostMismatch { mismatch: FabricCellReadbackHostMismatch }
   | ForeignArtifactObserved { host: HostIdentity, observed_name: String, location: String }
   | DiscoveryUnavailable { host: HostIdentity, cause: String }
+  | SuppliedProbeUnconsumed { host: HostIdentity, slot: RunnerSlotIdentity, address: FabricCellResourceAddress }
+  | SuppliedNamespaceUnconsumed { host: HostIdentity, slot: RunnerSlotIdentity }
 
 type FabricCellPopulation
   = FabricCellPopulationObserved { host: HostIdentity, observed: FabricCellObservedMembers }

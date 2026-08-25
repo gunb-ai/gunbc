@@ -16,6 +16,9 @@ import gunbc.fabric_cell_converge {
   fabric_cell_resource_address_wire,
   fabric_cell_slice_name,
   fabric_cell_expected_slots,
+  ExpectedAddressBlocked,
+  UnexpectedCellEvidence,
+  ReadbackHostMismatch,
   FabricCellMember,
   FabricCellAddressObservation,
   AddressObserved,
@@ -26,6 +29,8 @@ import gunbc.fabric_cell_converge {
   FabricCellObservationRefusal,
   ForeignArtifactObserved,
   DiscoveryUnavailable,
+  SuppliedProbeUnconsumed,
+  SuppliedNamespaceUnconsumed,
 }
 
 data fabric_cell_observe_authority_disposition: Disposition = SingleAuthority
@@ -577,6 +582,7 @@ type FabricCellObserverProjection {
   host: HostIdentity
   expected_readback: FabricCellHostReadback
   discovery: FabricCellDiscovery
+  unconsumed: List<FabricCellObservationRefusal>
 }
 
 fn fabric_cell_observe(probe: FabricCellHostProbe) -> FabricCellObserverProjection {
@@ -584,7 +590,18 @@ fn fabric_cell_observe(probe: FabricCellHostProbe) -> FabricCellObserverProjecti
     host: probe.host,
     expected_readback: fabric_cell_observe_host(probe: probe),
     discovery: fabric_cell_discovered_subjects(probe: probe),
+    unconsumed: fabric_cell_unconsumed_probe_refusals(probe: probe),
   }
+}
+
+// ONE PROJECTION FROM ONE PROBE MEANS ONE CALL PRODUCES EVERY REFUSAL THE PROBE IMPLIES. A caller
+// that has the projection cannot obtain the discovery half without the unconsumed half, which is
+// the same construction the required `discovered` argument applies one layer down.
+fn fabric_cell_projection_refusals(projection: FabricCellObserverProjection) -> List<FabricCellObservationRefusal> {
+  concat(
+    fabric_cell_discovery_refusals(discovery: projection.discovery),
+    projection.unconsumed,
+  )
 }
 
 // DISCOVERY PROJECTS INTO THE REFUSAL VOCABULARY gunbc.fabric_cell_converge OWNS, which is what
@@ -616,4 +633,88 @@ fn fabric_cell_discovered_refusal(host: HostIdentity, s: FabricCellDiscoveredSub
     DiscoveredForeignArtifact { observed_name: n, location: l } =>
       [ForeignArtifactObserved { host: host, observed_name: n, location: l }]
   }
+}
+
+// THE SUPPLIED PROBE IS CONSERVED TOO, BECAUSE ITS EXTRAS COULD VANISH THE SAME WAY THE READBACK'S
+// COULD. `FabricCellHostProbe` admits namespace and address entries for ARBITRARY slots, and the
+// projection looks up only the pairs the authority expects -- so a state read for a slot this host
+// does not declare, or a child namespace for a cell nobody asked about, had no output position and
+// disappeared. That is the identical silent exclusion the classification kernel was repaired for,
+// one layer earlier, on the input side rather than the output side: the observer was conserving
+// what it PRODUCED while dropping part of what it was GIVEN.
+//
+// WHAT COUNTS AS UNCONSUMED IS DECIDED BY THE AUTHORITY, NOT BY THE PROBE. An entry is consumed if
+// its slot is one this host expects; everything else is refused, named by the exact coordinates it
+// carried, so the deficit is countable rather than absorbed. The root and slice namespaces are not
+// slot-scoped and are always consumed.
+fn fabric_cell_unconsumed_probe_refusals(probe: FabricCellHostProbe) -> List<FabricCellObservationRefusal> {
+  let expected = fabric_cell_expected_slots(host: probe.host)
+  concat(
+    fold(
+      probe.addresses,
+      init: [],
+      f: (acc, e) =>
+        if fabric_cell_slot_in(slots: expected, slot: e.slot) { acc }
+        else if fabric_cell_probe_refusal_holds_address(acc: acc, slot: e.slot, address: e.address) { acc }
+        else {
+          concat(acc, [SuppliedProbeUnconsumed {
+            host: probe.host,
+            slot: e.slot,
+            address: e.address,
+          }])
+        }
+    ),
+    fold(
+      probe.namespaces,
+      init: [],
+      f: (acc, e) =>
+        match e.namespace {
+          FabricCellsRootNamespace => acc
+          FabricCellSliceNamespace => acc
+          FabricCellChildNamespace { slot: s } =>
+            if fabric_cell_slot_in(slots: expected, slot: s) { acc }
+            else if fabric_cell_probe_refusal_holds_namespace(acc: acc, slot: s) { acc }
+            else { concat(acc, [SuppliedNamespaceUnconsumed { host: probe.host, slot: s }]) }
+        }
+    ),
+  )
+}
+
+fn fabric_cell_slot_in(slots: List<RunnerSlotIdentity>, slot: RunnerSlotIdentity) -> Bool {
+  fold(slots, init: false, f: (acc, s) => acc || runner_slot_identity_equal(a: s, b: slot))
+}
+
+fn fabric_cell_probe_refusal_holds_address(
+  acc: List<FabricCellObservationRefusal>,
+  slot: RunnerSlotIdentity,
+  address: FabricCellResourceAddress,
+) -> Bool {
+  fold(acc, init: false, f: (seen, r) =>
+    match r {
+      SuppliedProbeUnconsumed { host: _, slot: s, address: a } =>
+        seen || (runner_slot_identity_equal(a: s, b: slot)
+          && fabric_cell_resource_address_wire(address: a) == fabric_cell_resource_address_wire(address: address))
+      SuppliedNamespaceUnconsumed { host: _, slot: _ } => seen
+      ExpectedAddressBlocked { disposition: _ } => seen
+      UnexpectedCellEvidence { evidence: _ } => seen
+      ReadbackHostMismatch { mismatch: _ } => seen
+      ForeignArtifactObserved { host: _, observed_name: _, location: _ } => seen
+      DiscoveryUnavailable { host: _, cause: _ } => seen
+    })
+}
+
+fn fabric_cell_probe_refusal_holds_namespace(
+  acc: List<FabricCellObservationRefusal>,
+  slot: RunnerSlotIdentity,
+) -> Bool {
+  fold(acc, init: false, f: (seen, r) =>
+    match r {
+      SuppliedNamespaceUnconsumed { host: _, slot: s } => seen || runner_slot_identity_equal(a: s, b: slot)
+      SuppliedProbeUnconsumed { host: _, slot: _, address: _ } => seen
+      ExpectedAddressBlocked { disposition: _ } => seen
+      UnexpectedCellEvidence { evidence: _ } => seen
+      ReadbackHostMismatch { mismatch: _ } => seen
+      ForeignArtifactObserved { host: _, observed_name: _, location: _ } => seen
+      DiscoveryUnavailable { host: _, cause: _ } => seen
+    })
 }

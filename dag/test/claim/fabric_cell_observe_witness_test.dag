@@ -61,6 +61,8 @@ import gunbc.fabric_cell_observe {
   fabric_cell_observe,
   FabricCellObserverProjection,
   fabric_cell_discovery_refusals,
+  fabric_cell_projection_refusals,
+  fabric_cell_unconsumed_probe_refusals,
 }
 
 // ROUTED, BECAUSE AN UNROUTED WITNESS IS DISCOVERED AND NEVER RUN. A module that does not declare
@@ -671,7 +673,7 @@ test fn witness_observer_foreign_artifact_refuses_the_population() -> Bool {
   let projection = fabric_cell_observe(probe: converged_probe_with_foreign())
   population_is_refused(p: fabric_cell_population(
     readback: projection.expected_readback,
-    discovered: fabric_cell_discovery_refusals(discovery: projection.discovery),
+    discovered: fabric_cell_projection_refusals(projection: projection),
   ))
 }
 
@@ -682,7 +684,7 @@ test fn witness_observer_converged_projection_is_an_observed_population() -> Boo
   let projection = fabric_cell_observe(probe: converged_probe())
   !population_is_refused(p: fabric_cell_population(
     readback: projection.expected_readback,
-    discovered: fabric_cell_discovery_refusals(discovery: projection.discovery),
+    discovered: fabric_cell_projection_refusals(projection: projection),
   ))
 }
 
@@ -748,4 +750,59 @@ fn population_is_refused(p: FabricCellPopulation) -> Bool {
     FabricCellPopulationObservationRefused { host: _, blocked: _ } => true
     FabricCellPopulationObserved { host: _, observed: _ } => false
   }
+}
+
+// LAW 29 -- A PROBE SUPPLIED FOR A SLOT THIS HOST DOES NOT DECLARE IS REFUSED, NOT DROPPED. The
+// input-side twin of the conservation the classification kernel got: the projection consumed only
+// the pairs the authority expects, so a state read for an undeclared slot, or a child namespace for
+// a cell nobody asked about, had no output position and vanished. The observer was conserving what
+// it PRODUCED while silently dropping part of what it was GIVEN.
+test fn witness_observer_unconsumed_probe_entries_refuse_rather_than_vanishing() -> Bool {
+  let stray = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 7 }
+  let refusals = fabric_cell_unconsumed_probe_refusals(probe: FabricCellHostProbe {
+    host: operator_host_srv3,
+    namespaces: concat(
+      converged_probe().namespaces,
+      [enumerated(ns: FabricCellChildNamespace { slot: stray }, entries: ["attempts"])],
+    ),
+    addresses: concat(
+      converged_probe().addresses,
+      [FabricCellAddressProbeEntry {
+        slot: stray,
+        address: FabricCellRootAddress,
+        probe: AddressStateRead { state_digest: "stray" as NonEmptyStr },
+      }],
+    ),
+  })
+  list_length(items: refusals) == 2
+}
+
+// AND THE PROBE THAT MATCHES THE AUTHORITY LEAVES NOTHING OVER. The control: without it the row
+// above passes on an implementation that refuses every supplied entry, which would make a correct
+// probe unusable.
+test fn witness_observer_matching_probe_leaves_nothing_unconsumed() -> Bool {
+  list_length(items: fabric_cell_unconsumed_probe_refusals(probe: converged_probe())) == 0
+}
+
+// AND AN UNCONSUMED ENTRY REACHES THE POPULATION, not merely a list nobody reads. The seam again:
+// the projection carries it, and fabric_cell_projection_refusals is the only way to get the
+// discovery half, so a caller cannot take one and skip the other.
+test fn witness_observer_unconsumed_probe_refuses_the_population() -> Bool {
+  let stray = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 7 }
+  let projection = fabric_cell_observe(probe: FabricCellHostProbe {
+    host: operator_host_srv3,
+    namespaces: converged_probe().namespaces,
+    addresses: concat(
+      converged_probe().addresses,
+      [FabricCellAddressProbeEntry {
+        slot: stray,
+        address: FabricCellRootAddress,
+        probe: AddressStateRead { state_digest: "stray" as NonEmptyStr },
+      }],
+    ),
+  })
+  population_is_refused(p: fabric_cell_population(
+    readback: projection.expected_readback,
+    discovered: fabric_cell_projection_refusals(projection: projection),
+  ))
 }
