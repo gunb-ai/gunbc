@@ -1111,8 +1111,8 @@ fn binop_algebra_fields(op: std.syntax.BinOp) -> List<std.syntax.AlgebraFieldKin
     std.syntax.Gt => [std.syntax.AlgCompare]
     std.syntax.Le => [std.syntax.AlgCompare]
     std.syntax.Ge => [std.syntax.AlgCompare]
-    v1.std.core.And => [std.syntax.AlgMeet]
-    v1.std.core.Or => [std.syntax.AlgJoin]
+    std.syntax.And => [std.syntax.AlgMeet]
+    std.syntax.Or => [std.syntax.AlgJoin]
     std.syntax.NullCoalesce => []
   }
 }
@@ -1146,8 +1146,8 @@ fn infer_binop_type_node(op: std.syntax.BinOp, left_type: v1.std.core.Node, sour
     std.syntax.Gt => BinOpInferred { result_type: v1.std.core.bool_type, algebra_field: none }
     std.syntax.Le => BinOpInferred { result_type: v1.std.core.bool_type, algebra_field: none }
     std.syntax.Ge => BinOpInferred { result_type: v1.std.core.bool_type, algebra_field: none }
-    v1.std.core.And => BinOpInferred { result_type: v1.std.core.bool_type, algebra_field: none }
-    v1.std.core.Or => BinOpInferred { result_type: v1.std.core.bool_type, algebra_field: none }
+    std.syntax.And => BinOpInferred { result_type: v1.std.core.bool_type, algebra_field: none }
+    std.syntax.Or => BinOpInferred { result_type: v1.std.core.bool_type, algebra_field: none }
     std.syntax.NullCoalesce => BinOpInferred { result_type: extract_optional_inner_node(n: left_type), algebra_field: none }
     _ =>
       let candidates = binop_algebra_fields(op: op)
