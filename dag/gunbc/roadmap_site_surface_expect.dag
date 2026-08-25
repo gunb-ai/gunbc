@@ -49,29 +49,67 @@ fn healthz_projected_members(doc: JsonValue) -> List<JsonKeyValue> {
   )
 }
 
-fn healthz_projection_of_doc(doc: JsonValue) -> String? {
+// AT AN OPTIONAL, A FAILURE IS NOT MERELY UNREPORTED -- IT IS INDISTINGUISHABLE FROM THE ORDINARY
+// NEGATIVE RESULT, and that is a strictly worse position than the Bool sites this change also
+// repairs. `none` here meant BOTH "this body is not JSON" AND "this body is JSON and does not carry
+// the surface members", and the consumer below turned both into `false`, whose rendered cause is
+// ServedSurfaceStale. So an endpoint answering an HTML error page -- the wrong process bound to the
+// port, a proxy error, an empty 502 body -- was reported to the deploy operator as A STALE SURFACE:
+// a claim that the right process is serving the wrong tree. The remedy for that is to rebind the
+// graph; the actual remedy was to find out what was answering. One inference away is generous; it
+// points at a different machine.
+//
+// HealthzSurfaceMembersIncomplete CARRIES THE COUNT because the surface member count is a constant
+// this module owns, so "2 of 3" locates a renamed or dropped member immediately, where a bare
+// refusal would send the reader back to re-derive which member is missing.
+type HealthzSurfaceProjection
+  = HealthzSurfaceProjected { surface: String }
+  | HealthzBodyUnreadable
+  | HealthzSurfaceMembersIncomplete { present: Int }
+
+fn healthz_projection_of_doc(doc: JsonValue) -> HealthzSurfaceProjection {
   let members = healthz_projected_members(doc: doc)
   if length(members) == healthz_surface_projection_member_count {
-    Present { value: serialize_json(v: json_object(members: members)) }
+    HealthzSurfaceProjected { surface: serialize_json(v: json_object(members: members)) }
   } else {
-    none
+    HealthzSurfaceMembersIncomplete { present: length(members) }
   }
 }
 
-fn healthz_surface_projection(body: String) -> String? {
+fn healthz_surface_projection(body: String) -> HealthzSurfaceProjection {
   match parse_json(s: json_text_trim_trailing_lf(body: body)) {
-    Absent => none
+    Absent => HealthzBodyUnreadable
     Present { value: doc } => healthz_projection_of_doc(doc: doc)
   }
 }
 
+// THIS CONSUMER STILL ANSWERS Bool, AND THE REASON IS STATED HERE RATHER THAN ONLY IN A PR BODY.
+// Its question is genuinely two-valued -- is the observed surface the expected one -- and the two
+// sides are not symmetric, which is what makes collapsing honest on ONE side and not the other:
+//
+//   the EXPECTED side is bundle.healthz_body, a document this repository renders itself. Its
+//   refusals are not observations at all; either would be a defect in our own emitter, and there is
+//   no verdict about the deployed service to preserve.
+//
+//   the OBSERVED side is a wire body, and its refusals ARE observations with different remedies.
+//   They are NOT discarded here: this predicate is reached only after the readiness check has
+//   already parsed the same body for its release identity and refused on its own cause if it could
+//   not (gunbc.live_deploy.readiness ground_service_ready_from_healthz_body, whose ordering note
+//   states parse-then-identity-then-revision-then-surface). So HealthzBodyUnreadable is unreachable
+//   FROM THAT CALLER -- reachable from this function, which is why it exists, and not occupied
+//   there. Answering false for it is correct rather than merely tolerable.
+//
+// A caller that reaches this predicate WITHOUT an upstream parse does not inherit that reasoning
+// and must consume healthz_surface_projection directly.
 fn roadmap_site_healthz_surface_is_current(bundle: RoadmapSiteSurfaceBundle, observed_body: String) -> Bool {
   match healthz_surface_projection(body: observed_body) {
-    Absent => false
-    Present { value: observed } =>
+    HealthzBodyUnreadable => false
+    HealthzSurfaceMembersIncomplete { present: _ } => false
+    HealthzSurfaceProjected { surface: observed } =>
       match healthz_surface_projection(body: bundle.healthz_body) {
-        Absent => false
-        Present { value: expected } => observed == expected
+        HealthzBodyUnreadable => false
+        HealthzSurfaceMembersIncomplete { present: _ } => false
+        HealthzSurfaceProjected { surface: expected } => observed == expected
       }
   }
 }
