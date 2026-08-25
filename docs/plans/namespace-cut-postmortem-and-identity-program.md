@@ -1870,6 +1870,94 @@ and a symbol inside a prose string is not a citation — with the addition that
 prose rows in load-bearing authorities are exactly where an unresolvable
 citation survives longest, since they are read by people and by nothing else.
 
+### 11.2g THE CUT'S SUCCESS CONDITION IS ALREADY AN EXECUTABLE TEST, WRITTEN BY SOMEONE ELSE
+
+`dag/test/claim/import_admission_closure_membership_witness_test.dag` measured
+this program's central question before this program existed, and its headline is
+the answer to it:
+
+> **THE IMPORT LIST DOES NOT GATE A BARE FREE CALL; CLOSURE MEMBERSHIP DOES.**
+
+Four arms, one instrument, one binary, differing only in how the probe reaches
+the provider:
+
+| arm | reaches provider via | result |
+|---|---|---|
+| (1) listed | imports provider AND names the fn | resolves — **the only correct green** |
+| (2) selective-unlisted | imports provider, does NOT name the fn | resolves — **pinned defect** |
+| (3) pool-coincidence | never imports provider, only a carrier that does | resolves — **pinned defect** |
+| (4) absent-from-closure | nothing reaches the provider | **REFUSES** |
+
+Arm (4) is the discriminating control, and it is what makes the other three
+readable: the instrument *can* go red on this exact proposition, so three greens
+are measurements rather than vacuous passes.
+
+**IT ALSO CLOSES §11.2c's LAST GAP.** This document's two-module fixture — which
+refused where the single-candidate rule said it should resolve — **is arm (4)**.
+No import edge means the consumer's transitive closure is just the consumer, so
+the provider is in the *pool* but never in the *compiled closure*, and the census
+only serves what the closure loads. Nothing contradicted the single-candidate
+rule: the candidate was never in the census the rule runs over. And
+`cool-hawk-324`'s whole-tree case is **arm (3)** — `review_codex.dag` is an entry
+under the first root, and the modules declaring `Step` and
+`upsert_tagged_cron_tab` are dragged into the closure by an unrelated carrier.
+The fixture and the corpus differed in exactly one thing, and it was closure
+membership.
+
+**ARMS (2) AND (3) FLIPPING TO BLOCKING IS THIS CUT'S SUCCESS CONDITION**, stated
+as a pinned executable test with its control already built. The witness says so
+itself: *"when the admission wall lands they must FLIP to blocking, and a flip is
+the wall landing rather than this witness breaking."* The receipt does not need
+authoring.
+
+**AND ITS MOST VALUABLE CONTENT IS NEGATIVE — TWO PLACEMENTS BUILT, MEASURED,
+AND WITHDRAWN.** This is where not to put the wall, paid for already:
+
+- **At the whole-pool census seams** (`borrowed_census_decl`,
+  `global_bare_callable_node`) it is a **decoration**: the closure regenerated to
+  a byte-identical fixed point, 134 of 134, `first_generation_equal=true`, and
+  arm (2) still did not fire — because a selectively-imported module's unlisted
+  fn is served EARLIER, by the unfiltered parent `func_env` and the
+  `ancestry_str_bindings` overlay, so the census fallback is never reached.
+  **gunbc#9075's parent-env filter, applied on top and measured, does not create
+  that miss either — the ancestry overlay still serves the name.**
+- **At the admission seam** (`lookup_func_sig`) it *bites* — three hard
+  diagnostics on the same closure — but it bites by returning an unresolved
+  signature, degrading into *"if branches resolve to incompatible types:
+  Primitive(cost_constant) vs Primitive(CostBound)"*, which names neither the
+  unadmitted call nor the import that declined it. **A silent widen wearing a
+  type error**, not the typed located refusal §5 requires.
+
+So the machinery was deleted rather than shipped unproven, and the measurement is
+what landed. That is the scaffold-admission doctrine executed correctly by
+someone with a working wall in hand.
+
+**THE NEXT INCREMENT IS ONE AUTHORITY EXTENDED, NOT A SECOND WALL MINTED.**
+`UnlistedImportUse` already covers TYPE positions — `04_resolve.dag`'s
+`resolve_node` emits it advisory when masked and the name is outside
+`source_visible_names`, with `resolve_node_bounded_masked_boundary` declaring its
+promotion to a hard refusal once the corpus burndown reaches zero. **The
+value/call position emits nothing**, which is why that half of the class has no
+count. Extending the same diagnostic to the call seam — same predicate, same
+advisory posture, same burndown — is the increment, and it is the witness's own
+declared next-rung trigger.
+
+**SIZING, WITH THE PROVENANCE THAT MAKES IT USABLE.** The selective-unlisted half
+is **186 call sites across 118 modules** over `dag`, `src/v2` and `src/v1` — a
+static join, an upper bound, blind to local binders that shadow a name. The
+pool-coincidence half has **no trustworthy number**: the same join reports 4784,
+but arm (4) proves the census only serves what the closure loads, so that figure
+counts providers that may never be in any real closure. **It is recorded as an
+unbounded class rather than a count** — someone declining to publish a number
+they could not defend, which is the discipline this document spent a day
+rediscovering from the other direction.
+
+**RUNG: outside the ladder — silent wrongness.** *"A bare call's meaning depends
+on which modules the closure happened to load, and no diagnostic reports it at
+the value position."* Ceiling: structurally guaranteed, since admission is
+decidable from the consumer's own `resolved_imports` joined to the census
+candidate's owner module, both already carried.
+
 ### 11.2f BLOCKING PREREQUISITE — v2's grammar cannot parse a qualified record literal
 
 **`a.b.C { f: v }` does not parse.** `fierce-ram-94` established it by execution
