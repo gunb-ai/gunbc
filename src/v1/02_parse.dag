@@ -4254,6 +4254,36 @@ fn infix_bp(tokens: TokenStream) -> BindingPower? {
   }
 }
 
+// WHAT DECIDES THAT A DOTTED PIPE CALLEE IS A QUALIFIED CALLEE RATHER THAN A METHOD FOLLOWED
+// BY FIELD ACCESS, and why the discriminator is the application and not the shape of the path.
+// The parser cannot know that `a.b` names a module -- that fact lives in the symbol index, which
+// resolution owns and parse does not have. So the pipe production decides it syntactically:
+// `x |> a.b.f(...)` is the qualified callee `a.b.f` applied to `x`, and `x |> m.field` -- a
+// dotted path with NO application -- keeps the older reading, the method `m` on the receiver
+// followed by ordinary field access on its result.
+//
+// THE RECEIPT IS A LIVE SITE, and it is why this arm exists at all rather than the path being
+// consumed unconditionally. An earlier draft of this change consumed every `.segment` after the
+// pipe callee regardless of what followed, which silently re-denoted v1.compiler.emit_rust's
+// `field_names |> first.value` -- pipe into the kernel method `first`, then take `.value` off the
+// Optional it returns -- as a call to a function `value` in a module named `first`. A corpus scan
+// for a dotted pipe callee finds exactly one site and it is that one, so the population is small;
+// the point is that it is not empty, and the shape it uses is correct code that the unconditional
+// rule would have refused.
+//
+// WHAT THIS COSTS, stated rather than left to be discovered: `(x |> m).f(...)` is no longer
+// spellable as `x |> m.f(...)`; it needs the parentheses that say what it means. That spelling has
+// zero occurrences in the corpus today. What it does NOT cost is a second resolution path -- both
+// pipe forms produce one ExprMethodCall node, and the qualified one is exactly the node shape
+// v1.compiler.infer's qualified_direct_call arm already reads off an ordinary call site.
+
+fn pipe_callee_path_is_applied(candidate: PipeCalleeResult) -> Bool {
+  match candidate.spine {
+    Absent => true
+    Present { value: _ } => tok_is_lparen(tok: token_stream_first(stream: skip_newlines(tokens: candidate.tokens)))
+  }
+}
+
 fn parse_pipe_callee_rest(tokens: TokenStream, spine: Node?, name: String, name_span: SourceSpan) -> PipeCalleeResult {
   if tok_is_dot(tok: token_stream_first(stream: tokens)) {
     let r = expect_name(tokens: token_stream_advance(stream: tokens, n: 1))
@@ -4272,8 +4302,13 @@ fn parse_pipe_rhs(tokens: TokenStream, ctx: ParseContext, receiver: Node, span: 
   let dummy_expr = parse_recovery_placeholder()
   let r = expect_name(tokens: tokens)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
-  let callee = parse_pipe_callee_rest(tokens: r.tokens, spine: none, name: r.name, name_span: r.span)
-  if has_err(err: callee.err) { return ExprResult { expr: dummy_expr, tokens: callee.tokens, ctx: ctx, err: callee.err } }
+  let dotted = parse_pipe_callee_rest(tokens: r.tokens, spine: none, name: r.name, name_span: r.span)
+  if has_err(err: dotted.err) { return ExprResult { expr: dummy_expr, tokens: dotted.tokens, ctx: ctx, err: dotted.err } }
+  let callee = if pipe_callee_path_is_applied(candidate: dotted) {
+    dotted
+  } else {
+    PipeCalleeResult { spine: none, method: r.name, method_span: r.span, tokens: r.tokens, err: none }
+  }
   let method = callee.method
   let leading = match callee.spine {
     Absent => [receiver]

@@ -90,6 +90,21 @@ fn qualified_callee_in_pipe_position_resolves() {
     );
 }
 
+/// A dotted pipe callee with NO application is a method followed by field access, and this case
+/// is the one that decides the rule rather than illustrating it: `v1.compiler.emit_rust` writes
+/// `field_names |> first.value`, so a rule that consumed every dotted segment after the pipe
+/// callee would re-denote a live, correct site as a call into a module named `first`.
+#[test]
+fn dotted_pipe_callee_without_application_is_method_then_field() {
+    let messages = diagnostics_for_consumer(
+        "module consumer\n\ntype Row {\n  value: Int\n}\n\nfn method_then_field(rows: List<Row>) -> Int {\n  let r = rows |> first.value\n  r.value\n}\n",
+    );
+    assert!(
+        messages.is_empty(),
+        "a dotted pipe callee with no application must stay method-then-field: {messages:?}"
+    );
+}
+
 #[test]
 fn bare_callee_in_pipe_position_is_unchanged() {
     let messages = diagnostics_for_consumer(
