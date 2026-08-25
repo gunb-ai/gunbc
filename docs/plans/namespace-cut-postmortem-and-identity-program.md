@@ -2831,6 +2831,45 @@ fluently and wrongly. What caught it was a peer running a flag against both
 binaries. **A harness must print the binary's accepted flag set**, so a
 version-skewed run refuses to look like a measurement.
 
+### 11.2k Removing a dishonest collapse breaks the code that depended on the collapse
+
+Two PRs on 2026-08-25 passed red-then-green fixtures with discriminating
+controls, passed reviewer approval, and were then **refused by the corpus arm**
+(`crisp-crab-430`, who pulled both to draft):
+
+| PR | the collapse removed | what depended on it |
+|---|---|---|
+| #9200 | `List<Unit>` fabricated as resolved | downstream field access worked *because* the fabrication read as resolved |
+| #9233 | a type alias collapsing into its target | `type AttemptKey = String`, so an `if`-join over an `AttemptKey` branch and a `String` branch unified |
+
+Both fixes are right about the mechanism and wrong about **scope**. #9233's
+refusal is exact: preserving alias identity for every alias includes
+**transparent aliases over primitives**, which live corpus code relies on being
+interchangeable — `if branches resolve to incompatible types: Primitive(AttemptKey)
+vs Primitive(String)`. Neither was catchable by any fixture writable *from the
+defect*, and neither is visible in a diff. Only the corpus arm found them, which
+makes these the second and third instances of §11.2(5).
+
+**The operational rule, and it is cheaper than any measurement: when a fix
+replaces a collapse with an honest answer, ask WHO WAS RELYING ON THE COLLAPSE
+before measuring anything.** For #9233 the answer is a ten-second grep — `^type
+\w+ = String` returns `AttemptKey`, `CargoProfile`, `CommitSha`. The control was
+even named in advance ("transparent alias: remains transparent, if that category
+exists") and skipped because the category's existence had not been established.
+The corpus established it.
+
+**This bears directly on the cut, and it is the reason the row sits here rather
+than in a review log.** The cut's whole content is removing a collapse: a bare
+name currently collapses distinct declarations into whichever won a global
+competition (§11.2j's `List` across two standard libraries, `default_model`
+across two review tools). So the question *who is relying on the collapse* is
+this program's question, at corpus scale, and the honest answer is that some
+consumers are — a wave that strips imports may break code whose correctness
+depended on a name resolving to the survivor. That is not an argument against the
+cut; it is the argument for the wave-delta discipline §11.2c now carries, and for
+expecting refusals that are correct-in-mechanism and wrong-in-scope to be the
+normal failure mode rather than the surprising one.
+
 ### 11.3 The dispatch protocol
 
 Every dispatch across a lane boundary carries five lines, and a dispatch without them is refused rather than interpreted:
