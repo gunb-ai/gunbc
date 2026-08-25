@@ -661,6 +661,10 @@ test fn lease_guard_sudoes_only_granted_binaries() -> Bool {
 // PRIVILEGE IS SPENT ONCE AND ON OWNERSHIP. The RED here is the pair of ungranted verbs; the
 // positive control is that the directory is created already owned by the job principal, which is
 // what makes the extract and the cleanup after it unprivileged rather than merely un-sudo-ed.
+// THE PATTERNS ARE BUILT FROM THE AUTHORITY rather than spelled here. A literal
+// "sudo /usr/bin/install -d -m 755 ..." would be permanently red now that the words are
+// posix-quoted, and a literal that happened to match would still be a second spelling of a command
+// this repo already derives -- the exact drift the privileged-operation authority removes.
 test fn slot_extract_sudoes_only_granted_binaries() -> Bool {
   let sc = actions_runner_slot_extract_script(
     artifact: ActionsRunnerBinaryArtifact {
@@ -673,10 +677,6 @@ test fn slot_extract_sudoes_only_granted_binaries() -> Bool {
       job_user: "ghrunner" as NonEmptyStr,
     ),
   )
-  // The patterns are BUILT FROM THE AUTHORITY rather than spelled here. A literal
-  // "sudo /usr/bin/install -d -m 755 ..." would be permanently red now that the words are
-  // posix-quoted, and a literal that happened to match would still be a second spelling of a
-  // command this repo already derives -- the exact drift this PR removes.
   !string_contains(s: sc, pattern: "sudo tar")
     && !string_contains(s: sc, pattern: "sudo chown")
     && string_contains(

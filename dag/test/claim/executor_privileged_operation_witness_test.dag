@@ -52,13 +52,13 @@ test fn witness_population_tracks_the_slot_roster() -> Bool {
 // script rebuilt an argv from a binary path while the roster granted the bare binary -- and the
 // disagreement was discoverable only by a wet apply on a real host.
 // RED IS AUTHORABLE: change either projection alone and the two stop matching.
+// The script runs the QUOTED argv; the sudoers file grants the SAME argv unquoted.
 test fn witness_executed_command_is_the_granted_command() -> Bool {
   let slot = "/opt/actions-runner/srv3-09" as NonEmptyStr
   let job = "ghrunner" as NonEmptyStr
   let executed = gunbc_runner_slot_privileged_commands(slot_dir: slot, job_user: job)
   let op = RemoveDirectoryTree { path: slot }
   let argv = executor_privileged_operation_argv(op: op)
-  // the script runs the QUOTED argv; the sudoers file grants the SAME argv unquoted
   executed.remove_command
     == join(["sudo ", join(map(argv, w => posix_single_quote(spelling: w as String)), " ")], "")
     && executor_privileged_operation_sudoers_command(op: op)
