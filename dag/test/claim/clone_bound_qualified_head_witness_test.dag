@@ -1,0 +1,83 @@
+module test.claim.clone_bound_qualified_head_witness
+
+import std.types { String, Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A QUALIFIED GENERIC HEAD LOST ITS CLONE BOUNDS, AND THE EMITTER SAID SO.
+//
+// Clone-bound derivation reads a field's head with authored_name_at and looks it up in
+// type_decl_items and in the bounds map. Both are keyed on BARE declared names. A qualified
+// spelling therefore matched nothing, no parameter was found to need a bound, and the emitted
+// struct lost the `K: Clone, V: Clone` that KeyedRow requires -- so the generated Rust does not
+// compile, at a type whose own declaration carries the bounds.
+//
+// THE EMITTER REFUSED RATHER THAN GUESSING, which is how this was found at all. Handed a head it
+// could not resolve it emitted a compile_error! naming the item, the unresolvable head and the
+// note governing the decision, instead of silently omitting a bound. The third arm below pins
+// that: a repair that produced the right bounds while still emitting the refusal would be a
+// different bug wearing this one's green.
+//
+// SCOPE, deliberately narrow. Only the two sites that decide CLONE BOUNDS are peeled --
+// v1_type_expr_clone_undecided_head and v1_type_expr_wf_needs_clone_param -- because both feed a
+// bare-keyed map and the leaf is the key they want. Sites in the same file that compare against a
+// GENERIC PARAMETER NAME are NOT touched: a type parameter is never qualified, so peeling there
+// would be an edit with no reachable red, and a sweep is not a repair.
+
+fn bare_head_emits_clone_bounds() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_clone_bare\n\nimport std.keyed_row { KeyedRow }\n\ntype BareHolder<K, V> {\n  row: KeyedRow<K, V>\n}\n",
+    "src/probe_clone_bare.rs",
+    ["pub struct BareHolder<K: Clone, V: Clone>"],
+    []
+  )
+}
+
+fn qualified_head_emits_the_same_clone_bounds() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_clone_qual\n\nimport std.keyed_row { KeyedRow }\n\ntype QualHolder<K, V> {\n  row: std.keyed_row.KeyedRow<K, V>\n}\n",
+    "src/probe_clone_qual.rs",
+    ["pub struct QualHolder<K: Clone, V: Clone>"],
+    []
+  )
+}
+
+fn qualified_head_no_longer_refuses() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_clone_refusal\n\nimport std.keyed_row { KeyedRow }\n\ntype RefusalHolder<K, V> {\n  row: std.keyed_row.KeyedRow<K, V>\n}\n",
+    "src/probe_clone_refusal.rs",
+    [],
+    ["compile_error"]
+  )
+}
+
+// THE CONVERSE CONTROL. The law has two halves: same declaration under two spellings must behave
+// the SAME, and a name that resolves to NO declaration must not silently acquire one. Peeling a
+// head to its leaf is exactly the edit that could make an unresolvable qualified head match some
+// unrelated bare declaration elsewhere in the corpus, so this arm holds a head that resolves
+// nowhere and requires that the emitter still REFUSES rather than inventing a binding for it.
+fn an_unresolvable_qualified_head_still_refuses() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_clone_unresolvable\n\ntype UnknownHolder<K, V> {\n  row: no.such.module.NoSuchGenericType<K, V>\n}\n",
+    "src/probe_clone_unresolvable.rs",
+    ["compile_error"],
+    []
+  )
+}
+
+test fn a_bare_generic_head_carries_its_clone_bounds() -> Bool {
+  bare_head_emits_clone_bounds()
+}
+
+test fn a_qualified_generic_head_carries_the_same_clone_bounds() -> Bool {
+  qualified_head_emits_the_same_clone_bounds()
+}
+
+test fn a_qualified_generic_head_does_not_emit_a_refusal() -> Bool {
+  qualified_head_no_longer_refuses()
+}
+
+test fn a_head_that_resolves_nowhere_still_refuses() -> Bool {
+  an_unresolvable_qualified_head_still_refuses()
+}
