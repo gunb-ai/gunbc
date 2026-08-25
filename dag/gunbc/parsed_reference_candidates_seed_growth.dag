@@ -1,0 +1,52 @@
+module gunbc.parsed_reference_candidates_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+
+// Seed-growth obligation for the change that made the parsed tree the single producer of
+// "which names does this file reference", deleting the byte scanner that answered the same
+// question lexically. It is homed beside its own obligation rather than appended to the
+// scanner's admission receipt, because that carrier declares a DIFFERENT change's items and
+// merging the two would leave one row answering for two populations.
+//
+// THE DELTA IS NET NEGATIVE AND THIS RECEIPT STILL ENUMERATES THE ADDITIONS. The admission
+// authority is explicit that netting deletions against additions is out of scope, so the
+// deletions below are named as context and never subtracted from the count.
+
+data parsed_reference_candidates_not_growth_note: String = "WHAT THIS CHANGE DELETES, NAMED BECAUSE A RECEIPT THAT LISTS ONLY ADDITIONS DESCRIBES A DIFFERENT CHANGE THAN THE ONE THAT LANDED -- and never netted against the additions above, which the admission authority puts out of scope. Two production fns are DELETED WHOLE: bare_identifier_candidates (the byte scanner, with its binder-keyword table and open-paren depth heuristic) and destructuring_bound_spans (its lookahead pre-pass). One test module is deleted with them, bare_identifier_candidates_tests and its two test fns, and the BareCandidates.bound field is deleted as structurally unreachable rather than merely unused -- the traversal never emits a bound occurrence for a subtraction to remove.\n\nTWO EXISTING ITEMS ARE MODIFIED, disposition ExistingSeedItemModified, listed here so a modification is never inflated into an addition. bare_reference_pull_paths_for_source now consults parsed_reference_candidates and propagates its refusal. ExprVarClassification gains one field, calls, populated from the ExprData::ExprCall arm of collect_node_refs_inner -- the projection widening that made the scanner deletable, since call position is a node kind and was already known to the walk.\n\nTHE PORTED TESTS ARE NOT NEW AUTHORSHIP EITHER. bare_reference_scanner_tests keeps its seven fns and two of them now assert against parsed_reference_candidates on the same discriminating inputs. DESIGN 4b(4): a climb deletes the production machinery it obsoletes and KEEPS the probe that shows the higher rung is real. Deleting the evidence with the machinery would recreate specification-without-execution one rung up."
+
+data parsed_reference_candidates_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run",
+      decl_name: "parsed_reference_candidates",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run",
+      decl_name: "parsed_reference_candidates_tests",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.parsed_reference_candidates_tests",
+      decl_name: "arrow_lambda_param_is_not_a_reference",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.parsed_reference_candidates_tests",
+      decl_name: "pattern_value_leaf_is_not_a_reference_but_its_tag_is",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.parsed_reference_candidates_tests",
+      decl_name: "an_unparseable_file_refuses_rather_than_reporting_no_references",
+      field: WholeDeclaration
+    }
+  ],
+  reason: "WHY RUST IS STILL NEEDED HERE: the closure pull runs inside the seed's own source loader and must decide which files enter a subject before any prepared subject exists to fold a .dag authority against. The same constraint the scanner it replaces was admitted under -- with one premise corrected, and the correction is why this change was possible at all. That admission held that no parse result exists to consult at this point. A file's OWN binder structure needs no closure: this fn parses the single file in hand and folds it with collect_node_refs, in the same loader, and reference_resolution_facts already parses the whole pool in that phase. The ordering constraint was real for the closure and imaginary for the file.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits by PURPOSE -- does the change serve the v2 self-host program. This deletes one of the two producers of a fact the namespace cut depends on, and the fact it corrects is which module a bare name's closure pulls, which by measurement decides which of several declarations a homonym binds to. Defect repair on the self-host path, and net-negative hand Rust.\n\nHAND-ITEM DELTA: +5 authored (one production fn, one test module, three test fns), against 5 deleted (two production fns, one test module, two test fns) and one deleted struct field. The addition figure is what this receipt names; the deletion figure is context and is not subtracted from it.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete parsed_reference_candidates when the pull itself moves to .dag -- when a prepared subject can answer 'which modules does this file reference' before the loader has built one, so no host-side fold of a file's own parse is needed at this seam. Its three tests are NOT deleted by that trigger on their own: they are the discriminating evidence that a lambda parameter, a pattern leaf and an unparseable file are handled correctly, and they retire only when an equivalent .dag-side probe asserts the same three discriminations against the replacement (DESIGN 4b(4) -- production machinery dissolves on a climb, the evidence stays enrolled).",
+  current_boundary: "gunbc.parsed_reference_candidates_seed_growth -> v1_compiler.cli_run parsed_reference_candidates -> v1_compiler.cli_run bare_reference_pull_paths_for_source -> the both-closure edge index"
+}

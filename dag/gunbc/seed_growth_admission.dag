@@ -4,6 +4,7 @@ import gunbc.anonymous_record_resolution_seed_growth { anonymous_record_resoluti
 import gunbc.reference_closure_binder_seed_growth { reference_closure_binder_seed_growth_justification }
 import gunbc.bare_reference_scanner_admission { bare_reference_scanner_seed_growth_justification }
 import gunbc.parse_refusal_location_seed_growth { parse_refusal_location_seed_growth_justification }
+import gunbc.parsed_reference_candidates_seed_growth { parsed_reference_candidates_seed_growth_justification }
 import gunbc.qualified_pipe_callee_seed_growth { qualified_pipe_callee_seed_growth_justification }
 import gunbc.roadmap_authority { observation_scoped_run_seed_growth_justification }
 import gunbc.witness_runtime_cause_seed_growth { witness_runtime_cause_seed_growth_justification }
@@ -83,7 +84,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     bare_reference_scanner_seed_growth_justification,
     witness_runtime_cause_seed_growth_justification,
     parse_refusal_location_seed_growth_justification,
-    qualified_pipe_callee_seed_growth_justification
+    qualified_pipe_callee_seed_growth_justification,
+    parsed_reference_candidates_seed_growth_justification
   ]
 }
 
