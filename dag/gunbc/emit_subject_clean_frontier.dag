@@ -1,6 +1,7 @@
 module gunbc.emit_subject_clean_frontier
 
 import std.types { Bool, Int, String, NonEmptyStr }
+import std.materialization_ladder { string_list_contains }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.dissolution { DissolutionCondition }
 import std.roster_frontier {
@@ -318,7 +319,7 @@ fn universe_unclassified_files(u: RatchetUniverse) -> List<String> {
       fold(
         inv,
         init: [],
-        f: (acc, path) => if list_contains_string(xs: es, target: path) { acc } else { concat(acc, [path]) }
+        f: (acc, path) => if string_list_contains(xs: es, wanted: path) { acc } else { concat(acc, [path]) }
       )
   }
 }
@@ -692,10 +693,6 @@ fn emit_ratchet_verdict_row(v: EmitRatchetVerdict) -> String {
   }
 }
 
-fn list_contains_string(xs: List<String>, target: String) -> Bool {
-  fold(xs, init: false, f: (found, x) => found || (x == target))
-}
-
 fn emit_ratchet_verdict_of_outcome(entry: String, on_frontier: Bool, outcome: EmitSubjectOutcome) -> EmitRatchetVerdict {
   match outcome {
     EmitSubjectClean =>
@@ -794,7 +791,7 @@ fn fold_emit_subject_clean_ratchet_over_readings(
       entry =>
         emit_ratchet_verdict_for(
           entry: entry,
-          on_frontier: list_contains_string(xs: keys, target: entry),
+          on_frontier: string_list_contains(xs: keys, wanted: entry),
           readings: all_readings
         )
     ),
@@ -802,7 +799,7 @@ fn fold_emit_subject_clean_ratchet_over_readings(
     orphan_admission_subjects: fold(
       keys,
       init: [],
-      f: (acc, k) => if list_contains_string(xs: roster, target: k) { acc } else { concat(acc, [k]) }
+      f: (acc, k) => if string_list_contains(xs: roster, wanted: k) { acc } else { concat(acc, [k]) }
     ),
     malformed_admission_subjects: fold(
       admissions,
