@@ -23,6 +23,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // annotation because the wrong conclusion was more interesting than the right one, which is exactly
 // when nobody re-checks.
 //
+// THE COLLISION IS SILENT ONLY WHEN THE ARITIES MATCH, established by a second specimen rather
+// than reasoned: in `test.claim.fabric_cell_evidence_algebra_witness` a parameter named `project`
+// collided with a module-scope `fn project` of TWO arguments, and the call REFUSED loudly with
+// `call contract mismatch calling 'project': missing required argument 'assignments'`. Here `p`
+// takes one argument and the shadowing `p` takes one, so nothing refuses and a wrong value is
+// returned. Same defect; the arity alone decides whether anyone finds out, which is why the loud
+// specimen is named here rather than left in its own PR.
+//
 // NO MECHANISM IS ASSERTED, AND THE READ THAT SUGGESTS ONE IS MARKED AS A READ. What is EXECUTED is
 // below. What is READ, not executed: the emitted Rust for this module carries
 // `pub use crate::gunbc_plans_md_helpers::{p};`, and `gunbc.plans.md_helpers` declares

@@ -11,16 +11,26 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // establishes the NAME matters; it cannot establish what makes the name matter, because both arms
 // live in one import closure.
 //
-// THIS FILE IS THE SAME `p`-NAMED FUNCTION WITH THE IMPORT REMOVED. It imports std.types and
-// v2.std.live_tree and nothing else; what is asserted about its closure is only what the import
-// list shows -- it does not import `gunbc.fabric_cell_converge`. Whether some other module in this
-// smaller closure also re-exports a `p` is not claimed here and does not need to be: the row's
-// verdict measures it. GREEN here beside RED in the sibling means the two closures differ in
-// something that decides the answer, and the import list is the only thing that differs.
+// THIS FILE IS THE SAME `p`-NAMED FUNCTION WITH THE IMPORT REMOVED, AND IT NOW MEASURES THE
+// OPPOSITE OF WHAT IT WAS AUTHORED TO MEASURE. It was written as the leg that proves the import is
+// load-bearing: green here, red in the sibling, so the closure decides. It IS green under
+// `gunbc run --entry <this file>`, and it is RED under the required floor -- which is why it is
+// enrolled expected-red.
 //
-// SO THIS ROW IS LOAD-BEARING PRECISELY BY BEING GREEN, and it must not be "tidied up" into the
-// sibling file: moving it there would give it the sibling's imports and destroy the only thing it
-// measures.
+// THE TWO PATHS RESOLVE DIFFERENTLY AND THAT IS THE FINDING. An entry-scoped run builds a closure
+// from this entry, and `gunbc.plans.md_helpers` `p` is not in it. The floor folds every witness
+// through ONE PREPARED SUBJECT OVER THE WHOLE CORPUS, where that symbol is in scope no matter what
+// this module imports. So:
+//
+//   entry-scoped resolution    the collision depends on the module's import closure
+//   whole-corpus preparation   the collision is UNCONDITIONAL
+//
+// The rungs are per path, and this row is the pair that shows it. It is kept, and kept in its own
+// module, for that reason -- not for the reason it was written.
+//
+// IT MUST NOT BE "TIDIED UP" INTO THE SIBLING FILE. Moving it there would give it the sibling's
+// imports and collapse the entry-scoped half of the pair, which is the half that still
+// discriminates.
 fn control_int_is_two(n: Int) -> Bool {
   n == 2
 }
