@@ -1,0 +1,46 @@
+module test.claim.function_value_argument_binding_no_import_control
+
+import std.types { Bool, List, Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE THIRD LEG OF THE ISOLATION, AND IT HAS TO BE A SEPARATE MODULE. Its sibling
+// `test.claim.function_value_argument_binding_probe` shows that a parameter named `p` disagrees
+// with its direct oracle while the same function with the parameter renamed agrees. That pair
+// establishes the NAME matters; it cannot establish what makes the name matter, because both arms
+// live in one import closure.
+//
+// THIS FILE IS THE SAME `p`-NAMED FUNCTION WITH THE IMPORT REMOVED. It imports std.types and
+// v2.std.live_tree and nothing else; what is asserted about its closure is only what the import
+// list shows -- it does not import `gunbc.fabric_cell_converge`. Whether some other module in this
+// smaller closure also re-exports a `p` is not claimed here and does not need to be: the row's
+// verdict measures it. GREEN here beside RED in the sibling means the two closures differ in
+// something that decides the answer, and the import list is the only thing that differs.
+//
+// SO THIS ROW IS LOAD-BEARING PRECISELY BY BEING GREEN, and it must not be "tidied up" into the
+// sibling file: moving it there would give it the sibling's imports and destroy the only thing it
+// measures.
+fn control_int_is_two(n: Int) -> Bool {
+  n == 2
+}
+
+fn control_ints() -> List<Int> {
+  [2, 2, 3]
+}
+
+fn control_count_direct(items: List<Int>) -> Int {
+  fold(items, init: 0, f: (acc, n) => if control_int_is_two(n: n) { acc + 1 } else { acc })
+}
+
+fn control_count_via_p(items: List<Int>, p: fn(Int) -> Bool) -> Int {
+  fold(items, init: 0, f: (acc, n) => if p(n) { acc + 1 } else { acc })
+}
+
+test fn control_direct_fold_counts_two() -> Bool {
+  control_count_direct(items: control_ints()) == 2
+}
+
+test fn control_parameter_named_p_agrees_with_direct_fold_without_the_import() -> Bool {
+  control_count_via_p(items: control_ints(), p: control_int_is_two) == 2
+}
