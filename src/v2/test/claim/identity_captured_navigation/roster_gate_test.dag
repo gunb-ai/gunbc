@@ -18,12 +18,26 @@ test fn red_control_planted_identity_escape_finding_count_is_one() -> Bool {
   }
 }
 
+test fn planted_source_analysis_is_established() -> Bool {
+  match v2.lens.identity_captured_navigation.roster_gate.source_findings(source_text: planted_identity_escape_snippet) {
+    SourceFindingsNotEstablished { cause: _ } => false
+    SourceFindingsEstablished { findings: _ } => true
+  }
+}
+
 data sanctioned_reader_probe_snippet: String = "module sanctioned_reader_probe\n\nfn parse_production_emitted_identity_optional(node: Node) -> Optional<Symbol> {\n  match find_named_child(root: node, name: ^grammar_production_identity_node_projection) {\n    Accepted { value: id_node, diagnostics: _ } => node_atom_identity_optional(node: id_node)\n    Rejected { diagnostics: _ } => Absent\n  }\n}\n"
 
 test fn green_control_sanctioned_reader_body_not_flagged() -> Bool {
   v2.lens.identity_captured_navigation.roster_gate.finding_standing_established_clean(
     standing: v2.lens.identity_captured_navigation.roster_gate.source_finding_standing(source_text: sanctioned_reader_probe_snippet)
   )
+}
+
+test fn sanctioned_source_analysis_is_established() -> Bool {
+  match v2.lens.identity_captured_navigation.roster_gate.source_findings(source_text: sanctioned_reader_probe_snippet) {
+    SourceFindingsNotEstablished { cause: _ } => false
+    SourceFindingsEstablished { findings: _ } => true
+  }
 }
 
 data green_control_note: String = "The canonical sanctioned-reader source must reach NoSuspect. finding_standing_established_clean is false for both SuspectObserved and FindingNotEstablished, so neither a false positive nor a future ingest refusal can impersonate the green repair; this is the single exact observed expected-red for that analyzer defect."
