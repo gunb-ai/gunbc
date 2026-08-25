@@ -33,6 +33,7 @@ data emit_error_bare_prefix: String = "error: "
 data emit_advisory_bare_prefix: String = "advisory: "
 data emit_location_separator: String = "]: "
 data emit_summary_prefix: String = "compiled: "
+data emit_entry_scope_marker: String = "reference-derived closure"
 data emit_severity_blocking_marker: String = " blocking error(s), "
 data emit_severity_error_suffix: String = " error(s)"
 
@@ -103,6 +104,7 @@ type EmitDiagnosticRead
   | EmitSummaryUnreadable { line: String }
   | EmitPopulationMismatch { decoded: Int, declared: Int }
   | EmitSummaryDisagreement { compiled_total: Int, severity_total: Int }
+  | EmitScopeUnconfirmed
 
 type EmitLineRead
   = EmitLineDiagnostic { diagnostic: GunbcDiagnostic }
@@ -279,8 +281,40 @@ fn emit_severity_fold(acc: EmitSeverityRead, line: String) -> EmitSeverityRead {
 // AND AT LEAST ONE DECLARED TOTAL MUST EXIST. If neither anchor is present the compile did not
 // reach the point where it states its own total -- which is exactly the state that must never be
 // reported as a clean, empty population.
+// THE SCOPE THE COMPILER ACTUALLY USED, required before any population is read.
+//
+// `gunbc compile --entry` is NOT MODELLED in the .dag authority: measured on the live file,
+// `v1.05_emit_rust` `emit_subcommand_enum` renders the Compile variant with five fields and no
+// `entry`, while the Run variant nine lines below it carries `entry: Option<String>` -- and the
+// Compile HANDLER it emits is the whole-tree implementation, whose own comment reads "Entry
+// modules: all .dag files in the FIRST source root". The flag lives only in the hand-maintained
+// `main.rs`, which is this repository's one declared divergence from its emitted form.
+//
+// SO THERE ARE TWO HAZARDS AND THEY FAIL IN OPPOSITE DIRECTIONS. A compiler WITHOUT the flag
+// refuses the invocation outright, which is loud and already safe. A compiler that ACCEPTS the flag
+// and IGNORES IT compiles the whole first source root and prints an ordinary summary -- and a
+// per-entry instrument would report that whole-tree population as one entry's. That is the silent
+// substitution this decode exists to prevent, and it is exactly what closing the divergence by
+// adding the field WITHOUT its handler would produce.
+//
+// The compiler names which scope it used: the entry-scoped path reports a "reference-derived
+// closure", the whole-tree path an import-closure resolve over every file it collected. Requiring
+// the marker binds the population to the scope that produced it, so the instrument refuses rather
+// than measures if the entry-scoped path is ever silently lost.
+fn emit_entry_scope_confirmed(lines: List<String>) -> Bool {
+  count(filter(lines, line => string_contains(s: line, pattern: emit_entry_scope_marker))) > 0
+}
+
 fn read_emit_diagnostics(stderr: String) -> EmitDiagnosticRead {
   let lines = split(s: stderr, delimiter: "\n")
+  if emit_entry_scope_confirmed(lines: lines) {
+    read_scoped_emit_diagnostics(lines: lines)
+  } else {
+    EmitScopeUnconfirmed
+  }
+}
+
+fn read_scoped_emit_diagnostics(lines: List<String>) -> EmitDiagnosticRead {
   let compiled = fold(lines, init: EmitSummaryNotFound, f: (acc, line) => emit_summary_fold(acc: acc, line: line))
   let severity = fold(lines, init: EmitSeverityNotFound, f: (acc, line) => emit_severity_fold(acc: acc, line: line))
   match compiled {
@@ -362,6 +396,8 @@ fn emit_diagnostic_read_refusal_reason(read: EmitDiagnosticRead) -> String {
         concat("decoded ", to_string(d)),
         concat(" diagnostic line(s) against a compiler-declared total of ", to_string(n))
       )
+    EmitScopeUnconfirmed =>
+      "gunbc compile did not report a reference-derived closure, so the compile this output describes cannot be established as scoped to the requested entry — a whole-tree population reported as one entry's is the substitution this decode refuses, and `--entry` is carried only by the hand-maintained main.rs rather than by the .dag authority"
     EmitSummaryDisagreement { compiled_total: c, severity_total: s } =>
       concat(
         concat("the compiler's own two totals disagree: `compiled:` says ", to_string(c)),

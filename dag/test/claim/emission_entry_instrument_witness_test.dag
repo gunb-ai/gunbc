@@ -130,6 +130,10 @@ data emit_severity_summary_one_error: String = "1 error(s)"
 
 data emit_noise_line: String = "resolved 3892 sources (transitive import closure)"
 
+data emit_scope_line: String = "resolved 27 sources (reference-derived closure), 3897 indexed modules in the name census only"
+
+data emit_whole_tree_scope_line: String = "resolved 3892 sources (transitive import closure)"
+
 fn emit_read_of(lines: List<String>) -> EmitDiagnosticRead {
   read_emit_diagnostics(stderr: stream_of(lines: lines))
 }
@@ -143,7 +147,7 @@ fn emit_rows(lines: List<String>) -> List<String> {
 }
 
 test fn the_emit_population_carries_severity_location_and_message() -> Bool {
-  emit_rows(lines: [emit_noise_line, emit_error_line, emit_advisory_line, emit_summary_two, emit_severity_summary_two])
+  emit_rows(lines: [emit_scope_line, emit_noise_line, emit_error_line, emit_advisory_line, emit_summary_two, emit_severity_summary_two])
     == [
       "error\tdag/extdeps/cpu/ampere.dag:31:3\tambiguous anonymous record literal",
       "advisory\tdag/std/logic.dag:9:1\tmethod existence undecided"
@@ -151,7 +155,7 @@ test fn the_emit_population_carries_severity_location_and_message() -> Bool {
 }
 
 test fn blocking_is_counted_from_the_population_not_from_the_summary() -> Bool {
-  match emit_read_of(lines: [emit_error_line, emit_advisory_line, emit_summary_two, emit_severity_summary_two]) {
+  match emit_read_of(lines: [emit_scope_line, emit_error_line, emit_advisory_line, emit_summary_two, emit_severity_summary_two]) {
     EmitDiagnosticsRead { diagnostics: ds, emitted_files: files, declared_total: _ } =>
       emit_blocking_count(ds: ds) == 1 && emitted_file_count_text(files: files) == "177"
     read => false
@@ -162,7 +166,7 @@ test fn blocking_is_counted_from_the_population_not_from_the_summary() -> Bool {
 // line, because it wrote no tree. The population is still fully readable, and the file count is
 // the named absent state rather than a zero that would read as an empty emission.
 test fn a_refused_compile_reads_its_population_from_the_severity_summary() -> Bool {
-  match emit_read_of(lines: [emit_error_line, emit_severity_summary_one_error]) {
+  match emit_read_of(lines: [emit_scope_line, emit_error_line, emit_severity_summary_one_error]) {
     EmitDiagnosticsRead { diagnostics: ds, emitted_files: files, declared_total: n } =>
       count(ds) == 1 && n == 1
         && emitted_file_count_text(files: files) == "(no tree written — the compiler refused)"
@@ -174,7 +178,7 @@ test fn a_refused_compile_reads_its_population_from_the_severity_summary() -> Bo
 // agree. A disagreement is the decode's own alarm that it is reading a rendering it does not
 // understand, and it stops the line instead of picking one of the two numbers.
 test fn the_compilers_two_own_totals_disagreeing_refuses() -> Bool {
-  emit_rows(lines: [emit_error_line, emit_advisory_line, emit_summary_three, emit_severity_summary_two])
+  emit_rows(lines: [emit_scope_line, emit_error_line, emit_advisory_line, emit_summary_three, emit_severity_summary_two])
     == ["REFUSED: the compiler's own two totals disagree: `compiled:` says 3 and the rendered severity summary says 2"]
 }
 
@@ -182,22 +186,41 @@ test fn the_compilers_two_own_totals_disagreeing_refuses() -> Bool {
 // own total, so a diagnostic shape this decode does not recognise makes the two numbers disagree
 // and stops the line, instead of quietly returning a smaller population.
 test fn a_population_smaller_than_the_compilers_own_total_refuses() -> Bool {
-  emit_rows(lines: [emit_error_line, emit_advisory_line, emit_summary_three])
+  emit_rows(lines: [emit_scope_line, emit_error_line, emit_advisory_line, emit_summary_three])
     == ["REFUSED: decoded 2 diagnostic line(s) against a compiler-declared total of 3"]
 }
 
 // RED: no summary line means the compile never reached the point where it states its own total, so
 // there is no total to check a population against and no population may be reported.
 test fn output_with_no_summary_line_refuses_rather_than_reporting_zero() -> Bool {
-  match emit_read_of(lines: [emit_noise_line]) {
+  match emit_read_of(lines: [emit_scope_line, emit_noise_line]) {
     EmitSummaryAbsent => true
     read => false
   }
 }
 
 test fn a_malformed_summary_line_refuses_rather_than_defaulting_to_zero() -> Bool {
-  match emit_read_of(lines: ["compiled: some files emitted, lots diagnostics"]) {
+  match emit_read_of(lines: [emit_scope_line, "compiled: some files emitted, lots diagnostics"]) {
     EmitSummaryUnreadable { line: _ } => true
+    read => false
+  }
+}
+
+// RED, AND IT IS THE ONE THAT SURVIVES SELF-EMISSION. `compile --entry` is carried only by the
+// hand-maintained main.rs; the .dag authority renders the Compile variant with no entry field and a
+// whole-tree handler. A compiler that accepted the flag and ignored it would print an ordinary
+// summary over the WHOLE FIRST SOURCE ROOT, and a per-entry instrument would report that as one
+// entry's population. Requiring the compiler's own scope marker refuses that substitution.
+test fn a_whole_tree_compile_is_not_read_as_an_entry_population() -> Bool {
+  match emit_read_of(lines: [emit_whole_tree_scope_line, emit_error_line, emit_severity_summary_one_error]) {
+    EmitScopeUnconfirmed => true
+    read => false
+  }
+}
+
+test fn an_entry_scoped_compile_is_read_normally() -> Bool {
+  match emit_read_of(lines: [emit_scope_line, emit_error_line, emit_severity_summary_one_error]) {
+    EmitDiagnosticsRead { diagnostics: ds, emitted_files: _, declared_total: _ } => count(ds) == 1
     read => false
   }
 }

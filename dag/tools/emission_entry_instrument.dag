@@ -28,6 +28,7 @@ import gunbc.emit_diagnostic_observation {
   EmitPopulationMismatch,
   EmitSummaryDisagreement,
   EmittedFileCount,
+  EmitScopeUnconfirmed,
   EmitPopulationExtent,
   emit_population_extent_of,
   emit_population_extent_text,
@@ -99,6 +100,14 @@ import extdeps.cargo_diagnostic {
 // The identity vocabulary is REUSED, never re-coined: CommitSha from extdeps.git.inspect, Digest
 // from extdeps.crypto.hash. Minting a parallel identity vocabulary inside the instrument built to
 // enforce single authority would be the violation it exists to measure.
+//
+// THE SUBJECT IS AN IDENTITY QUESTION ANSWERED WITH A LOCATOR, and that is stated rather than
+// discovered later. `entry` here is a repository-relative PATH, because the actuation surface is
+// `gunbc compile --entry`, which takes a path and offers no identity-keyed alternative. So a rename
+// of the entry file reads as a different subject even when the declaration it names is unchanged.
+// That is a property of the actuation boundary, not a modelling choice made here, and any consumer
+// keying measurements by declaration identity has to carry the identity-to-path mapping itself and
+// treat it as a fact that can go stale.
 //
 // WHAT IS NOT CARRIED, named rather than silently omitted: the emitted candidate tree's own digest
 // and the installed stage0 mirror's digest. Both are directory-wide readings whose cost is a walk
@@ -483,6 +492,7 @@ fn measure_with_subject(
     EmitSummaryUnreadable { line: _ } => emit_decode_unreached(subject: subject, read: read)
     EmitPopulationMismatch { decoded: _, declared: _ } => emit_decode_unreached(subject: subject, read: read)
     EmitSummaryDisagreement { compiled_total: _, severity_total: _ } => emit_decode_unreached(subject: subject, read: read)
+    EmitScopeUnconfirmed => emit_decode_unreached(subject: subject, read: read)
   }
 }
 
