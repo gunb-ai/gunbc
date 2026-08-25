@@ -10318,7 +10318,50 @@ fn run() -> Result<ExitCode, ExitCode> {
             &v1_compiler::cli_run::workspace_root(),
             &v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS,
         ) {
-            Ok(count) => eprintln!("required-ci: parse OK {count} file(s) parse-clean"),
+            Ok(sweep) => {
+                eprintln!(
+                    "required-ci: parse OK {} file(s) parse-clean",
+                    sweep.parse_clean
+                );
+                // THE DECLARATION INTEGRITY CHECKS RIDE THE PARSE THAT JUST RAN.
+                //
+                // They are reported inside this phase rather than as a phase of their own
+                // because they are not a second pass over anything: the index was built by
+                // insertion from the sweep above, so there is no walk to order, nothing to
+                // schedule, and no second acquisition of the corpus. DESIGN §6 and §3's
+                // cited-symbol row both name exactly this — one module's facts from one
+                // module's source, at ingestion, instead of a corpus-wide job per question.
+                let population =
+                    v1_compiler::cli_run::declaration_index::index_population(&sweep.index);
+                let findings =
+                    v1_compiler::cli_run::declaration_index::index_findings(&sweep.index);
+                // A GREEN NAMES ITS DENOMINATORS. `checked=0` and `all clean` are different
+                // states with different remedies, and an instrument that renders them
+                // identically is the failure DESIGN §5 names, not a tidy report.
+                eprintln!(
+                    "required-ci: declarations modules={} declared={} import_members={} \
+                     citations={} in_fixtures={} outside_index={} lens_modules={}",
+                    population.modules,
+                    population.declarations,
+                    population.import_members,
+                    population.citations,
+                    population.citations_in_fixtures,
+                    population.citations_outside_index,
+                    population.lens_modules,
+                );
+                for finding in &findings {
+                    eprintln!(
+                        "required-ci: declarations FAIL {}",
+                        v1_compiler::cli_run::declaration_index::render_finding(
+                            &v1_compiler::cli_run::workspace_root(),
+                            finding
+                        )
+                    );
+                }
+                if !findings.is_empty() {
+                    phase_failures.push(format!("declarations ({} finding(s))", findings.len()));
+                }
+            }
             Err(errors) => {
                 for e in &errors {
                     eprintln!("required-ci: parse FAIL {e}");

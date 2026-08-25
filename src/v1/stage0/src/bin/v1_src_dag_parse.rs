@@ -57,9 +57,34 @@ fn main() -> ExitCode {
         &cwd,
         &v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS,
     ) {
-        Ok(count) => {
-            eprintln!("v1_src_dag_parse: {count} file(s) parse-clean");
-            ExitCode::SUCCESS
+        Ok(sweep) => {
+            let population =
+                v1_compiler::cli_run::declaration_index::index_population(&sweep.index);
+            let findings = v1_compiler::cli_run::declaration_index::index_findings(&sweep.index);
+            eprintln!(
+                "v1_src_dag_parse: {} file(s) parse-clean; declarations modules={} \
+                 declared={} import_members={} citations={} in_fixtures={} outside_index={} \
+                 lens_modules={}",
+                sweep.parse_clean,
+                population.modules,
+                population.declarations,
+                population.import_members,
+                population.citations,
+                population.citations_in_fixtures,
+                population.citations_outside_index,
+                population.lens_modules,
+            );
+            for finding in &findings {
+                eprintln!(
+                    "v1_src_dag_parse: {}",
+                    v1_compiler::cli_run::declaration_index::render_finding(&cwd, finding)
+                );
+            }
+            if findings.is_empty() {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::from(1)
+            }
         }
         Err(errors) => {
             for e in &errors {

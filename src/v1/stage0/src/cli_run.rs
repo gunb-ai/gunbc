@@ -47,6 +47,8 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
+#[path = "declaration_index.rs"]
+pub mod declaration_index;
 pub(crate) mod floor_discovery_snapshot;
 pub(crate) mod materialization_provider_consumer;
 #[path = "phase_profile.rs"]
@@ -16901,8 +16903,19 @@ pub const DAG_PARSE_SWEEP_ROOTS: [&str; 3] = ["src/v1", "dag", "src/v2"];
 /// on a root sees the top-level modules and nothing below them, so a walk that finds no
 /// files in a directory it never opened is indistinguishable from a clean one.
 ///
-/// Returns the count of parse-clean files, or every error found — never a partial success.
-pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<usize, Vec<String>> {
+/// What one sweep produced: the parse-clean count, and the per-module declaration index
+/// built from the SAME parse trees rather than by a second walk.
+///
+/// The index rides here rather than being derived by its own corpus pass because that is
+/// the entire point of DESIGN's two next-rung triggers: the modules are parsed anyway, so
+/// one module's facts come from one module's source, at the moment it is read.
+pub struct DagParseSweep {
+    pub parse_clean: usize,
+    pub index: declaration_index::DeclarationIndex,
+}
+
+/// Returns the sweep result, or every error found — never a partial success.
+pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseSweep, Vec<String>> {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
@@ -16977,6 +16990,9 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<usize, Ve
 
     let errors: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let count = Arc::new(AtomicUsize::new(0));
+    // THE INDEX IS BUILT BY INSERTION FROM THIS WALK, never by a walk of its own.
+    let records: Arc<Mutex<Vec<declaration_index::ModuleDeclarationRecord>>> =
+        Arc::new(Mutex::new(Vec::new()));
 
     // Each file gets its own `Rc<HashMap>` — no shared parse state — so parsing is
     // embarrassingly parallel. Thread panics propagate via scope (fail-closed).
@@ -16984,6 +17000,7 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<usize, Ve
         for path in &dag_paths {
             let errors = Arc::clone(&errors);
             let count = Arc::clone(&count);
+            let records = Arc::clone(&records);
             let path = path.clone();
             scope.spawn(move || {
                 let content = match std::fs::read_to_string(&path) {
@@ -17023,6 +17040,33 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<usize, Ve
                 ));
                 if fill.diagnostics.is_empty() {
                     count.fetch_add(1, Ordering::Relaxed);
+                    // ONE RECORD PER MODULE, FROM THE PARSE THAT JUST RAN. Only a
+                    // parse-clean file contributes: a file whose tree did not parse has
+                    // already stopped the line above, and deriving declarations from a
+                    // failed parse would report a module's surface as smaller than it is.
+                    let rel = path
+                        .strip_prefix(workspace)
+                        .unwrap_or(&path)
+                        .to_string_lossy()
+                        .into_owned();
+                    let source_indices: std::rc::Rc<
+                        im::HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>,
+                    > = std::rc::Rc::new(
+                        fill.newline_indices
+                            .iter()
+                            .fold(im::HashMap::new(), |acc, i| {
+                                acc.update(i.file.clone(), i.clone())
+                            }),
+                    );
+                    let mut built = Vec::new();
+                    for module in fill.modules.iter() {
+                        built.push(declaration_index::record_from_module(
+                            module,
+                            &source_indices,
+                            &rel,
+                        ));
+                    }
+                    records.lock().expect("record lock").extend(built);
                 } else {
                     // THE SPAN IS CARRIED, NOT DROPPED. Every `CompilerDiagnostic` answers
                     // `diagnostic_to_span`, and an annotation refusal carries the origin of the
@@ -17067,9 +17111,25 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<usize, Ve
     if !errors.is_empty() {
         return Err(errors);
     }
-    Ok(Arc::try_unwrap(count)
-        .expect("parse count arc is uniquely held after scope")
-        .into_inner())
+    let records = Arc::try_unwrap(records)
+        .expect("record arc is uniquely held after scope")
+        .into_inner()
+        .expect("record lock");
+    let mut index = declaration_index::DeclarationIndex::default();
+    // Sorted by module path first, so a duplicate declaration names the same pair of
+    // files whatever order the threads finished in — a refusal that moves between runs
+    // is a refusal nobody can act on.
+    let mut records = records;
+    records.sort_by(|a, b| (&a.module_path, &a.rel_path).cmp(&(&b.module_path, &b.rel_path)));
+    for record in records {
+        declaration_index::index_insert(&mut index, record);
+    }
+    Ok(DagParseSweep {
+        parse_clean: Arc::try_unwrap(count)
+            .expect("parse count arc is uniquely held after scope")
+            .into_inner(),
+        index,
+    })
 }
 
 /// WHY THE OUTPUT POLICY CANNOT BE INSTALLED, AS A TYPED CAUSE.
