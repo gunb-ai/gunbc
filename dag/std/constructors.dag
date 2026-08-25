@@ -6,11 +6,4 @@ type Coproduct
 
 type Phantom
 
-// HOW MANY, as ONE axis rather than one type per consumer.
-//
-// `Many` is added here rather than minted beside it as a CLI-specific multiplicity. Required,
-// Optional and Many are the same question -- how many inhabitants a position admits -- and a
-// second type answering it would be the nicknaming DESIGN section 3 forbids, duplicated again in
-// everything derived from it. This type had no consumer before `gunbc.cli_dispatch_surface`, so
-// no exhaustive match anywhere widens by the new arm.
-type Cardinality = Required | Optional | Many
+type Cardinality = Required | Optional
