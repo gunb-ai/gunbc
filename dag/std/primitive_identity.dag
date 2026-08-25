@@ -9,6 +9,7 @@ import std.algebra {
   ShapeIterateBody,
   ShapeLinearScan,
   algebra_templates_for_profile,
+  ShapeSortBody,
   all_algebra_field_templates,
   all_algebra_profiles,
   all_algebra_template_names,
@@ -305,6 +306,7 @@ fn primitive_identity_eq(left: PrimitiveIdentity, right: PrimitiveIdentity) -> B
 }
 
 data primitive_map_keys: PrimitiveIdentity = primitive_identity_slug(name: "map_keys")
+data primitive_sorted_map_keys: PrimitiveIdentity = primitive_identity_slug(name: "sorted_map_keys")
 data primitive_map_values: PrimitiveIdentity = primitive_identity_slug(name: "map_values")
 data primitive_fold_list: PrimitiveIdentity = primitive_identity_slug(name: "fold_list")
 data primitive_index_by: PrimitiveIdentity = primitive_identity_slug(name: "index_by")
@@ -314,6 +316,16 @@ data primitive_map_keys_definition: PrimitiveDefinition = PrimitiveDefinition {
   semantic_contract: PrimitiveSemanticContract {
     canonical_name: "map_keys" as NonEmptyStr,
     signature: GroundedInAlgebraTemplate { profile: FinitelySupportedFunctionProfile },
+  },
+}
+
+data primitive_sorted_map_keys_definition: PrimitiveDefinition = PrimitiveDefinition {
+  identity: primitive_sorted_map_keys,
+  semantic_contract: PrimitiveSemanticContract {
+    canonical_name: "sorted_map_keys" as NonEmptyStr,
+    signature: SignatureUngrounded {
+      reason: "sorted_map_keys is typed by the v1 inference special case beside map_keys, but std.algebra declares no sorted_map_keys template. Grounding it on FinitelySupportedFunctionProfile would resolve SignatureAbsentFromProfile and would falsely claim an algebra surface that does not exist." as NonEmptyStr
+    },
   },
 }
 
@@ -347,6 +359,7 @@ data primitive_index_by_definition: PrimitiveDefinition = PrimitiveDefinition {
 
 data primitive_d0_definitions: List<PrimitiveDefinition> = [
   primitive_map_keys_definition,
+  primitive_sorted_map_keys_definition,
   primitive_map_values_definition,
   primitive_fold_list_definition,
   primitive_index_by_definition,
@@ -384,6 +397,11 @@ data primitive_d0_surface_alias_bindings: List<PrimitiveSurfaceAliasBinding> = [
   },
   PrimitiveSurfaceAliasBinding {
     authority: BuiltinRegistry,
+    authored_symbol: "sorted_map_keys" as NonEmptyStr,
+    identity: primitive_sorted_map_keys,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: BuiltinRegistry,
     authored_symbol: "map_values" as NonEmptyStr,
     identity: primitive_map_values,
   },
@@ -414,6 +432,11 @@ data primitive_d0_surface_alias_bindings: List<PrimitiveSurfaceAliasBinding> = [
   },
   PrimitiveSurfaceAliasBinding {
     authority: AlgebraTemplate,
+    authored_symbol: "sorted_map_keys" as NonEmptyStr,
+    identity: primitive_sorted_map_keys,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: AlgebraTemplate,
     authored_symbol: "map_values" as NonEmptyStr,
     identity: primitive_map_values,
   },
@@ -426,6 +449,11 @@ data primitive_d0_surface_alias_bindings: List<PrimitiveSurfaceAliasBinding> = [
     authority: EmitHandler,
     authored_symbol: "map_keys" as NonEmptyStr,
     identity: primitive_map_keys,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: EmitHandler,
+    authored_symbol: "sorted_map_keys" as NonEmptyStr,
+    identity: primitive_sorted_map_keys,
   },
   PrimitiveSurfaceAliasBinding {
     authority: EmitHandler,
@@ -441,6 +469,11 @@ data primitive_d0_surface_alias_bindings: List<PrimitiveSurfaceAliasBinding> = [
     authority: InterpreterDispatch,
     authored_symbol: "map_keys" as NonEmptyStr,
     identity: primitive_map_keys,
+  },
+  PrimitiveSurfaceAliasBinding {
+    authority: InterpreterDispatch,
+    authored_symbol: "sorted_map_keys" as NonEmptyStr,
+    identity: primitive_sorted_map_keys,
   },
   PrimitiveSurfaceAliasBinding {
     authority: InterpreterDispatch,
@@ -609,6 +642,18 @@ data primitive_map_keys_traversal: PrimitiveTraversalOrderFact = PrimitiveTraver
   order: HostUnspecifiedOrder,
 }
 
+data primitive_sorted_map_keys_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact {
+  primitive: primitive_sorted_map_keys,
+  order: CanonicalOrder,
+}
+
+// The traversal fact is the choice between the two key-list constructors at the
+// mandatory determinism gate: map_keys exposes host map order, while
+// sorted_map_keys sorts by K's declared Ord. Before the sorted primitive joined
+// PrimitiveIdentity, its green witness was acceptance by non-membership rather
+// than an answered order classification. This wall does not claim map_keys caused
+// the emitter's observed byte drift; the corpus sweep found no such path.
+
 data primitive_map_values_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact {
   primitive: primitive_map_values,
   order: HostUnspecifiedOrder,
@@ -626,6 +671,7 @@ data primitive_index_by_traversal: PrimitiveTraversalOrderFact = PrimitiveTraver
 
 data primitive_d0_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_map_keys_traversal,
+  primitive_sorted_map_keys_traversal,
   primitive_map_values_traversal,
   primitive_fold_list_traversal,
   primitive_index_by_traversal,
@@ -634,6 +680,11 @@ data primitive_d0_traversal_facts: List<PrimitiveTraversalOrderFact> = [
 data primitive_map_keys_cost: PrimitiveCostFact = PrimitiveCostFact {
   primitive: primitive_map_keys,
   cost: ShapeLinearScan,
+}
+
+data primitive_sorted_map_keys_cost: PrimitiveCostFact = PrimitiveCostFact {
+  primitive: primitive_sorted_map_keys,
+  cost: ShapeSortBody,
 }
 
 data primitive_map_values_cost: PrimitiveCostFact = PrimitiveCostFact {
