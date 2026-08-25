@@ -109,23 +109,35 @@ fn full_of(observations: List<FabricCellAddressObservation>) -> String {
 // every ordered pair and every ordered triple is visited -- including the ones with repeats, which
 // is where idempotence lives. Adding an atom widens every law here with no other edit, which is the
 // property a hand-listed scenario table can never have.
-fn all_pairs_agree(project: fn(List<FabricCellAddressObservation>) -> String) -> Bool {
+// THE PARAMETER IS NOT NAMED `project`, AND THE RENAME IS A DEFECT RECEIPT RATHER THAN A STYLE
+// CHOICE. It was, and these rows passed under `gunbc run --entry <this file>` and FAILED under the
+// required floor with `call contract mismatch calling 'project': missing required argument
+// 'assignments'`. Three other test.claim modules declare a module-scope `fn project` of two
+// arguments; the floor folds every witness through ONE prepared subject over the whole corpus, so
+// that symbol is in scope there and shadows this function's own parameter, while an entry-scoped
+// run never sees it.
+//
+// THE ARITY IS WHY THIS ONE WAS LOUD. Where the shadowing symbol takes a different number of
+// arguments the call refuses; where it takes the same number it returns the wrong value silently
+// (gunbc#9187, a parameter named `p` against `gunbc.plans.md_helpers` `p`). Same defect, and only
+// the arity decides whether you find out.
+fn all_pairs_agree(observation_wire: fn(List<FabricCellAddressObservation>) -> String) -> Bool {
   fold(algebra_atoms(), init: true, f: (acc_a, a) =>
     acc_a && fold(algebra_atoms(), init: true, f: (acc_b, b) =>
-      acc_b && project([a, b]) == project([b, a])))
+      acc_b && observation_wire([a, b]) == observation_wire([b, a])))
 }
 
-fn all_triples_agree(project: fn(List<FabricCellAddressObservation>) -> String) -> Bool {
+fn all_triples_agree(observation_wire: fn(List<FabricCellAddressObservation>) -> String) -> Bool {
   fold(algebra_atoms(), init: true, f: (acc_a, a) =>
     acc_a && fold(algebra_atoms(), init: true, f: (acc_b, b) =>
       acc_b && fold(algebra_atoms(), init: true, f: (acc_c, c) => {
-        let reference = project([a, b, c])
+        let reference = observation_wire([a, b, c])
         acc_c
-          && project([a, c, b]) == reference
-          && project([b, a, c]) == reference
-          && project([b, c, a]) == reference
-          && project([c, a, b]) == reference
-          && project([c, b, a]) == reference
+          && observation_wire([a, c, b]) == reference
+          && observation_wire([b, a, c]) == reference
+          && observation_wire([b, c, a]) == reference
+          && observation_wire([c, a, b]) == reference
+          && observation_wire([c, b, a]) == reference
       })))
 }
 
@@ -161,11 +173,11 @@ test fn evidence_join_is_idempotent() -> Bool {
 // monolithic list does not establish it. The next-step trigger is a pure binary join the list fold
 // consumes; until that exists this file states the weaker property it can actually measure.
 test fn evidence_class_is_order_independent_over_pairs() -> Bool {
-  all_pairs_agree(project: class_of)
+  all_pairs_agree(observation_wire: class_of)
 }
 
 test fn evidence_class_is_order_independent_over_triples() -> Bool {
-  all_triples_agree(project: class_of)
+  all_triples_agree(observation_wire: class_of)
 }
 
 // THE DOMAIN LAWS, EACH NAMING THE STATE IT SEPARATES FROM ITS NEIGHBOUR. Order-independence alone
