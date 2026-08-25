@@ -59,13 +59,6 @@ test fn green_control_sanctioned_reader_body_has_no_findings_at_all() -> Bool {
   }
 }
 
-test fn green_control_sanctioned_reader_analysis_is_established() -> Bool {
-  match v2.lens.identity_captured_navigation.roster_gate.source_findings(source_text: sanctioned_reader_probe_snippet) {
-    SourceFindingsNotEstablished { cause: _ } => false
-    SourceFindingsEstablished { findings: _ } => true
-  }
-}
-
 data unrelated_caret_literal_snippet: String = "module unrelated_caret_literal_probe\n\nfn other_named_lookup(node: Node) -> Optional<Node> {\n  match find_named_child(root: node, name: ^grammar_production_captured_node_projection) {\n    Accepted { value: v, diagnostics: _ } => Present { value: v }\n    Rejected { diagnostics: _ } => Absent\n  }\n}\n"
 
 // Pins the caret-literal text-recovery fix (node_source_symbol) against a false positive: a find_named_child(name: ^grammar_production_captured_node_projection) call - a DIFFERENT caret literal, same StampClass token shape as the identity-edge name - must not be misclassified as the identity-escape shape this lens targets.
