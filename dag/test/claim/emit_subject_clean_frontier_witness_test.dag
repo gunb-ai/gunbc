@@ -506,3 +506,47 @@ test fn the_three_not_evaluated_causes_are_not_collapsed() -> Bool {
         == EmitSubjectNotEvaluated { cause: ExtentUnestablished }
     )
 }
+
+fn membership_with_candidates(candidates: List<String>, closure: List<String>) -> SubjectMembership {
+  SubjectMembership {
+    resolution_candidates: MembershipObserved { members: candidates },
+    closure: MembershipObserved { members: closure },
+    checked: MembershipObserved { members: closure }
+  }
+}
+
+// A SUBJECT WHOSE RESOLUTION REACHED OUTSIDE ITS CLOSURE IS NOT EVALUATED, EVEN THOUGH THE
+// INSTRUMENT CALLED IT CLEAN. This is the dangerous direction: the measurement succeeded and said
+// nothing was wrong, and it said it about a larger thing than the roster names.
+test fn a_clean_reading_over_a_broken_subject_boundary_becomes_not_evaluated() -> Bool {
+  emit_outcome_under_membership(
+    membership: membership_with_candidates(candidates: ["a", "outsider"], closure: ["a"]),
+    outcome: EmitSubjectClean
+  ) == EmitSubjectNotEvaluated { cause: ResolutionPopulationExceedsClosure { outside: ["outsider"] } }
+}
+
+// ITS CONTROL: a subject whose candidates sit inside its closure keeps the outcome the instrument
+// measured, so the arm above is discriminating rather than replacing every verdict.
+test fn a_reading_over_an_intact_subject_boundary_is_left_alone() -> Bool {
+  emit_outcome_under_membership(
+    membership: membership_with_candidates(candidates: ["a"], closure: ["a", "b"]),
+    outcome: EmitSubjectClean
+  ) == EmitSubjectClean
+}
+
+// AND THE ARM THAT DECIDES WHETHER THIS IS A WALL OR AN ABSORBING FALLBACK. The candidate population
+// is unobservable today, so this relation is NOT-EVALUATED for every real subject. If that arm
+// refused, the ratchet would refuse its whole roster on the strength of a measurement nobody took.
+// It does not.
+test fn an_unobserved_subject_boundary_does_not_refuse_the_measurement_it_could_not_check() -> Bool {
+  let unobserved = SubjectMembership {
+    resolution_candidates: unobserved_resolution_candidates(),
+    closure: MembershipObserved { members: ["a"] },
+    checked: MembershipObserved { members: ["a"] }
+  }
+  (emit_outcome_under_membership(membership: unobserved, outcome: EmitSubjectClean) == EmitSubjectClean)
+    && (emit_outcome_under_membership(
+          membership: unobserved,
+          outcome: EmitSubjectBlocked { cause: BlockingDiagnostics { blocking: 3 } }
+        ) == EmitSubjectBlocked { cause: BlockingDiagnostics { blocking: 3 } })
+}

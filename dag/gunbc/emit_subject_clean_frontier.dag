@@ -9,6 +9,14 @@ import std.roster_frontier {
   frontier_row_well_formed,
   frontier_subject_key
 }
+import gunbc.emit_subject_identity {
+  SubjectMembership,
+  MembershipInvariantStanding,
+  MembershipInvariantHolds,
+  MembershipInvariantViolated,
+  MembershipInvariantNotEvaluated,
+  candidates_within_closure
+}
 import gunbc.emit_diagnostic_observation {
   GunbcDiagnostic,
   EmittedFileCount,
@@ -414,6 +422,7 @@ type EmitNotEvaluatedCause
   = PopulationUnproduced { stage: EmissionStage, cause: String }
   | ExtentUnestablished
   | EmittedNothing
+  | ResolutionPopulationExceedsClosure { outside: List<String> }
 
 fn emit_not_evaluated_cause_text(cause: EmitNotEvaluatedCause) -> String {
   match cause {
@@ -429,6 +438,11 @@ fn emit_not_evaluated_cause_text(cause: EmitNotEvaluatedCause) -> String {
       )
     EmittedNothing =>
       "emit reported a tree of ZERO files and printed no blocking diagnostic — an entry that produced no output and no complaint has not been shown to emit, and reading it as clean would be the strongest possible verdict drawn from the weakest possible observation"
+    ResolutionPopulationExceedsClosure { outside: os } =>
+      concat(
+        "the subject resolved names from OUTSIDE its own closure, so what was measured is not the subject the roster names: ",
+        join(os, ", ")
+      )
   }
 }
 
@@ -952,3 +966,30 @@ fn emit_ratchet_report_text(r: EmitSubjectCleanRatchet) -> String {
 // empty roster that greened would be the absorbing fallback; one that refuses is a debt roster with
 // nothing yet admitted to it.
 data emit_subject_clean_admissions: List<EmitDebtAdmission> = []
+
+
+// ---------------------------------------------------------------------------------------------
+// A MEASUREMENT OVER A SUBJECT WHOSE BOUNDARY DID NOT HOLD IS NOT A MEASUREMENT OF THAT SUBJECT.
+//
+// If a subject resolved names from outside its own closure, then the population the instrument read
+// belongs to a larger thing than the roster names, and its verdict -- clean OR blocked -- is about
+// something else. The outcome is therefore replaced with NotEvaluated, which refuses, rather than
+// being kept and annotated, which would let a boundary failure pass as a clean subject.
+//
+// THE UNOBSERVED ARM DELIBERATELY DOES NOT MASK. The candidate population is unobservable today
+// (`gunbc.emit_subject_identity` `resolution_candidate_membership_unobservable`), so this relation
+// reports NOT-EVALUATED for every real subject right now. Turning that into a NotEvaluated OUTCOME
+// would refuse the entire roster on the strength of a measurement nobody took -- the absorbing
+// fallback wearing the fail-closed name. An unobserved invariant leaves the measured outcome
+// exactly as it was, and the gap is carried by the declared row rather than by a blanket refusal.
+fn emit_outcome_under_membership(
+  membership: SubjectMembership,
+  outcome: EmitSubjectOutcome
+) -> EmitSubjectOutcome {
+  match candidates_within_closure(membership: membership) {
+    MembershipInvariantHolds => outcome
+    MembershipInvariantNotEvaluated { relation: _, cause: _ } => outcome
+    MembershipInvariantViolated { relation: _, outside: os } =>
+      EmitSubjectNotEvaluated { cause: ResolutionPopulationExceedsClosure { outside: os } }
+  }
+}
