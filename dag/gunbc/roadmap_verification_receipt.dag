@@ -241,33 +241,79 @@ fn verification_subject_decode_v1(doc: JsonValue) -> VerificationSubject? {
   }
 }
 
-fn verification_receipt_v1_decode(receipt: String) -> LegacyExactHeadVerificationReceipt? {
+// EIGHT DECODE STAGES BEHIND ONE `none`, AND THE CALLER WAS ALREADY PAYING FOR IT. Its consumer
+// rendered every one of them as the single sentence "the v1 exact-head body is not readable" -- a
+// fabricated summary standing where a located cause existed and was discarded one frame earlier. A
+// receipt whose bytes are not JSON and a receipt that decodes fully except for its verdict got the
+// same diagnostic, so a reader could not tell a corrupt file from schema drift in one member.
+//
+// THE GAP NAMES A STAGE, NOT A PARSE CAUSE. LegacyReceiptBytesUnreadable is the only arm about
+// bytes, and it says what THIS module could not do -- read the receipt -- rather than re-spelling
+// what a JSON tokenizer complained about. The other seven name members of a schema this module
+// owns, which is a vocabulary no codec can supply.
+type LegacyExactHeadDecodeGap
+  = LegacyReceiptBytesUnreadable
+  | LegacyReceiptSubjectMemberMissing
+  | LegacyReceiptSubjectUndecodable
+  | LegacyReceiptOracleIdentityUnreadable
+  | LegacyReceiptOracleIdentityMalformed
+  | LegacyReceiptVerdictMemberMissing
+  | LegacyReceiptVerdictUndecodable
+  | LegacyReceiptExecutionsUndecodable
+
+type LegacyExactHeadReceiptDecode
+  = LegacyExactHeadDecoded { receipt: LegacyExactHeadVerificationReceipt }
+  | LegacyExactHeadNotReadable { gap: LegacyExactHeadDecodeGap }
+
+fn legacy_exact_head_decode_gap_text(gap: LegacyExactHeadDecodeGap) -> String {
+  match gap {
+    LegacyReceiptBytesUnreadable => "the v1 exact-head body is not a readable document"
+    LegacyReceiptSubjectMemberMissing => "the v1 exact-head body has no subject member"
+    LegacyReceiptSubjectUndecodable => "the v1 exact-head subject member is not decodable"
+    LegacyReceiptOracleIdentityUnreadable =>
+      "the v1 exact-head body has no readable oracle_identity member"
+    LegacyReceiptOracleIdentityMalformed =>
+      "the v1 exact-head oracle_identity is not a pinned identity wire"
+    LegacyReceiptVerdictMemberMissing => "the v1 exact-head body has no verdict member"
+    LegacyReceiptVerdictUndecodable => "the v1 exact-head verdict member is not decodable"
+    LegacyReceiptExecutionsUndecodable => "the v1 exact-head executions are not decodable"
+  }
+}
+
+fn verification_receipt_v1_decode(receipt: String) -> LegacyExactHeadReceiptDecode {
   match parse_json(s: receipt) {
-    Absent => none
+    Absent => LegacyExactHeadNotReadable { gap: LegacyReceiptBytesUnreadable }
     Present { value: doc } =>
       match verification_receipt_object_member(doc: doc, key: "subject") {
-        Absent => none
+        Absent => LegacyExactHeadNotReadable { gap: LegacyReceiptSubjectMemberMissing }
         Present { value: subject_doc } =>
           match verification_subject_decode_v1(doc: subject_doc) {
-            Absent => none
+            Absent => LegacyExactHeadNotReadable { gap: LegacyReceiptSubjectUndecodable }
             Present { value: subject } =>
               match verification_receipt_string_member(doc: doc, key: "oracle_identity") {
-                VerificationReceiptMemberUnreadable { reason: _ } => none
+                VerificationReceiptMemberUnreadable { reason: _ } =>
+                  LegacyExactHeadNotReadable { gap: LegacyReceiptOracleIdentityUnreadable }
                 VerificationReceiptMemberRead { value: oracle_wire } =>
                   match validation_oracle_parse_pinned_identity_wire(text: oracle_wire) {
-                    Absent => none
+                    Absent =>
+                      LegacyExactHeadNotReadable { gap: LegacyReceiptOracleIdentityMalformed }
                     Present { value: oracle_identity } =>
                       match verification_receipt_object_member(doc: doc, key: "verdict") {
-                        Absent => none
+                        Absent =>
+                          LegacyExactHeadNotReadable { gap: LegacyReceiptVerdictMemberMissing }
                         Present { value: verdict_doc } =>
                           match verification_verdict_decode(doc: verdict_doc) {
-                            Absent => none
+                            Absent =>
+                              LegacyExactHeadNotReadable { gap: LegacyReceiptVerdictUndecodable }
                             Present { value: verdict } =>
                               match verification_executions_decode(doc: doc) {
-                                Absent => none
+                                Absent =>
+                                  LegacyExactHeadNotReadable {
+                                    gap: LegacyReceiptExecutionsUndecodable,
+                                  }
                                 Present { value: executions } =>
-                                  Present {
-                                    value: LegacyExactHeadVerificationReceipt {
+                                  LegacyExactHeadDecoded {
+                                    receipt: LegacyExactHeadVerificationReceipt {
                                       subject: subject,
                                       oracle_identity: oracle_identity,
                                       executions: executions,
@@ -283,7 +329,6 @@ fn verification_receipt_v1_decode(receipt: String) -> LegacyExactHeadVerificatio
       }
   }
 }
-
 fn current_verification_selection_decode_document(
   selection_path: String,
   expected_head_sha: String,
@@ -518,15 +563,16 @@ fn verification_receipt_text_classify(receipt: String) -> VerificationReceiptTex
               }
             } else if schema == (verification_receipt_schema_v1 as String) {
               match verification_receipt_v1_decode(receipt: receipt) {
-                Absent =>
+                LegacyExactHeadNotReadable { gap: gap } =>
                   VerificationReceiptTextUndecodable {
                     reason: join([
                       "verification receipt schema is ",
                       schema,
-                      " but the v1 exact-head body is not readable",
+                      " but ",
+                      legacy_exact_head_decode_gap_text(gap: gap),
                     ], ""),
                   }
-                Present { value: legacy } =>
+                LegacyExactHeadDecoded { receipt: legacy } =>
                   VerificationReceiptTextV1ExactHead { legacy: legacy }
               }
             } else if schema == (validation_receipt_schema as String) {
