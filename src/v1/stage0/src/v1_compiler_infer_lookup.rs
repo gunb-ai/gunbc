@@ -2,6 +2,7 @@
 // Source module: v1.compiler.infer_lookup
 
 use self::AuthorNamedVisibility::*;
+use self::BorrowedCensusDeclLookup::*;
 use self::ConstructorDeclarationLookup::*;
 use self::DeclarationLookupFailure::*;
 use self::DeclaredArgContract::*;
@@ -37,7 +38,9 @@ pub use crate::v1_compiler_infer_env::{
     lookup_type, lookup_type_for, qualified_all_but_last, qualify_borrowed_type_names,
     symbol_index_lookup,
 };
-pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_env::{
+    GlobalBareCandidate, GlobalBareLookupState, TypeBinding, TypeEnv,
+};
 pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
 pub use crate::v1_compiler_infer_service::check_service_method_call_node;
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult};
@@ -269,18 +272,32 @@ pub struct BorrowedCensusDecl {
     pub node: Rc<Node>,
 }
 
-pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Option<Rc<BorrowedCensusDecl>> {
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum BorrowedCensusDeclLookup {
+    BorrowedCensusDeclFound {
+        declaration: Rc<BorrowedCensusDecl>,
+    },
+    BorrowedCensusDeclAmbiguous {
+        candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
+    },
+    BorrowedCensusDeclNotFound,
+}
+
+pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Rc<BorrowedCensusDeclLookup> {
     if v1_rt::contains(name.clone(), ".".to_string()) {
         match symbol_index_lookup(type_env.symbol_index.clone(), name.clone()) {
-            Some(node) => Some(Rc::new(BorrowedCensusDecl {
-                owner_module_path: qualified_all_but_last(name.clone()),
-                node: node.clone(),
-            })),
-            None => None,
+            Some(node) => Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
+                declaration: Rc::new(BorrowedCensusDecl {
+                    owner_module_path: qualified_all_but_last(name.clone()),
+                    node: node.clone(),
+                }),
+            }),
+            None => Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclNotFound),
         }
     } else {
         if listed_import_required_bare_call_blocked(type_env.clone(), name.clone()) {
-            None
+            Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclNotFound)
         } else {
             match v1_rt::map_get(
                 &type_env.symbol_index.clone().global_bare.clone(),
@@ -293,24 +310,30 @@ pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Option<Rc<Bo
                     module_path: mp,
                     binding: b,
                     ..
-                }) => Some(Rc::new(BorrowedCensusDecl {
-                    owner_module_path: mp.clone(),
-                    node: b.resolved.clone(),
-                })),
+                }) => Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
+                    declaration: Rc::new(BorrowedCensusDecl {
+                        owner_module_path: mp.clone(),
+                        node: b.resolved.clone(),
+                    }),
+                }),
                 Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
                     candidates: cands,
                     ..
                 }) => {
                     match global_bare_policy_candidate(type_env.module_path.clone(), cands.clone())
                     {
-                        Some(cand) => Some(Rc::new(BorrowedCensusDecl {
-                            owner_module_path: cand.module_path.clone(),
-                            node: cand.binding.clone().resolved.clone(),
-                        })),
-                        None => None,
+                        Some(cand) => Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
+                            declaration: Rc::new(BorrowedCensusDecl {
+                                owner_module_path: cand.module_path.clone(),
+                                node: cand.binding.clone().resolved.clone(),
+                            }),
+                        }),
+                        None => Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclAmbiguous {
+                            candidates: cands.clone(),
+                        }),
                     }
                 }
-                None => None,
+                None => Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclNotFound),
             }
         }
     }
@@ -437,13 +460,20 @@ pub fn func_decl_binding_for_call(
         Some(owner) => {
             constructor_declaration_for_admission(type_env.clone(), owner.clone(), name.clone())
         }
-        None => match borrowed_census_decl(type_env.clone(), name.clone()) {
-            Some(bd) => constructor_declaration_for_admission(
+        None => match (*borrowed_census_decl(type_env.clone(), name.clone())).clone() {
+            BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
+                declaration: bd, ..
+            } => constructor_declaration_for_admission(
                 type_env.clone(),
                 bd.owner_module_path.clone(),
                 name.clone(),
             ),
-            None => Rc::new(ConstructorDeclarationLookup::NotAdmissionBearingReference {}),
+            BorrowedCensusDeclLookup::BorrowedCensusDeclAmbiguous { candidates: _, .. } => {
+                Rc::new(ConstructorDeclarationLookup::NotAdmissionBearingReference {})
+            }
+            BorrowedCensusDeclLookup::BorrowedCensusDeclNotFound => {
+                Rc::new(ConstructorDeclarationLookup::NotAdmissionBearingReference {})
+            }
         },
     }
 }
@@ -457,6 +487,49 @@ pub fn census_reserved_method_name_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn borrowed_census_callable_candidate(
+    type_env: Rc<TypeEnv>,
+    name: String,
+    candidate: Rc<GlobalBareCandidate>,
+) -> Rc<CallableCandidate> {
+    {
+        let node = candidate.binding.clone().resolved.clone();
+        let excluded =
+            borrowed_generic_param_names(node.params.clone(), type_env.source_indices.clone());
+        let raw_return = match node.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: inferred, .. }) => inferred.clone(),
+            _ => match node.type_annotation.clone() {
+                Some(ann) => ann.clone(),
+                None => error_type(),
+            },
+        };
+        let return_type = qualify_borrowed_type_names(
+            raw_return.clone(),
+            candidate.module_path.clone(),
+            type_env.clone(),
+            excluded.clone(),
+        );
+        Rc::new(CallableCandidate {
+            identity: Rc::new(CallableIdentity::DeclaredCallable {
+                owner_module_path: candidate.module_path.clone(),
+                decl_name: name.clone(),
+            }),
+            sig: Rc::new(ResolvedFuncSig {
+                name: name.clone(),
+                params: node.params.clone(),
+                inferred: return_type.clone(),
+                is_async: false,
+                output_provenance: Rc::new(vec![]),
+                variant_provenance: v1_rt::rc_empty_map::<
+                    String,
+                    Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+                >(),
+            }),
+            is_builtin: false,
+        })
+    }
+}
+
 pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<FuncSigLookup> {
     if algebra_method_template_name(name.clone()) {
         Rc::new(FuncSigLookup::FuncSigUnresolved)
@@ -465,14 +538,18 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
             Some(_) => Rc::new(FuncSigLookup::FuncSigUnresolved),
             None => {
                 let borrowed = match lookup_binding_by_name_local(type_env.clone(), name.clone()) {
-                    Some(binding) => Some(Rc::new(BorrowedCensusDecl {
-                        owner_module_path: type_env.module_path.clone(),
-                        node: binding.resolved.clone(),
-                    })),
+                    Some(binding) => Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
+                        declaration: Rc::new(BorrowedCensusDecl {
+                            owner_module_path: type_env.module_path.clone(),
+                            node: binding.resolved.clone(),
+                        }),
+                    }),
                     None => borrowed_census_decl(type_env.clone(), name.clone()),
                 };
-                match borrowed.clone() {
-                    Some(bd) => {
+                match (*borrowed.clone()).clone() {
+                    BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
+                        declaration: bd, ..
+                    } => {
                         let node = bd.node.clone();
                         match ((((node.params.clone().len() as i64) > 0)
                             || (node.inferred.clone() != None))
@@ -550,7 +627,25 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                             }
                         }
                     }
-                    None => Rc::new(FuncSigLookup::FuncSigUnresolved),
+                    BorrowedCensusDeclLookup::BorrowedCensusDeclAmbiguous {
+                        candidates: cands,
+                        ..
+                    } => Rc::new(FuncSigLookup::FuncSigAmbiguous {
+                        candidates: Rc::new({
+                            let mut __result = Vec::new();
+                            for c in cands.iter().cloned() {
+                                __result.push(borrowed_census_callable_candidate(
+                                    type_env.clone(),
+                                    name.clone(),
+                                    c.clone(),
+                                ));
+                            }
+                            __result
+                        }),
+                    }),
+                    BorrowedCensusDeclLookup::BorrowedCensusDeclNotFound => {
+                        Rc::new(FuncSigLookup::FuncSigUnresolved)
+                    }
                 }
             }
         }

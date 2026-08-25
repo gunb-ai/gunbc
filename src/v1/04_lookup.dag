@@ -46,7 +46,7 @@ import v1.compiler.infer_types {
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, authored_name,
   is_recursive_type, lookup_type, lookup_type_for,
-  GlobalBareLookupState, borrowed_generic_param_names, global_bare_policy_candidate, lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup,
+  GlobalBareLookupState, GlobalBareCandidate, borrowed_generic_param_names, global_bare_policy_candidate, lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup,
   listed_import_required_bare_call_blocked
 }
 
@@ -352,27 +352,32 @@ type BorrowedCensusDecl {
   node: Node
 }
 
-fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDecl? {
+type BorrowedCensusDeclLookup
+  = BorrowedCensusDeclFound { declaration: BorrowedCensusDecl }
+  | BorrowedCensusDeclAmbiguous { candidates: List<GlobalBareCandidate> }
+  | BorrowedCensusDeclNotFound
+
+fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDeclLookup {
   if contains(name, ".") {
     match symbol_index_lookup(index: type_env.symbol_index, qualified_name: name) {
       Present { value: node } =>
-        Present { value: BorrowedCensusDecl { owner_module_path: qualified_all_but_last(name: name), node: node } }
-      Absent => none
+        BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { owner_module_path: qualified_all_but_last(name: name), node: node } }
+      Absent => BorrowedCensusDeclNotFound
     }
   } else {
     if listed_import_required_bare_call_blocked(env: type_env, name: name) {
-      none
+      BorrowedCensusDeclNotFound
     } else {
       match map_get(type_env.symbol_index.global_bare, name) {
         Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-          Present { value: BorrowedCensusDecl { owner_module_path: mp, node: b.resolved } }
+          BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { owner_module_path: mp, node: b.resolved } }
         Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
           match global_bare_policy_candidate(env_module_path: type_env.module_path, candidates: cands) {
             Present { value: cand } =>
-              Present { value: BorrowedCensusDecl { owner_module_path: cand.module_path, node: cand.binding.resolved } }
-            Absent => none
+              BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { owner_module_path: cand.module_path, node: cand.binding.resolved } }
+            Absent => BorrowedCensusDeclAmbiguous { candidates: cands }
           }
-        Absent => none
+        Absent => BorrowedCensusDeclNotFound
       }
     }
   }
@@ -472,18 +477,49 @@ fn func_decl_binding_for_call(
       )
     Absent =>
       match borrowed_census_decl(type_env: type_env, name: name) {
-        Present { value: bd } =>
+        BorrowedCensusDeclFound { declaration: bd } =>
           constructor_declaration_for_admission(
             type_env: type_env,
             owner_module_path: bd.owner_module_path,
             name: name
           )
-        Absent => NotAdmissionBearingReference {}
+        BorrowedCensusDeclAmbiguous { candidates: _ } => NotAdmissionBearingReference {}
+        BorrowedCensusDeclNotFound => NotAdmissionBearingReference {}
       }
   }
 }
 
 data census_reserved_method_name_note: String = "Census precedence law (main-parity): the whole-pool census never serves an algebra method-template name (filter/any/contains/…) as a bare fn sig or tail callable. Those names belong to the known-method bridge in the ExprCall arm — a census sig for the UNLOADED v2.std.algebra typed filter(xs, f) as a plain call and the runtime died NoSuchFunction where main rewrote to the builtin method. Loaded providers are unaffected: lookup_resolved_sig runs before the census fallback."
+
+fn borrowed_census_callable_candidate(type_env: TypeEnv, name: String, candidate: GlobalBareCandidate) -> CallableCandidate {
+  let node = candidate.binding.resolved
+  let excluded = borrowed_generic_param_names(params: node.params, source_indices: type_env.source_indices)
+  let raw_return = match node.inferred {
+    Present { value: Resolved { node: inferred } } => inferred
+    _ => match node.type_annotation {
+      Present { value: ann } => ann
+      Absent => error_type
+    }
+  }
+  let return_type = qualify_borrowed_type_names(
+    n: raw_return,
+    owner_module_path: candidate.module_path,
+    env: type_env,
+    excluded: excluded
+  )
+  CallableCandidate {
+    identity: DeclaredCallable { owner_module_path: candidate.module_path, decl_name: name },
+    sig: ResolvedFuncSig {
+      name: name,
+      params: node.params,
+      inferred: return_type,
+      is_async: false,
+      output_provenance: [],
+      variant_provenance: empty_map()
+    },
+    is_builtin: false
+  }
+}
 
 fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
   if algebra_method_template_name(name: name) {
@@ -493,12 +529,11 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
     Present { value: _ } => FuncSigUnresolved
     Absent =>
   let borrowed = match lookup_binding_by_name_local(env: type_env, name: name) {
-    Present { value: binding } =>
-      Present { value: BorrowedCensusDecl { owner_module_path: type_env.module_path, node: binding.resolved } }
+    Present { value: binding } => BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { owner_module_path: type_env.module_path, node: binding.resolved } }
     Absent => borrowed_census_decl(type_env: type_env, name: name)
   }
   match borrowed {
-    Present { value: bd } =>
+    BorrowedCensusDeclFound { declaration: bd } =>
       let node = bd.node
       match (node.params |> count) > 0 || node.inferred != none || node.type_annotation != none {
         false => FuncSigUnresolved
@@ -532,7 +567,9 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
           } }
         }
       }
-    Absent => FuncSigUnresolved
+    BorrowedCensusDeclAmbiguous { candidates: cands } =>
+      FuncSigAmbiguous { candidates: cands |> map(c => borrowed_census_callable_candidate(type_env: type_env, name: name, candidate: c)) }
+    BorrowedCensusDeclNotFound => FuncSigUnresolved
   }
   }
   }
