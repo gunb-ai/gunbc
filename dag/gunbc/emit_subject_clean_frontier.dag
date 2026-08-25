@@ -475,9 +475,16 @@ fn emit_subject_outcome_text(outcome: EmitSubjectOutcome) -> String {
 // refuses either way. The convention still decides WHICH not-evaluated cause is reported, and that
 // residual is a rendering difference rather than a verdict difference.
 //
-// WHAT IS NOT CLOSED, stated so this note is not read as more than it is: pinning the printing
-// discipline itself needs a probe on a path that emits no tree, asserting the summary line is
-// ABSENT rather than present-with-zero. That belongs beside the decoder, not inside this ratchet.
+// WHAT IS NOT CLOSED, AND THE HONEST SIZE OF THE REMEDY -- corrected by the decoder's own author,
+// because the obvious statement of it claims more than it buys. A probe that emits no tree and
+// asserts the summary line is ABSENT rather than present-with-zero pins the printing discipline on
+// ONE PATH, which is a property of that path rather than of the compiler, and v1 has more than one
+// such path. So it raises confidence and does NOT close the class.
+//
+// What would close it: the summary line emitted from a SINGLE SITE that cannot run without a tree,
+// so present-with-zero has no producer rather than no observed instance. That is a v1 change and
+// therefore blocked under the seed freeze, which makes it the class's next-rung trigger rather than
+// work anyone is declining to do. The probe belongs beside the decoder either way, never here.
 //
 // THE ONE DERIVATION FROM A POPULATION, so the extent cannot be dropped at one call site and
 // honoured at another. A blocking diagnostic found in a prefix is still a blocking diagnostic, so
