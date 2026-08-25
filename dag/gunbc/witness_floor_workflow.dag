@@ -989,9 +989,45 @@ fn build_lane_job() -> Job {
 // our own file.
 //
 // WHAT IT COSTS, named rather than glossed: a lawfully superseded run now reports this context
-// RED instead of cancelled, because a cancelled lane is not `success`. That is the correct
-// reading rather than a regression -- a superseded run's evidence must not admit a merge, and
-// the replacing run publishes the same context a few minutes later.
+// RED instead of cancelled, because a cancelled lane is not `success`. Measured on run
+// 32883390033, where a fleet event ended both lanes and this job duly published `failure`.
+//
+// THE STRONGEST ARGUMENT AGAINST THIS CHOICE IS RECORDED HERE RATHER THAN ANSWERED AWAY, so
+// that the next person who wants `!cancelled()` finds the case already made instead of
+// rediscovering it (raised by a peer session, 2026-08-25, from GitHub's own documented
+// semantics rather than from a measurement). The objection: `always()` is the one condition that
+// survives workflow cancellation, `cancel-in-progress` is armed on every pull_request, so this
+// fires on the MODAL event in the repository -- and it destroys the cancelled/failed distinction
+// at the RECORD level rather than at the reader's, where nothing can recover it afterwards. That
+// ambiguity cost a peer session hours in one day, diagnosing 38 lawful supersessions as a
+// false-red epidemic.
+//
+// THAT OBJECTION IS RECORDED WITH ITS ANSWER ATTACHED, because half of it standing alone is what
+// would send a future reader back to `!cancelled()` -- and the answer is in this job's own step.
+// THE CONCLUSION LOSES THE DISTINCTION; THE ANNOTATION PRESERVES IT. The step echoes
+// `required lanes: build=$BUILD floor=$FLOOR` and repeats both values inside its `::error::`, so
+// on every single occurrence, permanently and machine-readably, the log says WHICH state each
+// lane was in. A red whose cause is printed in its own error annotation is not the ambiguity the
+// objection warns about: the hours lost that day were lost because `cancelled` and `failure` were
+// indistinguishable at the reader with NOTHING UNDERNEATH to recover, and here there is always
+// something underneath, one line away. The loss is real at conclusion grain and repaired at the
+// grain anyone actually diagnoses from. (Withdrawn to this weight by the session that raised it,
+// after reading the step body.)
+//
+// The house-style half does not survive either, and it is worth saying why rather than just
+// noting the departure: counting `!cancelled()` occurrences infers a rule from shapes, while
+// what each guard DECIDES is the fact. Every other one decides whether a step runs inside a job
+// that is already running; this one decides whether the required context exists at all.
+//
+// WHY IT IS NOT TAKEN: THE ASYMMETRY IS ABOUT WHICH HEAD PAYS. Checks are tracked per head SHA,
+// so a superseded run's red lands on a head that by construction will never be merged -- the
+// push that superseded it created the head that will. `always()` is therefore NOISY ON ABANDONED
+// HEADS. `!cancelled()` moves the cost onto the LIVE one: a lane killed with no replacement run
+// coming -- observed twice on 2026-08-25, once with `runner_name` empty and zero steps, once with
+// both lanes ended at 18:43 and no push involved -- leaves this context SKIPPED on the head that
+// is still the merge candidate, and whether a skipped required check blocks a merge is exactly
+// the unmeasured GitHub behaviour the paragraph above exists to stop depending on. Quiet-and-
+// unknown on a live head is worse than loud-and-definite on a dead one.
 fn required_lanes_aggregate_job_condition() -> String {
   "always()"
 }
