@@ -73,46 +73,10 @@ path = "src/bin/claim_batch.rs"
 name = "claim_executor"
 path = "src/bin/claim_executor.rs"
 
-# CHARAT-0 / STR-RC-0 measurement scaffold (not floor-enrolled).
-# Local transport for `extdeps.languages.json.parse` `parse_json` interpreter scaling.
-# Modes: `scaling` (sub-40KB grid), `large` (100/200/507KB decisive regime), plus
-# `survival` and `memo_receipt` for mechanism receipts.
-# DISSOLUTION: delete when CHARAT-0 string-indexing acceptance enrolls a floor witness
-# (or STR-RC-0 scaffold retires), or when large-regime measurement refutes and reverts.
-# Carrier: `JSON_PARSE_SCALING_PROBE_SCAFFOLD_MARKER` in json_parse_scaling_probe.rs.
-[[bin]]
-name = "json_parse_scaling_probe"
-path = "src/bin/json_parse_scaling_probe.rs"
-
-# Isolated char_at scaling receipt: position x string-length, uncontaminated by the
-# JSON parser's independent list-accumulation cost (eager-koi-458 scope correction,
-# 2026-08-17). SCAFFOLD -- disposition authority is
-# `char_at_scaling_probe_disposition` in dag/gunbc/char_at_scaling_probe_support.dag.
-# DISSOLUTION: its OWN trigger (`char_at_scaling_probe_dissolution`), NOT alongside
-# json_parse_scaling_probe.rs -- the two probes measure different primitives and can
-# have independently different lifetimes (DESIGN section 5, same-unit rule).
-[[bin]]
-name = "char_at_scaling_probe"
-path = "src/bin/char_at_scaling_probe.rs"
-
-# Resolved-type owned-data discovery for Consolidation #4553 glob discovery.
-# Hand-written CI tool (like claim_batch); exposes neutral decl facts only.
-[[bin]]
-name = "discover_owned_data"
-path = "src/bin/discover_owned_data.rs"
-
 # Whole-tree `.dag` source read discovery for Stage C Lane 3a SourceRootIngest.
 [[bin]]
 name = "discover_source_root_ingest"
 path = "src/bin/discover_source_root_ingest.rs"
-
-
-# CI2-0 Commit B sweep driver — local recipe only (NOT floor-enrolled, not WitnessBin-addressed):
-# per-entry canonical realization sweep over the frontier-probe overlay transport.
-[[bin]]
-name = "realization_sweep_survey"
-path = "src/bin/realization_sweep_survey.rs"
-
 # Parse-only regression scanner for src/v1/*.dag (cheap half of full_dag_compiles,
 # which is #[ignore]; this lifts the v1 parse gate onto the CI floor non-ignored).
 # SCAFFOLD — dissolves when src/v1 is fully migrated to .dag substrate authority
@@ -120,41 +84,6 @@ path = "src/bin/realization_sweep_survey.rs"
 [[bin]]
 name = "v1_src_dag_parse"
 path = "src/bin/v1_src_dag_parse.rs"
-
-# Whole-tree wiring-liveness scan (gunbc#5364 widening): runs
-# wiring_liveness_corpus_dead_wires over a context built across the WHOLE
-# source-root corpus in one pass, so a dead wire ANYWHERE (not just inside a
-# per-entry import closure) fails the floor. Coverage widens from per-entry
-# resolve-closure to whole-tree-in-one-pass.
-[[bin]]
-name = "wiring_liveness_whole_tree"
-path = "src/bin/wiring_liveness_whole_tree.rs"
-
-# SCAFFOLD — emit-only whole-corpus audit for complexity/linearity lens family (SYNTACTIC half).
-# ROADMAP §3 `3-gates-whole` ("complexity budget gates the whole codebase"); audit-first bridge
-# until `decl_facts(roots)` host builtin (#5966) grounds fn-body reflection. Parse-only walk over
-# witness_layer_roots; NOT floor-enrolled — prints findings TSV, exit 0 unless --fail-on-findings.
-# DISSOLUTION: swap stub for decl_facts(roots), move triage roster on-carrier, fold into pure .dag
-# reader (gunbc#5364), then enroll floor gate.
-[[bin]]
-name = "complexity_linearity_audit"
-path = "src/bin/complexity_linearity_audit.rs"
-
-[[bin]]
-name = "measure_whole_tree_resolve"
-path = "src/bin/measure_whole_tree_resolve.rs"
-
-[[bin]]
-name = "measure_selected_closure_overlap"
-path = "src/bin/measure_selected_closure_overlap.rs"
-
-[[bin]]
-name = "measure_dependency_view_build"
-path = "src/bin/measure_dependency_view_build.rs"
-
-[[bin]]
-name = "capture_func_env_semantic_oracle"
-path = "src/bin/capture_func_env_semantic_oracle.rs"
 
 # Floor witness for extdep REST transport collection (cli_run::collect_rest_transport_operations).
 # Parses the eight-file authority closure live, resolves tracked ops, and checks
@@ -184,18 +113,6 @@ path = "src/bin/auth_declared_but_unwired_witness.rs"
 [[bin]]
 name = "bootstrap_witness"
 path = "src/bin/bootstrap_witness.rs"
-
-[[bin]]
-name = "p1_cohort_probe"
-path = "src/bin/p1_cohort_probe.rs"
-
-# Per-worker private-footprint decomposition (node://adhoc-2a689db3-964). Requires
-# `--features interp_test_witness` for the force/drop handles on MultiEntryIndex.
-# Measurement harness only: builds one index on one thread, never admits a second
-# worker, and touches neither DiscoveryWidthPolicy nor the cross-worker store.
-[[bin]]
-name = "measure_worker_private_memory"
-path = "src/bin/measure_worker_private_memory.rs"
 
 # Host-physics floor witness for the v1 interpreter recorded-fixture record ->
 # hermetic-replay -> fail-closed lifecycle (DESIGN §5 determinism). Drives the real
@@ -227,31 +144,9 @@ path = "src/bin/dag_collect_fingerprint_witness.rs"
 name = "parse_witness"
 path = "src/bin/parse_witness.rs"
 
-# SCAFFOLD (DESIGN §7 seed-retained HAND-RUST / P5) — whole-tree compile-clean hard-diagnostic
-# histogram host transport for namespace migration burndown
-# (docs/plans/namespace-resolution-design.md · ROADMAP §1 namespace-only lane).
-# NOT floor-enrolled — run standalone (whole-tree resolve OOM risk in cargo test).
-# DISSOLUTION: delete this bin and `CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER`
-# plumbing in cli_run.rs when the namespace-only lane closes (import strip + global_bare wiring
-# fixed; whole-tree compile-clean quiet on the strip tree) OR a floor-enrolled diagnostic-histogram
-# lens subsumes this host transport; receipt:
-# `rg cli_run_compile_clean_diagnostic_histogram src/v1/stage0` == 1 until deletion.
-[[bin]]
-name = "compile_clean_diagnostic_histogram"
-path = "src/bin/compile_clean_diagnostic_histogram.rs"
-
-# Whole-tree UnlistedImportUse census with binding-source attribution (issue 11).
-# SCAFFOLD — host transport; carrier CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER
-# in cli_run.rs. NOT floor-enrolled — run standalone (whole-tree resolve OOM risk in cargo test).
-# DISSOLVES WHEN namespace lane deletes import grammar + binding-source modeled in substrate.
-# Receipt: `rg cli_run_compile_clean_unlisted_import_census src/v1/stage0` == 1 until deletion.
 [[bin]]
 name = "codex_app_server_stdio_session"
 path = "src/bin/codex_app_server_stdio_session.rs"
-
-[[bin]]
-name = "compile_clean_unlisted_import_census"
-path = "src/bin/compile_clean_unlisted_import_census.rs"
 
 # B0 control witness (#7943, review 49798 / operator ruling): proves the
 # GENERATED stage0 realization of declaration_exposure_from_containment under
@@ -263,12 +158,3 @@ path = "src/bin/compile_clean_unlisted_import_census.rs"
 [[bin]]
 name = "namespace_structural_root_exposure_generated_witness"
 path = "src/bin/namespace_structural_root_exposure_generated_witness.rs"
-[[bin]]
-name = "floor_prepared_toll_receipt"
-path = "src/bin/floor_prepared_toll_receipt.rs"
-
-# Expected-red roster identity join — join-only host transport. NOT floor-enrolled.
-# Dissolve-on: prune `floor_expected_red` from a post-rebase join run, not from failure-log rows.
-[[bin]]
-name = "expected_red_roster_join"
-path = "src/bin/expected_red_roster_join.rs"

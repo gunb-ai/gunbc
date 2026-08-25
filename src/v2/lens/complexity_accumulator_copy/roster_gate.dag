@@ -1,41 +1,66 @@
 module v2.lens.complexity_accumulator_copy.roster_gate
 
+import extdeps.filesystem.filesystem_io
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { grammar_validate_for_parse, parse_production }
+import v2.compiler.tokenize { tokenize }
+import v2.lens.common.source_analysis_standing {
+  LanguageGrammarRejected,
+  LanguageGrammarUnavailable,
+  SourceAnalysisNotEstablishedCause,
+  SourceNormalizationRejected,
+  SourceParseRejected,
+  SourceTokenizationRejected
+}
 
 data offline_roster_gate_claim_batch_recipe: String = "Operator-ruled OFFLINE (NOT CI discovery-enrolled; witness_exclusion_substrings row claim/complexity/accumulator_copy_roster_gate in gunbc.ci_layer_roots — owned by #6452, not duplicated on #6440). Serial wet claim_batch only — do not codify GUNBC_EVAL_MEMO=0 in CI; diagnostic local runs may set it. Std tranche (PR #6440): claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag --function roster_std_change_dag_zero_suspects_within_ratchet --claim-run --wet && claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag --function roster_std_render_repeat_string_bootstrap_within_ratchet --claim-run --wet. Prior roster carriers: accumulator_copy_roster_gate_test.dag, accumulator_copy_roster_gate_swift_test.dag, accumulator_copy_roster_gate_lean_bash_test.dag (same --claim-run --wet shape, per-test-fn entry/function)."
 
-type RosterVerdict
-  = RosterClean
-  | RosterIngestRegressed
-  | RosterSuspectFound
-  | RosterRatchetExceeded { refusals: Int, ceiling: Int }
+type FindingStanding
+  = NoSuspect
+  | SuspectObserved { suspects: Int }
+  | FindingNotEstablished { cause: SourceAnalysisNotEstablishedCause }
 
-fn source_findings(source_text: String) -> Optional<List<Finding>> {
+type AnalysisStanding
+  = Within { refusals: Int, ceiling: Int }
+  | RefusalBudgetExceeded { refusals: Int, ceiling: Int }
+  | AnalysisNotEstablished { cause: SourceAnalysisNotEstablishedCause }
+
+type RosterStanding {
+  finding: FindingStanding
+  analysis: AnalysisStanding
+}
+
+type SourceFindingsStanding
+  = SourceFindingsEstablished { findings: List<Finding> }
+  | SourceFindingsNotEstablished { cause: SourceAnalysisNotEstablishedCause }
+
+fn source_findings(source_text: String) -> SourceFindingsStanding {
   let lm = dag_language_model()
   let at = port_locus(port: ^accumulator_copy_roster_gate_port)
   match lm.grammar {
-    VoidGrammar => Absent
+    VoidGrammar => SourceFindingsNotEstablished { cause: LanguageGrammarUnavailable }
     ModeledGrammar { root: root } =>
       match grammar_validate_for_parse(root: root, at: at) {
-        Rejected { diagnostics: _ } => Absent
+        Rejected { diagnostics: _ } => SourceFindingsNotEstablished { cause: LanguageGrammarRejected }
         Accepted { value: validated, diagnostics: _ } =>
           match tokenize(
             text: source_text,
             file: ^accumulator_copy_roster_subject,
             rules: lm.lex
           ) {
-            Rejected { diagnostics: _ } => Absent
+            Rejected { diagnostics: _ } => SourceFindingsNotEstablished { cause: SourceTokenizationRejected }
             Accepted { value: stream, diagnostics: _ } =>
               match parse_production(
                 tokens: token_stream_remaining(stream: stream),
                 validated: validated,
                 production_name: validated.root.start
               ) {
-                Rejected { diagnostics: _ } => Absent
+                Rejected { diagnostics: _ } => SourceFindingsNotEstablished { cause: SourceParseRejected }
                 Accepted { value: artifact, diagnostics: _ } =>
                   match normalize(parse_tree: artifact.tree) {
-                    Rejected { diagnostics: _ } => Absent
+                    Rejected { diagnostics: _ } => SourceFindingsNotEstablished { cause: SourceNormalizationRejected }
                     Accepted { value: tree, diagnostics: _ } =>
-                      Present { value: accumulator_copy_findings(root: tree.root) }
+                      SourceFindingsEstablished { findings: accumulator_copy_findings(root: tree.root) }
                   }
               }
           }
@@ -43,7 +68,7 @@ fn source_findings(source_text: String) -> Optional<List<Finding>> {
   }
 }
 
-fn ingest_findings(path: String) -> Optional<List<Finding>> {
+fn ingest_findings(path: String) -> SourceFindingsStanding {
   source_findings(source_text: filesystem_read(path: path).content)
 }
 
@@ -53,50 +78,120 @@ fn count_matching(fs: List<Finding>, pred: fn(Finding) -> Bool) -> Int {
   })
 }
 
-fn file_verdict(path: String, refusal_ceiling: Int) -> RosterVerdict {
-  match ingest_findings(path: path) {
-    Absent => RosterIngestRegressed
-    Present { value: fs } =>
-      if count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect) > 0 {
-        RosterSuspectFound
+fn standing_from_counts(suspects: Int, refusals: Int, refusal_ceiling: Int) -> RosterStanding {
+  RosterStanding {
+    finding: if suspects > 0 {
+        SuspectObserved { suspects: suspects }
       } else {
-        let refusals = count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_refusal)
-        if refusals > refusal_ceiling {
-          RosterRatchetExceeded { refusals: refusals, ceiling: refusal_ceiling }
-        } else {
-          RosterClean
-        }
+        NoSuspect
+      },
+    analysis: if refusals > refusal_ceiling {
+        RefusalBudgetExceeded { refusals: refusals, ceiling: refusal_ceiling }
+      } else {
+        Within { refusals: refusals, ceiling: refusal_ceiling }
       }
   }
 }
 
-fn file_suspect_count(path: String) -> Int {
-  match ingest_findings(path: path) {
-    Absent => -1
-    Present { value: fs } => count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect)
+fn not_established_standing(cause: SourceAnalysisNotEstablishedCause) -> RosterStanding {
+  RosterStanding {
+    finding: FindingNotEstablished { cause: cause },
+    analysis: AnalysisNotEstablished { cause: cause }
   }
 }
 
-fn file_refusal_count(path: String) -> Int {
+fn file_standing(path: String, refusal_ceiling: Int) -> RosterStanding {
   match ingest_findings(path: path) {
-    Absent => -1
-    Present { value: fs } => count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_refusal)
+    SourceFindingsNotEstablished { cause: cause } => not_established_standing(cause: cause)
+    SourceFindingsEstablished { findings: fs } => standing_from_counts(
+      suspects: count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect),
+      refusals: count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_refusal),
+      refusal_ceiling: refusal_ceiling
+    )
   }
 }
 
+// WHAT THE GATE ANSWERED, NOT MERELY WHETHER IT HELD. The three arms below carry three different
+// remedies and the Bool that used to stand here carried none of them: a suspect is a defect IN THE
+// SUBJECT and the author edits the subject; an exceeded refusal budget is a coverage debt and the
+// author raises the ceiling or grounds the refusals; a not-established standing is a defect in the
+// INSTRUMENT'S REACH -- the lens could not read the file at all -- and the author fixes the lens or
+// the path, never the subject. Collapsing all three onto `false` was total over the standing and
+// blind one level down, with `cause: _` as the tell.
+//
+// The cause is not reconstructed here. file_standing already computes it and hands it over; what
+// changed is that this fold stops discarding it.
+type RosterGateDisposition
+  = GateClean
+  | GateSuspectObserved { suspects: Int }
+  | GateRefusalBudgetExceeded { refusals: Int, ceiling: Int }
+  | GateNotEstablished { cause: SourceAnalysisNotEstablishedCause }
+
+fn roster_gate_disposition(standing: RosterStanding) -> RosterGateDisposition {
+  match standing.finding {
+    FindingNotEstablished { cause: cause } => GateNotEstablished { cause: cause }
+    SuspectObserved { suspects: suspects } => GateSuspectObserved { suspects: suspects }
+    NoSuspect =>
+      match standing.analysis {
+        AnalysisNotEstablished { cause: cause } => GateNotEstablished { cause: cause }
+        RefusalBudgetExceeded { refusals: refusals, ceiling: ceiling } =>
+          GateRefusalBudgetExceeded { refusals: refusals, ceiling: ceiling }
+        Within { refusals: _, ceiling: _ } => GateClean
+      }
+  }
+}
+
+// RETAINED AS PROJECTIONS, NOT AS THE ONLY SURFACE (operator ruling, 2026-08-25). A Bool projection
+// over a typed standing is a convenience and is legitimate exactly while the typed standing stays
+// reachable by callers; it is the defect only when it is the sole surface and a caller has no way to
+// tell cannot-analyze from analyzed-and-clean. RosterGateDisposition is that reachable surface, so
+// these two stay.
+fn finding_standing_holds(standing: FindingStanding) -> Bool {
+  match standing {
+    NoSuspect => true
+    SuspectObserved { suspects: _ } => false
+    FindingNotEstablished { cause: _ } => false
+  }
+}
+
+fn analysis_standing_holds(standing: AnalysisStanding) -> Bool {
+  match standing {
+    Within { refusals: _, ceiling: _ } => true
+    RefusalBudgetExceeded { refusals: _, ceiling: _ } => false
+    AnalysisNotEstablished { cause: _ } => false
+  }
+}
+
+fn file_gate_disposition(path: String, refusal_ceiling: Int) -> RosterGateDisposition {
+  roster_gate_disposition(standing: file_standing(path: path, refusal_ceiling: refusal_ceiling))
+}
+
+// THE ONE PLACE THE COLLAPSE TO Bool IS ALLOWED TO HAPPEN, and it is written out so that a fourth
+// disposition fails to compile HERE rather than inheriting whichever arm it lands beside. A caller
+// that needs to tell an unreadable subject from a suspect one asks file_gate_disposition; this
+// answers only "did the gate come back clean", which is a narrower question than it used to look.
 fn file_gate(path: String, refusal_ceiling: Int) -> Bool {
-  match file_verdict(path: path, refusal_ceiling: refusal_ceiling) {
-    RosterClean => true
-    RosterIngestRegressed => false
-    RosterSuspectFound => false
-    RosterRatchetExceeded { refusals: _, ceiling: _ } => false
+  match file_gate_disposition(path: path, refusal_ceiling: refusal_ceiling) {
+    GateClean => true
+    GateSuspectObserved { suspects: _ } => false
+    GateRefusalBudgetExceeded { refusals: _, ceiling: _ } => false
+    GateNotEstablished { cause: _ } => false
   }
 }
 
-fn source_has_suspect(source_text: String) -> Bool {
+// REPLACES source_has_suspect, WHICH ANSWERED false FOR A SOURCE IT COULD NOT READ. source_findings
+// returns the typed cause; the old predicate matched `SourceFindingsNotEstablished { cause: _ }` and
+// threw it away, so an unreadable source was reported as the CLEAN verdict -- not a sentinel that a
+// caller might check, but the affirmative answer "no suspect here".
+fn source_finding_standing(source_text: String) -> FindingStanding {
   match source_findings(source_text: source_text) {
-    Absent => false
-    Present { value: fs } =>
-      count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect) > 0
+    SourceFindingsNotEstablished { cause: cause } => FindingNotEstablished { cause: cause }
+    SourceFindingsEstablished { findings: fs } => {
+      let suspects = count_matching(
+        fs: fs,
+        pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect
+      )
+      if suspects > 0 { SuspectObserved { suspects: suspects } } else { NoSuspect }
+    }
   }
 }
