@@ -760,6 +760,24 @@ fn gunbc_ci_multi_principal_probe_invoke() -> String {
 // shell text, not declared operation argv, so v2.std.operation_argv's binding wall cannot see them
 // at all. The class stays mitigatable here and the trigger is the same one extdeps.bmc.http names:
 // credentials modeled as declared inputs whose type the binder can refuse.
+// WHY THIS PAYLOAD IS SHELL TEXT AND WHAT WOULD CHANGE THAT (review 55857 asked for a bash-emit
+// scaffold marker here; recorded rather than marked, because the marker would assert the wrong
+// thing). This prelude is NOT the unmigrated medium-as-string form that the two scaffolds in this
+// module carry a dissolution trigger for -- those mark *_script functions that concat-build a whole
+// script, and their trigger text says so. gunbc_ci_fleet_key_agent_script builds a typed Pipeline of
+// PipelineStep and emits it through v2.workflow.gunbc_invoke_step_emit, which IS the orchestration
+// emit those triggers name as their terminal state; gunbc.fleet_ssh_credential_verify
+// fleet_ssh_credential_shell_verification_supersession_note records that migration. Marking one
+// command payload as a scaffold while its twenty peers in the same function carry none would claim
+// this line is unmigrated debt when it sits in the migrated construction.
+//
+// The residue the review is right about: a Run's `command` is still shell text, corpus-wide, tracked
+// by bash-emit rather than per line. And the reason no modeled actuator was available HERE is a
+// boundary rather than a preference -- this prelude executes as raw shell in a FOREIGN EXECUTOR
+// (GitHub Actions `run:`) before gunbc runs at all, so Filesystem.WriteOwnerOnly, which this same
+// change uses for the netrc on the BMC path, is unreachable at this point in a job. Choosing printf
+// is not declining a modeled route; there is no modeled route on that side of the boundary yet,
+// which is exactly what bash-emit would change.
 fn gunbc_ci_auth_header_file_write_command() -> String {
   "printf 'Authorization: Bearer %s\\n' \"$WIF_ACCESS_TOKEN\" > \"$HDR_FILE\""
 }
