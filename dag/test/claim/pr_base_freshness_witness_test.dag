@@ -1,0 +1,189 @@
+module test.claim.pr_base_freshness_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SCENARIO. GitHub REST timestamps are fixed-width ISO 8601 UTC, so these are the real shape
+// rather than integers: a base committed at 21:00 predates a run started at 22:00 (so a merge ref
+// built on it can be what that run tested), and one committed at 23:00 postdates it (so it cannot).
+data target_commit: CommitSha = "7215f689b0fab375dff8c6f98aff16e356366df9"
+data ancestor_commit: CommitSha = "08488aee243240a71254ec00ee7043b544c2e777"
+
+data run_started: Timestamp = "2026-08-24T22:00:00Z"
+data before_run: Timestamp = "2026-08-24T21:00:00Z"
+data after_run: Timestamp = "2026-08-24T23:00:00Z"
+
+fn recovered_at(base: CommitSha) -> TestedBaseProvenance {
+  tested_base_provenance_from_timestamps(
+    merge_ref_base: base,
+    merge_ref_base_committed_at: before_run,
+    run_started_at: run_started,
+  )
+}
+
+fn superseded_at(base: CommitSha) -> TestedBaseProvenance {
+  tested_base_provenance_from_timestamps(
+    merge_ref_base: base,
+    merge_ref_base_committed_at: after_run,
+    run_started_at: run_started,
+  )
+}
+
+test fn base_committed_before_the_run_is_recovered() -> Bool {
+  match recovered_at(base: ancestor_commit) {
+    TestedBaseRecovered { base: _ } => true
+    TestedBaseSuperseded { observed_base: _ } => false
+  }
+}
+
+test fn base_committed_after_the_run_is_superseded() -> Bool {
+  match superseded_at(base: ancestor_commit) {
+    TestedBaseRecovered { base: _ } => false
+    TestedBaseSuperseded { observed_base: _ } => true
+  }
+}
+
+// TIMESTAMP ORDER IS THE WHOLE PROVENANCE TEST, so it is asserted directly rather than only
+// through its consumer: if lexicographic order ever stopped agreeing with chronological order for
+// this encoding, every arm above would still typecheck and silently answer backwards.
+test fn iso8601_utc_lexicographic_order_is_chronological() -> Bool {
+  merge_ref_was_recomputed(merge_ref_base_committed_at: after_run, run_started_at: run_started)
+    && !merge_ref_was_recomputed(merge_ref_base_committed_at: before_run, run_started_at: run_started)
+}
+
+test fn identical_comparison_is_at_target() -> Bool {
+  match classify_base_freshness(
+    provenance: recovered_at(base: target_commit),
+    status: Identical,
+    ahead_by: 0,
+  ) {
+    BaseAtTarget => true
+    BaseBehind { commits: _ } => false
+    BaseAheadOfTarget => false
+    BaseDiverged => false
+    BaseUnknown { reason: _ } => false
+  }
+}
+
+// THE TARGET BEING `Ahead` IS THE TESTED BASE BEING BEHIND, and the distance carries through
+// unchanged. This is the inversion that is easiest to get backwards, so it is asserted on the
+// number and not merely on the arm.
+test fn target_ahead_means_base_is_behind_by_that_many() -> Bool {
+  match classify_base_freshness(
+    provenance: recovered_at(base: ancestor_commit),
+    status: Ahead,
+    ahead_by: 5,
+  ) {
+    BaseBehind { commits } => commits == 5
+    BaseAtTarget => false
+    BaseAheadOfTarget => false
+    BaseDiverged => false
+    BaseUnknown { reason: _ } => false
+  }
+}
+
+// `Behind` AND `Diverged` ARE DIFFERENT ANSWERS AND MUST NOT SHARE AN ARM. A target that is behind
+// the tested base means the target moved backwards; a diverged pair means neither contains the
+// other. They have different causes and different remedies, and an earlier revision of this module
+// folded both into one state — this pair of witnesses is what makes that folding fail.
+test fn target_behind_is_ahead_of_target_not_diverged() -> Bool {
+  match classify_base_freshness(
+    provenance: recovered_at(base: ancestor_commit),
+    status: Behind,
+    ahead_by: 0,
+  ) {
+    BaseAheadOfTarget => true
+    BaseDiverged => false
+    BaseAtTarget => false
+    BaseBehind { commits: _ } => false
+    BaseUnknown { reason: _ } => false
+  }
+}
+
+test fn diverged_is_diverged_not_ahead_of_target() -> Bool {
+  match classify_base_freshness(
+    provenance: recovered_at(base: ancestor_commit),
+    status: Diverged,
+    ahead_by: 3,
+  ) {
+    BaseDiverged => true
+    BaseAheadOfTarget => false
+    BaseAtTarget => false
+    BaseBehind { commits: _ } => false
+    BaseUnknown { reason: _ } => false
+  }
+}
+
+// THE DISCRIMINATING RED, AND THE REASON THIS MODULE EXISTS. This is pull request 9097's observed
+// case, reduced: the merge ref was recomputed and now points at the CURRENT TARGET, so every
+// operand a naive comparison looks at says fresh — the comparison is `Identical` and the distance
+// is zero. The run nonetheless tested something else, and the only fact that knows it is the
+// provenance. If the provenance arm were folded away, or consulted after the comparison instead of
+// before it, this witness and the one below it go red. That is the wall: the fabricated green is
+// unreachable because the question that would fabricate it is never asked of a base we cannot
+// vouch for.
+test fn superseded_base_with_identical_comparison_does_not_read_as_current() -> Bool {
+  !base_freshness_is_current(
+    f: classify_base_freshness(
+      provenance: superseded_at(base: target_commit),
+      status: Identical,
+    ahead_by: 0,
+    )
+  )
+}
+
+test fn superseded_base_with_identical_comparison_is_provenance_lost() -> Bool {
+  match classify_base_freshness(
+    provenance: superseded_at(base: target_commit),
+    status: Identical,
+    ahead_by: 0,
+  ) {
+    BaseUnknown { reason: MergeRefRecomputed { observed_base: _ } } => true
+    BaseUnknown { reason: _ } => false
+    BaseAtTarget => false
+    BaseBehind { commits: _ } => false
+    BaseAheadOfTarget => false
+    BaseDiverged => false
+  }
+}
+
+// UNKNOWN IS NEITHER CURRENT NOR STALE. A consumer counting staleness as `!is_current` would absorb
+// this row into the stale count and one counting freshness would absorb it into the fresh count;
+// both destroy the deficit's frequency. The two predicates disagree in exactly one state.
+test fn provenance_lost_is_unknown_and_not_current() -> Bool {
+  let lost = classify_base_freshness(
+    provenance: superseded_at(base: ancestor_commit),
+    status: Ahead,
+    ahead_by: 5,
+  )
+  base_freshness_is_unknown(f: lost) && !base_freshness_is_current(f: lost)
+}
+
+test fn at_target_is_current_and_not_unknown() -> Bool {
+  let fresh = classify_base_freshness(
+    provenance: recovered_at(base: target_commit),
+    status: Identical,
+    ahead_by: 0,
+  )
+  base_freshness_is_current(f: fresh) && !base_freshness_is_unknown(f: fresh)
+}
+
+// A ROOT COMMIT HAS NO PARENTS, so first_parent has nothing to answer with. Asserted because the
+// alternative — returning a zero sha or the commit's own — would be a fabricated base that every
+// downstream comparison would happily consume.
+test fn first_parent_of_no_parents_is_absent() -> Bool {
+  match first_parent(parents: []) {
+    Absent {} => true
+    Present { value: _ } => false
+  }
+}
+
+test fn first_parent_is_the_merge_base_side() -> Bool {
+  match first_parent(parents: [
+    CommitParentRef { sha: ancestor_commit },
+    CommitParentRef { sha: target_commit },
+  ]) {
+    Present { value } => value == ancestor_commit
+    Absent {} => false
+  }
+}

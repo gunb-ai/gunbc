@@ -150,7 +150,12 @@ import v1.compiler.infer_resolve {
 import v1.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult,
   resolve_func_sigs, flatten_parent_envs,
-  FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous
+  FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous,
+  CallableCandidate, CallableIdentity, DeclaredCallable, BuiltinCallable,
+  callable_identity_label, callable_candidate_labels,
+  DerivedCalleeSig, DerivedFromSig, NoDerivableSig,
+  NoDerivableSigReason, DerivationSigUnresolved, DerivationSigAmbiguous,
+  func_sig_for_derivation
 }
 import v1.compiler.infer_emit_info {
   TypeRepr, StructRepr, EnumRepr,
@@ -188,7 +193,7 @@ import v1.compiler.infer_lookup {
   field_summary_for_type,
   lookup_field_type_node, lookup_coproduct_common_field_node, product_field_result_type,
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
-  lookup_in_scope, lookup_func_sig, func_sig_if_resolved,
+  lookup_in_scope, lookup_func_sig,
   global_bare_callable_node, func_decl_binding_for_call,
   ConstructorDeclarationLookup, ExactConstructorDeclaration,
   NotAdmissionBearingReference, AdmissionBearingDeclarationUnavailable,
@@ -3675,6 +3680,13 @@ fn qualified_value_projection(texpr: Node, scope: InferScope, span: SourceSpan) 
   }
 }
 
+// ONE ARM OF `infer_expr_body` BELOW IS UNREACHABLE AND SPELLED ANYWAY: at the ExprCall
+// signature lookup, the enclosing match refuses FuncSigAmbiguous before that body runs, so
+// the collapse cannot happen there -- but the arm is written out instead of wildcarded so
+// that a new FuncSigLookup arm is a compile error at this seam rather than a silent Absent,
+// which is exactly how the deleted `func_sig_if_resolved` came to erase the ambiguity in
+// the first place.
+
 fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
   match texpr.expr_data {
     ExprLiteral { value: lit } =>
@@ -3747,7 +3759,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                       ))
                   }
             FuncSigAmbiguous { candidates: ambiguous_fn_candidates } =>
-              ambiguous_reference_refusal(name: name, candidates: ambiguous_fn_candidates, span: span, scope: scope)
+              ambiguous_reference_refusal(name: name, candidates: callable_candidate_labels(candidates: ambiguous_fn_candidates), span: span, scope: scope)
             FuncSigUnresolved =>
               match lookup_binding_by_name(env: scope.type_env, name: name) {
                 Present { value: gbinding } =>
@@ -3914,12 +3926,16 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let call_sig_lookup = body_shadow_aware_func_sig(scope: scope, func_name: func_name)
       match call_sig_lookup {
       FuncSigAmbiguous { candidates: ambiguous_fn_candidates } =>
-        ambiguous_reference_refusal(name: func_name, candidates: ambiguous_fn_candidates, span: span, scope: scope)
+        ambiguous_reference_refusal(name: func_name, candidates: callable_candidate_labels(candidates: ambiguous_fn_candidates), span: span, scope: scope)
       _ =>
       match constructor_reference_admission_unshadowed(callee_name: func_name, span: span, scope: scope) {
         Present { value: refusal } => refusal
         Absent =>
-      let sig = func_sig_if_resolved(lookup: call_sig_lookup)
+      let sig = match call_sig_lookup {
+        FuncSigResolved { sig: resolved_call_sig } => Present { value: resolved_call_sig }
+        FuncSigUnresolved => Absent
+        FuncSigAmbiguous { candidates: _ } => Absent
+      }
       let sig_params = match sig {
         Present { value: s } => s.params
         Absent => []
@@ -6096,8 +6112,8 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
   match val.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      match func_sig_if_resolved(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
-        Present { value: sig } =>
+      match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+        DerivedFromSig { sig: sig } =>
           if sig.output_provenance |> count > 1 {
             let return_type = sig.inferred
             let field_map = return_type.children |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
@@ -6110,12 +6126,12 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
               map_insert(ctx.per_field_vars, binding_name, field_map)
             } else { ctx.per_field_vars }
           } else { ctx.per_field_vars }
-        Absent => ctx.per_field_vars
+        NoDerivableSig { reason: _ } => ctx.per_field_vars
       }
     ExprMethodCall { method_semantics: _ } =>
       let callee = expr_method_name_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      match func_sig_if_resolved(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
-        Present { value: sig } =>
+      match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+        DerivedFromSig { sig: sig } =>
           if sig.output_provenance |> count > 1 {
             let return_type = sig.inferred
             let field_map = return_type.children |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
@@ -6128,7 +6144,7 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
               map_insert(ctx.per_field_vars, binding_name, field_map)
             } else { ctx.per_field_vars }
           } else { ctx.per_field_vars }
-        Absent => ctx.per_field_vars
+        NoDerivableSig { reason: _ } => ctx.per_field_vars
       }
     _ => ctx.per_field_vars
   }
@@ -6264,14 +6280,14 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      let from_provenance = match func_sig_if_resolved(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
-        Present { value: sig } =>
+      let from_provenance = match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+        DerivedFromSig { sig: sig } =>
           match sig.output_provenance |> first {
             Present { value: param_map } =>
               classify_call_via_provenance(call: val, param_map: param_map, ctx: ctx)
             Absent => none
           }
-        Absent => none
+        NoDerivableSig { reason: _ } => none
       }
       match from_provenance {
         Present { value: _ } => from_provenance
@@ -6531,14 +6547,14 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
             ArithmeticDescent { param: _, factor: _ } => inner_rel
             PreservedValue =>
               let callee = expr_call_func_at(texpr: arg_expr, source_indices: ctx.type_env.source_indices)
-              let from_provenance = match func_sig_if_resolved(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
-                Present { value: sig } =>
+              let from_provenance = match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+                DerivedFromSig { sig: sig } =>
                   match sig.output_provenance |> first {
                     Present { value: param_map } =>
                       classify_call_via_provenance(call: arg_expr, param_map: param_map, ctx: ctx)
                     Absent => none
                   }
-                Absent => none
+                NoDerivableSig { reason: _ } => none
               }
               match from_provenance {
                 Present { value: prov_rel } => prov_rel
@@ -6854,11 +6870,11 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       let scrut_variant_sig = match scrut.expr_data {
         ExprCall { call_semantics: _, descent_evidence: _ } =>
           let callee = expr_call_func_at(texpr: scrut, source_indices: ctx.type_env.source_indices)
-          match func_sig_if_resolved(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
-            Present { value: sig } =>
+          match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+            DerivedFromSig { sig: sig } =>
               if map_keys(sig.variant_provenance) |> count > 0 { Present { value: sig } }
               else { none }
-            Absent => none
+            NoDerivableSig { reason: _ } => none
           }
         _ => none
       }
@@ -7462,15 +7478,15 @@ fn method_call_args_by_name(call: Node, func_env: ResolvedFuncEnv, type_env: Typ
   let mname = expr_method_name_at(texpr: call, source_indices: source_indices)
   let recv = method_receiver(texpr: call)
   let mc_args = method_arg_nodes(texpr: call)
-  let base = match func_sig_if_resolved(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: mname)) {
-    Present { value: sig } =>
+  let base = match func_sig_for_derivation(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: mname)) {
+    DerivedFromSig { sig: sig } =>
       match sig.params |> first {
         Present { value: first_p } =>
           let first_pname = param_node_name_at(n: first_p, source_indices: source_indices)
           if first_pname != "" { map_insert(empty_map(), first_pname, recv) } else { empty_map() }
         Absent => empty_map()
       }
-    Absent => empty_map()
+    NoDerivableSig { reason: _ } => empty_map()
   }
   fold(mc_args, init: base, f: (acc, arg_node) =>
     match arg_name_at(n: arg_node, source_indices: source_indices) {
@@ -7481,8 +7497,8 @@ fn method_call_args_by_name(call: Node, func_env: ResolvedFuncEnv, type_env: Typ
 }
 
 fn compose_callee_provenance(callee: String, arg_by_name: Map<String, Node>, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_env: ResolvedFuncEnv, let_prov: Map<String, Map<String, SubValueRelation>>) -> Map<String, SubValueRelation> {
-  match func_sig_if_resolved(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: callee)) {
-    Present { value: sig } =>
+  match func_sig_for_derivation(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: callee)) {
+    DerivedFromSig { sig: sig } =>
       match sig.output_provenance |> first {
         Present { value: callee_prov } =>
           fold(callee_prov |> map_keys, init: empty_map(), f: (acc, callee_pname) =>
@@ -7511,7 +7527,7 @@ fn compose_callee_provenance(callee: String, arg_by_name: Map<String, Node>, par
           )
         Absent => empty_map()
       }
-    Absent => empty_map()
+    NoDerivableSig { reason: _ } => empty_map()
   }
 }
 
@@ -7732,8 +7748,8 @@ fn collect_variant_constructors(body: Node, parent_enum: String, param_names: Li
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: body, source_indices: type_env.source_indices)
-      match func_sig_if_resolved(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: callee)) {
-        Present { value: sig } =>
+      match func_sig_for_derivation(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: callee)) {
+        DerivedFromSig { sig: sig } =>
           if authored_name_at(source_indices: type_env.source_indices, node: sig.inferred) == parent_enum
             && (map_keys(sig.variant_provenance) |> count > 0) {
             let call_args = call_args_by_name(call: body, source_indices: type_env.source_indices)
@@ -7759,7 +7775,7 @@ fn collect_variant_constructors(body: Node, parent_enum: String, param_names: Li
               }
             )
           } else { acc }
-        Absent => acc
+        NoDerivableSig { reason: _ } => acc
       }
     ExprMatch =>
       match_arm_nodes(texpr: body) |> fold(init: acc, f: (a, arm) =>
@@ -8603,7 +8619,7 @@ fn type_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv {
       inductive_fields: parent_env.inductive_fields,
       source_indices: parent_env.source_indices,
       intern_table: parent_env.intern_table,
-      source_visible_names: parent_env.source_visible_names,
+      source_visible_names: parent_env.source_visible_names, authored_import_names: parent_env.authored_import_names,
       symbol_index: parent_env.symbol_index
     }
   } else { parent_env }
@@ -8623,7 +8639,7 @@ fn interface_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv
     inductive_fields: filtered.inductive_fields,
     source_indices: filtered.source_indices,
     intern_table: filtered.intern_table,
-    source_visible_names: filtered.source_visible_names,
+    source_visible_names: filtered.source_visible_names, authored_import_names: filtered.authored_import_names,
     symbol_index: filtered.symbol_index
   }
 }
@@ -8643,7 +8659,7 @@ fn interface_env_surface(env: TypeEnv) -> TypeEnv {
     inductive_fields: env.inductive_fields,
     source_indices: env.source_indices,
     intern_table: env.intern_table,
-    source_visible_names: env.source_visible_names,
+    source_visible_names: env.source_visible_names, authored_import_names: env.authored_import_names,
     symbol_index: env.symbol_index
   }
 }
@@ -9293,7 +9309,7 @@ fn census_fn_sig_env(census: SymbolIndex, module_path: String, tp_names: List<St
     inductive_fields: empty_map(),
     source_indices: source_indices,
     intern_table: empty_intern_table(),
-    source_visible_names: empty_map(),
+    source_visible_names: empty_map(), authored_import_names: empty_map(),
     symbol_index: census
   }
   env_with_type_variable_bindings(env: base, tp_names: tp_names)
@@ -9588,6 +9604,21 @@ fn overlay_direct_import_exports(ancestry_str_bindings: Map<String, TypeBinding>
   )
 }
 
+// THE AUTHORED HALF OF THIS FUNCTION'S VISIBILITY MAPS, KEPT SEPARATE BECAUSE THE UNION DESTROYS IT.
+// `build_type_env` folds BOTH import arms into one `source_visible_names` map: an is_all import
+// contributes every name in the imported module's interface AND every name that module itself
+// acquired through ancestry -- so a bare `import v2.std.collection` puts `map_get` in the map
+// without the author ever writing the word, and the ancestry half contributes names
+// TRANSITIVELY, which is the closure-supply case gap-analysis row 30 is about, arriving through
+// a set whose name suggests the opposite.
+//
+// Membership in source_visible_names is therefore NECESSARY for "the author named this
+// declaration" and NOT SUFFICIENT for it, and the sufficient half cannot be recovered by
+// filtering the result: the union already happened. Only the specific_names arm answers the
+// question `v1.compiler.infer_lookup` level 1a asks, so `authored_import_names` is folded
+// separately here rather than derived from the union. Type parameters are deliberately absent --
+// they are authored, but they are not imports, and that map answers "which declaration did an
+// import name", not "what is in lexical scope".
 fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex) -> BuildTypeEnvResult {
   let source_indices = fold(map_keys(kernel_type_set), init: source_indices, f: (acc, name) =>
     map_insert(acc, concat("<kernel:", name, ">"), build_newline_index(file: concat("<kernel:", name, ">"), source: name))
@@ -9620,7 +9651,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
   let kernel_recursive_types = map_keys(compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
   let kernel_recursive_type_set = fold(map_keys(compiler_recursive_types), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
-  let kernel = TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
+  let kernel = TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index() }
 
   let module_name_str = authored_name_at(source_indices: source_indices, node: module.module)
   let import_parents = flat_map(module.resolved_imports, imp =>
@@ -9736,7 +9767,14 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       fold(imp.specific_names, init: acc, f: (x, n) => map_insert(x, n, true))
     }
   )
-  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: all_local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: source_visible_names, symbol_index: symbol_index }
+  let authored_import_names = fold(module.resolved_imports, init: empty_map(), f: (acc, imp) =>
+    if imp.is_all {
+      acc
+    } else {
+      fold(imp.specific_names, init: acc, f: (x, n) => map_insert(x, n, true))
+    }
+  )
+  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: all_local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: source_visible_names, authored_import_names: authored_import_names, symbol_index: symbol_index }
   let resolved = resolve_env_bindings(env: unresolved_env, module_name: module_name_str, local_names: local_name_set, deps_map: all_deps_map)
   let resolved_env_out = resolved.env
   let resolved_diags = resolved.diagnostics
@@ -9750,7 +9788,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     inductive_fields: resolved_env_out.inductive_fields,
     source_indices: resolved_env_out.source_indices,
     intern_table: intern_table,
-    source_visible_names: source_visible_names,
+    source_visible_names: source_visible_names, authored_import_names: authored_import_names,
     symbol_index: resolved_env_out.symbol_index,
   }
   let cache_str_bindings = map_merge(final_env.ancestry_str_bindings, final_env.str_bindings)
@@ -9782,7 +9820,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let absent_variant = Node { name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_optional = Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
-  let kernel = TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
+  let kernel = TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index() }
 
   let module_name_str = authored_name_at(source_indices: source_indices, node: module.module)
   let import_parents = flat_map(module.resolved_imports, imp =>
@@ -9851,7 +9889,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let merged_inductive_fields = merge_inductive_fields(left: parent_inductive_fields, right: local_inductive_fields)
   let ancestry_str_bindings = ancestry_cache.str_bindings
   let visible_str_bindings = map_merge(ancestry_str_bindings, local_str_bindings)
-  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
+  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index() }
   let type_env_cache = TypeEnvCache {
     deps_map: all_deps_map,
     str_bindings: visible_str_bindings,
@@ -10533,7 +10571,7 @@ fn topo_resolve_types(
       }
     )
     return EnvResolveResult {
-      env: TypeEnv { module_path: env.module_path, bindings: stuck_accum.bindings, str_bindings: stuck_accum.str_bindings, ancestry_str_bindings: env.ancestry_str_bindings, parents: env.parents, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_indices: env.source_indices, intern_table: env.intern_table, source_visible_names: env.source_visible_names, symbol_index: env.symbol_index },
+      env: TypeEnv { module_path: env.module_path, bindings: stuck_accum.bindings, str_bindings: stuck_accum.str_bindings, ancestry_str_bindings: env.ancestry_str_bindings, parents: env.parents, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_indices: env.source_indices, intern_table: env.intern_table, source_visible_names: env.source_visible_names, authored_import_names: env.authored_import_names, symbol_index: env.symbol_index },
       diagnostics: concat(diagnostics, stuck_accum.diagnostics)
     }
   }
@@ -10561,7 +10599,7 @@ fn topo_resolve_types(
 
   topo_resolve_types(
     remaining: next_remaining,
-    env: TypeEnv { module_path: env.module_path, bindings: ready_accum.bindings, str_bindings: ready_accum.str_bindings, ancestry_str_bindings: env.ancestry_str_bindings, parents: env.parents, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_indices: env.source_indices, intern_table: env.intern_table, source_visible_names: env.source_visible_names, symbol_index: env.symbol_index },
+    env: TypeEnv { module_path: env.module_path, bindings: ready_accum.bindings, str_bindings: ready_accum.str_bindings, ancestry_str_bindings: env.ancestry_str_bindings, parents: env.parents, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_indices: env.source_indices, intern_table: env.intern_table, source_visible_names: env.source_visible_names, authored_import_names: env.authored_import_names, symbol_index: env.symbol_index },
     module_name: module_name,
     diagnostics: concat(diagnostics, ready_accum.diagnostics),
     local_names: local_names,
@@ -10986,7 +11024,7 @@ fn rewire_type_env_import_str_binding_identity(modules: List<TypedModule>, sourc
         inductive_fields: m.type_env.inductive_fields,
         source_indices: m.type_env.source_indices,
         intern_table: m.type_env.intern_table,
-        source_visible_names: m.type_env.source_visible_names,
+        source_visible_names: m.type_env.source_visible_names, authored_import_names: m.type_env.authored_import_names,
         symbol_index: m.type_env.symbol_index
       },
       type_env_cache: m.type_env_cache,
@@ -11022,7 +11060,7 @@ fn compiler_kernel_type_env(source_indices: Map<String, NewlineIndex>, intern_ta
   let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
   let kernel_recursive_types = map_keys(compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
   let kernel_recursive_type_set = fold(map_keys(compiler_recursive_types), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
-  TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
+  TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index() }
 }
 
 fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
@@ -11063,7 +11101,7 @@ fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<
         inductive_fields: m.type_env.inductive_fields,
         source_indices: m.type_env.source_indices,
         intern_table: m.type_env.intern_table,
-        source_visible_names: m.type_env.source_visible_names,
+        source_visible_names: m.type_env.source_visible_names, authored_import_names: m.type_env.authored_import_names,
         symbol_index: m.type_env.symbol_index
       },
       type_env_cache: m.type_env_cache,

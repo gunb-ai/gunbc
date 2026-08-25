@@ -107,11 +107,10 @@ use crate::v1_compiler_infer_lookup::DeclaredArgContract::{
 };
 pub use crate::v1_compiler_infer_lookup::{
     declared_arg_types_for_method, field_summary_for_type, func_decl_binding_for_call,
-    func_sig_if_resolved, global_bare_callable_node, lookup_coproduct_common_field_node,
-    lookup_field_type_node, lookup_func_sig, lookup_in_scope, lookup_structural_method,
-    map_key_type_in_env, map_value_type_in_env, product_field_result_type,
-    resolve_known_method_node, resolve_method_receiver_type, resolve_scrutinee_type_node,
-    set_element_type_in_env,
+    global_bare_callable_node, lookup_coproduct_common_field_node, lookup_field_type_node,
+    lookup_func_sig, lookup_in_scope, lookup_structural_method, map_key_type_in_env,
+    map_value_type_in_env, product_field_result_type, resolve_known_method_node,
+    resolve_method_receiver_type, resolve_scrutinee_type_node, set_element_type_in_env,
 };
 pub use crate::v1_compiler_infer_lookup::{
     ConstructorDeclarationLookup, DeclarationLookupFailure, DeclaredArgContract,
@@ -138,12 +137,21 @@ pub use crate::v1_compiler_infer_service::{
     is_typed_service_call_receiver, service_op_entry,
 };
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult, UniqueAccum};
+use crate::v1_compiler_infer_sigs::CallableIdentity::{BuiltinCallable, DeclaredCallable};
+use crate::v1_compiler_infer_sigs::DerivedCalleeSig::{DerivedFromSig, NoDerivableSig};
 use crate::v1_compiler_infer_sigs::FuncSigLookup::{
     FuncSigAmbiguous, FuncSigResolved, FuncSigUnresolved,
 };
-pub use crate::v1_compiler_infer_sigs::{flatten_parent_envs, resolve_func_sigs};
+use crate::v1_compiler_infer_sigs::NoDerivableSigReason::{
+    DerivationSigAmbiguous, DerivationSigUnresolved,
+};
 pub use crate::v1_compiler_infer_sigs::{
-    FuncSigLookup, ResolveFuncSigsResult, ResolvedFuncEnv, ResolvedFuncSig,
+    callable_candidate_labels, callable_identity_label, flatten_parent_envs,
+    func_sig_for_derivation, resolve_func_sigs,
+};
+pub use crate::v1_compiler_infer_sigs::{
+    CallableCandidate, CallableIdentity, DerivedCalleeSig, FuncSigLookup, NoDerivableSigReason,
+    ResolveFuncSigsResult, ResolvedFuncEnv, ResolvedFuncSig,
 };
 pub use crate::v1_compiler_infer_types::KernelTypeBuild;
 pub use crate::v1_compiler_infer_types::{
@@ -6321,7 +6329,7 @@ pub fn infer_expr_body(
                             ..
                         } => ambiguous_reference_refusal(
                             name.clone(),
-                            ambiguous_fn_candidates.clone(),
+                            callable_candidate_labels(ambiguous_fn_candidates.clone()),
                             span.clone(),
                             scope.clone(),
                         ),
@@ -6672,7 +6680,7 @@ pub fn infer_expr_body(
                     ..
                 } => ambiguous_reference_refusal(
                     func_name.clone(),
-                    ambiguous_fn_candidates.clone(),
+                    callable_candidate_labels(ambiguous_fn_candidates.clone()),
                     span.clone(),
                     scope.clone(),
                 ),
@@ -6684,7 +6692,14 @@ pub fn infer_expr_body(
                     ) {
                         Some(refusal) => refusal.clone(),
                         None => {
-                            let sig = func_sig_if_resolved(call_sig_lookup.clone());
+                            let sig = match (*call_sig_lookup.clone()).clone() {
+                                FuncSigLookup::FuncSigResolved {
+                                    sig: resolved_call_sig,
+                                    ..
+                                } => Some(resolved_call_sig.clone()),
+                                FuncSigLookup::FuncSigUnresolved => None,
+                                FuncSigLookup::FuncSigAmbiguous { candidates: _, .. } => None,
+                            };
                             let sig_params = match sig.clone() {
                                 Some(s) => s.params.clone(),
                                 None => Rc::new(vec![]),
@@ -11290,12 +11305,14 @@ pub fn build_per_field_for_let(
         ExprData::ExprCall { .. } => {
             let callee =
                 expr_call_func_at(val.clone(), ctx.type_env.clone().source_indices.clone());
-            match func_sig_if_resolved(lookup_func_sig(
+            match (*func_sig_for_derivation(lookup_func_sig(
                 ctx.func_env.clone(),
                 ctx.type_env.clone(),
                 callee.clone(),
-            )) {
-                Some(sig) => {
+            )))
+            .clone()
+            {
+                DerivedCalleeSig::DerivedFromSig { sig: sig, .. } => {
                     if ((sig.output_provenance.clone().len() as i64) > 1) {
                         {
                             let return_type = sig.inferred.clone();
@@ -11345,7 +11362,7 @@ pub fn build_per_field_for_let(
                         ctx.per_field_vars.clone()
                     }
                 }
-                None => ctx.per_field_vars.clone(),
+                DerivedCalleeSig::NoDerivableSig { reason: _, .. } => ctx.per_field_vars.clone(),
             }
         }
         ExprData::ExprMethodCall {
@@ -11354,12 +11371,14 @@ pub fn build_per_field_for_let(
         } => {
             let callee =
                 expr_method_name_at(val.clone(), ctx.type_env.clone().source_indices.clone());
-            match func_sig_if_resolved(lookup_func_sig(
+            match (*func_sig_for_derivation(lookup_func_sig(
                 ctx.func_env.clone(),
                 ctx.type_env.clone(),
                 callee.clone(),
-            )) {
-                Some(sig) => {
+            )))
+            .clone()
+            {
+                DerivedCalleeSig::DerivedFromSig { sig: sig, .. } => {
                     if ((sig.output_provenance.clone().len() as i64) > 1) {
                         {
                             let return_type = sig.inferred.clone();
@@ -11409,7 +11428,7 @@ pub fn build_per_field_for_let(
                         ctx.per_field_vars.clone()
                     }
                 }
-                None => ctx.per_field_vars.clone(),
+                DerivedCalleeSig::NoDerivableSig { reason: _, .. } => ctx.per_field_vars.clone(),
             }
         }
         _ => ctx.per_field_vars.clone(),
@@ -11707,18 +11726,24 @@ pub fn classify_let_value(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<S
         ExprData::ExprCall { .. } => {
             let callee =
                 expr_call_func_at(val.clone(), ctx.type_env.clone().source_indices.clone());
-            let from_provenance = match func_sig_if_resolved(lookup_func_sig(
+            let from_provenance = match (*func_sig_for_derivation(lookup_func_sig(
                 ctx.func_env.clone(),
                 ctx.type_env.clone(),
                 callee.clone(),
-            )) {
-                Some(sig) => match sig.output_provenance.clone().first().cloned() {
-                    Some(param_map) => {
-                        classify_call_via_provenance(val.clone(), param_map.clone(), ctx.clone())
+            )))
+            .clone()
+            {
+                DerivedCalleeSig::DerivedFromSig { sig: sig, .. } => {
+                    match sig.output_provenance.clone().first().cloned() {
+                        Some(param_map) => classify_call_via_provenance(
+                            val.clone(),
+                            param_map.clone(),
+                            ctx.clone(),
+                        ),
+                        None => None,
                     }
-                    None => None,
-                },
-                None => None,
+                }
+                DerivedCalleeSig::NoDerivableSig { reason: _, .. } => None,
             };
             match from_provenance.clone() {
                 Some(_) => from_provenance.clone(),
@@ -12292,23 +12317,26 @@ pub fn classify_argument(
                                     arg_expr.clone(),
                                     ctx.type_env.clone().source_indices.clone(),
                                 );
-                                let from_provenance = match func_sig_if_resolved(lookup_func_sig(
-                                    ctx.func_env.clone(),
-                                    ctx.type_env.clone(),
-                                    callee.clone(),
-                                )) {
-                                    Some(sig) => {
-                                        match sig.output_provenance.clone().first().cloned() {
-                                            Some(param_map) => classify_call_via_provenance(
-                                                arg_expr.clone(),
-                                                param_map.clone(),
-                                                ctx.clone(),
-                                            ),
-                                            None => None,
+                                let from_provenance =
+                                    match (*func_sig_for_derivation(lookup_func_sig(
+                                        ctx.func_env.clone(),
+                                        ctx.type_env.clone(),
+                                        callee.clone(),
+                                    )))
+                                    .clone()
+                                    {
+                                        DerivedCalleeSig::DerivedFromSig { sig: sig, .. } => {
+                                            match sig.output_provenance.clone().first().cloned() {
+                                                Some(param_map) => classify_call_via_provenance(
+                                                    arg_expr.clone(),
+                                                    param_map.clone(),
+                                                    ctx.clone(),
+                                                ),
+                                                None => None,
+                                            }
                                         }
-                                    }
-                                    None => None,
-                                };
+                                        DerivedCalleeSig::NoDerivableSig { reason: _, .. } => None,
+                                    };
                                 match from_provenance.clone() {
                                     Some(prov_rel) => prov_rel.clone(),
                                     None => {
@@ -13059,12 +13087,14 @@ pub fn annotate_descent(body: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Node> {
                             scrut.clone(),
                             ctx.type_env.clone().source_indices.clone(),
                         );
-                        match func_sig_if_resolved(lookup_func_sig(
+                        match (*func_sig_for_derivation(lookup_func_sig(
                             ctx.func_env.clone(),
                             ctx.type_env.clone(),
                             callee.clone(),
-                        )) {
-                            Some(sig) => {
+                        )))
+                        .clone()
+                        {
+                            DerivedCalleeSig::DerivedFromSig { sig: sig, .. } => {
                                 if ((Rc::new(v1_rt::map_keys(&sig.variant_provenance.clone())).len()
                                     as i64)
                                     > 0)
@@ -13074,7 +13104,7 @@ pub fn annotate_descent(body: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Node> {
                                     None
                                 }
                             }
-                            None => None,
+                            DerivedCalleeSig::NoDerivableSig { reason: _, .. } => None,
                         }
                     }
                     _ => None,
@@ -14320,27 +14350,34 @@ pub fn method_call_args_by_name(
         let mname = expr_method_name_at(call.clone(), source_indices.clone());
         let recv = method_receiver(call.clone());
         let mc_args = method_arg_nodes(call.clone());
-        let base = match func_sig_if_resolved(lookup_func_sig(
+        let base = match (*func_sig_for_derivation(lookup_func_sig(
             func_env.clone(),
             type_env.clone(),
             mname.clone(),
-        )) {
-            Some(sig) => match sig.params.clone().first().cloned() {
-                Some(first_p) => {
-                    let first_pname = param_node_name_at(first_p.clone(), source_indices.clone());
-                    if (first_pname.clone() != "".to_string()) {
-                        v1_rt::rc_map_insert(
-                            v1_rt::rc_empty_map::<String, Rc<Node>>(),
-                            first_pname.clone(),
-                            recv.clone(),
-                        )
-                    } else {
-                        v1_rt::rc_empty_map::<String, Rc<Node>>()
+        )))
+        .clone()
+        {
+            DerivedCalleeSig::DerivedFromSig { sig: sig, .. } => {
+                match sig.params.clone().first().cloned() {
+                    Some(first_p) => {
+                        let first_pname =
+                            param_node_name_at(first_p.clone(), source_indices.clone());
+                        if (first_pname.clone() != "".to_string()) {
+                            v1_rt::rc_map_insert(
+                                v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                                first_pname.clone(),
+                                recv.clone(),
+                            )
+                        } else {
+                            v1_rt::rc_empty_map::<String, Rc<Node>>()
+                        }
                     }
+                    None => v1_rt::rc_empty_map::<String, Rc<Node>>(),
                 }
-                None => v1_rt::rc_empty_map::<String, Rc<Node>>(),
-            },
-            None => v1_rt::rc_empty_map::<String, Rc<Node>>(),
+            }
+            DerivedCalleeSig::NoDerivableSig { reason: _, .. } => {
+                v1_rt::rc_empty_map::<String, Rc<Node>>()
+            }
         };
         mc_args.iter().cloned().fold(
             base.clone(),
@@ -14366,28 +14403,31 @@ pub fn compose_callee_provenance(
     func_env: Rc<ResolvedFuncEnv>,
     let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
 ) -> Rc<HashMap<String, Rc<SubValueRelation>>> {
-    match func_sig_if_resolved(lookup_func_sig(
+    match (*func_sig_for_derivation(lookup_func_sig(
         func_env.clone(),
         type_env.clone(),
         callee.clone(),
-    )) {
-        Some(sig) => match sig.output_provenance.clone().first().cloned() {
-            Some(callee_prov) => Rc::new(v1_rt::map_keys(&callee_prov)).iter().cloned().fold(
-                v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
-                |acc: Rc<HashMap<String, Rc<SubValueRelation>>>, callee_pname: String| {
-                    match v1_rt::map_get(&callee_prov, callee_pname.clone()) {
-                        Some(callee_rel) => {
-                            match v1_rt::map_get(&arg_by_name, callee_pname.clone()) {
-                                Some(arg) => {
-                                    let arg_prov = classify_body_provenance(
-                                        arg.clone(),
-                                        param_names.clone(),
-                                        param_types.clone(),
-                                        type_env.clone(),
-                                        func_env.clone(),
-                                        let_prov.clone(),
-                                    );
-                                    Rc::new(v1_rt::map_keys(&arg_prov)).iter().cloned().fold(
+    )))
+    .clone()
+    {
+        DerivedCalleeSig::DerivedFromSig { sig: sig, .. } => {
+            match sig.output_provenance.clone().first().cloned() {
+                Some(callee_prov) => Rc::new(v1_rt::map_keys(&callee_prov)).iter().cloned().fold(
+                    v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
+                    |acc: Rc<HashMap<String, Rc<SubValueRelation>>>, callee_pname: String| {
+                        match v1_rt::map_get(&callee_prov, callee_pname.clone()) {
+                            Some(callee_rel) => {
+                                match v1_rt::map_get(&arg_by_name, callee_pname.clone()) {
+                                    Some(arg) => {
+                                        let arg_prov = classify_body_provenance(
+                                            arg.clone(),
+                                            param_names.clone(),
+                                            param_types.clone(),
+                                            type_env.clone(),
+                                            func_env.clone(),
+                                            let_prov.clone(),
+                                        );
+                                        Rc::new(v1_rt::map_keys(&arg_prov)).iter().cloned().fold(
                                         acc.clone(),
                                         |inner: Rc<HashMap<String, Rc<SubValueRelation>>>,
                                          pname: String| {
@@ -14425,17 +14465,20 @@ pub fn compose_callee_provenance(
                                             }
                                         },
                                     )
+                                    }
+                                    None => acc.clone(),
                                 }
-                                None => acc.clone(),
                             }
+                            None => acc.clone(),
                         }
-                        None => acc.clone(),
-                    }
-                },
-            ),
-            None => v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
-        },
-        None => v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
+                    },
+                ),
+                None => v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
+            }
+        }
+        DerivedCalleeSig::NoDerivableSig { reason: _, .. } => {
+            v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>()
+        }
     }
 }
 
@@ -15026,12 +15069,14 @@ pub fn collect_variant_constructors(
             },
             ExprData::ExprCall { .. } => {
                 let callee = expr_call_func_at(body.clone(), type_env.source_indices.clone());
-                match func_sig_if_resolved(lookup_func_sig(
+                match (*func_sig_for_derivation(lookup_func_sig(
                     func_env.clone(),
                     type_env.clone(),
                     callee.clone(),
-                )) {
-                    Some(sig) => {
+                )))
+                .clone()
+                {
+                    DerivedCalleeSig::DerivedFromSig { sig: sig, .. } => {
                         if ((authored_name_at(
                             type_env.source_indices.clone(),
                             sig.inferred.clone(),
@@ -15074,7 +15119,7 @@ if ((Rc::new(v1_rt::map_keys(&composed_field_map)).len() as i64) > 0) {
                             acc.clone()
                         }
                     }
-                    None => acc.clone(),
+                    DerivedCalleeSig::NoDerivableSig { reason: _, .. } => acc.clone(),
                 }
             }
             ExprData::ExprMatch => match_arm_nodes(body.clone()).iter().cloned().fold(
@@ -16939,6 +16984,7 @@ pub fn type_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<T
                 source_indices: parent_env.source_indices.clone(),
                 intern_table: parent_env.intern_table.clone(),
                 source_visible_names: parent_env.source_visible_names.clone(),
+                authored_import_names: parent_env.authored_import_names.clone(),
                 symbol_index: parent_env.symbol_index.clone(),
             })
         }
@@ -16971,6 +17017,7 @@ pub fn interface_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) ->
             source_indices: filtered.source_indices.clone(),
             intern_table: filtered.intern_table.clone(),
             source_visible_names: filtered.source_visible_names.clone(),
+            authored_import_names: filtered.authored_import_names.clone(),
             symbol_index: filtered.symbol_index.clone(),
         })
     }
@@ -17007,6 +17054,7 @@ pub fn interface_env_surface(env: Rc<TypeEnv>) -> Rc<TypeEnv> {
         source_indices: env.source_indices.clone(),
         intern_table: env.intern_table.clone(),
         source_visible_names: env.source_visible_names.clone(),
+        authored_import_names: env.authored_import_names.clone(),
         symbol_index: env.symbol_index.clone(),
     })
 }
@@ -18066,6 +18114,7 @@ pub fn census_fn_sig_env(
             source_indices: source_indices.clone(),
             intern_table: empty_intern_table(),
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
+            authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
             symbol_index: census.clone(),
         });
         env_with_type_variable_bindings(base.clone(), tp_names.clone())
@@ -19087,6 +19136,7 @@ pub fn build_type_env(
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
+            authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
             symbol_index: empty_symbol_index(),
         });
         let module_name_str = authored_name_at(source_indices.clone(), module.module.clone());
@@ -19452,6 +19502,21 @@ pub fn build_type_env(
                 }
             },
         );
+        let authored_import_names = module.resolved_imports.clone().iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, imp: Rc<ResolvedImport>| {
+                if imp.is_all.clone() {
+                    acc.clone()
+                } else {
+                    imp.specific_names.clone().iter().cloned().fold(
+                        acc.clone(),
+                        |x: Rc<HashMap<String, bool>>, n: String| {
+                            v1_rt::rc_map_insert(x, n.clone(), true)
+                        },
+                    )
+                }
+            },
+        );
         let unresolved_env = Rc::new(TypeEnv {
             module_path: module_name_str.clone(),
             bindings: all_local_bindings.clone(),
@@ -19464,6 +19529,7 @@ pub fn build_type_env(
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
             source_visible_names: source_visible_names.clone(),
+            authored_import_names: authored_import_names.clone(),
             symbol_index: symbol_index.clone(),
         });
         let resolved = resolve_env_bindings(
@@ -19486,6 +19552,7 @@ pub fn build_type_env(
             source_indices: resolved_env_out.source_indices.clone(),
             intern_table: intern_table.clone(),
             source_visible_names: source_visible_names.clone(),
+            authored_import_names: authored_import_names.clone(),
             symbol_index: resolved_env_out.symbol_index.clone(),
         });
         let cache_str_bindings = v1_rt::rc_map_merge(
@@ -19671,6 +19738,7 @@ pub fn build_type_env_unresolved(
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
+            authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
             symbol_index: empty_symbol_index(),
         });
         let module_name_str = authored_name_at(source_indices.clone(), module.module.clone());
@@ -19955,6 +20023,7 @@ pub fn build_type_env_unresolved(
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
+            authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
             symbol_index: empty_symbol_index(),
         });
         let type_env_cache = Rc::new(TypeEnvCache {
@@ -21322,6 +21391,7 @@ pub fn topo_resolve_types(
                         source_indices: env.source_indices.clone(),
                         intern_table: env.intern_table.clone(),
                         source_visible_names: env.source_visible_names.clone(),
+                        authored_import_names: env.authored_import_names.clone(),
                         symbol_index: env.symbol_index.clone(),
                     }),
                     diagnostics: v1_rt::concat(
@@ -21404,6 +21474,7 @@ pub fn topo_resolve_types(
                 source_indices: env.source_indices.clone(),
                 intern_table: env.intern_table.clone(),
                 source_visible_names: env.source_visible_names.clone(),
+                authored_import_names: env.authored_import_names.clone(),
                 symbol_index: env.symbol_index.clone(),
             });
             let __tco_2 = v1_rt::concat(diagnostics, ready_accum.diagnostics.clone());
@@ -22190,6 +22261,7 @@ pub fn rewire_type_env_import_str_binding_identity(
                             source_indices: m.type_env.clone().source_indices.clone(),
                             intern_table: m.type_env.clone().intern_table.clone(),
                             source_visible_names: m.type_env.clone().source_visible_names.clone(),
+                            authored_import_names: m.type_env.clone().authored_import_names.clone(),
                             symbol_index: m.type_env.clone().symbol_index.clone(),
                         }),
                         type_env_cache: m.type_env_cache.clone(),
@@ -22404,6 +22476,7 @@ pub fn compiler_kernel_type_env(
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
+            authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
             symbol_index: empty_symbol_index(),
         })
     }
@@ -22499,6 +22572,7 @@ pub fn rewire_type_env_parent_links(
                             source_indices: m.type_env.clone().source_indices.clone(),
                             intern_table: m.type_env.clone().intern_table.clone(),
                             source_visible_names: m.type_env.clone().source_visible_names.clone(),
+                            authored_import_names: m.type_env.clone().authored_import_names.clone(),
                             symbol_index: m.type_env.clone().symbol_index.clone(),
                         }),
                         type_env_cache: m.type_env_cache.clone(),

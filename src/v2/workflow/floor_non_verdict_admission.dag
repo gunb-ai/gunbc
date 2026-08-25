@@ -1,0 +1,74 @@
+module v2.workflow.floor_non_verdict_admission
+
+import v2.std.algebra { Cons, Empty, fold_list, length }
+import v2.std.collection { List }
+import v2.std.text { String }
+import v2.std.logic { Bool }
+
+// THE ADMISSION, MODELED WHERE THE ROSTER LIVES rather than only in the seed that reads it.
+//
+// The seed computes the same two sets inline over `HashSet`s; this module is the authority for
+// WHAT THE ADMISSION IS, and its witness is what establishes that the rule discriminates. The
+// duplication is the ordinary seed-mirrors-carrier seam and dissolves with the self-emitted
+// claim executor, exactly as the terminal ledger's does.
+
+fn identity_in(xs: List<String>, q: String) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || x == q })
+}
+
+// ADDED = observed - roster. The set the admission is about.
+fn non_verdict_added(observed: List<String>, roster: List<String>) -> List<String> {
+  fold_list(
+    xs: observed,
+    empty: Empty {},
+    cons: fn(acc, q) { if identity_in(xs: roster, q: q) { acc } else { Cons { head: q, tail: acc } } },
+  )
+}
+
+// REPAID = roster - observed: rows whose identity produced a verdict this run, so the debt is
+// paid and the row must come out. IT REFUSES, and an earlier revision of this line said the
+// opposite -- "reported, never gating: a repaid row must not red the run that repaid it". That
+// was the original design and review 55361 refuted it: a stale row is a LIVE EXEMPTION, so
+// leaving it standing lets the identity regress later and be admitted by the roster that exists
+// to bound it. Repayment and deletion are ONE ACT.
+//
+// The line is called out here rather than quietly overwritten because of WHERE it survived. The
+// reversal updated the roster header, the seed's field doc and the gate conjunct, and missed the
+// docstring on this function -- leaving two authorities stating opposite rules about one
+// admission, inside the module whose whole subject is single authority (review 55515). The
+// mechanism was never wrong; only this sentence was, which is exactly why it lasted.
+fn non_verdict_repaid(observed: List<String>, roster: List<String>) -> List<String> {
+  fold_list(
+    xs: roster,
+    empty: Empty {},
+    cons: fn(acc, q) { if identity_in(xs: observed, q: q) { acc } else { Cons { head: q, tail: acc } } },
+  )
+}
+
+// THE ADMISSION IS "ADDED IS EMPTY AND REPAID IS EMPTY", AND IT IS NOT A COUNT COMPARISON.
+//
+// `list_length(observed) <= list_length(roster)` would admit every case this refuses except one,
+// and the one it wrongly admits is the case the whole mechanism exists for: one identity
+// repaired while a different identity begins throwing, with the total unmoved. A count cannot
+// see a swap, so the admission is written over identities and the witness beside it drives
+// exactly that mutation.
+//
+// WHY REPAID IS A REFUSAL AND NOT AN ADMISSION, corrected 2026-08-24 (review 55577). An earlier
+// revision admitted repayment outright, reasoning that refusing it would red the merge that
+// repairs the population. That reasoning was right about the goal and wrong about the subject: a
+// repaid identity is one the roster still names and the run no longer observes, which is a STALE
+// ROW, and the executing gate refuses exactly that -- `stale_non_verdict` is a conjunct of
+// v1_compiler.claim_executor required_floor_outcome_is_clean. So this function said ADMIT where
+// its only consumer said REFUSE, which is the DESIGN section 3 divergence a modeled authority
+// exists to prevent rather than to demonstrate.
+//
+// REPAYMENT IS STILL NOT PENALISED, because repaying and deleting the row are ONE ACT: the change
+// that repairs an identity deletes its roster row in the same diff, after which the identity is
+// in neither collection and both are empty. What refuses is repayment that leaves the row behind,
+// which is a roster asserting a debt that no longer exists -- the same monotone-shrink discipline
+// the route-gap roster states as "enrolled, and the route did NOT gap: reds the build as a stale
+// row".
+fn non_verdict_admits(observed: List<String>, roster: List<String>) -> Bool {
+  length(xs: non_verdict_added(observed: observed, roster: roster)) == 0
+    && length(xs: non_verdict_repaid(observed: observed, roster: roster)) == 0
+}
