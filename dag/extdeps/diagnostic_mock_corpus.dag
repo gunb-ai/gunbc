@@ -11,7 +11,6 @@ import extdeps.ssh.mock_corpus {
 import extdeps.linux.mock_corpus { linux_edac_rasmcctl_mock_case_correctable_counts }
 import extdeps.bmc.mock_corpus {
   redfish_http_mock_case_get_system,
-  redfish_http_mock_case_get_system_with_netrc,
   redfish_http_mock_case_get_chassis_sensors,
   redfish_http_mock_case_get_power,
   redfish_http_mock_case_get_thermal,
@@ -27,7 +26,6 @@ data diagnostic_published_mock_corpus: List<PublishedMockCase> = [
   ssh_session_mock_case_exec_portable_words_with_stdin,
   ssh_session_mock_case_reachability,
   redfish_http_mock_case_get_system,
-  redfish_http_mock_case_get_system_with_netrc,
   redfish_http_mock_case_get_chassis_sensors,
   redfish_http_mock_case_get_power,
   redfish_http_mock_case_get_thermal,

@@ -14762,7 +14762,7 @@ pub fn eval_profile_reset() {
 /// (v2 02_parse.dag) calls `length` on the full token stream every parse
 /// attempt; without this fast path that is an O(n) clone per attempt, an
 /// O(n^2) tax the compiled (Rust-emitted) realization never pays. Method-call
-/// `.length()` on native `Value::Str` routes through `string_length_ascii_aware`
+/// `.length()` on native `Value::Str` routes through `v1_rt::string_length`
 /// so it does not flatten strings into per-codepoint `Value`s (LIST-CARRIER-0 /
 /// materialize OOM). Free-call `length`/`string_length` already avoided
 /// `free_monoid_to_vec` on `Str` via `chars().count()`; this arm closes the
@@ -14787,7 +14787,7 @@ pub(crate) fn native_len(val: &Value) -> Option<i64> {
         // NEXT-RUNG TRIGGER: a workload that repeatedly length-queries the same non-ASCII
         // string. If that appears, the amortization argument inverts and a carried count
         // becomes correct.
-        Value::Str(s) => Some(v1_rt::string_length_ascii_aware(&s, s.is_ascii())),
+        Value::Str(s) => Some(v1_rt::string_length(s)),
         _ => None,
     }
 }
