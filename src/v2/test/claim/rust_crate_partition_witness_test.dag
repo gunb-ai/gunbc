@@ -221,7 +221,7 @@ test fn witness_v1_infer_unit_members_holds() -> Bool {
     Stage0PartitionReceiptOk { units: units } =>
       match partition_unit_by_id(units: units, unit_id: stage0_unit_v1_infer) {
         Present { value: unit } =>
-          (unit.members |> count) == 7
+          (unit.members |> count) == 9
         Absent => false
       }
     Stage0PartitionReceiptResolveRefused { cause: _ } => false
