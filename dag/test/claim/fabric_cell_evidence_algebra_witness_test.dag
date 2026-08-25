@@ -170,20 +170,29 @@ test fn evidence_domain_laws_hold() -> Bool {
     && class_of(observations: [refused, a, b, absent]) == "refused"
 }
 
-// AND THE ONE THAT IS EXPECTED TO BE RED TODAY, STATED AS A MEASUREMENT RATHER THAN A WISH. The
+// AND THE ONE THAT IS RED TODAY, ASSERTING THE PROPERTY WE WANT RATHER THAN THE ONE WE HAVE. The
 // class projection above is order-independent; the FULL semantic value is not, because the fold
 // keeps the FIRST refusal cause it saw. Two refusals that differ only in cause text are
 // semantically identical and textually distinct, so `[c1, c2]` and `[c2, c1]` reach the same arm
 // carrying different payloads.
 //
-// THIS IS CURRENTLY HARMLESS AND DELIBERATELY NOT LEFT UNWRITTEN. The plan identity consumes the
-// CLASS, so the wording does not move the member-set fingerprint today -- that was measured and is
-// why this is not a defect report. What it is: a live order-dependence sitting one consumer away
-// from mattering, and the next reader who routes on `cause`, or renders it into anything
-// content-addressed, reintroduces the exact CAS defect this family already fixed once. A law that
-// is true of the class and false of the value should be written down as both, not as the half that
-// passes.
-test fn evidence_full_value_is_not_yet_order_independent() -> Bool {
+// THIS ROW ASSERTS EQUALITY AND IS ENROLLED AS EXPECTED-RED, and the direction is the whole point
+// (codex review 55693). An earlier cut asserted the INEQUALITY -- that reversed refusals must stay
+// unequal -- and it passed, which made the defect part of the green contract: whoever canonicalized
+// the join would have been met by a red row whose obvious repair is to DELETE the row protecting
+// the property. That is a witness pinning a defect and thereby acquiring a defender, which is the
+// exact class this lane named one PR earlier and then re-committed here. Asserted this way round
+// the row goes GREEN when the join is fixed, and the floor's known-red-now-passing arm is what
+// tells the fixer to retire the enrolment.
+//
+// WHY IT IS NOT FIXED IN THIS PR, stated rather than left as an omission: canonicalizing the
+// refusal changes `EvidenceRefused`'s payload and therefore `AddressUnreadable.cause` and every
+// consumer of it, in a file #9167 is already restructuring. It is a production change belonging in
+// its own diff with its own mutation receipt, not a rider on a witness-only PR. What is NOT true
+// is that it is harmless: the plan identity consumes the CLASS, so the wording does not move the
+// member-set fingerprint today, but it sits one consumer away -- whoever routes on `cause` or
+// renders it into anything content-addressed reopens the CAS defect this family already fixed once.
+test fn evidence_full_value_is_order_independent() -> Bool {
   full_of(observations: [atom_refused(cause: "transport reset"), atom_refused(cause: "permission denied")])
-    != full_of(observations: [atom_refused(cause: "permission denied"), atom_refused(cause: "transport reset")])
+    == full_of(observations: [atom_refused(cause: "permission denied"), atom_refused(cause: "transport reset")])
 }
