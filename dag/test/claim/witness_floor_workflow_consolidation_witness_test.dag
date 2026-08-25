@@ -204,19 +204,35 @@ test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
   }
 }
 
-// THE GATE ITSELF REFUSES RATHER THAN SKIPS, and this row exists because the failure it guards
-// is invisible in every other reading of the file.
+// THE GATE RUNS AT ALL, AND THEN REFUSES. Two claims, and the first one is the one that was
+// missing -- this row's earlier form asserted only the second and went green over the defect.
 //
-// A required job that is SKIPPED does not stop a merge. So an aggregator whose step inherits
-// GitHub's implicit `success()` would be skipped exactly when a lane failed -- the job would
-// report success and the required check would go green over the failure it exists to catch.
-// `always()` is the status function that displaces the implicit default (the same substitution
-// rule the floor's own precondition paragraph records), and the nonzero exit is what turns a
-// read of two results into a refusal.
+// THE DEFECT IT MISSED, kept here because the row is only trustworthy if its own blind spot is
+// on the record. It asserted `if: always()` appeared SOMEWHERE in the file. It did -- on the
+// STEP -- while the JOB carried `needs` and no condition at all. GitHub SKIPS a job whose
+// needed job failed, a skipped job never reaches its steps, and a skipped required check does
+// not stop a merge. So the aggregator introduced to close the fail-open was itself fail-open,
+// the guard was present in the file and read as correct, and this row confirmed it. That is
+// DESIGN's total-at-the-level-examined failure: the assertion was true, and about the wrong
+// level. Found by two independent readers (review 55795 and a peer session) within minutes,
+// neither of them this row.
+//
+// SO THE CLAIM IS NOW STATED AT THE JOB GRAIN, and the discriminator is the emitted
+// INDENTATION, because that is the only thing in the text that distinguishes the two levels: a
+// job-level key sits at four spaces and a step-level key at eight. A leading newline plus four
+// spaces cannot be satisfied by the step's condition, which is the exact substitution that
+// produced the green above.
+//
+// THE THIRD AND FOURTH CLAUSES ARE THE REFUSAL ITSELF. A job that runs and reports success
+// regardless would satisfy the first two, so the nonzero exit and the strict inequality against
+// `success` are what turn a read of two results into a verdict -- and the strictness is
+// load-bearing in its own right: `cancelled` and `skipped` are not `success`, so a lane that
+// never produced a verdict refuses here rather than passing.
 test fn w_RED_the_gate_runs_and_refuses_on_a_failed_lane() -> Bool {
   match expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
-      string_contains(s: yml, pattern: "if: always()")
+      string_contains(s: yml, pattern: "\n    if: always()")
+        && string_contains(s: yml, pattern: "\n        if: always()")
         && string_contains(s: yml, pattern: "exit 1")
         && string_contains(s: yml, pattern: "!= \"success\"")
     WitnessFloorGenerationRefused => false

@@ -453,7 +453,14 @@ fn build_lane_run_script() -> String {
 // A PREFIX, NOT A GUARD, despite the name: the value ends in `&& ` and is meant to be
 // concatenated in front of a condition. Used bare it emits a YAML expression ending in `&&`.
 fn witness_step_status_guard() -> String {
-  "!cancelled() && "
+  concat(witness_step_status_guard_expression(), " && ")
+}
+
+// The status function itself, without the conjunction tail. The job-level condition needs it
+// bare; the step-level prefix above needs it with `&& `. One spelling, two shapes -- a second
+// literal would be the fork that drifts the moment the guard is reconsidered.
+fn witness_step_status_guard_expression() -> String {
+  "!cancelled()"
 }
 
 fn witness_floor_precondition() -> String {
@@ -948,9 +955,51 @@ fn build_lane_job() -> Job {
 // renders as the empty string, which is not `success`, so the gate would refuse every run and
 // read as a broken lane rather than as a broken reference.
 //
-// `if: always()` IS LOAD-BEARING. Without it the step inherits `success()`, which is false the
-// moment a lane fails -- so the step would be skipped, the job would report success, and the
-// required check would go green over the exact failure it exists to catch.
+// THE JOB-LEVEL CONDITION IS THE LOAD-BEARING ONE, AND THE FIRST CUT OF THE AGGREGATOR PUT IT
+// ONLY ON THE STEP. Found in review of gunbc#9203 (review 55795), and it is the same fail-open
+// this job exists to close, committed one level in -- which is exactly the failure mode DESIGN
+// names as total at the level examined and blind one level down.
+//
+// `needs` carries an IMPLICIT JOB-LEVEL CONDITION: a job that declares `needs` and no `if` is
+// SKIPPED when any needed job fails, is skipped, or is cancelled. A skipped job never starts,
+// so it never reaches its steps, so a step-level `always()` cannot rescue it -- and a SKIPPED
+// required check does not stop a merge. The aggregator would therefore have gone skipped-and-
+// mergeable over precisely the failed lane it was introduced to catch.
+//
+// So the job declares a condition, which displaces that implicit default the same way a status
+// function displaces a step's implicit `success()` (the substitution rule the floor's
+// precondition paragraph records, and the reason a bare `needs.*.result` comparison would not
+// have worked here either).
+//
+// IT IS `always()` AND NOT `!cancelled()`, WHICH IS THE ONE PLACE IN THIS FILE THAT DEPARTS
+// FROM THE HOUSE GUARD -- stated explicitly, because a reader who knows the convention will
+// otherwise correct it back and reopen the hole. Every other guard here is about whether a STEP
+// should run inside a job that is already running, and there `!cancelled()` is right: a
+// cancelled run should stop. This condition decides something else -- whether the REQUIRED
+// CONTEXT EXISTS AT ALL -- and under `!cancelled()` a cancelled run leaves the aggregator
+// skipped, so the context is reported as skipped rather than as a verdict.
+//
+// That is the same question one layer out, and it is a question about GITHUB rather than about
+// this repository: does a skipped or cancelled required check block a merge? NOBODY HERE HAS
+// EXECUTED THAT, and the right response is not to go and measure it -- it is to make the
+// outcome not depend on it. Under `always()` the job runs unconditionally, always reads both
+// results, and always reports success or failure ON ITS OWN TERMS, so SKIPPED disappears from
+// the required context entirely. That is construction over validation (§5): the ambiguous state
+// becomes unrepresentable rather than tested, and a third-party behaviour becomes a property of
+// our own file.
+//
+// WHAT IT COSTS, named rather than glossed: a lawfully superseded run now reports this context
+// RED instead of cancelled, because a cancelled lane is not `success`. That is the correct
+// reading rather than a regression -- a superseded run's evidence must not admit a merge, and
+// the replacing run publishes the same context a few minutes later.
+fn required_lanes_aggregate_job_condition() -> String {
+  "always()"
+}
+//
+// THE STEP-LEVEL `always()` STAYS, and it guards a different thing rather than restating this
+// one. It is about EARLIER STEPS IN THIS JOB: there are none today, so the implicit `success()`
+// would be true anyway, but a step added ahead of it later would silently acquire the power to
+// skip the refusal. Two conditions, two failure modes, neither a second spelling of the other.
 fn required_lane_result_expression(job_id: String) -> String {
   concat("${{ needs.", concat(job_id, ".result }}"))
 }
@@ -1000,7 +1049,7 @@ fn required_lanes_aggregate_job() -> Job {
     needs: [build_lane_job_id, floor_lane_job_id],
     env: none,
     outputs: none,
-    if_condition: none,
+    if_condition: Present { value: required_lanes_aggregate_job_condition() },
     timeout_minutes: 5,
     continue_on_error: none,
     concurrency: none,
