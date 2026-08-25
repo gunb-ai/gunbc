@@ -17,7 +17,7 @@ fn ls_child() -> Node {
 
 fn ls_parent() -> Node {
   v2.std.node.node_synthetic(
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [v2.std.node.Edge { label: Named { name: ^only_child }, target: ls_child() }],
   )
 }
@@ -44,11 +44,11 @@ fn ls_grafted() -> gunbc.scm.object_store.ObjectStore {
   }
 }
 
-fn standing_eq(a: LoadStanding, b: LoadStanding) -> Bool {
+fn standing_eq(a: gunbc.scm.load_standing.LoadStanding, b: gunbc.scm.load_standing.LoadStanding) -> Bool {
   standing_tag(s: a) == standing_tag(s: b)
 }
 
-fn standing_tag(s: LoadStanding) -> Int {
+fn standing_tag(s: gunbc.scm.load_standing.LoadStanding) -> Int {
   match s {
     LoadComplete => 0
     LoadPartial => 1
@@ -63,12 +63,12 @@ fn standing_tag(s: LoadStanding) -> Int {
 // makes it discriminating: a classifier answering Partial for everything would pass a lone assertion.
 test fn an_incomplete_closure_loads_partial_and_a_complete_one_does_not() -> Bool {
   let full = ls_full()
-  let partial = loaded_closure_standing(store: ls_grafted(), root: full.root)
-  let complete = loaded_closure_standing(store: full.store, root: full.root)
-  standing_eq(a: partial, b: LoadPartial)
-    && standing_eq(a: complete, b: LoadComplete)
-    && standing_loaded(standing: partial)
-    && standing_loaded(standing: complete)
+  let partial = gunbc.scm.commit_closure_json_v2.loaded_closure_standing(store: ls_grafted(), root: full.root)
+  let complete = gunbc.scm.commit_closure_json_v2.loaded_closure_standing(store: full.store, root: full.root)
+  standing_eq(a: partial, b: gunbc.scm.load_standing.LoadPartial)
+    && standing_eq(a: complete, b: gunbc.scm.load_standing.LoadComplete)
+    && gunbc.scm.load_standing.standing_loaded(standing: partial)
+    && gunbc.scm.load_standing.standing_loaded(standing: complete)
 }
 
 // A PARTIAL LOAD IS CORRECT AND DELIBERATELY INCOMPLETE, so superseding it would discard a valid
@@ -76,32 +76,32 @@ test fn an_incomplete_closure_loads_partial_and_a_complete_one_does_not() -> Boo
 // wrong before, and it is the one most likely to be got wrong now by treating "not everything" as
 // "damaged".
 test fn a_partial_load_is_never_supersedable() -> Bool {
-  !standing_may_supersede_generation(standing: LoadPartial)
-    && !standing_may_supersede_generation(standing: LoadComplete)
+  !gunbc.scm.load_standing.standing_may_supersede_generation(standing: gunbc.scm.load_standing.LoadPartial)
+    && !gunbc.scm.load_standing.standing_may_supersede_generation(standing: gunbc.scm.load_standing.LoadComplete)
 }
 
 // MALFORMED IS THE SOLE SUPERSEDABLE STANDING, and the three refusals are refused for three
 // different reasons rather than by one rule. If this were the empty set the negative tests above
 // would pass vacuously.
 test fn malformed_is_the_only_standing_that_permits_replacement() -> Bool {
-  standing_may_supersede_generation(standing: LoadDocumentMalformed)
-    && !standing_may_supersede_generation(standing: LoadUnsupportedProtocol)
-    && !standing_may_supersede_generation(standing: LoadIdentityCollision)
-    && !standing_loaded(standing: LoadDocumentMalformed)
+  gunbc.scm.load_standing.standing_may_supersede_generation(standing: gunbc.scm.load_standing.LoadDocumentMalformed)
+    && !gunbc.scm.load_standing.standing_may_supersede_generation(standing: gunbc.scm.load_standing.LoadUnsupportedProtocol)
+    && !gunbc.scm.load_standing.standing_may_supersede_generation(standing: gunbc.scm.load_standing.LoadIdentityCollision)
+    && !gunbc.scm.load_standing.standing_loaded(standing: gunbc.scm.load_standing.LoadDocumentMalformed)
 }
 
 // ONLY A NAMED-BUT-ABSENT PROTOCOL MEANS THE WRITER MAY BE NEWER; a matched tag carrying an
 // unrecognized member or variant is a BROKEN DOCUMENT OF THIS SCHEMA, because this format's own
 // policy is that a schema which grows a member grows a new tag. Pairing them is the whole test.
 test fn only_an_unrecognized_format_is_a_protocol_gap() -> Bool {
-  let protocol = closure_document_load_standing(cause: gunbc.scm.commit_closure_json_v2.ClosureDocFormatUnrecognized { found: "v9" })
-  let member = closure_document_load_standing(
+  let protocol = gunbc.scm.commit_closure_json_v2.closure_document_load_standing(cause: gunbc.scm.commit_closure_json_v2.ClosureDocFormatUnrecognized { found: "v9" })
+  let member = gunbc.scm.commit_closure_json_v2.closure_document_load_standing(
     cause: gunbc.scm.commit_closure_json_v2.ClosureDocUnexpectedMember { context: gunbc.scm.commit_closure_json_v2.ClosureDocEnvelopeMembers, key: "provenance" }
   )
-  let tag = closure_document_load_standing(cause: gunbc.scm.commit_closure_json_v2.ClosureDocUnknownKindTag { found: "quantum" })
-  standing_eq(a: protocol, b: LoadUnsupportedProtocol)
-    && standing_eq(a: member, b: LoadDocumentMalformed)
-    && standing_eq(a: tag, b: LoadDocumentMalformed)
+  let tag = gunbc.scm.commit_closure_json_v2.closure_document_load_standing(cause: gunbc.scm.commit_closure_json_v2.ClosureDocUnknownKindTag { found: "quantum" })
+  standing_eq(a: protocol, b: gunbc.scm.load_standing.LoadUnsupportedProtocol)
+    && standing_eq(a: test.claim.deployed_tree_remote_witness.member, b: gunbc.scm.load_standing.LoadDocumentMalformed)
+    && standing_eq(a: tag, b: gunbc.scm.load_standing.LoadDocumentMalformed)
 }
 
 // AN UNRESOLVED POSITION IS MALFORMED, NOT A FETCHABLE ABSENCE. A position denotes nothing outside
@@ -109,12 +109,12 @@ test fn only_an_unrecognized_format_is_a_protocol_gap() -> Bool {
 // which is not a refusal and never reaches this classifier at all.
 test fn an_unresolved_position_is_malformed_not_fetchable() -> Bool {
   standing_eq(
-    a: closure_document_load_standing(cause: gunbc.scm.commit_closure_json_v2.ClosureDocEdgeTargetUnresolved { reference: "7" }),
-    b: LoadDocumentMalformed
+    a: gunbc.scm.commit_closure_json_v2.closure_document_load_standing(cause: gunbc.scm.commit_closure_json_v2.ClosureDocEdgeTargetUnresolved { reference: "7" }),
+    b: gunbc.scm.load_standing.LoadDocumentMalformed
   )
     && standing_eq(
-      a: closure_document_load_standing(cause: gunbc.scm.commit_closure_json_v2.ClosureDocTargetNotOneArm { found: 2 }),
-      b: LoadDocumentMalformed
+      a: gunbc.scm.commit_closure_json_v2.closure_document_load_standing(cause: gunbc.scm.commit_closure_json_v2.ClosureDocTargetNotOneArm { found: 2 }),
+      b: gunbc.scm.load_standing.LoadDocumentMalformed
     )
 }
 
@@ -122,12 +122,14 @@ test fn an_unresolved_position_is_malformed_not_fetchable() -> Bool {
 // the structural locator cannot represent both -- not that either is damaged. Classifying it as
 // malformed would let a reader discard a writer's valid generation over an honest hash coincidence.
 test fn an_honest_collision_is_its_own_standing_and_never_supersedes() -> Bool {
-  let collision = closure_document_load_standing(
+  let collision = gunbc.scm.commit_closure_json_v2.closure_document_load_standing(
     cause: gunbc.scm.commit_closure_json_v2.ClosureDocObjectCollision { identity: ls_full().root }
   )
-  let malformed = closure_document_load_standing(cause: gunbc.scm.commit_closure_json_v2.ClosureDocNotAnObject)
-  standing_eq(a: collision, b: LoadIdentityCollision)
-    && standing_eq(a: malformed, b: LoadDocumentMalformed)
-    && !standing_may_supersede_generation(standing: collision)
-    && standing_may_supersede_generation(standing: malformed)
+  let malformed = gunbc.scm.commit_closure_json_v2.closure_document_load_standing(
+    cause: gunbc.scm.commit_closure_json_v2.ClosureDocMemberReadRefused { cause: gunbc.scm.json_member.MemberReadSubjectNotObject }
+  )
+  standing_eq(a: collision, b: gunbc.scm.load_standing.LoadIdentityCollision)
+    && standing_eq(a: malformed, b: gunbc.scm.load_standing.LoadDocumentMalformed)
+    && !gunbc.scm.load_standing.standing_may_supersede_generation(standing: collision)
+    && gunbc.scm.load_standing.standing_may_supersede_generation(standing: malformed)
 }

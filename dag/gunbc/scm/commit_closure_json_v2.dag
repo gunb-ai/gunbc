@@ -31,11 +31,14 @@ module gunbc.scm.commit_closure_json_v2
 // object. A position cannot forge an identity the way a digest could, because the identity at that
 // position is still derived from the bytes that follow it; a corrupted position names a different
 // object or no object at all, and the second refuses.
+// ONE ARM FOR MEMBER READS, NOT FOUR RESTATED ONES. gunbc.scm.json_member owns what reading a named
+// member off a JSON object can fail with; this vocabulary owns what is wrong with a CLOSURE DOCUMENT
+// specifically. Restating that population here put the same four facts under two authorities, and
+// the consequence was measured rather than hypothetical: the repository envelope needed the same
+// reader, imported these arms to get it, and so reported its OWN member failures as closure-document
+// refusals -- a document whose closure was never read.
 type ClosureDocRefusal
-  = ClosureDocNotAnObject
-  | ClosureDocMemberMissing { key: String }
-  | ClosureDocMemberDuplicated { key: String }
-  | ClosureDocMemberWrongShape { key: String }
+  = ClosureDocMemberReadRefused { cause: gunbc.scm.json_member.MemberReadRefusal }
   | ClosureDocFormatUnrecognized { found: String }
   | ClosureDocUnknownKindTag { found: String }
   | ClosureDocUnknownConnectiveTag { found: String }
@@ -97,7 +100,7 @@ fn member_key_allowed(allowed: List<String>, key: String) -> Bool {
   fold(allowed, init: false, f: fn(acc, a) { acc || a == key })
 }
 
-fn unexpected_member_step(found: String?, m: JsonKeyValue, allowed: List<String>) -> String? {
+fn unexpected_member_step(found: String?, m: extdeps.languages.json.emit.JsonKeyValue, allowed: List<String>) -> String? {
   match found {
     Present { value: _ } => found
     Absent =>
@@ -110,10 +113,10 @@ fn unexpected_member_step(found: String?, m: JsonKeyValue, allowed: List<String>
 }
 
 // A non-object subject answers `none` here, and that is not a fail-open: every caller reads a
-// required member from the same subject, and read_member refuses a non-object as ClosureDocNotAnObject.
+// required member from the same subject, and read_member refuses a non-object subject outright.
 // Answering an unexpected-member refusal for something that is not an object at all would report the
 // wrong cause for the wrong defect.
-fn unexpected_member_key(v: JsonValue, allowed: List<String>) -> String? {
+fn unexpected_member_key(v: extdeps.languages.json.emit.JsonValue, allowed: List<String>) -> String? {
   match v {
     JsonObject { members: ms } =>
       fold(ms, init: none, f: fn(found, m) {
@@ -123,15 +126,15 @@ fn unexpected_member_key(v: JsonValue, allowed: List<String>) -> String? {
   }
 }
 
-fn member_set_refusal(v: JsonValue, allowed: List<String>, context: ClosureDocMemberContext) -> ClosureDocRefusal? {
+fn member_set_refusal(v: extdeps.languages.json.emit.JsonValue, allowed: List<String>, context: ClosureDocMemberContext) -> ClosureDocRefusal? {
   match unexpected_member_key(v: v, allowed: allowed) {
     Absent => none
-    Present { value: key } => Present { value: ClosureDocUnexpectedMember { context: context, key: key } }
+    Present { value: key } => Present { value: ClosureDocUnexpectedMember { context: test.claim.tool_readiness_witness.context, key: key } }
   }
 }
 
 type ClosureDocLoadOutcome
-  = ClosureDocLoaded { store: ObjectStore, root: gunbc.scm.object_store.ObjectId }
+  = ClosureDocLoaded { store: gunbc.scm.object_store.ObjectStore, root: gunbc.scm.object_store.ObjectId }
   | ClosureDocRefused { cause: ClosureDocRefusal }
 
 data closure_document_format_tag: String = "gunbc-scm-commit-closure-v2"
@@ -166,7 +169,7 @@ data closure_document_format_tag: String = "gunbc-scm-commit-closure-v2"
 
 fn connective_tag(c: Connective) -> String {
   match c {
-    Atom { identity: _ } => "atom"
+    v2.std.node.Atom { identity: _ } => "atom"
     Conj => "conj"
     Disj => "disj"
     Arrow => "arrow"
@@ -175,7 +178,7 @@ fn connective_tag(c: Connective) -> String {
   }
 }
 
-fn behavior_tag(b: Behavior) -> String {
+fn behavior_tag(b: v2.std.node.Behavior) -> String {
   match b {
     Value => "value"
     Transform => "transform"
@@ -189,44 +192,44 @@ fn behavior_tag(b: Behavior) -> String {
 // An Atom carries a Symbol and every other connective carries nothing, so the identity member is
 // present exactly when the tag is "atom". Encoding it as an absent member elsewhere -- rather than
 // an empty string -- is what lets the decoder refuse a hand-edited image that supplies one.
-fn encode_connective(c: Connective) -> List<JsonKeyValue> {
+fn encode_connective(c: Connective) -> List<extdeps.languages.json.emit.JsonKeyValue> {
   match c {
-    Atom { identity: id } =>
+    v2.std.node.Atom { identity: id } =>
       [
-        json_kv(key: "connective", value: json_string(s: connective_tag(c: c))),
-        json_kv(key: "identity", value: json_string(s: symbol_lexeme(sym: id))),
+        extdeps.languages.json.emit.json_kv(key: "connective", value: extdeps.languages.json.emit.json_string(s: connective_tag(c: c))),
+        extdeps.languages.json.emit.json_kv(key: "identity", value: extdeps.languages.json.emit.json_string(s: v2.std.compilers.lexing.symbol_lexeme(sym: id))),
       ]
-    _ => [json_kv(key: "connective", value: json_string(s: connective_tag(c: c)))]
+    _ => [extdeps.languages.json.emit.json_kv(key: "connective", value: extdeps.languages.json.emit.json_string(s: connective_tag(c: c)))]
   }
 }
 
-fn encode_kind(k: NodeKind) -> JsonValue {
+fn encode_kind(k: v2.std.node.NodeKind) -> extdeps.languages.json.emit.JsonValue {
   match k {
-    TypeNode { connective: c } =>
-      json_object(
+    v2.std.node.TypeNode { connective: c } =>
+      extdeps.languages.json.emit.json_object(
         members: concat(
-          [json_kv(key: "kind", value: json_string(s: "type"))],
+          [extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "type"))],
           encode_connective(c: c)
         )
       )
-    ComputationNode { behavior: b } =>
-      json_object(
+    v2.std.node.ComputationNode { behavior: b } =>
+      extdeps.languages.json.emit.json_object(
         members: [
-          json_kv(key: "kind", value: json_string(s: "computation")),
-          json_kv(key: "behavior", value: json_string(s: behavior_tag(b: b))),
+          extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "computation")),
+          extdeps.languages.json.emit.json_kv(key: "behavior", value: extdeps.languages.json.emit.json_string(s: behavior_tag(b: b))),
         ]
       )
   }
 }
 
-fn encode_label(l: EdgeLabel) -> List<JsonKeyValue> {
+fn encode_label(l: v2.std.node.EdgeLabel) -> List<extdeps.languages.json.emit.JsonKeyValue> {
   match l {
     Named { name: n } =>
       [
-        json_kv(key: "label", value: json_string(s: "named")),
-        json_kv(key: "name", value: json_string(s: symbol_lexeme(sym: n))),
+        extdeps.languages.json.emit.json_kv(key: "label", value: extdeps.languages.json.emit.json_string(s: "named")),
+        extdeps.languages.json.emit.json_kv(key: "name", value: extdeps.languages.json.emit.json_string(s: v2.std.compilers.lexing.symbol_lexeme(sym: n))),
       ]
-    Positional => [json_kv(key: "label", value: json_string(s: "positional"))]
+    Positional => [extdeps.languages.json.emit.json_kv(key: "label", value: extdeps.languages.json.emit.json_string(s: "positional"))]
   }
 }
 
@@ -255,7 +258,7 @@ type EncodePositions {
 }
 
 fn position_reference(n: Int) -> String {
-  json_int_lexeme(n: n) as String
+  extdeps.languages.json.grammar.json_int_lexeme(n: n) as String
 }
 
 fn object_id_key(identity: gunbc.scm.object_store.ObjectId) -> String {
@@ -263,7 +266,7 @@ fn object_id_key(identity: gunbc.scm.object_store.ObjectId) -> String {
 }
 
 fn position_of(positions: EncodePositions, identity: gunbc.scm.object_store.ObjectId) -> String? {
-  map_lookup(m: positions.by_identity, key: object_id_key(identity: identity))
+  v2.std.collection.map_lookup(m: positions.by_identity, key: object_id_key(identity: identity))
 }
 
 // A missing position is UNREACHABLE rather than defended against, and the reason is worth stating
@@ -286,32 +289,32 @@ fn position_of(positions: EncodePositions, identity: gunbc.scm.object_store.Obje
 //
 // Exactly one member, checked. Both arms present, or neither, is a typed refusal rather than a
 // last-wins read -- the same reason every member set in this module is closed.
-fn encode_target(positions: EncodePositions, target: gunbc.scm.object_store.ObjectId) -> JsonValue {
+fn encode_target(positions: EncodePositions, target: gunbc.scm.object_store.ObjectId) -> extdeps.languages.json.emit.JsonValue {
   match position_of(positions: positions, identity: target) {
-    Present { value: r } => json_object(members: [json_kv(key: "at", value: json_string(s: r))])
+    Present { value: r } => extdeps.languages.json.emit.json_object(members: [extdeps.languages.json.emit.json_kv(key: "at", value: extdeps.languages.json.emit.json_string(s: r))])
     Absent =>
-      json_object(
-        members: [json_kv(key: "uncontained", value: json_string(s: object_id_key(identity: target)))]
+      extdeps.languages.json.emit.json_object(
+        members: [extdeps.languages.json.emit.json_kv(key: "uncontained", value: extdeps.languages.json.emit.json_string(s: object_id_key(identity: target)))]
       )
   }
 }
 
-fn encode_edge(positions: EncodePositions, e: StoredEdge) -> JsonValue {
-  json_object(
+fn encode_edge(positions: EncodePositions, e: gunbc.scm.object_store.StoredEdge) -> extdeps.languages.json.emit.JsonValue {
+  extdeps.languages.json.emit.json_object(
     members: concat(
       encode_label(l: e.label),
-      [json_kv(key: "target", value: encode_target(positions: positions, target: e.target))]
+      [extdeps.languages.json.emit.json_kv(key: "target", value: encode_target(positions: positions, target: e.target))]
     )
   )
 }
 
-fn encode_record(positions: EncodePositions, record: ObjectRecord) -> JsonValue {
-  json_object(
+fn encode_record(positions: EncodePositions, record: gunbc.scm.object_store.ObjectRecord) -> extdeps.languages.json.emit.JsonValue {
+  extdeps.languages.json.emit.json_object(
     members: [
-      json_kv(key: "kind", value: encode_kind(k: record.kind)),
-      json_kv(
+      extdeps.languages.json.emit.json_kv(key: "kind", value: encode_kind(k: record.kind)),
+      extdeps.languages.json.emit.json_kv(
         key: "children",
-        value: json_array(
+        value: extdeps.languages.json.emit.json_array(
           elements: map(record.children, e => encode_edge(positions: positions, e: e))
         )
       ),
@@ -321,17 +324,17 @@ fn encode_record(positions: EncodePositions, record: ObjectRecord) -> JsonValue 
 
 type EncodeAcc {
   positions: EncodePositions
-  objects: List<JsonValue>
+  objects: List<extdeps.languages.json.emit.JsonValue>
 }
 
 // OBJECTS ACCUMULATE BY PREPEND AND ARE REVERSED ONCE, the corpus idiom (std.markdown, std.realization,
 // std.selected_witness_bundle all reverse a prepending fold). concat-at-end copies the whole
 // accumulator on every step; prepending does not, so the emitted order is restored by one linear
 // reverse instead of being bought with a quadratic.
-fn encode_step(acc: EncodeAcc, record: ObjectRecord) -> EncodeAcc {
+fn encode_step(acc: EncodeAcc, record: gunbc.scm.object_store.ObjectRecord) -> EncodeAcc {
   EncodeAcc {
     positions: EncodePositions {
-      by_identity: map_insert(
+      by_identity: v2.std.collection.map_insert(
         m: acc.positions.by_identity,
         key: object_id_key(identity: record.identity),
         value: position_reference(n: acc.positions.next),
@@ -350,10 +353,10 @@ fn encode_step(acc: EncodeAcc, record: ObjectRecord) -> EncodeAcc {
 // repository's grain.
 //
 // encode_closure_document below is now one caller of this: the single-root case.
-fn encode_object_table(store: ObjectStore) -> EncodeAcc {
+fn encode_object_table(store: gunbc.scm.object_store.ObjectStore) -> EncodeAcc {
   match fold(
-    store_records_in_dependency_order(store: store),
-    init: EncodeAcc { positions: EncodePositions { by_identity: empty_map(), next: 0 }, objects: [] },
+    gunbc.scm.object_store.store_records_in_dependency_order(store: store),
+    init: EncodeAcc { positions: EncodePositions { by_identity: v2.std.collection.empty_map(), next: 0 }, objects: [] },
     f: fn(acc, record) { encode_step(acc: acc, record: record) }
   ) {
     EncodeAcc { positions: positions, objects: reversed } =>
@@ -365,12 +368,12 @@ fn encode_object_table(store: ObjectStore) -> EncodeAcc {
 // closure may legitimately be shipped without the object its own root names (a delta whose recipient
 // already holds it). The predecessor encoded the root positionally too, so that case was as
 // unnameable as any other.
-fn encoded_root_reference(acc: EncodeAcc, root: gunbc.scm.object_store.ObjectId) -> JsonValue {
-  encode_target(positions: acc.positions, target: root)
+fn encoded_root_reference(acc: EncodeAcc, root: gunbc.scm.object_store.ObjectId) -> extdeps.languages.json.emit.JsonValue {
+  encode_target(positions: acc.positions, target: test.claim.extdeps_llm_claude_trust_witness.root)
 }
 
 type ClosureDocEncodeOutcome
-  = ClosureDocEncoded { value: JsonValue }
+  = ClosureDocEncoded { value: extdeps.languages.json.emit.JsonValue }
   | ClosureDocEncodeRefused { cause: ClosureDocEncodeRefusal }
 
 // AN INCOMPLETE CLOSURE IS NOW REPRESENTABLE, SO THE QUESTION CHANGES FROM "CAN IT BE WRITTEN" TO
@@ -402,10 +405,10 @@ type ClosureDocEncodeOutcome
 // admission at all. The wall is on the carrier now, but the module's front door is still ajar.
 // dissolve-on: module-private functions in .dag, at which point the unchecked encoder stops being
 // reachable and the gate becomes structural. Until then this comment is the only thing saying so.
-fn encode_complete_closure_document(closure: CommitClosure) -> ClosureDocEncodeOutcome {
-  match unresolved_identities(closure: closure) {
+fn encode_complete_closure_document(closure: gunbc.scm.commit_closure.CommitClosure) -> ClosureDocEncodeOutcome {
+  match gunbc.scm.commit_closure.unresolved_identities(closure: closure) {
     missing =>
-      if list_length(items: missing) == 0 {
+      if std.types.list_length(items: missing) == 0 {
         ClosureDocEncoded {
           value: encode_closure_document(store: closure.store, root: closure.root)
         }
@@ -422,7 +425,7 @@ fn encode_complete_closure_document(closure: CommitClosure) -> ClosureDocEncodeO
 // TOTAL, AND THE TOTALITY IS THE CLAIM. Every way of obtaining an AdmittedPartialCommitClosure runs
 // through a mint that derived the unresolved population from this very closure, so by the time one
 // exists there is nothing this function could refuse that the mint did not already settle.
-fn encode_admitted_partial_closure_document(admitted: AdmittedPartialCommitClosure) -> JsonValue {
+fn encode_admitted_partial_closure_document(admitted: gunbc.scm.commit_closure.AdmittedPartialCommitClosure) -> extdeps.languages.json.emit.JsonValue {
   encode_closure_document(store: admitted.closure.store, root: admitted.closure.root)
 }
 
@@ -437,14 +440,14 @@ fn an_uncontained_key(missing: List<gunbc.scm.object_store.ObjectId>) -> String 
   })
 }
 
-fn encode_closure_document(store: ObjectStore, root: gunbc.scm.object_store.ObjectId) -> JsonValue {
+fn encode_closure_document(store: gunbc.scm.object_store.ObjectStore, root: gunbc.scm.object_store.ObjectId) -> extdeps.languages.json.emit.JsonValue {
   let acc = encode_object_table(store: store)
-  let root_reference = encoded_root_reference(acc: acc, root: root)
-  json_object(
+  let root_reference = encoded_root_reference(acc: acc, root: test.claim.extdeps_llm_claude_trust_witness.root)
+  extdeps.languages.json.emit.json_object(
     members: [
-      json_kv(key: "format", value: json_string(s: closure_document_format_tag)),
-      json_kv(key: "objects", value: json_array(elements: acc.objects)),
-      json_kv(key: "root", value: root_reference),
+      extdeps.languages.json.emit.json_kv(key: "format", value: extdeps.languages.json.emit.json_string(s: closure_document_format_tag)),
+      extdeps.languages.json.emit.json_kv(key: "objects", value: extdeps.languages.json.emit.json_array(elements: acc.objects)),
+      extdeps.languages.json.emit.json_kv(key: "root", value: root_reference),
     ]
   )
 }
@@ -453,42 +456,6 @@ fn encode_closure_document(store: ObjectStore, root: gunbc.scm.object_store.Obje
 // Decoding
 // ---------------------------------------------------------------------------
 
-// Every member read goes through this, so a missing member, a duplicated member and a non-object
-// subject are three DIFFERENT typed refusals rather than one absent value. json_object_unique_member
-// already separates them; collapsing them here into an Optional would be the state-space conflation
-// DESIGN section 5 names -- and the duplicate arm matters specifically, because a JSON object with
-// the key twice is the shape a naive last-wins reader accepts while carrying two answers.
-type MemberRead
-  = MemberString { value: String }
-  | MemberArray { elements: List<JsonValue> }
-  | MemberObject { value: JsonValue }
-  | MemberFailed { cause: ClosureDocRefusal }
-
-fn read_member(v: JsonValue, key: String) -> MemberRead {
-  match json_object_unique_member(v: v, key: key) {
-    JsonMemberAbsent => MemberFailed { cause: ClosureDocMemberMissing { key: key } }
-    JsonMemberDuplicated { count: _ } => MemberFailed { cause: ClosureDocMemberDuplicated { key: key } }
-    JsonMemberNotAnObject => MemberFailed { cause: ClosureDocNotAnObject }
-    JsonMemberFound { value: found } =>
-      match found {
-        JsonString { value: s } => MemberString { value: s }
-        JsonArray { elements: es } => MemberArray { elements: es }
-        JsonObject { members: _ } => MemberObject { value: found }
-        JsonNull => MemberFailed { cause: ClosureDocMemberWrongShape { key: key } }
-        JsonBool { value: _ } => MemberFailed { cause: ClosureDocMemberWrongShape { key: key } }
-        JsonNumber { lexeme: _ } => MemberFailed { cause: ClosureDocMemberWrongShape { key: key } }
-      }
-  }
-}
-
-fn read_string_member(v: JsonValue, key: String) -> MemberRead {
-  match read_member(v: v, key: key) {
-    MemberString { value: s } => MemberString { value: s }
-    MemberFailed { cause: c } => MemberFailed { cause: c }
-    _ => MemberFailed { cause: ClosureDocMemberWrongShape { key: key } }
-  }
-}
-
 type ConnectiveDecode
   = ConnectiveDecoded { connective: Connective }
   | ConnectiveDecodeFailed { cause: ClosureDocRefusal }
@@ -496,38 +463,38 @@ type ConnectiveDecode
 // The identity member is read ONLY on the atom arm. A non-atom tag never consults it, so an image
 // that supplies one is not silently carrying an ignored field into a program whose identity does not
 // depend on it -- the unknown-tag arm below is the only way a connective name enters at all.
-fn decode_connective(kind_value: JsonValue, tag: String) -> ConnectiveDecode {
+fn decode_connective(kind_value: extdeps.languages.json.emit.JsonValue, tag: String) -> ConnectiveDecode {
   if tag == "atom" {
-    match read_string_member(v: kind_value, key: "identity") {
-      MemberString { value: lexeme } =>
-        ConnectiveDecoded { connective: Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } }
-      MemberFailed { cause: c } => ConnectiveDecodeFailed { cause: c }
-      _ => ConnectiveDecodeFailed { cause: ClosureDocMemberWrongShape { key: "identity" } }
+    match gunbc.scm.json_member.read_string_member(v: kind_value, key: "identity") {
+      gunbc.scm.json_member.MemberString { value: lexeme } =>
+        ConnectiveDecoded { connective: v2.std.node.Atom { identity: v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: lexeme) } }
+      gunbc.scm.json_member.MemberFailed { cause: c } => ConnectiveDecodeFailed { cause: ClosureDocMemberReadRefused { cause: c } }
+      _ => ConnectiveDecodeFailed { cause: ClosureDocMemberReadRefused { cause: gunbc.scm.json_member.MemberReadWrongShape { key: "identity" } } }
     }
-  } else if tag == "conj" { ConnectiveDecoded { connective: Conj } }
-  else if tag == "disj" { ConnectiveDecoded { connective: Disj } }
-  else if tag == "arrow" { ConnectiveDecoded { connective: Arrow } }
+  } else if tag == "conj" { ConnectiveDecoded { connective: v2.std.node.Conj } }
+  else if tag == "disj" { ConnectiveDecoded { connective: v2.std.node.Disj } }
+  else if tag == "arrow" { ConnectiveDecoded { connective: v2.std.node.Arrow } }
   else if tag == "cardinality" { ConnectiveDecoded { connective: Cardinality } }
-  else if tag == "instantiation" { ConnectiveDecoded { connective: Instantiation } }
+  else if tag == "instantiation" { ConnectiveDecoded { connective: v2.std.node.Instantiation } }
   else { ConnectiveDecodeFailed { cause: ClosureDocUnknownConnectiveTag { found: tag } } }
 }
 
 type BehaviorDecode
-  = BehaviorDecoded { behavior: Behavior }
+  = BehaviorDecoded { behavior: v2.std.node.Behavior }
   | BehaviorDecodeFailed { cause: ClosureDocRefusal }
 
 fn decode_behavior(tag: String) -> BehaviorDecode {
-  if tag == "value" { BehaviorDecoded { behavior: Value } }
+  if tag == "value" { BehaviorDecoded { behavior: v2.std.node.Value } }
   else if tag == "transform" { BehaviorDecoded { behavior: Transform } }
-  else if tag == "branch" { BehaviorDecoded { behavior: Branch } }
-  else if tag == "loop" { BehaviorDecoded { behavior: Loop } }
+  else if tag == "branch" { BehaviorDecoded { behavior: v2.std.node.Branch } }
+  else if tag == "loop" { BehaviorDecoded { behavior: v2.std.node.Loop } }
   else if tag == "bind" { BehaviorDecoded { behavior: Bind } }
-  else if tag == "match" { BehaviorDecoded { behavior: Match } }
+  else if tag == "match" { BehaviorDecoded { behavior: v2.std.node.Match } }
   else { BehaviorDecodeFailed { cause: ClosureDocUnknownBehaviorTag { found: tag } } }
 }
 
 type KindDecode
-  = KindDecoded { kind: NodeKind }
+  = KindDecoded { kind: v2.std.node.NodeKind }
   | KindDecodeFailed { cause: ClosureDocRefusal }
 
 // THE MEMBER SET IS CHECKED AFTER THE VARIANT IS KNOWN AND BEFORE THE VARIANT IS BUILT. It cannot be
@@ -535,7 +502,7 @@ type KindDecode
 // "unexpected" has no meaning until the connective tag has been read. Checking it before building
 // means a Conj carrying an identity refuses rather than decoding into a node whose stated identity
 // silently played no part in the node that resulted.
-fn decode_type_kind(kind_value: JsonValue, ctag: String) -> KindDecode {
+fn decode_type_kind(kind_value: extdeps.languages.json.emit.JsonValue, ctag: String) -> KindDecode {
   match member_set_refusal(
     v: kind_value,
     allowed: if ctag == "atom" { ["kind", "connective", "identity"] } else { ["kind", "connective"] },
@@ -545,12 +512,12 @@ fn decode_type_kind(kind_value: JsonValue, ctag: String) -> KindDecode {
     Absent =>
       match decode_connective(kind_value: kind_value, tag: ctag) {
         ConnectiveDecodeFailed { cause: c } => KindDecodeFailed { cause: c }
-        ConnectiveDecoded { connective: c } => KindDecoded { kind: TypeNode { connective: c } }
+        ConnectiveDecoded { connective: c } => KindDecoded { kind: v2.std.node.TypeNode { connective: c } }
       }
   }
 }
 
-fn decode_computation_kind(kind_value: JsonValue, btag: String) -> KindDecode {
+fn decode_computation_kind(kind_value: extdeps.languages.json.emit.JsonValue, btag: String) -> KindDecode {
   match member_set_refusal(
     v: kind_value,
     allowed: ["kind", "behavior"],
@@ -560,31 +527,31 @@ fn decode_computation_kind(kind_value: JsonValue, btag: String) -> KindDecode {
     Absent =>
       match decode_behavior(tag: btag) {
         BehaviorDecodeFailed { cause: c } => KindDecodeFailed { cause: c }
-        BehaviorDecoded { behavior: b } => KindDecoded { kind: ComputationNode { behavior: b } }
+        BehaviorDecoded { behavior: b } => KindDecoded { kind: v2.std.node.ComputationNode { behavior: b } }
       }
   }
 }
 
-fn decode_kind(kind_value: JsonValue) -> KindDecode {
-  match read_string_member(v: kind_value, key: "kind") {
-    MemberFailed { cause: c } => KindDecodeFailed { cause: c }
-    MemberString { value: tag } =>
+fn decode_kind(kind_value: extdeps.languages.json.emit.JsonValue) -> KindDecode {
+  match gunbc.scm.json_member.read_string_member(v: kind_value, key: "kind") {
+    gunbc.scm.json_member.MemberFailed { cause: c } => KindDecodeFailed { cause: ClosureDocMemberReadRefused { cause: c } }
+    gunbc.scm.json_member.MemberString { value: tag } =>
       if tag == "type" {
-        match read_string_member(v: kind_value, key: "connective") {
-          MemberFailed { cause: c } => KindDecodeFailed { cause: c }
-          MemberString { value: ctag } => decode_type_kind(kind_value: kind_value, ctag: ctag)
-          _ => KindDecodeFailed { cause: ClosureDocMemberWrongShape { key: "connective" } }
+        match gunbc.scm.json_member.read_string_member(v: kind_value, key: "connective") {
+          gunbc.scm.json_member.MemberFailed { cause: c } => KindDecodeFailed { cause: ClosureDocMemberReadRefused { cause: c } }
+          gunbc.scm.json_member.MemberString { value: ctag } => decode_type_kind(kind_value: kind_value, ctag: ctag)
+          _ => KindDecodeFailed { cause: ClosureDocMemberReadRefused { cause: gunbc.scm.json_member.MemberReadWrongShape { key: "connective" } } }
         }
       } else if tag == "computation" {
-        match read_string_member(v: kind_value, key: "behavior") {
-          MemberFailed { cause: c } => KindDecodeFailed { cause: c }
-          MemberString { value: btag } => decode_computation_kind(kind_value: kind_value, btag: btag)
-          _ => KindDecodeFailed { cause: ClosureDocMemberWrongShape { key: "behavior" } }
+        match gunbc.scm.json_member.read_string_member(v: kind_value, key: "behavior") {
+          gunbc.scm.json_member.MemberFailed { cause: c } => KindDecodeFailed { cause: ClosureDocMemberReadRefused { cause: c } }
+          gunbc.scm.json_member.MemberString { value: btag } => decode_computation_kind(kind_value: kind_value, btag: btag)
+          _ => KindDecodeFailed { cause: ClosureDocMemberReadRefused { cause: gunbc.scm.json_member.MemberReadWrongShape { key: "behavior" } } }
         }
       } else {
         KindDecodeFailed { cause: ClosureDocUnknownKindTag { found: tag } }
       }
-    _ => KindDecodeFailed { cause: ClosureDocMemberWrongShape { key: "kind" } }
+    _ => KindDecodeFailed { cause: ClosureDocMemberReadRefused { cause: gunbc.scm.json_member.MemberReadWrongShape { key: "kind" } } }
   }
 }
 
@@ -596,17 +563,17 @@ fn decode_kind(kind_value: JsonValue) -> KindDecode {
 type DecodePositions = Map<String, gunbc.scm.object_store.ObjectId>
 
 fn resolve_reference(positions: DecodePositions, reference: String) -> gunbc.scm.object_store.ObjectId? {
-  map_lookup(m: positions, key: reference)
+  v2.std.collection.map_lookup(m: positions, key: reference)
 }
 
 type LabelDecode
-  = LabelDecoded { label: EdgeLabel }
+  = LabelDecoded { label: v2.std.node.EdgeLabel }
   | LabelDecodeFailed { cause: ClosureDocRefusal }
 
 // The member set here is the whole EDGE object, `target` included, because the label tag is what
 // closes it: a positional edge carrying a `name` is refused rather than read as a positional edge
 // whose name went nowhere.
-fn decode_named_label(edge_value: JsonValue) -> LabelDecode {
+fn decode_named_label(edge_value: extdeps.languages.json.emit.JsonValue) -> LabelDecode {
   match member_set_refusal(
     v: edge_value,
     allowed: ["label", "name", "target"],
@@ -614,30 +581,30 @@ fn decode_named_label(edge_value: JsonValue) -> LabelDecode {
   ) {
     Present { value: c } => LabelDecodeFailed { cause: c }
     Absent =>
-      match read_string_member(v: edge_value, key: "name") {
-        MemberFailed { cause: c } => LabelDecodeFailed { cause: c }
-        MemberString { value: lexeme } =>
-          LabelDecoded { label: Named { name: symbol_intern_lexeme(lexeme: lexeme) } }
-        _ => LabelDecodeFailed { cause: ClosureDocMemberWrongShape { key: "name" } }
+      match gunbc.scm.json_member.read_string_member(v: edge_value, key: "name") {
+        gunbc.scm.json_member.MemberFailed { cause: c } => LabelDecodeFailed { cause: ClosureDocMemberReadRefused { cause: c } }
+        gunbc.scm.json_member.MemberString { value: lexeme } =>
+          LabelDecoded { label: Named { name: v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: lexeme) } }
+        _ => LabelDecodeFailed { cause: ClosureDocMemberReadRefused { cause: gunbc.scm.json_member.MemberReadWrongShape { key: "name" } } }
       }
   }
 }
 
-fn decode_positional_label(edge_value: JsonValue) -> LabelDecode {
+fn decode_positional_label(edge_value: extdeps.languages.json.emit.JsonValue) -> LabelDecode {
   match member_set_refusal(
     v: edge_value,
     allowed: ["label", "target"],
     context: ClosureDocPositionalEdgeMembers
   ) {
     Present { value: c } => LabelDecodeFailed { cause: c }
-    Absent => LabelDecoded { label: Positional }
+    Absent => LabelDecoded { label: v2.std.node.Positional }
   }
 }
 
-fn decode_label(edge_value: JsonValue) -> LabelDecode {
-  match read_string_member(v: edge_value, key: "label") {
-    MemberFailed { cause: c } => LabelDecodeFailed { cause: c }
-    MemberString { value: tag } =>
+fn decode_label(edge_value: extdeps.languages.json.emit.JsonValue) -> LabelDecode {
+  match gunbc.scm.json_member.read_string_member(v: edge_value, key: "label") {
+    gunbc.scm.json_member.MemberFailed { cause: c } => LabelDecodeFailed { cause: ClosureDocMemberReadRefused { cause: c } }
+    gunbc.scm.json_member.MemberString { value: tag } =>
       if tag == "named" {
         decode_named_label(edge_value: edge_value)
       } else if tag == "positional" {
@@ -645,7 +612,7 @@ fn decode_label(edge_value: JsonValue) -> LabelDecode {
       } else {
         LabelDecodeFailed { cause: ClosureDocUnknownLabelTag { found: tag } }
       }
-    _ => LabelDecodeFailed { cause: ClosureDocMemberWrongShape { key: "label" } }
+    _ => LabelDecodeFailed { cause: ClosureDocMemberReadRefused { cause: gunbc.scm.json_member.MemberReadWrongShape { key: "label" } } }
   }
 }
 
@@ -655,7 +622,7 @@ fn decode_label(edge_value: JsonValue) -> LabelDecode {
 // silently, leaving objects unreachable by the identity they were stored under -- so the round-trip
 // claims, not inspection, are what establish this is right.
 type EdgeAcc {
-  edges: List<StoredEdge>
+  edges: List<gunbc.scm.object_store.StoredEdge>
   refusal: ClosureDocRefusal?
 }
 
@@ -678,7 +645,7 @@ type EdgeAcc {
 // The digest is MINTED THROUGH A VALIDATOR, never trusted as text: fnv1a64_structural_hex_digest
 // refuses anything that is not canonical lowercase hex of the exact length, so a malformed digest is
 // a typed refusal here rather than an ObjectId that lies about its own shape downstream.
-fn decode_target(positions: DecodePositions, target_value: JsonValue) -> TargetDecode {
+fn decode_target(positions: DecodePositions, target_value: extdeps.languages.json.emit.JsonValue) -> TargetDecode {
   match member_set_refusal(v: target_value, allowed: ["at", "uncontained"], context: ClosureDocTargetMembers) {
     Present { value: c } => TargetDecodeFailed { cause: c }
     Absent => {
@@ -704,16 +671,16 @@ fn decode_target(positions: DecodePositions, target_value: JsonValue) -> TargetD
 // executes it).
 //
 // A duplicated key counts as PRESENT here, so a target carrying `at` twice reaches the arm reader
-// and is refused as ClosureDocMemberDuplicated rather than being miscounted as two arms; the two
+// and is refused as a duplicated member rather than being miscounted as two arms; the two
 // failures are different and keep different names.
-fn target_arm_count(v: JsonValue) -> Int {
+fn target_arm_count(v: extdeps.languages.json.emit.JsonValue) -> Int {
   arm_present(v: v, key: "at") + arm_present(v: v, key: "uncontained")
 }
 
-fn arm_present(v: JsonValue, key: String) -> Int {
-  match json_object_unique_member(v: v, key: key) {
-    JsonMemberFound { value: _ } => 1
-    JsonMemberDuplicated { count: _ } => 1
+fn arm_present(v: extdeps.languages.json.emit.JsonValue, key: String) -> Int {
+  match extdeps.languages.json.parse.json_object_unique_member(v: v, key: key) {
+    extdeps.languages.json.parse.JsonMemberFound { value: _ } => 1
+    extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } => 1
     JsonMemberAbsent => 0
     JsonMemberNotAnObject => 0
   }
@@ -732,38 +699,38 @@ fn arm_present(v: JsonValue, key: String) -> Int {
 //
 // Presence answers the applicability question and nothing else, so each arm reports its own failures
 // with its own key and neither can be reached by the other's defect.
-fn decode_target_arm(positions: DecodePositions, target_value: JsonValue) -> TargetDecode {
-  match json_object_unique_member(v: target_value, key: "at") {
-    JsonMemberFound { value: _ } => decode_at_arm(positions: positions, target_value: target_value)
-    JsonMemberDuplicated { count: _ } =>
-      TargetDecodeFailed { cause: ClosureDocMemberDuplicated { key: "at" } }
-    JsonMemberNotAnObject => TargetDecodeFailed { cause: ClosureDocNotAnObject }
+fn decode_target_arm(positions: DecodePositions, target_value: extdeps.languages.json.emit.JsonValue) -> TargetDecode {
+  match extdeps.languages.json.parse.json_object_unique_member(v: target_value, key: "at") {
+    extdeps.languages.json.parse.JsonMemberFound { value: _ } => decode_at_arm(positions: positions, target_value: target_value)
+    extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } =>
+      TargetDecodeFailed { cause: ClosureDocMemberReadRefused { cause: gunbc.scm.json_member.MemberReadDuplicated { key: "at" } } }
+    JsonMemberNotAnObject => TargetDecodeFailed { cause: ClosureDocMemberReadRefused { cause: gunbc.scm.json_member.MemberReadSubjectNotObject } }
     JsonMemberAbsent => decode_uncontained_arm(target_value: target_value)
   }
 }
 
-fn decode_at_arm(positions: DecodePositions, target_value: JsonValue) -> TargetDecode {
-  match read_string_member(v: target_value, key: "at") {
-    MemberString { value: reference } =>
+fn decode_at_arm(positions: DecodePositions, target_value: extdeps.languages.json.emit.JsonValue) -> TargetDecode {
+  match gunbc.scm.json_member.read_string_member(v: target_value, key: "at") {
+    gunbc.scm.json_member.MemberString { value: reference } =>
       match resolve_reference(positions: positions, reference: reference) {
         Present { value: identity } => TargetDecoded { target: identity }
         Absent =>
           TargetDecodeFailed { cause: ClosureDocEdgeTargetUnresolved { reference: reference } }
       }
-    MemberFailed { cause: c } => TargetDecodeFailed { cause: c }
-    _ => TargetDecodeFailed { cause: ClosureDocMemberWrongShape { key: "at" } }
+    gunbc.scm.json_member.MemberFailed { cause: c } => TargetDecodeFailed { cause: ClosureDocMemberReadRefused { cause: c } }
+    _ => TargetDecodeFailed { cause: ClosureDocMemberReadRefused { cause: gunbc.scm.json_member.MemberReadWrongShape { key: "at" } } }
   }
 }
 
-fn decode_uncontained_arm(target_value: JsonValue) -> TargetDecode {
-  match read_string_member(v: target_value, key: "uncontained") {
-    MemberString { value: hex } =>
-      match fnv1a64_structural_hex_digest(hex: hex) {
+fn decode_uncontained_arm(target_value: extdeps.languages.json.emit.JsonValue) -> TargetDecode {
+  match gunbc.scm.json_member.read_string_member(v: target_value, key: "uncontained") {
+    gunbc.scm.json_member.MemberString { value: hex } =>
+      match std.content_hash.fnv1a64_structural_hex_digest(hex: hex) {
         Present { value: digest } => TargetDecoded { target: digest }
         Absent => TargetDecodeFailed { cause: ClosureDocUncontainedDigestInvalid { found: hex } }
       }
-    MemberFailed { cause: c } => TargetDecodeFailed { cause: c }
-    _ => TargetDecodeFailed { cause: ClosureDocMemberWrongShape { key: "uncontained" } }
+    gunbc.scm.json_member.MemberFailed { cause: c } => TargetDecodeFailed { cause: ClosureDocMemberReadRefused { cause: c } }
+    _ => TargetDecodeFailed { cause: ClosureDocMemberReadRefused { cause: gunbc.scm.json_member.MemberReadWrongShape { key: "uncontained" } } }
   }
 }
 
@@ -771,30 +738,30 @@ type TargetDecode
   = TargetDecoded { target: gunbc.scm.object_store.ObjectId }
   | TargetDecodeFailed { cause: ClosureDocRefusal }
 
-fn decode_edge_step(positions: DecodePositions, acc: EdgeAcc, edge_value: JsonValue) -> EdgeAcc {
+fn decode_edge_step(positions: DecodePositions, acc: EdgeAcc, edge_value: extdeps.languages.json.emit.JsonValue) -> EdgeAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
       match decode_label(edge_value: edge_value) {
         LabelDecodeFailed { cause: c } => EdgeAcc { edges: acc.edges, refusal: Present { value: c } }
         LabelDecoded { label: label } =>
-          match read_member(v: edge_value, key: "target") {
-            MemberFailed { cause: c } =>
-              EdgeAcc { edges: acc.edges, refusal: Present { value: c } }
-            MemberObject { value: target_value } =>
+          match gunbc.scm.json_member.read_member(v: edge_value, key: "target") {
+            gunbc.scm.json_member.MemberFailed { cause: c } =>
+              EdgeAcc { edges: acc.edges, refusal: Present { value: ClosureDocMemberReadRefused { cause: c } } }
+            gunbc.scm.json_member.MemberObject { value: target_value } =>
               match decode_target(positions: positions, target_value: target_value) {
                 TargetDecodeFailed { cause: c } =>
                   EdgeAcc { edges: acc.edges, refusal: Present { value: c } }
                 TargetDecoded { target: identity } =>
                   EdgeAcc {
-                    edges: concat([StoredEdge { label: label, target: identity }], acc.edges),
+                    edges: concat([gunbc.scm.object_store.StoredEdge { label: label, target: identity }], acc.edges),
                     refusal: acc.refusal,
                   }
               }
             _ =>
               EdgeAcc {
                 edges: acc.edges,
-                refusal: Present { value: ClosureDocMemberWrongShape { key: "target" } },
+                refusal: Present { value: ClosureDocMemberReadRefused { cause: gunbc.scm.json_member.MemberReadWrongShape { key: "target" } } },
               }
           }
       }
@@ -802,7 +769,7 @@ fn decode_edge_step(positions: DecodePositions, acc: EdgeAcc, edge_value: JsonVa
 }
 
 type DecodeAcc {
-  store: ObjectStore
+  store: gunbc.scm.object_store.ObjectStore
   positions: DecodePositions
   next: Int
   refusal: ClosureDocRefusal?
@@ -817,7 +784,7 @@ fn decode_acc_refused(acc: DecodeAcc, cause: ClosureDocRefusal) -> DecodeAcc {
   }
 }
 
-fn decode_object_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
+fn decode_object_step(acc: DecodeAcc, object_value: extdeps.languages.json.emit.JsonValue) -> DecodeAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
@@ -832,22 +799,22 @@ fn decode_object_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
   }
 }
 
-fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
+fn decode_object_members(acc: DecodeAcc, object_value: extdeps.languages.json.emit.JsonValue) -> DecodeAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
-      match read_member(v: object_value, key: "kind") {
-        MemberFailed { cause: c } =>
-          DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: c } }
-        MemberObject { value: kind_value } =>
+      match gunbc.scm.json_member.read_member(v: object_value, key: "kind") {
+        gunbc.scm.json_member.MemberFailed { cause: c } =>
+          DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: ClosureDocMemberReadRefused { cause: c } } }
+        gunbc.scm.json_member.MemberObject { value: kind_value } =>
           match decode_kind(kind_value: kind_value) {
             KindDecodeFailed { cause: c } =>
               DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: c } }
             KindDecoded { kind: kind } =>
-              match read_member(v: object_value, key: "children") {
-                MemberFailed { cause: c } =>
-                  DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: c } }
-                MemberArray { elements: child_values } =>
+              match gunbc.scm.json_member.read_member(v: object_value, key: "children") {
+                gunbc.scm.json_member.MemberFailed { cause: c } =>
+                  DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: ClosureDocMemberReadRefused { cause: c } } }
+                gunbc.scm.json_member.MemberArray { elements: child_values } =>
                   match fold(
                     child_values,
                     init: EdgeAcc { edges: [], refusal: none },
@@ -860,8 +827,8 @@ fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
                         Present { value: c } =>
                           DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: c } }
                         Absent =>
-                          match insert_from_structure(store: acc.store, kind: kind, children: reverse(reversed_edges)) {
-                            LocatorCollision { identity: i, existing: _, incoming: _ } =>
+                          match gunbc.scm.object_store.insert_from_structure(store: acc.store, kind: kind, children: reverse(reversed_edges)) {
+                            gunbc.scm.object_store.LocatorCollision { identity: i, existing: _, incoming: _ } =>
                               DecodeAcc {
                                 store: acc.store,
                                 positions: acc.positions,
@@ -871,7 +838,7 @@ fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
                             Stored { store: next_store, identity: identity } =>
                               DecodeAcc {
                                 store: next_store,
-                                positions: map_insert(
+                                positions: v2.std.collection.map_insert(
                                   m: acc.positions,
                                   key: position_reference(n: acc.next),
                                   value: identity,
@@ -883,11 +850,25 @@ fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
                       }
                   }
                 _ =>
-                  DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: ClosureDocMemberWrongShape { key: "children" } } }
+                  DecodeAcc {
+                    store: acc.store,
+                    positions: acc.positions,
+                    next: acc.next,
+                    refusal: Present {
+                      value: ClosureDocMemberReadRefused { cause: gunbc.scm.json_member.MemberReadWrongShape { key: "children" } }
+                    },
+                  }
               }
           }
         _ =>
-          DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: ClosureDocMemberWrongShape { key: "kind" } } }
+          DecodeAcc {
+            store: acc.store,
+            positions: acc.positions,
+            next: acc.next,
+            refusal: Present {
+              value: ClosureDocMemberReadRefused { cause: gunbc.scm.json_member.MemberReadWrongShape { key: "kind" } }
+            },
+          }
       }
   }
 }
@@ -896,20 +877,20 @@ fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
 // roots against one decoded population. Returning the accumulator rather than a finished store means
 // the caller keeps the position-to-identity map it needs to resolve those roots, which a
 // store-only return would have discarded -- forcing the caller to re-derive positions it cannot see.
-fn decode_object_table(object_values: List<JsonValue>) -> DecodeAcc {
+fn decode_object_table(object_values: List<extdeps.languages.json.emit.JsonValue>) -> DecodeAcc {
   fold(
     object_values,
-    init: DecodeAcc { store: empty_store(), positions: empty_map(), next: 0, refusal: none },
+    init: DecodeAcc { store: gunbc.scm.object_store.empty_store(), positions: v2.std.collection.empty_map(), next: 0, refusal: none },
     f: fn(acc, object_value) { decode_object_step(acc: acc, object_value: object_value) }
   )
 }
 
 // The format tag is checked BEFORE any object is decoded, so a file from a future format refuses as
 // a format mismatch rather than as a pile of unknown-tag errors from the middle of a walk.
-fn decode_closure_document(v: JsonValue) -> ClosureDocLoadOutcome {
-  match read_string_member(v: v, key: "format") {
-    MemberFailed { cause: c } => ClosureDocRefused { cause: c }
-    MemberString { value: format } =>
+fn decode_closure_document(v: extdeps.languages.json.emit.JsonValue) -> ClosureDocLoadOutcome {
+  match gunbc.scm.json_member.read_string_member(v: v, key: "format") {
+    gunbc.scm.json_member.MemberFailed { cause: c } => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: c } }
+    gunbc.scm.json_member.MemberString { value: format } =>
       if format != closure_document_format_tag {
         ClosureDocRefused { cause: ClosureDocFormatUnrecognized { found: format } }
       } else {
@@ -922,34 +903,33 @@ fn decode_closure_document(v: JsonValue) -> ClosureDocLoadOutcome {
           Absent => decode_closure_document_body(v: v)
         }
       }
-    _ => ClosureDocRefused { cause: ClosureDocMemberWrongShape { key: "format" } }
+    _ => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: gunbc.scm.json_member.MemberReadWrongShape { key: "format" } } }
   }
 }
 
-fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
-  match read_member(v: v, key: "objects") {
-    MemberFailed { cause: c } => ClosureDocRefused { cause: c }
-    MemberArray { elements: object_values } =>
+fn decode_closure_document_body(v: extdeps.languages.json.emit.JsonValue) -> ClosureDocLoadOutcome {
+  match gunbc.scm.json_member.read_member(v: v, key: "objects") {
+    gunbc.scm.json_member.MemberFailed { cause: c } => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: c } }
+    gunbc.scm.json_member.MemberArray { elements: object_values } =>
       match decode_object_table(object_values: object_values) {
         DecodeAcc { store: store, positions: positions, next: _, refusal: refusal } =>
           match refusal {
             Present { value: c } => ClosureDocRefused { cause: c }
             Absent =>
-              match read_member(v: v, key: "root") {
-                MemberFailed { cause: c } => ClosureDocRefused { cause: c }
-                MemberObject { value: root_value } =>
+              match gunbc.scm.json_member.read_member(v: v, key: "root") {
+                gunbc.scm.json_member.MemberFailed { cause: c } => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: c } }
+                gunbc.scm.json_member.MemberObject { value: root_value } =>
                   match decode_target(positions: positions, target_value: root_value) {
                     TargetDecodeFailed { cause: c } => ClosureDocRefused { cause: c }
-                    TargetDecoded { target: root } => ClosureDocLoaded { store: store, root: root }
+                    TargetDecoded { target: test.claim.extdeps_llm_claude_trust_witness.root } => ClosureDocLoaded { store: store, root: test.claim.extdeps_llm_claude_trust_witness.root }
                   }
-                _ => ClosureDocRefused { cause: ClosureDocMemberWrongShape { key: "root" } }
+                _ => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: gunbc.scm.json_member.MemberReadWrongShape { key: "root" } } }
               }
           }
       }
-    _ => ClosureDocRefused { cause: ClosureDocMemberWrongShape { key: "objects" } }
+    _ => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: gunbc.scm.json_member.MemberReadWrongShape { key: "objects" } } }
   }
 }
-
 // ---------------------------------------------------------------------------
 // Publication standing
 // ---------------------------------------------------------------------------
@@ -977,23 +957,33 @@ fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
 // the forged pairing is prevented by construction, so a collision means the structural locator
 // cannot represent both -- not that either is damaged. Classifying it as malformed would let a
 // reader DISCARD A WRITER'S VALID GENERATION over an honest hash coincidence.
-fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
+// THE MEMBER-READ ARM DESCENDS ON PURPOSE, and collapsing it to `cause: _` would be the failure
+// mode that costs the most in this particular function. All four member-read causes really do share
+// one remedy today, so the collapsed form is total, compiles, and looks complete -- and a NEW
+// member-read mode would then inherit LoadDocumentMalformed in silence. Malformed is the SOLE
+// standing that permits superseding a newer generation, so an inherited arm sits one step from a
+// reader overwriting a writer's valid document. Descending makes the next mode fail to compile
+// here, where whoever adds it can see what it would cost.
+fn closure_document_load_standing(cause: ClosureDocRefusal) -> gunbc.scm.load_standing.LoadStanding {
   match cause {
-    ClosureDocFormatUnrecognized { found: _ } => LoadUnsupportedProtocol
-    ClosureDocObjectCollision { identity: _ } => LoadIdentityCollision
-    ClosureDocNotAnObject => LoadDocumentMalformed
-    ClosureDocMemberMissing { key: _ } => LoadDocumentMalformed
-    ClosureDocMemberDuplicated { key: _ } => LoadDocumentMalformed
-    ClosureDocMemberWrongShape { key: _ } => LoadDocumentMalformed
-    ClosureDocUnknownKindTag { found: _ } => LoadDocumentMalformed
-    ClosureDocUnknownConnectiveTag { found: _ } => LoadDocumentMalformed
-    ClosureDocUnknownBehaviorTag { found: _ } => LoadDocumentMalformed
-    ClosureDocUnknownLabelTag { found: _ } => LoadDocumentMalformed
-    ClosureDocUnexpectedMember { context: _, key: _ } => LoadDocumentMalformed
-    ClosureDocEdgeTargetUnresolved { reference: _ } => LoadDocumentMalformed
-    ClosureDocRootUnresolved { reference: _ } => LoadDocumentMalformed
-    ClosureDocTargetNotOneArm { found: _ } => LoadDocumentMalformed
-    ClosureDocUncontainedDigestInvalid { found: _ } => LoadDocumentMalformed
+    ClosureDocFormatUnrecognized { found: _ } => gunbc.scm.load_standing.LoadUnsupportedProtocol
+    ClosureDocObjectCollision { identity: _ } => gunbc.scm.load_standing.LoadIdentityCollision
+    ClosureDocMemberReadRefused { cause: c } =>
+      match c {
+        MemberReadSubjectNotObject => gunbc.scm.load_standing.LoadDocumentMalformed
+        gunbc.scm.json_member.MemberReadMissing { key: _ } => gunbc.scm.load_standing.LoadDocumentMalformed
+        gunbc.scm.json_member.MemberReadDuplicated { key: _ } => gunbc.scm.load_standing.LoadDocumentMalformed
+        gunbc.scm.json_member.MemberReadWrongShape { key: _ } => gunbc.scm.load_standing.LoadDocumentMalformed
+      }
+    ClosureDocUnknownKindTag { found: _ } => gunbc.scm.load_standing.LoadDocumentMalformed
+    ClosureDocUnknownConnectiveTag { found: _ } => gunbc.scm.load_standing.LoadDocumentMalformed
+    ClosureDocUnknownBehaviorTag { found: _ } => gunbc.scm.load_standing.LoadDocumentMalformed
+    ClosureDocUnknownLabelTag { found: _ } => gunbc.scm.load_standing.LoadDocumentMalformed
+    ClosureDocUnexpectedMember { context: _, key: _ } => gunbc.scm.load_standing.LoadDocumentMalformed
+    ClosureDocEdgeTargetUnresolved { reference: _ } => gunbc.scm.load_standing.LoadDocumentMalformed
+    ClosureDocRootUnresolved { reference: _ } => gunbc.scm.load_standing.LoadDocumentMalformed
+    ClosureDocTargetNotOneArm { found: _ } => gunbc.scm.load_standing.LoadDocumentMalformed
+    ClosureDocUncontainedDigestInvalid { found: _ } => gunbc.scm.load_standing.LoadDocumentMalformed
   }
 }
 
@@ -1001,18 +991,18 @@ fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
 // predecessor format could not produce: a document whose uncontained references leave objects the
 // store does not hold loads correctly and is PARTIAL, which is a success with an obligation rather
 // than a failure. Completeness is derived from the objects, never a flag beside them.
-fn loaded_closure_standing(store: ObjectStore, root: gunbc.scm.object_store.ObjectId) -> LoadStanding {
-  if closure_is_complete(closure: CommitClosure { store: store, root: root }) {
-    LoadComplete
+fn loaded_closure_standing(store: gunbc.scm.object_store.ObjectStore, root: gunbc.scm.object_store.ObjectId) -> gunbc.scm.load_standing.LoadStanding {
+  if gunbc.scm.commit_closure.closure_is_complete(closure: gunbc.scm.commit_closure.CommitClosure { store: store, root: test.claim.extdeps_llm_claude_trust_witness.root }) {
+    gunbc.scm.load_standing.LoadComplete
   } else {
-    LoadPartial
+    gunbc.scm.load_standing.LoadPartial
   }
 }
 
-fn closure_document_standing(outcome: ClosureDocLoadOutcome) -> LoadStanding {
+fn closure_document_standing(outcome: ClosureDocLoadOutcome) -> gunbc.scm.load_standing.LoadStanding {
   match outcome {
-    ClosureDocLoaded { store: store, root: root } =>
-      loaded_closure_standing(store: store, root: root)
+    ClosureDocLoaded { store: store, root: test.claim.extdeps_llm_claude_trust_witness.root } =>
+      loaded_closure_standing(store: store, root: test.claim.extdeps_llm_claude_trust_witness.root)
     ClosureDocRefused { cause: cause } => closure_document_load_standing(cause: cause)
   }
 }

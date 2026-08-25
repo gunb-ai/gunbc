@@ -20,37 +20,37 @@ module test.claim.scm_commit_closure_json_v2_witness
 // helper name is a live correctness hazard rather than a style question (#8719).
 // ------------------------------------------------------------------------------------------------
 
-fn closure_doc_atom(identity: Symbol) -> Node {
-  node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
+fn closure_doc_atom(identity: v2.std.node.Symbol) -> Node {
+  v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } }, children: [])
 }
 
-fn closure_doc_named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+fn closure_doc_named(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
 fn closure_doc_program() -> Node {
-  node_synthetic(
-    kind: TypeNode { connective: Conj },
+  v2.std.node.node_synthetic(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      closure_doc_named(name: ^alpha, target: closure_doc_atom(identity: ^A)),
-      closure_doc_named(name: ^beta, target: closure_doc_atom(identity: ^B)),
+      closure_doc_named(name: ^test.claim.git_remote_ref_cas_witness.alpha, target: closure_doc_atom(identity: ^A)),
+      closure_doc_named(name: ^test.claim.git_remote_ref_cas_witness.beta, target: closure_doc_atom(identity: ^B)),
     ],
   )
 }
 
 // A DIFFERENT program, used only to prove the comparison below can answer no.
 fn scm_image_other_program() -> Node {
-  node_synthetic(
-    kind: TypeNode { connective: Conj },
-    children: [closure_doc_named(name: ^alpha, target: closure_doc_atom(identity: ^A))],
+  v2.std.node.node_synthetic(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+    children: [closure_doc_named(name: ^test.claim.git_remote_ref_cas_witness.alpha, target: closure_doc_atom(identity: ^A))],
   )
 }
 
 // One atom referenced by TWO parents. Sharing is the property positions exist to preserve, so the
 // fixture that proves it must actually share.
 fn scm_image_shared_program() -> Node {
-  node_synthetic(
-    kind: TypeNode { connective: Conj },
+  v2.std.node.node_synthetic(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       closure_doc_named(name: ^left, target: closure_doc_atom(identity: ^S)),
       closure_doc_named(name: ^right, target: closure_doc_atom(identity: ^S)),
@@ -59,21 +59,21 @@ fn scm_image_shared_program() -> Node {
 }
 
 type ScmImagePut {
-  store: ObjectStore
+  store: gunbc.scm.object_store.ObjectStore
   identity: gunbc.scm.object_store.ObjectId
 }
 
-fn scm_image_put(store: ObjectStore, n: Node) -> ScmImagePut {
-  match store_node(store: store, n: n) {
+fn scm_image_put(store: gunbc.scm.object_store.ObjectStore, n: Node) -> ScmImagePut {
+  match gunbc.scm.object_store.store_node(store: store, n: n) {
     Stored { store: s, identity: i } => ScmImagePut { store: s, identity: i }
-    LocatorCollision { identity: i, existing: _, incoming: _ } =>
+    gunbc.scm.object_store.LocatorCollision { identity: i, existing: _, incoming: _ } =>
       ScmImagePut { store: store, identity: i }
   }
 }
 
-fn scm_image_encoded(n: Node) -> JsonValue {
-  let put = scm_image_put(store: empty_store(), n: n)
-  encode_closure_document(store: put.store, root: put.identity)
+fn scm_image_encoded(n: Node) -> extdeps.languages.json.emit.JsonValue {
+  let put = scm_image_put(store: gunbc.scm.object_store.empty_store(), n: n)
+  gunbc.scm.commit_closure_json_v2.encode_closure_document(store: put.store, root: put.identity)
 }
 
 // The reconstructed program compared on CONTENT IDENTITY, not on occurrence provenance. checkout
@@ -81,23 +81,23 @@ fn scm_image_encoded(n: Node) -> JsonValue {
 // occurrence identity, so asserting on it would assert the one property the model says must not
 // matter. The expectation is canonicalized for the same reason store_node canonicalizes: named-edge
 // order is not a fact this store preserves.
-fn scm_image_loads_as(loaded: ClosureDocLoadOutcome, expected: Node) -> Bool {
+fn scm_image_loads_as(loaded: gunbc.scm.commit_closure_json_v2.ClosureDocLoadOutcome, expected: Node) -> Bool {
   match loaded {
-    ClosureDocRefused { cause: _ } => false
-    ClosureDocLoaded { store: store, root: root } =>
-      match checkout(store: store, commit: commit_of_root(root: root)) {
-        CheckoutRefused { cause: _ } => false
-        CheckedOut { program: program } =>
-          (content_hash(n: program).digest as String)
-            == (content_hash(n: canonicalize_node_for_content_hash(n: expected)).digest as String)
+    gunbc.scm.commit_closure_json_v2.ClosureDocRefused { cause: _ } => false
+    gunbc.scm.commit_closure_json_v2.ClosureDocLoaded { store: store, root: test.claim.extdeps_llm_claude_trust_witness.root } =>
+      match gunbc.scm.checkout.checkout(store: store, commit: gunbc.scm.checkout.commit_of_root(root: test.claim.extdeps_llm_claude_trust_witness.root)) {
+        gunbc.scm.checkout.CheckoutRefused { cause: _ } => false
+        gunbc.scm.checkout.CheckedOut { program: program } =>
+          (v2.std.node.content_hash(n: program).digest as String)
+            == (v2.std.node.content_hash(n: v2.std.node.canonicalize_node_for_content_hash(n: expected)).digest as String)
       }
   }
 }
 
-fn scm_image_refused(loaded: ClosureDocLoadOutcome) -> Bool {
+fn scm_image_refused(loaded: gunbc.scm.commit_closure_json_v2.ClosureDocLoadOutcome) -> Bool {
   match loaded {
-    ClosureDocRefused { cause: _ } => true
-    ClosureDocLoaded { store: _, root: _ } => false
+    gunbc.scm.commit_closure_json_v2.ClosureDocRefused { cause: _ } => true
+    gunbc.scm.commit_closure_json_v2.ClosureDocLoaded { store: _, root: _ } => false
   }
 }
 
@@ -107,7 +107,7 @@ fn scm_image_refused(loaded: ClosureDocLoadOutcome) -> Bool {
 
 test fn scm_image_round_trips_to_the_same_program() -> Bool {
   scm_image_loads_as(
-    loaded: decode_closure_document(v: scm_image_encoded(n: closure_doc_program())),
+    loaded: gunbc.scm.commit_closure_json_v2.decode_closure_document(v: scm_image_encoded(n: closure_doc_program())),
     expected: closure_doc_program(),
   )
 }
@@ -115,7 +115,7 @@ test fn scm_image_round_trips_to_the_same_program() -> Bool {
 // CONTROL for the claim above. Without this, a comparison that always answered true would pass.
 test fn scm_image_round_trip_comparison_can_say_no() -> Bool {
   !scm_image_loads_as(
-    loaded: decode_closure_document(v: scm_image_encoded(n: closure_doc_program())),
+    loaded: gunbc.scm.commit_closure_json_v2.decode_closure_document(v: scm_image_encoded(n: closure_doc_program())),
     expected: scm_image_other_program(),
   )
 }
@@ -123,11 +123,11 @@ test fn scm_image_round_trip_comparison_can_say_no() -> Bool {
 // THE TEXT IS THE POINT. Comparing JsonValue to JsonValue would never exercise serialize_json or
 // parse_json, so the durable artifact -- the bytes that actually reach a file -- would be untested.
 test fn scm_image_survives_serialization_to_text_and_back() -> Bool {
-  let text = serialize_json(v: scm_image_encoded(n: closure_doc_program()))
-  match parse_json(s: text) {
+  let text = extdeps.languages.json.emit.serialize_json(v: scm_image_encoded(n: closure_doc_program()))
+  match extdeps.languages.json.parse.parse_json(s: text) {
     Absent => false
     Present { value: reparsed } =>
-      scm_image_loads_as(loaded: decode_closure_document(v: reparsed), expected: closure_doc_program())
+      scm_image_loads_as(loaded: gunbc.scm.commit_closure_json_v2.decode_closure_document(v: reparsed), expected: closure_doc_program())
   }
 }
 
@@ -141,7 +141,7 @@ test fn scm_image_survives_serialization_to_text_and_back() -> Bool {
 //
 // Counting entries in the emitted `objects` array is the measurement that can go red: an expanding
 // encoder writes three, a sharing one writes two.
-fn scm_image_objects_member_count(acc: Int, m: JsonKeyValue) -> Int {
+fn scm_image_objects_member_count(acc: Int, m: extdeps.languages.json.emit.JsonKeyValue) -> Int {
   if m.key == "objects" {
     match m.value {
       JsonArray { elements: es } => count(es)
@@ -152,11 +152,11 @@ fn scm_image_objects_member_count(acc: Int, m: JsonKeyValue) -> Int {
   }
 }
 
-fn scm_image_count_objects_member(members: List<JsonKeyValue>) -> Int {
+fn scm_image_count_objects_member(members: List<extdeps.languages.json.emit.JsonKeyValue>) -> Int {
   fold(members, init: 0, f: fn(acc, m) { scm_image_objects_member_count(acc: acc, m: m) })
 }
 
-fn scm_image_encoded_object_count(v: JsonValue) -> Int {
+fn scm_image_encoded_object_count(v: extdeps.languages.json.emit.JsonValue) -> Int {
   scm_image_count_objects_member(members: scm_image_members(v: v))
 }
 
@@ -175,7 +175,7 @@ test fn scm_image_the_object_counter_distinguishes_a_larger_program() -> Bool {
 // The refusals. Each mutates ONE thing about an otherwise-valid image.
 // ------------------------------------------------------------------------------------------------
 
-fn scm_image_members(v: JsonValue) -> List<JsonKeyValue> {
+fn scm_image_members(v: extdeps.languages.json.emit.JsonValue) -> List<extdeps.languages.json.emit.JsonKeyValue> {
   match v {
     JsonObject { members: ms } => ms
     _ => []
@@ -193,34 +193,34 @@ fn scm_image_members(v: JsonValue) -> List<JsonKeyValue> {
 // corpus. What is recorded here is the observation and the working alternative, not a rule -- a
 // confident mechanism written from one failure would be a fabricated explanation sitting in the
 // tree, and the next reader would plan against it.
-fn scm_image_key_differs(m: JsonKeyValue, key: String) -> Bool {
+fn scm_image_key_differs(m: extdeps.languages.json.emit.JsonKeyValue, key: String) -> Bool {
   m.key != key
 }
 
-fn scm_image_drop_key(members: List<JsonKeyValue>, key: String) -> List<JsonKeyValue> {
-  filter(members, m => scm_image_key_differs(m: m, key: key))
+fn scm_image_drop_key(members: List<extdeps.languages.json.emit.JsonKeyValue>, key: String) -> List<extdeps.languages.json.emit.JsonKeyValue> {
+  v2.std.algebra.filter(members, m => scm_image_key_differs(m: m, key: key))
 }
 
-fn scm_image_without(v: JsonValue, key: String) -> JsonValue {
-  json_object(members: scm_image_drop_key(members: scm_image_members(v: v), key: key))
+fn scm_image_without(v: extdeps.languages.json.emit.JsonValue, key: String) -> extdeps.languages.json.emit.JsonValue {
+  extdeps.languages.json.emit.json_object(members: scm_image_drop_key(members: scm_image_members(v: v), key: key))
 }
 
-fn scm_image_with(v: JsonValue, key: String, value: JsonValue) -> JsonValue {
-  json_object(
+fn scm_image_with(v: extdeps.languages.json.emit.JsonValue, key: String, value: extdeps.languages.json.emit.JsonValue) -> extdeps.languages.json.emit.JsonValue {
+  extdeps.languages.json.emit.json_object(
     members: concat(
       scm_image_drop_key(members: scm_image_members(v: v), key: key),
-      [json_kv(key: key, value: value)]
+      [extdeps.languages.json.emit.json_kv(key: key, value: value)]
     )
   )
 }
 
 test fn scm_image_an_unrecognized_format_refuses() -> Bool {
   scm_image_refused(
-    loaded: decode_closure_document(
+    loaded: gunbc.scm.commit_closure_json_v2.decode_closure_document(
       v: scm_image_with(
         v: scm_image_encoded(n: closure_doc_program()),
         key: "format",
-        value: json_string(s: "gunbc-scm-commit-closure-v99"),
+        value: extdeps.languages.json.emit.json_string(s: "gunbc-scm-commit-closure-v99"),
       )
     )
   )
@@ -228,13 +228,13 @@ test fn scm_image_an_unrecognized_format_refuses() -> Bool {
 
 test fn scm_image_a_missing_format_refuses() -> Bool {
   scm_image_refused(
-    loaded: decode_closure_document(v: scm_image_without(v: scm_image_encoded(n: closure_doc_program()), key: "format"))
+    loaded: gunbc.scm.commit_closure_json_v2.decode_closure_document(v: scm_image_without(v: scm_image_encoded(n: closure_doc_program()), key: "format"))
   )
 }
 
 test fn scm_image_a_missing_objects_member_refuses() -> Bool {
   scm_image_refused(
-    loaded: decode_closure_document(v: scm_image_without(v: scm_image_encoded(n: closure_doc_program()), key: "objects"))
+    loaded: gunbc.scm.commit_closure_json_v2.decode_closure_document(v: scm_image_without(v: scm_image_encoded(n: closure_doc_program()), key: "objects"))
   )
 }
 
@@ -243,9 +243,9 @@ test fn scm_image_a_missing_objects_member_refuses() -> Bool {
 test fn scm_image_a_duplicated_root_member_refuses() -> Bool {
   let encoded = scm_image_encoded(n: closure_doc_program())
   scm_image_refused(
-    loaded: decode_closure_document(
-      v: json_object(
-        members: concat(scm_image_members(v: encoded), [json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: "0"))]))])
+    loaded: gunbc.scm.commit_closure_json_v2.decode_closure_document(
+      v: extdeps.languages.json.emit.json_object(
+        members: concat(scm_image_members(v: encoded), [extdeps.languages.json.emit.json_kv(key: "root", value: extdeps.languages.json.emit.json_object(members: [extdeps.languages.json.emit.json_kv(key: "at", value: extdeps.languages.json.emit.json_string(s: "0"))]))])
       )
     )
   )
@@ -253,11 +253,11 @@ test fn scm_image_a_duplicated_root_member_refuses() -> Bool {
 
 test fn scm_image_a_root_naming_no_object_refuses() -> Bool {
   scm_image_refused(
-    loaded: decode_closure_document(
+    loaded: gunbc.scm.commit_closure_json_v2.decode_closure_document(
       v: scm_image_with(
         v: scm_image_encoded(n: closure_doc_program()),
         key: "root",
-        value: json_string(s: "9999"),
+        value: extdeps.languages.json.emit.json_string(s: "9999"),
       )
     )
   )
@@ -267,34 +267,34 @@ test fn scm_image_a_root_naming_no_object_refuses() -> Bool {
 // this is the arm that makes back-references safe rather than merely conventional.
 test fn scm_image_an_edge_naming_a_later_position_refuses() -> Bool {
   scm_image_refused(
-    loaded: decode_closure_document(
-      v: json_object(
+    loaded: gunbc.scm.commit_closure_json_v2.decode_closure_document(
+      v: extdeps.languages.json.emit.json_object(
         members: [
-          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v2")),
-          json_kv(
+          extdeps.languages.json.emit.json_kv(key: "format", value: extdeps.languages.json.emit.json_string(s: "gunbc-scm-commit-closure-v2")),
+          extdeps.languages.json.emit.json_kv(
             key: "objects",
-            value: json_array(
+            value: extdeps.languages.json.emit.json_array(
               elements: [
-                json_object(
+                extdeps.languages.json.emit.json_object(
                   members: [
-                    json_kv(
+                    extdeps.languages.json.emit.json_kv(
                       key: "kind",
-                      value: json_object(
+                      value: extdeps.languages.json.emit.json_object(
                         members: [
-                          json_kv(key: "kind", value: json_string(s: "type")),
-                          json_kv(key: "connective", value: json_string(s: "conj")),
+                          extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "type")),
+                          extdeps.languages.json.emit.json_kv(key: "connective", value: extdeps.languages.json.emit.json_string(s: "conj")),
                         ]
                       )
                     ),
-                    json_kv(
+                    extdeps.languages.json.emit.json_kv(
                       key: "children",
-                      value: json_array(
+                      value: extdeps.languages.json.emit.json_array(
                         elements: [
-                          json_object(
+                          extdeps.languages.json.emit.json_object(
                             members: [
-                              json_kv(key: "label", value: json_string(s: "named")),
-                              json_kv(key: "name", value: json_string(s: "alpha")),
-                              json_kv(key: "target", value: json_object(members: [json_kv(key: "at", value: json_string(s: "1"))])),
+                              extdeps.languages.json.emit.json_kv(key: "label", value: extdeps.languages.json.emit.json_string(s: "named")),
+                              extdeps.languages.json.emit.json_kv(key: "name", value: extdeps.languages.json.emit.json_string(s: "alpha")),
+                              extdeps.languages.json.emit.json_kv(key: "target", value: extdeps.languages.json.emit.json_object(members: [extdeps.languages.json.emit.json_kv(key: "at", value: extdeps.languages.json.emit.json_string(s: "1"))])),
                             ]
                           )
                         ]
@@ -305,7 +305,7 @@ test fn scm_image_an_edge_naming_a_later_position_refuses() -> Bool {
               ]
             )
           ),
-          json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: "0"))])),
+          extdeps.languages.json.emit.json_kv(key: "root", value: extdeps.languages.json.emit.json_object(members: [extdeps.languages.json.emit.json_kv(key: "at", value: extdeps.languages.json.emit.json_string(s: "0"))])),
         ]
       )
     )
@@ -314,32 +314,32 @@ test fn scm_image_an_edge_naming_a_later_position_refuses() -> Bool {
 
 test fn scm_image_an_unknown_connective_tag_refuses() -> Bool {
   scm_image_refused(
-    loaded: decode_closure_document(
-      v: json_object(
+    loaded: gunbc.scm.commit_closure_json_v2.decode_closure_document(
+      v: extdeps.languages.json.emit.json_object(
         members: [
-          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v2")),
-          json_kv(
+          extdeps.languages.json.emit.json_kv(key: "format", value: extdeps.languages.json.emit.json_string(s: "gunbc-scm-commit-closure-v2")),
+          extdeps.languages.json.emit.json_kv(
             key: "objects",
-            value: json_array(
+            value: extdeps.languages.json.emit.json_array(
               elements: [
-                json_object(
+                extdeps.languages.json.emit.json_object(
                   members: [
-                    json_kv(
+                    extdeps.languages.json.emit.json_kv(
                       key: "kind",
-                      value: json_object(
+                      value: extdeps.languages.json.emit.json_object(
                         members: [
-                          json_kv(key: "kind", value: json_string(s: "type")),
-                          json_kv(key: "connective", value: json_string(s: "not-a-connective")),
+                          extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "type")),
+                          extdeps.languages.json.emit.json_kv(key: "connective", value: extdeps.languages.json.emit.json_string(s: "not-a-connective")),
                         ]
                       )
                     ),
-                    json_kv(key: "children", value: json_array(elements: [])),
+                    extdeps.languages.json.emit.json_kv(key: "children", value: extdeps.languages.json.emit.json_array(elements: [])),
                   ]
                 )
               ]
             )
           ),
-          json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: "0"))])),
+          extdeps.languages.json.emit.json_kv(key: "root", value: extdeps.languages.json.emit.json_object(members: [extdeps.languages.json.emit.json_kv(key: "at", value: extdeps.languages.json.emit.json_string(s: "0"))])),
         ]
       )
     )
@@ -352,33 +352,33 @@ test fn scm_image_an_unknown_connective_tag_refuses() -> Bool {
 // rather than "malformed".
 test fn scm_image_the_hand_authored_shape_itself_loads() -> Bool {
   scm_image_loads_as(
-    loaded: decode_closure_document(
-      v: json_object(
+    loaded: gunbc.scm.commit_closure_json_v2.decode_closure_document(
+      v: extdeps.languages.json.emit.json_object(
         members: [
-          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v2")),
-          json_kv(
+          extdeps.languages.json.emit.json_kv(key: "format", value: extdeps.languages.json.emit.json_string(s: "gunbc-scm-commit-closure-v2")),
+          extdeps.languages.json.emit.json_kv(
             key: "objects",
-            value: json_array(
+            value: extdeps.languages.json.emit.json_array(
               elements: [
-                json_object(
+                extdeps.languages.json.emit.json_object(
                   members: [
-                    json_kv(
+                    extdeps.languages.json.emit.json_kv(
                       key: "kind",
-                      value: json_object(
+                      value: extdeps.languages.json.emit.json_object(
                         members: [
-                          json_kv(key: "kind", value: json_string(s: "type")),
-                          json_kv(key: "connective", value: json_string(s: "atom")),
-                          json_kv(key: "identity", value: json_string(s: "A")),
+                          extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "type")),
+                          extdeps.languages.json.emit.json_kv(key: "connective", value: extdeps.languages.json.emit.json_string(s: "atom")),
+                          extdeps.languages.json.emit.json_kv(key: "identity", value: extdeps.languages.json.emit.json_string(s: "A")),
                         ]
                       )
                     ),
-                    json_kv(key: "children", value: json_array(elements: [])),
+                    extdeps.languages.json.emit.json_kv(key: "children", value: extdeps.languages.json.emit.json_array(elements: [])),
                   ]
                 )
               ]
             )
           ),
-          json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: "0"))])),
+          extdeps.languages.json.emit.json_kv(key: "root", value: extdeps.languages.json.emit.json_object(members: [extdeps.languages.json.emit.json_kv(key: "at", value: extdeps.languages.json.emit.json_string(s: "0"))])),
         ]
       )
     ),
@@ -396,45 +396,45 @@ test fn scm_image_the_hand_authored_shape_itself_loads() -> Bool {
 // incomplete closure these claims need -- no hand-authored broken store, no representation reach.
 // ------------------------------------------------------------------------------------------------
 
-fn scm_image_encode_refused(outcome: ClosureDocEncodeOutcome) -> Bool {
+fn scm_image_encode_refused(outcome: gunbc.scm.commit_closure_json_v2.ClosureDocEncodeOutcome) -> Bool {
   match outcome {
-    ClosureDocEncodeRefused { cause: _ } => true
-    ClosureDocEncoded { value: _ } => false
+    gunbc.scm.commit_closure_json_v2.ClosureDocEncodeRefused { cause: _ } => true
+    gunbc.scm.commit_closure_json_v2.ClosureDocEncoded { value: _ } => false
   }
 }
 
 fn scm_image_orphan_parent_store() -> ScmImagePut {
-  let full = scm_image_put(store: empty_store(), n: closure_doc_program())
-  match copy_object(from: full.store, to: empty_store(), identity: full.identity) {
-    Copied { store: s, identity: i } => ScmImagePut { store: s, identity: i }
-    CopySourceAbsent { identity: _ } => ScmImagePut { store: empty_store(), identity: full.identity }
-    CopyLocatorCollision { identity: _, existing: _, incoming: _ } =>
-      ScmImagePut { store: empty_store(), identity: full.identity }
+  let full = scm_image_put(store: gunbc.scm.object_store.empty_store(), n: closure_doc_program())
+  match gunbc.scm.object_store.copy_object(from: full.store, to: gunbc.scm.object_store.empty_store(), identity: full.identity) {
+    gunbc.scm.object_store.Copied { store: s, identity: i } => ScmImagePut { store: s, identity: i }
+    gunbc.scm.object_store.CopySourceAbsent { identity: _ } => ScmImagePut { store: gunbc.scm.object_store.empty_store(), identity: full.identity }
+    gunbc.scm.object_store.CopyLocatorCollision { identity: _, existing: _, incoming: _ } =>
+      ScmImagePut { store: gunbc.scm.object_store.empty_store(), identity: full.identity }
   }
 }
 
 test fn scm_image_a_root_absent_from_the_store_refuses_to_encode() -> Bool {
-  let full = scm_image_put(store: empty_store(), n: closure_doc_program())
+  let full = scm_image_put(store: gunbc.scm.object_store.empty_store(), n: closure_doc_program())
   scm_image_encode_refused(
-    outcome: encode_complete_closure_document(closure: CommitClosure { store: empty_store(), root: full.identity })
+    outcome: gunbc.scm.commit_closure_json_v2.encode_complete_closure_document(closure: gunbc.scm.commit_closure.CommitClosure { store: gunbc.scm.object_store.empty_store(), root: full.identity })
   )
 }
 
 test fn scm_image_a_root_whose_child_is_absent_refuses_to_encode() -> Bool {
   let orphan = scm_image_orphan_parent_store()
   scm_image_encode_refused(
-    outcome: encode_complete_closure_document(closure: CommitClosure { store: orphan.store, root: orphan.identity })
+    outcome: gunbc.scm.commit_closure_json_v2.encode_complete_closure_document(closure: gunbc.scm.commit_closure.CommitClosure { store: orphan.store, root: orphan.identity })
   )
 }
 
 // THE POSITIVE CONTROL. Without it the two refusals above are satisfied by an encoder that refuses
 // everything, and DESIGN section 4b requires the accepted arm alongside the discriminating red.
 test fn scm_image_a_complete_closure_encodes() -> Bool {
-  let full = scm_image_put(store: empty_store(), n: closure_doc_program())
-  match encode_complete_closure_document(closure: CommitClosure { store: full.store, root: full.identity }) {
-    ClosureDocEncoded { value: v } =>
-      serialize_json(v: v) == serialize_json(v: encode_closure_document(store: full.store, root: full.identity))
-    ClosureDocEncodeRefused { cause: _ } => false
+  let full = scm_image_put(store: gunbc.scm.object_store.empty_store(), n: closure_doc_program())
+  match gunbc.scm.commit_closure_json_v2.encode_complete_closure_document(closure: gunbc.scm.commit_closure.CommitClosure { store: full.store, root: full.identity }) {
+    gunbc.scm.commit_closure_json_v2.ClosureDocEncoded { value: v } =>
+      extdeps.languages.json.emit.serialize_json(v: v) == extdeps.languages.json.emit.serialize_json(v: gunbc.scm.commit_closure_json_v2.encode_closure_document(store: full.store, root: full.identity))
+    gunbc.scm.commit_closure_json_v2.ClosureDocEncodeRefused { cause: _ } => false
   }
 }
 
@@ -454,34 +454,34 @@ test fn scm_image_a_complete_closure_encodes() -> Bool {
 // goes red; canonicalize positional children too and the positional claim goes red.
 // ------------------------------------------------------------------------------------------------
 
-fn scm_image_identity_of(outcome: StoreOutcome, fallback: gunbc.scm.object_store.ObjectId) -> gunbc.scm.object_store.ObjectId {
+fn scm_image_identity_of(outcome: gunbc.scm.object_store.StoreOutcome, fallback: gunbc.scm.object_store.ObjectId) -> gunbc.scm.object_store.ObjectId {
   match outcome {
     Stored { store: _, identity: i } => i
-    LocatorCollision { identity: _, existing: _, incoming: _ } => fallback
+    gunbc.scm.object_store.LocatorCollision { identity: _, existing: _, incoming: _ } => fallback
   }
 }
 
-type ScmImageTwoAtoms { store: ObjectStore, first: gunbc.scm.object_store.ObjectId, second: gunbc.scm.object_store.ObjectId }
+type ScmImageTwoAtoms { store: gunbc.scm.object_store.ObjectStore, first: gunbc.scm.object_store.ObjectId, second: gunbc.scm.object_store.ObjectId }
 
 fn scm_image_two_atoms() -> ScmImageTwoAtoms {
-  let a = scm_image_put(store: empty_store(), n: closure_doc_atom(identity: ^A))
+  let a = scm_image_put(store: gunbc.scm.object_store.empty_store(), n: closure_doc_atom(identity: ^A))
   let b = scm_image_put(store: a.store, n: closure_doc_atom(identity: ^B))
   ScmImageTwoAtoms { store: b.store, first: a.identity, second: b.identity }
 }
 
-fn scm_image_insert_children(kind: NodeKind, children: List<StoredEdge>, fallback: gunbc.scm.object_store.ObjectId) -> gunbc.scm.object_store.ObjectId {
+fn scm_image_insert_children(kind: v2.std.node.NodeKind, children: List<gunbc.scm.object_store.StoredEdge>, fallback: gunbc.scm.object_store.ObjectId) -> gunbc.scm.object_store.ObjectId {
   scm_image_identity_of(
-    outcome: insert_from_structure(store: scm_image_two_atoms().store, kind: kind, children: children),
+    outcome: gunbc.scm.object_store.insert_from_structure(store: scm_image_two_atoms().store, kind: kind, children: children),
     fallback: fallback
   )
 }
 
-fn scm_image_named_stored(name: Symbol, target: gunbc.scm.object_store.ObjectId) -> StoredEdge {
-  StoredEdge { label: Named { name: name }, target: target }
+fn scm_image_named_stored(name: v2.std.node.Symbol, target: gunbc.scm.object_store.ObjectId) -> gunbc.scm.object_store.StoredEdge {
+  gunbc.scm.object_store.StoredEdge { label: Named { name: name }, target: target }
 }
 
-fn scm_image_positional_stored(target: gunbc.scm.object_store.ObjectId) -> StoredEdge {
-  StoredEdge { label: Positional, target: target }
+fn scm_image_positional_stored(target: gunbc.scm.object_store.ObjectId) -> gunbc.scm.object_store.StoredEdge {
+  gunbc.scm.object_store.StoredEdge { label: v2.std.node.Positional, target: target }
 }
 
 // NAMED children permuted: the SAME identity, and it is the identity the ordinary content_hash of
@@ -489,24 +489,24 @@ fn scm_image_positional_stored(target: gunbc.scm.object_store.ObjectId) -> Store
 // satisfied by any consistent wrong rule, including one that hashes wire order on both sides.
 test fn scm_image_permuted_named_children_reconstruct_the_canonical_identity() -> Bool {
   let atoms = scm_image_two_atoms()
-  let canonical = content_hash(n: closure_doc_program())
+  let canonical = v2.std.node.content_hash(n: closure_doc_program())
   let forward = scm_image_insert_children(
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      scm_image_named_stored(name: ^alpha, target: atoms.first),
-      scm_image_named_stored(name: ^beta, target: atoms.second),
+      scm_image_named_stored(name: ^test.claim.git_remote_ref_cas_witness.alpha, target: atoms.first),
+      scm_image_named_stored(name: ^test.claim.git_remote_ref_cas_witness.beta, target: atoms.second),
     ],
     fallback: atoms.first
   )
   let swapped = scm_image_insert_children(
-    kind: TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      scm_image_named_stored(name: ^beta, target: atoms.second),
-      scm_image_named_stored(name: ^alpha, target: atoms.first),
+      scm_image_named_stored(name: ^test.claim.git_remote_ref_cas_witness.beta, target: atoms.second),
+      scm_image_named_stored(name: ^test.claim.git_remote_ref_cas_witness.alpha, target: atoms.first),
     ],
     fallback: atoms.second
   )
-  object_id_eq(left: forward, right: swapped) && object_id_eq(left: forward, right: canonical)
+  gunbc.scm.object_store.object_id_eq(left: forward, right: swapped) && gunbc.scm.object_store.object_id_eq(left: forward, right: canonical)
 }
 
 // POSITIONAL children permuted: a DIFFERENT identity. Under a positional discipline the order is the
@@ -514,7 +514,7 @@ test fn scm_image_permuted_named_children_reconstruct_the_canonical_identity() -
 test fn scm_image_permuted_positional_children_are_a_different_identity() -> Bool {
   let atoms = scm_image_two_atoms()
   let forward = scm_image_insert_children(
-    kind: TypeNode { connective: Cardinality },
+    kind: v2.std.node.TypeNode { connective: Cardinality },
     children: [
       scm_image_positional_stored(target: atoms.first),
       scm_image_positional_stored(target: atoms.second),
@@ -522,14 +522,14 @@ test fn scm_image_permuted_positional_children_are_a_different_identity() -> Boo
     fallback: atoms.first
   )
   let swapped = scm_image_insert_children(
-    kind: TypeNode { connective: Cardinality },
+    kind: v2.std.node.TypeNode { connective: Cardinality },
     children: [
       scm_image_positional_stored(target: atoms.second),
       scm_image_positional_stored(target: atoms.first),
     ],
     fallback: atoms.second
   )
-  object_id_eq(left: forward, right: swapped) == false
+  gunbc.scm.object_store.object_id_eq(left: forward, right: swapped) == false
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -540,54 +540,47 @@ test fn scm_image_permuted_positional_children_are_a_different_identity() -> Boo
 // irrelevant, and the members each variant legitimately carries must still load.
 // ------------------------------------------------------------------------------------------------
 
-fn scm_image_kind_object(members: List<JsonKeyValue>) -> JsonKeyValue {
-  json_kv(key: "kind", value: json_object(members: members))
+fn scm_image_kind_object(members: List<extdeps.languages.json.emit.JsonKeyValue>) -> extdeps.languages.json.emit.JsonKeyValue {
+  extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_object(members: members))
 }
 
-fn scm_image_atom_kind_members() -> List<JsonKeyValue> {
+fn scm_image_atom_kind_members() -> List<extdeps.languages.json.emit.JsonKeyValue> {
   [
-    json_kv(key: "kind", value: json_string(s: "type")),
-    json_kv(key: "connective", value: json_string(s: "atom")),
-    json_kv(key: "identity", value: json_string(s: "A")),
+    extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "type")),
+    extdeps.languages.json.emit.json_kv(key: "connective", value: extdeps.languages.json.emit.json_string(s: "atom")),
+    extdeps.languages.json.emit.json_kv(key: "identity", value: extdeps.languages.json.emit.json_string(s: "A")),
   ]
 }
 
-fn scm_image_one_object_image(object_members: List<JsonKeyValue>, extra: List<JsonKeyValue>) -> JsonValue {
-  json_object(
+fn scm_image_one_object_image(object_members: List<extdeps.languages.json.emit.JsonKeyValue>, extra: List<extdeps.languages.json.emit.JsonKeyValue>) -> extdeps.languages.json.emit.JsonValue {
+  extdeps.languages.json.emit.json_object(
     members: concat(
       [
-        json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v2")),
-        json_kv(key: "objects", value: json_array(elements: [json_object(members: object_members)])),
-        json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: "0"))])),
+        extdeps.languages.json.emit.json_kv(key: "format", value: extdeps.languages.json.emit.json_string(s: "gunbc-scm-commit-closure-v2")),
+        extdeps.languages.json.emit.json_kv(key: "objects", value: extdeps.languages.json.emit.json_array(elements: [extdeps.languages.json.emit.json_object(members: object_members)])),
+        extdeps.languages.json.emit.json_kv(key: "root", value: extdeps.languages.json.emit.json_object(members: [extdeps.languages.json.emit.json_kv(key: "at", value: extdeps.languages.json.emit.json_string(s: "0"))])),
       ],
       extra
     )
   )
 }
 
-fn scm_image_atom_object_members(kind_members: List<JsonKeyValue>, extra: List<JsonKeyValue>) -> List<JsonKeyValue> {
+fn scm_image_atom_object_members(kind_members: List<extdeps.languages.json.emit.JsonKeyValue>, extra: List<extdeps.languages.json.emit.JsonKeyValue>) -> List<extdeps.languages.json.emit.JsonKeyValue> {
   concat(
     [
       scm_image_kind_object(members: kind_members),
-      json_kv(key: "children", value: json_array(elements: [])),
+      extdeps.languages.json.emit.json_kv(key: "children", value: extdeps.languages.json.emit.json_array(elements: [])),
     ],
     extra
   )
 }
 
-fn scm_image_refused(loaded: ClosureDocLoadOutcome) -> Bool {
-  match loaded {
-    ClosureDocRefused { cause: _ } => true
-    ClosureDocLoaded { store: _, root: _ } => false
-  }
-}
-
 test fn scm_image_an_unknown_envelope_member_refuses() -> Bool {
   scm_image_refused(
-    loaded: decode_closure_document(
+    loaded: gunbc.scm.commit_closure_json_v2.decode_closure_document(
       v: scm_image_one_object_image(
         object_members: scm_image_atom_object_members(kind_members: scm_image_atom_kind_members(), extra: []),
-        extra: [json_kv(key: "future_field", value: json_string(s: "x"))]
+        extra: [extdeps.languages.json.emit.json_kv(key: "future_field", value: extdeps.languages.json.emit.json_string(s: "x"))]
       )
     )
   )
@@ -595,11 +588,11 @@ test fn scm_image_an_unknown_envelope_member_refuses() -> Bool {
 
 test fn scm_image_an_unknown_object_record_member_refuses() -> Bool {
   scm_image_refused(
-    loaded: decode_closure_document(
+    loaded: gunbc.scm.commit_closure_json_v2.decode_closure_document(
       v: scm_image_one_object_image(
         object_members: scm_image_atom_object_members(
           kind_members: scm_image_atom_kind_members(),
-          extra: [json_kv(key: "identity", value: json_string(s: "0"))]
+          extra: [extdeps.languages.json.emit.json_kv(key: "identity", value: extdeps.languages.json.emit.json_string(s: "0"))]
         ),
         extra: []
       )
@@ -612,13 +605,13 @@ test fn scm_image_an_unknown_object_record_member_refuses() -> Bool {
 // members -- a union-shaped check would accept this document.
 test fn scm_image_identity_on_a_non_atom_kind_refuses() -> Bool {
   scm_image_refused(
-    loaded: decode_closure_document(
+    loaded: gunbc.scm.commit_closure_json_v2.decode_closure_document(
       v: scm_image_one_object_image(
         object_members: scm_image_atom_object_members(
           kind_members: [
-            json_kv(key: "kind", value: json_string(s: "type")),
-            json_kv(key: "connective", value: json_string(s: "conj")),
-            json_kv(key: "identity", value: json_string(s: "A")),
+            extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "type")),
+            extdeps.languages.json.emit.json_kv(key: "connective", value: extdeps.languages.json.emit.json_string(s: "conj")),
+            extdeps.languages.json.emit.json_kv(key: "identity", value: extdeps.languages.json.emit.json_string(s: "A")),
           ],
           extra: []
         ),
@@ -630,12 +623,12 @@ test fn scm_image_identity_on_a_non_atom_kind_refuses() -> Bool {
 
 test fn scm_image_behavior_on_a_type_kind_refuses() -> Bool {
   scm_image_refused(
-    loaded: decode_closure_document(
+    loaded: gunbc.scm.commit_closure_json_v2.decode_closure_document(
       v: scm_image_one_object_image(
         object_members: scm_image_atom_object_members(
           kind_members: concat(
             scm_image_atom_kind_members(),
-            [json_kv(key: "behavior", value: json_string(s: "value"))]
+            [extdeps.languages.json.emit.json_kv(key: "behavior", value: extdeps.languages.json.emit.json_string(s: "value"))]
           ),
           extra: []
         ),
@@ -650,22 +643,22 @@ test fn scm_image_behavior_on_a_type_kind_refuses() -> Bool {
 // would satisfy every refusal claim above.
 test fn scm_image_the_same_members_in_a_different_order_still_load() -> Bool {
   scm_image_loads_as(
-    loaded: decode_closure_document(
-      v: json_object(
+    loaded: gunbc.scm.commit_closure_json_v2.decode_closure_document(
+      v: extdeps.languages.json.emit.json_object(
         members: [
-          json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: "0"))])),
-          json_kv(
+          extdeps.languages.json.emit.json_kv(key: "root", value: extdeps.languages.json.emit.json_object(members: [extdeps.languages.json.emit.json_kv(key: "at", value: extdeps.languages.json.emit.json_string(s: "0"))])),
+          extdeps.languages.json.emit.json_kv(
             key: "objects",
-            value: json_array(
+            value: extdeps.languages.json.emit.json_array(
               elements: [
-                json_object(
+                extdeps.languages.json.emit.json_object(
                   members: [
-                    json_kv(key: "children", value: json_array(elements: [])),
+                    extdeps.languages.json.emit.json_kv(key: "children", value: extdeps.languages.json.emit.json_array(elements: [])),
                     scm_image_kind_object(
                       members: [
-                        json_kv(key: "identity", value: json_string(s: "A")),
-                        json_kv(key: "connective", value: json_string(s: "atom")),
-                        json_kv(key: "kind", value: json_string(s: "type")),
+                        extdeps.languages.json.emit.json_kv(key: "identity", value: extdeps.languages.json.emit.json_string(s: "A")),
+                        extdeps.languages.json.emit.json_kv(key: "connective", value: extdeps.languages.json.emit.json_string(s: "atom")),
+                        extdeps.languages.json.emit.json_kv(key: "kind", value: extdeps.languages.json.emit.json_string(s: "type")),
                       ]
                     ),
                   ]
@@ -673,7 +666,7 @@ test fn scm_image_the_same_members_in_a_different_order_still_load() -> Bool {
               ]
             )
           ),
-          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v2")),
+          extdeps.languages.json.emit.json_kv(key: "format", value: extdeps.languages.json.emit.json_string(s: "gunbc-scm-commit-closure-v2")),
         ]
       )
     ),
@@ -685,7 +678,7 @@ test fn scm_image_the_same_members_in_a_different_order_still_load() -> Bool {
 // required, so the refusals above cannot be satisfied by a rule that rejects `identity` everywhere.
 test fn scm_image_an_atom_carrying_its_identity_still_loads() -> Bool {
   scm_image_loads_as(
-    loaded: decode_closure_document(
+    loaded: gunbc.scm.commit_closure_json_v2.decode_closure_document(
       v: scm_image_one_object_image(
         object_members: scm_image_atom_object_members(kind_members: scm_image_atom_kind_members(), extra: []),
         extra: []

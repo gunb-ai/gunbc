@@ -13,29 +13,29 @@ module test.claim.scm_commit_closure_witness
 // merely non-empty. `a_grafted_root_names_exactly_the_child_it_lacks` is the test that decides it.
 
 fn child_node() -> Node {
-  node_synthetic(kind: TypeNode { connective: Atom { identity: ^closure_witness_child } }, children: [])
+  v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^closure_witness_child } }, children: [])
 }
 
 fn parent_node() -> Node {
-  node_synthetic(
-    kind: TypeNode { connective: Conj },
-    children: [Edge { label: Named { name: ^only_child }, target: child_node() }],
+  v2.std.node.node_synthetic(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+    children: [v2.std.node.Edge { label: Named { name: ^only_child }, target: child_node() }],
   )
 }
 
 // A store holding the parent AND its child, with the parent's identity.
-type BuiltStore { store: ObjectStore, root: gunbc.scm.object_store.ObjectId, child: gunbc.scm.object_store.ObjectId }
+type BuiltStore { store: gunbc.scm.object_store.ObjectStore, root: gunbc.scm.object_store.ObjectId, child: gunbc.scm.object_store.ObjectId }
 
 fn build_full_store() -> BuiltStore {
-  match store_node(store: empty_store(), n: child_node()) {
-    LocatorCollision { identity: _, existing: _, incoming: _ } =>
-      BuiltStore { store: empty_store(), root: fallback_id(), child: fallback_id() }
+  match gunbc.scm.object_store.store_node(store: gunbc.scm.object_store.empty_store(), n: child_node()) {
+    gunbc.scm.object_store.LocatorCollision { identity: _, existing: _, incoming: _ } =>
+      BuiltStore { store: gunbc.scm.object_store.empty_store(), root: fallback_id(), child: fallback_id() }
     Stored { store: s1, identity: child_id } =>
-      match store_node(store: s1, n: parent_node()) {
-        LocatorCollision { identity: _, existing: _, incoming: _ } =>
-          BuiltStore { store: empty_store(), root: fallback_id(), child: fallback_id() }
-        Stored { store: s2, identity: parent_id } =>
-          BuiltStore { store: s2, root: parent_id, child: child_id }
+      match gunbc.scm.object_store.store_node(store: s1, n: parent_node()) {
+        gunbc.scm.object_store.LocatorCollision { identity: _, existing: _, incoming: _ } =>
+          BuiltStore { store: gunbc.scm.object_store.empty_store(), root: fallback_id(), child: fallback_id() }
+        Stored { store: s2, identity: test.claim.roadmap_emit.parent_id } =>
+          BuiltStore { store: s2, root: test.claim.roadmap_emit.parent_id, child: child_id }
       }
   }
 }
@@ -43,21 +43,21 @@ fn build_full_store() -> BuiltStore {
 // A deliberately wrong id used only where a probe could not be built; every test asserts a real
 // structural fact that this value cannot satisfy, so a build failure cannot pass as a green.
 fn fallback_id() -> gunbc.scm.object_store.ObjectId {
-  match store_node(store: empty_store(), n: child_node()) {
+  match gunbc.scm.object_store.store_node(store: gunbc.scm.object_store.empty_store(), n: child_node()) {
     Stored { store: _, identity: i } => i
-    LocatorCollision { identity: i, existing: _, incoming: _ } => i
+    gunbc.scm.object_store.LocatorCollision { identity: i, existing: _, incoming: _ } => i
   }
 }
 
 // A store holding ONLY the parent -- object_store's copy_object grafts a record without its children,
 // which is the supported route to an incomplete closure and the reason the encoder could not assume
 // completeness.
-fn build_grafted_store() -> ObjectStore {
+fn build_grafted_store() -> gunbc.scm.object_store.ObjectStore {
   let full = build_full_store()
-  match copy_object(from: full.store, to: empty_store(), identity: full.root) {
-    Copied { store: s, identity: _ } => s
-    CopySourceAbsent { identity: _ } => empty_store()
-    CopyLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
+  match gunbc.scm.object_store.copy_object(from: full.store, to: gunbc.scm.object_store.empty_store(), identity: full.root) {
+    gunbc.scm.object_store.Copied { store: s, identity: _ } => s
+    gunbc.scm.object_store.CopySourceAbsent { identity: _ } => gunbc.scm.object_store.empty_store()
+    gunbc.scm.object_store.CopyLocatorCollision { identity: _, existing: _, incoming: _ } => gunbc.scm.object_store.empty_store()
   }
 }
 
@@ -74,40 +74,40 @@ fn build_grafted_store() -> ObjectStore {
 // The parent's two children are both absent from the grafted store, so both are uncontained, and
 // this claim pins WHICH COMES FIRST. Reversing the fold flips alpha and beta and this goes red.
 fn closure_alpha_child_node() -> Node {
-  node_synthetic(kind: TypeNode { connective: Atom { identity: ^closure_witness_alpha } }, children: [])
+  v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^closure_witness_alpha } }, children: [])
 }
 
 fn closure_beta_child_node() -> Node {
-  node_synthetic(kind: TypeNode { connective: Atom { identity: ^closure_witness_beta } }, children: [])
+  v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^closure_witness_beta } }, children: [])
 }
 
 fn closure_two_child_parent_node() -> Node {
-  node_synthetic(
-    kind: TypeNode { connective: Conj },
+  v2.std.node.node_synthetic(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      Edge { label: Named { name: ^alpha }, target: closure_alpha_child_node() },
-      Edge { label: Named { name: ^beta }, target: closure_beta_child_node() },
+      v2.std.node.Edge { label: Named { name: ^test.claim.git_remote_ref_cas_witness.alpha }, target: closure_alpha_child_node() },
+      v2.std.node.Edge { label: Named { name: ^test.claim.git_remote_ref_cas_witness.beta }, target: closure_beta_child_node() },
     ],
   )
 }
 
-type TwoChildStore { store: ObjectStore, root: gunbc.scm.object_store.ObjectId, first: gunbc.scm.object_store.ObjectId, second: gunbc.scm.object_store.ObjectId }
+type TwoChildStore { store: gunbc.scm.object_store.ObjectStore, root: gunbc.scm.object_store.ObjectId, first: gunbc.scm.object_store.ObjectId, second: gunbc.scm.object_store.ObjectId }
 
 fn two_child_fallback() -> TwoChildStore {
-  TwoChildStore { store: empty_store(), root: fallback_id(), first: fallback_id(), second: fallback_id() }
+  TwoChildStore { store: gunbc.scm.object_store.empty_store(), root: fallback_id(), first: fallback_id(), second: fallback_id() }
 }
 
 fn build_two_child_store() -> TwoChildStore {
-  match store_node(store: empty_store(), n: closure_alpha_child_node()) {
-    LocatorCollision { identity: _, existing: _, incoming: _ } => two_child_fallback()
+  match gunbc.scm.object_store.store_node(store: gunbc.scm.object_store.empty_store(), n: closure_alpha_child_node()) {
+    gunbc.scm.object_store.LocatorCollision { identity: _, existing: _, incoming: _ } => two_child_fallback()
     Stored { store: s1, identity: alpha_id } =>
-      match store_node(store: s1, n: closure_beta_child_node()) {
-        LocatorCollision { identity: _, existing: _, incoming: _ } => two_child_fallback()
+      match gunbc.scm.object_store.store_node(store: s1, n: closure_beta_child_node()) {
+        gunbc.scm.object_store.LocatorCollision { identity: _, existing: _, incoming: _ } => two_child_fallback()
         Stored { store: s2, identity: beta_id } =>
-          match store_node(store: s2, n: closure_two_child_parent_node()) {
-            LocatorCollision { identity: _, existing: _, incoming: _ } => two_child_fallback()
-            Stored { store: s3, identity: parent_id } =>
-              TwoChildStore { store: s3, root: parent_id, first: alpha_id, second: beta_id }
+          match gunbc.scm.object_store.store_node(store: s2, n: closure_two_child_parent_node()) {
+            gunbc.scm.object_store.LocatorCollision { identity: _, existing: _, incoming: _ } => two_child_fallback()
+            Stored { store: s3, identity: test.claim.roadmap_emit.parent_id } =>
+              TwoChildStore { store: s3, root: test.claim.roadmap_emit.parent_id, first: alpha_id, second: beta_id }
           }
       }
   }
@@ -120,21 +120,21 @@ fn first_missing_is(missing: List<gunbc.scm.object_store.ObjectId>, expected: gu
       Absent => Present { value: id }
     }
   }) {
-    Present { value: id } => object_id_eq(left: id, right: expected)
+    Present { value: id } => gunbc.scm.object_store.object_id_eq(left: id, right: expected)
     Absent => false
   }
 }
 
 test fn two_uncontained_children_are_named_in_order() -> Bool {
   let built = build_two_child_store()
-  let grafted = match copy_object(from: built.store, to: empty_store(), identity: built.root) {
-    Copied { store: s, identity: _ } => s
-    CopySourceAbsent { identity: _ } => empty_store()
-    CopyLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
+  let grafted = match gunbc.scm.object_store.copy_object(from: built.store, to: gunbc.scm.object_store.empty_store(), identity: built.root) {
+    gunbc.scm.object_store.Copied { store: s, identity: _ } => s
+    gunbc.scm.object_store.CopySourceAbsent { identity: _ } => gunbc.scm.object_store.empty_store()
+    gunbc.scm.object_store.CopyLocatorCollision { identity: _, existing: _, incoming: _ } => gunbc.scm.object_store.empty_store()
   }
-  let missing = unresolved_identities(closure: CommitClosure { store: grafted, root: built.root })
-  (store_object_count(store: grafted) == 1)
-    && (list_length(items: missing) == 2)
+  let missing = gunbc.scm.commit_closure.unresolved_identities(closure: gunbc.scm.commit_closure.CommitClosure { store: grafted, root: built.root })
+  (gunbc.scm.object_store.store_object_count(store: grafted) == 1)
+    && (std.types.list_length(items: missing) == 2)
     && first_missing_is(missing: missing, expected: built.first)
     && names_exactly(missing: missing, expected: built.second)
 }
@@ -143,10 +143,10 @@ test fn two_uncontained_children_are_named_in_order() -> Bool {
 // rather than stored beside them -- there is no flag here that could disagree with the store.
 test fn a_complete_closure_names_nothing_missing() -> Bool {
   let full = build_full_store()
-  let closure = CommitClosure { store: full.store, root: full.root }
-  (list_length(items: unresolved_identities(closure: closure)) == 0)
-    && closure_is_complete(closure: closure)
-    && (store_object_count(store: full.store) == 2)
+  let closure = gunbc.scm.commit_closure.CommitClosure { store: full.store, root: full.root }
+  (std.types.list_length(items: gunbc.scm.commit_closure.unresolved_identities(closure: closure)) == 0)
+    && gunbc.scm.commit_closure.closure_is_complete(closure: closure)
+    && (gunbc.scm.object_store.store_object_count(store: full.store) == 2)
 }
 
 // THE ACCEPTANCE TEST OF THE RECUT.
@@ -158,16 +158,16 @@ test fn a_complete_closure_names_nothing_missing() -> Bool {
 test fn a_grafted_root_names_exactly_the_child_it_lacks() -> Bool {
   let full = build_full_store()
   let grafted = build_grafted_store()
-  let closure = CommitClosure { store: grafted, root: full.root }
-  let missing = unresolved_identities(closure: closure)
-  (store_object_count(store: grafted) == 1)
-    && (list_length(items: missing) == 1)
+  let closure = gunbc.scm.commit_closure.CommitClosure { store: grafted, root: full.root }
+  let missing = gunbc.scm.commit_closure.unresolved_identities(closure: closure)
+  (gunbc.scm.object_store.store_object_count(store: grafted) == 1)
+    && (std.types.list_length(items: missing) == 1)
     && names_exactly(missing: missing, expected: full.child)
-    && !closure_is_complete(closure: closure)
+    && !gunbc.scm.commit_closure.closure_is_complete(closure: closure)
 }
 
 fn names_exactly(missing: List<gunbc.scm.object_store.ObjectId>, expected: gunbc.scm.object_store.ObjectId) -> Bool {
-  fold(missing, init: false, f: fn(acc, id) { acc || object_id_eq(left: id, right: expected) })
+  fold(missing, init: false, f: fn(acc, id) { acc || gunbc.scm.object_store.object_id_eq(left: id, right: expected) })
 }
 
 // THE ROOT IS A REFERENCE LIKE ANY OTHER. A closure whose store does not carry its own root is the
@@ -175,11 +175,11 @@ fn names_exactly(missing: List<gunbc.scm.object_store.ObjectId>, expected: gunbc
 // the predecessor encoded the root positionally too, so this was as unnameable as the rest.
 test fn a_closure_missing_its_own_root_names_the_root() -> Bool {
   let full = build_full_store()
-  let closure = CommitClosure { store: empty_store(), root: full.root }
-  let missing = unresolved_identities(closure: closure)
-  (list_length(items: missing) == 1)
+  let closure = gunbc.scm.commit_closure.CommitClosure { store: gunbc.scm.object_store.empty_store(), root: full.root }
+  let missing = gunbc.scm.commit_closure.unresolved_identities(closure: closure)
+  (std.types.list_length(items: missing) == 1)
     && names_exactly(missing: missing, expected: full.root)
-    && !closure_is_complete(closure: closure)
+    && !gunbc.scm.commit_closure.closure_is_complete(closure: closure)
 }
 
 // THE ADMISSION IS A VALUE THAT SURVIVES BEING PASSED, which is what lets an encoder require one
@@ -191,15 +191,15 @@ test fn a_closure_missing_its_own_root_names_the_root() -> Bool {
 test fn an_admission_carries_the_decision_that_produced_it() -> Bool {
   let full = build_full_store()
   let grafted = build_grafted_store()
-  let closure = CommitClosure { store: grafted, root: full.root }
-  match admit_partial_commit_closure(closure: closure, reason: ClosureTrimmedForTransfer) {
+  let closure = gunbc.scm.commit_closure.CommitClosure { store: grafted, root: full.root }
+  match gunbc.scm.commit_closure.admit_partial_commit_closure(closure: closure, reason: gunbc.scm.commit_closure.ClosureTrimmedForTransfer) {
     ClosureCompleteSoNothingToAdmit => false
-    PartialClosureAdmitted { admitted: transfer } =>
-      match admit_partial_commit_closure(closure: closure, reason: ClosureGraftedWithoutChildren) {
+    gunbc.scm.commit_closure.PartialClosureAdmitted { admitted: transfer } =>
+      match gunbc.scm.commit_closure.admit_partial_commit_closure(closure: closure, reason: gunbc.scm.commit_closure.ClosureGraftedWithoutChildren) {
         ClosureCompleteSoNothingToAdmit => false
-        PartialClosureAdmitted { admitted: graft } =>
-          reason_is_transfer(r: admitted_reason(admitted: transfer))
-            && !reason_is_transfer(r: admitted_reason(admitted: graft))
+        gunbc.scm.commit_closure.PartialClosureAdmitted { admitted: graft } =>
+          reason_is_transfer(r: gunbc.scm.commit_closure.admitted_reason(admitted: transfer))
+            && !reason_is_transfer(r: gunbc.scm.commit_closure.admitted_reason(admitted: graft))
       }
   }
 }
@@ -212,9 +212,9 @@ test fn an_admission_names_the_objects_it_admits_as_missing() -> Bool {
   let grafted = build_grafted_store()
   match admitted_for(store: grafted, root: full.root) {
     ClosureCompleteSoNothingToAdmit => false
-    PartialClosureAdmitted { admitted: a } =>
-      (list_length(items: admitted_unresolved(admitted: a)) == 1)
-        && names_exactly(missing: admitted_unresolved(admitted: a), expected: full.child)
+    gunbc.scm.commit_closure.PartialClosureAdmitted { admitted: a } =>
+      (std.types.list_length(items: gunbc.scm.commit_closure.admitted_unresolved(admitted: a)) == 1)
+        && names_exactly(missing: gunbc.scm.commit_closure.admitted_unresolved(admitted: a), expected: full.child)
   }
 }
 
@@ -227,7 +227,7 @@ test fn an_admission_names_the_objects_it_admits_as_missing() -> Bool {
 test fn the_mint_refuses_a_complete_closure() -> Bool {
   let full = build_full_store()
   match admitted_for(store: full.store, root: full.root) {
-    PartialClosureAdmitted { admitted: _ } => false
+    gunbc.scm.commit_closure.PartialClosureAdmitted { admitted: _ } => false
     ClosureCompleteSoNothingToAdmit => true
   }
 }
@@ -235,21 +235,21 @@ test fn the_mint_refuses_a_complete_closure() -> Bool {
 
 // Mints an admission for the closure under test, or reports the refusal. Every claim below routes
 // through this, so none of them can accidentally encode a closure the mint never admitted.
-fn admitted_for(store: ObjectStore, root: gunbc.scm.object_store.ObjectId) -> PartialClosureAdmissionOutcome {
-  admit_partial_commit_closure(
-    closure: CommitClosure { store: store, root: root },
-    reason: ClosureTrimmedForTransfer
+fn admitted_for(store: gunbc.scm.object_store.ObjectStore, root: gunbc.scm.object_store.ObjectId) -> gunbc.scm.commit_closure.PartialClosureAdmissionOutcome {
+  gunbc.scm.commit_closure.admit_partial_commit_closure(
+    closure: gunbc.scm.commit_closure.CommitClosure { store: store, root: test.claim.extdeps_llm_claude_trust_witness.root },
+    reason: gunbc.scm.commit_closure.ClosureTrimmedForTransfer
   )
 }
 
-fn json_is_object(v: JsonValue) -> Bool {
+fn json_is_object(v: extdeps.languages.json.emit.JsonValue) -> Bool {
   match v {
     JsonObject { members: _ } => true
     _ => false
   }
 }
 
-fn reason_is_transfer(r: PartialClosureReason) -> Bool {
+fn reason_is_transfer(r: gunbc.scm.commit_closure.PartialClosureReason) -> Bool {
   match r {
     ClosureTrimmedForTransfer => true
     ClosureGraftedWithoutChildren => false
@@ -273,16 +273,16 @@ fn reason_is_transfer(r: PartialClosureReason) -> Bool {
 test fn a_partial_closure_encodes_only_with_an_admission() -> Bool {
   let full = build_full_store()
   let grafted = build_grafted_store()
-  let refused = match encode_complete_closure_document(
-    closure: CommitClosure { store: grafted, root: full.root }
+  let refused = match gunbc.scm.commit_closure_json_v2.encode_complete_closure_document(
+    closure: gunbc.scm.commit_closure.CommitClosure { store: grafted, root: full.root }
   ) {
-    ClosureDocEncodeRefused { cause: c } => cause_is_incomplete_without_admission(cause: c)
-    ClosureDocEncoded { value: _ } => false
+    gunbc.scm.commit_closure_json_v2.ClosureDocEncodeRefused { cause: c } => cause_is_incomplete_without_admission(cause: c)
+    gunbc.scm.commit_closure_json_v2.ClosureDocEncoded { value: _ } => false
   }
   let admitted = match admitted_for(store: grafted, root: full.root) {
     ClosureCompleteSoNothingToAdmit => false
-    PartialClosureAdmitted { admitted: a } =>
-      json_is_object(v: encode_admitted_partial_closure_document(admitted: a))
+    gunbc.scm.commit_closure.PartialClosureAdmitted { admitted: a } =>
+      json_is_object(v: gunbc.scm.commit_closure_json_v2.encode_admitted_partial_closure_document(admitted: a))
   }
   refused && admitted
 }
@@ -300,9 +300,9 @@ test fn a_partial_closure_encodes_only_with_an_admission() -> Bool {
 // unadmitted partial closure; what it no longer carries is the discrimination, which moved to the
 // type. The claim that the LOAD classifier cannot name this cause is a compile-time property and is
 // recorded by the probe in the commit message, not by a runtime assertion that cannot express it.
-fn cause_is_incomplete_without_admission(cause: ClosureDocEncodeRefusal) -> Bool {
+fn cause_is_incomplete_without_admission(cause: gunbc.scm.commit_closure_json_v2.ClosureDocEncodeRefusal) -> Bool {
   match cause {
-    ClosureDocIncompleteWithoutAdmission { identity: _ } => true
+    gunbc.scm.commit_closure_json_v2.ClosureDocIncompleteWithoutAdmission { identity: _ } => true
   }
 }
 
@@ -317,17 +317,17 @@ test fn an_uncontained_object_survives_the_wire_and_is_still_named() -> Bool {
   let grafted = build_grafted_store()
   match admitted_for(store: grafted, root: full.root) {
     ClosureCompleteSoNothingToAdmit => false
-    PartialClosureAdmitted { admitted: a } =>
-      match parse_json(
-        s: serialize_json(v: encode_admitted_partial_closure_document(admitted: a))
+    gunbc.scm.commit_closure.PartialClosureAdmitted { admitted: a } =>
+      match extdeps.languages.json.parse.parse_json(
+        s: extdeps.languages.json.emit.serialize_json(v: gunbc.scm.commit_closure_json_v2.encode_admitted_partial_closure_document(admitted: a))
       ) {
         Absent => false
         Present { value: reparsed } =>
-          match decode_closure_document(v: reparsed) {
-            ClosureDocRefused { cause: _ } => false
-            ClosureDocLoaded { store: store, root: root } =>
+          match gunbc.scm.commit_closure_json_v2.decode_closure_document(v: reparsed) {
+            gunbc.scm.commit_closure_json_v2.ClosureDocRefused { cause: _ } => false
+            gunbc.scm.commit_closure_json_v2.ClosureDocLoaded { store: store, root: test.claim.extdeps_llm_claude_trust_witness.root } =>
               names_exactly(
-                missing: unresolved_identities(closure: CommitClosure { store: store, root: root }),
+                missing: gunbc.scm.commit_closure.unresolved_identities(closure: gunbc.scm.commit_closure.CommitClosure { store: store, root: test.claim.extdeps_llm_claude_trust_witness.root }),
                 expected: full.child
               )
           }
@@ -346,38 +346,38 @@ test fn an_uncontained_object_survives_the_wire_and_is_still_named() -> Bool {
 // The count is asserted, not just the refusal: `found` distinguishes both-arms from neither-arm,
 // which the previous variant could not do because it was hardcoded to 0 at its only construction.
 test fn a_target_must_carry_exactly_one_arm() -> Bool {
-  let both = json_object(
+  let both = extdeps.languages.json.emit.json_object(
     members: [
-      json_kv(key: "at", value: json_string(s: "0")),
-      json_kv(key: "uncontained", value: json_string(s: "0000000000000000")),
+      extdeps.languages.json.emit.json_kv(key: "at", value: extdeps.languages.json.emit.json_string(s: "0")),
+      extdeps.languages.json.emit.json_kv(key: "uncontained", value: extdeps.languages.json.emit.json_string(s: "0000000000000000")),
     ]
   )
-  let neither = json_object(members: [])
+  let neither = extdeps.languages.json.emit.json_object(members: [])
   arm_count_refused(v: both, expected: 2) && arm_count_refused(v: neither, expected: 0)
 }
 
-fn arm_count_refused(v: JsonValue, expected: Int) -> Bool {
-  match decode_target(positions: empty_map(), target_value: v) {
-    TargetDecodeFailed { cause: c } =>
+fn arm_count_refused(v: extdeps.languages.json.emit.JsonValue, expected: Int) -> Bool {
+  match gunbc.scm.commit_closure_json_v2.decode_target(positions: v2.std.collection.empty_map(), target_value: v) {
+    gunbc.scm.commit_closure_json_v2.TargetDecodeFailed { cause: c } =>
       match c {
-        ClosureDocTargetNotOneArm { found: n } => n == expected
+        gunbc.scm.commit_closure_json_v2.ClosureDocTargetNotOneArm { found: n } => n == expected
         _ => false
       }
-    TargetDecoded { target: _ } => false
+    gunbc.scm.commit_closure_json_v2.TargetDecoded { target: _ } => false
   }
 }
 
 // THE POSITIVE CONTROL, without which the two refusals above are satisfied by a decoder that refuses
 // every target. One arm, well formed, resolves.
 test fn a_target_carrying_one_arm_still_decodes() -> Bool {
-  match decode_target(
-    positions: empty_map(),
-    target_value: json_object(
-      members: [json_kv(key: "uncontained", value: json_string(s: "0000000000000000"))]
+  match gunbc.scm.commit_closure_json_v2.decode_target(
+    positions: v2.std.collection.empty_map(),
+    target_value: extdeps.languages.json.emit.json_object(
+      members: [extdeps.languages.json.emit.json_kv(key: "uncontained", value: extdeps.languages.json.emit.json_string(s: "0000000000000000"))]
     )
   ) {
-    TargetDecoded { target: _ } => true
-    TargetDecodeFailed { cause: _ } => false
+    gunbc.scm.commit_closure_json_v2.TargetDecoded { target: _ } => true
+    gunbc.scm.commit_closure_json_v2.TargetDecodeFailed { cause: _ } => false
   }
 }
 
@@ -396,36 +396,36 @@ test fn a_target_carrying_one_arm_still_decodes() -> Bool {
 // first reports ClosureDocMemberWrongShape("uncontained") and the second ClosureDocMemberMissing(
 // "uncontained"), so each goes red for a different wrong answer rather than by a shared accident.
 test fn a_duplicated_at_is_refused_against_at() -> Bool {
-  match decode_target(
-    positions: empty_map(),
-    target_value: json_object(
+  match gunbc.scm.commit_closure_json_v2.decode_target(
+    positions: v2.std.collection.empty_map(),
+    target_value: extdeps.languages.json.emit.json_object(
       members: [
-        json_kv(key: "at", value: json_string(s: "0")),
-        json_kv(key: "at", value: json_string(s: "1")),
+        extdeps.languages.json.emit.json_kv(key: "at", value: extdeps.languages.json.emit.json_string(s: "0")),
+        extdeps.languages.json.emit.json_kv(key: "at", value: extdeps.languages.json.emit.json_string(s: "1")),
       ]
     )
   ) {
-    TargetDecodeFailed { cause: c } =>
+    gunbc.scm.commit_closure_json_v2.TargetDecodeFailed { cause: c } =>
       match c {
-        ClosureDocMemberDuplicated { key: k } => k == "at"
+        gunbc.scm.commit_closure_json_v2.ClosureDocMemberReadRefused { cause: gunbc.scm.json_member.MemberReadDuplicated { key: k } } => k == "at"
         _ => false
       }
-    TargetDecoded { target: _ } => false
+    gunbc.scm.commit_closure_json_v2.TargetDecoded { target: _ } => false
   }
 }
 
 test fn a_non_string_at_is_refused_against_at() -> Bool {
-  match decode_target(
-    positions: empty_map(),
-    target_value: json_object(
-      members: [json_kv(key: "at", value: json_object(members: []))]
+  match gunbc.scm.commit_closure_json_v2.decode_target(
+    positions: v2.std.collection.empty_map(),
+    target_value: extdeps.languages.json.emit.json_object(
+      members: [extdeps.languages.json.emit.json_kv(key: "at", value: extdeps.languages.json.emit.json_object(members: []))]
     )
   ) {
-    TargetDecodeFailed { cause: c } =>
+    gunbc.scm.commit_closure_json_v2.TargetDecodeFailed { cause: c } =>
       match c {
-        ClosureDocMemberWrongShape { key: k } => k == "at"
+        gunbc.scm.commit_closure_json_v2.ClosureDocMemberReadRefused { cause: gunbc.scm.json_member.MemberReadWrongShape { key: k } } => k == "at"
         _ => false
       }
-    TargetDecoded { target: _ } => false
+    gunbc.scm.commit_closure_json_v2.TargetDecoded { target: _ } => false
   }
 }
