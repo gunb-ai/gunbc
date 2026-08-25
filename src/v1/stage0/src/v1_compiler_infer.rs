@@ -3505,13 +3505,31 @@ pub fn declared_realizes_as_kernel_numeric(
     }
 }
 
+pub fn inhabitance_undecidable_reason_label(reason: InhabitanceUndecidableReason) -> String {
+    match reason.clone() {
+    InhabitanceUndecidableReason::UndecidableGenericFormal => "generic formal: the declared position's payload types can be type variables, so membership is not decidable from the declaration alone".to_string(),
+    InhabitanceUndecidableReason::UndecidableOptionalCarrier => "optional carrier: the language's own cardinality carrier, where a T standing in an Optional<T> position is the declared spelling rather than a payload escape".to_string(),
+    InhabitanceUndecidableReason::UndecidableFormalUnresolved => "formal unresolved: the declared type did not resolve to a declaration, so there is nothing to judge inhabitance against".to_string(),
+    InhabitanceUndecidableReason::UndecidableProducedIdentityErased => "produced identity erased: the produced value's type identity is not recoverable at this seam".to_string(),
+}
+}
+
 pub fn declared_type_obligation_diags(
     obligation: Rc<DeclaredTypeObligation>,
     scope: Rc<InferScope>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     match (*declared_type_inhabitance(obligation.clone(), scope.clone())).clone() {
         InhabitanceVerdict::Inhabits => Rc::new(vec![]),
-        InhabitanceVerdict::InhabitanceUndecidable { reason: _, .. } => Rc::new(vec![]),
+        InhabitanceVerdict::InhabitanceUndecidable { reason: r, .. } => {
+            Rc::new(vec![make_error_node(
+                Rc::new(CompilerDiagnostic::DeclaredTypeInhabitanceUndecided {
+                    position: declared_type_position_label(obligation.position.clone()),
+                    reason: inhabitance_undecidable_reason_label(r.clone()),
+                    span: obligation.span.clone(),
+                }),
+                scope.module_name.clone(),
+            )])
+        }
         InhabitanceVerdict::InhabitanceRefused { reason: _, .. } => Rc::new(vec![make_error_node(
             Rc::new(CompilerDiagnostic::DeclaredTypeNotInhabited {
                 position: declared_type_position_label(obligation.position.clone()),
