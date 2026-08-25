@@ -184,7 +184,8 @@ different questions, and gen 3 needed both.
 
 **(b) Imports were suppressing an alternate resolver regime.** This is the
 sharpest finding in the investigation and it is not a keying fact at all.
-`src/v1/stage0/src/cli_run.rs:8610` — verified in this worktree:
+`v1.stage0.cli_run` `source_declares_import_lines`, at its call site in the
+source-file admission loop — verified in this worktree:
 
 ```rust
 if source_declares_import_lines(&sf.content) {
@@ -836,9 +837,16 @@ execution.
 
 ### 7.0 First: this does not defer the deletion, and here is the test
 
-DESIGN §3 is delete-first, and the 2026-08-15 operator ruling is explicit that the
-grammar goes up front. **The ordering below must not be read as re-litigating
-that, and there is a mechanical test for whether it does:** does any phase below
+**ORDER IS SETTLED IN §7a, NOT HERE, AND THIS SUBSECTION IS SUBORDINATE TO IT.**
+The 2026-08-15 ruling that the grammar goes up front is **superseded on order**
+by the 2026-08-25 ruling recorded in §7a: the grammar deletion is the LAST step.
+An earlier revision of this subsection recited the 2026-08-15 order in the
+present tense, which put two incompatible landing orders in one authority — the
+§3 violation this document exists to record, committed by the document itself
+(review 55932).
+
+What survives here is not an order but a **test**, and it applies unchanged under
+either order: does any phase below
 require `import` to still exist, or restore a capability the deletion removed? No
 phase does. Every one of A–C is independently correct on a corpus that still has
 imports and on one that does not.
@@ -1360,8 +1368,7 @@ step 6 names, reached from the direction that looks most conservative.
 | **M4** | **Keys are typed.** A spelling is unspellable in key position | `key_eq` is not a parameter anywhere; a content-derived `key_of` does not compile |
 | **M5** | **The projection is green.** A binding-preserving import-free corpus exists, derived | `old_resolved_declaration == projected_resolved_declaration`, 0 binding-identity changes |
 | **M6** | **Semantic authority flipped AND imports semantically inert** — every production consumer on the reference-derived authority, all import-derived producers and ambient fallbacks gone | acceptance set green; stage0 regenerated; no live import reader remains |
-| **M7** | **Grammar corpse removed** | `import` refuses at parse; token, AST and production gone |
-| **M8** | **Grammar deleted.** | `import` refuses at parse; the AST and productions are gone |
+| **M7** | **Grammar deleted** — the terminal milestone | `import` refuses at parse; token, AST and production gone |
 
 M0–M4 are independently valuable on main *with imports*. M5 onward is the cut.
 
