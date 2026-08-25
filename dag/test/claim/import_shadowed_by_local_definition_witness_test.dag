@@ -51,6 +51,24 @@ test fn import_shadowed_by_local_definition_must_refuse() -> Bool {
   )
 }
 
+fn import_shadow_variant_fixture_source() -> String {
+  "module ish.variant\n\nimport std.types { String }\nimport std.algebra { trim }\n\ntype IshVariantHolder\n  = trim { value: String }\n  | IshOther { value: String }\n\nfn ish_variant_use(value: String) -> IshVariantHolder {\n  IshOther { value: value }\n}\n"
+}
+
+// THE SECOND RED, one level down (review 55680). A module-scope name is an item name OR a coproduct
+// VARIANT name -- get_exported_names has always treated both as exports. The first cut of this wall
+// built its collision set from item names alone, so a local variant could still discard an import
+// in silence: measured at 0 diagnostics before the widening, refused after. The judgment was
+// exhaustive over the question it asked and never descended to the one that decides the outcome.
+test fn import_shadowed_by_local_variant_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    import_shadow_variant_fixture_source(),
+    "src/ish_variant.rs",
+    [],
+    []
+  )
+}
+
 // THE POSITIVE CONTROL. The same import with a distinct local name must still compile, or the red
 // above is satisfied by a compiler that refuses everything and measures nothing.
 test fn imported_name_with_distinct_local_name_still_compiles() -> Bool {

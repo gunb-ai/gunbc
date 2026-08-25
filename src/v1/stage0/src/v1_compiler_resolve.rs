@@ -284,19 +284,34 @@ pub fn resolve_module_imports(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ModuleResolveResult> {
     {
-        let local_definition_names = Rc::new({
+        let local_item_names = Rc::new({
             let mut __result = Vec::new();
             for item in module_items(module.clone()).iter().cloned() {
                 __result.push(get_item_name(item.clone(), source_indices.clone()));
             }
             __result
-        })
-        .iter()
-        .cloned()
-        .fold(
-            v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, n: String| v1_rt::rc_map_insert(acc, n.clone(), true),
-        );
+        });
+        let local_variant_names = Rc::new({
+            let mut __result = Vec::new();
+            for item in module_items(module.clone()).iter().cloned() {
+                __result.extend(
+                    (*get_variant_names(item.clone(), source_indices.clone()))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __result
+        });
+        let local_definition_names =
+            v1_rt::concat(local_item_names.clone(), local_variant_names.clone())
+                .iter()
+                .cloned()
+                .fold(
+                    v1_rt::rc_empty_map::<String, bool>(),
+                    |acc: Rc<HashMap<String, bool>>, n: String| {
+                        v1_rt::rc_map_insert(acc, n.clone(), true)
+                    },
+                );
         let results = Rc::new({
             let mut __result = Vec::new();
             for imp in module_imports(module.clone()).iter().cloned() {
