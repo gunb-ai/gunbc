@@ -98,6 +98,11 @@ fn apply_as_pred(pred: fn(Int) -> Bool) -> Bool {
   pred(0)
 }
 
+fn let_uncollided_named() -> Bool {
+  let uncollided_pred = strictly_positive
+  uncollided_pred(0)
+}
+
 fn let_named_applied_under_another_name() -> Bool {
   let shadow_pred = strictly_positive
   apply_as_pred(pred: shadow_pred)
@@ -140,4 +145,12 @@ test fn lambda_binding_is_unaffected_control() -> Bool {
 test fn named_binding_applied_under_another_name_is_unaffected_control() -> Bool {
   !let_named_applied_under_another_name()
     && !pattern_named_applied_under_another_name()
+}
+
+// GREEN CONTROL that makes the COLLISION the subject rather than named-function values generally:
+// the same named function, bound to a local whose name NOTHING shadows, called at that local's own
+// spelling -- the exact shape that reds above -- reaches the local. So the wrong arms differ from
+// this one in one variable only, the existence of a same-named free function.
+test fn uncollided_named_binding_is_unaffected_control() -> Bool {
+  !let_uncollided_named()
 }
