@@ -1,50 +1,51 @@
 module test.claim.host_standup_assimilation_deduction
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data zero_elapsed: std.measure.Millisecond = millisecond(count: 0)
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+data zero_elapsed: std.measure.Millisecond = std.measure.millisecond(count: 0)
 
 test fn pre_install_within_budget_is_absent_not_converged() -> Bool {
-  srv3_pre_install_actuation_verdict(elapsed: zero_elapsed) == Absent
-    && !deduce_os_install_actuated_satisfied(verdict: Absent)
+  gunbc.host_standup_assimilation_deduction.srv3_pre_install_actuation_verdict(elapsed: zero_elapsed) == Absent
+    && !gunbc.host_standup_assimilation_deduction.deduce_os_install_actuated_satisfied(verdict: Absent)
 }
 
 test fn post_install_lease_row_deduces_converged_noop() -> Bool {
-  srv3_post_install_actuation_verdict(elapsed: zero_elapsed) == std.upsert_decision.Converged
-    && deduce_os_install_actuated_satisfied(verdict: Converged)
-    && match decision_for_os_install_actuation_verdict(
-      verdict: Converged,
-      obs: srv3_pre_install_lease_observation,
-      stall: stall_budget_verdict(
-        budget: srv3_os_install_to_host_identity_budget(elapsed: zero_elapsed),
+  gunbc.host_standup_assimilation_deduction.srv3_post_install_actuation_verdict(elapsed: zero_elapsed) == std.upsert_decision.Converged
+    && gunbc.host_standup_assimilation_deduction.deduce_os_install_actuated_satisfied(verdict: std.upsert_decision.Converged)
+    && match gunbc.host_standup_assimilation_deduction.decision_for_os_install_actuation_verdict(
+      verdict: std.upsert_decision.Converged,
+      obs: gunbc.host_standup_assimilation_deduction.srv3_pre_install_lease_observation,
+      stall: std.temporal_effect.stall_budget_verdict(
+        budget: gunbc.host_standup_assimilation_deduction.srv3_os_install_to_host_identity_budget(elapsed: zero_elapsed),
       ),
     ) {
-      Noop => true
+      std.upsert_decision.Noop => true
       Apply { plan: _ } => false
       Refuse { reason: _ } => false
     }
-    && match classify_os_install_actuation_upsert(
-      obs: srv3_post_install_lease_observation,
-      fleet_slot: operator_host_srv3,
-      stall: stall_budget_verdict(
-        budget: srv3_os_install_to_host_identity_budget(elapsed: zero_elapsed),
+    && match gunbc.host_standup_assimilation_deduction.classify_os_install_actuation_upsert(
+      obs: gunbc.host_standup_assimilation_deduction.srv3_post_install_lease_observation,
+      fleet_slot: gunbc.fleet_intent_network.operator_host_srv3,
+      stall: std.temporal_effect.stall_budget_verdict(
+        budget: gunbc.host_standup_assimilation_deduction.srv3_os_install_to_host_identity_budget(elapsed: zero_elapsed),
       ),
     ) {
-      UpsertClassification { verdict: Converged, decision: Noop } => true
+      std.upsert_decision.UpsertClassification { verdict: std.upsert_decision.Converged, decision: std.upsert_decision.Noop } => true
       _ => false
     }
 }
 
 test fn unreadable_lease_is_unknown_refused_not_pending() -> Bool {
-  srv3_unreadable_lease_actuation_verdict(elapsed: zero_elapsed) == UnknownRefused
-    && srv3_unreadable_lease_actuation_verdict(elapsed: zero_elapsed) != Absent
-    && !deduce_os_install_actuated_satisfied(verdict: UnknownRefused)
-    && match decision_for_os_install_actuation_verdict(
-      verdict: UnknownRefused,
-      obs: srv3_unreadable_lease_observation,
-      stall: stall_budget_verdict(
-        budget: srv3_os_install_to_host_identity_budget(elapsed: zero_elapsed),
+  gunbc.host_standup_assimilation_deduction.srv3_unreadable_lease_actuation_verdict(elapsed: zero_elapsed) == std.upsert_decision.UnknownRefused
+    && gunbc.host_standup_assimilation_deduction.srv3_unreadable_lease_actuation_verdict(elapsed: zero_elapsed) != Absent
+    && !gunbc.host_standup_assimilation_deduction.deduce_os_install_actuated_satisfied(verdict: std.upsert_decision.UnknownRefused)
+    && match gunbc.host_standup_assimilation_deduction.decision_for_os_install_actuation_verdict(
+      verdict: std.upsert_decision.UnknownRefused,
+      obs: gunbc.host_standup_assimilation_deduction.srv3_unreadable_lease_observation,
+      stall: std.temporal_effect.stall_budget_verdict(
+        budget: gunbc.host_standup_assimilation_deduction.srv3_os_install_to_host_identity_budget(elapsed: zero_elapsed),
       ),
     ) {
       Refuse { reason: r } => string_contains(s: r, pattern: "unreachable")
@@ -53,49 +54,49 @@ test fn unreadable_lease_is_unknown_refused_not_pending() -> Bool {
 }
 
 test fn no_lease_past_budget_is_drifted_not_fabricated_success() -> Bool {
-  let past = millisecond(
-    count: millisecond_count(
-      m: hang_budget_millisecond(ms: srv3_install_hang_no_router_lease_ms),
+  let past = std.measure.millisecond(
+    count: std.measure.millisecond_count(
+      m: gunbc.host_standup_assimilation_deduction.hang_budget_millisecond(ms: gunbc.srv3_os_install_diagnostic.srv3_install_hang_no_router_lease_ms),
     ) + 1,
   )
-  match srv3_pre_install_actuation_verdict(elapsed: past) {
+  match gunbc.host_standup_assimilation_deduction.srv3_pre_install_actuation_verdict(elapsed: past) {
     Drifted =>
-      !deduce_os_install_actuated_satisfied(verdict: Drifted)
-        && match decision_for_os_install_actuation_verdict(
+      !gunbc.host_standup_assimilation_deduction.deduce_os_install_actuated_satisfied(verdict: Drifted)
+        && match gunbc.host_standup_assimilation_deduction.decision_for_os_install_actuation_verdict(
           verdict: Drifted,
-          obs: srv3_pre_install_lease_observation,
-          stall: stall_budget_verdict(
-            budget: srv3_os_install_to_host_identity_budget(elapsed: past),
+          obs: gunbc.host_standup_assimilation_deduction.srv3_pre_install_lease_observation,
+          stall: std.temporal_effect.stall_budget_verdict(
+            budget: gunbc.host_standup_assimilation_deduction.srv3_os_install_to_host_identity_budget(elapsed: past),
           ),
         ) {
           Refuse { reason: _ } => true
           Apply { plan: _ } => false
-          Noop => false
+          std.upsert_decision.Noop => false
         }
-    Converged => false
+    std.upsert_decision.Converged => false
     Absent => false
-    UnknownRefused => false
-    Conflict => false
-    Inaccessible => false
+    std.upsert_decision.UnknownRefused => false
+    std.upsert_decision.Conflict => false
+    std.upsert_decision.Inaccessible => false
   }
 }
 
 test fn upsert_pending_applies_assert_pending_plan() -> Bool {
-  match classify_os_install_actuation_upsert(
-    obs: srv3_pre_install_lease_observation,
-    fleet_slot: operator_host_srv3,
-    stall: stall_budget_verdict(
-      budget: srv3_os_install_to_host_identity_budget(elapsed: zero_elapsed),
+  match gunbc.host_standup_assimilation_deduction.classify_os_install_actuation_upsert(
+    obs: gunbc.host_standup_assimilation_deduction.srv3_pre_install_lease_observation,
+    fleet_slot: gunbc.fleet_intent_network.operator_host_srv3,
+    stall: std.temporal_effect.stall_budget_verdict(
+      budget: gunbc.host_standup_assimilation_deduction.srv3_os_install_to_host_identity_budget(elapsed: zero_elapsed),
     ),
   ) {
-    UpsertClassification { verdict: Absent, decision: Apply { plan: AssertOsInstallActuationPending } } => true
+    std.upsert_decision.UpsertClassification { verdict: Absent, decision: Apply { plan: gunbc.host_standup_assimilation_deduction.AssertOsInstallActuationPending } } => true
     _ => false
   }
 }
 
 test fn stall_cause_fold_legacy_boot_mode() -> Bool {
-  let causes = stall_causes_from_probe(probe: gunbc.host_standup_assimilation_deduction.StallTransitionProbe {
-    boot_override_mode: Present { value: BootOverrideModeLegacy },
+  let causes = gunbc.host_standup_assimilation_deduction.stall_causes_from_probe(probe: gunbc.host_standup_assimilation_deduction.StallTransitionProbe {
+    boot_override_mode: Present { value: extdeps.bmc.types.BootOverrideModeLegacy },
     nbd_serve_session_active: true,
     kvm_screen: Absent,
     host_logger_nonempty: true,
@@ -106,21 +107,21 @@ test fn stall_cause_fold_legacy_boot_mode() -> Bool {
     init: false,
     f: (acc, c) =>
       acc || (match c {
-        StallCauseBootModeLegacyUefiRequired => true
+        gunbc.host_standup_assimilation_deduction.StallCauseBootModeLegacyUefiRequired => true
         _ => false
       })
   )
-    && match cause_fold_primary_stall_remediation(causes: causes) {
-      Present { value: RemediationSetBootOverrideModeUefi } => true
+    && match gunbc.host_standup_assimilation_deduction.cause_fold_primary_stall_remediation(causes: causes) {
+      Present { value: gunbc.host_standup_assimilation_deduction.RemediationSetBootOverrideModeUefi } => true
       _ => false
     }
 }
 
 test fn stall_cause_fold_subiquity_storage_screen() -> Bool {
-  let causes = stall_causes_from_probe(probe: gunbc.host_standup_assimilation_deduction.StallTransitionProbe {
-    boot_override_mode: Present { value: BootOverrideModeUefi },
+  let causes = gunbc.host_standup_assimilation_deduction.stall_causes_from_probe(probe: gunbc.host_standup_assimilation_deduction.StallTransitionProbe {
+    boot_override_mode: Present { value: extdeps.bmc.types.BootOverrideModeUefi },
     nbd_serve_session_active: true,
-    kvm_screen: Present { value: SubiquityStorageScreen },
+    kvm_screen: Present { value: gunbc.os_install_deduction.SubiquityStorageScreen },
     host_logger_nonempty: true,
     boot_progress_none: false,
   })
@@ -128,31 +129,31 @@ test fn stall_cause_fold_subiquity_storage_screen() -> Bool {
     causes,
     init: false,
     f: (acc, c) =>
-      acc || stall_transition_cause_label(cause: c) == "seed-not-found-awaiting-storage"
+      acc || gunbc.host_standup_assimilation_deduction.stall_transition_cause_label(cause: c) == "seed-not-found-awaiting-storage"
   )
-    && match cause_fold_primary_stall_remediation(causes: causes) {
-      Present { value: RemediationRemasterSeedOrDeclareStoragePolicy } => true
+    && match gunbc.host_standup_assimilation_deduction.cause_fold_primary_stall_remediation(causes: causes) {
+      Present { value: gunbc.host_standup_assimilation_deduction.RemediationRemasterSeedOrDeclareStoragePolicy } => true
       _ => false
     }
 }
 
 test fn stall_cause_fold_media_and_logger_distinct() -> Bool {
-  let media_causes = stall_causes_from_probe(probe: gunbc.host_standup_assimilation_deduction.StallTransitionProbe {
-    boot_override_mode: Present { value: BootOverrideModeUefi },
+  let media_causes = gunbc.host_standup_assimilation_deduction.stall_causes_from_probe(probe: gunbc.host_standup_assimilation_deduction.StallTransitionProbe {
+    boot_override_mode: Present { value: extdeps.bmc.types.BootOverrideModeUefi },
     nbd_serve_session_active: false,
     kvm_screen: Absent,
     host_logger_nonempty: true,
     boot_progress_none: false,
   })
-  let logger_causes = stall_causes_from_probe(probe: gunbc.host_standup_assimilation_deduction.StallTransitionProbe {
-    boot_override_mode: Present { value: BootOverrideModeUefi },
+  let logger_causes = gunbc.host_standup_assimilation_deduction.stall_causes_from_probe(probe: gunbc.host_standup_assimilation_deduction.StallTransitionProbe {
+    boot_override_mode: Present { value: extdeps.bmc.types.BootOverrideModeUefi },
     nbd_serve_session_active: true,
     kvm_screen: Absent,
     host_logger_nonempty: false,
     boot_progress_none: false,
   })
-  match cause_fold_primary_stall_remediation(causes: media_causes) {
-    Present { value: RemediationStartNbdServeSession } => true
+  match gunbc.host_standup_assimilation_deduction.cause_fold_primary_stall_remediation(causes: media_causes) {
+    Present { value: gunbc.host_standup_assimilation_deduction.RemediationStartNbdServeSession } => true
     _ => false
   }
     && fold(
@@ -160,15 +161,15 @@ test fn stall_cause_fold_media_and_logger_distinct() -> Bool {
       init: false,
       f: (acc, c) =>
         acc || (match c {
-          StallCauseConsoleRedirectOff => true
+          gunbc.host_standup_assimilation_deduction.StallCauseConsoleRedirectOff => true
           _ => false
         })
     )
 }
 
 test fn stall_cause_fold_no_bootable_device() -> Bool {
-  let causes = stall_causes_from_probe(probe: gunbc.host_standup_assimilation_deduction.StallTransitionProbe {
-    boot_override_mode: Present { value: BootOverrideModeUefi },
+  let causes = gunbc.host_standup_assimilation_deduction.stall_causes_from_probe(probe: gunbc.host_standup_assimilation_deduction.StallTransitionProbe {
+    boot_override_mode: Present { value: extdeps.bmc.types.BootOverrideModeUefi },
     nbd_serve_session_active: true,
     kvm_screen: Absent,
     host_logger_nonempty: true,
@@ -179,23 +180,23 @@ test fn stall_cause_fold_no_bootable_device() -> Bool {
     init: false,
     f: (acc, c) =>
       acc || (match c {
-        StallCauseNoBootableDevice => true
+        gunbc.host_standup_assimilation_deduction.StallCauseNoBootableDevice => true
         _ => false
       })
   )
 }
 
 test fn post_install_subsumption_clears_os_install_actuated_gap() -> Bool {
-  host_standup_gap_count_at_actuation_verdict(verdict: Converged) == 3
+  gunbc.host_standup.host_standup_gap_count_at_actuation_verdict(verdict: std.upsert_decision.Converged) == 3
     && fold(
-      host_standup_spine,
+      gunbc.host_standup.host_standup_spine,
       init: false,
       f: (acc, s) =>
         acc || (match s.phase {
-          Prefix { phase: OsInstallActuated } =>
-            !host_standup_step_is_effective_gap_at_actuation_verdict(
+          Prefix { phase: gunbc.host_standup.OsInstallActuated } =>
+            !gunbc.host_standup.host_standup_step_is_effective_gap_at_actuation_verdict(
               step: s,
-              verdict: Converged,
+              verdict: std.upsert_decision.Converged,
             )
           _ => false
         })
@@ -204,14 +205,14 @@ test fn post_install_subsumption_clears_os_install_actuated_gap() -> Bool {
 
 test fn host_identity_converge_step_stays_modeled_not_gap() -> Bool {
   fold(
-    host_standup_spine,
+    gunbc.host_standup.host_standup_spine,
     init: false,
     f: (acc, s) =>
       acc || (match s.phase {
-        Assimilation { phase: HostIdentityConverge } =>
-          !host_standup_step_is_effective_gap_at_actuation_verdict(
+        gunbc.host_standup.Assimilation { phase: gunbc.host_standup.HostIdentityConverge } =>
+          !gunbc.host_standup.host_standup_step_is_effective_gap_at_actuation_verdict(
             step: s,
-            verdict: Converged,
+            verdict: std.upsert_decision.Converged,
           )
         _ => false
       })

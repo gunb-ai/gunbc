@@ -1,10 +1,11 @@
 module test.claim.hand_lens_host_bridge_scaffold_watchdog
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn hand_lens_host_bridge_scaffold_roster_tracks_5364_dissolution() -> Bool {
-  hand_lens_host_bridge_scaffold_roster_tracked()
-    && scaffold_dissolution_trigger_nonempty(row: transport_script_position_scaffold_row)
-    && scaffold_dissolution_trigger_matches_authority(row: transport_script_position_scaffold_row)
+  gunbc.hand_lens_host_bridge_scaffold_watchdog.hand_lens_host_bridge_scaffold_roster_tracked()
+    && gunbc.hand_lens_host_bridge_scaffold_watchdog.scaffold_dissolution_trigger_nonempty(row: gunbc.hand_lens_host_bridge_scaffold_watchdog.transport_script_position_scaffold_row)
+    && gunbc.hand_lens_host_bridge_scaffold_watchdog.scaffold_dissolution_trigger_matches_authority(row: gunbc.hand_lens_host_bridge_scaffold_watchdog.transport_script_position_scaffold_row)
 }

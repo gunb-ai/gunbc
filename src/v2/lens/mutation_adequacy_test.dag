@@ -1,39 +1,33 @@
 module v2.test.lens_mutation_adequacy.mutation_adequacy_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
-
-fn node_a() -> v2.std.node.Node {
-  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^a } }, children: std.algebra.Empty)
-}
-
 fn node_b() -> v2.std.node.Node {
-  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^b } }, children: std.algebra.Empty)
+  v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^b } }, children: std.algebra.Empty)
 }
 
 fn green_claim() -> v2.std.verification.TestClaim {
   v2.std.verification.CompilesClaim {
     label: "green: R compiles on the real input",
-    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
     input: node_a(),
     expected_value: node_a(),
-    classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+    classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: v2.std.verification.Unit }
   }
 }
 
 fn red_claim() -> v2.std.verification.TestClaim {
   v2.std.verification.DiagnosticClaim {
     label: "red: rejects the one-step mutant (perturbed input)",
-    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    anchor: v2.std.verification.manual_claim_anchor(anchor: v2.std.verification.ManualAnchorAbsent),
     input: node_b(),
-    expected_rejection: diagnostics_singleton(
+    expected_rejection: v2.std.diagnostic.diagnostics_singleton(
       d: v2.std.diagnostic.Diagnostic {
         reason: ^mutation_adequacy_test_mutant_rejected,
-        at: v2.std.diagnostic.Textual { file: ^mutation_adequacy_virtual_file, extent: WholeFile },
-        correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
+        at: v2.std.diagnostic.Textual { file: ^mutation_adequacy_virtual_file, extent: v2.std.diagnostic.WholeFile },
+        correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.UserInputBoundary }
       }
     ),
-    classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
+    classification: v2.std.verification.TestClassification { tier: v2.std.verification.Tier1, layer: v2.std.verification.Unit }
   }
 }
 
@@ -44,7 +38,7 @@ test fn adequate_when_every_mutation_has_a_discriminating_witness() -> v2.std.lo
       discriminating_unit: [green_claim(), red_claim()]
     }
   ]
-  return is_adequate(coverage: coverage)
+  return v2.lens.mutation_adequacy.is_adequate(coverage: coverage)
 }
 
 test fn surviving_mutation_is_inadequate() -> v2.std.logic.Bool {
@@ -54,5 +48,5 @@ test fn surviving_mutation_is_inadequate() -> v2.std.logic.Bool {
       discriminating_unit: std.algebra.Empty
     }
   ]
-  return !is_adequate(coverage: coverage)
+  return !v2.lens.mutation_adequacy.is_adequate(coverage: coverage)
 }

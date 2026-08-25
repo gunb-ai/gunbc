@@ -1,17 +1,18 @@
 module test.claim.accelerator_demo_execution_witness
 
 
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn witness_projected_integer_outcome_is_recognized_lossless() -> Bool {
   match gunbc.accelerator_demo_render.project_outcome_view(
     outcome: gunbc.accelerator_demo_recognizer.recognize_accelerator_program(program: gunbc.accelerator_demo_program.relu_mul_add_pure_program)
   ) {
-    DemoRecognized { plan: view } =>
+    gunbc.accelerator_demo_render.DemoRecognized { plan: view } =>
       view.fused_op_count == 3
         && view.placement_label == "LocalAccelerator"
         && view.fidelity_label == "Lossless"
-    DemoRefused { reason_label: _ } => false
+    gunbc.accelerator_demo_render.DemoRefused { reason_label: _ } => false
   }
 }
 

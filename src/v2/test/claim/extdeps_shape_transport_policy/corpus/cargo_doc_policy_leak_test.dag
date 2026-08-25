@@ -1,8 +1,9 @@
 module v2.test.extdeps_shape_transport_policy.corpus.cargo_doc_policy_leak
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn corpus_cargo_doc_defused_holds() -> Bool {
-  extdeps_live_module_policy_leak_count(module: extdeps_cargo_build_module) == 0
+  v2.lens.extdeps_shape_transport_policy.extdeps_live_module_policy_leak_count(module: v2.lens.extdeps_shape_transport_policy.module_refs.extdeps_cargo_build_module) == 0
 }

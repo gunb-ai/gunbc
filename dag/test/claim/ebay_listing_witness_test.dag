@@ -1,90 +1,91 @@
 module test.claim.ebay_listing_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn witness_condition_new_roundtrip() -> Bool {
-  condition_wire_label(c: extdeps.ebay.inventory.New) == "NEW"
+  extdeps.ebay.inventory.condition_wire_label(c: extdeps.ebay.inventory.New) == "NEW"
 }
 
 test fn witness_condition_used_excellent_decodes() -> Bool {
-  match parse_condition(raw: "USED_EXCELLENT") {
-    Present { value: UsedExcellent } => true
+  match extdeps.ebay.inventory.parse_condition(raw: "USED_EXCELLENT") {
+    Present { value: extdeps.ebay.inventory.UsedExcellent } => true
     _ => false
   }
 }
 
 test fn witness_condition_for_parts_roundtrip() -> Bool {
-  match parse_condition(raw: condition_wire_label(c: ForPartsOrNotWorking)) {
-    Present { value: ForPartsOrNotWorking } => true
+  match extdeps.ebay.inventory.parse_condition(raw: extdeps.ebay.inventory.condition_wire_label(c: extdeps.ebay.inventory.ForPartsOrNotWorking)) {
+    Present { value: extdeps.ebay.inventory.ForPartsOrNotWorking } => true
     _ => false
   }
 }
 
 test fn witness_condition_lowercase_does_not_decode() -> Bool {
-  match parse_condition(raw: "new") {
+  match extdeps.ebay.inventory.parse_condition(raw: "new") {
     none => true
     _ => false
   }
 }
 
 test fn witness_format_fixed_price_roundtrip() -> Bool {
-  format_type_wire_label(f: FixedPrice) == "FIXED_PRICE"
+  extdeps.ebay.inventory.format_type_wire_label(f: extdeps.ebay.inventory.FixedPrice) == "FIXED_PRICE"
 }
 
 test fn witness_format_auction_decodes() -> Bool {
-  match parse_format_type(raw: "AUCTION") {
-    Present { value: Auction } => true
+  match extdeps.ebay.inventory.parse_format_type(raw: "AUCTION") {
+    Present { value: extdeps.ebay.inventory.Auction } => true
     _ => false
   }
 }
 
 test fn witness_marketplace_us_wire_label() -> Bool {
-  marketplace_wire_label(m: EbayUs) == "EBAY_US"
+  extdeps.ebay.ebay.marketplace_wire_label(m: extdeps.ebay.ebay.EbayUs) == "EBAY_US"
 }
 
 test fn witness_marketplace_gb_decodes() -> Bool {
-  match parse_marketplace(raw: "EBAY_GB") {
-    Present { value: EbayGb } => true
+  match extdeps.ebay.ebay.parse_marketplace(raw: "EBAY_GB") {
+    Present { value: extdeps.ebay.ebay.EbayGb } => true
     _ => false
   }
 }
 
 test fn witness_marketplace_lowercase_does_not_decode() -> Bool {
-  match parse_marketplace(raw: "ebay_us") {
+  match extdeps.ebay.ebay.parse_marketplace(raw: "ebay_us") {
     none => true
     _ => false
   }
 }
 
 test fn witness_error_category_request_decodes() -> Bool {
-  match parse_error_category(raw: "REQUEST") {
-    Present { value: Request } => true
+  match extdeps.ebay.errors.parse_error_category(raw: "REQUEST") {
+    Present { value: extdeps.ebay.errors.Request } => true
     _ => false
   }
 }
 
 test fn witness_error_category_mixed_case_does_not_decode() -> Bool {
-  match parse_error_category(raw: "Request") {
+  match extdeps.ebay.errors.parse_error_category(raw: "Request") {
     none => true
     _ => false
   }
 }
 
 test fn witness_user_token_type_decodes() -> Bool {
-  match parse_ebay_token_type(raw: "User Access Token") {
-    Present { value: UserAccessToken } => true
+  match extdeps.ebay.oauth.parse_ebay_token_type(raw: "User Access Token") {
+    Present { value: extdeps.ebay.oauth.UserAccessToken } => true
     _ => false
   }
 }
 
 test fn witness_token_type_lowercase_does_not_decode() -> Bool {
-  match parse_ebay_token_type(raw: "user access token") {
+  match extdeps.ebay.oauth.parse_ebay_token_type(raw: "user access token") {
     none => true
     _ => false
   }
 }
 
 test fn witness_default_listing_policy_targets_us_marketplace() -> Bool {
-  marketplace_wire_label(m: default_marketplace) == "EBAY_US"
+  extdeps.ebay.ebay.marketplace_wire_label(m: gunbc.tools.ebay_listing.default_marketplace) == "EBAY_US"
 }

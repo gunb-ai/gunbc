@@ -1,10 +1,11 @@
 module v2.test.extdeps_shape_transport_policy.corpus.runtime_local_embedded_policy
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn corpus_runtime_local_embedded_policy_defused_holds() -> Bool {
-  extdeps_live_module_embedded_policy_literal_count(
-    module: extdeps_runtime_local_module
+  v2.lens.extdeps_shape_transport_policy.extdeps_live_module_embedded_policy_literal_count(
+    module: v2.lens.extdeps_shape_transport_policy.module_refs.extdeps_runtime_local_module
   ) == 0
 }

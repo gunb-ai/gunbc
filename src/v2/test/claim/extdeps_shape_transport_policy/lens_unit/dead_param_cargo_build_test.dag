@@ -1,20 +1,21 @@
 module v2.test.extdeps_shape_transport_policy.lens_unit.dead_param_cargo_build
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data dead_param_cargo_build_service: String = "cargo.Build"
 data dead_param_cargo_build_operation: String = "Build"
 
 data dead_param_cargo_build_input_facts: List<v2.lens.extdeps_shape_transport_policy.ExtdepsOperationInputFact> = [
   v2.lens.extdeps_shape_transport_policy.ExtdepsOperationInputFact {
-    module: extdeps_cargo_build_module,
+    module: v2.lens.extdeps_shape_transport_policy.module_refs.extdeps_cargo_build_module,
     service: dead_param_cargo_build_service,
     operation: dead_param_cargo_build_operation,
     param_name: "all_targets"
   },
   v2.lens.extdeps_shape_transport_policy.ExtdepsOperationInputFact {
-    module: extdeps_cargo_build_module,
+    module: v2.lens.extdeps_shape_transport_policy.module_refs.extdeps_cargo_build_module,
     service: dead_param_cargo_build_service,
     operation: dead_param_cargo_build_operation,
     param_name: "env"
@@ -23,36 +24,36 @@ data dead_param_cargo_build_input_facts: List<v2.lens.extdeps_shape_transport_po
 
 data dead_param_cargo_build_argv_facts: List<v2.lens.extdeps_shape_transport_policy.ExtdepsTransportArgvFact> = [
   v2.lens.extdeps_shape_transport_policy.ExtdepsTransportArgvFact {
-    module: extdeps_cargo_build_module,
+    module: v2.lens.extdeps_shape_transport_policy.module_refs.extdeps_cargo_build_module,
     service: dead_param_cargo_build_service,
     operation: dead_param_cargo_build_operation,
-    transport_kind: Shell,
+    transport_kind: v2.lens.extdeps_shape_transport_policy.Shell,
     argv_index: 0,
     argv_token: "cargo"
   },
   v2.lens.extdeps_shape_transport_policy.ExtdepsTransportArgvFact {
-    module: extdeps_cargo_build_module,
+    module: v2.lens.extdeps_shape_transport_policy.module_refs.extdeps_cargo_build_module,
     service: dead_param_cargo_build_service,
     operation: dead_param_cargo_build_operation,
-    transport_kind: Shell,
+    transport_kind: v2.lens.extdeps_shape_transport_policy.Shell,
     argv_index: 1,
     argv_token: "build"
   },
   v2.lens.extdeps_shape_transport_policy.ExtdepsTransportArgvFact {
-    module: extdeps_cargo_build_module,
+    module: v2.lens.extdeps_shape_transport_policy.module_refs.extdeps_cargo_build_module,
     service: dead_param_cargo_build_service,
     operation: dead_param_cargo_build_operation,
-    transport_kind: Shell,
+    transport_kind: v2.lens.extdeps_shape_transport_policy.Shell,
     argv_index: 2,
     argv_token: "--all-targets"
   }
 ]
 
 test fn dead_param_cargo_build_is_red_holds() -> Bool {
-  extdeps_shape_transport_policy_dead_param_count_for_operation(
+  v2.lens.extdeps_shape_transport_policy.extdeps_shape_transport_policy_dead_param_count_for_operation(
     argv_facts: dead_param_cargo_build_argv_facts,
     input_facts: dead_param_cargo_build_input_facts,
-    module: extdeps_cargo_build_module,
+    module: v2.lens.extdeps_shape_transport_policy.module_refs.extdeps_cargo_build_module,
     service: dead_param_cargo_build_service,
     operation: dead_param_cargo_build_operation
   ) == 1

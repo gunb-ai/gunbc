@@ -1,7 +1,8 @@
 module v2.test.claim.source_root_tagging
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data sr_tag_v2_read: v2.compiler.source_authority.DagSourceReadWitness = v2.compiler.source_authority.DagSourceReadWitness {
   source: extdeps.communication.medium.Medium { carried: "module v2.std.sr_tag_fixture", fidelity: extdeps.communication.medium.Lossless },
@@ -11,7 +12,7 @@ data sr_tag_v2_read: v2.compiler.source_authority.DagSourceReadWitness = v2.comp
     file_path: "src/v2/std/sr_tag_fixture.dag"
   },
   compilation_unit: ^sr_tag_v2_cu,
-  source_root: V2Tree
+  source_root: v2.std.cross_tree.import_model.V2Tree
 }
 
 data sr_tag_dag_read: v2.compiler.source_authority.DagSourceReadWitness = v2.compiler.source_authority.DagSourceReadWitness {
@@ -22,17 +23,17 @@ data sr_tag_dag_read: v2.compiler.source_authority.DagSourceReadWitness = v2.com
     file_path: "dag/std/sr_tag_fixture.dag"
   },
   compilation_unit: ^sr_tag_dag_cu,
-  source_root: DagTree
+  source_root: v2.std.cross_tree.import_model.DagTree
 }
 
 data sr_tag_mixed_ingest: v2.compiler.source_authority.SourceRootIngest = [sr_tag_v2_read, sr_tag_dag_read]
 data sr_tag_v2_only_ingest: v2.compiler.source_authority.SourceRootIngest = [sr_tag_v2_read]
 
 test fn source_root_tag_carried_and_folded_to_grounded_set() -> Bool {
-  let mixed = source_root_set_from_ingest(ingest: sr_tag_mixed_ingest)
-  let v2_only = source_root_set_from_ingest(ingest: sr_tag_v2_only_ingest)
-  source_root_set_contains(roots: mixed, r: V2Tree)
-    && source_root_set_contains(roots: mixed, r: DagTree)
-    && source_root_set_contains(roots: v2_only, r: V2Tree)
-    && !source_root_set_contains(roots: v2_only, r: DagTree)
+  let mixed = v2.compiler.source_authority.source_root_set_from_ingest(ingest: sr_tag_mixed_ingest)
+  let v2_only = v2.compiler.source_authority.source_root_set_from_ingest(ingest: sr_tag_v2_only_ingest)
+  v2.std.cross_tree.import_model.source_root_set_contains(roots: mixed, r: v2.std.cross_tree.import_model.V2Tree)
+    && v2.std.cross_tree.import_model.source_root_set_contains(roots: mixed, r: v2.std.cross_tree.import_model.DagTree)
+    && v2.std.cross_tree.import_model.source_root_set_contains(roots: v2_only, r: v2.std.cross_tree.import_model.V2Tree)
+    && !v2.std.cross_tree.import_model.source_root_set_contains(roots: v2_only, r: v2.std.cross_tree.import_model.DagTree)
 }

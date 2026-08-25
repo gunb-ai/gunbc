@@ -1,31 +1,32 @@
 module test.claim.accelerator_demo_model_witness
 
 
+
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn witness_integer_contract_maps_to_lossless_fidelity() -> Bool {
   match extdeps.communication.numerical_fidelity.lowering_fidelity_verdict_for_contract(contract: std.numerical_contract.integer_exact_contract()) {
-    LoweringAccepted { fidelity: f } => match f {
-      Lossless => true
-      Lossy => false
+    extdeps.communication.numerical_fidelity.LoweringAccepted { fidelity: f } => match f {
+      extdeps.communication.medium.Lossless => true
+      extdeps.communication.medium.Lossy => false
     }
-    LoweringRefused { reason: _ } => false
+    extdeps.communication.numerical_fidelity.LoweringRefused { reason: _ } => false
   }
 }
 
 fn witness_float_no_contraction_maps_to_lossless_fidelity() -> Bool {
   let contract = std.numerical_contract.float_contract(rounding: std.approximate_field.ToNearestEven, fma: std.numerical_contract.FmaContractionRefused)
   match extdeps.communication.numerical_fidelity.decode_fidelity_for_contract(contract: contract) {
-    Lossless => true
-    Lossy => false
+    extdeps.communication.medium.Lossless => true
+    extdeps.communication.medium.Lossy => false
   }
 }
 
 fn witness_float_contraction_permitted_maps_to_lossy_fidelity() -> Bool {
   let contract = std.numerical_contract.float_contract(rounding: std.approximate_field.ToNearestEven, fma: std.numerical_contract.FmaContractionPermitted)
   match extdeps.communication.numerical_fidelity.decode_fidelity_for_contract(contract: contract) {
-    Lossy => true
-    Lossless => false
+    extdeps.communication.medium.Lossy => true
+    extdeps.communication.medium.Lossless => false
   }
 }
 
