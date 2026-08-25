@@ -1980,6 +1980,25 @@ shows includes the 1062 modules that are **indexed but never compiled**; under
 `--entry` the census covers the closure only, so the same names are absent and
 correctly refuse. Same compiler, different census population, opposite answers.
 
+**"Same compiler" was an assumption, not a measurement, and it was false when
+this was written.** `deep-ant-102` established (landed as `d0fe73b`) that
+`gunbc compile` WITHOUT `--entry` ran a **second** index/load/resolve/admit/
+compile/refuse pipeline open-coded in `main.rs` — so every entry-vs-whole-tree
+comparison made before that commit, including the one this section rests on,
+compared two implementations and not two scopes. The fork is now closed
+(`cli_run` carries `CompileSubject{Entry|PrimaryRoot}`; the second pipeline and
+seven further private copies of module indexing and import walking are deleted),
+and comparisons made after it are single-producer.
+
+The conclusion above survives, and the reason it survives is that it never
+depended on the assumption: the mechanism is read off `global_bare_fallback_invariant`,
+which states the one-candidate short-circuit directly, and the census-population
+difference follows from `graph.modules` including the 1062 indexed-not-compiled
+modules. The phase lines corroborate; they do not carry the argument. **What
+would not have survived is the same claim resting on the divergence alone**, and
+it is recorded because that is how it was first asserted, and retracted, before
+the invariant was found.
+
 **THE TERMINAL IS DECLARED, AND IT IS THIS PROGRAM'S OWN WORK.** Same note, last
 clause: *"The production flip that removes the corpus fallback is **downstream
 of reference-derived closure**."* So this is not an undiscovered defect but a
