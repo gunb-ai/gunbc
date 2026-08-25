@@ -655,13 +655,6 @@ fn scm_image_atom_object_members(kind_members: List<JsonKeyValue>, extra: List<J
   )
 }
 
-fn scm_image_refused(loaded: ClosureDocLoadOutcome) -> Bool {
-  match loaded {
-    ClosureDocRefused { cause: _ } => true
-    ClosureDocLoaded { store: _, root: _ } => false
-  }
-}
-
 test fn scm_image_an_unknown_envelope_member_refuses() -> Bool {
   scm_image_refused(
     loaded: decode_closure_document(

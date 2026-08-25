@@ -1024,7 +1024,6 @@ fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
     _ => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "objects" } } }
   }
 }
-
 // ---------------------------------------------------------------------------
 // Publication standing
 // ---------------------------------------------------------------------------
@@ -1059,76 +1058,6 @@ fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
 // standing that permits superseding a newer generation, so an inherited arm sits one step from a
 // reader overwriting a writer's valid document. Descending makes the next mode fail to compile
 // here, where whoever adds it can see what it would cost.
-fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
-  match cause {
-    ClosureDocFormatUnrecognized { found: _ } => LoadUnsupportedProtocol
-    ClosureDocObjectCollision { identity: _ } => LoadIdentityCollision
-    ClosureDocMemberReadRefused { cause: c } =>
-      match c {
-        MemberReadSubjectNotObject => LoadDocumentMalformed
-        MemberReadMissing { key: _ } => LoadDocumentMalformed
-        MemberReadDuplicated { key: _ } => LoadDocumentMalformed
-        MemberReadWrongShape { key: _ } => LoadDocumentMalformed
-      }
-    ClosureDocUnknownKindTag { found: _ } => LoadDocumentMalformed
-    ClosureDocUnknownConnectiveTag { found: _ } => LoadDocumentMalformed
-    ClosureDocUnknownBehaviorTag { found: _ } => LoadDocumentMalformed
-    ClosureDocUnknownLabelTag { found: _ } => LoadDocumentMalformed
-    ClosureDocUnexpectedMember { context: _, key: _ } => LoadDocumentMalformed
-    ClosureDocEdgeTargetUnresolved { reference: _ } => LoadDocumentMalformed
-    ClosureDocRootUnresolved { reference: _ } => LoadDocumentMalformed
-    ClosureDocTargetNotOneArm { found: _ } => LoadDocumentMalformed
-    ClosureDocUncontainedDigestInvalid { found: _ } => LoadDocumentMalformed
-  }
-}
-
-// A LOAD THAT SUCCEEDED STILL HAS A STANDING, and it is not always LoadComplete. This is the arm the
-// predecessor format could not produce: a document whose uncontained references leave objects the
-// store does not hold loads correctly and is PARTIAL, which is a success with an obligation rather
-// than a failure. Completeness is derived from the objects, never a flag beside them.
-fn loaded_closure_standing(store: ObjectStore, root: ObjectId) -> LoadStanding {
-  if closure_is_complete(closure: CommitClosure { store: store, root: root }) {
-    LoadComplete
-  } else {
-    LoadPartial
-  }
-}
-
-fn closure_document_standing(outcome: ClosureDocLoadOutcome) -> LoadStanding {
-  match outcome {
-    ClosureDocLoaded { store: store, root: root } =>
-      loaded_closure_standing(store: store, root: root)
-    ClosureDocRefused { cause: cause } => closure_document_load_standing(cause: cause)
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Publication standing
-// ---------------------------------------------------------------------------
-
-// THIS FORMAT'S REFUSALS, CLASSIFIED BESIDE THE REFUSALS THEMSELVES.
-//
-// The standing vocabulary is format-agnostic and lives in gunbc.scm.load_standing; the mapping from
-// THIS format's causes into it belongs HERE, next to the coproduct it reads, so a new refusal
-// variant fails to compile where its author already is rather than in a consumer that has never
-// heard of it. A consumer computing this by matching on ClosureDocRefusal would be reaching into one
-// format's error enum for a format-agnostic answer -- the placement defect that closed gunbc#8940.
-//
-// WHY UNKNOWN MEMBERS AND UNKNOWN VARIANT TAGS ARE MALFORMED, NOT A NEWER WRITER, which follows from
-// this module's own policy rather than from taste: a schema that grows a member grows a NEW FORMAT
-// TAG. So a conforming newer writer emits a new tag; it does not emit this one carrying extras. A
-// document under a MATCHED tag with an unrecognized member or variant is a broken document of THIS
-// schema, and calling it "needs a compatible reader" would name a remedy that cannot arrive, because
-// no conforming writer produced it.
-//
-// WHY AN UNRESOLVED POSITION IS MALFORMED AND NOT A FETCHABLE ABSENCE. A position denotes nothing
-// outside the document that defines it, so an unresolved `at` names no object anyone could supply.
-// Fetchable absence is the UNCONTAINED arm, which is not a refusal at all and never reaches here.
-//
-// WHY A COLLISION IS ITS OWN STANDING. object_store states both colliding records are legitimate and
-// the forged pairing is prevented by construction, so a collision means the structural locator
-// cannot represent both -- not that either is damaged. Classifying it as malformed would let a
-// reader DISCARD A WRITER'S VALID GENERATION over an honest hash coincidence.
 fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
   match cause {
     ClosureDocFormatUnrecognized { found: _ } => LoadUnsupportedProtocol
