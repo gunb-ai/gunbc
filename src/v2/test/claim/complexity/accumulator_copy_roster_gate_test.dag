@@ -2,15 +2,12 @@ module v2.test.claim.complexity.accumulator_copy_roster_gate
 
 import v2.lens.complexity_accumulator_copy.roster_gate {
   file_gate,
-  source_finding_standing
-}
-import v2.lens.common.source_analysis_standing {
-  finding_standing_observed_suspect,
+  source_finding_standing,
   NoSuspect,
   SuspectObserved,
-  FindingNotEstablished,
-  SourceTokenizationRejected
+  FindingNotEstablished
 }
+import v2.lens.common.source_analysis_standing { SourceTokenizationRejected }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -55,9 +52,11 @@ data planted_copy_snippet: String = "module planted\n\nfn f(xs: List<Int>) -> In
 // as `not clean` would be satisfied by it -- the planted defect would appear to still alarm on a
 // build where nothing was analysed at all.
 test fn red_control_planted_copy_still_alarms() -> Bool {
-  finding_standing_observed_suspect(
-    standing: source_finding_standing(source_text: planted_copy_snippet)
-  )
+  match source_finding_standing(source_text: planted_copy_snippet) {
+    SuspectObserved { suspects: _ } => true
+    NoSuspect => false
+    FindingNotEstablished { cause: _ } => false
+  }
 }
 
 data unreadable_snippet: String = "@@@ not dag source @@@ )( unterminated \""
