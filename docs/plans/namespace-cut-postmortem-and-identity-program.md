@@ -1137,6 +1137,21 @@ G — immediate, bounded corpse deletion
 
 There is no post-F "last reader repoint".
 
+**And the trailing interval must be fail-closed.** If G trails F, a state where
+`import` is *accepted silently and ignored* may not merge — that is fabricated
+successful no-op syntax, DESIGN §5 exactly, and it is the one shape this program
+would be embarrassed to ship. Either remaining import syntax produces an explicit
+temporary **`ImportSyntaxRetired`** refusal for the interval, or **G rides the
+same merge train as F**. Dead parser machinery may trail; a silently-accepted
+corpse may not.
+
+**Terminology, because the alias is what kept the F/G question confused:** stop
+saying *big-bang deletion*. It names two events with two different rules —
+a **big-bang semantic cutover** (F: one motion, no straddle, every live consumer
+moves) and a **bounded grammar cleanup** (G: corpse removal, may trail, must
+refuse rather than ignore). Every ruling about "big-bang" in this document's §8
+is about the first.
+
 **Corpse needs a behavioural definition, not grep-zero.** *Nothing calls this
 import function* is necessary and insufficient: import syntax can still reach
 occurrence allocation, authored ordering, candidate iteration,
@@ -1173,10 +1188,14 @@ step 6 names, reached from the direction that looks most conservative.
 
 ### Two decisions taken (operator, 2026-08-25)
 
-- **Target spelling: full qualification.** Chosen as the conservative default.
-  Shortest unique suffix stays live evidence from `namespace-resolution-design`
-  §8 and can be revisited, but the sweep is written against full qualification so
-  the transform has one output format.
+- **Target spelling — FINAL FORM (ruling v2, 2026-08-25).** The canonical
+  production spelling is the **fully qualified DECLARING identity**.
+  `visible_through` is provenance and is **never** the qualifier — that is the
+  binding-preservation failure #8282's transformer made, and naming it in the
+  decision closes it by construction rather than by diligence. **Shortest unique
+  suffix is quarry evidence for a possible DISPLAY format, not a live option in
+  this program**, revisitable only under a later operator ruling after this
+  program closes. Nobody optimizes spelling while the cut is underway.
 - **The projection stays derived, never committed.** From the general rule the
   operator states, which is worth recording past this case because it decides
   more than one question here: **commit something only if it is not cheaply
@@ -1197,8 +1216,8 @@ step 6 names, reached from the direction that looks most conservative.
 | **M3** | **Identity survives the pipeline.** Resolution's answer reaches emission intact | the 12 censused emitter sites key on declaration identity; `build_emit_graph_info` has a collision arm |
 | **M4** | **Keys are typed.** A spelling is unspellable in key position | `key_eq` is not a parameter anywhere; a content-derived `key_of` does not compile |
 | **M5** | **The projection is green.** A binding-preserving import-free corpus exists, derived | `old_resolved_declaration == projected_resolved_declaration`, 0 binding-identity changes |
-| **M6** | **Authority flipped.** Containment resolution is production | ambient fallback deleted; stage0 regenerated; acceptance set green |
-| **M7** | **Imports unread.** No consumer reads an import | the last readers repointed |
+| **M6** | **Semantic authority flipped AND imports semantically inert** — every production consumer on the reference-derived authority, all import-derived producers and ambient fallbacks gone | acceptance set green; stage0 regenerated; no live import reader remains |
+| **M7** | **Grammar corpse removed** | `import` refuses at parse; token, AST and production gone |
 | **M8** | **Grammar deleted.** | `import` refuses at parse; the AST and productions are gone |
 
 M0–M4 are independently valuable on main *with imports*. M5 onward is the cut.
@@ -1249,8 +1268,17 @@ is the question each lane answers. Files follow from it.
 | **Substrate** | *what may be a key at all* | `dag/std/` |
 
 Assignment: Emission owns 0.2, A, C.2, C.3. Resolution owns 0.1, 0.3, 0.4, B, C.1,
-C.4, and F.2. Substrate owns D. E, F.1 and G sit with the integrator, because the
-projection and the flip consume all three lanes and belong to none.
+and C.4. Substrate owns D. **Resolution SUPPLIES COMPONENTS to F; it does not own
+a post-flip phase, because there is no post-flip phase.**
+
+**F and G are not this lane's at all.** Authority transitions — applying the
+derived projection to canonical source, the single production authority flip, and
+grammar retirement — belong to `warm-hawk-909` (ruling v2, 2026-08-25), together
+with cross-seam adjudication. This lane supplies E's projection and every semantic
+component F consumes; it does not perform the transition. An earlier revision put
+F.1 and G with "the integrator", meaning this session, which was wrong in the
+direction that matters: **the one motion nobody may straddle should not be owned
+by a party that also owns components entering it.**
 
 `nominal_call_arg_brand_mismatch` is the boundary case worth stating: it lives in
 `04_infer`, which Emission does not own, and it is a *denotation* question — does
