@@ -1,0 +1,289 @@
+module gunbc.pr_base_freshness
+
+import std.types { String, Bool, Int, List, CommitSha, EpochMs, Timestamp }
+import extdeps.github.pulls
+import extdeps.github.commits {
+  CommitParentRef,
+  CommitDetail,
+  Comparison,
+  ComparisonStatus,
+  parse_comparison_status,
+  Ahead,
+  Behind,
+  Diverged,
+  Identical,
+}
+
+// WHAT THIS MEASURES, AND WHAT IT DELIBERATELY IS NOT. This module answers ONE question about an
+// open pull request: WHICH BASE COMMIT DID ITS CHECK RUN ACTUALLY TEST, and where does that commit
+// stand relative to the branch the pull request would merge into RIGHT NOW. It is a reporting
+// measurement. It is NOT an admission verdict, it does not decide whether a merge may proceed, and
+// it is deliberately named for the observation rather than for the decision.
+//
+// THE DISTINCTION IS LOAD-BEARING, NOT NOMENCLATURE. gunbc.merge_admission already models the
+// admission decision (classify_merge_admission_verdict_v2) over a MergeAdmissionReceiptV2 that the
+// RUN ITSELF mints -- attempt identity, tested subject, gate roster hash, conclusion. This module
+// mints no receipt and reads none. It observes what can be recovered from outside the run, which is
+// strictly less, and it must never be read as the weaker mechanism standing in for the stronger
+// one. A reader that concluded "freshness reported, therefore admissible" would be substituting
+// this authority's answer for a question it cannot reach -- the authority-substitution failure
+// DESIGN records, where nothing asserted is false and only the arrow between two carriers is
+// invented.
+//
+// WHY THE MEASUREMENT IS BOUNDED THE WAY IT IS, measured rather than assumed (2026-08-24, against
+// 51 open pull requests on gunb-ai/gunbc, 48 of which carried both a completed run and a merge
+// ref). Our workflow triggers on `pull_request`, so a run tests refs/pull/N/merge -- a merge of the
+// head into the base AS OF THAT MOMENT -- and the base it tested is that merge commit's first
+// parent. THAT REF IS MUTABLE. GitHub recomputes it when the base branch moves, and the merge
+// commit the run actually tested is then unreferenced and unrecoverable. 9 of those 48 pull
+// requests already had a merge-ref base committed AFTER their run started, so what their run tested
+// is gone.
+//
+// AND THE LOSS IS NOT NEUTRAL -- IT FAILS IN THE ADMITTING DIRECTION, which is the whole reason
+// this module carries a refusing arm instead of a Bool. Recomputation re-points the ref at the
+// CURRENT base tip, so a pull request whose run tested something long superseded compares EQUAL to
+// the target and reads as perfectly fresh. Observed instance: pull request 9097's merge-ref base
+// was the then-current tip mid-measurement, so the derived answer was "at target" for a run that
+// had tested an older base; the target advanced minutes later and the same pull request read
+// "behind" again. A mechanism whose wrong answers arrive as greens, and whose right answers depend
+// on when you happened to look, cannot be allowed a two-state result.
+//
+// SO `BaseUnknown` IS ITS OWN ARM AND IT REFUSES. It is not folded into "behind" (which would
+// assert a distance nothing measured), it is not folded into "at target" (which would be the
+// fabricated green above), and it is not silently dropped from the population (which would zero the
+// deficit's frequency by construction and stop it ever ranking for repair). It is typed, it carries
+// its cause, it is counted, and a report containing any of it is a report that has told you what it
+// could not see.
+
+// THE PROVENANCE QUESTION, ASKED BEFORE THE FRESHNESS QUESTION. Whether the recovered base is
+// EVIDENCE about this run is prior to where that base stands: asking how far behind an
+// unrecoverable base sits would be answering a question about a commit the run never saw. The
+// discriminating fact is ordinary and decidable -- a merge ref whose base parent was committed
+// after the run started cannot be the base that run tested.
+type TestedBaseProvenance
+  = TestedBaseRecovered { base: CommitSha }
+  | TestedBaseSuperseded { observed_base: CommitSha }
+
+// THE FRESHNESS ANSWER. Four states, and the fourth is not a degenerate case of the other three.
+// WHY THE UNKNOWNS SHARE ONE ARM AND A TYPED REASON, rather than becoming four more peers. They are
+// one answer to the consumer's question -- THIS RUN'S EVIDENCE CANNOT BE VOUCHED FOR -- and every
+// one of them takes the same action: re-run against current main. Splitting them into peers of
+// `BaseBehind` would make every consumer re-derive that grouping, and the first consumer to forget
+// one would silently treat it as a freshness answer. Keeping the reason typed and on the row keeps
+// the deficit COUNTABLE per cause, which is what makes a specific gap rank for repair instead of
+// disappearing into an aggregate.
+type BaseUnknownReason
+  = MergeRefRecomputed { observed_base: CommitSha }
+  | MergeCommitNotComputed
+  | MergeCommitHasNoParents
+  | NoRunForHead
+  | UnrecognizedComparisonStatus { raw: String }
+
+type BaseFreshness
+  = BaseAtTarget
+  | BaseBehind { commits: Int }
+  | BaseAheadOfTarget
+  | BaseDiverged
+  | BaseUnknown { reason: BaseUnknownReason }
+
+fn tested_base_provenance(
+  merge_ref_base: CommitSha,
+  merge_ref_base_committed_at: EpochMs,
+  run_started_at: EpochMs,
+) -> TestedBaseProvenance {
+  if merge_ref_base_committed_at > run_started_at {
+    TestedBaseSuperseded { observed_base: merge_ref_base }
+  } else {
+    TestedBaseRecovered { base: merge_ref_base }
+  }
+}
+
+type PrBaseFreshnessRow {
+  pull_number: Int
+  freshness: BaseFreshness
+}
+
+// THE TARGET IS CARRIED ON THE REPORT, NOT LEFT AMBIENT, and this is a measured requirement rather
+// than tidiness. The merge target moved DURING the 48-pull-request measurement above
+// (05c627fd60 -> 7215f689b0), so a row reading "behind 4" is unreadable an hour later unless the
+// commit it was computed against travels with it. This is the same head-bound discipline the
+// required floor's own refusal states when it says a count is bound to the head it names and must
+// never be cited bare.
+type PrBaseFreshnessReport {
+  merge_target: CommitSha
+  observed_at: EpochMs
+  rows: List<PrBaseFreshnessRow>
+}
+
+fn base_freshness_is_current(f: BaseFreshness) -> Bool {
+  match f {
+    BaseAtTarget => true
+    BaseBehind { commits: _ } => false
+    BaseAheadOfTarget => false
+    BaseDiverged => false
+    BaseUnknown { reason: _ } => false
+  }
+}
+
+// UNKNOWN IS NOT CURRENT AND NOT STALE -- IT IS UNKNOWN, so it gets its own predicate rather than
+// being read off the negation of the one above. A consumer that wanted "how many are stale" and
+// took `!is_current` would silently absorb the unmeasurable rows into the stale count, which is the
+// mirror of absorbing them into the fresh count: both destroy the deficit's frequency, and this
+// one merely errs in the safer direction while being just as blind.
+fn base_freshness_is_unknown(f: BaseFreshness) -> Bool {
+  match f {
+    BaseAtTarget => false
+    BaseBehind { commits: _ } => false
+    BaseAheadOfTarget => false
+    BaseDiverged => false
+    BaseUnknown { reason: _ } => true
+  }
+}
+
+fn base_freshness_label(f: BaseFreshness) -> String {
+  match f {
+    BaseAtTarget => "tested base is the current merge target"
+    BaseBehind { commits: _ } =>
+      "tested base is behind the merge target — this run's green describes a tree that is not what it would merge into; the distance is on the variant"
+    BaseAheadOfTarget => "tested base contains commits the merge target does not — the target moved backwards under this pull request"
+    BaseDiverged => "tested base and the merge target have forked — neither contains the other"
+    BaseUnknown { reason: r } => base_unknown_reason_label(r: r)
+  }
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// THE HOST OBSERVATION. Everything above is pure and takes its operands; everything below acquires
+// them. The split is the one gunbc.fleet_desired_observe already uses, and it is what lets the
+// classifier's every arm be witnessed in the hermetic floor while the acquisition stays peripheral.
+
+// A MERGE COMMIT'S FIRST PARENT IS THE BASE IT WAS MERGED INTO. `Absent` is not a formality: a
+// commit with no parents is a root commit, which is a real object and simply not a test-merge, so
+// the caller gets a state it must decide about rather than a fabricated sha.
+fn first_parent(parents: List<CommitParentRef>) -> CommitSha? {
+  match parents {
+    Cons { head, tail: _ } => Present { value: head.sha }
+    Empty {} => Absent {}
+  }
+}
+
+// THE RECOMPUTATION TEST, ON TIMESTAMPS RATHER THAN EPOCH INTEGERS. Both operands are GitHub REST
+// `Timestamp`s, which are ISO 8601 in UTC with a fixed-width layout (`2026-08-24T23:37:40Z`), and
+// for that encoding lexicographic order IS chronological order — same field widths, most
+// significant first, one timezone. So the comparison is exact and needs no epoch conversion, which
+// would otherwise be a second representation of the same instant for a parser to disagree about.
+// This soundness depends on the fixed-width UTC form and would NOT survive an offset like `+01:00`,
+// which GitHub does not emit here.
+fn merge_ref_was_recomputed(
+  merge_ref_base_committed_at: Timestamp,
+  run_started_at: Timestamp,
+) -> Bool {
+  (merge_ref_base_committed_at as String) > (run_started_at as String)
+}
+
+fn tested_base_provenance_from_timestamps(
+  merge_ref_base: CommitSha,
+  merge_ref_base_committed_at: Timestamp,
+  run_started_at: Timestamp,
+) -> TestedBaseProvenance {
+  if merge_ref_was_recomputed(
+    merge_ref_base_committed_at: merge_ref_base_committed_at,
+    run_started_at: run_started_at,
+  ) {
+    TestedBaseSuperseded { observed_base: merge_ref_base }
+  } else {
+    TestedBaseRecovered { base: merge_ref_base }
+  }
+}
+
+// THE COMPARISON IS READ IN THE DIRECTION IT WAS ASKED. `compare/{tested_base}...{target}` reports
+// how the TARGET stands relative to the TESTED BASE, so the target being `Ahead` is the tested base
+// being behind, and `ahead_by` is that distance. Naming this explicitly because the inversion is
+// the easiest thing in this module to get backwards, and getting it backwards would report a stale
+// pull request as current.
+fn classify_base_freshness(
+  provenance: TestedBaseProvenance,
+  status: ComparisonStatus,
+  ahead_by: Int,
+) -> BaseFreshness {
+  match provenance {
+    TestedBaseSuperseded { observed_base } =>
+      BaseUnknown { reason: MergeRefRecomputed { observed_base: observed_base } }
+    TestedBaseRecovered { base: _ } =>
+      match status {
+        Identical => BaseAtTarget
+        Ahead => BaseBehind { commits: ahead_by }
+        Behind => BaseAheadOfTarget
+        Diverged => BaseDiverged
+      }
+  }
+}
+
+
+fn base_unknown_reason_label(r: BaseUnknownReason) -> String {
+  match r {
+    MergeRefRecomputed { observed_base: _ } => "cannot determine what this run tested — its merge ref was recomputed after the run started, so the tested base is unrecoverable; this is not evidence of freshness"
+    MergeCommitNotComputed => "cannot determine what this run tested — the forge has not published a test-merge for this pull request yet"
+    MergeCommitHasNoParents => "cannot determine what this run tested — the published test-merge has no parents, so it names no base"
+    NoRunForHead => "cannot determine what this run tested — no run was found for this head"
+    UnrecognizedComparisonStatus { raw: _ } => "cannot place the tested base — the forge reported a comparison status this version does not model"
+  }
+}
+
+// THE LIVE OBSERVATION FOR ONE PULL REQUEST. Four upstream facts, and every one of them has a way
+// of not being there -- which is why each `Absent` below becomes a typed reason rather than a
+// default. The forge computes the test-merge asynchronously, a commit can have no parents, and a
+// head can carry no run at all; a version of this that filled any of those in would be answering
+// from ignorance in exactly the direction that reads as fresh.
+fn observe_pull_request_base_freshness(
+  owner: String,
+  repo: String,
+  pull_number: Int,
+  merge_target: CommitSha,
+  run_started_at: Timestamp,
+) -> BaseFreshness {
+  let pr = github.Pulls.Get(
+    auth_token: "",
+    owner: owner,
+    repo: repo,
+    pull_number: pull_number,
+  )
+  match pr.pr.merge_commit_sha {
+    Absent {} => BaseUnknown { reason: MergeCommitNotComputed }
+    Present { value: merge_commit } => {
+      let detail = github.Commits.Get(
+        auth_token: "",
+        owner: owner,
+        repo: repo,
+        ref: merge_commit as String,
+      )
+      match first_parent(parents: detail.detail.parents) {
+        Absent {} => BaseUnknown { reason: MergeCommitHasNoParents }
+        Present { value: tested_base } => {
+          let comparison = github.Commits.Compare(
+            auth_token: "",
+            owner: owner,
+            repo: repo,
+            basehead: join([tested_base as String, "...", merge_target as String], ""),
+          )
+          match parse_comparison_status(raw: comparison.comparison.status) {
+            Absent {} =>
+              BaseUnknown {
+                reason: UnrecognizedComparisonStatus { raw: comparison.comparison.status }
+              }
+            Present { value: status } =>
+              classify_base_freshness(
+                provenance: tested_base_provenance_from_timestamps(
+                  merge_ref_base: tested_base,
+                  merge_ref_base_committed_at: detail.detail.commit.committer.date,
+                  run_started_at: run_started_at,
+                ),
+                status: status,
+                ahead_by: comparison.comparison.ahead_by,
+              )
+          }
+        }
+      }
+    }
+  }
+}
