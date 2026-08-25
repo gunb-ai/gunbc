@@ -3310,6 +3310,8 @@ fn reference_derived_use_lines(items: List<v1.std.core.Node>, unlisted_type_name
           || emitter_attested_anon_heads |> any(h => h == name)
           || (emitted_source_tokens |> any(t => t == name)))
       |> filter(name => !reference_is_host_realized_builtin(name: name))
+      |> map(name => v1.std.core.qualified_last_segment(name: name))
+      |> unique_strings
     let local_decl_names = items |> flat_map(item =>
       let nm = v1.std.core.authored_name_at(source_indices: source_indices, node: item)
       if nm == "" { [] } else { [nm] }
