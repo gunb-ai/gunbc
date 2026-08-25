@@ -1,0 +1,86 @@
+module test.claim.executor_privileged_operation_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ANTI-DRIFT WALL, ASSERTED AT ITS SEAM. The sudoers command match is DERIVED from the same argv
+// the host executes, so a grant that fails to authorize its own command has no spelling. This
+// witness pins that identity rather than a golden string: it rebuilds the expected line from the
+// argv projection, so editing either projection alone cannot keep it green.
+// RED IS AUTHORABLE: rendering the sudoers command from anything other than the argv -- a bare
+// binary path, as the roster did before this module -- makes the two disagree and this goes false.
+test fn witness_sudoers_command_is_the_argv() -> Bool {
+  let op = RemoveDirectoryTree { path: "/opt/actions-runner/srv3-09" as NonEmptyStr }
+  executor_privileged_operation_sudoers_command(op: op)
+    == join(map(executor_privileged_operation_argv(op: op), w => w as String), " ")
+}
+
+// RUN-AS IS root, NEVER ALL. ALL=(ALL) authorizes the grantee to run the command as any user on the
+// host, including other service accounts; the executor rendered exactly that before this module.
+test fn witness_run_as_is_root_not_all() -> Bool {
+  string_contains(
+    s: executor_privileged_operation_sudoers_line(
+      grantee: "ghrunner" as NonEmptyStr,
+      op: SystemdDaemonReload,
+    ) as String,
+    pattern: "ALL=(root) NOPASSWD:",
+  )
+}
+
+// NO WILDCARD REACHES THE RENDERED FILE. A sudoers wildcard such as /opt/actions-runner/* matches
+// `..` -- fnmatch's * declines to cross `/`, and `..` contains none -- so it would authorize
+// `rm -rf /opt/actions-runner/..`. Every managed path is named in full instead.
+test fn witness_rendered_grants_carry_no_wildcard() -> Bool {
+  let body = srv3_runner_host_sudoers()
+  !string_contains(s: body, pattern: "*") && !string_contains(s: body, pattern: "?")
+}
+
+// THE POPULATION IS DERIVED FROM THE SLOT ROSTER, so every managed slot contributes exactly the two
+// operations the provisioner runs against it. A slot added to the roster brings its own
+// authorization; one removed takes it away. RED: hand-listing binaries instead of folding the
+// roster decouples the count from the roster and this goes false.
+test fn witness_population_tracks_the_slot_roster() -> Bool {
+  let slots = desired_runner_slot_members(deploy: srv3_runner_host_deploy).length()
+  runner_host_privileged_operations(deploy: srv3_runner_host_deploy).length()
+    == (slots * 2) + 4
+}
+
+// THE JOIN, ASSERTED THROUGH THE PRODUCTION PATH. This is the witness the module exists for: the
+// command the emitted provisioning script RUNS and the command the sudoers file GRANTS are the same
+// word vector, reached from opposite ends of the tree. The left side comes from
+// gunbc.runner_slot_provision's real seam (what the host executes); the right side from the grant
+// renderer (what the host authorizes). Before this module they were authored independently -- the
+// script rebuilt an argv from a binary path while the roster granted the bare binary -- and the
+// disagreement was discoverable only by a wet apply on a real host.
+// RED IS AUTHORABLE: change either projection alone and the two stop matching.
+// The script runs the QUOTED argv; the sudoers file grants the SAME argv unquoted.
+test fn witness_executed_command_is_the_granted_command() -> Bool {
+  let slot = "/opt/actions-runner/srv3-09" as NonEmptyStr
+  let job = "ghrunner" as NonEmptyStr
+  let executed = gunbc_runner_slot_privileged_commands(slot_dir: slot, job_user: job)
+  let op = RemoveDirectoryTree { path: slot }
+  let argv = executor_privileged_operation_argv(op: op)
+  executed.remove_command
+    == join(["sudo ", join(map(argv, w => posix_single_quote(spelling: w as String)), " ")], "")
+    && executor_privileged_operation_sudoers_command(op: op)
+      == join(map(argv, w => w as String), " ")
+}
+
+// AND THE GRANT ACTUALLY COVERS THE SLOT THE SCRIPT TOUCHES. A population that renders correctly but
+// omits the slot the provisioner is about to mutate is the srv3 failure exactly.
+test fn witness_grant_population_covers_the_provisioned_slot() -> Bool {
+  string_contains(
+    s: srv3_runner_host_sudoers(),
+    pattern: "/usr/bin/rm -rf /opt/actions-runner/srv3-09",
+  )
+}
+
+// THE PRIVILEGE LAW, WALLED. A grantee that is also its own bootstrap principal is an account that
+// authorizes itself, which is the one shape the whole staged-install transaction exists to prevent.
+// RED IS AUTHORABLE: point srv3_executor_bootstrap_principal.login at the deploy row's job_user and
+// this goes false.
+test fn witness_bootstrap_principal_is_not_the_grantee() -> Bool {
+  bootstrap_principal_is_not_the_grantee(
+    bootstrap: srv3_executor_bootstrap_principal,
+    deploy: srv3_runner_host_deploy,
+  )
+}
