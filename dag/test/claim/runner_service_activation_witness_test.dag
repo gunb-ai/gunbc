@@ -1,0 +1,290 @@
+module test.claim.runner_service_activation
+
+import std.types { Bool, String, NonEmptyStr, Int, List, list_length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.placement_supply { HostIdentity }
+import extdeps.posix.shell_command_language { posix_single_quote }
+import extdeps.exec.command { shell_command_render }
+import extdeps.systemd.systemctl { systemctl_enable_verb, systemctl_start_verb }
+import gunbc.fleet_posix_accounts { ci_runner_sudo_binary_path, SudoSystemctl }
+import gunbc.executor_privileged_operation {
+  ExecutorPrivilegedOperation,
+  SystemdEnableUnit,
+  SystemdStartUnit,
+  executor_privileged_operation_sudoers_command,
+  executor_privileged_operation_shell_command,
+}
+import gunbc.runner_host_deploy {
+  RunnerHostDeploy,
+  srv3_runner_host_deploy,
+  srv4_runner_host_deploy,
+  admit_runner_host,
+  runner_enable_command_argv,
+}
+import gunbc.runner_host_grants { runner_host_privileged_operations, runner_slot_activation_operations }
+import gunbc.runner_slot_provision { desired_runner_slot_members }
+import gunbc.runner_lifecycle { runner_unit_name_for_instance }
+import gunbc.runner_activation { BuildCacheInstanceReady, HostCompilePoolReady }
+import gunbc.build_cache_instance {
+  BuildCacheInstance, ProcessIdentity, ci_cache_instance,
+}
+import gunbc.host_layout { CompilePoolSliceDeclared, gunbc_managed_compile_pool_slice }
+import gunbc.runner_service_activation {
+  RunnerActivationReadiness,
+  ActivationReadinessObserved,
+  ActivationReadinessUnobserved,
+  RunnerTransitionPlan,
+  TransitionAdmitted,
+  TransitionRefused,
+  runner_activation_plans_for_deploy,
+  runner_transition_apply_lines,
+  runner_activation_refusal_count,
+  runner_activation_admitted_operation_count,
+  runner_activation_readiness_unobserved_no_transaction,
+  runner_transition_sequence_label,
+  runner_host_activation_units,
+}
+import gunbc.fleet_converge_plan {
+  fleet_converge_apply_shell,
+  timer_retirement_plan,
+}
+import gunbc.fabric_cell_converge { fabric_cell_population_unobserved }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data runner_service_activation_witness_doc: String = "THE DISCRIMINATING RED FOR THE DEFECT THIS LANE WAS DISPATCHED FOR. The emitted apply.sh carried daemon-reload and disable and nothing else -- enable count 0, start count 0 -- so convergence materialized runner trees while the host's serving capacity did not move, and three separate widenings on 2026-08-25 were finished by a hand-run `systemctl enable --now` loop that lives in no authority.\\n\\nWHAT EACH POLE ASSERTS, because a single-poled set would not be evidence. The ADMITTED pole authors a readiness receipt in the fixture and asserts that the emitted script carries a separate enable and a separate start for every desired unit -- it goes RED the moment the emitter stops emitting activation, which is the exact regression the defect was. The REFUSED pole supplies the unobserved readiness every production caller supplies and asserts a typed, counted, located refusal that does NOT abort the script -- it goes RED if the refusal ever becomes silence, which is the state the emitter was in before this lane, or if it becomes an exit, which would withdraw materialization that is independently authorized.\\n\\nTHE FUSION CONTROL IS THE THIRD POLE AND IT IS NOT REDUNDANT WITH EITHER. Asserting that enable and start both appear does not establish that they are two transitions: `enable --now` would satisfy a reader looking for the word enable and would still be the fusion. So the set separately asserts that no emitted line carries systemctl's --now, and pairs that with the surviving fused builder as a positive control -- runner_enable_command_argv DOES render it -- so the absence is a measurement rather than a property of the pattern never matching anything."
+
+// THE READINESS FIXTURE, AUTHORED HERE RATHER THAN SHARED. test.claim.runner_activation_wall carries
+// the same shape and the full reasoning for the pool-declared instance; the duplication is deliberate
+// for the reason that module's own note gives, and gunbc.runner_service_activation's stall row gives
+// the other half: on the live tree gunbc_compile_pool_placement is CompilePoolInRunnerSlots, so a
+// fixture reading the production instance would assert this fleet's topology instead of this
+// module's subject, and every admitted-pole witness below would red for a reason that has nothing to
+// do with emission.
+fn witness_pool_declared_instance(host: HostIdentity) -> BuildCacheInstance {
+  let base = ci_cache_instance(host: host)
+  BuildCacheInstance {
+    identity: base.identity,
+    implementation: base.implementation,
+    endpoint: base.endpoint,
+    intended_unit: base.intended_unit,
+    intended_principal: base.intended_principal,
+    intended_storage: base.intended_storage,
+    intended_capacity: base.intended_capacity,
+    intended_compile_pool: CompilePoolSliceDeclared {
+      slice_unit: gunbc_managed_compile_pool_slice as String,
+    },
+  }
+}
+
+fn witness_ready_readiness(deploy: RunnerHostDeploy) -> RunnerActivationReadiness {
+  let host = deploy.host_label as HostIdentity
+  let instance = witness_pool_declared_instance(host: host)
+  ActivationReadinessObserved {
+    cache_ready: BuildCacheInstanceReady {
+      instance: instance,
+      owner: ProcessIdentity {
+        boot_id: "fixture-boot" as NonEmptyStr,
+        pid: 4242,
+        start_time: "80000000" as NonEmptyStr,
+      },
+      managed_unit: instance.intended_unit,
+    },
+    pool_ready: HostCompilePoolReady {
+      host: host,
+      slice_unit: gunbc_managed_compile_pool_slice,
+      pool_declared: true,
+      pool_observed: true,
+    },
+  }
+}
+
+fn witness_plans(deploy: RunnerHostDeploy, readiness: RunnerActivationReadiness) -> List<RunnerTransitionPlan> {
+  runner_activation_plans_for_deploy(
+    host_admission: admit_runner_host(deploy: deploy),
+    deploy: deploy,
+    readiness: readiness,
+  )
+}
+
+fn witness_apply_text(deploy: RunnerHostDeploy, readiness: RunnerActivationReadiness) -> String {
+  fleet_converge_apply_shell(
+    timer_plan: timer_retirement_plan(observed: []),
+    host: deploy.host_label,
+    observed_slots: [],
+    observed_fabric_cells: fabric_cell_population_unobserved(host: deploy.host_label as HostIdentity),
+    observed_activation_readiness: readiness,
+  )
+}
+
+fn witness_systemctl_word() -> String {
+  posix_single_quote(spelling: ci_runner_sudo_binary_path(b: SudoSystemctl) as String)
+}
+
+fn witness_transition_word(verb: NonEmptyStr) -> String {
+  posix_single_quote(spelling: verb as String)
+}
+
+// THE VERB PATTERN IS BUILT FROM THE SAME AUTHORITIES THE EMITTER USES, never spelled here. A literal
+// "'systemctl' 'enable'" in this file would be a third authoring of two facts extdeps.systemd.systemctl
+// and gunbc.fleet_posix_accounts already own, and it would rot exactly the way the sibling witness in
+// test.claim.runner_host_deploy did when the builder started routing through an authority: the
+// assertion would go red for a spelling change with no behaviour behind it.
+fn witness_transition_pattern(verb: NonEmptyStr, unit: NonEmptyStr) -> String {
+  concat(
+    concat(witness_systemctl_word(), concat(" ", witness_transition_word(verb: verb))),
+    concat(" ", posix_single_quote(spelling: unit as String)),
+  )
+}
+
+fn witness_all_units_present(text: String, units: List<NonEmptyStr>, verb: NonEmptyStr) -> Bool {
+  fold(
+    units,
+    init: true,
+    f: (acc, u) => acc && string_contains(s: text, pattern: witness_transition_pattern(verb: verb, unit: u)),
+  )
+}
+
+// THE EMITTED SCRIPT CARRIES ACTIVATION, AND THIS IS THE ROW THAT REDS IF IT STOPS. It asserts the
+// per-unit enable AND the per-unit start over the WHOLE desired roster rather than one exemplar
+// each, so a partial emission -- the first slot only, or the enable half only -- fails here rather
+// than passing on a sample.
+test fn emitted_apply_carries_enable_and_start_for_every_desired_unit() -> Bool {
+  let d = srv4_runner_host_deploy
+  let units = runner_host_activation_units(deploy: d)
+  let text = witness_apply_text(deploy: d, readiness: witness_ready_readiness(deploy: d))
+  list_length(items: units) == list_length(items: desired_runner_slot_members(deploy: d))
+    && list_length(items: units) > 0
+    && witness_all_units_present(text: text, units: units, verb: systemctl_enable_verb)
+    && witness_all_units_present(text: text, units: units, verb: systemctl_start_verb)
+}
+
+// THE FUSION CONTROL, WITH ITS POSITIVE POLE BESIDE IT. The first conjunct is the property: no
+// emitted activation line carries systemctl's --now. On its own that would be a pattern that might
+// simply never match anything, so the second conjunct executes the surviving fused builder and
+// asserts the pattern DOES match there -- the same words, one authoring away, rendered by the
+// readiness-blind path this lane exists to stop being the only one.
+test fn emitted_activation_is_never_the_fused_enable_now() -> Bool {
+  let d = srv4_runner_host_deploy
+  let text = witness_apply_text(deploy: d, readiness: witness_ready_readiness(deploy: d))
+  let fused = shell_command_render(command: runner_enable_command_argv(deploy: d))
+  !string_contains(s: text, pattern: "'--now'")
+    && !string_contains(s: text, pattern: "--now")
+    && string_contains(s: fused, pattern: "'--now'")
+}
+
+// ENABLE PRECEDES START IN THE EMITTED ORDER. A unit started before it is enabled serves until the
+// next boot and then silently stops being capacity, which is the failure this whole lane is about
+// wearing a shorter timescale. The sequence is read off the transitions the plans name rather than
+// off the shape of the list, so a plan list that grew a third member fails here rather than being
+// destructured past.
+test fn emitted_activation_enables_before_it_starts() -> Bool {
+  let d = srv4_runner_host_deploy
+  let plans = witness_plans(deploy: d, readiness: witness_ready_readiness(deploy: d))
+  runner_transition_sequence_label(plans: plans) == "enable,start"
+    && runner_activation_refusal_count(plans: plans) == 0
+    && runner_activation_admitted_operation_count(plans: plans)
+         == list_length(items: runner_host_activation_units(deploy: d)) * 2
+}
+
+// THE REFUSED POLE. It supplies the readiness every production caller supplies today, and asserts
+// three things that are three different failures: the refusal is COUNTED (both transitions, so 2 --
+// zero would mean the axis reported nothing), it is LOCATED and typed in the emitted text, and it
+// does NOT abort. The no-exit conjunct is load-bearing: materialization runs under its own
+// authorization, and withdrawing it because an unrelated axis was refused would trade a silent
+// no-op for a loud one.
+test fn unobserved_readiness_refuses_loudly_without_aborting_apply() -> Bool {
+  let d = srv4_runner_host_deploy
+  let readiness = runner_activation_readiness_unobserved_no_transaction
+  let plans = witness_plans(deploy: d, readiness: readiness)
+  let text = witness_apply_text(deploy: d, readiness: readiness)
+  runner_activation_refusal_count(plans: plans) == 2
+    && runner_activation_admitted_operation_count(plans: plans) == 0
+    && string_contains(s: text, pattern: "REFUSED-ACTIVATION host=srv4")
+    && string_contains(s: text, pattern: "no host observation transaction exists yet")
+    && !string_contains(s: text, pattern: witness_transition_pattern(verb: systemctl_enable_verb, unit: "actions-runner@srv4-01.service" as NonEmptyStr))
+    && !witness_activation_lines_contain(plans: plans, pattern: "exit ")
+    && !witness_activation_lines_contain(plans: plans, pattern: "systemctl")
+}
+
+// THE NO-EXIT CONJUNCT IS ASKED OF THE ACTIVATION LINES, NOT OF THE WHOLE SCRIPT, and the difference
+// is the denominator error this repository keeps recording. The slot family emits its own `exit 1`
+// for an unmodeled host and the extract scripts carry their own error handling, so a whole-script
+// search for an exit would answer a question about somebody else's lines -- passing or failing for
+// reasons that have nothing to do with whether an activation refusal aborts.
+fn witness_activation_lines_contain(plans: List<RunnerTransitionPlan>, pattern: String) -> Bool {
+  fold(
+    plans,
+    init: false,
+    f: (acc, p) =>
+      acc || fold(
+        runner_transition_apply_lines(plan: p),
+        init: false,
+        f: (a2, l) => a2 || string_contains(s: l, pattern: pattern),
+      ),
+  )
+}
+
+// THE TWO REFUSALS SAY DIFFERENT THINGS, which is what makes "separately admitted" a fact rather
+// than a shape. One shared sentence over both transitions would have been the collapse that reads as
+// one operation reported twice.
+test fn the_two_refusals_name_their_own_stakes() -> Bool {
+  let plans = witness_plans(deploy: srv4_runner_host_deploy, readiness: runner_activation_readiness_unobserved_no_transaction)
+  fold(
+    plans,
+    init: 0,
+    f: (acc, p) =>
+      match p {
+        TransitionRefused { transition: _, host_label: _, reason: r } =>
+          if string_contains(s: r as String, pattern: "durable boot intent") { acc + 1 } else { acc }
+        TransitionAdmitted { transition: _, operations: _ } => acc
+      },
+  ) == 1
+}
+
+// THE GRANT AND THE COMMAND ARE ONE FACT, ASSERTED IN THE DIRECTION THAT CAN BREAK. The sudoers match
+// derived from each operation is the argv joined by spaces, so this checks that the grant a host
+// installs authorizes exactly the words the emitted script runs -- and, separately, that NEITHER
+// grant authorizes the fused form, which is what makes the separation enforced by sudo rather than
+// by an author remembering.
+test fn each_transition_grant_authorizes_its_own_command_and_not_the_fusion() -> Bool {
+  let unit = "actions-runner@srv4-01.service" as NonEmptyStr
+  let en = executor_privileged_operation_sudoers_command(op: SystemdEnableUnit { unit: unit })
+  let st = executor_privileged_operation_sudoers_command(op: SystemdStartUnit { unit: unit })
+  string_contains(s: en as String, pattern: concat(concat(" ", systemctl_enable_verb as String), concat(" ", unit as String)))
+    && string_contains(s: st as String, pattern: concat(concat(" ", systemctl_start_verb as String), concat(" ", unit as String)))
+    && !string_contains(s: en as String, pattern: "--now")
+    && !string_contains(s: st as String, pattern: "--now")
+    && (en as String) != (st as String)
+}
+
+// THE HOST'S GRANT POPULATION GAINS EXACTLY ONE PAIR PER DESIRED SLOT, DERIVED ON BOTH SIDES. The
+// count is compared against the roster's own length rather than against a number, because a literal
+// here would be a measurement of the current tree standing in for an oracle -- and this roster moved
+// from 5 to 21 within the month.
+test fn grants_carry_one_enable_and_one_start_per_desired_slot() -> Bool {
+  let d = srv4_runner_host_deploy
+  let desired = list_length(items: desired_runner_slot_members(deploy: d))
+  let acts = runner_slot_activation_operations(deploy: d)
+  let all_ops = runner_host_privileged_operations(deploy: d)
+  list_length(items: acts) == desired * 2
+    && fold(all_ops, init: 0, f: (acc, op) => match op { SystemdEnableUnit { unit: _ } => acc + 1  _ => acc }) == desired
+    && fold(all_ops, init: 0, f: (acc, op) => match op { SystemdStartUnit { unit: _ } => acc + 1  _ => acc }) == desired
+}
+
+// THE FABRIC CELL TAKES NO ACTIVATION GRANT, and this is asserted from the two hosts that differ
+// rather than from a name. srv3 reserves srv3-06 for compute fabric, so its desired roster is one
+// shorter than srv4's committed width and it derives one fewer transition pair. A witness naming
+// srv3-06 would assert the carve's current position; this one asserts the RELATION, which is what
+// would break if the activation roster ever reached past desired_runner_slot_members.
+test fn the_reserved_fabric_cell_takes_no_activation_grant() -> Bool {
+  let srv3_units = runner_host_activation_units(deploy: srv3_runner_host_deploy)
+  let srv3_desired = desired_runner_slot_members(deploy: srv3_runner_host_deploy)
+  list_length(items: srv3_units) == list_length(items: srv3_desired)
+    && list_length(items: srv3_units) < srv3_runner_host_deploy.runner_count
+    && !fold(
+         srv3_units,
+         init: false,
+         f: (acc, u) => acc || string_contains(s: u as String, pattern: "srv3-06"),
+       )
+}

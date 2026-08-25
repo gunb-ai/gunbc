@@ -61,6 +61,7 @@ import gunbc.spark.serving_member_realization {
 import gunbc.spark.serving_realization { ServingInstallEffect, EnableLingerForOwnAccount }
 import gunbc.runner_slot_provision { RunnerSlotMember }
 import gunbc.fabric_cell_converge { FabricCellPopulation, fabric_cell_population_unobserved }
+import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
 import gunbc.fleet_converge_plan {
   FleetConvergePlanArtifact,
   FleetConvergeSparkServingTypedAction,
@@ -299,6 +300,7 @@ fn spark_serving_fleet_converge_apply_shell(
     host: host,
     observed_slots: observed_slots,
     observed_fabric_cells: observed_fabric_cells,
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   )
 }
 

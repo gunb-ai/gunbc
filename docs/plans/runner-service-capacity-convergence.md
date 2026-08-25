@@ -40,13 +40,40 @@ re-provisioning. Replacement could only be induced by turning an existing member
 installed artifact -- so it cannot express *same slot, same unit, same registration, different
 release*, which is exactly the state that hurt.
 
-### 2. The install path cannot activate
+### 2. The install path cannot activate — MODELED AND EMITTED, STILL REFUSING
 
-The emitted `apply.sh` carries `daemon-reload` and `disable`. Enable count 0, start count 0.
+The emitted `apply.sh` carried `daemon-reload` and `disable`. Enable count 0, start count 0.
 
 And the two are separate transitions that must not be re-fused: `enable` is durable boot intent,
 `start` is immediate activity. Both consume the activation admission, because enabling authorizes a
 future reboot to start the broker under readiness conditions that may no longer hold.
+
+**What landed.** `gunbc.runner_service_activation` models the two transitions, admits each one
+separately against `admit_runner_activation`, and derives the emitted lines from
+`gunbc.executor_privileged_operation`'s new `SystemdEnableUnit` / `SystemdStartUnit` — so the
+sudoers grant and the executed command are one argv, and the fused `enable --now` the hand loop ran
+has no grant on any executor host. `fleet_converge_plan` carries an activation family beside the
+slot family, with its own line in `plan.txt` and its own refusal count.
+
+**What did NOT change, and this is the part to read before quoting a green apply as converged
+capacity.** The admission has no reachable green on any host: `admit_runner_activation` requires a
+`HostCompilePoolReady`, and `derive_host_compile_pool_ready` answers `PoolNotDeclaredInTopology`
+fleet-wide because `gunbc_compile_pool_placement` is `CompilePoolInRunnerSlots`. So both transitions
+refuse on every host today, `apply.sh` prints a typed located refusal for each, and the host's
+serving capacity still does not rise from apply alone. That state is declared as a typed
+`GuaranteeStall` row — `runner_activation_reachable_green_stall` — rather than left in prose, for
+the reason §4b gives: a gate whose only reachable state is refusal has to say so, or a reader
+cannot tell a permanent structural refusal from a transient one.
+
+**What the item actually bought,** stated without inflation: an invisible hand loop became a named,
+counted, located refusal. `enable count 0` was indistinguishable from a host with no activation
+work; `activation-refusals=2` with its cause is not.
+
+**Next.** The placement flip — `gunbc_compile_pool_placement` declaring a managed slice, in the same
+motion that shrinks `runner_pool` so the host allocation still conserves (`gunbc.fleet_host_budget`).
+That is a fleet-wide topology decision and its own item; `gunbc_jobserver_token_override_note`
+already records the over-admission it would expose. Until it lands, capacity increases remain
+manual, and the refusal in `apply.sh` is the place that says so.
 
 ### 3. Provider admissibility is unmodeled
 
@@ -162,4 +189,5 @@ its 13-row truth table and mutation receipt. Split out for having no production 
 this document's shared blocker.
 
 **Open:** incarnation-sensitive membership; the host observation transaction; provider admissibility;
-serving/restartable counts.
+serving/restartable counts; the compile-pool placement flip that gives the activation admission a
+reachable green.
