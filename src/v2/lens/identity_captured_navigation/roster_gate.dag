@@ -1,46 +1,76 @@
 module v2.lens.identity_captured_navigation.roster_gate
 
+import v2.lens.common.source_analysis_standing {
+  FindingStanding,
+  NoSuspect,
+  SuspectObserved,
+  FindingNotEstablished,
+  SourceAnalysisNotEstablishedCause,
+  LanguageGrammarUnavailable,
+  SourceTokenizationRejected,
+  SourceParseRejected
+}
+
 
 data offline_roster_gate_claim_batch_recipe: String = "Operator-ruled OFFLINE (NOT CI discovery-enrolled; witness_exclusion_substrings row claim/identity_captured_navigation/roster_gate in gunbc.ci_layer_roots — same structural reason as complexity_accumulator_copy's roster gate: file_gate reads its roster targets via filesystem_read at runtime, a data dependency invisible to resolve-closure attribution). Local recipe, one test fn per invocation: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/identity_captured_navigation/roster_gate_test.dag --function <fn> --claim-run --wet."
 
 data source_findings_pre_normalize_note: String = "Reads the RAW parsed surface tree (parse_module, no normalize pass) rather than the normalized tree: this lens's target is a source-syntax defect (a find_named_child(name: ^grammar_production_identity_node_projection) call whose result escapes un-reduced) that must be located by the surface grammar's own ^dag_surface_match_expr production identity - the proven-working precedent (v2.test.claim.manual.body_lowering_match's body_lowering_find_match_expr) locates match_expr the same way, on the pre-normalize tree, because downstream body-lowering/normalize stages replace a match construct's surface identity with a ComputationNode\{behavior: Match\} - by the time a tree is normalized, ^dag_surface_match_expr is no longer a reliable anchor for this static-analysis walk."
 
 // Carries artifact.span_index and the original source_text alongside the parsed tree, not just the tree: analyze.arg_value_symbol needs both to recover a caret literal's actual referenced identifier text (node_source_symbol_note in analyze.dag) - the grammar's caret-literal terminal is StampClass-stamped, so the Node tree's atom-identity field alone cannot distinguish e.g. ^grammar_production_identity_node_projection from any other caret literal.
+type SourceFindingsStanding
+  = SourceFindingsEstablished { findings: List<Finding> }
+  | SourceFindingsNotEstablished { cause: SourceAnalysisNotEstablishedCause }
+
+type SourceTreeStanding
+  = SourceTreeEstablished { parsed: ParsedSource }
+  | SourceTreeNotEstablished { cause: SourceAnalysisNotEstablishedCause }
+
 type ParsedSource {
   tree: Node,
   span_index: SpanIndex,
   source_text: String
 }
 
-fn source_findings_tree(source_text: String) -> Optional<ParsedSource> {
+// THE GRAMMAR IS MATCHED BEFORE THE SUBJECT IS READ, and that ordering is a correctness fix rather
+// than a tidier spelling. This function used to pass `lm.grammar` straight into parse_module without
+// inspecting it, so a VOID GRAMMAR ARRIVED DISGUISED AS A PARSE REJECTION: at that site the lens
+// could not distinguish "the language model has no grammar" from "this text does not parse", and
+// the information was already gone. Those have opposite owners -- a grammar outage cannot be
+// repaired by anyone editing a snippet, an unparsable snippet is repaired by its author, at once.
+// Matching first is what lets each not-established cause below be true rather than merely typed.
+fn source_findings_tree(source_text: String) -> SourceTreeStanding {
   let lm = dag_language_model()
-  match tokenize(
-    text: source_text,
-    file: ^identity_captured_navigation_roster_subject,
-    rules: lm.lex
-  ) {
-    Rejected { diagnostics: _ } => Absent
-    Accepted { value: stream, diagnostics: _ } =>
-      match parse_module(tokens: stream, grammar: lm.grammar) {
-        Rejected { diagnostics: _ } => Absent
-        Accepted { value: artifact, diagnostics: _ } =>
-          Present {
-            value: ParsedSource {
-              tree: artifact.tree,
-              span_index: artifact.span_index,
-              source_text: source_text
-            }
+  match lm.grammar {
+    VoidGrammar => SourceTreeNotEstablished { cause: LanguageGrammarUnavailable }
+    ModeledGrammar { root: _ } =>
+      match tokenize(
+        text: source_text,
+        file: ^identity_captured_navigation_roster_subject,
+        rules: lm.lex
+      ) {
+        Rejected { diagnostics: _ } => SourceTreeNotEstablished { cause: SourceTokenizationRejected }
+        Accepted { value: stream, diagnostics: _ } =>
+          match parse_module(tokens: stream, grammar: lm.grammar) {
+            Rejected { diagnostics: _ } => SourceTreeNotEstablished { cause: SourceParseRejected }
+            Accepted { value: artifact, diagnostics: _ } =>
+              SourceTreeEstablished {
+                parsed: ParsedSource {
+                  tree: artifact.tree,
+                  span_index: artifact.span_index,
+                  source_text: source_text
+                }
+              }
           }
       }
   }
 }
 
-fn source_findings(source_text: String) -> Optional<List<Finding>> {
+fn source_findings(source_text: String) -> SourceFindingsStanding {
   match source_findings_tree(source_text: source_text) {
-    Absent => Absent
-    Present { value: parsed } =>
-      Present {
-        value: identity_captured_navigation_findings(
+    SourceTreeNotEstablished { cause: cause } => SourceFindingsNotEstablished { cause: cause }
+    SourceTreeEstablished { parsed: parsed } =>
+      SourceFindingsEstablished {
+        findings: identity_captured_navigation_findings(
           root: parsed.tree,
           span_index: parsed.span_index,
           source_text: parsed.source_text
@@ -105,9 +135,18 @@ fn file_gate(path: String, refusal_ceiling: Int) -> Bool {
   }
 }
 
-fn source_has_suspect(source_text: String) -> Bool {
+// THE STANDING IS RETURNED, NOT COLLAPSED -- the same repair as the accumulator lens's, for the
+// identical defect. `source_has_suspect -> Bool` answered `false` when the analysis could not be
+// established, and `false` is the value that MEANS "no suspect", so an unread subject reported the
+// clean verdict. The controls that rest on this are the `== false` GREEN controls pinning the lens
+// against FALSE POSITIVES: if their snippet ever stopped parsing they asserted "not flagged" about
+// a source nobody read, and the anti-false-positive guarantee would have evaporated in silence.
+fn source_finding_standing(source_text: String) -> FindingStanding {
   match source_findings(source_text: source_text) {
-    Absent => false
-    Present { value: fs } => count_matching(fs: fs, pred: v2.lens.identity_captured_navigation.analyze.finding_is_suspect) > 0
+    SourceFindingsNotEstablished { cause: cause } => FindingNotEstablished { cause: cause }
+    SourceFindingsEstablished { findings: fs } => {
+      let suspects = count_matching(fs: fs, pred: v2.lens.identity_captured_navigation.analyze.finding_is_suspect)
+      if suspects > 0 { SuspectObserved { suspects: suspects } } else { NoSuspect }
+    }
   }
 }
