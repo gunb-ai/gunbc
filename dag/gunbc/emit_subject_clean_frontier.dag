@@ -247,6 +247,15 @@ type RosterIdentity
 // THE DIGEST COVERS THE POLICY AS WELL AS THE SUBJECTS, so two runs that discovered the same paths
 // under different roots are not one identity — and so the hashed text is non-empty by construction
 // rather than by the caller having supplied a subject with a name.
+// AND IT IS NAMED FOR THIS RATCHET RATHER THAN FOR THE CONCEPT, for a measured reason.
+// `dag/tools/frontier_ingestion_probe.dag` already declares `roster_identity` over a different
+// subject (a list of frontier members) returning a different type. Two declarers of one bare name
+// resolve under a per-entry compile -- which sees only one of them -- and fail to resolve under the
+// floor's whole-corpus preparation, which sees both, so the collision is INVISIBLE to the check an
+// author naturally runs and visible only to the one that gates. The same fork was carried by a
+// sixth copy of string-list membership differing from its five peers only in parameter name; it is
+// gone, and `std.materialization_ladder` `string_list_contains` is consumed instead.
+//
 // THE DENOMINATOR IS DERIVED FROM THE INPUTS SUPPLIED, NEVER PASSED. This is private for exactly
 // that reason: the two public constructors below each supply the value their own inputs earn, so a
 // caller cannot assert a denominator it does not have. A carrier claiming a denominator it lacks

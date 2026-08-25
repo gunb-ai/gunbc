@@ -100,6 +100,7 @@ pub use crate::v1_compiler_infer_env::{
     authored_name, empty_symbol_index, lookup_type_by_name, lookup_type_for,
 };
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_items::item_kind;
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, OtherItem, TypeItem};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
@@ -31878,17 +31879,24 @@ pub fn emit_data_def(
             raw_ty_str.clone()
         };
         let fn_name = to_snake(name.clone());
-        let needs_rc = v1_rt::set_contains(
-            &shared_types,
-            authored_name_at(
-                scope.type_env.clone().source_indices.clone(),
-                type_node.clone(),
-            ),
+        let needs_rc = rust_carrier_is_at_shared_layer(
+            type_node.clone(),
+            scope.type_env.clone().source_indices.clone(),
+            shared_types.clone(),
         );
-        let ty_str = if (needs_rc.clone() && !rust_type_is_rc_wrapped(ty_str.clone())) {
-            wrap_shared_type(RenderTarget::Rust, ty_str.clone())
+        let ty_str = if preserves_declared_brand.clone() {
+            render_rust_shared_type_with_optional(
+                type_node.clone(),
+                ann_name.clone(),
+                ty_str.clone(),
+                shared_types.clone(),
+            )
         } else {
-            ty_str.clone()
+            if (needs_rc.clone() && !rust_type_is_rc_wrapped(ty_str.clone())) {
+                wrap_shared_type(RenderTarget::Rust, ty_str.clone())
+            } else {
+                ty_str.clone()
+            }
         };
         if (is_simple_type_node(
             type_node.clone(),
@@ -32727,13 +32735,22 @@ pub fn build_data_body_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<St
         |acc: Rc<HashMap<String, Rc<Node>>>, tm: Rc<TypedModule>| {
             tm.items.clone().iter().cloned().fold(
                 acc,
-                |inner: Rc<HashMap<String, Rc<Node>>>, i: Rc<Node>| match i.body.clone() {
-                    Some(b) => v1_rt::rc_map_insert(
-                        inner.clone(),
-                        authored_name_at(tm.type_env.clone().source_indices.clone(), i.clone()),
-                        b.clone(),
-                    ),
-                    None => inner.clone(),
+                |inner: Rc<HashMap<String, Rc<Node>>>, i: Rc<Node>| {
+                    if (item_kind(i.clone()) != ItemKind::DataItem) {
+                        inner.clone()
+                    } else {
+                        match i.body.clone() {
+                            Some(b) => v1_rt::rc_map_insert(
+                                inner.clone(),
+                                authored_name_at(
+                                    tm.type_env.clone().source_indices.clone(),
+                                    i.clone(),
+                                ),
+                                b.clone(),
+                            ),
+                            None => inner.clone(),
+                        }
+                    }
                 },
             )
         },
@@ -32760,22 +32777,14 @@ pub fn fold_constant_default_expr(
                     binding_kind: _, ..
                 } => {
                     let var_name = authored_name_at(source_indices.clone(), expr.clone());
-                    match lookup_item(registry.clone(), var_name.clone()) {
-                        Some(info) => match info.kind.clone() {
-                            ItemKind::DataItem => {
-                                match v1_rt::map_get(&data_body_index, var_name.clone()) {
-                                    Some(body) => fold_constant_default_expr(
-                                        body.clone(),
-                                        registry.clone(),
-                                        data_body_index.clone(),
-                                        source_indices.clone(),
-                                        (depth.clone() + 1),
-                                    ),
-                                    None => None,
-                                }
-                            }
-                            _ => None,
-                        },
+                    match v1_rt::map_get(&data_body_index, var_name.clone()) {
+                        Some(body) => fold_constant_default_expr(
+                            body.clone(),
+                            registry.clone(),
+                            data_body_index.clone(),
+                            source_indices.clone(),
+                            (depth.clone() + 1),
+                        ),
                         None => None,
                     }
                 }
