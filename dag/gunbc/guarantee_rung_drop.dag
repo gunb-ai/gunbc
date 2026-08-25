@@ -1,6 +1,6 @@
 module gunbc.guarantee_rung_drop
 
-import std.types { String, List, Bool }
+import std.types { String, List, Bool, Int }
 import v2.std.algebra { fold_list }
 
 // THE TYPED CARRIER FOR A DESIGN section 4b(3) RUNG DROP.
@@ -98,4 +98,143 @@ fn rung_drop_is_off_ladder(d: GuaranteeRungDrop) -> Bool {
     StructurallyGuaranteed => false
     StructurallyImpossible => false
   }
+}
+
+// THE PEER CARRIER FOR A DESIGN section 4b(2) STALL, and it is a different fact from the drop
+// above rather than a variant of it. A DROP is an event: something that held a rung stopped
+// holding it, and the fields record what was lost. A STALL is a standing state: a class sits
+// below its attainable ceiling and has not moved, and section 4b(2) obliges it to say WHY it has
+// not -- separating "cannot climb further" from "can climb after one grounding" from "can climb
+// now but unbuilt", because only the first is permanent. Nothing was lost when a stall begins, so
+// a drop's previous/temporary/reason fields have no answer, and forcing one would fabricate an
+// event that did not happen.
+//
+// WHY THIS EXISTS AT ALL, measured before it was written. The obligation is real and universally
+// observed in PROSE: a corpus sweep found 133 sites across 95 modules naming a next-rung or
+// restoration trigger, of which 79 sit inside `//` annotations and 54 inside String bodies. Not
+// one of them is reachable by a fold. The annotation half is out of reach of any PROGRAM CLAIM --
+// DESIGN section 4c is explicit that an annotation is never evidence a machine claim holds, because
+// no Accepted program reads one -- and the String half has no identity to key on, so a count over
+// it counts phrase occurrences rather than classes. Stated precisely rather than as a blanket
+// impossibility, because the overclaim would be checkable and wrong: annotations ARE captured, into
+// std.source_annotation SourceAnnotationGraph, so an annotation lens could in principle scan their
+// text. That does not rescue the population. Such a lens matches the literal phrase "NEXT-RUNG
+// TRIGGER", which is the grep DESIGN section 6 says a lens replaces; it cannot tell a class from a
+// mention of one; and every row it read would be modeling debt by that carrier's own standing law.
+// The only route to a countable population is authoring the fact as data from here forward.
+//
+// THE ONE MECHANISM THAT TOUCHES THE CLASS TODAY confirms that reading from the other direction:
+// test.claim.stage0_rust_source_lifecycle_scaffold_witness_test asserts string_contains over
+// gunbc.stage0_rust_source_lifecycle_scaffold unclassified_axis_rung_note for the literal phrase
+// "NEXT-RUNG TRIGGER". It is a real, executing check, and what it can establish is that one prose
+// row still contains a phrase -- not that the class it belongs to named a trigger, and not that
+// any other class did.
+//
+// WHAT THIS CARRIER ACTUALLY GUARANTEES, at its honest rung and no higher. next_rung_trigger is a
+// REQUIRED field, so a stall declared through this type WITHOUT a trigger has no spelling -- for
+// rows that use it, section 4b(2) is structurally impossible to violate rather than checked. It
+// makes nothing unwritable about prose: a class stalling in an annotation stays exactly as
+// writable as it was, and nothing detects one. That is a scope statement, not a climb, and stating
+// it here is what keeps a reader from counting this module as coverage it does not provide.
+
+// THE THREE-WAY DISTINCTION section 4b(2) NAMES, modeled as a closed coproduct because that is
+// what makes "only the first is permanent" a fold rather than a reading. AwaitsOneGrounding
+// carries the authority it waits on: a stall that cannot name what it is waiting for is not
+// waiting, it is unbuilt, and the two rank differently for work.
+type ClimbBlocker
+  = CannotClimbFurther { why: String }
+  | AwaitsOneGrounding { grounding: String }
+  | ClimbableButUnbuilt
+
+// A POPULATION MAY BE HONESTLY UNCOUNTABLE, and that must be a state rather than an empty list.
+// DESIGN itself carries rows whose exposure is unbounded and says so; rendering those as
+// `population: []` would read as "nothing is affected", which is the empty-observation narrow the
+// failure-mode list already names -- bottom-as-answer conflated with bottom-as-ignorance.
+type StallPopulation
+  = BoundedPopulation { members: List<String> }
+  | UncountedNotEnumerable { reason: String }
+
+type GuaranteeStall {
+  subject: String
+  current: GuaranteeRung
+  ceiling: GuaranteeRung
+  blocker: ClimbBlocker
+  population: StallPopulation
+  next_rung_trigger: String
+}
+
+// THE LADDER'S ORDER, which is a property of the closed vocabulary and not a preference. It exists
+// so "below its ceiling" is decided by a fold instead of by a reader comparing two labels.
+fn guarantee_rung_index(r: GuaranteeRung) -> Int {
+  match r {
+    OutsideTheLadder => 0
+    Mitigatable => 1
+    MechanicallyPreventable => 2
+    StructurallyGuaranteed => 3
+    StructurallyImpossible => 4
+  }
+}
+
+// A STALL WHOSE CURRENT RUNG EQUALS ITS CEILING IS NOT A STALL. The type cannot forbid writing one
+// -- that would need a dependent pair over the two rungs -- so this is validation standing where
+// construction is not available, declared as such rather than presented as a wall.
+fn stall_is_below_ceiling(s: GuaranteeStall) -> Bool {
+  guarantee_rung_index(r: s.current) < guarantee_rung_index(r: s.ceiling)
+}
+
+fn stall_is_permanent(s: GuaranteeStall) -> Bool {
+  match s.blocker {
+    CannotClimbFurther { why: _ } => true
+    AwaitsOneGrounding { grounding: _ } => false
+    ClimbableButUnbuilt => false
+  }
+}
+
+fn climb_blocker_label(b: ClimbBlocker) -> String {
+  match b {
+    CannotClimbFurther { why: w } => concat("cannot climb further: ", w)
+    AwaitsOneGrounding { grounding: g } => concat("awaits one grounding: ", g)
+    ClimbableButUnbuilt => "climbable now but unbuilt"
+  }
+}
+
+fn stall_population_render(p: StallPopulation) -> String {
+  match p {
+    BoundedPopulation { members: ms } => rung_drop_population_render(names: ms)
+    UncountedNotEnumerable { reason: r } => concat("UNCOUNTED, not enumerable: ", r)
+  }
+}
+
+// ONE RENDERING, for the reason the drop's renderer already gives: a consumer that spelled its own
+// message would be a second authority for the row's own fields and the two would drift.
+fn stall_report_message(s: GuaranteeStall) -> String {
+  concat(
+    concat(s.subject, concat(": STALLED at ", guarantee_rung_label(r: s.current))),
+    concat(
+      concat(", ceiling ", concat(guarantee_rung_label(r: s.ceiling), concat(" (", climb_blocker_label(b: s.blocker)))),
+      concat(
+        concat("). Population: ", stall_population_render(p: s.population)),
+        concat(". Climbs when: ", concat(s.next_rung_trigger, "."))
+      )
+    )
+  )
+}
+
+// THE FIRST ROW IS THIS MODULE'S OWN CLASS, and it is homed here for the reason every other row is
+// homed with its class: the stall is in the ladder machinery itself, whose authority is this file.
+// The population is UncountedNotEnumerable rather than the 133 sites the sweep found, deliberately.
+// A measured figure copied into a row is a transcription of an instrument's output, which this
+// repository rules against, and it would additionally be the wrong number: 133 counts PHRASE
+// OCCURRENCES, and a class that mentions its trigger three times is one stall, while a witness
+// asserting the phrase is none. The population has no identity to count at, and that is the finding
+// rather than a gap in the sweep.
+data next_rung_trigger_enforcement_stall: GuaranteeStall = GuaranteeStall {
+  subject: "DESIGN section 4b(2) next-rung trigger enforcement",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: ClimbableButUnbuilt,
+  population: UncountedNotEnumerable {
+    reason: "a next-rung trigger is authored as prose, so it has no identity to count at. The majority of sites sit inside // annotations, which DESIGN section 4c makes unreadable to any Accepted program, so no lens can enumerate them however it is written -- the shortfall is the representation, not the sweep"
+  },
+  next_rung_trigger: "every class this repository declares below its ceiling declares it through gunbc.guarantee_rung_drop GuaranteeStall rather than in prose, at which point the population becomes a fold over rows and a stall missing its trigger has no spelling. Not satisfied by this carrier existing: one row is a carrier with a consumer, not a migrated population, and the 4b(2) obligation stays review diligence for every class still stalling in an annotation"
 }

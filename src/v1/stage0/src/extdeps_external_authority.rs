@@ -32,7 +32,7 @@ pub fn external_model_scope_law() -> String {
 pub fn external_subject_symbolic_identity_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Subject identity is SYMBOLIC, never a name string (operator verdict on gunbc#7571, 2026-08-01, closing the string-spelling fork an earlier revision opened: 'Chromium' / 'chromium' / 'The Chromium Projects' were distinct subjects, and a scope restated a legal name its own module already declared). ExternalSubjectRef carries a DeclarationRef to the subject's one declaration — e.g. extdeps.vendor.microsoft's scope points at its existing 'microsoft' Vendor declaration rather than repeating 'Microsoft Corporation'. The same §3 cite-the-symbol rule that moved FactAuthorityOverride.fact off prose applies to every identity this carrier holds.".to_string()
+            "Subject identity is SYMBOLIC, never a name string (operator verdict on gunbc#7571, 2026-08-01, closing the string-spelling fork an earlier revision opened: 'Chromium' / 'chromium' / 'The Chromium Projects' were distinct subjects, and a scope restated a legal name its own module already declared). ExternalSubjectRef carries a DeclarationRef to the subject's one declaration — e.g. extdeps.vendor.microsoft's scope points at its existing 'microsoft' Vendor declaration rather than repeating 'Microsoft Corporation'. The same §3 cite-the-symbol rule that moved FactCitation.fact off prose applies to every identity this carrier holds.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -81,17 +81,17 @@ pub fn external_subject_ref_eq(a: Rc<ExternalSubjectRef>, b: Rc<ExternalSubjectR
     declaration_ref_eq(a.declaration.clone(), b.declaration.clone())
 }
 
-pub fn fact_authority_override_ref_note() -> String {
+pub fn fact_citation_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "FactAuthorityOverride.fact is a DeclarationRef, not prose (operator verdict on gunbc#7556; the §3 cite-the-symbol rule applied to the override carrier): the overridden fact is named by module + declaration in the containment tree's own key space, so a stale override is decidable by symbol resolution rather than rotting as free text.".to_string()
+            "FactCitation is the ONE carrier for 'this modeled fact is attested by that external authority' (operator verdicts on gunbc#7556 and gunbc#7571, the §3 cite-the-symbol rule). It replaces three forks that were the same fact under three names: FactAuthorityOverride, and extdeps.cpu.types' byte-identical SocketFactCitation / CacheGeometryCitation pair — whose 'field: NonEmptyStr' was a POSITIONAL naming scheme for something the containment tree already names, so a renamed field left the citation green over a name that no longer existed, and a GPU module had to import a CPU type to cite a cache fact. The cited fact is a DeclarationRef: module + declaration + field in the containment tree's own key space, so a stale citation is decidable by symbol resolution rather than rotting as free text.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct FactAuthorityOverride {
+pub struct FactCitation {
     pub fact: Rc<DeclarationRef>,
     pub authority: Rc<ExternalAuthority>,
 }
