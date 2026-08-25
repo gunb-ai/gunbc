@@ -6,6 +6,7 @@ import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.compilers.cli_surface { cli_argument_text, cli_surface_arguments }
 import v2.std.diagnostic { Accepted, Rejected }
+import extdeps.shell.exec { ProcessObservation, process_observation }
 import extdeps.tools.jq {
   JqInputFile,
   JqInputStdin,
@@ -25,7 +26,6 @@ import extdeps.tools.jq {
   JqOutputAbsent,
   JqOutputPresent,
   JqExecutionRefused,
-  JqProcessObservation,
   jq_classify_observation,
   jq_invocation_process_plan,
   jq_admitted_plan_input,
@@ -265,7 +265,7 @@ fn outcome_matches(outcome: JqOutcome, expected: JqOutcomeExpectation) -> Bool {
 // lowering ever refuses this invocation, these assertions must go red, not quietly test a stand-in.
 fn classifies_as(
   policy: JqExitPolicy,
-  observation: JqProcessObservation,
+  observation: ProcessObservation,
   expected: JqOutcomeExpectation,
 ) -> Bool {
   match jq_invocation_process_plan(invocation: JqInvocation {
@@ -288,7 +288,7 @@ fn classifies_as(
 test fn exit_one_is_a_refusal_under_program_exit() -> Bool {
   classifies_as(
     policy: JqProgramExit,
-    observation: JqProcessObservation { exit_code: 1, stdout: "false", stderr: "" },
+    observation: process_observation(exit_code: 1, stdout: "false", stderr: ""),
     expected: ExpectRefused,
   )
 }
@@ -299,7 +299,7 @@ test fn exit_one_is_a_refusal_under_program_exit() -> Bool {
 test fn exit_one_is_a_value_under_last_result_exit() -> Bool {
   classifies_as(
     policy: JqLastResultExit,
-    observation: JqProcessObservation { exit_code: 1, stdout: "false", stderr: "" },
+    observation: process_observation(exit_code: 1, stdout: "false", stderr: ""),
     expected: ExpectPresent,
   )
 }
@@ -308,7 +308,7 @@ test fn exit_one_is_a_value_under_last_result_exit() -> Bool {
 test fn exit_four_is_absence_under_last_result_exit() -> Bool {
   classifies_as(
     policy: JqLastResultExit,
-    observation: JqProcessObservation { exit_code: 4, stdout: "", stderr: "" },
+    observation: process_observation(exit_code: 4, stdout: "", stderr: ""),
     expected: ExpectAbsent,
   )
 }
@@ -318,12 +318,12 @@ test fn exit_four_is_absence_under_last_result_exit() -> Bool {
 test fn exit_two_refuses_under_both_policies() -> Bool {
   classifies_as(
     policy: JqProgramExit,
-    observation: JqProcessObservation { exit_code: 2, stdout: "", stderr: "usage" },
+    observation: process_observation(exit_code: 2, stdout: "", stderr: "usage"),
     expected: ExpectRefused,
   )
   && classifies_as(
     policy: JqLastResultExit,
-    observation: JqProcessObservation { exit_code: 2, stdout: "", stderr: "usage" },
+    observation: process_observation(exit_code: 2, stdout: "", stderr: "usage"),
     expected: ExpectRefused,
   )
 }
@@ -333,7 +333,7 @@ test fn exit_two_refuses_under_both_policies() -> Bool {
 test fn empty_output_on_zero_exit_is_absence() -> Bool {
   classifies_as(
     policy: JqProgramExit,
-    observation: JqProcessObservation { exit_code: 0, stdout: "   ", stderr: "" },
+    observation: process_observation(exit_code: 0, stdout: "   ", stderr: ""),
     expected: ExpectAbsent,
   )
 }
