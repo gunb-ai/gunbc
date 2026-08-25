@@ -637,7 +637,7 @@ fn fabric_cell_discovery_holds(acc: List<FabricCellDiscoveredSubject>, wire: Str
 // a subject, but by having a caller who never asks for one of the populations.
 //
 // THE PROJECTION IS THE ONLY THING THE WET PATH SHOULD CONSUME. Both halves come from ONE probe, so
-// they cannot disagree about which host was read, and `fabric_cell_population` now REQUIRES the
+// they cannot disagree about which host was read, and `admit_fabric_cell_probe` now REQUIRES the
 // discovery-derived refusals, so there is no spelling for a population built from the expected side
 // alone.
 type FabricCellObserverProjection {

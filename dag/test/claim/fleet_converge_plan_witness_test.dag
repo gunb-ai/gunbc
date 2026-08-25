@@ -851,7 +851,7 @@ test fn witness_fabric_cell_population_moves_the_member_set_fingerprint() -> Boo
 //
 // THE MUTATION RECEIPT REFUTED MY OWN FIX: with the sort deleted, the reversed-observation row
 // still PASSED. The sort was redundant, because member order never depended on observation order in
-// the first place. `fabric_cell_population` folds over the AUTHORITY'S expected subjects --
+// the first place. the mint folds over the AUTHORITY'S expected subjects --
 // fabric_cell_expected_slots x fabric_cell_resource_addresses -- and looks each one up in the
 // readback, so the member list comes out in authority order for any permutation of the
 // observations. Canonicalization was validation standing exactly where construction already held

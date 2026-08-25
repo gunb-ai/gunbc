@@ -448,7 +448,7 @@ fn fleet_converge_slot_family(
 // empty list, which reconcile then reads as "the host has none of these" and plans a full install.
 // For a family whose resources are a cgroup and two directories that is the empty-observation
 // narrow: a probe that could not read the host is indistinguishable from a host that has nothing,
-// and the two have opposite remedies. FabricCellPopulation makes them different values, so an
+// and the two have opposite remedies. FabricCellObservationDecision makes them different values, so an
 // unreadable cell stops the line here instead of arriving as work to do.
 // PLANNED WORK WITH NO REALIZER IS A REFUSAL, NOT A ZERO-REFUSAL PLAN.
 //
@@ -753,7 +753,7 @@ fn fabric_cell_disposition_baseline_row(d: FabricCellAddressDisposition) -> Stri
 // is the entire reason DESIGN section 5 asks for counted degradations, was pinned at one by
 // construction. The population always carried the located list; only the plan surface threw it
 // away. It is the same total-at-the-level-examined shape as the drift collapse: the match over
-// FabricCellPopulation was exhaustive and the distinction that mattered was inside an arm.
+// FabricCellObservationDecision was exhaustive and the distinction that mattered was inside an arm.
 // THE REMEDY IS RENDERED PER DISPOSITION BECAUSE THE THREE BLOCKED STATES ARE NOT THE SAME EVENT.
 // One sentence -- "the address was not read" -- was appended to all of them, and it is FALSE of
 // AddressContradicted: that address WAS read, and the observations disagreed. A reader told the
