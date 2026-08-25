@@ -1,5 +1,9 @@
 module test.fixture.borrowed_census_collision_entry
 
+// Executable fixture evidence, not a floor-enrolled witness: the current
+// gunbc.compile_diagnostic_census harness accepts only a synthetic single-module source and
+// cannot express this collision's two-declarer subject. Next-rung trigger: a multi-module compile
+// fixture that enrolls this collision arm together with the unique and missing controls.
 import test.fixture.borrowed_census_collision_one
 import test.fixture.borrowed_census_collision_two
 import test.fixture.borrowed_census_collision_caller
