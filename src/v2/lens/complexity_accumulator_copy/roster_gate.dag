@@ -67,14 +67,12 @@ fn count_matching(fs: List<Finding>, pred: fn(Finding) -> Bool) -> Int {
 
 fn standing_from_counts(suspects: Int, refusals: Int, refusal_ceiling: Int) -> RosterStanding {
   RosterStanding {
-    finding:
-      if suspects > 0 {
+    finding: if suspects > 0 {
         SuspectObserved { suspects: suspects }
       } else {
         NoSuspect
       },
-    analysis:
-      if refusals > refusal_ceiling {
+    analysis: if refusals > refusal_ceiling {
         RefusalBudgetExceeded { refusals: refusals, ceiling: refusal_ceiling }
       } else {
         Within { refusals: refusals, ceiling: refusal_ceiling }
@@ -100,18 +98,26 @@ fn file_standing(path: String, refusal_ceiling: Int) -> RosterStanding {
   }
 }
 
-fn file_gate(path: String, refusal_ceiling: Int) -> Bool {
-  let standing = file_standing(path: path, refusal_ceiling: refusal_ceiling)
-  match standing.finding {
-    NoSuspect =>
-      match standing.analysis {
-        Within { refusals: _, ceiling: _ } => true
-        RefusalBudgetExceeded { refusals: _, ceiling: _ } => false
-        AnalysisNotEstablished { cause: _ } => false
-      }
+fn finding_standing_holds(standing: FindingStanding) -> Bool {
+  match standing {
+    NoSuspect => true
     SuspectObserved { suspects: _ } => false
     FindingNotEstablished { cause: _ } => false
   }
+}
+
+fn analysis_standing_holds(standing: AnalysisStanding) -> Bool {
+  match standing {
+    Within { refusals: _, ceiling: _ } => true
+    RefusalBudgetExceeded { refusals: _, ceiling: _ } => false
+    AnalysisNotEstablished { cause: _ } => false
+  }
+}
+
+fn file_gate(path: String, refusal_ceiling: Int) -> Bool {
+  let standing = file_standing(path: path, refusal_ceiling: refusal_ceiling)
+  finding_standing_holds(standing: standing.finding)
+    && analysis_standing_holds(standing: standing.analysis)
 }
 
 fn source_has_suspect(source_text: String) -> Bool {
