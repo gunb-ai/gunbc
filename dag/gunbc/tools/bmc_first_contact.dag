@@ -21,17 +21,18 @@ fn bmc_first_contact_host(value: String?) -> NonEmptyStr {
   }
 }
 
+// THE FACTORY PASSWORD IS PUBLISHED, AND IT STILL DOES NOT GO IN ARGV. It is tempting to treat a
+// vendor-published default as harmless in a command line, but the exception would be the wrong shape
+// to teach: this func calls the same operation bmc_onboard uses to authenticate with a ROTATED
+// secret, and an operation that accepts a credential by argv accepts every credential by argv.
+// Keeping one authentication path means the leaky one has nowhere to survive, so first-contact
+// writes the same 0600 netrc as every other Redfish caller and refuses loudly if it cannot.
 func bmc_first_contact() -> ProcessExit
   uses net: std.resources.Network
 {
   host = shell.Env.Get(name: "BMC_HOST")
   let bmc = bmc_first_contact_host(value: host.value)
 
-  // THE FACTORY PASSWORD IS PUBLISHED, AND IT STILL DOES NOT GO IN ARGV. It is tempting to treat a
-  // vendor-published default as harmless in a command line, but the exception would be the wrong
-  // shape to teach: this is the same operation bmc_onboard uses to authenticate with a ROTATED
-  // secret, and an operation that accepts a credential by argv accepts every credential by argv.
-  // Keeping one authentication path means the leaky one has nowhere to survive.
   if write_netrc(host: bmc as String, account: openbmc_factory_login.username as String, password: openbmc_factory_login.published_password) == false {
     return exit_failure(reason: "first-contact: netrc write failed")
   }
