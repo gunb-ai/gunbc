@@ -162,6 +162,56 @@ fn a_declared_member_does_not_count_as_kernel_named() {
     );
 }
 
+// KERNEL-NAMED AND DECLARED ARE INDEPENDENT AXES, AND THE COUNTER MUST SPLIT THEM.
+//
+// This is the arm that decides whether the counter measures anything. `kernel_type_set`
+// has eight keys, and over `std.types` — the module 'import std.types { Int }' names —
+// FIVE of them are genuinely declared there and THREE are not: `Bool`, `Secret`, `Json`,
+// `Unit` and `Bytes` have real declarations, while `Int`, `String` and `Float` exist only
+// as string keys of that map. So `import std.types { Bool }` is a TRUE claim and
+// `import std.types { Int }` is a FALSE one, and a counter that renders them identically
+// is reporting "this name appears in kernel_type_set", which needs no census.
+//
+// The predicate splits them by ORDER — it asks `!import_surface_has` FIRST and only then
+// consults the kernel set — but an ordering is an implementation detail until something
+// asserts the behaviour it produces. This test asserts it: one module declaring a
+// kernel-NAMED type for real, one not, both imported under the same name, and the counter
+// must answer 1 rather than 2. Reversing the two conjuncts leaves every other test in this
+// file green and turns this one red.
+#[test]
+fn kernel_named_counter_splits_declared_from_undeclared() {
+    let dir = scratch_root("kernel_named_split");
+    // Declares `Unit` for real — the `std.types` `Bool` case.
+    author(
+        &dir,
+        "declares.dag",
+        "module probe.declares\n\ntype Unit = OnlyInhabitant\n",
+    );
+    // Declares no `Unit` — the `std.types` `Int` case.
+    author(&dir, "silent.dag", AUTHORITY);
+    author(
+        &dir,
+        "claimant.dag",
+        "module probe.claimant\n\nimport probe.declares { Unit }\n\
+         import probe.silent { Unit }\n\ndata claimant_present: Bool = true\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    assert_eq!(
+        index_findings(&sweep.index)
+            .into_iter()
+            .map(|f| (f.kind, f.message))
+            .collect::<Vec<_>>(),
+        Vec::new(),
+        "both claims are admitted by the seed compiler; neither may be a finding"
+    );
+    assert_eq!(
+        index_population(&sweep.index).import_members_kernel_named,
+        1,
+        "the TRUE claim over a module that really declares `Unit` must not be counted as \
+         an escape; only the FALSE one is"
+    );
+}
+
 // THE DISCRIMINATING PAIR BEHIND THE EXHIBITED COST.
 //
 // Both modules make the identical false claim. The difference is whether any compile
