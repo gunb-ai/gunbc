@@ -23,6 +23,8 @@ import std.types { String, List, NonEmptyStr }
 
 data repo_self_build_authority_note: String = "Single authority for the argv this repository uses to build its own binaries. The package is a fact about THIS repository's layout, not about cargo, so it is data here rather than a parameter every caller re-supplies: a caller free to name the package could build a different crate and still look like a conforming call. The BIN SET is a parameter because it genuinely differs by consumer -- the required floor needs claim_executor and gunbc, fleet-desired needs gunbc alone -- and that difference is the only axis on which honest callers disagree."
 
+data repo_self_build_axes_deferred_note: String = "TWO AXES WERE BUILT HERE AND BACKED OUT BEFORE MERGE, recorded so the next author does not re-derive them from scratch. A CargoBuildSubject coproduct (RepositoryCrate | EmittedCandidateTree { manifest_path }) and a CargoVerb (CargoBuild | CargoCheck) were added for the self-host regen gate, which must cargo-check an EMITTED CANDIDATE TREE -- a different crate, which the package-as-data decision above structurally excludes -- and for which check suffices at a measured 59.8s/2.5GB against build at 155s/4.7GB. Review 55633 called them speculative widening and was right: nothing in that diff consumed either axis, the sole caller pinned both to their defaults, and DESIGN section 6 names a new artifact with no final consumer as experimental residue. The same standard had just been applied one PR over, where an unwired affected-set lens was split out of this branch for exactly this reason; leaving these in would have been that principle applied to one artifact and not its neighbour. THE DESIGN STANDS AND IS NOT RE-OPENED BY THE BACK-OUT: a free package parameter is the wrong remedy because it discards the property the note above relies on, and a sibling authority sharing this argv vocabulary is the section 3 fork this module exists to prevent -- so the subject belongs here as a CLOSED vocabulary, and it lands in the diff that carries its consumer rather than ahead of it."
+
 data repo_self_build_package: NonEmptyStr = "v1-compiler"
 
 data repo_self_build_profile_flag: String = "--release"
@@ -37,80 +39,17 @@ fn repo_self_build_bin_selector(bins: List<String>) -> String {
   join(bins |> map(b => repo_self_build_bin_flag(bin: b)), " ")
 }
 
-// WHY THE SUBJECT IS A CLOSED VOCABULARY AND NOT A PACKAGE PARAMETER.
-// The authority note above pins the package as data on the grounds that "a
-// caller free to name the package could build a different crate and still look
-// like a conforming call". That reasoning is right about the danger and was
-// wrong about the remedy, because a second HONEST subject exists: the
-// self-host regen gate builds an EMITTED CANDIDATE TREE that lives only during
-// the run (crisp-crab-430, closing the fail-open arm where required-regen
-// compares emitted bytes to committed bytes and never asks whether either
-// compiles). That caller is not an under-served case of this module -- it is
-// excluded by the exact property the note relies on.
-//
-// Making the package a free parameter would buy them in by giving up the
-// guarantee. A closed subject coproduct keeps both: no constructor names an
-// arbitrary crate, and the one other legitimate breadth has a name. This is
-// DESIGN section 2 horizontal -- one concept at two breadths -- rather than a
-// sibling authority sharing an argv vocabulary, which is what a section 3 fork
-// looks like from the inside.
-type CargoBuildSubject
-  = RepositoryCrate
-  | EmittedCandidateTree { manifest_path: String }
-
-// THE VERB IS AN AXIS BECAUSE THE TWO CONSUMERS ASK DIFFERENT QUESTIONS.
-// Producing runnable binaries needs `build`; establishing that an emitted tree
-// COMPILES needs only `check`, and the difference is not cosmetic -- measured
-// warm with the whole stage0 lib recompiled, which is exactly the
-// candidate-install case: check 59.8s / 2.5GB peak against build 155s / 4.7GB
-// peak, with every diagnostic of interest check-visible. Left hardcoded, the
-// second consumer writes "cargo check" beside this module's "cargo build" and
-// the fork this module exists to prevent reappears one field down.
-type CargoVerb
-  = CargoBuild
-  | CargoCheck
-
-fn cargo_verb_token(verb: CargoVerb) -> String {
-  match verb {
-    CargoBuild => "cargo build"
-    CargoCheck => "cargo check"
-  }
-}
-
-fn cargo_subject_selector(subject: CargoBuildSubject) -> String {
-  match subject {
-    RepositoryCrate => join(["-p", repo_self_build_package as String], " ")
-    EmittedCandidateTree { manifest_path: path } => join(["--manifest-path", path], " ")
-  }
-}
-
-fn repo_self_build_base_command(verb: CargoVerb, subject: CargoBuildSubject) -> String {
+fn repo_self_build_package_command() -> String {
   join(
-    [cargo_verb_token(verb: verb), repo_self_build_profile_flag, cargo_subject_selector(subject: subject)],
+    ["cargo build", repo_self_build_profile_flag, "-p", repo_self_build_package as String],
     " "
   )
 }
 
-fn repo_self_build_package_command() -> String {
-  repo_self_build_base_command(verb: CargoBuild, subject: RepositoryCrate)
-}
-
-fn repo_self_build_command_for(
-  verb: CargoVerb,
-  subject: CargoBuildSubject,
-  bins: List<String>
-) -> String {
-  let base = repo_self_build_base_command(verb: verb, subject: subject)
-  if bins |> count == 0 {
-    base
-  } else {
-    join([base, repo_self_build_bin_selector(bins: bins)], " ")
-  }
-}
-
-// The repository's own crate, built, with a bin subset -- what every consumer
-// in this repo wants today. Kept as the short spelling so the common call does
-// not restate two axes it never varies.
 fn repo_self_build_command(bins: List<String>) -> String {
-  repo_self_build_command_for(verb: CargoBuild, subject: RepositoryCrate, bins: bins)
+  if bins |> count == 0 {
+    repo_self_build_package_command()
+  } else {
+    join([repo_self_build_package_command(), repo_self_build_bin_selector(bins: bins)], " ")
+  }
 }
