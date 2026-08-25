@@ -27,7 +27,8 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use v1_compiler::cli_run::declaration_index::{
-    index_findings, index_population, DeclarationIntegrityKind,
+    citation_debt_findings_against, corpus_findings, index_findings, index_population,
+    DeclarationIntegrityKind,
 };
 use v1_compiler::cli_run::run_dag_parse_sweep;
 
@@ -385,5 +386,83 @@ fn lens_with_construction_justification_stays_clean() {
         index_population(&sweep.index).lens_modules,
         1,
         "the green must name a nonzero denominator, or it covered nothing"
+    );
+}
+
+// THE DEBT CONTRACT'S OWN DISCRIMINATING PAIR, AND WHY IT LIVES BEHIND A ROSTER PARAMETER.
+//
+// `review 55817` found that folding the debt arm into `index_findings` made every fixture in
+// this file receive 38 findings it did not plant — the production roster joined against a
+// tree of `probe.*` modules, where all 38 rows are trivially absent. That falsified the
+// §4b evidence in place: the planted-red and positive-control assertions could not pass.
+//
+// The repair splits the arm out into `corpus_findings`, whose denominator is this repository,
+// and gives the join an explicit roster so the contract's OWN red becomes authorable here for
+// the first time. Both directions are planted below, because a one-sided assertion would not
+// distinguish a working contract from an arm that never fires.
+#[test]
+fn a_debt_row_whose_citation_still_refuses_is_live() {
+    let dir = scratch_root("debt_live");
+    author(&dir, "authority.dag", AUTHORITY);
+    author(
+        &dir,
+        "citer.dag",
+        "module probe.citer\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data probe_citation: DeclarationRef = DeclarationRef {\n\
+         \u{20}\u{20}module_path: \"probe.authority\",\n\
+         \u{20}\u{20}decl_name: \"no_such_declaration\",\n\
+         \u{20}\u{20}field: WholeDeclaration,\n}\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    let roster = [("probe.authority", "no_such_declaration", "")];
+    assert_eq!(
+        citation_debt_findings_against(&sweep.index, &roster),
+        Vec::new(),
+        "the citation still refuses, so the row is live and must not be reported as spent"
+    );
+    // And while the row stands, the citation itself is suppressed rather than double-counted.
+    assert_eq!(
+        index_findings(&sweep.index),
+        Vec::new(),
+        "an enrolled debt row suppresses its own citation's finding"
+    );
+}
+
+#[test]
+fn a_debt_row_whose_citation_stopped_refusing_is_spent_and_refuses() {
+    let dir = scratch_root("debt_spent");
+    author(&dir, "authority.dag", AUTHORITY);
+    // Nothing cites the roster's target, so the row is spent.
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    let roster = [("probe.authority", "no_such_declaration", "")];
+    let spent = citation_debt_findings_against(&sweep.index, &roster);
+    assert_eq!(spent.len(), 1, "the spent row must refuse, got {spent:?}");
+    assert_eq!(
+        spent[0].kind,
+        DeclarationIntegrityKind::CitationDebtRowStale
+    );
+    assert!(
+        spent[0].message.contains("no_such_declaration"),
+        "the refusal must name the spent row: {}",
+        spent[0].message
+    );
+}
+
+// THE REGRESSION CONTROL FOR THE SPLIT ITSELF. The arm must be absent from `index_findings`
+// and present in `corpus_findings`, or the review's failure returns silently.
+#[test]
+fn the_debt_arm_is_corpus_scoped_not_index_scoped() {
+    let dir = scratch_root("debt_scope");
+    author(&dir, "authority.dag", AUTHORITY);
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    assert_eq!(
+        index_findings(&sweep.index),
+        Vec::new(),
+        "the production debt roster must not reach a fixture tree through index_findings"
+    );
+    assert!(
+        !corpus_findings(&sweep.index).is_empty(),
+        "corpus_findings carries the debt arm, so the production roster is spent over a \
+         fixture tree — which is exactly why the arm may not live in index_findings"
     );
 }

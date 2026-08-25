@@ -60,7 +60,7 @@ fn main() -> ExitCode {
         Ok(sweep) => {
             let population =
                 v1_compiler::cli_run::declaration_index::index_population(&sweep.index);
-            let findings = v1_compiler::cli_run::declaration_index::index_findings(&sweep.index);
+            let findings = v1_compiler::cli_run::declaration_index::corpus_findings(&sweep.index);
             eprintln!(
                 "v1_src_dag_parse: {} file(s) parse-clean; declarations modules={} \
                  declared={} import_members={} citations={} debt={} in_fixtures={} outside_index={} kernel_named={} \

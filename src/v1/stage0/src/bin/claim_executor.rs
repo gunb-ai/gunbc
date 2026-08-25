@@ -10330,7 +10330,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 let population =
                     v1_compiler::cli_run::declaration_index::index_population(&sweep.index);
                 let findings =
-                    v1_compiler::cli_run::declaration_index::index_findings(&sweep.index);
+                    v1_compiler::cli_run::declaration_index::corpus_findings(&sweep.index);
                 // A GREEN NAMES ITS DENOMINATORS. `checked=0` and `all clean` are different
                 // states with different remedies, and an instrument that renders them
                 // identically is the failure DESIGN §5 names, not a tidy report.

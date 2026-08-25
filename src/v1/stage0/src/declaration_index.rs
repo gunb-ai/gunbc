@@ -856,6 +856,23 @@ fn citation_is_pre_existing_debt(cited: &CitedSymbol) -> bool {
 /// construction: the only way to remove a violation is to repair it AND delete its row, and
 /// the only way to keep a row is for the violation to still be there.
 pub fn citation_debt_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegrityFinding> {
+    citation_debt_findings_against(index, PRE_EXISTING_CITATION_DEBT)
+}
+
+/// The debt join, over an EXPLICIT roster.
+///
+/// The roster is a parameter rather than a constant read from inside, and that is what makes
+/// this arm's red authorable at the fixture boundary at all. A fixture tree contains a
+/// handful of `probe.*` modules; joined against the 38-row production roster, every row is
+/// trivially absent and the arm reports 38 stale rows that say nothing about the fixture.
+/// Passing the roster lets a fixture author a ONE-ROW roster and plant both directions of the
+/// contract — a row whose citation still refuses (live, no finding) and a row whose citation
+/// does not (spent, one finding) — which is the discriminating pair, and it is unauthorable
+/// while the roster is baked in.
+pub fn citation_debt_findings_against(
+    index: &DeclarationIndex,
+    roster: &[(&str, &str, &str)],
+) -> Vec<DeclarationIntegrityFinding> {
     let mut live: BTreeSet<(String, String, String)> = BTreeSet::new();
     for record in index.modules.values() {
         if record.is_fixture_carrier {
@@ -871,7 +888,7 @@ pub fn citation_debt_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
             }
         }
     }
-    PRE_EXISTING_CITATION_DEBT
+    roster
         .iter()
         .filter(|(module, decl, field)| {
             !live.contains(&(module.to_string(), decl.to_string(), field.to_string()))
@@ -1009,12 +1026,42 @@ pub fn duplicate_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegrityF
 }
 
 /// Every finding, ordered so the report is stable across runs.
+/// Every finding DERIVABLE FROM THE INDEX ITSELF — the four arms whose subject is the tree
+/// that was swept, whatever tree that is.
+///
+/// THE DEBT ARM IS DELIBERATELY NOT HERE, and it is a denominator distinction rather than a
+/// tidying one. The other four arms ask questions ABOUT THE SWEPT MODULES: does this import
+/// member exist, does this citation resolve, does this lens carry its authorship fact. Every
+/// one is answered by the modules in front of it, so the answer is meaningful over any tree.
+/// `PRE_EXISTING_CITATION_DEBT` is a fact about ONE SPECIFIC CORPUS — the repository's own —
+/// and joining it against some other tree does not produce a weaker answer, it produces an
+/// answer to a question nobody asked: a fixture tree of `probe.*` modules makes all 38 rows
+/// trivially absent, so the arm reports 38 spent rows that say nothing about the fixture and
+/// drown every real finding beside them.
+///
+/// That is the failure `review 55817` found, and it was a real one: with the debt arm folded
+/// in here, every fixture in `tests/declaration_index_integrity.rs` received 38 findings it
+/// did not plant, so the planted-red and positive-control assertions could not pass and the
+/// §4b fixture-boundary evidence this change rests on did not execute. The repair is not to
+/// gate the arm on a corpus-shape signal — that would be a smuggled heuristic (§4: a
+/// heuristic is never necessary in a closed system) — but to put the arm where its
+/// denominator is, in `corpus_findings` below, and to give it a roster parameter so its own
+/// red stays authorable.
 pub fn index_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegrityFinding> {
     let mut out = duplicate_findings(index);
     out.extend(import_member_findings(index));
     out.extend(cited_symbol_findings(index));
-    out.extend(citation_debt_findings(index));
     out.extend(lens_authorship_findings(index));
+    out.sort();
+    out
+}
+
+/// What a run OVER THIS REPOSITORY must answer: everything the index derives, plus the debt
+/// contract, whose subject universe is this corpus. This is what the required run and the
+/// standalone sweep call; nothing else should.
+pub fn corpus_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegrityFinding> {
+    let mut out = index_findings(index);
+    out.extend(citation_debt_findings(index));
     out.sort();
     out
 }
