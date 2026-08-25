@@ -117,8 +117,14 @@ fn adc_document_from_json(doc: JsonValue) -> AdcDocumentDecodeOutcome {
   }
 }
 
-fn decode_adc_document(text: String) -> AdcDocumentDecodeOutcome {
-  match parse_json(s: text) {
+// The document is SECRET-BEARING as a whole, not merely in the two fields the
+// record marks: it carries client_secret and refresh_token verbatim. Taking it
+// as Secret keeps the marking at the seam where the bytes actually cross, rather
+// than re-establishing it only on the way out -- an unmarked String parameter
+// here would drop the distinction one layer above the place this module exists
+// to preserve it. The unwrap is confined to this function.
+fn decode_adc_document(document: Secret) -> AdcDocumentDecodeOutcome {
+  match parse_json(s: document as String) {
     Absent => AdcDocumentDecodeRefused { cause: AdcDocumentNotJson }
     Present { value: doc } => adc_document_from_json(doc: doc)
   }
