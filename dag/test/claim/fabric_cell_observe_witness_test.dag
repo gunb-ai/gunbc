@@ -1,6 +1,7 @@
 module test.claim.fabric_cell_observe_witness
 
 import std.types { Bool, String, List, Int, NonEmptyStr, list_length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import gunbc.fabric_cell_converge {
@@ -52,6 +53,12 @@ import gunbc.fabric_cell_observe {
   DiscoveredForeignArtifact,
   fabric_cell_discovered_subject_wire,
 }
+
+// ROUTED, BECAUSE AN UNROUTED WITNESS IS DISCOVERED AND NEVER RUN. A module that does not declare
+// its live-tree disposition defaults to ReadsLiveTree and the floor declines it -- counted, never
+// executed. Every row in this file reads only values the fixture authors, so the honest
+// declaration is also the one that makes the rows gate anything.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THESE ROWS ARE LAWS OVER THE OBSERVER, AUTHORED BEFORE THE HOST TRANSPORT EXISTS, and that order
 // is the point rather than an accident of scheduling. Every defect this family has shipped was
