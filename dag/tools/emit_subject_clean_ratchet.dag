@@ -1,11 +1,10 @@
 module tools.emit_subject_clean_ratchet
 
-import std.types { Bool, Int, String }
+import std.types { String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import tools.dag_compile_clean_shard_roster {
-  CompileCleanShardEntryPaths,
   CompileCleanShardEntryPathsBuilt,
   CompileCleanShardEntryPathsDuplicatePath,
   compile_clean_shard_entry_paths
@@ -48,12 +47,12 @@ data emit_subject_clean_roster_policy: RosterDiscoveryPolicy = DeclarationIndexU
 // reaches is still a subject. A duplicate path is a refusal there and stays a refusal here rather
 // than being deduplicated into a smaller universe.
 type EmitRatchetRosterRead
-  = EmitRatchetRosterRead_Roster { entries: List<String> }
+  = EmitRatchetRosterEntries { entries: List<String> }
   | EmitRatchetRosterUnreadable { cause: String }
 
 fn emit_ratchet_roster() -> EmitRatchetRosterRead {
   match compile_clean_shard_entry_paths() {
-    CompileCleanShardEntryPathsBuilt { paths: ps } => EmitRatchetRosterRead_Roster { entries: ps }
+    CompileCleanShardEntryPathsBuilt { paths: ps } => EmitRatchetRosterEntries { entries: ps }
     CompileCleanShardEntryPathsDuplicatePath { path: p, first: f, duplicate: d } =>
       EmitRatchetRosterUnreadable {
         cause: concat(
@@ -114,7 +113,7 @@ fn check(entries: String, report: String) -> ProcessExit {
     match emit_ratchet_roster() {
       EmitRatchetRosterUnreadable { cause: c } =>
         exit_failure(reason: concat("check: the entry roster could not be read — ", c))
-      EmitRatchetRosterRead_Roster { entries: roster } => {
+      EmitRatchetRosterEntries { entries: roster } => {
         let r = run_emit_subject_clean_ratchet(entries: entries, roster: roster)
         let write = Filesystem.Write(path: report, content: emit_ratchet_report_text(r: r))
         if !write.success {
