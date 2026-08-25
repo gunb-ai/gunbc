@@ -54,9 +54,7 @@
 // src/std_interface_summary.rs
 // src/std_keyed_roster.rs
 // src/std_keyed_row.rs
-// src/std_logic.rs
 // src/std_machine_constraints.rs
-// src/std_magnitude.rs
 // src/std_measure.rs
 // src/std_nat.rs
 // src/std_node.rs
@@ -68,8 +66,6 @@
 // src/std_process_termination.rs
 // src/std_realization_schedule.rs
 // src/std_reference_binding_observation.rs
-// src/std_roster_frontier.rs
-// src/std_serialization.rs
 // src/std_source_annotation.rs
 // src/std_syntax.rs
 // src/std_termination.rs
