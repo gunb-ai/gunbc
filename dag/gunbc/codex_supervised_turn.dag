@@ -420,21 +420,63 @@ fn codex_supervised_turn_start_line_template(user_input: String) -> String {
   ) as String
 }
 
-fn supervised_thread_id_from_line(line: String) -> NonEmptyStr? {
+// FOUR CAUSES BEHIND ONE `none`, AND THE LAST ARM WAS A WILDCARD OVER A COPRODUCT WHOSE VARIANTS
+// HAVE DIFFERENT REMEDIES -- the shape DESIGN names as total at the level examined, blind one level
+// down. `_ => none` was exhaustive over SupervisedRpcObservation and said nothing about the
+// distinction that decides what to do: an RPC ERROR is the provider refusing our thread-start, a
+// DUPLICATE is two responses claiming the same id (a protocol violation on the wire), and neither
+// is "this line was not the thread-start response", which is the ordinary, expected answer while
+// scanning a stream.
+//
+// At an Optional that collapse is the worse one: a scanner looking for the thread id gets `none`
+// for the line it should skip AND for the provider having refused, so a supervised run whose
+// thread-start was rejected looks exactly like one whose response has not arrived yet.
+type SupervisedThreadIdReading
+  = ThreadIdRead { id: NonEmptyStr }
+  | ThreadIdLineBlank
+  | ThreadIdLineUnreadable
+  | ThreadIdRpcRefused { reason: NonEmptyStr }
+  | ThreadIdRpcDuplicated { count: Int }
+  | ThreadIdLineNotThreadStart
+
+// THE not-this-line ARM EXISTS AND IS UNPRODUCIBLE TODAY, AND THAT IS A REPORTED DEFECT RATHER
+// THAN AN OVERSIGHT.
+//
+// Writing this vocabulary surfaced it: supervised_rpc_from_id_response takes `id: Int` and NEVER
+// INSPECTS THE id MEMBER OF THE DOCUMENT -- the parameter is used only to build message text. So
+// any well-formed response carrying result.<entity>.id is read as the thread-start response
+// whatever id it is answering, and SupervisedRpcAbsent is unreachable from that function.
+//
+// The arm is kept rather than folded into a neighbour, because mapping "this line was addressed
+// elsewhere" onto ThreadIdLineUnreadable would be the state-space conflation this whole change is
+// removing -- it would put a lie in the decoder to avoid an unreachable arm. What is NOT done is
+// write a witness for it: its RED is unauthorable today, and DESIGN section 4b rules such a probe
+// worse than absent because it is cited as coverage. Exhaustiveness requires the arm; evidence does
+// not exist for it, and the difference is stated rather than papered over.
+//
+// The mis-addressed-response class is NOT repaired here -- it is an id-matching defect, not a
+// parse_json fail-open, and repairing it silently inside a decoder-honesty pass would be the
+// widening this pass exists to stop doing. Its NEXT-RUNG TRIGGER is the id check landing in
+// supervised_rpc_from_id_response, at which point this arm becomes producible and gets its witness.
+// It is witnessed at its CURRENT behaviour in the witness module, so that fix turns that witness
+// red at the line explaining why.
+fn supervised_thread_id_from_line(line: String) -> SupervisedThreadIdReading {
   let trimmed = line.trim()
   if trimmed == "" {
-    none
+    ThreadIdLineBlank
   } else {
     match parse_json(s: trimmed) {
-      Absent => none
+      Absent => ThreadIdLineUnreadable
       Present { value: parsed } =>
         match supervised_rpc_from_id_response(
           id: codex_supervised_thread_start_id,
           obj: parsed,
           entity_key: codex_thread_start_result_thread_key as String,
         ) {
-          SupervisedRpcOk { native_id: id } => Present { value: id }
-          _ => none
+          SupervisedRpcOk { native_id: id } => ThreadIdRead { id: id }
+          SupervisedRpcError { reason: reason } => ThreadIdRpcRefused { reason: reason }
+          SupervisedRpcDuplicate { count: count } => ThreadIdRpcDuplicated { count: count }
+          SupervisedRpcAbsent => ThreadIdLineNotThreadStart
         }
     }
   }

@@ -34,6 +34,12 @@ import gunbc.codex_supervised_turn {
   empty_supervised_turn_parse_acc,
   parse_supervised_turn_stdout,
   supervised_thread_id_from_line,
+  ThreadIdRead,
+  ThreadIdLineBlank,
+  ThreadIdLineUnreadable,
+  ThreadIdRpcRefused,
+  ThreadIdRpcDuplicated,
+  ThreadIdLineNotThreadStart,
 }
 
 import extdeps.languages.json.parse { parse_json }
@@ -209,8 +215,69 @@ test fn witness_supervised_thread_id_from_line_matches_rpc_parse() -> Bool {
   let line =
     "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"thread-uuid-1\"}}}"
   match supervised_thread_id_from_line(line: line) {
-    Present { value: id } => (id as String) == "thread-uuid-1"
-    Absent => false
+    ThreadIdRead { id: id } => (id as String) == "thread-uuid-1"
+    ThreadIdLineBlank => false
+    ThreadIdLineUnreadable => false
+    ThreadIdRpcRefused { reason: _ } => false
+    ThreadIdRpcDuplicated { count: _ } => false
+    ThreadIdLineNotThreadStart => false
+  }
+}
+
+// THE THREE CAUSES THE PREDECESSOR `none` COULD NOT TELL APART, asserted as different values. The
+// pair that matters most is the last two: an RPC REFUSAL is the provider rejecting our thread-start
+// and needs a human, while a NON-MATCHING LINE is the ordinary answer for almost every line of a
+// stream and needs nothing. Under the old Optional a supervised run whose thread-start was refused
+// was indistinguishable from one whose response had simply not arrived yet.
+test fn RED_unreadable_thread_id_line_is_not_a_non_matching_line() -> Bool {
+  match supervised_thread_id_from_line(line: "{ not json") {
+    ThreadIdLineUnreadable => true
+    ThreadIdRead { id: _ } => false
+    ThreadIdLineBlank => false
+    ThreadIdRpcRefused { reason: _ } => false
+    ThreadIdRpcDuplicated { count: _ } => false
+    ThreadIdLineNotThreadStart => false
+  }
+}
+
+test fn RED_rpc_refusal_is_not_a_non_matching_line() -> Bool {
+  let line =
+    "{\"jsonrpc\":\"2.0\",\"id\":4,\"error\":{\"code\":-32000,\"message\":\"thread start refused\"}}"
+  match supervised_thread_id_from_line(line: line) {
+    ThreadIdRpcRefused { reason: _ } => true
+    ThreadIdRead { id: _ } => false
+    ThreadIdLineBlank => false
+    ThreadIdLineUnreadable => false
+    ThreadIdRpcDuplicated { count: _ } => false
+    ThreadIdLineNotThreadStart => false
+  }
+}
+
+// A DEFECT WITNESSED AT ITS CURRENT BEHAVIOUR, NOT AN ASSERTION THAT THE BEHAVIOUR IS RIGHT.
+//
+// This line answers rpc id 99. The reader is looking for id 4. It returns the id anyway, because
+// supervised_rpc_from_id_response never inspects the document's id member -- the `id` parameter
+// only builds message text. So a response to ANY request that happens to carry result.thread.id is
+// read as the thread-start response, and the thread id of an unrelated exchange is accepted as this
+// turn's.
+//
+// It is asserted rather than left undiscovered for two reasons. It pins the exact shape of the gap
+// so the next reader does not have to re-derive it; and the day the id check lands, THIS witness
+// goes red at the line that explains why, which is the notification the defect otherwise has no way
+// to send. It is deliberately NOT repaired here: id matching is not a parse_json fail-open, and
+// fixing it inside a decoder-honesty pass would be the scope widening this pass exists to stop.
+//
+// It is also the positive control the two RED witnesses above need -- without a line that still
+// reads successfully, refusing everything would satisfy both of them.
+test fn a_mis_addressed_rpc_response_is_still_accepted_as_the_thread_id() -> Bool {
+  let line = "{\"jsonrpc\":\"2.0\",\"id\":99,\"result\":{\"thread\":{\"id\":\"other\"}}}"
+  match supervised_thread_id_from_line(line: line) {
+    ThreadIdRead { id: id } => (id as String) == "other"
+    ThreadIdLineBlank => false
+    ThreadIdLineUnreadable => false
+    ThreadIdRpcRefused { reason: _ } => false
+    ThreadIdRpcDuplicated { count: _ } => false
+    ThreadIdLineNotThreadStart => false
   }
 }
 

@@ -1438,6 +1438,17 @@ fn protocol_schema_process_file_for_bundle(
     }
   }
 }
+// THE FOLD OVER SCHEMA FILES CARRIES THE FIRST REFUSAL, not a Bool, and still SHORT-CIRCUITS on it
+// -- deliberate and unchanged: later files are processed against a manifest already known
+// incomplete, so their refusals would be consequences rather than independent findings.
+//
+// AND THIS IS WHERE THE WIDENING DIES, WHICH IS NOT AN HONEST COLLAPSE -- it is a scope boundary,
+// stated at the site rather than only in a PR body. This function returns ContentHash? and has
+// SEVEN `none` arms of its own (mkdir, generate, find, empty listing, canonical mkdir, manifest
+// init, final digest), none of them among the nine parse_json fail-open sites being repaired.
+// Widening it reaches four callers and is its own cut. The located cause is now COMPUTED and
+// reaches the admitted-check below; the next repair here is to stop discarding it, not to argue
+// that discarding it is fine.
 fn observe_protocol_schema_identity(
   native_executable: FilePath,
   work_dir: FilePath,
@@ -1482,10 +1493,6 @@ fn observe_protocol_schema_identity(
             if init_manifest.success == false {
               none
             } else {
-              // THE FOLD NOW CARRIES THE FIRST REFUSAL, not a Bool. It still SHORT-CIRCUITS on the
-              // first one -- that is deliberate and unchanged: later files are processed against a
-              // manifest already known incomplete, so continuing would produce refusals that are
-              // consequences rather than independent findings.
               let bundle_standing = fold(
                 abs_paths,
                 init: BundleFileAdmitted,
@@ -1509,13 +1516,6 @@ fn observe_protocol_schema_identity(
                       BundleFileManifestAppendRefused { path: p }
                   },
               )
-              // THIS IS WHERE THE WIDENING DIES, AND IT IS NOT AN HONEST COLLAPSE -- it is a scope
-              // boundary, stated here rather than only in a PR body. observe_protocol_schema_identity
-              // returns ContentHash? and has SEVEN other `none` arms of its own (mkdir, generate,
-              // find, empty listing, canonical mkdir, manifest init, final digest), none of which is
-              // one of the nine sites this change repairs. Widening it reaches four callers and is
-              // its own cut. So the located cause is now COMPUTED and reaches this line, and the
-              // next repair here is to stop discarding it -- not to argue that discarding it is fine.
               if protocol_schema_bundle_file_admitted(standing: bundle_standing) == false {
                 none
               } else {
@@ -2674,6 +2674,11 @@ fn finish_bisect_parse_canonicalize_protocol_schema_file(
   }
 }
 
+// THE HARNESS ARM IS SEPARATED FROM THE SUBJECT ARMS, not folded back into one `false`. This
+// enclosing probe still answers Bool because a bisect driver consumes a yes/no -- but an unreadable
+// staging file is OUR defect and must not be reported as the subject failing, so it is distinguished
+// at the match below rather than counted as a negative bisect result. The same reading applies to
+// finish_bisect_parse_largest_protocol_schema_file.
 fn finish_bisect_parse_canonicalize_largest_protocol_schema_file(
   native_executable: FilePath,
   work_dir: FilePath,
@@ -2691,10 +2696,6 @@ fn finish_bisect_parse_canonicalize_largest_protocol_schema_file(
         protocol_schema_largest_file_rel as String,
       ),
     ) as FilePath
-    // THE HARNESS ARM IS SEPARATED FROM THE SUBJECT ARMS, not folded back into one `false`. This
-    // enclosing probe still answers Bool because a bisect driver consumes a yes/no -- but an
-    // unreadable staging file is OUR defect and must not be reported as the subject failing, so it
-    // is refused loudly rather than counted as a negative bisect result.
     match finish_bisect_parse_canonicalize_protocol_schema_file(path: schema_path) {
       SchemaFileConforms => true
       SchemaFileNotDecodable => false
