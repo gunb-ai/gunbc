@@ -323,6 +323,70 @@ independent below-floor defect with a fixture, extractable on its own merits, wi
 corpus-wide ordering blast radius that argues for its own lane rather than a
 rider.
 
+## 3c. A fifth consumer, at reconcile, and it is live on main
+
+Relayed from `smart-ram-730`, found while confirming an unrelated emitter defect.
+Both arms on one host, clean detached worktree at main `4f080fd88ae`, `DIRTY=0`,
+same compiler binary, **one variable**.
+
+**Treatment: one rename in one file** —
+`dag/test/claim/srv3_path_ownership_witness_test`, `fn owner` →
+`fn posix_owner_spec_of`, plus its 23 call sites *in that same file*. Nothing else
+touched.
+
+```
+BASELINE    reconcile 15m, emit 43s -> 2 hard diagnostics (both emit-stage)
+TREATMENT   the 2 disappear, and 8 NEW hard diagnostics appear,
+            none of them in the edited file:
+
+  ambiguous anonymous record literal matches 2 structs: FileOwnership, PosixSubject
+      dag/test/claim/access_validation_test.dag  (x3)
+  ambiguous anonymous record literal matches 4 structs: FirmwareSemanticVersion,
+      GitReleaseVersion, MercurialUpstreamVersion, OllamaSemanticVersion
+      dag/extdeps/git/versioning.dag
+  ambiguous anonymous record literal matches 2 structs: DeclarationRef, RustItemDeclarationRef
+      dag/test/claim/cache_retention_axes_witness_test.dag
+      dag/extdeps/realization/reconcile_in_process.dag
+```
+
+**The 8 cannot be pre-existing-but-unreported, and the argument is what makes
+this a finding rather than a curiosity.** Ambiguous-record errors arise at
+*reconcile*, which is upstream of emit. The baseline run **reached emit** — it
+reports emit done in 43 seconds — and reported exactly 2 diagnostics, both
+emit-stage. A baseline whose reconcile held 8 hard errors could not have reached
+emit at all. So the 8 were genuinely absent before the rename and present after.
+
+Renaming one function private to one witness module changed **which structs an
+anonymous record literal matches in four files that do not import it and were
+never opened**. The disambiguation is evidently deciding against a corpus-wide
+struct census, so compile outcome is a function of the **whole name set** rather
+than of any module's own content. Two consequences belong on the ledger
+explicitly:
+
+- **a lane can turn main red by renaming something private to its own file**,
+  with no import edge to the affected code and nothing a reviewer could see in
+  the diff; and
+- **every "the corpus compiles" claim is true only for the exact name-set that
+  produced it** — which makes compile-clean receipts contingent on a fact nobody
+  records. That reaches DESIGN §4b's evidence rules directly: a green measured
+  under one name set is not evidence about another.
+
+This is §3.3(b) generalized past the branch. Ambient whole-pool resolution was
+never confined to the bare-reference scanner or to the import-free corpus: the
+same *a name's meaning is a function of which other files exist* regime is live on
+main today, at reconcile, over anonymous record shape matching. It is the fifth
+direction found in one day and **the only one that reaches type resolution** —
+the others being positional-vs-named argument binding, `order_typed_call_args`
+(§3b), two accepted `contains` functions requiring different emitted authorities,
+and `build_data_body_index` indexing every item with a body under its bare name.
+
+**Not established, so it is not inherited as an overclaim:** no read of the
+disambiguation code — this is a black-box before/after, not a mechanism. And the
+rename *adds and removes a name at once*, so whether the trigger is the removed
+name, the added name, or a shift in fold order is undetermined. The separating
+experiment — add `posix_owner_spec_of` without removing `owner`, and the converse
+— is cheap on the instrument that produced this and is the next step for this row.
+
 ## 4. The realization half — and it changes the diagnosis
 
 The v1/v2 split, re-derivable with
@@ -706,6 +770,9 @@ So the split is clean, and it falls exactly along the line that clause draws:
   declined**. deep-ant-102 explicitly does not conclude which, and names the first
   check: whether the file glob is wider than the floor's discovery scan. Separate
   lane; it is not import work and should not be folded into this program.
+- **The reconcile name-set dependency (§3c)** — the separating add/remove
+  experiment, then a read of the disambiguation code. Owned here; the instrument
+  is `smart-ram-730`'s.
 - **Phase D's target spelling** — full qualification vs shortest unique suffix,
   per §8. Needs an operator decision before the sweep is written, not after.
 
