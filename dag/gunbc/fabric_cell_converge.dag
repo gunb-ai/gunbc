@@ -403,15 +403,15 @@ fn fabric_cell_address_evidence(
         match acc {
           EvidenceRefused { cause: first } => EvidenceRefused { cause: first }
           NoEvidence => EvidenceRefused { cause: c }
-          gunbc.roadmap_publish.EvidenceAbsent => EvidenceRefused { cause: c }
+          EvidenceAbsent => EvidenceRefused { cause: c }
           EvidenceObserved { member: _ } => EvidenceRefused { cause: c }
           EvidenceConflict => EvidenceRefused { cause: c }
         }
       AddressAbsent { slot: _, address: _ } =>
         match acc {
           EvidenceRefused { cause: c } => EvidenceRefused { cause: c }
-          NoEvidence => gunbc.roadmap_publish.EvidenceAbsent
-          gunbc.roadmap_publish.EvidenceAbsent => gunbc.roadmap_publish.EvidenceAbsent
+          NoEvidence => EvidenceAbsent
+          EvidenceAbsent => EvidenceAbsent
           EvidenceObserved { member: _ } => EvidenceConflict
           EvidenceConflict => EvidenceConflict
         }
@@ -419,7 +419,7 @@ fn fabric_cell_address_evidence(
         match acc {
           EvidenceRefused { cause: c } => EvidenceRefused { cause: c }
           NoEvidence => EvidenceObserved { member: m }
-          gunbc.roadmap_publish.EvidenceAbsent => EvidenceConflict
+          EvidenceAbsent => EvidenceConflict
           EvidenceObserved { member: seen } =>
             if (seen.state_digest as String) == (m.state_digest as String) {
               EvidenceObserved { member: seen }
@@ -446,7 +446,7 @@ fn fabric_cell_address_disposition(
     EvidenceRefused { cause: c } => AddressUnreadable { ref: ref, cause: c }
     EvidenceConflict => AddressContradicted { ref: ref }
     EvidenceObserved { member: m } => AddressPresent { ref: ref, member: m }
-    gunbc.roadmap_publish.EvidenceAbsent => AddressMissingOnHost { ref: ref }
+    EvidenceAbsent => AddressMissingOnHost { ref: ref }
     NoEvidence => AddressUnobserved { ref: ref }
   }
 }
