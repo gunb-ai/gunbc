@@ -2635,11 +2635,14 @@ fn claim_result_for_outcome(
             host_dependency_refusal: None,
             resolve_realization,
         },
-        ClaimOutcome::RuntimeError { message } => ClaimResult {
+        ClaimOutcome::RuntimeError { cause, message } => ClaimResult {
             function,
             entry: entry.clone(),
             ok: false,
-            detail: format!("runtime error: {}", message),
+            // The cause token leads the detail on this path too. `claim_batch` is the OTHER
+            // reader of a throw, and leaving it prose-only would rebuild the same asymmetry the
+            // floor just lost — one consumer able to partition, one not.
+            detail: format!("runtime error [{}]: {}", cause.token(), message),
             wall_nanos,
             resolve_nanos,
             corpus_resolve_nanos: 0,
@@ -13449,6 +13452,7 @@ mod tests {
         // not papered over by sniffing the message.
         for o in [
             ClaimOutcome::RuntimeError {
+                cause: v1_compiler::cli_run::WitnessRuntimeCause::NoSuchVariable,
                 message: "undefined variable: X".into(),
             },
             ClaimOutcome::NotBool {
@@ -13502,6 +13506,7 @@ mod tests {
                 kind: BudgetKind::Wall,
             },
             ClaimOutcome::RuntimeError {
+                cause: v1_compiler::cli_run::WitnessRuntimeCause::TypeError,
                 message: "boom".into(),
             },
             ClaimOutcome::NotBool { got: "Int".into() },
@@ -15077,6 +15082,7 @@ mod tests {
         subject: &str,
         function: &str,
         variant_name: &str,
+        cause: Option<&str>,
         wall_nanos: u128,
     ) -> Option<String> {
         let entry = source_roots
@@ -15108,7 +15114,17 @@ mod tests {
                     Value::Variant {
                         type_name: ctx.sym("CiWitnessVerdict"),
                         variant_name: ctx.sym(variant_name),
-                        fields: std::rc::Rc::new(Vec::new()),
+                        fields: std::rc::Rc::new(match cause {
+                            None => Vec::new(),
+                            Some(cause) => vec![(
+                                ctx.sym("cause"),
+                                Value::Variant {
+                                    type_name: ctx.sym("CiWitnessRuntimeCause"),
+                                    variant_name: ctx.sym(cause),
+                                    fields: std::rc::Rc::new(Vec::new()),
+                                },
+                            )],
+                        }),
                     },
                 ),
                 (Some("wall".to_string()), wall),
@@ -15185,6 +15201,7 @@ mod tests {
             "test.claim.observation_ci_render_witness_test",
             "w_witness_claim_line_from_module_path_holds",
             "WitnessPassed",
+            None,
             230_000_000,
         )
         .expect("ci_witness_claim_result_text must resolve and render");
@@ -15212,6 +15229,7 @@ mod tests {
             "test.claim.foo",
             "w_bar",
             "WitnessPassed",
+            None,
             89_000_000_000,
         )
         .expect("89s boundary oracle");
@@ -15220,6 +15238,7 @@ mod tests {
             "test.claim.foo",
             "w_bar",
             "WitnessPassed",
+            None,
             90_000_000_000,
         )
         .expect("90s boundary oracle");
@@ -15269,7 +15288,9 @@ mod tests {
             ),
             (
                 "WitnessRuntimeError",
-                v1_compiler::cli_run::CiWitnessVerdict::RuntimeError,
+                v1_compiler::cli_run::CiWitnessVerdict::RuntimeError(
+                    v1_compiler::cli_run::WitnessRuntimeCause::NoSuchVariable,
+                ),
             ),
             (
                 "WitnessBudgetRefused",
@@ -15288,13 +15309,23 @@ mod tests {
                 v1_compiler::cli_run::CiWitnessVerdict::RouteGap,
             ),
         ];
+        let arm_count = arms.len();
         let mut rendered: Vec<String> = Vec::new();
         for (variant, verdict) in arms {
+            // The cause rides inside the arm on BOTH sides, so the oracle call carries it too:
+            // a fieldless `WitnessRuntimeError` is not constructible in the `.dag` type any more.
+            let cause = match verdict {
+                v1_compiler::cli_run::CiWitnessVerdict::RuntimeError(_) => {
+                    Some("WitnessCauseNoSuchVariable")
+                }
+                _ => None,
+            };
             let oracle_arm = run_seed_witness_claim_result_text(
                 &roots,
                 "test.claim.foo",
                 "w_bar",
                 variant,
+                cause,
                 1_000_000,
             )
             .unwrap_or_else(|| panic!("oracle must render {variant}"));
@@ -15313,9 +15344,21 @@ mod tests {
         let mut distinct = rendered.clone();
         distinct.sort();
         distinct.dedup();
+        // WAS THE LITERAL `7` AGAINST AN EIGHT-ARM TABLE, and it did not start failing with this
+        // change -- it was already red on `main`. The Rust suite has not run in CI since
+        // 2026-07-11 (operator ruling, recorded at `gunbc.commit_workflow`
+        // `commit_gate_rust_suite_removed_disposition`), so a stale literal here is invisible
+        // until someone runs the bin's tests by hand. Executed receipt: this assertion reports
+        // `left: 8 right: 7`, and the eight lines it prints are pairwise distinct with or
+        // without the cause field, which the `.dag` side asserts independently in
+        // `w_every_verdict_arm_renders_a_distinct_token`.
+        //
+        // Pinned to `arm_count` rather than to a new literal `8`, so adding a ninth arm cannot
+        // reproduce this: the fixture is the table, and a count copied out of it by hand is the
+        // second representation that went stale in the first place.
         assert_eq!(
             distinct.len(),
-            7,
+            arm_count,
             "every verdict arm must render a distinct line: {rendered:?}"
         );
         assert!(
