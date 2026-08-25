@@ -4526,7 +4526,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
                 Absent => v1.std.core.unit_type
               }
             } else { v1.std.core.unit_type }
-          Absent => v1.std.core.unit_type
+          Absent => type_variable_node(id: "empty_list_element")
         }
       }
       let empty_list_diags = if count(elem_results) == 0 {
