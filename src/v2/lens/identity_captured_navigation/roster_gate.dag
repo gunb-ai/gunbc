@@ -4,10 +4,6 @@ import extdeps.filesystem.filesystem_io
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.lens.common.source_analysis_standing {
-  FindingStanding,
-  NoSuspect,
-  SuspectObserved,
-  FindingNotEstablished,
   SourceAnalysisNotEstablishedCause,
   LanguageGrammarUnavailable,
   SourceTokenizationRejected,
@@ -27,6 +23,29 @@ type SourceFindingsStanding
 type SourceTreeStanding
   = SourceTreeEstablished { parsed: ParsedSource }
   | SourceTreeNotEstablished { cause: SourceAnalysisNotEstablishedCause }
+
+// Local to this analyzer: only the not-established CAUSE vocabulary is shared. The standing is
+// still returned whole so callers can keep clean, suspect, and could-not-analyze distinct.
+type FindingStanding
+  = NoSuspect
+  | SuspectObserved { suspects: Int }
+  | FindingNotEstablished { cause: SourceAnalysisNotEstablishedCause }
+
+fn finding_standing_established_clean(standing: FindingStanding) -> Bool {
+  match standing {
+    NoSuspect => true
+    SuspectObserved { suspects: _ } => false
+    FindingNotEstablished { cause: _ } => false
+  }
+}
+
+fn finding_standing_observed_suspect(standing: FindingStanding) -> Bool {
+  match standing {
+    NoSuspect => false
+    SuspectObserved { suspects: _ } => true
+    FindingNotEstablished { cause: _ } => false
+  }
+}
 
 type ParsedSource {
   tree: Node,
