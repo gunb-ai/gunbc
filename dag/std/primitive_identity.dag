@@ -647,7 +647,12 @@ data primitive_sorted_map_keys_traversal: PrimitiveTraversalOrderFact = Primitiv
   order: CanonicalOrder,
 }
 
-data primitive_map_key_projection_construction_wall_note: String = "THE CHOICE BETWEEN THE TWO KEY-LIST CONSTRUCTORS IS THE TRAVERSAL FACT, consumed by the mandatory determinism compile gate. map_keys is HostUnspecifiedOrder because its returned list exposes the host map traversal; sorted_map_keys is CanonicalOrder because its realization sorts by K's declared Ord before returning. Before sorted_map_keys joined PrimitiveIdentity, its green gate witness was acceptance by NON-MEMBERSHIP -- indistinguishable from an unknown helper the denominator could not see -- so the two adjacent runtime constructors remained an unchecked author choice. Both now join the same semantic authority and the order classification decides: a deterministic construction may reach sorted_map_keys and refuses on map_keys. This does not claim the latter caused the emitter's observed byte drift: the corpus sweep found no such path. It walls the independently established property at construction, without inventing that absent causal edge."
+// The traversal fact is the choice between the two key-list constructors at the
+// mandatory determinism gate: map_keys exposes host map order, while
+// sorted_map_keys sorts by K's declared Ord. Before the sorted primitive joined
+// PrimitiveIdentity, its green witness was acceptance by non-membership rather
+// than an answered order classification. This wall does not claim map_keys caused
+// the emitter's observed byte drift; the corpus sweep found no such path.
 
 data primitive_map_values_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact {
   primitive: primitive_map_values,
