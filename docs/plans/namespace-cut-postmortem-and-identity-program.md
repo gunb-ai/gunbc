@@ -578,18 +578,41 @@ exactly this and required-regen refused before comparing any bytes.
 `FinitePowerSet<T>` admit only inhabitants of a declared key algebra. `key_eq`
 ceases to be a parameter anywhere in `std.keyed_roster`, `std.key_relation`,
 `std.change`. `Map<String, _>` remains spellable only where the domain genuinely
-is free text — a filename, an env var, an upstream JSON member.
+is free text — **and that carve-out is 0.35% of the compiler population, not a
+comfortable residue.** `neat-fox-901`'s census (→ [keying-census.md](keying-census.md),
+gunbc#9202) measures 8 `FreeText` sites in 2272, all of them in `extdeps/`,
+against 838 `ResourceLocator` and 817 `SubjectKey`-as-text. An earlier revision
+of this sentence read as though free text were a broad escape hatch; on
+measurement it is a rounding error, and the sentence is corrected rather than
+left to be read generously.
+
+Two justifications sit under those 8 and only one of them is "unstructured":
+POSIX env names and upstream GCP IAM attribute names are external vocabularies
+this repo does not own, while the `ts_keyword*` rows are the sharper case — **the
+key IS the spelling and the spelling IS the identity under the upstream grammar
+relation.** That is a *correct* `String` key, not a tolerated one, and T1 should
+name the upstream-vocabulary case explicitly because its justification differs
+from a filename's.
 
 **T2 — impostor separation.** `SubjectKey<K>` / `StateRevision<R>` /
 `ResourceLocator<L>` / `ContentIdentity<H>` / `DisplayLabel`, with production
 `key_of` returning `SubjectKey` only. This is `key_relation_identity_wall`,
-**declared as a trigger and entirely unbuilt** — measured by `neat-fox-901`:
+**two arms, not five, and entirely unbuilt** — measured by `neat-fox-901`:
 `SubjectKey` / `ResourceLocator` / `ContentIdentity` have **zero declarations** in
 the corpus and exist only inside prose strings in `key_relation.dag` itself, as do
 `KeyMultiplicity` and its arms, and **zero `src/v2` modules import
 `key_relation`**. What landed is a naming authority, which its own note says
 plainly. Nothing here is half-done; it is undone, and the trigger is the real
 part. When built, a content-derived key stops compiling.
+
+**The first landing is `SubjectKey` and `ResourceLocator` only.** The census finds
+817 and 838 sites for those two and **zero** for `StateRevision`,
+`ContentIdentity` and `DisplayLabel` in this population — `ContentIdentity` has an
+obvious consumer one layer over in `std.content_hash`, but none here. Per
+`keying-relation-design.md` §6's own rule that nothing is built until a real
+consumer needs it, authoring five arms would be authoring three carriers ahead of
+any consumer. The two that land are not interchangeable at a single site, so both
+do real work immediately.
 
 **T3 — `KeyedRoster` construction wall.** Success arm reachable only through
 `keyed_roster_build`/`insert`. Already declared as
@@ -801,7 +824,11 @@ fixture red) · 0.2 `order_typed_call_args` (§3b) · 0.3 the reconcile name-set
 dependency (§3c) · 0.4 the `coercion_widening.dag:29:49` parse failure.
 
 **Track A — realization.** A.1 `rust_nominal_identity_carrier_type_eligible`
-becomes a real predicate; brands emit as newtypes. A.2 the `UriValidatedScalar`
+becomes a real predicate; brands emit as newtypes. Independently confirmed by
+`neat-fox-901`: the predicate has **5 call sites waiting on it**, and
+`rust_nominal_identity_carrier_def` directly above it **already emits
+`pub struct Name(pub String)`** — so both halves exist and only the admission
+predicate is stubbed. This is a switch, not a build. A.2 the `UriValidatedScalar`
 forgery becomes A.1's enrolled regression control (§4b(4)). *Precedes every key
 repointing, because it is invisible to model-side checks.*
 
@@ -819,7 +846,14 @@ censused sites are computed from it. C.3 the remaining sites per §3.4's
 domain/remedy table. C.4 the `OccurrenceBinding` ledger (T7).
 
 **Track D — substrate, parallel with C, gated on A.** D.1 key algebra in
-`dag/std/` → D.2 impostor separation → D.3 `KeyedRoster` construction wall.
+`dag/std/` → D.2 impostor separation (two arms) → D.3 `KeyedRoster` construction
+wall. **Sized in decisions, not sites: ~238, not 2093.** 238 distinct binding
+names cover the 1958 named sites; the top name is 37% of them and the top five are
+61%. `source_indices` (726) plus its abbreviation `si` (106) is 832 sites that are
+**one** `Map<String, NewlineIndex>` threaded through the compiler by parameter
+passing — one keying decision replicated by threading, not 832 decisions. 132
+names occur exactly once. Pricing this track per site overstates it by more than a
+third.
 
 **Track E — the migration (chain steps 4–5).** E.1 the derived projection.
 E.2 the acceptance gates. E.3 the perturbation falsifier, which is 0.3's
@@ -919,18 +953,32 @@ So the split is clean, and it falls exactly along the line that clause draws:
   everything downstream measurable, and it is simultaneously the only item with
   no known mechanism, so front-loading it is the least predictable choice on the
   board. Decided when the separating experiment says what the trigger is.
-- **The FreeText denominator** — of the ~2093 `src/v1` and ~179 `dag/`
-  String-keyed sites, how many are genuinely free text (a filename from a
-  directory walk, an env var, an upstream JSON member) versus a declared identity
-  spelled as text. Track D is priced off this number and nobody has it. Asked of
-  `neat-fox-901`.
+- ~~The FreeText denominator~~ — **ANSWERED**: 8 of 2272, 0.35%
+  (→ [keying-census.md](keying-census.md)). Carried into T1 and Track D above.
+  What remains open on it is the census's own declared bound: it is
+  **text-derived, not Node-derived**, so it cannot see a key type reached through
+  an alias, a generic instantiation or a re-export, and it classifies by binding
+  name rather than resolved declaration. **Every count is a lower bound on
+  identity-keying**, which is the safe direction for this argument but means the
+  609 `UNDECIDED` sites are unpriced. The terminal instrument is named: fold
+  declaration `Node` trees through the `decl_facts` primitive
+  (`coproduct_reflection.rs` `decl_facts_corpus_walk`, which genuinely parses),
+  copying `v2.lens.grounding`'s consumption of the sibling `concept_decl_facts`.
+  Two traps recorded there: `fact_cardinality_decl_facts` is a **line scanner**,
+  so a census built on it is text-derived while looking tree-derived; and
+  `decl_facts_corpus_walk` **silently skips unparseable files and excludes
+  tests**, reporting `files_scanned` and `files_parsed` so the skew is observable
+  only to a consumer that reads both.
 - **`module_skips_direct_call_arg_check`** — read by `neat-fox-901` as disabling
   the direct-call argument-type judgment for all of `src/v2`. Code reading only;
   the first harness was non-discriminating and a whole-tree probe is running.
   Compatible with §4b's existing clause, which scopes the exemption to that
-  judgment and establishes it does not reach `sole_constructor` — this would say
-  the judgment it is scoped to is off corpus-wide, not that a new exemption
-  exists.
+  judgment and establishes it does not reach `sole_constructor` — this says the
+  judgment it is scoped to is off corpus-wide, not that a new exemption exists.
+  **The whole-tree probe was killed at ~40 minutes and is inconclusive**, so this
+  stays code-read-only and is not claimed as executed. What would settle it is a
+  discriminating pair *inside the tree* under a run that executes body analyses;
+  `--source-dir` does not, which a failed red control established.
 - **Track A has no owner.** The phase everything else is sequenced behind.
 - **Phase D's target spelling** — full qualification vs shortest unique suffix,
   per §8. Needs an operator decision before the sweep is written, not after.
