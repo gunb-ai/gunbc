@@ -2441,10 +2441,44 @@ fn declared_realizes_as_kernel_numeric(
   }
 }
 
+// THE UNDECIDABLE ARM IS COUNTED, NOT SILENT, AND NOT A REFUSAL. It used to read
+// `InhabitanceUndecidable { reason: _ } => []`, which is total over the verdict and blind one
+// level down: the four reasons are declared precisely because they are different facts, and the
+// wildcard gave all four the SAME rendering as Inhabits -- an undecidable seam and a decided-good
+// seam left the relation as the identical empty list, so nothing downstream could tell a value
+// that was judged from one that was never judgeable. That is the fail-open fabrication DESIGN
+// section 5 forbids, and its cost is the one section 5 names: the deficit's frequency was zero by
+// construction, so no reason could ever rank for the modeling that would settle it.
+//
+// WHY ADVISORY AND NOT A REFUSAL. Refusing here would fabricate a verdict in the other direction:
+// the facts do not settle inhabitance, so asserting non-inhabitance is exactly as invented as
+// asserting inhabitance. Undecidable is a property of the facts, never of the wiring, and the
+// honest report is that no verdict was reached -- located, per-reason, and countable, so the four
+// populations are observable and prioritizable. DeclaredTypeInhabitanceUndecided is registered
+// non-blocking in v1.00_core is_interpreter_blocking_diagnostic and advisory in
+// is_discovery_corpus_advisory_typecheck_diagnostic, so this makes the residue visible without
+// reddening a corpus whose seams were never judged before this carrier existed either.
+fn inhabitance_undecidable_reason_label(reason: InhabitanceUndecidableReason) -> String {
+  match reason {
+    UndecidableGenericFormal => "generic formal: the declared position's payload types can be type variables, so membership is not decidable from the declaration alone"
+    UndecidableOptionalCarrier => "optional carrier: the language's own cardinality carrier, where a T standing in an Optional<T> position is the declared spelling rather than a payload escape"
+    UndecidableFormalUnresolved => "formal unresolved: the declared type did not resolve to a declaration, so there is nothing to judge inhabitance against"
+    UndecidableProducedIdentityErased => "produced identity erased: the produced value's type identity is not recoverable at this seam"
+  }
+}
+
 fn declared_type_obligation_diags(obligation: DeclaredTypeObligation, scope: InferScope) -> List<ErrorNode> {
   match declared_type_inhabitance(obligation: obligation, scope: scope) {
     Inhabits => []
-    InhabitanceUndecidable { reason: _ } => []
+    InhabitanceUndecidable { reason: r } =>
+      [make_error_node(
+        diagnostic: DeclaredTypeInhabitanceUndecided {
+          position: declared_type_position_label(position: obligation.position),
+          reason: inhabitance_undecidable_reason_label(reason: r),
+          span: obligation.span
+        },
+        module_name: scope.module_name
+      )]
     InhabitanceRefused { reason: _ } =>
       [make_error_node(
         diagnostic: DeclaredTypeNotInhabited {

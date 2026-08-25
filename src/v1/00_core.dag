@@ -197,6 +197,7 @@ type CompilerDiagnostic
     }
   | AdmitCallersEntryNotDeclRef { constructor_decl_name: String, span: SourceSpan }
   | DeclaredTypeNotInhabited { position: String, expected: String, got: String, span: SourceSpan }
+  | DeclaredTypeInhabitanceUndecided { position: String, reason: String, span: SourceSpan }
   | UnlistedImportUse { name: String, span: SourceSpan }
   | AmbiguousReference { name: String, candidates: List<String>, span: SourceSpan }
   | AmbiguousAnonymousRecordLiteral { candidates: List<String>, span: SourceSpan }
@@ -345,6 +346,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     } => s
     AdmitCallersEntryNotDeclRef { constructor_decl_name: _, span: s } => s
     DeclaredTypeNotInhabited { position: _, expected: _, got: _, span: s } => s
+    DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: s } => s
     UnlistedImportUse { name: _, span: s } => s
     AmbiguousReference { name: _, candidates: _, span: s } => s
     AmbiguousAnonymousRecordLiteral { candidates: _, span: s } => s
@@ -423,6 +425,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("admit_callers entry on '", cn, "' is not a decl_ref(module_path: \"...\", decl_name: \"...\") call: an entry that cannot be interpreted would otherwise be dropped, silently shrinking the permitted-caller roster below what was authored")
     DeclaredTypeNotInhabited { position: pos, expected: e, got: g, span: _ } =>
       concat("value does not inhabit its declared type at the ", pos, ": declared '", e, "', produced '", g, "'")
+    DeclaredTypeInhabitanceUndecided { position: pos, reason: r, span: _ } =>
+      concat("declared-type inhabitance is undecidable at the ", pos, " (", r, "): the modeled facts do not settle whether the produced value inhabits its declared type, so no verdict is asserted in either direction")
     UnlistedImportUse { name: n, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
     AmbiguousReference { name: n, candidates: cs, span: _ } => concat("ambiguous reference '", n, "': ", to_string(value: cs |> count), " candidates: ", join(cs, separator: ", "), " — qualify by containment path, alias, or rename")
     AmbiguousAnonymousRecordLiteral { candidates: cs, span: _ } => concat("ambiguous anonymous record literal shape matches ", to_string(value: cs |> count), " structs: ", join(cs, separator: ", "), " — add a nominal type")
@@ -497,6 +501,7 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
     MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => false
     ReceiverTypeUnestablished { method: _, span: _ } => false
     ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: _ } => false
+    DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: _ } => false
     _ => true
   }
 }
@@ -507,6 +512,7 @@ fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> B
     MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => true
     ReceiverTypeUnestablished { method: _, span: _ } => true
     ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: _ } => true
+    DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: _ } => true
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
       is_where_refinement_unenforced_advisory_reason(reason: r)
     _ => false
