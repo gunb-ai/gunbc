@@ -976,8 +976,23 @@ a gate that could be short-circuited by an earlier class says so. That is
 
 **Track 0 — independent, no ordering cost.** 0.1 pipe-position lowering (§3a,
 fixture red) · 0.2 `order_typed_call_args` (§3b) · 0.3 `build_data_body_index`'s
-bare-name index (§3c) — sole blocker of whole-corpus emission, confirmed both
-directions · 0.4 the `coercion_widening.dag:29:49` parse failure.
+bare-name index (§3c) · 0.4 the `coercion_widening.dag:29:49` parse failure.
+
+**0.3 does not close in this document's sense when its PR merges.** It arrives as
+a PR handoff — gunbc#9207, open and mergeable — and that PR's body is explicit:
+**"this is a population fix, not an identity fix."** A data body index containing
+function bodies is wrong on its own terms whatever the keying scheme, and
+filtering it to data items closes that. **The key is still a bare name**, so two
+*data* declarations sharing a spelling still resolve last-write-wins. The
+population half closes at 0.3; **the keying half stays open under Track C** —
+recorded here so Resolution does not inherit a wave item it believes is finished.
+
+Its measurement carries a generalization worth more than the fix. Clearing the two
+blocking diagnostics revealed 8 pre-existing ones behind them, so **the corpus's
+blocking population is not knowable from one run — clear one class, discover the
+next, and every intermediate count reads like a total.** That is M0 stated from
+the measuring side, and it is why M0 is a proof barrier rather than a checklist
+item.
 
 **Track A — realization. NOT a one-line switch**, and an earlier revision of this
 document said it was. The dormant path is real — the predicate has 5 call sites
@@ -998,6 +1013,13 @@ a skeleton rather than a flip:
    only the first is delivered here.
 
 The track splits, which also removes a hidden A↔C cycle:
+
+**Name collision, live until the other tree republishes:** the observation tree's
+document also has a "Track A", meaning *absorb the census into main*. This one
+keeps the label — five items are sequenced against the A0/C0/A1/D decomposition
+and the letter is load-bearing inside it; theirs is being renamed to *census
+absorption*. Until then an unqualified "Track A" across the two documents is
+ambiguous; cite this one as **Track A (realization)**.
 
 ```
 A0  target capability — emit a distinct nominal carrier; equality, ordering,
@@ -1349,6 +1371,18 @@ So the split is clean, and it falls exactly along the line that clause draws:
   stale.
 
 ## 10. What this document does not claim
+
+**None of the defect instances here was found by searching.** Every one was
+tripped over while measuring something else: the pipe-position lowering while
+chasing a different diagnostic; `order_typed_call_args` while building a fixture
+to check a reviewer's push-back; `build_data_body_index` while confirming an
+unrelated emitter defect; the `env` homonym while classifying a census; the
+`shared_types` leaf-keying while reviewing a PR expected to be wrong. **That is
+the load-bearing reason the population is not five**, and it is a better argument
+for the instrument work than any count: a class discovered only by accident has no
+measured denominator, so five accidental finds in one day is evidence about the
+*rate*, not the *total*. It is also why §9's items are stated as unowned questions
+rather than as a remaining backlog.
 
 - **No population effect is claimed for Phase A.** The 50 erasures and the
   constant-`false` predicate are measured; how many of the 13 residual #8282
