@@ -2813,7 +2813,8 @@ pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, St
         })
         .collect();
     let entry_root = workspace.join(roots.entry().repo_relative_path());
-    regen_input_sources_over_roots(&entry_root, &abs_roots)
+    let hand_maintained_src = entry_root.join("stage0").join("src");
+    regen_input_sources_over_roots(&entry_root, &abs_roots, Some(&hand_maintained_src))
 }
 
 /// `regen_input_sources` with its roots supplied rather than derived from the
@@ -2821,9 +2822,44 @@ pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, St
 /// fixture. The production entry point above is the only caller that computes
 /// the roots; everything below this line is root-agnostic, so the test exercises
 /// THE SAME code path production does rather than a re-implementation of it.
+/// Every `X` in a `use crate::X::...;` or `use crate::X;` item, in source order.
+///
+/// Hand-written rather than regex-driven to match this file's existing scanners and to
+/// avoid a dependency for a two-token shape. It reads the ITEM form only — a `crate::X`
+/// appearing mid-expression is a reference, not a module dependency declaration, and the
+/// closure seeding above wants the declared edge.
+fn rust_use_crate_module_names(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let t = line.trim_start();
+        let Some(rest) = t.strip_prefix("use crate::") else {
+            continue;
+        };
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if !name.is_empty() {
+            out.push(name);
+        }
+    }
+    out
+}
+
 fn regen_input_sources_over_roots(
     entry_root: &Path,
     abs_roots: &[String],
+    // The hand-maintained Rust source directory whose `use crate::` items are closure
+    // roots, or `None` when this invocation has no hand-maintained half.
+    //
+    // EXPLICIT rather than derived from `entry_root`, because the two callers are
+    // genuinely different subjects and the difference must not be inferred from a
+    // failed directory read. Production passes the real stage0 tree. The controlled
+    // fixtures below pass `None`: their entry root is a synthetic two-file corpus with
+    // no hand-maintained half at all, and that is an ABSENT population, not an
+    // unreadable one. Collapsing those two into a silent skip is what would let a
+    // mis-derived production path no-op while still reporting success.
+    hand_maintained_src: Option<&Path>,
 ) -> Result<Vec<(String, String)>, String> {
     let mut entry_paths = Vec::new();
     collect_dag_files_result(entry_root, &mut entry_paths)?;
@@ -2872,6 +2908,77 @@ fn regen_input_sources_over_roots(
     // while `std.types` sits present and correct in the authority. The regression
     // test below fixes the behaviour independently of either corpus.
     let mei = build_multi_entry_index(abs_roots);
+
+    // HAND-MAINTAINED RUST IS A CLOSURE ROOT, and until this seeding existed it was an
+    // edge the mechanism could not see AT ALL.
+    //
+    // The closure above grows through `.dag` edges — imports, dotted references, bare
+    // references. But the stage0 crate is not only emitted mirrors: 36 files are
+    // hand-maintained (`HAND_MAINTAINED_STAGE0_FILES`), and they `use crate::<mirror>`
+    // like any other Rust. That is a REAL dependency of the seed on a `.dag` authority,
+    // and no amount of work on the `.dag` side can discover it, because the consumer is
+    // not `.dag`.
+    //
+    // MEASURED (2026-08-25, `integration/namespace-cut`): `cli_run.rs` itself carries
+    //     use crate::std_keyed_roster::{keyed_roster_build, KeyedRosterBuild};
+    //     use crate::std_keyed_row::KeyedRow;
+    // On main the now-deleted `import std.keyed_row` lines kept those modules in the
+    // closure for unrelated reasons, so the blindness was masked rather than absent.
+    // With imports cut, regen refused `CommittedMirrorNoLongerEmitted` on six mirrors —
+    // two of which have live hand-maintained consumers and would have been deleted as
+    // stale on the strength of a signal that could not see them.
+    //
+    // WHY DERIVED AND NOT A DECLARED ROSTER (operator-lane ruling, 2026-08-25). The
+    // neighbouring precedent `hand_maintained_map_key_required_type_names` IS an authored
+    // roster, and correctly so: there the requirement (`ItemKind` needs `Hash + Eq`
+    // because it appears inside a map key) is an INFERENCE no scan can read off the text.
+    // Here the dependency is spelled literally in the consumer, so an authored roster
+    // would be validation standing where construction was available (DESIGN §5) — and it
+    // fails in the specific way that matters: it grows only when someone REMEMBERS, which
+    // is why 25 further such mirrors are currently surviving in the closure by accident.
+    // Deriving makes the stale-roster state unrepresentable instead of merely known.
+    //
+    // A `use crate::X` naming no `.dag` module is NOT ignorance and is not absorbed: the
+    // stage0 crate legitimately contains Rust-only modules (`v1_rt`, and the
+    // hand-maintained files themselves), which are not mirrors and have no authority to
+    // seed. Only a name that RESOLVES to a module in the pool becomes a root.
+    let mut seeds = seeds;
+    if let Some(hand_maintained_src) = hand_maintained_src {
+        let mirror_of: std::collections::HashMap<String, String> = mei
+            .source_files
+            .keys()
+            .map(|m| (m.replace('.', "_"), m.clone()))
+            .collect();
+        let mut already: HashSet<String> = seeds.iter().map(|s| s.path.clone()).collect();
+        for basename in required_regen_host::bootstrap_stage0_crate_layout_generated::HAND_MAINTAINED_STAGE0_FILES {
+            let hand_path = hand_maintained_src.join(basename);
+            // A roster entry naming a file that is not on disk is a REFUSAL, not a skip.
+            // The roster and the tree are two representations of one population, and a
+            // silent `continue` here would make a drifted roster — or a mis-derived
+            // path — indistinguishable from a correctly-empty scan: the seeding would
+            // no-op and regen would refuse downstream naming mirrors, pointing nowhere.
+            // That is the exact shape this whole seeding exists to remove.
+            let text = std::fs::read_to_string(&hand_path).map_err(|e| {
+                format!(
+                    "hand-maintained closure seeding: HAND_MAINTAINED_STAGE0_FILES names \
+                     '{basename}', but {} could not be read: {e}",
+                    hand_path.display()
+                )
+            })?;
+            for name in rust_use_crate_module_names(&text) {
+                let Some(module_path) = mirror_of.get(&name) else {
+                    continue;
+                };
+                let Some(sf) = mei.source_files.get(module_path) else {
+                    continue;
+                };
+                if already.insert(sf.path.clone()) {
+                    seeds.push(sf.clone());
+                }
+            }
+        }
+    }
+
     let closure = extend_sources_to_both_closure_fixpoint(seeds, &mei)?;
 
     let mut result: Vec<(String, String)> = closure
@@ -5807,7 +5914,7 @@ mod compile_clean_via_index_verdict_equivalence {
             entry_root.to_string_lossy().into_owned(),
             provider_root.to_string_lossy().into_owned(),
         ];
-        let admitted = super::regen_input_sources_over_roots(&entry_root, &roots)
+        let admitted = super::regen_input_sources_over_roots(&entry_root, &roots, None)
             .expect("regen subject over the fixture roots");
 
         let _ = fs::remove_dir_all(&base);
@@ -5902,7 +6009,7 @@ mod compile_clean_via_index_verdict_equivalence {
             entry_root.to_string_lossy().into_owned(),
             provider_root.to_string_lossy().into_owned(),
         ];
-        let admitted = super::regen_input_sources_over_roots(&entry_root, &roots)
+        let admitted = super::regen_input_sources_over_roots(&entry_root, &roots, None)
             .expect("regen subject over the fixture roots");
 
         let _ = fs::remove_dir_all(&base);

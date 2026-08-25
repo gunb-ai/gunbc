@@ -10,7 +10,7 @@ use std::rc::Rc;
 use std::time::Instant;
 
 #[path = "bootstrap_stage0_crate_layout_generated.rs"]
-mod bootstrap_stage0_crate_layout_generated;
+pub mod bootstrap_stage0_crate_layout_generated;
 use super::workspace_root;
 use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_compile::{
