@@ -30,8 +30,8 @@ import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.ci_layer_roots { witness_layer_roots }
-import gunbc.fabric_witness_run { floor_run_command }
-import extdeps.exec.command { shell_command_render }
+import gunbc.fabric_witness_run { witnesses_lane_run_command, build_lane_run_command, required_ci_lane_build }
+import extdeps.exec.command { ArgvCommand, shell_command_render }
 import std.types { List, String, Int }
 
 // THE ONLY CI EMISSION THIS REPOSITORY HAS.
@@ -83,6 +83,14 @@ import std.types { List, String, Int }
 
 data witness_floor_workflow_job_id: String = "witnesses"
 
+// THE BUILD LANE'S JOB ID, and it is the lane word from `gunbc.fabric_witness_run` rather than
+// a second name for the same thing. The job id is what GitHub publishes as the check name and
+// what a required-status-check rule names; spelling it differently from the lane the job passes
+// to the binary would be the §3 fork, and it would fail in the quiet direction -- a check name
+// that no longer matches a branch-protection rule stops being required without anything going
+// red.
+data build_lane_job_id: String = required_ci_lane_build
+
 // The workflow's own name, hoisted to a declaration because a second consumer now joins on
 // it. gunbc.fleet_desired_admission refuses a workflow_run payload whose workflow_name is
 // not the required floor's; spelling "witnesses" a second time there would fork the name
@@ -132,6 +140,22 @@ data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.p
 // The binary itself stays in the tree: running the parse sweep alone is the cheapest check
 // available while editing src/v1, and it is a thin caller of the same function, not a second
 // implementation. What it no longer is, is CI's business.
+// WHAT "FULL COMPILE" DOES AND DOES NOT MEAN, named here because the 2026-08-25 split puts a
+// job called `build` beside a phase called `v2-emission` and the pair invites exactly one wrong
+// inference. The v2 emission phase compiles a `.dag` ENTRY TO RUST SOURCE and stops before
+// cargo; this step cargo-builds exactly the two bins named below, because they are the two the
+// jobs run. NEITHER COMPILES THE REST OF THE RUST WORKSPACE. A declared `[[bin]]` outside this
+// list is not built by any required phase, so a hand-authored Rust bin can fall behind a
+// generated struct and sit on main indefinitely -- which is not hypothetical: measured
+// 2026-08-25, `infer_semantics_witness` fails to compile on main with six `E0063`s against
+// `TypeEnv`, and nothing in the required run sees it.
+//
+// WIDENING THIS TO `--bins` IS NOT TAKEN HERE, and the reason is scope rather than cost: it
+// changes what the required check COVERS, which is an operator decision, and it would land red
+// on a pre-existing defect this change did not cause. It is named rather than absorbed so the
+// gap stays countable -- DESIGN's 2026-08-25 row already declares the class, and this is a
+// specimen of it escaping by a mode that row does not enumerate (the `.dag` side is clean and
+// the drifted artifact is hand-authored Rust).
 data witness_floor_required_bins: List<String> = ["claim_executor", "gunbc"]
 
 fn witness_floor_checkout_step() -> Step {
@@ -307,14 +331,22 @@ fn witness_floor_build_step() -> Step {
 // after all; it completed as a side effect of two changes meeting. Recorded rather than
 // silently dropped, because a paragraph that once justified keeping something is evidence a
 // reader will reuse, and the justification expired before the thing did.
-fn witness_floor_run_script() -> String {
+fn required_lane_run_script(command: ArgvCommand) -> String {
   concat(
     concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
     concat(
       "cd \"$ROOT\"\n",
-      concat(shell_command_render(command: floor_run_command()), "\n")
+      concat(shell_command_render(command: command), "\n")
     )
   )
+}
+
+fn witness_floor_run_script() -> String {
+  required_lane_run_script(command: witnesses_lane_run_command())
+}
+
+fn build_lane_run_script() -> String {
+  required_lane_run_script(command: build_lane_run_command())
 }
 
 // THE FLOOR RUNS LAST AND THEREFORE DECLARES ITS PRECONDITION TOO (operator directive,
@@ -434,9 +466,25 @@ fn witness_toolchain_environment_probe_step() -> Step {
   }
 }
 
+// THE BUILD LANE'S RUN STEP. Same binary, same mode, same source roots, one word different --
+// which is the whole point of the lane being a parameter rather than a second invocation.
+fn build_lane_run_step() -> Step {
+  RunStep {
+    name: Present { value: "Required CI: build lane (regen, v2 emission)" },
+    id: none,
+    run: build_lane_run_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: witness_floor_precondition() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 fn witness_floor_run_step() -> Step {
   RunStep {
-    name: Present { value: "Required CI: parse, regen, witness floor" },
+    name: Present { value: "Required CI: witnesses lane (parse, witness floor)" },
     id: none,
     run: witness_floor_run_script(),
     shell: none,
@@ -673,6 +721,47 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
   )
 }
 
+// THE BUILD LANE'S BOUND STEPS. Preparation is `prepared_bound_steps` -- the SAME rows the
+// witnesses job uses -- and this job appends only the two that distinguish it: the environment
+// recorder (regen spawns rustfmt, so the probe is wanted exactly where that spawn happens) and
+// the lane's run step. No TSV uploads: the three receipt files are written by the FLOOR, so a
+// build-lane job naming them would demand files this lane never produces and `if-no-files-found:
+// error` would redden it for a receipt that was never its to write.
+fn build_lane_bound_steps() -> List<WitnessFloorBoundStep> {
+  append(
+    prepared_bound_steps(),
+    items: [
+      WitnessFloorBoundStep {
+        step: witness_toolchain_environment_probe_step(),
+        role: capability_neutral,
+        step_name: "Record the toolchain environment",
+      },
+      WitnessFloorBoundStep {
+        step: build_lane_run_step(),
+        role: consumes_only(capabilities: [RustfmtCapability]),
+        step_name: "Required CI: build lane (regen, v2 emission)",
+      },
+    ],
+  )
+}
+
+fn build_lane_steps() -> List<Step> {
+  list_map(xs: build_lane_bound_steps(), f: fn(b) { b.step })
+}
+
+fn build_lane_step_annotations() -> List<CapabilityAnnotatedStep> {
+  list_map(
+    xs: build_lane_bound_steps(),
+    f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+  )
+}
+
+fn build_lane_capability_closure_holds() -> Bool {
+  capability_closure_is_closed(
+    v: workflow_job_capability_closure(steps: build_lane_step_annotations()),
+  )
+}
+
 fn witness_floor_steps() -> List<Step> {
   list_map(xs: witness_floor_bound_steps(), f: fn(b) { b.step })
 }
@@ -747,6 +836,43 @@ fn witness_floor_job() -> Job {
 // that passed the required checks. A merge queue establishes it by construction; requiring branches
 // to be up to date approximates it at the cost of a re-run of the ~30-minute floor for every PR
 // behind a merge.
+// A PROVISIONAL BOUND, DERIVED FROM MEASUREMENTS THAT DO NOT YET INCLUDE THIS JOB.
+//
+// The two phases this lane owns have been measured on a session worktree, not on a CI runner:
+// regen ~9 minutes, and the v2 emission compile of `src/v2/compiler/00_compile.dag` ~7 minutes.
+// Serial inside one job that is ~16 minutes, against the witnesses lane's ~30-40. 90 is above
+// every measured sequence with room for a slower runner, and low enough that a hung job's log
+// arrives the same working hour -- the same reasoning the witnesses job's 180 carries, applied
+// to a smaller subject rather than copied from it.
+//
+// It is NOT derived from a completed CI run of this job, because there has not been one. Calling
+// it derived would be the fabricated plausible output DESIGN §5 forbids.
+//
+// RESTORATION TRIGGER: the first CI run that completes this lane. A real wall time replaces the
+// constant and this note dissolves with it.
+//
+// NO `needs` EDGE, AND THAT IS THE ENTIRE CHANGE. Two jobs that name each other in `needs` are
+// the serial run with extra checkouts; two that do not are the parallel one. The lanes share no
+// data -- regen's receipt is consumed by nothing outside its own process, and the floor's three
+// TSVs are written and uploaded inside the witnesses job -- so there is nothing an ordering edge
+// could be protecting.
+fn build_lane_job() -> Job {
+  Job {
+    id: build_lane_job_id,
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: build_lane_steps(),
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: 90,
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
 data witness_floor_workflow: Workflow = {
   name: witness_floor_workflow_name,
   on: [
@@ -786,7 +912,7 @@ data witness_floor_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: [witness_floor_job()]
+  jobs: [build_lane_job(), witness_floor_job()]
 }
 
 // THE CLOSURE HAS A PRODUCTION CONSUMER, which is the difference between a check and a claim.
@@ -799,14 +925,21 @@ data witness_floor_workflow: Workflow = {
 // workflow. This is the deploy.yml failure made unemittable rather than merely detectable: that
 // workflow ran `cargo build` as step two with no toolchain provider anywhere in the file, and
 // nothing in this repository could refuse it.
-data witness_floor_capability_closure_refusal: String = "REFUSED gunbc.witness_floor_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in witness_floor_bound_steps or the order of the steps themselves."
+data witness_floor_capability_closure_refusal: String = "REFUSED gunbc.witness_floor_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in witness_floor_bound_steps or build_lane_bound_steps, or the order of the steps themselves."
+
+// THE CLOSURE IS CHECKED PER JOB, AND BOTH JOBS ARE CHECKED. A capability is provided by a step
+// INSIDE a job -- the toolchain install does not reach across a job boundary -- so a
+// whole-workflow closure would be the wrong shape, and checking only the job that existed first
+// would leave the new one guarded by nothing while the emission still refused on its behalf.
+// That is the inert half DESIGN §6 names: machinery that exists and gates nothing.
+data witness_floor_capability_closure_per_job_note: String = "expected_witness_floor_yml conjoins witness_floor_capability_closure_holds and build_lane_capability_closure_holds; adding a third job without adding its conjunct would emit that job unchecked."
 
 type WitnessFloorGenerationOutcome
   = WitnessFloorGenerated { content: String }
   | WitnessFloorGenerationRefused
 
 fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
-  if witness_floor_capability_closure_holds() {
+  if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() {
     WitnessFloorGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow)) }
   } else {
     WitnessFloorGenerationRefused
