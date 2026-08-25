@@ -7122,9 +7122,10 @@ impl CompileDisposition {
 /// One render target's emission from a shared resolution.
 #[derive(Debug, Clone)]
 pub struct TargetEmission {
-    /// The target's AUTHORED name (`rust`, `dag`), carried because a multi-target caller
-    /// writes each target to its own subdirectory and cannot derive that name from the
-    /// `RenderTarget` value without a second naming authority.
+    /// The target's name, DERIVED from the target by `render_target_name` rather than carried
+    /// alongside it. A multi-target caller writes each target to its own subdirectory and needs
+    /// a name for it; deriving means the directory a target is written to and the bytes written
+    /// there cannot name different targets.
     pub target_name: String,
     pub result: Rc<v1_compiler_compile::PipelineResult>,
 }
@@ -7309,14 +7310,8 @@ mod entry_admission_tests {
             source_roots: vec!["fixtures/v2_emission_gate/green".to_string()],
             primary_precedence: true,
             render_targets: vec![
-                (
-                    "rust".to_string(),
-                    crate::v1_compiler_artifact::RenderTarget::Rust,
-                ),
-                (
-                    "dag".to_string(),
-                    crate::v1_compiler_artifact::RenderTarget::Dag,
-                ),
+                crate::v1_compiler_artifact::RenderTarget::Rust,
+                crate::v1_compiler_artifact::RenderTarget::Dag,
             ],
         });
         assert!(
@@ -7476,7 +7471,7 @@ pub struct CompileRequest {
     pub subject: CompileSubject,
     pub source_roots: Vec<String>,
     pub primary_precedence: bool,
-    /// EVERY TARGET THIS ONE RESOLUTION IS EMITTED FOR, as (authored name, target). Non-empty
+    /// EVERY TARGET THIS ONE RESOLUTION IS EMITTED FOR. Non-empty
     /// or the request refuses at `target-admission`: a compile that resolves a closure and
     /// emits nothing is not an empty compile, it is a run that never reached emission, and
     /// reporting it `Completed { emitted_count: 0 }` is the empty-observation narrow.
@@ -7484,7 +7479,14 @@ pub struct CompileRequest {
     /// Rust has no non-empty vector in this seed, so the constraint is a refusal rather than
     /// a constructor; that is the honest rung (mitigatable), and its next-rung trigger is a
     /// `NonEmptyVec` carrier in `std` that this field can be typed by.
-    pub render_targets: Vec<(String, crate::v1_compiler_artifact::RenderTarget)>,
+    /// A TARGET, NOT A (NAME, TARGET) PAIR, and the difference is a defect closed rather than a
+    /// simplification. The pair let a caller construct `("dag", RenderTarget::Rust)` -- two
+    /// spellings of one fact, free to disagree, with the NAME deciding the output directory
+    /// while the TARGET decided the bytes written into it. That is the §3 violation this
+    /// transaction exists to remove, reintroduced one field down; the name is now DERIVED from
+    /// the target by `render_target_name`, so the disagreement has no representation. Raised in
+    /// review before it could ship.
+    pub render_targets: Vec<crate::v1_compiler_artifact::RenderTarget>,
 }
 
 impl CompileRequest {
@@ -7601,7 +7603,7 @@ pub fn compile_entry_emission(
         subject: CompileSubject::Entry(entry_path.to_string()),
         source_roots: source_roots.to_vec(),
         primary_precedence,
-        render_targets: vec![(render_target_name(&render_target), render_target)],
+        render_targets: vec![render_target],
     })
 }
 
@@ -7912,8 +7914,8 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
     let emissions: Vec<TargetEmission> = request
         .render_targets
         .iter()
-        .map(|(name, target)| TargetEmission {
-            target_name: name.clone(),
+        .map(|target| TargetEmission {
+            target_name: render_target_name(target),
             result: v1_compiler_compile::emit_resolved_for_target(resolved.clone(), target.clone()),
         })
         .collect();

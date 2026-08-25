@@ -228,9 +228,11 @@ fn render_target_from_name(
     }
 }
 
-fn parse_render_targets(
-    target: &str,
-) -> Vec<(String, v1_compiler::v1_compiler_artifact::RenderTarget)> {
+/// THE PARSE RETURNS TARGETS, NOT (NAME, TARGET) PAIRS. The authored spelling is discarded
+/// here deliberately: it is recoverable from the target through `cli_run::render_target_name`,
+/// which is this function's inverse, and keeping both would let a caller carry a name that
+/// disagrees with the target it names.
+fn parse_render_targets(target: &str) -> Vec<v1_compiler::v1_compiler_artifact::RenderTarget> {
     let mut targets = Vec::new();
     for part in target.split('+') {
         let trimmed = part.trim();
@@ -238,7 +240,7 @@ fn parse_render_targets(
             continue;
         }
         match render_target_from_name(trimmed) {
-            Some(render_target) => targets.push((trimmed.to_string(), render_target)),
+            Some(render_target) => targets.push(render_target),
             None => {
                 eprintln!(
                     "unknown target: {}. supported: rust, python, go, dag, rust+dag",
@@ -443,6 +445,20 @@ fn main() {
             //     destroy the property it measures.
             //   - cli_run synthesized-resolved emit (1 site) -- emits a `ResolvedPipelineResult`
             //     assembled in memory, so there is no source set for a transaction to take.
+            //   - required_regen_host `compile_stage0` (1 site) -- calls `compile_sources`
+            //     directly over `regen_input_sources`. A FORK, declared. Its subject is an
+            //     EXACT SOURCE SET read from the regen roster, not a root and not an entry, so
+            //     neither of the transaction's two subjects describes it; the terminal form is
+            //     a third subject (`ExactSourceSet`) carrying the roster as its authority.
+            //     Note it also passes a hardcoded refusal subject ("v2 self-compile"), which
+            //     the transaction derives from the subject it was given.
+            //
+            // THIS CENSUS WAS WRONG ONCE, IN THE DIRECTION THAT FLATTERS. Its first revision
+            // omitted `required_regen_host` -- the file appeared in the file-level count I ran
+            // and did not survive into the call-site list I wrote from it, so a fork was
+            // reported as absent by a census whose whole purpose is to enumerate forks. Caught
+            // in review. The lesson is the one the floor's own first-execution receipt records:
+            // a list you transcribe from a wider measurement is not the measurement.
             //
             // NOT a claim that nothing else compiles: the test files and the witness bins call
             // the kernel directly too, and they are outside this census by scope, not because
@@ -485,7 +501,7 @@ fn main() {
             if render_targets.len() == 1 {
                 let result = v1_compiler_compile::compile_sources_with_options(
                     Rc::new(sources.into()),
-                    render_targets[0].1.clone(),
+                    render_targets[0].clone(),
                     pipeline_options.clone(),
                 );
                 if let Some(message) = v1_compiler_compile::stage0_self_compile_refusal_message(
@@ -512,7 +528,8 @@ fn main() {
                 );
                 let mut total_files = 0usize;
                 let mut total_diagnostics = 0usize;
-                for (name, render_target) in render_targets {
+                for render_target in render_targets {
+                    let name = v1_compiler::cli_run::render_target_name(&render_target);
                     let result = v1_compiler_compile::emit_resolved_for_target(
                         resolved.clone(),
                         render_target,
