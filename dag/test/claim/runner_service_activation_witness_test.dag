@@ -74,9 +74,28 @@ import gunbc.guarantee_rung_drop {
 }
 import gunbc.fabric_cell_converge { fabric_cell_population_unobserved }
 
+// THE DISCRIMINATING RED FOR THE DEFECT THIS LANE WAS DISPATCHED FOR. The emitted apply.sh carried
+// daemon-reload and disable and nothing else -- enable count 0, start count 0 -- so convergence
+// materialized runner trees while the host's serving capacity did not move, and three separate
+// widenings on 2026-08-25 were finished by a hand-run `systemctl enable --now` loop that lives in
+// no authority.
+//
+// WHAT EACH POLE ASSERTS, because a single-poled set would not be evidence. The ADMITTED pole
+// authors a readiness receipt in the fixture and asserts that the emitted script carries a separate
+// enable and a separate start for every desired unit -- it goes RED the moment the emitter stops
+// emitting activation, which is the exact regression the defect was. The REFUSED pole supplies the
+// unobserved readiness every production caller supplies and asserts a typed, counted, located
+// refusal that does NOT abort the script -- it goes RED if the refusal ever becomes silence, which
+// is the state the emitter was in before this lane, or if it becomes an exit, which would withdraw
+// materialization that is independently authorized.
+//
+// THE FUSION CONTROL IS THE THIRD POLE AND IT IS NOT REDUNDANT WITH EITHER. Asserting that enable
+// and start both appear does not establish that they are two transitions: `enable --now` would
+// satisfy a reader looking for the word enable and would still be the fusion. So the set separately
+// asserts that no emitted line carries systemctl's --now, and pairs that with the surviving fused
+// builder as a positive control -- runner_enable_command_argv DOES render it -- so the absence is a
+// measurement rather than a property of the pattern never matching anything.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-data runner_service_activation_witness_doc: String = "THE DISCRIMINATING RED FOR THE DEFECT THIS LANE WAS DISPATCHED FOR. The emitted apply.sh carried daemon-reload and disable and nothing else -- enable count 0, start count 0 -- so convergence materialized runner trees while the host's serving capacity did not move, and three separate widenings on 2026-08-25 were finished by a hand-run `systemctl enable --now` loop that lives in no authority.\\n\\nWHAT EACH POLE ASSERTS, because a single-poled set would not be evidence. The ADMITTED pole authors a readiness receipt in the fixture and asserts that the emitted script carries a separate enable and a separate start for every desired unit -- it goes RED the moment the emitter stops emitting activation, which is the exact regression the defect was. The REFUSED pole supplies the unobserved readiness every production caller supplies and asserts a typed, counted, located refusal that does NOT abort the script -- it goes RED if the refusal ever becomes silence, which is the state the emitter was in before this lane, or if it becomes an exit, which would withdraw materialization that is independently authorized.\\n\\nTHE FUSION CONTROL IS THE THIRD POLE AND IT IS NOT REDUNDANT WITH EITHER. Asserting that enable and start both appear does not establish that they are two transitions: `enable --now` would satisfy a reader looking for the word enable and would still be the fusion. So the set separately asserts that no emitted line carries systemctl's --now, and pairs that with the surviving fused builder as a positive control -- runner_enable_command_argv DOES render it -- so the absence is a measurement rather than a property of the pattern never matching anything."
 
 // THE READINESS FIXTURE, AUTHORED HERE RATHER THAN SHARED. test.claim.runner_activation_wall carries
 // the same shape and the full reasoning for the pool-declared instance; the duplication is deliberate

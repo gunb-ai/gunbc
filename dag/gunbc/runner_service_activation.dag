@@ -31,14 +31,48 @@ import gunbc.runner_lifecycle { runner_unit_name_for_instance }
 
 data runner_service_activation_scope_disposition: Disposition = SingleAuthority
 
-data activation_is_two_transitions_note: String = "ENABLE AND START ARE TWO TRANSITIONS AND THIS MODULE IS THE PLACE THEY STAY TWO. The emitted apply.sh carried daemon-reload and disable and nothing else: enable count zero, start count zero, so convergence materialized runner trees and the host's serving capacity did not move. Every capacity increase of 2026-08-25 -- srv1, srv3 and srv4 each 5 to 21 -- was finished by a hand-run `systemctl enable --now` loop after apply reported success, which is manual application committed to nothing.\\n\\nTHE HAND LOOP IS NOT THE SPECIFICATION FOR THE REPAIR, and re-emitting what it did would re-fuse the two facts it fused. `enable` is DURABLE BOOT INTENT: it authorizes a future boot to start the broker under readiness conditions that nobody will re-observe at that boot, which makes it the STRONGER of the two grants rather than the milder-sounding one. `start` is IMMEDIATE ACTIVITY under conditions observable right now. They are separately admitted here, separately granted in gunbc.executor_privileged_operation, and separately rendered, so `enable --now` has no spelling on this path -- not by convention, but because no sudoers line derived from either operation matches the fused argv.\\n\\nBOTH CONSUME THE SAME ACTIVATION ADMISSION, which is gunbc.runner_activation's wall and not a second one. That wall exists because letting a slot accept work is what lets its first cache-miss compile spawn a build-cache server inside the runner's own cgroup, and materializing a slot cannot."
-
-data readiness_unobserved_is_not_readiness_absent_note: String = "THE OBSERVATION ARRIVES AS A PARAMETER AND HAS ITS OWN UNAVAILABLE ARM, rather than being manufactured here. A planner that built its own BuildCacheInstanceReady would be fabricating the observation the receipt exists to carry -- the forgeable-receipt residual gunbc.runner_activation's own note names, committed deliberately instead of inherited. So this module never constructs a receipt; it consumes one or it consumes the reason none was available.\\n\\nWHY THE UNAVAILABLE ARM IS NOT FOLDED INTO A REFUSED ADMISSION AT THE CALLER: `no observation transaction exists to ask` and `the observation answered and disagreed` have different owners and different repairs, and the second is a host fact while the first is a gap in this repository. Collapsing them would make a missing seam read as a converged host failing a check. The arm carries its reason, the admission it produces carries that reason forward, and the emitted script prints it -- so a reader of apply.sh learns which of the two they are looking at.\\n\\nIT ALSO MAKES THE RED AUTHORABLE, which is the property that decides whether the witness below is evidence or decoration (DESIGN section 4b). If this module answered `unobserved` from a constant, no fixture could ever reach the admitted arm, the emitted-activation assertion would be permanently red, and its green counterpart would be unwritable. With the observation as an input, a fixture authors both poles."
-
+// ENABLE AND START ARE TWO TRANSITIONS AND THIS MODULE IS THE PLACE THEY STAY TWO. The emitted
+// apply.sh carried daemon-reload and disable and nothing else: enable count zero, start count zero,
+// so convergence materialized runner trees and the host's serving capacity did not move. Every
+// capacity increase of 2026-08-25 -- srv1, srv3 and srv4 each 5 to 21 -- was finished by a hand-run
+// `systemctl enable --now` loop after apply reported success, which is manual application committed
+// to nothing.
+//
+// THE HAND LOOP IS NOT THE SPECIFICATION FOR THE REPAIR, and re-emitting what it did would re-fuse
+// the two facts it fused. `enable` is DURABLE BOOT INTENT: it authorizes a future boot to start the
+// broker under readiness conditions that nobody will re-observe at that boot, which makes it the
+// STRONGER of the two grants rather than the milder-sounding one. `start` is IMMEDIATE ACTIVITY
+// under conditions observable right now. They are separately admitted here, separately granted in
+// gunbc.executor_privileged_operation, and separately rendered, so `enable --now` has no spelling
+// on this path -- not by convention, but because no sudoers line derived from either operation
+// matches the fused argv.
+//
+// BOTH CONSUME THE SAME ACTIVATION ADMISSION, which is gunbc.runner_activation's wall and not a
+// second one. That wall exists because letting a slot accept work is what lets its first cache-miss
+// compile spawn a build-cache server inside the runner's own cgroup, and materializing a slot
+// cannot.
 type RunnerServiceTransition
   = RunnerEnableTransition
   | RunnerStartTransition
 
+// THE OBSERVATION ARRIVES AS A PARAMETER AND HAS ITS OWN UNAVAILABLE ARM, rather than being
+// manufactured here. A planner that built its own BuildCacheInstanceReady would be fabricating the
+// observation the receipt exists to carry -- the forgeable-receipt residual
+// gunbc.runner_activation's own note names, committed deliberately instead of inherited. So this
+// module never constructs a receipt; it consumes one or it consumes the reason none was available.
+//
+// WHY THE UNAVAILABLE ARM IS NOT FOLDED INTO A REFUSED ADMISSION AT THE CALLER: `no observation
+// transaction exists to ask` and `the observation answered and disagreed` have different owners and
+// different repairs, and the second is a host fact while the first is a gap in this repository.
+// Collapsing them would make a missing seam read as a converged host failing a check. The arm
+// carries its reason, the admission it produces carries that reason forward, and the emitted script
+// prints it -- so a reader of apply.sh learns which of the two they are looking at.
+//
+// IT ALSO MAKES THE RED AUTHORABLE, which is the property that decides whether the witness below is
+// evidence or decoration (DESIGN section 4b). If this module answered `unobserved` from a constant,
+// no fixture could ever reach the admitted arm, the emitted-activation assertion would be
+// permanently red, and its green counterpart would be unwritable. With the observation as an input,
+// a fixture authors both poles.
 type RunnerActivationReadiness
   = ActivationReadinessObserved {
       cache_ready: BuildCacheInstanceReady
