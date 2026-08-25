@@ -1,0 +1,287 @@
+module dag.test.claim.offline_local_recipe_witness
+
+import gunbc.offline_local_recipe {
+  OfflineLocalRecipeRow,
+  OfflineRecipeDefectRow,
+  RecipeSubject,
+  RecipeEntry,
+  RecipeHome,
+  RecipeSelection,
+  RecipeFunctions,
+  RecipeCallerChosen,
+  RecipeConsumerDefect,
+  RecipeUnrunnable,
+  RecipeVerdictUncollected,
+  recipe_row_well_formed,
+  recipes_well_formed_in,
+  recipes_all_offline_classified_in,
+  defects_all_have_recipes_in,
+  offline_local_recipes_well_formed,
+  offline_local_recipes_all_offline_classified,
+  every_policy_owns_a_recipe,
+  every_recipe_names_a_declared_policy,
+  offline_recipe_consumer_defects_well_formed,
+  every_defect_row_has_a_recipe,
+  recipe_argv,
+  recipe_argv_for_entry,
+  argv_names_the_entry,
+  offline_recipe_defect_rows_well_formed_in
+}
+import gunbc.ci_layer_roots { WitnessExclusionRow }
+import std.witness_admission { OfflineLocalRecipe, DiscoverySelection }
+import std.execution_mode { Wet, Hermetic }
+import std.dissolution { unbound_dissolution }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, List, Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THIS FILE MAKES FALSIFIABLE, and why it is worth a witness at all. Until
+// gunbc.offline_local_recipe the local recipe an OfflineLocalRecipe exclusion stands on
+// was a sentence inside a String, and a sentence cannot fail: an entry could move, a
+// policy could lose its recipe, and the only thing that would ever notice was a person
+// typing the command. The claims here are the ones a typed carrier makes decidable
+// WITHOUT executing anything -- shape, and the join to the exclusion frontier that makes
+// a local recipe the consumer of record. They deliberately do NOT claim that a recipe
+// runs; that needs an executor, which offline_recipe_graduation_arm_note names as the
+// next-rung trigger. Reporting shape as coverage would be the inflation DESIGN.md 4b(1)
+// forbids, so every claim below is named for what it actually decides.
+//
+// Every RED control plants its own two-row fixtures and moves exactly ONE fact between
+// the refusing and admitting halves, so a green half can never be an accident of the
+// live population's size.
+data offline_local_recipe_witness_note: String = "Shape-and-join walls over gunbc.offline_local_recipe. Live claims fold the real rosters (cheap: two substrate lists, no corpus acquisition, no host read). Discriminating REDs are fixture pairs holding the recipe fixed and moving one fact: the exclusion frontier that covers the subject, the function list a RecipeFunctions selection names, and whether a defect row's entry is a subject some recipe carries."
+
+fn probe_recipe(path: String) -> OfflineLocalRecipeRow {
+  OfflineLocalRecipeRow {
+    policy: "probe_policy",
+    subject: RecipeEntry { path: path },
+    selection: RecipeCallerChosen,
+    mode: Wet
+  }
+}
+
+fn probe_exclusion_row(pattern: String) -> WitnessExclusionRow {
+  WitnessExclusionRow {
+    pattern: pattern,
+    classification: OfflineLocalRecipe,
+    reason: "probe fixture",
+    dissolution: unbound_dissolution(description: "probe fixture")
+  }
+}
+
+fn probe_subject_path() -> String {
+  "src/v2/test/claim/probe/offline_probe_test.dag"
+}
+
+// RED: a recipe whose subject NO OfflineLocalRecipe row covers. A local recipe is the
+// consumer an exclusion points at, so a recipe for a subject nothing excludes is a
+// recipe for a witness per-PR discovery already runs.
+test fn recipe_subject_outside_the_offline_frontier_refuses() -> Bool {
+  !recipes_all_offline_classified_in(
+    recipes: [probe_recipe(path: probe_subject_path())],
+    rows: [probe_exclusion_row(pattern: "some/unrelated/prefix/")]
+  )
+}
+
+// GREEN control for the same pair: only the frontier moves.
+test fn recipe_subject_inside_the_offline_frontier_admits() -> Bool {
+  recipes_all_offline_classified_in(
+    recipes: [probe_recipe(path: probe_subject_path())],
+    rows: [probe_exclusion_row(pattern: "test/claim/probe/")]
+  )
+}
+
+// RED: the CLASSIFICATION is the discriminator, not the pattern. A row that matches the
+// path but is not OfflineLocalRecipe does not make a local recipe the consumer.
+test fn a_matching_row_of_another_cadence_does_not_cover_the_recipe() -> Bool {
+  !recipes_all_offline_classified_in(
+    recipes: [probe_recipe(path: probe_subject_path())],
+    rows: [
+      WitnessExclusionRow {
+        pattern: "test/claim/probe/",
+        classification: DiscoverySelection,
+        reason: "probe fixture",
+        dissolution: unbound_dissolution(description: "probe fixture")
+      }
+    ]
+  )
+}
+
+// RED: a RecipeFunctions selection that names nothing. The third selection state exists
+// precisely so "the recipe lets the caller choose" is spelled RecipeCallerChosen and can
+// never be confused with an empty name list.
+test fn recipe_functions_selection_naming_nothing_refuses() -> Bool {
+  !recipe_row_well_formed(
+    row: OfflineLocalRecipeRow {
+      policy: "probe_policy",
+      subject: RecipeEntry { path: probe_subject_path() },
+      selection: RecipeFunctions { names: [] },
+      mode: Hermetic
+    }
+  )
+}
+
+test fn recipe_functions_selection_naming_a_function_admits() -> Bool {
+  recipe_row_well_formed(
+    row: OfflineLocalRecipeRow {
+      policy: "probe_policy",
+      subject: RecipeEntry { path: probe_subject_path() },
+      selection: RecipeFunctions { names: ["probe_holds"] },
+      mode: Hermetic
+    }
+  )
+}
+
+// RED: an empty function NAME inside a non-empty list — the shape a copied recipe leaves
+// behind when a csv loses a member.
+test fn recipe_functions_selection_with_an_empty_name_refuses() -> Bool {
+  !recipes_well_formed_in(
+    recipes: [
+      OfflineLocalRecipeRow {
+        policy: "probe_policy",
+        subject: RecipeEntry { path: probe_subject_path() },
+        selection: RecipeFunctions { names: ["probe_holds", ""] },
+        mode: Hermetic
+      }
+    ]
+  )
+}
+
+fn probe_defect_row(entry: String) -> OfflineRecipeDefectRow {
+  OfflineRecipeDefectRow {
+    policy: "probe_policy",
+    entry: entry,
+    function: "probe_holds",
+    defect: RecipeVerdictUncollected { detail: "probe fixture" },
+    measured_at_commit: "0000000000",
+    dissolution: unbound_dissolution(description: "probe fixture")
+  }
+}
+
+// RED: a measured defect about a subject no recipe carries. Such a row would outlive the
+// recipe it is about and keep asserting a defect against nothing.
+test fn defect_row_about_a_subject_no_recipe_carries_refuses() -> Bool {
+  !defects_all_have_recipes_in(
+    defects: [probe_defect_row(entry: probe_subject_path())],
+    recipes: [probe_recipe(path: "src/v2/test/claim/probe/other_test.dag")]
+  )
+}
+
+test fn defect_row_about_a_carried_subject_admits() -> Bool {
+  defects_all_have_recipes_in(
+    defects: [probe_defect_row(entry: probe_subject_path())],
+    recipes: [probe_recipe(path: probe_subject_path())]
+  )
+}
+
+// A defect row may name a resident of a HOME rather than a fixed entry: the long lane's
+// recipe has no entry of its own, so a defect measured on one resident joins through the
+// home prefix. Without this arm the long lane could carry no defect row at all.
+test fn defect_row_joins_through_a_home_prefix() -> Bool {
+  defects_all_have_recipes_in(
+    defects: [probe_defect_row(entry: "dag/test/claim/long/some_resident_test.dag")],
+    recipes: [
+      OfflineLocalRecipeRow {
+        policy: "probe_policy",
+        subject: RecipeHome { path_prefix: "dag/test/claim/long/" },
+        selection: RecipeCallerChosen,
+        mode: Hermetic
+      }
+    ]
+  )
+}
+
+// LIVE claims over the real rosters. Each says only what it decides.
+test fn every_live_recipe_row_is_well_formed() -> Bool {
+  offline_local_recipes_well_formed()
+}
+
+test fn every_live_recipe_subject_is_offline_classified() -> Bool {
+  offline_local_recipes_all_offline_classified()
+}
+
+test fn every_policy_owns_a_recipe_and_every_recipe_a_policy() -> Bool {
+  every_policy_owns_a_recipe() && every_recipe_names_a_declared_policy()
+}
+
+test fn every_measured_defect_row_is_well_formed_and_joined() -> Bool {
+  offline_recipe_consumer_defects_well_formed() && every_defect_row_has_a_recipe()
+}
+
+// The rendered argv is the recipe: an entry subject renders a command that names its own
+// entry and carries its mode flag, and a HOME subject renders none, because a template
+// with no chosen resident has no command. The RED half of that pairing is the mode: a
+// hermetic recipe that rendered --wet would run live effects nobody declared.
+test fn entry_recipe_argv_names_its_entry_and_its_mode() -> Bool {
+  let wet_argv = recipe_argv(
+    row: OfflineLocalRecipeRow {
+      policy: "probe_policy",
+      subject: RecipeEntry { path: probe_subject_path() },
+      selection: RecipeFunctions { names: ["probe_holds"] },
+      mode: Wet
+    }
+  )
+  let hermetic_argv = recipe_argv(
+    row: OfflineLocalRecipeRow {
+      policy: "probe_policy",
+      subject: RecipeEntry { path: probe_subject_path() },
+      selection: RecipeFunctions { names: ["probe_holds"] },
+      mode: Hermetic
+    }
+  )
+  argv_names_the_entry(argv: wet_argv, entry: probe_subject_path())
+    && argv_names_the_entry(argv: wet_argv, entry: "--wet")
+    && argv_names_the_entry(argv: wet_argv, entry: "probe_holds")
+    && argv_names_the_entry(argv: hermetic_argv, entry: probe_subject_path())
+    && !argv_names_the_entry(argv: hermetic_argv, entry: "--wet")
+}
+
+test fn home_recipe_renders_no_argv_until_a_resident_is_chosen() -> Bool {
+  let home = OfflineLocalRecipeRow {
+    policy: "probe_policy",
+    subject: RecipeHome { path_prefix: "dag/test/claim/long/" },
+    selection: RecipeCallerChosen,
+    mode: Hermetic
+  }
+  (recipe_argv(row: home).length() == 0)
+    && argv_names_the_entry(
+      argv: recipe_argv_for_entry(row: home, entry: "dag/test/claim/long/some_resident_test.dag"),
+      entry: "dag/test/claim/long/some_resident_test.dag"
+    )
+}
+
+// The two defect causes carry different obligations, and the carrier enforces the
+// difference rather than documenting it: an UNCOLLECTED VERDICT is always a verdict of
+// some named witness, so it must name one; an UNRUNNABLE recipe may be unrunnable by its
+// SHAPE, in which case there is no function to name and demanding one would force an
+// author to invent a subject.
+test fn uncollected_verdict_without_a_function_refuses() -> Bool {
+  !offline_recipe_defect_rows_well_formed_in(
+    rows: [
+      OfflineRecipeDefectRow {
+        policy: "wet_integration_offline_note",
+        entry: "dag/test/claim/probe_test.dag",
+        function: "",
+        defect: RecipeVerdictUncollected { detail: "probe fixture" },
+        measured_at_commit: "0000000000",
+        dissolution: unbound_dissolution(description: "probe fixture")
+      }
+    ]
+  )
+}
+
+test fn unrunnable_recipe_without_a_function_admits() -> Bool {
+  offline_recipe_defect_rows_well_formed_in(
+    rows: [
+      OfflineRecipeDefectRow {
+        policy: "wet_integration_offline_note",
+        entry: "dag/test/claim/probe_test.dag",
+        function: "",
+        defect: RecipeUnrunnable { detail: "probe fixture" },
+        measured_at_commit: "0000000000",
+        dissolution: unbound_dissolution(description: "probe fixture")
+      }
+    ]
+  )
+}

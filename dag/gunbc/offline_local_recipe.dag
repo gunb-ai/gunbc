@@ -1,0 +1,446 @@
+module gunbc.offline_local_recipe
+
+import std.types { String, List, Bool, NonEmptyStr }
+import std.execution_mode { ExecutionMode, Hermetic, Wet, Record }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.ci_layer_roots {
+  WitnessExclusionRow,
+  witness_exclusion_frontier,
+  witness_layer_roots
+}
+import gunbc.cli_invoke { source_root_transport_argv }
+import std.witness_admission { OfflineLocalRecipe, witness_consumer_cadence_eq }
+
+// THE LOCAL RECIPE IS THE CONSUMER OF RECORD FOR AN OFFLINE-CLASSIFIED WITNESS, AND
+// UNTIL THIS MODULE IT WAS PROSE. gunbc.ci_layer_roots witness_admission_offline_note
+// names six paired notes as the Phase 0(b) admission invariant and ends "Dissolves when
+// each row graduates to a scheduled CI consumer or deletes". Every one of those six
+// carried its recipe as a sentence inside a String. A sentence cannot fail: nothing
+// resolves the entry path it names, nothing checks the functions it lists, and no
+// cadence runs it -- so the consumer an operator-ruled CI exclusion STANDS ON can rot
+// to nothing with no signal at all. That is DESIGN.md section 4c read from the inside:
+// a recipe is a machine-consumed fact and belongs in a typed carrier.
+//
+// WHAT THIS CARRIER IS AND IS NOT. It is the authority for WHAT THE RECIPE IS -- the
+// entry, the functions, the execution mode -- so that the recipe becomes a thing a
+// consumer can read, join and refuse over. It is NOT a claim that the recipe ran: no
+// row here asserts a verdict, and offline_recipe_consumer_defects below carries the
+// separate, dated, declared population of recipes MEASURED not to produce one.
+data offline_local_recipe_authority_note: String = "Typed authority for the documented OfflineLocalRecipe consumers named in gunbc.ci_layer_roots witness_admission_offline_note -- five of the six policies it enumerates, the sixth deliberately absent for the reason identity_captured_navigation_recipe_absence_note states. Replaces the prose recipe sentence in each paired note as the authority for the invocation; the notes keep their rationale and cite this carrier for the command. The rows carry no measurement -- a recipe row is a declaration, not a receipt -- and the measured non-executing population is the separate declared roster offline_recipe_consumer_defects."
+
+// A recipe names either ONE entry file, or a directory HOME whose residents each take
+// the same invocation shape. long_lane_exclusion_note is the second kind: test/claim/long/
+// is a home with thirteen-plus residents and no fixed entry, so a row that stored one
+// entry for it would be inventing a subject the note does not have.
+type RecipeSubject
+  = RecipeEntry { path: String }
+  | RecipeHome { path_prefix: String }
+
+// Which functions the invocation names. There is no whole-entry arm, and its absence is
+// a fact about the tool rather than a modelling preference: claim_batch REFUSES an
+// invocation carrying neither --function nor --functions ("--entry <e> has no --function
+// or --functions", measured by execution on 7fbbb84202), so a recipe that names an entry
+// and no function does not run. RecipeCallerChosen is the <fn> / <csv> template form --
+// the recipe fixes the entry and the caller picks the function -- and it is a distinct
+// state from RecipeFunctions rather than an empty name list, which would make "the caller
+// chooses" and "this recipe names nothing" indistinguishable at the carrier.
+type RecipeSelection
+  = RecipeFunctions { names: List<String> }
+  | RecipeCallerChosen
+
+type OfflineLocalRecipeRow {
+  policy: String
+  subject: RecipeSubject
+  selection: RecipeSelection
+  mode: ExecutionMode
+}
+
+data offline_local_recipes: List<OfflineLocalRecipeRow> = [
+  OfflineLocalRecipeRow {
+    policy: "wet_integration_offline_note",
+    subject: RecipeEntry { path: "dag/test/claim/host_effect_apply_witness_test.dag" },
+    selection: RecipeCallerChosen,
+    mode: Wet
+  },
+  OfflineLocalRecipeRow {
+    policy: "wet_integration_offline_note",
+    subject: RecipeEntry { path: "dag/test/claim/deploy_access_privilege_witness_test.dag" },
+    selection: RecipeCallerChosen,
+    mode: Wet
+  },
+  OfflineLocalRecipeRow {
+    policy: "wet_integration_offline_note",
+    subject: RecipeEntry { path: "dag/test/claim/ci_deploy_observed_wet_test.dag" },
+    selection: RecipeCallerChosen,
+    mode: Wet
+  },
+  OfflineLocalRecipeRow {
+    policy: "wet_integration_offline_note",
+    subject: RecipeEntry { path: "dag/test/claim/random_bytes_csprng_witness_test.dag" },
+    selection: RecipeCallerChosen,
+    mode: Wet
+  },
+  OfflineLocalRecipeRow {
+    policy: "enforcement_coverage_exclusion_note",
+    subject: RecipeEntry { path: "src/v2/test/claim/enforcement/cost_coverage_witness_test.dag" },
+    selection: RecipeCallerChosen,
+    mode: Hermetic
+  },
+  OfflineLocalRecipeRow {
+    policy: "enforcement_coverage_exclusion_note",
+    subject: RecipeEntry { path: "src/v2/test/claim/enforcement/grammar_coverage_witness_test.dag" },
+    selection: RecipeCallerChosen,
+    mode: Hermetic
+  },
+  OfflineLocalRecipeRow {
+    policy: "enforcement_coverage_exclusion_note",
+    subject: RecipeEntry { path: "src/v2/test/claim/enforcement_live_witness_test.dag" },
+    selection: RecipeCallerChosen,
+    mode: Hermetic
+  },
+  OfflineLocalRecipeRow {
+    policy: "enforcement_coverage_exclusion_note",
+    subject: RecipeEntry { path: "src/v2/test/claim/enforcement_inventory_witness_test.dag" },
+    selection: RecipeFunctions { names: ["enforcement_inventory_global_receipt_holds"] },
+    mode: Wet
+  },
+  OfflineLocalRecipeRow {
+    policy: "accumulator_copy_roster_gate_exclusion_note",
+    subject: RecipeEntry { path: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_test.dag" },
+    selection: RecipeCallerChosen,
+    mode: Wet
+  },
+  OfflineLocalRecipeRow {
+    policy: "accumulator_copy_roster_gate_exclusion_note",
+    subject: RecipeEntry { path: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag" },
+    selection: RecipeCallerChosen,
+    mode: Wet
+  },
+  OfflineLocalRecipeRow {
+    policy: "accumulator_copy_roster_gate_exclusion_note",
+    subject: RecipeEntry { path: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_lean_bash_test.dag" },
+    selection: RecipeCallerChosen,
+    mode: Wet
+  },
+  OfflineLocalRecipeRow {
+    policy: "accumulator_copy_roster_gate_exclusion_note",
+    subject: RecipeEntry { path: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_swift_test.dag" },
+    selection: RecipeCallerChosen,
+    mode: Wet
+  },
+  OfflineLocalRecipeRow {
+    policy: "lever_a_local_receipt_witness_exclusion_note",
+    subject: RecipeEntry { path: "dag/test/claim/lever_a_local_receipt_witness_test.dag" },
+    selection: RecipeFunctions { names: ["lever_a_local_receipts_hold"] },
+    mode: Wet
+  },
+  OfflineLocalRecipeRow {
+    policy: "long_lane_exclusion_note",
+    subject: RecipeHome { path_prefix: "dag/test/claim/long/" },
+    selection: RecipeCallerChosen,
+    mode: Hermetic
+  },
+  OfflineLocalRecipeRow {
+    policy: "long_lane_exclusion_note",
+    subject: RecipeHome { path_prefix: "src/v2/test/claim/long/" },
+    selection: RecipeCallerChosen,
+    mode: Hermetic
+  }
+]
+
+fn recipe_subject_path(subject: RecipeSubject) -> String {
+  match subject {
+    RecipeEntry { path: p } => p
+    RecipeHome { path_prefix: p } => p
+  }
+}
+
+// THE JOIN THAT MAKES A RECIPE ROW LOAD-BEARING RATHER THAN DECORATIVE: a recipe is the
+// consumer an exclusion row's classification points at, so a recipe whose subject no
+// OfflineLocalRecipe exclusion row covers is either a recipe for a witness per-PR
+// discovery already runs, or a subject that moved out from under its own policy.
+fn exclusion_row_covers_recipe_subject(row: WitnessExclusionRow, path: String) -> Bool {
+  witness_consumer_cadence_eq(a: row.classification, b: OfflineLocalRecipe)
+    && string_contains(s: path, pattern: row.pattern)
+}
+
+fn recipe_subject_is_offline_classified_in(rows: List<WitnessExclusionRow>, path: String) -> Bool {
+  fold(
+    rows,
+    init: false,
+    f: fn(found, row) { found || exclusion_row_covers_recipe_subject(row: row, path: path) }
+  )
+}
+
+fn recipe_subject_is_offline_classified(path: String) -> Bool {
+  recipe_subject_is_offline_classified_in(rows: witness_exclusion_frontier, path: path)
+}
+
+fn recipes_all_offline_classified_in(
+  recipes: List<OfflineLocalRecipeRow>,
+  rows: List<WitnessExclusionRow>
+) -> Bool {
+  fold(
+    recipes,
+    init: true,
+    f: fn(ok, recipe) {
+      ok && recipe_subject_is_offline_classified_in(
+        rows: rows,
+        path: recipe_subject_path(subject: recipe.subject)
+      )
+    }
+  )
+}
+
+fn offline_local_recipes_all_offline_classified() -> Bool {
+  recipes_all_offline_classified_in(
+    recipes: offline_local_recipes,
+    rows: witness_exclusion_frontier
+  )
+}
+
+fn recipe_row_well_formed(row: OfflineLocalRecipeRow) -> Bool {
+  !(row.policy == "")
+    && !(recipe_subject_path(subject: row.subject) == "")
+    && match row.selection {
+      RecipeCallerChosen => true
+      RecipeFunctions { names: names } =>
+        !(names.length() == 0)
+          && fold(names, init: true, f: fn(ok, name) { ok && !(name == "") })
+    }
+}
+
+fn recipes_well_formed_in(recipes: List<OfflineLocalRecipeRow>) -> Bool {
+  fold(recipes, init: true, f: fn(ok, row) { ok && recipe_row_well_formed(row: row) })
+}
+
+fn offline_local_recipes_well_formed() -> Bool {
+  recipes_well_formed_in(recipes: offline_local_recipes)
+}
+
+// THE SIX POLICIES gunbc.ci_layer_roots witness_admission_offline_note enumerates. Every
+// recipe row belongs to exactly one of them, and every one of them owns at least one
+// recipe row -- so a note that loses its recipe, or a recipe naming a policy nobody
+// declared, is refused here rather than discovered by a person typing a command.
+data offline_recipe_policies: List<String> = [
+  "wet_integration_offline_note",
+  "enforcement_coverage_exclusion_note",
+  "accumulator_copy_roster_gate_exclusion_note",
+  "lever_a_local_receipt_witness_exclusion_note",
+  "long_lane_exclusion_note"
+]
+
+fn recipes_for_policy(policy: String) -> List<OfflineLocalRecipeRow> {
+  offline_local_recipes |> filter(row => row.policy == policy)
+}
+
+fn every_policy_owns_a_recipe() -> Bool {
+  fold(
+    offline_recipe_policies,
+    init: true,
+    f: fn(ok, policy) { ok && (recipes_for_policy(policy: policy).length() > 0) }
+  )
+}
+
+fn policy_is_declared(policy: String) -> Bool {
+  fold(offline_recipe_policies, init: false, f: fn(found, declared) { found || (declared == policy) })
+}
+
+fn every_recipe_names_a_declared_policy() -> Bool {
+  fold(
+    offline_local_recipes,
+    init: true,
+    f: fn(ok, row) { ok && policy_is_declared(policy: row.policy) }
+  )
+}
+
+// FIVE POLICIES, NOT THE SIX witness_admission_offline_note NAMES, AND THE SIXTH'S ABSENCE
+// IS AN ACTIONED DISSOLUTION RATHER THAN AN OVERSIGHT. That note's dissolution reads
+// "graduates to a scheduled CI consumer or deletes"; for
+// identity_captured_navigation_roster_gate_exclusion_note the DELETE arm is the one being
+// taken, by another lane and under its own operator ruling (gunbc#9206, session
+// stern-bear-21: the zero-member exclusion row is deleted rather than repaired, and the
+// stale offline recipe prose goes with it). Its recipe is measured unrunnable on this
+// tree -- the entry it names,
+// src/v2/test/claim/identity_captured_navigation/roster_gate_test.dag, does not exist, and
+// claim_batch refuses rather than answering, the tests having moved under long/ -- so
+// minting a corrected row here would recreate, as typed data, prose that has already been
+// ruled NOT coverage. A recipe row is the statement that a local consumer exists; for that
+// policy the ruling is that none should.
+data identity_captured_navigation_recipe_absence_note: String = "identity_captured_navigation_roster_gate_exclusion_note is the sixth policy in gunbc.ci_layer_roots witness_admission_offline_note and deliberately owns NO row here: its exclusion row and recipe prose are deleted by gunbc#9206 under an operator ruling for that lane, which is the DELETE arm of the same dissolution this carrier actions for the other five. Measured on 7fbbb84202 by execution: the documented entry path does not exist and claim_batch refuses; at the relocated path the witness executes and answers false. Neither fact is repaired here, because repairing a recipe ruled not-coverage would restore the thing the ruling removes."
+
+// THE FIRST ARM OF THE DECLARED DISSOLUTION HAS NO TARGET, AND SAYING SO IS PART OF
+// ACTIONING IT. "Graduates to a scheduled CI consumer" was written when scheduled cadences
+// existed. Since the floor cut (611fd02770, #8283, 2026-08-15) main carries one required
+// workflow whose floor is a hermetic fold; falsifier.yml and the per-PR wet batch are gone,
+// and gunbc.witness_deferral_freeze records that four of the five admissible cadences
+// execute nothing. So no row here can take the graduation arm today: the arm is not
+// declined on cost grounds, it names a destination that does not exist. That is why this
+// carrier's contribution is the OTHER thing a stalled row owes under DESIGN.md section
+// 4b(2) -- a next-rung trigger and an observable state -- rather than a graduation nobody
+// can perform.
+data offline_recipe_graduation_arm_note: String = "NEXT-RUNG TRIGGER for every row in offline_local_recipes: a scheduled executor that reads this carrier and runs its rows on a cadence. Until one exists, the recipes are consumed by a person typing them, which is the state the defect roster below exists to make visible. This note is not a proposal to build that executor and does not authorize one."
+
+// A DEFECT ROW IS A MEASUREMENT AND SAYS SO. Everything above is a declaration that stays
+// true until someone edits it; a row here is the opposite -- a dated observation of a
+// specific commit -- so it carries the commit it was taken on and the trigger that ends it.
+// The two causes are NOT one state. An unrunnable recipe produces no verdict at all and can
+// be mistaken for silence; an uncollected verdict is a witness that runs, answers FALSE,
+// and hands that answer to nothing -- a real failure signal discarded. Their remedies
+// differ (restore a consumer vs. collect an existing one), so they are separate arms.
+type RecipeConsumerDefect
+  = RecipeUnrunnable { detail: NonEmptyStr }
+  | RecipeVerdictUncollected { detail: NonEmptyStr }
+
+type OfflineRecipeDefectRow {
+  policy: String
+  entry: String
+  function: String
+  defect: RecipeConsumerDefect
+  measured_at_commit: String
+  dissolution: DissolutionCondition
+}
+
+data offline_recipe_consumer_defects: List<OfflineRecipeDefectRow> = [
+  OfflineRecipeDefectRow {
+    policy: "wet_integration_offline_note",
+    entry: "dag/test/claim/ci_deploy_observed_wet_test.dag",
+    function: "",
+    defect: RecipeUnrunnable {
+      detail: "the documented recipe is `claim_batch --wet --source-root dag --source-root src/v2 --entry <entry> per file` and names no function. claim_batch requires a function selection and refuses the invocation outright: `--entry dag/test/claim/ci_deploy_observed_wet_test.dag has no --function or --functions`. Measured by execution; the refusal is a property of the RECIPE SHAPE, so it holds for all four entries this policy covers, and the entry named here is the one it was measured on. The typed rows carry RecipeCallerChosen, which renders a runnable command once a function is chosen -- the prose form could not."
+    },
+    measured_at_commit: "7fbbb84202",
+    dissolution: unbound_dissolution(description: "the paired note stops carrying a command of its own and cites this carrier, whose rows cannot spell a function-less invocation; then the shape that produced this refusal is unwritable rather than measured")
+  },
+  OfflineRecipeDefectRow {
+    policy: "enforcement_coverage_exclusion_note",
+    entry: "src/v2/test/claim/enforcement_live_witness_test.dag",
+    function: "enforcement_consistency_gate_holds",
+    defect: RecipeVerdictUncollected {
+      detail: "runs to a verdict through its own documented recipe and answers FALSE. Its only standing is gunbc.witness_deferral_freeze frozen_path_deferrals, which that carrier states is tolerated by the migration ratchet and NOT coverage, so the red reaches no consumer: it is not in per-PR discovery (the exclusion row is what makes this recipe the consumer of record) and no cadence collects it."
+    },
+    measured_at_commit: "7fbbb84202",
+    dissolution: unbound_dissolution(description: "the witness is repaired so its recipe answers true, or the assertion is retired -- and either way the red stops being produced into nothing. Collecting it instead requires the scheduled executor offline_recipe_graduation_arm_note names, which does not exist.")
+  },
+  OfflineRecipeDefectRow {
+    policy: "long_lane_exclusion_note",
+    entry: "dag/test/claim/long/commit_witness_claim_roster_witness_test.dag",
+    function: "commit_witness_claim_roster_holds",
+    defect: RecipeVerdictUncollected {
+      detail: "same shape, found on a DIFFERENT resident of the long home than the one an earlier measurement sampled, which is why the home's standing is not a single verdict: one resident passing establishes only that ITS recipe executes. This one executes and answers FALSE, and its only standing is likewise frozen_path_deferrals."
+    },
+    measured_at_commit: "7fbbb84202",
+    dissolution: unbound_dissolution(description: "the witness is repaired or retired; a home-wide claim about the long lane requires measuring every resident, which no consumer does today")
+  }
+]
+
+// A defect row's FUNCTION is empty exactly when the defect is a property of the recipe's
+// shape rather than of one witness: a recipe that names no function cannot be measured at
+// one, and demanding a name there would force an author to invent a subject. The entry and
+// the policy are never empty, because a defect always has a subject and an owner.
+fn recipe_defect_row_well_formed(row: OfflineRecipeDefectRow) -> Bool {
+  !(row.policy == "")
+    && !(row.entry == "")
+    && !(row.measured_at_commit == "")
+    && policy_is_declared(policy: row.policy)
+    && match row.defect {
+      RecipeUnrunnable { detail: _ } => true
+      RecipeVerdictUncollected { detail: _ } => !(row.function == "")
+    }
+}
+
+fn offline_recipe_defect_rows_well_formed_in(rows: List<OfflineRecipeDefectRow>) -> Bool {
+  fold(rows, init: true, f: fn(ok, row) { ok && recipe_defect_row_well_formed(row: row) })
+}
+
+fn offline_recipe_consumer_defects_well_formed() -> Bool {
+  offline_recipe_defect_rows_well_formed_in(rows: offline_recipe_consumer_defects)
+}
+
+// A defect row must name a subject this carrier actually carries a recipe for -- otherwise
+// it is a measurement of something no policy claims, and it would survive the deletion of
+// the recipe it is about.
+fn defect_row_subject_has_a_recipe_in(
+  recipes: List<OfflineLocalRecipeRow>,
+  row: OfflineRecipeDefectRow
+) -> Bool {
+  fold(
+    recipes |> filter(recipe => recipe.policy == row.policy),
+    init: false,
+    f: fn(found, recipe) {
+      found || match recipe.subject {
+        RecipeEntry { path: p } => p == row.entry
+        RecipeHome { path_prefix: prefix } => string_contains(s: row.entry, pattern: prefix)
+      }
+    }
+  )
+}
+
+fn defect_row_subject_has_a_recipe(row: OfflineRecipeDefectRow) -> Bool {
+  defect_row_subject_has_a_recipe_in(recipes: offline_local_recipes, row: row)
+}
+
+fn defects_all_have_recipes_in(
+  defects: List<OfflineRecipeDefectRow>,
+  recipes: List<OfflineLocalRecipeRow>
+) -> Bool {
+  fold(
+    defects,
+    init: true,
+    f: fn(ok, row) { ok && defect_row_subject_has_a_recipe_in(recipes: recipes, row: row) }
+  )
+}
+
+fn every_defect_row_has_a_recipe() -> Bool {
+  defects_all_have_recipes_in(
+    defects: offline_recipe_consumer_defects,
+    recipes: offline_local_recipes
+  )
+}
+
+
+// THE ARGV IS DERIVED FROM THE ROW, WHICH IS THE WHOLE POINT OF THE ROW. A recipe carried
+// as prose has to be re-typed by hand at every use and re-edited by hand at every move;
+// rendered from the carrier it has exactly one authority, and the source roots come from
+// gunbc.ci_layer_roots witness_layer_roots rather than being spelled again here. A HOME
+// subject has no argv of its own -- there is no entry to name -- so it returns the empty
+// argv and its residents render through recipe_argv_for_entry, which is the honest shape:
+// the recipe genuinely is a template until a resident is chosen.
+data claim_batch_bin_name: String = "claim_batch"
+
+fn recipe_selection_argv(selection: RecipeSelection) -> List<String> {
+  match selection {
+    RecipeCallerChosen => []
+    RecipeFunctions { names: names } =>
+      fold(names, init: [], f: fn(acc, name) { concat(acc, ["--function", name]) })
+  }
+}
+
+fn recipe_mode_argv(mode: ExecutionMode) -> List<String> {
+  match mode {
+    Hermetic => []
+    Wet => ["--wet"]
+    Record => ["--record"]
+  }
+}
+
+fn recipe_argv_for_entry(row: OfflineLocalRecipeRow, entry: String) -> List<String> {
+  concat(
+    concat(
+      concat([claim_batch_bin_name], recipe_mode_argv(mode: row.mode)),
+      source_root_transport_argv(roots: witness_layer_roots)
+    ),
+    concat(["--entry", entry], recipe_selection_argv(selection: row.selection))
+  )
+}
+
+fn recipe_argv(row: OfflineLocalRecipeRow) -> List<String> {
+  match row.subject {
+    RecipeEntry { path: p } => recipe_argv_for_entry(row: row, entry: p)
+    RecipeHome { path_prefix: _ } => []
+  }
+}
+
+fn argv_names_the_entry(argv: List<String>, entry: String) -> Bool {
+  fold(argv, init: false, f: fn(found, word) { found || (word == entry) })
+}
