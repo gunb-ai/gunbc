@@ -127,6 +127,15 @@ pub fn compile_dag_diagnostic_census_row_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn gate_receipt_rows_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE TWO CI-GATE ROWS ANSWER A COPRODUCT, and the reason is the same one compile_dag_diagnostic_census_row_note gives one row up. Their predecessors were three rows -- consume_floor_compile_clean_gate_verdict as bool_type, consume_floor_compile_clean_gate_failure_detail as string_type, consume_generated_artifact_drift_gate_failure_detail as string_type -- and the Bool folded FIVE host states into false (lock poisoned, install failed, no in-run receipt, the receipt's typed Refused arm, and a real failed compile) while folding the scope disposition's Skipped into true. The String companions were second builtins over the SAME process global, so a caller reconstructed one fact from two correlated reads, and the generated-artifact one fabricated prose for the state the Bool had already erased. gunbc.ci_gate GateReceipt is the single carrier: GateObserved holds the verdict WITH its located detail, GateNotApplicable is the scope disposition answering, GateNotRun is could-not-measure. Registered as a type variable rather than a kernel record for the reason its two siblings are -- the result is a coproduct, so make_kernel_record_type is the wrong idiom. THE NAME CARRIES A FACT THE OLD ONE HID: install_or_consume MAY RUN A WHOLE-TREE COMPILE. Under the executor's lazy-install arm the first consume installs the receipt, which is that compile; the predecessor was spelled consume_ and documented as reading the receipt only, so a .dag reader had no way to see the cost. DISSOLUTION: inherits compile_dag_diagnostic_census_row_note's PrimitiveDefinition identity-join trigger exactly -- do not mint a fresh trigger.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn observe_declared_import_closure_symbol_binding_row_note() -> String {
     thread_local! {
         static CACHED: String = {
