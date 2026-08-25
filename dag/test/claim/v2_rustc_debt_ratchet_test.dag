@@ -101,9 +101,9 @@ test fn one_error_swapped_for_another_across_buckets_refuses() -> Bool {
 // `(emission_unit, cargo_target, dag_source_origin, rustc_code)`. That survives line movement
 // and emitted-file re-layout, which a Rust line/column coordinate does not, and it is the only
 // candidate that does not churn on unrelated edits. Until it exists this arm stays green.
+// The fixture is identical before and after: one E0308 in one file. The contract cannot see
+// that it is a DIFFERENT E0308, because nothing in the key distinguishes them.
 test fn the_same_bucket_substitution_blind_spot_is_admitted() -> Bool {
-  // Identical observation before and after: one E0308 in one file. The contract cannot see
-  // that it is a DIFFERENT E0308, because nothing in the key distinguishes them.
   rustc_debt_verdict_admits(
     v: rustc_debt_verdict(observed: one_error(), admitted: one_error(), baseline: one_error())
   )

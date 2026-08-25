@@ -170,6 +170,28 @@ pub fn report_moduleless_dag_entry_skips(skipped_paths: &[String]) {
     }
 }
 
+/// Every `.dag` file under `root_prefix` that carries no `module` declaration, and is therefore
+/// absent from the module index the subject is discovered from. Walks the filesystem rather than
+/// the index precisely because the index cannot represent these files -- asking the index would
+/// be asking the population that already excluded them.
+fn moduleless_dag_entry_paths_under_root(root_prefix: &str) -> Vec<String> {
+    let root_abs = process_workspace_root().join(root_prefix);
+    let mut paths = Vec::new();
+    collect_dag_files(&root_abs, &mut paths);
+    let mut entry_files: Vec<(String, String)> = Vec::new();
+    for path in paths {
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            entry_files.push((
+                workspace_relative_entry_path(&path.to_string_lossy()),
+                content,
+            ));
+        }
+    }
+    let mut out = moduleless_dag_entry_paths(&entry_files);
+    out.sort();
+    out
+}
+
 pub fn moduleless_dag_entry_paths(entry_files: &[(String, String)]) -> Vec<String> {
     entry_files
         .iter()
@@ -7619,6 +7641,30 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
                     entry_sources.push(source.clone());
                 }
             }
+            // MODULE-LESS FILES UNDER THE ROOT ARE REPORTED, NOT SILENTLY DROPPED.
+            //
+            // The subject is discovered from `index.source_files`, which is keyed by module
+            // path -- so a `.dag` file under the root with NO `module` declaration is not in
+            // the index, is not in the subject, and would vanish with the transaction
+            // reporting `Completed`. The empty-root arm below cannot catch it, because a root
+            // holding one good file and one forgotten one is not empty.
+            //
+            // That visibility existed in the pipeline this transaction replaced and the
+            // consolidation dropped it. It is restored here through the SAME authority that
+            // already owned it -- `moduleless_dag_entry_paths` / `report_moduleless_dag_entry_skips`,
+            // both already `pub` in this file with their own tests. An earlier revision of the
+            // deletion note claimed this behaviour had no counterpart in `cli_run`; that was an
+            // absence asserted without grepping for it, and it was false.
+            //
+            // It REPORTS rather than refuses, which is the weaker of the two arms and is
+            // declared as such: a module-less `.dag` is a legitimate parse fixture today, so
+            // refusing would break real callers. The terminal form is the total role
+            // classification (`RootPopulation`), under which every `.dag` carries exactly one
+            // role and an unclassified file refuses. Until that lands this is countable
+            // visibility, not a wall.
+            let moduleless = moduleless_dag_entry_paths_under_root(&root_prefix);
+            report_moduleless_dag_entry_skips(&moduleless);
+
             if entry_sources.is_empty() {
                 let _ = crate::v1_rt::resolution_silent_pick_disable();
                 return entry_emission_not_executed(

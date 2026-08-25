@@ -206,11 +206,15 @@ fn parse_dependency_pool_index(value: &str) -> DependencyPoolIndex {
 // census: what breaks loudly is exactly what was load-bearing, and nothing did.
 //
 // Their surviving authorities are `cli_run`'s: `extract_module_path`, `extract_import_paths`,
-// `build_multi_entry_index*` and `resolve_transitively_bfs_legacy`. The moduleless-entry skip
-// report is the one behaviour with no counterpart there, and it is named rather than silently
-// dropped -- it printed a stderr count of `.dag` files carrying no `module` declaration. Those
-// files are simply absent from the index the transaction builds, so the class is unchanged;
-// what is gone is the line that counted them.
+// `build_multi_entry_index*` and `resolve_transitively_bfs_legacy`.
+//
+// AN EARLIER REVISION OF THIS NOTE CLAIMED THE MODULE-LESS SKIP REPORT HAD NO COUNTERPART THERE.
+// That was false, and it is corrected here rather than quietly dropped because a note asserting
+// an ABSENCE is exactly the claim a later reader will not re-check. `report_moduleless_dag_entry_skips`
+// and `moduleless_dag_entry_paths` are both `pub` in `cli_run`, both carry tests, and neither was
+// ever deleted; the deletion note asserted their absence without grepping for it. The behaviour is
+// now wired into the transaction's `PrimaryRoot` arm through those same two functions, so nothing
+// is lost and no second authority was minted.
 
 fn render_target_from_name(
     target: &str,
