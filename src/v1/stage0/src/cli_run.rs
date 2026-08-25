@@ -16993,21 +16993,45 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<usize, Ve
                 // the parse diagnostics and the annotation refusals in one population. Called
                 // with a single source, so files stay independent and nothing resolves across
                 // them.
+                let path_str = path.to_string_lossy().to_string();
                 let fill = crate::v1_compiler_compile::parse_census_fill_sources(std::rc::Rc::new(
                     vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-                        path: path.to_string_lossy().to_string(),
-                        content,
+                        path: path_str.clone(),
+                        content: content.clone(),
                     })]
                     .into(),
                 ));
                 if fill.diagnostics.is_empty() {
                     count.fetch_add(1, Ordering::Relaxed);
                 } else {
+                    // THE SPAN IS CARRIED, NOT DROPPED. Every `CompilerDiagnostic` answers
+                    // `diagnostic_to_span`, and an annotation refusal carries the origin of the
+                    // exact `//` line that could not attach -- but this printer used to render
+                    // only the file and the message, so 52 refusals in one file arrived as 52
+                    // byte-identical sentences with no way to tell which annotation was at
+                    // fault. A typed, LOCATED diagnostic rendered as untyped prose is the
+                    // opposite of what DESIGN section 5 requires of a refusal.
+                    //
+                    // The index is built from the same `content` the parse consumed, and
+                    // `byte_to_line_col` reads CHAR offsets -- which is what spans carry, since
+                    // `build_newline_index` indexes `chars()` and the tokenizer's positions are
+                    // char positions. A synthetic span (`no_span()`, file `<synthetic>`) names
+                    // no position in this file, so it renders as the path alone rather than as
+                    // a fabricated `1:1`.
+                    let index = crate::v1_std_core::build_newline_index(path_str.clone(), content);
                     let mut lock = errors.lock().expect("parse error lock");
                     for d in fill.diagnostics.iter() {
+                        let span = crate::v1_std_core::diagnostic_to_span(d.diagnostic.clone());
+                        let located = if span.file == path_str {
+                            let lc =
+                                crate::v1_std_core::byte_to_line_col(index.clone(), span.start);
+                            format!("{path_str}:{}:{}", lc.line, lc.col)
+                        } else {
+                            path_str.clone()
+                        };
                         lock.push(format!(
                             "{}: {}",
-                            path.display(),
+                            located,
                             crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()),
                         ));
                     }
