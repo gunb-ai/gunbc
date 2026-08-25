@@ -417,11 +417,12 @@ test fn representation_retrieved_requires_http_status_and_observed_representatio
 }
 
 test fn response_observed_without_representation_is_separate_arm() -> Bool {
-  match std.citation.ResponseObservedWithoutRepresentation {
+  let __bootstrap_scrut_0 = std.citation.ResponseObservedWithoutRepresentation {
     request: std.citation.CitationRetrievalRequest { locator: witness_authority.uri },
     observed_at: witness_observed_at_noon_utc,
     http_status: 204,
-  } {
+  }
+  match __bootstrap_scrut_0 {
     std.citation.ResponseObservedWithoutRepresentation { http_status: s, request: _, observed_at: _ } => s == 204
     _ => false
   }

@@ -387,9 +387,11 @@ test fn witness_unobservable_is_not_converged_and_keeps_its_cause() -> Bool {
 // consumer must be able to tell them apart WITHOUT reading a sentence. Asserted by matching the
 // arms, so this stays green only while the distinction is structural.
 test fn witness_never_attempted_and_ran_and_failed_are_different_arms() -> Bool {
-  match gunbc.live_deploy.deployed_tree_observation.TreeLegNotAttempted { leg: "revision", reason: "no credential" } {
+  let __bootstrap_scrut_0 = gunbc.live_deploy.deployed_tree_observation.TreeLegNotAttempted { leg: "revision", reason: "no credential" }
+  match __bootstrap_scrut_0 {
     gunbc.live_deploy.deployed_tree_observation.TreeLegNotAttempted { leg: _, reason: _ } =>
-      match gunbc.live_deploy.deployed_tree_observation.TreeCommandFailed { leg: "revision", exit_code: 128, stderr: "not a git repository" } {
+      let __bootstrap_scrut_1 = gunbc.live_deploy.deployed_tree_observation.TreeCommandFailed { leg: "revision", exit_code: 128, stderr: "not a git repository" }
+      match __bootstrap_scrut_1 {
         gunbc.live_deploy.deployed_tree_observation.TreeCommandFailed { leg: _, exit_code: code, stderr: _ } => code == 128
         gunbc.live_deploy.deployed_tree_observation.TreeLegNotAttempted { leg: _, reason: _ } => false
         gunbc.live_deploy.deployed_tree_observation.TreeRevisionUndecodable { text: _ } => false

@@ -47,7 +47,8 @@ test fn w_the_three_standings_are_distinguishable_by_match() -> Bool {
       product.pcb.world.CapabilityEstablished { authority: _ } => false
       product.pcb.world.CapabilityRefused { cause: _ } => false
     })
-    && match product.pcb.world.CapabilityRefused { cause: "any cause" } {
+    let __bootstrap_scrut_0 = product.pcb.world.CapabilityRefused { cause: "any cause" }
+    && match __bootstrap_scrut_0 {
       product.pcb.world.CapabilityRefused { cause: _ } => true
       product.pcb.world.CapabilityEstablished { authority: _ } => false
       product.pcb.world.CapabilityPending { owed: _ } => false

@@ -46,7 +46,8 @@ test fn raw_get_miss_differs_from_optional_absent() -> Bool {
 }
 
 test fn witness_holds_matches_holds_pattern() -> Bool {
-  match v2.std.witness.Holds { value: 1 } {
+  let __bootstrap_scrut_0 = v2.std.witness.Holds { value: 1 }
+  match __bootstrap_scrut_0 {
     v2.std.witness.Holds { value: v } => v == 1
     v2.std.witness.Violates { diagnostic: _ } => false
   }

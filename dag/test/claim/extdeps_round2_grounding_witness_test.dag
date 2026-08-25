@@ -51,7 +51,8 @@ test fn w_sigv4_grounded_region_service() -> Bool {
 }
 
 test fn w_sigv4_auth_scheme_carries_enums() -> Bool {
-  match extdeps.cloud.cloud.SigV4 { region: extdeps.cloud.cloud.UsEast1, service: extdeps.cloud.cloud.S3 } {
+  let __bootstrap_scrut_0 = extdeps.cloud.cloud.SigV4 { region: extdeps.cloud.cloud.UsEast1, service: extdeps.cloud.cloud.S3 }
+  match __bootstrap_scrut_0 {
     extdeps.cloud.cloud.SigV4 => true
     extdeps.cloud.cloud.Protocol => false
     extdeps.cloud.cloud.OidcToken => false
