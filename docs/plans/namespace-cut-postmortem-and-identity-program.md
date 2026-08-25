@@ -2568,10 +2568,48 @@ ladder.
 candidate space: `map_get(func_env.local, name)`, then
 `parent_closure_callable_candidates`, then `builtin_callable_candidates`, then
 `func_sig_from_global_bare`. Grepping its body for
-`str_bindings|ancestry_str_bindings|.bindings` returns **0**. The value
-environment is not on the call path at all. A pattern-bound field is a *value*
-binding, so **the local does not lose a contest — the lookup that resolves calls
-cannot see it.**
+`str_bindings|ancestry_str_bindings|.bindings` returns **0**.
+
+**THAT GREP IS TRUE AND THE CONCLUSION DRAWN FROM IT WAS FALSE — corrected
+2026-08-25, retracted by the lane that reported it (`smart-ram-730`) and carried
+here unverified.** This paragraph read *"the value environment is not on the call
+path at all … the lookup that resolves calls cannot see it."* **The shadow check
+exists; it is one level up, in the caller.** Verified against a freshly fetched
+`origin/main`, `v1.04_infer` `body_shadow_aware_func_sig`:
+
+```dag
+match map_get(scope.body_locals, func_name) {
+  Present { value: _ } => FuncSigUnresolved
+  Absent => lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: func_name)
+}
+```
+
+Lexical first, and a present local does **not** fall through to declaration
+lookup. So the failure was reading an inner function, finding an absence, and
+concluding a missing capability without reading the caller — the same shape as
+every other proxy failure in §11.2j's version-skew note, applied to a call graph
+instead of an artifact.
+
+**AND THE CORRECTED PICTURE IS WORSE THAN THE ONE IT REPLACES.** The corpus
+already documents this class and believes it closed: `call_locals_shadow_note`
+states the precedence law verbatim — *body locals > module fns > census
+global_bare* — defines `body_locals` as the strict body-grain subset (let / match
+pattern / fn+lambda params), and records a near-identical prior incident.
+`extend_scope_match_bound` confirms match binders do insert into `body_locals`.
+**So the wall exists, is documented to cover this form, and the production
+specimen escaped it anyway.** A missing wall is an ordinary gap; a wall that
+exists, is documented to cover the case, and did not fire is worse, because every
+reader of that note is entitled to believe the class is closed. Two candidate
+mechanisms remain and they have different fixes and different controls: a
+coverage gap in what populates `body_locals` for nested or record-field pattern
+binders, or a seam-ORDER problem where some `ExprCall` path reaches
+`lookup_func_sig` without passing through `body_shadow_aware_func_sig`. **Neither
+is asserted here** — the reporting lane declined a third unverified guess and so
+does this document.
+
+**Consequence for anyone briefing this: it is not "build the missing seam."** A
+brief written on the retracted premise would build a second seam beside a working
+one, which is the parallel-authority failure.
 
 **AND THE PROSE THAT MISLED BOTH OF US IS THE GENERALISABLE PART.**
 `global_bare_fallback_invariant` states: *"lookup_binding_by_name consults
@@ -2580,8 +2618,8 @@ miss."* That is **true**, and it is about `lookup_binding_by_name`. The call
 went through `lookup_func_sig`, a different lookup with no such guarantee and no
 reason to have one, since it never touches those maps.
 
-That is **authority substitution**: a guarantee stated for one path, asserted
-about another, with no relation claimed by either carrier — and DESIGN's own
+That was read as **authority substitution**: a guarantee stated for one path,
+asserted about another, with no relation claimed by either carrier — and DESIGN's own
 entry explains why review reads past it, *both halves check out and only the
 arrow between them is missing*. The reporting lane committed the class **while
 quoting the document that names it**, in an escalation whose subject was a
