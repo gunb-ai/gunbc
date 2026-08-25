@@ -1,5 +1,21 @@
 # Namespace cut (NAMESPACE-Y): delete the import concept, resolve by containment
 
+> **CENSUS RECEIPT (2026-08-25).** Generation 3 executed steps 0-5 on
+> `integration/namespace-cut` (gunbc#8282), which is now frozen. **This plan is not
+> superseded** — its 2026-08-15 ruling called for exactly what happened, and the
+> defects the branch surfaced are the concealment census running. What the census
+> returned, with a terminal shape and landing order per class:
+> [namespace-cut-postmortem-and-identity-program.md](namespace-cut-postmortem-and-identity-program.md).
+> Two amendments it argues for, neither touching the delete-first ruling: the
+> census output lands on **main** rather than being fixed forward on the branch
+> (the branch will not merge, so fixes on it are throwaway work per DESIGN section 6),
+> and the re-cut runs in a temporary worktree rather than a maintained PR (222
+> merges of main into the branch, against roughly 380 commits of its own work).
+> The **target qualification spelling** — this plan's full qualification vs
+> namespace-resolution-design's shortest unique suffix, whose *sequencing* this
+> plan quarries but whose *terminal shapes* it keeps as evidence — is reopened
+> there as an operator decision.
+
 Doctrine: DESIGN §3 *replacement migrations cut over at the root* (delete-first; the deletion is the census — bounded by the three silent populations measured across the five parallel cuts, recorded once in [floor-cut-replacement-plan.md](floor-cut-replacement-plan.md) under *What the census does not do*; they apply to this cut identically). Vehicle: integration branch `integration/namespace-cut`, forked from main `64ebefa74`; standing cutover PR gunbc#8282 (draft — the one merge main receives). Executing session: crisp-crab-430; doctrine/coordination: tidy-pike-117. Operator ruling (2026-08-15): delete all the grammar/import up front, then solve each problem as it is revealed — expecting the deletion to also reveal problems import was standing up (the concealment census). **Step gating:** each major step closes only when the operator is satisfied with its performance — the executing session stops at the boundary and presents, never rolls into the next step on its own judgment; within a step, the fix-forward loop runs continuously. **Existing designs** covering this region (namespace-resolution-design, the layering repoint design, and kin) are quarry — terminal shapes and mechanisms are evidence; their sequencing never defers the deletion (operator ruling, 2026-08-15).
 
 ## The cut, stated in .dag terms

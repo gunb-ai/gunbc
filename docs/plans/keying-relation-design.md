@@ -309,7 +309,21 @@ Dissolution: this note retires into the carriers it names as each step lands, pe
 DESIGN section 6 rule that the mark on the carrier is the authority and design notes are
 not a parallel ledger.
 
-## 7. Related threads
+## 7. The first compiler-scale consumer (2026-08-25)
+
+§6 says nothing is built until a real consumer needs it, and steps 1-3 have landed
+(Tailscale specimen, `KeyRelation` in `std`, `membership_reconcile` converted).
+The consumer for the *identity wall* — step 2's ceiling, tracked on
+`std.key_relation` as `key_relation_identity_wall` — is now named and measured:
+**the compiler itself**, where `authored_name_at` (source text at a span) is used
+as the identity key at roughly 500 call sites, and where deleting `import`
+exposed the cost at 2958 candidate errors in one build. The specimen set in §3
+gains a fifth and by volume the largest member. Its receipt, the realization-side
+half it depends on (branded scalars erase to `String` in emitted Rust), and the
+landing order:
+[namespace-cut-postmortem-and-identity-program.md](namespace-cut-postmortem-and-identity-program.md).
+
+## 8. Related threads
 
 - Effect grants over namespaces — the `Frame` is where ambient axes belong, and the
   execution envelope is where a missing *plan* value belongs (`Hermetic | Wet | Record`
