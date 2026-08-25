@@ -62,11 +62,22 @@ type RealDefectSubject =
 type WrongWitnessFault =
     CriterionCannotHoldOnLiveCorpus { measured: Int, denominator: Int }
 
+// NAMED ClassificationDisposition RATHER THAN Disposition, AND THE COLLISION IS
+// NOT HYPOTHETICAL: the first revision of this carrier called it Disposition, and
+// strict preparation over the whole pool then refused 3918 modules with
+// `unresolved type 'Disposition'` AND `unresolved type 'Scaffold'` across ~20
+// unrelated files. std.disposition declares `type Disposition` with a `Scaffold`
+// variant, and modules such as gunbc.ci_input_envelope use both as BARE names;
+// a second top-level Disposition made that bare name ambiguous and dropped the
+// whole binding, taking the variant with it. A closure-scoped `compile --entry`
+// cannot see this -- it never resolves this module -- so the only instrument
+// that discriminates is a whole-pool preparation.
+//
 // What closes the row. RepairedInThisChange is deliberately rare: most of these
 // rows are owned by a lane that is not this one, and repairing another lane's
 // authority from inside a classification pass is how a second authority gets
 // minted for one fact.
-type Disposition =
+type ClassificationDisposition =
     RoutedToOwner { owner: String }
   | NeedsOperatorRuling { question: String }
   | RepairedInThisChange
@@ -77,7 +88,7 @@ type ClassifiedRow {
   identity: DeclinedLiveIdentity
   classification: DefectClassification
   measured_evidence: String
-  disposition: Disposition
+  disposition: ClassificationDisposition
 }
 
 fn identity(module_path: String, function: String) -> DeclinedLiveIdentity {
