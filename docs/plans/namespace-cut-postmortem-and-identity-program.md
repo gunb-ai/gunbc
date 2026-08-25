@@ -1339,8 +1339,41 @@ So the split is clean, and it falls exactly along the line that clause draws:
   degrade a consumer's qualified reference to a variable lookup). The only
   remaining candidate this document knows of that could still be structural.
   **Now owned by this lane** (seam ruling, 2026-08-25) precisely because it could
-  be structural: a compiler-semantics question, not an observation one. Not
-  reproduced here yet.
+  be structural. **Narrowed here to two arms of one function, by source read
+  (2026-08-25); not yet reproduced.**
+
+  The diagnostic is produced in `v1.04_infer` at the `ExprVar` arm when a name
+  resolves nowhere, so a *qualified* reference `v2.std.x.y` must have been lowered
+  to a **variable of its root segment**. Expression-position qualified references
+  arrive as `ExprFieldAccess`, and that arm calls **`qualified_value_projection`
+  first and short-circuits on `Present`** — so all 95 are references for which it
+  returned `Absent` and execution fell through to ordinary variable inference. It
+  returns `none` exactly three ways:
+
+  1. `field_access_spine` gives `Absent` — the expression is not a clean dotted
+     spine. **This is the pipe class's sibling** (§3a): same failure to recognise
+     a qualified head, different position.
+  2. `spine_root_is_shadowed` — some local binding is named `v2`.
+  3. `symbol_index_lookup` misses on the full dotted name.
+
+  **Arm 2 is eliminated by construction and the elimination is the useful part.**
+  If `v2` were in `scope.locals` the fall-through would *find* it, so the
+  diagnostic would not say **undefined**. The corpus does contain `let v2 = …`
+  (three in `extdeps/formats/elf/encode.dag`, two in test modules), so the arm is
+  occupied and reachable — it simply cannot produce *this* message. A shadowed
+  namespace root is a real defect of this document's class (*same spelling,
+  different identity*) and deserves its own row; it is not this one.
+
+  That leaves 1 and 3, which have opposite owners. **Arm 3 is the hypothesis
+  deep-ant-102's refutation does not cover**: they tested whether a *broken*
+  provider degrades a consumer's qualified reference and showed it does not.
+  Arm 3 is an **absent** provider — a module never admitted to the symbol index at
+  all, which is §3.3(a)'s graph-construction problem, and broken-but-present is
+  not the same state as absent. Discriminating tests, both cheap: for arm 1,
+  whether the 95 sit in syntactic positions that break the spine; for arm 3,
+  whether `symbol_index` contains the dotted names they reference. If arm 3, the
+  class is a cascade of closure construction and dissolves with B.1 rather than
+  being structural.
 - **Witness disposition gap** — a missing declaration fail-closes to
   `ReadsLiveTree`, so the witness never runs; 476 of 1514 witness files declare
   none, carrying 3906 test fns, against a floor reporting `declined_live=830`.
