@@ -116,6 +116,13 @@ fn token_stream_peek(stream: TokenStream, offset: Int) -> Token? {
   get(xs: stream.all, index: stream.pos + offset)
 }
 
+// `heads_only` selects the declaration-heads reading of the SAME grammar: every
+// module-scope declaration head is parsed exactly as it is under the full reading,
+// and a brace-delimited `fn` body is skipped at token grain instead of being built.
+// It is not a second parser and it is not a lenient one -- the heads reading is
+// defined by what its sole consumer (the pool census) retains, and the census
+// normalizes every body away 82ms later, so the two readings are required to agree
+// after that normalization. That agreement is the oracle, not a description.
 type ParseContext {
   source_indices: Map<String, NewlineIndex>
   intern_table: InternTable
@@ -123,6 +130,7 @@ type ParseContext {
   occurrence_index: OccurrenceIndex?
   declaration_occurrences: List<DeclarationOccurrence>?
   reference_occurrences: List<ReferenceOccurrence>?
+  heads_only: Bool
 }
 
 type ParseResult {
@@ -208,6 +216,7 @@ fn parse_context_with_occurrence_state(
     occurrence_index: occurrence_index,
     declaration_occurrences: declaration_occurrences,
     reference_occurrences: reference_occurrences,
+    heads_only: ctx.heads_only,
   }
 }
 
@@ -222,6 +231,7 @@ fn parse_context_with_intern_table(
     occurrence_index: ctx.occurrence_index,
     declaration_occurrences: ctx.declaration_occurrences,
     reference_occurrences: ctx.reference_occurrences,
+    heads_only: ctx.heads_only,
   }
 }
 
@@ -1427,7 +1437,8 @@ fn parse_with_table_at(
   tokens: List<Token>,
   source_indices: Map<String, NewlineIndex>,
   intern_table: InternTable,
-  occurrence_base: AuthoredTokenOrdinalSpace
+  occurrence_base: AuthoredTokenOrdinalSpace,
+  heads_only: Bool
 ) -> ParseWithTableResult {
   let occurrence_allocator = occurrence_id_allocator_advance_to(
     alloc: occurrence_base.allocator,
@@ -1445,6 +1456,7 @@ fn parse_with_table_at(
     },
     declaration_occurrences: Present { value: [] },
     reference_occurrences: Present { value: [] },
+    heads_only: heads_only,
   }
   let r = parse_module(tokens: token_stream_new(all: tokens), ctx: ctx)
   if has_err(err: r.err) {
@@ -1499,7 +1511,8 @@ fn parse_with_table_in_occurrence_scope(
     intern_table: intern_table,
     occurrence_base: authored_token_ordinal_space_from_allocator(
       alloc: occurrence_allocator
-    )
+    ),
+    heads_only: false
   )
 }
 
@@ -1508,7 +1521,34 @@ fn parse_with_table(tokens: List<Token>, source_indices: Map<String, NewlineInde
     tokens: tokens,
     source_indices: source_indices,
     intern_table: intern_table,
-    occurrence_base: intern_table.authored_token_ordinals
+    occurrence_base: intern_table.authored_token_ordinals,
+    heads_only: false
+  )
+}
+
+// The declaration-heads reading of the same grammar. Every item head is parsed by the
+// same productions as `parse_with_table`; only a brace-delimited `fn` body is skipped
+// at token grain, and the skipped body is replaced by the loud `CensusHeadsBodyStripped`
+// stand-in so any consumer that descends into it refuses instead of reading a plausible
+// empty block.
+//
+// THE ONE REFUSAL THIS READING DOES NOT MAKE, stated here rather than left to be
+// rediscovered. It refuses an unterminated body and every malformed item HEAD, exactly
+// as the full reading does. It does NOT refuse a well-braced but ungrammatical body --
+// those tokens are never handed to the expression grammar at all. That refusal is not
+// lost from the repository, and this is why the narrowing is a scope correction rather
+// than a hole: the required run's `.dag` parse sweep full-parses `src/v1`, `dag` and
+// `src/v2` and owns exactly that question. The pool census answering it a second time,
+// as a side effect of building declaration heads, was one fact with two authorities --
+// and the expensive one, since it coupled every pool-derived resolve in the process to
+// the grammaticality of every body in the corpus.
+fn parse_heads_with_table(tokens: List<Token>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> ParseWithTableResult {
+  parse_with_table_at(
+    tokens: tokens,
+    source_indices: source_indices,
+    intern_table: intern_table,
+    occurrence_base: intern_table.authored_token_ordinals,
+    heads_only: true
   )
 }
 
@@ -2530,7 +2570,7 @@ fn parse_fn_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: SourceS
   let tokens = ret.tokens
   let ctx = ret.ctx
 
-  let r = parse_block(tokens: skip_newlines(tokens: tokens), ctx: ctx)
+  let r = parse_item_block_body(tokens: skip_newlines(tokens: tokens), ctx: ctx)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let body = r.expr
 
@@ -2590,7 +2630,7 @@ fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -
     if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
     parse_required_expression_after_separator(tokens: r.tokens, ctx: ctx)
   } else if tok_is_lbrace(tok: token_stream_first(stream: tokens)) {
-    parse_block(tokens: tokens, ctx: ctx)
+    parse_item_block_body(tokens: tokens, ctx: ctx)
   } else {
     let span = token_span(tok: token_stream_first(stream: tokens))
     ExprResult { expr: parse_recovery_placeholder(), tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "expected '=' or '{' after fn return type", span: span) } }
@@ -2651,7 +2691,7 @@ fn parse_block_item_after_kw(tokens: TokenStream, ctx: ParseContext, start_span:
   let tokens = uses_r.tokens
   let ctx = uses_r.ctx
 
-  let r = parse_block(tokens: skip_newlines(tokens: tokens), ctx: ctx)
+  let r = parse_item_block_body(tokens: skip_newlines(tokens: tokens), ctx: ctx)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let body = r.expr
 
@@ -2672,7 +2712,7 @@ fn parse_block_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan
   let ctx = prefix.ctx
   let named_dummy = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
-  let r = parse_block(tokens: skip_newlines(tokens: prefix.tokens), ctx: ctx)
+  let r = parse_item_block_body(tokens: skip_newlines(tokens: prefix.tokens), ctx: ctx)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let body = r.expr
 
@@ -3884,6 +3924,77 @@ fn parse_param(tokens: TokenStream, ctx: ParseContext) -> ParamResult {
       default_value: none, span: start_span, name_span: name_span
     )
     ParamResult { param: p, tokens: tokens, ctx: ctx, err: none }
+  }
+}
+
+type HeadsBlockSkipResult { tokens: TokenStream, err: ErrorNode? }
+
+// Token-grain skip of one brace-delimited block, depth-counted. It reads only brace
+// SHAPES, which the tokenizer has already decided -- a brace inside a string literal
+// or an annotation is not a brace token, so the depth count is over the same
+// delimiters the block grammar itself consumes, not over raw text. `depth` enters at
+// 1 with the opening brace already eaten; reaching 0 leaves the stream exactly where
+// `parse_block` would have left it after its closing `}`.
+//
+// The failure arm REFUSES -- an unterminated or EOF-truncated body is a typed, located
+// parse error, never a silent stop-at-EOF. It is deliberately NOT the general body
+// grammar refusal; that scope boundary is stated at `parse_heads_with_table`.
+fn heads_skip_block_tokens(tokens: TokenStream, depth: Int) -> HeadsBlockSkipResult {
+  if depth == 0 { return HeadsBlockSkipResult { tokens: tokens, err: none } }
+  let tok = token_stream_first(stream: tokens)
+  if tok_is_eof(tok: tok) {
+    HeadsBlockSkipResult {
+      tokens: tokens,
+      err: Present { value: parse_error(msg: "heads-only parse: unterminated function body", span: token_span(tok: tok)) }
+    }
+  } else {
+    match tok {
+      Absent =>
+        HeadsBlockSkipResult {
+          tokens: tokens,
+          err: Present { value: parse_error(msg: "heads-only parse: unterminated function body", span: no_span()) }
+        }
+      Present { value: t } =>
+        if is_lbrace_shape(shape: t.shape) {
+          heads_skip_block_tokens(tokens: token_stream_advance(stream: tokens, n: 1), depth: depth + 1)
+        } else if is_rbrace_shape(shape: t.shape) {
+          heads_skip_block_tokens(tokens: token_stream_advance(stream: tokens, n: 1), depth: depth - 1)
+        } else {
+          heads_skip_block_tokens(tokens: token_stream_advance(stream: tokens, n: 1), depth: depth)
+        }
+    }
+  }
+}
+
+data census_heads_body_stand_in_message: String = "pool census heads-only: function body stripped -- refuse to interpret"
+
+fn census_heads_body_stand_in() -> Node {
+  make_expr_error_node(
+    kind: CensusHeadsBodyStripped,
+    message: census_heads_body_stand_in_message,
+    span: no_span()
+  )
+}
+
+// The heads reading of `parse_block`: same opening `{` expectation, same stream
+// position on exit, loud stand-in in place of the built block.
+fn parse_block_heads_only(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
+  let dummy_expr = parse_recovery_placeholder()
+  let r = expect(tokens: tokens, expected: ExpectLBrace)
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
+  let skipped = heads_skip_block_tokens(tokens: r.tokens, depth: 1)
+  if has_err(err: skipped.err) { return ExprResult { expr: dummy_expr, tokens: skipped.tokens, ctx: ctx, err: skipped.err } }
+  ExprResult { expr: census_heads_body_stand_in(), tokens: skipped.tokens, ctx: ctx, err: none }
+}
+
+// One spelling for "read this item's block body", selecting the reading the context
+// declares. Every fn-shaped item body (`fn`, `func`, `pattern`, `interface`) routes
+// through here, so the two readings cannot drift apart per call site.
+fn parse_item_block_body(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
+  if ctx.heads_only {
+    parse_block_heads_only(tokens: tokens, ctx: ctx)
+  } else {
+    parse_block(tokens: tokens, ctx: ctx)
   }
 }
 
