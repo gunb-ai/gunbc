@@ -4,6 +4,7 @@ import std.types { Bool, String, List, Int, NonEmptyStr, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
+import product.placement_supply { HostIdentity }
 import gunbc.fabric_cell_converge {
   FabricCellResourceAddress,
   FabricCellRootAddress,
@@ -23,6 +24,9 @@ import gunbc.fabric_cell_converge {
   FabricCellPopulation,
   FabricCellPopulationObserved,
   FabricCellPopulationObservationRefused,
+  FabricCellObservationRefusal,
+  fabric_cell_observation_refusal_identity,
+  fabric_cell_canonical_refusals,
   FabricCellHostClassification,
   FabricCellAddressStanding,
   StandingSatisfied,
@@ -820,4 +824,199 @@ test fn witness_observer_joined_population_agrees_with_the_assembled_one() -> Bo
       discovered: fabric_cell_projection_refusals(projection: projection),
     ))
     && !population_is_refused(p: fabric_cell_observed_population(probe: converged_probe()))
+}
+
+// LAW 33 -- AN ENTRY MISSING FROM ITS NAMESPACE WHILE ITS STATE WAS READ IS A CONTRADICTION, NEVER AN
+// ABSENCE. The two facts are a JOIN, not a precedence: taking whichever the control flow reached
+// first let a physically impossible pair -- the root listing does not hold the cell, and a state
+// read for that cell's root returned a digest -- resolve as a clean absence, which then licenses an
+// ADD against a host that may already hold the resource.
+test fn witness_observer_absent_entry_with_a_state_read_is_contradicted_not_absent() -> Bool {
+  observation_is_refused(o: fabric_cell_observe_address(
+    probe: FabricCellHostProbe {
+      host: operator_host_srv3,
+      namespaces: [enumerated(ns: FabricCellsRootNamespace, entries: [])],
+      addresses: [state_read(address: FabricCellRootAddress, digest: "d" as NonEmptyStr)],
+    },
+    slot: observe_slot(),
+    address: FabricCellRootAddress,
+  ))
+}
+
+// AND THE CONTROL THAT KEEPS LAW 33 FROM BANNING ABSENCE OUTRIGHT. Same missing entry, no state
+// read supplied: that is an ordinary absence and must stay one, or the first unprovisioned host can
+// never plan.
+test fn witness_observer_absent_entry_without_a_state_read_is_still_absent() -> Bool {
+  observation_is_absent(o: fabric_cell_observe_address(
+    probe: FabricCellHostProbe {
+      host: operator_host_srv3,
+      namespaces: [enumerated(ns: FabricCellsRootNamespace, entries: [])],
+      addresses: [],
+    },
+    slot: observe_slot(),
+    address: FabricCellRootAddress,
+  ))
+}
+
+// LAW 34 -- AND THE SAME JOIN ONE LEVEL UP: ANCESTRY-DERIVED ABSENCE LOSES TO DESCENDANT EVIDENCE.
+// A cell root that does not exist cannot hold an enumerated child namespace or a readable attempt
+// root. Both contradictions are measured, because they arrive through different probe lists and an
+// implementation can close one while leaving the other.
+test fn witness_observer_absent_ancestor_with_an_enumerated_child_is_contradicted() -> Bool {
+  observation_is_refused(o: fabric_cell_observe_address(
+    probe: FabricCellHostProbe {
+      host: operator_host_srv3,
+      namespaces: [
+        enumerated(ns: FabricCellsRootNamespace, entries: []),
+        enumerated(ns: FabricCellChildNamespace { slot: observe_slot() }, entries: ["attempts"]),
+      ],
+      addresses: [],
+    },
+    slot: observe_slot(),
+    address: FabricCellAttemptRootAddress,
+  ))
+}
+
+test fn witness_observer_absent_ancestor_with_a_descendant_state_read_is_contradicted() -> Bool {
+  observation_is_refused(o: fabric_cell_observe_address(
+    probe: FabricCellHostProbe {
+      host: operator_host_srv3,
+      namespaces: [enumerated(ns: FabricCellsRootNamespace, entries: [])],
+      addresses: [state_read(address: FabricCellAttemptRootAddress, digest: "d" as NonEmptyStr)],
+    },
+    slot: observe_slot(),
+    address: FabricCellAttemptRootAddress,
+  ))
+}
+
+// AND AN EXPLICIT CHILD ABSENCE AGREES WITH ITS PARENT, so it is not descendant evidence and must
+// not be read as a contradiction. Without this control law 34 would refuse the ordinary
+// fully-unprovisioned observation, which is the state the first realization has to plan from.
+test fn witness_observer_absent_ancestor_with_an_absent_child_stays_absent() -> Bool {
+  observation_is_absent(o: fabric_cell_observe_address(
+    probe: FabricCellHostProbe {
+      host: operator_host_srv3,
+      namespaces: [
+        enumerated(ns: FabricCellsRootNamespace, entries: []),
+        FabricCellNamespaceProbeEntry {
+          namespace: FabricCellChildNamespace { slot: observe_slot() },
+          probe: NamespaceObservedAbsent,
+        },
+      ],
+      addresses: [],
+    },
+    slot: observe_slot(),
+    address: FabricCellAttemptRootAddress,
+  ))
+}
+
+fn observation_is_refused(o: FabricCellAddressObservation) -> Bool {
+  match o {
+    AddressObservationRefused { slot: _, address: _, cause: _ } => true
+    AddressAbsent { slot: _, address: _ } => false
+    AddressObserved { member: _ } => false
+  }
+}
+
+fn observation_is_absent(o: FabricCellAddressObservation) -> Bool {
+  match o {
+    AddressAbsent { slot: _, address: _ } => true
+    AddressObservationRefused { slot: _, address: _, cause: _ } => false
+    AddressObserved { member: _ } => false
+  }
+}
+
+// LAW 35 -- A COMMITTED SLOT THE FABRIC DOES NOT EXPECT REFUSES THE POPULATION. It was classified
+// correctly in discovery and then projected to nothing, on the reasoning that committed slots reach
+// the kernel through the readback. Only EXPECTED slots do, so the typed distinction existed in
+// discovery and vanished before the plan -- the population accepted a host holding a cell artifact
+// nobody asked for.
+test fn witness_observer_unexpected_committed_slot_refuses_the_population() -> Bool {
+  let probe = FabricCellHostProbe {
+    host: operator_host_srv3,
+    namespaces: [enumerated(
+      ns: FabricCellsRootNamespace,
+      entries: concat(observe_root_entries(), ["srv3-01"]),
+    )],
+    addresses: converged_probe().addresses,
+  }
+  let refusals = fabric_cell_projection_refusals(projection: fabric_cell_observe(probe: probe))
+  list_length(items: refusals) == 1
+    && population_is_refused(p: fabric_cell_observed_population(probe: probe))
+}
+
+// LAW 36 -- A CROSS-HOST NAMED ARTIFACT IS ITS OWN REFUSAL, NOT THE FOREIGN ONE. Both were once
+// ForeignArtifactObserved: exhaustive over the discovery type, blind to the distinction that decides
+// the remedy. The identity is what a remedy router reads, so the law is stated over the identity
+// rather than over the rendered sentence.
+test fn witness_observer_cross_host_artifact_is_not_the_foreign_refusal() -> Bool {
+  let cross = refusal_identities(host: operator_host_srv4, entries: ["srv3-06"])
+  let foreign = refusal_identities(host: operator_host_srv4, entries: ["srv3-99"])
+  list_length(items: cross) == 1
+    && list_length(items: foreign) == 1
+    && !fold(cross, init: false, f: (acc, c) =>
+         acc || fold(foreign, init: false, f: (seen, g) => seen || c == g))
+}
+
+fn refusal_identities(host: HostIdentity, entries: List<String>) -> List<String> {
+  map(
+    fabric_cell_projection_refusals(projection: fabric_cell_observe(probe: FabricCellHostProbe {
+      host: host,
+      namespaces: [enumerated(ns: FabricCellsRootNamespace, entries: entries)],
+      addresses: [],
+    })),
+    r => fabric_cell_observation_refusal_identity(refusal: r),
+  )
+}
+
+// LAW 37 -- THE FOURTH SUPPLIED POPULATION IS ORDER-INDEPENDENT TOO. Three populations had already
+// been canonicalized, each where it was built and each with its own key; the unconsumed probes were
+// still folded in caller order and carried that order into the blocked list, the rendered lines and
+// the plan body. Two probes describing the same host in a different sequence must not produce two
+// plan identities.
+test fn witness_observer_unconsumed_refusals_are_order_independent() -> Bool {
+  let a = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 7 }
+  let b = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 8 }
+  let forward = stray_probe_identities(first: a, second: b)
+  let reverse = stray_probe_identities(first: b, second: a)
+  list_length(items: forward) == 2 && identity_lists_equal(a: forward, b: reverse)
+}
+
+// AND DUPLICATES OF ONE SUBJECT ARE ONE REFUSAL, which is the same population question asked the
+// other way: an order that is stable but double-counts is no better than one that reorders.
+test fn witness_observer_duplicate_unconsumed_probes_are_one_refusal() -> Bool {
+  let a = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 7 }
+  list_length(items: stray_probe_identities(first: a, second: a)) == 1
+}
+
+fn stray_probe_identities(first: RunnerSlotIdentity, second: RunnerSlotIdentity) -> List<String> {
+  map(
+    fabric_cell_canonical_refusals(refusals: fabric_cell_unconsumed_probe_refusals(
+      probe: FabricCellHostProbe {
+        host: operator_host_srv3,
+        namespaces: converged_probe().namespaces,
+        addresses: concat(
+          converged_probe().addresses,
+          [
+            FabricCellAddressProbeEntry {
+              slot: first,
+              address: FabricCellRootAddress,
+              probe: AddressStateRead { state_digest: "one" as NonEmptyStr },
+            },
+            FabricCellAddressProbeEntry {
+              slot: second,
+              address: FabricCellRootAddress,
+              probe: AddressStateRead { state_digest: "two" as NonEmptyStr },
+            },
+          ],
+        ),
+      },
+    )),
+    r => fabric_cell_observation_refusal_identity(refusal: r),
+  )
+}
+
+fn identity_lists_equal(a: List<String>, b: List<String>) -> Bool {
+  list_length(items: a) == list_length(items: b)
+    && join(a, "\n") == join(b, "\n")
 }

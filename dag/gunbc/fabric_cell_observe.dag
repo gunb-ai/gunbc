@@ -31,6 +31,10 @@ import gunbc.fabric_cell_converge {
   DiscoveryUnavailable,
   SuppliedProbeUnconsumed,
   SuppliedNamespaceUnconsumed,
+  UnexpectedCommittedSlotArtifact,
+  CrossHostNamedArtifactObserved,
+  fabric_cell_refusal_insert_ordered,
+  fabric_cell_canonical_refusals,
 }
 
 data fabric_cell_observe_authority_disposition: Disposition = SingleAuthority
@@ -297,7 +301,7 @@ fn fabric_cell_observe_address(
   address: FabricCellResourceAddress,
 ) -> FabricCellAddressObservation {
   if fabric_cell_address_is_absent_by_ancestry(probe: probe, slot: slot, address: address) {
-    AddressAbsent { slot: slot, address: address }
+    fabric_cell_absent_by_ancestry_unless_contradicted(probe: probe, slot: slot, address: address)
   } else {
     fabric_cell_observe_address_directly(probe: probe, slot: slot, address: address)
   }
@@ -358,10 +362,10 @@ fn fabric_cell_observe_address_directly(
             address: address,
             cause: join(["enumeration of ", fabric_cell_namespace_wire(n: namespace), " refused: ", c], ""),
           }
-        NamespaceObservedAbsent => AddressAbsent { slot: slot, address: address }
+        NamespaceObservedAbsent => fabric_cell_absent_unless_contradicted(probe: probe, slot: slot, address: address)
         NamespaceEnumerated { entries: es } =>
           if !fabric_cell_entries_hold(entries: es, name: fabric_cell_address_entry_name(slot: slot, address: address)) {
-            AddressAbsent { slot: slot, address: address }
+            fabric_cell_absent_unless_contradicted(probe: probe, slot: slot, address: address)
           } else {
             match fabric_cell_address_probe_standing(entries: probe.addresses, slot: slot, address: address) {
               AddressProbeAbsent =>
@@ -382,6 +386,73 @@ fn fabric_cell_observe_address_directly(
                     AddressObserved { member: FabricCellMember { slot: slot, address: address, state_digest: d } }
                 }
             }
+          }
+      }
+  }
+}
+
+
+// ABSENCE IS A JOIN OVER BOTH FACTS, NOT A PRECEDENCE BETWEEN THEM. The namespace says the entry is
+// not there and the address probe says its state was read: those are not two observations to be
+// ordered, they are a CONTRADICTION, and resolving it by taking whichever the control flow reached
+// first is how a physically impossible pair became a clean absence -- which then licenses an ADD.
+// The parent-observation law says a missing entry means absence; it does not say a missing entry
+// means absence NO MATTER WHAT ELSE WAS OBSERVED. This is the observer-side form of the conflict the
+// lower evidence algebra already knows as AddressObserved + AddressAbsent.
+fn fabric_cell_absent_unless_contradicted(
+  probe: FabricCellHostProbe,
+  slot: RunnerSlotIdentity,
+  address: FabricCellResourceAddress,
+) -> FabricCellAddressObservation {
+  match fabric_cell_address_probe_standing(entries: probe.addresses, slot: slot, address: address) {
+    AddressProbeAbsent => AddressAbsent { slot: slot, address: address }
+    AddressProbeSupplied { probe: _ } =>
+      AddressObservationRefused {
+        slot: slot,
+        address: address,
+        cause: "the entry is absent from its namespace and a state observation for it was supplied: the host cannot hold both, so this is a contradiction and not an absence",
+      }
+  }
+}
+
+// AND THE SAME JOIN ONE LEVEL UP. A cell root that does not exist cannot hold an enumerated child
+// namespace or a readable attempt root, so descendant evidence supplied against an absent ancestor
+// is a contradiction. An explicit child NamespaceObservedAbsent is NOT one -- it agrees with the
+// parent -- and a refused child enumeration is a refusal rather than a contradiction, because a read
+// that failed asserts nothing about what is there.
+fn fabric_cell_absent_by_ancestry_unless_contradicted(
+  probe: FabricCellHostProbe,
+  slot: RunnerSlotIdentity,
+  address: FabricCellResourceAddress,
+) -> FabricCellAddressObservation {
+  match fabric_cell_address_probe_standing(entries: probe.addresses, slot: slot, address: address) {
+    AddressProbeSupplied { probe: _ } =>
+      AddressObservationRefused {
+        slot: slot,
+        address: address,
+        cause: "the cell root is absent and a state observation for a descendant of it was supplied: the host cannot hold both, so this is a contradiction and not an absence",
+      }
+    AddressProbeAbsent =>
+      match fabric_cell_namespace_standing(
+        entries: probe.namespaces,
+        namespace: FabricCellChildNamespace { slot: slot },
+      ) {
+        NamespaceProbeAbsent => AddressAbsent { slot: slot, address: address }
+        NamespaceProbeSupplied { probe: np } =>
+          match np {
+            NamespaceObservedAbsent => AddressAbsent { slot: slot, address: address }
+            NamespaceEnumerated { entries: _ } =>
+              AddressObservationRefused {
+                slot: slot,
+                address: address,
+                cause: "the cell root is absent and its child namespace was enumerated: the host cannot hold both, so this is a contradiction and not an absence",
+              }
+            NamespaceEnumerationRefused { cause: c } =>
+              AddressObservationRefused {
+                slot: slot,
+                address: address,
+                cause: join(["the cell root is absent and enumeration of its child namespace refused: ", c], ""),
+              }
           }
       }
   }
@@ -615,24 +686,29 @@ fn fabric_cell_observed_population(probe: FabricCellHostProbe) -> FabricCellPopu
 }
 
 fn fabric_cell_projection_refusals(projection: FabricCellObserverProjection) -> List<FabricCellObservationRefusal> {
-  concat(
+  fabric_cell_canonical_refusals(refusals: concat(
     fabric_cell_discovery_refusals(discovery: projection.discovery),
     projection.unconsumed,
-  )
+  ))
 }
 
 // DISCOVERY PROJECTS INTO THE REFUSAL VOCABULARY gunbc.fabric_cell_converge OWNS, which is what
 // keeps the direction acyclic: this module imports that one, so that one cannot name
-// FabricCellDiscovery. Only the two arms that are NOT already accounted for on the expected side
-// project: an expected cell and a committed slot on this host both reach the classification kernel
-// through the readback, and reporting them again here would double-count one subject in the plan
-// identity.
+// FabricCellDiscovery. ONLY ONE ARM PROJECTS NOTHING, and an earlier cut got that population wrong
+// in a way worth recording: it also dropped DiscoveredUnexpectedCommittedSlot, on the reasoning that
+// a committed slot "reaches the classification kernel through the readback". Only EXPECTED slots do
+// -- fabric_cell_observe_host folds fabric_cell_expected_slots -- so a committed non-fabric slot
+// discovered in the cells root became a typed distinction that existed in discovery and vanished
+// before the plan. It now carries its own refusal, which names the committed identity because the
+// host itself committed it; that is a forward-authority match, not a name parsed into an identity.
 //
-// A CROSS-HOST NAMED ARTIFACT PROJECTS AS FOREIGN, CARRYING THE NAME AND NOT THE IDENTITY IT
-// RESEMBLES. The discovery arm keeps the matched slot because the remedy differs -- an operator
-// seeing srv3-06 on srv4 looks somewhere specific -- but the refusal that enters the
-// content-addressed plan carries the observed NAME, because minting or citing an identity for an
-// artifact this host never committed is the uncited authority the whole classifier refuses.
+// A CROSS-HOST NAMED ARTIFACT IS ITS OWN REFUSAL AND NOT A FOREIGN ONE. Both were once
+// ForeignArtifactObserved, which is the total-at-the-level-examined collapse: an artifact matching
+// nothing anywhere and an artifact on srv4 whose name matches srv3's committed cell have different
+// remedies, and folding them into one arm left the remedy router unable to tell them apart without
+// re-parsing the name -- exactly the derivation the classifier refuses. The refusal carries the
+// matched slot, which does NOT assert the artifact IS that slot; it records the comparison discovery
+// actually performed against the committed authority.
 fn fabric_cell_discovery_refusals(discovery: FabricCellDiscovery) -> List<FabricCellObservationRefusal> {
   match discovery {
     DiscoveryRefused { host: h, cause: c } => [DiscoveryUnavailable { host: h, cause: c }]
@@ -644,9 +720,15 @@ fn fabric_cell_discovery_refusals(discovery: FabricCellDiscovery) -> List<Fabric
 fn fabric_cell_discovered_refusal(host: HostIdentity, s: FabricCellDiscoveredSubject) -> List<FabricCellObservationRefusal> {
   match s {
     DiscoveredExpectedCell { slot: _ } => []
-    DiscoveredUnexpectedCommittedSlot { slot: _ } => []
-    DiscoveredCrossHostNamedArtifact { observed_name: n, named_slot: _, observed_on: h } =>
-      [ForeignArtifactObserved { host: h, observed_name: n, location: fabric_cell_base_dir_name() }]
+    DiscoveredUnexpectedCommittedSlot { slot: sl } =>
+      [UnexpectedCommittedSlotArtifact { host: host, slot: sl, location: fabric_cell_base_dir_name() }]
+    DiscoveredCrossHostNamedArtifact { observed_name: n, named_slot: sl, observed_on: h } =>
+      [CrossHostNamedArtifactObserved {
+        observed_on: h,
+        observed_name: n,
+        matched_committed_slot: sl,
+        location: fabric_cell_base_dir_name(),
+      }]
     DiscoveredForeignArtifact { observed_name: n, location: l } =>
       [ForeignArtifactObserved { host: host, observed_name: n, location: l }]
   }
@@ -672,13 +754,12 @@ fn fabric_cell_unconsumed_probe_refusals(probe: FabricCellHostProbe) -> List<Fab
       init: [],
       f: (acc, e) =>
         if fabric_cell_slot_in(slots: expected, slot: e.slot) { acc }
-        else if fabric_cell_probe_refusal_holds_address(acc: acc, slot: e.slot, address: e.address) { acc }
         else {
-          concat(acc, [SuppliedProbeUnconsumed {
+          fabric_cell_refusal_insert_ordered(acc: acc, r: SuppliedProbeUnconsumed {
             host: probe.host,
             slot: e.slot,
             address: e.address,
-          }])
+          })
         }
     ),
     fold(
@@ -690,8 +771,9 @@ fn fabric_cell_unconsumed_probe_refusals(probe: FabricCellHostProbe) -> List<Fab
           FabricCellSliceNamespace => acc
           FabricCellChildNamespace { slot: s } =>
             if fabric_cell_slot_in(slots: expected, slot: s) { acc }
-            else if fabric_cell_probe_refusal_holds_namespace(acc: acc, slot: s) { acc }
-            else { concat(acc, [SuppliedNamespaceUnconsumed { host: probe.host, slot: s }]) }
+            else {
+              fabric_cell_refusal_insert_ordered(acc: acc, r: SuppliedNamespaceUnconsumed { host: probe.host, slot: s })
+            }
         }
     ),
   )
@@ -701,37 +783,3 @@ fn fabric_cell_slot_in(slots: List<RunnerSlotIdentity>, slot: RunnerSlotIdentity
   fold(slots, init: false, f: (acc, s) => acc || runner_slot_identity_equal(a: s, b: slot))
 }
 
-fn fabric_cell_probe_refusal_holds_address(
-  acc: List<FabricCellObservationRefusal>,
-  slot: RunnerSlotIdentity,
-  address: FabricCellResourceAddress,
-) -> Bool {
-  fold(acc, init: false, f: (seen, r) =>
-    match r {
-      SuppliedProbeUnconsumed { host: _, slot: s, address: a } =>
-        seen || (runner_slot_identity_equal(a: s, b: slot)
-          && fabric_cell_resource_address_wire(address: a) == fabric_cell_resource_address_wire(address: address))
-      SuppliedNamespaceUnconsumed { host: _, slot: _ } => seen
-      ExpectedAddressBlocked { disposition: _ } => seen
-      UnexpectedCellEvidence { evidence: _ } => seen
-      ReadbackHostMismatch { mismatch: _ } => seen
-      ForeignArtifactObserved { host: _, observed_name: _, location: _ } => seen
-      DiscoveryUnavailable { host: _, cause: _ } => seen
-    })
-}
-
-fn fabric_cell_probe_refusal_holds_namespace(
-  acc: List<FabricCellObservationRefusal>,
-  slot: RunnerSlotIdentity,
-) -> Bool {
-  fold(acc, init: false, f: (seen, r) =>
-    match r {
-      SuppliedNamespaceUnconsumed { host: _, slot: s } => seen || runner_slot_identity_equal(a: s, b: slot)
-      SuppliedProbeUnconsumed { host: _, slot: _, address: _ } => seen
-      ExpectedAddressBlocked { disposition: _ } => seen
-      UnexpectedCellEvidence { evidence: _ } => seen
-      ReadbackHostMismatch { mismatch: _ } => seen
-      ForeignArtifactObserved { host: _, observed_name: _, location: _ } => seen
-      DiscoveryUnavailable { host: _, cause: _ } => seen
-    })
-}
