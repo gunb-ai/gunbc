@@ -716,12 +716,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "roster_body_lowering_fold_zero_suspects_within_ratchet",
       "roster_ingest_stage_zero_suspects_within_ratchet",
       "roster_parse_stage_zero_suspects_within_ratchet",
-      "roster_accumulator_copy_analyze_zero_suspects_within_ratchet",
-      "red_control_planted_identity_escape_still_alarms",
-      "red_control_planted_identity_escape_finding_count_is_one",
-      "green_control_sanctioned_reader_body_not_flagged",
-      "green_control_sanctioned_reader_body_has_no_findings_at_all",
-      "unrelated_caret_literal_call_not_flagged"
+      "roster_accumulator_copy_analyze_zero_suspects_within_ratchet"
     ]
   },
   FrozenPathDeferral {
@@ -866,13 +861,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "gap4_malformed_match_arm_missing_arrow_rejects_holds",
       "gap4_unrecognized_char_rejects_not_tokens_remain_holds",
       "gap5_string_escape_quote_in_literal_parses_holds"
-    ]
-  },
-  FrozenPathDeferral {
-    entry: "src/v2/test/claim/long/identity_captured_navigation_fidelity_test.dag",
-    functions: [
-      "suspect_finding_projects_to_exactly_one_under_claimed_edge",
-      "sanctioned_reader_projects_to_zero_discrepancies"
     ]
   },
   FrozenPathDeferral {
