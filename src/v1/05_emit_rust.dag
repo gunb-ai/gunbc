@@ -1574,14 +1574,6 @@ fn rust_ord_derives_copy_text() -> String {
   "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]"
 }
 
-fn rust_nominal_identity_carrier_def(name: String) -> String {
-  concat(rust_ord_derives_text(), "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, "(pub String);")
-}
-
-fn rust_nominal_identity_carrier_type_eligible(type_name: String) -> Bool {
-  false
-}
-
 fn rust_nominal_ord_derives_for_shape(name: String, children: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
   if rust_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices) {
     rust_ord_derives_text()
@@ -4193,7 +4185,7 @@ fn type_item_has_rust_nominal_shell_authority(item: Node, item_text: String, mod
   } else if is_type_alias_item(item: item, source_indices: source_indices) {
     true
   } else if is_type_decl_item(item: item, source_indices: source_indices) {
-    if (item.params |> count) == 0 && (rust_nominal_identity_carrier_type_eligible(type_name: item_text) || rust_opaque_kernel_alias_type_eligible(name: item_text)) {
+    if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
       true
     } else if (item.params |> count) > 0 {
       if is_parametric_opaque_type_decl_item(item: item, source_indices: source_indices) {
@@ -5192,8 +5184,6 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
 
     if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
       rust_opaque_kernel_alias_type_decl(name: item_text)
-    } else if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
-      rust_nominal_identity_carrier_def(name: item_text)
     } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
       emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, item_text), source_indices: env.source_indices)
     } else {
@@ -5219,8 +5209,6 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
   } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
     if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
       rust_opaque_kernel_alias_type_decl(name: item_text)
-    } else if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
-      rust_nominal_identity_carrier_def(name: item_text)
     } else {
 
       match rust_seed_host_container_base(name: item_text) {
@@ -5510,6 +5498,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
   let is_product = is_product_type(n: item)
   if is_product {
     let has_fn_fields = type_has_fn_fields(name: item_text, emit_info: emit_info)
+    let sealed = item_seals_construction(item: item)
     let capability_surface = v1_emit_struct_from_capability_table(
       module_path: env.module_path,
       name: item_text,
@@ -5524,6 +5513,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
         generic_param_names: item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)),
         emit_info: emit_info
       ),
+      sealed: sealed,
       type_decl_items: emit_info.type_decl_items
     )
     let type_params = if !has_fn_fields {
@@ -5533,7 +5523,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     }
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
     let clone_bound_refusal = emit_item_clone_bound_refusal(item: item, item_name: item_text, emit_info: emit_info, source_indices: env.source_indices)
-    let struct_text = emit_struct_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
+    let struct_text = emit_struct_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, sealed: sealed, env: env, emit_info: emit_info)
     if clone_bound_refusal == "" { struct_text } else { concat(clone_bound_refusal, "\n", struct_text) }
   } else if is_host_optional_carrier_alias(name: item_text) {
     let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
@@ -5633,7 +5623,57 @@ fn struct_needs_serde(name: String, emit_info: EmitGraphInfo) -> Bool {
   !type_has_fn_fields(name: name, emit_info: emit_info)
 }
 
-fn emit_struct_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
+// SEALED CONSTRUCTION, DERIVED FROM THE DECLARATION ITSELF. `sole_constructor` is
+// parsed onto the type declaration as a property (v1.compiler.parse) and consumed by
+// inference to refuse a cross-module record literal (v1.compiler.infer
+// type_has_sole_constructor). Until this seam the RUST EMITTER read that fact zero
+// times, so the model's seal did not survive lowering: DESIGN section 4b records the
+// executed receipt -- `extdeps.uri` `UriValidatedScalar` emits byte-identical to the
+// plain record beside it, public field and derived Deserialize, and both a direct
+// struct literal and `serde_json::from_value` admit values the mint refuses, two of
+// which reach output as invalid percent-encoding. That is the single BELOW-FLOOR item
+// in that paragraph.
+//
+// This predicate takes the DECLARATION NODE, never a name. That is the whole point of
+// its shape: an eligibility roster over spellings is the defect this seam exists to
+// remove, so there is no name in scope here for one to be written against.
+fn item_seals_construction(item: Node) -> Bool {
+  item.properties |> any(p => p.name == "sole_constructor")
+}
+
+// The same fact reached from a type REFERENCE rather than from the declaration, for
+// the field-access seam, which holds a base expression rather than the decl. It
+// resolves through the emitter's own declaration index (`type_decl_items`) and then
+// asks the declaration -- so the answer still comes from the declaration node, with
+// the index acting as the lookup rather than as the authority.
+fn type_name_seals_construction(type_name: String, emit_info: EmitGraphInfo) -> Bool {
+  match lookup_emit_type_decl(emit_info: emit_info, type_name: type_name) {
+    Present { value: decl } => item_seals_construction(item: decl)
+    Absent => false
+  }
+}
+
+// A sealed record's fields are private, so every reader outside the declaring module
+// needs a public accessor. The seal confines CONSTRUCTION, not access: the model lets
+// any module read a sole_constructor value (DESIGN section 4b names
+// `uri_validated_scalar_code_point`, an accessor returning the raw code point), so an
+// emitted shape that also confined reading would refuse programs the model accepts --
+// a different realization, not a faithful one.
+fn emit_sealed_struct_accessors(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
+  if children |> count == 0 { return "" }
+  let accessor_fns = children |> map(child =>
+    let fname = authored_name(env: env, node: child)
+    let ty = render_rust_field_type_with_applied_binding(field: child, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
+    let sharing = language_spec(target: Rust).sharing
+    let body = apply_type_template1(template: sharing.clone_value, arg0: concat("self.", emit_ident(name: fname, target: Rust)))
+    concat("    pub fn ", emit_ident(name: fname, target: Rust), "(&self) -> ", ty, " {\n        ", body, "\n    }")
+  )
+  let fns_str = accessor_fns |> join(separator: "\n")
+  let type_application_params = emit_bare_type_params(generic_param_names: generic_param_names)
+  concat("\nimpl", type_params, " ", name, type_application_params, " {\n", fns_str, "\n}")
+}
+
+fn emit_struct_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, sealed: Bool, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let has_fn_fields = type_has_fn_fields(name: name, emit_info: emit_info)
   let surface = v1_emit_struct_from_capability_table(
     module_path: env.module_path,
@@ -5649,12 +5689,13 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
       generic_param_names: generic_param_names,
       emit_info: emit_info
     ),
+    sealed: sealed,
     type_decl_items: emit_info.type_decl_items
   )
   if children |> count == 0 {
     concat(surface.derive_attr, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, ";")
   } else {
-    let field_lines = children |> map(child => emit_struct_field_from_child(struct_name: name, child: child, generic_param_names: generic_param_names, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info))
+    let field_lines = children |> map(child => emit_struct_field_from_child(struct_name: name, child: child, generic_param_names: generic_param_names, recursive_types: recursive_types, shared_types: shared_types, sealed: sealed, env: env, emit_info: emit_info))
 
     let unused_params = struct_unused_param_names(generic_param_names: generic_param_names, children: children, source_indices: env.source_indices)
     let all_field_lines = if unused_params |> count > 0 {
@@ -5662,7 +5703,11 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
     } else { field_lines }
     let fields_str = all_field_lines |> join(separator: "\n")
     let struct_def = concat(surface.derive_attr, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, " {\n", fields_str, "\n}")
-    if surface.impl_bodies == "" { struct_def } else { concat(struct_def, surface.impl_bodies) }
+    let sealed_accessors = if sealed {
+      emit_sealed_struct_accessors(name: name, type_params: type_params, generic_param_names: generic_param_names, children: children, shared_types: shared_types, env: env, emit_info: emit_info)
+    } else { "" }
+    let with_accessors = concat(struct_def, sealed_accessors)
+    if surface.impl_bodies == "" { with_accessors } else { concat(with_accessors, surface.impl_bodies) }
   }
 }
 
@@ -5716,7 +5761,7 @@ fn rust_field_carrier_final_type(rt_field: Node, ty: String, recursive_types: Se
   } else { ty }
 }
 
-fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_names: List<String>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
+fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_names: List<String>, recursive_types: Set<String>, shared_types: Set<String>, sealed: Bool, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let rt_child = resolved_type(n: child)
   let authored_child_type = field_node_type_expr(n: child)
   let ty = if generic_param_names |> count > 0 {
@@ -5758,7 +5803,8 @@ fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_
       Absent => ""
     }
   }
-  emit_rust_field_definition(authored: authored_name(env: env, node: child), final_ty: final_ty, rename_attr: rename_attr, indent: "    ", visibility: rust_visibility_prefix(), needs_serde: needs_serde)
+  let field_visibility = if sealed { "" } else { rust_visibility_prefix() }
+  emit_rust_field_definition(authored: authored_name(env: env, node: child), final_ty: final_ty, rename_attr: rename_attr, indent: "    ", visibility: field_visibility, needs_serde: needs_serde)
 }
 
 fn emit_rust_field_definition(authored: String, final_ty: String, rename_attr: String, indent: String, visibility: String, needs_serde: Bool) -> String {
@@ -7836,6 +7882,12 @@ fn field_access_field_is_boxed(base: Node, field: String, scope: InferScope, sha
   }
 }
 
+// A sealed record's fields are private in the emitted crate, so a stored-field read
+// must go through the accessor emit_sealed_struct_accessors wrote. THE CHOKE POINT WAS
+// ALREADY HERE AND WAS SIMPLY UNROUTED FOR PRODUCTS: the FieldSummary access_style
+// coproduct already carries an EnumAccessor arm rendering exactly `base.field()`, so the
+// seal does not introduce a second way to render a read -- it selects the existing one
+// for a product base. One producer for one fact.
 fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let base_str = emit_typed_expr_base(texpr: base, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let base_is_anon_record = match base.inferred {
@@ -7874,7 +7926,9 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
               _ => false
             }
             let field_is_boxed = field_access_field_is_boxed(base: base, field: field, scope: scope, shared_types: shared_types, emit_info: emit_info)
-            if field_is_boxed {
+            if type_name_seals_construction(type_name: authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_type(n: base)), emit_info: emit_info) {
+              concat(base_str, ".", emit_ident(name: field, target: Rust), "()")
+            } else if field_is_boxed {
               apply_type_template1(template: sharing.deref_clone, arg0: concat(base_str, ".", emit_ident(name: field, target: Rust)))
             } else if base_is_owned {
               concat(base_str, ".", emit_ident(name: field, target: Rust))
@@ -12010,11 +12064,8 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
   } else {
     ty_str
   }
-  if is_simple_type_node(n: type_node, source_indices: scope.type_env.source_indices) || rust_nominal_identity_carrier_type_eligible(type_name: authored_name_at(source_indices: scope.type_env.source_indices, node: type_node)) {
-    let val_str = match rust_nominal_identity_data_expr(type_node: type_node, value: value, source_indices: scope.type_env.source_indices) {
-      Present { value: identity_expr } => identity_expr
-      Absent => emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-    }
+  if is_simple_type_node(n: type_node, source_indices: scope.type_env.source_indices) {
+    let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
     let kw = rust_items().func_keyword
     concat(rust_visibility_prefix(), kw, " ", fn_name, "() -> ", ty_str, " { ", val_str, " }")
   } else {
@@ -12028,21 +12079,6 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
       "    }\n",
       "    CACHED.with(|c: &", ty_str, "| c.clone())\n",
       "}")
-  }
-}
-
-fn rust_nominal_identity_data_expr(type_node: Node, value: Node, source_indices: Map<String, NewlineIndex>) -> String? {
-  let type_name = authored_name_at(source_indices: source_indices, node: type_node)
-  let is_identity_type = rust_nominal_identity_carrier_type_eligible(type_name: type_name) && type_node.connective == NoConnective && (type_node.children |> count) == 0 && (type_node.params |> count) == 0
-  if is_identity_type {
-    match value.expr_data {
-      ExprVar { binding_kind: _ } =>
-        let symbol_name = expr_var_name_at(texpr: value, source_indices: source_indices)
-        Present { value: concat(type_name, "(\"", escape_string_literal_body(s: symbol_name), "\".to_string())") }
-      _ => none
-    }
-  } else {
-    none
   }
 }
 

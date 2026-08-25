@@ -193,6 +193,47 @@ fn record_derive_traits_copy() -> List<RustCapability> {
   }
 }
 
+// THE SEALED-CONSTRUCTION DERIVE CONTRACT. A record whose declaration carries
+// `sole_constructor` states that only its declaring module may mint an inhabitant.
+// `serde::Deserialize` contradicts that statement in the realization: the derive
+// generates a constructor inside the declaring module which any caller reaches
+// through `serde_json::from_value`, so a derived Deserialize is a second, unsealed
+// mint standing beside the declared one (DESIGN section 3 -- one fact, one home).
+// These rosters are therefore the sealed peers of the two above, differing in
+// exactly that member. They are authored as their own rosters rather than derived
+// by filtering, because sealed and unsealed construction are two distinct contracts
+// rather than one contract minus a trait, and a filter would let a later edit to the
+// unsealed roster silently redefine the sealed one. Serialize is retained: writing a
+// sealed value out is a read, and reading is not what the seal confines.
+fn sealed_record_derive_traits_heap() -> List<RustCapability> {
+  Cons {
+    head: RustDebug,
+    tail: Cons {
+      head: RustClone,
+      tail: Cons {
+        head: RustPartialEq,
+        tail: Cons { head: RustSerialize, tail: Empty }
+      }
+    }
+  }
+}
+
+fn sealed_record_derive_traits_copy() -> List<RustCapability> {
+  Cons {
+    head: RustDebug,
+    tail: Cons {
+      head: RustClone,
+      tail: Cons {
+        head: RustCopy,
+        tail: Cons {
+          head: RustPartialEq,
+          tail: Cons { head: RustSerialize, tail: Empty }
+        }
+      }
+    }
+  }
+}
+
 fn nullary_coproduct_derive_traits() -> List<RustCapability> {
   Cons {
     head: RustDebug,
