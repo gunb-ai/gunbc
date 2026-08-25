@@ -8493,7 +8493,7 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                             unit_type()
                         }
                     }
-                    None => unit_type(),
+                    None => type_variable_node("empty_list_element".to_string()),
                 }
             };
             let empty_list_diags = if ((elem_results.clone().len() as i64) == 0) {
