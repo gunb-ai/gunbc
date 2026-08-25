@@ -1194,3 +1194,72 @@ test fn witness_fabric_cell_unexpected_readback_refuses_rather_than_vanishing() 
     && fabric_fingerprint_with(population: converged_only)
         != fabric_fingerprint_with(population: with_unexpected)
 }
+
+// ONE UNEXPECTED CELL REPORTED TWICE IS ONE UNEXPECTED CELL. The subject is the cell; the readback
+// is the probe. Before the supplied side was normalized by slot, the identical unexpected readback
+// supplied twice produced two refusals, a refusal count of 2 and a DIFFERENT member-set
+// fingerprint -- with the host substrate unchanged and only probe multiplicity differing. A plan
+// identity that moves when you look twice is not identifying the host.
+//
+// THE THREE ROWS BELOW SEPARATE THE THREE THINGS THAT COULD BE TRUE. Idempotence (twice is once),
+// order independence (reversed is the same), and NON-degeneracy -- two DISTINCT unexpected slots
+// must still count two, or a kernel that collapsed everything to one would satisfy the first two
+// perfectly.
+fn unexpected_readback_at(index: Int) -> FabricCellReadback {
+  synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv3, slot_index: index })
+}
+
+test fn witness_fabric_cell_duplicate_unexpected_readbacks_are_one_subject() -> Bool {
+  let once = fabric_population_of(entries: [fabric_cell_readback_all_present(), unexpected_readback_at(index: 7)])
+  let twice = fabric_population_of(entries: [
+    fabric_cell_readback_all_present(),
+    unexpected_readback_at(index: 7),
+    unexpected_readback_at(index: 7),
+  ])
+  fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: once) == 1
+    && fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: twice) == 1
+    && fabric_fingerprint_with(population: once) == fabric_fingerprint_with(population: twice)
+}
+
+test fn witness_fabric_cell_unexpected_evidence_is_order_independent() -> Bool {
+  let forward = fabric_population_of(entries: [
+    fabric_cell_readback_all_present(), unexpected_readback_at(index: 7), unexpected_readback_at(index: 8),
+  ])
+  let reversed = fabric_population_of(entries: [
+    unexpected_readback_at(index: 8), unexpected_readback_at(index: 7), fabric_cell_readback_all_present(),
+  ])
+  fabric_fingerprint_with(population: forward) == fabric_fingerprint_with(population: reversed)
+}
+
+test fn witness_fabric_cell_distinct_unexpected_slots_are_counted_separately() -> Bool {
+  let two = fabric_population_of(entries: [
+    fabric_cell_readback_all_present(), unexpected_readback_at(index: 7), unexpected_readback_at(index: 8),
+  ])
+  fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: two) == 2
+}
+
+// AND A CONTRADICTED ADDRESS IS NOT AN UNREAD ONE. The blocked-address remedy was one sentence for
+// all three blocked states -- "the address was not read" -- which is false of a contradiction: that
+// address WAS read and its observations disagree. Same typed class, opposite investigations.
+test fn witness_fabric_cell_contradiction_remedy_is_not_the_unread_remedy() -> Bool {
+  let contradicted = fabric_population_of(entries: [FabricCellReadback {
+    slot: fabric_witness_slot(),
+    observations: [
+      AddressObserved { member: algebra_conflicting_member(digest: "digest-a") },
+      AddressObserved { member: algebra_conflicting_member(digest: "digest-b") },
+    ],
+  }])
+  let unread = fabric_cell_population_unobserved(host: operator_host_srv3)
+  let contradicted_lines = fleet_converge_fabric_cell_lines(host: "srv3" as NonEmptyStr, observed_fabric_cells: contradicted)
+  let unread_lines = fleet_converge_fabric_cell_lines(host: "srv3" as NonEmptyStr, observed_fabric_cells: unread)
+  fold(contradicted_lines, init: false, f: (acc, l) => acc || string_contains(s: l, pattern: "WAS read and its observations disagree"))
+    && fold(unread_lines, init: true, f: (acc, l) => acc && !string_contains(s: l, pattern: "WAS read and its observations disagree"))
+}
+
+fn algebra_conflicting_member(digest: String) -> FabricCellMember {
+  FabricCellMember {
+    slot: fabric_witness_slot(),
+    address: FabricCellResourceBoundaryAddress,
+    state_digest: digest as NonEmptyStr,
+  }
+}

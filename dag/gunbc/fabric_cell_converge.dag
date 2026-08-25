@@ -631,9 +631,51 @@ type FabricCellHostClassification {
   unexpected: List<FabricCellUnexpectedCellEvidence>
 }
 
+// NORMALIZED BY SLOT, BECAUSE THE SUBJECT IS THE CELL AND NOT THE PROBE. One unexpected cell
+// reported twice is one unexpected cell. An earlier cut emitted one row per READBACK RECORD, so
+// supplying the identical unexpected readback twice produced two refusals, a refusal count of 2 and
+// a different member-set fingerprint -- while the host substrate was unchanged and only probe
+// multiplicity differed. That is the same idempotence obligation the expected side already meets
+// (`fabric_cell_readback_for_slot` merges duplicate readbacks rather than taking the last), left
+// unmet on the supplied side because the two sides were written a PR apart.
+//
+// THE COUNTS ARE DIAGNOSTICS AND ARE DELIBERATELY NOT THE IDENTITY. The stable refusal identity is
+// the unique unexpected slot; `readback_count` and `observation_count` say how much evidence
+// arrived about it. The baseline row serializes the slot alone, so multiplicity cannot reach the
+// plan identity even as these numbers move.
 type FabricCellUnexpectedCellEvidence {
   slot: RunnerSlotIdentity
+  readback_count: Int
   observation_count: Int
+}
+
+fn fabric_cell_unexpected_holds_slot(
+  acc: List<FabricCellUnexpectedCellEvidence>,
+  slot: RunnerSlotIdentity,
+) -> Bool {
+  fold(acc, init: false, f: (seen, u) => seen || runner_slot_identity_equal(a: u.slot, b: slot))
+}
+
+fn fabric_cell_merge_unexpected(
+  acc: List<FabricCellUnexpectedCellEvidence>,
+  r: FabricCellReadback,
+) -> List<FabricCellUnexpectedCellEvidence> {
+  if fabric_cell_unexpected_holds_slot(acc: acc, slot: r.slot) {
+    map(acc, u =>
+      if runner_slot_identity_equal(a: u.slot, b: r.slot) {
+        FabricCellUnexpectedCellEvidence {
+          slot: u.slot,
+          readback_count: u.readback_count + 1,
+          observation_count: u.observation_count + list_length(items: r.observations),
+        }
+      } else { u })
+  } else {
+    concat(acc, [FabricCellUnexpectedCellEvidence {
+      slot: r.slot,
+      readback_count: 1,
+      observation_count: list_length(items: r.observations),
+    }])
+  }
 }
 
 // PURE: NO AUTHORITY READ, NO SEALED MINT, NO ACTUATION LICENSED. The expected roster arrives as a
@@ -658,20 +700,65 @@ fn classify_fabric_cell_host(
         )
       )
     ),
-    unexpected: fold(
+    unexpected: fabric_cell_unexpected_canonical(unexpected: fold(
       readback.cell_readbacks,
       init: [],
       f: (acc, r) =>
         if fabric_cell_slot_is_expected(expected_slots: expected_slots, slot: r.slot) { acc }
-        else {
-          concat(acc, [FabricCellUnexpectedCellEvidence {
-            slot: r.slot,
-            observation_count: list_length(items: r.observations),
-          }])
-        }
-    ),
+        else { fabric_cell_merge_unexpected(acc: acc, r: r) }
+    )),
   }
 }
+
+// THE UNEXPECTED SIDE IS PUT IN A CANONICAL ORDER BECAUSE NOTHING ELSE ORDERS IT, and the asymmetry
+// is what made this necessary rather than tidy. The EXPECTED side is emitted in authority order --
+// the roster decides it, and two runs of the same host produce the same sequence. The supplied side
+// has no such spine: it arrives in whatever order the probes came back, so `[cell-07, cell-08]` and
+// `[cell-08, cell-07]` serialized into two different baselines and hashed to two different
+// member-set fingerprints. Same host, same substrate, different plan identity depending on probe
+// arrival order -- which is the CAS defect this family already fixed once, reappearing on the side
+// that did not exist when it was fixed.
+//
+// FOUND BY THE LAW, NOT BY REVIEW. The row that caught it asserts only that the reversed supply
+// order produces the same fingerprint; no scenario fixture would have supplied the same two cells
+// twice in two orders.
+//
+// THE ORDER IS BY SLOT INDEX, AND THE REASON IT IS NOT BY SORTED NAME IS A MEASUREMENT RATHER THAN
+// A PREFERENCE. The obvious construction is a map keyed on the slot's instance name read back
+// through `sorted_map_keys`, which is what the rest of the corpus uses to make a fold
+// deterministic. It does not run: `sorted_map_keys` raises `NoSuchFunction` in the interpreter on
+// this tree, and so does the corpus's own witness for it
+// (`test.claim.sorted_map_keys_interpreter_order_witness_test`), whose annotation states the arm
+// exists. That is a live defect in a shared primitive, reported rather than worked around here --
+// this fold needs a total order it can actually compute, not a dependency on a primitive that
+// raises.
+//
+// WHAT THIS ORDER ASSUMES, STATED BECAUSE IT IS AN ASSUMPTION AND NOT A THEOREM: slot index is a
+// total order over the unexpected slots of ONE host readback. Two unexpected slots that differ by
+// HOST rather than index would compare equal here. That case is not reachable through the expected
+// side, which is host-exact, but it is representable in a readback whose `slot.host` disagrees with
+// the enclosing `FabricCellHostReadback.host` -- and that disagreement is itself an unmodeled state
+// that should refuse rather than be ordered. Naming it here as the next-rung trigger rather than
+// letting the sort quietly decide it.
+fn fabric_cell_unexpected_canonical(
+  unexpected: List<FabricCellUnexpectedCellEvidence>,
+) -> List<FabricCellUnexpectedCellEvidence> {
+  fold(unexpected, init: [], f: (acc, u) => fabric_cell_unexpected_insert_ordered(acc: acc, u: u))
+}
+
+fn fabric_cell_unexpected_insert_ordered(
+  acc: List<FabricCellUnexpectedCellEvidence>,
+  u: FabricCellUnexpectedCellEvidence,
+) -> List<FabricCellUnexpectedCellEvidence> {
+  concat(
+    fold(acc, init: [], f: (kept, e) => if e.slot.slot_index < u.slot.slot_index { concat(kept, [e]) } else { kept }),
+    concat(
+      [u],
+      fold(acc, init: [], f: (kept, e) => if e.slot.slot_index < u.slot.slot_index { kept } else { concat(kept, [e]) }),
+    ),
+  )
+}
+
 
 fn fabric_cell_slot_is_expected(
   expected_slots: List<RunnerSlotIdentity>,

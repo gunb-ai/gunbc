@@ -732,13 +732,32 @@ fn fabric_cell_disposition_baseline_row(d: FabricCellAddressDisposition) -> Stri
 // construction. The population always carried the located list; only the plan surface threw it
 // away. It is the same total-at-the-level-examined shape as the drift collapse: the match over
 // FabricCellPopulation was exhaustive and the distinction that mattered was inside an arm.
+// THE REMEDY IS RENDERED PER DISPOSITION BECAUSE THE THREE BLOCKED STATES ARE NOT THE SAME EVENT.
+// One sentence -- "the address was not read" -- was appended to all of them, and it is FALSE of
+// AddressContradicted: that address WAS read, and the observations disagreed. A reader told the
+// probe never ran looks at the transport; a reader told two probes disagreed looks at the host.
+// Same typed class, opposite investigations, and the typed baseline row above was already correct
+// -- only the reviewer-facing half lied. It is the collapsed-remedy shape again, in prose rather
+// than in a match arm, which is why it survived the arm being split.
+fn fabric_cell_blocked_remedy(d: FabricCellAddressDisposition) -> String {
+  match d {
+    AddressUnobserved { ref: _ } =>
+      "; no observation was produced for this address, so its state is unknown and no membership may be planned against it"
+    AddressUnreadable { ref: _, cause: _ } =>
+      "; the observation was attempted and refused, so this address's state is unknown and no membership may be planned against it"
+    AddressContradicted { ref: _ } =>
+      "; this address WAS read and its observations disagree, so the host's own reporting is inconsistent and no membership may be planned against it"
+    AddressMissingOnHost { ref: _ } =>
+      "; reported absent -- this disposition does not block, and reaching this arm means a non-blocking standing was filed as blocked"
+    AddressPresent { ref: _, member: _ } =>
+      "; reported present -- this disposition does not block, and reaching this arm means a non-blocking standing was filed as blocked"
+  }
+}
+
 fn fabric_cell_observation_refusal_line(refusal: FabricCellObservationRefusal) -> String {
   match refusal {
     ExpectedAddressBlocked { disposition: d } =>
-      concat(
-        fabric_cell_disposition_baseline_row(d: d),
-        "; the address was not read, so its state is unknown and no membership may be planned against it",
-      )
+      concat(fabric_cell_disposition_baseline_row(d: d), fabric_cell_blocked_remedy(d: d))
     UnexpectedCellEvidence { evidence: e } =>
       concat(
         "unexpected-cell ", runner_slot_instance_name(slot: e.slot),
