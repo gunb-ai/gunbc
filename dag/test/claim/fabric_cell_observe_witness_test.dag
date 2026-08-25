@@ -1,0 +1,476 @@
+module test.claim.fabric_cell_observe_witness
+
+import std.types { Bool, String, List, Int, NonEmptyStr, list_length }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fabric_cell_converge {
+  FabricCellResourceAddress,
+  FabricCellRootAddress,
+  FabricCellAttemptRootAddress,
+  FabricCellResourceBoundaryAddress,
+  fabric_cell_resource_addresses,
+  fabric_cell_slice_name,
+  fabric_cell_desired_state_digest,
+  FabricCellAddressObservation,
+  AddressObserved,
+  AddressAbsent,
+  AddressObservationRefused,
+  FabricCellReadback,
+  FabricCellHostReadback,
+  classify_fabric_cell_host,
+  FabricCellHostClassification,
+  FabricCellAddressStanding,
+  StandingSatisfied,
+  StandingObservedDrift,
+  StandingExplicitlyAbsent,
+  StandingBlocked,
+}
+import gunbc.fabric_cell_observe {
+  FabricCellNamespaceProbe,
+  NamespaceEnumerated,
+  NamespaceEnumerationRefused,
+  FabricCellAddressProbe,
+  AddressStateRead,
+  AddressStateReadRefused,
+  FabricCellNamespace,
+  FabricCellsRootNamespace,
+  FabricCellChildNamespace,
+  FabricCellSliceNamespace,
+  FabricCellNamespaceProbeEntry,
+  FabricCellAddressProbeEntry,
+  FabricCellHostProbe,
+  fabric_cell_observe_address,
+  fabric_cell_observe_slot,
+  fabric_cell_observe_host,
+  fabric_cell_discovered_subjects,
+  FabricCellDiscovery,
+  DiscoveryEnumerated,
+  DiscoveryRefused,
+  FabricCellDiscoveredSubject,
+  DiscoveredExpectedCell,
+  DiscoveredUnexpectedCommittedSlot,
+  DiscoveredForeignArtifact,
+  fabric_cell_discovered_subject_wire,
+}
+
+// THESE ROWS ARE LAWS OVER THE OBSERVER, AUTHORED BEFORE THE HOST TRANSPORT EXISTS, and that order
+// is the point rather than an accident of scheduling. Every defect this family has shipped was
+// found by a law and missed by a scenario: the drift-versus-absence collapse, the silently excluded
+// unexpected readback, and the unordered supplied side were all states no hand-authored fixture
+// thought to write down. So the adversarial inputs come first here and the transport is bound to
+// the shape they pin, rather than the shape being read back off whatever the first probe returned.
+
+fn observe_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 }
+}
+
+fn observe_root_entries() -> List<String> {
+  [runner_slot_instance_name(slot: observe_slot())]
+}
+
+fn enumerated(ns: FabricCellNamespace, entries: List<String>) -> FabricCellNamespaceProbeEntry {
+  FabricCellNamespaceProbeEntry { namespace: ns, probe: NamespaceEnumerated { entries: entries } }
+}
+
+fn enumeration_refused(ns: FabricCellNamespace, cause: String) -> FabricCellNamespaceProbeEntry {
+  FabricCellNamespaceProbeEntry { namespace: ns, probe: NamespaceEnumerationRefused { cause: cause } }
+}
+
+fn state_read(address: FabricCellResourceAddress, digest: NonEmptyStr) -> FabricCellAddressProbeEntry {
+  FabricCellAddressProbeEntry { slot: observe_slot(), address: address, probe: AddressStateRead { state_digest: digest } }
+}
+
+fn desired_digest_at(address: FabricCellResourceAddress) -> NonEmptyStr {
+  fabric_cell_desired_state_digest(slot: observe_slot(), address: address)
+}
+
+// A FULLY PROVISIONED HOST AS THE OBSERVER WOULD SEE IT: all three namespaces enumerated, every
+// entry present, every state read agreeing with the desired digest.
+fn converged_probe() -> FabricCellHostProbe {
+  FabricCellHostProbe {
+    host: operator_host_srv3,
+    namespaces: [
+      enumerated(ns: FabricCellsRootNamespace, entries: observe_root_entries()),
+      enumerated(ns: FabricCellChildNamespace { slot: observe_slot() }, entries: ["attempts"]),
+      enumerated(ns: FabricCellSliceNamespace, entries: [fabric_cell_slice_name(slot: observe_slot())]),
+    ],
+    addresses: map(
+      fabric_cell_resource_addresses(),
+      a => state_read(address: a, digest: desired_digest_at(address: a))
+    ),
+  }
+}
+
+fn observation_is_absent(o: FabricCellAddressObservation) -> Bool {
+  match o {
+    AddressAbsent { slot: _, address: _ } => true
+    AddressObserved { member: _ } => false
+    AddressObservationRefused { slot: _, address: _, cause: _ } => false
+  }
+}
+
+fn observation_is_refused(o: FabricCellAddressObservation) -> Bool {
+  match o {
+    AddressObservationRefused { slot: _, address: _, cause: _ } => true
+    AddressAbsent { slot: _, address: _ } => false
+    AddressObserved { member: _ } => false
+  }
+}
+
+fn observation_is_observed(o: FabricCellAddressObservation) -> Bool {
+  match o {
+    AddressObserved { member: _ } => true
+    AddressAbsent { slot: _, address: _ } => false
+    AddressObservationRefused { slot: _, address: _, cause: _ } => false
+  }
+}
+
+fn count_absent(os: List<FabricCellAddressObservation>) -> Int {
+  fold(os, init: 0, f: (acc, o) => if observation_is_absent(o: o) { acc + 1 } else { acc })
+}
+
+fn count_refused(os: List<FabricCellAddressObservation>) -> Int {
+  fold(os, init: 0, f: (acc, o) => if observation_is_refused(o: o) { acc + 1 } else { acc })
+}
+
+fn count_observed(os: List<FabricCellAddressObservation>) -> Int {
+  fold(os, init: 0, f: (acc, o) => if observation_is_observed(o: o) { acc + 1 } else { acc })
+}
+
+test fn debug_observer_counts() -> Bool {
+  let r = fabric_cell_observe_slot(probe: converged_probe(), slot: observe_slot())
+  count_observed(os: r.observations) == 3
+}
+
+fn probe_with_namespaces(ns: List<FabricCellNamespaceProbeEntry>) -> FabricCellHostProbe {
+  FabricCellHostProbe { host: operator_host_srv3, namespaces: ns, addresses: converged_probe().addresses }
+}
+
+// LAW 1 -- A REFUSED ENUMERATION NEVER PRODUCES AN ABSENCE. This is the empty-observation narrow,
+// and it is the failure this family has produced in a new position every time it grew: a probe that
+// could not say what is there rendered as the verdict "nothing is there". A mutation restoring the
+// tempting arm -- treat a refused listing as an empty listing -- reds this row and only this row,
+// because every other law here supplies a successful enumeration.
+test fn witness_observer_refused_enumeration_never_reports_absence() -> Bool {
+  let readback = fabric_cell_observe_slot(
+    probe: probe_with_namespaces(ns: [
+      enumeration_refused(ns: FabricCellsRootNamespace, cause: "permission denied"),
+      enumerated(ns: FabricCellChildNamespace { slot: observe_slot() }, entries: ["attempts"]),
+      enumerated(ns: FabricCellSliceNamespace, entries: [fabric_cell_slice_name(slot: observe_slot())]),
+    ]),
+    slot: observe_slot(),
+  )
+  count_absent(os: readback.observations) == 0
+    && count_refused(os: readback.observations) == 1
+}
+
+// LAW 2 -- A NAMESPACE NOBODY PROBED IS ALSO NEVER AN ABSENCE. Distinct from law 1 because the
+// producer differs: there the observer ran and was refused, here it never ran. Both are ignorance,
+// neither is evidence about the host, and an observer that conflated them would report a host it
+// never touched as entirely unprovisioned.
+test fn witness_observer_unprobed_namespace_never_reports_absence() -> Bool {
+  let readback = fabric_cell_observe_slot(
+    probe: FabricCellHostProbe { host: operator_host_srv3, namespaces: [], addresses: [] },
+    slot: observe_slot(),
+  )
+  count_absent(os: readback.observations) == 0
+    && count_refused(os: readback.observations) == 3
+}
+
+// LAW 3 -- ABSENCE IS REPORTED, AND ONLY, AFTER A SUCCESSFUL PARENT OBSERVATION. The positive
+// control for laws 1 and 2: without it those two are satisfied by an observer that never reports
+// absence at all, which would be a different defect wearing the same green.
+test fn witness_observer_successful_enumeration_without_the_entry_is_absence() -> Bool {
+  let readback = fabric_cell_observe_slot(
+    probe: probe_with_namespaces(ns: [
+      enumerated(ns: FabricCellsRootNamespace, entries: []),
+      enumerated(ns: FabricCellChildNamespace { slot: observe_slot() }, entries: ["attempts"]),
+      enumerated(ns: FabricCellSliceNamespace, entries: [fabric_cell_slice_name(slot: observe_slot())]),
+    ]),
+    slot: observe_slot(),
+  )
+  count_absent(os: readback.observations) == 1
+    && count_observed(os: readback.observations) == 2
+}
+
+// LAW 4 -- A PRESENT ENTRY WHOSE STATE COULD NOT BE READ IS A REFUSAL, NOT AN ABSENCE AND NOT A
+// PRESENCE. The listing established the resource exists; the state read established nothing. An
+// observer collapsing this into absence plans a creation over a resource that is already there.
+test fn witness_observer_unreadable_present_entry_is_refused_not_absent() -> Bool {
+  let readback = fabric_cell_observe_slot(
+    probe: FabricCellHostProbe {
+      host: operator_host_srv3,
+      namespaces: converged_probe().namespaces,
+      addresses: [
+        FabricCellAddressProbeEntry {
+          slot: observe_slot(),
+          address: FabricCellResourceBoundaryAddress,
+          probe: AddressStateReadRefused { cause: "cgroup unreadable" },
+        },
+        state_read(address: FabricCellRootAddress, digest: desired_digest_at(address: FabricCellRootAddress)),
+        state_read(address: FabricCellAttemptRootAddress, digest: desired_digest_at(address: FabricCellAttemptRootAddress)),
+      ],
+    },
+    slot: observe_slot(),
+  )
+  count_absent(os: readback.observations) == 0
+    && count_refused(os: readback.observations) == 1
+    && count_observed(os: readback.observations) == 2
+}
+
+// LAW 5 -- A PRESENT ENTRY WITH NO STATE PROBE IS A REFUSAL. The third way to be ignorant about a
+// present entry, and the one an observer is most likely to leave as a silent gap: the listing ran,
+// the name is there, and nobody asked what state it is in.
+test fn witness_observer_present_entry_with_no_state_probe_is_refused() -> Bool {
+  let readback = fabric_cell_observe_slot(
+    probe: FabricCellHostProbe {
+      host: operator_host_srv3,
+      namespaces: converged_probe().namespaces,
+      addresses: [],
+    },
+    slot: observe_slot(),
+  )
+  count_refused(os: readback.observations) == 3
+    && count_absent(os: readback.observations) == 0
+}
+
+// LAW 6 -- EVERY EXPECTED ADDRESS RECEIVES EXACTLY ONE OBSERVATION, whatever the probe carried.
+// Conservation of the expected side: an observer that reports on what it probed rather than on what
+// the authority expects can silently shrink its own denominator, and a shrunken denominator reads
+// as a converged host.
+test fn witness_observer_conserves_every_expected_address() -> Bool {
+  let full = fabric_cell_observe_slot(probe: converged_probe(), slot: observe_slot())
+  let empty = fabric_cell_observe_slot(
+    probe: FabricCellHostProbe { host: operator_host_srv3, namespaces: [], addresses: [] },
+    slot: observe_slot(),
+  )
+  list_length(items: full.observations) == list_length(items: fabric_cell_resource_addresses())
+    && list_length(items: empty.observations) == list_length(items: fabric_cell_resource_addresses())
+}
+
+// LAW 7 -- TWO ENUMERATIONS THAT DISAGREE REFUSE RATHER THAN LETTING THE FIRST WIN. The same rule
+// the address evidence fold already holds, applied one layer up where the observer would otherwise
+// reintroduce the order-dependence that fold exists to forbid. Both orders are asserted, so an
+// implementation taking either end passes neither.
+test fn witness_observer_disagreeing_enumerations_refuse_in_both_orders() -> Bool {
+  let forward = fabric_cell_observe_address(
+    probe: probe_with_namespaces(ns: [
+      enumerated(ns: FabricCellsRootNamespace, entries: observe_root_entries()),
+      enumerated(ns: FabricCellsRootNamespace, entries: []),
+    ]),
+    slot: observe_slot(),
+    address: FabricCellRootAddress,
+  )
+  let reverse = fabric_cell_observe_address(
+    probe: probe_with_namespaces(ns: [
+      enumerated(ns: FabricCellsRootNamespace, entries: []),
+      enumerated(ns: FabricCellsRootNamespace, entries: observe_root_entries()),
+    ]),
+    slot: observe_slot(),
+    address: FabricCellRootAddress,
+  )
+  observation_is_refused(o: forward) && observation_is_refused(o: reverse)
+}
+
+// LAW 8 -- TWO STATE READS THAT DISAGREE REFUSE IN BOTH ORDERS, for the same reason and at the
+// address grain. A favourable digest arriving first must not decide that the cell is converged.
+test fn witness_observer_disagreeing_state_reads_refuse_in_both_orders() -> Bool {
+  let a = state_read(address: FabricCellRootAddress, digest: desired_digest_at(address: FabricCellRootAddress))
+  let b = state_read(address: FabricCellRootAddress, digest: "some-other-digest" as NonEmptyStr)
+  let forward = fabric_cell_observe_address(
+    probe: FabricCellHostProbe { host: operator_host_srv3, namespaces: converged_probe().namespaces, addresses: [a, b] },
+    slot: observe_slot(),
+    address: FabricCellRootAddress,
+  )
+  let reverse = fabric_cell_observe_address(
+    probe: FabricCellHostProbe { host: operator_host_srv3, namespaces: converged_probe().namespaces, addresses: [b, a] },
+    slot: observe_slot(),
+    address: FabricCellRootAddress,
+  )
+  observation_is_refused(o: forward) && observation_is_refused(o: reverse)
+}
+
+// LAW 9 -- AGREEING DUPLICATE READS ARE ONE OBSERVATION, NOT A CONTRADICTION. The positive control
+// for law 8: without it, "refuse on two reads" is satisfied by refusing whenever anything is read
+// twice, which would make an idempotent probe unusable.
+test fn witness_observer_agreeing_duplicate_reads_are_one_observation() -> Bool {
+  let a = state_read(address: FabricCellRootAddress, digest: desired_digest_at(address: FabricCellRootAddress))
+  let o = fabric_cell_observe_address(
+    probe: FabricCellHostProbe { host: operator_host_srv3, namespaces: converged_probe().namespaces, addresses: [a, a] },
+    slot: observe_slot(),
+    address: FabricCellRootAddress,
+  )
+  observation_is_observed(o: o)
+}
+
+// LAW 10 -- A DISCOVERED NAME MATCHING NO COMMITTED IDENTITY IS FOREIGN, NEVER A MINTED SLOT AND
+// NEVER DROPPED. `srv3-99` is shaped exactly like a slot name and is not one; an observer that
+// reverse-parses it produces a RunnerSlotIdentity the slot authority never committed, and one that
+// drops it makes an out-of-band artifact unobservable. The row asserts the foreign arm AND the
+// count, so dropping fails on the count and minting fails on the arm.
+test fn witness_observer_unknown_name_is_foreign_never_a_minted_slot() -> Bool {
+  match fabric_cell_discovered_subjects(
+    probe: probe_with_namespaces(ns: [enumerated(ns: FabricCellsRootNamespace, entries: ["srv3-99"])])
+  ) {
+    DiscoveryRefused { cause: _ } => false
+    DiscoveryEnumerated { subjects: ss } =>
+      list_length(items: ss) == 1
+        && fold(ss, init: false, f: (acc, s) => acc || fabric_cell_discovered_subject_wire(s: s) == "foreign:fabric-cells-root:srv3-99")
+  }
+}
+
+// LAW 11 -- A COMMITTED SLOT THAT IS NOT A FABRIC SLOT IS DISCOVERED AS THAT SLOT, NOT AS FOREIGN.
+// A fabric artifact occupying a GitHub-purpose slot is the interesting out-of-band case, and its
+// remedy needs the exact identity: reported foreign, an operator is told an unknown thing exists
+// where the truth is that a known slot is being used for the wrong purpose.
+test fn witness_observer_committed_non_fabric_slot_is_discovered_as_that_slot() -> Bool {
+  match fabric_cell_discovered_subjects(
+    probe: probe_with_namespaces(ns: [enumerated(ns: FabricCellsRootNamespace, entries: ["srv3-01"])])
+  ) {
+    DiscoveryRefused { cause: _ } => false
+    DiscoveryEnumerated { subjects: ss } =>
+      fold(ss, init: false, f: (acc, s) => acc || fabric_cell_discovered_subject_wire(s: s) == "unexpected-committed:srv3-01")
+  }
+}
+
+// LAW 12 -- THE EXPECTED FABRIC CELL IS DISCOVERED AS EXPECTED. Positive control for laws 10 and
+// 11: without it, all three arms are satisfied by an implementation that calls everything foreign.
+test fn witness_observer_expected_fabric_cell_is_discovered_as_expected() -> Bool {
+  match fabric_cell_discovered_subjects(probe: converged_probe()) {
+    DiscoveryRefused { cause: _ } => false
+    DiscoveryEnumerated { subjects: ss } =>
+      fold(ss, init: false, f: (acc, s) => acc || fabric_cell_discovered_subject_wire(s: s) == "expected:srv3-06")
+  }
+}
+
+// LAW 13 -- A REFUSED ROOT ENUMERATION DISCOVERS NOTHING RATHER THAN DISCOVERING AN EMPTY HOST.
+// Law 1 at the discovery seam. "The root listed and held no cells" licenses teardown reasoning;
+// "the root could not be listed" licenses none, and an empty subject list would read as the first.
+test fn witness_observer_refused_root_enumeration_discovers_nothing_not_an_empty_host() -> Bool {
+  match fabric_cell_discovered_subjects(
+    probe: probe_with_namespaces(ns: [enumeration_refused(ns: FabricCellsRootNamespace, cause: "permission denied")])
+  ) {
+    DiscoveryEnumerated { subjects: _ } => false
+    DiscoveryRefused { cause: _ } => true
+  }
+}
+
+// LAW 14 -- DISCOVERY IS ORDER-INDEPENDENT. The supplied side of the classification kernel had no
+// spine until a reversal law found it; this asserts the observer does not hand the kernel a
+// different subject set depending on the order the host listed its entries.
+test fn witness_observer_discovery_is_order_independent() -> Bool {
+  let forward = fabric_cell_discovered_subjects(
+    probe: probe_with_namespaces(ns: [enumerated(ns: FabricCellsRootNamespace, entries: ["srv3-06", "srv3-99"])])
+  )
+  let reverse = fabric_cell_discovered_subjects(
+    probe: probe_with_namespaces(ns: [enumerated(ns: FabricCellsRootNamespace, entries: ["srv3-99", "srv3-06"])])
+  )
+  discovery_wire_set(d: forward) == discovery_wire_set(d: reverse)
+}
+
+// AND ONE ARTIFACT LISTED TWICE IS ONE SUBJECT. The idempotence half of the same obligation: a
+// listing that repeats a name (two probes of one namespace merged, a filesystem returning a name
+// under two links) must not double the discovered population, or the observer hands the kernel a
+// count that moves with probe multiplicity rather than with the host.
+test fn witness_observer_duplicate_listed_names_are_one_subject() -> Bool {
+  match fabric_cell_discovered_subjects(
+    probe: probe_with_namespaces(ns: [enumerated(ns: FabricCellsRootNamespace, entries: ["srv3-99", "srv3-99"])])
+  ) {
+    DiscoveryRefused { cause: _ } => false
+    DiscoveryEnumerated { subjects: ss } => list_length(items: ss) == 1
+  }
+}
+
+// AND TWO DISTINCT NAMES STAY TWO. The non-degeneracy control: without it, the two rows above are
+// satisfied by an observer that collapses every listing to a single subject.
+test fn witness_observer_distinct_listed_names_stay_distinct() -> Bool {
+  match fabric_cell_discovered_subjects(
+    probe: probe_with_namespaces(ns: [enumerated(ns: FabricCellsRootNamespace, entries: ["srv3-99", "srv3-06"])])
+  ) {
+    DiscoveryRefused { cause: _ } => false
+    DiscoveryEnumerated { subjects: ss } => list_length(items: ss) == 2
+  }
+}
+
+fn discovery_wire_set(d: FabricCellDiscovery) -> String {
+  match d {
+    DiscoveryRefused { cause: c } => join(["refused:", c], "")
+    DiscoveryEnumerated { subjects: ss } =>
+      fold(
+        ss,
+        init: "",
+        f: (acc, s) => join([acc, "|", fabric_cell_discovered_subject_wire(s: s)], "")
+      )
+  }
+}
+
+// LAW 15 -- THE OBSERVER'S OUTPUT IS WHAT THE CLASSIFICATION KERNEL CONSUMES, AND A CONVERGED HOST
+// CLASSIFIES AS SATISFIED THROUGH IT. The end-to-end join: the two halves were built a PR apart and
+// this is the row that fails if the observer's vocabulary drifts from the kernel's.
+test fn witness_observer_converged_probe_classifies_as_satisfied() -> Bool {
+  let readback = fabric_cell_observe_host(probe: converged_probe())
+  let classified = classify_fabric_cell_host(
+    expected_slots: [observe_slot()],
+    readback: readback,
+  )
+  list_length(items: classified.unexpected) == 0
+    && fold(classified.standings, init: true, f: (acc, s) => acc && standing_is_satisfied(s: s))
+    && list_length(items: classified.standings) == list_length(items: fabric_cell_resource_addresses())
+}
+
+// LAW 16 -- A DRIFTED STATE READ REACHES THE KERNEL AS DRIFT, NOT AS ABSENCE. The defect this
+// family shipped to main once already, asserted at the observer boundary this time: the observer
+// must hand the kernel the observed digest rather than dropping it, or the kernel's CHANGE arm is
+// unreachable no matter how correct the kernel is.
+test fn witness_observer_drifted_state_read_reaches_the_kernel_as_drift() -> Bool {
+  let drifted = FabricCellHostProbe {
+    host: operator_host_srv3,
+    namespaces: converged_probe().namespaces,
+    addresses: [
+      state_read(address: FabricCellRootAddress, digest: "drifted-digest" as NonEmptyStr),
+      state_read(address: FabricCellAttemptRootAddress, digest: desired_digest_at(address: FabricCellAttemptRootAddress)),
+      state_read(address: FabricCellResourceBoundaryAddress, digest: desired_digest_at(address: FabricCellResourceBoundaryAddress)),
+    ],
+  }
+  let classified = classify_fabric_cell_host(
+    expected_slots: [observe_slot()],
+    readback: fabric_cell_observe_host(probe: drifted),
+  )
+  count_drift(ss: classified.standings) == 1
+    && count_absent_standings(ss: classified.standings) == 0
+}
+
+fn count_drift(ss: List<FabricCellAddressStanding>) -> Int {
+  fold(ss, init: 0, f: (acc, s) => if standing_is_drift(s: s) { acc + 1 } else { acc })
+}
+
+fn count_absent_standings(ss: List<FabricCellAddressStanding>) -> Int {
+  fold(ss, init: 0, f: (acc, s) => if standing_is_absent(s: s) { acc + 1 } else { acc })
+}
+
+fn standing_is_satisfied(s: FabricCellAddressStanding) -> Bool {
+  match s {
+    StandingSatisfied { ref: _ } => true
+    StandingObservedDrift { ref: _, observed_state_digest: _ } => false
+    StandingExplicitlyAbsent { ref: _ } => false
+    StandingBlocked { disposition: _ } => false
+  }
+}
+
+fn standing_is_drift(s: FabricCellAddressStanding) -> Bool {
+  match s {
+    StandingObservedDrift { ref: _, observed_state_digest: _ } => true
+    StandingSatisfied { ref: _ } => false
+    StandingExplicitlyAbsent { ref: _ } => false
+    StandingBlocked { disposition: _ } => false
+  }
+}
+
+fn standing_is_absent(s: FabricCellAddressStanding) -> Bool {
+  match s {
+    StandingExplicitlyAbsent { ref: _ } => true
+    StandingSatisfied { ref: _ } => false
+    StandingObservedDrift { ref: _, observed_state_digest: _ } => false
+    StandingBlocked { disposition: _ } => false
+  }
+}
