@@ -73,3 +73,14 @@ test fn witness_grant_population_covers_the_provisioned_slot() -> Bool {
     pattern: "/usr/bin/rm -rf /opt/actions-runner/srv3-09",
   )
 }
+
+// THE PRIVILEGE LAW, WALLED. A grantee that is also its own bootstrap principal is an account that
+// authorizes itself, which is the one shape the whole staged-install transaction exists to prevent.
+// RED IS AUTHORABLE: point srv3_executor_bootstrap_principal.login at the deploy row's job_user and
+// this goes false.
+test fn witness_bootstrap_principal_is_not_the_grantee() -> Bool {
+  bootstrap_principal_is_not_the_grantee(
+    bootstrap: srv3_executor_bootstrap_principal,
+    deploy: srv3_runner_host_deploy,
+  )
+}

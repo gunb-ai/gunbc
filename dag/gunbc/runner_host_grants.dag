@@ -84,3 +84,41 @@ fn runner_host_sudoers_content(deploy: RunnerHostDeploy) -> String {
 fn srv3_runner_host_sudoers() -> String {
   runner_host_sudoers_content(deploy: srv3_runner_host_deploy)
 }
+
+// THE BOOTSTRAP PRINCIPAL, RECORDED BECAUSE IT WAS DISCOVERED THE EXPENSIVE WAY. A grantee cannot
+// install its own sudoers grant -- the subject receiving authority cannot be the sole source of the
+// authority that grants it -- so the first install on any host is performed by a DIFFERENT principal.
+// On the executor fleet that principal is NOT the deploy row's ssh_target.
+//
+// MEASURED ON srv3, 2026-08-25, with the fleet key (extdeps secret fleet-automation-ssh-key,
+// fingerprint SHA256:mGT7qJsh36VsVb8OPh3m8br3oHedQHxRukRkW5P0CoQ):
+//   briansrls        Permission denied (publickey)  -- the deploy row's ssh_target does NOT accept it
+//   fleet-automation Permission denied (publickey)
+//   root             Permission denied (publickey)
+//   ghrunner         authenticates, then nologin     -- the GRANTEE, a service account
+//   ubuntu           full shell, (ALL) NOPASSWD: ALL -- THE BOOTSTRAP PRINCIPAL
+//
+// WHY THIS ROW EXISTS RATHER THAN A COMMENT IN A RUNBOOK: the operator did not know the briansrls
+// password and reasonably believed the fleet credential already carried sudo. It does -- under
+// ubuntu, not under the ssh_target the deploy row names. That single fact was the whole blocker, it
+// is not derivable from any other row in this repository, and it was recovered by probing five
+// accounts against a live host. Left in prose it would be lost by the next session.
+type ExecutorBootstrapPrincipal {
+  login: NonEmptyStr
+  reachable_with_secret: NonEmptyStr
+}
+
+data srv3_executor_bootstrap_principal: ExecutorBootstrapPrincipal = ExecutorBootstrapPrincipal {
+  login: "ubuntu" as NonEmptyStr,
+  reachable_with_secret: "fleet-automation-ssh-key" as NonEmptyStr,
+}
+
+// THE GRANTEE IS NEVER THE BOOTSTRAP PRINCIPAL. This is the privilege law stated as a predicate so a
+// future edit that points both at one account fails a witness rather than silently creating an
+// account that authorizes itself.
+fn bootstrap_principal_is_not_the_grantee(
+  bootstrap: ExecutorBootstrapPrincipal,
+  deploy: RunnerHostDeploy,
+) -> Bool {
+  bootstrap.login != deploy.job_user
+}
