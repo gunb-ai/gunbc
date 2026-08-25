@@ -37,7 +37,29 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // gunbc.seed_growth_admission SeedGrowthChangeDisposition already carries. No deletions are
 // netted against the additions below; the policy forbids it and none are claimed.
 //
-// HAND-ITEM DELTA: +9 citable declarations (8 production, 1 test module).
+// HAND-ITEM DELTA: +5 citable declarations (4 production, 1 test module), PLUS 3 uncitable impl
+// methods enumerated in prose below.
+//
+// IT READ +9 UNTIL review 55673, AND THE OVERCOUNT WAS NOT A MISCOUNT -- IT WAS THREE ROWS THAT
+// CANNOT EXIST. classify, refuse_binder and reconciles are methods on `impl ExprVarClassification`,
+// and std.decl_ref has no ImplMethod field: a DeclarationRef naming one is not a row that happens
+// to be wrong, it is a row whose referent the carrier cannot represent. gunbc.seed_growth_admission
+// already states this and already carries a precedent -- stage0_rust_observation_seed_growth_justification
+// documents `impl std::fmt::Display for Stage0CargoBinManifestParseRefusal` as prose for exactly this
+// reason -- so the correction is to follow that precedent, not to invent a spelling.
+//
+// UNCITABLE ITEMS ADDED BY THIS CHANGE (prose-only until std.decl_ref gains ImplMethod), all three
+// in `impl ExprVarClassification<'_>` in v1_compiler.cli_run:
+//   classify        -- assigns one occurrence to exactly one ExprVarClass and answers whether it is an edge
+//   refuse_binder   -- records the typed refusal for a binder form the collector cannot name
+//   reconciles      -- occurrences == free + bound-suppressed + chain-head + names-nothing-known
+// They are hand Rust and they are enumerated; what they are not is CITABLE, and the distinction is the
+// whole point of stating it here rather than counting them in a list of DeclarationRefs.
+//
+// collect_every_var_name WAS ALSO REMOVED FROM THE CITABLE LIST, for a different reason and one this
+// receipt contradicted itself on: it lives INSIDE mod reference_collector_binder_fixtures, which the
+// paragraph below already names as the enumeration unit because the module is what would be deleted.
+// Counting the module AND one of its members double-counts within a census whose value is exactness.
 // HAND-LOC DELTA: +887 / -21 in src/v1/stage0/src/cli_run.rs, measured by `git diff --numstat`
 // against the MERGE BASE (`git merge-base origin/main HEAD`), not against main's tip -- a diff
 // against a moving tip counts main's own edits to this file as this change's growth. It read
@@ -53,12 +75,8 @@ data reference_closure_binder_seed_growth_justification: SeedGrowthJustification
   hand_authored_declarations: [
     DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "ExprVarClass", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "ExprVarClassification", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "classify", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "binder_names_of", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "pattern_binder_names", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "refuse_binder", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "reconciles", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "collect_every_var_name", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "reference_collector_binder_fixtures", field: WholeDeclaration }
   ],
   reason: "The reference-closure collector runs inside the v1 seed's own resolve path, building the index that any .dag authority would itself need in order to evaluate. A .dag realization of it would require the closure it computes, so the ordering constraint is real rather than a preference. The repair replaces a predicate that matched nothing on the prepared tree -- binding_kind is stamped only on inference's tree -- with a lexical binder walk and a closed classification whose unsupported-binder arm refuses rather than guessing.",
