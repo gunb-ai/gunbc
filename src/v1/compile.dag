@@ -269,7 +269,7 @@ fn json_optional_inferred_node_ref(value: v1.std.core.InferredNode?, key_to_id: 
   }
 }
 
-fn json_optional_span(value: v1.std.core.SourceSpan?) -> String {
+fn json_optional_span(value: std.types.SourceSpan?) -> String {
   match value {
     Present { value: inner } => serialize_span(span: inner)
     Absent => "null"
@@ -356,7 +356,7 @@ fn unary_op_name(value: v1.std.core.UnaryOpKind) -> String {
   }
 }
 
-fn serialize_span(span: v1.std.core.SourceSpan) -> String {
+fn serialize_span(span: std.types.SourceSpan) -> String {
   concat("{\"start\": ", to_string(value: span.start), ", \"end\": ", to_string(value: span.end), "}")
 }
 
