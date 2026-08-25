@@ -121,3 +121,63 @@ test fn probe_parameter_named_p_agrees_with_direct_fold_over_addresses() -> Bool
 test fn probe_parameter_named_p_agrees_with_direct_fold_over_ints() -> Bool {
   probe_count_ints_via_p(items: probe_ints(), p: probe_int_is_two) == 2
 }
+
+// THE VALUE IS THE AXIS, NOT THE BINDING FORM, AND THESE ARMS COMPLETE THE MATRIX. calm-boar-150
+// reached this defect independently from fifteen runtime-erroring floor witnesses, first reported
+// it as "a local binding of ANY form loses to a module-level free function", then retracted that:
+// their three original arms all bound the local to a NAMED top-level function, so they varied the
+// form while holding the value constant and read the wrong variable as the cause. Their corrected
+// A/B shows a local bound to a LAMBDA wins and a local bound to a named function loses, in both
+// `let` and parameter position.
+//
+// TWO CELLS WERE STILL UNMEASURED WHEN THAT WAS RELAYED, AND ASSERTING SYMMETRY ACROSS THEM WOULD
+// HAVE BEEN THE SAME ERROR ONE TURN LATER: parameter was measured on the named side only, and
+// PATTERN on neither. Both are now executed, so the matrix is complete -- three binding forms by
+// two values, six cells, no cell inferred from another:
+//
+//   binding form   value = named top-level fn   value = lambda
+//   let            wrong (calm-boar-150)        correct (calm-boar-150)
+//   parameter      wrong                        correct
+//   pattern        wrong                        correct
+//
+// The value decides and the form does not, and that is now established rather than probable.
+type ProbePredicateCarrier { p: fn(Int) -> Bool }
+
+fn probe_carrier() -> ProbePredicateCarrier {
+  ProbePredicateCarrier { p: probe_int_is_two }
+}
+
+type ProbeLambdaCarrier { p: fn(Int) -> Bool }
+
+fn probe_lambda_carrier() -> ProbeLambdaCarrier {
+  ProbeLambdaCarrier { p: n => probe_int_is_two(n: n) }
+}
+
+// THE COLLISION IS DECIDED AT THE CALL SITE BY THE NAME USED THERE, and the first version of these
+// two rows failed to test anything because of it. They bound the field to `p` in a pattern and then
+// handed it to a helper whose own parameter is `pred` -- so the call inside the helper spelled
+// `pred`, no name collided, and the row passed while measuring nothing. The call must be written in
+// the scope where the shadowed name IS the local, which is what these do.
+//
+// PATTERN-BOUND, VALUE = A NAMED TOP-LEVEL FUNCTION, CALLED AS `p` IN THE ARM. The desired law: the
+// field the pattern bound is what the call reaches.
+test fn probe_pattern_bound_named_function_is_what_the_call_reaches() -> Bool {
+  match probe_carrier() {
+    ProbePredicateCarrier { p: p } => p(2) && !p(3)
+  }
+}
+
+// PATTERN-BOUND, VALUE = A LAMBDA, CALLED AS `p` IN THE ARM. The control on the other side of the
+// value axis: if this passes while the row above fails, the value decides and the pattern form is
+// no different from `let` and parameter.
+test fn probe_pattern_bound_lambda_is_what_the_call_reaches() -> Bool {
+  match probe_lambda_carrier() {
+    ProbeLambdaCarrier { p: p } => p(2) && !p(3)
+  }
+}
+
+// PARAMETER-BOUND, VALUE = A LAMBDA. Re-added as a durable control: it was measured green here
+// before the restructure, and it is one of the two cells that were being asserted rather than run.
+test fn probe_parameter_bound_lambda_agrees_with_direct_fold() -> Bool {
+  probe_count_ints_via_p(items: probe_ints(), p: n => probe_int_is_two(n: n)) == 2
+}
