@@ -326,18 +326,14 @@ fn fabric_cell_readback_for_slot(
   }
 }
 
+// THE AUTHORITY-BOUND WRAPPER. It supplies the one thing the kernel refuses to know -- which slots
+// this host is declared to carry -- and nothing else. Keeping it a separate function is what lets
+// the kernel be exercised at a width the authority does not currently have.
 fn fabric_cell_host_standings(readback: FabricCellHostReadback) -> List<FabricCellAddressStanding> {
-  fold(
-    fabric_cell_expected_slots(host: readback.host),
-    init: [],
-    f: (acc, s) => concat(
-      acc,
-      fabric_cell_address_standings(
-        readback: fabric_cell_readback_for_slot(readback: readback, slot: s),
-        slot: s,
-      )
-    )
-  )
+  classify_fabric_cell_host(
+    expected_slots: fabric_cell_expected_slots(host: readback.host),
+    readback: readback,
+  ).standings
 }
 
 // AN ADDRESS REFERENCE NAMES ITS CELL, AND UNTIL THIS REVISION IT DID NOT.
@@ -616,19 +612,112 @@ fn fabric_cell_observed_members(observed: FabricCellObservedMembers) -> List<Fab
   observed.members
 }
 
+// THE OBSERVER NEVER DECIDES WHICH DECLARED CELLS DESERVE OBSERVATION, AND IT NEVER DISCARDS
+// EVIDENCE IT DID NOT ASK FOR. Those are the two halves of one law, and until this carrier existed
+// only the first half was expressible. The host fold enumerated the authority-expected slots and
+// gathered the readbacks matching each one; a readback supplied for a slot NOT on that roster had
+// no output position at all, so it was dropped in silence. An srv3-07 cell arriving beside a
+// converged srv3-06 produced a result identical to srv3-06 alone -- an implicit exclusion list
+// encoded as iteration direction, which is the empty-observation narrow wearing the shape of a
+// loop.
+//
+// THE KERNEL THEREFORE RETURNS BOTH SIDES OF THE RELATION rather than one side and a shrug:
+// exactly one standing per expected ref, and every supplied subject the expected side did not
+// consume. Two conservation equations become checkable instead of assumed --
+// `expected_ref_count = list_length(standings)` and
+// `supplied_subject_count = matched + unexpected` -- and no subject may disappear between them.
+type FabricCellHostClassification {
+  standings: List<FabricCellAddressStanding>
+  unexpected: List<FabricCellUnexpectedCellEvidence>
+}
+
+type FabricCellUnexpectedCellEvidence {
+  slot: RunnerSlotIdentity
+  observation_count: Int
+}
+
+// PURE: NO AUTHORITY READ, NO SEALED MINT, NO ACTUATION LICENSED. The expected roster arrives as a
+// PARAMETER, which is the whole point of the split -- a fixture may hand this function twenty-one
+// synthetic cells, or zero, without the corpus growing a second production authority beside
+// `fabric_execution_slot_identities`. Five of the six defects this family has had came from a
+// fixture that could not express the failure, and every one of them was reachable only because the
+// classification could not be called except through the one declared slot.
+fn classify_fabric_cell_host(
+  expected_slots: List<RunnerSlotIdentity>,
+  readback: FabricCellHostReadback,
+) -> FabricCellHostClassification {
+  FabricCellHostClassification {
+    standings: fold(
+      expected_slots,
+      init: [],
+      f: (acc, s) => concat(
+        acc,
+        fabric_cell_address_standings(
+          readback: fabric_cell_readback_for_slot(readback: readback, slot: s),
+          slot: s,
+        )
+      )
+    ),
+    unexpected: fold(
+      readback.cell_readbacks,
+      init: [],
+      f: (acc, r) =>
+        if fabric_cell_slot_is_expected(expected_slots: expected_slots, slot: r.slot) { acc }
+        else {
+          concat(acc, [FabricCellUnexpectedCellEvidence {
+            slot: r.slot,
+            observation_count: list_length(items: r.observations),
+          }])
+        }
+    ),
+  }
+}
+
+fn fabric_cell_slot_is_expected(
+  expected_slots: List<RunnerSlotIdentity>,
+  slot: RunnerSlotIdentity,
+) -> Bool {
+  fold(expected_slots, init: false, f: (acc, s) => acc || runner_slot_identity_equal(a: s, b: slot))
+}
+
+// ONE REFUSAL VOCABULARY, EXTENDED RATHER THAN FORKED. Unexpected evidence is not an address
+// disposition -- there is no expected ref it is about -- so it cannot be filed in the blocked list
+// as it stood, and giving the population a THIRD arm for it would have split one question ("may
+// this observation be trusted as complete?") across two shapes that every consumer must then join.
+// The refusal channel becomes a coproduct instead, so a new cause is a variant and not a new arm,
+// and the rendering and counting folds stay single.
+//
+// UNEXPECTED EVIDENCE REFUSES RATHER THAN BEING RECONCILED, and that is the fail-closed direction
+// rather than the timid one. A cell present on the host but absent from the authority is either a
+// roster that shrank without teardown or a resource this fold has no provenance for; deciding
+// between those requires positive ownership evidence the model does not yet carry. Planning a
+// REMOVE against it would be "anything with a fabric-looking name is ours to delete", and ignoring
+// it is the silent exclusion this whole carrier exists to end.
+type FabricCellObservationRefusal
+  = ExpectedAddressBlocked { disposition: FabricCellAddressDisposition }
+  | UnexpectedCellEvidence { evidence: FabricCellUnexpectedCellEvidence }
+
 type FabricCellPopulation
   = FabricCellPopulationObserved { host: HostIdentity, observed: FabricCellObservedMembers }
-  | FabricCellPopulationObservationRefused { host: HostIdentity, blocked: List<FabricCellAddressDisposition> }
+  | FabricCellPopulationObservationRefused { host: HostIdentity, blocked: List<FabricCellObservationRefusal> }
 
 fn fabric_cell_population(readback: FabricCellHostReadback) -> FabricCellPopulation {
-  let standings = fabric_cell_host_standings(readback: readback)
-  let blocked = fold(standings, init: [], f: (acc, st) =>
+  let classification = classify_fabric_cell_host(
+    expected_slots: fabric_cell_expected_slots(host: readback.host),
+    readback: readback,
+  )
+  let standings = classification.standings
+  let blocked_addresses = fold(standings, init: [], f: (acc, st) =>
     match st {
-      StandingBlocked { disposition: d } => concat(acc, [d])
+      StandingBlocked { disposition: d } => concat(acc, [ExpectedAddressBlocked { disposition: d }])
       StandingObservedDrift { ref: _, observed_state_digest: _ } => acc
       StandingExplicitlyAbsent { ref: _ } => acc
       StandingSatisfied { address: _, member: _ } => acc
     })
+  let blocked = concat(
+    blocked_addresses,
+    map(classification.unexpected, u => UnexpectedCellEvidence { evidence: u }),
+  )
   if list_length(items: blocked) > 0 {
     FabricCellPopulationObservationRefused { host: readback.host, blocked: blocked }
   } else {
@@ -763,7 +852,10 @@ fn fabric_cell_population_unobserved(host: HostIdentity) -> FabricCellPopulation
       blocked: fold(
         expected,
         init: [],
-        f: (acc, slot) => concat(acc, fabric_cell_unreadable_dispositions_for_slot(slot: slot))
+        f: (acc, slot) => concat(acc, map(
+          fabric_cell_unreadable_dispositions_for_slot(slot: slot),
+          d => ExpectedAddressBlocked { disposition: d },
+        ))
       )
     }
   }
