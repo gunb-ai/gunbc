@@ -215,9 +215,10 @@ type RosterDenominators
 
 fn roster_denominators_text(denominators: RosterDenominators) -> String {
   match denominators {
-    DeclarationIndexOnly => "declaration index only (a module that stops parsing vanishes rather than blocking)"
+    DeclarationIndexOnly =>
+      "declaration index only (a file the index cannot CLASSIFY vanishes rather than blocking; a parse failure under a recognized `module ` header refuses loudly instead — see hole 2)"
     DeclarationIndexAndModuleInventory =>
-      "declaration index + module inventory (a module that stops parsing is a blocked subject)"
+      "declaration index + file inventory (a file the index cannot classify is a blocked subject)"
   }
 }
 
@@ -751,7 +752,7 @@ fn emit_ratchet_standing_text(standing: EmitRatchetStanding) -> String {
 //
 // Any consumer that would let a merge decision ride on this carrier routes through here first, and
 // today it always refuses, because hole 2 is open: a universe discovered from the declaration index
-// alone drops a module that stops parsing instead of blocking it, so a gate reading it would report
+// alone drops a file it cannot CLASSIFY instead of blocking it, so a gate reading it would report
 // IMPROVEMENT when ingest regresses. That is fabricated plausible output with merge authority
 // behind it.
 //
@@ -780,7 +781,7 @@ fn emit_ratchet_gating_admission_of(denominators: RosterDenominators) -> EmitRat
     DeclarationIndexAndModuleInventory => GatingPermitted
     DeclarationIndexOnly =>
       GatingRefusedDenominator {
-        missing: "module inventory — a universe discovered from the declaration index alone loses a module that stops parsing instead of blocking it, so a gate over it reports improvement when ingest regresses"
+        missing: "file inventory — a universe discovered from the declaration index alone loses a file the index cannot CLASSIFY (a fragment, a header preceded by non-comment text, an empty module name) instead of blocking it, so a gate over it reports improvement when such a file drops out of classification"
       }
   }
 }
