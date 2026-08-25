@@ -538,7 +538,7 @@ fn resolve_node_bounded(n: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv,
                 let target_is_coproduct_use = target.connective == v1.std.core.NoConnective && target.children |> count > 0 && is_user_generic_use_site(n: target, env: env) && resolve_generic_use_decl(env: env, n: target).connective == v1.std.core.Disj
                 if target_is_coproduct_use {
                   resolve_node_bounded(n: target, env: env, module_name: module_name, depth: depth + 1, masked: false).resolved
-                } else { v1.std.core.with_ident_span_from(n: target, src: resolved) }
+                } else { with_authored_identity(identity: resolved, structural: target) }
               _ => resolved
             }
           } else { resolved }
