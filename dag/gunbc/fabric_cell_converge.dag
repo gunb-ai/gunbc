@@ -3,6 +3,7 @@ module gunbc.fabric_cell_converge
 import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
 import std.nat { Nat }
 import std.disposition { Disposition, SingleAuthority }
+import std.string_type { string_is_lexicographically_before }
 import v2.std.optional { Optional, Present, Absent }
 import std.measure { byte_size_count }
 import product.placement_supply { HostIdentity }
@@ -721,7 +722,7 @@ fn classify_fabric_cell_host(
         else if fabric_cell_slot_is_expected(expected_slots: expected_slots, slot: r.slot) { acc }
         else { fabric_cell_merge_unexpected(acc: acc, r: r) }
     )),
-    host_mismatched: fold(
+    host_mismatched: fabric_cell_host_mismatch_canonical(mismatched: fold(
       readback.cell_readbacks,
       init: [],
       f: (acc, r) =>
@@ -733,12 +734,58 @@ fn classify_fabric_cell_host(
             supplied_slot: r.slot,
           }])
         }
-    ),
+    )),
   }
 }
 
 fn fabric_cell_readback_names_enclosing_host(readback: FabricCellHostReadback, r: FabricCellReadback) -> Bool {
   (r.slot.host as String) == (readback.host as String)
+}
+
+// THE MISMATCHED SIDE IS ORDERED TOO, AND ITS OMISSION IS THE SAME DEFECT ONE FIELD OVER. The
+// commit that added this destination normalized it by slot -- deduplicated -- and appended in input
+// ORDER, which is exactly the half the unexpected side had already been repaired for. So `[srv4-07,
+// srv1-08]` and `[srv1-08, srv4-07]` under one srv3 readback describe the same pair of caller
+// defects and produced differently ordered baseline rows, rendered lines and member-set
+// fingerprints. The existing cross-host reversal row could not see it: it pairs ONE same-host
+// unexpected cell with ONE mismatch, and the two classes are concatenated in a fixed class order,
+// so nothing in it reorders two members WITHIN this list.
+//
+// THE ORDER IS OVER THE COMPLETE IDENTITY, NOT THE INDEX, and that is the one place this differs
+// from the unexpected side. There the routing guarantees one host, so index alone is total. Here
+// every member is by construction a DIFFERENT host from the enclosing one, and two of them may
+// share an index -- srv1-08 and srv4-07 do not, but srv1-07 and srv4-07 would. Host is compared
+// first and index breaks the tie, on the same lexicographic authority the observer's discovery uses
+// (`std.string_type` string_is_lexicographically_before) rather than a second spelling of "which
+// name sorts first".
+fn fabric_cell_host_mismatch_canonical(
+  mismatched: List<FabricCellReadbackHostMismatch>,
+) -> List<FabricCellReadbackHostMismatch> {
+  fold(mismatched, init: [], f: (acc, m) => fabric_cell_host_mismatch_insert_ordered(acc: acc, m: m))
+}
+
+fn fabric_cell_host_mismatch_before(a: FabricCellReadbackHostMismatch, b: FabricCellReadbackHostMismatch) -> Bool {
+  if (a.supplied_slot.host as String) == (b.supplied_slot.host as String) {
+    a.supplied_slot.slot_index < b.supplied_slot.slot_index
+  } else {
+    string_is_lexicographically_before(
+      left: a.supplied_slot.host as String,
+      right: b.supplied_slot.host as String,
+    )
+  }
+}
+
+fn fabric_cell_host_mismatch_insert_ordered(
+  acc: List<FabricCellReadbackHostMismatch>,
+  m: FabricCellReadbackHostMismatch,
+) -> List<FabricCellReadbackHostMismatch> {
+  concat(
+    fold(acc, init: [], f: (kept, e) => if fabric_cell_host_mismatch_before(a: e, b: m) { concat(kept, [e]) } else { kept }),
+    concat(
+      [m],
+      fold(acc, init: [], f: (kept, e) => if fabric_cell_host_mismatch_before(a: e, b: m) { kept } else { concat(kept, [e]) }),
+    ),
+  )
 }
 
 fn fabric_cell_host_mismatch_holds_slot(
