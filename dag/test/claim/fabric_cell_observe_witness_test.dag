@@ -20,10 +20,6 @@ import gunbc.fabric_cell_converge {
   FabricCellReadback,
   FabricCellHostReadback,
   classify_fabric_cell_host,
-  fabric_cell_population,
-  FabricCellPopulation,
-  FabricCellPopulationObserved,
-  FabricCellPopulationObservationRefused,
   FabricCellObservationRefusal,
   fabric_cell_observation_refusal_identity,
   fabric_cell_canonical_refusals,
@@ -33,6 +29,13 @@ import gunbc.fabric_cell_converge {
   StandingObservedDrift,
   StandingExplicitlyAbsent,
   StandingBlocked,
+}
+import gunbc.fabric_cell_observation_admission {
+  FabricCellObservationDecision,
+  FabricCellObservationAdmitted,
+  FabricCellObservationDenied,
+  FabricCellObservationNotApplicable,
+  admit_fabric_cell_probe,
 }
 import gunbc.fabric_cell_observe {
   FabricCellNamespaceProbe,
@@ -66,7 +69,6 @@ import gunbc.fabric_cell_observe {
   FabricCellObserverProjection,
   fabric_cell_discovery_refusals,
   fabric_cell_projection_refusals,
-  fabric_cell_observed_population,
   fabric_cell_unconsumed_probe_refusals,
 }
 
@@ -675,22 +677,14 @@ fn discovery_host_wire(d: FabricCellDiscovery) -> String {
 // them -- which is how a conservation law actually fails: not by losing a subject, but by having a
 // caller who never asks for one of the populations.
 test fn witness_observer_foreign_artifact_refuses_the_population() -> Bool {
-  let projection = fabric_cell_observe(probe: converged_probe_with_foreign())
-  population_is_refused(p: fabric_cell_population(
-    readback: projection.expected_readback,
-    discovered: fabric_cell_projection_refusals(projection: projection),
-  ))
+  population_is_refused(p: admit_fabric_cell_probe(probe: converged_probe_with_foreign()))
 }
 
 // AND THE DISCRIMINATING PAIR: the same host, read completely and converged, is OBSERVED when
 // nothing foreign is present. Without this the row above passes on an implementation that refuses
 // everything.
 test fn witness_observer_converged_projection_is_an_observed_population() -> Bool {
-  let projection = fabric_cell_observe(probe: converged_probe())
-  !population_is_refused(p: fabric_cell_population(
-    readback: projection.expected_readback,
-    discovered: fabric_cell_projection_refusals(projection: projection),
-  ))
+  !population_is_refused(p: admit_fabric_cell_probe(probe: converged_probe()))
 }
 
 // LAW 27 -- A REFUSED ROOT ENUMERATION REFUSES BOTH POPULATIONS, and the row exists to record that
@@ -706,10 +700,7 @@ test fn witness_observer_refused_root_enumeration_refuses_both_populations() -> 
   let discovery_refusals = fabric_cell_discovery_refusals(discovery: projection.discovery)
   list_length(items: discovery_refusals) == 1
     && count_refused(os: fabric_cell_readback_observations(r: projection.expected_readback)) > 0
-    && population_is_refused(p: fabric_cell_population(
-        readback: projection.expected_readback,
-        discovered: discovery_refusals,
-      ))
+    && population_is_refused(p: admit_fabric_cell_probe(probe: converged_probe_with_unreadable_root()))
 }
 
 fn fabric_cell_readback_observations(r: FabricCellHostReadback) -> List<FabricCellAddressObservation> {
@@ -750,10 +741,11 @@ fn converged_probe_with_unreadable_root() -> FabricCellHostProbe {
   }
 }
 
-fn population_is_refused(p: FabricCellPopulation) -> Bool {
+fn population_is_refused(p: FabricCellObservationDecision) -> Bool {
   match p {
-    FabricCellPopulationObservationRefused { host: _, blocked: _ } => true
-    FabricCellPopulationObserved { host: _, observed: _ } => false
+    FabricCellObservationDenied { host: _, blocked: _ } => true
+    FabricCellObservationNotApplicable { host: _ } => false
+    FabricCellObservationAdmitted { population: _ } => false
   }
 }
 
@@ -794,7 +786,7 @@ test fn witness_observer_matching_probe_leaves_nothing_unconsumed() -> Bool {
 // discovery half, so a caller cannot take one and skip the other.
 test fn witness_observer_unconsumed_probe_refuses_the_population() -> Bool {
   let stray = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 7 }
-  let projection = fabric_cell_observe(probe: FabricCellHostProbe {
+  population_is_refused(p: admit_fabric_cell_probe(probe: FabricCellHostProbe {
     host: operator_host_srv3,
     namespaces: converged_probe().namespaces,
     addresses: concat(
@@ -805,25 +797,18 @@ test fn witness_observer_unconsumed_probe_refuses_the_population() -> Bool {
         probe: AddressStateRead { state_digest: "stray" as NonEmptyStr },
       }],
     ),
-  })
-  population_is_refused(p: fabric_cell_population(
-    readback: projection.expected_readback,
-    discovered: fabric_cell_projection_refusals(projection: projection),
-  ))
+  }))
 }
 
-// LAW 32 -- THE JOINED ROUTE IS THE HAND-ASSEMBLED ONE. fabric_cell_observed_population exists so a
-// wet caller has a spelling that cannot omit discovery; this row is what keeps it from drifting
-// into a second, differently-behaved answer beside the one the witnesses above measure.
-test fn witness_observer_joined_population_agrees_with_the_assembled_one() -> Bool {
-  let probe = converged_probe_with_foreign()
-  let projection = fabric_cell_observe(probe: probe)
-  population_is_refused(p: fabric_cell_observed_population(probe: probe))
-    && population_is_refused(p: fabric_cell_population(
-      readback: projection.expected_readback,
-      discovered: fabric_cell_projection_refusals(projection: projection),
-    ))
-    && !population_is_refused(p: fabric_cell_observed_population(probe: converged_probe()))
+// LAW 32 -- THE MINT IS THE ONLY ROUTE, AND IT DISCRIMINATES. This row once compared the joined
+// helper against a hand-assembled population to prove they agreed; that comparison is no longer
+// authorable, because the hand-assembled route does not exist -- gunbc.fabric_cell_converge no
+// longer exports a population constructor and the mint takes one probe. So what remains to assert
+// is the part that was ever load-bearing: the same mint refuses the host holding a foreign artifact
+// and admits the converged one, from probes that differ only in that artifact.
+test fn witness_observer_mint_refuses_foreign_and_admits_converged() -> Bool {
+  population_is_refused(p: admit_fabric_cell_probe(probe: converged_probe_with_foreign()))
+    && !population_is_refused(p: admit_fabric_cell_probe(probe: converged_probe()))
 }
 
 // LAW 33 -- AN ENTRY MISSING FROM ITS NAMESPACE WHILE ITS STATE WAS READ IS A CONTRADICTION, NEVER AN
@@ -926,7 +911,7 @@ test fn witness_observer_unexpected_committed_slot_refuses_the_population() -> B
   }
   let refusals = fabric_cell_projection_refusals(projection: fabric_cell_observe(probe: probe))
   list_length(items: refusals) == 1
-    && population_is_refused(p: fabric_cell_observed_population(probe: probe))
+    && population_is_refused(p: admit_fabric_cell_probe(probe: probe))
 }
 
 // LAW 36 -- A CROSS-HOST NAMED ARTIFACT IS ITS OWN REFUSAL, NOT THE FOREIGN ONE. Both were once

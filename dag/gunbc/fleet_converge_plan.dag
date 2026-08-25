@@ -46,10 +46,6 @@ import gunbc.fabric_cell_converge {
   fabric_cell_member_key_eq,
   fabric_cell_member_value_eq,
   fabric_cell_member_ownership,
-  fabric_cell_observed_members,
-  FabricCellPopulation,
-  FabricCellPopulationObserved,
-  FabricCellPopulationObservationRefused,
   FabricCellObservationRefusal,
   ExpectedAddressBlocked,
   UnexpectedCellEvidence,
@@ -60,10 +56,19 @@ import gunbc.fabric_cell_converge {
   SuppliedNamespaceUnconsumed,
   UnexpectedCommittedSlotArtifact,
   ExpectedRosterHostMismatch,
+  ObserverUnavailable,
   CrossHostNamedArtifactObserved,
   fabric_cell_member_key,
   fabric_cell_resource_address_wire,
   fabric_cell_desired_members,
+}
+import gunbc.fabric_cell_observation_admission {
+  FabricCellObservationDecision,
+  FabricCellObservationAdmitted,
+  FabricCellObservationDenied,
+  FabricCellObservationNotApplicable,
+  fabric_cell_observed_population_host,
+  fabric_cell_observed_population_members,
 }
 import gunbc.membership_reconcile {
   MembershipPlan,
@@ -173,7 +178,7 @@ fn fleet_converge_plan_subject(
   observed_caps: List<CapMember>,
   observed_spark: List<SparkServingMember>,
   observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
 ) -> FleetConvergePlanSubject {
   FleetConvergePlanSubject {
     host: host,
@@ -194,7 +199,7 @@ fn fleet_converge_member_set_fingerprint(
   observed_caps: List<CapMember>,
   observed_spark: List<SparkServingMember>,
   observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
 ) -> ContentHash {
   content_hash_of_value(
     value: observed_baseline_text(
@@ -219,7 +224,7 @@ fn fleet_converge_apply_subject_admits(
   observed_caps: List<CapMember>,
   observed_spark: List<SparkServingMember>,
   observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
 ) -> Bool {
   fleet_converge_apply_subject_host_matches(planned_host: planned_subject.host, observed_host: observed_host)
     && compare_content_hash(
@@ -266,7 +271,7 @@ fn fleet_converge_member_set_fingerprint_matches(
   observed_caps: List<CapMember>,
   observed_spark: List<SparkServingMember>,
   observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
 ) -> Bool {
   trim(s: planned_fingerprint_text) == (
     serialize_content_hash(
@@ -478,27 +483,33 @@ fn fleet_converge_slot_family(
 // caller must learn which: preferring the population's host would plan the right host from a
 // mis-supplied argument, and preferring the argument is what produced the hole. The mismatch is a
 // defect in whoever joined them, so the line stops and names both.
+// NOT-APPLICABLE IS NOT CONVERGED, and giving it its own arm is what keeps the plan from claiming an
+// observation nobody made. A host the product does not scan for fabric artifacts plans no actions --
+// same as a converged one -- but the REASON differs and so does what a later reader may conclude:
+// converged means read and correct, not-applicable means never looked at and not expected to be.
 type FleetConvergeFabricCellFamily
-  = FabricCellFamilyConvergedNoActions
+  = FabricCellFamilyNotApplicable
+  | FabricCellFamilyConvergedNoActions
   | FabricCellFamilyRealizationUnavailable { planned: MembershipPlan<FabricCellMember, String> }
   | FabricCellFamilyObservationRefused { blocked: List<FabricCellObservationRefusal> }
   | FabricCellFamilyObservationHostMismatch { planned_host: String, observed_host: String }
 
 fn fleet_converge_fabric_cell_family(
   host: NonEmptyStr,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
 ) -> FleetConvergeFabricCellFamily {
   match observed_fabric_cells {
-    FabricCellPopulationObservationRefused { host: _, blocked: b } =>
+    FabricCellObservationNotApplicable { host: _ } => FabricCellFamilyNotApplicable
+    FabricCellObservationDenied { host: _, blocked: b } =>
       FabricCellFamilyObservationRefused { blocked: b }
-    FabricCellPopulationObserved { host: observed_host, observed: obs } =>
-      if (observed_host as String) != (host as String) {
+    FabricCellObservationAdmitted { population: pop } =>
+      if (fabric_cell_observed_population_host(population: pop) as String) != (host as String) {
         FabricCellFamilyObservationHostMismatch {
           planned_host: host as String,
-          observed_host: observed_host as String,
+          observed_host: fabric_cell_observed_population_host(population: pop) as String,
         }
       } else {
-      let observed = fabric_cell_observed_members(observed: obs)
+      let observed = fabric_cell_observed_population_members(population: pop)
       let planned = membership_plan_admitting_outcome(
         outcome: membership_reconcile(
           desired: fabric_cell_desired_members(host: host as HostIdentity),
@@ -525,11 +536,12 @@ fn fleet_converge_fabric_cell_family(
 // never as an ADD line a reader would take for work that will happen.
 fn fleet_converge_fabric_cell_lines(
   host: NonEmptyStr,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
 ) -> List<String> {
   match fleet_converge_fabric_cell_family(host: host, observed_fabric_cells: observed_fabric_cells) {
     FabricCellFamilyObservationRefused { blocked: b } =>
       map(b, r => concat("REFUSED-OBSERVATION fabric-cell ", fabric_cell_observation_refusal_line(refusal: r)))
+    FabricCellFamilyNotApplicable => []
     FabricCellFamilyConvergedNoActions => []
     FabricCellFamilyRealizationUnavailable { planned: p } =>
       map(p.actions, a => concat("REFUSED-REALIZATION ", fabric_cell_action_line(action: a)))
@@ -547,10 +559,11 @@ fn fleet_converge_fabric_cell_lines(
 // that cannot be provisioned is three pieces of undone work, not one inconvenience.
 fn fleet_converge_fabric_cell_refusal_count(
   host: NonEmptyStr,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
 ) -> Int {
   match fleet_converge_fabric_cell_family(host: host, observed_fabric_cells: observed_fabric_cells) {
     FabricCellFamilyObservationRefused { blocked: b } => list_length(items: b)
+    FabricCellFamilyNotApplicable => 0
     FabricCellFamilyConvergedNoActions => 0
     FabricCellFamilyRealizationUnavailable { planned: p } => list_length(items: p.actions)
     FabricCellFamilyObservationHostMismatch { planned_host: _, observed_host: _ } => 1
@@ -806,6 +819,11 @@ fn fabric_cell_observation_refusal_line(refusal: FabricCellObservationRefusal) -
         "unconsumed-namespace ", runner_slot_instance_name(slot: sl), " on ", h as String,
         "; a cell namespace was enumerated for a slot this host does not declare, so nothing consumed it",
       )
+    ObserverUnavailable { host: h } =>
+      concat(
+        "observer-unavailable on ", h as String,
+        "; no observer is wired for this host, so nothing about its fabric cells was read -- this is not an empty host and no membership may be planned against it",
+      )
     ExpectedRosterHostMismatch { enclosing_host: h, expected_slot: sl } =>
       concat(
         "expected-roster-host-mismatch ", runner_slot_instance_name(slot: sl),
@@ -852,6 +870,7 @@ fn fabric_cell_refusal_baseline_row(refusal: FabricCellObservationRefusal) -> St
       concat("unconsumed-probe:", h as String, ":", runner_slot_instance_name(slot: sl), ":", fabric_cell_resource_address_wire(address: a))
     SuppliedNamespaceUnconsumed { host: h, slot: sl } =>
       concat("unconsumed-namespace:", h as String, ":", runner_slot_instance_name(slot: sl))
+    ObserverUnavailable { host: h } => concat("observer-unavailable:", h as String)
     ExpectedRosterHostMismatch { enclosing_host: h, expected_slot: sl } =>
       concat("expected-roster-host-mismatch:", h as String, ":", runner_slot_instance_name(slot: sl))
     UnexpectedCommittedSlotArtifact { host: h, slot: sl, location: l } =>
@@ -873,16 +892,18 @@ fn fabric_cell_refusal_baseline_row(refusal: FabricCellObservationRefusal) -> St
 // now refuses a cross-host join outright, so this is the second wall rather than the only one; both
 // belong, because the fingerprint is what a LATER apply re-checks, and it must not admit against a
 // baseline that could have come from somewhere else.
-fn fabric_cell_baseline_rows(population: FabricCellPopulation) -> List<String> {
+fn fabric_cell_baseline_rows(population: FabricCellObservationDecision) -> List<String> {
   match population {
-    FabricCellPopulationObserved { host: h, observed: obs } =>
+    FabricCellObservationNotApplicable { host: h } =>
+      [concat("fabric-cell-not-applicable:", h as String)]
+    FabricCellObservationAdmitted { population: pop } =>
       concat(
-        [concat("fabric-cell-observed-host:", h as String)],
-        map(fabric_cell_observed_members(observed: obs), m => concat(
+        [concat("fabric-cell-observed-host:", fabric_cell_observed_population_host(population: pop) as String)],
+        map(fabric_cell_observed_population_members(population: pop), m => concat(
           "fabric-cell:", fabric_cell_member_key(member: m), "=", m.state_digest as String,
         )),
       )
-    FabricCellPopulationObservationRefused { host: h, blocked: b } =>
+    FabricCellObservationDenied { host: h, blocked: b } =>
       concat(
         [concat("fabric-cell-observation-refused:", h as String)],
         map(b, r => concat("fabric-cell-observation-blocked:", fabric_cell_refusal_baseline_row(refusal: r))),
@@ -896,7 +917,7 @@ fn observed_baseline_text(
   observed_caps: List<CapMember>,
   observed_spark: List<SparkServingMember>,
   observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
 ) -> String {
   join(
     concat(
@@ -1601,7 +1622,7 @@ fn fleet_converge_apply_shell(
   timer_plan: MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>,
   host: NonEmptyStr,
   observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
 ) -> String {
   join(
     concat(
@@ -1638,7 +1659,7 @@ fn fleet_converge_apply_shell(
 // like a host with no fabric work.
 fn fabric_cell_apply_lines(
   host: NonEmptyStr,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
 ) -> List<String> {
   concat(
     ["# fabric-cell membership (gunbc.fabric_cell_converge) — resolved at plan time; no host effect is emitted by this cut"],
@@ -1656,7 +1677,7 @@ fn fleet_converge_plan_artifact(
   observed_caps: List<CapMember>,
   observed_spark: List<SparkServingMember>,
   observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
 ) -> FleetConvergePlanArtifact? {
   let subject = fleet_converge_plan_subject(
     host: host,
@@ -1764,7 +1785,7 @@ fn fleet_converge_observed_baseline_matches(
   observed_caps: List<CapMember>,
   observed_spark: List<SparkServingMember>,
   observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
 ) -> Bool {
   let baseline = observed_baseline_text(
     host: host,

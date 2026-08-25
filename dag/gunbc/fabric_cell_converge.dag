@@ -913,6 +913,7 @@ type FabricCellObservationRefusal
   | SuppliedNamespaceUnconsumed { host: HostIdentity, slot: RunnerSlotIdentity }
   | UnexpectedCommittedSlotArtifact { host: HostIdentity, slot: RunnerSlotIdentity, location: String }
   | ExpectedRosterHostMismatch { enclosing_host: HostIdentity, expected_slot: RunnerSlotIdentity }
+  | ObserverUnavailable { host: HostIdentity }
   | CrossHostNamedArtifactObserved {
       observed_on: HostIdentity
       observed_name: String
@@ -956,6 +957,7 @@ fn fabric_cell_observation_refusal_identity(refusal: FabricCellObservationRefusa
       join(["unconsumed-namespace|", h as String, "|", runner_slot_instance_name(slot: sl)], "")
     ExpectedRosterHostMismatch { enclosing_host: h, expected_slot: sl } =>
       join(["expected-roster-host-mismatch|", h as String, "|", runner_slot_instance_name(slot: sl)], "")
+    ObserverUnavailable { host: h } => join(["observer-unavailable|", h as String], "")
     UnexpectedCommittedSlotArtifact { host: h, slot: sl, location: l } =>
       join([
         "unexpected-committed-slot-artifact|", h as String,
@@ -1034,81 +1036,6 @@ fn fabric_cell_refusal_insert_ordered(
 fn fabric_cell_refusals_hold(acc: List<FabricCellObservationRefusal>, identity: String) -> Bool {
   fold(acc, init: false, f: (found, e) =>
     found || fabric_cell_observation_refusal_identity(refusal: e) == identity)
-}
-
-type FabricCellPopulation
-  = FabricCellPopulationObserved { host: HostIdentity, observed: FabricCellObservedMembers }
-  | FabricCellPopulationObservationRefused { host: HostIdentity, blocked: List<FabricCellObservationRefusal> }
-
-// THE DISCOVERED SIDE IS A REQUIRED ARGUMENT, NOT AN OPTIONAL ONE, and that is the whole point of
-// the signature. The observer produces two conserved populations -- the authority's expected cells
-// and what the host actually holds -- and while this fold took only the first, a wet caller could
-// read the expected side, skip discovery entirely, and obtain a fully `Observed` population while
-// an out-of-band artifact sat on the host. "Second conserved population" was then true inside the
-// observer's own function and false at the seam that decides anything, which is the shape a
-// conservation law fails in: not by losing a subject, but by having a caller who never asks.
-//
-// SO THERE IS NO ONE-ARGUMENT SPELLING. A caller with nothing to report passes the reason it has
-// nothing -- `DiscoveryUnavailable` -- which is a refusal, so an unread host cannot silently become
-// a converged one. That is construction rather than a check: the omission has no syntax, instead of
-// having a syntax that a lens would have to catch (DESIGN section 5).
-//
-// THE REFUSALS ARRIVE AS THIS MODULE'S OWN VOCABULARY, WHICH IS WHAT KEEPS THE DIRECTION ACYCLIC.
-// The observer imports this module, so this module cannot name the observer's discovery type; it
-// owns the refusal coproduct and the observer projects into it. `ForeignArtifactObserved` therefore
-// carries an observed NAME and a location rather than any identity -- the artifact matched nothing
-// committed, and minting a RunnerSlotIdentity for it would be exactly the uncited authority the
-// observer refuses to derive from a string.
-fn fabric_cell_population(
-  readback: FabricCellHostReadback,
-  discovered: List<FabricCellObservationRefusal>,
-) -> FabricCellPopulation {
-  let classification = classify_fabric_cell_host(
-    expected_slots: fabric_cell_expected_slots(host: readback.host),
-    readback: readback,
-  )
-  let standings = classification.standings
-  let blocked_addresses = fold(standings, init: [], f: (acc, st) =>
-    match st {
-      StandingBlocked { disposition: d } => concat(acc, [ExpectedAddressBlocked { disposition: d }])
-      StandingObservedDrift { ref: _, observed_state_digest: _ } => acc
-      StandingExplicitlyAbsent { ref: _ } => acc
-      StandingSatisfied { ref: _ } => acc
-    })
-  let blocked = concat(
-    blocked_addresses,
-    concat(
-      classification.roster_mismatched,
-      concat(
-        map(classification.unexpected, u => UnexpectedCellEvidence { evidence: u }),
-        concat(
-          map(classification.host_mismatched, m => ReadbackHostMismatch { mismatch: m }),
-          discovered,
-        ),
-      ),
-    ),
-  )
-  let canonical_blocked = fabric_cell_canonical_refusals(refusals: blocked)
-  if list_length(items: canonical_blocked) > 0 {
-    FabricCellPopulationObservationRefused { host: readback.host, blocked: canonical_blocked }
-  } else {
-    let satisfied_members = fold(standings, init: [], f: (acc, st) =>
-      match st {
-        StandingSatisfied { ref: r } =>
-          concat(acc, [fabric_cell_observed_member_at(
-            ref: r,
-            state_digest: fabric_cell_desired_state_digest(slot: r.slot, address: r.address),
-          )])
-        StandingObservedDrift { ref: r, observed_state_digest: g } =>
-          concat(acc, [fabric_cell_observed_member_at(ref: r, state_digest: g)])
-        StandingExplicitlyAbsent { ref: _ } => acc
-        StandingBlocked { disposition: _ } => acc
-      })
-    FabricCellPopulationObserved {
-      host: readback.host,
-      observed: FabricCellObservedMembers { members: satisfied_members },
-    }
-  }
 }
 
 // THE THREE VERDICTS THE BRIEF NAMES, DERIVED FROM THE PER-ADDRESS OBSERVATION RATHER THAN BEING ITS
@@ -1196,55 +1123,3 @@ fn fabric_cell_unreadable_dispositions_for_slot(
 
 data fabric_cell_no_observer_cause: String = "no fabric cell observer is wired: this host has not been read for fabric cell resources, and an unread host is not an empty one"
 
-// AN UNREAD HOST IS ONLY UNREAD FOR THE CELLS IT IS EXPECTED TO HAVE, and this function projected
-// the GLOBAL slot roster into every host until codex review 55439 caught it. Because that authority
-// holds exactly one member today, planning ANY host -- srv4, or a host with no fabric cells at all
-// -- fabricated an srv3-06 unreadable-resource refusal and stopped the line over resources that
-// host was never expected to carry. The CLI calls this on every plan, so the defect was in
-// production planning rather than latent (`gunbc.fleet_converge_plan_cli` `fleet_converge_plan_cli_main`).
-//
-// TWO SEPARATE ERRORS, and only fixing the filter would have left the second. The roster is now
-// host-filtered through the same fabric_cell_expected_slots the observing fold uses -- one authority
-// for "which cells does this host expect", not two. And a host expecting NO fabric cells converges
-// OBSERVED-EMPTY rather than refused: there is nothing unread about a host with nothing to read, and
-// answering Refused there is fabricating an obligation, which is the mirror of the fabricated
-// plausible output DESIGN section 5 forbids -- a refusal invented where no fact was missing.
-//
-// THE TWO ROUTES NOW AGREE BY CONSTRUCTION: fabric_cell_population_unobserved(srv4) and
-// fabric_cell_population(FabricCellHostReadback { host: srv4, cell_readbacks: [] }) both answer
-// observed-empty, because both derive the expected set from the same authority. Before this they
-// disagreed -- the observing fold was already host-exact and this constructor was not.
-// THE ZERO-EXPECTED ARM RETURNS AN OBSERVED-EMPTY POPULATION, AND WHAT THAT DOES NOT COVER IS
-// NAMED HERE RATHER THAN LEFT TO BE REDISCOVERED. A host declaring no fabric cells has an empty
-// desired population and an empty expected roster, so no action is plannable and the arm is correct
-// about the EXPECTED side. It says nothing about the SUPPLIED side: nobody enumerated that host's
-// cells root, so an out-of-band artifact there is invisible through this constructor -- which is
-// exactly the hole `fabric_cell_population`'s required `discovered` argument closes for every
-// caller that actually read a host.
-//
-// IT IS LEFT OPEN BECAUSE THIS CONSTRUCTOR IS THE UNREAD-HOST PLACEHOLDER ITSELF. Refusing here
-// would make every non-fabric host emit a fabric refusal on every plan, which is a fleet-wide
-// behaviour change to report a fact no probe established. NEXT-RUNG TRIGGER: the wet observer
-// replacing this constructor at the `gunbc.fleet_converge_plan_cli` call sites, at which point the
-// host is genuinely read and the discovery arm carries a real verdict rather than a placeholder.
-fn fabric_cell_population_unobserved(host: HostIdentity) -> FabricCellPopulation {
-  let expected = fabric_cell_expected_slots(host: host)
-  if list_length(items: expected) == 0 {
-    FabricCellPopulationObserved {
-      host: host,
-      observed: FabricCellObservedMembers { members: [] },
-    }
-  } else {
-    FabricCellPopulationObservationRefused {
-      host: host,
-      blocked: fold(
-        expected,
-        init: [],
-        f: (acc, slot) => concat(acc, map(
-          fabric_cell_unreadable_dispositions_for_slot(slot: slot),
-          d => ExpectedAddressBlocked { disposition: d },
-        ))
-      )
-    }
-  }
-}

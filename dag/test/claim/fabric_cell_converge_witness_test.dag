@@ -6,7 +6,23 @@ import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_nam
 import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 import gunbc.ownership { Owned }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.fabric_cell_observation_admission {
+  FabricCellObservationDecision,
+  FabricCellObservationAdmitted,
+  FabricCellObservationDenied,
+  FabricCellObservationNotApplicable,
+  fabric_cell_observation_unobserved,
+}
 import gunbc.fabric_cell_converge {
+  fabric_cell_observation_refusal_identity,
+  StandingExplicitlyAbsent,
+  StandingObservedDrift,
+  StandingSatisfied,
+  StandingBlocked,
+  FabricCellAddressStanding,
+  FabricCellHostClassification,
+  fabric_cell_expected_slots,
+  classify_fabric_cell_host,
   fabric_cell_id_for_slot,
   fabric_cell_ids,
   fabric_cell_resource_addresses,
@@ -42,14 +58,9 @@ import gunbc.fabric_cell_converge {
   FabricCellSubstrateUnprovisioned,
   FabricCellSubstrateObservationRefused,
   fabric_cell_readback_without_observations,
-  fabric_cell_population_unobserved,
   fabric_cell_observed_members,
   FabricCellHostReadback,
-  fabric_cell_population,
   FabricCellObservationRefusal,
-  FabricCellPopulation,
-  FabricCellPopulationObserved,
-  FabricCellPopulationObservationRefused,
 }
 
 // ROUTED, BECAUSE AN UNROUTED WITNESS IS DISCOVERED AND NEVER RUN. A module that declares no
@@ -65,14 +76,35 @@ import gunbc.fabric_cell_converge {
 // to the floor lane; this declaration is the local repair, not the fix for the class.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// A FIXTURE THAT READ THE HOST AND FOUND NOTHING TO REFUSE, WHICH IS A VALUE AND NOT AN OMISSION.
-// `fabric_cell_population` takes the discovery-derived refusals as a REQUIRED argument precisely so
-// that a caller cannot build a population from the expected side alone; these rows exercise the
-// expected side, so the honest thing to pass is an empty discovery, spelled once here. It is local
-// to this file rather than offered by the production module: a shared `no_discovery()` would be the
-// omission given a name, and production callers must state what they actually observed.
-fn no_discovery_refusals() -> List<FabricCellObservationRefusal> {
-  []
+// THESE ROWS ARE READBACK-LEVEL LAWS, SO THEY ARE STATED OVER THE CLASSIFICATION KERNEL. There is
+// no longer any route from a hand-built readback to a plan-admissible observation -- the mint lives
+// in gunbc.fabric_cell_observation_admission and takes one probe -- and that is the point rather
+// than an obstacle: a fixture may still hand the kernel any roster and any readback it likes, and
+// what it cannot do is present the result as something the planner accepts. Every row below that
+// once asked "does this population refuse" now asks the kernel directly, which is where the fact it
+// was measuring always lived.
+fn classification_of(readback: FabricCellHostReadback) -> FabricCellHostClassification {
+  classify_fabric_cell_host(
+    expected_slots: fabric_cell_expected_slots(host: readback.host),
+    readback: readback,
+  )
+}
+
+fn classification_refuses(readback: FabricCellHostReadback) -> Bool {
+  let c = classification_of(readback: readback)
+  fold(c.standings, init: false, f: (acc, st) => acc || standing_is_blocked(st: st))
+    || list_length(items: c.unexpected) > 0
+    || list_length(items: c.host_mismatched) > 0
+    || list_length(items: c.roster_mismatched) > 0
+}
+
+fn standing_is_blocked(st: FabricCellAddressStanding) -> Bool {
+  match st {
+    StandingBlocked { disposition: _ } => true
+    StandingSatisfied { ref: _ } => false
+    StandingObservedDrift { ref: _, observed_state_digest: _ } => false
+    StandingExplicitlyAbsent { ref: _ } => false
+  }
 }
 
 fn srv3_fabric_slot() -> RunnerSlotIdentity {
@@ -212,7 +244,7 @@ test fn witness_fabric_cell_converged_readback_is_provisioned() -> Bool {
 // host was not read, so its state is unknown. Unprovisioned is a claim about a host nobody looked at.
 //
 // The consequence is the load-bearing half: an unobserved address now BLOCKS, so an empty readback
-// can no longer reach reconcile as FabricCellPopulationObserved with an empty member list, which
+// can no longer reach reconcile as FabricCellObservationAdmitted with an empty member list, which
 // would have planned three ADDs against a host nobody read.
 test fn witness_fabric_cell_empty_readback_is_observation_refused() -> Bool {
   verdict_is_observation_refused(
@@ -363,12 +395,6 @@ test fn witness_fabric_cell_agreeing_duplicate_observations_are_present() -> Boo
     && verdict_is_provisioned(v: fabric_cell_substrate_verdict(readback: duplicated))
 }
 
-fn population_is_observation_refused(p: FabricCellPopulation) -> Bool {
-  match p {
-    FabricCellPopulationObservationRefused { host: _, blocked: _ } => true
-    FabricCellPopulationObserved { host: _, observed: _ } => false
-  }
-}
 
 // COMPLETENESS IS DECIDED AGAINST THE SLOT AUTHORITY, NOT AGAINST WHAT THE CALLER SUPPLIED, and
 // this row is what makes that a measured fact rather than a claim about the fold's shape. The host
@@ -402,55 +428,45 @@ test fn witness_fabric_cell_unread_expected_cell_refuses_despite_a_complete_fore
       }
     ),
   }
-  population_is_observation_refused(
-    p: fabric_cell_population(
-      discovered: no_discovery_refusals(),
-      readback: FabricCellHostReadback {
-        host: operator_host_srv3,
-        cell_readbacks: [foreign_readback],
-      }
-    )
-  )
+  classification_refuses(readback: FabricCellHostReadback {
+    host: operator_host_srv3,
+    cell_readbacks: [foreign_readback],
+  })
 }
 
-fn population_is_observed_empty(p: FabricCellPopulation) -> Bool {
+fn decision_is_not_applicable(p: FabricCellObservationDecision) -> Bool {
   match p {
-    FabricCellPopulationObservationRefused { host: _, blocked: _ } => false
-    FabricCellPopulationObserved { host: _, observed: o } =>
-      list_length(items: fabric_cell_observed_members(observed: o)) == 0
+    FabricCellObservationNotApplicable { host: _ } => true
+    FabricCellObservationDenied { host: _, blocked: _ } => false
+    FabricCellObservationAdmitted { population: _ } => false
   }
 }
 
-fn population_blocked_count(p: FabricCellPopulation) -> Int {
+fn decision_denial_reasons(p: FabricCellObservationDecision) -> List<String> {
   match p {
-    FabricCellPopulationObservationRefused { host: _, blocked: b } => list_length(items: b)
-    FabricCellPopulationObserved { host: _, observed: _ } => 0
+    FabricCellObservationDenied { host: _, blocked: b } =>
+      map(b, r => fabric_cell_observation_refusal_identity(refusal: r))
+    FabricCellObservationNotApplicable { host: _ } => []
+    FabricCellObservationAdmitted { population: _ } => []
   }
 }
 
-// A HOST THAT EXPECTS NO FABRIC CELLS HAS NOTHING UNREAD, and the unobserved constructor projected
-// the GLOBAL slot roster into every host before this row existed -- so planning srv4 fabricated an
-// srv3-06 unreadable-resource refusal and stopped the line over resources srv4 was never expected to
-// carry. That reached production: the CLI builds this population on every plan.
+
+// A HOST THAT EXPECTS NO FABRIC CELLS IS NOT APPLICABLE, AND ONE THAT DOES IS DENIED BY NAME. The
+// constructor this replaces answered both with an OBSERVED population -- srv4 got observed-empty,
+// which reads downstream as "this host was read and holds nothing", a claim nobody made, and srv3
+// got a refusal assembled from placeholder dispositions, which reads as three specific resources
+// having been found unreadable when in fact nothing was read at all.
 //
-// The row asserts both halves, because fixing only the filter would leave the second: srv4 converges
-// OBSERVED-EMPTY (nothing expected, so nothing missing), while srv3 -- which does expect a cell --
-// still refuses with one disposition per expected address. A constructor that refused for srv4 would
-// be inventing an obligation, the mirror of a fabricated plausible output.
-//
-// AND IT PINS THE TWO ROUTES TOGETHER: the unobserved constructor and the observing fold must answer
-// the same thing for a host with no expected cells, since both derive the expected set from
-// fabric_cell_expected_slots. They disagreed before -- the fold was host-exact, the constructor was
-// not -- and a second row asserting only the constructor would not have noticed.
-test fn witness_fabric_cell_unobserved_is_host_exact_not_the_global_roster() -> Bool {
-  population_is_observed_empty(p: fabric_cell_population_unobserved(host: operator_host_srv4))
-    && population_blocked_count(p: fabric_cell_population_unobserved(host: operator_host_srv3)) == 3
-    && population_is_observed_empty(
-        p: fabric_cell_population(
-          discovered: no_discovery_refusals(),
-          readback: FabricCellHostReadback { host: operator_host_srv4, cell_readbacks: [] }
-        )
-      )
+// Both halves are asserted because each is a different lie the old shape told. srv4 must not claim
+// an observation; srv3 must not claim three findings. The srv3 denial now carries exactly one
+// reason and it names itself -- observer-unavailable -- so a reader can tell "nobody looked" from
+// "we looked and three addresses would not read", which are different states with different
+// remedies and were previously the same value.
+test fn witness_fabric_cell_unobserved_names_not_applicable_and_unavailable_separately() -> Bool {
+  decision_is_not_applicable(p: fabric_cell_observation_unobserved(host: operator_host_srv4))
+    && decision_denial_reasons(p: fabric_cell_observation_unobserved(host: operator_host_srv3))
+      == ["observer-unavailable|srv3"]
 }
 
 // TWO READBACKS FOR ONE SLOT ARE BOTH EXAMINED, and before this row the LAST one silently won. That
@@ -486,13 +502,7 @@ fn host_readback_of(entries: List<FabricCellReadback>) -> FabricCellHostReadback
 }
 
 test fn witness_fabric_cell_duplicate_slot_readbacks_merge_rather_than_last_wins() -> Bool {
-  population_is_observation_refused(
-    p: fabric_cell_population(discovered: no_discovery_refusals(), readback: host_readback_of(entries: [converged_readback(), drifted_root_readback()]))
-  )
-    && population_is_observation_refused(
-        p: fabric_cell_population(discovered: no_discovery_refusals(), readback: host_readback_of(entries: [drifted_root_readback(), converged_readback()]))
-      )
-    && !population_is_observation_refused(
-        p: fabric_cell_population(discovered: no_discovery_refusals(), readback: host_readback_of(entries: [converged_readback()]))
-      )
+  classification_refuses(readback: host_readback_of(entries: [converged_readback(), drifted_root_readback()]))
+    && classification_refuses(readback: host_readback_of(entries: [drifted_root_readback(), converged_readback()]))
+    && !classification_refuses(readback: host_readback_of(entries: [converged_readback()]))
 }

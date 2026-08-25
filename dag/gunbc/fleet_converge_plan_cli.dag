@@ -22,7 +22,7 @@ import gunbc.runner_slot_provision {
   observe_runner_slot_members_wet,
 }
 import product.placement_supply { HostIdentity }
-import gunbc.fabric_cell_converge { fabric_cell_population_unobserved }
+import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
 import gunbc.fleet_converge_plan {
   TimerRetirementMember,
   fleet_converge_plan_artifact,
@@ -161,7 +161,7 @@ func fleet_converge_plan_wet() -> ProcessExit
     observed_caps: observed_caps,
     observed_spark: [],
     observed_slots: observed_slots,
-    observed_fabric_cells: fabric_cell_population_unobserved(host: host as HostIdentity),
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: host as HostIdentity),
   ) {
     Absent =>
       exit_failure(reason: "fleet_converge_plan: observed baseline is not Fnv1a64Structural — plan refused")
@@ -304,7 +304,7 @@ func fleet_converge_apply_wet() -> ProcessExit
                 observed_caps: observed_caps,
                 observed_spark: [],
                 observed_slots: observed_slots,
-                observed_fabric_cells: fabric_cell_population_unobserved(host: observed_host as HostIdentity),
+                observed_fabric_cells: fabric_cell_observation_unobserved(host: observed_host as HostIdentity),
               ) {
                 exit_failure(reason: "fleet_converge_apply: SubjectIdentityMismatch — member set drifted since plan")
               } else if !fleet_converge_observed_baseline_matches(
@@ -314,7 +314,7 @@ func fleet_converge_apply_wet() -> ProcessExit
                 observed_caps: observed_caps,
                 observed_spark: [],
                 observed_slots: observed_slots,
-                observed_fabric_cells: fabric_cell_population_unobserved(host: observed_host as HostIdentity),
+                observed_fabric_cells: fabric_cell_observation_unobserved(host: observed_host as HostIdentity),
               ) {
                 exit_failure(reason: "fleet_converge_apply: ObservedBaselineMismatch — host drifted since plan; rerun plan and review")
               } else if !fleet_converge_plan_bundle_matches(

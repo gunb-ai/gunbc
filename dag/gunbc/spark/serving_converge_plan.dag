@@ -60,7 +60,10 @@ import gunbc.spark.serving_member_realization {
 }
 import gunbc.spark.serving_realization { ServingInstallEffect, EnableLingerForOwnAccount }
 import gunbc.runner_slot_provision { RunnerSlotMember }
-import gunbc.fabric_cell_converge { FabricCellPopulation, fabric_cell_population_unobserved }
+import gunbc.fabric_cell_observation_admission {
+  FabricCellObservationDecision,
+  fabric_cell_observation_unobserved,
+}
 import gunbc.fleet_converge_plan {
   FleetConvergePlanArtifact,
   FleetConvergeSparkServingTypedAction,
@@ -292,7 +295,7 @@ fn spark_serving_fleet_converge_apply_shell(
   timer_plan: MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>,
   host: NonEmptyStr,
   observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
 ) -> String {
   fleet_converge_apply_shell(
     timer_plan: timer_plan,
@@ -419,7 +422,7 @@ fn spark_serving_fleet_converge_plan_artifact_for_release(
                 spark_rows: spark_rows,
                 observed_spark: observed_members,
                 observed_slots: [],
-                observed_fabric_cells: fabric_cell_population_unobserved(host: host as HostIdentity),
+                observed_fabric_cells: fabric_cell_observation_unobserved(host: host as HostIdentity),
               ),
             }
         }
@@ -453,7 +456,7 @@ fn spark_serving_fleet_converge_plan_artifact_from_rows(
   spark_rows: ScheduledRows<FleetConvergeSparkServingTypedAction>,
   observed_spark: List<SparkServingMember>,
   observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
 ) -> FleetConvergePlanArtifact {
   let subject = fleet_converge_plan_subject(
       host: host,

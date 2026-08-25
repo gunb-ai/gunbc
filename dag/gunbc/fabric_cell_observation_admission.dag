@@ -1,0 +1,168 @@
+module gunbc.fabric_cell_observation_admission
+
+import std.types { String, List, Bool, list_length }
+import std.disposition { Disposition, SingleAuthority }
+import product.placement_supply { HostIdentity }
+import gunbc.fabric_cell_converge {
+  FabricCellMember,
+  FabricCellObservedMembers,
+  FabricCellHostReadback,
+  FabricCellObservationRefusal,
+  ExpectedAddressBlocked,
+  UnexpectedCellEvidence,
+  ReadbackHostMismatch,
+  ObserverUnavailable,
+  FabricCellAddressStanding,
+  StandingSatisfied,
+  StandingObservedDrift,
+  StandingExplicitlyAbsent,
+  StandingBlocked,
+  classify_fabric_cell_host,
+  fabric_cell_expected_slots,
+  fabric_cell_observed_member_at,
+  fabric_cell_desired_state_digest,
+  fabric_cell_canonical_refusals,
+}
+import gunbc.fabric_cell_observe {
+  FabricCellHostProbe,
+  fabric_cell_observe,
+  fabric_cell_projection_refusals,
+}
+
+// THE ONE PLACE A PLAN-ADMISSIBLE OBSERVATION IS MINTED, AND IT SITS HERE BECAUSE NEITHER UPSTREAM
+// MODULE CAN HOLD IT. gunbc.fabric_cell_converge owns desired state and the pure classification
+// kernel; gunbc.fabric_cell_observe owns probe interpretation and imports it. The join needs BOTH,
+// so homing it upstream forced the guarantee into a layer that cannot know the proposition it would
+// be guaranteeing -- converge cannot name a projection, so its constructor had to accept a readback
+// and a caller-authored refusal list, two independently writable halves. This module is the first
+// layer that can know both, which is why the mint is here and not a fourth place.
+//
+// IT TAKES A PROBE, NOT A PROJECTION, and that is stronger than it looks: a caller handed a
+// projection could assemble one whose expected readback and whose discovery came from DIFFERENT
+// probes, and nothing in the types would say so. One probe in means the two halves are the same
+// observation by construction rather than by a caller's discipline.
+//
+// THIS IS NOT A SECOND POPULATION AUTHORITY. It is the single downstream join over two upstream
+// ones, and it adds no facts of its own -- every refusal it reports was produced by a module above
+// it, and the members it admits are derived by the classification kernel.
+
+// THE ADMITTED CARRIER IS SEALED, so the only way to hold one is to have come through the mint. A
+// caller can still assemble members by hand; what it cannot do is present them as an observation
+// this repository's planner will accept.
+type FabricCellObservedPopulation sole_constructor {
+  host: HostIdentity
+  members: List<FabricCellMember>
+}
+
+fn fabric_cell_observed_population_host(population: FabricCellObservedPopulation) -> HostIdentity {
+  population.host
+}
+
+fn fabric_cell_observed_population_members(population: FabricCellObservedPopulation) -> List<FabricCellMember> {
+  population.members
+}
+
+// ADMITTED OR DENIED, AND DENIED IS NOT A WORSE ADMITTED. A denial says the host's state is UNKNOWN
+// in some named respect, so no consumer may treat it as either converged or unprovisioned -- the two
+// have opposite remedies and only one of them is safe to act on.
+type FabricCellObservationDecision
+  = FabricCellObservationAdmitted { population: FabricCellObservedPopulation }
+  | FabricCellObservationDenied { host: HostIdentity, blocked: List<FabricCellObservationRefusal> }
+  | FabricCellObservationNotApplicable { host: HostIdentity }
+
+// THE PRODUCTION MINT. One probe, both halves, one decision.
+fn admit_fabric_cell_probe(probe: FabricCellHostProbe) -> FabricCellObservationDecision {
+  let projection = fabric_cell_observe(probe: probe)
+  fabric_cell_admit_observation(
+    readback: projection.expected_readback,
+    discovered: fabric_cell_projection_refusals(projection: projection),
+  )
+}
+
+// THE JOIN ITSELF IS PRIVATE TO THE MINT'S OWN REASONING AND IS NOT A SECOND ROUTE: it is not
+// exported, so the only way into it from another module is through admit_fabric_cell_probe. Keeping
+// it separate is what lets the mint be read as three steps rather than one twenty-line expression.
+fn fabric_cell_admit_observation(
+  readback: FabricCellHostReadback,
+  discovered: List<FabricCellObservationRefusal>,
+) -> FabricCellObservationDecision {
+  let classification = classify_fabric_cell_host(
+    expected_slots: fabric_cell_expected_slots(host: readback.host),
+    readback: readback,
+  )
+  let standings = classification.standings
+  let blocked_addresses = fold(standings, init: [], f: (acc, st) =>
+    match st {
+      StandingBlocked { disposition: d } => concat(acc, [ExpectedAddressBlocked { disposition: d }])
+      StandingObservedDrift { ref: _, observed_state_digest: _ } => acc
+      StandingExplicitlyAbsent { ref: _ } => acc
+      StandingSatisfied { ref: _ } => acc
+    })
+  let blocked = concat(
+    blocked_addresses,
+    concat(
+      classification.roster_mismatched,
+      concat(
+        map(classification.unexpected, u => UnexpectedCellEvidence { evidence: u }),
+        concat(
+          map(classification.host_mismatched, m => ReadbackHostMismatch { mismatch: m }),
+          discovered,
+        ),
+      ),
+    ),
+  )
+  let canonical_blocked = fabric_cell_canonical_refusals(refusals: blocked)
+  if list_length(items: canonical_blocked) > 0 {
+    FabricCellObservationDenied { host: readback.host, blocked: canonical_blocked }
+  } else {
+    FabricCellObservationAdmitted {
+      population: FabricCellObservedPopulation {
+        host: readback.host,
+        members: fold(standings, init: [], f: (acc, st) =>
+          match st {
+            StandingSatisfied { ref: r } =>
+              concat(acc, [fabric_cell_observed_member_at(
+                ref: r,
+                state_digest: fabric_cell_desired_state_digest(slot: r.slot, address: r.address),
+              )])
+            StandingObservedDrift { ref: r, observed_state_digest: g } =>
+              concat(acc, [fabric_cell_observed_member_at(ref: r, state_digest: g)])
+            StandingExplicitlyAbsent { ref: _ } => acc
+            StandingBlocked { disposition: _ } => acc
+          }),
+      },
+    }
+  }
+}
+
+// NO OBSERVER WIRED IS NOT AN OBSERVED POPULATION, AND NEITHER IS A HOST NOBODY SCANS. The
+// constructor this replaces answered BOTH with an observed population: a host with no expected cells
+// got observed-empty, which reads downstream as "this host was read and holds nothing" -- a claim
+// nobody made -- and a host with expected cells got a refusal built from placeholder dispositions.
+// Three states with three remedies were being reported through two arms of a carrier that could only
+// say converged or blocked.
+//
+// SO THE THIRD STATE IS NAMED. A host the product does not scan for fabric artifacts is NOT
+// APPLICABLE, which is different from unread and different from empty; a host that IS in scope but
+// has no observer wired is DENIED, by name, with the reason. That preserves what the old zero-
+// expected arm was protecting -- refusing every non-fabric host would make each one emit a fabric
+// refusal on every plan, a fleet-wide change reporting a fact no probe established -- without
+// spelling it as an observation.
+//
+// THE EVENTUAL POLICY IS THE STRICTER ONE. Once every managed host is meant to be checked for
+// out-of-band fabric state, the not-applicable arm narrows to the hosts a scoped plan deliberately
+// excludes and the rest become denials. NEXT-RUNG TRIGGER: the wet observer replacing this
+// constructor at the `gunbc.fleet_converge_plan_cli` call sites, at which point the host is genuinely
+// read and no placeholder is minted at all.
+fn fabric_cell_observation_unobserved(host: HostIdentity) -> FabricCellObservationDecision {
+  if list_length(items: fabric_cell_expected_slots(host: host)) == 0 {
+    FabricCellObservationNotApplicable { host: host }
+  } else {
+    FabricCellObservationDenied {
+      host: host,
+      blocked: [ObserverUnavailable { host: host }],
+    }
+  }
+}
+
+data module_disposition: Disposition = SingleAuthority
