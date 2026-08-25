@@ -143,9 +143,23 @@ test fn evidence_join_is_idempotent() -> Bool {
     acc && full_of(observations: [x, x]) == full_of(observations: [x]))
 }
 
-// COMMUTATIVITY AND ASSOCIATIVITY AT THE CLASS THE PLAN IDENTITY CONSUMES. These are the ones that
-// matter for the member-set fingerprint and for routing: whichever order the observations arrive
-// in, the plan must not change.
+// PERMUTATION INVARIANCE OF THE PRODUCTION LEFT FOLD, AT THE CLASS THE PLAN IDENTITY CONSUMES.
+// This is what matters for the member-set fingerprint and for routing: whichever order the
+// observations arrive in, the plan must not change.
+//
+// THE NAME IS NARROWER THAN COMMUTATIVITY-AND-ASSOCIATIVITY AND THE NARROWING IS THE POINT. An
+// earlier revision of this comment claimed both. It was false of associativity: these rows permute
+// a THREE-ELEMENT LIST through one left fold, and never compare `join(join(a, b), c)` against
+// `join(a, join(b, c))` -- different parenthesizations, not different orders. No binary
+// evidence-to-evidence join is exposed to compare, so that law is not testable from here at all,
+// and a comment claiming it would be the same overclaim this file exists to refuse: evidence named
+// for a stronger property than it establishes.
+//
+// WHY THE MISSING LAW IS WORTH ITS OWN CHANGE RATHER THAN A SHRUG: associativity is exactly what
+// licenses combining probe batches INCREMENTALLY. An observer that reads a host in chunks and folds
+// each chunk into a running evidence value is relying on it, and permutation invariance over one
+// monolithic list does not establish it. The next-step trigger is a pure binary join the list fold
+// consumes; until that exists this file states the weaker property it can actually measure.
 test fn evidence_class_is_order_independent_over_pairs() -> Bool {
   all_pairs_agree(project: class_of)
 }
