@@ -3014,7 +3014,7 @@ type SparkServingOllamaArchiveAdmission
 
 type SparkServingOllamaRuntimeMaterialization
   = SparkServingOllamaRuntimeMaterialized {
-      receipt: gunbc.spark_serving_runtime_receipt.SparkServingRuntimeArchiveAdmissionReceipt
+      receipt: gunbc.spark.serving_runtime_receipt.SparkServingRuntimeArchiveAdmissionReceipt
     }
   | SparkServingOllamaRuntimeDownloadRefused {
       locator: std.types.NonEmptyStr
@@ -3088,7 +3088,7 @@ fn materialize_spark_serving_ollama_runtime_bundle() -> gunbc.package_delivery.S
         SparkServingOllamaRuntimeIntegrityRefused { cause: cause }
       }
       SparkServingOllamaArchiveAdmitted { local_path: _, digest_hex } => {
-        let receipt = gunbc.spark_serving_runtime_receipt.SparkServingRuntimeArchiveAdmissionReceipt {
+        let receipt = gunbc.spark.serving_runtime_receipt.SparkServingRuntimeArchiveAdmissionReceipt {
           release_asset_digest_hex: digest_hex,
         }
         if write_spark_serving_runtime_archive_admission_receipt(receipt: receipt) {

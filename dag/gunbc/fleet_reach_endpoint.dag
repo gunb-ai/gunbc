@@ -11,7 +11,7 @@ module gunbc.fleet_reach_endpoint
 // endpoint. SlotAssigned projects the reservation's address; SlotUnassigned projects NO
 // endpoint — never a placeholder (a fabricated address would be the §5 plausible-output
 // trap aimed at the network).
-fn spark_endpoint_for_binding(binding: gunbc.dgx_spark_procurement.DgxSparkRouterBinding) -> String? {
+fn spark_endpoint_for_binding(binding: gunbc.spark.dgx_procurement.DgxSparkRouterBinding) -> String? {
   match binding {
     SlotAssigned { identity: _, reservation: r, allocation: _ } =>
       Present { value: render_ipv4_address(addr: r.ipv4_address) as String }

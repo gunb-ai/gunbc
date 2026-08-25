@@ -15,7 +15,7 @@ fn kind_at(ops: List<gunbc.remote_operation.RemoteOperation>, i: Int) -> String 
   }
 }
 
-fn realize(effects: List<gunbc.spark_serving_realization.ServingInstallEffect>) -> gunbc.spark_serving_converge_realize.SparkServingInstallRemoteCommandsVerdict {
+fn realize(effects: List<gunbc.spark.serving_realization.ServingInstallEffect>) -> gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsVerdict {
   realize_spark_serving_install_effect_commands(
     effects: effects,
     executor_login: spark_serving_automation_principal_login(),

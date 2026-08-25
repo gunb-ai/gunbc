@@ -16,40 +16,40 @@ data fixture_host: product.placement_supply.HostIdentity = "fixture-spark-unit"
 // Stands in for a SECRET-MATERIALIZE-0 producer receipt, which does not exist yet. The
 // witness authors it so the materialized path is exercised; nothing in the production tree
 // can construct this arm today.
-fn fixture_materialized(name: std.types.NonEmptyStr) -> gunbc.spark_bootstrap_credential.SparkCredentialStanding {
-  gunbc.spark_bootstrap_credential.CredentialMaterialized { ref: spark_secret_ref(project: fixture_project, name: name) }
+fn fixture_materialized(name: std.types.NonEmptyStr) -> gunbc.spark.bootstrap_credential.SparkCredentialStanding {
+  gunbc.spark.bootstrap_credential.CredentialMaterialized { ref: spark_secret_ref(project: fixture_project, name: name) }
 }
 
-fn fixture_credentials() -> gunbc.spark_bootstrap_credential.SparkProvisioningCredentials {
+fn fixture_credentials() -> gunbc.spark.bootstrap_credential.SparkProvisioningCredentials {
   spark_credentials(
     hotspot: fixture_materialized(name: "fixture-hotspot"),
     administrator: fixture_materialized(name: "fixture-administrator"),
   )
 }
 
-fn fixture_pending_credentials() -> gunbc.spark_bootstrap_credential.SparkProvisioningCredentials {
+fn fixture_pending_credentials() -> gunbc.spark.bootstrap_credential.SparkProvisioningCredentials {
   spark_credentials(
     hotspot: fixture_materialized(name: "fixture-hotspot"),
     administrator: gunbc.spark.bootstrap_credential.CredentialMaterializationPending,
   )
 }
 
-fn fixture_bootstrap() -> gunbc.spark_bootstrap_credential.SparkFactoryBootstrap {
-  gunbc.spark_bootstrap_credential.SparkFactoryBootstrap {
+fn fixture_bootstrap() -> gunbc.spark.bootstrap_credential.SparkFactoryBootstrap {
+  gunbc.spark.bootstrap_credential.SparkFactoryBootstrap {
     access_point_identity: spark_bootstrap_ssid_a3ee,
     documented_surface: dgx_spark_oobe_surface,
   }
 }
 
-fn oobe_strategy() -> gunbc.spark_provisioning.SparkProvisioningStrategy {
-  gunbc.spark_provisioning.FactoryOobe { bootstrap: fixture_bootstrap() }
+fn oobe_strategy() -> gunbc.spark.provisioning.SparkProvisioningStrategy {
+  gunbc.spark.provisioning.FactoryOobe { bootstrap: fixture_bootstrap() }
 }
 
-fn pxe_strategy() -> gunbc.spark_provisioning.SparkProvisioningStrategy {
-  gunbc.spark_provisioning.PxeAutoinstall {
-    environment: "fixture-boot-network" as gunbc.spark_provisioning.PxeEnvironmentIdentity,
-    image: "fixture-base-os" as gunbc.spark_provisioning.InstallationImageIdentity,
-    install_spec: gunbc.spark_provisioning.SparkAutoinstallSpec {
+fn pxe_strategy() -> gunbc.spark.provisioning.SparkProvisioningStrategy {
+  gunbc.spark.provisioning.PxeAutoinstall {
+    environment: "fixture-boot-network" as gunbc.spark.provisioning.PxeEnvironmentIdentity,
+    image: "fixture-base-os" as gunbc.spark.provisioning.InstallationImageIdentity,
+    install_spec: gunbc.spark.provisioning.SparkAutoinstallSpec {
       parameters: extdeps.systems.nvidia_dgx_spark_setup.DgxSparkPxeInstallParameters {
         unattended: true,
         user_interface_disabled: true,
@@ -68,7 +68,7 @@ fn fixture_address() -> extdeps.network.ipv4.Ipv4Address {
   ipv4_address(octet1: 192, octet2: 0, octet3: 2, octet4: 10)
 }
 
-fn fixture_intent() -> gunbc.spark_provisioning.SparkProvisioningIntent {
+fn fixture_intent() -> gunbc.spark.provisioning.SparkProvisioningIntent {
   spark_provisioning_intent(
     host: test.claim.spark_provisioning_witness.fixture_host,
     credentials: fixture_credentials(),
@@ -78,13 +78,13 @@ fn fixture_intent() -> gunbc.spark_provisioning.SparkProvisioningIntent {
 }
 
 fn environment(
-  controller: gunbc.spark_provisioning.BootstrapControllerStanding,
-  pxe: gunbc.spark_provisioning.PxePrerequisiteStanding
-) -> gunbc.spark_provisioning.SparkProvisioningEnvironment {
-  gunbc.spark_provisioning.SparkProvisioningEnvironment { controller: controller, pxe: pxe }
+  controller: gunbc.spark.provisioning.BootstrapControllerStanding,
+  pxe: gunbc.spark.provisioning.PxePrerequisiteStanding
+) -> gunbc.spark.provisioning.SparkProvisioningEnvironment {
+  gunbc.spark.provisioning.SparkProvisioningEnvironment { controller: controller, pxe: pxe }
 }
 
-fn outcome_tag(o: gunbc.spark_provisioning.SparkProvisioningOutcome) -> String {
+fn outcome_tag(o: gunbc.spark.provisioning.SparkProvisioningOutcome) -> String {
   match o {
     SparkProvisioned { receipt: _ } => "provisioned"
     SparkProvisioningInterrupted { phase: _, cause: _ } => "interrupted"
@@ -93,7 +93,7 @@ fn outcome_tag(o: gunbc.spark_provisioning.SparkProvisioningOutcome) -> String {
   }
 }
 
-fn classify_tag(progress: gunbc.spark_provisioning.SparkProvisioningProgress) -> String {
+fn classify_tag(progress: gunbc.spark.provisioning.SparkProvisioningProgress) -> String {
   test.claim.spark_provisioning_witness.outcome_tag(o: classify_spark_progress(
     intent: fixture_intent(),
     phase: gunbc.spark.provisioning.PhaseOperatorConfiguration,
@@ -110,10 +110,10 @@ fn sample_intervention() -> std.human_intervention.HumanIntervention {
   )
 }
 
-fn complete_observation() -> gunbc.spark_provisioning.PostSetupObservation {
-  gunbc.spark_provisioning.PostSetupObservation {
-    account: gunbc.spark_provisioning.AccountObserved { name: "briansrls" },
-    lan_reach: gunbc.spark_provisioning.LanReachObserved {
+fn complete_observation() -> gunbc.spark.provisioning.PostSetupObservation {
+  gunbc.spark.provisioning.PostSetupObservation {
+    account: gunbc.spark.provisioning.AccountObserved { name: "briansrls" },
+    lan_reach: gunbc.spark.provisioning.LanReachObserved {
       address: fixture_address()
     },
     setup_surface: gunbc.spark.provisioning.SetupSurfaceCompleted,
@@ -121,10 +121,10 @@ fn complete_observation() -> gunbc.spark_provisioning.PostSetupObservation {
   }
 }
 
-fn observation_missing_account() -> gunbc.spark_provisioning.PostSetupObservation {
-  gunbc.spark_provisioning.PostSetupObservation {
+fn observation_missing_account() -> gunbc.spark.provisioning.PostSetupObservation {
+  gunbc.spark.provisioning.PostSetupObservation {
     account: gunbc.spark.provisioning.AccountNotObserved,
-    lan_reach: gunbc.spark_provisioning.LanReachObserved {
+    lan_reach: gunbc.spark.provisioning.LanReachObserved {
       address: fixture_address()
     },
     setup_surface: gunbc.spark.provisioning.SetupSurfaceCompleted,
@@ -132,10 +132,10 @@ fn observation_missing_account() -> gunbc.spark_provisioning.PostSetupObservatio
   }
 }
 
-fn observation_missing_software() -> gunbc.spark_provisioning.PostSetupObservation {
-  gunbc.spark_provisioning.PostSetupObservation {
-    account: gunbc.spark_provisioning.AccountObserved { name: "briansrls" },
-    lan_reach: gunbc.spark_provisioning.LanReachObserved {
+fn observation_missing_software() -> gunbc.spark.provisioning.PostSetupObservation {
+  gunbc.spark.provisioning.PostSetupObservation {
+    account: gunbc.spark.provisioning.AccountObserved { name: "briansrls" },
+    lan_reach: gunbc.spark.provisioning.LanReachObserved {
       address: fixture_address()
     },
     setup_surface: gunbc.spark.provisioning.SetupSurfaceCompleted,
@@ -148,9 +148,9 @@ fn observation_missing_software() -> gunbc.spark_provisioning.PostSetupObservati
 // the arm it lands on is interrupted rather than refused — nothing rejected anything.
 // The receipt exists only on the far side of a complete observation.
 test fn spark_completion_requires_observation_never_intent() -> Bool {
-  let complete = classify_tag(progress: gunbc.spark_provisioning.ProgressPostSetupObserved { observation: complete_observation() })
-  let no_account = classify_tag(progress: gunbc.spark_provisioning.ProgressPostSetupObserved { observation: observation_missing_account() })
-  let no_software = classify_tag(progress: gunbc.spark_provisioning.ProgressPostSetupObserved { observation: observation_missing_software() })
+  let complete = classify_tag(progress: gunbc.spark.provisioning.ProgressPostSetupObserved { observation: complete_observation() })
+  let no_account = classify_tag(progress: gunbc.spark.provisioning.ProgressPostSetupObserved { observation: observation_missing_account() })
+  let no_software = classify_tag(progress: gunbc.spark.provisioning.ProgressPostSetupObserved { observation: observation_missing_software() })
 
   complete == "provisioned"
     && no_account == "interrupted"
@@ -175,7 +175,7 @@ test fn spark_receipt_software_comes_from_the_device() -> Bool {
   let outcome = classify_spark_progress(
     intent: fixture_intent(),
     phase: gunbc.spark.provisioning.PhasePostSetupAccess,
-    progress: gunbc.spark_provisioning.ProgressPostSetupObserved { observation: complete_observation() }
+    progress: gunbc.spark.provisioning.ProgressPostSetupObserved { observation: complete_observation() }
   )
   let documented = update_tag(d: dgx_spark_documented_initial_update)
 
@@ -192,11 +192,11 @@ test fn spark_receipt_software_comes_from_the_device() -> Bool {
 
 // The four outcome arms stay four.
 test fn spark_outcome_arms_stay_distinct() -> Bool {
-  let success = classify_tag(progress: gunbc.spark_provisioning.ProgressPostSetupObserved { observation: complete_observation() })
+  let success = classify_tag(progress: gunbc.spark.provisioning.ProgressPostSetupObserved { observation: complete_observation() })
   let reboot = classify_tag(progress: gunbc.spark.provisioning.ProgressAwaitingDocumentedReboot)
-  let prerequisite = classify_tag(progress: gunbc.spark_provisioning.ProgressPrerequisiteNotYetReached { prerequisite: "network join" })
+  let prerequisite = classify_tag(progress: gunbc.spark.provisioning.ProgressPrerequisiteNotYetReached { prerequisite: "network join" })
   let human = classify_tag(progress: ProgressAwaitingHuman { intervention: sample_intervention() })
-  let rejected = classify_tag(progress: gunbc.spark_provisioning.ProgressDeviceRejectedField { field: "username" })
+  let rejected = classify_tag(progress: gunbc.spark.provisioning.ProgressDeviceRejectedField { field: "username" })
 
   success == "provisioned"
     && reboot == "interrupted"
@@ -209,14 +209,14 @@ test fn spark_outcome_arms_stay_distinct() -> Bool {
     && human != success
 }
 
-fn burden_tag(d: gunbc.spark_provisioning.HumanBurdenDerivation) -> String {
+fn burden_tag(d: gunbc.spark.provisioning.HumanBurdenDerivation) -> String {
   match d {
     BurdenDerived { burden: _ } => "derived"
     BurdenUndecidable { cause: _ } => "undecidable"
   }
 }
 
-fn burden_count_at(d: gunbc.spark_provisioning.HumanBurdenDerivation, frequency: std.human_intervention.HumanInterventionFrequency) -> Int {
+fn burden_count_at(d: gunbc.spark.provisioning.HumanBurdenDerivation, frequency: std.human_intervention.HumanInterventionFrequency) -> Int {
   match d {
     BurdenDerived { burden: burden } =>
       human_intervention_count_at(burden: burden, frequency: frequency)
@@ -266,7 +266,7 @@ test fn spark_burden_is_not_a_property_of_the_strategy_red_control() -> Bool {
   ready_count != absent_count
 }
 
-fn selection_tag(env: gunbc.spark_provisioning.SparkProvisioningEnvironment) -> String {
+fn selection_tag(env: gunbc.spark.provisioning.SparkProvisioningEnvironment) -> String {
   match select_spark_strategy(a: oobe_strategy(), b: pxe_strategy(), env: env, credentials: fixture_credentials()) {
     StrategySelectionUndecidable { cause: _ } => "undecidable"
     StrategySelected { strategy: strategy } => match strategy {
@@ -324,7 +324,7 @@ test fn spark_credentials_are_carried_never_derived() -> Bool {
 // edit and no second one to drift away from it.
 // A pending standing has NO secret name to read, which is the point: nothing can extract a
 // reference from a credential no producer has materialized.
-fn credential_secret_name(standing: gunbc.spark_bootstrap_credential.SparkCredentialStanding) -> String {
+fn credential_secret_name(standing: gunbc.spark.bootstrap_credential.SparkCredentialStanding) -> String {
   match standing {
     CredentialMaterialized { ref: r } => r.secret as String
     CredentialMaterializationPending => "<pending>"
@@ -347,7 +347,7 @@ test fn spark_production_credentials_are_pending() -> Bool {
        }
 }
 
-fn strategy_carries_no_second_credential_copy(s: gunbc.spark_provisioning.SparkProvisioningStrategy) -> Bool {
+fn strategy_carries_no_second_credential_copy(s: gunbc.spark.provisioning.SparkProvisioningStrategy) -> Bool {
   match s {
     FactoryOobe { bootstrap: bootstrap } =>
       (bootstrap.access_point_identity.ssid as String) == "spark-a3ee"
@@ -380,7 +380,7 @@ test fn spark_interventions_declare_no_discharge_site() -> Bool {
     && completion_evidence_tag(e: spark_pxe_recovery_intervention().completion_evidence) == "no-discharge-site"
 }
 
-data clean_sensitive_run: gunbc.spark_bootstrap_credential.SensitiveRunObservation = gunbc.spark_bootstrap_credential.SensitiveRunObservation {
+data clean_sensitive_run: gunbc.spark.bootstrap_credential.SensitiveRunObservation = gunbc.spark.bootstrap_credential.SensitiveRunObservation {
   secret_present_in_argv: false,
   secret_present_in_standard_streams: false,
   trace_active_during_fill: false,
@@ -390,7 +390,7 @@ data clean_sensitive_run: gunbc.spark_bootstrap_credential.SensitiveRunObservati
   credential_found_in_evidence_corpus_scan: false,
 }
 
-data leaking_sensitive_run: gunbc.spark_bootstrap_credential.SensitiveRunObservation = gunbc.spark_bootstrap_credential.SensitiveRunObservation {
+data leaking_sensitive_run: gunbc.spark.bootstrap_credential.SensitiveRunObservation = gunbc.spark.bootstrap_credential.SensitiveRunObservation {
   secret_present_in_argv: false,
   secret_present_in_standard_streams: false,
   trace_active_during_fill: false,
@@ -400,7 +400,7 @@ data leaking_sensitive_run: gunbc.spark_bootstrap_credential.SensitiveRunObserva
   credential_found_in_evidence_corpus_scan: true,
 }
 
-data argv_leaking_run: gunbc.spark_bootstrap_credential.SensitiveRunObservation = gunbc.spark_bootstrap_credential.SensitiveRunObservation {
+data argv_leaking_run: gunbc.spark.bootstrap_credential.SensitiveRunObservation = gunbc.spark.bootstrap_credential.SensitiveRunObservation {
   secret_present_in_argv: true,
   secret_present_in_standard_streams: false,
   trace_active_during_fill: false,
@@ -410,15 +410,15 @@ data argv_leaking_run: gunbc.spark_bootstrap_credential.SensitiveRunObservation 
   credential_found_in_evidence_corpus_scan: false,
 }
 
-fn sensitive_use() -> gunbc.spark_bootstrap_credential.SensitiveBrowserInputUse {
-  gunbc.spark_bootstrap_credential.SensitiveBrowserInputUse {
+fn sensitive_use() -> gunbc.spark.bootstrap_credential.SensitiveBrowserInputUse {
+  gunbc.spark.bootstrap_credential.SensitiveBrowserInputUse {
     secret_ref: spark_secret_ref(project: fixture_project, name: "fixture-hotspot"),
-    field_identity: "captive-portal-wifi-password" as gunbc.spark_bootstrap_credential.SensitiveFieldIdentity,
-    evidence_policy: gunbc.spark_bootstrap_credential.RetainNoDomNoHarNoTrace { retain_transition_result_only: true },
+    field_identity: "captive-portal-wifi-password" as gunbc.spark.bootstrap_credential.SensitiveFieldIdentity,
+    evidence_policy: gunbc.spark.bootstrap_credential.RetainNoDomNoHarNoTrace { retain_transition_result_only: true },
   }
 }
 
-fn admission_tag(obs: gunbc.spark_bootstrap_credential.SensitiveRunObservation) -> String {
+fn admission_tag(obs: gunbc.spark.bootstrap_credential.SensitiveRunObservation) -> String {
   match admit_sensitive_browser_input(use: sensitive_use(), observation: obs) {
     SensitiveInputAdmitted { use: _ } => "admitted"
     SensitiveInputRefused { cause: _, evidence_disposition: d } =>

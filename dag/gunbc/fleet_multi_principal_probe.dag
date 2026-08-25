@@ -180,8 +180,8 @@ fn agent_backed_principal_observation(
   credential_identity: std.content_hash.ContentHash,
   host: String,
   principal: String,
-) -> gunbc.spark_managed_access_bootstrap.PrincipalReachObservation {
-  gunbc.spark_managed_access_bootstrap.PrincipalReachObservation {
+) -> gunbc.spark.managed_access_bootstrap.PrincipalReachObservation {
+  gunbc.spark.managed_access_bootstrap.PrincipalReachObservation {
     host: host as product.placement_supply.HostIdentity,
     principal_login_name: principal as std.types.NonEmptyStr,
     credential_identity: credential_identity,
@@ -321,7 +321,7 @@ func fleet_multi_principal_probe_with_attempt(attempt_raw: String) -> std.proces
 {
   let now = gunbc.clock_read.clock_now_probed_at()
   let token_source = gunbc.auth.access_token_source.GcloudPrintToken
-  gunbc.spark_credential_workflow.run_with_materialized_fleet_ssh_binding(
+  gunbc.spark.credential_workflow.run_with_materialized_fleet_ssh_binding(
     attempt_raw: attempt_raw,
     token_source: token_source,
     body: fn(credential) {
@@ -460,7 +460,7 @@ fn spark_exact_grant_report(context: gunbc.fleet_known_hosts_anchor.FleetSshExec
 func spark_exact_grant_probe_wet(attempt_raw: String) -> std.process.ProcessExit
   uses net: std.resources.Network
 {
-  gunbc.spark_credential_workflow.run_with_materialized_fleet_ssh_binding(
+  gunbc.spark.credential_workflow.run_with_materialized_fleet_ssh_binding(
     attempt_raw: attempt_raw,
     token_source: gunbc.auth.access_token_source.GcloudPrintToken,
     body: fn(credential) {
@@ -499,10 +499,10 @@ fn principal_observation(
   credential_identity: std.content_hash.ContentHash,
   host: String,
   principal: String,
-) -> gunbc.spark_managed_access_bootstrap.PrincipalReachObservation {
+) -> gunbc.spark.managed_access_bootstrap.PrincipalReachObservation {
   let reach = probe_leg(context: context, host: host, principal: principal, raw_words: ["hostname"])
   let sudo = probe_leg(context: context, host: host, principal: principal, raw_words: ["sudo", "-n", "-l"])
-  gunbc.spark_managed_access_bootstrap.PrincipalReachObservation {
+  gunbc.spark.managed_access_bootstrap.PrincipalReachObservation {
     host: host as product.placement_supply.HostIdentity,
     principal_login_name: principal as std.types.NonEmptyStr,
     credential_identity: credential_identity,
@@ -511,7 +511,7 @@ fn principal_observation(
   }
 }
 
-fn spark_standing_line(standing: gunbc.spark_managed_access_bootstrap.SparkManagedAccessStanding) -> String {
+fn spark_standing_line(standing: gunbc.spark.managed_access_bootstrap.SparkManagedAccessStanding) -> String {
   match standing {
     ManagedAccessGrounded { occurrence: o } =>
       join(["standing host=", o.host as String, " managed-access=GROUNDED\n"], "")
@@ -525,20 +525,20 @@ fn spark_standing_line(standing: gunbc.spark_managed_access_bootstrap.SparkManag
 // The authorization is DERIVED and printed, never asked. What reaches the operator is the exact
 // effect population requiring privilege -- not the question "does this need root", which nobody can
 // evaluate without the list.
-fn spark_authorization_lines(standing: gunbc.spark_managed_access_bootstrap.SparkManagedAccessStanding, credential_identity: std.content_hash.ContentHash) -> String {
-  match gunbc.spark_managed_access_bootstrap.derive_spark_bootstrap_plan(standing: standing, fleet_public_material_identity: credential_identity) {
+fn spark_authorization_lines(standing: gunbc.spark.managed_access_bootstrap.SparkManagedAccessStanding, credential_identity: std.content_hash.ContentHash) -> String {
+  match gunbc.spark.managed_access_bootstrap.derive_spark_bootstrap_plan(standing: standing, fleet_public_material_identity: credential_identity) {
     Absent => ""
     Present { value: plan } => {
-      let effects = join(map(gunbc.spark_managed_access_bootstrap.spark_bootstrap_plan_effects(plan: plan), e =>
-        join(["  effect ", gunbc.spark_managed_access_bootstrap.spark_bootstrap_effect_label(effect: e), "\n"], "")), "")
-      match gunbc.spark_managed_access_bootstrap.authorize_spark_bootstrap(plan: plan) {
+      let effects = join(map(gunbc.spark.managed_access_bootstrap.spark_bootstrap_plan_effects(plan: plan), e =>
+        join(["  effect ", gunbc.spark.managed_access_bootstrap.spark_bootstrap_effect_label(effect: e), "\n"], "")), "")
+      match gunbc.spark.managed_access_bootstrap.authorize_spark_bootstrap(plan: plan) {
         BootstrapProceedsUnprivileged { plan: _ } =>
           join(["authorization host=", plan.host as String, " UNPRIVILEGED\n", effects], "")
         OperatorBootstrapCredentialRequired { host: h, first_privileged: f, more_privileged: m, secret_purpose: p } =>
           join([
             "authorization host=", h as String, " OPERATOR-CREDENTIAL-REQUIRED privileged_effects=",
             to_string(1 + length(m)), "\n  purpose ", p as String, "\n", effects,
-            "  first-privileged ", gunbc.spark_managed_access_bootstrap.spark_bootstrap_effect_label(effect: f), "\n",
+            "  first-privileged ", gunbc.spark.managed_access_bootstrap.spark_bootstrap_effect_label(effect: f), "\n",
           ], "")
       }
     }
@@ -569,7 +569,7 @@ func spark_managed_access_standing_wet() -> std.process.ProcessExit
 // at all and the func exited 0 whatever it observed (found while fixing the sibling defect in
 // review 51704). ManagedAccessBootstrapRequired is a real observation and stays a success; only
 // ManagedAccessUnobserved -- no reachable principal, so nothing was measured -- fails.
-fn spark_standing_unobserved_host(standings: List<gunbc.spark_managed_access_bootstrap.SparkManagedAccessStanding>) -> String? {
+fn spark_standing_unobserved_host(standings: List<gunbc.spark.managed_access_bootstrap.SparkManagedAccessStanding>) -> String? {
   fold(standings, init: none, f: fn(acc, standing) {
     match acc {
       Present { value: _ } => acc
@@ -638,7 +638,7 @@ func spark_managed_access_standing_with_verified_credential(
         principal: p,
       )))
   let standings = map(spark_standing_hosts, h =>
-    gunbc.spark_managed_access_bootstrap.derive_spark_managed_access_standing(host: h as product.placement_supply.HostIdentity, observations: observations))
+    gunbc.spark.managed_access_bootstrap.derive_spark_managed_access_standing(host: h as product.placement_supply.HostIdentity, observations: observations))
   let body = join([
     join([
       "spark managed-access standing probed_at=", probed_at_word(reading: now) as String,
