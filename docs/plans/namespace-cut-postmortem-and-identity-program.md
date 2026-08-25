@@ -2345,22 +2345,39 @@ than a parse refusal:
   the variable rather than qualification.
 - **A qualified record literal in a `let` RHS is `source_normalization_rejected`**
   — the same leftover, one stage later.
-- **A qualified record literal AS A CALL ARGUMENT parses clean and refuses at no
-  rung**, because the orphaned brace group is itself a valid primary expression
-  and the argument list accepts it. That is the same defect delivering a **wrong
-  program instead of a diagnostic** — below floor, and the argument for a cause
-  ladder over a `Bool`.
+- **A qualified record literal AS A CALL ARGUMENT does not refuse at any rung**,
+  where its match-arm and `let`-RHS siblings do. **That is the measured claim and
+  it is deliberately weaker than the one this row first carried.** An earlier
+  revision said the argument list absorbs the orphaned brace group as an extra
+  argument, delivering a *wrong program instead of a diagnostic*. `fierce-ram-94`
+  narrowed that unprompted: the absorption is an inference read off the grammar
+  (`arg_expr` admits a bare expr, and a brace group is a valid primary), and **no
+  one has inspected the resulting parse tree.** Not-refusing-where-siblings-refuse
+  is measured and is already enough to justify a cause ladder over a `Bool`;
+  wrong-program is a reading of the mechanism and is labelled as one until
+  somebody reads the tree. What settles it is cheap — parse
+  `src/v2/test/fixture/tail_construct/f16_qualified_record_call_arg.txt` through
+  the v2 grammar and count the arg captures under the call node: one means the
+  brace bound to the declared parameter and the cell is benign-but-lucky, two
+  means the argument list absorbed it. The fix does not depend on the answer;
+  post-fix the cell is established either way.
 
-*Attempted independent reproduction of the last cell, reported because it did NOT
-reproduce and the difference is informative rather than exculpatory.* On a
-pre-fix binary, `take(a: 1, b: probe.prov.Rec { x: 2 })` — arity 2, both
-arguments NAMED — parses clean, emits `take(1, Rec { x: 2 })`, and is **correct**:
-0 blocking, 1 advisory (an unrelated `unlisted import use`). So the wrong-program
-cell is not reached by every qualified-record-literal-in-argument-position; the
-triggering construction is narrower than the description, and what distinguishes
-it is unestablished here. This is a narrowing of the trigger, **not** a
-refutation of the finding — the lane that measured it has the cell and this
-document does not.
+*An attempted independent reproduction of that cell is WITHDRAWN, and the reason
+is worth more than the attempt.* A fixture was compiled with `gunbc compile
+--entry`, came back correct, and was filed here as a narrowing of the trigger.
+**It measured a different parser.** `gunbc compile` is served by `cli_run.rs`,
+which reaches `v1_compiler_parse` — verified, 14 references — and contains **zero**
+references to `dag_language_model`. The v2 modeled grammar is reachable only from
+`.dag` code that calls `dag_language_model()` and hands the token stream to
+`parse_module`/`parse_production`, which is what every cell of the matrix does.
+So v1 accepts a qualified record literal in every position, the run disconfirmed
+nothing, and arity/naming/positional-versus-named are not implicated — **the
+discriminator is which parser ran.** This is also why the whole class stayed
+invisible: `analyze.dag` sits in the required parse sweep and has always been
+green there, while the v2 parser could not read it. The v2 instrument is
+`gunbc run --source-root dag --source-root src/v2 --entry
+src/v2/test/claim/manual/tail_construct_parse_probe.dag --function
+tcp_f16_qualified_record_call_arg`.
 
 **Two limits the PR declares rather than implies.** Its fixtures are `.txt` not
 `.dag` deliberately: as `.dag` the floor resolves and typechecks them with the
