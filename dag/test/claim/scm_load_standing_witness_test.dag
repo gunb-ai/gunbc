@@ -22,9 +22,10 @@ import gunbc.scm.load_standing {
   LoadDocumentMalformed, LoadIdentityCollision,
   standing_may_supersede_generation, standing_loaded,
 }
+import gunbc.scm.json_member { MemberReadSubjectNotObject }
 import gunbc.scm.commit_closure_json_v2 {
   ClosureDocRefusal, ClosureDocFormatUnrecognized, ClosureDocObjectCollision,
-  ClosureDocNotAnObject, ClosureDocMemberMissing, ClosureDocUnknownKindTag,
+  ClosureDocMemberReadRefused, ClosureDocUnknownKindTag,
   ClosureDocUnexpectedMember, ClosureDocEnvelopeMembers, ClosureDocEdgeTargetUnresolved,
   ClosureDocTargetNotOneArm,
   closure_document_load_standing, loaded_closure_standing,
@@ -144,7 +145,9 @@ test fn an_honest_collision_is_its_own_standing_and_never_supersedes() -> Bool {
   let collision = closure_document_load_standing(
     cause: ClosureDocObjectCollision { identity: ls_full().root }
   )
-  let malformed = closure_document_load_standing(cause: ClosureDocNotAnObject)
+  let malformed = closure_document_load_standing(
+    cause: ClosureDocMemberReadRefused { cause: MemberReadSubjectNotObject }
+  )
   standing_eq(a: collision, b: LoadIdentityCollision)
     && standing_eq(a: malformed, b: LoadDocumentMalformed)
     && !standing_may_supersede_generation(standing: collision)
