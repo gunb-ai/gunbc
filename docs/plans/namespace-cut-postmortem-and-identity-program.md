@@ -1976,21 +1976,46 @@ is real — and it governs the **multi-candidate** case only. A single candidate
 short-circuits ahead of it and resolves from anywhere, no prefix relationship
 required.
 
-**"Loaded" is relative to the loader the caller selected, and that qualification
-is load-bearing rather than pedantic** (`warm-hawk-909`, 2026-08-25). The
-fixpoint loader admits providers by BARE reference — a bare reference is a
-closure edge, with a receipt in its own comment (ref-only 3 unresolved-type
-diagnostics, plus-bare 0) — while the raw-pair loader stays the dotted-only base
-for callers without a pool index. So there are **two membership relations,
-selected by the caller**, and a law stated as "the loaded census" without naming
-which loader loaded it is one hop from the over-generalization this document has
-corrected twice tonight. It is also the standing explanation for why the
-two-module fixture refused under both flag forms and why the witness's
-absent-from-closure arm refuses at all. **The relation is unmeasured**: the
-discriminator is one run — the same fixture through a caller with a pool index
-and one without, entry and provider held fixed. §11.2j's arm 1 measured the
-`gunbc compile --entry` path at the default `--dependency-pool-index strict`
-only, so it establishes one cell of that table and not the comparison. Each of the three names is presumably corpus-unique, so each is a
+**A referencing file originates bare closure edges ONLY IF IT DECLARES NO IMPORT
+LINE — and this is the qualification the law needs.** `cli_run.rs`
+`build_both_closure_edge_index` inserts each file's dotted-reference edges and
+then `if source_declares_import_lines(&sf.content) { continue; }` before
+populating its bare edges; the field's own doc reads *"Import-stripped files that
+may originate bare-reference edges."* So for any file still carrying an import
+line, a bare reference originates no closure edge at all. Found by
+`deep-ant-102`, re-verified by `warm-hawk-909`, and **confirmed here by
+execution** — same fixture, same binary, one line changed:
+
+| entry declares | result |
+|---|---|
+| no import | `resolved 2 sources` — provider pulled, `unique_name` **resolves**, 7 files emitted, 0 diagnostics |
+| one import, of an *unrelated* carrier | `resolved 2 sources` (entry + carrier) — provider NOT pulled, `undefined variable 'unique_name'` |
+
+An import of a module having nothing to do with the reference switches bare-edge
+origination off and breaks a name that resolved without it. That closes the gap
+both lanes flagged: the one-rule explanation was their reading of two fixtures,
+and it is now measured.
+
+*(An earlier revision of this paragraph carried a different qualification —
+"loaded is relative to the loader the caller selected," resting on a two-loader
+hypothesis. `warm-hawk-909` withdrew it: the dotted-only base has three call
+sites and none is a compile route, so the loader is not the variable. Recorded
+rather than silently replaced, because the paragraph is now on its third pass and
+a reader should see that the first two were narrower than the mechanism.)*
+
+**The consequence for this program is the opposite of the intuition, and it is
+per-wave rather than terminal.** Import-strippedness is what the cut PRODUCES, so
+every module the cut takes to zero imports becomes bare-scan-eligible and begins
+originating bare closure edges it did not originate before. **A module's closure
+can GROW when its imports are deleted.** Measured on this head: `dag/` 2660 files
+with 334 eligible, `src/v2/` 1273 with 316 — 650 of 3933, 16.5%. The end state
+drives that toward all of them. Two rulings follow, both `warm-hawk-909`'s and
+both accepted here: `ClosureBoundResolution` is reclassified from a post-cut
+repair to a **cut prerequisite**, since scheduling it after the event that makes
+the behaviour universal is scheduled backwards; and **each wave must state its
+closure delta rather than leave it inferred** — the eligible-count before and
+after, and the entry closures it moves. A wave that silently doubles a required
+phase's subject is otherwise discovered at merge. Each of the three names is presumably corpus-unique, so each is a
 one-candidate case. And the census is built over `graph.modules`, which line 3
 shows includes the 1062 modules that are **indexed but never compiled**; under
 `--entry` the census covers the closure only, so the same names are absent and
