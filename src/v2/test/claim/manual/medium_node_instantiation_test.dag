@@ -1,5 +1,7 @@
 module v2.test.manual.medium_node_instantiation
 
+import v2.extdeps.runtimes.v2_evaluator { v2_eval_bool_literal_pin }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn medium_node_lossless() -> Medium<Node> {

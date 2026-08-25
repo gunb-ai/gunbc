@@ -1003,7 +1003,7 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "space-lens-minimal-project",
-    primary_work: DeclarationRef { module_path: "gunbc.fleet_container", decl_name: "ResourceEnvelope", field: WholeDeclaration },
+    primary_work: DeclarationRef { module_path: "product.fabric.envelope", decl_name: "ResourceEnvelope", field: WholeDeclaration },
     additional_works: [
       DeclarationRef { module_path: "std.realization_schedule", decl_name: "cost_account_predicted_zero", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.ci_input_envelope", decl_name: "InputEnvelope", field: WholeDeclaration },

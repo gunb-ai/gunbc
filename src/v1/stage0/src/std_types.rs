@@ -7,8 +7,11 @@ use self::DocSourceKind::*;
 use self::FermiDepth::*;
 use self::HttpMethod::*;
 use self::TopologyNodeKind::*;
-pub use crate::std_algebra::{algebra_type_param_names, kernel_algebra_profile};
-pub use crate::std_algebra::{FreeMonoid, PartialFunction, PointwisePower};
+pub use crate::std_algebra::{
+    algebra_type_param_names, carrier_container_algebra_rows, carrier_container_alias_rows,
+    carrier_container_arity_rows, carrier_container_roster_map, kernel_algebra_profile,
+};
+pub use crate::std_algebra::{FinitePowerSet, FinitelySupportedFunction, FreeMonoid};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -44,12 +47,7 @@ pub fn is_kernel_type(name: String) -> bool {
 pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, i64>> = {
-            let mut __m = HashMap::new();
-            __m.insert("List".to_string(), 1);
-            __m.insert("Set".to_string(), 1);
-            __m.insert("Map".to_string(), 2);
-            __m.insert("Witness".to_string(), 1);
-            Rc::new(__m)
+            v1_rt::rc_map_insert(carrier_container_arity_rows(), "Witness".to_string(), 1)
         };
     }
     CACHED.with(|c: &Rc<HashMap<String, i64>>| c.clone())
@@ -136,22 +134,7 @@ pub fn is_ordered_element_collection(name: String) -> bool {
 pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
-            let mut __m = HashMap::new();
-            __m.insert("List".to_string(), "FreeMonoid".to_string());
-            __m.insert("list".to_string(), "FreeMonoid".to_string());
-            __m.insert("Set".to_string(), "PointwisePower".to_string());
-            __m.insert("set".to_string(), "PointwisePower".to_string());
-            __m.insert("Map".to_string(), "PartialFunction".to_string());
-            __m.insert("map".to_string(), "PartialFunction".to_string());
-            __m.insert("FreeMonoid".to_string(), "FreeMonoid".to_string());
-            __m.insert("free_monoid".to_string(), "FreeMonoid".to_string());
-            __m.insert("BooleanAlgebra".to_string(), "BooleanAlgebra".to_string());
-            __m.insert("boolean_algebra".to_string(), "BooleanAlgebra".to_string());
-            __m.insert("PartialFunction".to_string(), "PartialFunction".to_string());
-            __m.insert("partial_function".to_string(), "PartialFunction".to_string());
-            __m.insert("PointwisePower".to_string(), "PointwisePower".to_string());
-            __m.insert("pointwise_power".to_string(), "PointwisePower".to_string());
-            Rc::new(__m)
+            carrier_container_algebra_rows()
         };
     }
     CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
@@ -160,14 +143,7 @@ pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
 pub fn container_template_alias_rows() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
-            let mut __m = HashMap::new();
-            __m.insert("List".to_string(), "FreeMonoid".to_string());
-            __m.insert("list".to_string(), "FreeMonoid".to_string());
-            __m.insert("Set".to_string(), "PointwisePower".to_string());
-            __m.insert("set".to_string(), "PointwisePower".to_string());
-            __m.insert("Map".to_string(), "PartialFunction".to_string());
-            __m.insert("map".to_string(), "PartialFunction".to_string());
-            Rc::new(__m)
+            carrier_container_alias_rows()
         };
     }
     CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
@@ -182,15 +158,11 @@ pub fn container_template_alias_algebra(name: String) -> Option<String> {
 }
 
 pub fn canonical_container_names() -> Rc<Vec<String>> {
-    Rc::new(vec![
-        "BooleanAlgebra".to_string(),
-        "FreeMonoid".to_string(),
-        "List".to_string(),
-        "Map".to_string(),
-        "PartialFunction".to_string(),
-        "Set".to_string(),
+    Rc::new(v1_rt::sorted_map_keys(&v1_rt::rc_map_insert(
+        carrier_container_roster_map(),
         "Witness".to_string(),
-    ])
+        true,
+    )))
 }
 
 #[derive(
@@ -219,12 +191,12 @@ pub type Char = i64;
 
 pub type List<Element> = Vec<Element>;
 
-pub type Set<Element> = Rc<crate::std_algebra::PointwisePower<Element>>;
+pub type Set<Element> = Rc<crate::std_algebra::FinitePowerSet<Element>>;
 
-pub type Map<Key, Value> = Rc<crate::std_algebra::PartialFunction<Key, Value>>;
+pub type Map<Key, Value> = Rc<crate::std_algebra::FinitelySupportedFunction<Key, Value>>;
 
 pub fn list_length<T: Clone>(items: Rc<Vec<T>>) -> i64 {
-    items.iter().fold(0, |acc: i64, _: _| (acc + 1))
+    items.iter().fold(0, |acc: i64, _| (acc + 1))
 }
 
 pub type CommitSha = String;

@@ -1841,8 +1841,8 @@ struct ClaimResult {
     /// failure mode has to be recovered by substring-matching `detail` — which is what
     /// `falsifier_failure_mode` did, and its fallback arm is `WitnessRed`, so a reworded
     /// message silently demoted a budget refusal to a witness failure. This keeps the fact
-    /// as data on the path that needs it. It is a projection of `ClaimOutcome::TimedOut`,
-    /// not a second authority: nothing sets it except the `TimedOut` arm below.
+    /// as data on the path that needs it. It is a projection of the two budget arms of
+    /// `ClaimOutcome`, not a second authority: nothing sets it except those arms below.
     budget_refusal: Option<BudgetRefusal>,
     /// Set when a wet witness refused because a host CLI dependency was absent on PATH
     /// before execution. Parsed from the failure-receipt wire
@@ -2106,14 +2106,8 @@ impl ExpectedRedDisposition {
             // before any caller of `run_batch_unit`, so CI does not execute this path at all.
             // Losing a cost signal on a retiring surface is the right trade; reporting a
             // passing row as undecided is not.
-            ClaimOutcome::TimedOut {
-                completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
-                ..
-            } => Self::BudgetFailure,
-            ClaimOutcome::TimedOut {
-                completion: v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget,
-                ..
-            } => Self::StaleQuarantineAssertionReturnedTrue,
+            ClaimOutcome::BudgetInterrupted { .. } => Self::BudgetFailure,
+            ClaimOutcome::CompletedOverBudget { .. } => Self::StaleQuarantineAssertionReturnedTrue,
             // A ROUTE GAP JOINS THE INFRASTRUCTURE ARM, not the assertion arm, and for the
             // same reason `HostToolUnresolved` already sits there: enrollment asserts an
             // expected VERDICT, and a claim whose route has no arm for a host effect never
@@ -2641,11 +2635,14 @@ fn claim_result_for_outcome(
             host_dependency_refusal: None,
             resolve_realization,
         },
-        ClaimOutcome::RuntimeError { message } => ClaimResult {
+        ClaimOutcome::RuntimeError { cause, message } => ClaimResult {
             function,
             entry: entry.clone(),
             ok: false,
-            detail: format!("runtime error: {}", message),
+            // The cause token leads the detail on this path too. `claim_batch` is the OTHER
+            // reader of a throw, and leaving it prose-only would rebuild the same asymmetry the
+            // floor just lost — one consumer able to partition, one not.
+            detail: format!("runtime error [{}]: {}", cause.token(), message),
             wall_nanos,
             resolve_nanos,
             corpus_resolve_nanos: 0,
@@ -2715,11 +2712,13 @@ fn claim_result_for_outcome(
             host_dependency_refusal: None,
             resolve_realization,
         },
-        ClaimOutcome::TimedOut {
-            elapsed_ms,
+        // ONE ARM PER READING. The prose used to be selected by matching a field this arm
+        // could have wildcarded away; it is now selected by which variant was constructed, so
+        // a receipt cannot say "killed ... elapsed is a ceiling" about a row that completed.
+        ClaimOutcome::BudgetInterrupted {
+            elapsed_at_least_ms,
             budget_ms,
             kind,
-            completion,
         } => ClaimResult {
             function,
             entry: entry.clone(),
@@ -2734,22 +2733,55 @@ fn claim_result_for_outcome(
             // The old comment defended the wording ("'ceiling' is deliberate"), which is how it
             // survived — a considered-looking justification for a claim that only held on one
             // arm.
-            detail: match completion {
-                v1_compiler::cli_run::BudgetCompletion::Interrupted => format!(
-                    "killed at its {} budget: at least {}ms elapsed against a {}ms budget \
-                     (interrupted, so elapsed bounds the cost and does not measure it)",
-                    kind.label(),
-                    elapsed_ms,
-                    budget_ms
-                ),
-                v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget => format!(
-                    "completed over its {} budget: exactly {}ms elapsed against a {}ms budget \
-                     (ran to completion and passed, then was reclassified on cost)",
-                    kind.label(),
-                    elapsed_ms,
-                    budget_ms
-                ),
-            },
+            detail: format!(
+                "killed at its {} budget: at least {}ms elapsed against a {}ms budget \
+                 (interrupted, so elapsed bounds the cost and does not measure it)",
+                kind.label(),
+                elapsed_at_least_ms,
+                budget_ms
+            ),
+            wall_nanos,
+            resolve_nanos,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
+            witness_row_costs: Vec::new(),
+            expectation_refusal: None,
+            budget_refusal: Some(BudgetRefusal {
+                elapsed_ms: elapsed_at_least_ms,
+                budget_ms,
+                kind,
+                completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
+            }),
+            host_dependency_refusal: None,
+            resolve_realization,
+        },
+        ClaimOutcome::CompletedOverBudget {
+            elapsed_ms,
+            budget_ms,
+            kind,
+        } => ClaimResult {
+            function,
+            entry: entry.clone(),
+            ok: false,
+            // The detail names the budget in prose for the human reading a log; `budget_refusal`
+            // beside it is what classification reads, so the mode does not depend on this
+            // wording. What the wording MUST get right is whether the number is a bound or a
+            // measurement, and it used to say "killed ... elapsed is a ceiling" unconditionally.
+            // That is true of an interrupted row and FALSE of a completed one: a
+            // `CompletedOverBudget` row ran to completion, passed, and has an exact elapsed, so
+            // asserting it was killed and censored is a fabricated fact in a durable receipt.
+            // The old comment defended the wording ("'ceiling' is deliberate"), which is how it
+            // survived — a considered-looking justification for a claim that only held on one
+            // arm.
+            detail: format!(
+                "completed over its {} budget: exactly {}ms elapsed against a {}ms budget \
+                 (ran to completion and passed, then was reclassified on cost)",
+                kind.label(),
+                elapsed_ms,
+                budget_ms
+            ),
             wall_nanos,
             resolve_nanos,
             corpus_resolve_nanos: 0,
@@ -2762,7 +2794,7 @@ fn claim_result_for_outcome(
                 elapsed_ms,
                 budget_ms,
                 kind,
-                completion,
+                completion: v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget,
             }),
             host_dependency_refusal: None,
             resolve_realization,
@@ -4100,7 +4132,7 @@ fn read_schedule_witness_entry_paths(
 /// The first budget kill among this discovery batch's witnesses, if any.
 ///
 /// Discovery is the falsifier path — it is where the incident that motivated the typed
-/// `TimedOut` actually lives (`resolution_divergence_silent_pick_gate_keystone_holds` is a
+/// budget arms actually live (`resolution_divergence_silent_pick_gate_keystone_holds` is a
 /// discovery row). A discovery batch flattens N witness outcomes into one `ok`/`detail`
 /// pair, so without lifting the refusal out of `witness_outcomes` the batch would carry
 /// `budget_refusal: None`, miss the structural path in `batch_failure_mode_and_detail`, and
@@ -4111,19 +4143,15 @@ fn discovery_budget_refusal(summary: &DiscoverySummary) -> Option<BudgetRefusal>
     summary
         .witness_outcomes
         .iter()
-        .find_map(|w| match w.outcome {
-            ClaimOutcome::TimedOut {
-                elapsed_ms,
-                budget_ms,
-                kind,
-                completion,
-            } => Some(BudgetRefusal {
-                elapsed_ms,
-                budget_ms,
-                kind,
-                completion,
-            }),
-            _ => None,
+        // Both budget arms lift, through the projection rather than a wildcard: this carrier
+        // keeps the axis as data, so it wants the pair, not one of the two arms.
+        .find_map(|w| {
+            w.outcome.budget_event().map(|event| BudgetRefusal {
+                elapsed_ms: event.elapsed_ms,
+                budget_ms: event.budget_ms,
+                kind: event.kind,
+                completion: event.completion,
+            })
         })
 }
 
@@ -4201,27 +4229,34 @@ fn scoped_witness_summary_outcome(
                     v1_compiler::cli_run::hermetic_effect_ground_label(ground)
                 ),
             ),
-            ClaimOutcome::TimedOut {
+            // "budget-killed" was unconditional and is only true of an interrupted row; a
+            // completed one passed and was reclassified on an exact cost. The tag is what
+            // downstream reads, so a wrong tag is worse than wrong prose — and it is now the ARM
+            // that selects the tag, so the two cannot be given one name by a wildcard.
+            ClaimOutcome::BudgetInterrupted {
+                elapsed_at_least_ms,
+                budget_ms,
+                kind,
+            } => (
+                "budget-killed",
+                format!(
+                    "{} elapsed_ms={} budget_ms={} elapsed_is=at least",
+                    kind.label(),
+                    elapsed_at_least_ms,
+                    budget_ms
+                ),
+            ),
+            ClaimOutcome::CompletedOverBudget {
                 elapsed_ms,
                 budget_ms,
                 kind,
-                completion,
             } => (
-                // "budget-killed" was unconditional and is only true of an interrupted row; a
-                // completed one passed and was reclassified on an exact cost. The tag is what
-                // downstream reads, so a wrong tag is worse than wrong prose.
-                match completion {
-                    v1_compiler::cli_run::BudgetCompletion::Interrupted => "budget-killed",
-                    v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget => {
-                        "budget-exceeded-completed"
-                    }
-                },
+                "budget-exceeded-completed",
                 format!(
-                    "{} elapsed_ms={} budget_ms={} elapsed_is={}",
+                    "{} elapsed_ms={} budget_ms={} elapsed_is=exactly",
                     kind.label(),
                     elapsed_ms,
-                    budget_ms,
-                    completion.elapsed_reading()
+                    budget_ms
                 ),
             ),
         });
@@ -9915,9 +9950,12 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut required_floor_mode = false;
     let mut required_ci_mode = false;
     let mut required_cited_symbol_mode = false;
+    let mut required_v2_emission_mode = false;
+    let mut required_v2_emission_selftest_mode = false;
     let mut corpus_type_judgment_mode = false;
     let mut required_regen_mode = false;
     let mut required_regen_fixed_point_mode = false;
+    let mut heads_reading_differential_mode = false;
     let mut behavioral_receipt_plan_mode = false;
     let mut behavioral_receipt_selftest_mode = false;
     let mut behavioral_receipt_census_mode = false;
@@ -9950,11 +9988,20 @@ fn run() -> Result<ExitCode, ExitCode> {
             "--required-cited-symbol" => {
                 required_cited_symbol_mode = true;
             }
+            "--required-v2-emission" => {
+                required_v2_emission_mode = true;
+            }
+            "--required-v2-emission-selftest" => {
+                required_v2_emission_selftest_mode = true;
+            }
             "--corpus-type-judgment" => {
                 corpus_type_judgment_mode = true;
             }
             "--required-regen" => {
                 required_regen_mode = true;
+            }
+            "--heads-reading-differential" => {
+                heads_reading_differential_mode = true;
             }
             "--required-regen-fixed-point" => {
                 required_regen_fixed_point_mode = true;
@@ -10045,6 +10092,40 @@ fn run() -> Result<ExitCode, ExitCode> {
         let job = std::env::var("GITHUB_JOB").unwrap_or_else(|_| "standalone".to_string());
         emit_cgroup_measurement(&format!("job={job} (--measure-cgroup-peak)"));
         return Ok(ExitCode::SUCCESS);
+    }
+
+    // ── V2 EMISSION: TWO STANDALONE ENTRY POINTS BESIDE THE REQUIRED PHASE ──────
+    //
+    // The v2-emission transaction IS ENROLLED in `--required-ci` as phase 3 (see that
+    // mode below), on an operator ruling relayed through the requesting session
+    // 2026-08-23, at a measured +135s against the floor's ~30-40 minutes. These two
+    // flags are not an opt-in alternative to that phase and must not be read as one:
+    // they exist because running the emission alone, or running only its red/green
+    // evidence, are real local actions -- the same reason the `src/v1` .dag parse sweep
+    // keeps its own bin beside its required phase.
+    //
+    // This comment said "DELIBERATELY NOT ENROLLED" in the revision that ADDED the
+    // enrolment, which is the premise contamination DESIGN warns about rather than a
+    // stale comment: a reader grepping here would conclude the phase is opt-in when it
+    // is required. It is rewritten rather than annotated, because two accounts of one
+    // fact is what produced the contradiction.
+    //
+    // Both flags run the SAME producer the required phase runs
+    // (`cli_run::compile_entry_emission`), so a green here and a green there cannot be
+    // different facts.
+    if required_v2_emission_selftest_mode {
+        let failures = v1_compiler::cli_run::run_required_v2_emission_selftest();
+        for failure in &failures {
+            eprintln!("required-v2-emission-selftest: FAIL {failure}");
+        }
+        return if failures.is_empty() {
+            eprintln!(
+                "required-v2-emission-selftest: OK red fixture refused on the annotation cause, green fixture emitted"
+            );
+            Ok(ExitCode::SUCCESS)
+        } else {
+            Err(ExitCode::from(1))
+        };
     }
 
     // ORDERED AHEAD OF THE SOURCE-ROOT REQUIREMENT, and that ordering is load-bearing rather
@@ -10215,7 +10296,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // paragraph's re-add queue), so nothing is admitted by the absence — but the three
     // measurements above are simply not taken, which is a declared rung drop, not a silent one.
     //
-    // WHAT THE ORDER IS, AND WHY EACH PHASE RUNS ANYWAY. The three phases are independent —
+    // WHAT THE ORDER IS, AND WHY EACH PHASE RUNS ANYWAY. The four phases are independent —
     // the one real data dependency, the fixed point's need for regen's pass-1 digest, went with
     // the phase that consumed it — so every phase RUNS EVEN AFTER AN EARLIER FAILURE and the run
     // reports the complete ledger instead of letting the first defect hide the rest. The line
@@ -10225,9 +10306,18 @@ fn run() -> Result<ExitCode, ExitCode> {
         let mut phase_failures: Vec<String> = Vec::new();
         let mut ran: Vec<&'static str> = Vec::new();
 
-        // PHASE 1 — src/v1 .dag parse sweep. Independent of everything below it.
-        eprintln!("required-ci: phase parse (src/v1 .dag)");
-        match v1_compiler::cli_run::run_v1_src_dag_parse(&v1_compiler::cli_run::workspace_root()) {
+        // PHASE 1 — the .dag parse sweep, over every authored root (src/v1, dag, src/v2).
+        // Independent of everything below it. The roster is
+        // `cli_run::DAG_PARSE_SWEEP_ROOTS`, shared with the standalone bin so the cheapest
+        // local check and this phase cover the same files.
+        eprintln!(
+            "required-ci: phase parse (.dag: {})",
+            v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS.join(", ")
+        );
+        match v1_compiler::cli_run::run_dag_parse_sweep(
+            &v1_compiler::cli_run::workspace_root(),
+            &v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS,
+        ) {
             Ok(count) => eprintln!("required-ci: parse OK {count} file(s) parse-clean"),
             Err(errors) => {
                 for e in &errors {
@@ -10267,7 +10357,66 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
         ran.push("regen");
 
-        // PHASE 3 — the witness floor. Independent; runs whatever happened above.
+        // PHASE 3 — v2 emission. ENROLLED 2026-08-23 on an operator ruling relayed through
+        // the requesting session, after the 2026-08-23 break reached main and stayed for
+        // hours with every required phase green: the required run parses src/v1 .dag,
+        // compares the regen mirrors and folds the floor, and NONE OF THE THREE COMPILES A
+        // v2 ENTRY. Measured cost +135s against the floor's ~30-40 minutes.
+        //
+        // ORDERED AHEAD OF THE FLOOR, and the ordering is a report-order fact only: the
+        // phases stay independent and every one runs even after an earlier failure, so
+        // this does not stop the floor starting on an unemittable tree. Making it an early
+        // PREREQUISITE (an exit before the floor) is a scheduling decision that belongs to
+        // the operator with the number attached, and it would change this mode's
+        // stopped-line audit design, so it is not taken here.
+        //
+        // The subject is the SAME PRODUCER the cargo board runs
+        // (cli_run::compile_entry_emission, which `gunbc compile --entry` also calls), so
+        // a green here and an emitting board are one fact rather than two.
+        eprintln!("required-ci: phase v2-emission (one entry, the board's producer)");
+        match v1_compiler::cli_run::run_required_v2_emission(&source_roots) {
+            Ok(runs) => {
+                let mut not_completed = 0usize;
+                for run in &runs {
+                    eprintln!("{}", run.measurement_line("required-ci: v2-emission"));
+                    match &run.disposition {
+                        v1_compiler::cli_run::EntryEmissionDisposition::Completed { .. } => {}
+                        v1_compiler::cli_run::EntryEmissionDisposition::Refused {
+                            phase,
+                            cause,
+                        } => {
+                            not_completed += 1;
+                            eprintln!(
+                                "required-ci: v2-emission EmissionRefused entry={} phase={phase} cause={cause}",
+                                run.entry
+                            );
+                        }
+                        v1_compiler::cli_run::EntryEmissionDisposition::NotExecuted {
+                            earlier_phase,
+                            cause,
+                        } => {
+                            not_completed += 1;
+                            eprintln!(
+                                "required-ci: v2-emission EmissionNotExecuted entry={} earlier_phase={earlier_phase} cause={cause}",
+                                run.entry
+                            );
+                        }
+                    }
+                }
+                if not_completed > 0 {
+                    phase_failures.push(format!("v2-emission ({not_completed} not completed)"));
+                }
+            }
+            Err(e) => {
+                eprintln!(
+                    "required-ci: v2-emission EmissionNotExecuted earlier_phase=roster cause={e}"
+                );
+                phase_failures.push(format!("v2-emission roster: {e}"));
+            }
+        }
+        ran.push("v2-emission");
+
+        // PHASE 4 — the witness floor. Independent; runs whatever happened above.
         eprintln!("required-ci: phase floor (one prepared subject, one fold)");
         let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
         match v1_compiler::cli_run::run_required_floor(
@@ -10300,6 +10449,66 @@ fn run() -> Result<ExitCode, ExitCode> {
             Ok(ExitCode::SUCCESS)
         } else {
             Err(ExitCode::from(1))
+        };
+    }
+
+    if required_v2_emission_mode {
+        let roots = if source_roots.is_empty() {
+            v1_compiler::cli_run::witness_layer_roots()
+        } else {
+            source_roots.clone()
+        };
+        return match v1_compiler::cli_run::run_required_v2_emission(&roots) {
+            Ok(runs) => {
+                let mut not_completed = 0usize;
+                for run in &runs {
+                    // ONE SELF-DESCRIBING LINE. The disposition is ON the line, so a run
+                    // that never reached the compiler cannot be read as a clean emission
+                    // of nothing by anything that reads one line at a time.
+                    eprintln!("{}", run.measurement_line("required-v2-emission"));
+                    match &run.disposition {
+                        v1_compiler::cli_run::EntryEmissionDisposition::Completed { .. } => {}
+                        v1_compiler::cli_run::EntryEmissionDisposition::Refused {
+                            phase,
+                            cause,
+                        } => {
+                            not_completed += 1;
+                            eprintln!(
+                                "required-v2-emission: EmissionRefused entry={} phase={phase} cause={cause}",
+                                run.entry
+                            );
+                        }
+                        v1_compiler::cli_run::EntryEmissionDisposition::NotExecuted {
+                            earlier_phase,
+                            cause,
+                        } => {
+                            not_completed += 1;
+                            eprintln!(
+                                "required-v2-emission: EmissionNotExecuted entry={} earlier_phase={earlier_phase} cause={cause}",
+                                run.entry
+                            );
+                        }
+                    }
+                }
+                eprintln!(
+                    "required-v2-emission: entries={} not_completed={}",
+                    runs.len(),
+                    not_completed
+                );
+                if not_completed == 0 {
+                    Ok(ExitCode::SUCCESS)
+                } else {
+                    Err(ExitCode::from(1))
+                }
+            }
+            // The roster itself being unreadable is reported as itself: no entry ran, so
+            // there is no per-entry disposition to render.
+            Err(e) => {
+                eprintln!(
+                    "required-v2-emission: EmissionNotExecuted earlier_phase=roster cause={e}"
+                );
+                Err(ExitCode::from(1))
+            }
         };
     }
 
@@ -10402,6 +10611,52 @@ fn run() -> Result<ExitCode, ExitCode> {
                 eprintln!("cited-symbol: refused: population unreadable: {e}");
                 Err(ExitCode::from(1))
             }
+        };
+    }
+
+    // The heads reading's own instrument. It is not enrolled in the required run and this
+    // clause does not pretend otherwise: reading 3875 modules TWICE is precisely the cost
+    // the heads reading exists to remove, so paying it on every push would spend more than
+    // the repair saves. It is a re-runnable receipt — the differential this change was
+    // landed on can be re-taken by anyone, on any tree, rather than being a number quoted
+    // from a run nobody can repeat.
+    if heads_reading_differential_mode {
+        let roots = if source_roots.is_empty() {
+            vec!["dag".to_string(), "src/v2".to_string()]
+        } else {
+            source_roots.clone()
+        };
+        let d = v1_compiler::cli_run::heads_reading_differential(&roots);
+        eprintln!(
+            "heads-reading-differential: compared={} divergent={} narrowed={} regressed={} both_refused={}",
+            d.modules_compared,
+            d.divergent.len(),
+            d.narrowed.len(),
+            d.regressed.len(),
+            d.both_refused.len(),
+        );
+        // The two readings' summed parse wall, from the same process over the same
+        // modules. This is the PARSE term only — not the whole `pool_parse` row, which
+        // also pays tokenize, newline indexing and per-file setup that neither reading
+        // changes.
+        eprintln!(
+            "heads-reading-differential: full_reading_parse_ms={} heads_reading_parse_ms={}",
+            d.full_reading_nanos / 1_000_000,
+            d.heads_reading_nanos / 1_000_000,
+        );
+        for path in d.divergent.iter().take(20) {
+            eprintln!("heads-reading-differential: DIVERGENT {path}");
+        }
+        for path in d.regressed.iter().take(20) {
+            eprintln!("heads-reading-differential: REGRESSED {path}");
+        }
+        for path in d.narrowed.iter().take(20) {
+            eprintln!("heads-reading-differential: narrowed (declared scope) {path}");
+        }
+        return if d.holds() {
+            Ok(ExitCode::SUCCESS)
+        } else {
+            Err(ExitCode::from(1))
         };
     }
 
@@ -10525,7 +10780,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     // requirement is unchanged by #8140: the walk moved AFTER plan evaluation (it is now
     // demand-directed on `schedules_discovery`), so this install precedes it by even
     // more, and the walk's whole-tree read is still policy-funnelled.
-    v1_compiler::cli_run::install_output_policy(&source_roots);
+    if let Err(why) = v1_compiler::cli_run::install_output_policy(&source_roots) {
+        eprintln!("claim_executor: {why}");
+        return Err(ExitCode::from(1));
+    }
     // Install the per-target group-marker syntax (GitHub Actions `::group::` vs a
     // plain-terminal header) from the .dag authority, so the parallel walk folds each
     // batch's host-effect traces into a collapsible group.
@@ -11311,7 +11569,7 @@ fn run() -> Result<ExitCode, ExitCode> {
 /// so "falsifier dark" is one of three modes, never an undifferentiated exit 1.
 // STALE SIGNAL, NOT MERELY DEAD CODE. These substrings matched a budget refusal back when a
 // raised one reached the claim seam as a `RuntimeError` carrying the refusal as prose. It now
-// arrives as `ClaimOutcome::TimedOut` with the pair typed, so nothing renders this text on the
+// arrives as a `ClaimOutcome` budget arm with the pair typed, so nothing renders this text on the
 // required-floor path any more. That matters more for the RESTORE than for today: this function
 // sits past the required-floor early return, on the falsifier lane whose workflows the floor cut
 // deleted, and a dead `.contains` does not fail loudly when a lane comes back — it matches
@@ -11776,27 +12034,82 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     for unreadable in &outcome.known_red_observation_unreadable {
         eprintln!("required-floor: KNOWN-RED-OBSERVATION-UNREADABLE {unreadable}");
     }
+    for unenrolled in &outcome.non_verdict_unenrolled {
+        eprintln!("required-floor: NON-VERDICT-UNENROLLED {unenrolled}");
+    }
+    for stale in &outcome.stale_non_verdict {
+        eprintln!("required-floor: STALE-NON-VERDICT {stale}");
+    }
     for gap in &outcome.route_gap {
         eprintln!("required-floor: ROUTE-GAP {gap}");
     }
     for stale in &outcome.stale_route_gap {
         eprintln!("required-floor: STALE-ROUTE-GAP {stale}");
     }
+    // THE VERDICT LINE, AND WHY A ZERO NEEDED A SENTENCE BESIDE IT.
+    //
+    // `failed=0` is a sentence a reader can finish alone, and finishes wrongly: it says nothing
+    // about whether the population that was supposed to answer actually answered. This exact
+    // misreading dispatched a session against a regression that did not exist — a run was
+    // compared to a baseline carrying a fix, `planned` matched on both sides, and `failed=0`
+    // supplied the confidence that the rest was equivalent. Separating the two questions removes
+    // the ability to finish that sentence: `unexpected_failures` is how many claims answered
+    // WRONG, `verdict_incomplete` is how many never answered AT ALL, and a run can be admitted
+    // while the second is large.
+    //
+    // ADMITTED IS NOT CLEAN, and the word carries that. `FloorAdmittedWithNonVerdictDebt` gates
+    // nothing by itself — the conjunct that gates is growth in the non-verdict population — but
+    // it refuses to let a run with 142 unanswered assertions render identically to one with
+    // none.
+    let verdict_incomplete =
+        outcome.known_red_runtime_errored.len() + outcome.known_red_observation_unreadable.len();
+    let verdict = if !required_floor_outcome_is_clean(outcome) {
+        "FloorRefused"
+    } else if verdict_incomplete > 0 {
+        "FloorAdmittedWithNonVerdictDebt"
+    } else {
+        "FloorClean"
+    };
+    eprintln!(
+        "required-floor: verdict={verdict} unexpected_failures={} verdict_incomplete={} \
+         non_verdict_unenrolled={} stale_non_verdict={}",
+        outcome.failures.len(),
+        verdict_incomplete,
+        outcome.non_verdict_unenrolled.len(),
+        outcome.stale_non_verdict.len()
+    );
 }
 
 /// Whether the floor outcome permits a green run.
 ///
-/// SEVEN CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
+/// NINE CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
 /// caller, because a mode that forgot one of them would green a run the other refused. (The
 /// count is stated because a reader checks it; it was five before main added `route_gap` and
 /// `stale_route_gap`, and the sentence went on saying five through the merge that added them.
 /// It briefly said nine while `known_red_runtime_errored` and `known_red_observation_unreadable`
-/// were wired in here; they are REPORTED and deliberately NOT gating, so the count is seven
-/// again. Making them block reds lanes with no connection to the defect, which needs an
-/// approved design and a shadow phase rather than an author's judgement — and the honest
-/// reporting half does not have to wait for that decision.)
+/// were wired in here directly; that was reverted and the count returned to seven.)
+///
+/// THE EIGHTH IS `non_verdict_unenrolled`, AND IT IS NOT THOSE TWO ARMS MADE GATING. The
+/// distinction is the whole design. Those arms are HONEST OBSERVATIONS — they say correctly that
+/// an enrolled claim produced no verdict — and gating on them directly would red every lane
+/// holding a row of a population nobody has repaired. What was below floor is the COMPOSITION:
+/// this function returned CLEAN while an enrolled expected-red assertion had ceased to assert
+/// anything, so a true diagnostic sat beside a false conclusion drawn from it. The conjunct
+/// therefore gates on GROWTH at identity grain — an identity producing no verdict that
+/// `v2.workflow.floor_non_verdict` does not carry — which admits 142 → 0 in any order and
+/// refuses 142 → 143, and refuses a swap that leaves the count untouched.
+///
+/// THE NINTH IS `stale_non_verdict`, AND IT GATES FOR THE REASON THE EIGHTH DOES. A row whose
+/// identity has been repaired is a LIVE EXEMPTION until it is deleted: the witness is fixed
+/// today and, should it stop producing a verdict again, it is already rostered and the eighth
+/// conjunct admits it. Repayment and deletion are therefore one act, which is what
+/// `stale_route_gap` and the expected-red staleness join already require. This shipped as
+/// report-only for one commit under the argument that refusing "punishes the fix"; it does not
+/// — it requires the fix to be complete, and the diagnostic names every row to delete.
 fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloorOutcome) -> bool {
     outcome.failures.is_empty()
+        && outcome.non_verdict_unenrolled.is_empty()
+        && outcome.stale_non_verdict.is_empty()
         && outcome.stale_quarantine.is_empty()
         && outcome.interrupted_before_verdict.is_empty()
         && outcome.completed_over_cost_requirement.is_empty()
@@ -13161,15 +13474,13 @@ mod tests {
 
         // ROW 3 — timed out: a BUDGET failure. An interruption plus a lower bound on cost is
         // never a semantic verdict, so it must not read as a quarantine holding.
-        let t = row(ClaimOutcome::TimedOut {
-            elapsed_ms: 5001,
+        let t = row(ClaimOutcome::BudgetInterrupted {
+            elapsed_at_least_ms: 5001,
             budget_ms: 5000,
+            // The VARIANT now says which case this is, so 5001 is a lower bound by
+            // construction: the completed row is a different arm the fixture cannot reach by
+            // omitting a field.
             kind: BudgetKind::Cpu,
-            // Interrupted, so 5001 is a lower bound. Named rather than defaulted: the
-            // CompletedOverBudget row is a DIFFERENT case with its own arm, and a fixture that
-            // did not say which one it built would be asserting about whichever the compiler
-            // picked.
-            completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
         });
         assert!(
             t.agreements.is_empty(),
@@ -13196,6 +13507,7 @@ mod tests {
         // not papered over by sniffing the message.
         for o in [
             ClaimOutcome::RuntimeError {
+                cause: v1_compiler::cli_run::WitnessRuntimeCause::NoSuchVariable,
                 message: "undefined variable: X".into(),
             },
             ClaimOutcome::NotBool {
@@ -13243,13 +13555,13 @@ mod tests {
         let f = "witness_holds";
         let expected_red = vec![(entry.to_string(), f.to_string())];
         for o in [
-            ClaimOutcome::TimedOut {
-                elapsed_ms: 1,
+            ClaimOutcome::BudgetInterrupted {
+                elapsed_at_least_ms: 1,
                 budget_ms: 1,
                 kind: BudgetKind::Wall,
-                completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
             },
             ClaimOutcome::RuntimeError {
+                cause: v1_compiler::cli_run::WitnessRuntimeCause::TypeError,
                 message: "boom".into(),
             },
             ClaimOutcome::NotBool { got: "Int".into() },
@@ -14825,6 +15137,7 @@ mod tests {
         subject: &str,
         function: &str,
         variant_name: &str,
+        cause: Option<&str>,
         wall_nanos: u128,
     ) -> Option<String> {
         let entry = source_roots
@@ -14856,7 +15169,17 @@ mod tests {
                     Value::Variant {
                         type_name: ctx.sym("CiWitnessVerdict"),
                         variant_name: ctx.sym(variant_name),
-                        fields: std::rc::Rc::new(Vec::new()),
+                        fields: std::rc::Rc::new(match cause {
+                            None => Vec::new(),
+                            Some(cause) => vec![(
+                                ctx.sym("cause"),
+                                Value::Variant {
+                                    type_name: ctx.sym("CiWitnessRuntimeCause"),
+                                    variant_name: ctx.sym(cause),
+                                    fields: std::rc::Rc::new(Vec::new()),
+                                },
+                            )],
+                        }),
                     },
                 ),
                 (Some("wall".to_string()), wall),
@@ -14881,13 +15204,12 @@ mod tests {
     // `from_outcome` that never returned KnownRed at all would also pass.
     #[test]
     fn enrollment_holds_only_semantic_failures_not_undecided_claims() {
-        use v1_compiler::cli_run::{BudgetCompletion, BudgetKind, CiWitnessVerdict, ClaimOutcome};
+        use v1_compiler::cli_run::{BudgetKind, CiWitnessVerdict, ClaimOutcome};
 
-        let interrupted = ClaimOutcome::TimedOut {
-            elapsed_ms: 5_000,
+        let interrupted = ClaimOutcome::BudgetInterrupted {
+            elapsed_at_least_ms: 5_000,
             budget_ms: 5_000,
             kind: BudgetKind::Cpu,
-            completion: BudgetCompletion::Interrupted,
         };
         let missing_tool = ClaimOutcome::HostToolUnresolved {
             name: "git".to_string(),
@@ -14934,6 +15256,7 @@ mod tests {
             "test.claim.observation_ci_render_witness_test",
             "w_witness_claim_line_from_module_path_holds",
             "WitnessPassed",
+            None,
             230_000_000,
         )
         .expect("ci_witness_claim_result_text must resolve and render");
@@ -14961,6 +15284,7 @@ mod tests {
             "test.claim.foo",
             "w_bar",
             "WitnessPassed",
+            None,
             89_000_000_000,
         )
         .expect("89s boundary oracle");
@@ -14969,6 +15293,7 @@ mod tests {
             "test.claim.foo",
             "w_bar",
             "WitnessPassed",
+            None,
             90_000_000_000,
         )
         .expect("90s boundary oracle");
@@ -15018,7 +15343,9 @@ mod tests {
             ),
             (
                 "WitnessRuntimeError",
-                v1_compiler::cli_run::CiWitnessVerdict::RuntimeError,
+                v1_compiler::cli_run::CiWitnessVerdict::RuntimeError(
+                    v1_compiler::cli_run::WitnessRuntimeCause::NoSuchVariable,
+                ),
             ),
             (
                 "WitnessBudgetRefused",
@@ -15037,13 +15364,23 @@ mod tests {
                 v1_compiler::cli_run::CiWitnessVerdict::RouteGap,
             ),
         ];
+        let arm_count = arms.len();
         let mut rendered: Vec<String> = Vec::new();
         for (variant, verdict) in arms {
+            // The cause rides inside the arm on BOTH sides, so the oracle call carries it too:
+            // a fieldless `WitnessRuntimeError` is not constructible in the `.dag` type any more.
+            let cause = match verdict {
+                v1_compiler::cli_run::CiWitnessVerdict::RuntimeError(_) => {
+                    Some("WitnessCauseNoSuchVariable")
+                }
+                _ => None,
+            };
             let oracle_arm = run_seed_witness_claim_result_text(
                 &roots,
                 "test.claim.foo",
                 "w_bar",
                 variant,
+                cause,
                 1_000_000,
             )
             .unwrap_or_else(|| panic!("oracle must render {variant}"));
@@ -15062,9 +15399,21 @@ mod tests {
         let mut distinct = rendered.clone();
         distinct.sort();
         distinct.dedup();
+        // WAS THE LITERAL `7` AGAINST AN EIGHT-ARM TABLE, and it did not start failing with this
+        // change -- it was already red on `main`. The Rust suite has not run in CI since
+        // 2026-07-11 (operator ruling, recorded at `gunbc.commit_workflow`
+        // `commit_gate_rust_suite_removed_disposition`), so a stale literal here is invisible
+        // until someone runs the bin's tests by hand. Executed receipt: this assertion reports
+        // `left: 8 right: 7`, and the eight lines it prints are pairwise distinct with or
+        // without the cause field, which the `.dag` side asserts independently in
+        // `w_every_verdict_arm_renders_a_distinct_token`.
+        //
+        // Pinned to `arm_count` rather than to a new literal `8`, so adding a ninth arm cannot
+        // reproduce this: the fixture is the table, and a count copied out of it by hand is the
+        // second representation that went stale in the first place.
         assert_eq!(
             distinct.len(),
-            7,
+            arm_count,
             "every verdict arm must render a distinct line: {rendered:?}"
         );
         assert!(
@@ -16481,7 +16830,7 @@ mod tests {
         // recorded 900794ms is a censored measurement, not a completed one. Seeding it
         // would pin it WithinBasis below ~1.8M ms under the 2x comparator and enshrine a
         // deadline ceiling as normal cost. It must stay BasisAbsent — the honest third
-        // state — until ClaimOutcome::TimedOut can distinguish killed from completed.
+        // state — until ClaimOutcome distinguishes killed from completed, which it now does.
         for line in text.lines() {
             if line.trim_start().starts_with('#') {
                 continue;
@@ -16759,11 +17108,10 @@ mod tests {
             total_entry_groups: 0,
             selected_entry_groups: 0,
         };
-        let killed = ClaimOutcome::TimedOut {
-            elapsed_ms: 900_001,
+        let killed = ClaimOutcome::BudgetInterrupted {
+            elapsed_at_least_ms: 900_001,
             budget_ms: 900_000,
             kind: BudgetKind::Wall,
-            completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
         };
 
         // Both arms: the receipt projection may succeed or refuse, and a receipt refusal must

@@ -1,0 +1,28 @@
+module test.fixture.record_decl_spelling.sealed
+
+import std.types { Int }
+
+// The construction wall, declared in both spellings of the same declaration.
+// A `sole_constructor` type refuses a record literal written outside its declaring module, so a
+// probe module elsewhere that spells one is the discriminating input: if the two spellings are
+// really one declaration, both refuse, and if the modifier is silently dropped on one of them the
+// probe for that spelling compiles clean while its twin refuses.
+// Neither type carries a mint: nothing here needs to CONSTRUCT one, and an exported mint would add
+// a second, sanctioned route whose presence is not what these rows are about.
+type SealedBraceSpelling sole_constructor {
+  n: Int
+}
+
+type SealedEqualsSpelling sole_constructor = {
+  n: Int
+}
+
+// The zero-field pair, sealed. decl_facts cannot see the empty case at all -- concept_decl_node
+// marshals a zero-child Conj through the same unit_type_node an alias-to-unit produces, so a
+// shape row over these two would be permanently green whichever way the parser answered. The seal
+// is the one thing that still differs: a nominal record declaration carries it, an alias does not.
+type SealedEmptyBraceSpelling sole_constructor {
+}
+
+type SealedEmptyEqualsSpelling sole_constructor = {
+}

@@ -175,7 +175,7 @@ data infer_emit_shape_frontier_note: String = "Test-only emit-shape frontier (re
 fn infer_emit_shape_frontier_inferred_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map {
+    facts: PartialFunction {
       lookup: fn(_key) {
         Absent
       }
@@ -486,7 +486,7 @@ fn lookup_inferred_facts_in_entries(
   )
 }
 
-fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Outcome<Map<Node, InferredFacts>> {
+fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Outcome<PartialFunction<Node, InferredFacts>> {
   match fold(entries, init: Accepted { value: empty_inferred_facts_entry_list(), diagnostics: None }, f: fn(acc, entry) {
     match acc {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -505,7 +505,7 @@ fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Outcome<Map<Node
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: admitted, diagnostics: d } =>
       Accepted {
-        value: Map {
+        value: PartialFunction {
           lookup: fn(key) {
             lookup_inferred_facts_in_entries(entries: admitted, key: key)
           }

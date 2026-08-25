@@ -55,7 +55,7 @@ import v2.std.compilers.lexing {
 import v2.std.collection {
   List,
   Map,
-  Set,
+  PointwisePower,
   empty_map,
   map_insert
 }
@@ -555,67 +555,71 @@ fn kotlin_nonnumeric_value_fact_node(value_fact: KotlinNonNumericValueFact) -> N
 }
 
 fn kotlin_integer_spec_facts(facts: KotlinIntegerPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: kotlin_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          v2.std.optional.Present { value: kotlin_int_width_node(width: facts.width) }
-      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
-          v2.std.optional.Present { value: kotlin_atom(id: ^kotlin_tag_signed) }
-      } else if axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}) {
-          v2.std.optional.Present { value: kotlin_overflow_node(overflow: facts.overflow) }
-      } else if axis == ^kotlin_primitive_fact_axis_runtime_representation {
-          v2.std.optional.Present { value: kotlin_runtime_representation_node(representation: facts.representation) }
-      } else if axis == ^kotlin_primitive_fact_axis_scalar_classifier {
-          v2.std.optional.Present { value: kotlin_scalar_node(scalar: IntScalar { width: facts.width }) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(
+          map_insert(
+            map_insert(
+              empty_map(),
+              discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+              kotlin_atom(id: facts.surface_spelling)
+            ),
+            discriminant(v: ModelCoreFactAxisWidth {}),
+            kotlin_int_width_node(width: facts.width)
+          ),
+          discriminant(v: ModelCoreFactAxisSignedness {}),
+          kotlin_atom(id: ^kotlin_tag_signed)
+        ),
+        discriminant(v: ModelCoreFactAxisOverflowDisposition {}),
+        kotlin_overflow_node(overflow: facts.overflow)
+      ),
+      ^kotlin_primitive_fact_axis_runtime_representation,
+      kotlin_runtime_representation_node(representation: facts.representation)
+    ),
+    ^kotlin_primitive_fact_axis_scalar_classifier,
+    kotlin_scalar_node(scalar: IntScalar { width: facts.width })
+  )
 }
 
 fn kotlin_float_spec_facts(facts: KotlinFloatPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: kotlin_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          v2.std.optional.Present { value: kotlin_float_width_node(width: facts.width) }
-      } else if axis == ^kotlin_primitive_fact_axis_value_format {
-          v2.std.optional.Present { value: kotlin_float_value_format_node(value_format: facts.value_format) }
-      } else if axis == ^kotlin_primitive_fact_axis_runtime_representation {
-          v2.std.optional.Present { value: kotlin_runtime_representation_node(representation: facts.representation) }
-      } else if axis == ^kotlin_primitive_fact_axis_scalar_classifier {
-          v2.std.optional.Present { value: kotlin_scalar_node(scalar: FloatScalar { width: facts.width }) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(
+          map_insert(
+            empty_map(),
+            discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+            kotlin_atom(id: facts.surface_spelling)
+          ),
+          discriminant(v: ModelCoreFactAxisWidth {}),
+          kotlin_float_width_node(width: facts.width)
+        ),
+        ^kotlin_primitive_fact_axis_value_format,
+        kotlin_float_value_format_node(value_format: facts.value_format)
+      ),
+      ^kotlin_primitive_fact_axis_runtime_representation,
+      kotlin_runtime_representation_node(representation: facts.representation)
+    ),
+    ^kotlin_primitive_fact_axis_scalar_classifier,
+    kotlin_scalar_node(scalar: FloatScalar { width: facts.width })
+  )
 }
 
 fn kotlin_nonnumeric_spec_facts(facts: KotlinNonNumericPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: kotlin_atom(id: facts.surface_spelling) }
-      } else {
-          if axis == kotlin_nonnumeric_value_fact_axis(value_fact: facts.value_fact) {
-            v2.std.optional.Present {
-              value: kotlin_nonnumeric_value_fact_node(value_fact: facts.value_fact)
-            }
-          } else {
-            if axis == ^kotlin_primitive_fact_axis_scalar_classifier {
-              v2.std.optional.Present { value: kotlin_scalar_node(scalar: facts.scalar) }
-            } else {
-              v2.std.optional.Absent
-            }
-          }
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      map_insert(
+        empty_map(),
+        discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+        kotlin_atom(id: facts.surface_spelling)
+      ),
+      kotlin_nonnumeric_value_fact_axis(value_fact: facts.value_fact),
+      kotlin_nonnumeric_value_fact_node(value_fact: facts.value_fact)
+    ),
+    ^kotlin_primitive_fact_axis_scalar_classifier,
+    kotlin_scalar_node(scalar: facts.scalar)
+  )
 }
 
 fn kotlin_primitive_bundle_from_integer_facts(
@@ -2530,8 +2534,8 @@ fn kotlin_lex_token_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn kotlin_language_model_canonical_symbols() -> Set<Symbol> {
-  Set {
+fn kotlin_language_model_canonical_symbols() -> PointwisePower<Symbol> {
+  PointwisePower {
     member: fn(sym) {
       kotlin_catalog_surface_symbol(sym: sym) ||
         kotlin_lex_token_symbol(sym: sym) ||
