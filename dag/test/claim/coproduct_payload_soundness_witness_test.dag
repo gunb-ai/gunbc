@@ -134,3 +134,115 @@ test fn cpp_alias_mediated_payload_must_also_refuse() -> Bool {
     []
   )
 }
+
+// ============================================================================
+// THE SECOND ARM OF THE SAME WALL: A DIFFERENT COPRODUCT, NOT A PAYLOAD OF THIS ONE.
+//
+// Everything above measures an actual that is one of the FORMAL'S OWN variant payload types. That
+// is not the only way a wrong value reaches a coproduct field, and the wall said nothing about the
+// other way: an actual that is a wholly UNRELATED coproduct. Measured by execution on the pre-arm
+// binary at this same record-literal field seam, with no compiler internals involved:
+//
+//   type DcpAlpha = DcpA1 { a: Int } | DcpA2 { b: Int }
+//   type DcpBeta  = DcpB1 { c: Int } | DcpB2 { d: Int }
+//   type DcpHolder { subject: DcpAlpha }
+//
+//   NEGATIVE  DcpHolder { subject: dcp_beta() }    compiled, 0 diagnostics   (the hole)
+//   POSITIVE  DcpHolder { subject: dcp_alpha() }   compiled, 0 diagnostics   (correct)
+//
+// The two are byte-identical in the compiler's output, which is the same shape as the payload hole
+// #8876 closed and the same shape as the conformance wall's original silence: the absence of a
+// check read as the presence of a proof.
+//
+// IT IS NOT A DEMONSTRATION. gunbc#9215 repaired two live instances of exactly this at
+// `gunbc.scm.repository_envelope` `decode_commit_members`, which wrapped a `MemberReadRefusal` into
+// `RepositoryDecodeClosureDocRefusal` whose declared field is `ClosureDocRefusal`. Those are the
+// FIX and are deliberately not cited here as a population -- nobody has sized this class, and the
+// finders asked that no count be inherited from two instances. What makes the class worth a wall
+// rather than two repairs is where the mis-routed value LANDS: per `gunbc.scm.load_standing`
+// `standing_may_supersede_generation`, `LoadDocumentMalformed` is the only standing permitting
+// supersession of a newer generation, so a silently-admitted wrong cause is a route into a
+// data-loss class. DESIGN already records a SECOND, independent mechanism reaching that same
+// destination (`repository_load_disposition` collapsing thirteen `ImageRefusal` arms under a bare
+// cause binding), which says the destination is under-defended rather than that either mechanism
+// was unlucky.
+//
+// THE FOUR ARMS ARE ONE SEAM AND THAT IS THE POINT. All four vary WHAT is placed in one
+// record-literal field; none of them varies the position. So this file measures the record-literal
+// field seam and establishes NOTHING about a fn's declared return, a `data` annotation, or an
+// annotated `let` -- three positions judged by `declared_type_conformance_diags`, which no site
+// here consults. Per gunbc#8868 the seam enumeration for this class remains unfinished.
+//
+// TWO OF THE FOUR ARMS ALREADY REFUSED BEFORE THIS CHANGE, and they are the load-bearing half. A
+// harness that cannot refuse anything would satisfy the new red by accident; a harness that refuses
+// everything would satisfy it and measure nothing. The primitive arm asserts that
+// `kernel_value_declared_type_mismatch` still fires at this seam (the wall arm this new one is kept
+// DISJOINT from), and the unresolved-name arm asserts the compiler still refuses a name that does
+// not resolve. The fixture's authors record that their first version had only the positive case and
+// would have been vacuous; both arms are carried forward rather than dropped as redundant.
+//
+// dissolve-on: none. DESIGN section 4b(4) -- the climb deletes the lower-rung production machinery,
+// never the evidence that the higher rung is real.
+
+fn dcp_wrong_coproduct_fixture_source() -> String {
+  "module dcp.probe\n\nimport std.types { Int }\n\ntype DcpAlpha\n  = DcpA1 { a: Int }\n  | DcpA2 { b: Int }\n\ntype DcpBeta\n  = DcpB1 { c: Int }\n  | DcpB2 { d: Int }\n\ntype DcpHolder {\n  subject: DcpAlpha\n}\n\nfn dcp_beta() -> DcpBeta {\n  DcpB1 { c: 7 }\n}\n\nfn dcp_other_coproduct_where_alpha_required() -> DcpHolder {\n  DcpHolder { subject: dcp_beta() }\n}\n"
+}
+
+fn dcp_right_coproduct_fixture_source() -> String {
+  "module dcp.control\n\nimport std.types { Int }\n\ntype DcpAlpha\n  = DcpA1 { a: Int }\n  | DcpA2 { b: Int }\n\ntype DcpBeta\n  = DcpB1 { c: Int }\n  | DcpB2 { d: Int }\n\ntype DcpHolder {\n  subject: DcpAlpha\n}\n\nfn dcp_alpha() -> DcpAlpha {\n  DcpA1 { a: 7 }\n}\n\nfn dcp_same_coproduct_ok() -> DcpHolder {\n  DcpHolder { subject: dcp_alpha() }\n}\n"
+}
+
+fn dcp_primitive_fixture_source() -> String {
+  "module dcp.primitive\n\nimport std.types { Int }\n\ntype DcpAlpha\n  = DcpA1 { a: Int }\n  | DcpA2 { b: Int }\n\ntype DcpHolder {\n  subject: DcpAlpha\n}\n\nfn dcp_int() -> Int {\n  7\n}\n\nfn dcp_primitive_where_alpha_required() -> DcpHolder {\n  DcpHolder { subject: dcp_int() }\n}\n"
+}
+
+fn dcp_unresolved_name_fixture_source() -> String {
+  "module dcp.unresolved\n\nimport std.types { Int }\n\ntype DcpAlpha\n  = DcpA1 { a: Int }\n  | DcpA2 { b: Int }\n\ntype DcpHolder {\n  subject: DcpAlpha\n}\n\nfn dcp_unresolved_where_alpha_required() -> DcpHolder {\n  DcpHolder { subject: NoSuchConstructorAnywhere { key: 1 } }\n}\n"
+}
+
+// THE NEW DISCRIMINATING RED. `DcpBeta` is not `DcpAlpha`, is not one of its arms, and is not one of
+// its arms' payloads, so nothing above this arm judged it. It compiled clean before.
+test fn dcp_foreign_coproduct_where_parent_required_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    dcp_wrong_coproduct_fixture_source(),
+    "src/dcp_probe.rs",
+    [],
+    []
+  )
+}
+
+// THE POSITIVE CONTROL for that red. The correct coproduct in the same field must still compile, or
+// the red above is satisfied by a compiler that refuses every record literal.
+test fn dcp_right_coproduct_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    dcp_right_coproduct_fixture_source(),
+    "src/dcp_control.rs",
+    [],
+    []
+  )
+}
+
+// ALREADY-REFUSING ARM 1, carried forward as the disjointness control. A kernel scalar in a
+// coproduct field is `kernel_value_declared_type_mismatch`'s judgment at this seam, and the new arm
+// excludes kernel names on both sides precisely so that stays one authority rather than two. If the
+// new arm ever starts answering here, this row is what says so.
+test fn dcp_primitive_in_coproduct_field_still_refuses() -> Bool {
+  !compile_dag_rust_emit_check(
+    dcp_primitive_fixture_source(),
+    "src/dcp_primitive.rs",
+    [],
+    []
+  )
+}
+
+// ALREADY-REFUSING ARM 2, carried forward as the harness control. A name that resolves to nothing
+// must still refuse; without this the passing red above is indistinguishable from a harness that
+// cannot produce a refusal at all.
+test fn dcp_unresolved_name_in_coproduct_field_still_refuses() -> Bool {
+  !compile_dag_rust_emit_check(
+    dcp_unresolved_name_fixture_source(),
+    "src/dcp_unresolved.rs",
+    [],
+    []
+  )
+}
