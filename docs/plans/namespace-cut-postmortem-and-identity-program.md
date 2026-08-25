@@ -1748,6 +1748,86 @@ RUNNING the wall over the corpus and none by reasoning about it. Two lanes, two
 subjects, one conclusion: **the corpus is the instrument, and a witness is a
 hypothesis about it.**
 
+### 11.2e RULING — anonymous record literals resolve from their expected type
+
+**Decided 2026-08-25. (b), the compiler.** An anonymous record literal is
+grounded by its expected nominal type; the author is not obliged to annotate it.
+
+The alternative was to annotate the 8 sites blocking whole-corpus emission. It
+is refused, and **not** because annotation is laborious — because the corpus
+authority already committed to the opposite. `04_infer.dag`
+`declared_type_conformance_note` class (3) IS anonymous record literals, and its
+dissolve-on names the terminal verbatim: *"grounds an anonymous literal against
+its expected nominal type."* Annotating would author around a defect the tree
+has on record as the thing to fix.
+
+Three further findings, each of which corrected something:
+
+**One root, two stages.** Inference sees `Product(<anon>)`, emission sees
+`Absent`, for the identical reason — the expected nominal type does not reach
+the literal. So (b) does not merely unblock emission, it **retires class (3)**,
+one of the four false-positive classes that forced the conformance wall down to
+ground kernel scalars. The note is explicit that this is the mechanism: *"Each
+numbered class above is a promotion trigger, and each promotion should be
+visible as a drop in that count."* With the bound that makes it usable: **that
+count is not live on main** — measured at 3005, corrected to 1566, then excluded
+entirely (codex 45767), so the receipt needs the measurement re-derived and
+cannot be read off the current tree.
+
+**The `count == 0` arm refuses.** A record literal matching no nominal type does
+not silently become a positional tuple: `{ a: 1, b: 2 }` emitted as `(1, 2)`
+discards field identity and substitutes position, which is §3b's class, and
+fabricating at the exact point the compiler has established it knows nothing is
+§5's plainest failure. Under (b) that population may fall to zero on its own.
+*Not decided here:* whether some target genuinely IS an anonymous tuple, which
+would make that emission correct — if the work surfaces one, it comes back
+rather than being routed around.
+
+**The diagnostic text is part of the defect.** It ends `— add a nominal type`: a
+compiler instructing the author to work around the compiler's own unresolved
+obligation. A message surviving a (b) fix keeps teaching authors to annotate for
+a reason that no longer exists. And the three-valued carrier is what makes the
+replacement possible rather than merely better-worded — ADD A NOMINAL TYPE
+(ambiguous) and THIS RECORD MATCHES NO DECLARED TYPE (no candidate) are
+different instructions to an author, currently one message.
+
+**The deliverable is the carrier, not the propagation.** `String?` collapsing
+AMBIGUOUS and NO-CANDIDATE into one `Absent` is state-space conflation in a
+return type, and the consumer recomputing the whole fold over `type_summaries`
+is its symptom, not a separate cost defect. Three-valued —
+resolved-with-name / ambiguous / no-candidate — and the fold runs once.
+
+**THE POPULATION, AND WHAT IT IS NOT.** The 8 sites are **3 distinct ambiguity
+pairs**; 5 of the 8 are one pair repeated in one file. Site count is the wrong
+denominator, because what recurs is TYPE PAIRS — the same collision fires
+wherever those types are written. On that denominator one pair is test-only, one
+is extdeps-only, and one spans both: **`DeclarationRef` vs
+`RustItemDeclarationRef`**, where `DeclarationRef` is declared in
+`dag/std/decl_ref.dag` and referenced by **573 files, 509 of them outside
+`dag/test/`**. Annotating there makes a `std` carrier permanently
+annotation-requiring.
+
+That replaces an earlier and wrong version of the same argument, retracted by
+its own author: *the sites are in production modules, so annotation is a
+treadmill.* **6 of the 8 are in `dag/test/claim/`** — three quarters is
+fixture-shaped code, which is the condition under which annotation would have
+been cheap and fine. The original was inferred from a truncated log that
+happened to show 3 of the 5 repeated sites, making the split look 3-vs-3. The
+lesson is the sharper half: **the truncation was declared and then reasoned from
+anyway**, which is worse than not declaring it.
+
+And one argument that depends on none of this: `dag/extdeps/git/versioning.dag`
+matches **four** candidates, not two. A four-way collision among version-shaped
+structs says the field-name heuristic degrades as the corpus accumulates
+structurally similar types — so it gets worse with growth regardless of where
+the sites live.
+
+*Sequenced after #9209 (Resolution lane), which is in flight and unproven until
+regen. No annotation as an interim — not one site: editing the corpus so
+whole-corpus emission finishes is mutating the subject to complete the
+observation, and the resulting green would mean only "this corpus, after we
+changed it, emits."*
+
 ### 11.2d Two fabricated citations inside a prose row, and how far one travelled
 
 `witty-crane-181` reported, and this section verifies: `declared_type_conformance_note`
