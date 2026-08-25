@@ -539,8 +539,6 @@ fn fabric_cell_observed_member_at(ref: FabricCellAddressRef, state_digest: NonEm
   FabricCellMember { slot: ref.slot, address: ref.address, state_digest: state_digest }
 }
 
-type FabricCellAddressStanding
-//
 // THE SATISFIED ARM CARRIES A REF AND NOTHING ELSE, FOR THE REASON THE DRIFT ARM DOES. An earlier
 // cut wrote `StandingSatisfied { address, member }`, where `member` already contains that address
 // -- two writable copies of one coordinate, which every consumer discarded one of and which the
@@ -549,6 +547,7 @@ type FabricCellAddressStanding
 // whole member is a function of the ref, and carrying it stores a value the ref already decides.
 // Both parallel copies go, and the three non-blocked arms now read as one shape -- a ref, plus
 // exactly the fact the ref does not determine.
+type FabricCellAddressStanding
   = StandingSatisfied { ref: FabricCellAddressRef }
   | StandingObservedDrift { ref: FabricCellAddressRef, observed_state_digest: NonEmptyStr }
   | StandingExplicitlyAbsent { ref: FabricCellAddressRef }
