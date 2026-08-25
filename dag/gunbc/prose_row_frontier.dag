@@ -285,6 +285,7 @@ data prose_row_migration_scope: List<String> = [
   "src/v2/test/claim/emit/target_text_carrier_test.dag",
   "src/v2/test/claim/execution/native_selected_witness_bundle_test.dag",
   "src/v2/test/claim/identity_captured_navigation/long/roster_gate_test.dag",
+  "src/v2/test/claim/identity_captured_navigation/roster_gate_test.dag",
   "src/v2/test/claim/long/module_storage_binding_derivation_test.dag",
   "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag",
   "src/v2/test/claim/manual/body_lowering_match.dag",

@@ -551,7 +551,7 @@ fn floor_expected_red_chunk_21() -> List<String> {
 // exact function identity. When the analyzer repair makes it pass, stale quarantine names the row
 // and both enrollments delete while the witness remains as an ordinary regression control.
 fn floor_expected_red_chunk_22() -> List<String> {
-  Cons { head: "v2.test.claim.long.identity_captured_navigation_roster_gate.green_control_sanctioned_reader_body_not_flagged", tail: Empty {} }
+  Cons { head: "v2.test.claim.identity_captured_navigation_roster_gate.green_control_sanctioned_reader_body_not_flagged", tail: Empty {} }
 }
 
 fn floor_expected_red_chunks() -> List<List<String>> {

@@ -3,7 +3,7 @@ module v2.test.lens_identity_captured_navigation
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data discoverable_witness_note: String = "Discovery-enrolled sibling to v2.lens.identity_captured_navigation.roster_gate_test (which is OFFLINE per identity_captured_navigation_roster_gate_exclusion_note in gunbc.ci_layer_roots - its file_gate fns read real corpus files via filesystem_read at runtime, invisible to resolve-closure attribution) and to the S6 fast-lane budget that REDs a genuine snippet-parse witness (dag_language_model()+tokenize+parse_module costs >5s even on a five-line snippet - measured directly: run 29305270533, EvalBudgetExceeded at ~5001ms on every source_findings-based witness previously placed here). Rather than parsing real source text, these witnesses hand-construct the exact synthetic Node shape identity_navigation_findings_at/classify_identity_match read - the same technique v2.lens.complexity_accumulator_copy_test.dag uses (a bare Atom fixture) generalized to the Conj-wrapper-with-two-named-edges production shape (mirrors v2.extdeps.languages.dag's own dag_grammar_atom/emit_grammar_relation_row helpers). This keeps the witness in the microsecond range while still exercising the real detection function end-to-end (identity_captured_navigation_findings), not a mocked stand-in."
+data discoverable_witness_note: String = "Required-floor semantic controls hand-construct the exact synthetic Node shape identity_navigation_findings_at/classify_identity_match read - the same technique v2.lens.complexity_accumulator_copy_test.dag uses (a bare Atom fixture) generalized to the Conj-wrapper-with-two-named-edges production shape (mirrors v2.extdeps.languages.dag's own dag_grammar_atom/emit_grammar_relation_row helpers). This keeps the witness in the microsecond range while still exercising the real detection and fidelity-projection functions end-to-end, not mocked stand-ins. The separate identity_captured_navigation/long/roster_gate_test module contains only ReadsLiveTree corpus sweeps; inline source-standing controls live in the ordinary claim home."
 
 fn synth_atom(id: Symbol) -> Node {
   Node {
@@ -114,4 +114,31 @@ test fn unrelated_scrutinee_name_not_flagged() -> Bool {
     mentions: [^probe_leaked_identity_mention]
   )
   finding_list_length(fs: fs) == 0
+}
+
+fn discrepancy_count(xs: List<FidelityDiscrepancy>) -> Int {
+  fold(xs, init: 0, f: fn(acc, _) { acc + 1 })
+}
+
+fn first_discrepancy_is_under_claimed_edge(xs: List<FidelityDiscrepancy>) -> Bool {
+  match list_at_optional(xs: xs, index: 0) {
+    Absent => false
+    Present { value: discrepancy } =>
+      match discrepancy {
+        UnderClaimedEdge { source: _, dependent: _ } => true
+        UnreachedDeclaredInput { declaration: _ } => false
+        UnreachedDeclaredOutput { arm: _ } => false
+        OverClaimedCoupling { left: _, right: _ } => false
+      }
+  }
+}
+
+test fn suspect_finding_projects_to_exactly_one_under_claimed_edge() -> Bool {
+  let findings = findings_for(
+    scrutinee_name_sym: ^grammar_production_identity_node_projection,
+    mentions: [^probe_leaked_identity_mention]
+  )
+  let discrepancies = identity_captured_navigation_as_fidelity_discrepancies(findings: findings)
+  discrepancy_count(xs: discrepancies) == 1
+    && first_discrepancy_is_under_claimed_edge(xs: discrepancies)
 }
