@@ -2571,6 +2571,86 @@ discarded by a same-name local definition *refuse*. This is a local **binding**
 silently discarded in favour of a corpus-global one. Same principle, opposite
 direction.
 
+### 11.2j MEASURED — an on-chain divergent homonym compiles clean on a silent pick, and an off-chain one reports as a missing declaration
+
+Two arms of one seam, both measured by execution on a binary built in this
+worktree (2026-08-25T20:33; the installed `gunbc` rejects `--entry`, which is
+how the version skew below was caught). Every run carries a positive control (a
+corpus-unique name that must resolve) and a negative control (a name with no
+declaration that must refuse); no row below is reported from a run where either
+control failed.
+
+**Arm 1 — off-chain collision refuses, and is reported as absence.** Sibling
+declaring modules, reference from a third module, evaluated `fn`-body positions:
+
+| name | declarations | result |
+|---|---|---|
+| `unique_name` | 1 `data` | **resolves** (positive control) |
+| `samekind_name` | 2 `data`, divergent values | `undefined variable` |
+| `crosskind_name` | 1 `fn` + 1 `data` | `undefined variable` |
+| absent | 0 | `undefined variable` (negative control) |
+
+**Kind is not the variable** — same-kind and cross-kind refuse identically, which
+retires the cross-kind hypothesis for ordinary evaluated positions. And the
+ambiguous name's message is byte-identical to the genuinely-absent one, though
+the mechanism is not a missing consultation: `v1.04_infer`'s `Absent` arm *does*
+call `global_bare_strict_ambiguity_candidates`, which filters through
+`global_bare_chain_candidates` — a candidate survives only if its module path is
+a **prefix** of the referencing module's. Siblings survive nothing, so the
+explainer sees an empty candidate list and falls through. **The refusal is not
+chain-scoped; the explanation is.** Off-chain ambiguity is fatal to the resolver
+and invisible to the explainer, so it renders as absence — opposite remedies
+(write the declaration vs. qualify the reference), one message. `deep-ant-102`
+located the mechanism; the flip below confirmed it.
+
+**Arm 2 — on-chain collision does not refuse at all.** Same fixture with both
+declarations moved onto the referencing module's chain (`probe` and `probe.sub`
+declaring, `probe.sub.use` referencing):
+
+```
+resolved 2 sources (reference-derived closure), 2 indexed modules in the name census only
+compiled: 7 files emitted, 0 diagnostics
+
+probe_sub_use.rs:  pub use crate::probe_sub::{samekind_name};
+probe_sub.rs:      pub fn samekind_name() -> String { "from_sub".to_string() }
+```
+
+**It silently picks the nearer ancestor and compiles clean.** Two declarations,
+divergent values, both on the chain, no diagnostic of any kind; the `probe`
+declaration is never pulled into the closure. `v1.04_env`
+`unique_on_chain_policy_note` states that two-plus on-chain **refuses as typed
+`AmbiguousReference` with the full chain population**. On this path it does not —
+what executes is the nearest-ancestor tiebreak, the arm carrying
+`record_global_bare_ambiguous_silent_pick`. Whether the policy is not in effect
+on the `--entry` route or the bracket is not reached there is **not measured**
+and is not asserted here.
+
+**The two arms are ordered by severity and it is not the order the diagnostics
+suggest.** Arm 1 is a bad message on a correct refusal. Arm 2 is a wrong program
+that compiles. And arm 2 has no diagnostic population at all, by construction, so
+it cannot be sized by grepping diagnostics the way arm 1 can — `witness_floor_bare_cross_module_reference_class_note`'s 151 `Empty` rows are arm 1
+(`std.stack` and `std.algebra` are siblings of their referencing modules), and
+nothing counts arm 2.
+
+**This reframes C.1 rather than supporting one side of it.** The reference-derived
+**pull** declines to choose — measured in arm 1's run, it resolved the unique
+declaring module and left all four ambiguous ones in the census. The **resolver**
+chooses. Two seams over one question, answering it in opposite directions, is a
+stronger argument for repairing the seam than the fail-closed argument made
+against the pull alone.
+
+**Version skew is why this took four attempts, and it is its own class.** Three
+earlier runs of this fixture refused their own positive control. The cause was
+that `gunbc` on PATH resolved to an installed binary predating `--entry`, while
+`main.rs` was being read from the current tree — and the argument that the two
+corresponded was the install's **mtime**, which records when an artifact was
+copied and carries no relation to which tree it was built from. Authority
+substitution with a filesystem timestamp standing in for content identity. No
+control in the harness could catch it: the binary answered every question
+fluently and wrongly. What caught it was a peer running a flag against both
+binaries. **A harness must print the binary's accepted flag set**, so a
+version-skewed run refuses to look like a measurement.
+
 ### 11.3 The dispatch protocol
 
 Every dispatch across a lane boundary carries five lines, and a dispatch without them is refused rather than interpreted:
