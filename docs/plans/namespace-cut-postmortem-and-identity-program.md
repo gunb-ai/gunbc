@@ -2636,13 +2636,39 @@ ambiguous reference 'samekind_name': 2 candidates: probe.samekind_name,
 ```
 
 So the policy works, `unique_on_chain_policy_note` is accurate, and the resolver
-is not a fail-open. **The defect is that the census — whose stated purpose is to
-make out-of-closure declarations visible to name resolution — did not make one
-visible.** Ambiguity that exists in the corpus is unrepresentable in the index
-the resolver consults, so a program that should refuse compiles instead. Same
-symptom, different owner, different repair, and a wider blast radius than a
-resolver bug: every ambiguity involving a census-only module is invisible
-everywhere, not merely mis-messaged.
+is not a fail-open.
+
+**Nor is the census defective, and this clause is the second correction to arm 2
+— the first blamed the census fill.** `v1.compile` `census_only_sources_note`
+states the contract: *"Qualified references to modules outside the compile
+closure resolve against these"* — **qualified**. Enumerating BARE-name candidates
+from census-only modules was never in it, and the note records the measured
+reason for the boundary (compiling them under this invocation's pool-precedence
+view produced 344 diagnostics, the `Empty`/`Cons` poisoning class). So bare-name
+resolution is **closure-scoped by design**, and the consequence is that
+corpus-wide ambiguity is invisible to it. Filed as a census bug this reaches the
+wrong owner and the repair is a widen.
+
+**The right owner already exists and this arm attaches to it.**
+`test.claim.import_admission_closure_membership_witness_test`
+`import_admission_closure_membership_note` states the law — *"arm (4) shows the
+census only serves what the closure loads"* — and carries the disposition: rung
+**outside the ladder, silent wrongness** (a bare call's meaning depends on which
+modules the closure happened to load, and no diagnostic reports it at the value
+position); ceiling **structurally guaranteed** (admission is decidable from the
+consumer's `resolved_imports` joined to the census candidate's owner module, both
+already carried); next-rung trigger **`UnlistedImportUse` extended to the call
+seam**, which today covers type positions only. Arm 2 reached that law by
+ancestor-chain containment with the loser census-only; the witness's arm (3)
+reaches it by pool coincidence. Same law, two routes, one carrier.
+
+**What arm 2 adds to that note is one sentence about sizing.** The note records
+the pool-coincidence half as unbounded because a static join over-counts (4784
+sites whose provider may never be in any real closure, against 186/118 for the
+selective-unlisted half). Arm 2 closes the other estimator: an on-chain collision
+whose loser is census-only produces **no diagnostic at all**, so the class is
+equally invisible to a diagnostic census. "Unbounded" is therefore not *we lack a
+good estimator* but *neither available estimator can see it*.
 
 **What this costs the C.1 argument, stated because it was sent to a lane as an
 argument before the discriminator ran.** The claim that the pull declines to
