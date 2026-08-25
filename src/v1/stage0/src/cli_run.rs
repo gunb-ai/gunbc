@@ -178,7 +178,13 @@ pub fn moduleless_dag_entry_paths(entry_files: &[(String, String)]) -> Vec<Strin
         .collect()
 }
 
-pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
+/// The import declarations a `.dag` source pulls, as module paths.
+///
+/// `pub` rather than `pub(crate)` because the `gunbc` binary is a separate crate target and used
+/// to carry its own byte-equivalent copy of this walk. Two spellings of one fact is the §3 fork,
+/// and it is load-bearing here rather than cosmetic: this is one of the producers that answers
+/// WHICH FILES ARE IN THE SUBJECT, so a second copy is a second closure authority in waiting.
+pub fn extract_import_paths(content: &str) -> Vec<String> {
     let mut imports = Vec::new();
     for line in content.lines() {
         let trimmed = line.trim();

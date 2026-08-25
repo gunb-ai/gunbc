@@ -223,22 +223,6 @@ fn report_moduleless_dag_entry_skips(entry_files: &[(String, String)]) {
     }
 }
 
-/// Extract import module paths from a .dag file's import declarations.
-fn extract_import_paths(content: &str) -> Vec<String> {
-    let mut imports = Vec::new();
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("import ") {
-            let rest = trimmed["import ".len()..].trim();
-            let module_path = rest.split('{').next().unwrap_or(rest).trim();
-            if !module_path.is_empty() {
-                imports.push(module_path.to_string());
-            }
-        }
-    }
-    imports
-}
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DependencyPoolIndex {
     Strict,
@@ -349,7 +333,7 @@ fn resolve_transitively_with_seen(
         // Empty/Cons poisoning class). References instead widen the CENSUS
         // (fill = whole tree; policy gates lookup, never fill): see
         // census_only_sources below.
-        for module_path in extract_import_paths(&content) {
+        for module_path in v1_compiler::cli_run::extract_import_paths(&content) {
             if seen.contains_key(&module_path) {
                 continue;
             }
