@@ -69,7 +69,7 @@ import v2.std.diagnostic {
   Some,
   Unavailable,
   diagnostics_singleton,
-  port_locus,
+  invariant_port_locus,
   node_locus,
   outcome_rejected,
   bind_outcome
@@ -126,7 +126,7 @@ data emit_host_access_decision_seed_transport_dissolve_trigger: DissolutionCondi
 fn emit_host_run_unsupported_target_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^emit_host_run_unsupported_target,
-    at: port_locus(port: ^emit_host_transport_port),
+    at: invariant_port_locus(port: ^emit_host_transport_port, invariant: ^emit_host_run_unsupported_target),
     correction: Unavailable { reason: CorrectionNotModeled }
   }
 }
@@ -142,7 +142,7 @@ fn emit_host_emit_vs_eval_deferred_diagnostic(at: Node) -> Diagnostic {
 fn emit_host_exit_not_ok_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^emit_host_exit_not_ok,
-    at: port_locus(port: ^emit_host_transport_port),
+    at: invariant_port_locus(port: ^emit_host_transport_port, invariant: ^emit_host_exit_not_ok),
     correction: Unavailable { reason: CorrectionNotModeled }
   }
 }
@@ -150,7 +150,7 @@ fn emit_host_exit_not_ok_diagnostic() -> Diagnostic {
 fn emit_host_transport_outside_grant_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^emit_host_transport_outside_grant,
-    at: port_locus(port: ^emit_host_transport_port),
+    at: invariant_port_locus(port: ^emit_host_transport_port, invariant: ^emit_host_transport_outside_grant),
     correction: Unavailable { reason: CorrectionNotModeled }
   }
 }

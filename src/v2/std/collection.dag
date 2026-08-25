@@ -11,7 +11,7 @@ import v2.std.diagnostic {
   Unavailable,
   outcome_accepted,
   outcome_rejected,
-  port_locus
+  invariant_port_locus
 }
 import v2.std.node { Symbol }
 import v2.std.optional {
@@ -27,7 +27,7 @@ import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 fn optional_absent_unwrap_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^optional_absent_unwrap,
-    at: port_locus(port: ^optional_present_witness_port),
+    at: invariant_port_locus(port: ^optional_present_witness_port, invariant: ^optional_absent_unwrap),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

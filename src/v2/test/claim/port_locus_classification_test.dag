@@ -1,0 +1,77 @@
+module v2.test.claim.port_locus_classification
+
+import v2.std.diagnostic {
+  ByteRange,
+  InvariantPortLocus,
+  SourcePortLocus,
+  Textual,
+  invariant_port_locus,
+  locus_eq,
+  port_refusal_locus,
+  source_port_locus
+}
+
+test fn port_refusal_classifies_only_from_available_evidence() -> Bool {
+  let source = port_refusal_locus(
+    at: Textual {
+      file: ^port_locus_projection_source,
+      extent: ByteRange { start: 3, end: 5 }
+    },
+    port: ^port_locus_projection_port,
+    invariant: ^port_locus_projection_failure
+  )
+  let invariant = port_refusal_locus(
+    at: invariant_port_locus(
+      port: ^port_locus_projection_port,
+      invariant: ^broad_pre_failure_placeholder
+    ),
+    port: ^port_locus_projection_port,
+    invariant: ^port_locus_projection_failure
+  )
+  let source_exact = match source {
+    SourcePortLocus { anchor: _, file: file, extent: extent } =>
+      (file == ^port_locus_projection_source) && match extent {
+        ByteRange { start: start, end: end } => (start == 3) && (end == 5)
+        _ => false
+      }
+    _ => false
+  }
+  let invariant_exact = match invariant {
+    InvariantPortLocus { anchor: _, invariant: violated } =>
+      violated == ^port_locus_projection_failure
+    _ => false
+  }
+  source_exact && invariant_exact
+}
+
+// The two arms answer different ownership questions. A source refusal must retain the exact
+// source position; an invariant refusal must retain the invariant identity; and equality must
+// never collapse one into the other merely because both failures crossed the same port.
+test fn port_locus_states_are_distinct_and_retain_required_evidence() -> Bool {
+  let source = source_port_locus(
+    port: ^port_locus_classification_port,
+    file: ^port_locus_classification_source,
+    extent: ByteRange { start: 11, end: 17 }
+  )
+  let invariant = invariant_port_locus(
+    port: ^port_locus_classification_port,
+    invariant: ^port_locus_classification_invariant
+  )
+  let source_retained = match source {
+    SourcePortLocus { anchor: anchor, file: file, extent: extent } =>
+      (anchor.at == ^port_locus_classification_port)
+        && (file == ^port_locus_classification_source)
+        && match extent {
+          ByteRange { start: start, end: end } => (start == 11) && (end == 17)
+          _ => false
+        }
+    _ => false
+  }
+  let invariant_retained = match invariant {
+    InvariantPortLocus { anchor: anchor, invariant: violated } =>
+      (anchor.at == ^port_locus_classification_port)
+        && (violated == ^port_locus_classification_invariant)
+    _ => false
+  }
+  source_retained && invariant_retained && !locus_eq(a: source, b: invariant)
+}

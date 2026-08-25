@@ -3,7 +3,7 @@ module v2.test.manual.s1_stall_probe
 
 fn stall_offset(path: String) -> Int {
   let lm = dag_language_model()
-  let at = port_locus(port: ^s1_stall_probe_locus)
+  let at = invariant_port_locus(port: ^s1_stall_probe_locus, invariant: ^s1_stall_probe_locus)
   let source = filesystem_read(path: path).content
   match tokenize(text: source, file: ^s1_stall_probe_anchor, rules: lm.lex) {
     Rejected { diagnostics: _ } => 0 - 3

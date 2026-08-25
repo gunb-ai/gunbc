@@ -5,7 +5,7 @@ data forensics_scaling_witness_note: String = "adhoc-c328b166-bca interpreted-pa
 
 fn forensics_scaling_stats_for_path(path: String) -> ParseMemoStats {
   let lm = dag_language_model()
-  let at = port_locus(port: ^parse_stage_locus_port)
+  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^parse_forensics_scaling_witness_grammar_contract)
   let source_text = filesystem_read(path: path).content
   match tokenize(text: source_text, file: ^parse_forensics_scaling_file_anchor, rules: lm.lex) {
     Rejected { diagnostics: _ } =>

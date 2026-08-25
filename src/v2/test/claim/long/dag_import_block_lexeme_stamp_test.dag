@@ -48,7 +48,7 @@ fn dag_lex_stamp_block_idents() -> Outcome<List<Symbol>> {
         Absent =>
           outcome_rejected(Diagnostic {
             reason: ^dag_import_block_lexeme_stamp_no_import,
-            at: port_locus(port: ^dag_import_block_lexeme_stamp_probe),
+            at: invariant_port_locus(port: ^dag_import_block_lexeme_stamp_probe, invariant: ^dag_import_block_lexeme_stamp_no_import),
             correction: Unavailable { reason: ExternalContractUnknown }
           })
         Present { value: import_node } =>

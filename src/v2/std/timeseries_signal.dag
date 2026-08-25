@@ -10,7 +10,7 @@ import v2.std.optional {
   Absent,
   Present
 }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected, port_locus }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, invariant_port_locus }
 import v2.std.integer { Int, int_add, int_div, int_mul }
 import v2.std.logic { Bool }
 import std.measure {
@@ -327,7 +327,7 @@ fn capacitor_fold_step(
   match int_div(
     a: new_charge,
     b: capacitance_micro_count(element.rating.microfarads),
-    at: port_locus(port: timeseries_passive_fold_step_locus),
+    at: invariant_port_locus(port: timeseries_passive_fold_step_locus, invariant: ^integer_div_by_zero),
   ) {
     Accepted { value: v, diagnostics: _ } =>
       Accepted {
@@ -398,7 +398,7 @@ fn inductor_fold_step(
   match int_div(
     a: new_flux,
     b: inductance_micro_count(element.rating.microhenries),
-    at: port_locus(port: timeseries_passive_fold_step_locus),
+    at: invariant_port_locus(port: timeseries_passive_fold_step_locus, invariant: ^integer_div_by_zero),
   ) {
     Accepted { value: i, diagnostics: _ } =>
       Accepted {

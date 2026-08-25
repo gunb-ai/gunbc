@@ -11,7 +11,8 @@ import v2.compiler.self_host.frontier_probe_types {
   AssembleRejectionDetail,
   NonEmptySymbolChain,
   CauseLocationNodeNotSerializable,
-  CauseLocationPort,
+  CauseLocationInvariantPort,
+  CauseLocationSourcePort,
   CauseLocationTextual,
   NoFrontierProbeDetail
 }
@@ -24,7 +25,7 @@ import v2.std.diagnostic {
   UserInputBoundary,
   WholeFile,
   node_locus,
-  port_locus
+  invariant_port_locus
 }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
@@ -43,7 +44,8 @@ fn detail_location_of(d: Diagnostic) -> Symbol {
     AssembleRejectionDetail { rejection_chain: _, cause: _, at: a } =>
       match a {
         CauseLocationTextual { file: _, extent: _ } => ^location_is_textual
-        CauseLocationPort { port: p } => p
+        CauseLocationSourcePort { port: p, file: _, extent: _ } => p
+        CauseLocationInvariantPort { port: p, invariant: _ } => p
         CauseLocationNodeNotSerializable => ^location_is_node_not_serializable
       }
   }
@@ -71,7 +73,7 @@ fn node_locus_diagnostic() -> Diagnostic {
 fn port_locus_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^cause_location_probe_unclassified_reason,
-    at: port_locus(port: ^cause_location_probe_port),
+    at: invariant_port_locus(port: ^cause_location_probe_port, invariant: ^cause_location_probe_unclassified_reason),
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
@@ -91,7 +93,8 @@ fn textual_extent_start() -> Int {
             WholeFile => 0 - 2
             ByteRange { start: s, end: _ } => s
           }
-        CauseLocationPort { port: _ } => 0 - 3
+        CauseLocationSourcePort { port: _, file: _, extent: _ } => 0 - 3
+        CauseLocationInvariantPort { port: _, invariant: _ } => 0 - 3
         CauseLocationNodeNotSerializable => 0 - 4
       }
   }
@@ -128,7 +131,8 @@ fn paired_start_of_two() -> Int {
             WholeFile => 0 - 2
             ByteRange { start: s, end: _ } => s
           }
-        CauseLocationPort { port: _ } => 0 - 3
+        CauseLocationSourcePort { port: _, file: _, extent: _ } => 0 - 3
+        CauseLocationInvariantPort { port: _, invariant: _ } => 0 - 3
         CauseLocationNodeNotSerializable => 0 - 4
       }
   }

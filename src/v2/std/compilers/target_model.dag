@@ -57,7 +57,7 @@ import v2.std.diagnostic {
   node_locus,
   outcome_accepted,
   outcome_rejected,
-  port_locus,
+  invariant_port_locus,
   rejected_with_pending
 }
 import v2.std.compilers.lexing {
@@ -5585,7 +5585,7 @@ fn target_value_expression_record_construct_to_concrete_tokens(
 fn target_import_empty_names_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^target_import_names_empty,
-    at: port_locus(port: ^target_import_names_empty),
+    at: invariant_port_locus(port: ^target_import_names_empty, invariant: ^target_import_names_empty),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -5593,7 +5593,7 @@ fn target_import_empty_names_diagnostic() -> Diagnostic {
 fn target_import_empty_path_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^target_import_path_empty,
-    at: port_locus(port: ^target_import_path_empty),
+    at: invariant_port_locus(port: ^target_import_path_empty, invariant: ^target_import_path_empty),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -10333,7 +10333,7 @@ fn target_derive_supplemental_generic_bound_contract_lookup_in_choice(
 fn target_collection_set_no_representation_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^target_collection_set_no_representation,
-    at: port_locus(port: ^target_collection_set_no_representation_port),
+    at: invariant_port_locus(port: ^target_collection_set_no_representation_port, invariant: ^target_collection_set_no_representation),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -10341,7 +10341,7 @@ fn target_collection_set_no_representation_diagnostic() -> Diagnostic {
 fn target_collection_free_monoid_no_representation_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^target_collection_free_monoid_no_representation,
-    at: port_locus(port: ^target_collection_free_monoid_no_representation_port),
+    at: invariant_port_locus(port: ^target_collection_free_monoid_no_representation_port, invariant: ^target_collection_free_monoid_no_representation),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

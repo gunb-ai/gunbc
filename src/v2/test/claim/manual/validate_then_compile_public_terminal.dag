@@ -21,7 +21,7 @@ import v2.std.diagnostic {
   Accepted,
   None,
   Outcome,
-  port_locus,
+  invariant_port_locus,
   Rejected,
   outcome_accepted,
   outcome_rejected
@@ -66,7 +66,7 @@ fn claim_symbol_node(s: Symbol) -> Node {
 fn always_reject_lens_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
   outcome_rejected(
     compile_lens_gate_rejected_diagnostic(
-      at: port_locus(port: ^rejecting_lens_gate_at)
+      at: invariant_port_locus(port: ^rejecting_lens_gate_at, invariant: ^rejecting_lens_gate_at)
     )
   )
 }

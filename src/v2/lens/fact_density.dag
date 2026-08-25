@@ -1,7 +1,7 @@
 module v2.lens.fact_density
 
 import v2.std.witness { Holds }
-import v2.std.diagnostic { outcome_accepted, outcome_rejected, port_locus }
+import v2.std.diagnostic { outcome_accepted, outcome_rejected, invariant_port_locus }
 
 fn symbol_is_kernel_ambient(s: Symbol) -> Bool {
   s == ^fact_density_kernel_ambient_string ||
@@ -64,7 +64,7 @@ fn fact_density_hollow_alias_gate(node: Node) -> Outcome<Witness<Node>> {
       outcome_rejected(
         Diagnostic {
           reason: ^fact_density_hollow_alias_locus,
-          at: port_locus(port: ^fact_density_hollow_alias_locus),
+          at: invariant_port_locus(port: ^fact_density_hollow_alias_locus, invariant: ^fact_density_hollow_alias_locus),
           correction: Unavailable { reason: ExternalContractUnknown }
         }
       )

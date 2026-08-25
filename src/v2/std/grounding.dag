@@ -26,7 +26,7 @@ fn empty_per_language_fact_bundle_registry() -> PerLanguageFactBundleRegistry {
 fn per_language_fact_bundle_duplicate_key_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^per_language_fact_bundle_duplicate_key_reason,
-    at: port_locus(port: ^per_language_fact_bundle_duplicate_key_reason),
+    at: invariant_port_locus(port: ^per_language_fact_bundle_duplicate_key_reason, invariant: ^per_language_fact_bundle_duplicate_key_reason),
     correction: Unavailable { reason: UserInputBoundary }
   }
 }

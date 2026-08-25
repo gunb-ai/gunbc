@@ -36,7 +36,7 @@ import v2.std.diagnostic {
   ExternalContractUnknown,
   Rejected,
   Unavailable,
-  port_locus
+  invariant_port_locus
 }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.verification {
@@ -76,7 +76,7 @@ fn parse_tree_to_target_model_bridge_scaffold() -> Witness<ParseTreeToTargetMode
     Violates {
       diagnostic: Diagnostic {
         reason: ^parse_tree_to_target_model_bridge_not_realized,
-        at: port_locus(port: ^cross_language_bridge_port),
+        at: invariant_port_locus(port: ^cross_language_bridge_port, invariant: ^parse_tree_to_target_model_bridge_not_realized),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
     }

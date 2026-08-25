@@ -15,7 +15,8 @@ import v2.std.diagnostic {
   Locus,
   NodeLocus,
   NonEmptyDiagnostics,
-  PortLocus,
+  InvariantPortLocus,
+  SourcePortLocus,
   Outcome,
   Rejected,
   Suggested,
@@ -233,7 +234,8 @@ fn locus_evaluation_nodes(at: Locus) -> List<Node> {
   match at {
     NodeLocus { anchor: a } => list_snoc_item(xs: Empty, item: a.at)
     Textual { file: _, extent: _ } => Empty
-    PortLocus { anchor: _ } => Empty
+    SourcePortLocus { anchor: _, file: _, extent: _ } => Empty
+    InvariantPortLocus { anchor: _, invariant: _ } => Empty
   }
 }
 

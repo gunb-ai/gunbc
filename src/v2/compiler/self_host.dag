@@ -11,7 +11,7 @@ import v2.std.diagnostic {
   ExternalContractUnknown,
   node_locus,
   Outcome,
-  port_locus,
+  invariant_port_locus,
   Rejected,
   Unavailable,
   diagnostics_singleton,
@@ -126,7 +126,7 @@ type PromotionWitness {
 fn self_host_runner_not_realized_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^self_host_runner_not_realized,
-    at: port_locus(port: ^self_host_runner_port),
+    at: invariant_port_locus(port: ^self_host_runner_port, invariant: ^self_host_runner_not_realized),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

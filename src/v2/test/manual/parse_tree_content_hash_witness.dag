@@ -3,7 +3,7 @@ module v2.test.manual.parse_tree_content_hash_witness
 
 fn parse_tree_content_hash_for_path(path: String) -> Optional<Hash> {
   let lm = dag_language_model()
-  let at = port_locus(port: ^parse_stage_locus_port)
+  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^parse_tree_content_hash_witness_grammar_contract)
   let source_text = filesystem_read(path: path).content
   match tokenize(text: source_text, file: ^parse_tree_content_hash_file_anchor, rules: lm.lex) {
     Rejected { diagnostics: _ } => Absent

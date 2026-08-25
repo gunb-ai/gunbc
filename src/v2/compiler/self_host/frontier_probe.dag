@@ -93,7 +93,8 @@ import v2.std.diagnostic {
   LocusAnchor,
   NonEmptyDiagnostics,
   Outcome,
-  PortLocus,
+  InvariantPortLocus,
+  SourcePortLocus,
   Rejected,
   Textual,
   Unavailable,
@@ -101,7 +102,7 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   outcome_accepted,
   outcome_rejected,
-  port_locus
+  invariant_port_locus
 }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -151,7 +152,7 @@ type FrontierProbeIngestSubject
 fn frontier_probe_subject_digest_mismatch_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: frontier_probe_subject_digest_mismatch_reason,
-    at: port_locus(port: frontier_probe_subject_digest_mismatch_reason),
+    at: invariant_port_locus(port: frontier_probe_subject_digest_mismatch_reason, invariant: frontier_probe_subject_digest_mismatch_reason),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -238,7 +239,9 @@ fn frontier_probe_diagnostic_tail_port_lexeme(d: NonEmptyDiagnostics) -> String 
         acc
       } else {
         match diag.at {
-          PortLocus { anchor: LocusAnchor { at: port } } =>
+          SourcePortLocus { anchor: LocusAnchor { at: port }, file: _, extent: _ } =>
+            symbol_lexeme(sym: port)
+          InvariantPortLocus { anchor: LocusAnchor { at: port }, invariant: _ } =>
             symbol_lexeme(sym: port)
           _ => ""
         }

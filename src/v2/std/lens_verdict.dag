@@ -5,7 +5,8 @@ import v2.std.diagnostic {
   CorrectionNotModeled,
   Diagnostic,
   NodeLocus,
-  PortLocus,
+  InvariantPortLocus,
+  SourcePortLocus,
   Textual,
   Unavailable,
   textual_whole_file_diagnostic,
@@ -55,6 +56,7 @@ fn lens_verdict_diagnostic_locus_module(d: Diagnostic) -> String {
   match d.at {
     Textual { file: module_file, extent: _ } => symbol_lexeme(sym: module_file)
     NodeLocus { anchor: _ } => ""
-    PortLocus { anchor: _ } => ""
+    SourcePortLocus { anchor: _, file: module_file, extent: _ } => symbol_lexeme(sym: module_file)
+    InvariantPortLocus { anchor: _, invariant: _ } => ""
   }
 }

@@ -32,7 +32,7 @@ import v2.std.diagnostic {
   bind_outcome,
   outcome_accepted,
   outcome_rejected,
-  port_locus
+  invariant_port_locus
 }
 import v2.std.node { Node, Symbol }
 import v2.std.optional { Absent, Present, optional_absent, optional_present }
@@ -182,7 +182,7 @@ fn mint_artifact_from_rust_emission_candidate(
       outcome_rejected(
         d: Diagnostic {
           reason: ^direct_rust_door_producer_receipt_refused,
-          at: port_locus(port: ^candidate_generation),
+          at: invariant_port_locus(port: ^candidate_generation, invariant: ^direct_rust_door_producer_receipt_refused),
           correction: Unavailable { reason: ExternalContractUnknown }
         }
       )

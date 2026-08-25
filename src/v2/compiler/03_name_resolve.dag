@@ -44,7 +44,7 @@ import v2.std.diagnostic {
   Unavailable,
   diagnostics_merge,
   diagnostics_singleton,
-  port_locus,
+  invariant_port_locus,
   rejected_with_pending,
   textual_whole_file_diagnostic
 }
@@ -126,7 +126,7 @@ type ModuleRootNameFindState
 fn resolve_diagnostic(reason: Symbol) -> Diagnostic {
   Diagnostic {
     reason: reason,
-    at: port_locus(port: reason),
+    at: invariant_port_locus(port: reason, invariant: reason),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

@@ -27,7 +27,7 @@ import v2.std.diagnostic {
   Outcome,
   Rejected,
   locus_eq,
-  port_locus
+  invariant_port_locus
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
@@ -415,7 +415,7 @@ test fn witness_cross_tree_dag_to_v2_grounded_denied_holds() -> Bool {
         (r.head.reason == ^resolve_cross_tree_import_denied)
           && locus_eq(
             a: r.head.at,
-            b: port_locus(port: ^resolve_cross_tree_import_denied)
+            b: invariant_port_locus(port: ^resolve_cross_tree_import_denied, invariant: ^resolve_cross_tree_import_denied)
           )
     }
   }

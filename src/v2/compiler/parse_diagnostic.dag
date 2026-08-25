@@ -20,7 +20,8 @@ import v2.std.diagnostic {
   Locus,
   NonEmptyDiagnostics,
   Unavailable,
-  port_locus
+  invariant_port_locus,
+  port_refusal_locus
 }
 import v2.std.grammar_choice_ambiguity {
   GrammarChoiceAmbiguityRow,
@@ -50,7 +51,11 @@ fn parse_overlap_residue_stage_diagnostic_at(
   ParseStageDiagnostic {
     diagnostic: Diagnostic {
       reason: ^parse_grammar_choice_overlap_residue,
-      at: at,
+      at: port_refusal_locus(
+        at: at,
+        port: ^parse_stage_locus_port,
+        invariant: ^parse_grammar_choice_overlap_residue
+      ),
       correction: Unavailable { reason: ExternalContractUnknown }
     },
     evidence: GrammarChoiceAmbiguityEvidence { row: row }
@@ -59,7 +64,7 @@ fn parse_overlap_residue_stage_diagnostic_at(
 
 fn parse_overlap_residue_stage_diagnostic(row: GrammarChoiceAmbiguityRow) -> ParseStageDiagnostic {
   parse_overlap_residue_stage_diagnostic_at(
-    at: port_locus(port: ^parse_stage_locus_port),
+    at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^parse_grammar_choice_overlap_residue),
     row: row
   )
 }

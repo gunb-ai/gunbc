@@ -14,7 +14,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, port_locus, Unavailable }
+import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, invariant_port_locus, port_refusal_locus, Unavailable }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence, is_empty_conj_root }
 import v2.std.node_query { find_named_child }
 import std.integer { Signedness, Signed, Unsigned }
@@ -117,7 +117,7 @@ fn integer_standard_integer_type_decode_invalid_diagnostic(source_carrier: Node)
 fn integer_signed_i32_le_decode_invalid_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^integer_standard_integer_type_decode_invalid,
-    at: port_locus(port: ^integer_signed_i32_le_decode_invalid),
+    at: invariant_port_locus(port: ^integer_signed_i32_le_decode_invalid, invariant: ^integer_standard_integer_type_decode_invalid),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -978,7 +978,7 @@ data int_ordered_ring: OrderedRing<Int> = OrderedRing {
 fn integer_divide_by_zero_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: ^integer_div_by_zero,
-    at: at,
+    at: port_refusal_locus(at: at, port: ^integer_division_port, invariant: ^integer_div_by_zero),
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
@@ -986,7 +986,7 @@ fn integer_divide_by_zero_diagnostic(at: Locus) -> Diagnostic {
 fn integer_modulo_by_zero_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: ^integer_modulo_by_zero,
-    at: at,
+    at: port_refusal_locus(at: at, port: ^integer_modulo_port, invariant: ^integer_modulo_by_zero),
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }

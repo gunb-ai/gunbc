@@ -43,7 +43,7 @@ import v2.std.diagnostic {
   Locus,
   Outcome,
   Some,
-  port_locus,
+  invariant_port_locus,
   Rejected,
   Unavailable,
   bind_outcome,
@@ -416,7 +416,7 @@ fn compile_ingest_with_admission(
                         EvalResult { value: _ } =>
                           outcome_rejected(
                             compile_eval_not_realized_diagnostic(
-                              at: port_locus(port: ^compile_stage_locus_port)
+                              at: invariant_port_locus(port: ^compile_stage_locus_port, invariant: ^compile_eval_not_realized)
                             )
                           )
                       }
@@ -454,7 +454,7 @@ fn compile_source_root_ingest_with_admission(
             EvalResult { value: _ } =>
               outcome_rejected(
                 compile_eval_not_realized_diagnostic(
-                  at: port_locus(port: ^compile_stage_locus_port)
+                  at: invariant_port_locus(port: ^compile_stage_locus_port, invariant: ^compile_eval_not_realized)
                 )
               )
           }
@@ -505,7 +505,7 @@ fn stage_translate(target: TargetModel) -> fn(ResolvedTree) -> Outcome<Medium<St
           EvalResult { value: _ } =>
             outcome_rejected(
               compile_eval_not_realized_diagnostic(
-                at: port_locus(port: ^compile_stage_locus_port)
+                at: invariant_port_locus(port: ^compile_stage_locus_port, invariant: ^compile_eval_not_realized)
               )
             )
         }

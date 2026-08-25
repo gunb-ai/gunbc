@@ -72,7 +72,7 @@ import v2.std.diagnostic {
   Unavailable,
   NonEmptyDiagnostics,
   diagnostics_singleton,
-  port_locus,
+  invariant_port_locus,
 }
 import v2.std.logic { Bool }
 import v2.std.collection { List }
@@ -87,7 +87,7 @@ fn planted_emission_rejected() -> ProvenancedRustEmissionObservation {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: ^direct_rust_door_group_algebra_planted_emission_refusal,
-        at: port_locus(port: ^direct_rust_door_group_algebra),
+        at: invariant_port_locus(port: ^direct_rust_door_group_algebra, invariant: ^direct_rust_door_group_algebra_planted_emission_refusal),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
     )
@@ -227,7 +227,7 @@ fn planted_diag() -> NonEmptyDiagnostics {
   diagnostics_singleton(
     d: Diagnostic {
       reason: ^direct_rust_door_group_algebra_planted_stage_refusal,
-      at: port_locus(port: ^direct_rust_door_group_algebra),
+      at: invariant_port_locus(port: ^direct_rust_door_group_algebra, invariant: ^direct_rust_door_group_algebra_planted_stage_refusal),
       correction: Unavailable { reason: ExternalContractUnknown }
     }
   )

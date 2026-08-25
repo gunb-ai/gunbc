@@ -11,13 +11,14 @@ import v2.std.diagnostic {
   Unavailable,
   UserInputBoundary,
   diagnostics_singleton,
-  port_locus
+  invariant_port_locus,
+  port_refusal_locus
 }
 import v2.std.integer { Int }
 import v2.std.node { Symbol }
 
 fn refinement_authoritative_locus() -> Locus {
-  port_locus(port: ^refinement_authoritative_locus)
+  invariant_port_locus(port: ^refinement_authoritative_locus, invariant: ^refinement_authoritative_invariant)
 }
 
 type Validation<B> {
@@ -50,7 +51,7 @@ fn refine<B>(base: B, by: Validation<B>, at: Locus) -> Outcome<Refined<B>> {
       diagnostics: diagnostics_singleton(
         d: Diagnostic {
           reason: by.reason,
-          at: at,
+          at: port_refusal_locus(at: at, port: ^refinement_authoritative_locus, invariant: by.reason),
           correction: Unavailable { reason: UserInputBoundary }
         }
       )

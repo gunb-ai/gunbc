@@ -36,7 +36,7 @@ type SourceFindingsStanding
 
 fn source_findings(source_text: String) -> SourceFindingsStanding {
   let lm = dag_language_model()
-  let at = port_locus(port: ^accumulator_copy_roster_gate_port)
+  let at = invariant_port_locus(port: ^accumulator_copy_roster_gate_port, invariant: ^accumulator_copy_source_analysis_invariant)
   match lm.grammar {
     VoidGrammar => SourceFindingsNotEstablished { cause: LanguageGrammarUnavailable }
     ModeledGrammar { root: root } =>

@@ -15,7 +15,8 @@ type LocusAnchor<T> {
 type Locus
   = Textual { file: Symbol, extent: Extent }
   | NodeLocus { anchor: LocusAnchor<Node> }
-  | PortLocus { anchor: LocusAnchor<Symbol> }
+  | SourcePortLocus { anchor: LocusAnchor<Symbol>, file: Symbol, extent: Extent }
+  | InvariantPortLocus { anchor: LocusAnchor<Symbol>, invariant: Symbol }
 
 type NoCorrectionReason
   = UserInputBoundary
@@ -57,8 +58,28 @@ fn node_locus(node: Node) -> Locus {
   NodeLocus { anchor: LocusAnchor { at: node } }
 }
 
-fn port_locus(port: Symbol) -> Locus {
-  PortLocus { anchor: LocusAnchor { at: port } }
+fn source_port_locus(port: Symbol, file: Symbol, extent: Extent) -> Locus {
+  SourcePortLocus { anchor: LocusAnchor { at: port }, file: file, extent: extent }
+}
+
+fn invariant_port_locus(port: Symbol, invariant: Symbol) -> Locus {
+  InvariantPortLocus { anchor: LocusAnchor { at: port }, invariant: invariant }
+}
+
+// A generic operation may receive its locus before it knows which refusal will fire. The
+// operation owns that classification: textual evidence becomes a source-bearing port locus,
+// while a source-independent seed is replaced by the exact invariant that actually failed.
+// Callers therefore cannot use a broad stage label as an escape from naming the invariant.
+fn port_refusal_locus(at: Locus, port: Symbol, invariant: Symbol) -> Locus {
+  match at {
+    Textual { file: file, extent: extent } =>
+      source_port_locus(port: port, file: file, extent: extent)
+    SourcePortLocus { anchor: _, file: file, extent: extent } =>
+      source_port_locus(port: port, file: file, extent: extent)
+    InvariantPortLocus { anchor: _, invariant: _ } =>
+      invariant_port_locus(port: port, invariant: invariant)
+    NodeLocus { anchor: anchor } => NodeLocus { anchor: anchor }
+  }
 }
 
 fn textual_whole_file_locus(file: Symbol) -> Locus {
@@ -109,17 +130,27 @@ fn locus_eq(a: Locus, b: Locus) -> Bool {
     Textual { file: fa, extent: ea } => match b {
       Textual { file: fb, extent: eb } => (fa == fb) && extent_eq(a: ea, b: eb)
       NodeLocus { anchor: _ } => false
-      PortLocus { anchor: _ } => false
+      SourcePortLocus { anchor: _, file: _, extent: _ } => false
+      InvariantPortLocus { anchor: _, invariant: _ } => false
     }
     NodeLocus { anchor: na } => match b {
       Textual { file: _, extent: _ } => false
       NodeLocus { anchor: nb } => na.at == nb.at
-      PortLocus { anchor: _ } => false
+      SourcePortLocus { anchor: _, file: _, extent: _ } => false
+      InvariantPortLocus { anchor: _, invariant: _ } => false
     }
-    PortLocus { anchor: pa } => match b {
+    SourcePortLocus { anchor: pa, file: fa, extent: ea } => match b {
       Textual { file: _, extent: _ } => false
       NodeLocus { anchor: _ } => false
-      PortLocus { anchor: pb } => pa.at == pb.at
+      SourcePortLocus { anchor: pb, file: fb, extent: eb } =>
+        (pa.at == pb.at) && (fa == fb) && extent_eq(a: ea, b: eb)
+      InvariantPortLocus { anchor: _, invariant: _ } => false
+    }
+    InvariantPortLocus { anchor: pa, invariant: ia } => match b {
+      Textual { file: _, extent: _ } => false
+      NodeLocus { anchor: _ } => false
+      SourcePortLocus { anchor: _, file: _, extent: _ } => false
+      InvariantPortLocus { anchor: pb, invariant: ib } => (pa.at == pb.at) && (ia == ib)
     }
   }
 }

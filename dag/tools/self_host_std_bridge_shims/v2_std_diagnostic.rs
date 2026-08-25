@@ -61,8 +61,14 @@ pub enum Locus {
     NodeLocus {
         anchor: Rc<LocusAnchor<Rc<Node>>>,
     },
-    PortLocus {
+    SourcePortLocus {
         anchor: Rc<LocusAnchor<Symbol>>,
+        file: Symbol,
+        extent: Rc<Extent>,
+    },
+    InvariantPortLocus {
+        anchor: Rc<LocusAnchor<Symbol>>,
+        invariant: Symbol,
     },
 }
 
@@ -113,9 +119,18 @@ pub fn node_locus(node: Rc<Node>) -> Rc<Locus> {
     })
 }
 
-pub fn port_locus(port: Symbol) -> Rc<Locus> {
-    Rc::new(Locus::PortLocus {
+pub fn source_port_locus(port: Symbol, file: Symbol, extent: Rc<Extent>) -> Rc<Locus> {
+    Rc::new(Locus::SourcePortLocus {
         anchor: Rc::new(LocusAnchor { at: port }),
+        file,
+        extent,
+    })
+}
+
+pub fn invariant_port_locus(port: Symbol, invariant: Symbol) -> Rc<Locus> {
+    Rc::new(Locus::InvariantPortLocus {
+        anchor: Rc::new(LocusAnchor { at: port }),
+        invariant,
     })
 }
 

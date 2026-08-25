@@ -12,7 +12,8 @@ import v2.std.diagnostic {
   Extent,
   NodeLocus,
   NonEmptyDiagnostics,
-  PortLocus,
+  InvariantPortLocus,
+  SourcePortLocus,
   Textual,
   WholeFile
 }
@@ -169,7 +170,8 @@ fn retained_node_optional(d: Diagnostic) -> Optional<Node> {
   match d.at {
     NodeLocus { anchor: anchor } => Present { value: anchor.at }
     Textual { file: _, extent: _ } => Absent
-    PortLocus { anchor: _ } => Absent
+    SourcePortLocus { anchor: _, file: _, extent: _ } => Absent
+    InvariantPortLocus { anchor: _, invariant: _ } => Absent
   }
 }
 
@@ -447,7 +449,19 @@ fn diagnostic_attribution(d: Diagnostic) -> String {
         "textual ",
         concat(symbol_lexeme(sym: file), concat("  ", diagnostic_extent_label(extent: extent)))
       )
-    PortLocus { anchor: anchor } => concat("port ", symbol_lexeme(sym: anchor.at))
+    SourcePortLocus { anchor: anchor, file: file, extent: extent } =>
+      concat(
+        "port ",
+        concat(
+          symbol_lexeme(sym: anchor.at),
+          concat(" at ", concat(symbol_lexeme(sym: file), concat("  ", diagnostic_extent_label(extent: extent))))
+        )
+      )
+    InvariantPortLocus { anchor: anchor, invariant: invariant } =>
+      concat(
+        "invariant port ",
+        concat(symbol_lexeme(sym: anchor.at), concat(" violated ", symbol_lexeme(sym: invariant)))
+      )
   }
 }
 

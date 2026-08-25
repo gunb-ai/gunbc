@@ -164,7 +164,7 @@ import v2.std.diagnostic {
   node_locus,
   outcome_accepted,
   outcome_rejected,
-  port_locus
+  invariant_port_locus
 }
 import std.algebra { Empty }
 import v2.std.integer {
@@ -368,7 +368,7 @@ fn dag_field_access_concrete_tokens() -> List<ConcreteSyntaxToken> {
 fn dag_surface_operator_canonicalization_miss_diagnostic(surface_token: Symbol) -> Diagnostic {
   Diagnostic {
     reason: ^dag_surface_operator_canonicalization_miss,
-    at: port_locus(port: ^dag_surface_operator_canonicalization_port),
+    at: invariant_port_locus(port: ^dag_surface_operator_canonicalization_port, invariant: ^dag_surface_operator_canonicalization_miss),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -4244,7 +4244,7 @@ fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurrenc
       outcome_rejected(
         d: Diagnostic {
           reason: ^dag_int_literal_lexeme_invalid,
-          at: port_locus(port: ^dag_int_literal_lexeme_invalid),
+          at: invariant_port_locus(port: ^dag_int_literal_lexeme_invalid, invariant: ^dag_int_literal_lexeme_invalid),
           correction: Unavailable { reason: CorrectionNotModeled }
         }
       )

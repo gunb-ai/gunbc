@@ -7,7 +7,7 @@ import v2.std.diagnostic {
   Rejected,
   Unavailable,
   diagnostics_singleton,
-  port_locus
+  invariant_port_locus
 }
 import v2.std.verdict {
   BuildFailed,
@@ -27,7 +27,7 @@ import v2.std.text { String }
 fn sample_diagnostic(reason: Symbol) -> Diagnostic {
   Diagnostic {
     reason: reason,
-    at: port_locus(port: ^verdict_surface),
+    at: invariant_port_locus(port: ^verdict_surface, invariant: reason),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

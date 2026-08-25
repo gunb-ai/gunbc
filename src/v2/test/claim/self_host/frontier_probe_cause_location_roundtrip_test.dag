@@ -3,7 +3,8 @@ module v2.test.claim.self_host.frontier_probe_cause_location_roundtrip
 import v2.compiler.self_host.frontier_probe_types {
   AssembleRejectionDetail,
   CauseLocationNodeNotSerializable,
-  CauseLocationPort,
+  CauseLocationInvariantPort,
+  CauseLocationSourcePort,
   CauseLocationTextual,
   NoFrontierProbeDetail
 }
@@ -26,7 +27,8 @@ fn roundtrip_extent_start() -> Int {
             WholeFile => 0 - 3
             ByteRange { start: s, end: _ } => s
           }
-        CauseLocationPort { port: _ } => 0 - 4
+        CauseLocationSourcePort { port: _, file: _, extent: _ } => 0 - 4
+        CauseLocationInvariantPort { port: _, invariant: _ } => 0 - 4
         CauseLocationNodeNotSerializable => 0 - 5
       }
   }

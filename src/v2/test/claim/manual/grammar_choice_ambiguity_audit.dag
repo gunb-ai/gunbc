@@ -6,7 +6,7 @@ fn witness_python_choice_ambiguity_count() -> Int {
 }
 
 fn witness_python_grammar_validate_accepts_with_overlap_residue() -> Bool {
-  let at = port_locus(port: ^parse_stage_locus_port)
+  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_choice_ambiguity_audit_grammar_contract)
   match grammar_validate_for_parse(root: python_grammar_root(), at: at) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -28,7 +28,7 @@ fn witness_dag_overlap_residue_row_count() -> Int {
 }
 
 fn witness_dag_grammar_validate_accepts() -> Bool {
-  let at = port_locus(port: ^parse_stage_locus_port)
+  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_choice_ambiguity_audit_grammar_contract)
   match grammar_validate_for_parse(root: dag_grammar_root(), at: at) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false

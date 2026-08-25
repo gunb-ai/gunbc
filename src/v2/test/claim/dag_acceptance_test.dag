@@ -17,7 +17,7 @@ import v2.std.diagnostic {
   Some,
   Unavailable,
   diagnostics_singleton,
-  port_locus
+  invariant_port_locus
 }
 import v2.workflow.dag_acceptance {
   InferReceiptRow,
@@ -384,7 +384,7 @@ fn frontier_diagnostics() -> Diagnostics {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: ^some_advisory,
-        at: port_locus(port: ^acceptance_test_locus_port),
+        at: invariant_port_locus(port: ^acceptance_test_locus_port, invariant: ^some_advisory),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
     )

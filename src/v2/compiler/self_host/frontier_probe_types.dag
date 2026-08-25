@@ -40,7 +40,7 @@ import v2.std.grammar_choice_ambiguity {
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.compilers.lexing { symbol_lexeme }
-import v2.std.diagnostic { Extent, Locus, NodeLocus, PortLocus, Textual }
+import v2.std.diagnostic { Extent, InvariantPortLocus, Locus, NodeLocus, SourcePortLocus, Textual }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.qualified_name { QualifiedName }
@@ -108,11 +108,12 @@ type AssembleRejectionCause
   | MissingModuleIdentityUnavailable
   | OtherAssembleRefusal { reason: Symbol }
 
-data frontier_probe_cause_location_note: String = "OtherAssembleRefusal is the catch-all arm, so its reason symbol alone does not say WHICH file refused — recovering that previously meant inferring across a whole closure. The location is carried here, but NOT as a bare Locus: Locus admits NodeLocus and PortLocus, which have no manifest serialization, and a host emitter that errored on them would abort an entire 27-module survey over one unrepresentable position. The file is a String, not a Symbol: a path contains slashes and dots, and an emitted bare ^dag/std/algebra.dag does not re-parse — the front end reads it as division and projection, so the manifest would emit but never reload. Every other emitted manifest carries paths as Strings for the same reason. This probe-owned projection is serializable by construction and total, with the unavailable arm carrying a typed reason so the deficit is counted rather than fabricated or fatal. Location sits on AssembleRejectionDetail, NOT inside AssembleRejectionCause. Two modules refusing for the same reason at different positions are the SAME detailed cause, so a clustering key reads the cause — and the only way to guarantee a key cannot accidentally include position is for position not to be part of the cause value at all. A note asserting the separation while the field lived inside the cause would have been a claim the structure contradicted. The port arm is kept as real data rather than folded into an unavailable arm, because a port IS serializable; only a Node has no manifest rendering."
+data frontier_probe_cause_location_note: String = "OtherAssembleRefusal is the catch-all arm, so its reason symbol alone does not say WHICH file refused — recovering that previously meant inferring across a whole closure. The location is carried here, but NOT as a bare Locus: Locus admits NodeLocus, whose node has no manifest serialization, and a host emitter that errored on it would abort an entire 27-module survey over one unrepresentable position. The file is a String, not a Symbol: a path contains slashes and dots, and an emitted bare ^dag/std/algebra.dag does not re-parse — the front end reads it as division and projection, so the manifest would emit but never reload. Every other emitted manifest carries paths as Strings for the same reason. This probe-owned projection is serializable by construction and total, with the unavailable arm carrying a typed reason so the deficit is counted rather than fabricated or fatal. Location sits on AssembleRejectionDetail, NOT inside AssembleRejectionCause. Two modules refusing for the same reason at different positions are the SAME detailed cause, so a clustering key reads the cause — and the only way to guarantee a key cannot accidentally include position is for position not to be part of the cause value at all. SourcePortLocus and InvariantPortLocus remain distinct in the projection: the first retains file and extent, while the second retains the named invariant; only a Node reaches the not-serializable arm."
 
 type FrontierProbeCauseLocation
   = CauseLocationTextual { file: String, extent: Extent }
-  | CauseLocationPort { port: Symbol }
+  | CauseLocationSourcePort { port: Symbol, file: String, extent: Extent }
+  | CauseLocationInvariantPort { port: Symbol, invariant: Symbol }
   | CauseLocationNodeNotSerializable
 
 fn frontier_probe_cause_location_from_locus(at: Locus) -> FrontierProbeCauseLocation {
@@ -120,7 +121,10 @@ fn frontier_probe_cause_location_from_locus(at: Locus) -> FrontierProbeCauseLoca
     Textual { file: f, extent: e } =>
       CauseLocationTextual { file: symbol_lexeme(sym: f), extent: e }
     NodeLocus { anchor: _ } => CauseLocationNodeNotSerializable
-    PortLocus { anchor: p } => CauseLocationPort { port: p.at }
+    SourcePortLocus { anchor: p, file: f, extent: e } =>
+      CauseLocationSourcePort { port: p.at, file: symbol_lexeme(sym: f), extent: e }
+    InvariantPortLocus { anchor: p, invariant: invariant } =>
+      CauseLocationInvariantPort { port: p.at, invariant: invariant }
   }
 }
 

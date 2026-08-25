@@ -10,7 +10,8 @@ import v2.std.diagnostic {
   Unavailable,
   UserInputBoundary,
   diagnostics_singleton,
-  port_locus
+  invariant_port_locus,
+  port_refusal_locus
 }
 import v2.std.nat { Nat, Succ, Zero }
 import v2.std.node { Symbol }
@@ -20,7 +21,7 @@ type Lean4NameValue
 type Lean4SyntaxValue
 type Lean4NatValue = v2.std.nat.Nat
 fn lean4_format_authoritative_locus() -> Locus {
-  port_locus(port: ^lean4_format_authoritative_locus_port)
+  invariant_port_locus(port: ^lean4_format_authoritative_locus_port, invariant: ^lean4_nat_materialization_invariant)
 }
 
 fn lean4_nat_succ(n: v2.std.nat.Nat) -> v2.std.nat.Nat {
@@ -95,7 +96,7 @@ fn lean4_nat_materialize_non_negative_int(value: Int, at: Locus) -> Outcome<v2.s
       diagnostics: diagnostics_singleton(
         d: Diagnostic {
           reason: ^lean4_nat_out_of_range,
-          at: at,
+          at: port_refusal_locus(at: at, port: ^lean4_format_authoritative_locus_port, invariant: ^lean4_nat_out_of_range),
           correction: Unavailable { reason: UserInputBoundary }
         }
       )
@@ -105,7 +106,7 @@ fn lean4_nat_materialize_non_negative_int(value: Int, at: Locus) -> Outcome<v2.s
       diagnostics: diagnostics_singleton(
         d: Diagnostic {
           reason: ^lean4_nat_exceeds_ceiling,
-          at: at,
+          at: port_refusal_locus(at: at, port: ^lean4_format_authoritative_locus_port, invariant: ^lean4_nat_exceeds_ceiling),
           correction: Unavailable { reason: UserInputBoundary }
         }
       )
@@ -124,7 +125,7 @@ fn make_lean4_nat_value(value: Int, at: Locus) -> Outcome<Lean4NatValue> {
       diagnostics: diagnostics_singleton(
         d: Diagnostic {
           reason: ^lean4_nat_out_of_range,
-          at: at,
+          at: port_refusal_locus(at: at, port: ^lean4_format_authoritative_locus_port, invariant: ^lean4_nat_out_of_range),
           correction: Unavailable { reason: UserInputBoundary }
         }
       )
@@ -134,7 +135,7 @@ fn make_lean4_nat_value(value: Int, at: Locus) -> Outcome<Lean4NatValue> {
       diagnostics: diagnostics_singleton(
         d: Diagnostic {
           reason: ^lean4_nat_exceeds_ceiling,
-          at: at,
+          at: port_refusal_locus(at: at, port: ^lean4_format_authoritative_locus_port, invariant: ^lean4_nat_exceeds_ceiling),
           correction: Unavailable { reason: UserInputBoundary }
         }
       )

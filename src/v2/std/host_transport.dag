@@ -13,7 +13,7 @@ import v2.std.diagnostic {
   Unavailable,
   diagnostics_singleton,
   outcome_rejected,
-  port_locus
+  invariant_port_locus
 }
 import v2.std.machine { Byte }
 import v2.std.node { Node, Symbol }
@@ -79,7 +79,7 @@ data target_emit_host_runtime_row_unconfigured: TargetEmitHostRuntimeRow = HostR
 fn emit_host_runtime_row_unconfigured_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^emit_host_runtime_row_unconfigured_reason,
-    at: port_locus(port: ^emit_host_runtime_row_unconfigured_reason),
+    at: invariant_port_locus(port: ^emit_host_runtime_row_unconfigured_reason, invariant: ^emit_host_runtime_row_unconfigured_reason),
     correction: Unavailable { reason: CorrectionNotModeled }
   }
 }
@@ -87,7 +87,7 @@ fn emit_host_runtime_row_unconfigured_diagnostic() -> Diagnostic {
 fn emit_host_runtime_row_parse_byte_width_mismatch_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^emit_host_runtime_row_parse_byte_width_mismatch,
-    at: port_locus(port: ^emit_host_runtime_row_parse_byte_width_mismatch),
+    at: invariant_port_locus(port: ^emit_host_runtime_row_parse_byte_width_mismatch, invariant: ^emit_host_runtime_row_parse_byte_width_mismatch),
     correction: Unavailable { reason: CorrectionNotModeled }
   }
 }

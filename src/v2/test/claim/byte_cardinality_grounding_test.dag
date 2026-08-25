@@ -16,7 +16,7 @@ fn byte_from_bits(bits: List<Int>, at: Locus) -> Outcome<Byte> {
   )
 }
 
-fn byte_locus() -> Locus { port_locus(port: ^byte_cardinality_grounding) }
+fn byte_locus() -> Locus { invariant_port_locus(port: ^byte_cardinality_grounding, invariant: ^byte_cardinality_grounding) }
 
 fn eight_bits() -> List<Int> { [1, 0, 1, 0, 1, 0, 1, 0] }
 fn seven_bits() -> List<Int> { [1, 0, 1, 0, 1, 0, 1] }
