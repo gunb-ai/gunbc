@@ -80,7 +80,7 @@ fn corpus_type_judgment_build_step() -> Step {
   RunStep {
     name: Present { value: "Build the measurement" },
     id: Present { value: "build_corpus_type_judgment" },
-    run: "cargo build --release -p v1-compiler --bin claim_executor\n",
+    run: concat(gunbc.repo_self_build.repo_self_build_command(bins: ["claim_executor"]), "\n"),
     shell: none,
     env: none,
     working_directory: none,

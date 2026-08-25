@@ -61,7 +61,7 @@ fn fleet_desired_admission_build_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.RunStep {
     name: v2.std.optional.Present { value: "Build the admission binary" },
     id: none,
-    run: "cargo build --release -p v1-compiler --bin gunbc\n",
+    run: concat(gunbc.repo_self_build.repo_self_build_command(bins: ["gunbc"]), "\n"),
     shell: none,
     env: none,
     working_directory: none,
