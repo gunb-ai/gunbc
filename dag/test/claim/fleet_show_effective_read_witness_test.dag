@@ -231,6 +231,17 @@ test fn witness_transport_reads_use_show_property_authority() -> Bool {
     && witness_show_property_local_read_holds()
 }
 
+// THE LOAD-STATE SIBLING. It reads through the same host_operation_exec totalization as the property
+// read above, so this witness compares the materialized argv against the extdeps citation rather
+// than against a golden string. RED IS AUTHORABLE: pointing the SystemctlShowLoadState arm at any
+// other systemctl operation makes the two argvs disagree and this goes false -- measured by mutation
+// 2026-08-24, Status in place of ShowLoadState, false then true on restore.
+test fn witness_transport_reads_use_show_load_state_authority() -> Bool {
+  systemctl_show_load_state_operation_argv_matches_transport(
+    unit: "gunbc-compile-pool.slice" as NonEmptyStr,
+  )
+}
+
 test fn witness_show_property_injection_metachar_refused() -> Bool {
   match gunbc.host_operation_exec.host_operation_materialize_argv(
     operation: gunbc.host_operation_exec.SystemctlShowProperty {

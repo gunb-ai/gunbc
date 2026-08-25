@@ -80,6 +80,18 @@ test fn determinism_holds_sorted_map_keys_sibling() -> v2.std.logic.Bool {
   witness_holds(w: determinism_contract_witness(signature: ^emit_fixture, n: sorted_map_keys_call_fixture()))
 }
 
+test fn sorted_map_keys_acceptance_is_caused_by_declared_canonical_order() -> v2.std.logic.Bool {
+  match std.primitive_identity.primitive_identity_for_canonical_name(authored_symbol: "sorted_map_keys") {
+    Present { value: identity } =>
+      std.primitive_identity.primitive_identity_eq(left: identity, right: std.primitive_identity.primitive_sorted_map_keys)
+        && match std.primitive_identity.primitive_traversal_order_for_identity(identity: identity) {
+          Present { value: CanonicalOrder } => true
+          _ => false
+        }
+    Absent => false
+  }
+}
+
 test fn determinism_holds_clean_call() -> v2.std.logic.Bool {
   witness_holds(w: determinism_contract_witness(signature: ^emit_fixture, n: clean_call_fixture()))
 }

@@ -82,7 +82,11 @@ test fn w_duplicate_semantic_definition_refuses() -> Bool {
 
 test fn w_host_unspecified_traversal_classified_for_map_projections() -> Bool {
   primitive_d0_host_unspecified_traversal_classified()
-    && count(primitive_d0_traversal_facts) == 4
+    && primitive_d0_traversal_facts |> any(fact =>
+      primitive_identity_eq(left: fact.primitive, right: primitive_sorted_map_keys)
+        && fact.order == CanonicalOrder
+    )
+    && count(primitive_d0_traversal_facts) == 5
 }
 
 test fn w_red_missing_identity_on_joined_surface() -> Bool {

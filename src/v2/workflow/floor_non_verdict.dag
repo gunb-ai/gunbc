@@ -1,0 +1,562 @@
+module v2.workflow.floor_non_verdict
+
+
+// THE NON-VERDICT ROSTER: identities enrolled as expected-red that the required floor EXECUTES
+// and that produce NO BOOLEAN VERDICT -- they throw, or they answer with something that is not a
+// Bool -- enrolled by exact qualified name.
+//
+// WHY IT EXISTS, and the fact it exists to make gating rather than merely visible. `cli_run`
+// `run_required_floor` routes such a claim to `known_red_runtime_errored` or
+// `known_red_observation_unreadable`, and those arms are HONEST: they say correctly that this
+// enrolled claim produced no verdict. The defect was never in the arm. It was in the
+// COMPOSITION -- `claim_executor` `required_floor_outcome_is_clean` consulted neither, so the
+// floor returned CLEAN while an enrolled expected-red assertion had ceased to assert anything.
+// A diagnostic can describe the evidence truthfully while the gate draws a false conclusion
+// from it, and that is what happened here on every run for a day.
+//
+// THE RUNG, PER SEAM, because the governing rung is the minimum across them and stating only
+// the strongest seam is the inflation DESIGN section 4b(1) forbids: routing a thrown claim into
+// its arm is MITIGATABLE; printing the count is MITIGATABLE; printing `failed=0` without
+// distinguishing verdict incompleteness is a MISLEADING PROJECTION; and returning CLEAN while
+// an enrolled claim produced no verdict is BELOW FLOOR. Below floor is not a rung -- it is
+// outside the ladder and forbidden outright -- which is why this roster gates rather than
+// waiting for the population to be repaid first.
+//
+// WHAT ENROLMENT ADMITS, AND WHAT IT CANNOT. Enrolment in `floor_expected_red` is an admission
+// about a known SEMANTIC VERDICT: this witness reaches its subject and answers false. It is not
+// permission for the subject to stop evaluating. Without this roster the expected-red arm
+// absorbs an arbitrary regression INSIDE the enrolled population -- yesterday the witness
+// executed and returned false, today it throws before reaching its assertion, no verdict
+// exists, and the floor stays clean. (Strictly inside it: an UNENROLLED witness that throws
+// goes through the ordinary failure path and already gates. The absorption was never repo-wide,
+// and saying otherwise would overstate the defect this closes.)
+//
+// WHAT THIS WALL CONFINES, AND WHAT IT DOES NOT. Stated first because the short name for this
+// module -- a growth freeze -- claims more than the mechanism delivers, and a reader who takes
+// the name literally will conclude that growth is REFUSED. It is not, in one direction.
+//
+// CONFINED, by execution, every run: the OBSERVED population must equal the ROSTER exactly. An
+// observed identity the roster does not carry refuses (unrostered debt); a rostered identity the
+// run did not observe refuses (stale exemption). Together those pin O = R.
+//
+// NOT CONFINED: the roster itself. Nothing here compares the roster authored at HEAD against the
+// roster admitted at the MERGE BASE, so an author whose change makes a NEW identity stop
+// producing a verdict may add its row IN THE SAME CHANGE. Observed then equals roster, both
+// arms pass, and the regression is admitted -- LEGALISED BY THE ROSTER THAT EXISTS TO BOUND IT.
+// The row becomes the permission, which is exactly the defect review 55361 identified for stale
+// rows, arriving through authorship rather than through survival.
+//
+// THIS IS A CONSEQUENCE OF THE SINGLE-RUN DESIGN AND NOT AN OVERSIGHT IN IT. The admission was
+// specified as `added = head_observed - base_observed`, which needs a SECOND floor run over the
+// base. Substituting the roster for base-observation is what makes the wall implementable in one
+// run -- and that substitution is sound exactly to the degree the roster cannot be grown freely.
+// So `R subset-of B` is the condition that makes the simplification safe, not an extra nicety on
+// top of it, and its absence is the honest cost of the cheap design.
+//
+// RUNG ON THAT AXIS: MITIGATABLE. Roster growth is confined by review diligence alone, which is
+// strictly weaker than execution, and this paragraph is the declaration rather than a reader's
+// inference.
+//
+// NEXT-RUNG TRIGGER: the floor establishes `H subset-of B` -- the roster in the COMPOSED RESULT is a
+// subset of the roster at that result's CURRENT TARGET-BASE PARENT. NOT the merge base, and the
+// difference is a real admission rather than a spelling: with M = {a} at the merge base, main
+// repairing `a` and deleting its row (B = {}), and a stale branch reintroducing it (H = O = {a}),
+// a subset-of-M rule PASSES and readmits an exemption main already retired. The mirror is a false
+// red on a row main legitimately added after the fork. The cut therefore needs the composed result
+// and its base parent, which a branch-head-only run cannot supply.
+
+// THE ADMISSION AS IMPLEMENTED: the ADDED set is empty.
+//
+//     added  = head_non_verdict_identities - roster
+//     repaid = roster - head_non_verdict_identities
+//     admit  <=> added is empty
+//
+// So 142 -> 43 -> 42 -> 0 is admitted and 142 -> 143 refuses. So does one old identity repaired
+// while a different identity begins throwing, with the count still reading 142 -- and THAT is
+// why both sides are compared as IDENTITY SETS and never as counts. A repaired witness must not
+// buy permission for an unrelated witness to lose its verdict, and a count-based implementation
+// admits exactly that trade in silence. The corpus has already paid for this lesson once in the
+// other direction: the false regression that produced this module was a comparison whose
+// `planned` counts matched on both sides while the trees did not.
+//
+// REPAYMENT AND ROSTER DELETION ARE ONE ACT, and an earlier revision of this header said the
+// opposite. It argued that refusing a stale row "punishes the fix", because gunbc#9020 repairs
+// 99 of these in one landing and would go red for it. That argument is wrong, and review 55361
+// found why: A STALE ROW IS A LIVE EXEMPTION. The identity is repaired, the row stays, and if
+// that witness later stops producing a verdict again it is ALREADY ROSTERED -- so the exact
+// regression this wall exists to refuse is admitted in silence. Repayment without deletion turns
+// a bounded debt row into a permanent licence, which is the absorbing fallback wearing the word
+// "diagnostic".
+//
+// Refusing does not punish a repair; it requires the repair to be COMPLETE. The run names every
+// row to delete, the deletion is mechanical, and this is the discipline `floor_route_gap` and
+// the expected-red staleness join already enforce. The asymmetry was the error and consistency
+// with them is the repair -- which is worth recording, because the asymmetry had an argument
+// behind it and was endorsed before a reviewer found the hole in it.
+//
+// EMPTY IS THE INTENDED TERMINAL STATE. When every enrolled identity reaches its subject and
+// answers, this module deletes, and the two collections become ordinary conjuncts over nothing.
+//
+// THE POPULATION, MEASURED RATHER THAN ESTIMATED (floor run 32694337921, sha 1239cace120): 142
+// identities, all of them `known_red_runtime_errored` -- `known_red_observation_unreadable` was
+// 0 on that run, so every member of this population threw rather than answering a non-Bool. The
+// causes:
+//    119  no declaration named X in this execution's loaded index
+//     13  type error
+//      9  undefined variable
+//      1  call contract mismatch
+//
+// THE DOMINANT CAUSE IS AN AUTHORED DEFECT, NOT A FLOOR SCOPE DEFECT, and it was checked rather
+// than assumed: four of the unresolved names were looked up and every one IS declared in the
+// corpus, while the witness referencing it declares no import that would bring it into the run's
+// loaded index. The refusal is correct and the witness is unimportable, so the repair is a per
+// witness import and never a widening of the floor's scope.
+fn floor_non_verdict_chunk_00() -> List<String> {
+  std.algebra.Cons {
+    head: "test.claim.accelerator_demo_execution_witness.accelerator_demo_execution_lane_witnesses",
+    tail:   std.algebra.Cons {
+    head: "test.claim.accelerator_demo_model_witness.accelerator_demo_modeling_lane_witnesses",
+    tail:   std.algebra.Cons {
+    head: "test.claim.ci_deploy_target_host_witness.witness_deploy_job_not_on_ubicloud_runner",
+    tail:   std.algebra.Cons {
+    head: "test.claim.ci_deploy_target_host_witness.witness_deploy_stage_pins_srv1_runner_label",
+    tail:   std.algebra.Cons {
+    head: "test.claim.config_record_emit_witness.witness_manifest_knobs_space_separated",
+    tail:   std.algebra.Cons {
+    head: "test.claim.config_record_emit_witness.witness_same_fields_differ_across_knobs",
+    tail:   std.algebra.Cons {
+    head: "test.claim.design_argument_witness.cycle_is_detected",
+    tail:   std.algebra.Cons {
+    head: "test.claim.design_argument_witness.design_full_argument_axiom_set_is_closed",
+    tail:   std.algebra.Cons {
+    head: "test.claim.design_argument_witness.design_full_argument_form_is_valid",
+    tail:   std.algebra.Cons {
+    head: "test.claim.design_argument_witness.design_full_argument_has_no_orphan",
+    tail:   std.algebra.Cons {
+    head: "test.claim.design_argument_witness.design_full_argument_is_acyclic",
+    tail:   std.algebra.Cons {
+    head: "test.claim.design_argument_witness.design_s1_argument_form_is_valid",
+    tail:   std.algebra.Cons {
+    head: "test.claim.design_argument_witness.design_s1_argument_is_non_vacuous",
+    tail:   std.algebra.Cons {
+    head: "test.claim.design_argument_witness.orphan_is_detected",
+    tail:   std.algebra.Cons {
+    head: "test.claim.design_argument_witness.smuggled_axiom_is_detected",
+    tail:   std.algebra.Cons {
+    head: "test.claim.ebay_listing_witness.witness_default_listing_policy_targets_us_marketplace",
+    tail:   std.algebra.Cons {
+    head: "test.claim.emit_host_gate_witness.w_byte_count_is_five",
+    tail:   std.algebra.Cons {
+    head: "test.claim.emit_host_gate_witness.w_go_fixture_nonempty",
+    tail:   std.algebra.Cons {
+    head: "test.claim.emit_host_gate_witness.w_python_fixture_nonempty",
+    tail:   std.algebra.Cons {
+    head: "test.claim.emit_host_gate_witness.w_rust_fixture_nonempty",
+    tail:   std.algebra.Cons {
+    head: "test.claim.emit_host_gate_witness.w_ts_byte_count_is_four",
+    tail:   std.algebra.Cons {
+    head: "test.claim.emit_host_gate_witness.w_ts_fixture_nonempty",
+    tail:   std.algebra.Cons {
+    head: "test.claim.fleet_convergence_verdict_witness.knob_receipts_alone_cannot_converge_the_fleet",
+    tail:   std.algebra.Cons {
+    head: "test.claim.fleet_convergence_verdict_witness.live_fleet_is_not_converged_and_unobserved_cells_are_counted",
+    tail:   std.algebra.Cons {
+    head: "test.claim.fleet_receipt_collector_witness.witness_partial_collection_never_yields_fleet_converged",
+    tail:   std.algebra.Cons {
+    head: "test.claim.go_module_versioning_witness.w_go_manifest_file",
+    tail:   std.algebra.Cons {
+    head: "test.claim.hand_lens_host_bridge_scaffold_watchdog.hand_lens_host_bridge_scaffold_roster_tracks_5364_dissolution",
+    tail:   std.algebra.Cons {
+    head: "test.claim.hetzner_cost_quote_witness.hetzner_cax41_cost_class_is_per_second_billed",
+    tail:   std.algebra.Cons {
+    head: "test.claim.hetzner_cost_quote_witness.hetzner_cax41_currency_is_eur",
+    tail:   std.algebra.Cons {
+    head: "test.claim.hetzner_cost_quote_witness.hetzner_cax41_unit_price_matches_catalog",
+    tail:   std.algebra.Cons {
+    head: "test.claim.host_phase_status.witness_enrolled_spark_cells_are_all_unobserved",
+    tail:   std.algebra.Cons {
+    head: "test.claim.host_phase_status.witness_enrolled_sparks_carry_exactly_the_shared_obligations",
+    tail:   std.algebra.Cons {
+    head: "test.claim.host_phase_status.witness_every_covered_cell_today_is_the_authored_one",
+    tail:   std.algebra.Cons {
+    head: "test.claim.host_phase_status.witness_fleet_matrix_has_no_duplicated_cells",
+    tail:   std.algebra.Cons {
+    head: "test.claim.host_phase_status.witness_live_observation_frontier_is_one_cell",
+    tail:   std.algebra.Cons {
+    head: "test.claim.host_phase_status.witness_matrix_hosts_are_exactly_the_enrolled_roster",
+    tail:   std.algebra.Cons {
+    head: "test.claim.host_phase_status.witness_matrix_is_exact_join_over_participation_programs",
+    tail:   std.algebra.Cons {
+    head: "test.claim.host_phase_status.witness_program_scoping_preserves_the_runner_fleet_matrix",
+    tail:   std.algebra.Cons {
+    head: "test.claim.host_phase_status.witness_reconcile_covers_upsert_teardown_and_noop",
+    tail:   std.algebra.Cons {
+    head: "test.claim.host_phase_status.witness_remaining_work_counts_every_unfinished_cell",
+    tail: Empty {}
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+}
+
+fn floor_non_verdict_chunk_01() -> List<String> {
+  std.algebra.Cons {
+    head: "test.claim.host_phase_status.witness_runner_only_obligations_exist_on_runner_hosts",
+    tail:   std.algebra.Cons {
+    head: "test.claim.host_phase_status.witness_unmodeled_cells_track_spine_gaps",
+    tail:   std.algebra.Cons {
+    head: "test.claim.host_reach_identity_probe_witness.committed_probe_receipts_feed_producers_and_grow_coverage",
+    tail:   std.algebra.Cons {
+    head: "test.claim.host_reach_identity_probe_witness.observe_host_phase_routes_by_label_and_stays_fail_closed",
+    tail:   std.algebra.Cons {
+    head: "test.claim.host_standup_assimilation_deduction.no_lease_past_budget_is_drifted_not_fabricated_success",
+    tail:   std.algebra.Cons {
+    head: "test.claim.host_standup_assimilation_deduction.post_install_lease_row_deduces_converged_noop",
+    tail:   std.algebra.Cons {
+    head: "test.claim.host_standup_assimilation_deduction.pre_install_within_budget_is_absent_not_converged",
+    tail:   std.algebra.Cons {
+    head: "test.claim.host_standup_assimilation_deduction.unreadable_lease_is_unknown_refused_not_pending",
+    tail:   std.algebra.Cons {
+    head: "test.claim.host_standup_assimilation_deduction.upsert_pending_applies_assert_pending_plan",
+    tail:   std.algebra.Cons {
+    head: "test.claim.host_standup_spine.post_install_dhcp_subsumption_reduces_gap_count_by_one",
+    tail:   std.algebra.Cons {
+    head: "test.claim.realization_reconcile_witness.witness_different_keysource_does_not_collapse",
+    tail:   std.algebra.Cons {
+    head: "test.claim.realization_reconcile_witness.witness_post_always_never_collapses",
+    tail:   std.algebra.Cons {
+    head: "test.claim.realization_reconcile_witness.witness_same_keysource_collapses_to_share",
+    tail:   std.algebra.Cons {
+    head: "test.claim.samsung_dram_module.four_rank_by_four_is_realizable_on_ddr4",
+    tail:   std.algebra.Cons {
+    head: "test.claim.samsung_dram_module.generation_mismatch_fails_closed",
+    tail:   std.algebra.Cons {
+    head: "test.claim.samsung_dram_module.same_capacity_at_one_rank_by_eight_is_not_realizable",
+    tail:   std.algebra.Cons {
+    head: "test.claim.srv3_subsumption.comment_only_drift_is_one_change_not_remove_add",
+    tail:   std.algebra.Cons {
+    head: "test.claim.srv3_subsumption.reconcile_would_teardown_only_if_ownership_claimed_it",
+    tail:   std.algebra.Cons {
+    head: "test.claim.srv3_subsumption.srv3_and_srv4_disagree_on_convergence",
+    tail:   std.algebra.Cons {
+    head: "test.claim.srv3_subsumption.srv3_reconcile_adds_exactly_the_missing_fleet_key",
+    tail:   std.algebra.Cons {
+    head: "test.claim.srv3_subsumption.srv3_reconcile_refuses_both_unowned_keys_never_teardown",
+    tail:   std.algebra.Cons {
+    head: "test.claim.srv3_subsumption.srv4_reconcile_is_converged_empty_plan",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.compiler_materialization_witness.compile_stage_carrier_inhabits_realization",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.compiler_materialization_witness.parse_table_carrier_inhabits_realization",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.generated_conformance_floor.generated_coproduct_exhaustiveness_anchor_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.generated_conformance_floor.generated_coproduct_exhaustiveness_covers_every_coproduct",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.generated_conformance_floor.generated_coproduct_exhaustiveness_is_diagnostic",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.generated_conformance_floor.generated_coproduct_exhaustiveness_roster_covers_testclaim",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.generated_conformance_floor.generated_cross_representation_equality_anchor_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.generated_conformance_floor.generated_cross_representation_equality_covers_bool",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.generated_conformance_floor.generated_cross_representation_equality_covers_optional_null",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.generated_conformance_floor.generated_cross_representation_equality_is_equals",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.generated_conformance_floor.generated_lbe_conj_snapshot_passes",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.generated_conformance_floor.generated_lbe_dag_surface_language_identity",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.generated_conformance_floor.generated_lbe_disj_snapshot_passes",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.generated_conformance_floor.generated_lbe_schedules_three_generators",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.generated_conformance_floor.generated_lbe_transform_snapshot_passes",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.generated_conformance_floor.generated_refinement_claim_emits",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.generated_conformance_floor.generated_refinement_preserves_nonempty_list_base",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.generated_conformance_floor.generated_refinement_scheduler_emits_one_generator",
+    tail: Empty {}
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+}
+
+fn floor_non_verdict_chunk_02() -> List<String> {
+  std.algebra.Cons {
+    head: "v2.test.claim.generated_conformance_floor.generated_refinement_subject_anchor_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.generated_conformance_floor.generated_witness_validity_constraint_satisfaction_emits",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.generated_conformance_floor.generated_witness_validity_evidence_node_mismatch_emits",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.generated_conformance_floor.generated_witness_validity_property_symbol_mismatch_emits",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.generated_conformance_floor.generated_witness_validity_rule_not_realized_emits",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.gha_workflow_yaml_fold_structural.gha_fold_structural_tier_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.source_root_tagging.source_root_tag_carried_and_folded_to_grounded_set",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.staging.cached_stage_hit_skips_stage",
+    tail:   std.algebra.Cons {
+    head: "v2.test.claim.staging.cached_stage_miss_runs_stage",
+    tail:   std.algebra.Cons {
+    head: "v2.test.emit.produced_decl_support_preserved.produced_decl_support_survives_augmentation",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.corpus.cargo_build_policy_leak.corpus_cargo_build_defused_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.corpus.cargo_clippy_dead_param.corpus_cargo_clippy_dead_param_defused_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.corpus.cargo_doc_dead_param.corpus_cargo_doc_dead_param_defused_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.corpus.cargo_doc_policy_leak.corpus_cargo_doc_defused_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.corpus.cargo_fmt_dead_param.corpus_cargo_fmt_dead_param_defused_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.corpus.cargo_fmt_policy_leak.corpus_cargo_fmt_defused_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.corpus.cargo_run_dead_param.corpus_cargo_run_dead_param_defused_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.corpus.gcp_login_dead_param.corpus_gcp_login_dead_param_defused_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.corpus.gcp_oauth_fusion_fork.corpus_gcp_oauth_defused_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.corpus.gist_create_policy_leak.corpus_gist_create_defused_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.corpus.git_policy_leak.corpus_git_policy_leak_defused_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.corpus.runtime_local_embedded_policy.corpus_runtime_local_embedded_policy_defused_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence_test.extdeps_shape_transport_policy_coverage_domain_equivalence_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.lens_unit.clean_gist_create.clean_gist_create_is_green_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.lens_unit.clean_git_diff.clean_git_diff_is_green_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.lens_unit.dead_param_cargo_build.dead_param_cargo_build_is_red_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.lens_unit.dead_param_cargo_clippy.dead_param_cargo_clippy_is_red_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.lens_unit.dead_param_gcp_login.dead_param_gcp_login_is_red_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.lens_unit.embedded_policy_literal_local.embedded_policy_literal_local_is_red_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.lens_unit.module_path_rename.module_path_rename_resolves_by_qn_not_filepath_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.lens_unit.module_path_rename.module_path_rename_unknown_qn_does_not_resolve_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.lens_unit.module_source_nickname_literal_coverage_domain_green.module_source_nickname_literal_coverage_domain_is_green_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.lens_unit.module_source_nickname_literal_green.module_source_nickname_literal_exempt_literals_is_green_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.lens_unit.module_source_nickname_literal_local_red.module_source_nickname_literal_local_red_is_red_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.lens_unit.policy_leak_cargo_build.policy_leak_cargo_build_is_red_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.lens_unit.policy_leak_cargo_doc.policy_leak_cargo_doc_is_red_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.lens_unit.policy_leak_cargo_fmt.policy_leak_cargo_fmt_is_red_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps_shape_transport_policy.lens_unit.transport_fusion_gcp_oauth.transport_fusion_gcp_oauth_is_red_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.extdeps.spice_rc_passive_deck_claims.spice_rc_passive_deck_authority_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.fact_cardinality.lens_unit.synthetic_fork_red.synthetic_fork_red_holds",
+    tail: Empty {}
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+}
+
+fn floor_non_verdict_chunk_03() -> List<String> {
+  std.algebra.Cons {
+    head: "v2.test.intent_linearity.lens_unit.runtime_axis.flat_loop_cost_not_lowerable",
+    tail:   std.algebra.Cons {
+    head: "v2.test.intent_linearity.lens_unit.runtime_axis.flat_loop_is_linear",
+    tail:   std.algebra.Cons {
+    head: "v2.test.intent_linearity.lens_unit.runtime_axis.flat_loop_not_runtime_candidate",
+    tail:   std.algebra.Cons {
+    head: "v2.test.intent_linearity.lens_unit.runtime_axis.nested_loop_cost_is_lowerable",
+    tail:   std.algebra.Cons {
+    head: "v2.test.intent_linearity.lens_unit.runtime_axis.nested_loop_is_runtime_candidate",
+    tail:   std.algebra.Cons {
+    head: "v2.test.intent_linearity.lens_unit.runtime_axis.nested_loop_not_changetime_redundant",
+    tail:   std.algebra.Cons {
+    head: "v2.test.lens_mutation_adequacy.mutation_adequacy_test.adequate_when_every_mutation_has_a_discriminating_witness",
+    tail:   std.algebra.Cons {
+    head: "v2.test.lens_mutation_adequacy.mutation_adequacy_test.surviving_mutation_is_inadequate",
+    tail:   std.algebra.Cons {
+    head: "v2.test.lens_vacuity.vacuity_test.vacuity_advisory_census_partitions_falsification_suite",
+    tail:   std.algebra.Cons {
+    head: "v2.test.lens_vacuity.vacuity_test.vacuity_falsification_cases_each_match_expected_evidence",
+    tail:   std.algebra.Cons {
+    head: "v2.test.lens_vacuity.vacuity_test.vacuity_falsification_suite_nonempty",
+    tail:   std.algebra.Cons {
+    head: "v2.test.lens_vacuity.vacuity_test.vacuity_rung5_emit_vs_eval_classifies_proven_independent",
+    tail:   std.algebra.Cons {
+    head: "v2.test.lens_vacuity.vacuity_test.vacuity_unified_node_corpus_matches_transport_classifier",
+    tail:   std.algebra.Cons {
+    head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_content_hash_violates",
+    tail:   std.algebra.Cons {
+    head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_runtime_same_identity_violates",
+    tail:   std.algebra.Cons {
+    head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_canonical_holds",
+    tail:   std.algebra.Cons {
+    head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_non_canonical_violates",
+    tail:   std.algebra.Cons {
+    head: "v2.test.manual.medium_node_instantiation.medium_node_carried_is_expected",
+    tail:   std.algebra.Cons {
+    head: "v2.test.manual.medium_node_instantiation.medium_node_fidelity_is_lossless",
+    tail:   std.algebra.Cons {
+    head: "v2.test.manual.medium_node_instantiation.medium_node_lossy_tag_not_lossless",
+    tail:   std.algebra.Cons {
+    head: "v2.test.manual.medium_source_text_instantiation.witness_source_field_is_medium",
+    tail:   std.algebra.Cons {
+    head: "v2.test.manual.value_null_split_witness.optional_null_straddle_rostered_until_phase_e",
+    tail: Empty {}
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+}
+
+fn floor_non_verdict_chunks() -> List<List<String>> {
+  std.algebra.Cons { head: floor_non_verdict_chunk_00(), tail: std.algebra.Cons { head: floor_non_verdict_chunk_01(), tail: std.algebra.Cons { head: floor_non_verdict_chunk_02(), tail: std.algebra.Cons { head: floor_non_verdict_chunk_03(), tail: Empty {} } } } }
+}
+
+fn floor_non_verdict_roster() -> List<String> {
+  v2.std.algebra.list_flat_map(xs: floor_non_verdict_chunks(), f: fn(chunk) { chunk })
+}
