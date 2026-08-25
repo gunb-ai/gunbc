@@ -1391,6 +1391,23 @@ So the split is clean, and it falls exactly along the line that clause draws:
 
 ## 10. What this document does not claim
 
+**The readiness reader lies, and it is this document's own class one layer out.**
+`gh pr checks` renders a **cancelled** run as `fail`. Measured on the last 100
+`witnesses` runs: **43 cancelled, 17 failure, 25 success, 15 in flight** — so of
+the 60 runs the standard readiness command renders as `fail`, **72% are lawful
+cancellations**, and a rendered `fail` is wrong more often than it is right.
+Cancellation here is `cancel-in-progress` doing its job when a later push lands,
+and this tree pushes far faster than the job completes, so supersession is the
+normal state rather than an edge case. Read the conclusion instead —
+`gh run view <id>`, or
+`gh api ".../witnesses.yml/runs?head_sha=<sha>" --jq '.workflow_runs[]|.conclusion'`.
+Nothing needs building: the record is intact and only the projection collapses two
+states. It is recorded here rather than left as tooling trivia because it is
+**execution-provenance loss at the reading layer** — two distinct states rendering
+identically, exactly the shape §3c's retraction turned on — and because the cost
+lands on merge-readiness calls across six lanes, where the failure mode is
+abandoning or churning a good PR on a false red.
+
 **None of the defect instances here was found by searching.** Every one was
 tripped over while measuring something else: the pipe-position lowering while
 chasing a different diagnostic; `order_typed_call_args` while building a fixture
