@@ -291,3 +291,16 @@ test fn a_roster_that_lost_a_subject_carries_a_different_digest() -> Bool {
       }
   }
 }
+
+// EVERY VERDICT NAMES ITS SUBJECT, whichever arm it took. That is what "identity grain" means
+// operationally: there is no arm from which the entry has to be recovered by position in a list
+// parallel to the roster, which is how a verdict and its subject drift apart.
+test fn every_verdict_carries_the_entry_it_is_about() -> Bool {
+  let readings = [
+    fixture_reading(entry: fixture_alpha, standing: EmitSubjectExtentUnestablished)
+  ]
+  map(
+    fixture_fold_of(roster: fixture_roster, admissions: [], readings: readings).verdicts,
+    v => emit_ratchet_verdict_entry(v: v)
+  ) == fixture_roster
+}
