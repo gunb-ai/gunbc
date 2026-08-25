@@ -481,7 +481,7 @@ type Celsius = Measure<Temperature, One, Int>
 type CelsiusDelta = Measure<TemperatureDifference, One, Int>
 
 type PositiveMeasureCount
-  = PositiveMeasureSuccessor { predecessor: Nat }
+  = PositiveMeasureSuccessor { predecessor: std.nat.Nat }
 
 type PositiveMeasureCountBuild
   = PositiveMeasureCountBuilt { count: PositiveMeasureCount }
@@ -651,7 +651,7 @@ fn rpm_count(r: RevolutionsPerMinute) -> Nat {
   measure_count(r)
 }
 
-type MoneyAmount<S> = Measure<Currency, S, Nat>
+type MoneyAmount<S> = Measure<Currency, S, std.nat.Nat>
 
 type MoneyAmountMicro = MoneyAmount<Micro>
 

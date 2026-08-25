@@ -60,7 +60,7 @@ fn tmux_ls_windows_suffix_ok(parts: List<String>) -> Bool {
 }
 
 fn parse_tmux_ls_windows(rest: String) -> Int? {
-  let parts = tmux_ls_rest_tokens_nonempty(parts: split(s: trim(rest), delimiter: " "))
+  let parts = tmux_ls_rest_tokens_nonempty(parts: split(s: std.algebra.trim(rest), delimiter: " "))
   let count_str = tmux_ls_rest_token(parts: parts, n: 0)
   let windows_token = tmux_ls_rest_token(parts: parts, n: 1)
   if count_str == "" || windows_token != "windows" || !tmux_ls_windows_suffix_ok(parts: parts) {
@@ -79,20 +79,20 @@ fn parse_tmux_ls_windows(rest: String) -> Int? {
 }
 
 fn parse_tmux_ls_line(line: String) -> TmuxLsEntry? {
-  let trimmed = trim(line)
+  let trimmed = std.algebra.trim(line)
   if trimmed == "" {
     none
   } else {
     let colon_parts = split(s: trimmed, delimiter: ":")
     let name = match colon_parts.first() {
-      Present { value: s } => trim(s)
+      Present { value: s } => std.algebra.trim(s)
       Absent => ""
     }
     if name == "" {
       none
     } else {
       let rest = match colon_parts.skip(n: 1).first() {
-        Present { value: s } => trim(s)
+        Present { value: s } => std.algebra.trim(s)
         Absent => ""
       }
       match parse_tmux_ls_windows(rest: rest) {
@@ -122,7 +122,7 @@ fn parse_tmux_ls_output(output: String) -> TmuxLsParse {
       refused_reason: "",
     },
     f: fn(acc, line) {
-      if acc.refused || trim(line) == "" {
+      if acc.refused || std.algebra.trim(line) == "" {
         TmuxLsParseFold {
           entries: acc.entries,
           next_line_number: acc.next_line_number + 1,
@@ -288,7 +288,7 @@ fn parse_tmux_attempt_panes_output(
       refused_reason: "",
     },
     f: fn(acc, line) {
-      if acc.refused || trim(line) == "" {
+      if acc.refused || std.algebra.trim(line) == "" {
         TmuxAttemptPanesFold {
           panes: acc.panes,
           next_line_number: acc.next_line_number + 1,

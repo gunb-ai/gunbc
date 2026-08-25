@@ -30,7 +30,7 @@ fn build_fixture_from_source(target_name: String, main_source: String) -> BuiltF
   if !dir.success {
     FixtureSetupRefused { cause: "mktemp -d failed" }
   } else {
-    let root = trim(dir.path as String)
+    let root = std.algebra.trim(dir.path as String)
     let manifest = "{root}/Cargo.toml"
     let main_rs = "{root}/main.rs"
     let wrote_manifest = Filesystem.Write(path: manifest, content: crate_manifest)
@@ -172,7 +172,7 @@ fn build_twice_in_one_dir(first_source: String, second_source: String) -> TwoBui
   if !dir.success {
     TwoBuildsSetupRefused { cause: "mktemp -d failed" }
   } else {
-    let root = trim(dir.path as String)
+    let root = std.algebra.trim(dir.path as String)
     let manifest = "{root}/Cargo.toml"
     let main_rs = "{root}/main.rs"
     let wrote_manifest = Filesystem.Write(path: manifest, content: crate_manifest)

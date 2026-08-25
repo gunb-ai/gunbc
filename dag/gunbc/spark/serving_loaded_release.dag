@@ -126,10 +126,10 @@ fn spark_serving_admit_observed_runtime_identity(
 ) -> String? {
   if !ollama_reported_version_matches_release(version: version, rel: ollama_required_release) {
     none
-  } else if trim(s: receipt_identity) == "" {
+  } else if std.algebra.trim(s: receipt_identity) == "" {
     none
   } else {
-    Present { value: trim(s: receipt_identity) }
+    Present { value: std.algebra.trim(s: receipt_identity) }
   }
 }
 

@@ -2,9 +2,9 @@ module test.claim.memory_provisioning_witness_test
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data gb: Nat = 1000000000
+data gb: std.nat.Nat = 1000000000
 
-fn rdimm(part: NonEmptyStr, capacity: Nat) -> DramModuleCatalogRow {
+fn rdimm(part: NonEmptyStr, capacity: std.nat.Nat) -> DramModuleCatalogRow {
   DramModuleCatalogRow {
     part_number: part,
     manufacturer: samsung,
@@ -124,11 +124,11 @@ test fn circleci_x86_docker_is_two_gb_per_vcpu() -> Bool {
 test fn only_ubicloud_states_a_dedicated_core_entitlement() -> Bool {
   let ubicloud_arm = filter(
     runner_shape_rows(availability: ubicloud_runner_catalog_shapes),
-    r => r.architecture == Aarch64,
+    r => r.architecture == extdeps.toolchain.types.Aarch64,
   )
   let blacksmith_arm = filter(
     runner_shape_rows(availability: blacksmith_runner_catalog),
-    r => r.architecture == Aarch64,
+    r => r.architecture == extdeps.toolchain.types.Aarch64,
   )
   count(ubicloud_arm) != 0
     && all(ubicloud_arm, r => match r.entitlement {
@@ -1090,7 +1090,7 @@ fn synthetic_provider() -> DeclarationRef {
   decl_ref(module_path: "test.claim.memory_provisioning_witness_test", decl_name: "synthetic_provider")
 }
 
-fn synthetic_shape(vcpus: Nat, numeral: Nat, decimal: Bool) -> RunnerShapeRow {
+fn synthetic_shape(vcpus: std.nat.Nat, numeral: std.nat.Nat, decimal: Bool) -> RunnerShapeRow {
   RunnerShapeRow {
     provider: synthetic_provider(),
     label: "synthetic",
@@ -1101,7 +1101,7 @@ fn synthetic_shape(vcpus: Nat, numeral: Nat, decimal: Bool) -> RunnerShapeRow {
   }
 }
 
-fn synthetic_memory(numeral: Nat, decimal: Bool) -> QuotedByteMagnitude {
+fn synthetic_memory(numeral: std.nat.Nat, decimal: Bool) -> QuotedByteMagnitude {
   if decimal {
     QuotedDecimalGigabytes { value: gigabyte(count: numeral) }
   } else {

@@ -13,7 +13,7 @@ fn stat_octal_mode(path: String) -> String {
     ),
     expect: OutcomeIsData,
   )
-  trim(result.stdout)
+  std.algebra.trim(result.stdout)
 }
 
 test fn witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target() -> Bool {

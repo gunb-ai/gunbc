@@ -249,7 +249,7 @@ fn subsumption_choose_branch(
 }
 
 fn subsumption_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
-  Accepted { value: Continue { value: subsumption_runtime_unit(node: node) }, diagnostics: None }
+  Accepted { value: v2.std.runtime.Continue { value: subsumption_runtime_unit(node: node) }, diagnostics: None }
 }
 
 fn subsumption_bind_value(

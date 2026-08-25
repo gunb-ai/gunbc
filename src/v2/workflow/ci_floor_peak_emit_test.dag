@@ -42,7 +42,7 @@ fn ci_floor_peak_pre_reset_perturbed_if() -> v2.std.orchestration.PipelineStep {
       }
     },
     then_: v2.std.orchestration.Pipeline {
-      steps: [Do {
+      steps: [v2.std.orchestration.Do {
         run: v2.std.orchestration.Run {
           command: ci_floor_peak_pre_reset_ok_command,
           env: Empty,

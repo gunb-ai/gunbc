@@ -53,7 +53,7 @@ fn spark_serving_grant_outcome_from_probe(probe: SshSessionExecResult?) -> Spark
       if r.success {
         GrantEnumerated { listing: r.stdout }
       } else {
-        GrantAbsent { detail: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+        GrantAbsent { detail: join(["exit=", to_string(r.exit_code), " stderr=", std.algebra.trim(s: r.stderr)], "") }
       }
   }
 }
@@ -226,15 +226,15 @@ fn spark_serving_account_observation_from_probes(
         ManagedAccountAbsent {
           detail: join([
             "getent passwd ", spark_serving_account_probe_login as String,
-            " exit=", to_string(pw.exit_code), " stderr=", trim(s: pw.stderr),
+            " exit=", to_string(pw.exit_code), " stderr=", std.algebra.trim(s: pw.stderr),
           ], "") as NonEmptyStr,
         }
       } else {
-        match spark_serving_passwd_row(fields: split(trim(s: pw.stdout), ":")) {
+        match spark_serving_passwd_row(fields: split(std.algebra.trim(s: pw.stdout), ":")) {
           Absent =>
             ManagedAccountRowMalformed {
               detail: join([
-                "getent passwd returned a row that does not decode: ", trim(s: pw.stdout),
+                "getent passwd returned a row that does not decode: ", std.algebra.trim(s: pw.stdout),
               ], "") as NonEmptyStr,
             }
           Present { value: row } => match key_probe {
@@ -248,18 +248,18 @@ fn spark_serving_account_observation_from_probes(
                 ManagedAccountKeyFileUnread {
                   login: row.login, uid: row.uid, gid: row.gid, shell: row.shell,
                   cause: join([
-                    "ls -ld exit=", to_string(k.exit_code), " stderr=", trim(s: k.stderr),
+                    "ls -ld exit=", to_string(k.exit_code), " stderr=", std.algebra.trim(s: k.stderr),
                   ], "") as NonEmptyStr,
                 }
               } else {
                 match spark_serving_key_file_facts(
-                  fields: spark_serving_nonempty_fields(row: split(trim(s: k.stdout), " ")),
+                  fields: spark_serving_nonempty_fields(row: split(std.algebra.trim(s: k.stdout), " ")),
                 ) {
                   Absent =>
                     ManagedAccountKeyFileUnread {
                       login: row.login, uid: row.uid, gid: row.gid, shell: row.shell,
                       cause: join([
-                        "ls -ld output does not decode: ", trim(s: k.stdout),
+                        "ls -ld output does not decode: ", std.algebra.trim(s: k.stdout),
                       ], "") as NonEmptyStr,
                     }
                   Present { value: kf } =>
@@ -424,7 +424,7 @@ fn spark_serving_unit_outcome_from_probe_results(
             " stderr=", load.stderr,
           ], "") as NonEmptyStr,
         }
-      } else if trim(s: load.stdout) == (systemd_unit_load_state_not_found_wire as String) {
+      } else if std.algebra.trim(s: load.stdout) == (systemd_unit_load_state_not_found_wire as String) {
         SparkServingUnitAbsent
       } else {
         match is_active {
@@ -433,7 +433,7 @@ fn spark_serving_unit_outcome_from_probe_results(
               cause: "unit is-active probe leg did not run after LoadState observation" as NonEmptyStr,
             }
           Present { value: active } =>
-            if active.success && trim(s: active.stdout) == "active" {
+            if active.success && std.algebra.trim(s: active.stdout) == "active" {
               SparkServingUnitActive
             } else if active.exit_code == 3 {
               SparkServingUnitInactive
@@ -1074,7 +1074,7 @@ func spark_serving_observe_ci_with_context(
 // observation of a real state. Reading only the exit code would render that as a failed probe, so
 // the word is what is classified and the exit code only distinguishes "we could not ask".
 fn classify_is_enabled_stdout(result: SshSessionExecResult) -> SparkServingUnitManagerState {
-  let word = trim(s: result.stdout)
+  let word = std.algebra.trim(s: result.stdout)
   if word == "enabled" || word == "enabled-runtime" {
     UserUnitManagerEnabled
   } else if word == "disabled" {
@@ -1113,7 +1113,7 @@ type SparkServingObservedUnit {
 // manager we could not reach has not told us the unit is dead, and planning a start on that silence
 // would actuate off a probe that never answered.
 fn classify_is_active_result(result: SshSessionExecResult) -> SparkServingObservedActivityState {
-  if result.success && trim(s: result.stdout) == "active" {
+  if result.success && std.algebra.trim(s: result.stdout) == "active" {
     UnitActivityRunning
   } else if result.exit_code == 3 {
     UnitActivityStopped
@@ -1206,10 +1206,10 @@ fn spark_serving_first_corrupt_blob(stdout: String, expected: List<NonEmptyStr>)
       Present { value: found } => Present { value: found }
       Absent =>
         if any(
-          split(trim(s: stdout), "\n"),
+          split(std.algebra.trim(s: stdout), "\n"),
           line =>
             string_contains(line, ollama_blob_file_name(digest_hex: want) as String)
-              && trim(s: split(trim(s: line), " ")[0]) == (want as String),
+              && std.algebra.trim(s: split(std.algebra.trim(s: line), " ")[0]) == (want as String),
         ) {
           none
         } else {
@@ -1536,7 +1536,7 @@ fn spark_serving_classify_model_store(
   blobs_listing: String,
   blob_digest_stdout: String,
 ) -> ModelStoreObservation {
-  let present = split(trim(s: blobs_listing), "\n")
+  let present = split(std.algebra.trim(s: blobs_listing), "\n")
   match spark_serving_manifest_decode(body: manifest_body) {
     SparkServingManifestUnparseable =>
       ModelStoreObservationRefused {
@@ -1554,7 +1554,7 @@ fn spark_serving_classify_model_store(
       let required = concat([rf], rr)
       let observed_identity = spark_serving_sha256sum_identity(stdout: manifest_digest_stdout)
       let missing = fold(required, init: [], f: fn(acc, want) {
-        if any(present, p => trim(s: p) == spark_serving_blob_file_name_for(digest_hex: want)) {
+        if any(present, p => std.algebra.trim(s: p) == spark_serving_blob_file_name_for(digest_hex: want)) {
           acc
         } else {
           concat(acc, [want])
@@ -1946,11 +1946,11 @@ fn spark_serving_observe_runtime_materialization(
                             first_defect: RuntimeMaterializationReceiptMissing,
                             further_defects: [],
                           }
-                        } else if trim(s: receipt.stdout) != (identity.digest as String) {
+                        } else if std.algebra.trim(s: receipt.stdout) != (identity.digest as String) {
                           RuntimeMaterializationIncomplete {
                             identity: identity,
                             first_defect: RuntimeMaterializationReceiptIdentityMismatch {
-                              observed: trim(s: receipt.stdout) as NonEmptyStr,
+                              observed: std.algebra.trim(s: receipt.stdout) as NonEmptyStr,
                             },
                             further_defects: [],
                           }
@@ -1993,10 +1993,10 @@ fn spark_serving_observed_members_for_unit(
 // `sha256sum` prints "<hex>  <path>". Only the hex is taken, and it must parse as a real sha256 --
 // a truncated or error-shaped line refuses rather than becoming an identity nothing can compare.
 fn spark_serving_sha256sum_identity(stdout: String) -> NonEmptyStr? {
-  match split(trim(s: stdout), " ").first() {
+  match split(std.algebra.trim(s: stdout), " ").first() {
     Absent => none
     Present { value: hex } =>
-      match sha256_hex_digest(hex: trim(s: hex)) {
+      match sha256_hex_digest(hex: std.algebra.trim(s: hex)) {
         Absent => none
         Present { value: d } =>
           Present {

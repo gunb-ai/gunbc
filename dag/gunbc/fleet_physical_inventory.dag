@@ -448,7 +448,7 @@ data dimm_lot_64gib_32x_ledger: List<InventoryEvent> = [
 type FleetLotAllocationIntent {
   lot: InventoryLotIdentity
   host: HostIdentity
-  intended_quantity: Nat
+  intended_quantity: std.nat.Nat
 }
 
 data dimm_lot_64gib_32x_intended_allocation: List<FleetLotAllocationIntent> = [

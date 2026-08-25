@@ -139,9 +139,9 @@ fn privileged_leg(
         stdin_payload: join([admin_credential as String, "\n", script, "\n"], ""),
       )
       if r.success {
-        ApplyConverged { detail: trim(s: r.stdout) }
+        ApplyConverged { detail: std.algebra.trim(s: r.stdout) }
       } else {
-        gunbc.spark.managed_access_apply.ApplyRefused { cause: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+        gunbc.spark.managed_access_apply.ApplyRefused { cause: join(["exit=", to_string(r.exit_code), " stderr=", std.algebra.trim(s: r.stderr)], "") }
       }
     }
   }
@@ -179,9 +179,9 @@ fn managed_principal_leg(
         stdin_payload: "",
       )
       if r.success {
-        ApplyConverged { detail: trim(s: r.stdout) }
+        ApplyConverged { detail: std.algebra.trim(s: r.stdout) }
       } else {
-        gunbc.spark.managed_access_apply.ApplyRefused { cause: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+        gunbc.spark.managed_access_apply.ApplyRefused { cause: join(["exit=", to_string(r.exit_code), " stderr=", std.algebra.trim(s: r.stderr)], "") }
       }
     }
   }

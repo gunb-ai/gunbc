@@ -53,7 +53,7 @@ fn managed_oom_pressure_limit_show_value(p: std.measure.Percent) -> Int {
 }
 
 fn parse_managed_oom_pressure_limit_show(raw: String) -> std.measure.Percent? {
-  let trimmed = trim(raw)
+  let trimmed = std.algebra.trim(raw)
   if trimmed == "" {
     none
   } else {

@@ -28,10 +28,10 @@ func observe_host_short_wet() -> NonEmptyStr?
     transport: LocalExec,
   ) {
     ProcessOutputPresent { text: t } =>
-      if trim(s: t) == "" {
+      if std.algebra.trim(s: t) == "" {
         none
       } else {
-        Present { value: trim(s: t) as NonEmptyStr }
+        Present { value: std.algebra.trim(s: t) as NonEmptyStr }
       }
     ProcessOutputAbsent => none
     ProcessRefused { exit_code: _, stderr: _ } => none
@@ -214,7 +214,7 @@ func fleet_converge_apply_wet() -> ProcessExit
       Absent =>
         exit_failure(reason: "fleet_converge_apply: HostObservationFailed — hostname probe did not succeed or returned empty output, refuse to compare subject host")
       Present { value: observed_host } => {
-    let planned_host = trim(s: read_host.content) as NonEmptyStr
+    let planned_host = std.algebra.trim(s: read_host.content) as NonEmptyStr
     match fleet_converge_parse_nonneg_generation_text(content: read_prior.content) {
       Absent =>
         exit_failure(reason: "fleet_converge_apply: prior_generation artifact corrupt — refuse, do not coerce to 0")
@@ -252,7 +252,7 @@ func fleet_converge_apply_wet() -> ProcessExit
                 exit_failure(reason: "fleet_converge_apply: SubjectIdentityMismatch — member set drifted since plan")
               } else if !fleet_converge_observed_baseline_matches(
                 host: observed_host,
-                observed_baseline_hex: trim(s: read_base.content),
+                observed_baseline_hex: std.algebra.trim(s: read_base.content),
                 observed_timers: observed_timers,
                 observed_caps: observed_caps,
                 observed_spark: [],
@@ -263,7 +263,7 @@ func fleet_converge_apply_wet() -> ProcessExit
               } else if !fleet_converge_plan_bundle_matches(
                 plan_body: read_plan.content,
                 apply_shell: read_apply.content,
-                spark_typed_actions_wire: trim(s: read_spark_wire.content),
+                spark_typed_actions_wire: std.algebra.trim(s: read_spark_wire.content),
                 claimed_hex: read_hash.content,
               ) {
                 exit_failure(

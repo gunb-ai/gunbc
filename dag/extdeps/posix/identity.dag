@@ -51,7 +51,7 @@ type PosixOwnerSpec {
 // POSIX ids are non-negative, so a negative lexeme is refused for the same reason: it decodes
 // cleanly and means nothing.
 fn posix_id_value_from_text(text: String) -> v2.std.optional.Optional<Int> {
-  let lexeme = trim(s: text)
+  let lexeme = std.algebra.trim(s: text)
   match lexeme == "" {
     true => v2.std.optional.Absent
     false =>

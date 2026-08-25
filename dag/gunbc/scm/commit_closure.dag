@@ -137,7 +137,7 @@ module gunbc.scm.commit_closure
 // NonEmptyList authority earning its place from more than one consumer.
 type AdmittedPartialCommitClosure sole_constructor {
   closure: CommitClosure
-  unresolved: List<ObjectId>
+  unresolved: List<gunbc.scm.object_store.ObjectId>
   reason: PartialClosureReason
 }
 
@@ -190,7 +190,7 @@ fn admitted_unresolved(admitted: AdmittedPartialCommitClosure) -> List<ObjectId>
 // A closure is the store plus the root the commit names. Nothing about how it is written down.
 type CommitClosure {
   store: ObjectStore
-  root: ObjectId
+  root: gunbc.scm.object_store.ObjectId
 }
 
 // WHY THE WIRE ARM IS "UNCONTAINED" AND THIS FUNCTION SAYS "UNRESOLVED", which is not two names for

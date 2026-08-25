@@ -3659,7 +3659,7 @@ fn dag_formal_grammar_symbol_from_token(token: ConcreteSyntaxToken) -> FormalGra
 fn dag_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
@@ -4183,7 +4183,7 @@ fn dag_add_operator_node() -> Node {
 fn dag_arrow_domain_conj_node() -> Node {
   let children = fold_list(
     xs: dag_add_param_binding_ids(),
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, binding_id) {
       list_snoc_item(
         xs: acc,
@@ -5492,8 +5492,8 @@ fn dag_round_trip_grammar_ready(lm: LanguageModel) -> Bool {
 
 fn dag_round_trip_trivia_fidelity_resolved() -> Bool {
   dag_whitespace_fidelity() == DeclaredNormalized { feature: DagWhitespaceDeclaredNormalized } &&
-  dag_line_comment_fidelity() == FailClosed { feature: DagLineCommentFailClosed } &&
-  dag_block_comment_fidelity() == FailClosed { feature: DagBlockCommentFailClosed }
+  dag_line_comment_fidelity() == v2.extdeps.languages.fidelity.FailClosed { feature: DagLineCommentFailClosed } &&
+  dag_block_comment_fidelity() == v2.extdeps.languages.fidelity.FailClosed { feature: DagBlockCommentFailClosed }
 }
 
 fn dag_round_trip_authorities_ready() -> Bool {
@@ -5603,7 +5603,7 @@ fn parse_qn_repeat_suffix_ident(sequence_capture: Node, root: Node) -> Outcome<S
 fn parse_qn_repeat_suffixes(repeat_capture: Node, root: Node) -> Outcome<List<Symbol>> {
 
   if is_empty_conj_root(n: repeat_capture) {
-    outcome_accepted(value: Empty)
+    outcome_accepted(value: std.algebra.Empty)
   } else {
     match find_named_child(
       root: repeat_capture,
@@ -5713,7 +5713,7 @@ fn parse_import_block_idents(
     root: import_decl_node,
     emitted: ^dag_surface_import_block
   ) {
-    ParseSubtreeAbsent => outcome_accepted(value: Empty)
+    ParseSubtreeAbsent => outcome_accepted(value: std.algebra.Empty)
     ParseSubtreeFound { captured: block_capture } =>
       match find_named_child(
         root: block_capture,
@@ -5838,7 +5838,7 @@ fn qualified_name_append_segment(qn: QualifiedName, sym: Symbol) -> QualifiedNam
 fn qualified_name_from_symbol_segments(segments: List<Symbol>, root: Node) -> Outcome<QualifiedName> {
   let qn = fold_list(
     xs: segments,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, sym) {
       qualified_name_append_segment(qn: acc, sym: sym)
     }

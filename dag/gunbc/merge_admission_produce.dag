@@ -107,7 +107,7 @@ fn merge_admission_receipt_path(root: String) -> String {
 }
 
 fn shell_stdout_line(raw: String) -> String {
-  trim(raw)
+  std.algebra.trim(raw)
 }
 
 fn parse_gate_roster_hash_wire(line: String) -> gunbc.merge_admission.GateRosterHash? {

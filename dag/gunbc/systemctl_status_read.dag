@@ -14,7 +14,7 @@ fn unit_status_capture_from_stdout(stdout: String, refusal: String) -> UnitStatu
   if refusal != "" {
     UnitStatusCaptureRefused { reason: refusal }
   } else {
-    let trimmed = trim(stdout)
+    let trimmed = std.algebra.trim(stdout)
     if trimmed == "" {
       UnitStatusCaptureRefused { reason: "systemctl status returned empty stdout" }
     } else {

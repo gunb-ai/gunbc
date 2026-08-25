@@ -50,7 +50,7 @@ fn wet_exec_succeeds_with_output(plan: EffectPlan<v2.workflow.effect_plan_bash_m
   match bash_materialized_transport(materialization: v2.workflow.effect_plan_bash_materialize.effect_plan_bash_materialize(plan: plan)) {
     Present { value: script } => {
       let result = shell.Exec.Run(script: script)
-      result.success && string_length(s: trim(s: result.stdout)) > 0
+      result.success && string_length(s: std.algebra.trim(s: result.stdout)) > 0
     }
     Absent => false
   }
@@ -60,7 +60,7 @@ fn wet_exec_fails_without_output(plan: EffectPlan<v2.workflow.effect_plan_bash_m
   match bash_materialized_transport(materialization: v2.workflow.effect_plan_bash_materialize.effect_plan_bash_materialize(plan: plan)) {
     Present { value: script } => {
       let result = shell.Exec.Run(script: script, expect: ExpectFailure)
-      !result.success && trim(s: result.stdout) == ""
+      !result.success && std.algebra.trim(s: result.stdout) == ""
     }
     Absent => false
   }

@@ -27,7 +27,7 @@ fn deploy_target_host_observed_hostname() -> String {
 fn deploy_target_host_observed_runner_name() -> String {
   let env = shell.Env.Get(name: "RUNNER_NAME" as std.types.NonEmptyStr)
   match env.value {
-    Present { value: raw } => trim(raw)
+    Present { value: raw } => std.algebra.trim(raw)
     Absent => ""
   }
 }

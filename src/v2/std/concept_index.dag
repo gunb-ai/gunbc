@@ -35,7 +35,7 @@ fn concept_decl_facts(pool_roots: List<String>) -> List<ConceptDecl> {
 }
 
 fn field_refs_from_conj_node(node: Node) -> List<FieldRef> {
-  fold(node_labeled_child_edges(node: node), init: Empty, f: fn(acc, e) {
+  fold(node_labeled_child_edges(node: node), init: std.algebra.Empty, f: fn(acc, e) {
     list_snoc_item(
       xs: acc,
       item: FieldRef {
@@ -50,11 +50,11 @@ fn field_refs_from_node(node: Node) -> List<FieldRef> {
   match node.kind {
     TypeNode { connective: Conj } => field_refs_from_conj_node(node: node)
     TypeNode { connective: Disj } =>
-      fold(coproduct_arm_list_from_node(node: node), init: Empty, f: fn(acc, arm) {
+      fold(coproduct_arm_list_from_node(node: node), init: std.algebra.Empty, f: fn(acc, arm) {
         let pair = coproduct_arm_payload_pair_from_arm(arm: arm)
         list_snoc_item(xs: acc, item: FieldRef { field: pair.label, type_name: pair.payload_type_name })
       })
-    _ => Empty
+    _ => std.algebra.Empty
   }
 }
 
@@ -85,7 +85,7 @@ fn list_contains_name_index(acc: List<ConceptByName>, name: String) -> Bool {
 }
 
 fn append_to_name_bucket(acc: List<ConceptByName>, qc: QualifiedConcept) -> List<ConceptByName> {
-  fold(acc, init: Empty, f: fn(done, row) {
+  fold(acc, init: std.algebra.Empty, f: fn(done, row) {
     if row.name == qc.concept.name {
       list_snoc_item(
         xs: done,
@@ -101,7 +101,7 @@ fn append_to_name_bucket(acc: List<ConceptByName>, qc: QualifiedConcept) -> List
 }
 
 fn build_concept_name_index(idx: List<QualifiedConcept>) -> List<ConceptByName> {
-  fold(idx, init: Empty, f: fn(acc, qc) {
+  fold(idx, init: std.algebra.Empty, f: fn(acc, qc) {
     if list_contains_name_index(acc: acc, name: qc.concept.name) {
       append_to_name_bucket(acc: acc, qc: qc)
     } else {

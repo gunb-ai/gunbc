@@ -82,12 +82,12 @@ fn decode_registration_slot(reg: GitHubSelfHostedRunnerRegistration) -> Registra
 }
 
 type RunnerSlotConnectivityVerdict
-  = SlotConnectivityHealthy { slot: RunnerSlotIdentity, registration_id: Nat }
-  | SlotConnectivityDetached { slot: RunnerSlotIdentity, registration_id: Nat }
+  = SlotConnectivityHealthy { slot: RunnerSlotIdentity, registration_id: std.nat.Nat }
+  | SlotConnectivityDetached { slot: RunnerSlotIdentity, registration_id: std.nat.Nat }
   | SlotConnectivityOrphaned { slot: RunnerSlotIdentity }
   | SlotConnectivityUnknown { slot: RunnerSlotIdentity, reason: String }
   | SlotConnectivityUnexpectedRegistration {
-      registration_id: Nat
+      registration_id: std.nat.Nat
       registration_name: NonEmptyStr
       decoded: RegistrationSlotDecoding
     }

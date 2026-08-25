@@ -57,7 +57,7 @@ data sixteen_module_population: PopulationOption = PopulationOption {
   margin_bytes: byte_size(count: 0),
 }
 
-fn nth_lot_identity(n: Nat) -> InventoryLotIdentity {
+fn nth_lot_identity(n: std.nat.Nat) -> InventoryLotIdentity {
   let first = mint_inventory_lot_identity(alloc: inventory_lot_allocator_initial())
   let second = mint_inventory_lot_identity(alloc: first.alloc)
   let third = mint_inventory_lot_identity(alloc: second.alloc)
@@ -68,14 +68,14 @@ fn cpu_lot_identity() -> InventoryLotIdentity { nth_lot_identity(n: 0) }
 fn dimm_lot_identity() -> InventoryLotIdentity { nth_lot_identity(n: 1) }
 fn board_lot_identity() -> InventoryLotIdentity { nth_lot_identity(n: 2) }
 
-fn usd_micros(count: Nat) -> MoneyOnce {
+fn usd_micros(count: std.nat.Nat) -> MoneyOnce {
   MoneyOnce { amount: money_amount_micro(count: count), currency: Usd }
 }
 
 fn lot_of(
   identity: InventoryLotIdentity,
   label: NonEmptyStr,
-  quantity: Nat,
+  quantity: std.nat.Nat,
   landed: MoneyOnce,
 ) -> ProcurementLot {
   ProcurementLot {
@@ -88,7 +88,7 @@ fn lot_of(
   }
 }
 
-fn qualified_events(identity: InventoryLotIdentity, quantity: Nat) -> List<InventoryEvent> {
+fn qualified_events(identity: InventoryLotIdentity, quantity: std.nat.Nat) -> List<InventoryEvent> {
   [
     LotAcquired { lot: identity },
     LotReceived { lot: identity, quantity: quantity },
@@ -99,11 +99,11 @@ fn qualified_events(identity: InventoryLotIdentity, quantity: Nat) -> List<Inven
 // THE OPERATOR'S ACCEPTANCE EXAMPLE, parameterised on the one number it moves.
 // Sixty-two processors on the shelf, a dual-socket recipe, nothing else
 // constraining: the ceiling is thirty-one, and sixty processors make it thirty.
-fn cpu_lot(quantity: Nat) -> ProcurementLot {
+fn cpu_lot(quantity: std.nat.Nat) -> ProcurementLot {
   lot_of(identity: cpu_lot_identity(), label: "processors, shelf stock" as NonEmptyStr, quantity: quantity, landed: usd_micros(count: 620000000))
 }
 
-fn dimm_lot(quantity: Nat, landed: MoneyOnce) -> ProcurementLot {
+fn dimm_lot(quantity: std.nat.Nat, landed: MoneyOnce) -> ProcurementLot {
   lot_of(identity: dimm_lot_identity(), label: "memory modules, shelf stock" as NonEmptyStr, quantity: quantity, landed: landed)
 }
 
@@ -135,7 +135,7 @@ fn single_socket_recipe() -> NodeRecipe {
   }
 }
 
-fn owned_row(part: DeclarationRef, lot: ProcurementLot, quantity: Nat) -> SupplyRow {
+fn owned_row(part: DeclarationRef, lot: ProcurementLot, quantity: std.nat.Nat) -> SupplyRow {
   SupplyRow {
     part: part,
     compatibility: CompatibilityEstablished,
@@ -148,7 +148,7 @@ fn board_lot() -> ProcurementLot {
   lot_of(identity: board_lot_identity(), label: "baseboards, shelf stock" as NonEmptyStr, quantity: 4, landed: usd_micros(count: 4000000))
 }
 
-fn market_row(part: DeclarationRef, units: Nat, unit_price: MoneyOnce) -> SupplyRow {
+fn market_row(part: DeclarationRef, units: std.nat.Nat, unit_price: MoneyOnce) -> SupplyRow {
   SupplyRow {
     part: part,
     compatibility: CompatibilityEstablished,
@@ -591,7 +591,7 @@ test fn w_unsettled_landed_cost_refuses_the_basis_rather_than_reading_zero() -> 
 
 // --- THE OPERATOR'S ACCEPTANCE EXAMPLE: 62 -> 31, 60 -> 30 ------------------------------------------
 
-fn ceiling_builds(cpu_units: Nat) -> Int {
+fn ceiling_builds(cpu_units: std.nat.Nat) -> Int {
   let rows = [
     owned_row(part: q8030_ref, lot: cpu_lot(quantity: cpu_units), quantity: cpu_units),
     market_row(part: dimm_ref, units: 4000, unit_price: usd_micros(count: 90000000)),

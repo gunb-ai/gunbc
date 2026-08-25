@@ -34,7 +34,7 @@ fn scm_env_program_two() -> Node {
   )
 }
 
-type ScmEnvPut { store: ObjectStore, identity: ObjectId }
+type ScmEnvPut { store: ObjectStore, identity: gunbc.scm.object_store.ObjectId }
 
 fn scm_env_put(store: ObjectStore, n: Node) -> ScmEnvPut {
   match store_node(store: store, n: n) {

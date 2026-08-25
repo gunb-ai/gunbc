@@ -117,7 +117,7 @@ data q8030_node: NodeElectricalInputs = NodeElectricalInputs {
 
 // THE 2DPC DOWNCLOCK IS RANK-DEPENDENT — the claim that survived the module
 // deletion unchanged, now stated against the relocated function.
-fn rate_at(dimms_per_channel: Nat, rank_count: Nat) -> Nat {
+fn rate_at(dimms_per_channel: std.nat.Nat, rank_count: std.nat.Nat) -> std.nat.Nat {
   megatransfers_per_second_count(
     r: effective_data_rate(
       context: mt_collins_context,

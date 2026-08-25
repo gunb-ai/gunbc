@@ -121,9 +121,9 @@ fn linux_filesystem_kind_from_mount_type(
 }
 
 fn linux_nonempty_whitespace_tokens(raw: String) -> List<std.types.NonEmptyStr> {
-  split(s: trim(raw), delimiter: " ")
-    |> filter(token => trim(token) != "")
-    |> map(token => trim(token) as std.types.NonEmptyStr)
+  split(s: std.algebra.trim(raw), delimiter: " ")
+    |> filter(token => std.algebra.trim(token) != "")
+    |> map(token => std.algebra.trim(token) as std.types.NonEmptyStr)
 }
 
 fn linux_proc_mount_unescape(field: String) -> String {
@@ -218,9 +218,9 @@ fn linux_proc_mount_row_from_line(line: String) -> LinuxProcMountLineParse {
                       ),
                     },
                     options: split(s: raw_options, delimiter: ",")
-                      |> filter(option => trim(option) != "")
+                      |> filter(option => std.algebra.trim(option) != "")
                       |> map(option =>
-                        linux_proc_mount_unescape(field: trim(option))
+                        linux_proc_mount_unescape(field: std.algebra.trim(option))
                       ),
                     dump_frequency: dump_frequency,
                     fsck_pass: fsck_pass,
@@ -253,7 +253,7 @@ fn linux_proc_mounts_parse(proc_mounts: String) -> LinuxProcMountsParse {
             parse: acc.parse,
           }
         LinuxProcMountsParsed { rows: rows } =>
-          if trim(line) == "" {
+          if std.algebra.trim(line) == "" {
             LinuxProcMountsParseFold {
               line_number: acc.line_number + 1,
               parse: acc.parse,

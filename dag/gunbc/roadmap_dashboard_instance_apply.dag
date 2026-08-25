@@ -97,7 +97,7 @@ fn dashboard_target_probe(
 }
 
 type DashboardArgv {
-  program: FilePath
+  program: std.types.FilePath
   args: List<String>
 }
 
@@ -1106,7 +1106,7 @@ type DashboardApplyPreflightResult
   | DashboardApplyPreflightBootstrapPending {
       instance_id: NonEmptyStr,
       source_revision: CommitSha,
-      state_root: FilePath,
+      state_root: std.types.FilePath,
       remediation: String,
     }
   | DashboardApplyPreflightRefused {
@@ -1247,8 +1247,8 @@ fn dashboard_required_target_executables(
 data executable_survey_note: String = "ABSENT AND UNOBSERVED ARE DIFFERENT ANSWERS ABOUT A REQUIRED EXECUTABLE, and this survey is the fold that stopped conflating them (review 45213). The predecessor filtered the required paths on a Bool that was false for both, so a refused transport reported every required executable as missing — a list of real paths, each of which may well exist, handed to an operator as the thing to go install.\\n\\nThe survey refuses on the FIRST unobservable path rather than continuing, because the refusal is a property of the transport and not of the path: once a probe could not be delivered, the remaining probes carry no information either, and a partial missing-list assembled from the ones that happened to answer is exactly the partial observation that looks complete. Carrying the path alongside the reason keeps the refusal located — which probe stopped the line — rather than reporting only that something went wrong."
 
 type DashboardExecutableSurvey
-  = ExecutablesSurveyed { missing: List<FilePath> }
-  | ExecutableSurveyRefused { path: FilePath, reason: String }
+  = ExecutablesSurveyed { missing: List<std.types.FilePath> }
+  | ExecutableSurveyRefused { path: std.types.FilePath, reason: String }
 
 fn dashboard_survey_target_executables(
   instance: HostDashboardInstance,
@@ -1282,13 +1282,13 @@ fn dashboard_survey_target_executables(
 data bootstrap_unobserved_is_its_own_verdict_note: String = "THE THIRD VERDICT, because absent, unwritable and unobservable call for three different actions (review 45213). This decision took three Bools, and the writability one came from the collapsing predicate, so a refused transport arrived here as bootstrap_writable: false and the operator was told the nearest modeled bootstrap parent is not writable — a claim about permissions on a directory nobody managed to stat.\\n\\nBoth pre-existing arms are ACTIONABLE and that is what made the collapse harmful rather than merely imprecise: absent says create it, not-writable says fix its mode, and each sends someone to do something specific on evidence that was never gathered. The new arm deliberately carries no instruction at all, only the path whose observation failed and the reason it failed, because nothing about the bootstrap parent is known when the probe did not run.\\n\\nIt is a separate variant rather than a reason string on the existing refusal so that consumers must decide what to do with it — a match that forgot the case does not compile, which is the wall the Bool never was."
 
 type DashboardBootstrapPreflight
-  = DashboardBootstrapReady { bootstrap_root: FilePath }
+  = DashboardBootstrapReady { bootstrap_root: std.types.FilePath }
   | DashboardBootstrapRefused {
-      bootstrap_root: FilePath,
+      bootstrap_root: std.types.FilePath,
       reason: NonEmptyStr,
     }
   | DashboardBootstrapUnobserved {
-      path: FilePath,
+      path: std.types.FilePath,
       reason: String,
     }
 
@@ -2016,15 +2016,15 @@ type DashboardProviderReadiness
       auth_detail: String,
     }
   | ProviderStateRootAbsent {
-      state_root: FilePath,
+      state_root: std.types.FilePath,
       remediation: String,
     }
   | ProviderRuntimeUnavailable {
-      executable: FilePath,
+      executable: std.types.FilePath,
       detail: String,
     }
   | ProviderUnauthenticated {
-      state_root: FilePath,
+      state_root: std.types.FilePath,
       detail: String,
       remediation: String,
     }

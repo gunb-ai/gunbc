@@ -303,7 +303,7 @@ fn codex_parse_fold_line(
       refused_reason: state.refused_reason,
     }
   } else {
-    let raw = trim(line)
+    let raw = std.algebra.trim(line)
     let raw_chars = character_count(count: string_length(s: raw))
     let is_trailing_empty = raw == ""
       && state.next_line_number == state.total_lines

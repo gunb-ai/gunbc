@@ -4,7 +4,7 @@ module gunbc.spark.serving_runtime_admission
 data spark_serving_runtime_admission_note: String = "HOST RUNTIME ADMISSION (SPARK-SERVE-BIND-0 driver axis). GB10 requires NVIDIA driver 550 or newer per docs.ollama.com/gpu. Ollama falls back to CPU when the driver is too old rather than refusing install, so admission must observe the host driver and route through ollama_runtime_admission_verdict — unobserved refuses rather than passing."
 
 fn spark_serving_parse_nvidia_driver_version(stdout: String) -> gunbc.spark.serving_readback_parse.SparkServingReadbackField {
-  let trimmed = trim(s: stdout)
+  let trimmed = std.algebra.trim(s: stdout)
   if trimmed == "" {
     gunbc.spark.serving_readback_parse.SparkServingReadbackRefused {
       cause: "nvidia-smi driver_version query returned empty output" as std.types.NonEmptyStr,

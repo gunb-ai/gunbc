@@ -331,7 +331,7 @@ data git_object_id_eq_note: String = "Format-aware equality, held beside the typ
 data git_object_id_untagged_hex_note: String = "THE ONE DECODER FOR UNTAGGED PLUMBING OUTPUT (review 47517, §3). Git's own plumbing (show --format=%T and friends) prints a bare lowercase-hex object id with no family tag; the family is decidable from the canonical text width alone because the two supported hash functions have distinct digest lengths (40 for SHA-1, 64 for SHA-256, per git's hash-function-transition design). That inference is a fact about GIT'S wire, so it lives here at the GitObjectId authority — a consumer re-deriving it by measuring hex lengths is a second representation of the family axis (the capture tool did exactly this). Our OWN wires stay family-prefixed (<family>:<hex>, render/parse_git_object_id_wire) and never route through this decoder; this fn exists only for text git itself produced. A width that is neither 40 nor 64 refuses."
 
 fn git_object_id_from_untagged_hex(hex: String) -> extdeps.git.object_store.GitObjectId? {
-  let line = trim(hex)
+  let line = std.algebra.trim(hex)
   if line.length() == 40 {
     git_sha1_object_id(hex: line)
   } else if line.length() == 64 {

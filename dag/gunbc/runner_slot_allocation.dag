@@ -590,7 +590,7 @@ type RunnerSlotMembership
 // So the fabric member is AUTHORED as an identity and the counts are PROJECTIONS over it. srv3-06
 // stays srv3-06 when the width moves, and if the width ever falls below 6 the slot leaves the
 // committed population and says so, rather than the fabric role sliding onto srv3-05.
-data srv3_fabric_canary_slot_index: Nat = 6
+data srv3_fabric_canary_slot_index: std.nat.Nat = 6
 
 fn srv3_fabric_canary_slot() -> RunnerSlotIdentity {
   RunnerSlotIdentity { host: operator_host_srv3, slot_index: srv3_fabric_canary_slot_index }
@@ -635,7 +635,7 @@ fn committed_slot_identities(host: HostIdentity) -> List<RunnerSlotIdentity> {
   )
 }
 
-fn runner_slot_membership(host: HostIdentity, slot_index: Nat) -> RunnerSlotMembership {
+fn runner_slot_membership(host: HostIdentity, slot_index: std.nat.Nat) -> RunnerSlotMembership {
   let identity = RunnerSlotIdentity { host: host, slot_index: slot_index }
   let committed = gunbc_runner_slots_per_host(host: host)
   if slot_index > committed || slot_index < 1 {

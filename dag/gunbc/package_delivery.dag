@@ -362,7 +362,7 @@ fn codex_runtime_version_identity_marker() -> String {
 }
 
 fn codex_runtime_version_identity_line_exact(line: String) -> Bool {
-  trim(s: line) == codex_runtime_version_identity_marker()
+  std.algebra.trim(s: line) == codex_runtime_version_identity_marker()
 }
 
 fn codex_runtime_version_identity_satisfied(combined_output: String) -> Bool {

@@ -40,9 +40,9 @@ module product.workload_simulation
 // Concurrency over a slot grid. A slot is whatever period the caller denominates in; the
 // fold never reads a clock.
 type ArrivalShape
-  = FlatArrival { concurrent: Nat }
-  | DiurnalArrival { trough: Nat, peak: Nat, period_slots: Nat, busy_slots: Nat }
-  | BurstyArrival { base: Nat, burst: Nat, every_slots: Nat, burst_width: Nat }
+  = FlatArrival { concurrent: std.nat.Nat }
+  | DiurnalArrival { trough: std.nat.Nat, peak: std.nat.Nat, period_slots: std.nat.Nat, busy_slots: std.nat.Nat }
+  | BurstyArrival { base: std.nat.Nat, burst: std.nat.Nat, every_slots: std.nat.Nat, burst_width: std.nat.Nat }
 
 fn arrival_label(s: ArrivalShape) -> NonEmptyStr {
   match s {
@@ -84,10 +84,10 @@ fn concurrency_at(s: ArrivalShape, slot: Nat) -> Nat {
 // that owning is always free.
 type SupplyLane {
   label: NonEmptyStr
-  capacity: Nat
+  capacity: std.nat.Nat
   variable_per_slot: MoneyAmountMicro
   committed_per_slot: MoneyAmountMicro
-  billing_quantum_slots: Nat
+  billing_quantum_slots: std.nat.Nat
 }
 
 // Rounding UP a partial quantum, exactly as suppliers bill. A lane with quantum 0 is
@@ -120,11 +120,11 @@ fn billed_slots_per_job(quantum_slots: Nat) -> Nat {
 // preference arm. Nothing widens when a lane fills: the next lane is simply the next
 // cheapest ask.
 type PlacementAccum {
-  remaining: Nat
+  remaining: std.nat.Nat
   variable_spend: MoneyAmountMicro
-  placed_committed: Nat
-  placed_variable: Nat
-  unplaced: Nat
+  placed_committed: std.nat.Nat
+  placed_variable: std.nat.Nat
+  unplaced: std.nat.Nat
 }
 
 // A lane is committed exactly when something is owed per slot regardless of use. Reading the
@@ -173,11 +173,11 @@ fn place_slot(lanes: List<SupplyLane>, concurrent: Nat) -> PlacementAccum {
 
 type RunAccum {
   variable_spend: MoneyAmountMicro
-  committed_slot_jobs: Nat
-  variable_slot_jobs: Nat
-  unplaced_slot_jobs: Nat
-  peak_concurrency: Nat
-  total_concurrency: Nat
+  committed_slot_jobs: std.nat.Nat
+  variable_slot_jobs: std.nat.Nat
+  unplaced_slot_jobs: std.nat.Nat
+  peak_concurrency: std.nat.Nat
+  total_concurrency: std.nat.Nat
 }
 
 fn run_step(acc: RunAccum, placed: PlacementAccum, concurrent: Nat) -> RunAccum {
@@ -216,16 +216,16 @@ fn committed_capacity_total(lanes: List<SupplyLane>) -> Nat {
 // pricing work that never ran.
 type SimulationResult {
   arrival: NonEmptyStr
-  slots: Nat
+  slots: std.nat.Nat
   variable_spend: MoneyAmountMicro
   committed_spend: MoneyAmountMicro
   total_spend: MoneyAmountMicro
-  committed_slot_jobs: Nat
-  variable_slot_jobs: Nat
-  unplaced_slot_jobs: Nat
-  peak_concurrency: Nat
-  total_concurrency: Nat
-  committed_occupancy_permille: Nat
+  committed_slot_jobs: std.nat.Nat
+  variable_slot_jobs: std.nat.Nat
+  unplaced_slot_jobs: std.nat.Nat
+  peak_concurrency: std.nat.Nat
+  total_concurrency: std.nat.Nat
+  committed_occupancy_permille: std.nat.Nat
 }
 
 fn run_one_slot(acc: RunAccum, shape: ArrivalShape, lanes: List<SupplyLane>, slot: Nat) -> RunAccum {
@@ -276,9 +276,9 @@ fn simulate(shape: ArrivalShape, lanes: List<SupplyLane>, slots: Nat) -> Simulat
 // always is once bought, and which is the comparison that talks operators into capacity
 // they cannot fill.
 type AcquisitionVerdict
-  = CommitmentPaysOff { saved: MoneyAmountMicro, occupancy_permille: Nat }
-  | CommitmentCostsMore { excess: MoneyAmountMicro, occupancy_permille: Nat }
-  | CommitmentBreaksEven { occupancy_permille: Nat }
+  = CommitmentPaysOff { saved: MoneyAmountMicro, occupancy_permille: std.nat.Nat }
+  | CommitmentCostsMore { excess: MoneyAmountMicro, occupancy_permille: std.nat.Nat }
+  | CommitmentBreaksEven { occupancy_permille: std.nat.Nat }
   | VerdictRefusedUnplacedWork { unplaced_slot_jobs: NonEmptyStr }
 
 // std.measure carries add, scale and compare but no subtraction, and the gap is principled:

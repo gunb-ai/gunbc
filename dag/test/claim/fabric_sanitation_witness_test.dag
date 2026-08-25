@@ -52,11 +52,11 @@ test fn five_confirmations_and_a_silence_do_not_return_the_cell() -> Bool {
 test fn an_unobservable_fact_refuses_reuse_without_claiming_teardown_failed() -> Bool {
   let with_unobservable = concat(
     filter(all_confirmed(), o => match o {
-      FactConfirmed { fact: f } => f != CgroupEmpty
+      FactConfirmed { fact: f } => f != product.fabric.sanitation.CgroupEmpty
       FactRefuted { fact: _, detail: _ } => true
       FactUnobservable { fact: _, reason: _ } => true
     }),
-    [FactUnobservable { fact: CgroupEmpty, reason: "host agent unreachable" as NonEmptyStr }],
+    [FactUnobservable { fact: product.fabric.sanitation.CgroupEmpty, reason: "host agent unreachable" as NonEmptyStr }],
   )
   let readiness = cell_readiness_after(readback: readback_of(obs: with_unobservable))
   let line = cell_readiness_line(readiness: readiness)

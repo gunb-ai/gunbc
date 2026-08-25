@@ -53,7 +53,7 @@ type OllamaNvidiaDriverRequirementVerdict
   | OllamaNvidiaDriverRequirementUnobserved { cause: std.types.NonEmptyStr }
 
 fn ollama_nvidia_driver_version_from_wire_text(raw: String) -> OllamaNvidiaDriverVersion? {
-  let trimmed = trim(s: raw)
+  let trimmed = std.algebra.trim(s: raw)
   if trimmed == "" {
     none
   } else {

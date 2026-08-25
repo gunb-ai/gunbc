@@ -421,7 +421,7 @@ fn verification_receipt_file_source_from_exact(
 }
 
 fn verification_receipt_text_classify(receipt: String) -> VerificationReceiptText {
-  if trim(receipt) == "" {
+  if std.algebra.trim(receipt) == "" {
     VerificationReceiptTextUndecodable {
       reason: "the receipt file exists and is empty, so its content was lost or its write was interrupted; an empty file is not an absent one",
     }

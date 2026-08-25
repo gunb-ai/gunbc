@@ -2,8 +2,8 @@ module test.claim.build_cache_configuration_observation_witness
 
 data configuration_observation_witness_note: String = "THE DISCRIMINATING PAIRS protect the distinction the carriers exist to express. A successful process-environment read with no assignment is positive evidence that the setting is unset; an unavailable read says the host never answered. Collapsing them to an Option would make the empty-observation narrow writable. The subject-binding witness separately proves the observations retain both which of two same-implementation instances was read and which endpoint-owning process supplied the environment, so a session server's 50 GiB setting cannot stand in for the CI server on the same host. The suffixed-capacity control keeps configured text representable without fabricating its byte magnitude."
 
-fn owner_fixture(pid: Nat) -> ProcessIdentity {
-  ProcessIdentity {
+fn owner_fixture(pid: std.nat.Nat) -> gunbc.build_cache_instance.ProcessIdentity {
+  gunbc.build_cache_instance.ProcessIdentity {
     boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as NonEmptyStr,
     pid: pid,
     start_time: "79870020" as NonEmptyStr,

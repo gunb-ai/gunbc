@@ -282,7 +282,7 @@ data merge_base_exit_no_common_ancestor: Int = 1
 // that produced it, never a fourth silent arm and never a default that resolves to an answer.
 fn merge_base_outcome(exit_code: Int, stdout: String, stderr: String) -> MergeBaseOutcome {
   if exit_code == merge_base_exit_reported {
-    MergeBaseReported { base_hex: trim(s: stdout) }
+    MergeBaseReported { base_hex: std.algebra.trim(s: stdout) }
   } else {
     if exit_code == merge_base_exit_no_common_ancestor {
       NoCommonAncestor

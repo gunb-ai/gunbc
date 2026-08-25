@@ -167,7 +167,7 @@ fn emit_site_dissolve_on(site: CensusedEmitSite) -> String {
   }
 }
 
-fn observation_emit_frontier_count() -> Nat {
+fn observation_emit_frontier_count() -> std.nat.Nat {
   fold(observation_emit_roster, init: 0, f: (acc, site) =>
     if emit_site_is_frontier(site: site) { acc + 1 } else { acc })
 }

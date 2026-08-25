@@ -61,14 +61,14 @@ type RepositoryCommitRecord {
 }
 
 type RepositoryCommit {
-  root: ObjectId
+  root: gunbc.scm.object_store.ObjectId
   message: String
 }
 
 type RepositoryEnvelope {
   store: ObjectStore
   commits: List<RepositoryCommit>
-  checked_out: ObjectId?
+  checked_out: gunbc.scm.object_store.ObjectId?
 }
 
 // ENCODE AND DECODE HAVE DIFFERENT FAILURE POPULATIONS, SO THEY ARE DIFFERENT TYPES.
@@ -101,9 +101,9 @@ type RepositoryEnvelope {
 // the arm. It carries ObjectId rather than a rendered key, which also closes a string round-trip the
 // two sibling arms below never had: an identity left as text is one nobody can resolve back.
 type RepositoryEncodeRefusal
-  = RepositoryEncodeUncontainedTarget { target: ObjectId }
-  | RepositoryCommitRootNotInStore { root: ObjectId }
-  | RepositoryCheckoutNotInCommits { selected: ObjectId }
+  = RepositoryEncodeUncontainedTarget { target: gunbc.scm.object_store.ObjectId }
+  | RepositoryCommitRootNotInStore { root: gunbc.scm.object_store.ObjectId }
+  | RepositoryCheckoutNotInCommits { selected: gunbc.scm.object_store.ObjectId }
 
 // The decode side keeps `String` references for now, and that is a REMAINING conflation rather than
 // a resolved one: an image-local position is still spelled as bare text here, and commit_closure_json_v2's whole

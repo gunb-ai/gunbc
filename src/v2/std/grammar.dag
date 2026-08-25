@@ -453,7 +453,7 @@ fn formal_grammar_symbol_to_node(symbol: FormalGrammarSymbol) -> Node {
 fn formal_rhs_to_edges(symbols: List<FormalGrammarSymbol>) -> List<Edge> {
   fold_list(
     xs: symbols,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, symbol) {
       list_snoc_item(
         xs: acc,
@@ -628,7 +628,7 @@ fn formal_rhs_from_node(node: Node) -> Witness<List<FormalGrammarSymbol>> {
     TypeNode { connective: Conj } =>
       match fold(
         node.children,
-        init: Holds { value: Empty },
+        init: v2.std.witness.Holds { value: std.algebra.Empty },
         f: fn(acc, edge) {
           match acc {
             Violates { diagnostic: d } => Violates { diagnostic: d }
@@ -637,7 +637,7 @@ fn formal_rhs_from_node(node: Node) -> Witness<List<FormalGrammarSymbol>> {
                 Positional =>
                   match formal_grammar_symbol_from_node(node: edge.target) {
                     Holds { value: symbol } =>
-                      Holds {
+                      v2.std.witness.Holds {
                         value: list_snoc_item(xs: symbols, item: symbol)
                       }
                     Violates { diagnostic: d } => Violates { diagnostic: d }
@@ -748,7 +748,7 @@ fn grammar_relation_rules_formal_productions_from_rows(rules: Node) -> Outcome<L
     TypeNode { connective: Conj } =>
       fold(
         rules.children,
-        init: outcome_accepted(value: Empty),
+        init: outcome_accepted(value: std.algebra.Empty),
         f: fn(acc, edge) {
           match edge.label {
             Named { name: n } =>
@@ -779,7 +779,7 @@ fn formal_productions_catalog_to_node(productions: List<FormalProduction>) -> No
     },
     children: fold_list(
       xs: productions,
-      empty: Empty,
+      empty: std.algebra.Empty,
       cons: fn(acc, production) {
         list_snoc_item(
           xs: acc,
@@ -799,7 +799,7 @@ fn formal_productions_from_catalog_node(node: Node) -> Outcome<List<FormalProduc
     TypeNode { connective: Conj } =>
       fold(
         node.children,
-        init: outcome_accepted(value: Empty),
+        init: outcome_accepted(value: std.algebra.Empty),
         f: fn(acc, edge) {
           bind_outcome(
             o: acc,
@@ -912,7 +912,7 @@ fn derive_grammar_relation_terminal_token_edges_step(
 fn derive_grammar_relation_terminal_token_edges(production: FormalProduction) -> List<Edge> {
   fold_list(
     xs: production.rhs,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, symbol) {
       derive_grammar_relation_terminal_token_edges_step(acc: acc, symbol: symbol)
     }
@@ -934,7 +934,7 @@ fn conj_positional_children(parent: Node) -> List<Node> {
     TypeNode { connective: Conj } =>
       fold(
         parent.children,
-        init: Empty,
+        init: std.algebra.Empty,
         f: fn(acc, edge) {
           match edge.label {
             Positional => list_snoc_item(xs: acc, item: edge.target)
@@ -942,7 +942,7 @@ fn conj_positional_children(parent: Node) -> List<Node> {
           }
         }
       )
-    _ => Empty
+    _ => std.algebra.Empty
   }
 }
 
@@ -987,7 +987,7 @@ fn formal_productions_for_lhs(
 ) -> List<FormalProduction> {
   fold_list(
     xs: productions,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, production) {
       formal_productions_for_lhs_step(acc: acc, production: production, lhs: lhs)
     }
@@ -1444,9 +1444,9 @@ fn derive_grammar_relation_token_edges_recursive(
   let conj_children = conj_positional_children(parent: emitted)
   match fold_list(
     xs: production.rhs,
-    empty: Holds {
+    empty: v2.std.witness.Holds {
       value: DeriveGrammarRelationTokensProgress {
-        edges: Empty,
+        edges: std.algebra.Empty,
         conj_index: 0,
         conj_children: conj_children
       }
@@ -1479,7 +1479,7 @@ fn derive_grammar_relation_token_edges_recursive(
 fn grammar_relation_token_edge_targets(edges: List<Edge>) -> List<Node> {
   fold(
     edges,
-    init: Empty,
+    init: std.algebra.Empty,
     f: fn(acc, e) {
       list_snoc_item(xs: acc, item: e.target)
     }
@@ -1615,7 +1615,7 @@ fn grammar_productions_to_node(productions: List<GrammarProduction>) -> Node {
     },
     children: fold_list(
       xs: productions,
-      empty: Empty,
+      empty: std.algebra.Empty,
       cons: fn(acc, production) {
         grammar_production_to_list_step(acc: acc, production: production)
       }
@@ -1842,7 +1842,7 @@ fn rebuild_emitted_conj_node(children: List<Node>) -> Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: children,
-      empty: Empty,
+      empty: std.algebra.Empty,
       cons: fn(acc, child) {
         list_snoc_item(
           xs: acc,
@@ -1956,7 +1956,7 @@ fn rebuild_emitted_from_production(
 ) -> Witness<RebuildEmittedResult> {
   match fold_list(
     xs: production.rhs,
-    empty: RebuildRhsWalkOk { children: Empty, token_index: token_index },
+    empty: RebuildRhsWalkOk { children: std.algebra.Empty, token_index: token_index },
     cons: fn(state, symbol) {
       rebuild_emitted_rhs_walk_step(
         state: state,
@@ -1977,7 +1977,7 @@ fn rebuild_emitted_from_production(
       Violates {
         diagnostic: Diagnostic {
           reason: ^grammar_relation_production_not_found,
-          at: node_locus(node: rebuild_emitted_conj_node(children: Empty)),
+          at: node_locus(node: rebuild_emitted_conj_node(children: std.algebra.Empty)),
           correction: Unavailable { reason: ExternalContractUnknown }
         }
       }
@@ -2032,7 +2032,7 @@ fn grammar_relation_emitted_rebuild_for_lhs(
       Violates {
         diagnostic: Diagnostic {
           reason: ^grammar_relation_production_not_found,
-          at: node_locus(node: rebuild_emitted_conj_node(children: Empty)),
+          at: node_locus(node: rebuild_emitted_conj_node(children: std.algebra.Empty)),
           correction: Unavailable { reason: ExternalContractUnknown }
         }
       }
@@ -2040,7 +2040,7 @@ fn grammar_relation_emitted_rebuild_for_lhs(
       Violates {
         diagnostic: Diagnostic {
           reason: ^grammar_relation_row_backward_selection_ambiguous,
-          at: node_locus(node: rebuild_emitted_conj_node(children: Empty)),
+          at: node_locus(node: rebuild_emitted_conj_node(children: std.algebra.Empty)),
           correction: Unavailable { reason: ExternalContractUnknown }
         }
       }
@@ -2403,7 +2403,7 @@ fn grammar_relation_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> 
         f: fn(tokens) {
           let classes = fold(
             tokens,
-            init: Empty,
+            init: std.algebra.Empty,
             f: fn(acc, t) {
               list_append(left: acc, right: [concrete_syntax_token_class(token: t)])
             }

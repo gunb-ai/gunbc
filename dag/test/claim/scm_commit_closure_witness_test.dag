@@ -24,7 +24,7 @@ fn parent_node() -> Node {
 }
 
 // A store holding the parent AND its child, with the parent's identity.
-type BuiltStore { store: ObjectStore, root: ObjectId, child: ObjectId }
+type BuiltStore { store: ObjectStore, root: gunbc.scm.object_store.ObjectId, child: gunbc.scm.object_store.ObjectId }
 
 fn build_full_store() -> BuiltStore {
   match store_node(store: empty_store(), n: child_node()) {
@@ -91,7 +91,7 @@ fn closure_two_child_parent_node() -> Node {
   )
 }
 
-type TwoChildStore { store: ObjectStore, root: ObjectId, first: ObjectId, second: ObjectId }
+type TwoChildStore { store: ObjectStore, root: gunbc.scm.object_store.ObjectId, first: gunbc.scm.object_store.ObjectId, second: gunbc.scm.object_store.ObjectId }
 
 fn two_child_fallback() -> TwoChildStore {
   TwoChildStore { store: empty_store(), root: fallback_id(), first: fallback_id(), second: fallback_id() }

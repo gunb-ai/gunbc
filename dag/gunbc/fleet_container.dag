@@ -106,7 +106,7 @@ fn demand_envelope_memory(envelope: ResourceEnvelope) -> ByteSize {
   }
 }
 
-fn demand_envelope_thread_count(envelope: ResourceEnvelope) -> Nat {
+fn demand_envelope_thread_count(envelope: ResourceEnvelope) -> std.nat.Nat {
   match envelope.cpu {
     Absent => 0
     Present { value: req } => hardware_thread_count_value(req.min_threads)

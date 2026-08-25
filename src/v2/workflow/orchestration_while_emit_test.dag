@@ -80,7 +80,7 @@ data orch_while_locate_intent: v2.std.orchestration.PipelineStep = v2.std.orches
   },
   body: v2.std.orchestration.Pipeline {
     steps: [
-      Do {
+      v2.std.orchestration.Do {
         run: v2.std.orchestration.Run {
           command: orch_while_body_command,
           env: Empty,
@@ -104,7 +104,7 @@ data orch_while_locate_perturbed_intent: v2.std.orchestration.PipelineStep = v2.
   },
   body: v2.std.orchestration.Pipeline {
     steps: [
-      Do {
+      v2.std.orchestration.Do {
         run: v2.std.orchestration.Run {
           command: orch_while_body_command,
           env: Empty,
@@ -128,7 +128,7 @@ data orch_while_locate_body_perturbed_intent: v2.std.orchestration.PipelineStep 
   },
   body: v2.std.orchestration.Pipeline {
     steps: [
-      Do {
+      v2.std.orchestration.Do {
         run: v2.std.orchestration.Run {
           command: concat(orch_while_body_command, " # perturbed"),
           env: Empty,
@@ -145,7 +145,7 @@ test fn orch_while_locate_pipeline_matches_golden_holds() -> Bool {
   match orch_emit_pipeline(
     p: v2.std.orchestration.Pipeline {
       steps: [
-        Do {
+        v2.std.orchestration.Do {
           run: v2.std.orchestration.Run {
             command: orch_while_assign_cgroup_dir_command,
             env: Empty,
@@ -169,7 +169,7 @@ test fn orch_while_step_matches_golden_holds() -> Bool {
   match orch_emit_pipeline(
     p: v2.std.orchestration.Pipeline {
       steps: [
-        Do {
+        v2.std.orchestration.Do {
           run: v2.std.orchestration.Run {
             command: orch_while_assign_cgroup_dir_command,
             env: Empty,
@@ -204,7 +204,7 @@ test fn orch_while_raw_while_perturbation_changes_bytes_holds() -> Bool {
       },
       body: v2.std.orchestration.Pipeline {
         steps: [
-          Do {
+          v2.std.orchestration.Do {
             run: v2.std.orchestration.Run {
               command: orch_while_body_command,
               env: Empty,

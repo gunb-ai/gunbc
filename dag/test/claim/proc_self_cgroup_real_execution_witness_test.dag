@@ -62,7 +62,7 @@ fn run_membership_assign_observed(dir: String, content: String, expected_abs: St
     ),
     expect: OutcomeIsData,
   )
-  seeded && result.success && (trim(s: result.stdout) == expected_abs)
+  seeded && result.success && (std.algebra.trim(s: result.stdout) == expected_abs)
     && v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_cross_realization_law_holds(
       content: content,
       success: result.success,

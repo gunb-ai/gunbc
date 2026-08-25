@@ -54,7 +54,7 @@ test fn ci_v1_compiler_tests_compile_gate_uses_cargo_bin_and_test_args() -> Bool
 
 test fn ci_v1_compiler_tests_compile_gate_RED_continue_policy_refuses() -> Bool {
   let refused_plan = v2.std.effect_plan.EffectPlan {
-    steps: [Do { effect: ci_v1_compiler_tests_compile_gate_check_step() }],
+    steps: [v2.std.effect_plan.Do { effect: ci_v1_compiler_tests_compile_gate_check_step() }],
     on_failure: Continue
   }
   gate_plan_refuses(plan: refused_plan)
@@ -79,7 +79,7 @@ test fn ci_v1_compiler_tests_compile_gate_RED_missing_operation_refuses() -> Boo
     ]
   )
   let refused_plan = v2.std.effect_plan.EffectPlan {
-    steps: [Do { effect: bad_step }],
+    steps: [v2.std.effect_plan.Do { effect: bad_step }],
     on_failure: FailFast
   }
   gate_plan_refuses(plan: refused_plan)

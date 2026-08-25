@@ -204,7 +204,7 @@ fn long_home_prefixes() -> List<String> {
 fn fixture_home_prefixes() -> List<String> {
   Cons {
     head: "v2.test.fixture.walk_plan_stage.",
-    tail: Empty {}
+    tail: v2.std.algebra.Empty {}
   }
 }
 

@@ -383,7 +383,7 @@ fn verify_attempt(
                   validation_label: cmd.label,
                   command_wire: modeled_validation_command_wire(command: cmd),
                   exit: ExitObserved { code: exit_code },
-                  evidence: join([trim(stdout), trim(stderr)], " "),
+                  evidence: join([std.algebra.trim(stdout), std.algebra.trim(stderr)], " "),
                 },
               }
           }

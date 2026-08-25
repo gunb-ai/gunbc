@@ -179,7 +179,7 @@ fn pool_declared_instance_fixture(host: HostIdentity) -> BuildCacheInstance {
 fn witness_ready_receipt() -> BuildCacheInstanceReady {
   BuildCacheInstanceReady {
     instance: pool_declared_instance_fixture(host: srv4_runner_host_deploy.host_label as HostIdentity),
-    owner: ProcessIdentity {
+    owner: gunbc.build_cache_instance.ProcessIdentity {
       boot_id: "fixture-boot" as NonEmptyStr,
       pid: 4242,
       start_time: "80000000" as NonEmptyStr,

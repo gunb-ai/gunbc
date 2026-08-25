@@ -85,7 +85,7 @@ fn reconcile_read_back_argv(binding: RepoLocalGitConfigBinding) -> List<String> 
 }
 
 fn binding_read_back_matches(binding: RepoLocalGitConfigBinding, observed_value: String) -> Bool {
-  trim(s: observed_value) == binding.value
+  std.algebra.trim(s: observed_value) == binding.value
 }
 
 fn all_desired_bindings_read_back(observed: List<RepoLocalGitConfigBinding>) -> Bool {
@@ -115,18 +115,18 @@ fn repo_local_git_config_converged(observed: List<RepoLocalGitConfigBinding>) ->
 }
 
 fn observe_binding_at_repo(
-  repo: FilePath,
+  repo: std.types.FilePath,
   desired: RepoLocalGitConfigBinding,
 ) -> RepoLocalGitConfigBinding? {
   let result = git.Core.ConfigLocalGetInRepo(repo: repo, key: desired.key)
   if result.success && binding_read_back_matches(binding: desired, observed_value: result.value) {
-    Present { value: observed_binding(key: desired.key, value: trim(s: result.value)) }
+    Present { value: observed_binding(key: desired.key, value: std.algebra.trim(s: result.value)) }
   } else {
     none
   }
 }
 
-fn observe_repo_local_git_config_bindings_at_repo(repo: FilePath) -> List<RepoLocalGitConfigBinding> {
+fn observe_repo_local_git_config_bindings_at_repo(repo: std.types.FilePath) -> List<RepoLocalGitConfigBinding> {
   fold(
     desired_repo_local_git_config_bindings(),
     init: [],
@@ -140,7 +140,7 @@ fn observe_repo_local_git_config_bindings_at_repo(repo: FilePath) -> List<RepoLo
 }
 
 fn apply_repo_local_git_config_action_at_repo(
-  repo: FilePath,
+  repo: std.types.FilePath,
   acc: RepoLocalGitConfigApplyReceipt,
   action: MemberAction<RepoLocalGitConfigBinding, RepoLocalGitConfigMemberAt>,
 ) -> RepoLocalGitConfigApplyReceipt {
@@ -158,7 +158,7 @@ fn apply_repo_local_git_config_action_at_repo(
 data repo_local_git_config_write_arm_note: String = "MemberAdded and MemberChanged BOTH write, through this one fn. The arms are listed separately rather than left to the wildcard on purpose: the wildcard exists for the construction-unreachable removal arms (bindings are Ensured, so MemberRemoved/MemberRemovalRefused cannot arise — see gunbc.non_fold_residue), and a MemberChanged silently falling into it would drop exactly the drift this module exists to converge. A binding whose observed value drifted from desired is a Modified hunk, and re-setting it IS the module's job."
 
 fn apply_repo_local_git_config_binding(
-  repo: FilePath,
+  repo: std.types.FilePath,
   binding: RepoLocalGitConfigBinding,
   acc: RepoLocalGitConfigApplyReceipt,
 ) -> RepoLocalGitConfigApplyReceipt {
@@ -177,7 +177,7 @@ fn apply_repo_local_git_config_binding(
 }
 
 fn apply_repo_local_git_config_plan_at_repo(
-  repo: FilePath,
+  repo: std.types.FilePath,
   plan: MembershipPlan<RepoLocalGitConfigBinding, RepoLocalGitConfigMemberAt>,
 ) -> RepoLocalGitConfigApplyReceipt {
   fold(
@@ -190,7 +190,7 @@ fn apply_repo_local_git_config_plan_at_repo(
 }
 
 fn repo_local_git_config_converge_actuate_at(
-  repo: FilePath,
+  repo: std.types.FilePath,
 ) -> Reconciliation<List<RepoLocalGitConfigBinding>, RepoLocalGitConfigConvergedEvidence> {
   let desired = desired_repo_local_git_config_bindings()
   let observed_before = observe_repo_local_git_config_bindings_at_repo(repo: repo)

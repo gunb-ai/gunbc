@@ -201,7 +201,7 @@ fn fold_call_tokens_equal(
 fn fold_call_emit_matches(arrow: Node, expected: List<ConcreteSyntaxToken>) -> Bool {
   match fold_call_emit_body_tokens(arrow: arrow) {
     Accepted { value: tokens, diagnostics: d } =>
-      fold_call_tokens_equal(left: tokens, right: expected) && (d == None)
+      fold_call_tokens_equal(left: tokens, right: expected) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

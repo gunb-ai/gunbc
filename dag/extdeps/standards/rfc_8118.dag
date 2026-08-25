@@ -48,7 +48,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 type PdfOpenPage {
-  page: PositiveInt
+  page: std.integer.PositiveInt
 }
 
 type PdfOpenNamedDest {
@@ -60,7 +60,7 @@ type PdfOpenStructElem {
 }
 
 type PdfOpenZoom {
-  scale_percent: PositiveInt
+  scale_percent: std.integer.PositiveInt
 }
 
 type PdfOpenComment {
@@ -73,17 +73,17 @@ type PdfOpenView {
 }
 
 type PdfOpenViewRect {
-  left: PositiveInt
-  top: PositiveInt
-  width: PositiveInt
-  height: PositiveInt
+  left: std.integer.PositiveInt
+  top: std.integer.PositiveInt
+  width: std.integer.PositiveInt
+  height: std.integer.PositiveInt
 }
 
 type PdfOpenHighlight {
-  left: PositiveInt
-  right: PositiveInt
-  top: PositiveInt
-  bottom: PositiveInt
+  left: std.integer.PositiveInt
+  right: std.integer.PositiveInt
+  top: std.integer.PositiveInt
+  bottom: std.integer.PositiveInt
 }
 
 type PdfOpenSearch {

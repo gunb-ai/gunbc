@@ -150,7 +150,7 @@ fn record_derive_traits_heap() -> List<RustCapability> {
         head: RustPartialEq,
         tail: std.algebra.Cons {
           head: RustSerialize,
-          tail: std.algebra.Cons { head: RustDeserialize, tail: Empty }
+          tail: std.algebra.Cons { head: RustDeserialize, tail: std.algebra.Empty }
         }
       }
     }
@@ -168,7 +168,7 @@ fn record_derive_traits_copy() -> List<RustCapability> {
           head: RustPartialEq,
           tail: std.algebra.Cons {
             head: RustSerialize,
-            tail: std.algebra.Cons { head: RustDeserialize, tail: Empty }
+            tail: std.algebra.Cons { head: RustDeserialize, tail: std.algebra.Empty }
           }
         }
       }
@@ -193,7 +193,7 @@ fn nullary_coproduct_derive_traits() -> List<RustCapability> {
                 head: RustOrd,
                 tail: std.algebra.Cons {
                   head: RustSerialize,
-                  tail: std.algebra.Cons { head: RustDeserialize, tail: Empty }
+                  tail: std.algebra.Cons { head: RustDeserialize, tail: std.algebra.Empty }
                 }
               }
             }
@@ -219,7 +219,7 @@ fn symbol_wrapped_ord_carrier_derive_traits() -> List<RustCapability> {
               head: RustOrd,
               tail: std.algebra.Cons {
                 head: RustSerialize,
-                tail: std.algebra.Cons { head: RustDeserialize, tail: Empty }
+                tail: std.algebra.Cons { head: RustDeserialize, tail: std.algebra.Empty }
               }
             }
           }
@@ -230,7 +230,7 @@ fn symbol_wrapped_ord_carrier_derive_traits() -> List<RustCapability> {
 }
 
 fn fn_field_derive_traits() -> List<RustCapability> {
-  std.algebra.Cons { head: RustClone, tail: Empty }
+  std.algebra.Cons { head: RustClone, tail: std.algebra.Empty }
 }
 
 fn payload_coproduct_derive_traits() -> List<RustCapability> {
@@ -242,7 +242,7 @@ fn payload_coproduct_derive_traits() -> List<RustCapability> {
         head: RustPartialEq,
         tail: std.algebra.Cons {
           head: RustSerialize,
-          tail: std.algebra.Cons { head: RustDeserialize, tail: Empty }
+          tail: std.algebra.Cons { head: RustDeserialize, tail: std.algebra.Empty }
         }
       }
     }
@@ -276,7 +276,7 @@ fn phantom_opaque_carrier_derive_traits() -> List<RustCapability> {
             head: RustEq,
             tail: std.algebra.Cons {
               head: RustSerialize,
-              tail: std.algebra.Cons { head: RustDeserialize, tail: Empty }
+              tail: std.algebra.Cons { head: RustDeserialize, tail: std.algebra.Empty }
             }
           }
         }
@@ -286,7 +286,7 @@ fn phantom_opaque_carrier_derive_traits() -> List<RustCapability> {
 }
 
 fn map_key_required_derive_traits() -> List<RustCapability> {
-  std.algebra.Cons { head: RustEq, tail: std.algebra.Cons { head: RustHash, tail: Empty } }
+  std.algebra.Cons { head: RustEq, tail: std.algebra.Cons { head: RustHash, tail: std.algebra.Empty } }
 }
 
 fn kernel_int_arithmetic_traits() -> List<RustCapability> {
@@ -304,7 +304,7 @@ fn kernel_int_arithmetic_traits() -> List<RustCapability> {
               head: RustNeg,
               tail: std.algebra.Cons {
                 head: RustPartialEq,
-                tail: std.algebra.Cons { head: RustPartialOrd, tail: Empty }
+                tail: std.algebra.Cons { head: RustPartialOrd, tail: std.algebra.Empty }
               }
             }
           }

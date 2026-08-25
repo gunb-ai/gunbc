@@ -10,7 +10,7 @@ fn env_var(name: std.types.NonEmptyStr) -> String? {
   let env = shell.Env.Get(name: name)
   match env.value {
     Present { value: raw } =>
-      let line = trim(raw)
+      let line = std.algebra.trim(raw)
       if line == "" { none } else { Present { value: line } }
     Absent => none
   }

@@ -1648,7 +1648,7 @@ fn ts_sg2_arrow_xy_emitted() -> Node {
         form: ts_type_expression_projection().atom_form,
         identity: ^ts_binding_sg2_x
       ),
-      tail: Empty
+      tail: std.algebra.Empty
     },
     output: target_type_expr_atom_emitted(
       form: ts_type_expression_projection().atom_form,
@@ -2023,7 +2023,7 @@ fn ts_primitive_bundle_from_bool_facts(facts: TsBooleanPrimitiveFacts) -> Primit
 fn ts_numeric_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   fold_list(
     xs: ts_numeric_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, row) {
       list_snoc_item(
         xs: acc,
@@ -2147,7 +2147,7 @@ fn ts_numeric_algebra_inhabitance_step(
 fn ts_numeric_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   fold_list(
     xs: ts_numeric_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, row) {
       ts_numeric_algebra_inhabitance_step(acc: acc, row: row)
     }
@@ -2266,7 +2266,7 @@ fn ts_formal_grammar_symbol_from_token(token: ConcreteSyntaxToken) -> FormalGram
 fn ts_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
@@ -3346,7 +3346,7 @@ fn ts_bigint_law_step(
 fn ts_number_law_decls() -> List<AlgebraLawObligation> {
   fold_list(
     xs: ts_numeric_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, row) { ts_number_law_step(acc: acc, row: row) }
   )
 }
@@ -3354,7 +3354,7 @@ fn ts_number_law_decls() -> List<AlgebraLawObligation> {
 fn ts_bigint_law_decls() -> List<AlgebraLawObligation> {
   fold_list(
     xs: ts_numeric_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, row) { ts_bigint_law_step(acc: acc, row: row) }
   )
 }

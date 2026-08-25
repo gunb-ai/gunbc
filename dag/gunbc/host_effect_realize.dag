@@ -621,7 +621,7 @@ fn bmcweb_token_extract_jq_args(response_path: String) -> List<String> {
 
 fn bmcweb_token_extraction_verdict(jq_success: Bool, jq_stdout: String) -> BmcwebTokenExtraction {
   if jq_success {
-    let token = trim(s: jq_stdout)
+    let token = std.algebra.trim(s: jq_stdout)
     if token == "" {
       BmcwebTokenExtractRefused {
         reason: "host_effect_apply: Srv3BmcwebTokenExtract jq -e exited zero but produced no token text for `.token` in the bmcweb login response; fail-closed, no token file written.",
@@ -795,11 +795,11 @@ fn codex_runtime_typed_argv_step(
 
 fn codex_runtime_observe_step(
   transport: HostEffectTransport,
-  executable: FilePath,
+  executable: std.types.FilePath,
 ) -> CodexRuntimeStepResult {
   match transport {
     LocalShell => {
-      let r = gunbc.WitnessBin.Run(workdir: "/" as FilePath, bin_path: executable, args: ["--version"])
+      let r = gunbc.WitnessBin.Run(workdir: "/" as std.types.FilePath, bin_path: executable, args: ["--version"])
       CodexRuntimeStepRan {
         observed: ShellExecObserved { exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr },
       }
@@ -827,8 +827,8 @@ data codex_runtime_materialize_function: String = "materialize_codex_runtime_on_
 
 fn codex_runtime_materialize_step(
   transport: HostEffectTransport,
-  gunbc_binary: FilePath,
-  gunbc_repo: FilePath,
+  gunbc_binary: std.types.FilePath,
+  gunbc_repo: std.types.FilePath,
 ) -> CodexRuntimeStepResult {
   match transport {
     LocalShell => {
@@ -895,9 +895,9 @@ fn provision_codex_runtime_refuse(
 
 fn provision_codex_runtime_reconcile(
   host: HostIdentity,
-  executable: FilePath,
-  gunbc_binary: FilePath,
-  gunbc_repo: FilePath,
+  executable: std.types.FilePath,
+  gunbc_binary: std.types.FilePath,
+  gunbc_repo: std.types.FilePath,
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
@@ -1102,7 +1102,7 @@ fn srv3_observed_token_from_typed_argv(outcome: TypedArgvExecOutcome) -> Srv3Obs
   match outcome {
     TypedArgvExecConverged { result: r } =>
       if r.success {
-        let out = trim(s: r.stdout)
+        let out = std.algebra.trim(s: r.stdout)
         if out == "" { Srv3TokenAbsent } else { Srv3TokenObserved { value: out } }
       } else {
         Srv3TokenAbsent
@@ -1379,7 +1379,7 @@ fn srv3_local_token_from_argv(argv: List<String>) -> Srv3ObservedToken {
 // concatenated straight into a privileged chown argument.
 fn srv3_token_from_run(success: Bool, stdout: String) -> Srv3ObservedToken {
   if success {
-    let out = trim(s: stdout)
+    let out = std.algebra.trim(s: stdout)
     if out == "" { Srv3TokenAbsent } else { Srv3TokenObserved { value: out } }
   } else {
     Srv3TokenAbsent
@@ -3814,7 +3814,7 @@ fn build_cache_socket_inode_at_path(path: NonEmptyStr, transport: HostEffectTran
     BuildCacheReadRefused { reason: _ } => none
     BuildCacheReadRan { observed: o } =>
       if o.success == true {
-        match trim(o.stdout) {
+        match std.algebra.trim(o.stdout) {
           "" => none
           inode => Present { value: inode as NonEmptyStr }
         }

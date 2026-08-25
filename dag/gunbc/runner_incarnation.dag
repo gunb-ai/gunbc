@@ -86,7 +86,7 @@ fn runner_slot_installation_observation_must_not_reextract(observation: RunnerSl
   }
 }
 
-fn vivid_eagle_srv3_slot_installation_observation(slot_index: Nat) -> RunnerSlotInstallationObservation {
+fn vivid_eagle_srv3_slot_installation_observation(slot_index: std.nat.Nat) -> RunnerSlotInstallationObservation {
   if slot_index >= 1 && slot_index <= 5 {
     SlotInstallationObserved { state: SlotCurrentlyActive {} }
   } else if slot_index == 6 || slot_index == 7 {
@@ -113,7 +113,7 @@ fn vivid_eagle_srv3_slot_installation_observation(slot_index: Nat) -> RunnerSlot
   }
 }
 
-fn srv4_slot_installation_observation(slot_index: Nat) -> RunnerSlotInstallationObservation {
+fn srv4_slot_installation_observation(slot_index: std.nat.Nat) -> RunnerSlotInstallationObservation {
   SlotInstallationReachRefused {
     host: operator_host_srv4,
     reason: srv4_installation_reach_refused_note,
@@ -129,7 +129,7 @@ type LocalRunnerSlotIncarnation {
 
 fn runner_slot_incarnation(
   host: HostIdentity,
-  slot_index: Nat,
+  slot_index: std.nat.Nat,
   unit_active: Bool,
 ) -> LocalRunnerSlotIncarnation {
   let registration_name = join([host as String, "-", runner_slot_index_suffix(index: slot_index)], "") as NonEmptyStr

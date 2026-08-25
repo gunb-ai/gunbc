@@ -15,7 +15,7 @@ type GitR0LiveFixtureOutcome
 
 fn observed_sha1_oid(stdout: String) -> extdeps.git.object_store.GitObjectId {
   extdeps.git.object_store.GitSha1ObjectId {
-    digest: std.content_hash.Sha1Digest { hex: trim(s: stdout) as std.content_hash.Sha1DigestHex },
+    digest: std.content_hash.Sha1Digest { hex: std.algebra.trim(s: stdout) as std.content_hash.Sha1DigestHex },
   }
 }
 
@@ -120,7 +120,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           "-c",
           "user.email=author@example.invalid",
           "commit-tree",
-          trim(s: empty_tree.stdout),
+          std.algebra.trim(s: empty_tree.stdout),
           "-m",
           "gitlink",
         ],
@@ -134,7 +134,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           "--add",
           "--cacheinfo",
           "160000",
-          trim(s: gitlink_commit.stdout),
+          std.algebra.trim(s: gitlink_commit.stdout),
           "vendor",
         ],
         expect: ExpectSuccess,
@@ -154,7 +154,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
       let subtree_oid = gunbc.WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
-        args: ["rev-parse", concat(trim(s: root_tree.stdout), ":src")],
+        args: ["rev-parse", concat(std.algebra.trim(s: root_tree.stdout), ":src")],
         expect: ExpectSuccess,
       )
       let parent_commit = gunbc.WitnessBin.Run(
@@ -169,7 +169,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           "-c",
           "user.email=author@example.invalid",
           "commit-tree",
-          trim(s: root_tree.stdout),
+          std.algebra.trim(s: root_tree.stdout),
           "-m",
           "parent",
         ],
@@ -187,9 +187,9 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           "-c",
           "user.email=author@example.invalid",
           "commit-tree",
-          trim(s: root_tree.stdout),
+          std.algebra.trim(s: root_tree.stdout),
           "-p",
-          trim(s: parent_commit.stdout),
+          std.algebra.trim(s: parent_commit.stdout),
           "-m",
           "next",
         ],
@@ -198,7 +198,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
       let main_seeded = gunbc.WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
-        args: ["update-ref", "refs/heads/main", trim(s: parent_commit.stdout)],
+        args: ["update-ref", "refs/heads/main", std.algebra.trim(s: parent_commit.stdout)],
         expect: ExpectSuccess,
       )
       let head_symbolic = gunbc.WitnessBin.Run(
@@ -221,7 +221,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           "tag",
           "-a",
           "v0",
-          trim(s: parent_commit.stdout),
+          std.algebra.trim(s: parent_commit.stdout),
           "-m",
           "bounded annotated tag",
         ],
@@ -257,8 +257,8 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
         args: [
           "update-ref",
           "HEAD",
-          trim(s: next_commit.stdout),
-          trim(s: parent_commit.stdout),
+          std.algebra.trim(s: next_commit.stdout),
+          std.algebra.trim(s: parent_commit.stdout),
         ],
         expect: ExpectSuccess,
       )
@@ -268,8 +268,8 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
         args: [
           "update-ref",
           "refs/heads/main",
-          trim(s: parent_commit.stdout),
-          trim(s: parent_commit.stdout),
+          std.algebra.trim(s: parent_commit.stdout),
+          std.algebra.trim(s: parent_commit.stdout),
         ],
         expect: ExpectFailure,
       )
@@ -329,7 +329,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           "ls-tree",
           "-z",
           "--format=%(objectmode)%x00%(objecttype)%x00%(objectname)%x00%(path)",
-          trim(s: root_tree.stdout),
+          std.algebra.trim(s: root_tree.stdout),
         ],
         expect: ExpectSuccess,
       )
@@ -339,7 +339,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
         args: [
           "ls-tree",
           "--format=%(objectmode)",
-          trim(s: root_tree.stdout),
+          std.algebra.trim(s: root_tree.stdout),
         ],
         expect: ExpectSuccess,
       )
@@ -351,7 +351,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           "core.quotePath=false",
           "ls-tree",
           "--format=%(path)",
-          trim(s: root_tree.stdout),
+          std.algebra.trim(s: root_tree.stdout),
         ],
         expect: ExpectSuccess,
       )
@@ -436,33 +436,33 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           && cleaned_fixture.success
           && cleaned_sha256.success
 
-      let content_addresses_grounded = trim(s: regular_oid.stdout) == (git_object_id_wire_hex(oid: sha1_blob_regular) as String)
-          && trim(s: executable_oid.stdout) == (git_object_id_wire_hex(oid: sha1_blob_executable) as String)
-          && trim(s: symlink_oid.stdout) == (git_object_id_wire_hex(oid: sha1_blob_symlink) as String)
-          && trim(s: empty_blob_oid.stdout) == (git_object_id_wire_hex(oid: sha1_empty_blob) as String)
-          && trim(s: empty_tree.stdout) == (git_object_id_wire_hex(oid: sha1_empty_tree) as String)
-          && trim(s: subtree_oid.stdout) == (git_object_id_wire_hex(oid: sha1_subtree) as String)
-          && trim(s: gitlink_commit.stdout) == (git_object_id_wire_hex(oid: sha1_gitlink) as String)
-          && trim(s: root_tree.stdout) == (git_object_id_wire_hex(oid: sha1_root_tree) as String)
-          && trim(s: parent_commit.stdout) == (git_object_id_wire_hex(oid: sha1_parent_commit) as String)
-          && trim(s: next_commit.stdout) == (git_object_id_wire_hex(oid: sha1_next_commit) as String)
-          && trim(s: tag_oid.stdout) == (git_object_id_wire_hex(oid: sha1_tag) as String)
-          && trim(s: sha256_blob.stdout) == (git_object_id_wire_hex(oid: sha256_object) as String)
-          && trim(s: sha256_format.stdout) == "sha256"
+      let content_addresses_grounded = std.algebra.trim(s: regular_oid.stdout) == (git_object_id_wire_hex(oid: sha1_blob_regular) as String)
+          && std.algebra.trim(s: executable_oid.stdout) == (git_object_id_wire_hex(oid: sha1_blob_executable) as String)
+          && std.algebra.trim(s: symlink_oid.stdout) == (git_object_id_wire_hex(oid: sha1_blob_symlink) as String)
+          && std.algebra.trim(s: empty_blob_oid.stdout) == (git_object_id_wire_hex(oid: sha1_empty_blob) as String)
+          && std.algebra.trim(s: empty_tree.stdout) == (git_object_id_wire_hex(oid: sha1_empty_tree) as String)
+          && std.algebra.trim(s: subtree_oid.stdout) == (git_object_id_wire_hex(oid: sha1_subtree) as String)
+          && std.algebra.trim(s: gitlink_commit.stdout) == (git_object_id_wire_hex(oid: sha1_gitlink) as String)
+          && std.algebra.trim(s: root_tree.stdout) == (git_object_id_wire_hex(oid: sha1_root_tree) as String)
+          && std.algebra.trim(s: parent_commit.stdout) == (git_object_id_wire_hex(oid: sha1_parent_commit) as String)
+          && std.algebra.trim(s: next_commit.stdout) == (git_object_id_wire_hex(oid: sha1_next_commit) as String)
+          && std.algebra.trim(s: tag_oid.stdout) == (git_object_id_wire_hex(oid: sha1_tag) as String)
+          && std.algebra.trim(s: sha256_blob.stdout) == (git_object_id_wire_hex(oid: sha256_object) as String)
+          && std.algebra.trim(s: sha256_format.stdout) == "sha256"
 
-      let tree_modes_grounded = count(split(s: trim(s: modes.stdout), delimiter: "\n")) == 6
+      let tree_modes_grounded = count(split(s: std.algebra.trim(s: modes.stdout), delimiter: "\n")) == 6
           && string_contains(s: modes.stdout, pattern: "100644")
           && string_contains(s: modes.stdout, pattern: "100755")
           && string_contains(s: modes.stdout, pattern: "120000")
           && string_contains(s: modes.stdout, pattern: "040000")
           && string_contains(s: modes.stdout, pattern: "160000")
 
-      let read_back_grounded = trim(s: main_read_back.stdout) == trim(s: next_commit.stdout)
-          && trim(s: head_read_back.stdout) == "refs/heads/main"
-          && trim(s: tag_type.stdout) == "tag"
+      let read_back_grounded = std.algebra.trim(s: main_read_back.stdout) == std.algebra.trim(s: next_commit.stdout)
+          && std.algebra.trim(s: head_read_back.stdout) == "refs/heads/main"
+          && std.algebra.trim(s: tag_type.stdout) == "tag"
           && string_contains(s: git_version.stdout, pattern: "git version ")
           && string_contains(s: paths.stdout, pattern: raw_name)
-          && trim(s: link_target.stdout) == "readme"
+          && std.algebra.trim(s: link_target.stdout) == "readme"
           && readme_read_back.content == "source"
           && run_read_back.content == "run"
           && raw_read_back.content == "source"
@@ -510,7 +510,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
                           stdout: main_read_back.stdout,
                         )
                         let observation = extdeps.git.object_store.GitR0ReadBackObservation {
-                          git_version: trim(s: git_version.stdout),
+                          git_version: std.algebra.trim(s: git_version.stdout),
                           object_format: GitObjectFormatSha1,
                           tree_oid: observed_sha1_oid(stdout: root_tree.stdout),
                           tree_entries: observed_tree_entries,
@@ -523,7 +523,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
                             extdeps.git.object_store.GitRefRecord {
                               name: "HEAD",
                               target: extdeps.git.object_store.SymbolicTarget {
-                                ref_name: trim(s: head_read_back.stdout)
+                                ref_name: std.algebra.trim(s: head_read_back.stdout)
                               },
                             },
                           ],
@@ -560,7 +560,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
                             extdeps.git.object_store.GitWorktreeSymlink {
                               path: path_symlink,
                               target: utf8_encode_bytes(
-                                s: trim(s: link_target.stdout),
+                                s: std.algebra.trim(s: link_target.stdout),
                               ),
                             },
                           ],

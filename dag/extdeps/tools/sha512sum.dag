@@ -56,7 +56,7 @@ fn sha512sum_observe_file(path: std.types.FilePath) -> Sha512FileObservation {
   if !read.success {
     Sha512FileObservationRefused { cause: "sha512sum DigestFile failed" as std.types.NonEmptyStr }
   } else {
-    match split(s: trim(read.stdout), delimiter: " ") |> first {
+    match split(s: std.algebra.trim(read.stdout), delimiter: " ") |> first {
       Present { value: hex } =>
         match sha512_hex_digest(hex: hex) {
           Present { value: digest } => Sha512FileObserved { digest: digest }

@@ -461,7 +461,7 @@ fn spark_serving_frozen_linger_effect(row: FleetConvergeSparkServingTypedAction)
     effects: fleet_converge_spark_serving_row_effects(row: row),
     needle: EnableLingerForOwnAccount,
   ) {
-    Present { value: EnableLingerForOwnAccount }
+    Present { value: gunbc.spark.serving_realization.EnableLingerForOwnAccount }
   } else {
     none
   }

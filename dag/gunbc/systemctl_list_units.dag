@@ -12,7 +12,7 @@ fn systemctl_list_units_local(instance_glob: std.types.NonEmptyStr) -> String? {
 }
 
 fn systemctl_list_units_line_trimmed(line: String) -> String {
-  trim(line)
+  std.algebra.trim(line)
 }
 
 fn systemctl_list_units_line_nonempty(line: String) -> Bool {
@@ -34,7 +34,7 @@ fn systemctl_list_units_line_as_unit(line: String) -> NonEmptyStr {
 fn systemctl_list_units_active_services(instance_glob: std.types.NonEmptyStr) -> List<std.types.NonEmptyStr>? {
   match systemctl_list_units_local(instance_glob: instance_glob) {
     Present { value: stdout } =>
-      let trimmed = trim(stdout)
+      let trimmed = std.algebra.trim(stdout)
       if trimmed == "" {
         Present { value: [] }
       } else {
@@ -65,7 +65,7 @@ fn systemctl_list_units_all_states_local(instance_glob: std.types.NonEmptyStr) -
 fn systemctl_list_units_all_states(instance_glob: std.types.NonEmptyStr) -> List<std.types.NonEmptyStr>? {
   match systemctl_list_units_all_states_local(instance_glob: instance_glob) {
     Present { value: stdout } =>
-      let trimmed = trim(stdout)
+      let trimmed = std.algebra.trim(stdout)
       if trimmed == "" {
         Present { value: [] }
       } else {

@@ -34,7 +34,7 @@ fn cap_member_value_eq(a: CapMember, b: CapMember) -> Bool {
 
 fn cap_member_ownership(m: CapMember) -> Ownership? {
   if cap_is_managed_path(p: m.dropin_path) {
-    Present { value: Owned }
+    Present { value: gunbc.ownership.Owned }
   } else {
     Present { value: Ensured }
   }
@@ -160,7 +160,7 @@ fn control_shadow_unit_value_eq(a: ControlShadowUnit, b: ControlShadowUnit) -> B
 }
 
 fn control_shadow_unit_ownership(u: ControlShadowUnit) -> Ownership? {
-  Present { value: Owned }
+  Present { value: gunbc.ownership.Owned }
 }
 
 fn control_shadow_revert_script(u: ControlShadowUnit) -> String {
@@ -168,7 +168,7 @@ fn control_shadow_revert_script(u: ControlShadowUnit) -> String {
 }
 
 fn control_shadow_revert_script_matches_extdeps_argv(u: ControlShadowUnit) -> Bool {
-  join(systemctl_revert_memory_caps_argv(unit: u.unit), " ") == trim(s: control_shadow_revert_script(u: u))
+  join(systemctl_revert_memory_caps_argv(unit: u.unit), " ") == std.algebra.trim(s: control_shadow_revert_script(u: u))
 }
 
 fn derived_runner_memory_max_cap_member() -> CapMember {

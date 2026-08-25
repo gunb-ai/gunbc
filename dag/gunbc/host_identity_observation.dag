@@ -28,13 +28,13 @@ data gunbc_srv2_host_identity_observation_fixture_row: HostIdentityObservationRo
 
 fn host_identity_observation_typed(row: HostIdentityObservationRow) -> HostIdentityObservation {
   HostIdentityObservation {
-    short_hostname: trim(row.short_hostname_raw),
+    short_hostname: std.algebra.trim(row.short_hostname_raw),
     probed_at: row.probed_at,
   }
 }
 
 fn host_identity_observation_from_stdout(stdout: String, probed_at: std.types.NonEmptyStr) -> HostIdentityObservation? {
-  let trimmed = trim(stdout)
+  let trimmed = std.algebra.trim(stdout)
   if trimmed == "" {
     none
   } else {

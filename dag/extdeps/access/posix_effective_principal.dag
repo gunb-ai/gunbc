@@ -34,7 +34,7 @@ type EffectivePosixPrincipalObservationResult
 fn effective_posix_principal_observation(
   outcome: EffectivePosixPrincipalReadOutcome,
 ) -> EffectivePosixPrincipalObservationResult {
-  let name = trim(s: outcome.stdout)
+  let name = std.algebra.trim(s: outcome.stdout)
   if !outcome.success || outcome.exit_code != 0 {
     EffectivePosixPrincipalObservationRefused { read: outcome.read, reason: outcome.stderr }
   } else if name == "" {

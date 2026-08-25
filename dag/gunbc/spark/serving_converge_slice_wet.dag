@@ -17,7 +17,7 @@ fn spark_serving_linger_probe_words() -> List<String> {
 }
 
 fn spark_serving_linger_enabled_from_stdout(stdout: String) -> Bool? {
-  let line = trim(s: stdout)
+  let line = std.algebra.trim(s: stdout)
   if line == "Linger=yes" {
     Present { value: true }
   } else if line == "Linger=no" {
@@ -363,7 +363,7 @@ fn spark_serving_converge_slice_exec_verdict(
                   } else {
                     match spark_serving_linger_enabled_from_stdout(stdout: post.stdout) {
                       Absent =>
-                        join(["wet-applied-readback-refused stdout=", trim(s: post.stdout)], "")
+                        join(["wet-applied-readback-refused stdout=", std.algebra.trim(s: post.stdout)], "")
                       Present { value: enabled } =>
                         if enabled {
                           spark_serving_applied_replan_verdict(
@@ -424,7 +424,7 @@ fn spark_serving_converge_slice_wet_host_report(
               typed_row_count: 0,
               apply_effect_count: 0,
               apply_command_count: 0,
-              verdict: join(["observation-refused stdout=", trim(s: probe.stdout)], ""),
+              verdict: join(["observation-refused stdout=", std.algebra.trim(s: probe.stdout)], ""),
             )
           Present { value: linger_enabled } =>
             match spark_serving_fleet_converge_plan_artifact(

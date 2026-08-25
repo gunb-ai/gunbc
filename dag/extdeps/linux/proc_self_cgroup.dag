@@ -72,7 +72,7 @@ fn proc_self_cgroup_char_index_from(s: String, ch: String, from: Int) -> Int {
 }
 
 fn proc_self_cgroup_line_from_wire(line: String) -> ProcSelfCgroupLineParse {
-  let trimmed = trim(line)
+  let trimmed = std.algebra.trim(line)
   if trimmed == "" {
     ProcSelfCgroupLineRefused { cause: ProcSelfCgroupLineEmptyHierarchy }
   } else {
@@ -109,8 +109,8 @@ fn proc_self_cgroup_is_unified_v2_line(hierarchy_id: std.types.NonEmptyStr, cont
 
 fn proc_self_cgroup_nonempty_lines(content: String) -> List<String> {
   split(s: content, delimiter: "\n")
-    |> filter(line => trim(line) != "")
-    |> map(line => trim(line))
+    |> filter(line => std.algebra.trim(line) != "")
+    |> map(line => std.algebra.trim(line))
 }
 
 fn proc_self_cgroup_unified_hierarchy_paths_loop(

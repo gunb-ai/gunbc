@@ -7,7 +7,7 @@ module gunbc.runner_lifecycle
 data runner_local_incarnation_authority_note: String = "LocalRunnerSlotIncarnation lives in gunbc.runner_incarnation (neutral lifecycle home — not gunbc.fleet_runner_connectivity). Fields: slot, unit, unit_active, registration_name. No process/PID field until ObserveRunnerLocalState grounds it (runner_incarnation_process_identity_note). ReplaceRunnerIncarnation carries from: that record so apply can refuse a stale plan when the incarnation identity changed since planning."
 
 type RunnerReplacementCause
-  = ReplacementCauseConnectivityDetached { registration_id: Nat }
+  = ReplacementCauseConnectivityDetached { registration_id: std.nat.Nat }
   | ReplacementCauseOrphanedRegistration {}
   | ReplacementCauseWedgedBroker {}
   | ReplacementCauseOperatorForced { detail: String }

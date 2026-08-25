@@ -668,7 +668,7 @@ fn readback_disposition(row: LedgerReadbackRow) -> ClaimDisposition? {
   } else {
   if row.terminal_tag == "returned-false" {
     match row.expectation {
-      ExpectedToHold => Present { value: Failed }
+      ExpectedToHold => Present { value: v2.workflow.floor_terminal_ledger.Failed }
       ExpectedRed => Present { value: KnownRedHeld }
     }
   } else {

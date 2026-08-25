@@ -22,7 +22,7 @@ fn ls_parent() -> Node {
   )
 }
 
-type LsBuilt { store: gunbc.scm.object_store.ObjectStore, root: ObjectId }
+type LsBuilt { store: gunbc.scm.object_store.ObjectStore, root: gunbc.scm.object_store.ObjectId }
 
 fn ls_full() -> LsBuilt {
   match gunbc.scm.object_store.store_node(store: gunbc.scm.object_store.empty_store(), n: ls_child()) {

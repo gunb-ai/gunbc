@@ -45,7 +45,7 @@ fn parse_positive_width(value: String) -> Int? {
   }
 }
 
-fn runner_slot_identity(host: HostIdentity, slot_index: Nat) -> RunnerSlotIdentity {
+fn runner_slot_identity(host: HostIdentity, slot_index: std.nat.Nat) -> RunnerSlotIdentity {
   RunnerSlotIdentity { host: host, slot_index: slot_index }
 }
 

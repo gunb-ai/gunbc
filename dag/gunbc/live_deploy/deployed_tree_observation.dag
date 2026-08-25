@@ -327,11 +327,11 @@ fn observe_deployed_tree(locus: DeployedTreeLocus) -> DeployedTreeObservation {
           cause: TreeCommandFailed { leg: "revision", exit_code: rev.exit_code, stderr: rev.stderr },
         }
       } else {
-        match git_object_id_from_untagged_hex(hex: trim(s: rev.stdout)) {
+        match git_object_id_from_untagged_hex(hex: std.algebra.trim(s: rev.stdout)) {
           Absent =>
-            DeployedTreeUnobservable { cause: TreeRevisionUndecodable { text: trim(s: rev.stdout) } }
+            DeployedTreeUnobservable { cause: TreeRevisionUndecodable { text: std.algebra.trim(s: rev.stdout) } }
           Present { value: oid } =>
-            observe_deployed_tree_against_revision(locus: locus, revision: oid, revision_hex: trim(s: rev.stdout))
+            observe_deployed_tree_against_revision(locus: locus, revision: oid, revision_hex: std.algebra.trim(s: rev.stdout))
         }
       }
   }

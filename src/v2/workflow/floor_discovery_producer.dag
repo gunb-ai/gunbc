@@ -75,7 +75,7 @@ fn floor_discovery_path_excluded(path: String, exclude_substrings: List<String>)
 }
 
 fn floor_discovery_line_has_wire_contract_decl(line: String) -> Bool {
-  let trimmed = trim(line)
+  let trimmed = std.algebra.trim(line)
   if starts_with(s: trimmed, prefix: "data ") {
     string_contains(s: trimmed, pattern: ": CoproductWireContract")
       || string_contains(s: trimmed, pattern: ": VariantEncoding")
@@ -99,12 +99,12 @@ fn floor_discovery_content_has_wire_contract_decl(content: String) -> Bool {
 }
 
 fn floor_discovery_line_is_disposition_row(line: String) -> Bool {
-  let trimmed = trim(line)
+  let trimmed = std.algebra.trim(line)
   if !starts_with(s: trimmed, prefix: "data live_tree_disposition") {
     false
   } else {
     let after = substring(s: trimmed, start: 26, end: string_length(s: trimmed))
-    let head = trim(after)
+    let head = std.algebra.trim(after)
     (head != "") && (starts_with(s: head, prefix: ":") || starts_with(s: head, prefix: " "))
   }
 }
@@ -153,11 +153,11 @@ fn floor_discovery_last_dot_segment(s: String) -> String {
 }
 
 fn floor_discovery_initializer_rest_is_strict_single_token(rest: String, token: String) -> Bool {
-  let trimmed = trim(rest)
+  let trimmed = std.algebra.trim(rest)
   if trimmed == token {
     true
   } else if starts_with(s: trimmed, prefix: token) {
-    let tail = trim(
+    let tail = std.algebra.trim(
       substring(
         s: trimmed,
         start: string_length(s: token),
@@ -171,7 +171,7 @@ fn floor_discovery_initializer_rest_is_strict_single_token(rest: String, token: 
 }
 
 fn floor_discovery_disposition_row_variant(line: String) -> Optional<LiveTreeDisposition> {
-  let init_rest = trim(s: floor_discovery_after_first_equals(s: line))
+  let init_rest = std.algebra.trim(s: floor_discovery_after_first_equals(s: line))
   let first_token = floor_discovery_first_token_before_space(seg: init_rest)
   if (first_token == "")
     || !floor_discovery_initializer_rest_is_strict_single_token(rest: init_rest, token: first_token)

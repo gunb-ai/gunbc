@@ -146,7 +146,7 @@ fn retention_family_bump(
   if retention_family_holds(families: families, key: key) {
     fold_list(
       xs: families,
-      empty: Empty,
+      empty: v2.std.algebra.Empty,
       cons: fn(acc, row) {
         list_snoc_item(
           xs: acc,
@@ -212,7 +212,7 @@ fn retention_census_step(
 fn retention_census(ds: v2.std.diagnostic.NonEmptyDiagnostics) -> List<RetentionFamily> {
   fold_list(
     xs: ds.tail,
-    empty: retention_census_step(families: Empty, d: ds.head),
+    empty: retention_census_step(families: v2.std.algebra.Empty, d: ds.head),
     cons: fn(acc, d) { retention_census_step(families: acc, d: d) }
   )
 }

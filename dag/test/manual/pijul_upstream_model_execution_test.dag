@@ -29,7 +29,7 @@ fn ssh_agent_assignment(
 ) -> SshAgentAssignment? {
   let prefix = concat(name, "=")
   let candidates = split(s: stdout, delimiter: "\n")
-    |> map(line => trim(s: line))
+    |> map(line => std.algebra.trim(s: line))
     |> filter(line => starts_with(s: line, prefix: prefix))
     |> map(line =>
       substring(
@@ -41,7 +41,7 @@ fn ssh_agent_assignment(
     |> flat_map(value =>
       split(s: value, delimiter: ";")
         |> take(n: 1)
-        |> map(part => SshAgentAssignment { value: trim(s: part) })
+        |> map(part => SshAgentAssignment { value: std.algebra.trim(s: part) })
     )
     |> filter(assignment => assignment.value != "")
   candidates.first()
@@ -247,7 +247,7 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
           args: pijul_env_args(
             config_dir: config_dir,
             agent_socket: agent_socket,
-            args: ["apply", "--channel", "left", trim(s: base_hash.stdout)],
+            args: ["apply", "--channel", "left", std.algebra.trim(s: base_hash.stdout)],
           ),
           expect: ExpectSuccess,
         )
@@ -257,7 +257,7 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
           args: pijul_env_args(
             config_dir: config_dir,
             agent_socket: agent_socket,
-            args: ["apply", "--channel", "right", trim(s: base_hash.stdout)],
+            args: ["apply", "--channel", "right", std.algebra.trim(s: base_hash.stdout)],
           ),
           expect: ExpectSuccess,
         )
@@ -385,7 +385,7 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
           args: pijul_env_args(
             config_dir: config_dir,
             agent_socket: agent_socket,
-            args: ["apply", "--channel", "left-right", trim(s: base_hash.stdout)],
+            args: ["apply", "--channel", "left-right", std.algebra.trim(s: base_hash.stdout)],
           ),
           expect: ExpectSuccess,
         )
@@ -395,7 +395,7 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
           args: pijul_env_args(
             config_dir: config_dir,
             agent_socket: agent_socket,
-            args: ["apply", "--channel", "left-right", trim(s: left_hash.stdout)],
+            args: ["apply", "--channel", "left-right", std.algebra.trim(s: left_hash.stdout)],
           ),
           expect: ExpectSuccess,
         )
@@ -405,7 +405,7 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
           args: pijul_env_args(
             config_dir: config_dir,
             agent_socket: agent_socket,
-            args: ["apply", "--channel", "left-right", trim(s: right_hash.stdout)],
+            args: ["apply", "--channel", "left-right", std.algebra.trim(s: right_hash.stdout)],
           ),
           expect: ExpectSuccess,
         )
@@ -415,7 +415,7 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
           args: pijul_env_args(
             config_dir: config_dir,
             agent_socket: agent_socket,
-            args: ["apply", "--channel", "left-right", trim(s: left_hash.stdout)],
+            args: ["apply", "--channel", "left-right", std.algebra.trim(s: left_hash.stdout)],
           ),
           expect: ExpectSuccess,
         )
@@ -425,7 +425,7 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
           args: pijul_env_args(
             config_dir: config_dir,
             agent_socket: agent_socket,
-            args: ["apply", "--channel", "right-left", trim(s: base_hash.stdout)],
+            args: ["apply", "--channel", "right-left", std.algebra.trim(s: base_hash.stdout)],
           ),
           expect: ExpectSuccess,
         )
@@ -435,7 +435,7 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
           args: pijul_env_args(
             config_dir: config_dir,
             agent_socket: agent_socket,
-            args: ["apply", "--channel", "right-left", trim(s: right_hash.stdout)],
+            args: ["apply", "--channel", "right-left", std.algebra.trim(s: right_hash.stdout)],
           ),
           expect: ExpectSuccess,
         )
@@ -445,7 +445,7 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
           args: pijul_env_args(
             config_dir: config_dir,
             agent_socket: agent_socket,
-            args: ["apply", "--channel", "right-left", trim(s: left_hash.stdout)],
+            args: ["apply", "--channel", "right-left", std.algebra.trim(s: left_hash.stdout)],
           ),
           expect: ExpectSuccess,
         )
@@ -510,7 +510,7 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
           args: pijul_env_args(
             config_dir: config_dir,
             agent_socket: agent_socket,
-            args: ["change", trim(s: left_hash.stdout)],
+            args: ["change", std.algebra.trim(s: left_hash.stdout)],
           ),
           expect: ExpectSuccess,
         )
@@ -620,8 +620,8 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
               "|",
             ),
           }
-        } else if trim(s: pristine_diff.stdout) != ""
-          || trim(s: version.stdout) != pijul_upstream_cli_version
+        } else if std.algebra.trim(s: pristine_diff.stdout) != ""
+          || std.algebra.trim(s: version.stdout) != pijul_upstream_cli_version
           || !string_contains(s: channels.stdout, pattern: "left-right")
           || !string_contains(s: channels.stdout, pattern: "right-left") {
           PijulR0LiveRefused {
@@ -655,10 +655,10 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
                     diagnostic: "reverse-log-decode-refused",
                   }
                 PijulChannelLogObserved { observation: reverse } =>
-                  let root = trim(s: root_hash.stdout) as extdeps.pijul.PijulChangeHash
-                  let base = trim(s: base_hash.stdout) as extdeps.pijul.PijulChangeHash
-                  let left = trim(s: left_hash.stdout) as extdeps.pijul.PijulChangeHash
-                  let right = trim(s: right_hash.stdout) as extdeps.pijul.PijulChangeHash
+                  let root = std.algebra.trim(s: root_hash.stdout) as extdeps.pijul.PijulChangeHash
+                  let base = std.algebra.trim(s: base_hash.stdout) as extdeps.pijul.PijulChangeHash
+                  let left = std.algebra.trim(s: left_hash.stdout) as extdeps.pijul.PijulChangeHash
+                  let right = std.algebra.trim(s: right_hash.stdout) as extdeps.pijul.PijulChangeHash
                   let expected = extdeps.pijul.PijulChannelStateIdentity {
                     state: forward.head.state,
                     changes: forward.changes,

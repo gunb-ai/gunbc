@@ -10,7 +10,7 @@ type HostnameShortCapture =
 
 fn hostname_short_value_from_stdout(success: Bool, stdout: String) -> HostnameShortCapture {
   if success {
-    let trimmed = trim(stdout)
+    let trimmed = std.algebra.trim(stdout)
     if trimmed == "" {
       HostnameShortCaptureRefused { reason: "hostname -s returned empty stdout" }
     } else {

@@ -187,14 +187,14 @@ fn spark_serving_health_from_captures(
 ) -> SparkServingTerminalHealth {
   let version_stdout = spark_serving_probe_capture_stdout_or_empty(capture: version)
   let generate_stdout = spark_serving_probe_capture_stdout_or_empty(capture: generate)
-  if trim(s: version_stdout) == "" {
+  if std.algebra.trim(s: version_stdout) == "" {
     ServingHealthUnobserved {
       cause: spark_serving_probe_capture_unobserved_cause(
         label: "version" as NonEmptyStr,
         capture: version,
       ),
     }
-  } else if trim(s: generate_stdout) == "" {
+  } else if std.algebra.trim(s: generate_stdout) == "" {
     ServingHealthUnobserved {
       cause: spark_serving_probe_capture_unobserved_cause(
         label: "generation" as NonEmptyStr,
@@ -301,7 +301,7 @@ fn spark_serving_health_from_served_model(
         defect: HealthGenerationUndecodable { detail: c },
       }
     SparkServingReadbackPresent { value: text } =>
-      if trim(s: text) != (spark_serving_health_expected_response as String) {
+      if std.algebra.trim(s: text) != (spark_serving_health_expected_response as String) {
         ResourcesConvergedButServingUnhealthy {
           defect: HealthGenerationUnexpectedText { observed: text as NonEmptyStr },
         }
@@ -387,7 +387,7 @@ fn spark_serving_residency_from_capture(
   capture: SparkServingProbeCapture,
 ) -> SparkServingResidency {
   let stdout = spark_serving_probe_capture_stdout_or_empty(capture: capture)
-  if trim(s: stdout) == "" {
+  if std.algebra.trim(s: stdout) == "" {
     ResidencyUnobserved {
       cause: spark_serving_probe_capture_unobserved_cause(
         label: "residency" as NonEmptyStr,
@@ -402,7 +402,7 @@ fn spark_serving_residency_from_capture(
       SparkServingReadbackAbsent => NothingResident
       SparkServingReadbackRefused { cause: c } => ResidencyUnobserved { cause: c }
       SparkServingReadbackPresent { value: lex } =>
-        if trim(s: lex) == "0" {
+        if std.algebra.trim(s: lex) == "0" {
           ResidentOutsideVram
         } else {
           ResidentInVram { vram_lexeme: lex as NonEmptyStr }

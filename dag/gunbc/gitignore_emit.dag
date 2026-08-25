@@ -181,11 +181,11 @@ fn ignore_patterns() -> List<String> {
   concat(tool_patterns, map(non_committed_artifacts(), a => generated_artifact_ignore_pattern(a: a)))
 }
 
-fn generated_artifact_ignore_pattern(a: GeneratedArtifact) -> String {
+fn generated_artifact_ignore_pattern(a: gunbc.generated_artifact.GeneratedArtifact) -> String {
   concat("/", artifact_path(a: a))
 }
 
-fn non_committed_artifacts() -> List<GeneratedArtifact> {
+fn non_committed_artifacts() -> List<gunbc.generated_artifact.GeneratedArtifact> {
   filter(generated_artifact_registry, a => !artifact_is_committed(a: a))
 }
 

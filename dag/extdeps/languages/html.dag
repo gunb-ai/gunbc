@@ -260,7 +260,7 @@ fn serialize_html_source(node: std.markup.Fragment) -> String {
 }
 
 fn ingest_html_source_with(src: String, sp: std.markup.MarkupBracket) -> HtmlIngestResult {
-  let s = trim(src)
+  let s = std.algebra.trim(src)
   let one = parse_one_with(s: s, sp: sp)
   match one {
     ParseOneRejected { reason } => IngestRejected { reason: reason }

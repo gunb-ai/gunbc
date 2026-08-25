@@ -45,7 +45,7 @@ fn inflow_fn_name_of_declaration(declaration: String) -> String {
   }
   if starts_with(s: after_async, prefix: "fn ") {
     let rest = substring(s: after_async, start: 3, end: string_length(s: after_async))
-    trim(fold(split(s: rest, delimiter: "("), init: "", f: (acc, part) => match acc { "" => part _ => acc }))
+    std.algebra.trim(fold(split(s: rest, delimiter: "("), init: "", f: (acc, part) => match acc { "" => part _ => acc }))
   } else {
     ""
   }
@@ -122,12 +122,12 @@ fn inflow_diff_line_fold(acc: InflowFoldState, line: String) -> InflowFoldState 
   } else if starts_with(s: line, prefix: "+") {
     inflow_body_line_fold(
       acc: acc,
-      trimmed: trim(substring(s: line, start: 1, end: string_length(s: line))),
+      trimmed: std.algebra.trim(substring(s: line, start: 1, end: string_length(s: line))),
     )
   } else if acc.pending_attribute && starts_with(s: line, prefix: " ") {
     inflow_body_line_fold(
       acc: acc,
-      trimmed: trim(substring(s: line, start: 1, end: string_length(s: line))),
+      trimmed: std.algebra.trim(substring(s: line, start: 1, end: string_length(s: line))),
     )
   } else {
     acc

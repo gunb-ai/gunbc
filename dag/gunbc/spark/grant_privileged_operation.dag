@@ -314,7 +314,7 @@ func read_bootstrap_credential() -> BootstrapCredentialMaterialization {
         ], "") as std.types.NonEmptyStr,
       }
     Present { value: raw } => {
-      let path = trim(s: raw)
+      let path = std.algebra.trim(s: raw)
       if path == "" {
         BootstrapCredentialNotMaterialized {
           cause: join([

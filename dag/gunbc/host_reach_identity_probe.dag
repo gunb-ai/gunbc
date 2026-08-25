@@ -190,7 +190,7 @@ fn classify_reach_probe_wire(
   stderr: String,
 ) -> ReachProbeOutcome {
   if success {
-    ProbeReachable { observed_short_hostname: trim(stdout), observed_principal: "" }
+    ProbeReachable { observed_short_hostname: std.algebra.trim(stdout), observed_principal: "" }
   } else {
     if string_contains(s: stderr, pattern: "Permission denied") {
       ProbeAuthenticationRefused { cause: stderr }
@@ -298,7 +298,7 @@ fn probe_reachable_with_principal(target: String, hostname_stdout: String) -> Re
   match typed_argv_probe_over_ssh(host: target as std.types.NonEmptyStr, argv: ["id", "-un"]) {
     TypedArgvExecConverged { result: idr } =>
       if idr.success {
-        ProbeReachable { observed_short_hostname: trim(hostname_stdout), observed_principal: trim(idr.stdout) }
+        ProbeReachable { observed_short_hostname: std.algebra.trim(hostname_stdout), observed_principal: std.algebra.trim(idr.stdout) }
       } else {
         ProbeTransportUnavailable { cause: join(["id-un-failed stderr=", idr.stderr], "") }
       }

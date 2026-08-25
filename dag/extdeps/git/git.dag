@@ -75,7 +75,7 @@ type GitWorktreeHead
   | WorktreeDetached { sha: CommitSha }
 
 type GitWorktree {
-  path: FilePath
+  path: std.types.FilePath
   head: GitWorktreeHead
   is_main: Bool
   locked: Bool
@@ -112,15 +112,15 @@ type GitDiffChangeStatus
 
 type GitDiffStatusEntry {
   status: GitDiffChangeStatus
-  path: FilePath
-  old_path: FilePath?
+  path: std.types.FilePath
+  old_path: std.types.FilePath?
 }
 
 type GitDiffNameStatusParsePending
   = AwaitingStatusToken
   | AwaitingSinglePath { status: GitDiffChangeStatus }
   | AwaitingOldPath { status: GitDiffChangeStatus }
-  | AwaitingNewPath { status: GitDiffChangeStatus, old_path: FilePath }
+  | AwaitingNewPath { status: GitDiffChangeStatus, old_path: std.types.FilePath }
 
 type GitDiffNameStatusParseState {
   pending: GitDiffNameStatusParsePending
@@ -1111,7 +1111,7 @@ type GitRemoteName = NonEmptyStr
 // would fuse every deployment's `origin` into one member; keying on the URL would make a URL
 // correction read as a remove plus an add rather than the change it is.
 type GitRemoteUrlAt {
-  repository_path: FilePath
+  repository_path: std.types.FilePath
   name: GitRemoteName
 }
 

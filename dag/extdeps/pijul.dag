@@ -1215,7 +1215,7 @@ fn pijul_prefixed_lines(
   prefix: std.types.NonEmptyStr,
 ) -> List<extdeps.pijul.PijulPrefixedLine> {
   split(s: text, delimiter: "\n")
-    |> map(line => trim(s: line))
+    |> map(line => std.algebra.trim(s: line))
     |> filter(line =>
       starts_with(s: line, prefix: prefix)
         && line.length() > prefix.length()
@@ -1258,7 +1258,7 @@ fn pijul_decode_log_head_plaintext(text: String) -> extdeps.pijul.PijulLogHeadDe
 
 fn pijul_decode_hash_only_log(text: String) -> extdeps.pijul.PijulLogHashSetDecodeOutcome {
   let changes = split(s: text, delimiter: "\n")
-    |> map(line => trim(s: line))
+    |> map(line => std.algebra.trim(s: line))
     |> filter(line => line != "")
     |> map(line => line as PijulChangeHash)
   let unique = pijul_scan_unique(items: changes)

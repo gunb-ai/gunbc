@@ -18,6 +18,6 @@ fn iso8601_minutes_per_hour() -> std.nat.Nat {
   60
 }
 
-fn iso8601_hours_per_day() -> Nat {
+fn iso8601_hours_per_day() -> std.nat.Nat {
   24
 }

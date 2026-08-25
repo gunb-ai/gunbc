@@ -654,7 +654,7 @@ func spark_grant_probe_outcome(
       if r.success {
         gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: r.stdout }
       } else {
-        gunbc.spark.managed_access_bootstrap.GrantAbsent { detail: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+        gunbc.spark.managed_access_bootstrap.GrantAbsent { detail: join(["exit=", to_string(r.exit_code), " stderr=", std.algebra.trim(s: r.stderr)], "") }
       }
   }
 }

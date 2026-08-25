@@ -76,13 +76,13 @@ fn spark_serving_issue_reboot(
         SparkServingRebootRejected {
           host: host,
           exit_code: r.exit_code,
-          stderr: trim(s: r.stderr),
+          stderr: std.algebra.trim(s: r.stderr),
         }
       } else {
         SparkServingRebootIssued {
           host: host,
           exit_code: r.exit_code,
-          stderr: trim(s: r.stderr),
+          stderr: std.algebra.trim(s: r.stderr),
         }
       }
   }

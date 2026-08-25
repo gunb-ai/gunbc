@@ -30,7 +30,7 @@ fn spark_grant_listing_reports_no_passwordless_grant(detail: String) -> Bool {
 fn spark_grant_listing_entry_commands(line: String) -> List<String> {
   match line.split(delimiter: "NOPASSWD: ").skip(n: 1).last() {
     Absent => []
-    Present { value: rest } => map(rest.split(delimiter: ","), c => trim(c))
+    Present { value: rest } => map(rest.split(delimiter: ","), c => std.algebra.trim(c))
   }
 }
 

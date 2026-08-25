@@ -347,7 +347,7 @@ fn try_resolve_qualified_name_node(ctx: ResolveContext, n: Node) -> Optional<Out
         match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
           Present { value: resolved_node } =>
             optional_present(
-              value: Accepted {
+              value: v2.std.diagnostic.Accepted {
                 value: canonical_atom(
                   identity: symbol_index_node_identity(
                     node: resolved_node,
@@ -460,7 +460,7 @@ fn resolve_transform_children(
   ctx: ResolveContext,
   n: Node
 ) -> Outcome<Node> {
-  match fold(n.children, init: Accepted { value: empty_edge_list(), diagnostics: v2.std.diagnostic.None }, f: fn(acc, e) {
+  match fold(n.children, init: v2.std.diagnostic.Accepted { value: empty_edge_list(), diagnostics: v2.std.diagnostic.None }, f: fn(acc, e) {
     match acc {
       v2.std.diagnostic.Rejected { diagnostics: r } =>
         v2.std.diagnostic.Rejected { diagnostics: r }
@@ -478,7 +478,7 @@ fn resolve_transform_children(
                     diagnostics: rejected_with_pending(pending: ad, rejected: r)
                   }
                 Accepted { value: resolved_target, diagnostics: ed } =>
-                  Accepted {
+                  v2.std.diagnostic.Accepted {
                     value: list_snoc_item(xs: done, item: Edge {
                       label: e.label,
                       target: resolved_target
@@ -493,7 +493,7 @@ fn resolve_transform_children(
                     diagnostics: rejected_with_pending(pending: ad, rejected: r)
                   }
                 Accepted { value: resolved_target, diagnostics: ed } =>
-                  Accepted {
+                  v2.std.diagnostic.Accepted {
                     value: list_snoc_item(xs: done, item: Edge {
                       label: e.label,
                       target: resolved_target
@@ -509,7 +509,7 @@ fn resolve_transform_children(
                   diagnostics: rejected_with_pending(pending: ad, rejected: r)
                 }
               Accepted { value: resolved_target, diagnostics: ed } =>
-                Accepted {
+                v2.std.diagnostic.Accepted {
                   value: list_snoc_item(xs: done, item: Edge {
                     label: e.label,
                     target: resolved_target
@@ -675,7 +675,7 @@ fn resolve_children_homogeneous_scope(
     ctx: resolve_ctx_with_under_module_root(ctx: ctx, under_module_root: at_module_root),
     scope: scope_here
   )
-  match fold(n.children, init: Accepted { value: empty_edge_list(), diagnostics: v2.std.diagnostic.None }, f: fn(acc, e) {
+  match fold(n.children, init: v2.std.diagnostic.Accepted { value: empty_edge_list(), diagnostics: v2.std.diagnostic.None }, f: fn(acc, e) {
     match acc {
       v2.std.diagnostic.Rejected { diagnostics: r } =>
         v2.std.diagnostic.Rejected { diagnostics: r }
@@ -686,7 +686,7 @@ fn resolve_children_homogeneous_scope(
               diagnostics: rejected_with_pending(pending: ad, rejected: r)
             }
           Accepted { value: resolved_edge, diagnostics: ed } =>
-            Accepted {
+            v2.std.diagnostic.Accepted {
               value: list_snoc_item(xs: done, item: resolved_edge),
               diagnostics: diagnostics_merge(outer: ad, inner: ed)
             }
@@ -712,7 +712,7 @@ fn resolve_edges_first_outer_then_inner(
     edges,
     init: EdgeResolveAccMk {
       have_seen_first: false,
-      acc: Accepted { value: empty_edge_list(), diagnostics: v2.std.diagnostic.None }
+      acc: v2.std.diagnostic.Accepted { value: empty_edge_list(), diagnostics: v2.std.diagnostic.None }
     },
     f: fn(state, e) {
       match state {
@@ -739,7 +739,7 @@ fn resolve_edges_first_outer_then_inner(
                   Accepted { value: resolved_target, diagnostics: ed } =>
                     EdgeResolveAccMk {
                       have_seen_first: true,
-                      acc: Accepted {
+                      acc: v2.std.diagnostic.Accepted {
                         value: list_snoc_item(xs: done, item: Edge {
                             label: e.label,
                             target: resolved_target
@@ -763,7 +763,7 @@ fn resolve_edges_first_outer_then_inner(
                   Accepted { value: resolved_target, diagnostics: ed } =>
                     EdgeResolveAccMk {
                       have_seen_first: true,
-                      acc: Accepted {
+                      acc: v2.std.diagnostic.Accepted {
                         value: list_snoc_item(xs: done, item: Edge {
                             label: e.label,
                             target: resolved_target
@@ -800,7 +800,7 @@ fn resolve_bind_edges(
     edges,
     init: BindEdgeAccMk {
       idx: 0,
-      acc: Accepted { value: empty_edge_list(), diagnostics: v2.std.diagnostic.None }
+      acc: v2.std.diagnostic.Accepted { value: empty_edge_list(), diagnostics: v2.std.diagnostic.None }
     },
     f: fn(state, e) {
       match state {
@@ -824,7 +824,7 @@ fn resolve_bind_edges(
                   Accepted { value: rt, diagnostics: ed } =>
                     BindEdgeAccMk {
                       idx: i + 1,
-                      acc: Accepted {
+                      acc: v2.std.diagnostic.Accepted {
                         value: list_snoc_item(xs: done, item: Edge {
                             label: e.label,
                             target: rt
@@ -849,7 +849,7 @@ fn resolve_bind_edges(
                     Accepted { value: rt, diagnostics: ed } =>
                       BindEdgeAccMk {
                         idx: i + 1,
-                        acc: Accepted {
+                        acc: v2.std.diagnostic.Accepted {
                           value: list_snoc_item(xs: done, item: Edge {
                               label: e.label,
                               target: rt
@@ -873,7 +873,7 @@ fn resolve_bind_edges(
                     Accepted { value: rt, diagnostics: ed } =>
                       BindEdgeAccMk {
                         idx: i + 1,
-                        acc: Accepted {
+                        acc: v2.std.diagnostic.Accepted {
                           value: list_snoc_item(xs: done, item: Edge {
                               label: e.label,
                               target: rt

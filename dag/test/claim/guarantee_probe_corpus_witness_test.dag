@@ -734,18 +734,18 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
     sole_ctor_unadmitted_caller_red_probe as String,
   ]
   let known_gaps_are_not_disposed = known_v1_migration_gap_ids
-    |> all(gap => !string_list_contains(xs: disposition_probe_ids, wanted: gap))
+    |> all(gap => !std.materialization_ladder.string_list_contains(xs: disposition_probe_ids, wanted: gap))
   let every_v1_compile_probe_is_disposed_or_a_named_gap = guarantee_probe_rows()
     |> filter(row => (row.path as String) == (v1_compile_rust_path_id as String))
     |> all(row => {
       let id = row.probe as String
-      string_list_contains(xs: disposition_probe_ids, wanted: id)
-        || string_list_contains(xs: known_v1_migration_gap_ids, wanted: id)
-        || string_list_contains(xs: dag_native_v1_compile_probe_ids, wanted: id)
+      std.materialization_ladder.string_list_contains(xs: disposition_probe_ids, wanted: id)
+        || std.materialization_ladder.string_list_contains(xs: known_v1_migration_gap_ids, wanted: id)
+        || std.materialization_ladder.string_list_contains(xs: dag_native_v1_compile_probe_ids, wanted: id)
     })
   let dag_native_ids_are_not_disposed_or_gaps = dag_native_v1_compile_probe_ids
-    |> all(id => !string_list_contains(xs: disposition_probe_ids, wanted: id)
-      && !string_list_contains(xs: known_v1_migration_gap_ids, wanted: id))
+    |> all(id => !std.materialization_ladder.string_list_contains(xs: disposition_probe_ids, wanted: id)
+      && !std.materialization_ladder.string_list_contains(xs: known_v1_migration_gap_ids, wanted: id))
   disposed_ids_are_sound
     && disposed_ids_have_no_internal_duplicates
     && dispositions_name_the_finite_classification_gate

@@ -125,7 +125,7 @@ fn fleet_converge_member_set_fingerprint_matches(
   observed_slots: List<RunnerSlotMember>,
   observed_fabric_cells: FabricCellPopulation,
 ) -> Bool {
-  trim(s: planned_fingerprint_text) == (
+  std.algebra.trim(s: planned_fingerprint_text) == (
     serialize_content_hash(
       hash: fleet_converge_member_set_fingerprint(
         host: host,
@@ -156,7 +156,7 @@ fn timer_member_value_eq(a: TimerRetirementMember, b: TimerRetirementMember) -> 
 }
 
 fn timer_member_ownership(m: TimerRetirementMember) -> Ownership? {
-  Present { value: Owned }
+  Present { value: gunbc.ownership.Owned }
 }
 
 fn timer_retirement_plan(observed: List<TimerRetirementMember>) -> MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt> {
@@ -190,7 +190,7 @@ fn timer_retirement_observed_legacy_srv1() -> List<TimerRetirementMember> {
   ]
 }
 
-fn teardown_refusal_cause_label(cause: TeardownRefusalCause) -> String {
+fn teardown_refusal_cause_label(cause: gunbc.membership_reconcile.TeardownRefusalCause) -> String {
   match cause {
     MemberNotOwned => "MemberNotOwned"
     OwnershipUnknown => "OwnershipUnknown"
@@ -940,14 +940,14 @@ fn fleet_converge_plan_bundle_matches(
     apply_shell: apply_shell,
     spark_typed_actions_wire: spark_typed_actions_wire,
   ) {
-    Present { value: computed } => trim(s: claimed_hex) == computed as String
+    Present { value: computed } => std.algebra.trim(s: claimed_hex) == computed as String
     Absent => false
   }
 }
 
 fn fleet_converge_plan_bundle_v1_matches(plan_body: String, apply_shell: String, claimed_hex: String) -> Bool {
   match fleet_converge_plan_bundle_v1_structural_hash(plan_body: plan_body, apply_shell: apply_shell) {
-    Present { value: bundle } => trim(s: claimed_hex) == bundle.digest as String
+    Present { value: bundle } => std.algebra.trim(s: claimed_hex) == bundle.digest as String
     Absent => false
   }
 }
@@ -1031,7 +1031,7 @@ fn timer_apply_lines(plan: MembershipPlan<TimerRetirementMember, TimerRetirement
 data fleet_converge_generation_store_path: String = "/var/lib/gunbc/fleet-converge/plan_generation"
 
 fn fleet_converge_parse_nonneg_generation_text(content: String) -> Int? {
-  let trimmed = trim(s: content)
+  let trimmed = std.algebra.trim(s: content)
   if trimmed == "" {
     none
   } else {

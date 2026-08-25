@@ -172,14 +172,14 @@ fn skeleton_atom_lexeme_census_fold(n: v2.std.node.Node) -> AtomLexemeCensus {
           TypeNode { connective: v2.std.node.Atom { identity: s } } =>
             AtomLexemeCensus {
               all_atom_lexemes: [v2.std.compilers.lexing.symbol_lexeme(sym: s)],
-              construction_spelling_lexemes: Empty,
+              construction_spelling_lexemes: v2.std.algebra.Empty,
               self_is_atom: true,
               self_lexeme: v2.std.compilers.lexing.symbol_lexeme(sym: s)
             }
           _ =>
             AtomLexemeCensus {
-              all_atom_lexemes: Empty,
-              construction_spelling_lexemes: Empty,
+              all_atom_lexemes: v2.std.algebra.Empty,
+              construction_spelling_lexemes: v2.std.algebra.Empty,
               self_is_atom: false,
               self_lexeme: ""
             }

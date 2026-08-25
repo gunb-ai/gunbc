@@ -782,7 +782,7 @@ fn probe_ids_are_lexicographically_ordered(ids: List<GuaranteeProbeId>) -> Bool 
   walked.ok
 }
 
-fn non_empty_diagnostics_count_reason(nes: NonEmptyDiagnostics, reason: Symbol) -> Nat {
+fn non_empty_diagnostics_count_reason(nes: NonEmptyDiagnostics, reason: Symbol) -> std.nat.Nat {
   let head_count = if nes.head.reason == reason { 1 } else { 0 }
   fold_list(
     xs: nes.tail,

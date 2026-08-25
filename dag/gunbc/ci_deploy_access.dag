@@ -280,7 +280,7 @@ fn deploy_access_principal_line(success: Bool, stdout: String) -> std.types.NonE
   if !success {
     none
   } else {
-    let line = trim(stdout)
+    let line = std.algebra.trim(stdout)
     if line == "" { none } else { Present { value: line as std.types.NonEmptyStr } }
   }
 }

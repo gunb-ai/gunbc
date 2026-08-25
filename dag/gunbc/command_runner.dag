@@ -226,9 +226,9 @@ fn process_outcome_admitted(outcome: ProcessOutcome) -> Bool {
 // arms itself, because "(refused: ...)" is a fine thing to print and a catastrophic thing to open.
 fn process_outcome_receipt_text(outcome: ProcessOutcome) -> String {
   match outcome {
-    ProcessOutputPresent { text: t } => trim(s: t)
+    ProcessOutputPresent { text: t } => std.algebra.trim(s: t)
     ProcessOutputAbsent => "(no output)"
-    ProcessRefused { exit_code: _, stderr: e } => join(["(refused: ", trim(s: e), ")"], "")
+    ProcessRefused { exit_code: _, stderr: e } => join(["(refused: ", std.algebra.trim(s: e), ")"], "")
   }
 }
 

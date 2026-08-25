@@ -11,8 +11,8 @@ type DashboardProvisionTransport
 type DashboardSourceSeed
   = DashboardExistingRepo { anchor_ref: NonEmptyStr }
   | DashboardGitBundle {
-      controller_repo: FilePath,
-      staged_bundle: FilePath,
+      controller_repo: std.types.FilePath,
+      staged_bundle: std.types.FilePath,
       anchor_ref: NonEmptyStr,
       history_remote: NonEmptyStr,
     }
@@ -21,8 +21,8 @@ data provider_state_requires_admission_note: String = "THE ADMITTED BINDING IS A
 
 type DashboardProviderStateBinding
   = DashboardExistingProviderState {
-      root: FilePath,
-      executable: FilePath?,
+      root: std.types.FilePath,
+      executable: std.types.FilePath?,
       binding: AdmittedAccountBinding,
     }
 
@@ -36,23 +36,23 @@ type DispatchStateScope
       attempt_state_child: NonEmptyStr,
     }
   | DispatchStateHostShared {
-      worktree_root: FilePath,
-      attempt_state_root: FilePath,
+      worktree_root: std.types.FilePath,
+      attempt_state_root: std.types.FilePath,
     }
 
 type HostDashboardInstance {
   instance_id: NonEmptyStr
   host_identity: NonEmptyStr
-  provision_parent_root: FilePath
-  instance_root: FilePath
-  local_origin_root: FilePath
+  provision_parent_root: std.types.FilePath
+  instance_root: std.types.FilePath
+  local_origin_root: std.types.FilePath
   local_origin_publish_ref: NonEmptyStr
-  repo_root: FilePath
+  repo_root: std.types.FilePath
   dispatch_base_ref: NonEmptyStr
   dispatch_state_scope: DispatchStateScope
   execution_environment: DispatchHostEnvironment
   provider_state: DashboardProviderStateBinding
-  serve_binary: FilePath
+  serve_binary: std.types.FilePath
   serve_function: NonEmptyStr
   listen_host: NonEmptyStr
   listen_port: Port
@@ -561,55 +561,55 @@ data provider_state_root_ensure_note: String = "THE MODEL VERIFIED AUTH AGAINST 
 
 type DashboardInstanceProvisionOp
   = DashboardHydrateControllerHistory {
-      controller_repo: FilePath,
+      controller_repo: std.types.FilePath,
       history_remote: NonEmptyStr,
     }
   | DashboardPrepareGitBundle {
-      controller_repo: FilePath,
+      controller_repo: std.types.FilePath,
       anchor_ref: NonEmptyStr,
     }
   | DashboardStageGitBundle {
-      controller_repo: FilePath,
-      staged_bundle: FilePath,
+      controller_repo: std.types.FilePath,
+      staged_bundle: std.types.FilePath,
     }
-  | DashboardEnsureDirectory { path: FilePath }
-  | DashboardEnsureProviderStateRoot { path: FilePath }
+  | DashboardEnsureDirectory { path: std.types.FilePath }
+  | DashboardEnsureProviderStateRoot { path: std.types.FilePath }
   | DashboardEnsureServeBinary {
-      controller_repo: FilePath,
-      built_binary: FilePath,
-      path: FilePath,
+      controller_repo: std.types.FilePath,
+      built_binary: std.types.FilePath,
+      path: std.types.FilePath,
     }
   | DashboardEnsureOwnershipMarker {
-      path: FilePath,
+      path: std.types.FilePath,
       instance_id: NonEmptyStr,
     }
   | DashboardEnsureLocalOrigin {
-      bundle: FilePath,
-      origin: FilePath,
+      bundle: std.types.FilePath,
+      origin: std.types.FilePath,
       source_ref: NonEmptyStr,
       publish_ref: NonEmptyStr,
     }
   | DashboardEnsureSourceRepo {
-      origin: FilePath,
-      repo: FilePath,
+      origin: std.types.FilePath,
+      repo: std.types.FilePath,
       anchor_ref: NonEmptyStr,
     }
   | DashboardEnsureService {
       instance_id: NonEmptyStr,
-      binary: FilePath,
-      workdir: FilePath,
+      binary: std.types.FilePath,
+      workdir: std.types.FilePath,
       handler: NonEmptyStr,
       host: NonEmptyStr,
       port: Int,
       tmux_server: TmuxServerScope,
     }
   | DashboardVerifyProviderRuntime {
-      executable: FilePath,
-      state_root: FilePath,
+      executable: std.types.FilePath,
+      state_root: std.types.FilePath,
     }
   | DashboardVerifyProviderAuth {
-      executable: FilePath,
-      state_root: FilePath,
+      executable: std.types.FilePath,
+      state_root: std.types.FilePath,
     }
   | DashboardVerifyHealth { host: NonEmptyStr, port: Port }
 
@@ -961,10 +961,10 @@ type DashboardInstanceRetractOp
       instance_id: NonEmptyStr,
       tmux_server: TmuxServerScope,
     }
-  | DashboardRefuseUnlessAttemptsEmpty { path: FilePath }
-  | DashboardRemoveSourceRepo { path: FilePath }
-  | DashboardRemoveLocalOrigin { path: FilePath }
-  | DashboardPreserveSourceBundle { path: FilePath }
+  | DashboardRefuseUnlessAttemptsEmpty { path: std.types.FilePath }
+  | DashboardRemoveSourceRepo { path: std.types.FilePath }
+  | DashboardRemoveLocalOrigin { path: std.types.FilePath }
+  | DashboardPreserveSourceBundle { path: std.types.FilePath }
 
 type DashboardInstanceRetract
   = DashboardInstanceRetractPlan { plan: List<DashboardInstanceRetractOp> }

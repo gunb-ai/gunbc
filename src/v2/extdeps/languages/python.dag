@@ -220,7 +220,7 @@ fn python_per_language_fact_bundle_entries_from_catalog_rows<T>(
 ) -> List<PerLanguageFactBundleEntry> {
   fold_list(
     xs: rows,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, row) {
       list_append(left: acc, right: row_to_entries(row))
     }
@@ -486,7 +486,7 @@ fn python_g1_2_integer_primitive_bundles_from_registry(
 ) -> Outcome<List<PrimitiveFactBundle>> {
   fold_list(
     xs: python_integer_facts_catalog,
-    empty: outcome_accepted(value: Empty),
+    empty: outcome_accepted(value: std.algebra.Empty),
     cons: fn(acc, facts) {
       python_g1_2_snoc_primitive_bundle(
         acc: acc,
@@ -502,7 +502,7 @@ fn python_g1_2_float_primitive_bundles_from_registry(
 ) -> Outcome<List<PrimitiveFactBundle>> {
   fold_list(
     xs: python_float_facts_catalog,
-    empty: outcome_accepted(value: Empty),
+    empty: outcome_accepted(value: std.algebra.Empty),
     cons: fn(acc, facts) {
       python_g1_2_snoc_primitive_bundle(
         acc: acc,
@@ -518,7 +518,7 @@ fn python_g1_2_complex_primitive_bundles_from_registry(
 ) -> Outcome<List<PrimitiveFactBundle>> {
   fold_list(
     xs: python_complex_facts_catalog,
-    empty: outcome_accepted(value: Empty),
+    empty: outcome_accepted(value: std.algebra.Empty),
     cons: fn(acc, facts) {
       python_g1_2_snoc_primitive_bundle(
         acc: acc,
@@ -534,7 +534,7 @@ fn python_g1_2_bool_primitive_bundles_from_registry(
 ) -> Outcome<List<PrimitiveFactBundle>> {
   fold_list(
     xs: python_bool_facts_catalog,
-    empty: outcome_accepted(value: Empty),
+    empty: outcome_accepted(value: std.algebra.Empty),
     cons: fn(acc, facts) {
       python_g1_2_snoc_primitive_bundle(
         acc: acc,
@@ -550,7 +550,7 @@ fn python_g1_2_singleton_primitive_bundles_from_registry(
 ) -> Outcome<List<PrimitiveFactBundle>> {
   fold_list(
     xs: python_singleton_facts_catalog,
-    empty: outcome_accepted(value: Empty),
+    empty: outcome_accepted(value: std.algebra.Empty),
     cons: fn(acc, facts) {
       python_g1_2_snoc_primitive_bundle(
         acc: acc,
@@ -664,7 +664,7 @@ fn python_bool_algebra_inhabitance(facts: PythonBoolPrimitiveFacts) -> AlgebraIn
 fn python_integer_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   fold_list(
     xs: python_integer_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(xs: acc, item: python_integer_algebra_inhabitance(facts: facts))
     }
@@ -674,7 +674,7 @@ fn python_integer_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
 fn python_float_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   fold_list(
     xs: python_float_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(xs: acc, item: python_float_algebra_inhabitance(facts: facts))
     }
@@ -684,7 +684,7 @@ fn python_float_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
 fn python_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   fold_list(
     xs: python_bool_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(xs: acc, item: python_bool_algebra_inhabitance(facts: facts))
     }
@@ -849,7 +849,7 @@ fn python_serialize_source_node() -> Node {
 fn python_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
   fold_list(
     xs: python_concrete_tokens(),
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
@@ -920,7 +920,7 @@ fn python_formal_alternatives_to_choice_expr(alts: List<List<FormalGrammarSymbol
 }
 
 fn python_formal_rhs_alternatives_accum_empty() -> List<List<FormalGrammarSymbol>> {
-  Empty
+  std.algebra.Empty
 }
 
 fn python_formal_collect_rhs_alternative(
@@ -1044,7 +1044,7 @@ fn python_host_transport_descriptor() -> HostTransportDescriptor {
         content: EmittedSource
       }
     ],
-    build: Empty,
+    build: std.algebra.Empty,
     run: ProcessInvocation {
       program: HostToolProgram { executable: "python3" },
       args: [WorkspacePath { path: "fixture.py" }]
@@ -1211,7 +1211,7 @@ fn python_grammar_root() -> GrammarRoot {
             grammar_formal_nonterminal_occurrence(identity: ^python_production_suite)
           ]
         ),
-        alts: Empty,
+        alts: std.algebra.Empty,
         emitted: ^python_surface_fn_item
       ),
 
@@ -1257,7 +1257,7 @@ fn python_grammar_root() -> GrammarRoot {
             grammar_formal_nonterminal_occurrence(identity: ^python_production_additive)
           ]
         ),
-        alts: Empty,
+        alts: std.algebra.Empty,
         emitted: ^python_surface_assign_stmt
       ),
 
@@ -1271,7 +1271,7 @@ fn python_grammar_root() -> GrammarRoot {
             grammar_formal_nonterminal_occurrence(identity: ^python_production_return_stmt)
           ]
         ),
-        alts: Empty,
+        alts: std.algebra.Empty,
         emitted: ^python_surface_if_stmt
       ),
       python_formal_productions_to_grammar_production(
@@ -1308,7 +1308,7 @@ fn python_grammar_root() -> GrammarRoot {
             grammar_formal_nonterminal_occurrence(identity: ^python_production_comparison_tail)
           ]
         ),
-        alts: Empty,
+        alts: std.algebra.Empty,
         emitted: ^python_surface_comparison
       ),
 
@@ -1320,7 +1320,7 @@ fn python_grammar_root() -> GrammarRoot {
             grammar_formal_nonterminal_occurrence(identity: ^python_production_additive)
           ]
         ),
-        alts: [grammar_formal_production(lhs: ^python_production_comparison_tail, rhs: Empty)],
+        alts: [grammar_formal_production(lhs: ^python_production_comparison_tail, rhs: std.algebra.Empty)],
         emitted: ^python_surface_comparison_tail
       ),
       python_formal_productions_to_grammar_production(
@@ -1331,7 +1331,7 @@ fn python_grammar_root() -> GrammarRoot {
             grammar_formal_nonterminal_occurrence(identity: ^python_production_additive_tail)
           ]
         ),
-        alts: Empty,
+        alts: std.algebra.Empty,
         emitted: ^python_surface_additive
       ),
 
@@ -1344,7 +1344,7 @@ fn python_grammar_root() -> GrammarRoot {
             grammar_formal_nonterminal_occurrence(identity: ^python_production_additive_tail)
           ]
         ),
-        alts: [grammar_formal_production(lhs: ^python_production_additive_tail, rhs: Empty)],
+        alts: [grammar_formal_production(lhs: ^python_production_additive_tail, rhs: std.algebra.Empty)],
         emitted: ^python_surface_additive_tail
       ),
       python_formal_productions_to_grammar_production(

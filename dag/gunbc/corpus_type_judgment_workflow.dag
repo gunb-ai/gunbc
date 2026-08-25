@@ -230,7 +230,7 @@ data corpus_type_judgment_workflow: Workflow = {
   env: none,
   permissions: Present {
     value: WorkflowPermissions {
-      contents: Present { value: PermRead },
+      contents: Present { value: extdeps.github.actions.PermRead },
       pull_requests: none,
       issues: none,
       actions: none,

@@ -15,7 +15,7 @@ type RoadmapAcceptanceHistoryPriorObservation
   | PriorHistoryGitObservationRefused { detail: String }
 
 fn git_refusal_detail(operation: String, stderr: String) -> String {
-  let detail = trim(stderr)
+  let detail = std.algebra.trim(stderr)
   if detail == "" {
     concat(operation, " refused without stderr")
   } else {
@@ -24,7 +24,7 @@ fn git_refusal_detail(operation: String, stderr: String) -> String {
 }
 
 fn git_show_path_absent_at_ref(stderr: String) -> Bool {
-  let trimmed = trim(stderr)
+  let trimmed = std.algebra.trim(stderr)
   string_contains(s: trimmed, pattern: "does not exist in")
     || string_contains(s: trimmed, pattern: "exists on disk, but not in")
 }

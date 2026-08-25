@@ -66,7 +66,7 @@ fn bash_membership_outcome_tag_from_execution(
   } else if !success && string_contains(s: stderr, pattern: "cgroup_membership=ambiguous") {
     OutcomeTagAmbiguous
   } else if success {
-    let abs = trim(s: stdout)
+    let abs = std.algebra.trim(s: stdout)
     let root = extdeps.linux.proc_self_cgroup.proc_self_cgroup_mount_root_text(mount_root: mount_root)
     let root_len = string_length(s: root)
     if string_length(s: abs) >= root_len

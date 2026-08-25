@@ -10,7 +10,7 @@ type SystemdPropertyCapture =
 
 fn systemctl_show_property_value_from_stdout(success: Bool, stdout: String) -> SystemdPropertyCapture {
   if success {
-    let trimmed = trim(stdout)
+    let trimmed = std.algebra.trim(stdout)
     if trimmed == "" {
       SystemdPropertyCaptureRefused { reason: "systemctl show returned empty stdout" }
     } else {

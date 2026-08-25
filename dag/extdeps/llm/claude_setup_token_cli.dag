@@ -83,7 +83,7 @@ fn first_https_url_token(line: String) -> String? {
     match acc {
       Present { value: _ } => acc
       Absent => {
-        let trimmed = trim(token)
+        let trimmed = std.algebra.trim(token)
         match starts_with(s: trimmed, prefix: setup_token_challenge_url_marker) {
           true => v2.std.optional.Present { value: trimmed }
           false => v2.std.optional.Absent
@@ -96,7 +96,7 @@ fn first_https_url_token(line: String) -> String? {
 fn parse_setup_token_challenge_from_terminal(
   pane: std.types.RenderedTerminalText,
 ) -> ClaudeSetupTokenChallengeParse {
-  let lines = split(s: pane as String, delimiter: "\n") |> map(l => trim(l))
+  let lines = split(s: pane as String, delimiter: "\n") |> map(l => std.algebra.trim(l))
   let url_hit = lines
     |> filter(l => string_contains(s: l, pattern: setup_token_challenge_url_marker))
     |> first
@@ -129,7 +129,7 @@ fn parse_setup_token_challenge_from_terminal(
 }
 
 fn line_is_setup_token_candidate(line: String, prefix: std.types.NonEmptyStr) -> Bool {
-  let trimmed = trim(line)
+  let trimmed = std.algebra.trim(line)
   if trimmed == "" {
     false
   } else {
@@ -141,7 +141,7 @@ fn count_setup_token_candidates(
   pane: std.types.RenderedTerminalText,
   prefix: std.types.NonEmptyStr,
 ) -> Int {
-  let lines = split(s: pane as String, delimiter: "\n") |> map(l => trim(l))
+  let lines = split(s: pane as String, delimiter: "\n") |> map(l => std.algebra.trim(l))
   fold(lines, init: 0, f: fn(count, line) {
     if line_is_setup_token_candidate(line: line, prefix: prefix) {
       count + 1
@@ -155,7 +155,7 @@ fn extract_setup_token_candidate(
   pane: std.types.RenderedTerminalText,
   prefix: std.types.NonEmptyStr,
 ) -> String? {
-  let lines = split(s: pane as String, delimiter: "\n") |> map(l => trim(l))
+  let lines = split(s: pane as String, delimiter: "\n") |> map(l => std.algebra.trim(l))
   fold(lines, init: v2.std.optional.Absent, f: fn(found, line) {
     match found {
       Present { value: _ } => found

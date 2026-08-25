@@ -12,7 +12,7 @@ fn required_env(name: std.types.NonEmptyStr) -> String? {
   let observed = shell.Env.Get(name: name)
   match observed.value {
     Present { value: raw } =>
-      if trim(raw) == "" { none } else { Present { value: trim(raw) } }
+      if std.algebra.trim(raw) == "" { none } else { Present { value: std.algebra.trim(raw) } }
     Absent => none
   }
 }

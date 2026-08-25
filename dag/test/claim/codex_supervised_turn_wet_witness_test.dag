@@ -25,13 +25,13 @@ fn committed_admitted_codex_runtime_source() -> AdmittedCodexRuntimeSource {
   }
 }
 
-fn wet_codex_home_from_env() -> FilePath? {
+fn wet_codex_home_from_env() -> std.types.FilePath? {
   match shell.Env.Get(name: "CODEX_HOME" as NonEmptyStr).value {
     Present { value: home } => {
       if home == "" {
         none
       } else {
-        Present { value: home as FilePath }
+        Present { value: home as std.types.FilePath }
       }
     }
     Absent => none
@@ -282,7 +282,7 @@ test fn wet_finish_observe_package_tree_tiny_fixture() -> Bool {
   finish_bisect_observe_package_materialized_tree_tiny_fixture()
 }
 
-data wet_materialize_bisect_release_parent: FilePath = "/tmp/gunbc-wet-materialize-bisect-release" as FilePath
+data wet_materialize_bisect_release_parent: std.types.FilePath = "/tmp/gunbc-wet-materialize-bisect-release" as std.types.FilePath
 
 test fn wet_materialize_codex_runtime_bundle_only() -> Bool {
   match materialize_codex_runtime_bundle(

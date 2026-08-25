@@ -6,7 +6,7 @@ fn optional_env(name: std.types.NonEmptyStr) -> String? {
   let observed = shell.Env.Get(name: name)
   match observed.value {
     Present { value: raw } =>
-      let value = trim(raw)
+      let value = std.algebra.trim(raw)
       if value == "" { none } else { Present { value: value } }
     Absent => none
   }

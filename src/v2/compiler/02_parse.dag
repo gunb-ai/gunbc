@@ -61,7 +61,7 @@ fn authored_parse_annotations(artifact: AuthoredParseArtifact) -> SourceAnnotati
 }
 
 type ParseMintSourceResult {
-  id: OccurrenceId
+  id: std.occurrence_identity.OccurrenceId
   prov: ParseProvenanceState
 }
 

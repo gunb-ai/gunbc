@@ -21,7 +21,7 @@ fn observation(emitted_production: String, node_shape: String) -> v2.workflow.bo
 test fn two_productions_at_one_node_shape_stay_two_families() -> v2.std.logic.Bool {
   let families = retention_family_bump(
     families: retention_family_bump(
-      families: Empty,
+      families: v2.std.algebra.Empty,
       observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_type_variant", node_shape: "Type/Conj")
     ),
     observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_field_init", node_shape: "Type/Conj")
@@ -36,7 +36,7 @@ test fn one_production_observed_repeatedly_is_one_family_with_a_count() -> v2.st
   let families = retention_family_bump(
     families: retention_family_bump(
       families: retention_family_bump(
-        families: Empty,
+        families: v2.std.algebra.Empty,
         observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_type_alias_rhs", node_shape: "Type/Conj")
       ),
       observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_type_alias_rhs", node_shape: "Type/Conj")
@@ -52,7 +52,7 @@ test fn one_production_observed_repeatedly_is_one_family_with_a_count() -> v2.st
 test fn one_production_at_two_node_shapes_stays_two_families() -> v2.std.logic.Bool {
   let families = retention_family_bump(
     families: retention_family_bump(
-      families: Empty,
+      families: v2.std.algebra.Empty,
       observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_fn_type", node_shape: "Type/Conj")
     ),
     observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_fn_type", node_shape: "Computation/Transform")
@@ -69,7 +69,7 @@ test fn the_observation_total_is_preserved_across_every_partition() -> v2.std.lo
     families: retention_family_bump(
       families: retention_family_bump(
         families: retention_family_bump(
-          families: Empty,
+          families: v2.std.algebra.Empty,
           observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "a", node_shape: "Type/Conj")
         ),
         observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "b", node_shape: "Type/Conj")

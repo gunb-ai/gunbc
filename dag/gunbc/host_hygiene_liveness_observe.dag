@@ -7,7 +7,7 @@ data gunbc_host_hygiene_liveness_observe_scope_disposition: std.disposition.Disp
 data host_hygiene_listening_marker: String = "Listening for Jobs"
 
 fn host_hygiene_journal_lines(stdout: String) -> List<String> {
-  filter(map(split(s: trim(stdout), delimiter: "\n"), l => trim(l)), l => l != "")
+  filter(map(split(s: std.algebra.trim(stdout), delimiter: "\n"), l => std.algebra.trim(l)), l => l != "")
 }
 
 fn host_hygiene_journal_matching_lines(stdout: String) -> List<String> {
@@ -18,7 +18,7 @@ fn host_hygiene_journal_matching_lines(stdout: String) -> List<String> {
 // whitespace field is the epoch stamp; the fractional part is dropped the same way the
 // deleted script's `last_int=$\{last%%.*}` did.
 fn host_hygiene_line_epoch_field(line: String) -> String {
-  split(s: trim(line), delimiter: " ").first()
+  split(s: std.algebra.trim(line), delimiter: " ").first()
 }
 
 fn host_hygiene_epoch_field_whole_seconds(field: String) -> Int? {

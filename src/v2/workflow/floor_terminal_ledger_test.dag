@@ -62,7 +62,7 @@ fn empty_reconciliation() -> LedgerReconciliation {
 // able to fail for the right reason.
 test fn the_four_verdict_cells_project_to_four_distinct_dispositions() -> Bool {
   claim_disposition(row: row(f: "a", expectation: ExpectedToHold, holds: 0 == 0)) == Passed
-    && claim_disposition(row: row(f: "b", expectation: ExpectedToHold, holds: 0 == 1)) == Failed
+    && claim_disposition(row: row(f: "b", expectation: ExpectedToHold, holds: 0 == 1)) == v2.workflow.floor_terminal_ledger.Failed
     && claim_disposition(row: row(f: "c", expectation: ExpectedRed, holds: 0 == 1)) == KnownRedHeld
     && claim_disposition(row: row(f: "d", expectation: ExpectedRed, holds: 0 == 0)) == KnownRedNowPassing
 }

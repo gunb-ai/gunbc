@@ -613,7 +613,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
     ]
     AttemptStateRoot => [
       deploy_raw(command: install_d_managed_command(
-        dir: attempt_state_directory_at(path: art.path as String as FilePath),
+        dir: attempt_state_directory_at(path: art.path as String as std.types.FilePath),
       )),
     ]
     SystemdUnit => [
@@ -771,10 +771,10 @@ fn apply_intent_from_effects(
     steps: concat(
       [
         deploy_raw(command: "set -euo pipefail"),
-        Comment { text: concat("GENERATED APPLY by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity as String) },
-        Comment { text: "Principal: job_user=ghrunner (DeployRunnerPrincipal.job_user). unit_user=root is NOT the deploy principal." },
-        Comment { text: "Mutation rides six sudo -n grants (roster incl. visudo); tree sync AS service user via gunbc-tree-sync.service." },
-        Comment { text: "Wave C envelope: typed deploy-access gate runs before this HostReconciler artifact; roster sudoers install precedes mutation." },
+        v2.std.orchestration.Comment { text: concat("GENERATED APPLY by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity as String) },
+        v2.std.orchestration.Comment { text: "Principal: job_user=ghrunner (DeployRunnerPrincipal.job_user). unit_user=root is NOT the deploy principal." },
+        v2.std.orchestration.Comment { text: "Mutation rides six sudo -n grants (roster incl. visudo); tree sync AS service user via gunbc-tree-sync.service." },
+        v2.std.orchestration.Comment { text: "Wave C envelope: typed deploy-access gate runs before this HostReconciler artifact; roster sudoers install precedes mutation." },
         deploy_stage_directory_let_step(),
         deploy_raw(command: "trap 'rm -rf \"$_gunbc_stage\"' EXIT"),
       ],
@@ -826,12 +826,12 @@ fn retract_intent_from_effects(
     steps: concat(
       [
         deploy_raw(command: "set -euo pipefail"),
-        Comment { text: concat("GENERATED RETRACT by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity as String) },
-        Comment { text: "owned-artifacts only — ensured deps (tailscale, tmux) intentionally NOT purged" },
-        Comment { text: "Wave C envelope: typed deploy-access gate runs before this HostReconciler artifact; retract also installs/refreshes" },
-        Comment { text: "/etc/sudoers.d/gunbc-deploy (idempotent; first retract-after-flip may be the dropin install)." },
-        Comment { text: "Principal: UNPRIVILEGED ci-runner. dispatch-worktrees teardown is rm -d (granted rm," },
-        Comment { text: "empty-dir only): live worktrees fail it LOUDLY — the same empty-dir refusal wall." },
+        v2.std.orchestration.Comment { text: concat("GENERATED RETRACT by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity as String) },
+        v2.std.orchestration.Comment { text: "owned-artifacts only — ensured deps (tailscale, tmux) intentionally NOT purged" },
+        v2.std.orchestration.Comment { text: "Wave C envelope: typed deploy-access gate runs before this HostReconciler artifact; retract also installs/refreshes" },
+        v2.std.orchestration.Comment { text: "/etc/sudoers.d/gunbc-deploy (idempotent; first retract-after-flip may be the dropin install)." },
+        v2.std.orchestration.Comment { text: "Principal: UNPRIVILEGED ci-runner. dispatch-worktrees teardown is rm -d (granted rm," },
+        v2.std.orchestration.Comment { text: "empty-dir only): live worktrees fail it LOUDLY — the same empty-dir refusal wall." },
         deploy_stage_directory_let_step(),
         deploy_raw(command: "trap 'rm -rf \"$_gunbc_stage\"' EXIT"),
       ],

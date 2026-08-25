@@ -113,7 +113,7 @@ fn fabric_cell_member_value_eq(a: FabricCellMember, b: FabricCellMember) -> Bool
 // settles. If ownership ever depends on provenance, that provenance is separately admitted
 // evidence, not a field the observed side fills in.
 fn fabric_cell_member_ownership(member: FabricCellMember) -> Optional<Ownership> {
-  Present { value: Owned }
+  Present { value: gunbc.ownership.Owned }
 }
 
 // THE BOUNDARY'S DESIRED STATE CONSUMES THE EXISTING SLOT AUTHORITY RATHER THAN RE-SPELLING IT, so
@@ -180,7 +180,7 @@ type FabricCellFamilyMembership
 // refusals are separate variants because they have opposite repairs -- one is "this host was never
 // admitted to carry that slot index", the other is "that slot is a GitHub Actions member and its
 // lifecycle lives in gunbc.runner_lifecycle".
-fn fabric_cell_family_membership(host: product.placement_supply.HostIdentity, slot_index: Nat) -> FabricCellFamilyMembership {
+fn fabric_cell_family_membership(host: product.placement_supply.HostIdentity, slot_index: std.nat.Nat) -> FabricCellFamilyMembership {
   match gunbc.runner_slot_allocation.runner_slot_membership(host: host, slot_index: slot_index) {
     gunbc.runner_slot_allocation.SlotOutsideCommittedPopulation { identity: _, committed_width: _ } =>
       SlotIsNotACommittedMemberOfItsHost {

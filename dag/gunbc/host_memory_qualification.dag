@@ -43,7 +43,7 @@ type DdrTrainingOutcome
 // Did the HOST actually boot? Downstream of training and independent of it.
 type HostBootOutcome
   = BootReachedOperatingSystem
-  | RepeatingFirmwareReset { token: NonEmptyStr, cycles: Nat }
+  | RepeatingFirmwareReset { token: NonEmptyStr, cycles: std.nat.Nat }
   | BootStalledWithoutReset
   | BootOutcomeUnobserved
 

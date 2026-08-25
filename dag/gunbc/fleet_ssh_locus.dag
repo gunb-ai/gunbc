@@ -70,7 +70,7 @@ type FleetSshContextPreparation =
 fn fleet_ssh_agent_socket() -> std.types.NonEmptyStr? {
   match shell.Env.Get(name: "SSH_AUTH_SOCK" as std.types.NonEmptyStr).value {
     Present { value: raw } =>
-      if trim(s: raw) == "" { none } else { Present { value: trim(s: raw) as std.types.NonEmptyStr } }
+      if std.algebra.trim(s: raw) == "" { none } else { Present { value: std.algebra.trim(s: raw) as std.types.NonEmptyStr } }
     Absent => none
   }
 }

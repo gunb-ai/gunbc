@@ -370,7 +370,7 @@ fn bmc_fan_observation_value_or_empty(lines: List<String>, key: String) -> Strin
 }
 
 fn bmc_fan_unquote_os_release_value(raw: String) -> String {
-  let value = trim(raw)
+  let value = std.algebra.trim(raw)
   if value.length() >= 2
     && starts_with(s: value, prefix: "\"")
     && ends_with(s: value, suffix: "\"") {
@@ -430,22 +430,22 @@ fn bmc_fan_observe_live_identity(
     BmcFanLiveIdentityRefused {
       reason: join(["BMC fan identity observation transport failed: ", os_release.stderr], ""),
     }
-  } else if !remote_machine_id.success || trim(remote_machine_id.stdout) == "" {
+  } else if !remote_machine_id.success || std.algebra.trim(remote_machine_id.stdout) == "" {
     BmcFanLiveIdentityRefused {
       reason: "BMC stable machine identity observation failed",
     }
-  } else if !admitted_machine_id.success || trim(admitted_machine_id.content) == "" {
+  } else if !admitted_machine_id.success || std.algebra.trim(admitted_machine_id.content) == "" {
     BmcFanLiveIdentityRefused {
       reason: "target-specific admitted BMC machine identity is absent",
     }
-  } else if trim(remote_machine_id.stdout) != trim(admitted_machine_id.content) {
+  } else if std.algebra.trim(remote_machine_id.stdout) != std.algebra.trim(admitted_machine_id.content) {
     BmcFanLiveIdentityRefused {
       reason: "live BMC stable machine identity differs from the target-specific admission",
     }
   } else {
     bmc_fan_parse_os_release_identity(
       content: os_release.stdout,
-      stable_machine_id: trim(remote_machine_id.stdout) as std.types.NonEmptyStr,
+      stable_machine_id: std.algebra.trim(remote_machine_id.stdout) as std.types.NonEmptyStr,
     )
   }
 }

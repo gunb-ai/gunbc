@@ -4,11 +4,11 @@ data dashboard_target_preflight_platform_drift_note: String = "The preflight ros
 
 test fn dashboard_source_transport_argv_is_exact_and_atomic() -> Bool {
   let lab = srv1_lab_dashboard_instance()
-  let local = "/tmp/dashboard-source.bundle" as FilePath
-  let staged = "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/inbox/source.bundle" as FilePath
+  let local = "/tmp/dashboard-source.bundle" as std.types.FilePath
+  let staged = "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/inbox/source.bundle" as std.types.FilePath
   let next = dashboard_next_path(path: staged)
   shape_git_bundle_create_argv(
-    repo: "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as FilePath,
+    repo: "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as std.types.FilePath,
     bundle: local,
     source_ref: "refs/heads/session/codex-provider-feedback-v0" as GitRef,
   ) == [
@@ -20,7 +20,7 @@ test fn dashboard_source_transport_argv_is_exact_and_atomic() -> Bool {
     "refs/heads/session/codex-provider-feedback-v0",
   ]
     && shape_git_is_shallow_repository_argv(
-      repo: "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as FilePath,
+      repo: "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as std.types.FilePath,
     ) == [
       "-C",
       "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0",
@@ -28,7 +28,7 @@ test fn dashboard_source_transport_argv_is_exact_and_atomic() -> Bool {
       "--is-shallow-repository",
     ]
     && shape_git_remote_get_url_argv(
-      repo: "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as FilePath,
+      repo: "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as std.types.FilePath,
       remote: "origin",
     ) == [
       "-C",
@@ -38,7 +38,7 @@ test fn dashboard_source_transport_argv_is_exact_and_atomic() -> Bool {
       "origin",
     ]
     && shape_git_fetch_unshallow_argv(
-      repo: "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as FilePath,
+      repo: "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as std.types.FilePath,
       remote: "origin",
     ) == [
       "-C",
@@ -60,8 +60,8 @@ test fn dashboard_source_transport_argv_is_exact_and_atomic() -> Bool {
 }
 
 test fn dashboard_local_origin_ref_translation_is_exact() -> Bool {
-  let origin = "/instance/origin.git" as FilePath
-  let bundle = "/instance/inbox/source.bundle" as FilePath
+  let origin = "/instance/origin.git" as std.types.FilePath
+  let bundle = "/instance/inbox/source.bundle" as std.types.FilePath
   shape_git_init_bare_argv(path: origin) == ["init", "--bare", "/instance/origin.git"]
     && shape_git_bare_fetch_argv(
       repo: origin,
@@ -87,7 +87,7 @@ test fn dashboard_local_origin_ref_translation_is_exact() -> Bool {
     ]
     && shape_git_clone_branch_argv(
       origin: origin,
-      repo: "/instance/source" as FilePath,
+      repo: "/instance/source" as std.types.FilePath,
       branch: "main",
     ) == [
       "clone",
@@ -209,25 +209,25 @@ test fn dashboard_target_preflight_derives_dispatch_platform_dependencies() -> B
     platform_path => any(required, path => path == platform_path),
   )
     && count(required) == 16
-    && any(required, path => path == ("/usr/bin/sh" as FilePath))
-    && any(required, path => path == ("/usr/bin/tee" as FilePath))
-    && any(required, path => path == ("/usr/bin/env" as FilePath))
-    && any(required, path => path == ("/usr/bin/install" as FilePath))
-    && any(required, path => path == ("/usr/bin/ln" as FilePath))
-    && any(required, path => path == ("/usr/bin/dirname" as FilePath))
-    && any(required, path => path == ("/bin/chmod" as FilePath))
+    && any(required, path => path == ("/usr/bin/sh" as std.types.FilePath))
+    && any(required, path => path == ("/usr/bin/tee" as std.types.FilePath))
+    && any(required, path => path == ("/usr/bin/env" as std.types.FilePath))
+    && any(required, path => path == ("/usr/bin/install" as std.types.FilePath))
+    && any(required, path => path == ("/usr/bin/ln" as std.types.FilePath))
+    && any(required, path => path == ("/usr/bin/dirname" as std.types.FilePath))
+    && any(required, path => path == ("/bin/chmod" as std.types.FilePath))
     && !any(required, path => path == lab.serve_binary)
     && !any(
       required,
-      path => path == ("/home/briansrls/.cargo/bin/cargo" as FilePath),
+      path => path == ("/home/briansrls/.cargo/bin/cargo" as std.types.FilePath),
     )
     && !any(
       required,
-      path => path == ("/home/briansrls/.cargo/bin/rustc" as FilePath),
+      path => path == ("/home/briansrls/.cargo/bin/rustc" as std.types.FilePath),
     )
     && !any(
       required,
-      path => path == ("/home/briansrls/.cargo/bin/rustfmt" as FilePath),
+      path => path == ("/home/briansrls/.cargo/bin/rustfmt" as std.types.FilePath),
     )
 }
 

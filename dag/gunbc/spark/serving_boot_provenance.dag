@@ -137,15 +137,15 @@ fn spark_serving_classify_boot_provenance(
       ], "") as std.types.NonEmptyStr,
     }
   } else {
-    match parse_int(s: trim(s: active_enter.stdout)) {
+    match parse_int(s: std.algebra.trim(s: active_enter.stdout)) {
       Absent =>
-        if trim(s: active_enter.stdout) == "0" || trim(s: active_enter.stdout) == "" {
+        if std.algebra.trim(s: active_enter.stdout) == "0" || std.algebra.trim(s: active_enter.stdout) == "" {
           UnitNotActiveAtAll
         } else {
           BootProvenanceUnobserved {
             cause: join([
               "ActiveEnterTimestampMonotonic is not a monotonic microsecond count: ",
-              trim(s: active_enter.stdout),
+              std.algebra.trim(s: active_enter.stdout),
             ], "") as std.types.NonEmptyStr,
           }
         }
@@ -156,7 +156,7 @@ fn spark_serving_classify_boot_provenance(
           match spark_serving_uptime_microseconds(stdout: uptime.stdout) {
             Absent =>
               BootProvenanceUnobserved {
-                cause: join(["/proc/uptime is not parseable: ", trim(s: uptime.stdout)], "") as std.types.NonEmptyStr,
+                cause: join(["/proc/uptime is not parseable: ", std.algebra.trim(s: uptime.stdout)], "") as std.types.NonEmptyStr,
               }
             Present { value: up } =>
               match checked_int_magnitude(a: entered_us) {
@@ -166,12 +166,12 @@ fn spark_serving_classify_boot_provenance(
                   }
                 CheckedNatReady { value: entered_nat } => {
                   let entered = microsecond(count: entered_nat)
-                  match parse_int(s: trim(s: default_target_enter.stdout)) {
+                  match parse_int(s: std.algebra.trim(s: default_target_enter.stdout)) {
                     Absent =>
                       BootProvenanceUnobserved {
                         cause: join([
                           "default.target ActiveEnterTimestampMonotonic is not a monotonic microsecond count: ",
-                          trim(s: default_target_enter.stdout),
+                          std.algebra.trim(s: default_target_enter.stdout),
                         ], "") as NonEmptyStr,
                       }
                     Present { value: target_us } =>
@@ -197,7 +197,7 @@ fn spark_serving_classify_boot_provenance(
 // hundredths carry no information at the resolution this comparison works at, and parsing a decimal
 // to keep them would be inventing precision the decision does not use.
 fn spark_serving_uptime_microseconds(stdout: String) -> std.measure.Microsecond? {
-  match split(trim(s: stdout), " ").first() {
+  match split(std.algebra.trim(s: stdout), " ").first() {
     Absent => none
     Present { value: secs_field } =>
       match split(secs_field, ".").first() {

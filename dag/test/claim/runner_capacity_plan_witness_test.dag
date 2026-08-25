@@ -189,11 +189,11 @@ fn population_is_refused(v: SlotPopulationVerdict) -> Bool {
   }
 }
 
-fn srv3_slot(i: Nat) -> RunnerSlotIdentity {
+fn srv3_slot(i: std.nat.Nat) -> RunnerSlotIdentity {
   RunnerSlotIdentity { host: operator_host_srv3, slot_index: i }
 }
 
-fn srv1_slot(i: Nat) -> RunnerSlotIdentity {
+fn srv1_slot(i: std.nat.Nat) -> RunnerSlotIdentity {
   RunnerSlotIdentity { host: operator_host_srv1, slot_index: i }
 }
 
@@ -317,7 +317,7 @@ test fn every_positive_width_is_spellable_at_the_apply_boundary() -> Bool {
 // derives additions from observed_width, so OVER-counting the observed population plans FEWER
 // additions than convergence needs. A host short of registrations reads as converged with nothing
 // to plan, whatever roster it is handed.
-fn one_registration(name: String, id: Nat) -> GitHubSelfHostedRunnerRegistration {
+fn one_registration(name: String, id: std.nat.Nat) -> GitHubSelfHostedRunnerRegistration {
   GitHubSelfHostedRunnerRegistration {
     id: id,
     name: name as NonEmptyStr,

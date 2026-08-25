@@ -172,7 +172,7 @@ type CorpusTraversalPolicy {
 }
 
 type CorpusEnumerationRequest {
-  filesystem: Filesystem
+  filesystem: v2.extdeps.file_system.Filesystem
   root: AbsolutePath
   operations: FileSystemOperations
   resolution: FileKindResolutionPolicy

@@ -5,7 +5,7 @@ data typed_remote_file_write_authority_note: String = "Typed remote file-bytes w
 data typed_remote_file_write_wet_fleet_ssh_execute_deferred_note: String = "Operator ruling msg_71f67aa9 authorizes substrate-before-consumer landing on this PR: generic FleetSsh tee+stdin here; wet roundtrip, stage-and-rename, mode/ownership, read-back digest, and first production consumer follow on #8281 integration branch — not a Scaffold row and no DissolutionCondition in this diff. Hermetic witnesses exercise seal, argv, preflight, and RemoteExecAccepted routing via ssh.Session.ExecPortableWordsWithStdin mock_response only."
 
 type TypedRemoteFileWrite sole_constructor {
-  path: FilePath
+  path: std.types.FilePath
   content: String
 }
 
@@ -60,7 +60,7 @@ fn remote_file_mode_octal(mode: RemoteFileMode) -> String {
 }
 
 type TypedRemoteFileConvergence
-  = TypedRemoteFileConverged { path: FilePath, mode: RemoteFileMode }
+  = TypedRemoteFileConverged { path: std.types.FilePath, mode: RemoteFileMode }
   | TypedRemoteFileConvergenceRefused { step: String, reason: String }
 
 // The staging sibling. It MUST share a directory with the destination: `mv` is atomic only within

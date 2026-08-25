@@ -141,7 +141,7 @@ fn add_body_fold_tokens_accept_arrow(
 ) -> Bool {
   match add_body_fold_body_tokens_for_arrow(arrow: arrow, target: target) {
     Accepted { value: tokens, diagnostics: d } =>
-      add_body_fold_tokens_equal(left: tokens, right: expected) && (d == None)
+      add_body_fold_tokens_equal(left: tokens, right: expected) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

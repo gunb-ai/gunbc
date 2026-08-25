@@ -1004,7 +1004,7 @@ fn publication_evidence_for(
     ReceiptSourceAbsent => EvidenceAbsent
     ReceiptSourceUnreadable { detail } => EvidenceUnreadable { reason: detail }
     ReceiptSourcePresent { text: receipt_text } =>
-      if trim(receipt_text) == "" {
+      if std.algebra.trim(receipt_text) == "" {
         EvidenceUnreadable {
           reason: "the receipt file exists and is empty, so its content was lost or its write was interrupted; an empty file is not an absent one",
         }

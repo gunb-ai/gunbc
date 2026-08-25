@@ -17,7 +17,7 @@ fn mercurial_decode_live_node_ids_step(
       match mercurial_decode_node_identity(
         observation: extdeps.mercurial.MercurialNodeIdentityObservation {
           role: role,
-          text: trim(s: text),
+          text: std.algebra.trim(s: text),
         },
       ) {
         MercurialNodeIdentityDecoded { node } =>
@@ -333,7 +333,7 @@ fn mercurial_r0_typed_execution_read_back() -> String {
     let root_published = gunbc.WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
-      args: ["phase", "--force", "--public", "-r", trim(s: c0.stdout)],
+      args: ["phase", "--force", "--public", "-r", std.algebra.trim(s: c0.stdout)],
       expect: ExpectSuccess,
     )
 
@@ -374,14 +374,14 @@ fn mercurial_r0_typed_execution_read_back() -> String {
     let bookmark_created = gunbc.WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
-      args: ["bookmark", "-r", trim(s: c1.stdout), "main"],
+      args: ["bookmark", "-r", std.algebra.trim(s: c1.stdout), "main"],
       expect: ExpectSuccess,
     )
 
     let root_updated = gunbc.WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
-      args: ["update", "-q", "-r", trim(s: c0.stdout)],
+      args: ["update", "-q", "-r", std.algebra.trim(s: c0.stdout)],
       expect: ExpectSuccess,
     )
     let source_changed = Filesystem.Write(path: source_path, content: "mainside")
@@ -408,32 +408,32 @@ fn mercurial_r0_typed_execution_read_back() -> String {
     let right_secret = gunbc.WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
-      args: ["phase", "--force", "--secret", "-r", trim(s: c2.stdout)],
+      args: ["phase", "--force", "--secret", "-r", std.algebra.trim(s: c2.stdout)],
       expect: ExpectSuccess,
     )
     let local_tag_created = gunbc.WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
-      args: ["tag", "--local", "-r", trim(s: c2.stdout), "scratch"],
+      args: ["tag", "--local", "-r", std.algebra.trim(s: c2.stdout), "scratch"],
       expect: ExpectSuccess,
     )
 
     let m0 = gunbc.WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
-      args: ["log", "-r", trim(s: c0.stdout), "-T", "\{manifest.node}"],
+      args: ["log", "-r", std.algebra.trim(s: c0.stdout), "-T", "\{manifest.node}"],
       expect: ExpectSuccess,
     )
     let m1 = gunbc.WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
-      args: ["log", "-r", trim(s: c1.stdout), "-T", "\{manifest.node}"],
+      args: ["log", "-r", std.algebra.trim(s: c1.stdout), "-T", "\{manifest.node}"],
       expect: ExpectSuccess,
     )
     let m2 = gunbc.WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
-      args: ["log", "-r", trim(s: c2.stdout), "-T", "\{manifest.node}"],
+      args: ["log", "-r", std.algebra.trim(s: c2.stdout), "-T", "\{manifest.node}"],
       expect: ExpectSuccess,
     )
     let f0 = gunbc.WitnessBin.Run(
@@ -442,7 +442,7 @@ fn mercurial_r0_typed_execution_read_back() -> String {
       args: [
         "manifest",
         "-r",
-        trim(s: c0.stdout),
+        std.algebra.trim(s: c0.stdout),
         "-T",
         "\{ifeq(path, 'src/main.dag', hash)}",
       ],
@@ -454,7 +454,7 @@ fn mercurial_r0_typed_execution_read_back() -> String {
       args: [
         "manifest",
         "-r",
-        trim(s: c0.stdout),
+        std.algebra.trim(s: c0.stdout),
         "-T",
         "\{ifeq(path, 'link', hash)}",
       ],
@@ -466,7 +466,7 @@ fn mercurial_r0_typed_execution_read_back() -> String {
       args: [
         "manifest",
         "-r",
-        trim(s: c1.stdout),
+        std.algebra.trim(s: c1.stdout),
         "-T",
         "\{ifeq(path, 'bin/run', hash)}",
       ],
@@ -478,7 +478,7 @@ fn mercurial_r0_typed_execution_read_back() -> String {
       args: [
         "manifest",
         "-r",
-        trim(s: c2.stdout),
+        std.algebra.trim(s: c2.stdout),
         "-T",
         "\{ifeq(path, 'src/main.dag', hash)}",
       ],
@@ -524,13 +524,13 @@ fn mercurial_r0_typed_execution_read_back() -> String {
     let copy_metadata = gunbc.WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
-      args: ["log", "-r", trim(s: c1.stdout), "-T", "\{file_copies}"],
+      args: ["log", "-r", std.algebra.trim(s: c1.stdout), "-T", "\{file_copies}"],
       expect: ExpectSuccess,
     )
     let manifest = gunbc.WitnessBin.Run(
       workdir: fixture.path,
       bin_path: "hg",
-      args: ["manifest", "-v", "-r", trim(s: c1.stdout)],
+      args: ["manifest", "-v", "-r", std.algebra.trim(s: c1.stdout)],
       expect: ExpectSuccess,
     )
     let verified = gunbc.WitnessBin.Run(
@@ -599,18 +599,18 @@ fn mercurial_r0_typed_execution_read_back() -> String {
       file_revision_texts: [f0.stdout, fl.stdout, fbin.stdout, f2.stdout],
       requirement_text: requires_read.content,
     )
-      && !(trim(s: c0.stdout) == trim(s: c1.stdout))
-      && !(trim(s: c0.stdout) == trim(s: c2.stdout))
-      && !(trim(s: c1.stdout) == trim(s: c2.stdout))
+      && !(std.algebra.trim(s: c0.stdout) == std.algebra.trim(s: c1.stdout))
+      && !(std.algebra.trim(s: c0.stdout) == std.algebra.trim(s: c2.stdout))
+      && !(std.algebra.trim(s: c1.stdout) == std.algebra.trim(s: c2.stdout))
 
-    let topology_grounded = trim(s: local_revisions.stdout) == "0,1,2,"
-      && count(split(s: trim(s: heads.stdout), delimiter: "\n")) == 2
-      && trim(s: bookmark.stdout) == trim(s: c1.stdout)
-      && trim(s: local_tag.stdout) == trim(s: c2.stdout)
-      && trim(s: branches.stdout) == "default,default,default,"
-      && trim(s: phases.stdout) == "public,draft,secret,"
+    let topology_grounded = std.algebra.trim(s: local_revisions.stdout) == "0,1,2,"
+      && count(split(s: std.algebra.trim(s: heads.stdout), delimiter: "\n")) == 2
+      && std.algebra.trim(s: bookmark.stdout) == std.algebra.trim(s: c1.stdout)
+      && std.algebra.trim(s: local_tag.stdout) == std.algebra.trim(s: c2.stdout)
+      && std.algebra.trim(s: branches.stdout) == "default,default,default,"
+      && std.algebra.trim(s: phases.stdout) == "public,draft,secret,"
 
-    let file_facts_grounded = trim(s: copy_metadata.stdout) == "bin/run (src/main.dag)"
+    let file_facts_grounded = std.algebra.trim(s: copy_metadata.stdout) == "bin/run (src/main.dag)"
         && string_contains(s: manifest.stdout, pattern: "755 * bin/run")
         && string_contains(s: manifest.stdout, pattern: "644 @ link")
         && string_contains(s: manifest.stdout, pattern: "644   src/main.dag")

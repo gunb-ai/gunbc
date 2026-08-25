@@ -36,7 +36,7 @@ type BuildCacheInstanceReadiness
   | BuildCacheInstanceObservationUnavailable { reason: BuildCacheInstanceObservationUnavailableReason }
 
 fn same_instance(a: gunbc.build_cache_instance.BuildCacheInstance, b: gunbc.build_cache_instance.BuildCacheInstance) -> Bool { a == b }
-fn same_owner(a: ProcessIdentity, b: ProcessIdentity) -> Bool { a == b }
+fn same_owner(a: gunbc.build_cache_instance.ProcessIdentity, b: gunbc.build_cache_instance.ProcessIdentity) -> Bool { a == b }
 
 fn unavailable_input(
   endpoint: gunbc.build_cache_instance.BuildCacheEndpointObservation,
@@ -57,7 +57,7 @@ fn unavailable_input(
 
 fn unavailable_configuration_input(
   anchor_instance: gunbc.build_cache_instance.BuildCacheInstance,
-  anchor_owner: ProcessIdentity,
+  anchor_owner: gunbc.build_cache_instance.ProcessIdentity,
   storage: gunbc.build_cache_instance.BuildCacheStorageObservation,
   capacity: gunbc.build_cache_instance.BuildCacheCapacityObservation,
 ) -> BuildCacheInstanceReadiness? {

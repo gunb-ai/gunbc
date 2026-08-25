@@ -253,7 +253,7 @@ fn codex_device_prompt_code_scan(lines: List<String>) -> CodexCodeScan {
 }
 
 fn codex_device_prompt_parse(pane: RenderedTerminalText) -> CodexDeviceLoginPrompt {
-  let lines = split(s: pane as String, delimiter: "\n") |> map(l => trim(l))
+  let lines = split(s: pane as String, delimiter: "\n") |> map(l => std.algebra.trim(l))
   let url_hit = lines
     |> filter(l => string_contains(s: l, pattern: codex_device_prompt_marker_url))
     |> first

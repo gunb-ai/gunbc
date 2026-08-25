@@ -166,9 +166,9 @@ func verify_enrollment_outcome() -> String
     command: posix_sh_program_command(script: "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); grep -qxF \"$(cat target/fleet-authorized-key-line | head -1)\" \"$H/.ssh/authorized_keys\" && echo enrolled || echo ABSENT-after-apply"),
     transport: LocalExec,
   ) {
-    ProcessOutputPresent { text: t } => concat("outcome=", trim(s: t))
+    ProcessOutputPresent { text: t } => concat("outcome=", std.algebra.trim(s: t))
     ProcessOutputAbsent => "outcome=UNKNOWN cause=verify admitted but printed nothing"
-    ProcessRefused { exit_code: _, stderr: e } => join(["outcome=UNKNOWN cause=verify refused: ", trim(s: e)], "")
+    ProcessRefused { exit_code: _, stderr: e } => join(["outcome=UNKNOWN cause=verify refused: ", std.algebra.trim(s: e)], "")
   }
 }
 
@@ -204,7 +204,7 @@ fn scan_host_key_lines(host: String) -> String {
       }
       join([
         "scan host=", host, " endpoint=", endpoint, " outcome=observed\n",
-        "key ", trim(s: key_text), "\n",
+        "key ", std.algebra.trim(s: key_text), "\n",
         "fingerprint ", fingerprint_text, "\n",
       ], "")
     }
@@ -214,7 +214,7 @@ fn scan_host_key_lines(host: String) -> String {
       ], "")
     ProcessRefused { exit_code: _, stderr: e } =>
       join([
-        "scan host=", host, " endpoint=", endpoint, " outcome=refused cause=", trim(s: e), "\n",
+        "scan host=", host, " endpoint=", endpoint, " outcome=refused cause=", std.algebra.trim(s: e), "\n",
       ], "")
   }
 }
@@ -364,11 +364,11 @@ func fleet_authorized_key_self_enroll_wet() -> ProcessExit
     )
     match check {
       ProcessRefused { exit_code: _, stderr: ce } =>
-        join(["outcome=refused cause=presence-probe refused, not applying: ", trim(s: ce)], "")
+        join(["outcome=refused cause=presence-probe refused, not applying: ", std.algebra.trim(s: ce)], "")
       ProcessOutputAbsent =>
         "outcome=refused cause=presence-probe admitted but printed nothing, not applying"
       ProcessOutputPresent { text: ct } =>
-    if trim(s: ct) == "present" {
+    if std.algebra.trim(s: ct) == "present" {
       "outcome=already-present"
     } else {
       let apply = run_shell_command_capture(
@@ -377,7 +377,7 @@ func fleet_authorized_key_self_enroll_wet() -> ProcessExit
       )
       match apply {
         ProcessRefused { exit_code: _, stderr: ae } =>
-          join(["outcome=refused cause=", trim(s: ae)], "")
+          join(["outcome=refused cause=", std.algebra.trim(s: ae)], "")
         ProcessOutputPresent { text: _ } => verify_enrollment_outcome()
         ProcessOutputAbsent => verify_enrollment_outcome()
       }

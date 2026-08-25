@@ -60,7 +60,7 @@ fn scm_image_shared_program() -> Node {
 
 type ScmImagePut {
   store: ObjectStore
-  identity: ObjectId
+  identity: gunbc.scm.object_store.ObjectId
 }
 
 fn scm_image_put(store: ObjectStore, n: Node) -> ScmImagePut {
@@ -461,7 +461,7 @@ fn scm_image_identity_of(outcome: StoreOutcome, fallback: ObjectId) -> ObjectId 
   }
 }
 
-type ScmImageTwoAtoms { store: ObjectStore, first: ObjectId, second: ObjectId }
+type ScmImageTwoAtoms { store: ObjectStore, first: gunbc.scm.object_store.ObjectId, second: gunbc.scm.object_store.ObjectId }
 
 fn scm_image_two_atoms() -> ScmImageTwoAtoms {
   let a = scm_image_put(store: empty_store(), n: closure_doc_atom(identity: ^A))

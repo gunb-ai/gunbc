@@ -735,7 +735,7 @@ fn dispatch_current_attempt_events_projection_argv_for_instance(
       path: dispatch_current_attempt_events_path_for_instance(
         instance: instance,
         node_id: node_id,
-      ) as FilePath,
+      ) as std.types.FilePath,
     ),
   )
 }
@@ -900,7 +900,7 @@ fn git_worktree_add_argv(worktree_path: String, branch_name: String, remote_ref:
   host_exec_argv(
     program: "git",
     args: shape_git_worktree_add_argv(
-      path: worktree_path as FilePath,
+      path: worktree_path as std.types.FilePath,
       branch: branch_name as NonEmptyStr,
       remote_ref: remote_ref as GitRef,
     ),
@@ -919,7 +919,7 @@ fn git_worktree_add_argv_for_instance(
       cap: GitWorkspaceCapability,
     ),
     args: shape_git_worktree_add_argv(
-      path: worktree_path as FilePath,
+      path: worktree_path as std.types.FilePath,
       branch: branch_name as NonEmptyStr,
       remote_ref: remote_ref as GitRef,
     ),
@@ -937,7 +937,7 @@ fn git_worktree_add_detached_argv_for_instance(
       cap: GitWorkspaceCapability,
     ),
     args: shape_git_worktree_add_detached_argv(
-      path: worktree_path as FilePath,
+      path: worktree_path as std.types.FilePath,
       commit: commit_sha as GitRef,
     ),
   )

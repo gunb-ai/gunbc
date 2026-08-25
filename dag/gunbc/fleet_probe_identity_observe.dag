@@ -17,11 +17,11 @@ data fleet_probe_identity_receipt_path: String = "target/fleet-probe-identity-ob
 fn observe_capture_line(label: String, command: ArgvCommand) -> String {
   match run_shell_command_capture(command: command, transport: LocalExec) {
     ProcessOutputPresent { text: t } =>
-      join([label, " outcome=observed value=", trim(s: t), "\n"], "")
+      join([label, " outcome=observed value=", std.algebra.trim(s: t), "\n"], "")
     ProcessOutputAbsent =>
       join([label, " outcome=observed-empty value=\n"], "")
     ProcessRefused { exit_code: _, stderr: e } =>
-      join([label, " outcome=refused cause=", trim(s: e), "\n"], "")
+      join([label, " outcome=refused cause=", std.algebra.trim(s: e), "\n"], "")
   }
 }
 
@@ -37,7 +37,7 @@ fn observe_authorized_keys_line(home: String) -> String {
     ProcessOutputAbsent =>
       join(["authorized-keys home=", home, " outcome=fleet-key-absent (file readable and empty)\n"], "")
     ProcessRefused { exit_code: _, stderr: e } =>
-      join(["authorized-keys home=", home, " outcome=unreadable cause=", trim(s: e), "\n"], "")
+      join(["authorized-keys home=", home, " outcome=unreadable cause=", std.algebra.trim(s: e), "\n"], "")
   }
 }
 
@@ -58,8 +58,8 @@ func fleet_probe_identity_observe_wet() -> ProcessExit
     command: posix_sh_program_command(script: "echo \"$HOME\""),
     transport: LocalExec,
   )
-  let ph = match passwd_home { ProcessOutputPresent { text: t } => trim(s: t)  ProcessOutputAbsent => ""  ProcessRefused { exit_code: _, stderr: _ } => "" }
-  let jh = match job_home { ProcessOutputPresent { text: t } => trim(s: t)  ProcessOutputAbsent => ""  ProcessRefused { exit_code: _, stderr: _ } => "" }
+  let ph = match passwd_home { ProcessOutputPresent { text: t } => std.algebra.trim(s: t)  ProcessOutputAbsent => ""  ProcessRefused { exit_code: _, stderr: _ } => "" }
+  let jh = match job_home { ProcessOutputPresent { text: t } => std.algebra.trim(s: t)  ProcessOutputAbsent => ""  ProcessRefused { exit_code: _, stderr: _ } => "" }
   let body = join([
     join(["observer user=", process_outcome_receipt_text(outcome: user), " passwd-home=", process_outcome_receipt_text(outcome: passwd_home), " job-home=", process_outcome_receipt_text(outcome: job_home), "\n"], ""),
     "local-host-note only the host this runner occupies is locally observable pre-auth; srv2-srv4 authorized_keys standing is PENDING-FIRST-AUTH (recorded, not assumed)\n",

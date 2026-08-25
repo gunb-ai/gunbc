@@ -25,7 +25,7 @@ fn six_gib() -> Int { 6442450944 }
 // only memory would pass a "does it refuse" check while still routing arm work to an x64 request.
 test fn an_eight_gib_x64_need_is_not_covered_by_a_six_gib_arm_offer() -> Bool {
   let needed = shape_of(threads: 2, arch: Present { value: X86_64 }, bytes: eight_gib())
-  let offered = shape_of(threads: 2, arch: Present { value: Aarch64 }, bytes: six_gib())
+  let offered = shape_of(threads: 2, arch: Present { value: extdeps.toolchain.types.Aarch64 }, bytes: six_gib())
   let unmet = unmet_shape_axes(offered: offered, needed: needed)
   !offer_covers_shape(offered: offered, needed: needed)
     && (unmet |> count) == 2
@@ -62,7 +62,7 @@ test fn a_larger_same_arch_offer_still_covers() -> Bool {
 // ABIs.
 test fn a_larger_arm_offer_does_not_cover_an_x64_need() -> Bool {
   let needed = shape_of(threads: 2, arch: Present { value: X86_64 }, bytes: six_gib())
-  let offered = shape_of(threads: 64, arch: Present { value: Aarch64 }, bytes: eight_gib())
+  let offered = shape_of(threads: 64, arch: Present { value: extdeps.toolchain.types.Aarch64 }, bytes: eight_gib())
   !offer_covers_shape(offered: offered, needed: needed)
 }
 
@@ -98,7 +98,7 @@ test fn two_shapes_differing_only_in_memory_do_not_share_material() -> Bool {
 
 test fn two_shapes_differing_only_in_architecture_do_not_share_material() -> Bool {
   let x64 = shape_of(threads: 2, arch: Present { value: X86_64 }, bytes: six_gib())
-  let arm = shape_of(threads: 2, arch: Present { value: Aarch64 }, bytes: six_gib())
+  let arm = shape_of(threads: 2, arch: Present { value: extdeps.toolchain.types.Aarch64 }, bytes: six_gib())
   shape_material(shape: x64) != shape_material(shape: arm)
 }
 

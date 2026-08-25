@@ -16,7 +16,7 @@ type ExecutionProfile
   | ProfileExactOverride
 
 type ClaudeCredentialRef
-  = ClaudeStateRootRef { root: FilePath }
+  = ClaudeStateRootRef { root: std.types.FilePath }
   | ClaudeOAuthTokenSecretRef { secret_ref: SecretRef }
   | ClaudeApiKeySecretRef { secret_ref: SecretRef }
 
@@ -30,7 +30,7 @@ type DeepRealization
 
 type CodexOffer {
   instance: ProviderInstance
-  account_state_root: FilePath
+  account_state_root: std.types.FilePath
   account_binding: AdmittedAccountBinding
   standing: ProviderStanding
   default_effort: ReasoningEffort

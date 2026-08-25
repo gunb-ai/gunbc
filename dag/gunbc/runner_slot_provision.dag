@@ -217,8 +217,8 @@ func observe_runner_slot_members_wet() -> RunnerSlotObservation
     ProcessOutputPresent { text: t } =>
       RunnerSlotsObserved {
         members: map(
-          filter(t.split("\n"), l => trim(s: l) != ""),
-          l => runner_slot_member_from_instance_name(instance_name: trim(s: l)),
+          filter(t.split("\n"), l => std.algebra.trim(s: l) != ""),
+          l => runner_slot_member_from_instance_name(instance_name: std.algebra.trim(s: l)),
         ),
       }
   }

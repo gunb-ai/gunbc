@@ -72,12 +72,12 @@ fn spark_serving_materialization_receipt_field_from_probe(
       }
     Present { value: r } =>
       if r.success {
-        if trim(s: r.stdout) == "" {
+        if std.algebra.trim(s: r.stdout) == "" {
           gunbc.spark.serving_readback_parse.SparkServingReadbackRefused {
             cause: "runtime materialization receipt is empty, so the published closure names no identity" as std.types.NonEmptyStr,
           }
         } else {
-          gunbc.spark.serving_readback_parse.SparkServingReadbackPresent { value: trim(s: r.stdout) }
+          gunbc.spark.serving_readback_parse.SparkServingReadbackPresent { value: std.algebra.trim(s: r.stdout) }
         }
       } else {
         gunbc.spark.serving_readback_parse.SparkServingReadbackRefused {

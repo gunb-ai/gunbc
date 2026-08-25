@@ -11,9 +11,9 @@ type HostRead
 data host_read_carries_failure_not_emptiness_note: String = "A FAILED READ IS NOT AN EMPTY READ, and conflating them is the empty-observation narrow DESIGN names beside the absorbing fallback. find printing nothing means no process holds the socket; find not running, or being denied, also prints nothing on stdout. If both arrive as the same String the decoder answers 'nothing is listening' to a question it never got an answer to, and the caller then unlinks a socket or starts a unit on that basis. So the runner classifies exit status into these two arms before any text reaches a decoder, and every decode of HostReadFailed lands on an Unavailable/Undecided arm rather than on an absence."
 
 type EndpointListenerRead
-  = ListenerOwnerPid { pid: Nat }
+  = ListenerOwnerPid { pid: std.nat.Nat }
   | ListenerNone
-  | ListenerAmbiguous { candidate_count: Nat }
+  | ListenerAmbiguous { candidate_count: std.nat.Nat }
   | ListenerUndecided { detail: NonEmptyStr }
 
 type EndpointPathKind
@@ -430,7 +430,7 @@ fn starttime_of_proc_stat_text(text: String) -> String {
 }
 
 type OwnerIdentityOutcome
-  = OwnerIdentityObserved { identity: ProcessIdentity }
+  = OwnerIdentityObserved { identity: gunbc.build_cache_instance.ProcessIdentity }
   | OwnerIdentityUnread { detail: NonEmptyStr }
 
 fn owner_identity(

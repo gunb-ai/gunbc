@@ -43,7 +43,7 @@ type ClosureDocRefusal
   | ClosureDocUnknownLabelTag { found: String }
   | ClosureDocEdgeTargetUnresolved { reference: String }
   | ClosureDocRootUnresolved { reference: String }
-  | ClosureDocObjectCollision { identity: ObjectId }
+  | ClosureDocObjectCollision { identity: gunbc.scm.object_store.ObjectId }
   | ClosureDocUnexpectedMember { context: ClosureDocMemberContext, key: String }
   | ClosureDocTargetNotOneArm { found: Int }
   | ClosureDocUncontainedDigestInvalid { found: String }
@@ -131,7 +131,7 @@ fn member_set_refusal(v: JsonValue, allowed: List<String>, context: ClosureDocMe
 }
 
 type ClosureDocLoadOutcome
-  = ClosureDocLoaded { store: ObjectStore, root: ObjectId }
+  = ClosureDocLoaded { store: ObjectStore, root: gunbc.scm.object_store.ObjectId }
   | ClosureDocRefused { cause: ClosureDocRefusal }
 
 data closure_document_format_tag: String = "gunbc-scm-commit-closure-v2"
@@ -768,7 +768,7 @@ fn decode_uncontained_arm(target_value: JsonValue) -> TargetDecode {
 }
 
 type TargetDecode
-  = TargetDecoded { target: ObjectId }
+  = TargetDecoded { target: gunbc.scm.object_store.ObjectId }
   | TargetDecodeFailed { cause: ClosureDocRefusal }
 
 fn decode_edge_step(positions: DecodePositions, acc: EdgeAcc, edge_value: JsonValue) -> EdgeAcc {

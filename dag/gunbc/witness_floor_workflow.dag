@@ -695,7 +695,7 @@ data witness_floor_workflow: Workflow = {
   name: witness_floor_workflow_name,
   on: [
     WorkflowDispatch { inputs: [] },
-    Push { branches: [gunbc_default_branch_name], paths: [] },
+    extdeps.github.actions.Push { branches: [gunbc_default_branch_name], paths: [] },
     PullRequest {
       branches: [gunbc_default_branch_name],
       types: [Opened, Synchronize, Reopened, ReadyForReview]
@@ -722,7 +722,7 @@ data witness_floor_workflow: Workflow = {
   },
   permissions: Present {
     value: WorkflowPermissions {
-      contents: Present { value: PermRead },
+      contents: Present { value: extdeps.github.actions.PermRead },
       pull_requests: none,
       issues: none,
       actions: none,
