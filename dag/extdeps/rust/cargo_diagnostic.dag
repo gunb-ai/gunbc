@@ -146,14 +146,21 @@ fn cargo_diagnostic_int_value(v: JsonValue) -> Int? {
   }
 }
 
-fn cargo_diagnostic_bool_value(v: JsonValue) -> Bool {
+// `is_primary` is read with the same discipline as `code` above and for the same reason. An earlier
+// form of this function answered `false` for every non-boolean shape, which made a MALFORMED flag
+// indistinguishable from a well-formed `false` -- ⊤-as-ignorance rendered as an answer, in the one
+// decoder whose siblings all refuse. It mattered more here than the shape alone suggests: the flag
+// is what selects the primary span, so an unreadable flag routed the element to "not primary" and,
+// if no other element then claimed primacy, the whole diagnostic reported RustcSpanAbsent -- a
+// located finding silently losing its location. Absent now means UNREADABLE, never false.
+fn cargo_diagnostic_bool_value(v: JsonValue) -> Bool? {
   match v {
-    JsonBool { value: b } => b
-    JsonString { value: _ } => false
-    JsonNull => false
-    JsonNumber { lexeme: _ } => false
-    JsonArray { elements: _ } => false
-    JsonObject { members: _ } => false
+    JsonBool { value: b } => Present { value: b }
+    JsonString { value: _ } => none
+    JsonNull => none
+    JsonNumber { lexeme: _ } => none
+    JsonArray { elements: _ } => none
+    JsonObject { members: _ } => none
   }
 }
 
@@ -200,17 +207,21 @@ type RustcSpanRead
   | RustcSpanUnreadable
 
 fn cargo_diagnostic_span_of(element: JsonValue) -> RustcSpanRead {
-  if cargo_diagnostic_bool_value(v: span_member_or_null(element: element, key: cargo_span_primary_member)) {
-    match cargo_diagnostic_string_value(v: span_member_or_null(element: element, key: cargo_span_file_member)) {
-      Absent => RustcSpanUnreadable
-      Present { value: f } =>
-        match cargo_diagnostic_int_value(v: span_member_or_null(element: element, key: cargo_span_line_member)) {
+  match cargo_diagnostic_bool_value(v: span_member_or_null(element: element, key: cargo_span_primary_member)) {
+    Absent => RustcSpanUnreadable
+    Present { value: is_primary } =>
+      if is_primary {
+        match cargo_diagnostic_string_value(v: span_member_or_null(element: element, key: cargo_span_file_member)) {
           Absent => RustcSpanUnreadable
-          Present { value: n } => RustcSpanRead { location: RustcSpan { file: f, line: n } }
+          Present { value: f } =>
+            match cargo_diagnostic_int_value(v: span_member_or_null(element: element, key: cargo_span_line_member)) {
+              Absent => RustcSpanUnreadable
+              Present { value: n } => RustcSpanRead { location: RustcSpan { file: f, line: n } }
+            }
         }
-    }
-  } else {
-    RustcSpanRead { location: RustcSpanAbsent }
+      } else {
+        RustcSpanRead { location: RustcSpanAbsent }
+      }
   }
 }
 

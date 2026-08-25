@@ -28,6 +28,7 @@ import gunbc.emit_diagnostic_observation {
   EmitPopulationMismatch,
   EmitSummaryDisagreement,
   EmittedFileCount,
+  EmitAnchorDuplicated,
   EmitScopeUnconfirmed,
   EmitPopulationExtent,
   emit_population_extent_of,
@@ -492,6 +493,7 @@ fn measure_with_subject(
     EmitSummaryUnreadable { line: _ } => emit_decode_unreached(subject: subject, read: read)
     EmitPopulationMismatch { decoded: _, declared: _ } => emit_decode_unreached(subject: subject, read: read)
     EmitSummaryDisagreement { compiled_total: _, severity_total: _ } => emit_decode_unreached(subject: subject, read: read)
+    EmitAnchorDuplicated { anchor: _, count: _ } => emit_decode_unreached(subject: subject, read: read)
     EmitScopeUnconfirmed => emit_decode_unreached(subject: subject, read: read)
   }
 }

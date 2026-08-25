@@ -32,6 +32,16 @@ data build_finished_ok_line: String = "\{\"reason\":\"build-finished\",\"success
 
 data not_json_line: String = "warning: this line is not json"
 
+// A MALFORMED `is_primary`. Well-formed in every other respect; the flag is a string where a bool
+// is documented. An earlier decode answered `false` for this and so reported the diagnostic with no
+// location at all -- the malformed flag and a genuine `is_primary: false` reaching one answer.
+data e0308_line_primary_flag_malformed: String = "\{\"reason\":\"compiler-message\",\"message\":\{\"code\":\{\"code\":\"E0308\"\},\"level\":\"error\",\"spans\":[\{\"file_name\":\"src/a.rs\",\"line_start\":12,\"is_primary\":\"yes\"\}]\}\}"
+
+// THE CONTROL FOR IT: the same diagnostic with a WELL-FORMED `is_primary: false` and no primary
+// span anywhere. This one is an ordinary reading and must still answer `(no span)`, which is what
+// makes the refusal above a discriminator rather than a blanket refusal of unlocated findings.
+data e0308_line_no_primary_span: String = "\{\"reason\":\"compiler-message\",\"message\":\{\"code\":\{\"code\":\"E0308\"\},\"level\":\"error\",\"spans\":[\{\"file_name\":\"src/a.rs\",\"line_start\":12,\"is_primary\":false\}]\}\}"
+
 fn stream_of(lines: List<String>) -> String {
   concat(join(lines, "\n"), "\n")
 }
@@ -56,6 +66,19 @@ test fn cargo_population_carries_identity_and_location_per_finding() -> Bool {
 test fn the_primary_span_is_selected_by_its_flag_not_by_position() -> Bool {
   scanned_rows(lines: [e0599_line_secondary_first, build_finished_line])
     == ["E0599\terror\tsrc/a.rs:12"]
+}
+
+// RED: an UNREADABLE primary flag is not a well-formed `false`. The pair below is the whole point:
+// the malformed flag refuses, the well-formed `false` still reads as an unlocated finding. Without
+// the second, a decode that simply refused every span would pass the first and mean nothing.
+test fn an_unreadable_primary_flag_refuses_rather_than_reading_as_not_primary() -> Bool {
+  scanned_rows(lines: [e0308_line_primary_flag_malformed, build_finished_line])
+    == ["REFUSED: compiler-message spans are not readable at line 1"]
+}
+
+test fn a_well_formed_false_primary_flag_still_reads_as_an_unlocated_finding() -> Bool {
+  scanned_rows(lines: [e0308_line_no_primary_span, build_finished_line])
+    == ["E0308\terror\t(no span)"]
 }
 
 test fn an_uncoded_diagnostic_is_a_member_not_an_absence() -> Bool {
@@ -121,6 +144,8 @@ data emit_advisory_line: String = "advisory[dag/std/logic.dag:9:1]: method exist
 data emit_summary_two: String = "compiled: 177 files emitted, 2 diagnostics"
 
 data emit_summary_three: String = "compiled: 177 files emitted, 3 diagnostics"
+
+data emit_summary_one: String = "compiled: 177 files emitted, 1 diagnostics"
 
 // The renderer's own closing line, in both of its shapes. This is the anchor that survives a
 // REFUSED compile, where no `compiled:` line is printed at all because no tree was written.
@@ -202,6 +227,22 @@ test fn output_with_no_summary_line_refuses_rather_than_reporting_zero() -> Bool
 test fn a_malformed_summary_line_refuses_rather_than_defaulting_to_zero() -> Bool {
   match emit_read_of(lines: [emit_scope_line, "compiled: some files emitted, lots diagnostics"]) {
     EmitSummaryUnreadable { line: _ } => true
+    read => false
+  }
+}
+
+// RED: one population, two accounts of itself. Taking the last silently discards the first, so a
+// second anchor line refuses. Both anchors are covered because both folds had the same defect.
+test fn a_second_compiled_summary_line_refuses_rather_than_overwriting_the_first() -> Bool {
+  match emit_read_of(lines: [emit_scope_line, emit_error_line, emit_summary_one, emit_summary_one]) {
+    EmitAnchorDuplicated { anchor: CompiledSummaryAnchor, count: 2 } => true
+    read => false
+  }
+}
+
+test fn a_second_severity_summary_line_refuses_rather_than_overwriting_the_first() -> Bool {
+  match emit_read_of(lines: [emit_scope_line, emit_error_line, emit_severity_summary_one_error, emit_severity_summary_one_error]) {
+    EmitAnchorDuplicated { anchor: SeveritySummaryAnchor, count: 2 } => true
     read => false
   }
 }

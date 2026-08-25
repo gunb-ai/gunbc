@@ -104,7 +104,15 @@ type EmitDiagnosticRead
   | EmitSummaryUnreadable { line: String }
   | EmitPopulationMismatch { decoded: Int, declared: Int }
   | EmitSummaryDisagreement { compiled_total: Int, severity_total: Int }
+  | EmitAnchorDuplicated { anchor: EmitSummaryAnchor, count: Int }
   | EmitScopeUnconfirmed
+
+// WHICH OF THE TWO ANCHORS WAS SEEN MORE THAN ONCE. A closed pair rather than a name, so a third
+// anchor cannot be reported without this coproduct gaining an arm and every reader refusing to
+// compile until it decides what the new one means.
+type EmitSummaryAnchor
+  = CompiledSummaryAnchor
+  | SeveritySummaryAnchor
 
 type EmitLineRead
   = EmitLineDiagnostic { diagnostic: GunbcDiagnostic }
@@ -180,6 +188,7 @@ type EmitSummaryRead
   = EmitSummaryRead { emitted_files: Int, declared_total: Int }
   | EmitSummaryNotFound
   | EmitSummaryMalformed { line: String }
+  | EmitSummaryDuplicated { count: Int }
 
 // `compiled: N files emitted, M diagnostics` -- the two numbers are read by POSITION IN THE WORD
 // LIST of the compiler's own summary line, and a line that does not yield two integers at those
@@ -212,9 +221,20 @@ fn emit_summary_of_line(line: String) -> EmitSummaryRead {
   }
 }
 
+// A SECOND ANCHOR LINE IS A REFUSAL, NOT AN UPDATE. This fold previously answered with the LAST
+// matching line, so two `compiled:` lines in one stream -- a compiler that printed twice, or two
+// runs' output concatenated by whatever captured it -- silently discarded the first and reported
+// the second as though it were the only account. That is the same wrong shape this module refuses
+// everywhere else: one population, two claims about it, one of them dropped without a diagnostic.
+// A malformed first line stays malformed, because it already names the line it could not read.
 fn emit_summary_fold(acc: EmitSummaryRead, line: String) -> EmitSummaryRead {
   if starts_with(s: line, prefix: emit_summary_prefix) {
-    emit_summary_of_line(line: line)
+    match acc {
+      EmitSummaryNotFound => emit_summary_of_line(line: line)
+      EmitSummaryMalformed { line: l } => EmitSummaryMalformed { line: l }
+      EmitSummaryRead { emitted_files: _, declared_total: _ } => EmitSummaryDuplicated { count: 2 }
+      EmitSummaryDuplicated { count: n } => EmitSummaryDuplicated { count: n + 1 }
+    }
   } else {
     acc
   }
@@ -232,6 +252,7 @@ type EmitSeverityRead
   = EmitSeverityRead { blocking: Int, advisory: Int }
   | EmitSeverityNotFound
   | EmitSeverityMalformed { line: String }
+  | EmitSeverityDuplicated { count: Int }
 
 fn emit_severity_of_line(line: String) -> EmitSeverityRead {
   let words = split(s: line, delimiter: " ")
@@ -263,9 +284,16 @@ fn emit_line_is_severity_summary(line: String) -> Bool {
     || ends_with(s: line, suffix: emit_severity_error_suffix)
 }
 
+// The severity anchor takes the same rule as the compiled anchor above, for the same reason. Fixing
+// only the one the review named would have left the identical silent overwrite one fold away.
 fn emit_severity_fold(acc: EmitSeverityRead, line: String) -> EmitSeverityRead {
   if emit_line_is_severity_summary(line: line) {
-    emit_severity_of_line(line: line)
+    match acc {
+      EmitSeverityNotFound => emit_severity_of_line(line: line)
+      EmitSeverityMalformed { line: l } => EmitSeverityMalformed { line: l }
+      EmitSeverityRead { blocking: _, advisory: _ } => EmitSeverityDuplicated { count: 2 }
+      EmitSeverityDuplicated { count: n } => EmitSeverityDuplicated { count: n + 1 }
+    }
   } else {
     acc
   }
@@ -319,10 +347,14 @@ fn read_scoped_emit_diagnostics(lines: List<String>) -> EmitDiagnosticRead {
   let severity = fold(lines, init: EmitSeverityNotFound, f: (acc, line) => emit_severity_fold(acc: acc, line: line))
   match compiled {
     EmitSummaryMalformed { line: l } => EmitSummaryUnreadable { line: l }
+    EmitSummaryDuplicated { count: n } =>
+      EmitAnchorDuplicated { anchor: CompiledSummaryAnchor, count: n }
     EmitSummaryNotFound =>
       match severity {
         EmitSeverityNotFound => EmitSummaryAbsent
         EmitSeverityMalformed { line: l } => EmitSummaryUnreadable { line: l }
+        EmitSeverityDuplicated { count: n } =>
+          EmitAnchorDuplicated { anchor: SeveritySummaryAnchor, count: n }
         EmitSeverityRead { blocking: b, advisory: a } =>
           emit_population_against(lines: lines, declared: b + a, files: FilesNotWritten)
       }
@@ -331,6 +363,8 @@ fn read_scoped_emit_diagnostics(lines: List<String>) -> EmitDiagnosticRead {
         EmitSeverityNotFound =>
           emit_population_against(lines: lines, declared: declared, files: FilesEmitted { count: files })
         EmitSeverityMalformed { line: l } => EmitSummaryUnreadable { line: l }
+        EmitSeverityDuplicated { count: n } =>
+          EmitAnchorDuplicated { anchor: SeveritySummaryAnchor, count: n }
         EmitSeverityRead { blocking: b, advisory: a } =>
           if b + a != declared {
             EmitSummaryDisagreement { compiled_total: declared, severity_total: b + a }
@@ -384,6 +418,13 @@ fn gunbc_diagnostic_row(d: GunbcDiagnostic) -> String {
   )
 }
 
+fn emit_summary_anchor_name(anchor: EmitSummaryAnchor) -> String {
+  match anchor {
+    CompiledSummaryAnchor => "`compiled:`"
+    SeveritySummaryAnchor => "severity"
+  }
+}
+
 fn emit_diagnostic_read_refusal_reason(read: EmitDiagnosticRead) -> String {
   match read {
     EmitDiagnosticsRead { diagnostics: _, emitted_files: _, declared_total: _ } => ""
@@ -395,6 +436,14 @@ fn emit_diagnostic_read_refusal_reason(read: EmitDiagnosticRead) -> String {
       concat(
         concat("decoded ", to_string(d)),
         concat(" diagnostic line(s) against a compiler-declared total of ", to_string(n))
+      )
+    EmitAnchorDuplicated { anchor: a, count: n } =>
+      concat(
+        concat("gunbc compile printed its ", emit_summary_anchor_name(anchor: a)),
+        concat(
+          concat(" summary line ", to_string(n)),
+          " times in one output — one population with more than one account of itself, and taking the last would discard the others without a diagnostic"
+        )
       )
     EmitScopeUnconfirmed =>
       "gunbc compile did not report a reference-derived closure, so the compile this output describes cannot be established as scoped to the requested entry — a whole-tree population reported as one entry's is the substitution this decode refuses, and `--entry` is carried only by the hand-maintained main.rs rather than by the .dag authority"
