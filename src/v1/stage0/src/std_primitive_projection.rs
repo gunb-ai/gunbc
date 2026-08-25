@@ -113,7 +113,7 @@ pub enum PrimitiveProjectionAnswer {
 pub fn primitive_length() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
-            primitive_identity_slug("length".to_string())
+            compile_error!("unsupported mock expression")
         };
     }
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
@@ -122,7 +122,7 @@ pub fn primitive_length() -> Rc<PrimitiveIdentity> {
 pub fn primitive_map_insert() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
-            primitive_identity_slug("map_insert".to_string())
+            compile_error!("unsupported mock expression")
         };
     }
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
@@ -131,7 +131,7 @@ pub fn primitive_map_insert() -> Rc<PrimitiveIdentity> {
 pub fn primitive_map_get() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
-            primitive_identity_slug("map_get".to_string())
+            compile_error!("unsupported mock expression")
         };
     }
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
@@ -140,7 +140,7 @@ pub fn primitive_map_get() -> Rc<PrimitiveIdentity> {
 pub fn primitive_empty_map() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
-            primitive_identity_slug("empty_map".to_string())
+            compile_error!("unsupported mock expression")
         };
     }
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
@@ -149,7 +149,7 @@ pub fn primitive_empty_map() -> Rc<PrimitiveIdentity> {
 pub fn primitive_decl_facts() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
-            primitive_identity_slug("decl_facts".to_string())
+            compile_error!("unsupported mock expression")
         };
     }
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
@@ -158,7 +158,7 @@ pub fn primitive_decl_facts() -> Rc<PrimitiveIdentity> {
 pub fn primitive_export_signature_facts() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
-            primitive_identity_slug("export_signature_facts".to_string())
+            compile_error!("unsupported mock expression")
         };
     }
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
@@ -167,7 +167,7 @@ pub fn primitive_export_signature_facts() -> Rc<PrimitiveIdentity> {
 pub fn primitive_data_decl_type_facts() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
-            primitive_identity_slug("data_decl_type_facts".to_string())
+            compile_error!("unsupported mock expression")
         };
     }
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
@@ -176,7 +176,7 @@ pub fn primitive_data_decl_type_facts() -> Rc<PrimitiveIdentity> {
 pub fn primitive_concept_decl_facts() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
-            primitive_identity_slug("concept_decl_facts".to_string())
+            compile_error!("unsupported mock expression")
         };
     }
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
@@ -185,7 +185,7 @@ pub fn primitive_concept_decl_facts() -> Rc<PrimitiveIdentity> {
 pub fn primitive_concept_decl_facts_live() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
-            primitive_identity_slug("concept_decl_facts_live".to_string())
+            compile_error!("unsupported mock expression")
         };
     }
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
@@ -208,7 +208,7 @@ pub fn primitive_projection_row(
 ) -> Rc<PrimitiveProjection> {
     Rc::new(PrimitiveProjection {
         primitive: primitive.clone(),
-        declaration: crate::std_decl_ref::decl_ref(module_path.clone(), decl_name.clone()),
+        declaration: decl_ref(module_path.clone(), decl_name.clone()),
         fidelity: fidelity.clone(),
     })
 }
@@ -290,10 +290,7 @@ pub fn primitive_projection_row_for_declaration(
         |acc: _, row: Rc<PrimitiveProjection>| match acc.clone() {
             Some(_) => acc.clone(),
             None => {
-                if crate::std_decl_ref::declaration_ref_eq(
-                    row.declaration.clone(),
-                    declaration.clone(),
-                ) {
+                if declaration_ref_eq(row.declaration.clone(), declaration.clone()) {
                     Some(row.clone())
                 } else {
                     acc.clone()

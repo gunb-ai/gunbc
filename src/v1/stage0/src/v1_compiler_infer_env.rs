@@ -157,7 +157,7 @@ pub fn empty_type_env() -> Rc<TypeEnv> {
         recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
         inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
         source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-        intern_table: crate::v1_std_core::empty_intern_table(),
+        intern_table: empty_intern_table(),
         source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
         symbol_index: empty_symbol_index(),
     })
@@ -798,7 +798,7 @@ pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -
 }
 
 pub fn lookup_binding_local_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
-    match crate::v1_std_core::intern_find(env.intern_table.clone(), name.clone()) {
+    match intern_find(env.intern_table.clone(), name.clone()) {
         Some(ident) => match v1_rt::map_get(&env.bindings.clone(), ident.clone()) {
             Some(binding) => Some(binding.clone()),
             None => None,
@@ -823,7 +823,7 @@ pub fn lookup_binding_by_name_local(env: Rc<TypeEnv>, name: String) -> Option<Rc
         Some(binding) => Some(binding.clone()),
         None => match v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone()) {
             Some(binding) => Some(binding.clone()),
-            None => match crate::v1_std_core::intern_find(env.intern_table.clone(), name.clone()) {
+            None => match intern_find(env.intern_table.clone(), name.clone()) {
                 Some(id) => v1_rt::map_get(&env.bindings.clone(), id.clone()),
                 None => None,
             },
@@ -975,7 +975,7 @@ pub fn global_bare_nearest_ancestor_candidate(
     candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
 ) -> Option<Rc<GlobalBareCandidate>> {
     {
-        let env_segs = crate::v1_std_core::module_path_segments(env_module_path.clone());
+        let env_segs = module_path_segments(env_module_path.clone());
         let scan = candidates.iter().cloned().fold(
             Rc::new(GlobalBareNearestCandidateScan {
                 best_lcp: (0 - 1),
@@ -985,7 +985,7 @@ pub fn global_bare_nearest_ancestor_candidate(
             |acc: Rc<GlobalBareNearestCandidateScan>, cand: Rc<GlobalBareCandidate>| {
                 let l = segment_lcp_len(
                     env_segs.clone(),
-                    crate::v1_std_core::module_path_segments(cand.module_path.clone()),
+                    module_path_segments(cand.module_path.clone()),
                 );
                 if (l.clone() > acc.best_lcp.clone()) {
                     Rc::new(GlobalBareNearestCandidateScan {
@@ -1037,13 +1037,12 @@ pub fn global_bare_chain_candidates(
     candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
 ) -> Rc<Vec<Rc<GlobalBareCandidate>>> {
     {
-        let env_segs = crate::v1_std_core::module_path_segments(env_module_path.clone());
+        let env_segs = module_path_segments(env_module_path.clone());
         Rc::new({
             let mut __result = Vec::new();
             for cand in candidates.iter().cloned() {
                 if {
-                    let cand_segs =
-                        crate::v1_std_core::module_path_segments(cand.module_path.clone());
+                    let cand_segs = module_path_segments(cand.module_path.clone());
                     (segment_lcp_len(cand_segs.clone(), env_segs.clone())
                         == (cand_segs.clone().len() as i64))
                 } {
@@ -1061,15 +1060,13 @@ pub fn global_bare_unique_chain_candidate(
 ) -> Option<Rc<GlobalBareCandidate>> {
     {
         let chain = global_bare_chain_candidates(env_module_path.clone(), candidates.clone());
-        match (*crate::v1_compiler_infer_occurrence_binding::module_path_owner_binding_decide(
-            Rc::new({
-                let mut __result = Vec::new();
-                for c in chain.iter().cloned() {
-                    __result.push(c.module_path.clone());
-                }
-                __result
-            }),
-        ))
+        match (*module_path_owner_binding_decide(Rc::new({
+            let mut __result = Vec::new();
+            for c in chain.iter().cloned() {
+                __result.push(c.module_path.clone());
+            }
+            __result
+        })))
         .clone()
         {
             ModulePathBindingProjection::ModulePathBindingHit { owner: owner, .. } => Rc::new({
@@ -1113,7 +1110,7 @@ pub fn global_bare_strict_ambiguity_candidates(env: Rc<TypeEnv>, name: String) -
                 candidates: cands, ..
             }) => {
                 let chain = global_bare_chain_candidates(env.module_path.clone(), cands.clone());
-                crate::v1_compiler_infer_occurrence_binding::ambiguity_labels_from_decide(
+                ambiguity_labels_from_decide(
                     Rc::new({
                         let mut __result = Vec::new();
                         for c in chain.iter().cloned() {
@@ -1190,8 +1187,7 @@ pub fn binding_declares_name(
     name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (crate::v1_std_core::authored_name_at(source_indices.clone(), binding.resolved.clone())
-        == name.clone())
+    (authored_name_at(source_indices.clone(), binding.resolved.clone()) == name.clone())
 }
 
 pub fn borrowed_generic_param_names(
@@ -1201,9 +1197,9 @@ pub fn borrowed_generic_param_names(
     params.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, bool>(),
         |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
-            let pt = crate::v1_std_core::param_node_type_expr(p.clone());
-            let pname = crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone());
-            let tname = crate::v1_std_core::authored_name_at(source_indices.clone(), pt.clone());
+            let pt = param_node_type_expr(p.clone());
+            let pname = param_node_name_at(p.clone(), source_indices.clone());
+            let tname = authored_name_at(source_indices.clone(), pt.clone());
             if (((((pt.children.clone().len() as i64) == 0)
                 && (pt.connective.clone() == Connective::NoConnective))
                 && (pname.clone() != "".to_string()))
@@ -1289,7 +1285,7 @@ pub fn qualify_borrowed_type_names(
                 __result
             })
         };
-        let name = crate::v1_std_core::authored_name_at(env.source_indices.clone(), n.clone());
+        let name = authored_name_at(env.source_indices.clone(), n.clone());
         let is_type_var = match n.inferred.clone().as_deref().cloned() {
             Some(InferredNode::TypeVariable { id: _, .. }) => true,
             _ => false,
@@ -1297,7 +1293,7 @@ pub fn qualify_borrowed_type_names(
         let rewrite = ((((((n.connective.clone() == Connective::NoConnective)
             && (name.clone() != "".to_string()))
             && !v1_rt::contains(name.clone(), ".".to_string()))
-            && !crate::std_types::is_kernel_type(name.clone()))
+            && !is_kernel_type(name.clone()))
             && !v1_rt::map_has(&excluded, name.clone()))
             && !is_type_var.clone());
         let owner_hit = if rewrite.clone() {
@@ -1316,7 +1312,7 @@ pub fn qualify_borrowed_type_names(
                         Rc::new(Node {
                             name: qname.clone(),
                             span: n.span.clone(),
-                            ident_span: Some(crate::v1_std_core::kernel_span(qname.clone())),
+                            ident_span: Some(kernel_span(qname.clone())),
                             children: qualified_children.clone(),
                             connective: n.connective.clone(),
                             params: n.params.clone(),
@@ -1408,7 +1404,7 @@ pub fn qualify_borrowed_inferred(
 
 pub fn qualified_all_but_last(name: String) -> String {
     {
-        let segs = crate::v1_std_core::module_path_segments(name.clone());
+        let segs = module_path_segments(name.clone());
         let seg_count = (segs.clone().len() as i64);
         if (seg_count.clone() <= 1) {
             "".to_string()
@@ -1504,11 +1500,22 @@ pub fn global_bare_is_ambiguous(env: Rc<TypeEnv>, name: String) -> bool {
                 {
                     let chain =
                         global_bare_chain_candidates(env.module_path.clone(), cands.clone());
-                    match (*crate::v1_compiler_infer_occurrence_binding::module_path_owner_binding_decide(Rc::new({ let mut __result = Vec::new(); for c in chain.iter().cloned() { __result.push(c.module_path.clone()); } __result }))).clone() {
-    ModulePathBindingProjection::ModulePathBindingAmbiguous { owners: _, .. } => true,
-    ModulePathBindingProjection::ModulePathBindingHit { owner: _, .. } => false,
-    ModulePathBindingProjection::ModulePathBindingMiss => false,
-}
+                    match (*module_path_owner_binding_decide(Rc::new({
+                        let mut __result = Vec::new();
+                        for c in chain.iter().cloned() {
+                            __result.push(c.module_path.clone());
+                        }
+                        __result
+                    })))
+                    .clone()
+                    {
+                        ModulePathBindingProjection::ModulePathBindingAmbiguous {
+                            owners: _,
+                            ..
+                        } => true,
+                        ModulePathBindingProjection::ModulePathBindingHit { owner: _, .. } => false,
+                        ModulePathBindingProjection::ModulePathBindingMiss => false,
+                    }
                 }
             } else {
                 (global_bare_nearest_ancestor(env.module_path.clone(), cands.clone()) == None)
@@ -1523,7 +1530,7 @@ pub fn lookup_binding(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&env.bindings.clone(), ident.clone()) {
         Some(binding) => Some(binding.clone()),
         None => {
-            let name = crate::v1_std_core::intern_str(env.intern_table.clone(), ident.clone());
+            let name = intern_str(env.intern_table.clone(), ident.clone());
             lookup_binding_by_name(env.clone(), name.clone())
         }
     }
@@ -1537,7 +1544,7 @@ pub fn is_recursive_type(env: Rc<TypeEnv>, ident: i64) -> bool {
 }
 
 pub fn is_recursive_type_by_name(env: Rc<TypeEnv>, name: String) -> bool {
-    match crate::v1_std_core::intern_find(env.intern_table.clone(), name.clone()) {
+    match intern_find(env.intern_table.clone(), name.clone()) {
         Some(id) => is_recursive_type(env.clone(), id.clone()),
         None => false,
     }
@@ -1589,8 +1596,8 @@ pub fn type_ref_measure_binding_authority_fn_note() -> String {
 
 pub fn type_ref_module_path_is_containment_prefix(ancestor: String, descendant: String) -> bool {
     {
-        let a_segs = crate::v1_std_core::module_path_segments(ancestor.clone());
-        let d_segs = crate::v1_std_core::module_path_segments(descendant.clone());
+        let a_segs = module_path_segments(ancestor.clone());
+        let d_segs = module_path_segments(descendant.clone());
         (((a_segs.clone().len() as i64) > 0)
             && (segment_lcp_len(a_segs.clone(), d_segs.clone()) == (a_segs.clone().len() as i64)))
     }
@@ -1629,23 +1636,21 @@ pub fn variant_arm_type_projection(
     name: String,
 ) -> Option<Rc<Node>> {
     match owner.connective.clone() {
-        Connective::Disj => match crate::v1_std_core::find_child_named(
-            owner.clone(),
-            name.clone(),
-            env.source_indices.clone(),
-        ) {
-            Some(arm) => match ((arm.children.clone().len() as i64) == 0) {
-                true => Some(arm.clone()),
-                false => None,
-            },
-            None => None,
-        },
+        Connective::Disj => {
+            match find_child_named(owner.clone(), name.clone(), env.source_indices.clone()) {
+                Some(arm) => match ((arm.children.clone().len() as i64) == 0) {
+                    true => Some(arm.clone()),
+                    false => None,
+                },
+                None => None,
+            }
+        }
         _ => None,
     }
 }
 
 pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {
-    crate::v1_std_core::authored_name_at(env.source_indices.clone(), node.clone())
+    authored_name_at(env.source_indices.clone(), node.clone())
 }
 
 pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
@@ -1654,10 +1659,8 @@ pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
             Some(resolved) => {
                 let name = authored_name(env.clone(), node.clone());
                 match ((resolved.connective.clone() == Connective::Disj)
-                    && (crate::v1_std_core::authored_name_at(
-                        env.source_indices.clone(),
-                        resolved.clone(),
-                    ) != name.clone()))
+                    && (authored_name_at(env.source_indices.clone(), resolved.clone())
+                        != name.clone()))
                 {
                     true => match variant_arm_type_projection(
                         env.clone(),
@@ -1936,8 +1939,8 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                 name: tp_name.clone(),
                 resolved: Rc::new(Node {
                     name: tp_name.clone(),
-                    span: crate::v1_std_core::kernel_span(tp_name.clone()),
-                    ident_span: Some(crate::v1_std_core::kernel_span(tp_name.clone())),
+                    span: kernel_span(tp_name.clone()),
+                    ident_span: Some(kernel_span(tp_name.clone())),
                     children: Rc::new(vec![]),
                     connective: Connective::NoConnective,
                     params: Rc::new(vec![]),
@@ -1962,9 +1965,7 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                 module_path: e.module_path.clone(),
                 bindings: v1_rt::rc_map_insert(
                     e.bindings.clone(),
-                    crate::v1_std_core::intern(e.intern_table.clone(), tp_name.clone())
-                        .id
-                        .clone(),
+                    intern(e.intern_table.clone(), tp_name.clone()).id.clone(),
                     tp_binding.clone(),
                 ),
                 str_bindings: v1_rt::rc_map_insert(

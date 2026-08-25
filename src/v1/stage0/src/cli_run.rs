@@ -9091,115 +9091,6 @@ impl BudgetKind {
     }
 }
 
-/// Mirror of `gunbc.observation_ci_render CiWitnessRuntimeCause`. One arm per
-/// `v1_interpreter::InterpError` variant that can reach the witness boundary's untyped arm, and
-/// no vocabulary of its own (DESIGN §3): the cause already exists upstream, this is it surviving
-/// the seam.
-///
-/// FIVE `InterpError` VARIANTS ARE DELIBERATELY ABSENT. `HostToolUnresolved`,
-/// `HermeticHostEffectRefused`, `EvalBudgetExceeded`, `WitnessWallBudgetExceeded` and the
-/// pre-mapped `EvaluationBudgetExceeded` each have their OWN `ClaimOutcome` arm and are consumed
-/// by earlier arms of the match in `run_claim`, so they cannot reach this classifier. They are
-/// not silently folded into a neighbour: all five map to `MappedOutcomeEscaped`, a typed,
-/// countable diagnostic meaning the mapper let one through. One arm rather than five because all
-/// five share ONE remedy — repair the mapper — and the descend-or-collapse rule turns on shared
-/// remedy, not on arm count.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum WitnessRuntimeCause {
-    NoSuchFunction,
-    NoSuchVariable,
-    NoSuchField,
-    TypeError,
-    CrossRepresentationEquality,
-    StringRealizationStraddle,
-    PoolRootContributesNothing,
-    PatternMatchFailure,
-    DivisionByZero,
-    IntegerOverflow,
-    Unimplemented,
-    EarlyReturn,
-    AuthDeclaredButUnwired,
-    ServiceConfigUnresolved,
-    ServiceConfigMissing,
-    ArgvExceedsHostArgMax,
-    HostToolRelativePathAmbiguous,
-    ShellOutputLimitExceeded,
-    CallContractMismatch,
-    /// An `InterpError` with its own `ClaimOutcome` arm reached the untyped classifier anyway.
-    /// Loud rather than absorbed: this is a defect in the mapping above, and a run that produces
-    /// it should say so on the row rather than presenting the throw as an ordinary one.
-    MappedOutcomeEscaped,
-}
-
-impl WitnessRuntimeCause {
-    /// Mirror of `ci_witness_runtime_cause_token`. Stable kebab tokens — the grep key a reader
-    /// uses to pair an identity with its cause.
-    pub fn token(self) -> &'static str {
-        match self {
-            WitnessRuntimeCause::NoSuchFunction => "no-such-function",
-            WitnessRuntimeCause::NoSuchVariable => "no-such-variable",
-            WitnessRuntimeCause::NoSuchField => "no-such-field",
-            WitnessRuntimeCause::TypeError => "type-error",
-            WitnessRuntimeCause::CrossRepresentationEquality => "cross-representation-equality",
-            WitnessRuntimeCause::StringRealizationStraddle => "string-realization-straddle",
-            WitnessRuntimeCause::PoolRootContributesNothing => "pool-root-contributes-nothing",
-            WitnessRuntimeCause::PatternMatchFailure => "pattern-match-failure",
-            WitnessRuntimeCause::DivisionByZero => "division-by-zero",
-            WitnessRuntimeCause::IntegerOverflow => "integer-overflow",
-            WitnessRuntimeCause::Unimplemented => "unimplemented",
-            WitnessRuntimeCause::EarlyReturn => "early-return",
-            WitnessRuntimeCause::AuthDeclaredButUnwired => "auth-declared-but-unwired",
-            WitnessRuntimeCause::ServiceConfigUnresolved => "service-config-unresolved",
-            WitnessRuntimeCause::ServiceConfigMissing => "service-config-missing",
-            WitnessRuntimeCause::ArgvExceedsHostArgMax => "argv-exceeds-host-arg-max",
-            WitnessRuntimeCause::HostToolRelativePathAmbiguous => {
-                "host-tool-relative-path-ambiguous"
-            }
-            WitnessRuntimeCause::ShellOutputLimitExceeded => "shell-output-limit-exceeded",
-            WitnessRuntimeCause::CallContractMismatch => "call-contract-mismatch",
-            WitnessRuntimeCause::MappedOutcomeEscaped => "mapped-outcome-escaped",
-        }
-    }
-
-    /// TOTAL over `InterpError`. Totality is the point rather than a formality: a new interpreter
-    /// error variant must fail to compile HERE, where someone decides what its cause token is,
-    /// rather than inheriting a neighbour's or falling into a wildcard.
-    pub fn of_interp_error(err: &v1_interpreter::InterpError) -> Self {
-        use v1_interpreter::InterpError as E;
-        match err {
-            E::NoSuchFunction { .. } => WitnessRuntimeCause::NoSuchFunction,
-            E::NoSuchVariable { .. } => WitnessRuntimeCause::NoSuchVariable,
-            E::NoSuchField { .. } => WitnessRuntimeCause::NoSuchField,
-            E::TypeError { .. } => WitnessRuntimeCause::TypeError,
-            E::CrossRepresentationEquality { .. } => {
-                WitnessRuntimeCause::CrossRepresentationEquality
-            }
-            E::StringRealizationStraddle { .. } => WitnessRuntimeCause::StringRealizationStraddle,
-            E::PoolRootContributesNothing { .. } => WitnessRuntimeCause::PoolRootContributesNothing,
-            E::PatternMatchFailure { .. } => WitnessRuntimeCause::PatternMatchFailure,
-            E::DivisionByZero => WitnessRuntimeCause::DivisionByZero,
-            E::IntegerOverflow { .. } => WitnessRuntimeCause::IntegerOverflow,
-            E::Unimplemented { .. } => WitnessRuntimeCause::Unimplemented,
-            E::EarlyReturn { .. } => WitnessRuntimeCause::EarlyReturn,
-            E::AuthDeclaredButUnwired { .. } => WitnessRuntimeCause::AuthDeclaredButUnwired,
-            E::ServiceConfigUnresolved { .. } => WitnessRuntimeCause::ServiceConfigUnresolved,
-            E::ServiceConfigMissing { .. } => WitnessRuntimeCause::ServiceConfigMissing,
-            E::ArgvExceedsHostArgMax { .. } => WitnessRuntimeCause::ArgvExceedsHostArgMax,
-            E::HostToolRelativePathAmbiguous { .. } => {
-                WitnessRuntimeCause::HostToolRelativePathAmbiguous
-            }
-            E::ShellOutputLimitExceeded { .. } => WitnessRuntimeCause::ShellOutputLimitExceeded,
-            E::CallContractMismatch { .. } => WitnessRuntimeCause::CallContractMismatch,
-            // The five that should never arrive. See the type comment.
-            E::HostToolUnresolved { .. }
-            | E::HermeticHostEffectRefused { .. }
-            | E::EvalBudgetExceeded { .. }
-            | E::WitnessWallBudgetExceeded { .. }
-            | E::EvaluationBudgetExceeded { .. } => WitnessRuntimeCause::MappedOutcomeEscaped,
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimOutcome {
     Pass,
@@ -9207,26 +9098,7 @@ pub enum ClaimOutcome {
     NotBool {
         got: String,
     },
-    /// A THROW, WITH THE REASON IT THREW KEPT AS A TYPE.
-    ///
-    /// `message` used to be the whole content of this arm, built by `format!("{other}")` over
-    /// `v1_interpreter::InterpError` — which is ALREADY a closed 24-arm coproduct. So the cause
-    /// was known at this seam, destroyed here, and then guessed back downstream by slicing the
-    /// first twelve whitespace-separated words off the prose (`known_red_runtime_error_causes`).
-    /// That key embeds the missing NAME, so `no declaration named X` and `no declaration named Y`
-    /// counted as two causes: on main `f9963a762` the floor reported **65 distinct signatures**
-    /// across 142 identities for a population with about four actual causes. The number was an
-    /// artifact of the key, and it said "many roots" where the truth is "one root, many names".
-    ///
-    /// This is the same repair `TimedOut` and `HostToolUnresolved` above already received, for
-    /// the same stated reason, and the third instance is the argument for doing it by type
-    /// rather than case by case.
-    ///
-    /// `message` SURVIVES beside the cause and is not redundant with it: the cause says WHICH
-    /// class, the message says which name, which type, which arity. Two facts, two fields — the
-    /// defect was never that prose existed, it was that prose was the only representation.
     RuntimeError {
-        cause: WitnessRuntimeCause,
         message: String,
     },
     /// A budget refusal, with the pair that explains it kept as data.
@@ -16705,10 +16577,7 @@ pub enum CiWitnessVerdict {
     Passed,
     Failed,
     NotBool,
-    /// Carries the cause as a PAYLOAD rather than beside the verdict, so "a PASSED row with a
-    /// cause" and "an ERROR row without one" have no spelling (DESIGN §4b: structurally
-    /// impossible, not merely checked).
-    RuntimeError(WitnessRuntimeCause),
+    RuntimeError,
     BudgetRefused,
     /// THE CLAIM PASSED AND WAS THEN RECLASSIFIED ON COST. Distinct from `BudgetRefused`
     /// because it reached a verdict: the remedy is to pay the cost down, not to find out what
@@ -16731,7 +16600,7 @@ impl CiWitnessVerdict {
             CiWitnessVerdict::Passed => "PASSED",
             CiWitnessVerdict::Failed => "FAILED",
             CiWitnessVerdict::NotBool => "NOT-BOOL",
-            CiWitnessVerdict::RuntimeError(_) => "ERROR",
+            CiWitnessVerdict::RuntimeError => "ERROR",
             CiWitnessVerdict::BudgetRefused => "BUDGET-REFUSED",
             CiWitnessVerdict::PassedOverBudget => "PASSED-OVER-BUDGET",
             CiWitnessVerdict::HostToolUnresolved => "TOOL-UNRESOLVED",
@@ -16780,7 +16649,7 @@ impl CiWitnessVerdict {
             ClaimOutcome::Pass => CiWitnessVerdict::Passed,
             ClaimOutcome::Fail => CiWitnessVerdict::Failed,
             ClaimOutcome::NotBool { .. } => CiWitnessVerdict::NotBool,
-            ClaimOutcome::RuntimeError { cause, .. } => CiWitnessVerdict::RuntimeError(*cause),
+            ClaimOutcome::RuntimeError { .. } => CiWitnessVerdict::RuntimeError,
             // SITE 1 OF THE FIVE THAT DROPPED THE AXIS. `BudgetRefused` is true only of the
             // interrupted arm; a completed-over-budget row REACHED ITS VERDICT and was refused
             // nothing, so reporting it as a refusal erased the verdict it had already produced.
@@ -16812,22 +16681,8 @@ pub fn render_witness_claim_result_text_mirror(
         )
     };
     let token = verdict.token();
-    // Mirror of `ci_witness_cause_field`: trailing and key-tagged, so a reader pairs identity
-    // with cause by KEY and never by column offset. Empty for every arm that has no cause,
-    // which keeps every existing line byte-identical.
-    let cause = match verdict {
-        CiWitnessVerdict::RuntimeError(cause) => format!(" cause={}", cause.token()),
-        CiWitnessVerdict::Passed
-        | CiWitnessVerdict::Failed
-        | CiWitnessVerdict::NotBool
-        | CiWitnessVerdict::BudgetRefused
-        | CiWitnessVerdict::HostToolUnresolved
-        | CiWitnessVerdict::KnownRed
-        | CiWitnessVerdict::PassedOverBudget
-        | CiWitnessVerdict::RouteGap => String::new(),
-    };
     format!(
-        "{padded}{token} in {}{cause}",
+        "{padded}{token} in {}",
         crate::v1_rt::obs_human_elapsed(wall_nanos)
     )
 }
@@ -18372,12 +18227,7 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
                     kind: BudgetKind::Wall,
                 }
             }
-            // THE CLASSIFICATION HAPPENS HERE, where `other` is still a typed `InterpError`.
-            // It is a projection of a value in hand, not a derivation: nothing is parsed,
-            // matched or guessed, and there is no site downstream that could do this at all
-            // once the `format!` has run.
             other => ClaimOutcome::RuntimeError {
-                cause: WitnessRuntimeCause::of_interp_error(&other),
                 message: format!("{other}"),
             },
         },
@@ -18774,7 +18624,7 @@ pub fn claim_terminal_detail(outcome: &ClaimOutcome) -> String {
     match outcome {
         ClaimOutcome::Pass | ClaimOutcome::Fail => String::new(),
         ClaimOutcome::NotBool { got } => got.clone(),
-        ClaimOutcome::RuntimeError { message, .. } => message.clone(),
+        ClaimOutcome::RuntimeError { message } => message.clone(),
         ClaimOutcome::BudgetInterrupted { kind, .. }
         | ClaimOutcome::CompletedOverBudget { kind, .. } => kind.label().to_string(),
         ClaimOutcome::HostToolUnresolved { name, .. } => name.clone(),
@@ -21227,7 +21077,7 @@ pub fn project_witness_cost_receipt(
                     ));
                     "witness_cost_seed_refused_event"
                 }
-                ClaimOutcome::RuntimeError { message, .. } => {
+                ClaimOutcome::RuntimeError { message } => {
                     args.push((
                         Some("error".to_string()),
                         str_value(format!("runtime error: {message}")),
@@ -27083,7 +26933,7 @@ fn run_discovery_rows(
                 "{} ({}) returned `{}`, not Bool",
                 row.function, row.entry, got
             )),
-            ClaimOutcome::RuntimeError { message, .. } => summary.failures.push(format!(
+            ClaimOutcome::RuntimeError { message } => summary.failures.push(format!(
                 "{} ({}) runtime error: {}",
                 row.function, row.entry, message
             )),
@@ -35286,25 +35136,6 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
         if decl_count.get(name).copied().unwrap_or(0) != 1 {
             continue;
         }
-        // INTENDED SCOPE GATE, not an oversight. This lens answers ONE question --
-        // DESIGN §5 coverage-by-illusion: a carrier that a test makes look exercised
-        // while no production code reads it. A carrier that is referenced by NOTHING,
-        // test included, is a different class with a different remedy (delete it, or
-        // write the missing test and let it land here), so it cannot share this
-        // roster: a roster row means "modeled ahead of its consumer, tested, awaiting
-        // one", and every one of these would be a row asserting a test that does not
-        // exist. That class is owned by the still-unbuilt run-root reachability cut
-        // (gunbc.plans.inert_layer_lens, `v2.lens.inert_layer`), whose retirement
-        // condition names it. Measured over `dag` + `src/v2` at 32597358f16 on
-        // 2026-08-24: 8821 declared carriers, 14 flagged here, 270 skipped by this
-        // line -- the same order the plan predicted for a raw sweep ("hundreds"),
-        // which is why the two are separate cuts and not one roster. A dated
-        // observation, not a bound: nothing gates on either number.
-        // `green_control_untested_unused_carrier_is_not_flagged` below is the
-        // executing control that keeps this exclusion deliberate rather than latent:
-        // it plants exactly this carrier and asserts it stays off the roster, so
-        // deleting this line goes red -- executed both ways 2026-08-24: gate present,
-        // 12 passed; gate deleted, that one control fails with got ["Staged"].
         if !self_tested.contains(name) {
             continue;
         }
@@ -44743,7 +44574,7 @@ pub fn run_required_floor(
     // accounting while being wrong about the SHAPE of the problem, and a later reader prices
     // N repairs against what may be one fix. Grouping here costs a HashMap and answers it on
     // the same run that produces the count.
-    let mut known_red_runtime_error_causes: HashMap<&'static str, usize> = HashMap::new();
+    let mut known_red_runtime_error_causes: HashMap<String, usize> = HashMap::new();
     let mut known_red_observation_unreadable_count: usize = 0;
     // WHICH ENROLLED ROUTE-GAP IDENTITIES ACTUALLY GAPPED, for the reverse join below. Without
     // it the roster is a one-way lookup that only ever asks "is this gap enrolled" and never
@@ -45109,32 +44940,27 @@ pub fn run_required_floor(
                 // strength of an error, which is the exact rot this lane exists to surface.
                 ExpectedRedArm::RuntimeErrored => {
                     known_red_runtime_errored_count += 1;
-                    // KEYED ON THE TYPED CAUSE, NOT ON THE PROSE. The previous key was the
-                    // first twelve whitespace-separated words of the message — which EMBEDS THE
-                    // MISSING NAME, so `no declaration named X` and `no declaration named Y`
-                    // counted as two distinct causes. Measured on main `f9963a762`: 65 distinct
-                    // "signatures" across 142 identities, for a population with four actual
-                    // causes. That is not an imprecise number, it is an inverted one — it told
-                    // every reader "many roots" where the truth is "one root, many names", and
-                    // pointed them away from the single repair that closes most of the
-                    // population. The comment it replaced described the key as normalizing away
-                    // per-row identities; it did the opposite.
                     let detail = match &result {
-                        ClaimOutcome::RuntimeError { cause, message } => {
+                        ClaimOutcome::RuntimeError { message } => {
+                            // NORMALIZED TO A SIGNATURE, not kept verbatim: identities, paths and
+                            // offsets differ per row and would make every throw its own "cause",
+                            // which is the answer the census exists to avoid assuming.
+                            let signature: String = message
+                                .split_whitespace()
+                                .take(12)
+                                .collect::<Vec<_>>()
+                                .join(" ");
                             *known_red_runtime_error_causes
-                                .entry(cause.token())
+                                .entry(signature.chars().take(140).collect())
                                 .or_insert(0) += 1;
-                            format!("runtime error [{}]: {message}", cause.token())
+                            format!("runtime error: {message}")
                         }
-                        // NOT a fallback that guesses. Only `RuntimeErrored` reaches this arm and
-                        // only `RuntimeError` produces it, so this is unreachable in fact; it is
-                        // kept, and kept LOUD, because unreachable is not the same as absent and
-                        // a silent `_ => ()` here would hide a real routing defect.
                         other => {
+                            let rendered = format!("{other:?}");
                             *known_red_runtime_error_causes
-                                .entry("routing-defect-non-runtime-error-in-runtime-errored-arm")
+                                .entry(rendered.chars().take(140).collect())
                                 .or_insert(0) += 1;
-                            format!("{other:?}")
+                            rendered
                         }
                     };
                     outcome.known_red_runtime_errored.push(format!(
@@ -45182,7 +45008,7 @@ pub fn run_required_floor(
             ClaimOutcome::NotBool { got } => outcome
                 .failures
                 .push(format!("{} answered {got}, not a Bool", claim.qualified)),
-            ClaimOutcome::RuntimeError { message, .. } => outcome
+            ClaimOutcome::RuntimeError { message } => outcome
                 .failures
                 .push(format!("{} errored: {message}", claim.qualified)),
             ClaimOutcome::HostToolUnresolved { name, probed } => outcome.failures.push(format!(
@@ -45348,39 +45174,17 @@ pub fn run_required_floor(
     // per-identity report runs — on precisely the run where the evidence matters, it would be
     // computed and dropped.
     if !known_red_runtime_error_causes.is_empty() {
-        let mut causes: Vec<(&&'static str, &usize)> =
-            known_red_runtime_error_causes.iter().collect();
+        let mut causes: Vec<(&String, &usize)> = known_red_runtime_error_causes.iter().collect();
         causes.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
         eprintln!(
-            "[floor-known-red-causes] {} distinct cause(s) across {} non-verdict enrolled \
+            "[floor-known-red-causes] {} distinct signature(s) across {} non-verdict enrolled \
              identity(ies)",
             causes.len(),
             known_red_runtime_errored_count + known_red_observation_unreadable_count
         );
-        // THE CAP IS PRINTED, NOT RAISED, AND IT IS PRINTED WHETHER OR NOT IT BIT. Truncating at
-        // 20 was not wrong because 20 is small; it was wrong because nothing said anything had
-        // been dropped, so a reader tallying the printed rows got a short total with no way to
-        // know it — 93 of 142 on main `f9963a762`, and an experienced reader looked straight at
-        // that line without noticing the rows did not sum. Raising the cap would fix one run and
-        // leave the same silence for the next.
-        //
-        // `not_listed=0` IS THE LOAD-BEARING CASE. A drop notice that appears only when
-        // something drops requires the reader to know the field exists in order to miss it,
-        // which is the same silence one step quieter. Printing it always makes a complete
-        // listing say so, in the same place and the same shape as a truncated one.
-        const CAUSE_ROWS: usize = 20;
-        let dropped_rows = causes.len().saturating_sub(CAUSE_ROWS);
-        let dropped_identities: usize = causes.iter().skip(CAUSE_ROWS).map(|(_, c)| **c).sum();
-        let listed_identities: usize = causes.iter().take(CAUSE_ROWS).map(|(_, c)| **c).sum();
-        for (cause, count) in causes.iter().take(CAUSE_ROWS) {
-            eprintln!("[floor-known-red-causes] {count} × {cause}");
+        for (signature, count) in causes.iter().take(20) {
+            eprintln!("[floor-known-red-causes] {count} × {signature}");
         }
-        eprintln!(
-            "[floor-known-red-causes] listed={} listing_cap={CAUSE_ROWS} \
-             not_listed={dropped_rows} not_listed_identities={dropped_identities} \
-             listed_identities={listed_identities}",
-            causes.len().min(CAUSE_ROWS)
-        );
     }
     eprintln!(
         "[floor-claim-memory] worst single claim grew rss by {:.2}GB at={}",
@@ -46150,7 +45954,7 @@ fn witness_eval_verdict_from_claim_outcome(
                 got: got.clone(),
             }
         }
-        ClaimOutcome::RuntimeError { message, .. } => {
+        ClaimOutcome::RuntimeError { message } => {
             crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::RuntimeError {
                 message: message.clone(),
             }
@@ -46329,7 +46133,6 @@ mod terminal_ledger_completeness_law {
             (ClaimOutcome::Fail, true, KnownRedHeld),
             (
                 ClaimOutcome::RuntimeError {
-                    cause: WitnessRuntimeCause::TypeError,
                     message: "boom".into(),
                 },
                 false,

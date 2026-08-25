@@ -110,13 +110,11 @@ pub type NonNegativeInt = i64;
 pub type PositiveInt = i64;
 
 pub fn uint8_channel_bit_width_int() -> Int {
-    crate::std_measure::bit_width_count(crate::std_measure::bit_width(
-        crate::std_measure::bits_per_byte(),
-    ))
+    bit_width_count(bit_width(bits_per_byte()))
 }
 
 pub fn uint8_channel_inclusive_max_value_derived() -> Option<Int> {
-    match crate::std_induction::int_pow_bounded(2, uint8_channel_bit_width_int()) {
+    match int_pow_bounded(2, uint8_channel_bit_width_int()) {
         Some(two_pow) => Some((two_pow.clone() - 1)),
         None => None,
     }

@@ -136,19 +136,19 @@ pub fn gibibyte_scale_factor_bytes() -> Nat {
 }
 
 pub fn kibi_factor() -> Nat {
-    crate::extdeps_units_iec_80000_13::iec_kibi_factor()
+    iec_kibi_factor()
 }
 
 pub fn seconds_per_minute() -> Nat {
-    crate::extdeps_units_iso8601::iso8601_seconds_per_minute()
+    iso8601_seconds_per_minute()
 }
 
 pub fn minutes_per_hour() -> Nat {
-    crate::extdeps_units_iso8601::iso8601_minutes_per_hour()
+    iso8601_minutes_per_hour()
 }
 
 pub fn hours_per_day() -> Nat {
-    crate::extdeps_units_iso8601::iso8601_hours_per_day()
+    iso8601_hours_per_day()
 }
 
 pub fn seconds_per_day() -> Nat {
@@ -348,7 +348,7 @@ pub fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
 pub type BitWidth = Rc<Measure<(), (), i64>>;
 
 pub fn bits_per_byte() -> Nat {
-    crate::extdeps_units_iec_80000_13::octet_bit_count()
+    octet_bit_count()
 }
 
 pub type Hertz = Rc<Measure<(), (), i64>>;
@@ -1145,11 +1145,11 @@ pub fn permyriad_scale_note() -> String {
 }
 
 pub fn permyriad_half_for_round_half_up() -> i64 {
-    (crate::extdeps_units_dimensionless::parts_per_ten_thousand_unity_count() / 2)
+    (parts_per_ten_thousand_unity_count() / 2)
 }
 
 pub fn percent_scale_hundred() -> i64 {
-    crate::extdeps_units_dimensionless::percent_unity_hundred_count()
+    percent_unity_hundred_count()
 }
 
 pub fn percent_from_computed_int_frontier() -> String {
@@ -1175,7 +1175,7 @@ pub fn basis_point_count(bp: BasisPoint) -> Nat {
 }
 
 pub fn basis_point_unity_count() -> Nat {
-    crate::extdeps_units_dimensionless::parts_per_ten_thousand_unity_count()
+    parts_per_ten_thousand_unity_count()
 }
 
 pub fn basis_point_unit_note() -> String {
@@ -1274,36 +1274,27 @@ pub fn clock_basis_label(b: ClockBasis) -> String {
 }
 
 pub fn square_metres_to_square_millimetres(area: SquareMeter) -> SquareMillimeter {
-    square_millimeter(
-        (square_meter_count(area.clone())
-            * crate::extdeps_units_iso_80000_3::square_millimetres_per_square_metre()),
-    )
+    square_millimeter((square_meter_count(area.clone()) * square_millimetres_per_square_metre()))
 }
 
 pub fn cubic_metres_to_cubic_millimetres(volume: CubicMeter) -> CubicMillimeter {
-    cubic_millimeter(
-        (cubic_meter_count(volume.clone())
-            * crate::extdeps_units_iso_80000_3::cubic_millimetres_per_cubic_metre()),
-    )
+    cubic_millimeter((cubic_meter_count(volume.clone()) * cubic_millimetres_per_cubic_metre()))
 }
 
 pub fn full_turn_arcseconds() -> Arcsecond {
-    arcsecond(crate::extdeps_units_iso_80000_3::arcseconds_per_turn())
+    arcsecond(arcseconds_per_turn())
 }
 
 pub fn degrees_to_arcseconds(degrees: Degree) -> Arcsecond {
-    arcsecond(
-        (degree_count(degrees.clone())
-            * crate::extdeps_units_iso_80000_3::arcseconds_per_degree_derived()),
-    )
+    arcsecond((degree_count(degrees.clone()) * arcseconds_per_degree_derived()))
 }
 
 pub fn turns_to_arcseconds(turns: Turn) -> Arcsecond {
-    arcsecond((turn_count(turns.clone()) * crate::extdeps_units_iso_80000_3::arcseconds_per_turn()))
+    arcsecond((turn_count(turns.clone()) * arcseconds_per_turn()))
 }
 
 pub fn quarter_turn_arcseconds() -> Arcsecond {
-    arcsecond((crate::extdeps_units_iso_80000_3::arcseconds_per_turn() / 4))
+    arcsecond((arcseconds_per_turn() / 4))
 }
 
 pub fn turn(count: Nat) -> Turn {
@@ -1331,7 +1322,7 @@ pub fn signed_square_millimeter_count(m: SignedSquareMillimeter) -> i64 {
 pub fn amortization_months_dissolve_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            crate::std_dissolution::unbound_dissolution("dissolve-on: ground as calendar-month Duration sibling to billing_month_as_hour_count (one month-count authority for billing amortization + hourly divisor), or fold into extdeps.forex/pricing month facts when a second consumer appears — do not mint a third month wrapper.".to_string())
+            unbound_dissolution("dissolve-on: ground as calendar-month Duration sibling to billing_month_as_hour_count (one month-count authority for billing amortization + hourly divisor), or fold into extdeps.forex/pricing month facts when a second consumer appears — do not mint a third month wrapper.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
@@ -1340,7 +1331,7 @@ pub fn amortization_months_dissolve_on() -> Rc<DissolutionCondition> {
 pub fn basis_point_dissolve_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            crate::std_dissolution::unbound_dissolution("dissolve-on: Ratio<Scale> carrier unifying Percent and BasisPoint as two scales of one Dimensionless authority, with bp_to_percent/percent_to_bp derive relations enforced at call sites — else a third dimensionless-ratio use-case mints a third nickname.".to_string())
+            unbound_dissolution("dissolve-on: Ratio<Scale> carrier unifying Percent and BasisPoint as two scales of one Dimensionless authority, with bp_to_percent/percent_to_bp derive relations enforced at call sites — else a third dimensionless-ratio use-case mints a third nickname.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())

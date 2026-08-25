@@ -203,7 +203,7 @@ pub fn constant_bound_value(bound: Rc<SizeBound>) -> Option<i64> {
     match (*bound.clone()).clone() {
         SizeBound::ExplicitCountZero => Some(0),
         SizeBound::ExplicitCountPositive { steps: s, .. } => {
-            Some(crate::std_termination::positive_descent_count(s.clone()))
+            Some(positive_descent_count(s.clone()))
         }
         SizeBound::Forever => Some(forever_iteration_bound()),
         _ => None,

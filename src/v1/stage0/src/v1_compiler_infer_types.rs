@@ -72,7 +72,7 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
         name: "".to_string(),
-        span: crate::v1_std_core::no_span(),
+        span: no_span(),
         ident_span: None,
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
@@ -134,7 +134,7 @@ pub fn node_is_collection(
 ) -> bool {
     ((((n.children.clone().len() as i64) > 0)
         && (n.connective.clone() == Connective::NoConnective))
-        && is_declared_container_alias_spelling(crate::v1_std_core::authored_name_at(
+        && is_declared_container_alias_spelling(authored_name_at(
             source_indices.clone(),
             n.clone(),
         )))
@@ -161,10 +161,8 @@ pub fn node_is_set_collection(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (node_is_element_collection(n.clone(), source_indices.clone())
-        && (crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
-            source_indices.clone(),
-            n.clone(),
-        )) == "Set".to_string()))
+        && (qualified_last_segment(authored_name_at(source_indices.clone(), n.clone()))
+            == "Set".to_string()))
 }
 
 pub fn canonical_template_name(
@@ -172,10 +170,8 @@ pub fn canonical_template_name(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
-        let nm = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
-        match crate::std_types::container_template_algebra(
-            crate::v1_std_core::qualified_last_segment(nm.clone()),
-        ) {
+        let nm = authored_name_at(source_indices.clone(), n.clone());
+        match container_template_algebra(qualified_last_segment(nm.clone())) {
             Some(algebra) => algebra.clone(),
             None => nm.clone(),
         }
@@ -183,9 +179,7 @@ pub fn canonical_template_name(
 }
 
 pub fn is_declared_container_alias_spelling(name: String) -> bool {
-    match crate::std_types::container_template_alias_algebra(
-        crate::v1_std_core::qualified_last_segment(name.clone()),
-    ) {
+    match container_template_alias_algebra(qualified_last_segment(name.clone())) {
         Some(_) => true,
         None => false,
     }
@@ -212,10 +206,10 @@ pub fn container_alias_canonical_spelling(algebra: String) -> Option<String> {
 
 pub fn container_kind_canonical(name: String) -> String {
     {
-        let last = crate::v1_std_core::qualified_last_segment(name.clone());
+        let last = qualified_last_segment(name.clone());
         match v1_rt::map_get(&kernel_algebra_profile(), last.clone()) {
             Some(_) => last.clone(),
-            None => match crate::std_types::container_template_algebra(last.clone()) {
+            None => match container_template_algebra(last.clone()) {
                 Some(algebra) => match container_alias_canonical_spelling(algebra.clone()) {
                     Some(canonical) => canonical.clone(),
                     None => last.clone(),
@@ -238,14 +232,13 @@ pub fn reground_alias_carrier_identity(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     if (((n.name.clone() != "".to_string())
-        && (n.name.clone()
-            != crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone())))
+        && (n.name.clone() != authored_name_at(source_indices.clone(), n.clone())))
         && is_declared_container_alias_spelling(n.name.clone()))
     {
         Rc::new(Node {
             name: n.name.clone(),
             span: n.span.clone(),
-            ident_span: Some(crate::v1_std_core::kernel_span(n.name.clone())),
+            ident_span: Some(kernel_span(n.name.clone())),
             children: n.children.clone(),
             connective: n.connective.clone(),
             params: n.params.clone(),
@@ -276,7 +269,7 @@ pub fn structural_carrier_template_name(
             Rc::new(Node {
                 name: n.name.clone(),
                 span: n.span.clone(),
-                ident_span: Some(crate::v1_std_core::kernel_span(n.name.clone())),
+                ident_span: Some(kernel_span(n.name.clone())),
                 children: n.children.clone(),
                 connective: n.connective.clone(),
                 params: n.params.clone(),
@@ -361,16 +354,12 @@ pub fn type_resolution_verdict(
         if self_is_type_var.clone() {
             Rc::new(TypeResolutionVerdict::UnderResolved)
         } else {
-            match (*crate::v1_std_core::authored_container_spelling_verdict(
-                n.clone(),
-                source_indices.clone(),
-            ))
-            .clone()
+            match (*authored_container_spelling_verdict(n.clone(), source_indices.clone())).clone()
             {
                 ContainerSpellingVerdict::ContainerSpellingUnknown {
                     container_leaf: _, ..
                 } => Rc::new(TypeResolutionVerdict::ContainerSpellingUnresolvable {
-                    name: crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
+                    name: authored_name_at(source_indices.clone(), n.clone()),
                 }),
                 ContainerSpellingVerdict::ContainerSpellingDeclared {
                     arity: expected, ..
@@ -423,17 +412,17 @@ pub fn is_fully_resolved(
 }
 
 pub fn bare_map_node() -> Option<Rc<Node>> {
-    match crate::std_types::container_param_name("Map".to_string(), 0) {
-        Some(key_id) => match crate::std_types::container_param_name("Map".to_string(), 1) {
+    match container_param_name("Map".to_string(), 0) {
+        Some(key_id) => match container_param_name("Map".to_string(), 1) {
             Some(val_id) => Some(Rc::new(Node {
                 name: "Map".to_string(),
-                span: crate::v1_std_core::no_span(),
-                ident_span: Some(crate::v1_std_core::no_span()),
+                span: no_span(),
+                ident_span: Some(no_span()),
                 children: Rc::new(vec![
                     Rc::new(Node {
                         name: key_id.clone(),
-                        span: crate::v1_std_core::no_span(),
-                        ident_span: Some(crate::v1_std_core::no_span()),
+                        span: no_span(),
+                        ident_span: Some(no_span()),
                         children: Rc::new(vec![]),
                         connective: Connective::NoConnective,
                         params: Rc::new(vec![]),
@@ -454,8 +443,8 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                     }),
                     Rc::new(Node {
                         name: val_id.clone(),
-                        span: crate::v1_std_core::no_span(),
-                        ident_span: Some(crate::v1_std_core::no_span()),
+                        span: no_span(),
+                        ident_span: Some(no_span()),
                         children: Rc::new(vec![]),
                         connective: Connective::NoConnective,
                         params: Rc::new(vec![]),
@@ -497,15 +486,15 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
 }
 
 pub fn bare_set_node() -> Option<Rc<Node>> {
-    match crate::std_types::container_param_name("Set".to_string(), 0) {
+    match container_param_name("Set".to_string(), 0) {
         Some(elem_id) => Some(Rc::new(Node {
             name: "Set".to_string(),
-            span: crate::v1_std_core::no_span(),
-            ident_span: Some(crate::v1_std_core::no_span()),
+            span: no_span(),
+            ident_span: Some(no_span()),
             children: Rc::new(vec![Rc::new(Node {
                 name: elem_id.clone(),
-                span: crate::v1_std_core::no_span(),
-                ident_span: Some(crate::v1_std_core::no_span()),
+                span: no_span(),
+                ident_span: Some(no_span()),
                 children: Rc::new(vec![]),
                 connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
@@ -549,10 +538,10 @@ pub fn kernel_container_profile_miss_diagnostic(kind_name: String) -> Rc<ErrorNo
             "missing kernel container profile: ".to_string(),
             kind_name.clone(),
         );
-        crate::v1_std_core::make_error_node(
+        make_error_node(
             Rc::new(CompilerDiagnostic::InternalError {
                 message: msg.clone(),
-                span: crate::v1_std_core::no_span(),
+                span: no_span(),
             }),
             "v1.compiler.infer_types".to_string(),
         )
@@ -567,14 +556,14 @@ pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
         );
         Rc::new(Node {
             name: "".to_string(),
-            span: crate::v1_std_core::no_span(),
+            span: no_span(),
             ident_span: None,
             children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
             inferred: Some(Rc::new(InferredNode::CompilerError {
                 message: msg.clone(),
-                span: crate::v1_std_core::no_span(),
+                span: no_span(),
             })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
@@ -612,8 +601,8 @@ pub fn kernel_record_type_note() -> String {
 pub fn make_kernel_record_field(field_name: String, field_type: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
         name: field_name.clone(),
-        span: crate::v1_std_core::kernel_span(field_name.clone()),
-        ident_span: Some(crate::v1_std_core::kernel_span(field_name.clone())),
+        span: kernel_span(field_name.clone()),
+        ident_span: Some(kernel_span(field_name.clone())),
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -637,8 +626,8 @@ pub fn make_kernel_record_field(field_name: String, field_type: Rc<Node>) -> Rc<
 pub fn make_kernel_record_type(type_name: String, fields: Rc<Vec<Rc<Node>>>) -> Rc<Node> {
     Rc::new(Node {
         name: type_name.clone(),
-        span: crate::v1_std_core::kernel_span(type_name.clone()),
-        ident_span: Some(crate::v1_std_core::kernel_span(type_name.clone())),
+        span: kernel_span(type_name.clone()),
+        ident_span: Some(kernel_span(type_name.clone())),
         children: fields.clone(),
         connective: Connective::Conj,
         params: Rc::new(vec![]),
@@ -658,22 +647,22 @@ pub fn make_kernel_record_type(type_name: String, fields: Rc<Vec<Rc<Node>>>) -> 
 }
 
 pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTypeBuild> {
-    if !crate::std_types::is_kernel_type(kind_name.clone()) {
+    if !is_kernel_type(kind_name.clone()) {
         Rc::new(KernelTypeBuild {
             ty: nominal_type_ref(kind_name.clone()),
             diagnostics: Rc::new(vec![]),
         })
     } else {
-        match crate::std_types::container_param_name(kind_name.clone(), 0) {
+        match container_param_name(kind_name.clone(), 0) {
             Some(param_name) => Rc::new(KernelTypeBuild {
                 ty: Rc::new(Node {
                     name: kind_name.clone(),
-                    span: crate::v1_std_core::kernel_span(kind_name.clone()),
-                    ident_span: Some(crate::v1_std_core::kernel_span(kind_name.clone())),
+                    span: kernel_span(kind_name.clone()),
+                    ident_span: Some(kernel_span(kind_name.clone())),
                     children: Rc::new(vec![Rc::new(Node {
                         name: param_name.clone(),
-                        span: crate::v1_std_core::kernel_span(param_name.clone()),
-                        ident_span: Some(crate::v1_std_core::kernel_span(param_name.clone())),
+                        span: kernel_span(param_name.clone()),
+                        ident_span: Some(kernel_span(param_name.clone())),
                         children: Rc::new(vec![]),
                         connective: Connective::NoConnective,
                         params: Rc::new(vec![]),
@@ -720,18 +709,18 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
 }
 
 pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
-    match crate::std_types::container_param_name("Map".to_string(), 0) {
-        Some(key_name) => match crate::std_types::container_param_name("Map".to_string(), 1) {
+    match container_param_name("Map".to_string(), 0) {
+        Some(key_name) => match container_param_name("Map".to_string(), 1) {
             Some(val_name) => Rc::new(KernelTypeBuild {
                 ty: Rc::new(Node {
                     name: "Map".to_string(),
-                    span: crate::v1_std_core::kernel_span("Map".to_string()),
-                    ident_span: Some(crate::v1_std_core::kernel_span("Map".to_string())),
+                    span: kernel_span("Map".to_string()),
+                    ident_span: Some(kernel_span("Map".to_string())),
                     children: Rc::new(vec![
                         Rc::new(Node {
                             name: key_name.clone(),
-                            span: crate::v1_std_core::kernel_span(key_name.clone()),
-                            ident_span: Some(crate::v1_std_core::kernel_span(key_name.clone())),
+                            span: kernel_span(key_name.clone()),
+                            ident_span: Some(kernel_span(key_name.clone())),
                             children: Rc::new(vec![]),
                             connective: Connective::NoConnective,
                             params: Rc::new(vec![]),
@@ -750,8 +739,8 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                         }),
                         Rc::new(Node {
                             name: val_name.clone(),
-                            span: crate::v1_std_core::kernel_span(val_name.clone()),
-                            ident_span: Some(crate::v1_std_core::kernel_span(val_name.clone())),
+                            span: kernel_span(val_name.clone()),
+                            ident_span: Some(kernel_span(val_name.clone())),
                             children: Rc::new(vec![]),
                             connective: Connective::NoConnective,
                             params: Rc::new(vec![]),
@@ -807,8 +796,8 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
 pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
         name: "Callable".to_string(),
-        span: crate::v1_std_core::kernel_span("Callable".to_string()),
-        ident_span: Some(crate::v1_std_core::kernel_span("Callable".to_string())),
+        span: kernel_span("Callable".to_string()),
+        ident_span: Some(kernel_span("Callable".to_string())),
         children: Rc::new(vec![]),
         connective: Connective::Arrow,
         params: func_params.clone(),
@@ -830,13 +819,13 @@ pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<N
 pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
         name: "".to_string(),
-        span: crate::v1_std_core::no_span(),
+        span: no_span(),
         ident_span: None,
         children: Rc::new(vec![
             Rc::new(Node {
                 name: "first".to_string(),
-                span: crate::v1_std_core::kernel_span("first".to_string()),
-                ident_span: Some(crate::v1_std_core::kernel_span("first".to_string())),
+                span: kernel_span("first".to_string()),
+                ident_span: Some(kernel_span("first".to_string())),
                 children: Rc::new(vec![]),
                 connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
@@ -857,8 +846,8 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
             }),
             Rc::new(Node {
                 name: "second".to_string(),
-                span: crate::v1_std_core::kernel_span("second".to_string()),
-                ident_span: Some(crate::v1_std_core::kernel_span("second".to_string())),
+                span: kernel_span("second".to_string()),
+                ident_span: Some(kernel_span("second".to_string())),
                 children: Rc::new(vec![]),
                 connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
@@ -898,8 +887,8 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
 pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
         name: name.clone(),
-        span: crate::v1_std_core::kernel_span(name.clone()),
-        ident_span: Some(crate::v1_std_core::kernel_span(name.clone())),
+        span: kernel_span(name.clone()),
+        ident_span: Some(kernel_span(name.clone())),
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -929,12 +918,12 @@ pub fn algebra_method_field(
         let params = Rc::new({
             let mut __result = Vec::new();
             for t in param_types.iter().cloned() {
-                __result.push(crate::v1_std_core::make_param_node(
+                __result.push(make_param_node(
                     "_".to_string(),
                     t.clone(),
                     None,
-                    crate::v1_std_core::no_span(),
-                    crate::v1_std_core::no_span(),
+                    no_span(),
+                    no_span(),
                 ));
             }
             __result
@@ -942,8 +931,8 @@ pub fn algebra_method_field(
         let callable = make_callable_type(params.clone(), return_type.clone());
         Rc::new(Node {
             name: name.clone(),
-            span: crate::v1_std_core::kernel_span(name.clone()),
-            ident_span: Some(crate::v1_std_core::kernel_span(name.clone())),
+            span: kernel_span(name.clone()),
+            ident_span: Some(kernel_span(name.clone())),
             children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -997,10 +986,7 @@ pub fn placeholder_type_node(name: String) -> Rc<Node> {
 }
 
 pub fn nominal_type_ref(name: String) -> Rc<Node> {
-    crate::v1_std_core::leaf_node_with_span(
-        name.clone(),
-        crate::v1_std_core::kernel_span(name.clone()),
-    )
+    leaf_node_with_span(name.clone(), kernel_span(name.clone()))
 }
 
 pub fn algebra_child_or_placeholder(
@@ -1087,9 +1073,10 @@ pub fn instantiate_algebra_type(
                 ..
             } => {
                 let kind_name = match (*src.clone()).clone() {
-                    ContainerSource::SameAsReceiver => container_kind_canonical(
-                        crate::v1_std_core::authored_name_at(source_indices.clone(), base.clone()),
-                    ),
+                    ContainerSource::SameAsReceiver => container_kind_canonical(authored_name_at(
+                        source_indices.clone(),
+                        base.clone(),
+                    )),
                     ContainerSource::Named { name: n, .. } => n.clone(),
                 };
                 let inner_b =
@@ -1107,7 +1094,7 @@ pub fn instantiate_algebra_type(
                 let ib =
                     instantiate_algebra_type(inner.clone(), base.clone(), source_indices.clone());
                 Rc::new(KernelTypeBuild {
-                    ty: crate::v1_std_core::with_optional_cardinality(ib.ty.clone()),
+                    ty: with_optional_cardinality(ib.ty.clone()),
                     diagnostics: ib.diagnostics.clone(),
                 })
             }
@@ -1166,12 +1153,12 @@ pub fn instantiate_algebra_type(
                         Rc::new({
                             let mut __result = Vec::new();
                             for pn in param_nodes.iter().cloned() {
-                                __result.push(crate::v1_std_core::make_param_node(
+                                __result.push(make_param_node(
                                     "_".to_string(),
                                     pn.clone(),
                                     None,
-                                    crate::v1_std_core::no_span(),
-                                    crate::v1_std_core::no_span(),
+                                    no_span(),
+                                    no_span(),
                                 ));
                             }
                             __result
@@ -1248,10 +1235,7 @@ pub fn enrich_kernel_type(
             Some(p) => {
                 let field_bs = Rc::new({
                     let mut __result = Vec::new();
-                    for template in crate::std_algebra::algebra_templates_for_profile(p.clone())
-                        .iter()
-                        .cloned()
-                    {
+                    for template in algebra_templates_for_profile(p.clone()).iter().cloned() {
                         __result.push(instantiate_algebra_field(
                             template.clone(),
                             base.clone(),
@@ -1377,15 +1361,13 @@ pub fn unify_template(
                 ..
             } => {
                 let expected_name = match (*src.clone()).clone() {
-                    ContainerSource::SameAsReceiver => {
-                        container_kind_canonical(crate::v1_std_core::authored_name_at(
-                            source_indices.clone(),
-                            receiver.clone(),
-                        ))
-                    }
+                    ContainerSource::SameAsReceiver => container_kind_canonical(authored_name_at(
+                        source_indices.clone(),
+                        receiver.clone(),
+                    )),
                     ContainerSource::Named { name: n, .. } => n.clone(),
                 };
-                if (container_kind_canonical(crate::v1_std_core::authored_name_at(
+                if (container_kind_canonical(authored_name_at(
                     source_indices.clone(),
                     concrete.clone(),
                 )) != expected_name.clone())
@@ -1577,10 +1559,11 @@ pub fn apply_type_substitution(
                 }
             }
             AlgebraTypeTemplate::ReceiverSelf => {
-                let receiver_name_str = container_kind_canonical(
-                    crate::v1_std_core::authored_name_at(source_indices.clone(), receiver.clone()),
-                );
-                let is_bare = (crate::std_types::is_container_type(receiver_name_str.clone()) && {
+                let receiver_name_str = container_kind_canonical(authored_name_at(
+                    source_indices.clone(),
+                    receiver.clone(),
+                ));
+                let is_bare = (is_container_type(receiver_name_str.clone()) && {
                     let mut __all = true;
                     for ch in receiver.children.clone().iter().cloned() {
                         if !({
@@ -1589,12 +1572,10 @@ pub fn apply_type_substitution(
                                 is_type_variable(inner.inferred.clone().clone().unwrap())
                             } else {
                                 ((inner.ident_span.clone() == None)
-                                    || !crate::std_types::is_kernel_type(
-                                        crate::v1_std_core::authored_name_at(
-                                            source_indices.clone(),
-                                            inner.clone(),
-                                        ),
-                                    ))
+                                    || !is_kernel_type(authored_name_at(
+                                        source_indices.clone(),
+                                        inner.clone(),
+                                    )))
                             }
                         }) {
                             __all = false;
@@ -1605,8 +1586,7 @@ pub fn apply_type_substitution(
                 });
                 if is_bare.clone() {
                     {
-                        let arity =
-                            crate::std_types::container_expected_arity(receiver_name_str.clone());
+                        let arity = container_expected_arity(receiver_name_str.clone());
                         if (arity.clone() == Some(2)) {
                             match v1_rt::map_get(&subst, "__key__".to_string()) {
                                 Some(key) => {
@@ -1661,18 +1641,17 @@ pub fn apply_type_substitution(
                             diagnostics: Rc::new(vec![]),
                         }),
                         None => {
-                            let rname =
-                                container_kind_canonical(crate::v1_std_core::authored_name_at(
-                                    source_indices.clone(),
-                                    receiver.clone(),
-                                ));
-                            if !crate::std_types::is_kernel_type(rname.clone()) {
+                            let rname = container_kind_canonical(authored_name_at(
+                                source_indices.clone(),
+                                receiver.clone(),
+                            ));
+                            if !is_kernel_type(rname.clone()) {
                                 Rc::new(KernelTypeBuild {
                                     ty: receiver.clone(),
                                     diagnostics: Rc::new(vec![]),
                                 })
                             } else {
-                                match crate::std_types::container_param_name(rname.clone(), 0) {
+                                match container_param_name(rname.clone(), 0) {
                                     Some(n) => Rc::new(KernelTypeBuild {
                                         ty: type_variable_node(n.clone()),
                                         diagnostics: Rc::new(vec![]),
@@ -1700,17 +1679,17 @@ pub fn apply_type_substitution(
                         diagnostics: Rc::new(vec![]),
                     }),
                     None => {
-                        let rname = container_kind_canonical(crate::v1_std_core::authored_name_at(
+                        let rname = container_kind_canonical(authored_name_at(
                             source_indices.clone(),
                             receiver.clone(),
                         ));
-                        if !crate::std_types::is_kernel_type(rname.clone()) {
+                        if !is_kernel_type(rname.clone()) {
                             Rc::new(KernelTypeBuild {
                                 ty: receiver.clone(),
                                 diagnostics: Rc::new(vec![]),
                             })
                         } else {
-                            match crate::std_types::container_param_name(rname.clone(), 0) {
+                            match container_param_name(rname.clone(), 0) {
                                 Some(n) => Rc::new(KernelTypeBuild {
                                     ty: type_variable_node(n.clone()),
                                     diagnostics: Rc::new(vec![]),
@@ -1744,17 +1723,17 @@ pub fn apply_type_substitution(
                         diagnostics: Rc::new(vec![]),
                     }),
                     None => {
-                        let rname = container_kind_canonical(crate::v1_std_core::authored_name_at(
+                        let rname = container_kind_canonical(authored_name_at(
                             source_indices.clone(),
                             receiver.clone(),
                         ));
-                        if !crate::std_types::is_kernel_type(rname.clone()) {
+                        if !is_kernel_type(rname.clone()) {
                             Rc::new(KernelTypeBuild {
                                 ty: receiver.clone(),
                                 diagnostics: Rc::new(vec![]),
                             })
                         } else {
-                            match crate::std_types::container_param_name(rname.clone(), 1) {
+                            match container_param_name(rname.clone(), 1) {
                                 Some(n) => Rc::new(KernelTypeBuild {
                                     ty: type_variable_node(n.clone()),
                                     diagnostics: Rc::new(vec![]),
@@ -1780,12 +1759,10 @@ pub fn apply_type_substitution(
                 ..
             } => {
                 let kind_name = match (*src.clone()).clone() {
-                    ContainerSource::SameAsReceiver => {
-                        container_kind_canonical(crate::v1_std_core::authored_name_at(
-                            source_indices.clone(),
-                            receiver.clone(),
-                        ))
-                    }
+                    ContainerSource::SameAsReceiver => container_kind_canonical(authored_name_at(
+                        source_indices.clone(),
+                        receiver.clone(),
+                    )),
                     ContainerSource::Named { name: n, .. } => n.clone(),
                 };
                 let inner_applied = apply_type_substitution(
@@ -1811,7 +1788,7 @@ pub fn apply_type_substitution(
                     source_indices.clone(),
                 );
                 Rc::new(KernelTypeBuild {
-                    ty: crate::v1_std_core::with_optional_cardinality(ib.ty.clone()),
+                    ty: with_optional_cardinality(ib.ty.clone()),
                     diagnostics: ib.diagnostics.clone(),
                 })
             }
@@ -1892,12 +1869,12 @@ pub fn apply_type_substitution(
                         Rc::new({
                             let mut __result = Vec::new();
                             for pn in param_nodes.iter().cloned() {
-                                __result.push(crate::v1_std_core::make_param_node(
+                                __result.push(make_param_node(
                                     "_".to_string(),
                                     pn.clone(),
                                     None,
-                                    crate::v1_std_core::no_span(),
-                                    crate::v1_std_core::no_span(),
+                                    no_span(),
+                                    no_span(),
                                 ));
                             }
                             __result
@@ -2049,7 +2026,7 @@ pub fn node_type_shape(
         let __is_leaf = (((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) == 0))
             && ((n.properties.clone().len() as i64) == 0));
-        let n_name = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+        let n_name = authored_name_at(source_indices.clone(), n.clone());
         if __is_leaf.clone() {
             {
                 let __is_named_ref = match n.inferred.clone().as_deref().cloned() {
@@ -2057,16 +2034,12 @@ pub fn node_type_shape(
                         (((((rt.connective.clone() == Connective::NoConnective)
                             && ((rt.children.clone().len() as i64) == 0))
                             && (rt.ident_span.clone() != None))
-                            && (crate::v1_std_core::authored_name_at(
+                            && (authored_name_at(source_indices.clone(), rt.clone())
+                                != "None".to_string()))
+                            && (is_kernel_type(authored_name_at(
                                 source_indices.clone(),
                                 rt.clone(),
-                            ) != "None".to_string()))
-                            && (crate::std_types::is_kernel_type(
-                                crate::v1_std_core::authored_name_at(
-                                    source_indices.clone(),
-                                    rt.clone(),
-                                ),
-                            ) == false))
+                            )) == false))
                     }
                     _ => false,
                 };
@@ -2140,9 +2113,7 @@ pub fn node_type_shape(
                                 if is_optional.clone() {
                                     {
                                         let inner_shape = node_type_shape(
-                                            crate::v1_std_core::with_required_cardinality(
-                                                n.clone(),
-                                            ),
+                                            with_required_cardinality(n.clone()),
                                             source_indices.clone(),
                                         );
                                         v1_rt::concat(
@@ -2179,12 +2150,12 @@ pub fn node_type_compatible(
 ) -> bool {
     loop {
         let left_err = if (left.inferred.clone() != None) {
-            crate::v1_std_core::is_compiler_error(left.inferred.clone().clone().unwrap())
+            is_compiler_error(left.inferred.clone().clone().unwrap())
         } else {
             false
         };
         let right_err = if (right.inferred.clone() != None) {
-            crate::v1_std_core::is_compiler_error(right.inferred.clone().clone().unwrap())
+            is_compiler_error(right.inferred.clone().clone().unwrap())
         } else {
             false
         };
@@ -2264,25 +2235,21 @@ pub fn node_type_compatible(
                             ) == canonical_template_name(
                                 right.clone(),
                                 source_indices.clone(),
-                            )) && (crate::v1_std_core::authored_name_at(
+                            )) && (authored_name_at(
                                 source_indices.clone(),
                                 left.clone(),
-                            ) != crate::v1_std_core::authored_name_at(
+                            ) != authored_name_at(
                                 source_indices.clone(),
                                 right.clone(),
                             ))) && ((left.children.clone().len() as i64) == 1))
                                 && ((right.children.clone().len() as i64) == 1))
-                                && (is_declared_container_alias_spelling(
-                                    crate::v1_std_core::authored_name_at(
-                                        source_indices.clone(),
-                                        left.clone(),
-                                    ),
-                                ) || is_declared_container_alias_spelling(
-                                    crate::v1_std_core::authored_name_at(
-                                        source_indices.clone(),
-                                        right.clone(),
-                                    ),
-                                )))
+                                && (is_declared_container_alias_spelling(authored_name_at(
+                                    source_indices.clone(),
+                                    left.clone(),
+                                )) || is_declared_container_alias_spelling(authored_name_at(
+                                    source_indices.clone(),
+                                    right.clone(),
+                                ))))
                             {
                                 match left.children.clone().first().cloned() {
                                     Some(left_ch) => {
@@ -2315,11 +2282,8 @@ pub fn node_type_compatible(
                                 }
                             } else {
                                 if (left_opt.clone() && right_opt.clone()) {
-                                    let left_inner =
-                                        crate::v1_std_core::with_required_cardinality(left.clone());
-                                    let right_inner = crate::v1_std_core::with_required_cardinality(
-                                        right.clone(),
-                                    );
+                                    let left_inner = with_required_cardinality(left.clone());
+                                    let right_inner = with_required_cardinality(right.clone());
                                     let left_inner_is_unit = is_unit_like(left_inner.clone());
                                     let right_inner_is_unit = is_unit_like(right_inner.clone());
                                     if (left_inner_is_unit.clone() || right_inner_is_unit.clone()) {
@@ -2337,15 +2301,9 @@ pub fn node_type_compatible(
                                     if (left_opt.clone() || right_opt.clone()) {
                                         break false;
                                     } else {
-                                        break crate::v1_std_core::type_name_compatible(
-                                            crate::v1_std_core::authored_name_at(
-                                                source_indices.clone(),
-                                                left.clone(),
-                                            ),
-                                            crate::v1_std_core::authored_name_at(
-                                                source_indices.clone(),
-                                                right.clone(),
-                                            ),
+                                        break type_name_compatible(
+                                            authored_name_at(source_indices.clone(), left.clone()),
+                                            authored_name_at(source_indices.clone(), right.clone()),
                                         );
                                     }
                                 }
@@ -2367,8 +2325,7 @@ pub fn prefer_specific_type(
         let left_is_container = node_is_element_collection(left.clone(), source_indices.clone());
         let left_is_optional = (left.return_cardinality.clone() == Cardinality::CardOptional);
         let left_first_child = left.children.clone().first().cloned();
-        let left_norm_name =
-            crate::v1_std_core::authored_name_at(source_indices.clone(), left.clone());
+        let left_norm_name = authored_name_at(source_indices.clone(), left.clone());
         let left_is_unit_inner = if left_is_container.clone() {
             match left_first_child.clone() {
                 Some(ch) => {
@@ -2391,8 +2348,7 @@ pub fn prefer_specific_type(
         let right_is_container = node_is_element_collection(right.clone(), source_indices.clone());
         let right_is_optional = (right.return_cardinality.clone() == Cardinality::CardOptional);
         let same_kind = if (left_is_container.clone() && right_is_container.clone()) {
-            (left_norm_name.clone()
-                == crate::v1_std_core::authored_name_at(source_indices.clone(), right.clone()))
+            (left_norm_name.clone() == authored_name_at(source_indices.clone(), right.clone()))
         } else {
             if (left_is_optional.clone() && right_is_optional.clone()) {
                 true
@@ -2412,9 +2368,9 @@ pub fn prefer_specific_type(
                     && ((left.children.clone().len() as i64) == 0))
                     && ((right.connective.clone() != Connective::NoConnective)
                         || ((right.children.clone().len() as i64) > 0)))
-                    && crate::v1_std_core::type_name_compatible(
+                    && type_name_compatible(
                         left_norm_name.clone(),
-                        crate::v1_std_core::authored_name_at(source_indices.clone(), right.clone()),
+                        authored_name_at(source_indices.clone(), right.clone()),
                     ))
                 {
                     right.clone()
@@ -2433,12 +2389,12 @@ pub fn node_type_equals(
 ) -> bool {
     {
         let left_err = if (left.inferred.clone() != None) {
-            crate::v1_std_core::is_compiler_error(left.inferred.clone().clone().unwrap())
+            is_compiler_error(left.inferred.clone().clone().unwrap())
         } else {
             false
         };
         let right_err = if (right.inferred.clone() != None) {
-            crate::v1_std_core::is_compiler_error(right.inferred.clone().clone().unwrap())
+            is_compiler_error(right.inferred.clone().clone().unwrap())
         } else {
             false
         };
@@ -2473,8 +2429,8 @@ pub fn node_type_equals(
                         } else {
                             if (left_opt.clone() && right_opt.clone()) {
                                 node_type_equals_core(
-                                    crate::v1_std_core::with_required_cardinality(left.clone()),
-                                    crate::v1_std_core::with_required_cardinality(right.clone()),
+                                    with_required_cardinality(left.clone()),
+                                    with_required_cardinality(right.clone()),
                                     source_indices.clone(),
                                 )
                             } else {
@@ -2506,15 +2462,13 @@ pub fn node_type_equals_core(
             && ((right.properties.clone().len() as i64) == 0));
         let left_struct = (left.connective.clone() != Connective::NoConnective);
         let right_struct = (right.connective.clone() != Connective::NoConnective);
-        let left_name = crate::v1_std_core::authored_name_at(source_indices.clone(), left.clone());
-        let right_name =
-            crate::v1_std_core::authored_name_at(source_indices.clone(), right.clone());
+        let left_name = authored_name_at(source_indices.clone(), left.clone());
+        let right_name = authored_name_at(source_indices.clone(), right.clone());
         if (left_leaf.clone() && right_leaf.clone()) {
-            crate::v1_std_core::type_name_compatible(left_name.clone(), right_name.clone())
+            type_name_compatible(left_name.clone(), right_name.clone())
         } else {
             if (left_struct.clone() && right_struct.clone()) {
-                if !crate::v1_std_core::type_name_compatible(left_name.clone(), right_name.clone())
-                {
+                if !type_name_compatible(left_name.clone(), right_name.clone()) {
                     false
                 } else {
                     if ((left.connective.clone() == Connective::Conj)
@@ -2567,13 +2521,10 @@ pub fn node_type_equals_core(
                 }
             } else {
                 if (left_leaf.clone() && right_struct.clone()) {
-                    crate::v1_std_core::type_name_compatible(left_name.clone(), right_name.clone())
+                    type_name_compatible(left_name.clone(), right_name.clone())
                 } else {
                     if (left_struct.clone() && right_leaf.clone()) {
-                        crate::v1_std_core::type_name_compatible(
-                            left_name.clone(),
-                            right_name.clone(),
-                        )
+                        type_name_compatible(left_name.clone(), right_name.clone())
                     } else {
                         {
                             let left_is_container =
@@ -2685,10 +2636,30 @@ pub fn node_type_equals_core(
                                                         .iter()
                                                         .cloned()
                                                         {
-                                                            if !(match right.params.clone().iter().cloned().skip(pair.0.clone() as usize).next() {
-    Some(right_param) => node_type_equals(crate::v1_std_core::param_node_type_expr(pair.1.clone()), crate::v1_std_core::param_node_type_expr(right_param.clone()), source_indices.clone()),
-    None => false,
-}) { __all = false; break; }
+                                                            if !(match right
+                                                                .params
+                                                                .clone()
+                                                                .iter()
+                                                                .cloned()
+                                                                .skip(pair.0.clone() as usize)
+                                                                .next()
+                                                            {
+                                                                Some(right_param) => {
+                                                                    node_type_equals(
+                                                                        param_node_type_expr(
+                                                                            pair.1.clone(),
+                                                                        ),
+                                                                        param_node_type_expr(
+                                                                            right_param.clone(),
+                                                                        ),
+                                                                        source_indices.clone(),
+                                                                    )
+                                                                }
+                                                                None => false,
+                                                            }) {
+                                                                __all = false;
+                                                                break;
+                                                            }
                                                         }
                                                         __all
                                                     };
@@ -2764,29 +2735,20 @@ pub fn node_type_deps(
                     (((((rt.connective.clone() == Connective::NoConnective)
                         && ((rt.children.clone().len() as i64) == 0))
                         && (rt.ident_span.clone() != None))
-                        && (crate::v1_std_core::authored_name_at(
-                            source_indices.clone(),
-                            rt.clone(),
-                        ) != "None".to_string()))
-                        && (crate::std_types::is_kernel_type(
-                            crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                rt.clone(),
-                            ),
-                        ) == false))
+                        && (authored_name_at(source_indices.clone(), rt.clone())
+                            != "None".to_string()))
+                        && (is_kernel_type(authored_name_at(source_indices.clone(), rt.clone()))
+                            == false))
                 }
                 _ => false,
             }
         };
         let has_structure = (n.connective.clone() != Connective::NoConnective);
-        let n_name = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+        let n_name = authored_name_at(source_indices.clone(), n.clone());
         if __is_named_ref.clone() {
             match n.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: rt, .. }) => {
-                    Rc::new(vec![crate::v1_std_core::authored_name_at(
-                        source_indices.clone(),
-                        rt.clone(),
-                    )])
+                    Rc::new(vec![authored_name_at(source_indices.clone(), rt.clone())])
                 }
                 _ => Rc::new(vec![]),
             }
@@ -2837,7 +2799,7 @@ pub fn node_type_deps(
                                 __result
                             });
                             if ((n.ident_span.clone() != None)
-                                && (crate::std_types::is_kernel_type(n_name.clone()) == false))
+                                && (is_kernel_type(n_name.clone()) == false))
                             {
                                 v1_rt::concat(Rc::new(vec![n_name.clone()]), child_deps.clone())
                             } else {
@@ -2845,7 +2807,7 @@ pub fn node_type_deps(
                             }
                         }
                     } else {
-                        if ((crate::std_types::is_kernel_type(n_name.clone())
+                        if ((is_kernel_type(n_name.clone())
                             || (n_name.clone() == "None".to_string()))
                             || (n.ident_span.clone() == None))
                         {
@@ -2866,7 +2828,7 @@ pub fn infer_literal_node(lit: Rc<LiteralValue>) -> Rc<Node> {
         LiteralValue::LitInt { value: _, .. } => int_type(),
         LiteralValue::LitFloat { value: _, .. } => float_type(),
         LiteralValue::LitBool { value: _, .. } => bool_type(),
-        LiteralValue::LitNull => crate::v1_std_core::with_optional_cardinality(unit_type()),
+        LiteralValue::LitNull => with_optional_cardinality(unit_type()),
         LiteralValue::LitSymbol { value: _, .. } => string_type(),
     }
 }
@@ -2912,7 +2874,7 @@ pub fn extract_optional_inner_node(n: Rc<Node>) -> Rc<Node> {
     {
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
         if is_optional.clone() {
-            crate::v1_std_core::with_required_cardinality(n)
+            with_required_cardinality(n)
         } else {
             if ((n.name.clone() == "Optional".to_string())
                 && ((n.children.clone().len() as i64) == 1))
@@ -2980,7 +2942,7 @@ pub fn first_matching_algebra_field(
                 break None;
             }
             Some(kind) => {
-                match crate::v1_std_core::find_child_named(
+                match find_child_named(
                     n.clone(),
                     algebra_field_kind_name(kind.clone()),
                     source_indices.clone(),
@@ -3129,10 +3091,8 @@ pub fn for_each_element_type_node(
                 if ((((normed.connective.clone() == Connective::NoConnective)
                     && ((normed.children.clone().len() as i64) == 0))
                     && ((normed.properties.clone().len() as i64) == 0))
-                    && (crate::v1_std_core::authored_name_at(
-                        source_indices.clone(),
-                        normed.clone(),
-                    ) == "String".to_string()))
+                    && (authored_name_at(source_indices.clone(), normed.clone())
+                        == "String".to_string()))
                 {
                     string_type()
                 } else {

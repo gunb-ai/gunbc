@@ -78,17 +78,17 @@ pub fn parse_authored_occurrence_binding_source(
     source: String,
 ) -> Rc<ParsedOccurrenceBindingSource> {
     {
-        let index = crate::v1_std_core::build_newline_index(file.clone(), source.clone());
-        let parsed = crate::v1_compiler_parse::parse_with_table(
-            crate::v1_compiler_tokenize::tokenize(source.clone(), file.clone()),
+        let index = build_newline_index(file.clone(), source.clone());
+        let parsed = parse_with_table(
+            tokenize(source.clone(), file.clone()),
             v1_rt::rc_map_insert(
                 v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
                 file.clone(),
                 index.clone(),
             ),
-            crate::v1_std_core::empty_intern_table(),
+            empty_intern_table(),
         );
-        match crate::v1_compiler_parse::parse_with_table_ready_module_path(parsed.clone()) {
+        match parse_with_table_ready_module_path(parsed.clone()) {
             None => Rc::new(ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused),
             Some(module_path) => Rc::new(
                 ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady {
@@ -138,16 +138,62 @@ pub fn occurrence_binding_inputs_from_transport(
     transport: Rc<OccurrenceTransport>,
 ) -> Rc<OccurrenceBindingCandidateInputs> {
     Rc::new(OccurrenceBindingCandidateInputs {
-    module_paths: v1_rt::reverse(transport.index.clone().entries.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, entry: Rc<OccurrenceIndexEntry>| v1_rt::concat(Rc::new(vec![Rc::new(OccurrenceModulePathRow {
-    occurrence: entry.projection.clone().occurrence.clone(),
-    module_path: module_path.clone(),
-})]), acc))),
-    exposure_rows: v1_rt::reverse(transport.declarations.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, declaration: Rc<DeclarationOccurrence>| v1_rt::concat(Rc::new(vec![Rc::new(DeclarationExposureRow {
-    occurrence: declaration.occurrence.clone(),
-    exposure: crate::std_occurrence_binding_candidates::declaration_exposure_from_containment(module_path.clone(), declaration.containment.clone(), DeclarationExposureGrounding::ModuleLocalMemberExposure),
-})]), acc))),
-    authored_order_rows: v1_rt::reverse(transport.index.clone().entries.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, entry: Rc<OccurrenceIndexEntry>| v1_rt::concat(Rc::new(vec![authored_order_row_from_entry(entry.clone())]), acc))),
-})
+        module_paths: v1_rt::reverse(
+            transport
+                .index
+                .clone()
+                .entries
+                .clone()
+                .iter()
+                .cloned()
+                .fold(
+                    Rc::new(vec![]),
+                    |acc: _, entry: Rc<OccurrenceIndexEntry>| {
+                        v1_rt::concat(
+                            Rc::new(vec![Rc::new(OccurrenceModulePathRow {
+                                occurrence: entry.projection.clone().occurrence.clone(),
+                                module_path: module_path.clone(),
+                            })]),
+                            acc,
+                        )
+                    },
+                ),
+        ),
+        exposure_rows: v1_rt::reverse(transport.declarations.clone().iter().cloned().fold(
+            Rc::new(vec![]),
+            |acc: _, declaration: Rc<DeclarationOccurrence>| {
+                v1_rt::concat(
+                    Rc::new(vec![Rc::new(DeclarationExposureRow {
+                        occurrence: declaration.occurrence.clone(),
+                        exposure: declaration_exposure_from_containment(
+                            module_path.clone(),
+                            declaration.containment.clone(),
+                            DeclarationExposureGrounding::ModuleLocalMemberExposure,
+                        ),
+                    })]),
+                    acc,
+                )
+            },
+        )),
+        authored_order_rows: v1_rt::reverse(
+            transport
+                .index
+                .clone()
+                .entries
+                .clone()
+                .iter()
+                .cloned()
+                .fold(
+                    Rc::new(vec![]),
+                    |acc: _, entry: Rc<OccurrenceIndexEntry>| {
+                        v1_rt::concat(
+                            Rc::new(vec![authored_order_row_from_entry(entry.clone())]),
+                            acc,
+                        )
+                    },
+                ),
+        ),
+    })
 }
 
 pub fn structural_binding_walk_refusal_note() -> String {

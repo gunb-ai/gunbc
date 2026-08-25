@@ -33,7 +33,7 @@ pub fn resolved_call_emission_identity_internal_witness_note() -> String {
 }
 
 pub fn w_unavailable_declaration_retains_exact_call_identity() -> bool {
-    (crate::v1_compiler_infer::resolved_call_target_from_declaration_lookup(
+    (resolved_call_target_from_declaration_lookup(
         Rc::new(
             ConstructorDeclarationLookup::AdmissionBearingDeclarationUnavailable {
                 identity: Rc::new(ExactDeclarationIdentity {
@@ -84,10 +84,8 @@ pub fn w_selective_function_import_refuses_unlisted_parent_local() -> bool {
             ),
             parents: Rc::new(vec![]),
         });
-        let selected = crate::v1_compiler_infer::selective_func_env_view(
-            parent.clone(),
-            Rc::new(vec!["imported_fn".to_string()]),
-        );
+        let selected =
+            selective_func_env_view(parent.clone(), Rc::new(vec!["imported_fn".to_string()]));
         (v1_rt::map_contains_key(&selected.local.clone(), "imported_fn".to_string())
             && !v1_rt::map_contains_key(&selected.local.clone(), "hidden_fn".to_string()))
     }
@@ -110,10 +108,8 @@ pub fn w_overlapping_selective_views_union_per_real_owner() -> bool {
             ),
             parents: Rc::new(vec![]),
         });
-        let merged = crate::v1_compiler_infer::merge_func_env_views_by_owner(Rc::new(vec![
-            empty_view.clone(),
-            admitted_view.clone(),
-        ]));
+        let merged =
+            merge_func_env_views_by_owner(Rc::new(vec![empty_view.clone(), admitted_view.clone()]));
         (((merged.clone().len() as i64) == 1)
             && v1_rt::map_contains_key(
                 &merged

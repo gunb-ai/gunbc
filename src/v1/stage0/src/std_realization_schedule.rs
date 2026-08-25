@@ -71,9 +71,9 @@ pub struct CostAccount<S> {
 
 pub fn cost_account_predicted_zero<S>() -> Rc<CostAccount<S>> {
     Rc::new(CostAccount {
-        time: crate::std_measure::time_measure(0),
-        space: crate::std_measure::byte_size(0),
-        power: crate::std_measure::watt(0),
+        time: time_measure(0),
+        space: byte_size(0),
+        power: watt(0),
         basis: CostBasis::Predicted,
         _phantom: std::marker::PhantomData,
     })
@@ -82,15 +82,15 @@ pub fn cost_account_predicted_zero<S>() -> Rc<CostAccount<S>> {
 pub fn cost_account_measured<S>(time: Rc<Measure<(), S, i64>>) -> Rc<CostAccount<S>> {
     Rc::new(CostAccount {
         time: time.clone(),
-        space: crate::std_measure::byte_size(0),
-        power: crate::std_measure::watt(0),
+        space: byte_size(0),
+        power: watt(0),
         basis: CostBasis::Measured,
         _phantom: std::marker::PhantomData,
     })
 }
 
 pub fn cost_account_time_count<S>(account: Rc<CostAccount<S>>) -> Nat {
-    crate::std_measure::measure_count(account.time.clone())
+    measure_count(account.time.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -264,8 +264,8 @@ pub struct RunnableBatchClamp {
 }
 
 pub fn runnable_batch_clamp_ms(clamp: Rc<RunnableBatchClamp>, units: i64) -> i64 {
-    ((crate::std_measure::second_count(clamp.overhead.clone()) * 1000)
-        + (units.clone() * crate::std_measure::millisecond_count(clamp.per_unit.clone())))
+    ((second_count(clamp.overhead.clone()) * 1000)
+        + (units.clone() * millisecond_count(clamp.per_unit.clone())))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -496,10 +496,7 @@ pub fn runnable_resource_profile_eq(
     ((((left.heavy_whole_tree_resolve.clone() == right.heavy_whole_tree_resolve.clone())
         && (left.spawns_host_compiler.clone() == right.spawns_host_compiler.clone()))
         && runnable_memory_class_eq(left.memory.clone(), right.memory.clone()))
-        && crate::std_execution_mode::execution_mode_eq(
-            left.execution_mode.clone(),
-            right.execution_mode.clone(),
-        ))
+        && execution_mode_eq(left.execution_mode.clone(), right.execution_mode.clone()))
 }
 
 pub fn runnable_resource_profile_negligible() -> Rc<RunnableResourceProfile> {
