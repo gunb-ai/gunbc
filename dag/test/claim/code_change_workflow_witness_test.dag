@@ -32,6 +32,7 @@ fn witness_github_pr(draft: Bool, state: PullRequestState, merged_at: Timestamp?
     updated_at: "2026-06-18T00:00:00Z",
     merged_at: merged_at,
     draft: draft,
+    merge_commit_sha: none,
   }
 }
 
