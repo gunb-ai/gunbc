@@ -2948,6 +2948,65 @@ cut; it is the argument for the wave-delta discipline §11.2c now carries, and f
 expecting refusals that are correct-in-mechanism and wrong-in-scope to be the
 normal failure mode rather than the surprising one.
 
+### 11.2l A counter sited at ONE ARM of a match, read as total demand — three hypotheses, one measurement, residue UNEXPLAINED
+
+`cool-swift-307` built a per-file demand oracle to score candidate closures: for
+each module, the set of bare names it asks for. Run under two arms — a 20-module
+closure and a 95-module one, census fixed at 3941 in both — seven modules
+reported **more** demand under the wider arm, and the difference was
+**one-directional in every case: `arm1_only_names=0`**.
+
+Three mechanisms were advanced for those seven modules. **Two of them were
+advanced by whoever the evidence did not favour, and each was withdrawn by its
+own author**, which is the only reason the third is on the table:
+
+| # | mechanism | status |
+|---|---|---|
+| 1 | foreign coproduct variants become askable when their declaring module joins the closure (mine) | **falsified** — the extra names are declared *in the asking module*: `HitRefused` at `dag/std/cache_interface.dag:319` and used at 329 in the same file; likewise `ApparentPower` (`std.measure`), `KeyedRosterBuilt` (`std.keyed_roster`) |
+| 2 | typecheck **progressed further** into those modules under the wider closure, so they issued asks they never reached under the narrower one (theirs) | **not falsified, but predicts the wrong signature** — progression should move demand in both directions; `arm1_only_names=0` everywhere is not what it predicts |
+| 3 | the counter records at `lookup_binding_after_global_bare`, reached only when every *local* arm has missed, so it measures **demand that routed through `global_bare`** — and closure membership changes the route, not the demand (theirs, against their own confirmed mechanism) | **matches the signature by construction** — membership can only *add* `global_bare` eligibility, never remove it, so growth is necessarily one-directional |
+
+**Hypothesis 3 is this document's own recurring class, one level up from where it
+usually appears.** An instrument sited at a single arm of a match reports
+arm-traffic as though it were the total. At that site a *route* change and a
+*demand* change are indistinguishable; only the outer `lookup_binding_by_name`
+sees both routes.
+
+**THE RESIDUE IS RECORDED AS UNEXPLAINED, NOT AS EXPLAINED BY (3).** What is
+measured is: seven modules differ, the differences are one-directional, and the
+extra names are variants declared in the asking module. Everything else is
+hypothesis. Two mechanisms have already been argued into and back out of
+existence in a single exchange between two lanes, and a mechanism recorded here
+on the strength of an argument rather than a run would be unfalsifiable by anyone
+who was not part of that exchange — the fabricated-plausible-output failure
+applied to a postmortem.
+
+**The separating measurement is one run.** The oracle already records
+`DEMAND_TOTAL` at the outer function; only the per-file dump is taken from the
+inner one. Dump per-file rows for TOTAL and compare the seven:
+
+- per-file TOTAL **identical** across arms while GLOBAL differs → route change;
+  the rows are an instrument artifact, and the repair is to record at the outer
+  function only.
+- per-file TOTAL **also differs** → demand genuinely grew; hypothesis 2 is live.
+
+**The two outcomes carry opposite consequences for whether the oracle is usable
+at all**, which is what makes the run worth taking before anything is written
+down. If demand genuinely grew, the bias is not merely in a known direction — it
+is *correlated with the thing being measured*: a module whose dependencies were
+not pulled stops early and never issues the asks it would have issued, so demand
+is under-reported **exactly at the files where the closure under test is worst**,
+and the oracle flatters each candidate precisely where that candidate fails. If
+instead the route reading holds, the boundary is not a limitation but a repair:
+demand was never measured — one route was.
+
+**Consequence for the cut's scoring step.** Under either live hypothesis,
+scoring candidate closure A against demand measured *under A* is circular. The
+non-circular form measures demand under a closure that is neither candidate's — a
+deliberately over-broad one — which is the run the budget check currently refuses
+at any partition size. So the scoring measurement may be blocked on that refusal
+rather than on instrument design, and that is a §9 open item, not a solved step.
+
 ### 11.3 The dispatch protocol
 
 Every dispatch across a lane boundary carries five lines, and a dispatch without them is refused rather than interpreted:
