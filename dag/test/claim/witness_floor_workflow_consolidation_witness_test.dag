@@ -226,6 +226,12 @@ test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
 // THE THIRD AND FOURTH CLAUSES ARE THE REFUSAL ITSELF. A job that runs and reports success
 // regardless would satisfy the first two, so the nonzero exit and the strict inequality against
 // `success` are what turn a read of two results into a verdict -- and the strictness is
+// (THE COMPARISON'S SPELLING CHANGED WITH ITS PRODUCER, NOT ITS MEANING. The gate is now built
+// as Nodes in `gunbc.required_lanes_gate` and serialized through the bash grammar rows, which
+// quote every word, so the emitted text is `'!=' 'success'` rather than `!= "success"`. The
+// clause is re-pointed at the serializer's spelling rather than relaxed to a substring both
+// forms share: a pattern loose enough to survive any producer is a pattern that stops
+// discriminating, which is exactly how the job-level guard defect below went green.)
 // load-bearing in its own right: `cancelled` and `skipped` are not `success`, so a lane that
 // never produced a verdict refuses here rather than passing.
 test fn w_RED_the_gate_runs_and_refuses_on_a_failed_lane() -> Bool {
@@ -234,7 +240,7 @@ test fn w_RED_the_gate_runs_and_refuses_on_a_failed_lane() -> Bool {
       string_contains(s: yml, pattern: "\n    if: always()")
         && string_contains(s: yml, pattern: "\n        if: always()")
         && string_contains(s: yml, pattern: "exit 1")
-        && string_contains(s: yml, pattern: "!= \"success\"")
+        && string_contains(s: yml, pattern: "'!=' 'success'")
     WitnessFloorGenerationRefused => false
   }
 }

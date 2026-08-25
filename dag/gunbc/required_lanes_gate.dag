@@ -1,0 +1,140 @@
+module gunbc.required_lanes_gate
+
+import v2.extdeps.languages.bash_build {
+  bash_build_assign_lit,
+  bash_build_command_with_words,
+  bash_build_exit,
+  bash_build_if,
+  bash_build_or_else,
+  bash_build_stmt_list_from_nodes,
+  bash_build_test_bracket,
+  bash_build_with_redir,
+  bash_build_word_concat_parts,
+  bash_build_word_lit,
+  bash_build_word_var
+}
+import v2.std.node { Node }
+import std.types { String, List }
+
+// THE REQUIRED AGGREGATOR'S REFUSAL, CONSTRUCTED AS NODES RATHER THAN SPELLED AS TEXT.
+//
+// WHY THIS MODULE EXISTS, and the reason is a correction rather than a design preference.
+// The first cut of this gate built its shell by nesting `concat` over string literals and
+// handed the result straight to a RunStep. That is the medium-as-string violation DESIGN §2/§3
+// names: a second representation of a language that this repository already models, with no
+// authority, undecidable by any lens.
+//
+// I ARGUED AGAINST THIS AND THE ARGUMENT WAS FALSE. The claim was that there was nothing to
+// render because GitHub has no declarative "this job fails unless those jobs succeeded". The
+// first half is true and the second does not follow: GitHub's lack of a JOB-level construct is
+// exactly why a shell refusal is needed, and the SHELL is fully modeled --
+// `v2.extdeps.languages.bash_build` carries assign, command, test-bracket, or-else, if, exit
+// and redirection builders, and `v2.workflow.bash_command_fold_serialize`
+// `bash_fold_serialize_program` serializes them through the grammar rows. Declaring a
+// language-layer gap without enumerating the language is the failure DESIGN records in its own
+// §6 receipt, and this is that failure repeated. Raised in review 55836.
+//
+// THE SPLIT FOLLOWS THE PRECEDENT ALREADY IN THE TREE: `tools.build_step` constructs Nodes and
+// `v2.workflow.build_step_emit` serializes them. Node construction lives here; the workflow
+// authority serializes and REFUSES emission if serialization does not accept, so a gate that
+// cannot be rendered cannot be published as an empty step.
+//
+// WHAT THE SEMANTICS MUST STAY, because they are ruled and measured rather than chosen:
+// the comparison is `!= success` and never an enumeration of bad states. A production run
+// exposed `abandoned` as a reachable `needs` result that no author here knew about; an
+// enumerated guard would have admitted it and published the required context green over two
+// lanes that never ran.
+
+data required_lane_success_result: String = "success"
+
+fn required_lane_result_word(var_name: String) -> Node {
+  bash_build_word_var(name: var_name)
+}
+
+// `[ "$VAR" != "success" ]` -- one lane's verdict, refused unless it is exactly success.
+fn required_lane_not_success_test(var_name: String) -> Node {
+  bash_build_test_bracket(
+    words: [
+      required_lane_result_word(var_name: var_name),
+      bash_build_word_lit(text: "!="),
+      bash_build_word_lit(text: required_lane_success_result)
+    ]
+  )
+}
+
+fn required_lanes_echo(words: List<Node>) -> Node {
+  bash_build_command_with_words(words: words)
+}
+
+// The receipt line, printed on every run: it is what preserves the cancelled-versus-failed
+// distinction that the job's own conclusion loses under `always()`.
+fn required_lanes_receipt_stmt(build_var: String, floor_var: String) -> Node {
+  required_lanes_echo(
+    words: [
+      bash_build_word_lit(text: "echo"),
+      bash_build_word_concat_parts(
+        parts: [
+          bash_build_word_lit(text: "required lanes: build="),
+          bash_build_word_var(name: build_var),
+          bash_build_word_lit(text: " floor="),
+          bash_build_word_var(name: floor_var)
+        ]
+      )
+    ]
+  )
+}
+
+fn required_lanes_error_stmt(build_var: String, floor_var: String) -> Node {
+  bash_build_with_redir(
+    inner: required_lanes_echo(
+      words: [
+        bash_build_word_lit(text: "echo"),
+        bash_build_word_concat_parts(
+          parts: [
+            bash_build_word_lit(text: "::error::a required lane did not succeed (build="),
+            bash_build_word_var(name: build_var),
+            bash_build_word_lit(text: " floor="),
+            bash_build_word_var(name: floor_var),
+            bash_build_word_lit(text: ") - open that job's log")
+          ]
+        )
+      ]
+    ),
+    redir: ^bash_production_fold_redir_stdout_to_stderr
+  )
+}
+
+fn required_lanes_refusal_stmt(build_var: String, floor_var: String) -> Node {
+  bash_build_if(
+    cond: bash_build_or_else(
+      left: required_lane_not_success_test(var_name: build_var),
+      right: required_lane_not_success_test(var_name: floor_var)
+    ),
+    body: bash_build_stmt_list_from_nodes(
+      stmts: [
+        required_lanes_error_stmt(build_var: build_var, floor_var: floor_var),
+        bash_build_exit(code: "1")
+      ]
+    )
+  )
+}
+
+// The whole gate: bind each lane's result to a shell name, print the receipt, refuse unless
+// both are success. The lane RESULT EXPRESSIONS are supplied by the caller rather than spelled
+// here, because they are derived from the job ids the workflow authority declares -- a literal
+// `needs.build.result` here would be a second spelling of a name that module owns, and an
+// unknown `needs` context renders as the empty string, so the drift would refuse every run and
+// read as a broken lane rather than a broken reference.
+fn required_lanes_gate_stmts(
+  build_var: String,
+  build_result_expression: String,
+  floor_var: String,
+  floor_result_expression: String
+) -> List<Node> {
+  [
+    bash_build_assign_lit(name: build_var, text: build_result_expression),
+    bash_build_assign_lit(name: floor_var, text: floor_result_expression),
+    required_lanes_receipt_stmt(build_var: build_var, floor_var: floor_var),
+    required_lanes_refusal_stmt(build_var: build_var, floor_var: floor_var)
+  ]
+}

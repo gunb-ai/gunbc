@@ -33,39 +33,62 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // The interesting logic is now pure -- observe, decide, mutate, read back, and let the SECOND
 // observation decide -- so all of it is decidable here without a host.
 
-fn owner(uid: Int, gid: Int) -> PosixOwnerSpec {
+// RENAMED FROM `owner`, AND THE RENAME IS A REPAIR RATHER THAN A TIDY.
+//
+// The whole-tree compile resolves most cross-module references through ONE FLAT NAMESPACE, so
+// a top-level `fn owner` here and `gunbc.tools.review_codex`'s `data owner` are two declarations
+// of one name and the winner is fold order. The loser was the data row: `review_codex`'s
+// `pr_owner: String = owner` and `cycle_owner: String = owner` CLI defaults resolved to this
+// FUNCTION and refused with `workflow CLI default for parameter `pr_owner` must be a string,
+// int, float, bool literal, or data reference` -- two blocking diagnostics in a file that had
+// not changed, produced by a test helper in a different directory.
+//
+// THE DISCRIMINATING PAIR IS WHAT ESTABLISHES THE CAUSE, and it was measured rather than
+// reasoned: `review_codex` declares `data repo` and `data owner` side by side and only `owner`
+// refused. `repo` has no `fn repo` anywhere in the corpus; `owner` had this one. A third row
+// completes it in the other direction -- `default_model` IS declared twice (`tools.review` and
+// `tools.review_codex`) and does NOT refuse, because both declarations are data, so either
+// winner satisfies the default's requirement. Collision alone is not the fault; collision
+// ACROSS DECLARATION KINDS is.
+//
+// WHAT THIS FIX DOES NOT DO, stated because the rename looks like more than it is: it removes
+// this instance and not the class. A bare cross-kind homonym is still writable and still
+// resolves by fold order, and nothing refuses the next one. The class's next-rung trigger is a
+// refusal at name resolution when one flat name has declarations of different kinds -- which is
+// decidable from the index the compiler already builds -- not a roster of forbidden names.
+fn owner_spec(uid: Int, gid: Int) -> PosixOwnerSpec {
   PosixOwnerSpec { user: PosixUserId { value: uid }, group: PosixGroupId { value: gid } }
 }
 
 test fn owners_are_equal_only_when_both_ids_match() -> Bool {
-  posix_owner_spec_equal(left: owner(uid: 1000, gid: 1000), right: owner(uid: 1000, gid: 1000)) &&
-    posix_owner_spec_equal(left: owner(uid: 1000, gid: 1000), right: owner(uid: 1000, gid: 20)) == false &&
-    posix_owner_spec_equal(left: owner(uid: 0, gid: 1000), right: owner(uid: 1000, gid: 1000)) == false
+  posix_owner_spec_equal(left: owner_spec(uid: 1000, gid: 1000), right: owner_spec(uid: 1000, gid: 1000)) &&
+    posix_owner_spec_equal(left: owner_spec(uid: 1000, gid: 1000), right: owner_spec(uid: 1000, gid: 20)) == false &&
+    posix_owner_spec_equal(left: owner_spec(uid: 0, gid: 1000), right: owner_spec(uid: 1000, gid: 1000)) == false
 }
 
 // SKIPPING AN UNNECESSARY CHOWN IS A SAFETY PROPERTY. On a converge that has already run, the
 // mutation this arm declines is the ONLY privileged invocation the stage would have made.
 test fn a_path_already_owned_requires_no_mutation() -> Bool {
   match path_ownership_decision(
-    desired: owner(uid: 1000, gid: 1000),
-    observed: PathOwnerObserved { owner: owner(uid: 1000, gid: 1000) },
+    desired: owner_spec(uid: 1000, gid: 1000),
+    observed: PathOwnerObserved { owner: owner_spec(uid: 1000, gid: 1000) },
   ) {
     OwnershipMutationRequired { current: _, desired: _ } => false
     OwnershipDecisionRefused { reason: _ } => false
-    OwnershipAlreadySatisfied { owner: o } => posix_owner_spec_equal(left: o, right: owner(uid: 1000, gid: 1000))
+    OwnershipAlreadySatisfied { owner: o } => posix_owner_spec_equal(left: o, right: owner_spec(uid: 1000, gid: 1000))
   }
 }
 
 test fn a_differently_owned_path_requires_a_mutation() -> Bool {
   match path_ownership_decision(
-    desired: owner(uid: 1000, gid: 1000),
-    observed: PathOwnerObserved { owner: owner(uid: 0, gid: 0) },
+    desired: owner_spec(uid: 1000, gid: 1000),
+    observed: PathOwnerObserved { owner: owner_spec(uid: 0, gid: 0) },
   ) {
     OwnershipAlreadySatisfied { owner: _ } => false
     OwnershipDecisionRefused { reason: _ } => false
     OwnershipMutationRequired { current: c, desired: d } =>
-      posix_owner_spec_equal(left: c, right: owner(uid: 0, gid: 0)) &&
-        posix_owner_spec_equal(left: d, right: owner(uid: 1000, gid: 1000))
+      posix_owner_spec_equal(left: c, right: owner_spec(uid: 0, gid: 0)) &&
+        posix_owner_spec_equal(left: d, right: owner_spec(uid: 1000, gid: 1000))
   }
 }
 
@@ -74,7 +97,7 @@ test fn a_differently_owned_path_requires_a_mutation() -> Bool {
 // never asked -- the empty-observation narrow pointed at a privileged mutation.
 test fn an_unobservable_current_owner_authorizes_no_chown() -> Bool {
   match path_ownership_decision(
-    desired: owner(uid: 1000, gid: 1000),
+    desired: owner_spec(uid: 1000, gid: 1000),
     observed: PathOwnerUnobserved { reason: "ssh refused" },
   ) {
     OwnershipAlreadySatisfied { owner: _ } => false
@@ -87,9 +110,9 @@ test fn an_unobservable_current_owner_authorizes_no_chown() -> Bool {
 // predecessor reported as convergence, because the process result was the whole answer.
 test fn a_readback_showing_a_different_owner_refuses() -> Bool {
   match path_ownership_verdict(
-    desired: owner(uid: 1000, gid: 1000),
+    desired: owner_spec(uid: 1000, gid: 1000),
     attempt: ChownReportedSuccess,
-    readback: PathOwnerObserved { owner: owner(uid: 0, gid: 0) },
+    readback: PathOwnerObserved { owner: owner_spec(uid: 0, gid: 0) },
   ) {
     PathAlreadyOwned { owner: _ } => false
     PathOwnershipConvergedAfterAttempt { owner: _, attempt: _ } => false
@@ -102,7 +125,7 @@ test fn a_readback_showing_a_different_owner_refuses() -> Bool {
 // "it worked".
 test fn an_unreadable_readback_refuses() -> Bool {
   match path_ownership_verdict(
-    desired: owner(uid: 1000, gid: 1000),
+    desired: owner_spec(uid: 1000, gid: 1000),
     attempt: ChownReportedSuccess,
     readback: PathOwnerUnobserved { reason: "stat: No such file or directory" },
   ) {
@@ -116,14 +139,14 @@ test fn an_unreadable_readback_refuses() -> Bool {
 // unconditionally.
 test fn a_readback_showing_the_desired_owner_converges() -> Bool {
   match path_ownership_verdict(
-    desired: owner(uid: 1000, gid: 1000),
+    desired: owner_spec(uid: 1000, gid: 1000),
     attempt: ChownReportedSuccess,
-    readback: PathOwnerObserved { owner: owner(uid: 1000, gid: 1000) },
+    readback: PathOwnerObserved { owner: owner_spec(uid: 1000, gid: 1000) },
   ) {
     PathAlreadyOwned { owner: _ } => false
     PathOwnershipEnsureRefused { reason: _ } => false
     PathOwnershipConvergedAfterAttempt { owner: o, attempt: _ } =>
-      posix_owner_spec_equal(left: o, right: owner(uid: 1000, gid: 1000))
+      posix_owner_spec_equal(left: o, right: owner_spec(uid: 1000, gid: 1000))
   }
 }
 
@@ -135,14 +158,14 @@ test fn a_readback_showing_the_desired_owner_converges() -> Bool {
 // it into a success (side-chat review of #8760).
 test fn a_failed_chown_with_a_desired_readback_converges_but_keeps_the_failure() -> Bool {
   match path_ownership_verdict(
-    desired: owner(uid: 1000, gid: 1000),
+    desired: owner_spec(uid: 1000, gid: 1000),
     attempt: ChownReportedFailure,
-    readback: PathOwnerObserved { owner: owner(uid: 1000, gid: 1000) },
+    readback: PathOwnerObserved { owner: owner_spec(uid: 1000, gid: 1000) },
   ) {
     PathAlreadyOwned { owner: _ } => false
     PathOwnershipEnsureRefused { reason: _ } => false
     PathOwnershipConvergedAfterAttempt { owner: o, attempt: a } =>
-      posix_owner_spec_equal(left: o, right: owner(uid: 1000, gid: 1000)) &&
+      posix_owner_spec_equal(left: o, right: owner_spec(uid: 1000, gid: 1000)) &&
         match a {
           ChownReportedFailure => true
           ChownReportedSuccess => false
@@ -157,9 +180,9 @@ test fn a_failed_chown_with_a_desired_readback_converges_but_keeps_the_failure()
 // false half the time it fired.
 test fn a_mismatch_refusal_names_what_the_chown_reported() -> Bool {
   match path_ownership_verdict(
-    desired: owner(uid: 1000, gid: 1000),
+    desired: owner_spec(uid: 1000, gid: 1000),
     attempt: ChownReportedFailure,
-    readback: PathOwnerObserved { owner: owner(uid: 0, gid: 0) },
+    readback: PathOwnerObserved { owner: owner_spec(uid: 0, gid: 0) },
   ) {
     PathAlreadyOwned { owner: _ } => false
     PathOwnershipConvergedAfterAttempt { owner: _, attempt: _ } => false

@@ -2,7 +2,7 @@ module gunbc.witness_floor_workflow
 
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
 import gunbc.roadmap_execution_contract { CargoCapability, RustfmtCapability }
-import gunbc.repo_self_build { repo_self_build_command }
+import gunbc.repo_self_build { repo_self_build_command, repo_self_build_all_bins_command }
 import gunbc.workflow_capability_closure {
   CapabilityAnnotatedStep,
   StepCapabilityRole,
@@ -32,6 +32,9 @@ import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.fabric_witness_run { witnesses_lane_run_command, build_lane_run_command, required_ci_lane_build }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
+import gunbc.required_lanes_gate { required_lanes_gate_stmts }
+import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
+import v2.std.diagnostic { Outcome }
 import std.types { List, String, Int }
 
 // THE ONLY CI EMISSION THIS REPOSITORY HAS.
@@ -289,11 +292,15 @@ fn witness_floor_build_script() -> String {
   repo_self_build_command(bins: witness_floor_required_bins)
 }
 
-fn witness_floor_build_step() -> Step {
+fn build_lane_build_script() -> String {
+  repo_self_build_all_bins_command()
+}
+
+fn witness_floor_build_step(build_script: String) -> Step {
   RunStep {
     name: Present { value: "Build the witness fold" },
     id: Present { value: "build_witness_fold" },
-    run: concat(witness_floor_build_script(), "\n"),
+    run: concat(build_script, "\n"),
     shell: none,
     env: none,
     working_directory: none,
@@ -712,7 +719,14 @@ fn witness_floor_tsv_upload_step(step_name: String, artifact_name: String, path:
 // jobs, so they are authored ONCE here and each job appends only the step that distinguishes it.
 // Two copies would be two definitions of one fact, free to drift the moment either is edited --
 // the §3 fork this file already closes for the step/role pair, reintroduced across jobs.
-fn prepared_bound_steps() -> List<WitnessFloorBoundStep> {
+// THE TWO LANES BOOTSTRAP DIFFERENTLY AND THAT DIFFERENCE IS THE POINT, not an oversight.
+// The floor lane builds the two bins it actually executes. The BUILD lane builds every declared
+// bin (`--bins`), because host-Rust coverage of the whole bin roster is a fact somebody has to
+// establish and this is the lane whose subject is "does this repository still build" -- see
+// `repo_self_build_all_bins_command`. Duplicating the narrower build in the floor lane would
+// buy nothing: the lanes are runtime-independent by construction (no `needs` edge, no artifact
+// handoff), so their bootstraps are independent CPU, not a shared prerequisite one could save.
+fn prepared_bound_steps(build_script: String) -> List<WitnessFloorBoundStep> {
   [
     WitnessFloorBoundStep {
       step: witness_floor_checkout_step(),
@@ -725,7 +739,7 @@ fn prepared_bound_steps() -> List<WitnessFloorBoundStep> {
       step_name: "Install Rust toolchain",
     },
     WitnessFloorBoundStep {
-      step: witness_floor_build_step(),
+      step: witness_floor_build_step(build_script: build_script),
       role: consumes_only(capabilities: [CargoCapability]),
       step_name: "Build the witness fold",
     },
@@ -744,7 +758,7 @@ fn prepared_bound_steps() -> List<WitnessFloorBoundStep> {
 // shell out to cargo. Listing it would trade one false declaration for another.
 fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
   append(
-    prepared_bound_steps(),
+    prepared_bound_steps(build_script: witness_floor_build_script()),
     items: [
       WitnessFloorBoundStep {
         step: witness_toolchain_environment_probe_step(),
@@ -795,7 +809,7 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
 // error` would redden it for a receipt that was never its to write.
 fn build_lane_bound_steps() -> List<WitnessFloorBoundStep> {
   append(
-    prepared_bound_steps(),
+    prepared_bound_steps(build_script: build_lane_build_script()),
     items: [
       WitnessFloorBoundStep {
         step: witness_toolchain_environment_probe_step(),
@@ -1056,23 +1070,35 @@ fn required_lane_result_expression(job_id: String) -> String {
 // The same run is this gate's first executing receipt: the aggregator ran under `always()` with
 // both lanes non-success, refused, and published `witnesses` as a FAILURE, which is the
 // behaviour the job exists for and the behaviour the pre-repair shape could not produce.
+// THE SHELL IS BUILT AS NODES AND SERIALIZED THROUGH THE GRAMMAR, never spelled as text.
+// The first cut of this function nested `concat` over string literals and handed the result to
+// a RunStep -- the medium-as-string violation DESIGN 2/3 names, raised in review 55836. Node
+// construction lives in `gunbc.required_lanes_gate`; this function is the realization edge,
+// following the `tools.build_step` -> `v2.workflow.build_step_emit` precedent already in tree.
+//
+// THE REJECTED ARM REFUSES RATHER THAN RENDERING NOTHING. A serializer that cannot render the
+// gate must not publish a step whose body is empty, because an empty `run` EXITS 0 and would
+// make the required context green over two lanes it never read -- the fabricated-plausible-output
+// failure at the one place in this repository where it decides mergeability. So the arm emits a
+// gate that refuses every run and says why: loud on every head, never silently permissive.
+data required_lanes_gate_unrenderable_script: String = "echo \"::error::the required-lanes gate could not be serialized from gunbc.required_lanes_gate; refusing rather than publishing an empty gate\" >&2\nexit 1\n"
+
+data required_lanes_gate_build_var: String = "BUILD"
+data required_lanes_gate_floor_var: String = "FLOOR"
+
 fn required_lanes_aggregate_script() -> String {
-  concat(
-    concat("BUILD=\"", concat(required_lane_result_expression(job_id: build_lane_job_id), "\"\n")),
-    concat(
-      concat("FLOOR=\"", concat(required_lane_result_expression(job_id: floor_lane_job_id), "\"\n")),
-      concat(
-        "echo \"required lanes: build=$BUILD floor=$FLOOR\"\n",
-        concat(
-          concat("if [ \"$BUILD\" != \"success\" ] || [ \"$FLOOR\" != \"success\" ]; then\n", ""),
-          concat(
-            "  echo \"::error::a required lane did not succeed (build=$BUILD floor=$FLOOR) — open that job's log\" >&2\n",
-            concat("  exit 1\n", "fi\n")
-          )
-        )
-      )
-    )
-  )
+  match bash_fold_serialize_program(
+    stmts: required_lanes_gate_stmts(
+      build_var: required_lanes_gate_build_var,
+      build_result_expression: required_lane_result_expression(job_id: build_lane_job_id),
+      floor_var: required_lanes_gate_floor_var,
+      floor_result_expression: required_lane_result_expression(job_id: floor_lane_job_id)
+    ),
+    set_e: false
+  ) {
+    Accepted { value: script, diagnostics: _ } => script
+    Rejected { diagnostics: _ } => required_lanes_gate_unrenderable_script
+  }
 }
 
 fn required_lanes_aggregate_step() -> Step {

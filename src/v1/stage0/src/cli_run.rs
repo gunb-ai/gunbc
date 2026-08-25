@@ -6862,7 +6862,9 @@ pub fn roster_import_closure_nodes_pre_resolve(
     Ok(closure_modules.len())
 }
 
-#[cfg(test)]
+// NO LONGER TEST-ONLY. The whole-root import walk was open-coded in `main.rs` and this was its
+// test-scoped twin; the transaction absorbed the former, so the production walk is now this one
+// and there is a single implementation rather than two that had to agree by inspection.
 fn resolve_transitively_bfs_legacy(
     entry_sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     index: &ModuleSourceIndex,
@@ -7259,13 +7261,13 @@ mod entry_admission_tests {
 }
 
 fn entry_emission_not_executed(
-    entry_path: &str,
+    subject_label: &str,
     started: std::time::Instant,
     earlier_phase: &str,
     cause: String,
 ) -> EntryEmissionRun {
     EntryEmissionRun {
-        entry: entry_path.to_string(),
+        entry: subject_label.to_string(),
         closure_modules: 0,
         census_modules: 0,
         blocking_diagnostics: 0,
@@ -7279,6 +7281,64 @@ fn entry_emission_not_executed(
         silent_pick: crate::v1_rt::SilentPickTelemetry::default(),
     }
 }
+
+/// WHAT THIS COMPILE IS ABOUT. Two subjects, one transaction.
+///
+/// Before this coproduct existed the repository had TWO answers to "compile these sources":
+/// this transaction, reached by `gunbc compile --entry` and by the required v2 phase, and a
+/// second index/load/resolve/admit/compile/refuse/render pipeline open-coded in `main.rs` for
+/// the no-`--entry` case. They differed in ways nobody had decided: the whole-root arm applied
+/// the memory-admission gate and the entry arm did not, the entry arm ran the silent-pick gate
+/// inside the transaction and the whole-root arm ran it around the outside, and their refusal
+/// subjects were spelled differently. That is DESIGN §3's two-authorities-for-one-fact, and it
+/// is the precise reason a whole-tree ratchet could not be built on the existing phase: the
+/// ratchet would have observed a different producer from the gate beside it.
+///
+/// The DIFFERENCES BETWEEN THE ARMS ARE REAL AND ARE KEPT, which is why this is a coproduct
+/// rather than a flag. An entry compile's working set is its reference-derived closure, which
+/// was measured to fit on the runner that SIGKILLed a whole-tree run, so admission is asked of
+/// the whole-root arm and not of the entry arm -- an unasked question, not an all-clear. And
+/// the closure derivation genuinely differs: with imports stripped, an entry's cross-module
+/// dependencies are derivable only from its REFERENCES, while for a whole primary root every
+/// module is already an entry, so reference derivation would only over-pull and the import-edge
+/// walk stays the authority.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CompileSubject {
+    /// One `.dag` file and its reference-derived closure.
+    Entry(String),
+    /// Every module under this source root, plus their transitive import closure. The
+    /// remaining roots stay a dependency pool.
+    PrimaryRoot(String),
+}
+
+impl CompileSubject {
+    /// The subject as it appears in a refusal and in the measurement line. It used to be
+    /// hardcoded `"v2 self-compile"` inside the shared refusal message, so a user compiling
+    /// their own fixture was told a compile they never ran had failed.
+    pub fn label(&self) -> String {
+        match self {
+            CompileSubject::Entry(path) => path.clone(),
+            CompileSubject::PrimaryRoot(root) => format!("{root} (whole root)"),
+        }
+    }
+}
+
+/// One compile, fully described by its inputs. Held as a struct rather than passed as four
+/// positional arguments because the required phase and the CLI must be able to be shown to
+/// hand the transaction the SAME request, and a comparison of four call sites' arguments is
+/// not that demonstration.
+#[derive(Debug, Clone)]
+pub struct CompileRequest {
+    pub subject: CompileSubject,
+    pub source_roots: Vec<String>,
+    pub primary_precedence: bool,
+    pub render_target: crate::v1_compiler_artifact::RenderTarget,
+}
+
+/// The result carrier's terminal name. `EntryEmissionRun` is what it was called when `Entry`
+/// was the only subject; the alias is the name it has now that it is not.
+pub type CompileRun = EntryEmissionRun;
+pub type CompileDisposition = EntryEmissionDisposition;
 
 /// THE EMISSION TRANSACTION. One entry, one render target, over `source_roots`.
 ///
@@ -7296,16 +7356,56 @@ pub fn compile_entry_emission(
     primary_precedence: bool,
     render_target: crate::v1_compiler_artifact::RenderTarget,
 ) -> EntryEmissionRun {
+    compile_emission(&CompileRequest {
+        subject: CompileSubject::Entry(entry_path.to_string()),
+        source_roots: source_roots.to_vec(),
+        primary_precedence,
+        render_target,
+    })
+}
+
+/// THE ONE COMPILATION TRANSACTION, parameterized by subject.
+///
+/// It owns source-root indexing and precedence, subject source-set construction, census-only
+/// fill, memory admission, resolution and compilation, blocking/advisory classification,
+/// silent-pick capture, and the completion/refusal disposition. A caller decodes argv, realizes
+/// the returned files, renders diagnostics and picks an exit code -- those are boundary
+/// concerns, not a second pipeline.
+pub fn compile_emission(request: &CompileRequest) -> CompileRun {
+    let source_roots: &[String] = &request.source_roots;
+    let primary_precedence = request.primary_precedence;
+    let subject_label = request.subject.label();
     let started = std::time::Instant::now();
-    // The entry is a FILE, so it is anchored against the workspace root directly rather
-    // than through `anchor_source_root`, which asserts a directory and panics on a path.
-    let entry_abs = if std::path::Path::new(entry_path).is_absolute() {
-        std::path::PathBuf::from(entry_path)
-    } else {
-        process_workspace_root().join(entry_path)
+    // ADMISSION FOR A WHOLE-ROOT SUBJECT, ASKED BEFORE ANYTHING IS INDEXED. The host budget
+    // was readable here and joined to nothing: a whole-tree run started a resolve it could not
+    // hold and was SIGKILLed -- exit 137, no diagnostic, and a harness grepping the captured
+    // output reads a fabricated zero rather than a failure. Nothing about the corpus is an
+    // input to the decision, so the cheapest correct place is the earliest one. Deliberately
+    // NOT asked of `Entry`: see `CompileSubject`. Authority: gunbc.whole_corpus_compile_admission.
+    if let CompileSubject::PrimaryRoot(_) = &request.subject {
+        let (budget, budget_source) = crate::memory_governor::read_host_budget_bytes();
+        let admission =
+            crate::memory_governor::whole_corpus_compile_admission(budget, &budget_source);
+        if let Some(diagnostic) =
+            crate::memory_governor::whole_corpus_compile_refusal_diagnostic(&admission)
+        {
+            return entry_emission_not_executed(&subject_label, started, "admission", diagnostic);
+        }
+    }
+    let entry_path: &str = match &request.subject {
+        CompileSubject::Entry(path) => path.as_str(),
+        CompileSubject::PrimaryRoot(root) => root.as_str(),
     };
-    if !entry_abs.is_file() {
-        return entry_emission_not_executed(
+    if let CompileSubject::Entry(_) = &request.subject {
+        // The entry is a FILE, so it is anchored against the workspace root directly rather
+        // than through `anchor_source_root`, which asserts a directory and panics on a path.
+        let entry_abs = if std::path::Path::new(entry_path).is_absolute() {
+            std::path::PathBuf::from(entry_path)
+        } else {
+            process_workspace_root().join(entry_path)
+        };
+        if !entry_abs.is_file() {
+            return entry_emission_not_executed(
             entry_path,
             started,
             "entry-read",
@@ -7313,58 +7413,59 @@ pub fn compile_entry_emission(
                 "entry file does not exist: {entry_path} (--entry names a repo path, not a module path)"
             ),
         );
-    }
-    // AN ENTRY OUTSIDE THE WORKSPACE ROOT REFUSES HERE, WHERE THE PATH IS STILL A CLI
-    // ARGUMENT, instead of panicking four frames down in module-graph keying.
-    //
-    // THE PREDICATE IS `repo_relative_path`, NOT `try_repo_relative_path_normalized`, and the
-    // difference is load-bearing (review 55344). The `try_` helper has a third arm that strips
-    // the COMPILE-TIME `workspace_root()`, which exists so sccache-embedded absolute spellings
-    // from another runner checkout still key correctly -- an internal concern about paths the
-    // compiler produced. Reused for a USER-SUPPLIED path it becomes a widening fallback: on a
-    // host where the build checkout still exists, `--entry /that/other/checkout/x.dag` would be
-    // admitted and keyed as though it belonged to THIS tree, silently mixing two trees. That is
-    // the §5 failure arm that widens instead of refusing, inside the guard added to stop a
-    // different §5 failure. `repo_relative_path` anchors against the PROCESS root only and is
-    // already fail-closed by its own contract.
-    //
-    // HAND-RUST RECEIPT: this adds NO new path predicate. It consumes the existing gate, whose
-    // authority is `gunbc.cli_run_repo_grant` `cli_run_repo_path_admissible` and whose
-    // Rust/authority equivalence is pinned by
-    // `dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness_test.dag` together with
-    // this file's `cli_run_repo_grant_equivalence_tests`. Its dissolve-on is that module's:
-    // cli_run.rs Chunk F (docs/plans/cli-run-reconcile-defork.md), when the refusal becomes the
-    // located `std.access.AccessDecision::Deny` from the single grant policy. Routing a second
-    // hand-rolled containment check beside it would have been the §3 fork this receipt exists
-    // to prevent.
-    //
-    // `repo_relative_path_normalized` panics for a path it cannot anchor, and that is the
-    // right shape THERE: by the time a path reaches module-index keying, being unanchorable
-    // is a broken invariant and not an input. But `--entry` is an INPUT, and an existing
-    // file outside the repository is an ordinary thing to hand it -- a scratch fixture in
-    // `/tmp` is what anyone probing this compiler writes first. The existence check above
-    // passes for such a file, so it used to reach the keying panic: `rc=101`, no phase, no
-    // located cause, and a caller reading only stdout sees an empty result indistinguishable
-    // from a clean compile (measured 2026-08-24 while validating an annotation-grain probe).
-    //
-    // A panic is loud and fabricates nothing, so this is not silent wrongness -- it is an
-    // untyped, unlocated failure where §5 asks for a typed located diagnostic. The refusal
-    // names both the path and the root, because "not under the workspace root" is unactionable
-    // without saying which root the process resolved.
-    if repo_relative_path(&entry_abs).is_err() {
-        return entry_emission_not_executed(
-            entry_path,
-            started,
-            "entry-admission",
-            format!(
-                "entry file is outside the workspace root: {} is not under {} \
+        }
+        // AN ENTRY OUTSIDE THE WORKSPACE ROOT REFUSES HERE, WHERE THE PATH IS STILL A CLI
+        // ARGUMENT, instead of panicking four frames down in module-graph keying.
+        //
+        // THE PREDICATE IS `repo_relative_path`, NOT `try_repo_relative_path_normalized`, and the
+        // difference is load-bearing (review 55344). The `try_` helper has a third arm that strips
+        // the COMPILE-TIME `workspace_root()`, which exists so sccache-embedded absolute spellings
+        // from another runner checkout still key correctly -- an internal concern about paths the
+        // compiler produced. Reused for a USER-SUPPLIED path it becomes a widening fallback: on a
+        // host where the build checkout still exists, `--entry /that/other/checkout/x.dag` would be
+        // admitted and keyed as though it belonged to THIS tree, silently mixing two trees. That is
+        // the §5 failure arm that widens instead of refusing, inside the guard added to stop a
+        // different §5 failure. `repo_relative_path` anchors against the PROCESS root only and is
+        // already fail-closed by its own contract.
+        //
+        // HAND-RUST RECEIPT: this adds NO new path predicate. It consumes the existing gate, whose
+        // authority is `gunbc.cli_run_repo_grant` `cli_run_repo_path_admissible` and whose
+        // Rust/authority equivalence is pinned by
+        // `dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness_test.dag` together with
+        // this file's `cli_run_repo_grant_equivalence_tests`. Its dissolve-on is that module's:
+        // cli_run.rs Chunk F (docs/plans/cli-run-reconcile-defork.md), when the refusal becomes the
+        // located `std.access.AccessDecision::Deny` from the single grant policy. Routing a second
+        // hand-rolled containment check beside it would have been the §3 fork this receipt exists
+        // to prevent.
+        //
+        // `repo_relative_path_normalized` panics for a path it cannot anchor, and that is the
+        // right shape THERE: by the time a path reaches module-index keying, being unanchorable
+        // is a broken invariant and not an input. But `--entry` is an INPUT, and an existing
+        // file outside the repository is an ordinary thing to hand it -- a scratch fixture in
+        // `/tmp` is what anyone probing this compiler writes first. The existence check above
+        // passes for such a file, so it used to reach the keying panic: `rc=101`, no phase, no
+        // located cause, and a caller reading only stdout sees an empty result indistinguishable
+        // from a clean compile (measured 2026-08-24 while validating an annotation-grain probe).
+        //
+        // A panic is loud and fabricates nothing, so this is not silent wrongness -- it is an
+        // untyped, unlocated failure where §5 asks for a typed located diagnostic. The refusal
+        // names both the path and the root, because "not under the workspace root" is unactionable
+        // without saying which root the process resolved.
+        if repo_relative_path(&entry_abs).is_err() {
+            return entry_emission_not_executed(
+                entry_path,
+                started,
+                "entry-admission",
+                format!(
+                    "entry file is outside the workspace root: {} is not under {} \
                  (--entry names a path inside the repository; a fixture written elsewhere, \
                  such as /tmp, cannot be keyed into the module graph -- write it under a \
                  source root and delete it afterwards)",
-                entry_abs.display(),
-                process_workspace_root().display()
-            ),
-        );
+                    entry_abs.display(),
+                    process_workspace_root().display()
+                ),
+            );
+        }
     }
 
     crate::v1_rt::resolution_silent_pick_enable();
@@ -7381,16 +7482,54 @@ pub fn compile_entry_emission(
         // one process is a cache hit rather than a rebuild.
         process_shared_index(source_roots)
     };
-    let closure = match load_sources_for_entry_with_pool(&index, entry_path) {
-        Ok(closure) => closure,
-        Err(e) => {
-            let _ = crate::v1_rt::resolution_silent_pick_disable();
-            return entry_emission_not_executed(
-                entry_path,
-                started,
-                "closure-load",
-                format!("reference-derived closure load failed: {e}"),
-            );
+    let closure = match &request.subject {
+        CompileSubject::Entry(path) => match load_sources_for_entry_with_pool(&index, path) {
+            Ok(closure) => closure,
+            Err(e) => {
+                let _ = crate::v1_rt::resolution_silent_pick_disable();
+                return entry_emission_not_executed(
+                    &subject_label,
+                    started,
+                    "closure-load",
+                    format!("reference-derived closure load failed: {e}"),
+                );
+            }
+        },
+        // EVERY MODULE UNDER THE PRIMARY ROOT IS AN ENTRY, so the closure is those modules
+        // plus their transitive IMPORT edges -- the walk `main.rs` performed before this
+        // transaction absorbed it. Reference derivation is not used here and that is not an
+        // oversight: with every module already an entry it could only over-pull.
+        //
+        // A ROOT THAT MATCHES NO MODULE REFUSES rather than compiling nothing. Zero modules
+        // is not a clean empty compile, it is the transaction failing to reach any subject,
+        // and reporting it as `Completed { emitted_count: 0 }` is the empty-observation
+        // narrow DESIGN names -- the exact shape that makes a ratchet read zero errors from
+        // a run that compiled nothing.
+        CompileSubject::PrimaryRoot(root) => {
+            let root_prefix = workspace_relative_entry_path(root);
+            let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
+            let mut entry_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
+            for (module_path, source) in index.source_files.iter() {
+                let rel = workspace_relative_entry_path(&source.path);
+                if rel == root_prefix || rel.starts_with(&format!("{root_prefix}/")) {
+                    seen.insert(module_path.clone(), source.clone());
+                    entry_sources.push(source.clone());
+                }
+            }
+            if entry_sources.is_empty() {
+                let _ = crate::v1_rt::resolution_silent_pick_disable();
+                return entry_emission_not_executed(
+                    &subject_label,
+                    started,
+                    "subject-discovery",
+                    format!(
+                        "no indexed module has a source file under the primary root '{root}' \
+                         -- the compile has no subject (pass a --source-root that covers it)"
+                    ),
+                );
+            }
+            entry_sources.sort_by(|a, b| a.path.cmp(&b.path));
+            resolve_transitively_bfs_legacy(entry_sources, &index.source_files, seen)
         }
     };
     let closure_modules: std::collections::HashSet<String> = closure
@@ -7422,7 +7561,7 @@ pub fn compile_entry_emission(
     });
     let result = v1_compiler_compile::compile_sources_with_options(
         Rc::new(closure.clone().into()),
-        render_target,
+        request.render_target.clone(),
         options,
     );
     let silent_pick = crate::v1_rt::resolution_silent_pick_disable();
@@ -7431,7 +7570,7 @@ pub fn compile_entry_emission(
     // is what `gunbc compile` itself stops on; restating "blocking, or zero files" would be
     // a second representation of one rule (DESIGN §2/§3), free to drift.
     let refusal = v1_compiler_compile::stage0_self_compile_refusal_message(
-        format!("compile of {entry_path}"),
+        format!("compile of {subject_label}"),
         result.clone(),
     );
     let blocking =
@@ -7457,7 +7596,7 @@ pub fn compile_entry_emission(
     };
 
     EntryEmissionRun {
-        entry: entry_path.to_string(),
+        entry: subject_label,
         closure_modules: closure.len(),
         census_modules,
         blocking_diagnostics: blocking,

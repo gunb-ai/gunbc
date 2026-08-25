@@ -1,0 +1,239 @@
+module gunbc.v2_rustc_debt
+
+import std.types { String, Int, List, Bool }
+
+// THE MONOTONE IDENTITY LEDGER FOR RUSTC DIAGNOSTICS OVER THE EMITTED v2 CRATE.
+//
+// WHY A LEDGER AND NOT A NUMBER. A checked-in integer -- "do not exceed 193" -- admits three
+// changes it should refuse and DESIGN's own oracle rule already forbids it: a measurement copied
+// from the current tree is not an oracle, and completeness is an identity join rather than a
+// count equality. Concretely, a count lets one error disappear while another appears, lets a
+// repaired error's allowance be spent on a new one, and lets debt return after an improvement.
+// Every one of those is a real regression that a total cannot see.
+//
+// THE FOUR CONDITIONS DESIGN SETS FOR A MONOTONE DEBT CONTRACT ARE MET HERE AND ARE WORTH
+// NAMING INDIVIDUALLY, because the same shape authored without them is the quieter snapshot the
+// rule rejects: the subject universe is INDEPENDENTLY DISCOVERED (rustc emits it from the
+// emitted crate; nobody authors the population), membership is checked AT IDENTITY GRAIN
+// (file, code) rather than by count, the ROADMAP direction is the v2 self-host, and every
+// removal carries a typed disposition below.
+//
+// THE KEY IS NOT THE MESSAGE, and that is a decision rather than an economy. A rustc message
+// carries the offending spelling, so keying on it would make an identical defect at an
+// identical site a NEW identity every time a name near it changed -- a ledger that churns on
+// renames stops being read. It is also not the primary span's absolute path, which is
+// machine-specific: two runners produce two identities for one defect. The key is the emitted
+// crate-relative source path and the rustc code.
+
+data v2_rustc_debt_key_law: String = "A RustcDebtKey is (normalized emitted-crate-relative primary-source path, rustc diagnostic code). The path is relative to the emitted crate root, never absolute, because an absolute path is a property of the machine that compiled and would mint a fresh identity per runner. The code is rustc's own (E0599, E0308) and is upstream's name for the class, not one coined here -- DESIGN section 3, cite the source and keep its real names. A diagnostic carrying NO code, or no span that normalizes to a crate-relative path, is NOT given a synthesized key: it refuses, because a fabricated identity would silently join to whatever row it happened to collide with."
+
+data v2_rustc_debt_admission_law: String = "Admission is exactly: observed == admitted_here, AND admitted_here is a multiplicity-wise subset of admitted_at_baseline. The first relation refuses a new error with no ledger edit and refuses a stale allowance left behind by a repair; the second refuses a ledger increase, including one that matches a real regression, because the baseline does not contain it. Together they make every reduction PERMANENT, which is the property a ceiling does not have. Neither total participates: occurrences and identities are printed as receipts and are read by humans, never by the verdict."
+
+data v2_rustc_debt_baseline_law: String = "The baseline ledger is read at the repository's authoritative diff baseline via gunbc.diff_baseline, including its direct-versus-merge-base distinction -- never a hardcoded origin/main, which is the policy-as-literal fork that module exists to have dissolved. Reading ONE FILE from the baseline tree is what this needs; recompiling the baseline tree is not, and the difference is why the contract is stated over the LEDGER rather than over the observation."
+
+// (normalized emitted-crate-relative path, rustc code). Both components are required; there is
+// no arm for a diagnostic that supplied neither, because the refusal happens at observation.
+type RustcDebtKey {
+  source_path: String,
+  code: String
+}
+
+// ADMITTED MULTIPLICITY IS AN INT AND NOT A BOOL, because two occurrences of one code in one
+// file is a different state from one, and a set would silently admit the second.
+type RustcDebtRow {
+  key: RustcDebtKey,
+  admitted_multiplicity: Int
+}
+
+// WHY THE VERDICT IS A COPRODUCT AND NOT A BOOL. A refusal must say WHICH relation failed and
+// over WHICH identity, or the author reads "the ratchet refused" and has to re-derive the cause
+// by hand. The arms are the failure modes, each carrying what locates it.
+type RustcDebtVerdict
+  = DebtAdmitted { occurrences: Int, identities: Int }
+  | ObservedDivergesFromLedger { unledgered: List<RustcDebtKey>, stale: List<RustcDebtKey>, multiplicity_mismatch: List<RustcDebtKey> }
+  | LedgerExceedsBaseline { grown: List<RustcDebtKey> }
+  | LedgerMalformed { cause: String }
+
+fn rustc_debt_key_equal(left: RustcDebtKey, right: RustcDebtKey) -> Bool {
+  left.source_path == right.source_path && left.code == right.code
+}
+
+fn rustc_debt_key_render(k: RustcDebtKey) -> String {
+  "{k.source_path}:{k.code}"
+}
+
+fn rustc_debt_row_for_key(rows: List<RustcDebtRow>, key: RustcDebtKey) -> RustcDebtRow? {
+  fold(
+    rows,
+    init: none,
+    f: fn(acc, row) {
+      match acc {
+        Present { value: found } => Present { value: found }
+        Absent => if rustc_debt_key_equal(left: row.key, right: key) {
+          Present { value: row }
+        } else {
+          none
+        }
+      }
+    }
+  )
+}
+
+fn rustc_debt_multiplicity(rows: List<RustcDebtRow>, key: RustcDebtKey) -> Int {
+  match rustc_debt_row_for_key(rows: rows, key: key) {
+    Present { value: row } => row.admitted_multiplicity
+    Absent => 0
+  }
+}
+
+// A ROW WITH A NONPOSITIVE MULTIPLICITY IS MALFORMED, NOT EMPTY. Zero would be a row asserting
+// that a key is admitted zero times, which is what ABSENCE already says; admitting both
+// spellings gives one fact two representations and lets a stale-allowance refusal be dodged by
+// editing a count to zero instead of deleting the row (DESIGN section 3).
+fn rustc_debt_rows_wellformed(rows: List<RustcDebtRow>) -> Bool {
+  fold(rows, init: true, f: fn(acc, row) { acc && row.admitted_multiplicity > 0 })
+}
+
+fn rustc_debt_rows_unique(rows: List<RustcDebtRow>) -> Bool {
+  fold(
+    rows,
+    init: true,
+    f: fn(acc, row) {
+      acc && fold(rows, init: 0, f: fn(n, other) {
+        if rustc_debt_key_equal(left: row.key, right: other.key) { n + 1 } else { n }
+      }) == 1
+    }
+  )
+}
+
+// OBSERVED KEYS THE LEDGER DOES NOT ADMIT AT THE OBSERVED MULTIPLICITY.
+fn rustc_debt_unledgered(observed: List<RustcDebtRow>, admitted: List<RustcDebtRow>) -> List<RustcDebtKey> {
+  fold(
+    observed,
+    init: [],
+    f: fn(acc, row) {
+      if rustc_debt_multiplicity(rows: admitted, key: row.key) == 0 {
+        append(acc, items: [row.key])
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+// LEDGER KEYS NOTHING OBSERVED ANY MORE: the repaired-but-allowance-retained state. It refuses
+// rather than passing quietly, because a stale allowance is a slot a future regression can
+// occupy with no ledger edit -- the ratchet's own teeth, filed down in advance.
+fn rustc_debt_stale(observed: List<RustcDebtRow>, admitted: List<RustcDebtRow>) -> List<RustcDebtKey> {
+  fold(
+    admitted,
+    init: [],
+    f: fn(acc, row) {
+      if rustc_debt_multiplicity(rows: observed, key: row.key) == 0 {
+        append(acc, items: [row.key])
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn rustc_debt_multiplicity_mismatch(observed: List<RustcDebtRow>, admitted: List<RustcDebtRow>) -> List<RustcDebtKey> {
+  fold(
+    observed,
+    init: [],
+    f: fn(acc, row) {
+      let admitted_count = rustc_debt_multiplicity(rows: admitted, key: row.key)
+      if admitted_count > 0 && admitted_count != row.admitted_multiplicity {
+        append(acc, items: [row.key])
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+// EVERY KEY WHOSE ADMITTED MULTIPLICITY EXCEEDS THE BASELINE'S. A key absent from the baseline
+// has baseline multiplicity zero, so any admission of it grows -- which is the correct reading:
+// a brand-new admitted identity IS a ledger increase against the baseline, and refusing it is
+// the whole point of the second relation.
+fn rustc_debt_grown(admitted: List<RustcDebtRow>, baseline: List<RustcDebtRow>) -> List<RustcDebtKey> {
+  fold(
+    admitted,
+    init: [],
+    f: fn(acc, row) {
+      if row.admitted_multiplicity > rustc_debt_multiplicity(rows: baseline, key: row.key) {
+        append(acc, items: [row.key])
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn rustc_debt_occurrences(rows: List<RustcDebtRow>) -> Int {
+  fold(rows, init: 0, f: fn(acc, row) { acc + row.admitted_multiplicity })
+}
+
+// THE VERDICT. The order of the arms is the order of the questions: a malformed ledger cannot
+// be compared at all, an observation that diverges from the ledger is the author's own head,
+// and only then is the ledger measured against the baseline.
+fn rustc_debt_verdict(
+  observed: List<RustcDebtRow>,
+  admitted: List<RustcDebtRow>,
+  baseline: List<RustcDebtRow>
+) -> RustcDebtVerdict {
+  if !rustc_debt_rows_wellformed(rows: admitted) {
+    LedgerMalformed { cause: "a ledger row admits a nonpositive multiplicity; absence is how zero is spelled" }
+  } else {
+    if !rustc_debt_rows_unique(rows: admitted) {
+      LedgerMalformed { cause: "the ledger declares one (source_path, code) key more than once, so its admitted multiplicity has two answers" }
+    } else {
+      let unledgered = rustc_debt_unledgered(observed: observed, admitted: admitted)
+      let stale = rustc_debt_stale(observed: observed, admitted: admitted)
+      let mismatch = rustc_debt_multiplicity_mismatch(observed: observed, admitted: admitted)
+      if count(unledgered) > 0 || count(stale) > 0 || count(mismatch) > 0 {
+        ObservedDivergesFromLedger {
+          unledgered: unledgered,
+          stale: stale,
+          multiplicity_mismatch: mismatch
+        }
+      } else {
+        let grown = rustc_debt_grown(admitted: admitted, baseline: baseline)
+        if count(grown) > 0 {
+          LedgerExceedsBaseline { grown: grown }
+        } else {
+          DebtAdmitted {
+            occurrences: rustc_debt_occurrences(rows: observed),
+            identities: count(observed)
+          }
+        }
+      }
+    }
+  }
+}
+
+fn rustc_debt_verdict_admits(v: RustcDebtVerdict) -> Bool {
+  match v {
+    DebtAdmitted { occurrences: _, identities: _ } => true
+    ObservedDivergesFromLedger { unledgered: _, stale: _, multiplicity_mismatch: _ } => false
+    LedgerExceedsBaseline { grown: _ } => false
+    LedgerMalformed { cause: _ } => false
+  }
+}
+
+// THE RECEIPT LINE. Both totals appear here and NEITHER reaches the verdict above; they are for
+// a reader watching the trajectory, and printing them beside a disposition the totals did not
+// compute is deliberate -- a number that decides nothing cannot rot into an oracle.
+fn rustc_debt_receipt_line(v: RustcDebtVerdict) -> String {
+  match v {
+    DebtAdmitted { occurrences: o, identities: i } =>
+      "v2-rustc-debt: occurrences={o} identities={i} disposition=held"
+    ObservedDivergesFromLedger { unledgered: u, stale: s, multiplicity_mismatch: m } =>
+      "v2-rustc-debt: REFUSED observation diverges from ledger unledgered={count(u)} stale={count(s)} multiplicity_mismatch={count(m)}"
+    LedgerExceedsBaseline { grown: g } =>
+      "v2-rustc-debt: REFUSED ledger exceeds baseline grown={count(g)}"
+    LedgerMalformed { cause: c } =>
+      "v2-rustc-debt: REFUSED ledger malformed: {c}"
+  }
+}
