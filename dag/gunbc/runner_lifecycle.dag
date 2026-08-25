@@ -192,8 +192,19 @@ fn runner_slot_caps_precede_start() -> Bool {
   runner_slot_add_step_index(step: AddStepMemoryCaps) < runner_slot_add_step_index(step: AddStepStartUnit)
 }
 
+// THE UNIT NAME IS DERIVED FROM AN INSTANCE NAME, AND THE IDENTITY FORM IS THE COMPOSITION OF THAT
+// WITH THE INSTANCE-NAME AUTHORITY. Split because two callers hold two different things: this module
+// and its neighbours hold a RunnerSlotIdentity, while gunbc.runner_slot_provision's RunnerSlotMember
+// and gunbc.runner_host_deploy's runner_instance_names both hold the instance name already and have
+// no identity to reconstruct one from. Before the split, a caller with only the name had to re-spell
+// the template -- which gunbc.runner_host_deploy runner_enable_command_argv does, and is the third
+// authoring this row exists to stop growing.
+fn runner_unit_name_for_instance(instance_name: String) -> NonEmptyStr {
+  join(["actions-runner@", instance_name, ".service"], "") as NonEmptyStr
+}
+
 fn runner_slot_unit_name(slot: RunnerSlotIdentity) -> NonEmptyStr {
-  join(["actions-runner@", runner_slot_instance_name(slot: slot), ".service"], "") as NonEmptyStr
+  runner_unit_name_for_instance(instance_name: runner_slot_instance_name(slot: slot))
 }
 
 fn runner_slot_dir_path(slot: RunnerSlotIdentity) -> NonEmptyStr {

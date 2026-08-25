@@ -1,0 +1,16 @@
+module test.claim.filesystem_list_hermetic_witness
+
+
+import extdeps.filesystem.filesystem_io
+import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Positive control for the checkout-input enumeration primitive. The assertion is
+// line-exact because Filesystem.List returns one immediate entry name per line.
+test fn hermetic_list_discovers_known_checkout_entry() -> Bool {
+  let result = Filesystem.List(path: "dag/std", expect: ExpectSuccess)
+  result.success
+    && string_contains(concat("\n", concat(result.entries, "\n")), "\nfilesystem.dag\n")
+}
