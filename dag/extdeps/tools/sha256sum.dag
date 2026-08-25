@@ -19,12 +19,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data sha256_algorithm_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "csrc.nist.gov/pubs/fips/180-4/final"
-  }
-}
+data sha256_algorithm_authority_consumed_note: String = "The FIPS 180-4 algorithm citation is CONSUMED from extdeps.crypto.hash extdeps_external_authority_anchor, never re-minted here (DESIGN §3 single authority). This module's own extdeps_external_authority_anchor is the coreutils manual — the tool that prints the digest — which is a different upstream subject from the algorithm it implements, so those two rows are distinct facts rather than a nickname pair. A local sha256_algorithm_authority row previously re-declared FIPS 180-4 here and was DELETED (review 55859); review 50411 had already refused the identical fork in the sibling extdeps.tools.sha512sum, which records the same consume rule. THE FORK HAD ALREADY DRIFTED, which is the argument for deleting rather than reconciling: the local row read csrc.nist.gov/pubs/fips/180-4/final while the owning row reads csrc.nist.gov/pubs/fips/180-4/upd1/final, so the two spellings of one citation had begun to disagree about which revision of the standard is cited — exactly the decay §3 predicts and the reason a second name for one fact is a correctness concern rather than a style one. NOT DONE HERE, and named rather than left implied: this module carries no ExternalModelScope, so unlike sha512sum there is no further_citations slot to carry the consumed citation structurally. Declaring one is a modeling act on this module's own subject rather than part of removing the fork, so it stays with this module's owner."
 
 data sha256sum_cli_tool: CliTool = CliTool {
   name: "sha256sum",
@@ -63,7 +58,7 @@ service sha256sum.Sha256 {
   }
 }
 
-data sha256_verify_shape_doc: String = "DESIGN §3 shape/transport/policy split: Sha256Verify(path, expected_digest) is the interface shape, cited to sha256_algorithm_authority (the SHA-256 algorithm itself, not a particular CLI). sha256sum_verify_via_shell is ONE transport handler realizing that shape via the coreutils sha256sum CLI (sha256sum_cli_tool / CheckFile above); a future native/library digest realization is another handler bound to the same shape, not a rewrite."
+data sha256_verify_shape_doc: String = "DESIGN §3 shape/transport/policy split: Sha256Verify(path, expected_digest) is the interface shape, cited to extdeps.crypto.hash extdeps_external_authority_anchor (FIPS 180-4 — the SHA-256 algorithm itself, not a particular CLI, and consumed from the module that owns that citation rather than re-minted here). sha256sum_verify_via_shell is ONE transport handler realizing that shape via the coreutils sha256sum CLI (sha256sum_cli_tool / CheckFile above); a future native/library digest realization is another handler bound to the same shape, not a rewrite."
 
 type Sha256VerifyVerdict
   = Sha256Matches
