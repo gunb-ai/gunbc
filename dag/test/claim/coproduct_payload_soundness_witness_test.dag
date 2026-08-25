@@ -162,10 +162,25 @@ test fn cpp_alias_mediated_payload_must_also_refuse() -> Bool {
 // rather than two repairs is where the mis-routed value LANDS: per `gunbc.scm.load_standing`
 // `standing_may_supersede_generation`, `LoadDocumentMalformed` is the only standing permitting
 // supersession of a newer generation, so a silently-admitted wrong cause is a route into a
-// data-loss class. DESIGN already records a SECOND, independent mechanism reaching that same
-// destination (`repository_load_disposition` collapsing thirteen `ImageRefusal` arms under a bare
-// cause binding), which says the destination is under-defended rather than that either mechanism
-// was unlucky.
+// data-loss class.
+//
+// WHAT THIS ARM DOES NOT DO, AND THE BOUNDARY IS THE POINT. IT CLOSES ONE ROUTE INTO AN
+// UNDER-DEFENDED DESTINATION. IT DOES NOT CLOSE THE HAZARD. The destructive operation is authorized
+// by a value too lossy to carry the proof it needs: `standing_may_supersede_generation` is
+// `LoadStanding -> Bool`, and a Bool carries none of the exact generation observed, the content
+// identity examined, the schema identity under which malformedness was established, or a receipt
+// joining the refusal to this policy arm. This arm stops ONE PRODUCER from manufacturing a false
+// `LoadDocumentMalformed`; it does not make the destination REQUIRE proof, and another producer --
+// or an unknown one -- reaches the same arm unchanged. Making supersession proof-bearing and
+// generation-bound, so that actuation compares and swaps against the exact generation the evidence
+// was gathered from, is a SEPARATE CONTRACT and is deliberately not attempted here.
+//
+// AND WHAT DOES NOT FOLLOW, recorded because it is the inference this file is most likely to invite.
+// DESIGN already records a SECOND, independent mechanism reaching that same destination
+// (`repository_load_disposition` collapsing thirteen `ImageRefusal` arms under a bare cause
+// binding). TWO KNOWN MECHANISMS DO NOT BOUND THE POPULATION OF ROUTES. What the pair establishes is
+// which denominator an audit of this hazard has to use: the destination's entire authorization
+// relation, not either defect site.
 //
 // THE FOUR ARMS ARE ONE SEAM AND THAT IS THE POINT. All four vary WHAT is placed in one
 // record-literal field; none of them varies the position. So this file measures the record-literal
