@@ -130,7 +130,7 @@ type KeyedMapVerdict
 fn v1_type_expr_keyed_map_verdict(type_expr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> KeyedMapVerdict {
   match v1.std.core.authored_container_spelling_verdict(node: type_expr, source_indices: source_indices) {
     v1.std.core.ContainerSpellingUnknown { container_leaf: _ } =>
-      KeyedMapUndecidable { name: v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr) }
+      KeyedMapUndecidable { name: v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr)) }
     v1.std.core.ContainerSpellingDeclared { arity: _ } =>
       v1_keyed_map_verdict_from_algebra(type_expr: type_expr, source_indices: source_indices)
     v1.std.core.NotAContainerSpelling =>
@@ -147,7 +147,7 @@ fn v1_type_expr_keyed_map_verdict(type_expr: v1.std.core.Node, source_indices: M
 // diagnostic. `PartialFunction` stays in the test because a declaration may now name the open
 // carrier directly, and a keyed lookup is what both carriers are for.
 fn v1_keyed_map_verdict_from_algebra(type_expr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> KeyedMapVerdict {
-  match std.types.container_template_algebra(name: v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr)) {
+  match std.types.container_template_algebra(name: v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr))) {
     Present { value: algebra } =>
       if algebra == "FinitelySupportedFunction" || algebra == "PartialFunction" { KeyedMap } else { NotKeyedMap }
     Absent => NotKeyedMap
@@ -198,7 +198,7 @@ fn v1_type_expr_head_names(
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> List<String> {
   concat(
-    [v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr)],
+    [v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr))],
     type_expr.children |> flat_map(ch =>
       v1_type_expr_head_names(type_expr: v1.compiler.infer_types.child_type_node(ch: ch), source_indices: source_indices)
     )
@@ -362,7 +362,7 @@ fn v1_freemonoid_element_params(
 ) -> List<String> {
   generic_param_names |> filter(p =>
     field_type_exprs |> any(te =>
-      v1.std.core.authored_name_at(source_indices: source_indices, node: te) == "FreeMonoid"
+      v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: te)) == "FreeMonoid"
         && te.children |> any(c => v1_type_expr_contains_param_name(param_name: p, type_expr: c, source_indices: source_indices))
     )
   )
@@ -442,7 +442,7 @@ fn v1_set_element_params(
 ) -> List<String> {
   generic_param_names |> filter(p =>
     field_type_exprs |> any(te =>
-      v1.std.core.authored_name_at(source_indices: source_indices, node: te) == "Set"
+      v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: te)) == "Set"
         && te.children |> any(c => v1_type_expr_contains_param_name(param_name: p, type_expr: c, source_indices: source_indices))
     )
   )
@@ -770,7 +770,7 @@ fn v1_field_type_expr_ord_propagated_for_param(
   type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
-  let decl_name = v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr)
+  let decl_name = v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr))
   match map_get(type_decl_items, decl_name) {
     Absent => false
     Present { value: decl } =>
@@ -969,7 +969,7 @@ fn v1_type_expr_contains_param_name(
   type_expr: v1.std.core.Node,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
-  if v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr) == param_name {
+  if v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr)) == param_name {
     true
   } else {
     type_expr.children |> any(c =>
@@ -991,7 +991,7 @@ fn v1_generic_param_used_as_collection_element(
 ) -> Bool {
   value_params |> any(vp =>
     let te = v1.std.core.param_node_type_expr(n: vp)
-    std.types.is_container_type(name: v1.std.core.authored_name_at(source_indices: source_indices, node: te))
+    std.types.is_container_type(name: v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: te)))
       && te.children |> any(c =>
         v1_type_expr_mentions_param_non_phantom(
           param_name: param_name,
@@ -1011,7 +1011,7 @@ fn v1_generic_param_used_as_bare_value_param_type(
 ) -> Bool {
   value_params |> any(vp =>
     let te = v1.std.core.param_node_type_expr(n: vp)
-    v1.std.core.authored_name_at(source_indices: source_indices, node: te) == param_name
+    v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: te)) == param_name
       && te.connective == v1.std.core.NoConnective
       && (te.children |> count) == 0
   )
@@ -1134,7 +1134,7 @@ fn v1_type_expr_mentions_param_non_phantom(
   if v1_type_expr_is_bare_param(param_name: param_name, type_expr: type_expr, source_indices: source_indices) {
     true
   } else {
-    let name = v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr)
+    let name = v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr))
     if std.types.is_container_type(name: name)
       && type_expr.children |> any(c =>
         v1_type_expr_mentions_param_non_phantom(
@@ -1206,7 +1206,7 @@ fn v1_type_expr_mentions_type_head(
   type_expr: v1.std.core.Node,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
-  if v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr) == type_name {
+  if v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr)) == type_name {
     true
   } else {
     type_expr.children |> any(c =>
@@ -1262,7 +1262,7 @@ fn v1_fn_generic_clone_bound_via_bounded_container_element(
 ) -> Bool {
   value_params |> any(vp =>
     let te = v1.std.core.param_node_type_expr(n: vp)
-    std.types.is_container_type(name: v1.std.core.authored_name_at(source_indices: source_indices, node: te))
+    std.types.is_container_type(name: v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: te)))
       && te.children |> any(c =>
         let head = v1.std.core.authored_name_at(source_indices: source_indices, node: c)
         match map_get(clone_bounds, head) {
@@ -1388,7 +1388,7 @@ fn v1_field_type_expr_needs_clone_bound_for_param_narrow(
   type_expr: v1.std.core.Node,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
-  let name = v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr)
+  let name = v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr))
   if name == param_name && type_expr.connective == v1.std.core.NoConnective && (type_expr.children |> count) == 0 {
     true
   } else if std.types.is_container_type(name: name)
@@ -1423,7 +1423,7 @@ fn v1_wf_child_type_node(ch: v1.std.core.Node, source_indices: Map<String, v1.st
 }
 
 fn v1_type_expr_is_bare_param(param_name: String, type_expr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
-  v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr) == param_name
+  v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr)) == param_name
     && type_expr.connective == v1.std.core.NoConnective
     && (type_expr.children |> count) == 0
 }
@@ -1450,7 +1450,7 @@ fn v1_type_expr_clone_undecided_head(
   source_indices: Map<String, v1.std.core.NewlineIndex>,
   item_generic_params: Set<String>
 ) -> String {
-  let name = v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr)
+  let name = v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr))
   if (type_expr.children |> count) == 0 {
     ""
   } else if v1_type_expr_head_is_known(name: name, type_decl_items: type_decl_items)
@@ -1479,7 +1479,7 @@ fn v1_type_expr_clone_impl_needs_param(
   type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
-  let name = v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr)
+  let name = v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr))
   if v1_type_expr_is_bare_param(param_name: param_name, type_expr: type_expr, source_indices: source_indices) {
     true
   } else if (type_expr.children |> count) == 0 {
@@ -1624,7 +1624,7 @@ fn v1_type_expr_wf_needs_clone_param(
   type_decl_items: Map<String, v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
-  let name = v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr)
+  let name = v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr))
   if (type_expr.children |> count) == 0 {
     false
   } else {
