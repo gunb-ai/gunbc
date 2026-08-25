@@ -3,7 +3,7 @@ module test.claim.fabric_cell_observe_witness
 import std.types { Bool, String, List, Int, NonEmptyStr, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 import gunbc.fabric_cell_converge {
   FabricCellResourceAddress,
   FabricCellRootAddress,
@@ -30,6 +30,7 @@ import gunbc.fabric_cell_observe {
   FabricCellNamespaceProbe,
   NamespaceEnumerated,
   NamespaceEnumerationRefused,
+  NamespaceObservedAbsent,
   FabricCellAddressProbe,
   AddressStateRead,
   AddressStateReadRefused,
@@ -51,6 +52,7 @@ import gunbc.fabric_cell_observe {
   DiscoveredExpectedCell,
   DiscoveredUnexpectedCommittedSlot,
   DiscoveredForeignArtifact,
+  DiscoveredCrossHostNamedArtifact,
   fabric_cell_discovered_subject_wire,
 }
 
@@ -144,7 +146,10 @@ fn count_observed(os: List<FabricCellAddressObservation>) -> Int {
   fold(os, init: 0, f: (acc, o) => if observation_is_observed(o: o) { acc + 1 } else { acc })
 }
 
-test fn debug_observer_counts() -> Bool {
+// LAW 0 -- A FULLY PROVISIONED PROBE OBSERVES EVERY ADDRESS. The baseline every other row is read
+// against: without it, "never reports absence" and "refuses when ignorant" are both satisfied by an
+// observer that observes nothing at all.
+test fn witness_observer_converged_probe_observes_every_address() -> Bool {
   let r = fabric_cell_observe_slot(probe: converged_probe(), slot: observe_slot())
   count_observed(os: r.observations) == 3
 }
@@ -187,11 +192,18 @@ test fn witness_observer_unprobed_namespace_never_reports_absence() -> Bool {
 // LAW 3 -- ABSENCE IS REPORTED, AND ONLY, AFTER A SUCCESSFUL PARENT OBSERVATION. The positive
 // control for laws 1 and 2: without it those two are satisfied by an observer that never reports
 // absence at all, which would be a different defect wearing the same green.
+//
+// THE FIXTURE HERE WAS ONCE AN IMPOSSIBLE FILESYSTEM STATE AND THAT WAS THE TELL. It supplied an
+// empty cells-root listing -- so the cell root is absent -- AND a child-namespace enumeration for a
+// cell that therefore does not exist. Nothing on a real host produces that pair, and the only
+// reason the row needed it was that the carrier had no way to say a child of an absent parent is
+// absent. Once absence descends (law 19), the shape below is the realizable one: the cell root IS
+// present, and its child namespace is enumerated WITHOUT `attempts`.
 test fn witness_observer_successful_enumeration_without_the_entry_is_absence() -> Bool {
   let readback = fabric_cell_observe_slot(
     probe: probe_with_namespaces(ns: [
-      enumerated(ns: FabricCellsRootNamespace, entries: []),
-      enumerated(ns: FabricCellChildNamespace { slot: observe_slot() }, entries: ["attempts"]),
+      enumerated(ns: FabricCellsRootNamespace, entries: observe_root_entries()),
+      enumerated(ns: FabricCellChildNamespace { slot: observe_slot() }, entries: []),
       enumerated(ns: FabricCellSliceNamespace, entries: [fabric_cell_slice_name(slot: observe_slot())]),
     ]),
     slot: observe_slot(),
@@ -319,8 +331,8 @@ test fn witness_observer_unknown_name_is_foreign_never_a_minted_slot() -> Bool {
   match fabric_cell_discovered_subjects(
     probe: probe_with_namespaces(ns: [enumerated(ns: FabricCellsRootNamespace, entries: ["srv3-99"])])
   ) {
-    DiscoveryRefused { cause: _ } => false
-    DiscoveryEnumerated { subjects: ss } =>
+    DiscoveryRefused { host: _, cause: _ } => false
+    DiscoveryEnumerated { host: _, subjects: ss } =>
       list_length(items: ss) == 1
         && fold(ss, init: false, f: (acc, s) => acc || fabric_cell_discovered_subject_wire(s: s) == "foreign:fabric-cells-root:srv3-99")
   }
@@ -334,8 +346,8 @@ test fn witness_observer_committed_non_fabric_slot_is_discovered_as_that_slot() 
   match fabric_cell_discovered_subjects(
     probe: probe_with_namespaces(ns: [enumerated(ns: FabricCellsRootNamespace, entries: ["srv3-01"])])
   ) {
-    DiscoveryRefused { cause: _ } => false
-    DiscoveryEnumerated { subjects: ss } =>
+    DiscoveryRefused { host: _, cause: _ } => false
+    DiscoveryEnumerated { host: _, subjects: ss } =>
       fold(ss, init: false, f: (acc, s) => acc || fabric_cell_discovered_subject_wire(s: s) == "unexpected-committed:srv3-01")
   }
 }
@@ -344,8 +356,8 @@ test fn witness_observer_committed_non_fabric_slot_is_discovered_as_that_slot() 
 // 11: without it, all three arms are satisfied by an implementation that calls everything foreign.
 test fn witness_observer_expected_fabric_cell_is_discovered_as_expected() -> Bool {
   match fabric_cell_discovered_subjects(probe: converged_probe()) {
-    DiscoveryRefused { cause: _ } => false
-    DiscoveryEnumerated { subjects: ss } =>
+    DiscoveryRefused { host: _, cause: _ } => false
+    DiscoveryEnumerated { host: _, subjects: ss } =>
       fold(ss, init: false, f: (acc, s) => acc || fabric_cell_discovered_subject_wire(s: s) == "expected:srv3-06")
   }
 }
@@ -357,8 +369,8 @@ test fn witness_observer_refused_root_enumeration_discovers_nothing_not_an_empty
   match fabric_cell_discovered_subjects(
     probe: probe_with_namespaces(ns: [enumeration_refused(ns: FabricCellsRootNamespace, cause: "permission denied")])
   ) {
-    DiscoveryEnumerated { subjects: _ } => false
-    DiscoveryRefused { cause: _ } => true
+    DiscoveryEnumerated { host: _, subjects: _ } => false
+    DiscoveryRefused { host: _, cause: _ } => true
   }
 }
 
@@ -383,8 +395,8 @@ test fn witness_observer_duplicate_listed_names_are_one_subject() -> Bool {
   match fabric_cell_discovered_subjects(
     probe: probe_with_namespaces(ns: [enumerated(ns: FabricCellsRootNamespace, entries: ["srv3-99", "srv3-99"])])
   ) {
-    DiscoveryRefused { cause: _ } => false
-    DiscoveryEnumerated { subjects: ss } => list_length(items: ss) == 1
+    DiscoveryRefused { host: _, cause: _ } => false
+    DiscoveryEnumerated { host: _, subjects: ss } => list_length(items: ss) == 1
   }
 }
 
@@ -394,15 +406,15 @@ test fn witness_observer_distinct_listed_names_stay_distinct() -> Bool {
   match fabric_cell_discovered_subjects(
     probe: probe_with_namespaces(ns: [enumerated(ns: FabricCellsRootNamespace, entries: ["srv3-99", "srv3-06"])])
   ) {
-    DiscoveryRefused { cause: _ } => false
-    DiscoveryEnumerated { subjects: ss } => list_length(items: ss) == 2
+    DiscoveryRefused { host: _, cause: _ } => false
+    DiscoveryEnumerated { host: _, subjects: ss } => list_length(items: ss) == 2
   }
 }
 
 fn discovery_wire_set(d: FabricCellDiscovery) -> String {
   match d {
-    DiscoveryRefused { cause: c } => join(["refused:", c], "")
-    DiscoveryEnumerated { subjects: ss } =>
+    DiscoveryRefused { host: _, cause: c } => join(["refused:", c], "")
+    DiscoveryEnumerated { host: _, subjects: ss } =>
       fold(
         ss,
         init: "",
@@ -479,5 +491,165 @@ fn standing_is_absent(s: FabricCellAddressStanding) -> Bool {
     StandingSatisfied { ref: _ } => false
     StandingObservedDrift { ref: _, observed_state_digest: _ } => false
     StandingBlocked { disposition: _ } => false
+  }
+}
+
+// LAW 19 -- THE FIRST REAL OBSERVATION OF AN UNPROVISIONED CELL IS ACTIONABLE ABSENCE, NOT A BLOCK.
+// This is the row the observer's original carrier could not make green without an impossible
+// fixture. The cells root lists and does not hold srv3-06; `/opt/fabric-cells/srv3-06` therefore
+// does not exist and its child namespace cannot be enumerated. With only enumerated-or-refused, the
+// attempt root came back REFUSED and the host was blocked -- so the three ADD actions the first
+// realization needs were unreachable, on the exact input the whole family exists to serve.
+//
+// ABSENCE DESCENDS FROM A SUCCESSFUL PARENT OBSERVATION, which is the parent-observation law one
+// level up rather than a weakening of it. A REFUSED parent derives nothing (law 20).
+test fn witness_observer_unprovisioned_cell_is_absent_not_blocked() -> Bool {
+  let readback = fabric_cell_observe_slot(
+    probe: FabricCellHostProbe {
+      host: operator_host_srv3,
+      namespaces: [
+        enumerated(ns: FabricCellsRootNamespace, entries: []),
+        enumerated(ns: FabricCellSliceNamespace, entries: []),
+      ],
+      addresses: [],
+    },
+    slot: observe_slot(),
+  )
+  count_absent(os: readback.observations) == 3 && count_refused(os: readback.observations) == 0
+}
+
+// LAW 20 -- A REFUSED PARENT DERIVES NO ABSENCE FOR ITS CHILD. The discriminating control for law
+// 19: if ancestry were applied without checking that the parent observation SUCCEEDED, a refused
+// cells-root listing would silently make every attempt root absent, which is the empty-observation
+// narrow rebuilt inside the repair for it.
+test fn witness_observer_refused_parent_derives_no_child_absence() -> Bool {
+  let readback = fabric_cell_observe_slot(
+    probe: FabricCellHostProbe {
+      host: operator_host_srv3,
+      namespaces: [
+        enumeration_refused(ns: FabricCellsRootNamespace, cause: "permission denied"),
+        enumerated(ns: FabricCellSliceNamespace, entries: []),
+      ],
+      addresses: [],
+    },
+    slot: observe_slot(),
+  )
+  count_absent(os: readback.observations) == 1 && count_refused(os: readback.observations) == 2
+}
+
+// LAW 21 -- A NAMESPACE OBSERVED ABSENT IS EVIDENCE, AND ITS ADDRESSES ARE ABSENT. The bootstrap
+// case: `/opt/fabric-cells` itself does not exist yet. An explicit not-found is a SUCCESSFUL
+// observation whose content is absence -- it is not missing output, so the governing law is intact.
+test fn witness_observer_namespace_observed_absent_makes_its_addresses_absent() -> Bool {
+  let readback = fabric_cell_observe_slot(
+    probe: FabricCellHostProbe {
+      host: operator_host_srv3,
+      namespaces: [
+        FabricCellNamespaceProbeEntry { namespace: FabricCellsRootNamespace, probe: NamespaceObservedAbsent },
+        FabricCellNamespaceProbeEntry { namespace: FabricCellSliceNamespace, probe: NamespaceObservedAbsent },
+      ],
+      addresses: [],
+    },
+    slot: observe_slot(),
+  )
+  count_absent(os: readback.observations) == 3 && count_refused(os: readback.observations) == 0
+}
+
+// LAW 22 -- OBSERVED-ABSENT AND ENUMERATED ARE A CONTRADICTION, NOT A PRECEDENCE. A namespace cannot
+// both not exist and list entries. Asserted in both orders so no implementation passes by taking an
+// end.
+test fn witness_observer_absent_and_enumerated_namespace_refuses_in_both_orders() -> Bool {
+  let forward = fabric_cell_observe_address(
+    probe: probe_with_namespaces(ns: [
+      FabricCellNamespaceProbeEntry { namespace: FabricCellsRootNamespace, probe: NamespaceObservedAbsent },
+      enumerated(ns: FabricCellsRootNamespace, entries: observe_root_entries()),
+    ]),
+    slot: observe_slot(),
+    address: FabricCellRootAddress,
+  )
+  let reverse = fabric_cell_observe_address(
+    probe: probe_with_namespaces(ns: [
+      enumerated(ns: FabricCellsRootNamespace, entries: observe_root_entries()),
+      FabricCellNamespaceProbeEntry { namespace: FabricCellsRootNamespace, probe: NamespaceObservedAbsent },
+    ]),
+    slot: observe_slot(),
+    address: FabricCellRootAddress,
+  )
+  observation_is_refused(o: forward) && observation_is_refused(o: reverse)
+}
+
+// LAW 23 -- ANOTHER HOST'S COMMITTED NAME FOUND HERE IS NOT THIS HOST'S EXPECTED CELL. An artifact
+// named srv3-06 in srv4's cells root says an artifact named srv3-06 exists ON srv4; it is not
+// evidence that srv3's expected cell exists. The earlier classifier searched the whole fleet with
+// no host argument and returned DiscoveredExpectedCell for exactly this input -- one host's listing
+// satisfying another host's expectation, which is the cross-host join class the classification
+// kernel repaired one layer later.
+test fn witness_observer_other_hosts_committed_name_is_not_this_hosts_expected_cell() -> Bool {
+  match fabric_cell_discovered_subjects(
+    probe: FabricCellHostProbe {
+      host: operator_host_srv4,
+      namespaces: [enumerated(ns: FabricCellsRootNamespace, entries: ["srv3-06"])],
+      addresses: [],
+    }
+  ) {
+    DiscoveryRefused { host: _, cause: _ } => false
+    DiscoveryEnumerated { host: _, subjects: ss } =>
+      list_length(items: ss) == 1
+        && fold(ss, init: true, f: (acc, sub) => acc && !discovered_is_expected(s: sub))
+        && fold(ss, init: false, f: (acc, sub) => acc || discovered_is_cross_host(s: sub))
+  }
+}
+
+fn discovered_is_expected(s: FabricCellDiscoveredSubject) -> Bool {
+  match s {
+    DiscoveredExpectedCell { slot: _ } => true
+    DiscoveredUnexpectedCommittedSlot { slot: _ } => false
+    DiscoveredCrossHostNamedArtifact { observed_name: _, named_slot: _, observed_on: _ } => false
+    DiscoveredForeignArtifact { observed_name: _, location: _ } => false
+  }
+}
+
+fn discovered_is_cross_host(s: FabricCellDiscoveredSubject) -> Bool {
+  match s {
+    DiscoveredCrossHostNamedArtifact { observed_name: _, named_slot: _, observed_on: _ } => true
+    DiscoveredExpectedCell { slot: _ } => false
+    DiscoveredUnexpectedCommittedSlot { slot: _ } => false
+    DiscoveredForeignArtifact { observed_name: _, location: _ } => false
+  }
+}
+
+// LAW 24 -- AND A NAME NOTHING COMMITTED ANYWHERE IS STILL FOREIGN, NOT CROSS-HOST. The control that
+// keeps the fourth arm from absorbing the third: `srv3-99` matches no committed slot on any host,
+// so it stays a foreign artifact rather than being reported as another host's cell.
+test fn witness_observer_uncommitted_name_stays_foreign_not_cross_host() -> Bool {
+  match fabric_cell_discovered_subjects(
+    probe: FabricCellHostProbe {
+      host: operator_host_srv4,
+      namespaces: [enumerated(ns: FabricCellsRootNamespace, entries: ["srv3-99"])],
+      addresses: [],
+    }
+  ) {
+    DiscoveryRefused { host: _, cause: _ } => false
+    DiscoveryEnumerated { host: _, subjects: ss } =>
+      fold(ss, init: true, f: (acc, sub) => acc && !discovered_is_cross_host(s: sub))
+        && fold(ss, init: false, f: (acc, sub) => acc || fabric_cell_discovered_subject_wire(s: sub) == "foreign:fabric-cells-root:srv3-99")
+  }
+}
+
+// LAW 25 -- DISCOVERY CARRIES THE HOST IT OBSERVED, in both arms. A discovery result whose host is
+// dropped can be joined to the wrong readback by any consumer, which is the same writable
+// disagreement the readback carrier was narrowed to prevent.
+test fn witness_observer_discovery_carries_its_host_in_both_arms() -> Bool {
+  let enumerated_arm = fabric_cell_discovered_subjects(probe: converged_probe())
+  let refused_arm = fabric_cell_discovered_subjects(
+    probe: probe_with_namespaces(ns: [enumeration_refused(ns: FabricCellsRootNamespace, cause: "permission denied")])
+  )
+  discovery_host_wire(d: enumerated_arm) == "srv3" && discovery_host_wire(d: refused_arm) == "srv3"
+}
+
+fn discovery_host_wire(d: FabricCellDiscovery) -> String {
+  match d {
+    DiscoveryEnumerated { host: h, subjects: _ } => h as String
+    DiscoveryRefused { host: h, cause: _ } => h as String
   }
 }
