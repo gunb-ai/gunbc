@@ -1723,6 +1723,55 @@ RUNNING the wall over the corpus and none by reasoning about it. Two lanes, two
 subjects, one conclusion: **the corpus is the instrument, and a witness is a
 hypothesis about it.**
 
+### 11.2c A wall that dissolves silently at the cut — `authored_import_names`
+
+Found while unblocking a lane on an unrelated red, and it is the most direct
+threat to this program's own premise that has surfaced so far.
+
+`v1.04_lookup` `author_named_visibility` is correctly three-valued —
+`AuthorNamedThisName | AuthorNamedNothingForThisName | VisibilityUnobservable` —
+and its header is careful about exactly the right distinction: membership in
+`source_visible_names` is *necessary* for "the author named this" and not
+*sufficient*, because an `is_all` import contributes names the author never
+wrote. So it reads `authored_import_names`, the listed-import arm alone.
+
+**But the carrier is `Map<String, bool>`, and the reader synthesizes its third
+state from EMPTINESS:**
+
+```
+if map_is_empty(m: type_env.authored_import_names) { VisibilityUnobservable }
+else { if map_has(…) { AuthorNamedThisName } else { AuthorNamedNothingForThisName } }
+```
+
+A two-valued carrier cannot supply a three-valued answer, so *observed, and the
+author named nothing* and *nothing populated this* are the same bytes. This is
+the identical shape found the same day in the emitter, where `String?` collapsed
+AMBIGUOUS and NO-CANDIDATE into one `Absent` and the consumer recomputed the
+whole fold to recover what the producer had discarded. Two stages, one defect.
+
+**THE CONSEQUENCE FOR THE CUT, WHICH IS WHY THIS IS ITS OWN SECTION.** Deleting
+imports drives `authored_import_names` empty for *every* module in the corpus.
+Every call then returns `VisibilityUnobservable`, and this wall stops
+discriminating — **silently, with no diagnostic, no count, and no failing
+witness**, because returning the "I cannot observe" state is exactly what it is
+built to do. Nothing in the cut would report it. A guard that answers honestly
+about its own ignorance is indistinguishable from a guard that has been
+switched off, once the input it reads no longer exists.
+
+That is not an argument against the cut. It is an argument that **the cut must
+carry this wall's replacement, not discover it afterwards**: whatever answers
+"did the author name this name" after imports are gone has to be identified and
+in place before the semantic cutover (M6), because the alternative is a wall
+that is green and inert on the far side. It joins the F-milestone obligations
+rather than sitting in the post-cut cleanup, and it is a concrete instance of
+the delete-first census producing a *predicted* refusal rather than a discovered
+one — which is the good case, and only because it was found early.
+
+The immediate corollary for anyone filling a `TypeEnv` initializer: **an empty
+`authored_import_names` is a claim that visibility is UNOBSERVABLE, not a claim
+that the module has no imports.** Supplying `rc_empty_map()` because a
+constructor demands a value is asserting the first while meaning the second.
+
 ### 11.2b The dormant repair — three instances in one day
 
 A pattern surfaced three times on 2026-08-25, by three lanes, on three
