@@ -74,22 +74,25 @@ import gunbc.scm.checkout {
   CheckoutRefused,
 }
 import gunbc.scm.commit_closure { CommitClosure }
+import gunbc.scm.object_table_json {
+  ObjectTableUnknownKindTag,
+  ObjectTableUnknownConnectiveTag,
+  ObjectTableUnknownBehaviorTag,
+  ObjectTableUnknownLabelTag,
+  ObjectTableEdgeTargetUnresolved,
+  ObjectTableObjectCollision,
+}
 import gunbc.scm.commit_closure_json_v2 {
+  ClosureDocObjectTableRefused,
   ClosureDocLoadOutcome,
   ClosureDocLoaded,
   ClosureDocRefused,
   ClosureDocRefusal,
   ClosureDocFormatUnrecognized,
-  ClosureDocEdgeTargetUnresolved,
   ClosureDocRootPositionUnresolved,
   ClosureDocMemberReadRefused,
-  ClosureDocUnknownKindTag,
-  ClosureDocUnknownBehaviorTag,
-  ClosureDocUnknownLabelTag,
-  ClosureDocObjectCollision,
   ClosureDocUnexpectedMember,
   ClosureDocTargetReferenceRefused,
-  ClosureDocUnknownConnectiveTag,
   encode_closure_document,
   decode_closure_document,
   ClosureDocEncodeOutcome,
@@ -191,13 +194,16 @@ fn scm_image_cause_tag(loaded: ClosureDocLoadOutcome) -> String {
       match c {
         ClosureDocMemberReadRefused { cause: _ } => "member_read"
         ClosureDocFormatUnrecognized { found: _ } => "format"
-        ClosureDocUnknownKindTag { found: _ } => "kind"
-        ClosureDocUnknownConnectiveTag { found: _ } => "connective"
-        ClosureDocUnknownBehaviorTag { found: _ } => "behavior"
-        ClosureDocUnknownLabelTag { found: _ } => "label"
-        ClosureDocEdgeTargetUnresolved { reference: _ } => "edge_target"
         ClosureDocRootPositionUnresolved { reference: _ } => "root_position"
-        ClosureDocObjectCollision { identity: _ } => "collision"
+        ClosureDocObjectTableRefused { cause: t } =>
+          match t {
+            ObjectTableUnknownKindTag { found: _ } => "kind"
+            ObjectTableUnknownConnectiveTag { found: _ } => "connective"
+            ObjectTableUnknownBehaviorTag { found: _ } => "behavior"
+            ObjectTableUnknownLabelTag { found: _ } => "label"
+            ObjectTableEdgeTargetUnresolved { reference: _ } => "edge_target"
+            ObjectTableObjectCollision { identity: _ } => "collision"
+          }
         ClosureDocUnexpectedMember { context: _, key: _ } => "unexpected_member"
         ClosureDocTargetReferenceRefused { cause: _ } => "target_reference"
       }

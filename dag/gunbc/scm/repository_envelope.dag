@@ -507,7 +507,7 @@ fn decode_commit_members(positions: DecodePositions, acc: CommitDecodeAcc, value
     Absent =>
       match read_member(v: value, key: "root") {
         MemberFailed { cause: c } =>
-          CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryDecodeClosureDocRefusal { cause: c } } }
+          CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryMemberReadRefused { cause: c } } }
         MemberObject { value: root_value } =>
           match decode_commit_root(positions: positions, root_value: root_value) {
             CommitRootRefused { cause: c } =>
@@ -515,7 +515,7 @@ fn decode_commit_members(positions: DecodePositions, acc: CommitDecodeAcc, value
             CommitRootDecoded { root: root } =>
               match read_string_member(v: value, key: "message") {
                 MemberFailed { cause: c } =>
-                  CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryDecodeClosureDocRefusal { cause: c } } }
+                  CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryMemberReadRefused { cause: c } } }
                 MemberString { value: message } =>
                   CommitDecodeAcc {
                     commits: concat([RepositoryCommit { root: root, message: message }], acc.commits),

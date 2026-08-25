@@ -1,0 +1,80 @@
+module gunbc.scm.object_table_json
+
+// DECODING THE OBJECT TABLE IS ONE OPERATION WITH ONE FAILURE POPULATION, and this module owns both.
+// It was previously homed inside gunbc.scm.commit_closure_json_v2 with its failures typed as THAT
+// module's ClosureDocRefusal, so six object-population causes sat in a coproduct that also answers
+// for envelope format and closure-root facts. A consumer matching that type had to handle causes
+// from three different owners, and no reader could tell from the type which owner produced which.
+//
+// THE MEASURED COST WAS NOT STYLISTIC, and it is the reason this cut is a correctness fix rather
+// than tidiness. closure_document_load_standing maps ObjectTableObjectCollision to
+// LoadIdentityCollision and the five tag/reference causes to LoadDocumentMalformed. Per
+// gunbc.scm.load_standing, LoadDocumentMalformed is THE ONLY standing that
+// standing_may_supersede_generation answers true for. So any consumer that classified the six
+// together -- at the grain of one wrapping arm rather than per cause -- would hand an identity
+// collision the one standing permitted to overwrite a newer generation. Both colliding records are
+// legitimate and the coincidence is honest, so that is a valid generation destroyed by a reader's
+// own collapse: the DESIGN gunbc.scm specimen, where an older reader supersedes a newer writer's
+// document through a single outer arm that looked total.
+//
+// THE FORMAT VOCABULARY STAYS HERE, NOT IN gunbc.scm.object_store. These causes name JSON tags and
+// document-local references, and object_store is format-agnostic -- it imports only v2.std.node and
+// std.types and mentions JSON nowhere. Moving a `found: String` JSON tag into it would be the layer
+// inversion gunbc.scm.json_member's header already names. The object TABLE is a JSON-document
+// concept; the object STORE is not.
+//
+// THIS MODULE OWNS ITS OWN CLASSIFIER, which is a deliberate departure from the sibling extraction.
+// gunbc.scm.json_member carries no classifier: the closure classifier descends into MemberReadRefusal
+// in place, as it also does into TargetReferenceRefusal. Descent would be correct here too. It is not
+// what this module does, for two reasons. First, delegation is what makes the collapse
+// UNREPRESENTABLE rather than merely caught: once the closure classifier's parameter can no longer
+// name an object-table cause, "classify an object-table cause at closure grain" has no spelling
+// (DESIGN section 4b's top rung). Second, descent-in-place makes the closure module grow a new inner
+// arm every time THIS module gains a cause, so it would pay maintenance for a population it does not
+// own. Delegation is the only form where adding an object-table cause is one edit in one module.
+
+import std.types { String }
+import gunbc.scm.object_store { ObjectId }
+import gunbc.scm.load_standing {
+  LoadStanding,
+  LoadDocumentMalformed,
+  LoadIdentityCollision,
+}
+
+// SIX CAUSES, TWO REMEDIES, AND THE SPLIT BETWEEN THEM IS THE WHOLE POINT OF THE TYPE.
+//
+// Five of these say the document does not conform to a schema this build claims to understand: a tag
+// naming a kind, connective, behavior or label that is not in the closed vocabulary, or an edge
+// target naming a position the document does not carry. Those are malformed bytes to a reader that
+// should have understood them.
+//
+// ObjectTableObjectCollision is NOT that, and conflating it with the five is the error this type
+// exists to prevent. Two distinct records claiming one structural locator is an honest hash
+// coincidence between two legitimate objects, not damage to either. It is a limitation of the
+// locator's representation, and the remedy is to widen the locator -- never to discard a generation.
+type ObjectTableDecodeRefusal
+  = ObjectTableUnknownKindTag { found: String }
+  | ObjectTableUnknownConnectiveTag { found: String }
+  | ObjectTableUnknownBehaviorTag { found: String }
+  | ObjectTableUnknownLabelTag { found: String }
+  | ObjectTableEdgeTargetUnresolved { reference: String }
+  | ObjectTableObjectCollision { identity: ObjectId }
+
+// THE AUTHORITY THAT OWNS THE CAUSES OWNS THE STANDING DECISION, per DESIGN section 3: the dispatch
+// selecting a realization is itself realization, so each format classifies ITS OWN refusals into the
+// shared vocabulary and the consumer sees only the standing. gunbc.scm.load_standing's header states
+// the same rule from the other side -- a new format is a new classifier beside its own refusals.
+//
+// This match is exhaustive over the six and assigns per cause, never per group. The collision arm is
+// the load-bearing one: it must not reach LoadDocumentMalformed, because that is the only standing
+// permitting supersession.
+fn object_table_load_standing(cause: ObjectTableDecodeRefusal) -> LoadStanding {
+  match cause {
+    ObjectTableObjectCollision { identity: _ } => LoadIdentityCollision
+    ObjectTableUnknownKindTag { found: _ } => LoadDocumentMalformed
+    ObjectTableUnknownConnectiveTag { found: _ } => LoadDocumentMalformed
+    ObjectTableUnknownBehaviorTag { found: _ } => LoadDocumentMalformed
+    ObjectTableUnknownLabelTag { found: _ } => LoadDocumentMalformed
+    ObjectTableEdgeTargetUnresolved { reference: _ } => LoadDocumentMalformed
+  }
+}

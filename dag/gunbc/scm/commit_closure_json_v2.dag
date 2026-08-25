@@ -9,6 +9,16 @@ import gunbc.scm.commit_closure {
   unresolved_identities,
   closure_is_complete,
 }
+import gunbc.scm.object_table_json {
+  ObjectTableDecodeRefusal,
+  ObjectTableUnknownKindTag,
+  ObjectTableUnknownConnectiveTag,
+  ObjectTableUnknownBehaviorTag,
+  ObjectTableUnknownLabelTag,
+  ObjectTableEdgeTargetUnresolved,
+  ObjectTableObjectCollision,
+  object_table_load_standing,
+}
 import gunbc.scm.load_standing {
   LoadStanding,
   LoadComplete,
@@ -147,15 +157,10 @@ import gunbc.scm.object_store {
 type ClosureDocRefusal
   = ClosureDocMemberReadRefused { cause: MemberReadRefusal }
   | ClosureDocFormatUnrecognized { found: String }
-  | ClosureDocUnknownKindTag { found: String }
-  | ClosureDocUnknownConnectiveTag { found: String }
-  | ClosureDocUnknownBehaviorTag { found: String }
-  | ClosureDocUnknownLabelTag { found: String }
-  | ClosureDocEdgeTargetUnresolved { reference: String }
   | ClosureDocRootPositionUnresolved { reference: String }
-  | ClosureDocObjectCollision { identity: ObjectId }
   | ClosureDocUnexpectedMember { context: ClosureDocMemberContext, key: String }
   | ClosureDocTargetReferenceRefused { cause: TargetReferenceRefusal }
+  | ClosureDocObjectTableRefused { cause: ObjectTableDecodeRefusal }
 
 // THE ENCODE DOMAIN IS ITS OWN TYPE, and this split is a correctness fix rather than tidiness.
 //
@@ -349,7 +354,7 @@ fn position_of(positions: EncodePositions, identity: ObjectId) -> String? {
 // parents, so by the time an edge is encoded its target already holds a position. Answering some
 // plausible reference here would emit an image that decodes to a DIFFERENT program, which is exactly
 // the fabricated plausible output DESIGN section 5 forbids. The empty string is not a sentinel the
-// decoder tolerates -- ClosureDocEdgeTargetUnresolved refuses it -- so an ordering regression surfaces as
+// decoder tolerates -- ObjectTableEdgeTargetUnresolved refuses it -- so an ordering regression surfaces as
 // a typed refusal at load rather than as a silently wrong store.
 // A TARGET IS ONE OF TWO ARMS, AND WHICH ONE IS A FACT ABOUT THIS DOCUMENT, NOT ABOUT THE WORLD.
 //
@@ -551,7 +556,7 @@ fn decode_connective(kind_value: JsonValue, tag: String) -> ConnectiveDecode {
   else if tag == "arrow" { ConnectiveDecoded { connective: Arrow } }
   else if tag == "cardinality" { ConnectiveDecoded { connective: Cardinality } }
   else if tag == "instantiation" { ConnectiveDecoded { connective: Instantiation } }
-  else { ConnectiveDecodeFailed { cause: ClosureDocUnknownConnectiveTag { found: tag } } }
+  else { ConnectiveDecodeFailed { cause: ClosureDocObjectTableRefused { cause: ObjectTableUnknownConnectiveTag { found: tag } } } }
 }
 
 type BehaviorDecode
@@ -565,7 +570,7 @@ fn decode_behavior(tag: String) -> BehaviorDecode {
   else if tag == "loop" { BehaviorDecoded { behavior: Loop } }
   else if tag == "bind" { BehaviorDecoded { behavior: Bind } }
   else if tag == "match" { BehaviorDecoded { behavior: Match } }
-  else { BehaviorDecodeFailed { cause: ClosureDocUnknownBehaviorTag { found: tag } } }
+  else { BehaviorDecodeFailed { cause: ClosureDocObjectTableRefused { cause: ObjectTableUnknownBehaviorTag { found: tag } } } }
 }
 
 type KindDecode
@@ -624,7 +629,7 @@ fn decode_kind(kind_value: JsonValue) -> KindDecode {
           _ => KindDecodeFailed { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "behavior" } } }
         }
       } else {
-        KindDecodeFailed { cause: ClosureDocUnknownKindTag { found: tag } }
+        KindDecodeFailed { cause: ClosureDocObjectTableRefused { cause: ObjectTableUnknownKindTag { found: tag } } }
       }
     _ => KindDecodeFailed { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } } }
   }
@@ -685,7 +690,7 @@ fn decode_label(edge_value: JsonValue) -> LabelDecode {
       } else if tag == "positional" {
         decode_positional_label(edge_value: edge_value)
       } else {
-        LabelDecodeFailed { cause: ClosureDocUnknownLabelTag { found: tag } }
+        LabelDecodeFailed { cause: ClosureDocObjectTableRefused { cause: ObjectTableUnknownLabelTag { found: tag } } }
       }
     _ => LabelDecodeFailed { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "label" } } }
   }
@@ -771,7 +776,7 @@ fn decode_edge_step(positions: DecodePositions, acc: EdgeAcc, edge_value: JsonVa
                     Absent =>
                       EdgeAcc {
                         edges: acc.edges,
-                        refusal: Present { value: ClosureDocEdgeTargetUnresolved { reference: reference } },
+                        refusal: Present { value: ClosureDocObjectTableRefused { cause: ObjectTableEdgeTargetUnresolved { reference: reference } } },
                       }
                   }
               }
@@ -850,7 +855,7 @@ fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
                                 store: acc.store,
                                 positions: acc.positions,
                                 next: acc.next,
-                                refusal: Present { value: ClosureDocObjectCollision { identity: i } },
+                                refusal: Present { value: ClosureDocObjectTableRefused { cause: ObjectTableObjectCollision { identity: i } } },
                               }
                             Stored { store: next_store, identity: identity } =>
                               DecodeAcc {
@@ -988,10 +993,20 @@ fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
 // standing that permits superseding a newer generation, so an inherited arm sits one step from a
 // reader overwriting a writer's valid document. Descending makes the next mode fail to compile
 // here, where whoever adds it can see what it would cost.
+// THE OBJECT-TABLE ARM BINDS ITS PAYLOAD AND PASSES IT ON; IT DOES NOT DISCARD IT. A bare binding in
+// the arm carrying the payload is the tell DESIGN names for "total at the level examined, blind one
+// level down", so it is worth saying which this is: the cause is handed to the authority that owns it
+// and descends per cause, rather than collapsed into one standing here. Reading it as the defect
+// would invert the fix -- classifying the six object-table causes at THIS grain is exactly what would
+// hand an identity collision the one standing permitting supersession.
+//
+// The two remaining nested matches below are descent-in-place over populations whose owners carry no
+// classifier (gunbc.scm.json_member, gunbc.scm.target_reference). They are not inconsistent with the
+// delegating arm above: the object-table module owns a classifier and those two do not, so each cause
+// is classified by whoever owns it.
 fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
   match cause {
     ClosureDocFormatUnrecognized { found: _ } => LoadUnsupportedProtocol
-    ClosureDocObjectCollision { identity: _ } => LoadIdentityCollision
     ClosureDocMemberReadRefused { cause: c } =>
       match c {
         MemberReadSubjectNotObject => LoadDocumentMalformed
@@ -999,13 +1014,9 @@ fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
         MemberReadDuplicated { key: _ } => LoadDocumentMalformed
         MemberReadWrongShape { key: _ } => LoadDocumentMalformed
       }
-    ClosureDocUnknownKindTag { found: _ } => LoadDocumentMalformed
-    ClosureDocUnknownConnectiveTag { found: _ } => LoadDocumentMalformed
-    ClosureDocUnknownBehaviorTag { found: _ } => LoadDocumentMalformed
-    ClosureDocUnknownLabelTag { found: _ } => LoadDocumentMalformed
     ClosureDocUnexpectedMember { context: _, key: _ } => LoadDocumentMalformed
-    ClosureDocEdgeTargetUnresolved { reference: _ } => LoadDocumentMalformed
     ClosureDocRootPositionUnresolved { reference: _ } => LoadDocumentMalformed
+    ClosureDocObjectTableRefused { cause: c } => object_table_load_standing(cause: c)
     ClosureDocTargetReferenceRefused { cause: c } =>
       match c {
         TargetReferenceMemberReadRefused { cause: _ } => LoadDocumentMalformed
