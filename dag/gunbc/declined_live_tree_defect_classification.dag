@@ -1,0 +1,326 @@
+module gunbc.declined_live_tree_defect_classification
+
+import std.types { String }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.algebra { any, count_where, length, fold_list, list_snoc_item }
+
+// WHY THIS CARRIER EXISTS. Thirteen witness identities were measured failing on
+// royal-cat-509's run 32794539384 -- the only tree in which the required floor's
+// DeclinedLiveTree arm is deleted, so the only tree in which these ever executed.
+// They were routed here to be classified. A classification is a machine-consumed
+// fact (which identity is a real defect, which is a wrong assertion, what closes
+// it), so DESIGN 4c puts it in a typed carrier rather than in prose.
+//
+// WHAT THIS CARRIER IS NOT. It is not an expected-red enrolment and must never
+// become one: enrolling a row here would assert that the floor runs it and that
+// it fails, and the floor does not run it at all. That is the authority
+// substitution DESIGN's failure-mode list names, and it is the specific mistake
+// gunbc#8865 made. Every row below is UNGUARDED by construction, and the only
+// mechanism that changes that is the DeclinedLiveTree deletion itself.
+//
+// PROVENANCE OF THE POPULATION vs PROVENANCE OF THE CLASSIFICATION, kept apart
+// because they are different measurements on different trees. The population is
+// royal-cat-509's; the classification is this session's, re-measured on main at
+// 4ab80676e7 (plus whatever main had advanced to under the remote runner's
+// rebase) with claim_batch --hermetic and --wet. Every one of the thirteen
+// REPRODUCED, so no row is NotReproduced -- which is itself the load-bearing
+// result, because it establishes that all thirteen are main-side facts and none
+// is branch content of the cut.
+
+// ONE SHAPE RECURS ACROSS THREE OF THE FOUR REAL SUBJECTS, and it is worth
+// naming once rather than three times: a cut deletes a population, rows
+// elsewhere go on naming what it removed, and nothing notices because the thing
+// that would notice does not run. The 2026-08-15 floor cut left two stale
+// non_fold_residue rows naming src/v2/workflow/ci_floor_plan.dag; the 2026-08-24
+// measurement bankruptcy left 19 doc roots and 12 links naming deleted
+// docs/probes/ files. Three separate cuts, the same residue, undetected for the
+// same reason.
+
+type DeclinedLiveIdentity {
+  module_path: String
+  function: String
+}
+
+// The three verdicts the brief asked for. NotReproduced is carried even though
+// no row inhabits it: a verdict vocabulary that could not express "it passed on
+// my head" would have made the reproduction claim unfalsifiable.
+type DefectClassification =
+    RealDefect { subject: RealDefectSubject }
+  | WrongWitness { fault: WrongWitnessFault }
+  | NotReproduced { explanation: String }
+
+// What is actually broken, at the grain the remedy differs on.
+type RealDefectSubject =
+    StaleAuthorityAfterDeletion
+  | UndeclaredResidentPopulation
+  | MissingCitedAuthority
+  | CompilerBehaviourRefusal
+
+// Why the assertion, rather than the subject, is at fault.
+type WrongWitnessFault =
+    CriterionCannotHoldOnLiveCorpus { measured: Int, denominator: Int }
+
+// NAMED ClassificationDisposition RATHER THAN Disposition, AND THE COLLISION IS
+// NOT HYPOTHETICAL: the first revision of this carrier called it Disposition, and
+// strict preparation over the whole pool then refused 3918 modules with
+// `unresolved type 'Disposition'` AND `unresolved type 'Scaffold'` across ~20
+// unrelated files. std.disposition declares `type Disposition` with a `Scaffold`
+// variant, and modules such as gunbc.ci_input_envelope use both as BARE names;
+// a second top-level Disposition made that bare name ambiguous and dropped the
+// whole binding, taking the variant with it. A closure-scoped `compile --entry`
+// cannot see this -- it never resolves this module -- so the only instrument
+// that discriminates is a whole-pool preparation.
+//
+// What closes the row. RepairedInThisChange is deliberately rare: most of these
+// rows are owned by a lane that is not this one, and repairing another lane's
+// authority from inside a classification pass is how a second authority gets
+// minted for one fact.
+type ClassificationDisposition =
+    RoutedToOwner { owner: String }
+  | NeedsOperatorRuling { question: String }
+  | RepairedInThisChange
+
+// measured_evidence records what was EXECUTED to reach the verdict, never what
+// was read: a classification derived from reading a lens is not a measurement.
+type ClassifiedRow {
+  identity: DeclinedLiveIdentity
+  classification: DefectClassification
+  measured_evidence: String
+  disposition: ClassificationDisposition
+}
+
+fn identity(module_path: String, function: String) -> DeclinedLiveIdentity {
+  DeclinedLiveIdentity { module_path: module_path, function: function }
+}
+
+// ---------------------------------------------------------------------------
+// GROUP B -- the six doc-graph rows, and they are ONE root cause plus two
+// secondaries. The 2026-08-24 measurement bankruptcy deleted docs/probes/ whole.
+// It did not update gunbc.doc_graph_roots, whose hand-authored ProbeDoc binds
+// still name 19 of the deleted files, and it did not update the prose that links
+// to them. Measured on main: 228 declared roots, 209 admitted (19 name no file,
+// every one of them under docs/probes/); 16 dangling markdown links, 12 of them
+// into docs/probes/ and 4 at docs/plans/ci-selection-vs-scheduling.md; 35 orphan
+// docs once the admitted roots are walked.
+//
+// THE PART THAT NEEDS A RULING RATHER THAN A REPAIR. Three of the 19 dead binds
+// are the g1-cited-symbol-control-* rows, which doc_graph_roots declares
+// PlanHasNoRetirement -- permanent discriminating evidence, kept under DESIGN
+// 4b(4) precisely so a climb cannot delete it. The bankruptcy deleted it anyway.
+// Deleting the binds finishes that deletion; restoring the files from history
+// reverses an operator cut. Neither is this session's call to make silently.
+// ---------------------------------------------------------------------------
+
+data doc_graph_stale_probe_root_count: Int = 19
+data doc_graph_dangling_link_count_measured: Int = 16
+data doc_graph_orphan_count_measured: Int = 35
+data doc_graph_declared_root_count_measured: Int = 228
+
+data permanent_evidence_ruling_question: String = "STATED AS A VIOLATION THAT ALREADY LANDED, NOT AS A NEUTRAL PAIR OF OPTIONS, BECAUSE THE FRAMING DECIDES WHO HAS TO ACT (manager ruling, swift-badger-524, 2026-08-25). DESIGN 4b(4) says a climb dissolves the redundant lower-rung PRODUCTION machinery and NEVER the evidence: the discriminating RED and its positive control stay enrolled, because deleting them recreates specification-without-execution one rung up. Three of the 19 dead binds are the g1-cited-symbol-control-* rows, declared PlanHasNoRetirement precisely so that a climb could not delete them. The 2026-08-24 measurement bankruptcy deleted them anyway, by a sweep that took docs/probes/ whole. So the two available closures are NOT peers. Deleting the three binds FINISHES a deletion 4b(4) forbids and makes it invisible; restoring the three files from history reverses part of an operator cut. Only the second is reversible by anyone other than the operator, which is why the question is theirs and why no lane may quietly take the first. The other sixteen dead binds carry ordinary retirements and need no ruling."
+
+data doc_reachability_rows: List<ClassifiedRow> = [
+  ClassifiedRow {
+    identity: identity(module_path: "test.claim.doc_reachability_witness", function: "doc_graph_registered_plan_roots_all_admitted"),
+    classification: RealDefect { subject: StaleAuthorityAfterDeletion },
+    measured_evidence: "228 declared roots, 209 admitted; the 19 unadmitted are exactly the docs/probes/ files the 2026-08-24 bankruptcy deleted, enumerated by walking doc_graph_roots_all() against the worktree",
+    disposition: NeedsOperatorRuling { question: permanent_evidence_ruling_question }
+  },
+  ClassifiedRow {
+    identity: identity(module_path: "test.claim.doc_reachability_witness", function: "doc_graph_has_no_dangling_links"),
+    classification: RealDefect { subject: StaleAuthorityAfterDeletion },
+    measured_evidence: "16 dangling .md links: 12 into deleted docs/probes/ targets, 4 at docs/plans/ci-selection-vs-scheduling.md (one of them from ROADMAP.md itself)",
+    disposition: RoutedToOwner { owner: "the measurement-bankruptcy cut's owner: the residue DESIGN already names as the next cut" }
+  },
+  ClassifiedRow {
+    identity: identity(module_path: "test.claim.doc_reachability_witness", function: "doc_graph_has_no_orphan_docs"),
+    classification: RealDefect { subject: StaleAuthorityAfterDeletion },
+    measured_evidence: "35 orphans against the admitted root set; 8 are docs/briefs/ authored 2026-08-24 with no bind at all, 2 are the surviving docs/probes/ files, the rest are docs/plans/ rows never registered",
+    disposition: RoutedToOwner { owner: "doc-graph roots authority (gunbc.doc_graph_roots) plus each orphan's authoring lane" }
+  },
+  ClassifiedRow {
+    identity: identity(module_path: "v2.test.lens_doc_reachability.doc_reachability_test", function: "doc_graph_has_no_dangling_links"),
+    classification: RealDefect { subject: StaleAuthorityAfterDeletion },
+    measured_evidence: "same 16 dangling links; this identity and the dag-side one read one report through two witnesses",
+    disposition: RoutedToOwner { owner: "the measurement-bankruptcy cut's owner" }
+  },
+  ClassifiedRow {
+    identity: identity(module_path: "v2.test.lens_doc_reachability.doc_reachability_test", function: "doc_graph_has_no_orphan_docs"),
+    classification: RealDefect { subject: StaleAuthorityAfterDeletion },
+    measured_evidence: "same 35 orphans",
+    disposition: RoutedToOwner { owner: "doc-graph roots authority plus each orphan's authoring lane" }
+  },
+  ClassifiedRow {
+    identity: identity(module_path: "v2.test.lens_doc_reachability.doc_reachability_test", function: "doc_graph_is_clean"),
+    classification: RealDefect { subject: StaleAuthorityAfterDeletion },
+    measured_evidence: "the conjunction of the orphan and dangling halves above; it carries no third fact and cannot green before both do",
+    disposition: RoutedToOwner { owner: "doc-graph roots authority plus each orphan's authoring lane" }
+  }
+]
+
+// ---------------------------------------------------------------------------
+// GROUP A -- the seven exact identities.
+// ---------------------------------------------------------------------------
+
+// THE LENS-GATE PAIR, AND THIS IS THE ONE WRONG WITNESS IN THE THIRTEEN.
+// Decomposed by execution: unenrolled == 0 and unjustified == 0 both PASS, so
+// the two legs the gate is named for are clean. The failing leg is
+// redundant_blocking, and it is not a regression -- it is 42 refusals out of 58
+// enrolled lenses, because the criterion keys redundancy on the pair
+// (verdict_authority, remedy), two coarse closed enums, over 58 lenses. Two
+// lenses sharing "reports a LensVerdict" and "the remedy is a report" is the
+// common case, not evidence that one re-coined the other, and the exemption
+// mechanism (lens_module_gate_audit_residue_rows) carries two rows against a
+// population of 42. The first refusal it produces is v2.lens.complexity against
+// ITSELF -- two lens ids bound to one module path -- which no exemption row
+// could ever be written for. The gate has never held on the live corpus and
+// cannot be made to hold by adding residue rows.
+//
+// THE SELF-REFUSAL IS THE PROOF, NOT THE ILLUSTRATION: a check whose FIRST
+// refusal is structurally uncoverable by its own escape mechanism is not
+// under-exempted, it is wrong.
+//
+// ADDING EXEMPTION ROWS IS FORBIDDEN (manager ruling, swift-badger-524,
+// 2026-08-25). Growing lens_module_gate_audit_residue_rows toward 42 is the
+// one-sided ratchet over hand-authored rows DESIGN 5's oracle ruling rules out,
+// and it would be silencing a criterion nobody has established is right. The
+// remedy is at the CRITERION, and the carrier already names it: lens_module_gate's
+// own surface_table dissolve-on says the central table dissolves when each
+// enrolled lens declares its invariant surface ON ITS OWN MODULE. A surface
+// declared per lens is discriminating; a surface projected from a 58-arm table
+// over two coarse enums cannot be. Routed there rather than repaired here.
+data lens_module_gate_rows: List<ClassifiedRow> = [
+  ClassifiedRow {
+    identity: identity(module_path: "v2.test.claim.enforcement.lens_module_gate_witness", function: "lens_module_gate_holds_live"),
+    classification: WrongWitness { fault: CriterionCannotHoldOnLiveCorpus { measured: 42, denominator: 58 } },
+    measured_evidence: "decomposed by execution on main: lens_module_gate_unenrolled_count() == 0 PASS, lens_module_gate_unjustified_count() == 0 PASS, lens_module_gate_redundant_blocking_count() == 0 FAIL; the 42 offending pairs were re-derived independently from the registry order and the surface table",
+    disposition: RoutedToOwner { owner: "v2.lens.enforcement.lens_module_gate -- the fix is at the criterion (surface declared on-carrier, its own dissolution condition); adding exemption rows is ruled out" }
+  },
+  ClassifiedRow {
+    identity: identity(module_path: "v2.test.claim.enforcement.lens_module_gate_witness", function: "question_zero_verdict_live_holds"),
+    classification: WrongWitness { fault: CriterionCannotHoldOnLiveCorpus { measured: 42, denominator: 58 } },
+    measured_evidence: "same redundant_claim leg; this witness passes facts: [] so its unenrolled and unjustified legs are vacuously clean and only the shared leg can fail",
+    disposition: RoutedToOwner { owner: "v2.lens.enforcement.lens_module_gate -- same criterion, same prohibition on exemption rows" }
+  }
+]
+
+// THE FOUR REMAINING GROUP-A ROWS, each a distinct real subject.
+data group_a_remaining_rows: List<ClassifiedRow> = [
+  ClassifiedRow {
+    identity: identity(module_path: "v2.lens.mandatory_tag.corpus_scan_witness_test", function: "corpus_live_clean_tree_wall_holds"),
+    classification: RealDefect { subject: MissingCitedAuthority },
+    measured_evidence: "roster count is healthy (>150 PASS); the clean-tree half fails on exactly two modules, extdeps.cpu_attachment.lotes_azifa072 and extdeps.languages.rust.capabilities, both projecting anchor Absent -- an extdeps module with no external-authority anchor is the DESIGN 3 citation duty unmet",
+    disposition: RoutedToOwner { owner: "the authoring lane of each extdeps module: the anchor must be the real upstream locator, which this session cannot invent" }
+  },
+  ClassifiedRow {
+    identity: identity(module_path: "v2.test.lens_non_fold_residue.non_fold_residue_test", function: "non_fold_residue_no_unrostered_or_stale"),
+    classification: RealDefect { subject: UndeclaredResidentPopulation },
+    measured_evidence: "unrostered=21 stale=4 live=186; the 4 stale rows name sites that no longer exist, two of them in src/v2/workflow/ci_floor_plan.dag which the 2026-08-15 floor cut deleted; the 21 unrostered are live wildcard arms over closed coproducts, concentrated in src/v2/workflow/dag_acceptance.dag (11) and dag/product (5)",
+    disposition: RoutedToOwner { owner: "each unrostered site's module owner -- DESIGN's total-at-the-level-examined class says the remedy is usually to descend the match, not to author a roster row for it" }
+  },
+  ClassifiedRow {
+    identity: identity(module_path: "v2.test.execution.emit_ingest_grammar_relation_round_trip", function: "same_grammar_parse_ingest_bridge_holds"),
+    classification: RealDefect { subject: CompilerBehaviourRefusal },
+    measured_evidence: "staged by execution: tokenize+parse_module of the add fixture ACCEPTS, and parse_tree_to_emitted_node then REFUSES with reason parse_tree_to_emitted_node_no_matching_row; the four sibling selector round-trip witnesses in the same file pass, so the grammar-relation rows exist and it is the parse-tree shape that selects none of them",
+    disposition: RoutedToOwner { owner: "v2.compiler.ingest / the grammar-relation rows in v2.extdeps.languages.dag" }
+  },
+  ClassifiedRow {
+    identity: identity(module_path: "v2.test.execution.self_host_candidate_generation", function: "candidate_generation_translate_self_emit_dag_add_slice_holds"),
+    classification: RealDefect { subject: CompilerBehaviourRefusal },
+    measured_evidence: "staged by execution: infer(dag_add_emitted_root) ACCEPTS, translate(inferred, dag_add_target_model) REFUSES with head reason infer_grounding_not_derived; identical under --hermetic and --wet, so the mode is not the discriminator",
+    disposition: RoutedToOwner { owner: "the v2 self-host lane -- infer_grounding_not_derived is the known v2-self-grounding-frontier class already registered in gunbc.guarantee_probe_corpus, not a new defect" }
+  },
+  ClassifiedRow {
+    identity: identity(module_path: "v2.test.lens_test_migration_debt.test_migration_debt_test", function: "retained_rust_kernel_wall_holds_against_live_tree"),
+    classification: RealDefect { subject: UndeclaredResidentPopulation },
+    measured_evidence: "src/v1/tests/src/anonymous_record_struct_resolution_test.rs is discovered (column-anchored #[test] present), has no floor-witness stem covering it, and has no row in test.retirement.model retained_legacy_rust_test_modules, so every_discovered_module_is_retained() refuses; the file was added by gunbc#9089 on main",
+    disposition: RoutedToOwner { owner: "gunbc#9089's lane: either migrate the module to a .dag witness or declare a retention row with a real non-migratable reason, which this session cannot assert on its behalf" }
+  }
+]
+
+data no_classified_rows: List<ClassifiedRow> = []
+
+data no_identity_keys: List<String> = []
+
+fn declined_live_tree_classified_rows() -> List<ClassifiedRow> {
+  fold_list(
+    xs: [doc_reachability_rows, lens_module_gate_rows, group_a_remaining_rows],
+    empty: no_classified_rows,
+    cons: fn(acc, group) {
+      fold_list(xs: group, empty: acc, cons: fn(inner, row) { list_snoc_item(xs: inner, item: row) })
+    }
+  )
+}
+
+fn classified_row_count() -> Int {
+  length(xs: declined_live_tree_classified_rows())
+}
+
+fn identity_key(i: DeclinedLiveIdentity) -> String {
+  concat(i.module_path, concat("::", i.function))
+}
+
+fn classified_identity_keys() -> List<String> {
+  fold_list(
+    xs: declined_live_tree_classified_rows(),
+    empty: no_identity_keys,
+    cons: fn(acc, row) { list_snoc_item(xs: acc, item: identity_key(i: row.identity)) }
+  )
+}
+
+fn key_occurrence_count(key: String) -> Int {
+  count_where(xs: classified_identity_keys(), predicate: fn(k) { k == key })
+}
+
+fn classified_identities_are_unique() -> Bool {
+  !any(xs: classified_identity_keys(), predicate: fn(k) { key_occurrence_count(key: k) != 1 })
+}
+
+fn row_carries_measured_evidence(row: ClassifiedRow) -> Bool {
+  string_length(s: row.measured_evidence) > 0
+}
+
+fn every_row_carries_measured_evidence() -> Bool {
+  !any(xs: declined_live_tree_classified_rows(), predicate: fn(row) { !row_carries_measured_evidence(row: row) })
+}
+
+// The reproduction claim, stated as a derived property rather than as prose: no
+// row is NotReproduced, because all thirteen were re-measured failing on main.
+fn row_is_not_reproduced(row: ClassifiedRow) -> Bool {
+  match row.classification {
+    NotReproduced { explanation: _ } => true
+    RealDefect { subject: _ } => false
+    WrongWitness { fault: _ } => false
+  }
+}
+
+fn not_reproduced_count() -> Int {
+  count_where(xs: declined_live_tree_classified_rows(), predicate: row_is_not_reproduced)
+}
+
+fn all_thirteen_reproduced_on_main() -> Bool {
+  not_reproduced_count() == 0
+}
+
+fn row_is_real_defect(row: ClassifiedRow) -> Bool {
+  match row.classification {
+    RealDefect { subject: _ } => true
+    WrongWitness { fault: _ } => false
+    NotReproduced { explanation: _ } => false
+  }
+}
+
+fn real_defect_count() -> Int {
+  count_where(xs: declined_live_tree_classified_rows(), predicate: row_is_real_defect)
+}
+
+fn wrong_witness_count() -> Int {
+  count_where(xs: declined_live_tree_classified_rows(), predicate: fn(row) {
+    match row.classification {
+      WrongWitness { fault: _ } => true
+      RealDefect { subject: _ } => false
+      NotReproduced { explanation: _ } => false
+    }
+  })
+}

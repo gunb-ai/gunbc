@@ -11,7 +11,7 @@ import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_nam
 import extdeps.github.actions_runner {
   ActionsRunnerRelease,
   ActionsRunnerBinaryArtifact,
-  actions_runner_release_2_334_0,
+  actions_runner_release_2_336_0,
 }
 import extdeps.github.app { GitHubAppInstallationId }
 import gunbc.auth.github_apps { gunbai_ci_declared, gunbai_ci_declared_installation_id }
@@ -298,7 +298,7 @@ data runner_lifecycle_effects_scaffold: Disposition = Scaffold {
   }
 }
 
-data runner_lifecycle_cited_release: ActionsRunnerRelease = actions_runner_release_2_334_0
+data runner_lifecycle_cited_release: ActionsRunnerRelease = actions_runner_release_2_336_0
 
 data runner_lifecycle_ci_org: NonEmptyStr = gunbai_ci_declared.owner_login
 
