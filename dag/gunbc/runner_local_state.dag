@@ -107,15 +107,24 @@ type RunnerUnitObservation
 // the read happened, and it is what makes "this slot is mid-succession" and "this slot has
 // accumulated a survivor" different observations rather than the same observation at two ages.
 //
-// AND THE ORPHAN IS NOT AN EXCEPTIONAL SHAPE -- IT IS THE SHAPE EVERY OUTGOING INCARNATION TAKES,
-// which was measured after this model was written and is the second, independent reason it is
-// right. On srv4-04, an explicit restart of an idle slot killed the main process and nothing else:
-// the outgoing incarnation's OWN run-helper and listener survived, were reparented, and the slot's
+// AND THE DETACHED SHAPE IS PRODUCIBLE OUT OF A LIVE CHAIN, not only left behind by a dead one. On
+// srv4-04 an explicit restart of an idle slot killed the main process and nothing else: the
+// outgoing incarnation's OWN run-helper and listener survived, were reparented, and the slot's
 // population grew from five processes to seven. The restart did not fail to clean up a leftover, it
-// created one out of the live chain it was replacing. With Restart=always making every JIT
-// succession a unit restart, that happens once per completed job -- which is exactly the
-// regeneration rate above, and it means the orphan is born at the SAME INSTANT as its successor.
-// No delay can separate two things that appear together.
+// created one out of the chain it was replacing.
+//
+// WHY THE MECHANISM BEING UNKNOWN STRENGTHENS THIS MODEL RATHER THAN WEAKENING IT. An earlier
+// revision of this block went further and said that Restart=always makes every succession a
+// restart, so the shape is what EVERY outgoing incarnation takes, once per job. That inference is
+// RETRACTED: srv4-03 carried four detached generations at NRestarts=0, which a restart-driven
+// account cannot produce. An explicit restart is a SUFFICIENT mechanism for detachment; what
+// detaches lineages during ordinary succession is not known.
+//
+// A structural test does not need to know. Lineage asks what the process tree IS, so it holds
+// whatever produces the detachment -- restart, wrapper exit, a signal path nobody has found yet.
+// A timing window would have had to model the producing mechanism in order to size itself, which
+// is precisely why the settling approach was fragile: it needed an answer this lane does not have.
+// Being agnostic to the cause is the property that makes the discriminator survive learning it.
 //
 // LineageUnread REFUSES RATHER THAN ASSUMING EITHER. Guessing "in tree" hides a surplus; guessing
 // "orphan" would justify killing a live successor.
@@ -419,7 +428,7 @@ fn standing_is_hard_drift(standing: RunnerLocalStanding) -> Bool {
 }
 
 // ---------------------------------------------------------------------------
-// THE REFUSAL IS COUNTED, BECAUSE ON TWO OF FOUR HOSTS IT IS THE STEADY STATE
+// THE REFUSAL IS COUNTED, BECAUSE ON TWO OF FOUR HOSTS THE INVALID STATE REGENERATES
 // ---------------------------------------------------------------------------
 
 // A REFUSAL THAT FIRES CONTINUOUSLY AND IS NOT COUNTED BECOMES NOISE NOBODY READS, WHICH IS THE
@@ -429,9 +438,19 @@ fn standing_is_hard_drift(standing: RunnerLocalStanding) -> Bool {
 // a typed, located, COUNTABLE diagnostic so its frequency stays observable. The countability half
 // is usually the easy one because the arm is rare. Here it is not: the surplus was cleared on srv3
 // and srv4 and had fully regenerated within about forty minutes, so MultipleListenersInOneSlot is
-// the resting state of two hosts rather than an event. A per-slot refusal alone would emit thirteen
+// what two hosts keep returning to rather than an event. A per-slot refusal alone would emit thirteen
 // and twenty-two identical diagnostics per pass, forever, and the honest reading of that is not
-// "thirteen problems" but "one problem with a rate".
+// "thirteen problems" but "one problem with a rate". The population is a REGENERATIVE INVALID
+// ATTRACTOR of the current construction rather than a steady state -- the second phrasing is
+// avoided because it invites a reader to accept the state as a resting point rather than as
+// something the construction keeps re-creating.
+//
+// THE RATE IS NOT PART OF THE ADMISSION DECISION, AND THAT SEPARATION IS DELIBERATE. One
+// structurally detached lineage is invalid on the spot: `standing_is_hard_drift` answers per slot,
+// consults no counter, and is decided before settling is even read. The tally exists for RANKING
+// and for measuring capacity loss across repeated receipts -- a rate-gated admission would mean a
+// single stacked slot went unreported until it had company, which is the defect waiting for a
+// quorum.
 //
 // So the fold reports a population and not a verdict, and it keeps the orphan count separate from
 // the drifted-slot count. Those measure different things: how many slots are affected, and how many

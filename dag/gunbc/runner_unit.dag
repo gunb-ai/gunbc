@@ -205,16 +205,35 @@ fn lifecycle_intent_cannot_orphan(intent: RunnerUnitLifecycleIntent, listener_is
 // process population GREW from five to seven. The restart did not fail to clean up a leftover -- it
 // MANUFACTURED a fresh orphan pair out of the live chain it was replacing.
 //
-// THAT IS WHY THE SURPLUS IS A STEADY STATE AND NOT A LEAK. Restart=always means every JIT
-// succession is a unit restart, so on this contract every completed job converts its own outgoing
-// chain into an orphan pair. The measured regeneration -- a cleared surplus fully back within about
-// forty minutes, at roughly one job per slot -- is that arithmetic, not an intermittent fault. The
-// ordinary success path is the producer.
+// WHAT THAT MEASUREMENT DOES AND DOES NOT ESTABLISH, STATED AT THE GRAIN THE EVIDENCE SUPPORTS.
+// It establishes that an EXPLICIT restart is a SUFFICIENT mechanism for detaching a live chain. It
+// does NOT establish that this is the mechanism operating in normal succession, nor the dominant
+// one, nor the only one.
+//
+// AN EARLIER REVISION OF THIS ROW CLAIMED EXACTLY THAT, AND IT IS RETRACTED. It read that
+// Restart=always makes every JIT succession a unit restart, so every completed job manufactures an
+// orphan pair, and that this arithmetic explains the regeneration rate. Direct counter-evidence was
+// already in hand and neither the claim's author nor this row noticed the contradiction: srv4-03
+// carried FOUR detached generations at NRestarts=0. Were succession a restart, that counter would
+// read at least four. So something other than a systemd-counted restart is detaching those
+// lineages, and what it is remains UNKNOWN.
+//
+// It is recorded rather than quietly deleted because the failure is instructive: the causal chain
+// was asserted because one decisive-feeling measurement made it FEEL closed, while a measurement
+// already taken contradicted it. A sufficient mechanism is not the operating mechanism.
+//
+// THE DECLARED INTENT DOES NOT DEPEND ON THAT CHAIN, WHICH IS WHY THE RETRACTION DOES NOT MOVE IT.
+// ExitTypeCgroup plus KillModeControlGroup is warranted by what a teardown must reach, and by the
+// executed fact that today's teardown reaches only the main process. Whether the ordinary path
+// detaches lineages by that route or another, a stop that does not reach the cgroup cannot collect
+// them.
 //
 // Restart=always is deliberately NOT touched. A JIT runner's clean exit after one job is expected
 // and must create the next incarnation; the defect is that the outgoing one survives, which is a
 // teardown property, not a restart-policy one. Narrowing Restart= would stop the fleet serving in
-// order to stop it leaking.
+// order to stop it leaking. NRestarts is likewise NOT used as a discriminator anywhere in this
+// lane -- srv1-01 showed many restarts and no surplus while srv4-03 showed none and several
+// detached generations, so it is diagnostic metadata and never the subject.
 data gunbc_runner_lifecycle_intent: RunnerUnitLifecycleIntent = RunnerUnitLifecycleIntent {
   exit_type: ExitTypeCgroup,
   kill_mode: KillModeControlGroup,
