@@ -235,38 +235,65 @@ fn cursor_sdk_stream_reconcile_run_result(raw: String) -> CursorSdkStreamTermina
   }
 }
 
-fn cursor_sdk_stream_classify_message_line(raw: String) -> CursorSdkMessageKind? {
+// FOUR CAUSES BEHIND ONE `none`, IN A CLASSIFIER, WHICH IS THE WORST PLACE FOR IT. A classifier is
+// asked about EVERY line of a stream, so `none` is its ordinary answer and nothing about it looks
+// wrong. That is precisely why an unreadable line hides here: the caller cannot separate the line it
+// was always going to skip from the line it FAILED TO READ, so a stream that became malformed
+// halfway through -- a truncated write, an interleaved writer, a crash mid-line -- looks exactly
+// like a stream of lines this classifier had nothing to say about.
+//
+// THE TWO CLASSIFIERS SHARE ONE VOCABULARY, parameterised by the kind they yield, rather than
+// carrying two identical coproducts under different names. Their failure modes are the same four
+// facts about a JSON line; only the classified payload differs, which is what a type argument is
+// for (DESIGN section 2, one concept every breadth; section 3, no second name for one concept).
+//
+// NOTE WHAT IS NOT AN ARM HERE: an unrecognised `type` VALUE. Both from_wire functions are total and
+// answer their own unknown-kind variant, so "I read this line and do not know this kind" is already
+// a classified answer and must not be confused with these four, which are all "I could not read the
+// line well enough to ask".
+type CursorSdkLineReading<Kind>
+  = CursorSdkLineClassified { kind: Kind }
+  | CursorSdkLineUnreadable
+  | CursorSdkLineTypeMemberAbsent
+  | CursorSdkLineTypeMemberDuplicated { count: Int }
+  | CursorSdkLineNotAnObject
+
+fn cursor_sdk_stream_classify_message_line(raw: String) -> CursorSdkLineReading<CursorSdkMessageKind> {
   match parse_json(s: raw) {
     Present { value: v } =>
       match json_object_unique_member(v: v, key: "type") {
         JsonMemberFound { value: type_v } =>
-          Present {
-            value: cursor_sdk_message_kind_from_wire(
+          CursorSdkLineClassified {
+            kind: cursor_sdk_message_kind_from_wire(
               wire_type: json_string_value_or_empty(v: type_v),
             ),
           }
-        JsonMemberAbsent => none
-        JsonMemberDuplicated { count: _ } => none
-        JsonMemberNotAnObject => none
+        JsonMemberAbsent => CursorSdkLineTypeMemberAbsent
+        JsonMemberDuplicated { count: count } =>
+          CursorSdkLineTypeMemberDuplicated { count: count }
+        JsonMemberNotAnObject => CursorSdkLineNotAnObject
       }
-    Absent => none
+    Absent => CursorSdkLineUnreadable
   }
 }
 
-fn cursor_sdk_stream_classify_local_run_event(raw: String) -> CursorSdkLocalRunStreamKind? {
+fn cursor_sdk_stream_classify_local_run_event(
+  raw: String,
+) -> CursorSdkLineReading<CursorSdkLocalRunStreamKind> {
   match parse_json(s: raw) {
     Present { value: v } =>
       match json_object_unique_member(v: v, key: "type") {
         JsonMemberFound { value: type_v } =>
-          Present {
-            value: cursor_sdk_local_run_stream_kind_from_wire(
+          CursorSdkLineClassified {
+            kind: cursor_sdk_local_run_stream_kind_from_wire(
               wire_type: json_string_value_or_empty(v: type_v),
             ),
           }
-        JsonMemberAbsent => none
-        JsonMemberDuplicated { count: _ } => none
-        JsonMemberNotAnObject => none
+        JsonMemberAbsent => CursorSdkLineTypeMemberAbsent
+        JsonMemberDuplicated { count: count } =>
+          CursorSdkLineTypeMemberDuplicated { count: count }
+        JsonMemberNotAnObject => CursorSdkLineNotAnObject
       }
-    Absent => none
+    Absent => CursorSdkLineUnreadable
   }
 }
