@@ -6,10 +6,20 @@ import v2.lens.complexity_accumulator_copy.roster_gate {
   NoSuspect,
   RefusalBudgetExceeded,
   RosterStanding,
+  SourceFindingsEstablished,
+  SourceFindingsNotEstablished,
   SuspectObserved,
   Within,
   not_established_standing,
+  source_findings,
   standing_from_counts
+}
+import v2.lens.common.source_analysis_standing {
+  LanguageGrammarRejected,
+  LanguageGrammarUnavailable,
+  SourceNormalizationRejected,
+  SourceParseRejected,
+  SourceTokenizationRejected
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
@@ -48,12 +58,23 @@ test fn refusal_at_ceiling_is_within_standing() -> Bool {
   }
 }
 
-test fn unavailable_ingest_is_not_established_on_both_axes() -> Bool {
-  match not_established_standing() {
+test fn not_established_cause_is_preserved_on_both_axes() -> Bool {
+  match not_established_standing(cause: SourceNormalizationRejected) {
     RosterStanding {
-      finding: FindingNotEstablished { cause: _ },
-      analysis: AnalysisNotEstablished { cause: _ }
+      finding: FindingNotEstablished { cause: SourceNormalizationRejected },
+      analysis: AnalysisNotEstablished { cause: SourceNormalizationRejected }
     } => true
     _ => false
+  }
+}
+
+test fn malformed_source_reports_tokenization_rejection() -> Bool {
+  match source_findings(source_text: "@@@ not dag source @@@ )( unterminated \"") {
+    SourceFindingsNotEstablished { cause: SourceTokenizationRejected } => true
+    SourceFindingsNotEstablished { cause: LanguageGrammarUnavailable } => false
+    SourceFindingsNotEstablished { cause: LanguageGrammarRejected } => false
+    SourceFindingsNotEstablished { cause: SourceParseRejected } => false
+    SourceFindingsNotEstablished { cause: SourceNormalizationRejected } => false
+    SourceFindingsEstablished { findings: _ } => false
   }
 }
