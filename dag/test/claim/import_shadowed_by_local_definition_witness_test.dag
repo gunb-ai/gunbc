@@ -1,0 +1,63 @@
+module test.claim.import_shadowed_by_local_definition_witness_test
+
+// AN EXPLICIT IMPORT CAN BE SILENTLY DISCARDED BY A LOCAL DEFINITION OF THE SAME NAME.
+//
+// The author writes `import M { f }` and then defines `fn f` in the same module. Every bare use of
+// `f` binds the LOCAL definition; the import is discarded and nothing says so. Where the local
+// definition's body calls `f`, it calls itself, and the program dies at the call-depth wall with a
+// diagnostic that can only guess at the cause -- "a bare-name resolution cycle, or a genuinely
+// divergent chain" -- because the binding decision is thousands of frames behind it.
+//
+// FOUND, NOT SEARCHED FOR. Two identities surfaced when a floor change made them execute for the
+// first time (royal-cat-509, run 32794539384): test.claim.lever_a_local_receipt_witness and
+// v2.test.claim.enforcement.lens_module_gate_witness. Both imported the symbol they meant to call
+// and then shadowed it with a same-named test fn. Two specimens found by accident and none by
+// search is the shape that argues for a wall rather than a cleanup.
+//
+// WHY A REFUSAL RATHER THAN A SHADOWING RULE: the harm is not that two bindings exist, it is that
+// the one the author WROTE DOWN loses to one they did not, in silence. Membership is decidable from
+// the module's own text, so this is a wall and not a ratchet (DESIGN section 5).
+//
+// SCOPE, MEASURED RATHER THAN ASSUMED. The refusal fires on explicitly named imports only. A GLOB
+// import (`import M` with no brace list) followed by a local definition of an exported name still
+// compiles clean -- measured, 0 diagnostics -- and is left unrefused deliberately: with a glob the
+// author never wrote the name, so the local definition winning is ordinary shadowing rather than a
+// discarded instruction. That arm's next-rung trigger is a census predicate that can see glob
+// imports at all; the textual scans used to size this class cannot, so its population is UNKNOWN
+// rather than zero. A RE-EXPORT chain IS covered: a name reaching the shadowing site through a
+// third module's re-export still arrives by an explicit brace import there, and the wall predicates
+// on the import at that site rather than on where the name was first defined -- measured, refused.
+
+import std.types { Bool, String }
+
+data import_shadow_witness_note: String = "Fixtures shadow a real std symbol because the harness compiles ONE source: a two-module collision is not authorable here, and importing from the live corpus expresses the same collision in one module."
+
+fn import_shadow_negative_fixture_source() -> String {
+  "module ish.probe\n\nimport std.types { String }\nimport std.algebra { trim }\n\nfn trim(value: String) -> String {\n  trim(value)\n}\n"
+}
+
+fn import_shadow_positive_fixture_source() -> String {
+  "module ish.control\n\nimport std.types { String }\nimport std.algebra { trim }\n\nfn trim_wrapper(value: String) -> String {\n  trim(value)\n}\n"
+}
+
+// THE DISCRIMINATING RED. `trim` is imported by name and then defined locally, so the import is
+// discarded. This must refuse at resolution, before any execution reaches the depth wall.
+test fn import_shadowed_by_local_definition_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    import_shadow_negative_fixture_source(),
+    "src/ish_probe.rs",
+    [],
+    []
+  )
+}
+
+// THE POSITIVE CONTROL. The same import with a distinct local name must still compile, or the red
+// above is satisfied by a compiler that refuses everything and measures nothing.
+test fn imported_name_with_distinct_local_name_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    import_shadow_positive_fixture_source(),
+    "src/ish_control.rs",
+    [],
+    []
+  )
+}
