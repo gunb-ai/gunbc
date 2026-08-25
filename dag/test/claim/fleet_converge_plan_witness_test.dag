@@ -1492,3 +1492,27 @@ test fn witness_fabric_cell_foreign_expected_slot_is_its_own_refusal_subject() -
     && !fold(roster_ids, init: false, f: (acc, a) =>
          acc || fold(readback_ids, init: false, f: (seen, b) => seen || a == b))
 }
+
+// A DENIAL CANNOT REACH AN ACTION, WHICH IS WHAT MAKES A FIXTURE-COMPOSED DENIAL SAFE TO AUTHOR.
+// The supplied-side ordering rows in this file build a denial by hand -- they must, because a probe
+// cannot express a MISLABELED READBACK, which is precisely the caller defect those rows are about.
+// The question that makes that legitimate or not is whether a hand-authored denial can produce
+// anything a planner would act on. It cannot, and the reason is structural rather than checked: the
+// action path runs only through the ADMITTED arm, which carries the sealed FabricCellObservedPopulation,
+// which has no constructor outside the mint. A denial carries refusals and no members, so there is
+// nothing for reconcile to receive.
+//
+// This row is the executable half of that argument: every line a denial renders is a refusal line,
+// and the refusal count equals the number of subjects rather than a count of planned work. The
+// second conjunct is the non-degeneracy control -- an implementation that rendered NOTHING for a
+// denial would satisfy the first conjunct perfectly.
+test fn witness_fabric_cell_denial_renders_only_refusals_and_no_actions() -> Bool {
+  let denial = fabric_population_of(entries: [
+    fabric_cell_readback_all_present(),
+    synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 }),
+  ])
+  let lines = fleet_converge_fabric_cell_lines(host: "srv3" as NonEmptyStr, observed_fabric_cells: denial)
+  list_length(items: lines) == 1
+    && fold(lines, init: true, f: (acc, l) => acc && string_contains(s: l, pattern: "REFUSED-OBSERVATION fabric-cell "))
+    && fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: denial) == 1
+}
