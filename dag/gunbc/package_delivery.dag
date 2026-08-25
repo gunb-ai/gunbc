@@ -1353,22 +1353,56 @@ fn append_text_to_file(path: String, extra: String) -> Bool {
   }
 }
 
+// FIVE DISTINCT WAYS THIS CAN FAIL, PREVIOUSLY ONE `false`.
+//
+// This bundles ONE protocol-schema file: read it, decode it, canonicalize it, write the canonical
+// form to staging, digest it, append a manifest row. Every one of those refusals answered `false`,
+// and its caller folded that into a single `all_ok` -- so a bundle that failed because the staging
+// disk was full was indistinguishable from one that failed because the emitter produced a
+// non-conforming document, and both were indistinguishable from a digest tool that was not
+// installed. The bundle identity is a supply-chain artifact; "it did not build" with no locatable
+// cause is exactly the answer that cannot be acted on.
+//
+// EVERY ARM CARRIES THE PATH, because this runs inside a fold over many files and a cause without a
+// subject cannot be acted on either -- the caller learns WHICH file stopped the bundle, which the
+// Bool destroyed even for the causes it could distinguish by position.
+type ProtocolSchemaBundleFileStanding
+  = BundleFileAdmitted
+  | BundleFileUnreadable { path: String }
+  | BundleFileNotDecodable { path: String }
+  | BundleFileNotCanonicalizable { path: String }
+  | BundleFileCanonicalWriteRefused { path: String }
+  | BundleFileDigestRefused { path: String }
+  | BundleFileManifestAppendRefused { path: String }
+
+fn protocol_schema_bundle_file_admitted(standing: ProtocolSchemaBundleFileStanding) -> Bool {
+  match standing {
+    BundleFileAdmitted => true
+    BundleFileUnreadable { path: _ } => false
+    BundleFileNotDecodable { path: _ } => false
+    BundleFileNotCanonicalizable { path: _ } => false
+    BundleFileCanonicalWriteRefused { path: _ } => false
+    BundleFileDigestRefused { path: _ } => false
+    BundleFileManifestAppendRefused { path: _ } => false
+  }
+}
+
 fn protocol_schema_process_file_for_bundle(
   abs_s: String,
   schema_prefix: String,
   work_dir: FilePath,
   manifest_path: String,
-) -> Bool {
+) -> ProtocolSchemaBundleFileStanding {
   let rel = protocol_schema_relative_path(abs_s: abs_s, schema_prefix: schema_prefix)
   let raw = Filesystem.Read(path: abs_s)
   if raw.success == false {
-    false
+    BundleFileUnreadable { path: abs_s }
   } else {
     match parse_json(s: raw.content) {
-      Absent => false
+      Absent => BundleFileNotDecodable { path: abs_s }
       Present { value: parsed } =>
         match canonicalize_json_value(v: parsed) {
-          Absent => false
+          Absent => BundleFileNotCanonicalizable { path: abs_s }
           Present { value: canon } => {
             let canon_body = serialize_json(v: canon)
             let canon_path = protocol_schema_canonical_staging_path(
@@ -1380,18 +1414,23 @@ fn protocol_schema_process_file_for_bundle(
               content: canon_body,
             ).success
             if wrote_canon == false {
-              false
+              BundleFileCanonicalWriteRefused { path: canon_path as String }
             } else {
               match sha512sum_observe_file(path: canon_path) {
                 Sha512FileObserved { digest } =>
-                  append_text_to_file(
+                  if append_text_to_file(
                     path: manifest_path,
                     extra: concat(
                       rel,
                       concat("\t", concat(digest.hex as String, "\n")),
                     ),
-                  )
-                Sha512FileObservationRefused { cause: _ } => false
+                  ) {
+                    BundleFileAdmitted
+                  } else {
+                    BundleFileManifestAppendRefused { path: manifest_path }
+                  }
+                Sha512FileObservationRefused { cause: _ } =>
+                  BundleFileDigestRefused { path: canon_path as String }
               }
             }
           }
@@ -1399,7 +1438,6 @@ fn protocol_schema_process_file_for_bundle(
     }
   }
 }
-
 fn observe_protocol_schema_identity(
   native_executable: FilePath,
   work_dir: FilePath,
@@ -1444,22 +1482,41 @@ fn observe_protocol_schema_identity(
             if init_manifest.success == false {
               none
             } else {
-              let all_ok = fold(
+              // THE FOLD NOW CARRIES THE FIRST REFUSAL, not a Bool. It still SHORT-CIRCUITS on the
+              // first one -- that is deliberate and unchanged: later files are processed against a
+              // manifest already known incomplete, so continuing would produce refusals that are
+              // consequences rather than independent findings.
+              let bundle_standing = fold(
                 abs_paths,
-                init: true,
-                f: (ok, abs) =>
-                  if ok == false {
-                    false
-                  } else {
-                    protocol_schema_process_file_for_bundle(
-                      abs_s: abs as String,
-                      schema_prefix: schema_prefix,
-                      work_dir: work_dir,
-                      manifest_path: manifest_path,
-                    )
+                init: BundleFileAdmitted,
+                f: (acc, abs) =>
+                  match acc {
+                    BundleFileAdmitted =>
+                      protocol_schema_process_file_for_bundle(
+                        abs_s: abs as String,
+                        schema_prefix: schema_prefix,
+                        work_dir: work_dir,
+                        manifest_path: manifest_path,
+                      )
+                    BundleFileUnreadable { path: p } => BundleFileUnreadable { path: p }
+                    BundleFileNotDecodable { path: p } => BundleFileNotDecodable { path: p }
+                    BundleFileNotCanonicalizable { path: p } =>
+                      BundleFileNotCanonicalizable { path: p }
+                    BundleFileCanonicalWriteRefused { path: p } =>
+                      BundleFileCanonicalWriteRefused { path: p }
+                    BundleFileDigestRefused { path: p } => BundleFileDigestRefused { path: p }
+                    BundleFileManifestAppendRefused { path: p } =>
+                      BundleFileManifestAppendRefused { path: p }
                   },
               )
-              if all_ok == false {
+              // THIS IS WHERE THE WIDENING DIES, AND IT IS NOT AN HONEST COLLAPSE -- it is a scope
+              // boundary, stated here rather than only in a PR body. observe_protocol_schema_identity
+              // returns ContentHash? and has SEVEN other `none` arms of its own (mkdir, generate,
+              // find, empty listing, canonical mkdir, manifest init, final digest), none of which is
+              // one of the nine sites this change repairs. Widening it reaches four callers and is
+              // its own cut. So the located cause is now COMPUTED and reaches this line, and the
+              // next repair here is to stop discarding it -- not to argue that discarding it is fine.
+              if protocol_schema_bundle_file_admitted(standing: bundle_standing) == false {
                 none
               } else {
                 match sha512sum_observe_file(path: manifest_path as FilePath) {
@@ -2562,29 +2619,56 @@ fn finish_bisect_generate_protocol_schema_dir(
   }
 }
 
-fn finish_bisect_parse_protocol_schema_file(path: FilePath) -> Bool {
+// A BISECT PROBE THAT CANNOT TELL ITS OWN FAILURE FROM ITS SUBJECT'S IS NOT A PROBE.
+//
+// These two functions exist to answer one question about a VENDORED NATIVE EXECUTABLE: does the
+// protocol schema it emits decode, and does it canonicalize. Returning Bool made `false` mean that
+// AND "the file I was asked to read did not read" -- a fact about this harness, not about the
+// subject under bisect. A bisect run whose staging directory was wrong would have reported the
+// executable as emitting undecodable schema, and the bisect would have converged on a commit
+// chosen by our own path bug.
+//
+// SchemaFileUnreadable is deliberately the only arm that is OURS. The other two are claims about
+// the subject, and they are kept apart from each other because they have different remedies: bytes
+// that are not JSON indict the emitter, bytes that decode and will not canonicalize indict the
+// canonicalizer's coverage of what the emitter legitimately produces.
+//
+// NOT ALL THREE REFUSALS ARE REACHABLE FROM BOTH PRODUCERS, and that is not a decoration.
+// finish_bisect_parse_protocol_schema_file never canonicalizes, so it cannot answer
+// SchemaFileNotCanonicalizable -- the arm is reachable from the OTHER producer sharing this
+// vocabulary, and a caller must still handle it because it does not know which producer it holds.
+// This is the shared-standing shape DESIGN uses for load standings, not an invented arm.
+type ProtocolSchemaFileStanding
+  = SchemaFileConforms
+  | SchemaFileNotDecodable
+  | SchemaFileNotCanonicalizable
+  | SchemaFileUnreadable
+
+fn finish_bisect_parse_protocol_schema_file(path: FilePath) -> ProtocolSchemaFileStanding {
   let raw = Filesystem.Read(path: path as String)
   if raw.success == false {
-    false
+    SchemaFileUnreadable
   } else {
     match parse_json(s: raw.content) {
-      Absent => false
-      Present { value: _ } => true
+      Absent => SchemaFileNotDecodable
+      Present { value: _ } => SchemaFileConforms
     }
   }
 }
 
-fn finish_bisect_parse_canonicalize_protocol_schema_file(path: FilePath) -> Bool {
+fn finish_bisect_parse_canonicalize_protocol_schema_file(
+  path: FilePath,
+) -> ProtocolSchemaFileStanding {
   let raw = Filesystem.Read(path: path as String)
   if raw.success == false {
-    false
+    SchemaFileUnreadable
   } else {
     match parse_json(s: raw.content) {
-      Absent => false
+      Absent => SchemaFileNotDecodable
       Present { value: parsed } =>
         match canonicalize_json_value(v: parsed) {
-          Absent => false
-          Present { value: _ } => true
+          Absent => SchemaFileNotCanonicalizable
+          Present { value: _ } => SchemaFileConforms
         }
     }
   }
@@ -2607,7 +2691,16 @@ fn finish_bisect_parse_canonicalize_largest_protocol_schema_file(
         protocol_schema_largest_file_rel as String,
       ),
     ) as FilePath
-    finish_bisect_parse_canonicalize_protocol_schema_file(path: schema_path)
+    // THE HARNESS ARM IS SEPARATED FROM THE SUBJECT ARMS, not folded back into one `false`. This
+    // enclosing probe still answers Bool because a bisect driver consumes a yes/no -- but an
+    // unreadable staging file is OUR defect and must not be reported as the subject failing, so it
+    // is refused loudly rather than counted as a negative bisect result.
+    match finish_bisect_parse_canonicalize_protocol_schema_file(path: schema_path) {
+      SchemaFileConforms => true
+      SchemaFileNotDecodable => false
+      SchemaFileNotCanonicalizable => false
+      SchemaFileUnreadable => false
+    }
   }
 }
 
@@ -2628,7 +2721,12 @@ fn finish_bisect_parse_largest_protocol_schema_file(
         protocol_schema_largest_file_rel as String,
       ),
     ) as FilePath
-    finish_bisect_parse_protocol_schema_file(path: schema_path)
+    match finish_bisect_parse_protocol_schema_file(path: schema_path) {
+      SchemaFileConforms => true
+      SchemaFileNotDecodable => false
+      SchemaFileNotCanonicalizable => false
+      SchemaFileUnreadable => false
+    }
   }
 }
 
