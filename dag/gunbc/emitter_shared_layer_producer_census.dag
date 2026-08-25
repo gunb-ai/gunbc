@@ -79,11 +79,16 @@ type SharedLayerProducer {
 // rather than keeping it beside the authority. That is still one authority substitution at one
 // producer; it is not a second axis.
 //
-// EVIDENCE, both directions, executed. test.claim.data_row_shared_layer_authority_witness_test holds
-// the repair and its two controls. Against the pre-repair binary the repair arm returns false and
-// both controls return true; against the post-repair binary all three return true. BLAST RADIUS: a
-// full required-regen over the 135-module seed subject drifted exactly one file,
-// v1_compiler_emit_rust.rs -- the repair's own mirror.
+// EVIDENCE, both directions, EXECUTED BUT NOT ENROLLED, and the distinction is stated here because
+// it is the difference between a receipt and a gate. test.claim.data_row_shared_layer_authority_
+// witness_test holds the repair and its two controls. Against the pre-repair binary the repair arm
+// returns false and both controls return true; against the post-repair binary all three return
+// true -- taken by running each test fn directly, which is a real execution receipt. It is NOT a
+// standing one: that file declares ReadsLiveTree truthfully, and v2.workflow.required_floor's
+// retained DeclinedLiveTree arm therefore discovers and declines it, so nothing re-takes these
+// measurements until that arm's staged deletion lands. BLAST RADIUS: a full required-regen over the
+// 135-module seed subject drifted exactly one file, v1_compiler_emit_rust.rs -- the repair's own
+// mirror -- and re-ran first_generation_equal=true once that mirror was installed.
 //
 // WHAT THE OTHER TEN ROWS ARE NOT. They are not scheduled by this carrier and no dissolution trigger
 // is claimed for them. Three of them (the emit_typed_record_lit arms) cannot be routed at all

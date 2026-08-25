@@ -1,8 +1,31 @@
 module test.claim.data_row_shared_layer_authority_witness_test
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// ReadsLiveTree, and it is declared even though it COSTS admission rather than buying it. Every
+// test below calls compile_dag_rust_emit_check, which resolves its virtual source against
+// build_module_path_index_from_witness_roots -- a walk of the live checkout. Three files on this
+// same surface already adjudicated it in that direction: compile_diagnostic_census_witness_test's
+// census_live_tree_note traced the call and concluded the SubstrateInputsOnly spelling was a
+// mis-declaration rather than a judgment call, transport_script_wall_compile_red_test corrected
+// itself on exactly that finding, and guarantee_floor_class_probe_witness_test states the rule in
+// the direction that binds here -- do not dissolve the cost by relabelling the file.
+//
+// WHAT THAT COSTS, stated rather than left for a reader to discover: v2.workflow.required_floor
+// retains the DeclinedLiveTree arm, so this module is DISCOVERED and DECLINED by the required
+// floor and does not execute there today. It dissolves with that arm's staged deletion, at which
+// point these three become executing evidence with no further authorship. Until then the evidence
+// below is executed rather than enrolled: run it directly with
+// `gunbc run --source-root dag --source-root src/v2 --entry <this file> --function <test fn>`,
+// which is how both directions of its discriminating pair were taken.
+//
+// THE POPULATION THIS CORRECTION DOES NOT REPAIR, named because the split is real and a reader
+// will find it: 24 further files under dag/test/claim call compile_dag_rust_emit_check while
+// declaring SubstrateInputsOnly, against 5 declaring ReadsLiveTree. Those 24 are the un-corrected
+// residue of this same class, not a competing authority for it; correcting them is a sweep with
+// its own admission consequences and is not this change's to make.
 
 // PERMANENT REGRESSION CONTROL for the module-scope data row's reference-layer decision, and the
 // executing evidence behind the one row gunbc.emitter_shared_layer_producer_census routes.
