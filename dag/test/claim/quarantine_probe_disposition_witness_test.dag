@@ -89,13 +89,13 @@ fn live_quarantine_probe_subjects() -> List<QuarantineProbeSubject> {
   )
 }
 
+// Declaring ReadsLiveTree still controls affected-set eligibility, but no longer declines
+// execution at the required-floor root. This holder population therefore has no live rows.
 fn live_quarantine_probe_facts() -> QuarantineProbeHoldingFacts {
   QuarantineProbeHoldingFacts {
     expected_red_roster: floor_expected_red_roster(),
     route_gap_roster: floor_route_gap_roster(),
     home_prefixes: long_home_prefixes(),
-    // Declaring ReadsLiveTree still controls affected-set eligibility, but no longer declines
-    // execution at the required-floor root. This holder population therefore has no live rows.
     live_tree_declined_entries: Empty {},
     path_exclusion_substrings: Empty {}
   }
