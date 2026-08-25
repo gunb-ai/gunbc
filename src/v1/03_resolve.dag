@@ -178,8 +178,11 @@ type ModuleResolveResult {
 }
 
 fn resolve_module_imports(module: Node, module_index: Map<String, Node>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>) -> ModuleResolveResult {
-  let local_definition_names = module_items(n: module)
+  let local_item_names = module_items(n: module)
     |> map(item => get_item_name(item: item, source_indices: source_indices))
+  let local_variant_names = module_items(n: module)
+    |> flat_map(item => get_variant_names(item: item, source_indices: source_indices))
+  let local_definition_names = concat(local_item_names, local_variant_names)
     |> fold(init: empty_map(), f: (acc, n) => map_insert(acc, n, true))
   let results = module_imports(n: module) |> map(imp =>
     resolve_import(import: imp, module_index: module_index, importing_module: authored_name_at(source_indices: source_indices, node: module), export_sets: export_sets, source_indices: source_indices, local_definition_names: local_definition_names)
