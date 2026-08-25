@@ -25,14 +25,15 @@ import gunbc.offline_local_recipe {
   recipe_argv,
   recipe_argv_for_entry,
   argv_names_the_entry,
-  offline_recipe_defect_rows_well_formed_in
+  offline_recipe_defect_rows_well_formed_in,
+  policy_is_declared
 }
 import gunbc.ci_layer_roots { WitnessExclusionRow }
 import std.witness_admission { OfflineLocalRecipe, DiscoverySelection }
 import std.execution_mode { Wet, Hermetic }
 import std.dissolution { unbound_dissolution }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { String, List, Bool }
+import std.types { String, NonEmptyStr, List, Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -52,7 +53,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // live population's size.
 data offline_local_recipe_witness_note: String = "Shape-and-join walls over gunbc.offline_local_recipe. Live claims fold the real rosters (cheap: two substrate lists, no corpus acquisition, no host read). Discriminating REDs are fixture pairs holding the recipe fixed and moving one fact: the exclusion frontier that covers the subject, the function list a RecipeFunctions selection names, and whether a defect row's entry is a subject some recipe carries."
 
-fn probe_recipe(path: String) -> OfflineLocalRecipeRow {
+fn probe_recipe(path: NonEmptyStr) -> OfflineLocalRecipeRow {
   OfflineLocalRecipeRow {
     policy: "probe_policy",
     subject: RecipeEntry { path: path },
@@ -61,7 +62,7 @@ fn probe_recipe(path: String) -> OfflineLocalRecipeRow {
   }
 }
 
-fn probe_exclusion_row(pattern: String) -> WitnessExclusionRow {
+fn probe_exclusion_row(pattern: NonEmptyStr) -> WitnessExclusionRow {
   WitnessExclusionRow {
     pattern: pattern,
     classification: OfflineLocalRecipe,
@@ -70,7 +71,7 @@ fn probe_exclusion_row(pattern: String) -> WitnessExclusionRow {
   }
 }
 
-fn probe_subject_path() -> String {
+fn probe_subject_path() -> NonEmptyStr {
   "src/v2/test/claim/probe/offline_probe_test.dag"
 }
 
@@ -133,27 +134,12 @@ test fn recipe_functions_selection_naming_a_function_admits() -> Bool {
   )
 }
 
-// RED: an empty function NAME inside a non-empty list — the shape a copied recipe leaves
-// behind when a csv loses a member.
-test fn recipe_functions_selection_with_an_empty_name_refuses() -> Bool {
-  !recipes_well_formed_in(
-    recipes: [
-      OfflineLocalRecipeRow {
-        policy: "probe_policy",
-        subject: RecipeEntry { path: probe_subject_path() },
-        selection: RecipeFunctions { names: ["probe_holds", ""] },
-        mode: Hermetic
-      }
-    ]
-  )
-}
 
-fn probe_defect_row(entry: String) -> OfflineRecipeDefectRow {
+fn probe_defect_row(entry: NonEmptyStr) -> OfflineRecipeDefectRow {
   OfflineRecipeDefectRow {
     policy: "probe_policy",
     entry: entry,
-    function: "probe_holds",
-    defect: RecipeVerdictUncollected { detail: "probe fixture" },
+    defect: RecipeVerdictUncollected { function: "probe_holds", detail: "probe fixture" },
     measured_at_commit: "0000000000",
     dissolution: unbound_dissolution(description: "probe fixture")
   }
@@ -251,19 +237,18 @@ test fn home_recipe_renders_no_argv_until_a_resident_is_chosen() -> Bool {
     )
 }
 
-// The two defect causes carry different obligations, and the carrier enforces the
-// difference rather than documenting it: an UNCOLLECTED VERDICT is always a verdict of
-// some named witness, so it must name one; an UNRUNNABLE recipe may be unrunnable by its
-// SHAPE, in which case there is no function to name and demanding one would force an
-// author to invent a subject.
-test fn uncollected_verdict_without_a_function_refuses() -> Bool {
+
+
+// The one defect-row rule a refinement cannot decide, and its RED is still authorable
+// precisely because it is about a JOIN rather than a shape: a measurement filed against a
+// policy this carrier does not declare would sit here asserting a defect nobody owns.
+test fn defect_row_naming_an_undeclared_policy_refuses() -> Bool {
   !offline_recipe_defect_rows_well_formed_in(
     rows: [
       OfflineRecipeDefectRow {
-        policy: "wet_integration_offline_note",
+        policy: "no_such_policy_note",
         entry: "dag/test/claim/probe_test.dag",
-        function: "",
-        defect: RecipeVerdictUncollected { detail: "probe fixture" },
+        defect: RecipeUnrunnable { detail: "probe fixture" },
         measured_at_commit: "0000000000",
         dissolution: unbound_dissolution(description: "probe fixture")
       }
@@ -271,13 +256,12 @@ test fn uncollected_verdict_without_a_function_refuses() -> Bool {
   )
 }
 
-test fn unrunnable_recipe_without_a_function_admits() -> Bool {
+test fn defect_row_naming_a_declared_policy_admits() -> Bool {
   offline_recipe_defect_rows_well_formed_in(
     rows: [
       OfflineRecipeDefectRow {
         policy: "wet_integration_offline_note",
         entry: "dag/test/claim/probe_test.dag",
-        function: "",
         defect: RecipeUnrunnable { detail: "probe fixture" },
         measured_at_commit: "0000000000",
         dissolution: unbound_dissolution(description: "probe fixture")

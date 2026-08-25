@@ -33,8 +33,8 @@ data offline_local_recipe_authority_note: String = "Typed authority for the docu
 // is a home with thirteen-plus residents and no fixed entry, so a row that stored one
 // entry for it would be inventing a subject the note does not have.
 type RecipeSubject
-  = RecipeEntry { path: String }
-  | RecipeHome { path_prefix: String }
+  = RecipeEntry { path: NonEmptyStr }
+  | RecipeHome { path_prefix: NonEmptyStr }
 
 // Which functions the invocation names. There is no whole-entry arm, and its absence is
 // a fact about the tool rather than a modelling preference: claim_batch REFUSES an
@@ -45,11 +45,11 @@ type RecipeSubject
 // state from RecipeFunctions rather than an empty name list, which would make "the caller
 // chooses" and "this recipe names nothing" indistinguishable at the carrier.
 type RecipeSelection
-  = RecipeFunctions { names: List<String> }
+  = RecipeFunctions { names: List<NonEmptyStr> }
   | RecipeCallerChosen
 
 type OfflineLocalRecipeRow {
-  policy: String
+  policy: NonEmptyStr
   subject: RecipeSubject
   selection: RecipeSelection
   mode: ExecutionMode
@@ -148,7 +148,7 @@ data offline_local_recipes: List<OfflineLocalRecipeRow> = [
   }
 ]
 
-fn recipe_subject_path(subject: RecipeSubject) -> String {
+fn recipe_subject_path(subject: RecipeSubject) -> NonEmptyStr {
   match subject {
     RecipeEntry { path: p } => p
     RecipeHome { path_prefix: p } => p
@@ -159,12 +159,12 @@ fn recipe_subject_path(subject: RecipeSubject) -> String {
 // consumer an exclusion row's classification points at, so a recipe whose subject no
 // OfflineLocalRecipe exclusion row covers is either a recipe for a witness per-PR
 // discovery already runs, or a subject that moved out from under its own policy.
-fn exclusion_row_covers_recipe_subject(row: WitnessExclusionRow, path: String) -> Bool {
+fn exclusion_row_covers_recipe_subject(row: WitnessExclusionRow, path: NonEmptyStr) -> Bool {
   witness_consumer_cadence_eq(a: row.classification, b: OfflineLocalRecipe)
     && string_contains(s: path, pattern: row.pattern)
 }
 
-fn recipe_subject_is_offline_classified_in(rows: List<WitnessExclusionRow>, path: String) -> Bool {
+fn recipe_subject_is_offline_classified_in(rows: List<WitnessExclusionRow>, path: NonEmptyStr) -> Bool {
   fold(
     rows,
     init: false,
@@ -172,7 +172,7 @@ fn recipe_subject_is_offline_classified_in(rows: List<WitnessExclusionRow>, path
   )
 }
 
-fn recipe_subject_is_offline_classified(path: String) -> Bool {
+fn recipe_subject_is_offline_classified(path: NonEmptyStr) -> Bool {
   recipe_subject_is_offline_classified_in(rows: witness_exclusion_frontier, path: path)
 }
 
@@ -199,15 +199,20 @@ fn offline_local_recipes_all_offline_classified() -> Bool {
   )
 }
 
+// THE ONLY EMPTINESS LEFT TO CHECK IS THE LIST, AND THAT IS NOT AN OVERSIGHT. policy, the
+// two subject paths and every function name are NonEmptyStr, so an empty one is refused at
+// typecheck -- measured: a `""` literal at such a field fails with `expected
+// Product(NonEmptyStr), got Primitive(String)` while a non-empty literal compiles. A
+// runtime `!= ""` beside that would be a second representation of a constraint the carrier
+// already holds (DESIGN.md section 5), and its RED would be unauthorable, which is worse
+// than absent because it reads as coverage. A LIST, by contrast, can still be empty: no
+// refinement on the element type says anything about how many elements there are, so the
+// one surviving check is the one whose red a fixture can still author.
 fn recipe_row_well_formed(row: OfflineLocalRecipeRow) -> Bool {
-  !(row.policy == "")
-    && !(recipe_subject_path(subject: row.subject) == "")
-    && match row.selection {
-      RecipeCallerChosen => true
-      RecipeFunctions { names: names } =>
-        !(names.length() == 0)
-          && fold(names, init: true, f: fn(ok, name) { ok && !(name == "") })
-    }
+  match row.selection {
+    RecipeCallerChosen => true
+    RecipeFunctions { names: names } => !(names.length() == 0)
+  }
 }
 
 fn recipes_well_formed_in(recipes: List<OfflineLocalRecipeRow>) -> Bool {
@@ -222,7 +227,7 @@ fn offline_local_recipes_well_formed() -> Bool {
 // recipe row belongs to exactly one of them, and every one of them owns at least one
 // recipe row -- so a note that loses its recipe, or a recipe naming a policy nobody
 // declared, is refused here rather than discovered by a person typing a command.
-data offline_recipe_policies: List<String> = [
+data offline_recipe_policies: List<NonEmptyStr> = [
   "wet_integration_offline_note",
   "enforcement_coverage_exclusion_note",
   "accumulator_copy_roster_gate_exclusion_note",
@@ -230,7 +235,7 @@ data offline_recipe_policies: List<String> = [
   "long_lane_exclusion_note"
 ]
 
-fn recipes_for_policy(policy: String) -> List<OfflineLocalRecipeRow> {
+fn recipes_for_policy(policy: NonEmptyStr) -> List<OfflineLocalRecipeRow> {
   offline_local_recipes |> filter(row => row.policy == policy)
 }
 
@@ -242,7 +247,7 @@ fn every_policy_owns_a_recipe() -> Bool {
   )
 }
 
-fn policy_is_declared(policy: String) -> Bool {
+fn policy_is_declared(policy: NonEmptyStr) -> Bool {
   fold(offline_recipe_policies, init: false, f: fn(found, declared) { found || (declared == policy) })
 }
 
@@ -288,16 +293,22 @@ data offline_recipe_graduation_arm_note: String = "NEXT-RUNG TRIGGER for every r
 // be mistaken for silence; an uncollected verdict is a witness that runs, answers FALSE,
 // and hands that answer to nothing -- a real failure signal discarded. Their remedies
 // differ (restore a consumer vs. collect an existing one), so they are separate arms.
+// THE FUNCTION LIVES INSIDE THE ARM THAT NEEDS IT. An uncollected verdict is always some
+// named witness's verdict; an unrunnable recipe may be unrunnable by its SHAPE, in which
+// case there is no function to name. Carried as a row field those two would share one
+// String and an author could leave it empty on either arm, so the rule "an uncollected
+// verdict must name a witness" would have to be a check. Carried here it is the carrier's
+// shape: RecipeVerdictUncollected has no spelling without a function, and RecipeUnrunnable
+// has no place to put one.
 type RecipeConsumerDefect
   = RecipeUnrunnable { detail: NonEmptyStr }
-  | RecipeVerdictUncollected { detail: NonEmptyStr }
+  | RecipeVerdictUncollected { function: NonEmptyStr, detail: NonEmptyStr }
 
 type OfflineRecipeDefectRow {
-  policy: String
-  entry: String
-  function: String
+  policy: NonEmptyStr
+  entry: NonEmptyStr
   defect: RecipeConsumerDefect
-  measured_at_commit: String
+  measured_at_commit: NonEmptyStr
   dissolution: DissolutionCondition
 }
 
@@ -305,7 +316,6 @@ data offline_recipe_consumer_defects: List<OfflineRecipeDefectRow> = [
   OfflineRecipeDefectRow {
     policy: "wet_integration_offline_note",
     entry: "dag/test/claim/ci_deploy_observed_wet_test.dag",
-    function: "",
     defect: RecipeUnrunnable {
       detail: "the documented recipe is `claim_batch --wet --source-root dag --source-root src/v2 --entry <entry> per file` and names no function. claim_batch requires a function selection and refuses the invocation outright: `--entry dag/test/claim/ci_deploy_observed_wet_test.dag has no --function or --functions`. Measured by execution; the refusal is a property of the RECIPE SHAPE, so it holds for all four entries this policy covers, and the entry named here is the one it was measured on. The typed rows carry RecipeCallerChosen, which renders a runnable command once a function is chosen -- the prose form could not."
     },
@@ -315,8 +325,8 @@ data offline_recipe_consumer_defects: List<OfflineRecipeDefectRow> = [
   OfflineRecipeDefectRow {
     policy: "enforcement_coverage_exclusion_note",
     entry: "src/v2/test/claim/enforcement_live_witness_test.dag",
-    function: "enforcement_consistency_gate_holds",
     defect: RecipeVerdictUncollected {
+      function: "enforcement_consistency_gate_holds",
       detail: "runs to a verdict through its own documented recipe and answers FALSE. Its only standing is gunbc.witness_deferral_freeze frozen_path_deferrals, which that carrier states is tolerated by the migration ratchet and NOT coverage, so the red reaches no consumer: it is not in per-PR discovery (the exclusion row is what makes this recipe the consumer of record) and no cadence collects it."
     },
     measured_at_commit: "7fbbb84202",
@@ -325,8 +335,8 @@ data offline_recipe_consumer_defects: List<OfflineRecipeDefectRow> = [
   OfflineRecipeDefectRow {
     policy: "long_lane_exclusion_note",
     entry: "dag/test/claim/long/commit_witness_claim_roster_witness_test.dag",
-    function: "commit_witness_claim_roster_holds",
     defect: RecipeVerdictUncollected {
+      function: "commit_witness_claim_roster_holds",
       detail: "same shape, found on a DIFFERENT resident of the long home than the one an earlier measurement sampled, which is why the home's standing is not a single verdict: one resident passing establishes only that ITS recipe executes. This one executes and answers FALSE, and its only standing is likewise frozen_path_deferrals."
     },
     measured_at_commit: "7fbbb84202",
@@ -334,19 +344,12 @@ data offline_recipe_consumer_defects: List<OfflineRecipeDefectRow> = [
   }
 ]
 
-// A defect row's FUNCTION is empty exactly when the defect is a property of the recipe's
-// shape rather than of one witness: a recipe that names no function cannot be measured at
-// one, and demanding a name there would force an author to invent a subject. The entry and
-// the policy are never empty, because a defect always has a subject and an owner.
+// Emptiness is unwritable here for the same reason as above, and the function/arm pairing
+// is now the carrier's shape rather than a rule. What is left is the one thing no
+// refinement can decide: whether the policy a defect names is a policy this carrier
+// declares.
 fn recipe_defect_row_well_formed(row: OfflineRecipeDefectRow) -> Bool {
-  !(row.policy == "")
-    && !(row.entry == "")
-    && !(row.measured_at_commit == "")
-    && policy_is_declared(policy: row.policy)
-    && match row.defect {
-      RecipeUnrunnable { detail: _ } => true
-      RecipeVerdictUncollected { detail: _ } => !(row.function == "")
-    }
+  policy_is_declared(policy: row.policy)
 }
 
 fn offline_recipe_defect_rows_well_formed_in(rows: List<OfflineRecipeDefectRow>) -> Bool {
@@ -424,7 +427,7 @@ fn recipe_mode_argv(mode: ExecutionMode) -> List<String> {
   }
 }
 
-fn recipe_argv_for_entry(row: OfflineLocalRecipeRow, entry: String) -> List<String> {
+fn recipe_argv_for_entry(row: OfflineLocalRecipeRow, entry: NonEmptyStr) -> List<String> {
   concat(
     concat(
       concat([claim_batch_bin_name], recipe_mode_argv(mode: row.mode)),
@@ -441,6 +444,6 @@ fn recipe_argv(row: OfflineLocalRecipeRow) -> List<String> {
   }
 }
 
-fn argv_names_the_entry(argv: List<String>, entry: String) -> Bool {
+fn argv_names_the_entry(argv: List<String>, entry: NonEmptyStr) -> Bool {
   fold(argv, init: false, f: fn(found, word) { found || (word == entry) })
 }
