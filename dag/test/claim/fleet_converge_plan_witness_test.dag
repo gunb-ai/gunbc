@@ -31,6 +31,8 @@ import gunbc.fabric_cell_converge {
   fabric_cell_desired_members,
   fabric_cell_id_for_slot,
   fabric_cell_population_unobserved,
+  fabric_cell_member_key,
+  fabric_cell_resource_address_wire,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
@@ -971,4 +973,107 @@ test fn witness_fabric_cell_refusal_wording_is_not_the_member_set_identity() -> 
   )
     && fabric_fingerprint_with(population: fabric_population_of(entries: [refused_root_readback(cause: "transport reset")]))
         != fabric_fingerprint_with(population: fabric_population_of(entries: [refused_boundary_readback(cause: "transport reset")]))
+}
+
+// DRIFT IS A CHANGE AND ABSENCE IS AN ADD, AND THESE TWO ROWS ARE THE PAIR THAT DISTINGUISHES THEM.
+// The defect they close shipped to main in #9122 with two approvals and a green required floor:
+// `StandingUnmet` held BOTH "the resource is missing" and "the resource is present with the wrong
+// value", and the observed-member fold kept only `StandingSatisfied` -- so both states produced an
+// identical observed population and reconcile answered `MemberAdded` for both. The model chose
+// CREATE against a resource that already existed.
+//
+// WHY THE ASSERTION IS ON THE ACTION KIND RATHER THAN ON "UNPROVISIONED". A row that asserted only
+// that a drifted cell is unprovisioned passes on BOTH sides of the distinction being repaired --
+// it was true before the split and true after it, and it is exactly the kind of row that let the
+// defect through. Each row below therefore names the action it requires AND the action it forbids
+// for the same address: the ADD-count of zero is what goes red if drift ever collapses back into
+// absence, and the CHANGE-count of zero is what goes red in the other direction.
+fn fabric_cell_line_occurrences(lines: List<String>, target: String) -> Int {
+  fold(lines, init: 0, f: (acc, l) => if l == target { acc + 1 } else { acc })
+}
+
+fn fabric_boundary_desired_key() -> String {
+  fold(
+    fabric_cell_desired_members(host: operator_host_srv3),
+    init: "",
+    f: (acc, m) =>
+      if fabric_cell_resource_address_wire(address: m.address) == "resource-boundary" {
+        fabric_cell_member_key(member: m)
+      } else { acc },
+  )
+}
+
+// ONE ADDRESS DIVERGES AND THE OTHER TWO AGREE, so whatever the row proves is about that address
+// and not about a wholesale mismatch. A fixture in which everything drifts cannot tell "drift is a
+// change" from "any non-converged host replans itself".
+fn fabric_cell_readback_boundary_drifted() -> FabricCellReadback {
+  FabricCellReadback {
+    slot: fabric_witness_slot(),
+    observations: map(
+      fabric_cell_desired_members(host: operator_host_srv3),
+      m =>
+        if fabric_cell_resource_address_wire(address: m.address) == "resource-boundary" {
+          AddressObserved {
+            member: FabricCellMember {
+              slot: m.slot,
+              address: m.address,
+              state_digest: "drifted-boundary-digest" as NonEmptyStr,
+            },
+          }
+        } else { AddressObserved { member: m } },
+    ),
+  }
+}
+
+fn fabric_cell_readback_boundary_absent() -> FabricCellReadback {
+  FabricCellReadback {
+    slot: fabric_witness_slot(),
+    observations: map(
+      fabric_cell_desired_members(host: operator_host_srv3),
+      m =>
+        if fabric_cell_resource_address_wire(address: m.address) == "resource-boundary" {
+          AddressAbsent { slot: fabric_witness_slot(), address: m.address }
+        } else { AddressObserved { member: m } },
+    ),
+  }
+}
+
+test fn witness_fabric_cell_drifted_address_plans_change_and_never_add() -> Bool {
+  let lines = fleet_converge_fabric_cell_lines(
+    host: "srv3" as NonEmptyStr,
+    observed_fabric_cells: fabric_population_of(entries: [fabric_cell_readback_boundary_drifted()]),
+  )
+  list_length(items: lines) == 1
+    && fabric_cell_line_occurrences(
+        lines: lines,
+        target: concat("REFUSED-REALIZATION CHANGE fabric-cell ", fabric_boundary_desired_key()),
+      ) == 1
+    && fabric_cell_line_occurrences(
+        lines: lines,
+        target: concat("REFUSED-REALIZATION ADD fabric-cell ", fabric_boundary_desired_key()),
+      ) == 0
+}
+
+test fn witness_fabric_cell_absent_address_plans_add_and_never_change() -> Bool {
+  let lines = fleet_converge_fabric_cell_lines(
+    host: "srv3" as NonEmptyStr,
+    observed_fabric_cells: fabric_population_of(entries: [fabric_cell_readback_boundary_absent()]),
+  )
+  list_length(items: lines) == 1
+    && fabric_cell_line_occurrences(
+        lines: lines,
+        target: concat("REFUSED-REALIZATION ADD fabric-cell ", fabric_boundary_desired_key()),
+      ) == 1
+    && fabric_cell_line_occurrences(
+        lines: lines,
+        target: concat("REFUSED-REALIZATION CHANGE fabric-cell ", fabric_boundary_desired_key()),
+      ) == 0
+}
+
+// AND THE TWO STATES ARE NOT THE SAME OBSERVATION, which is the defect one layer below the action
+// kind. If the observed populations agreed, the rows above could only ever differ by accident of
+// rendering; this row pins the divergence at the population the reconcile consumes.
+test fn witness_fabric_cell_drifted_and_absent_are_different_observations() -> Bool {
+  fabric_fingerprint_with(population: fabric_population_of(entries: [fabric_cell_readback_boundary_drifted()]))
+    != fabric_fingerprint_with(population: fabric_population_of(entries: [fabric_cell_readback_boundary_absent()]))
 }
