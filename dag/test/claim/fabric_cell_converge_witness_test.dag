@@ -5,6 +5,7 @@ import std.types { list_length, String, NonEmptyStr, Int }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 import gunbc.ownership { Owned }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.fabric_cell_converge {
   fabric_cell_id_for_slot,
   fabric_cell_ids,
@@ -49,6 +50,19 @@ import gunbc.fabric_cell_converge {
   FabricCellPopulationObserved,
   FabricCellPopulationObservationRefused,
 }
+
+// ROUTED, BECAUSE AN UNROUTED WITNESS IS DISCOVERED AND NEVER RUN. A module that declares no
+// live-tree disposition defaults to ReadsLiveTree, and the required floor DECLINES those before
+// the fold sees them -- offered, counted, never executed. This file had no declaration, so every
+// row in it was green in a local run and gated nothing in CI.
+//
+// THE DEFAULT IS NOT SIMPLY WRONG, IT IS READ WITH OPPOSITE POLARITY BY TWO CONSUMERS. It was
+// authored for affected-set PREDICTION, where ReadsLiveTree means never predict-skip -- the safe
+// answer is RUN IT. The required floor reuses the same flag to mean DECLINE. So the undeclared
+// default is fail-closed under one consumer and fail-open under the other, which is why a file
+// could sit here unrouted without anyone being careless. That is a single-authority defect, routed
+// to the floor lane; this declaration is the local repair, not the fix for the class.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn srv3_fabric_slot() -> RunnerSlotIdentity {
   RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 }
