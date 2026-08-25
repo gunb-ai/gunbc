@@ -5205,6 +5205,7 @@ pub fn emit_shared_expr(
     emit_index: impl Fn(Rc<Node>) -> String + Clone,
     emit_slice: impl Fn(Rc<Node>) -> String + Clone,
     emit_bin_op: impl Fn(Rc<Node>) -> String + Clone,
+    emit_lambda_params_for: impl Fn(Rc<Node>) -> String + Clone,
 ) -> String {
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: v, .. } => {
@@ -5249,10 +5250,7 @@ pub fn emit_shared_expr(
                 _ => raw_body.clone(),
             };
             wrap_result(emit_lambda(
-                emit_lambda_params(
-                    lambda_param_names_at(texpr.clone(), source_indices.clone()),
-                    target.clone(),
-                ),
+                emit_lambda_params_for(texpr.clone()),
                 final_body.clone(),
                 target.clone(),
             ))
@@ -7052,6 +7050,12 @@ pub fn emit_unified_typed_expr(
                         )
                     },
                     |result| result.clone(),
+                )
+            },
+            |expr| {
+                emit_lambda_params(
+                    lambda_param_names_at(expr.clone(), si.clone()),
+                    target.clone(),
                 )
             },
         )

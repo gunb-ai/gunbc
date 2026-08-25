@@ -20688,6 +20688,14 @@ pub fn emit_typed_expr(
                     emit_info.clone(),
                 )
             },
+            |expr| {
+                emit_rust_lambda_params_typed(
+                    expr.clone(),
+                    scope.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                )
+            },
         )
     })
 }
@@ -22175,6 +22183,7 @@ pub fn lambda_param_type_strs(
     emit_info: Rc<EmitGraphInfo>,
     fold_acc_uses_fallback: bool,
     type_env: Rc<TypeEnv>,
+    unavailable_stays_untyped: bool,
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
@@ -22260,16 +22269,60 @@ pub fn lambda_param_type_strs(
                         ident.clone(),
                         ty.clone(),
                     ),
-                    None => apply_type_template2(
-                        spec.annotations.clone().lambda_param_typed.clone(),
-                        ident.clone(),
-                        fallback_type.clone(),
-                    ),
+                    None => {
+                        if unavailable_stays_untyped.clone() {
+                            apply_type_template1(
+                                spec.annotations.clone().lambda_param_untyped.clone(),
+                                ident.clone(),
+                            )
+                        } else {
+                            apply_type_template2(
+                                spec.annotations.clone().lambda_param_typed.clone(),
+                                ident.clone(),
+                                fallback_type.clone(),
+                            )
+                        }
+                    }
                 }
             });
         }
         __result
     })
+}
+
+pub fn emit_rust_lambda_params_typed(
+    lambda_expr: Rc<Node>,
+    scope: Rc<InferScope>,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    {
+        let ps = lambda_param_names_at(
+            lambda_expr.clone(),
+            scope.type_env.clone().source_indices.clone(),
+        );
+        let pn = Rc::new(
+            lambda_expr
+                .children
+                .clone()
+                .iter()
+                .cloned()
+                .skip(1 as usize)
+                .collect::<Vec<_>>(),
+        );
+        let param_strs = lambda_param_type_strs(
+            ps.clone(),
+            pn.clone(),
+            Rc::new(vec![]),
+            shared_types.clone(),
+            scope.type_env.clone().source_indices.clone(),
+            emit_info.clone(),
+            false,
+            scope.type_env.clone(),
+            true,
+        );
+        param_strs.clone().join(&", ".to_string())
+    }
 }
 
 pub fn emit_typed_collection_lambda(
@@ -22306,6 +22359,7 @@ pub fn emit_typed_collection_lambda(
                 emit_info.clone(),
                 false,
                 scope.type_env.clone(),
+                false,
             );
             let params_str = param_strs.clone().join(&", ".to_string());
             let lambda_scope = lambda_scope_from_children(scope.clone(), ps.clone(), pn.clone());
@@ -22403,6 +22457,7 @@ pub fn emit_typed_fold_lambda(
                 emit_info.clone(),
                 true,
                 scope.type_env.clone(),
+                false,
             );
             let param_strs = if elem_borrowed.clone() {
                 Rc::new({
