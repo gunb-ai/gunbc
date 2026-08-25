@@ -35,6 +35,8 @@ import gunbc.fabric_cell_converge {
   CrossHostNamedArtifactObserved,
   fabric_cell_refusal_insert_ordered,
   fabric_cell_canonical_refusals,
+  FabricCellPopulation,
+  fabric_cell_population,
 }
 
 data fabric_cell_observe_authority_disposition: Disposition = SingleAuthority
