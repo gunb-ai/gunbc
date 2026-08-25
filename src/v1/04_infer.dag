@@ -6074,7 +6074,7 @@ fn classify_let_value(val: v1.std.core.Node, ctx: DescentContext) -> std.inducti
     _ =>
       let type_based = match val.inferred {
         Present { value: v1.std.core.Resolved { node: rt } } =>
-          if std.types.is_container_type(name: v1.std.core.authored_name_at(source_indices: ctx.type_env.source_indices, node: rt)) {
+          if std.types.is_container_type(name: v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: ctx.type_env.source_indices, node: rt))) {
             let elem = match rt.children |> first {
               Present { value: c } => v1.std.core.authored_name_at(source_indices: ctx.type_env.source_indices, node: c)
               Absent => ""
