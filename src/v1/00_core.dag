@@ -161,6 +161,7 @@ type TextFile {
 type CompilerDiagnostic
   = UnresolvedImport   { module_path: String, importing_module: String, span: SourceSpan }
   | MissingExport      { name: String, module_path: String, importing_module: String, span: SourceSpan }
+  | ImportShadowedByLocalDefinition { name: String, module_path: String, importing_module: String, span: SourceSpan }
   | UnresolvedType     { name: String, span: SourceSpan }
   | TypeMismatch       { expected: String, got: String, span: SourceSpan }
   | ArityMismatch      { name: String, expected: Int, got: Int, span: SourceSpan }
@@ -307,6 +308,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
   match d {
     UnresolvedImport   { module_path: _, importing_module: _, span: s } => s
     MissingExport      { name: _, module_path: _, importing_module: _, span: s } => s
+    ImportShadowedByLocalDefinition { name: _, module_path: _, importing_module: _, span: s } => s
     UnresolvedType     { name: _, span: s }                    => s
     TypeMismatch       { expected: _, got: _, span: s }        => s
     ArityMismatch      { name: _, expected: _, got: _, span: s } => s
@@ -364,6 +366,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
   match d {
     UnresolvedImport   { module_path: m, importing_module: i, span: _ } => concat("unresolved import: module '", m, "' not found (imported by '", i, "')")
     MissingExport      { name: n, module_path: m, importing_module: i, span: _ } => concat("name '", n, "' not found in module '", m, "' (imported by '", i, "')")
+    ImportShadowedByLocalDefinition { name: n, module_path: m, importing_module: i, span: _ } => concat("import of '", n, "' from module '", m, "' is discarded: '", i, "' also defines '", n, "' at module scope, and the LOCAL DEFINITION binds every bare use of the name. The import you wrote is not the binding you get. Qualify the call as '", m, ".", n, "(...)' to reach the imported one, or rename one of the two.")
     UnresolvedType     { name: n, span: _ }                       => concat("unresolved type '", n, "'")
     TypeMismatch       { expected: e, got: g, span: _ }           => concat("type mismatch: expected '", e, "', got '", g, "'")
     ArityMismatch      { name: n, expected: e, got: g, span: _ }  => concat("type ", n, " expects ", to_string(value: e), " type arguments, got ", to_string(value: g))

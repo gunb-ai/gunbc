@@ -393,6 +393,12 @@ pub enum CompilerDiagnostic {
         importing_module: String,
         span: Rc<SourceSpan>,
     },
+    ImportShadowedByLocalDefinition {
+        name: String,
+        module_path: String,
+        importing_module: String,
+        span: Rc<SourceSpan>,
+    },
     UnresolvedType {
         name: String,
         span: Rc<SourceSpan>,
@@ -660,6 +666,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
     match (*d.clone()).clone() {
         CompilerDiagnostic::UnresolvedImport { span: s, .. } => s.clone(),
         CompilerDiagnostic::MissingExport { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ImportShadowedByLocalDefinition { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnresolvedType { span: s, .. } => s.clone(),
         CompilerDiagnostic::TypeMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::ArityMismatch { span: s, .. } => s.clone(),
@@ -713,6 +720,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     match (*d.clone()).clone() {
     CompilerDiagnostic::UnresolvedImport { module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("unresolved import: module '".to_string(), m.clone()), "' not found (imported by '".to_string()), i.clone()), "')".to_string()),
     CompilerDiagnostic::MissingExport { name: n, module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("name '".to_string(), n.clone()), "' not found in module '".to_string()), m.clone()), "' (imported by '".to_string()), i.clone()), "')".to_string()),
+    CompilerDiagnostic::ImportShadowedByLocalDefinition { name: n, module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("import of '".to_string(), n.clone()), "' from module '".to_string()), m.clone()), "' is discarded: '".to_string()), i.clone()), "' also defines '".to_string()), n.clone()), "' at module scope, and the LOCAL DEFINITION binds every bare use of the name. The import you wrote is not the binding you get. Qualify the call as '".to_string()), m.clone()), ".".to_string()), n.clone()), "(...)' to reach the imported one, or rename one of the two.".to_string()),
     CompilerDiagnostic::UnresolvedType { name: n, .. } => v1_rt::concat(v1_rt::concat("unresolved type '".to_string(), n.clone()), "'".to_string()),
     CompilerDiagnostic::TypeMismatch { expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type mismatch: expected '".to_string(), e.clone()), "', got '".to_string()), g.clone()), "'".to_string()),
     CompilerDiagnostic::ArityMismatch { name: n, expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type ".to_string(), n.clone()), " expects ".to_string()), (e.clone()).to_string()), " type arguments, got ".to_string()), (g.clone()).to_string()),
