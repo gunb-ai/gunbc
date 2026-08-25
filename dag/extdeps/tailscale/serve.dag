@@ -132,14 +132,34 @@ fn tailscale_status_web_proxies(web: JsonValue, mount: TailscaleServeMount) -> L
 
 data serve_status_json_projection_note: String = "Tailscale documents `serve status --json` as the machine-readable status surface. For the legacy node Serve configuration used by srv1, Web.<dns:port>.Handlers.<mount>.Proxy names the currently routed backend. DNS is intentionally not treated as identity here: it is a map key derived by tailscaled and the owned endpoint is listener x mount. Duplicate or wrong-shaped members yield no proxy.\n\nThat sentence used to end 'which the blue/green selector refuses before mutation; they never select a plausible slot', citing srv1_blue_green_slot_selection. That selector was deleted with the blue/green pair on 2026-08-19, so the citation named a symbol that no longer resolves -- the DESIGN section 3 stale-citation class, in an extdeps module. The projection's own behaviour is unchanged: a wrong-shaped member still yields no proxy. What is gone is the consumer that acted on it, and this module states the upstream fact rather than who reads it. tailscale_serve_status_proxy_targets and tailscale_serve_status_json_argv now have no production consumer at all and are held open only by test.claim.tailscale_serve_status."
 
-fn tailscale_serve_status_proxy_targets(status_json: String, mount: TailscaleServeMount) -> List<String> {
+// AN UNREADABLE STATUS IS NOT AN EMPTY ONE. This projection previously answered [] when
+// parse_json refused the document, which is the empty-observation narrow DESIGN names: "I could not
+// read the status" rendered as the verdict "no proxy is configured". A consumer deciding whether a
+// backend is routed cannot distinguish those, and they have opposite remedies -- an empty status
+// means configure a proxy, an unreadable one means look at why the status surface changed shape.
+//
+// THE INNER Absent ARMS ARE LEFT AS THEY WERE, deliberately. A document that parses but carries no
+// "Web" member, or no handler at this mount, genuinely HAS no proxy there: that arm sits downstream
+// of a member LOOKUP that returned absent, which is not-applicable rather than malformed, and
+// DESIGN's recognition rule for that class puts it on the other side of the line. Only the arm that
+// could not read the document at all is a refusal.
+//
+// The refusal is a DOMAIN fact -- this status surface was unreadable -- rather than a re-spelling of
+// the parse cause, so it stays true and stays useful when parse_json later distinguishes empty,
+// not-JSON and truncated; that change enriches WHY this arm fired without replacing it.
+type TailscaleServeStatusProjection
+  = ServeStatusProxies { targets: List<String> }
+  | ServeStatusUnreadable
+
+fn tailscale_serve_status_proxy_targets(status_json: String, mount: TailscaleServeMount) -> TailscaleServeStatusProjection {
   match parse_json(s: status_json) {
     Present { value: doc } =>
       match json_unique_member_value(v: doc, key: "Web") {
-        Present { value: web } => tailscale_status_web_proxies(web: web, mount: mount)
-        Absent => []
+        Present { value: web } =>
+          ServeStatusProxies { targets: tailscale_status_web_proxies(web: web, mount: mount) }
+        Absent => ServeStatusProxies { targets: [] }
       }
-    Absent => []
+    Absent => ServeStatusUnreadable
   }
 }
 

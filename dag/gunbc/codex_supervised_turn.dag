@@ -23,6 +23,7 @@ import gunbc.provider_turn_adjudication {
   ProviderTurnCompleted,
   ProviderTurnFailed,
   ProviderTurnNotObserved,
+  ProviderTurnStreamUnreadable,
   ProviderNativeCauseUnknown,
   press_display_finished,
 }
@@ -147,10 +148,20 @@ type SupervisedTurnTerminalSignal
   | SupervisedTurnTerminalCompleted
   | SupervisedTurnTerminalFailed { reason: NonEmptyStr }
 
+// unreadable_lines COUNTS WHAT THE FOLD COULD NOT READ, because the alternative was to drop it.
+// absorb_supervised_turn_line previously answered `acc` for a line parse_json refused: the line
+// vanished, the accumulator advanced, and nothing anywhere recorded that a line had been lost. A
+// stream of wholly unreadable lines then reached disposition_from_supervised_parse looking exactly
+// like a stream that carried no terminal event.
+//
+// An EMPTY line is not counted and never was -- absorb_supervised_turn_line tests for it before
+// parsing, and a blank line between records is ordinary stream shape rather than a failure. That
+// distinction already existed and is preserved deliberately; only the unparseable arm changed.
 type SupervisedTurnParseAcc {
   thread_start: SupervisedRpcObservation
   turn_start: SupervisedRpcObservation
   turn_terminal: SupervisedTurnTerminalSignal
+  unreadable_lines: Int
 }
 
 fn codex_supervised_turn_lease_key(attempt_key: AttemptKey, turn_key: String) -> NonEmptyStr {
@@ -555,7 +566,13 @@ fn absorb_supervised_turn_line(
     acc
   } else {
     match parse_json(s: trimmed) {
-      Absent => acc
+      Absent =>
+        SupervisedTurnParseAcc {
+          thread_start: acc.thread_start,
+          turn_start: acc.turn_start,
+          turn_terminal: acc.turn_terminal,
+          unreadable_lines: acc.unreadable_lines + 1,
+        }
       Present { value: parsed } =>
         match json_object_unique_member(v: parsed, key: "id") {
           JsonMemberFound { value: idv } =>
@@ -573,6 +590,7 @@ fn absorb_supervised_turn_line(
                     ),
                     turn_start: acc.turn_start,
                     turn_terminal: acc.turn_terminal,
+                    unreadable_lines: acc.unreadable_lines,
                   }
                 } else if n == codex_supervised_turn_start_wire_id {
                   SupervisedTurnParseAcc {
@@ -586,6 +604,7 @@ fn absorb_supervised_turn_line(
                       ),
                     ),
                     turn_terminal: acc.turn_terminal,
+                    unreadable_lines: acc.unreadable_lines,
                   }
                 } else {
                   acc
@@ -598,6 +617,7 @@ fn absorb_supervised_turn_line(
                       thread_start: acc.thread_start,
                       turn_start: acc.turn_start,
                       turn_terminal: signal,
+                      unreadable_lines: acc.unreadable_lines,
                     }
                 }
             }
@@ -609,6 +629,7 @@ fn absorb_supervised_turn_line(
                   thread_start: acc.thread_start,
                   turn_start: acc.turn_start,
                   turn_terminal: signal,
+                  unreadable_lines: acc.unreadable_lines,
                 }
             }
         }
@@ -632,6 +653,7 @@ fn empty_supervised_turn_parse_acc() -> SupervisedTurnParseAcc {
     thread_start: SupervisedRpcAbsent,
     turn_start: SupervisedRpcAbsent,
     turn_terminal: SupervisedTurnTerminalAbsent,
+    unreadable_lines: 0,
   }
 }
 
@@ -643,6 +665,11 @@ fn parse_supervised_turn_stdout(stdout: String) -> SupervisedTurnParseAcc {
   )
 }
 
+// A NONZERO EXIT STILL REPORTS FAILURE EVEN WHEN LINES WERE UNREADABLE, and that ordering is a
+// judgement rather than an oversight. A process that exited nonzero has told us something about
+// ITSELF, from outside our decoder; our inability to read its stdout does not weaken that. The
+// unreadable check therefore guards only the two arms that would otherwise answer NotObserved --
+// the arms that assert an ABSENCE this build is no longer entitled to assert.
 fn disposition_from_supervised_parse(
   parse: SupervisedTurnParseAcc,
   exit_code: Int?,
@@ -657,7 +684,11 @@ fn disposition_from_supervised_parse(
       match exit_code {
         Present { value: code } =>
           if code == 0 {
-            ProviderTurnNotObserved
+            if parse.unreadable_lines > 0 {
+              ProviderTurnStreamUnreadable { unreadable_lines: parse.unreadable_lines }
+            } else {
+              ProviderTurnNotObserved
+            }
           } else {
             ProviderTurnFailed {
               cause: ProviderNativeCauseUnknown {
@@ -669,7 +700,12 @@ fn disposition_from_supervised_parse(
               },
             }
           }
-        Absent => ProviderTurnNotObserved
+        Absent =>
+          if parse.unreadable_lines > 0 {
+            ProviderTurnStreamUnreadable { unreadable_lines: parse.unreadable_lines }
+          } else {
+            ProviderTurnNotObserved
+          }
       }
   }
 }

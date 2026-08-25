@@ -1,6 +1,6 @@
 module gunbc.provider_turn_adjudication
 
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, Int, NonEmptyStr, String }
 
 data provider_turn_adjudication_note: String = "Terminal disposition and native cause are distinct axes (provider-control-interface-audit §3.2). A turn may be terminally failed while its cause stays unclassified. Automatic recovery is OUT OF SCOPE for this press specimen: no native decoder, retry budget, retry-after, previous-attempt set, or loop control exists yet — classified RetryableTransient MUST NOT authorize recovery. Cross-provider recovery is explicitly deferred."
 
@@ -25,6 +25,25 @@ type ProviderTurnDisposition
       cause: ProviderTurnCause
     }
   | ProviderTurnNotObserved
+  | ProviderTurnStreamUnreadable {
+      unreadable_lines: Int
+    }
+
+// WHY UNREADABLE IS NOT NotObserved, AND NOT Failed EITHER.
+//
+// NotObserved says the stream carried no terminal event. Unreadable says this build could not read
+// part of what the stream carried, so it cannot know whether a terminal event was among it. Those
+// have opposite remedies -- NotObserved waits for the provider, Unreadable investigates our own
+// decoder -- and collapsing them is the empty-observation narrow DESIGN names: an observation that
+// could not be expressed rendered as the verdict "nothing happened".
+//
+// It is not ProviderTurnFailed either, and that distinction is the one most likely to be argued
+// away. Failed asserts the TURN failed. An unreadable line says nothing about the turn; the provider
+// may have completed it perfectly. Reporting a decoder gap as a provider failure would attribute our
+// defect to them, and would make the turn ineligible for the retry a genuinely-unobserved turn gets.
+//
+// The count rides on the variant because a refusal that cannot say HOW MUCH it could not read leaves
+// its consumer unable to tell one stray byte from a wholly unreadable stream.
 
 data press_start_is_not_turn_note: String = "Codex account preflight (CodexAccountPreflightSubject / observe_codex_account_preflight) is provider/runtime standing — NOT a turn observation and NOT a roadmap AttemptKey. ProviderTurnNotObserved is the honest standing until a native terminal event is retained on a WorkerTurn."
 
@@ -33,6 +52,7 @@ fn automatic_recovery_authorized(disposition: ProviderTurnDisposition) -> Bool {
     ProviderTurnCompleted => false
     ProviderTurnNotObserved => false
     ProviderTurnFailed { cause: _ } => false
+    ProviderTurnStreamUnreadable { unreadable_lines: _ } => false
   }
 }
 
@@ -41,6 +61,7 @@ fn press_display_finished(disposition: ProviderTurnDisposition) -> Bool {
     ProviderTurnCompleted => true
     ProviderTurnFailed { cause: _ } => true
     ProviderTurnNotObserved => false
+    ProviderTurnStreamUnreadable { unreadable_lines: _ } => false
   }
 }
 
@@ -49,5 +70,6 @@ fn press_display_running(disposition: ProviderTurnDisposition) -> Bool {
     ProviderTurnNotObserved => false
     ProviderTurnCompleted => false
     ProviderTurnFailed { cause: _ } => false
+    ProviderTurnStreamUnreadable { unreadable_lines: _ } => false
   }
 }
