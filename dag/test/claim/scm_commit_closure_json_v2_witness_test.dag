@@ -454,7 +454,7 @@ test fn scm_image_a_complete_closure_encodes() -> Bool {
 // goes red; canonicalize positional children too and the positional claim goes red.
 // ------------------------------------------------------------------------------------------------
 
-fn scm_image_identity_of(outcome: StoreOutcome, fallback: ObjectId) -> ObjectId {
+fn scm_image_identity_of(outcome: StoreOutcome, fallback: gunbc.scm.object_store.ObjectId) -> gunbc.scm.object_store.ObjectId {
   match outcome {
     Stored { store: _, identity: i } => i
     LocatorCollision { identity: _, existing: _, incoming: _ } => fallback
@@ -469,18 +469,18 @@ fn scm_image_two_atoms() -> ScmImageTwoAtoms {
   ScmImageTwoAtoms { store: b.store, first: a.identity, second: b.identity }
 }
 
-fn scm_image_insert_children(kind: NodeKind, children: List<StoredEdge>, fallback: ObjectId) -> ObjectId {
+fn scm_image_insert_children(kind: NodeKind, children: List<StoredEdge>, fallback: gunbc.scm.object_store.ObjectId) -> gunbc.scm.object_store.ObjectId {
   scm_image_identity_of(
     outcome: insert_from_structure(store: scm_image_two_atoms().store, kind: kind, children: children),
     fallback: fallback
   )
 }
 
-fn scm_image_named_stored(name: Symbol, target: ObjectId) -> StoredEdge {
+fn scm_image_named_stored(name: Symbol, target: gunbc.scm.object_store.ObjectId) -> StoredEdge {
   StoredEdge { label: Named { name: name }, target: target }
 }
 
-fn scm_image_positional_stored(target: ObjectId) -> StoredEdge {
+fn scm_image_positional_stored(target: gunbc.scm.object_store.ObjectId) -> StoredEdge {
   StoredEdge { label: Positional, target: target }
 }
 

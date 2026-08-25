@@ -114,7 +114,7 @@ type RunnerSlotAddSequence
 // TRIGGER: it becomes load-bearing the moment anything in production selects a step sequence --
 // which is the same event that makes the fabric provisioning arm below necessary. Until then its
 // witness is the only thing executing it, and a witness is not a consumer.
-fn runner_slot_add_sequence_for(host: HostIdentity, slot_index: Nat) -> RunnerSlotAddSequence {
+fn runner_slot_add_sequence_for(host: HostIdentity, slot_index: std.nat.Nat) -> RunnerSlotAddSequence {
   match runner_slot_membership(host: host, slot_index: slot_index) {
     SlotOutsideCommittedPopulation { identity: _, committed_width: _ } =>
       SlotIsNotACommittedMember {

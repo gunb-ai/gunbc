@@ -198,7 +198,7 @@ fn commit_lookup_step(acc: CommitLookup, c: RepositoryCommit, wanted: String) ->
   }
 }
 
-fn commit_reference_of(commits: List<RepositoryCommit>, selected: ObjectId) -> String {
+fn commit_reference_of(commits: List<RepositoryCommit>, selected: gunbc.scm.object_store.ObjectId) -> String {
   match fold(
     commits,
     init: CommitSearch { index: 0, found: none },
@@ -222,7 +222,7 @@ type CommitSearch {
 // JsonValue, not an outcome), so what it must not do is emit something PLAUSIBLE: silently dropping
 // the checkout or substituting the first commit would produce a document that loads cleanly and
 // positions the user somewhere they never were.
-fn commit_search_step(acc: CommitSearch, c: RepositoryCommit, wanted: ObjectId) -> CommitSearch {
+fn commit_search_step(acc: CommitSearch, c: RepositoryCommit, wanted: gunbc.scm.object_store.ObjectId) -> CommitSearch {
   match acc.found {
     Present { value: _ } => CommitSearch { index: acc.index + 1, found: acc.found }
     Absent =>
@@ -234,7 +234,7 @@ fn commit_search_step(acc: CommitSearch, c: RepositoryCommit, wanted: ObjectId) 
   }
 }
 
-fn encode_optional_reference(commits: List<RepositoryCommit>, selected: ObjectId?) -> JsonValue {
+fn encode_optional_reference(commits: List<RepositoryCommit>, selected: gunbc.scm.object_store.ObjectId?) -> JsonValue {
   match selected {
     Absent => JsonNull
     Present { value: identity } =>
@@ -314,7 +314,7 @@ type RepositoryEncodeOutcome
 // is also the first. Pinning order here would additionally freeze an incidental traversal order into
 // the interface, which a later keyed or canonical representation of uncontained_targets should not
 // be forced to preserve.
-fn an_uncontained_target(store: ObjectStore) -> ObjectId? {
+fn an_uncontained_target(store: ObjectStore) -> gunbc.scm.object_store.ObjectId? {
   fold(uncontained_targets(store: store), init: none, f: fn(acc, id) {
     match acc {
       Present { value: _ } => acc
@@ -345,7 +345,7 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
 // These answer with the ObjectId the CALLER supplied, not with a wire string derived from it. The
 // caller holds that identity and can act on it; a hex key it would have to parse back is the same
 // fact rendered into a shape that has lost its type.
-fn unresolved_commit_root(acc: EncodeAcc, commits: List<RepositoryCommit>) -> ObjectId? {
+fn unresolved_commit_root(acc: EncodeAcc, commits: List<RepositoryCommit>) -> gunbc.scm.object_store.ObjectId? {
   fold(commits, init: none, f: fn(found, c) { unresolved_commit_root_step(acc: acc, found: found, commit: c) })
 }
 
@@ -357,7 +357,7 @@ fn unresolved_commit_root(acc: EncodeAcc, commits: List<RepositoryCommit>) -> Ob
 //
 // The repair is to stop routing a containment question through a representation at all. The question
 // is "does the table hold this object", and position_of answers it directly.
-fn unresolved_commit_root_step(acc: EncodeAcc, found: ObjectId?, commit: RepositoryCommit) -> ObjectId? {
+fn unresolved_commit_root_step(acc: EncodeAcc, found: gunbc.scm.object_store.ObjectId?, commit: RepositoryCommit) -> gunbc.scm.object_store.ObjectId? {
   match found {
     Present { value: _ } => found
     Absent =>
@@ -368,7 +368,7 @@ fn unresolved_commit_root_step(acc: EncodeAcc, found: ObjectId?, commit: Reposit
   }
 }
 
-fn unresolved_checkout_selection(commits: List<RepositoryCommit>, selected: ObjectId?) -> ObjectId? {
+fn unresolved_checkout_selection(commits: List<RepositoryCommit>, selected: gunbc.scm.object_store.ObjectId?) -> gunbc.scm.object_store.ObjectId? {
   match selected {
     Absent => none
     Present { value: identity } =>

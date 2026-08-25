@@ -117,7 +117,7 @@ fn stale_socket_unlink_command(admission: StaleSocketUnlinkAdmission) -> StaleSo
       match i.endpoint {
         SccacheServerUnixSocket { path: p } =>
           StaleSocketUnlinkCommandReady {
-            command: rm_force_command(path: p as String),
+            command: extdeps.tools.gnu_coreutils.rm_force_command(path: p as String),
           }
         SccacheServerTcpPort { port: _ } =>
           StaleSocketUnlinkCommandRefused {

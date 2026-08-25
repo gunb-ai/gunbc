@@ -458,7 +458,7 @@ data dimm_lot_64gib_32x_intended_allocation: List<FleetLotAllocationIntent> = [
   FleetLotAllocationIntent { lot: dimm_lot_64gib_32x_identity, host: operator_host_srv4, intended_quantity: 8 },
 ]
 
-fn intended_allocation_total(rows: List<FleetLotAllocationIntent>) -> Nat {
+fn intended_allocation_total(rows: List<FleetLotAllocationIntent>) -> std.nat.Nat {
   if rows.length() == 0 {
     0
   } else {

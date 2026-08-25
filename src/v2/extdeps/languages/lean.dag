@@ -218,7 +218,7 @@ type LeanPrimitiveFacts {
 fn lean_primitive_facts_for_catalog_width(
   surface_spelling: Symbol,
   signedness: Signedness,
-  count: Nat,
+  count: v2.std.nat.Nat,
   representation: Symbol
 ) -> LeanPrimitiveFacts {
   match lean_admit_bit_width(width: bit_width(count: count)) {

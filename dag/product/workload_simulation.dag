@@ -54,7 +54,7 @@ fn arrival_label(s: ArrivalShape) -> NonEmptyStr {
 
 // Peak-to-average is the axis that decides how much committed capacity sits idle, so the
 // shapes are parameterized by it rather than by a distribution nobody measured.
-fn concurrency_at(s: ArrivalShape, slot: Nat) -> Nat {
+fn concurrency_at(s: ArrivalShape, slot: std.nat.Nat) -> std.nat.Nat {
   match s {
     FlatArrival { concurrent } => concurrent,
     DiurnalArrival { trough, peak, period_slots, busy_slots } => if period_slots == 0 {
@@ -106,8 +106,8 @@ type SupplyLane {
 // duration are NOT modeled and cannot be until arrivals carry a duration alongside a count;
 // that is the next extension, and until it lands a quantum finer than one slot is
 // indistinguishable from continuous billing here.
-fn billed_slots_per_job(quantum_slots: Nat) -> Nat {
-  nat_max(a: quantum_slots, b: 1)
+fn billed_slots_per_job(quantum_slots: std.nat.Nat) -> std.nat.Nat {
+  std.nat.nat_max(a: quantum_slots, b: 1)
 }
 
 // ---------------------------------------------------------------------------------------
@@ -149,7 +149,7 @@ fn place_on_lane(acc: PlacementAccum, lane: SupplyLane) -> PlacementAccum {
   }
 }
 
-fn place_slot(lanes: List<SupplyLane>, concurrent: Nat) -> PlacementAccum {
+fn place_slot(lanes: List<SupplyLane>, concurrent: std.nat.Nat) -> PlacementAccum {
   let seeded = PlacementAccum {
     remaining: concurrent,
     variable_spend: money_amount_micro(count: 0),
@@ -180,7 +180,7 @@ type RunAccum {
   total_concurrency: std.nat.Nat
 }
 
-fn run_step(acc: RunAccum, placed: PlacementAccum, concurrent: Nat) -> RunAccum {
+fn run_step(acc: RunAccum, placed: PlacementAccum, concurrent: std.nat.Nat) -> RunAccum {
   RunAccum {
     variable_spend: measure_add(a: acc.variable_spend, b: placed.variable_spend),
     committed_slot_jobs: acc.committed_slot_jobs + placed.placed_committed,
@@ -191,7 +191,7 @@ fn run_step(acc: RunAccum, placed: PlacementAccum, concurrent: Nat) -> RunAccum 
   }
 }
 
-fn lane_committed_total(lanes: List<SupplyLane>, slots: Nat) -> MoneyAmountMicro {
+fn lane_committed_total(lanes: List<SupplyLane>, slots: std.nat.Nat) -> MoneyAmountMicro {
   fold(
     lanes,
     init: money_amount_micro(count: 0),
@@ -202,11 +202,11 @@ fn lane_committed_total(lanes: List<SupplyLane>, slots: Nat) -> MoneyAmountMicro
   )
 }
 
-fn lane_capacity_total(lanes: List<SupplyLane>) -> Nat {
+fn lane_capacity_total(lanes: List<SupplyLane>) -> std.nat.Nat {
   fold(lanes, init: 0, f: (acc, lane) => acc + lane.capacity)
 }
 
-fn committed_capacity_total(lanes: List<SupplyLane>) -> Nat {
+fn committed_capacity_total(lanes: List<SupplyLane>) -> std.nat.Nat {
   fold(lanes, init: 0, f: (acc, lane) => if lane_is_committed(lane: lane) { acc + lane.capacity } else { acc })
 }
 
@@ -228,7 +228,7 @@ type SimulationResult {
   committed_occupancy_permille: std.nat.Nat
 }
 
-fn run_one_slot(acc: RunAccum, shape: ArrivalShape, lanes: List<SupplyLane>, slot: Nat) -> RunAccum {
+fn run_one_slot(acc: RunAccum, shape: ArrivalShape, lanes: List<SupplyLane>, slot: std.nat.Nat) -> RunAccum {
   let concurrent = concurrency_at(s: shape, slot: slot)
   run_step(acc: acc, placed: place_slot(lanes: lanes, concurrent: concurrent), concurrent: concurrent)
 }
@@ -238,8 +238,8 @@ fn run_one_slot(acc: RunAccum, shape: ArrivalShape, lanes: List<SupplyLane>, slo
 // On the occupancy quotient, a zero denominator needs no branch either: no committed
 // capacity and no slots both force committed_slot_jobs to zero, so the quotient is zero
 // either way and nat_max only keeps the division total.
-fn simulate(shape: ArrivalShape, lanes: List<SupplyLane>, slots: Nat) -> SimulationResult {
-  let grid = nat_range_inclusive(lo: 0, hi: nat_max(a: slots, b: 1) - 1)
+fn simulate(shape: ArrivalShape, lanes: List<SupplyLane>, slots: std.nat.Nat) -> SimulationResult {
+  let grid = nat_range_inclusive(lo: 0, hi: std.nat.nat_max(a: slots, b: 1) - 1)
   let seeded = RunAccum {
     variable_spend: money_amount_micro(count: 0),
     committed_slot_jobs: 0,
@@ -262,7 +262,7 @@ fn simulate(shape: ArrivalShape, lanes: List<SupplyLane>, slots: Nat) -> Simulat
     unplaced_slot_jobs: run.unplaced_slot_jobs,
     peak_concurrency: run.peak_concurrency,
     total_concurrency: run.total_concurrency,
-    committed_occupancy_permille: (run.committed_slot_jobs * 1000) / nat_max(a: committed_capacity * slots, b: 1),
+    committed_occupancy_permille: (run.committed_slot_jobs * 1000) / std.nat.nat_max(a: committed_capacity * slots, b: 1),
   }
 }
 

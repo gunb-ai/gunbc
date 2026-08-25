@@ -273,7 +273,7 @@ fn automatic_refusal_reason_for_inventory(
   )
 }
 data dispatch_claude_default_workflow_mode: NonEmptyStr = "default" as NonEmptyStr
-data dispatch_claude_default_credential_root: FilePath = "~/.claude" as FilePath
+data dispatch_claude_default_credential_root: std.types.FilePath = "~/.claude" as std.types.FilePath
 
 data claude_offer_inventory_wiring_note: String = "PRODUCTION WIRING DEFERRED (operator ruling msg_3b291a6a / msg_0ec68b71): OfferClaude is omitted from provider_inventory_for_instance until the WorkerTurn PR. resolve_provider_offer still delegates OfferClaude to resolve_claude_offer when a fixture or future inventory row includes it — production deferral is inventory omission, not a blanket resolver refusal. Fixture controls (fixture_inventory_codex_then_claude, resolve_dispatch_selection) prove a future eligible Claude standing is selectable."
 
@@ -385,7 +385,7 @@ fn codex_offer_observed_process_fingerprint(offer: CodexOffer) -> NonEmptyStr? {
 fn codex_offer_for_instance_with_standing(
   instance: HostDashboardInstance,
   standing: ProviderStanding,
-  executable: FilePath,
+  executable: std.types.FilePath,
   process_fingerprint: CodexProcessFingerprintStanding,
 ) -> CodexOffer {
   CodexOffer {
@@ -439,7 +439,7 @@ fn codex_inventory_offers_for_instance(instance: HostDashboardInstance) -> List<
 fn fixture_codex_offer_with_standing(
   instance: HostDashboardInstance,
   standing: ProviderStanding,
-  executable: FilePath,
+  executable: std.types.FilePath,
 ) -> ProviderOffer {
   OfferCodex {
     offer: codex_offer_for_instance_with_standing(

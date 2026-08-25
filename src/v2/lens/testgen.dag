@@ -838,9 +838,9 @@ fn witness_validity_diagnostic_node(d: Diagnostic) -> Outcome<Node> {
 fn witness_validity_diagnostic_list_node(xs: FreeMonoid<Diagnostic>) -> Outcome<Node> {
   fold_list_right(
     xs: xs,
-    empty: Accepted {
+    empty: v2.std.diagnostic.Accepted {
       value: witness_validity_symbol_atom_node(s: ^witness_validity_list_tag_empty),
-      diagnostics: None
+      diagnostics: v2.std.diagnostic.None
     },
     snoc: fn(acc, h) {
       bind_outcome(o: acc, f: fn(prev_node) {
@@ -1068,7 +1068,7 @@ fn append_nat_obligation_if_law_matches(
 fn nat_algebra_law_obligation_for_law(law: Symbol) -> Outcome<NatAlgebraLawObligation> {
   fold_list(
     xs: nat_declared_algebra_law_obligations(),
-    empty: Rejected {
+    empty: v2.std.diagnostic.Rejected {
       diagnostics: diagnostics_singleton(
         d: Diagnostic {
           reason: ^testgen_non_algebra_law_scheduled_slot,
@@ -1191,7 +1191,7 @@ fn nat_algebra_law_schedule_row_for_manual_anchor(
 ) -> Outcome<NatAlgebraLawScheduleRow> {
   fold_list(
     xs: nat_declared_algebra_law_obligations(),
-    empty: Rejected {
+    empty: v2.std.diagnostic.Rejected {
       diagnostics: diagnostics_singleton(
         d: testgen_non_algebra_law_scheduled_slot_diagnostic()
       )
@@ -1252,7 +1252,7 @@ fn append_algebra_law_generator_from_nat_obligation(
 fn testgen_scheduled_algebra_law_generators() -> Outcome<List<Generator<TestgenConcept>>> {
   fold_list_right(
     xs: nat_declared_algebra_law_obligations(),
-    empty: outcome_accepted(value: Empty),
+    empty: outcome_accepted(value: std.algebra.Empty),
     snoc: fn(o, obligation) {
       append_algebra_law_generator_from_nat_obligation(
         acc: o,
@@ -1360,7 +1360,7 @@ fn testgen_algebra_law_subjects_from_scheduled_generators(
 ) -> Outcome<List<AlgebraLawSubject>> {
   fold_list_right(
     xs: generators,
-    empty: outcome_accepted(value: Empty),
+    empty: outcome_accepted(value: std.algebra.Empty),
     snoc: fn(o, generator) {
       bind_outcome(
         o: o,
@@ -1769,12 +1769,12 @@ fn manual_test_claim_for_manual_anchor(key: ManualAnchorKey) -> Outcome<TestClai
     ManualTcLoopEmpty => Accepted { value: claim_loop_empty_rejected, diagnostics: None }
     ManualTcBindZeroChildren => Accepted { value: claim_bind_zero_children_rejected, diagnostics: None }
     ManualTcConjEqualsRefl => Accepted { value: claim_conj_equals_refl, diagnostics: None }
-    ManualNatAddLeftIdentity => Accepted { value: claim_nat_add_left_identity, diagnostics: None }
-    ManualNatAddRightIdentity => Accepted { value: claim_nat_add_right_identity, diagnostics: None }
-    ManualNatAddAssociativity => Accepted { value: claim_nat_add_associativity, diagnostics: None }
-    ManualNatMulLeftIdentity => Accepted { value: claim_nat_mul_left_identity, diagnostics: None }
-    ManualNatMulAnnihilator => Accepted { value: claim_nat_mul_annihilator, diagnostics: None }
-    ManualNatMulAssociativity => Accepted { value: claim_nat_mul_associativity, diagnostics: None }
+    ManualNatAddLeftIdentity => Accepted { value: v2.test.manual.nat_law_anchors.claim_nat_add_left_identity, diagnostics: None }
+    ManualNatAddRightIdentity => Accepted { value: v2.test.manual.nat_law_anchors.claim_nat_add_right_identity, diagnostics: None }
+    ManualNatAddAssociativity => Accepted { value: v2.test.manual.nat_law_anchors.claim_nat_add_associativity, diagnostics: None }
+    ManualNatMulLeftIdentity => Accepted { value: v2.test.manual.nat_law_anchors.claim_nat_mul_left_identity, diagnostics: None }
+    ManualNatMulAnnihilator => Accepted { value: v2.test.manual.nat_law_anchors.claim_nat_mul_annihilator, diagnostics: None }
+    ManualNatMulAssociativity => Accepted { value: v2.test.manual.nat_law_anchors.claim_nat_mul_associativity, diagnostics: None }
     ManualLbeConjDagSurface =>
       testgen_emit_language_behavior_equivalence_claim(
         anchor: ManualLbeConjDagSurface,
@@ -1836,7 +1836,7 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
         }, diagnostics: None }
     ManualClaimAnchor { manual_anchor: ManualTcTransformEmpty } =>
       Accepted { value: TypeConstruction {
-          subject: BehaviorValueSubject { behavior: Transform },
+          subject: BehaviorValueSubject { behavior: v2.std.node.Transform },
         }, diagnostics: None }
     ManualClaimAnchor { manual_anchor: ManualTcBranchEmpty } =>
       Accepted { value: TypeConstruction {

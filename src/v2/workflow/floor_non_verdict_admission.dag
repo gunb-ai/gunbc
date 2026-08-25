@@ -16,7 +16,7 @@ fn identity_in(xs: List<String>, q: String) -> Bool {
 fn non_verdict_added(observed: List<String>, roster: List<String>) -> List<String> {
   v2.std.algebra.fold_list(
     xs: observed,
-    empty: Empty {},
+    empty: v2.std.algebra.Empty {},
     cons: fn(acc, q) { if v2.test.claim.affected_set_universe.identity_in(xs: roster, q: q) { acc } else { std.algebra.Cons { head: q, tail: acc } } },
   )
 }
@@ -36,7 +36,7 @@ fn non_verdict_added(observed: List<String>, roster: List<String>) -> List<Strin
 fn non_verdict_repaid(observed: List<String>, roster: List<String>) -> List<String> {
   v2.std.algebra.fold_list(
     xs: roster,
-    empty: Empty {},
+    empty: v2.std.algebra.Empty {},
     cons: fn(acc, q) { if v2.test.claim.affected_set_universe.identity_in(xs: observed, q: q) { acc } else { std.algebra.Cons { head: q, tail: acc } } },
   )
 }

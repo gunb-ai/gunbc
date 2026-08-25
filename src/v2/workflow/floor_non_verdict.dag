@@ -192,7 +192,7 @@ fn floor_non_verdict_chunk_00() -> List<String> {
     head: "test.claim.host_phase_status.witness_reconcile_covers_upsert_teardown_and_noop",
     tail:   std.algebra.Cons {
     head: "test.claim.host_phase_status.witness_remaining_work_counts_every_unfinished_cell",
-    tail: Empty {}
+    tail: v2.std.algebra.Empty {}
   }
   }
   }
@@ -316,7 +316,7 @@ fn floor_non_verdict_chunk_01() -> List<String> {
     head: "v2.test.claim.generated_conformance_floor.generated_refinement_preserves_nonempty_list_base",
     tail:   std.algebra.Cons {
     head: "v2.test.claim.generated_conformance_floor.generated_refinement_scheduler_emits_one_generator",
-    tail: Empty {}
+    tail: v2.std.algebra.Empty {}
   }
   }
   }
@@ -440,7 +440,7 @@ fn floor_non_verdict_chunk_02() -> List<String> {
     head: "v2.test.extdeps.spice_rc_passive_deck_claims.spice_rc_passive_deck_authority_holds",
     tail:   std.algebra.Cons {
     head: "v2.test.fact_cardinality.lens_unit.synthetic_fork_red.synthetic_fork_red_holds",
-    tail: Empty {}
+    tail: v2.std.algebra.Empty {}
   }
   }
   }
@@ -528,7 +528,7 @@ fn floor_non_verdict_chunk_03() -> List<String> {
     head: "v2.test.manual.medium_source_text_instantiation.witness_source_field_is_medium",
     tail:   std.algebra.Cons {
     head: "v2.test.manual.value_null_split_witness.optional_null_straddle_rostered_until_phase_e",
-    tail: Empty {}
+    tail: v2.std.algebra.Empty {}
   }
   }
   }
@@ -554,7 +554,7 @@ fn floor_non_verdict_chunk_03() -> List<String> {
 }
 
 fn floor_non_verdict_chunks() -> List<List<String>> {
-  std.algebra.Cons { head: floor_non_verdict_chunk_00(), tail: std.algebra.Cons { head: floor_non_verdict_chunk_01(), tail: std.algebra.Cons { head: floor_non_verdict_chunk_02(), tail: std.algebra.Cons { head: floor_non_verdict_chunk_03(), tail: Empty {} } } } }
+  std.algebra.Cons { head: floor_non_verdict_chunk_00(), tail: std.algebra.Cons { head: floor_non_verdict_chunk_01(), tail: std.algebra.Cons { head: floor_non_verdict_chunk_02(), tail: std.algebra.Cons { head: floor_non_verdict_chunk_03(), tail: v2.std.algebra.Empty {} } } } }
 }
 
 fn floor_non_verdict_roster() -> List<String> {

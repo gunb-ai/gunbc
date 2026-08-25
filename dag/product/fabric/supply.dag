@@ -338,7 +338,7 @@ fn offer_fungibility_for<P>(requirements: ExecutionRequirements, offer: Supplier
   }
 }
 
-fn seconds_per_hour() -> Nat {
+fn seconds_per_hour() -> std.nat.Nat {
   minutes_per_hour() * seconds_per_minute()
 }
 
@@ -364,7 +364,7 @@ fn seconds_per_hour() -> Nat {
 // vendor into the per-hour arm made a three-minute job project a whole hour, a
 // twentyfold overstatement that would have kept the selection fold from ever
 // choosing that supplier. The quantum is now the supplier's own.
-fn billed_unit_count(seconds: Nat, quantum_seconds: Nat) -> Nat {
+fn billed_unit_count(seconds: std.nat.Nat, quantum_seconds: std.nat.Nat) -> std.nat.Nat {
   if quantum_seconds == 0 {
     seconds
   } else {
@@ -387,7 +387,7 @@ fn billed_unit_count(seconds: Nat, quantum_seconds: Nat) -> Nat {
 // cost exceeds the ceiling, which is the absorbing-fallback failure (DESIGN
 // section 5) one level down: a refusal arm that quietly narrows instead of
 // refusing.
-fn billed_seconds(seconds: Nat, quantum_seconds: Nat) -> Nat {
+fn billed_seconds(seconds: std.nat.Nat, quantum_seconds: std.nat.Nat) -> std.nat.Nat {
   if quantum_seconds == 0 {
     seconds
   } else {

@@ -258,11 +258,11 @@ fn position_reference(n: Int) -> String {
   json_int_lexeme(n: n) as String
 }
 
-fn object_id_key(identity: ObjectId) -> String {
+fn object_id_key(identity: gunbc.scm.object_store.ObjectId) -> String {
   identity.digest as String
 }
 
-fn position_of(positions: EncodePositions, identity: ObjectId) -> String? {
+fn position_of(positions: EncodePositions, identity: gunbc.scm.object_store.ObjectId) -> String? {
   map_lookup(m: positions.by_identity, key: object_id_key(identity: identity))
 }
 
@@ -286,7 +286,7 @@ fn position_of(positions: EncodePositions, identity: ObjectId) -> String? {
 //
 // Exactly one member, checked. Both arms present, or neither, is a typed refusal rather than a
 // last-wins read -- the same reason every member set in this module is closed.
-fn encode_target(positions: EncodePositions, target: ObjectId) -> JsonValue {
+fn encode_target(positions: EncodePositions, target: gunbc.scm.object_store.ObjectId) -> JsonValue {
   match position_of(positions: positions, identity: target) {
     Present { value: r } => json_object(members: [json_kv(key: "at", value: json_string(s: r))])
     Absent =>
@@ -365,7 +365,7 @@ fn encode_object_table(store: ObjectStore) -> EncodeAcc {
 // closure may legitimately be shipped without the object its own root names (a delta whose recipient
 // already holds it). The predecessor encoded the root positionally too, so that case was as
 // unnameable as any other.
-fn encoded_root_reference(acc: EncodeAcc, root: ObjectId) -> JsonValue {
+fn encoded_root_reference(acc: EncodeAcc, root: gunbc.scm.object_store.ObjectId) -> JsonValue {
   encode_target(positions: acc.positions, target: root)
 }
 
@@ -431,13 +431,13 @@ fn encode_admitted_partial_closure_document(admitted: AdmittedPartialCommitClosu
 // AN uncontained key, not THE FIRST. Same correction as an_uncontained_target in repository_envelope:
 // the refusal needs one actionable example and no consumer depends on which, so the name should not
 // promise an ordering nothing verifies.
-fn an_uncontained_key(missing: List<ObjectId>) -> String {
+fn an_uncontained_key(missing: List<gunbc.scm.object_store.ObjectId>) -> String {
   fold(missing, init: "", f: fn(acc, id) {
     if acc == "" { object_id_key(identity: id) } else { acc }
   })
 }
 
-fn encode_closure_document(store: ObjectStore, root: ObjectId) -> JsonValue {
+fn encode_closure_document(store: ObjectStore, root: gunbc.scm.object_store.ObjectId) -> JsonValue {
   let acc = encode_object_table(store: store)
   let root_reference = encoded_root_reference(acc: acc, root: root)
   json_object(
@@ -593,9 +593,9 @@ fn decode_kind(kind_value: JsonValue) -> KindDecode {
 // is O(n log n); the refusal semantics are unchanged, because a reference still resolves ONLY
 // against positions already decoded -- the map is populated in the same forward order the list was,
 // so a forward or fabricated reference is still absent and still refuses.
-type DecodePositions = Map<String, ObjectId>
+type DecodePositions = Map<String, gunbc.scm.object_store.ObjectId>
 
-fn resolve_reference(positions: DecodePositions, reference: String) -> ObjectId? {
+fn resolve_reference(positions: DecodePositions, reference: String) -> gunbc.scm.object_store.ObjectId? {
   map_lookup(m: positions, key: reference)
 }
 
@@ -1001,7 +1001,7 @@ fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
 // predecessor format could not produce: a document whose uncontained references leave objects the
 // store does not hold loads correctly and is PARTIAL, which is a success with an obligation rather
 // than a failure. Completeness is derived from the objects, never a flag beside them.
-fn loaded_closure_standing(store: ObjectStore, root: ObjectId) -> LoadStanding {
+fn loaded_closure_standing(store: ObjectStore, root: gunbc.scm.object_store.ObjectId) -> LoadStanding {
   if closure_is_complete(closure: CommitClosure { store: store, root: root }) {
     LoadComplete
   } else {

@@ -207,22 +207,22 @@ fn git_diff_name_status_parse(raw: String) -> GitDiffNameStatusParseOutcome {
   }
 }
 
-fn git_diff_status_entry_touched_paths(entry: GitDiffStatusEntry) -> List<FilePath> {
+fn git_diff_status_entry_touched_paths(entry: GitDiffStatusEntry) -> List<std.types.FilePath> {
   match entry.old_path {
     Present { value: old } => [entry.path, old]
     Absent => [entry.path]
   }
 }
 
-fn git_diff_status_touched_paths_step(acc: List<FilePath>, entry: GitDiffStatusEntry) -> List<FilePath> {
+fn git_diff_status_touched_paths_step(acc: List<std.types.FilePath>, entry: GitDiffStatusEntry) -> List<std.types.FilePath> {
   append(acc, items: git_diff_status_entry_touched_paths(entry: entry))
 }
 
-fn git_diff_status_entries_touched_paths(entries: List<GitDiffStatusEntry>) -> List<FilePath> {
+fn git_diff_status_entries_touched_paths(entries: List<GitDiffStatusEntry>) -> List<std.types.FilePath> {
   fold(entries, init: [], f: git_diff_status_touched_paths_step)
 }
 
-fn git_diff_status_entry_departed_path(entry: GitDiffStatusEntry) -> FilePath? {
+fn git_diff_status_entry_departed_path(entry: GitDiffStatusEntry) -> std.types.FilePath? {
   match entry.status {
     DiffDeletedStatus => Present { value: entry.path }
     DiffRenamedStatus { similarity: _ } => entry.old_path
@@ -230,14 +230,14 @@ fn git_diff_status_entry_departed_path(entry: GitDiffStatusEntry) -> FilePath? {
   }
 }
 
-fn git_diff_status_departed_paths_step(acc: List<FilePath>, entry: GitDiffStatusEntry) -> List<FilePath> {
+fn git_diff_status_departed_paths_step(acc: List<std.types.FilePath>, entry: GitDiffStatusEntry) -> List<std.types.FilePath> {
   match git_diff_status_entry_departed_path(entry: entry) {
     Present { value: path } => append(acc, items: [path])
     Absent => acc
   }
 }
 
-fn git_diff_status_entries_departed_paths(entries: List<GitDiffStatusEntry>) -> List<FilePath> {
+fn git_diff_status_entries_departed_paths(entries: List<GitDiffStatusEntry>) -> List<std.types.FilePath> {
   fold(entries, init: [], f: git_diff_status_departed_paths_step)
 }
 
@@ -554,11 +554,11 @@ fn shape_git_config_local_get_argv(key: String) -> List<String> {
   ["git", "config", "--local", "--get", key]
 }
 
-fn shape_git_config_local_in_repo_argv(repo: FilePath, key: String, value: String) -> List<String> {
+fn shape_git_config_local_in_repo_argv(repo: std.types.FilePath, key: String, value: String) -> List<String> {
   ["git", "-C", repo as String, "config", "--local", key, value]
 }
 
-fn shape_git_config_local_get_in_repo_argv(repo: FilePath, key: String) -> List<String> {
+fn shape_git_config_local_get_in_repo_argv(repo: std.types.FilePath, key: String) -> List<String> {
   ["git", "-C", repo as String, "config", "--local", "--get", key]
 }
 
@@ -628,7 +628,7 @@ service git.Core {
 
   operation LsFiles {
     input {}
-    output { files: List<FilePath> from "stdout_lines" }
+    output { files: List<std.types.FilePath> from "stdout_lines" }
     readonly
     transport shell { argv: ["git", "ls-files"] }
     exit {
@@ -651,7 +651,7 @@ service git.Core {
   operation DiffNameOnly {
     input { base: GitRef, head: GitRef = "HEAD" }
     output {
-      paths: List<FilePath> from "stdout_lines"
+      paths: List<std.types.FilePath> from "stdout_lines"
       success: Bool from "exit_success"
     }
     readonly
@@ -665,7 +665,7 @@ service git.Core {
   operation DiffNameOnlyMerge {
     input { base: GitRef, head: GitRef = "HEAD" }
     output {
-      paths: List<FilePath> from "stdout_lines"
+      paths: List<std.types.FilePath> from "stdout_lines"
       success: Bool from "exit_success"
     }
     readonly
@@ -727,7 +727,7 @@ service git.Core {
   }
 
   operation Show {
-    input { ref: GitRef, path: FilePath }
+    input { ref: GitRef, path: std.types.FilePath }
     output {
       content: String from "stdout"
       success: Bool from "exit_success"
@@ -813,7 +813,7 @@ service git.Core {
   }
 
   operation ConfigLocalGetInRepo {
-    input { repo: FilePath, key: String }
+    input { repo: std.types.FilePath, key: String }
     output {
       success: Bool from "exit_success"
       value: String from "stdout"
@@ -829,7 +829,7 @@ service git.Core {
   }
 
   operation ConfigLocalSetInRepo {
-    input { repo: FilePath, key: String, value: String }
+    input { repo: std.types.FilePath, key: String, value: String }
     output {
       success: Bool from "exit_success"
       stderr: String from "stderr"
@@ -842,7 +842,7 @@ service git.Core {
   }
 
   operation InitInRepo {
-    input { repo: FilePath }
+    input { repo: std.types.FilePath }
     output {
       success: Bool from "exit_success"
       stderr: String from "stderr"
@@ -855,7 +855,7 @@ service git.Core {
   }
 
   operation AddAllInRepo {
-    input { repo: FilePath }
+    input { repo: std.types.FilePath }
     output {
       exit_code: Int from "exit_code"
       stderr: String from "stderr"
@@ -864,7 +864,7 @@ service git.Core {
   }
 
   operation CommitInRepo {
-    input { repo: FilePath, message: String }
+    input { repo: std.types.FilePath, message: String }
     output {
       exit_code: Int from "exit_code"
       stderr: String from "stderr"
@@ -873,7 +873,7 @@ service git.Core {
   }
 
   operation CheckoutNewBranchInRepo {
-    input { repo: FilePath, branch: String }
+    input { repo: std.types.FilePath, branch: String }
     output {
       exit_code: Int from "exit_code"
       stderr: String from "stderr"
@@ -882,7 +882,7 @@ service git.Core {
   }
 
   operation CheckoutNewBranchAtInRepo {
-    input { repo: FilePath, branch: String, start_point: GitRef }
+    input { repo: std.types.FilePath, branch: String, start_point: GitRef }
     output {
       exit_code: Int from "exit_code"
       stderr: String from "stderr"
@@ -891,7 +891,7 @@ service git.Core {
   }
 
   operation CheckoutBranchInRepo {
-    input { repo: FilePath, branch: String }
+    input { repo: std.types.FilePath, branch: String }
     output {
       exit_code: Int from "exit_code"
       stderr: String from "stderr"
@@ -900,7 +900,7 @@ service git.Core {
   }
 
   operation MergeNoEditInRepo {
-    input { repo: FilePath, branch: String }
+    input { repo: std.types.FilePath, branch: String }
     output {
       exit_code: Int from "exit_code"
       stdout: String from "stdout"
@@ -910,7 +910,7 @@ service git.Core {
   }
 
   operation LsFilesUnmergedInRepo {
-    input { repo: FilePath, path: String }
+    input { repo: std.types.FilePath, path: String }
     output {
       entries: List<String> from "stdout_lines"
       exit_code: Int from "exit_code"
@@ -921,7 +921,7 @@ service git.Core {
   }
 
   operation LsFilesStageZInRepo {
-    input { repo: FilePath }
+    input { repo: std.types.FilePath }
     output {
       raw: String from "stdout"
       success: Bool from "exit_success"
@@ -935,7 +935,7 @@ service git.Core {
   }
 
   operation LsRemoteRefInRepo {
-    input { repo: FilePath, remote: String, ref_name: String }
+    input { repo: std.types.FilePath, remote: String, ref_name: String }
     output {
       advertised: String from "stdout"
       exit_code: Int from "exit_code"
@@ -946,7 +946,7 @@ service git.Core {
   }
 
   operation RevParseInRepo {
-    input { repo: FilePath, target: GitRef }
+    input { repo: std.types.FilePath, target: GitRef }
     output {
       revision: String from "stdout"
       exit_code: Int from "exit_code"
@@ -957,7 +957,7 @@ service git.Core {
   }
 
   operation FetchForcedRefInRepo {
-    input { repo: FilePath, remote: String, refspec: String }
+    input { repo: std.types.FilePath, remote: String, refspec: String }
     output {
       exit_code: Int from "exit_code"
       stdout: String from "stdout"
@@ -967,7 +967,7 @@ service git.Core {
   }
 
   operation PushForcedRefInRepo {
-    input { repo: FilePath, remote: String, refspec: String }
+    input { repo: std.types.FilePath, remote: String, refspec: String }
     output {
       exit_code: Int from "exit_code"
       stdout: String from "stdout"
@@ -977,7 +977,7 @@ service git.Core {
   }
 
   operation CatFileBlobInRepo {
-    input { repo: FilePath, oid: String }
+    input { repo: std.types.FilePath, oid: String }
     output {
       content: String from "stdout"
       success: Bool from "exit_success"
@@ -991,94 +991,94 @@ service git.Core {
   }
 }
 
-fn shape_git_worktree_add_argv(path: FilePath, branch: NonEmptyStr, remote_ref: GitRef) -> List<String> {
+fn shape_git_worktree_add_argv(path: std.types.FilePath, branch: NonEmptyStr, remote_ref: GitRef) -> List<String> {
   ["worktree", "add", path as String, "-b", branch as String, remote_ref as String]
 }
 
-fn shape_git_worktree_add_detached_argv(path: FilePath, commit: GitRef) -> List<String> {
+fn shape_git_worktree_add_detached_argv(path: std.types.FilePath, commit: GitRef) -> List<String> {
   ["worktree", "add", "--detach", path as String, commit as String]
 }
 
 fn shape_git_bundle_create_argv(
-  repo: FilePath,
-  bundle: FilePath,
+  repo: std.types.FilePath,
+  bundle: std.types.FilePath,
   source_ref: GitRef,
 ) -> List<String> {
   ["-C", repo as String, "bundle", "create", bundle as String, source_ref as String]
 }
 
-fn shape_git_bundle_verify_argv(bundle: FilePath) -> List<String> {
+fn shape_git_bundle_verify_argv(bundle: std.types.FilePath) -> List<String> {
   ["bundle", "verify", bundle as String]
 }
 
-fn shape_git_is_shallow_repository_argv(repo: FilePath) -> List<String> {
+fn shape_git_is_shallow_repository_argv(repo: std.types.FilePath) -> List<String> {
   ["-C", repo as String, "rev-parse", "--is-shallow-repository"]
 }
 
 fn shape_git_remote_get_url_argv(
-  repo: FilePath,
+  repo: std.types.FilePath,
   remote: NonEmptyStr,
 ) -> List<String> {
   ["-C", repo as String, "remote", "get-url", remote as String]
 }
 
 fn shape_git_fetch_unshallow_argv(
-  repo: FilePath,
+  repo: std.types.FilePath,
   remote: NonEmptyStr,
 ) -> List<String> {
   ["-C", repo as String, "fetch", "--no-tags", "--unshallow", remote as String]
 }
 
-fn shape_git_init_bare_argv(path: FilePath) -> List<String> {
+fn shape_git_init_bare_argv(path: std.types.FilePath) -> List<String> {
   ["init", "--bare", path as String]
 }
 
-fn shape_git_init_in_repo_argv(repo: FilePath) -> List<String> {
+fn shape_git_init_in_repo_argv(repo: std.types.FilePath) -> List<String> {
   ["git", "-C", repo as String, "init", "-q"]
 }
 
 fn shape_git_bare_fetch_argv(
-  repo: FilePath,
-  bundle: FilePath,
+  repo: std.types.FilePath,
+  bundle: std.types.FilePath,
   source_ref: GitRef,
 ) -> List<String> {
   ["--git-dir", repo as String, "fetch", "--force", bundle as String, source_ref as String]
 }
 
 fn shape_git_bare_update_ref_argv(
-  repo: FilePath,
+  repo: std.types.FilePath,
   publish_ref: GitRef,
 ) -> List<String> {
   ["--git-dir", repo as String, "update-ref", publish_ref as String, "FETCH_HEAD"]
 }
 
 fn shape_git_clone_branch_argv(
-  origin: FilePath,
-  repo: FilePath,
+  origin: std.types.FilePath,
+  repo: std.types.FilePath,
   branch: NonEmptyStr,
 ) -> List<String> {
   ["clone", "--branch", branch as String, origin as String, repo as String]
 }
 
-fn shape_git_status_porcelain_argv(repo: FilePath) -> List<String> {
+fn shape_git_status_porcelain_argv(repo: std.types.FilePath) -> List<String> {
   ["-C", repo as String, "status", "--porcelain"]
 }
 
-fn shape_git_fetch_remote_argv(repo: FilePath, remote: NonEmptyStr) -> List<String> {
+fn shape_git_fetch_remote_argv(repo: std.types.FilePath, remote: NonEmptyStr) -> List<String> {
   ["-C", repo as String, "fetch", remote as String]
 }
 
-fn shape_git_reset_hard_argv(repo: FilePath, target: GitRef) -> List<String> {
+fn shape_git_reset_hard_argv(repo: std.types.FilePath, target: GitRef) -> List<String> {
   ["-C", repo as String, "reset", "--hard", target as String]
 }
 
-fn shape_git_rev_parse_argv(repo: FilePath, target: GitRef) -> List<String> {
+fn shape_git_rev_parse_argv(repo: std.types.FilePath, target: GitRef) -> List<String> {
   ["-C", repo as String, "rev-parse", target as String]
 }
 
 service git.Worktree {
   operation Add {
-    input { path: FilePath, branch: NonEmptyStr, remote_ref: GitRef }
+    input { path: std.types.FilePath, branch: NonEmptyStr, remote_ref: GitRef }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"

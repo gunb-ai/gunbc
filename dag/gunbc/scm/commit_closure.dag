@@ -183,7 +183,7 @@ fn admitted_closure(admitted: AdmittedPartialCommitClosure) -> CommitClosure {
   admitted.closure
 }
 
-fn admitted_unresolved(admitted: AdmittedPartialCommitClosure) -> List<ObjectId> {
+fn admitted_unresolved(admitted: AdmittedPartialCommitClosure) -> List<gunbc.scm.object_store.ObjectId> {
   admitted.unresolved
 }
 
@@ -218,7 +218,7 @@ type CommitClosure {
 // An EMPTY list is the complete closure. That is the ordinary case and it is not a special arm --
 // completeness is "nothing is missing", derived, never a stored flag that could disagree with the
 // objects beside it.
-fn unresolved_identities(closure: CommitClosure) -> List<ObjectId> {
+fn unresolved_identities(closure: CommitClosure) -> List<gunbc.scm.object_store.ObjectId> {
   concat(uncontained_targets(store: closure.store), unresolved_root(closure: closure))
 }
 
@@ -253,7 +253,7 @@ fn unresolved_identities(closure: CommitClosure) -> List<ObjectId> {
 //
 // The realized n is not the argument. A delta encoder folds this over the whole store, and DESIGN §6
 // rejects "n is small here" as a non-time-stable fact: reuse is what changes n.
-fn uncontained_targets(store: ObjectStore) -> List<ObjectId> {
+fn uncontained_targets(store: ObjectStore) -> List<gunbc.scm.object_store.ObjectId> {
   reverse(
     fold(
       store_records_in_dependency_order(store: store),
@@ -263,7 +263,7 @@ fn uncontained_targets(store: ObjectStore) -> List<ObjectId> {
   )
 }
 
-fn uncontained_in_record(store: ObjectStore, acc: List<ObjectId>, record: ObjectRecord) -> List<ObjectId> {
+fn uncontained_in_record(store: ObjectStore, acc: List<gunbc.scm.object_store.ObjectId>, record: ObjectRecord) -> List<gunbc.scm.object_store.ObjectId> {
   fold(
     record.children,
     init: acc,
@@ -276,7 +276,7 @@ fn uncontained_in_record(store: ObjectStore, acc: List<ObjectId>, record: Object
 // THE ROOT IS A REFERENCE LIKE ANY OTHER, and a closure missing its own root is the sharpest case of
 // incompleteness there is -- a document that names a commit whose top object it does not carry.
 // The predecessor encoded the root positionally too, so this case was as unnameable as the rest.
-fn unresolved_root(closure: CommitClosure) -> List<ObjectId> {
+fn unresolved_root(closure: CommitClosure) -> List<gunbc.scm.object_store.ObjectId> {
   if store_contains(store: closure.store, identity: closure.root) { [] } else { [closure.root] }
 }
 

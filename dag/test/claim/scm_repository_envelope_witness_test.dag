@@ -374,7 +374,7 @@ test fn scm_env_a_valid_commit_reference_checks_out() -> Bool {
   }
 }
 
-fn scm_env_second_root_is(identity: ObjectId) -> Bool {
+fn scm_env_second_root_is(identity: gunbc.scm.object_store.ObjectId) -> Bool {
   let first = scm_env_put(store: empty_store(), n: scm_env_program_one())
   let second = scm_env_put(store: first.store, n: scm_env_program_two())
   object_id_eq(left: identity, right: second.identity)

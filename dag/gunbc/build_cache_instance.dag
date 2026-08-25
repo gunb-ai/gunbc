@@ -130,7 +130,7 @@ type RunnerSlotIdentity {
 // function exactly the fall-through this change removed -- because any bound needs an else arm, and
 // that arm has no honest answer to return. If you are reading this because a name looked wrong for
 // an index that should not exist, the defect is upstream at the ceiling, not here.
-fn runner_slot_index_suffix(index: Nat) -> String {
+fn runner_slot_index_suffix(index: std.nat.Nat) -> String {
   if index < 10 { join(["0", to_string(index)], "") } else { to_string(index) }
 }
 

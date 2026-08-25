@@ -65,23 +65,23 @@ fn endpoint_path_kind_command(path: NonEmptyStr) -> ArgvCommand {
   stat_file_type_command(path: path as String)
 }
 
-fn proc_pid_path(pid: Nat, leaf: String) -> String {
+fn proc_pid_path(pid: std.nat.Nat, leaf: String) -> String {
   join(["/proc/", to_string(pid), "/", leaf], "")
 }
 
-fn owner_cgroup_command(pid: Nat) -> ArgvCommand {
+fn owner_cgroup_command(pid: std.nat.Nat) -> ArgvCommand {
   cat_command(path: proc_pid_path(pid: pid, leaf: "cgroup"))
 }
 
-fn owner_proc_stat_command(pid: Nat) -> ArgvCommand {
+fn owner_proc_stat_command(pid: std.nat.Nat) -> ArgvCommand {
   cat_command(path: proc_pid_path(pid: pid, leaf: "stat"))
 }
 
-fn owner_principal_command(pid: Nat) -> ArgvCommand {
+fn owner_principal_command(pid: std.nat.Nat) -> ArgvCommand {
   stat_owner_user_name_command(path: proc_pid_path(pid: pid, leaf: ""))
 }
 
-fn owner_executable_command(pid: Nat) -> ArgvCommand {
+fn owner_executable_command(pid: std.nat.Nat) -> ArgvCommand {
   readlink_command(path: proc_pid_path(pid: pid, leaf: "exe"))
 }
 
@@ -140,7 +140,7 @@ type EndpointInodeLookup
   | InodeLookupUndecided { detail: NonEmptyStr }
 
 fn proc_net_unix_fields(line: String) -> List<String> {
-  filter(trim(line).split(" "), w => w != "")
+  filter(std.algebra.trim(line).split(" "), w => w != "")
 }
 
 fn proc_net_unix_line_is_listen_at(line: String, path: NonEmptyStr) -> Bool {
@@ -207,7 +207,7 @@ fn fd_holder_of_find_output(read: HostRead) -> EndpointListenerRead {
   match read {
     HostReadFailed { detail: d } => ListenerUndecided { detail: d }
     HostReadText { text: t } => {
-      let holders = filter(t.split("\n"), l => trim(l) != "")
+      let holders = filter(t.split("\n"), l => std.algebra.trim(l) != "")
       if holders.count() == 0 {
         ListenerNone
       } else if holders.count() > 1 {
@@ -220,7 +220,7 @@ fn fd_holder_of_find_output(read: HostRead) -> EndpointListenerRead {
         match holders.first() {
           Absent =>
             ListenerUndecided { detail: "a counted fd-holder line could not be re-read" as NonEmptyStr }
-          Present { value: line } => pid_of_proc_fd_path(fd_path: trim(line))
+          Present { value: line } => pid_of_proc_fd_path(fd_path: std.algebra.trim(line))
         }
       }
     }
@@ -251,7 +251,7 @@ fn path_kind_of_stat_read(read: HostRead, exit_success: Bool) -> EndpointPathKin
     match read {
       HostReadFailed { detail: d } => PathKindUnreadable { detail: d }
       HostReadText { text: t } => {
-        let word = trim(t)
+        let word = std.algebra.trim(t)
         if (word == stat_socket_type_word) {
           PathKindSocket
         } else if word == "" {
@@ -273,7 +273,7 @@ fn currency_of_boot_id_read(read: HostRead) -> ObservationCurrency {
         detail: concat("the host's boot id could not be read, so whether this observation survives a reboot is unknown: ", d as String) as NonEmptyStr,
       }
     HostReadText { text: t } => {
-      let b = trim(t)
+      let b = std.algebra.trim(t)
       if b == "" {
         ObservationCurrencyUnknown {
           detail: "the host's boot id read returned empty text" as NonEmptyStr,
@@ -315,7 +315,7 @@ fn runner_slot_index_text(unit_name: String) -> String {
   }
 }
 
-fn runner_slot_lifecycle_for(host: HostIdentity, slot_index: Nat) -> RunnerSlotLifecycle {
+fn runner_slot_lifecycle_for(host: HostIdentity, slot_index: std.nat.Nat) -> RunnerSlotLifecycle {
   if slot_index >= 1 && slot_index <= gunbc_runner_slots_per_host(host: host) {
     DesiredRunnerSlot
   } else {
@@ -422,9 +422,9 @@ fn text_after_last(s: String, marker: String) -> String {
 data proc_stat_starttime_token_index: Int = 19
 
 fn starttime_of_proc_stat_text(text: String) -> String {
-  let tail = trim(text_after_last(s: text, marker: ")"))
+  let tail = std.algebra.trim(text_after_last(s: text, marker: ")"))
   match tail.split(" ").skip(proc_stat_starttime_token_index).first() {
-    Present { value: tok } => trim(tok)
+    Present { value: tok } => std.algebra.trim(tok)
     Absent => ""
   }
 }
@@ -434,7 +434,7 @@ type OwnerIdentityOutcome
   | OwnerIdentityUnread { detail: NonEmptyStr }
 
 fn owner_identity(
-  pid: Nat,
+  pid: std.nat.Nat,
   currency: ObservationCurrency,
   proc_stat: HostRead,
 ) -> OwnerIdentityOutcome {
@@ -461,7 +461,7 @@ fn owner_identity(
             }
           } else {
             OwnerIdentityObserved {
-              identity: ProcessIdentity { boot_id: boot, pid: pid, start_time: start as NonEmptyStr },
+              identity: gunbc.build_cache_instance.ProcessIdentity { boot_id: boot, pid: pid, start_time: start as NonEmptyStr },
             }
           }
         }
@@ -472,7 +472,7 @@ fn owner_identity(
 fn read_text_or(read: HostRead, fallback: String) -> String {
   match read {
     HostReadText { text: t } => {
-      let v = trim(t)
+      let v = std.algebra.trim(t)
       if v == "" { fallback } else { v }
     }
     HostReadFailed { detail: _ } => fallback
@@ -548,7 +548,7 @@ fn stale_or_held(reads: BuildCacheEndpointReads) -> EndpointPathState {
 
 data holder_is_not_listener_note: String = "AN OBSERVED HOLDER IS NOT A LISTENER, AND THIS ARM IS WHERE THAT WAS CONFLATED. The owner observation is built from the fd-holder walk -- some process has an open descriptor on the socket's inode -- while LISTENING is a separate read, the St==01 row for this exact path in /proc/net/unix. An earlier revision of endpoint_path_state answered EndpointListening from the owner observation alone, so a socket held open by a process that is NOT accepting connections was reported as a healthy listening endpoint. Both states refuse, so nothing was destroyed by it, but they refuse for DIFFERENT reasons and only one of them is true: EnsureEndpointOccupied says 'a live server is serving here, leave it alone', which is the wrong sentence to put in front of an operator whose cache is unreachable precisely because nothing is serving.\n\nIt is the state-space conflation DESIGN names, on the two reads that must stay separate for the whole stale-socket contract to mean anything -- clause (2) is 'no LISTEN entry' and clause (3) is 'no fd holder', and a decoder that lets either one answer for the other has collapsed a four-clause contract into a two-clause one. It was found by a witness whose fixture pairs a no-listen /proc/net/unix text with a non-empty holder walk, which is exactly the combination neither clause alone can distinguish."
 
-fn socket_owner_path_state(reads: BuildCacheEndpointReads, owner: ProcessIdentity) -> EndpointPathState {
+fn socket_owner_path_state(reads: BuildCacheEndpointReads, owner: gunbc.build_cache_instance.ProcessIdentity) -> EndpointPathState {
   match reads.listen_inode {
     ListenInodeFound { inode: _ } => EndpointListening { owner: owner }
     NoListenEntryAtPath =>

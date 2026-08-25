@@ -491,8 +491,8 @@ test fn witness_holder_argv_cannot_regress_to_the_bracket_form() -> Bool {
   pattern == "socket:?3894042?"
     && !string_contains(s: pattern, pattern: "[")
     && !string_contains(s: pattern, pattern: "]")
-    && !string_list_contains(xs: argv, wanted: "sh")
-    && !string_list_contains(xs: argv, wanted: "-c")
+    && !std.materialization_ladder.string_list_contains(xs: argv, wanted: "sh")
+    && !std.materialization_ladder.string_list_contains(xs: argv, wanted: "-c")
 }
 
 data holder_argv_construction_note: String = "WHY THE ARGV IS ASSERTED AND NOT ONLY THE DECODE. Every other witness in this file runs the decode against fixture text, so all of them stay green if the argv that gathers that text on a real host regresses to `-lname \"socket:[N]\"` -- which silently matches nothing, which the decode then reads as a licensed unlink. The fixtures cannot see that; only the argv can. Asserting the exact pattern also pins the two shapes that would reintroduce a shell (an `sh -c` wrapper), because a shell would expand the glob itself and this lane may not grow emitted shell."

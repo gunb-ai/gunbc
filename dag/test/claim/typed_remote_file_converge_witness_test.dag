@@ -97,7 +97,7 @@ test fn the_comparison_reads_the_destination_not_the_staging_file() -> Bool {
     Present { value: w } => {
       let argv = typed_remote_file_compare_argv(write: w)
       argv == ["cmp", "-s", "-", subject_path as String]
-        && !string_list_contains(xs: argv, wanted: typed_remote_file_staging_path(write: w))
+        && !std.materialization_ladder.string_list_contains(xs: argv, wanted: typed_remote_file_staging_path(write: w))
     }
   }
 }
@@ -108,8 +108,8 @@ test fn the_comparison_takes_the_declared_side_from_stdin() -> Bool {
   match subject_write() {
     Absent => false
     Present { value: w } =>
-      string_list_contains(xs: typed_remote_file_compare_argv(write: w), wanted: "-")
-        && !string_list_contains(xs: typed_remote_file_compare_argv(write: w), wanted: "cat")
+      std.materialization_ladder.string_list_contains(xs: typed_remote_file_compare_argv(write: w), wanted: "-")
+        && !std.materialization_ladder.string_list_contains(xs: typed_remote_file_compare_argv(write: w), wanted: "cat")
   }
 }
 

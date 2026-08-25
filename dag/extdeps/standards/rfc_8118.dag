@@ -116,7 +116,7 @@ type PdfOpenParameterSequence {
 type PdfOpenParameterSequenceConstruction
   = SequenceConstructed(PdfOpenParameterSequence)
 
-fn pdf_open_page(page: PositiveInt) -> PdfProfileParameterConstruction {
+fn pdf_open_page(page: std.integer.PositiveInt) -> PdfProfileParameterConstruction {
   ParameterConstructed(OpenPage(PdfOpenPage { page: page }))
 }
 
@@ -128,7 +128,7 @@ fn pdf_open_structelem(struct_id: NonEmptyStr) -> PdfProfileParameterConstructio
   ParameterConstructed(OpenStructElem(PdfOpenStructElem { struct_id: struct_id }))
 }
 
-fn pdf_open_zoom(scale_percent: PositiveInt) -> PdfProfileParameterConstruction {
+fn pdf_open_zoom(scale_percent: std.integer.PositiveInt) -> PdfProfileParameterConstruction {
   ParameterConstructed(OpenZoom(PdfOpenZoom { scale_percent: scale_percent }))
 }
 
@@ -140,7 +140,7 @@ fn pdf_open_view(keyword: NonEmptyStr, position: String) -> PdfProfileParameterC
   ParameterConstructed(OpenView(PdfOpenView { keyword: keyword, position: position }))
 }
 
-fn pdf_open_viewrect(left: PositiveInt, top: PositiveInt, width: PositiveInt, height: PositiveInt) -> PdfProfileParameterConstruction {
+fn pdf_open_viewrect(left: std.integer.PositiveInt, top: std.integer.PositiveInt, width: std.integer.PositiveInt, height: std.integer.PositiveInt) -> PdfProfileParameterConstruction {
   ParameterConstructed(OpenViewRect(PdfOpenViewRect {
     left: left,
     top: top,
@@ -149,7 +149,7 @@ fn pdf_open_viewrect(left: PositiveInt, top: PositiveInt, width: PositiveInt, he
   }))
 }
 
-fn pdf_open_highlight(left: PositiveInt, right: PositiveInt, top: PositiveInt, bottom: PositiveInt) -> PdfProfileParameterConstruction {
+fn pdf_open_highlight(left: std.integer.PositiveInt, right: std.integer.PositiveInt, top: std.integer.PositiveInt, bottom: std.integer.PositiveInt) -> PdfProfileParameterConstruction {
   ParameterConstructed(OpenHighlight(PdfOpenHighlight {
     left: left,
     right: right,
@@ -396,7 +396,7 @@ fn project_navigable_uri(base: Uri, sequence: PdfOpenParameterSequence) -> Navig
   )
 }
 
-fn pdf_open_parameters_include_page(sequence: PdfOpenParameterSequence, page: PositiveInt) -> Bool {
+fn pdf_open_parameters_include_page(sequence: PdfOpenParameterSequence, page: std.integer.PositiveInt) -> Bool {
   any(
     sequence.parameters,
     parameter => match parameter {

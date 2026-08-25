@@ -137,7 +137,7 @@ fn classify_typed_remote_file_comparison(
       reason: join([
         "could not compare ", write.path as String,
         " against the declared content after rename: cmp exit=",
-        to_string(compare_exit_code), " ", trim(s: compare_stderr),
+        to_string(compare_exit_code), " ", std.algebra.trim(s: compare_stderr),
       ], ""),
     }
   }
@@ -146,7 +146,7 @@ fn classify_typed_remote_file_comparison(
 data typed_remote_file_write_tee_command: String = "tee"
 
 fn typed_remote_file_write_seal(
-  path: FilePath,
+  path: std.types.FilePath,
   content: String,
   allowed_scope: FileTreeScope,
 ) -> TypedRemoteFileWriteAdmission {
@@ -301,7 +301,7 @@ fn typed_remote_file_step_outcome(
         Present {
           value: TypedRemoteFileConvergenceRefused {
             step: step,
-            reason: concat("remote step failed: ", trim(s: r.stderr)),
+            reason: concat("remote step failed: ", std.algebra.trim(s: r.stderr)),
           },
         }
       }

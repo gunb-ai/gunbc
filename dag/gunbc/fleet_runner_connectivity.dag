@@ -129,7 +129,7 @@ fn github_organization_ref() -> GitHubOrganizationRef {
 }
 
 fn incident_registration(
-  id: Nat,
+  id: std.nat.Nat,
   name: NonEmptyStr,
   status: GitHubRunnerRegistrationStatus,
   busy: Bool,
@@ -228,11 +228,11 @@ fn unit_active_width_for_host(host: HostIdentity) -> Int {
   materialized_width_for_host(host: host)
 }
 
-fn host_registration_name_for_slot(host: HostIdentity, slot_index: Nat) -> NonEmptyStr {
+fn host_registration_name_for_slot(host: HostIdentity, slot_index: std.nat.Nat) -> NonEmptyStr {
   join([host as String, "-", runner_slot_index_suffix(index: slot_index)], "") as NonEmptyStr
 }
 
-fn slot_indices_for_managed_width(width: Int) -> List<Nat> {
+fn slot_indices_for_managed_width(width: Int) -> List<std.nat.Nat> {
   nat_range_inclusive(lo: 1, hi: width)
 }
 

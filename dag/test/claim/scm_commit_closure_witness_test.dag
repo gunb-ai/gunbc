@@ -42,7 +42,7 @@ fn build_full_store() -> BuiltStore {
 
 // A deliberately wrong id used only where a probe could not be built; every test asserts a real
 // structural fact that this value cannot satisfy, so a build failure cannot pass as a green.
-fn fallback_id() -> ObjectId {
+fn fallback_id() -> gunbc.scm.object_store.ObjectId {
   match store_node(store: empty_store(), n: child_node()) {
     Stored { store: _, identity: i } => i
     LocatorCollision { identity: i, existing: _, incoming: _ } => i
@@ -113,7 +113,7 @@ fn build_two_child_store() -> TwoChildStore {
   }
 }
 
-fn first_missing_is(missing: List<ObjectId>, expected: ObjectId) -> Bool {
+fn first_missing_is(missing: List<gunbc.scm.object_store.ObjectId>, expected: gunbc.scm.object_store.ObjectId) -> Bool {
   match fold(missing, init: none, f: fn(acc, id) {
     match acc {
       Present { value: _ } => acc
@@ -166,7 +166,7 @@ test fn a_grafted_root_names_exactly_the_child_it_lacks() -> Bool {
     && !closure_is_complete(closure: closure)
 }
 
-fn names_exactly(missing: List<ObjectId>, expected: ObjectId) -> Bool {
+fn names_exactly(missing: List<gunbc.scm.object_store.ObjectId>, expected: gunbc.scm.object_store.ObjectId) -> Bool {
   fold(missing, init: false, f: fn(acc, id) { acc || object_id_eq(left: id, right: expected) })
 }
 
@@ -235,7 +235,7 @@ test fn the_mint_refuses_a_complete_closure() -> Bool {
 
 // Mints an admission for the closure under test, or reports the refusal. Every claim below routes
 // through this, so none of them can accidentally encode a closure the mint never admitted.
-fn admitted_for(store: ObjectStore, root: ObjectId) -> PartialClosureAdmissionOutcome {
+fn admitted_for(store: ObjectStore, root: gunbc.scm.object_store.ObjectId) -> PartialClosureAdmissionOutcome {
   admit_partial_commit_closure(
     closure: CommitClosure { store: store, root: root },
     reason: ClosureTrimmedForTransfer

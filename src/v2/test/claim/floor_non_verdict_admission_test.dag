@@ -3,27 +3,27 @@ module v2.test.claim.floor_non_verdict_admission_test
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data roster_fixture: List<String> = std.algebra.Cons { head: "m.a", tail: std.algebra.Cons { head: "m.b", tail: std.algebra.Cons { head: "m.c", tail: Empty {} } } }
+data roster_fixture: List<String> = std.algebra.Cons { head: "m.a", tail: std.algebra.Cons { head: "m.b", tail: std.algebra.Cons { head: "m.c", tail: v2.std.algebra.Empty {} } } }
 
 // UNCHANGED: the population is exactly the roster.
-data observed_unchanged: List<String> = std.algebra.Cons { head: "m.a", tail: std.algebra.Cons { head: "m.b", tail: std.algebra.Cons { head: "m.c", tail: Empty {} } } }
+data observed_unchanged: List<String> = std.algebra.Cons { head: "m.a", tail: std.algebra.Cons { head: "m.b", tail: std.algebra.Cons { head: "m.c", tail: v2.std.algebra.Empty {} } } }
 
 // REPAID: two identities now answer while their roster rows still stand. Must REFUSE -- not
 // because repayment is penalised, but because a row the run no longer observes is a stale row
 // asserting a debt that no longer exists, and the executing gate refuses exactly that
 // (stale_non_verdict is a conjunct of required_floor_outcome_is_clean). Repaying and deleting the
 // row are one act; the fixture below drives the deleted-row form and is admitted.
-data observed_repaid: List<String> = std.algebra.Cons { head: "m.b", tail: Empty {} }
+data observed_repaid: List<String> = std.algebra.Cons { head: "m.b", tail: v2.std.algebra.Empty {} }
 
 // GROWN: a fourth identity begins producing no verdict. Must refuse.
-data observed_grown: List<String> = std.algebra.Cons { head: "m.a", tail: std.algebra.Cons { head: "m.b", tail: std.algebra.Cons { head: "m.c", tail: std.algebra.Cons { head: "m.d", tail: Empty {} } } } }
+data observed_grown: List<String> = std.algebra.Cons { head: "m.a", tail: std.algebra.Cons { head: "m.b", tail: std.algebra.Cons { head: "m.c", tail: std.algebra.Cons { head: "m.d", tail: v2.std.algebra.Empty {} } } } }
 
 // THE DISCRIMINATING CASE, AND THE REASON THE ADMISSION IS NOT A COUNT. `m.c` was repaired and
 // `m.d` began throwing in the same change. The population is STILL THREE IDENTITIES, so every
 // count in the run is identical to the unchanged case -- and a repaired witness has bought
 // permission for an unrelated witness to lose its verdict. This is the mutation a count-based
 // implementation passes silently.
-data observed_swapped: List<String> = std.algebra.Cons { head: "m.a", tail: std.algebra.Cons { head: "m.b", tail: std.algebra.Cons { head: "m.d", tail: Empty {} } } }
+data observed_swapped: List<String> = std.algebra.Cons { head: "m.a", tail: std.algebra.Cons { head: "m.b", tail: std.algebra.Cons { head: "m.d", tail: v2.std.algebra.Empty {} } } }
 
 test fn unchanged_population_is_admitted() -> Bool {
   non_verdict_admits(observed: observed_unchanged, roster: roster_fixture)
