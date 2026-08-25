@@ -737,22 +737,69 @@ fn gunbc_ci_multi_principal_probe_invoke() -> String {
 // fulfilled by this same change (gunbc_ci_fleet_key_agent_prelude below, emitted through
 // v2.workflow.gunbc_invoke_step_emit gunbc_invoke_step_emit_pipeline), so a corrected row
 // would be created and discharged in the same diff — ceremony, not a standing obligation.
+// THE TOKEN IS WRITTEN BY A SHELL BUILTIN, AND THAT IS THE WHOLE MECHANISM. Both preludes below used
+// `curl -H "Authorization: Bearer $WIF_ACCESS_TOKEN"`, and the shell expands that BEFORE exec, so the
+// GCP access token became a word in curl's argv -- readable by any unprivileged `ps` for the life of
+// the request. On these runners that is not a hypothetical audience: /proc carries no hidepid,
+// /proc/PID/cmdline is mode 0444, and the runner slots are ordinary host systemd services in the host
+// pid namespace, so a job payload sees every process on the machine.
+//
+// curl reads a header from a file with `-H @FILE` (>=7.55; the runners carry 7.88), which moves the
+// value out of curl's argv. That alone would not be enough: writing the file with any EXTERNAL
+// command would simply relocate the token from curl's argv into that command's argv. `printf` is a
+// bash BUILTIN, so it forks no process and creates no command line -- the token exists in the shell's
+// own memory and in the file, and never in any process table.
+//
+// The mode is set BEFORE the content exists. Both preludes already run `umask 077`, so the redirect
+// creates the file 0600 at creation rather than writing world-readable bytes and narrowing them
+// afterwards; there is no window where the token sits at a wider mode. Each prelude's existing trap
+// removes HDR_FILE on exit alongside the other credential material it already cleans up.
+//
+// WHAT IS NOT CLAIMED: this is a repair at two call sites, not a wall. Nothing refuses the next
+// prelude that interpolates a credential into a command string -- these bodies are hand-authored
+// shell text, not declared operation argv, so v2.std.operation_argv's binding wall cannot see them
+// at all. The class stays mitigatable here and the trigger is the same one extdeps.bmc.http names:
+// credentials modeled as declared inputs whose type the binder can refuse.
+// WHY THIS PAYLOAD IS SHELL TEXT AND WHAT WOULD CHANGE THAT (review 55857 asked for a bash-emit
+// scaffold marker here; recorded rather than marked, because the marker would assert the wrong
+// thing). This prelude is NOT the unmigrated medium-as-string form that the two scaffolds in this
+// module carry a dissolution trigger for -- those mark *_script functions that concat-build a whole
+// script, and their trigger text says so. gunbc_ci_fleet_key_agent_script builds a typed Pipeline of
+// PipelineStep and emits it through v2.workflow.gunbc_invoke_step_emit, which IS the orchestration
+// emit those triggers name as their terminal state; gunbc.fleet_ssh_credential_verify
+// fleet_ssh_credential_shell_verification_supersession_note records that migration. Marking one
+// command payload as a scaffold while its twenty peers in the same function carry none would claim
+// this line is unmigrated debt when it sits in the migrated construction.
+//
+// The residue the review is right about: a Run's `command` is still shell text, corpus-wide, tracked
+// by bash-emit rather than per line. And the reason no modeled actuator was available HERE is a
+// boundary rather than a preference -- this prelude executes as raw shell in a FOREIGN EXECUTOR
+// (GitHub Actions `run:`) before gunbc runs at all, so Filesystem.WriteOwnerOnly, which this same
+// change uses for the netrc on the BMC path, is unreachable at this point in a job. Choosing printf
+// is not declining a modeled route; there is no modeled route on that side of the boundary yet,
+// which is exactly what bash-emit would change.
+fn gunbc_ci_auth_header_file_write_command() -> String {
+  "printf 'Authorization: Bearer %s\\n' \"$WIF_ACCESS_TOKEN\" > \"$HDR_FILE\""
+}
+
 fn gunbc_ci_fleet_key_agent_prelude() -> List<PipelineStep> {
   [
     Do { run: ci_retry_body_run(command: "set -euo pipefail") },
     Do { run: ci_retry_body_run(command: "umask 077") },
     Do { run: ci_retry_body_run(command: "KEY_FILE=\"$RUNNER_TEMP/fleet-automation-key\"") },
+    Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/fleet-automation-auth-header\"") },
     Do { run: ci_retry_body_run(command: "AGENT_STARTED=0") },
     Do {
       run: ci_retry_body_run(
-        command: "cleanup() { rm -f \"$KEY_FILE\"; if [ \"$AGENT_STARTED\" = 1 ] && [ -n \"$\{SSH_AGENT_PID:-}\" ]; then ssh-agent -k >/dev/null 2>&1 || true; fi; }"
+        command: "cleanup() { rm -f \"$KEY_FILE\" \"$HDR_FILE\"; if [ \"$AGENT_STARTED\" = 1 ] && [ -n \"$\{SSH_AGENT_PID:-}\" ]; then ssh-agent -k >/dev/null 2>&1 || true; fi; }"
       )
     },
     Do { run: ci_retry_body_run(command: "trap cleanup EXIT") },
+    Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
     Do {
       run: ci_retry_body_run(
         command: join([
-          "curl -sSf -H \"Authorization: Bearer $WIF_ACCESS_TOKEN\" \"",
+          "curl -sSf -H @\"$HDR_FILE\" \"",
           fleet_automation_privkey_sm_access_url(),
           "\" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)[\"payload\"][\"data\"]))' > \"$KEY_FILE\""
         ], "")
@@ -843,11 +890,13 @@ fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: "umask 077") },
     Do { run: ci_retry_body_run(command: "CRED_FILE=\"$RUNNER_TEMP/spark-administrator-credential\"") },
     Do { run: ci_retry_body_run(command: "RESP_FILE=\"$RUNNER_TEMP/spark-administrator-response.json\"") },
-    Do { run: ci_retry_body_run(command: "trap 'rm -f \"$CRED_FILE\" \"$RESP_FILE\"' EXIT") },
+    Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/spark-administrator-auth-header\"") },
+    Do { run: ci_retry_body_run(command: "trap 'rm -f \"$CRED_FILE\" \"$RESP_FILE\" \"$HDR_FILE\"' EXIT") },
+    Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
     Do {
       run: ci_retry_body_run(
         command: join([
-          "HTTP_CODE=\"$(curl -sS -o \"$RESP_FILE\" -w '%\{http_code}' -H \"Authorization: Bearer $WIF_ACCESS_TOKEN\" \"",
+          "HTTP_CODE=\"$(curl -sS -o \"$RESP_FILE\" -w '%\{http_code}' -H @\"$HDR_FILE\" \"",
           secret_ref_access_url(ref: spark_administrator_password_secret_ref),
           "\" || echo 000)\""
         ], "")

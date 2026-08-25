@@ -11,7 +11,8 @@ pub use crate::extdeps_languages_rust_capabilities::{
     derive_traits_union, fn_field_derive_traits, kernel_int_arithmetic_traits,
     map_key_required_derive_traits, nullary_coproduct_derive_traits,
     payload_coproduct_derive_traits, record_derive_traits_copy, record_derive_traits_heap,
-    rust_capability_shape_table, symbol_wrapped_ord_carrier_derive_traits,
+    rust_capability_shape_table, rust_traits_for_construction_contract,
+    symbol_wrapped_ord_carrier_derive_traits,
 };
 pub use crate::extdeps_languages_rust_derive_contracts::RustVecSupplementalGenericBoundRow;
 pub use crate::extdeps_languages_rust_derive_contracts::{
@@ -2131,12 +2132,31 @@ pub fn v1_set_struct_partial_eq_impl(
     }
 }
 
+pub fn v1_record_derive_traits_heap_for_construction(
+    deserialize_forbidden: bool,
+) -> Rc<Vec<RustCapability>> {
+    rust_traits_for_construction_contract(
+        record_derive_traits_heap(),
+        deserialize_forbidden.clone(),
+    )
+}
+
+pub fn v1_record_derive_traits_copy_for_construction(
+    deserialize_forbidden: bool,
+) -> Rc<Vec<RustCapability>> {
+    rust_traits_for_construction_contract(
+        record_derive_traits_copy(),
+        deserialize_forbidden.clone(),
+    )
+}
+
 pub fn v1_emit_struct_derives(
     name: String,
     children: Rc<Vec<Rc<Node>>>,
     shared_types: Rc<BTreeSet<String>>,
     has_fn_fields: bool,
     map_key_required: bool,
+    deserialize_forbidden: bool,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     if has_fn_fields.clone() {
@@ -2172,12 +2192,12 @@ pub fn v1_emit_struct_derives(
         } else {
             if v1_rt::set_contains(&shared_types, name.clone()) {
                 rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(
-                    record_derive_traits_heap(),
+                    v1_record_derive_traits_heap_for_construction(deserialize_forbidden.clone()),
                     map_key_required.clone(),
                 ))
             } else {
                 rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(
-                    record_derive_traits_copy(),
+                    v1_record_derive_traits_copy_for_construction(deserialize_forbidden.clone()),
                     map_key_required.clone(),
                 ))
             }
@@ -2189,6 +2209,7 @@ pub fn v1_emit_enum_derives(
     children: Rc<Vec<Rc<Node>>>,
     has_fn_fields: bool,
     map_key_required: bool,
+    deserialize_forbidden: bool,
     generic_param_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -2216,7 +2237,10 @@ pub fn v1_emit_enum_derives(
                     v1_rt::concat(
                         v1_freemonoid_unroutable_row_refusal(),
                         rust_trait_derive_attr_from_traits(v1_freemonoid_filter_hand_written(
-                            payload_coproduct_derive_traits(),
+                            rust_traits_for_construction_contract(
+                                payload_coproduct_derive_traits(),
+                                deserialize_forbidden.clone(),
+                            ),
                         )),
                     ),
                     "\n".to_string(),
@@ -2237,13 +2261,19 @@ pub fn v1_emit_enum_derives(
             children.clone(),
             source_indices.clone(),
         );
-        let nullary_traits = v1_with_map_key_requirement(
-            nullary_coproduct_derive_traits(),
-            map_key_required.clone(),
+        let nullary_traits = rust_traits_for_construction_contract(
+            v1_with_map_key_requirement(
+                nullary_coproduct_derive_traits(),
+                map_key_required.clone(),
+            ),
+            deserialize_forbidden.clone(),
         );
-        let payload_traits = v1_with_map_key_requirement(
-            payload_coproduct_derive_traits(),
-            map_key_required.clone(),
+        let payload_traits = rust_traits_for_construction_contract(
+            v1_with_map_key_requirement(
+                payload_coproduct_derive_traits(),
+                map_key_required.clone(),
+            ),
+            deserialize_forbidden.clone(),
         );
         let set_row_refusal = if ((set_params.clone().len() as i64) > 0) {
             v1_set_unroutable_row_refusal()
@@ -3809,6 +3839,7 @@ pub fn v1_emit_struct_from_capability_table(
     generic_param_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     carrier_param_needs_clone: bool,
+    deserialize_forbidden: bool,
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
 ) -> Rc<StructCapabilityEmit> {
     {
@@ -3837,9 +3868,9 @@ pub fn v1_emit_struct_from_capability_table(
         if ((fm_params.clone().len() as i64) > 0) {
             {
                 let base = if v1_rt::set_contains(&shared_types, name.clone()) {
-                    record_derive_traits_heap()
+                    v1_record_derive_traits_heap_for_construction(deserialize_forbidden.clone())
                 } else {
-                    record_derive_traits_copy()
+                    v1_record_derive_traits_copy_for_construction(deserialize_forbidden.clone())
                 };
                 let derive_attr = v1_rt::concat(
                     v1_rt::concat(
@@ -3904,9 +3935,13 @@ pub fn v1_emit_struct_from_capability_table(
                 if ((ord_propagated_params.clone().len() as i64) > 0) {
                     {
                         let base = if v1_rt::set_contains(&shared_types, name.clone()) {
-                            record_derive_traits_heap()
+                            v1_record_derive_traits_heap_for_construction(
+                                deserialize_forbidden.clone(),
+                            )
                         } else {
-                            record_derive_traits_copy()
+                            v1_record_derive_traits_copy_for_construction(
+                                deserialize_forbidden.clone(),
+                            )
                         };
                         let set_row_refusal = v1_set_unroutable_row_refusal();
                         let derived_traits = v1_set_filter_hand_written(base.clone());
@@ -3958,6 +3993,7 @@ pub fn v1_emit_struct_from_capability_table(
                             shared_types.clone(),
                             has_fn_fields.clone(),
                             map_key_required.clone(),
+                            deserialize_forbidden.clone(),
                             source_indices.clone(),
                         );
                         let impl_bodies = if (repr_grounding_group_completion_carrier(

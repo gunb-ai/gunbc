@@ -274,16 +274,22 @@ pub fn concat<T: V2Concat>(a: T, b: T) -> T {
     a.v1_concat(b)
 }
 
-/// Ascii-aware variant taking a precomputed `is_ascii` flag (the `RcStr` carrier fact)
-/// instead of rescanning the whole string on every call -- the per-call `s.is_ascii()`
-/// scan is what made repeated indexing over a large string O(n^2) (STRING-INDEX-0).
-pub fn char_at_ascii_aware(s: &str, is_ascii: bool, pos: i64) -> String {
+/// Code-point indexing over UTF-8, with the ASCII fast path bounded by `pos`
+/// rather than by the whole string. A leading run of ASCII bytes makes the byte
+/// offset equal the code-point offset, so nothing past `pos` is examined and the
+/// per-call whole-string `s.is_ascii()` rescan is gone (STRING-INDEX-0). Cost is
+/// O(min(pos, n)) -- the fallback's own cost -- never O(n) unconditionally.
+/// RESIDUAL: a left-to-right walk of the whole string is still O(n^2). Making a
+/// single call O(1) needs the ASCII fact carried on the string value itself, and
+/// no such carrier exists in this seed -- that carrier, or a cursor surface that
+/// does not re-index from zero, is this class's next rung.
+pub fn char_at(s: &str, pos: i64) -> String {
     let pos = pos.max(0) as usize;
-    if is_ascii {
-        let bytes = s.as_bytes();
-        if pos >= bytes.len() {
-            return String::new();
-        }
+    let bytes = s.as_bytes();
+    if pos >= bytes.len() {
+        return String::new();
+    }
+    if bytes[..=pos].is_ascii() {
         return String::from(bytes[pos] as char);
     }
     s.chars()
@@ -292,36 +298,27 @@ pub fn char_at_ascii_aware(s: &str, is_ascii: bool, pos: i64) -> String {
         .unwrap_or_default()
 }
 
-pub fn char_at(s: &str, pos: i64) -> String {
-    char_at_ascii_aware(s, s.is_ascii(), pos)
-}
-
-/// Ascii-aware variant taking a precomputed `is_ascii` flag; see `char_at_ascii_aware`.
-pub fn string_length_ascii_aware(s: &str, is_ascii: bool) -> i64 {
-    if is_ascii {
+pub fn string_length(s: &str) -> i64 {
+    if s.is_ascii() {
         s.len() as i64
     } else {
         s.chars().count() as i64
     }
 }
 
-pub fn string_length(s: &str) -> i64 {
-    string_length_ascii_aware(s, s.is_ascii())
-}
-
-/// Ascii-aware variant taking a precomputed `is_ascii` flag; see `char_at_ascii_aware`.
-pub fn substring_ascii_aware(s: &str, is_ascii: bool, start: i64, end: i64) -> String {
+/// See `char_at`: the ASCII fast path is bounded by `end`, not by the whole string.
+pub fn substring(s: &str, start: i64, end: i64) -> String {
     let start = start.max(0) as usize;
     let end = end.max(0) as usize;
     if end <= start {
         return String::new();
     }
-    if is_ascii {
-        let len = s.len();
-        if start >= len {
-            return String::new();
-        }
-        let out_end = end.min(len);
+    let bytes = s.as_bytes();
+    if start >= bytes.len() {
+        return String::new();
+    }
+    let out_end = end.min(bytes.len());
+    if bytes[..out_end].is_ascii() {
         let take_len = out_end.saturating_sub(start);
         record_substring_chars_walked(s, start, take_len);
         return s[start..out_end].to_string();
@@ -329,10 +326,6 @@ pub fn substring_ascii_aware(s: &str, is_ascii: bool, start: i64, end: i64) -> S
     let take_len = end.saturating_sub(start);
     record_substring_chars_walked(s, start, take_len);
     s.chars().skip(start).take(take_len).collect()
-}
-
-pub fn substring(s: &str, start: i64, end: i64) -> String {
-    substring_ascii_aware(s, s.is_ascii(), start, end)
 }
 
 pub fn string_contains(s: &str, sub: String) -> bool {

@@ -2251,9 +2251,14 @@ pub fn validate_boundaries(plan: Rc<ArtifactPlan>) -> Rc<Vec<Rc<ErrorNode>>> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct EmittableGraph {
-    pub graph: Rc<ResolvedGraph>,
+    graph: Rc<ResolvedGraph>,
+}
+impl EmittableGraph {
+    pub fn graph(&self) -> Rc<ResolvedGraph> {
+        self.graph.clone()
+    }
 }
 
 pub fn emittable_graph(resolved: Rc<ResolvedPipelineResult>) -> Option<Rc<EmittableGraph>> {
@@ -2291,7 +2296,7 @@ pub fn emit_from_artifact_plan(
     artifact_plan: Rc<ArtifactPlan>,
 ) -> Rc<EmitResult> {
     {
-        let typed = emittable.graph.clone();
+        let typed = emittable.graph();
         if ((artifact_plan.artifacts.clone().len() as i64) == 0) {
             return Rc::new(EmitResult {
                 files: Rc::new(vec![]),
@@ -2859,7 +2864,7 @@ pub fn emit_resolved_for_target(
             newline_indices: resolved.newline_indices.clone(),
         }),
         Some(emittable) => {
-            let typed = emittable.graph.clone();
+            let typed = emittable.graph();
             let artifact_plan = default_artifact_plan(
                 Rc::new({
                     let mut __result = Vec::new();
