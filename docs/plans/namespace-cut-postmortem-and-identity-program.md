@@ -2385,8 +2385,21 @@ rest of `src/v2`, where deliberately-unbound helper calls are out-of-scope error
 and twenty-two copies of one local type name left the lens test unable to resolve
 its own unqualified `PortReading` — CI caught that, which is the correct outcome.
 And **there is no corpus-wide no-regression claim**: the base-versus-fixed sweep
-over a 36-file sample was killed three times before returning, so its entry point
-(`tcp_corpus_sample_established_count`) is committed and re-runnable but unrun.
+over a 36-file sample has now been killed four times. The first two deaths were
+session teardown and a v1 parse error in the probe itself; the fourth returned
+while this row was being written and **corrects the label this row first carried**.
+It hit the remote 45-minute cap with the BASE arm still running — no teardown, no
+parse error, it simply did not finish, because 36 cold parse-plus-normalize passes
+through the interpreted v2 grammar exceed the budget before the FIXED arm starts.
+So `tcp_corpus_sample_established_count` is **not runnable in its committed
+shape**, not merely unrun: whoever picks it up must trim the sample or split the
+arms across dispatches. The per-cell ~90s is dominated by process start and pool
+parse rather than by parsing the fixture, so a sweep wanting real breadth should
+hoist grammar preparation and measure only the per-file delta. *(The lane
+deliberately did not push a smaller sample: #9237 sits at the merge floor, and
+re-cutting it for a non-blocking instrument would restart CI and the review cycle
+over something that changes no claim in the PR — and on a session branch a commit
+is a push, so it would also cancel the in-flight run.)*
 What is measured is the 23-cell matrix, three ambiguity controls, and the real
 subject file. The formerly-red cells stay enrolled as regression controls per
 §4b(4), with a malformed qualified record literal kept as the discriminating red.
