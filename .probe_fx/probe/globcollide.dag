@@ -1,0 +1,8 @@
+module probe.globcollide
+
+import std.types { Bool }
+import probe.lib
+
+fn target_symbol() -> Bool {
+  target_symbol()
+}

@@ -1,0 +1,7 @@
+module probe.qualified
+
+import std.types { Bool }
+
+fn target_symbol() -> Bool {
+  probe.lib.target_symbol()
+}

@@ -1,0 +1,8 @@
+module probe.viareexport
+
+import std.types { Bool }
+import probe.reexport { target_symbol }
+
+fn target_symbol() -> Bool {
+  target_symbol()
+}

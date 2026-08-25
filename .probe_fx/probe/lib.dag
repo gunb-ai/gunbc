@@ -1,0 +1,7 @@
+module probe.lib
+
+import std.types { Bool }
+
+fn target_symbol() -> Bool {
+  true
+}

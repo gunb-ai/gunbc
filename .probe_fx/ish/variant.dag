@@ -1,0 +1,11 @@
+module ish.variant
+
+import std.types { String, Bool }
+
+type IshVariantHolder
+  = Bool { value: String }
+  | IshOther { value: String }
+
+fn ish_variant_use(value: String) -> IshVariantHolder {
+  IshOther { value: value }
+}
