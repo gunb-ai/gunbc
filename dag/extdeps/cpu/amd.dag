@@ -1,11 +1,12 @@
 module extdeps.cpu.amd
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, FactCitation }
+import std.decl_ref { decl_field_ref }
 import extdeps.uri { Uri, Https }
 import extdeps.cpu.types {
   ProcessorCoolingMount,
   SocketedPinGrid,
-  SocketedLandGrid, CacheGeometryCitation, CpuDeploymentFacts, CpuFacts, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, PinGridArray, SocketFactCitation }
+  SocketedLandGrid, CpuDeploymentFacts, CpuFacts, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, PinGridArray }
 import extdeps.toolchain.types { X86_64 }
 import extdeps.vendor.amd { amd }
 import std.measure { byte_size, hardware_thread_count, hertz, watt }
@@ -68,9 +69,9 @@ data amd_zen2_l1_cache_geometry: CpuL1CacheGeometry = CpuL1CacheGeometry {
   line_size: byte_size(64),
 }
 
-data amd_zen2_l1_cache_citations: List<CacheGeometryCitation> = [
-  CacheGeometryCitation {
-    field: "data_capacity_per_core",
+data amd_zen2_l1_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_zen2_l1_cache_geometry", field_name: "data_capacity_per_core"),
     authority: amd_ryzen_5_3600_authority,
   },
 ]
@@ -80,9 +81,9 @@ data amd_zen2_l2_cache_geometry: CpuL2CacheGeometry = CpuL2CacheGeometry {
   line_size: byte_size(64),
 }
 
-data amd_zen2_l2_cache_citations: List<CacheGeometryCitation> = [
-  CacheGeometryCitation {
-    field: "capacity_per_core",
+data amd_zen2_l2_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_zen2_l2_cache_geometry", field_name: "capacity_per_core"),
     authority: amd_ryzen_5_3600_authority,
   },
 ]
@@ -92,9 +93,9 @@ data amd_zen2_l3_cache_geometry: CpuL3CacheGeometry = CpuL3CacheGeometry {
   line_size: byte_size(64),
 }
 
-data amd_zen2_l3_cache_citations: List<CacheGeometryCitation> = [
-  CacheGeometryCitation {
-    field: "capacity",
+data amd_zen2_l3_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_zen2_l3_cache_geometry", field_name: "capacity"),
     authority: amd_ryzen_5_3600_authority,
   },
 ]
@@ -102,24 +103,44 @@ data amd_zen2_l3_cache_citations: List<CacheGeometryCitation> = [
 // THE AM5 TERMINATION IS CITED, not asserted. Both Zen 4 rows previously read PinGridArray at the
 // correct 1718 count; an uncited socket field is what let a wrong termination sit beside a right
 // number without anything to check it against.
-data socket_am4_citations: List<SocketFactCitation> = [
-  SocketFactCitation {
-    field: "package",
+//
+// THE SOCKET IS A PLATFORM FACT AND NOW HAS ONE HOME PER PLATFORM, the shape extdeps.cpu.ampere
+// already uses for LGA4926. Each row previously minted its own CpuSocket literal, so the citation
+// lists beside them could name no declaration at all -- which is how a citation ends up keyed by a
+// field SPELLING ("package", a name CpuSocket has not carried since termination and attachment were
+// split) instead of by the declaration the containment tree already names.
+data amd_socket_am4: CpuSocket = CpuSocket {
+  platform_owner: amd,
+  termination: SocketedPinGrid,
+  contact_count: 1331,
+  cooling_mount: amd_am4_cooling_mount,
+}
+
+data amd_socket_am5: CpuSocket = CpuSocket {
+  platform_owner: amd,
+  termination: SocketedLandGrid,
+  contact_count: 1718,
+  cooling_mount: amd_am4_cooling_mount,
+}
+
+data socket_am4_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_socket_am4", field_name: "termination"),
     authority: amd_ryzen_5_3600_authority,
   },
-  SocketFactCitation {
-    field: "contact_count",
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_socket_am4", field_name: "contact_count"),
     authority: amd_ryzen_5_3600_authority,
   },
 ]
 
-data socket_am5_citations: List<SocketFactCitation> = [
-  SocketFactCitation {
-    field: "package",
+data socket_am5_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_socket_am5", field_name: "termination"),
     authority: socket_am5_authority,
   },
-  SocketFactCitation {
-    field: "contact_count",
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_socket_am5", field_name: "contact_count"),
     authority: socket_am5_authority,
   },
 ]
@@ -130,9 +151,9 @@ data amd_zen4_l1_cache_geometry: CpuL1CacheGeometry = CpuL1CacheGeometry {
   line_size: byte_size(64),
 }
 
-data amd_zen4_l1_cache_citations: List<CacheGeometryCitation> = [
-  CacheGeometryCitation {
-    field: "data_capacity_per_core",
+data amd_zen4_l1_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_zen4_l1_cache_geometry", field_name: "data_capacity_per_core"),
     authority: extdeps_external_authority_anchor,
   },
 ]
@@ -142,9 +163,9 @@ data amd_zen4_l2_cache_geometry: CpuL2CacheGeometry = CpuL2CacheGeometry {
   line_size: byte_size(64),
 }
 
-data amd_zen4_l2_cache_citations: List<CacheGeometryCitation> = [
-  CacheGeometryCitation {
-    field: "capacity_per_core",
+data amd_zen4_l2_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_zen4_l2_cache_geometry", field_name: "capacity_per_core"),
     authority: extdeps_external_authority_anchor,
   },
 ]
@@ -154,9 +175,9 @@ data amd_zen4_l3_cache_geometry: CpuL3CacheGeometry = CpuL3CacheGeometry {
   line_size: byte_size(64),
 }
 
-data amd_zen4_l3_cache_citations: List<CacheGeometryCitation> = [
-  CacheGeometryCitation {
-    field: "capacity",
+data amd_zen4_l3_cache_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.cpu.amd", decl_name: "amd_zen4_l3_cache_geometry", field_name: "capacity"),
     authority: extdeps_external_authority_anchor,
   },
 ]
@@ -169,7 +190,7 @@ data ryzen_5_3600_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   cores: 6,
   threads: hardware_thread_count(12),
   nominal_sustained_per_thread_hz: hertz(3600000000),
-  socket: CpuSocket { platform_owner: amd, termination: SocketedPinGrid, contact_count: 1331, cooling_mount: amd_am4_cooling_mount },
+  socket: amd_socket_am4,
   socket_citations: socket_am4_citations,
   tdp_watts: watt(65),
   l1_cache: amd_zen2_l1_cache_geometry,
@@ -188,7 +209,7 @@ data ryzen_7_pro_8700ge_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   cores: 8,
   threads: hardware_thread_count(16),
   nominal_sustained_per_thread_hz: hertz(3300000000),
-  socket: CpuSocket { platform_owner: amd, termination: SocketedLandGrid, contact_count: 1718, cooling_mount: amd_am4_cooling_mount },
+  socket: amd_socket_am5,
   socket_citations: socket_am5_citations,
   tdp_watts: watt(65),
   l1_cache: amd_zen4_l1_cache_geometry,
@@ -207,7 +228,7 @@ data ryzen_9_7950x3d_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   cores: 16,
   threads: hardware_thread_count(32),
   nominal_sustained_per_thread_hz: hertz(4200000000),
-  socket: CpuSocket { platform_owner: amd, termination: SocketedLandGrid, contact_count: 1718, cooling_mount: amd_am4_cooling_mount },
+  socket: amd_socket_am5,
   socket_citations: socket_am5_citations,
   tdp_watts: watt(120),
   l1_cache: amd_zen4_l1_cache_geometry,

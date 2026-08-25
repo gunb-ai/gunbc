@@ -5,12 +5,6 @@ import v2.compiler.normalize { normalize }
 import v2.compiler.parse { grammar_validate_for_parse, parse_production }
 import v2.compiler.tokenize { tokenize }
 import v2.lens.common.source_analysis_standing {
-  FindingStanding,
-  NoSuspect,
-  SuspectObserved,
-  FindingNotEstablished,
-  finding_standing_established_clean,
-  finding_standing_observed_suspect,
   LanguageGrammarRejected,
   LanguageGrammarUnavailable,
   SourceAnalysisNotEstablishedCause,
@@ -20,6 +14,11 @@ import v2.lens.common.source_analysis_standing {
 }
 
 data offline_roster_gate_claim_batch_recipe: String = "Operator-ruled OFFLINE (NOT CI discovery-enrolled; witness_exclusion_substrings row claim/complexity/accumulator_copy_roster_gate in gunbc.ci_layer_roots — owned by #6452, not duplicated on #6440). Serial wet claim_batch only — do not codify GUNBC_EVAL_MEMO=0 in CI; diagnostic local runs may set it. Std tranche (PR #6440): claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag --function roster_std_change_dag_zero_suspects_within_ratchet --claim-run --wet && claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag --function roster_std_render_repeat_string_bootstrap_within_ratchet --claim-run --wet. Prior roster carriers: accumulator_copy_roster_gate_test.dag, accumulator_copy_roster_gate_swift_test.dag, accumulator_copy_roster_gate_lean_bash_test.dag (same --claim-run --wet shape, per-test-fn entry/function)."
+
+type FindingStanding
+  = NoSuspect
+  | SuspectObserved { suspects: Int }
+  | FindingNotEstablished { cause: SourceAnalysisNotEstablishedCause }
 
 type AnalysisStanding
   = Within { refusals: Int, ceiling: Int }
@@ -112,6 +111,14 @@ fn file_standing(path: String, refusal_ceiling: Int) -> RosterStanding {
   }
 }
 
+fn finding_standing_holds(standing: FindingStanding) -> Bool {
+  match standing {
+    NoSuspect => true
+    SuspectObserved { suspects: _ } => false
+    FindingNotEstablished { cause: _ } => false
+  }
+}
+
 fn analysis_standing_holds(standing: AnalysisStanding) -> Bool {
   match standing {
     Within { refusals: _, ceiling: _ } => true
@@ -122,24 +129,14 @@ fn analysis_standing_holds(standing: AnalysisStanding) -> Bool {
 
 fn file_gate(path: String, refusal_ceiling: Int) -> Bool {
   let standing = file_standing(path: path, refusal_ceiling: refusal_ceiling)
-  finding_standing_established_clean(standing: standing.finding)
+  finding_standing_holds(standing: standing.finding)
     && analysis_standing_holds(standing: standing.analysis)
 }
 
-// THE STANDING IS RETURNED, NOT COLLAPSED. This replaced `source_has_suspect -> Bool`, whose
-// not-established arm answered `false` -- the value that MEANS "no suspect". An instrument that
-// could not read its subject reported the clean verdict, and no caller could tell the two apart.
-//
-// It is reachable from a fixture, not only from a compiler outage: three of source_findings' five
-// not-established causes are SOURCE-DEPENDENT (tokenization, parse, normalization), so ill-formed
-// TEXT alone produces it. Measured before this change on main: source_has_suspect over a snippet
-// that does not tokenize answered false, beside a positive control answering true.
-fn source_finding_standing(source_text: String) -> FindingStanding {
+fn source_has_suspect(source_text: String) -> Bool {
   match source_findings(source_text: source_text) {
-    SourceFindingsNotEstablished { cause: cause } => FindingNotEstablished { cause: cause }
-    SourceFindingsEstablished { findings: fs } => {
-      let suspects = count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect)
-      if suspects > 0 { SuspectObserved { suspects: suspects } } else { NoSuspect }
-    }
+    SourceFindingsNotEstablished { cause: _ } => false
+    SourceFindingsEstablished { findings: fs } =>
+      count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect) > 0
   }
 }

@@ -2,24 +2,24 @@ module v2.test.claim.complexity.accumulator_copy_roster_standing
 
 import v2.lens.complexity_accumulator_copy.roster_gate {
   AnalysisNotEstablished,
+  FindingNotEstablished,
+  NoSuspect,
   RefusalBudgetExceeded,
   RosterStanding,
   SourceFindingsEstablished,
   SourceFindingsNotEstablished,
+  SuspectObserved,
   Within,
   not_established_standing,
   source_findings,
   standing_from_counts
 }
 import v2.lens.common.source_analysis_standing {
-  FindingNotEstablished,
   LanguageGrammarRejected,
   LanguageGrammarUnavailable,
-  NoSuspect,
   SourceNormalizationRejected,
   SourceParseRejected,
-  SourceTokenizationRejected,
-  SuspectObserved
+  SourceTokenizationRejected
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
