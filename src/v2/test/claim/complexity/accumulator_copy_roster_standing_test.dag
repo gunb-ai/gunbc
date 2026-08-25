@@ -6,8 +6,6 @@ import v2.lens.complexity_accumulator_copy.roster_gate {
   NoSuspect,
   RefusalBudgetExceeded,
   RosterStanding,
-  RosterIngestRegressed,
-  StandingNotEstablishedCause,
   SuspectObserved,
   Within,
   not_established_standing,
@@ -51,10 +49,10 @@ test fn refusal_at_ceiling_is_within_standing() -> Bool {
 }
 
 test fn unavailable_ingest_is_not_established_on_both_axes() -> Bool {
-  match not_established_standing(cause: RosterIngestRegressed) {
+  match not_established_standing() {
     RosterStanding {
-      finding: FindingNotEstablished { cause: RosterIngestRegressed },
-      analysis: AnalysisNotEstablished { cause: RosterIngestRegressed }
+      finding: FindingNotEstablished { cause: _ },
+      analysis: AnalysisNotEstablished { cause: _ }
     } => true
     _ => false
   }

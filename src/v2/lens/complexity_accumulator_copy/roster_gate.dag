@@ -80,16 +80,16 @@ fn standing_from_counts(suspects: Int, refusals: Int, refusal_ceiling: Int) -> R
   }
 }
 
-fn not_established_standing(cause: StandingNotEstablishedCause) -> RosterStanding {
+fn not_established_standing() -> RosterStanding {
   RosterStanding {
-    finding: FindingNotEstablished { cause: cause },
-    analysis: AnalysisNotEstablished { cause: cause }
+    finding: FindingNotEstablished { cause: RosterIngestRegressed },
+    analysis: AnalysisNotEstablished { cause: RosterIngestRegressed }
   }
 }
 
 fn file_standing(path: String, refusal_ceiling: Int) -> RosterStanding {
   match ingest_findings(path: path) {
-    Absent => not_established_standing(cause: RosterIngestRegressed)
+    Absent => not_established_standing()
     Present { value: fs } => standing_from_counts(
       suspects: count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect),
       refusals: count_matching(fs: fs, pred: v2.lens.complexity_accumulator_copy.analyze.finding_is_refusal),
