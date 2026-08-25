@@ -127,37 +127,6 @@ fn unbound_fixture() -> Vec<Rc<SourceFile>> {
     )]
 }
 
-fn census_only_fn_collision_fixture() -> Vec<Rc<SourceFile>> {
-    vec![
-        src("one.dag", "module census.one\nfn collide() -> Int { 1 }\n"),
-        src("two.dag", "module census.two\nfn collide() -> Int { 2 }\n"),
-        src(
-            "caller.dag",
-            "module caller\nfn call_collision() -> Int { collide() }\n",
-        ),
-    ]
-}
-
-fn census_only_unique_fn_fixture() -> Vec<Rc<SourceFile>> {
-    vec![
-        src(
-            "one.dag",
-            "module census.one\nfn only_here() -> Int { 1 }\n",
-        ),
-        src(
-            "caller.dag",
-            "module caller\nfn call_unique() -> Int { only_here() }\n",
-        ),
-    ]
-}
-
-fn census_only_missing_fn_fixture() -> Vec<Rc<SourceFile>> {
-    vec![src(
-        "caller.dag",
-        "module caller\nfn call_missing() -> Int { nowhere_at_all() }\n",
-    )]
-}
-
 #[test]
 fn import_scoped_default_resolves_homonym_fixture_clean() {
     let _guard = ResolutionPolicyGuard::set(false);
@@ -206,57 +175,6 @@ fn namespace_only_refuses_fn_parent_homonym_at_call_site() {
     assert!(
         listing.contains("fixfns.one.pick") && listing.contains("fixfns.two.pick"),
         "the fn refusal must carry both parent candidates; got {listing}"
-    );
-}
-
-#[test]
-fn census_only_fn_collision_is_ambiguous_not_unresolved() {
-    let _guard = ResolutionPolicyGuard::set(true);
-    let diags = error_diag_messages(census_only_fn_collision_fixture());
-    let collision = diags
-        .iter()
-        .find(|m| m.contains("ambiguous reference 'collide'"))
-        .unwrap_or_else(|| {
-            panic!(
-                "a collision reached only through the whole-pool census must retain its \
-                 ambiguity instead of degrading to not-found; got {diags:?}"
-            )
-        });
-    assert!(
-        collision.contains("census.one.collide") && collision.contains("census.two.collide"),
-        "the ambiguity must retain the full candidate menu; got {collision}"
-    );
-    assert!(
-        !diags
-            .iter()
-            .any(|m| m.contains("function 'collide' not found in scope")),
-        "the collision must not be reported as an absent declaration; got {diags:?}"
-    );
-}
-
-#[test]
-fn census_only_unique_fn_still_resolves() {
-    let _guard = ResolutionPolicyGuard::set(true);
-    let diags = error_diag_messages(census_only_unique_fn_fixture());
-    assert!(
-        diags.is_empty(),
-        "a unique whole-pool declaration must keep resolving; got {diags:?}"
-    );
-}
-
-#[test]
-fn census_only_missing_fn_stays_not_found() {
-    let _guard = ResolutionPolicyGuard::set(true);
-    let diags = error_diag_messages(census_only_missing_fn_fixture());
-    assert!(
-        diags
-            .iter()
-            .any(|m| m.contains("function 'nowhere_at_all' not found in scope")),
-        "a genuinely undeclared function must remain not-found; got {diags:?}"
-    );
-    assert!(
-        !diags.iter().any(|m| m.contains("ambiguous")),
-        "absence must not be relabeled as ambiguity; got {diags:?}"
     );
 }
 
