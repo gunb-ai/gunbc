@@ -581,7 +581,14 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
                 let target_is_coproduct_use = target.connective == NoConnective && target.children |> count > 0 && is_user_generic_use_site(n: target, env: env) && resolve_generic_use_decl(env: env, n: target).connective == Disj
                 if target_is_coproduct_use {
                   resolve_node_bounded(n: target, env: env, module_name: module_name, depth: depth + 1, masked: false).resolved
-                } else { with_authored_identity(identity: resolved, structural: target) }
+                } else {
+                  preserve_nominal_brand_on_resolve(
+                    identity: resolved,
+                    structural: target,
+                    brand_name: authored_name_at(source_indices: env.source_indices, node: resolved),
+                    source_indices: env.source_indices
+                  )
+                }
               _ => resolved
             }
           } else { resolved }

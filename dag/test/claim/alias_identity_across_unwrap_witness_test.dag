@@ -65,6 +65,27 @@ fn a_direct_target_reference_stays_structural() -> Bool {
   )
 }
 
+// THE TRANSPARENT-ALIAS CONTROL, and it exists because the corpus refused an earlier form of
+// this repair. `type AttemptKey = String` is a transparent alias over a PRIMITIVE, and live code
+// relies on it being interchangeable with String -- `attempt_key_short_form` returns `key` from
+// one branch of an if and a plain String from the other, and those must still unify. Preserving
+// identity for EVERY alias made them nominally distinct and the join refused. So the repair is
+// routed through preserve_nominal_brand_on_resolve, which already owns this policy: a brand is
+// preserved unless its RHS is a transparent primitive or a declared container spelling. Minting a
+// second kernel-type check here would have forked a decision this file already decides.
+fn a_transparent_primitive_alias_still_unifies_with_its_target() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_alias_transparent\n\ntype AliasOfString = String\n\nfn short(k: AliasOfString) -> String {\n  if string_length(s: k) <= 8 {\n    k\n  } else {\n    \"x\"\n  }\n}\n",
+    "src/probe_alias_transparent.rs",
+    ["pub fn short"],
+    ["compile_error"]
+  )
+}
+
+test fn a_transparent_primitive_alias_is_not_made_nominal() -> Bool {
+  a_transparent_primitive_alias_still_unifies_with_its_target()
+}
+
 test fn a_qualified_alias_keeps_its_own_declaration_identity() -> Bool {
   qualified_alias_emits_its_own_name()
 }
