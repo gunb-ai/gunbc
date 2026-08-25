@@ -196,42 +196,44 @@ fn record_derive_traits_copy() -> List<RustCapability> {
 // THE SEALED-CONSTRUCTION DERIVE CONTRACT. A record whose declaration carries
 // `sole_constructor` states that only its declaring module may mint an inhabitant.
 // `serde::Deserialize` contradicts that statement in the realization: the derive
-// generates a constructor inside the declaring module which any caller reaches
-// through `serde_json::from_value`, so a derived Deserialize is a second, unsealed
-// mint standing beside the declared one (DESIGN section 3 -- one fact, one home).
-// These rosters are therefore the sealed peers of the two above, differing in
-// exactly that member. They are authored as their own rosters rather than derived
-// by filtering, because sealed and unsealed construction are two distinct contracts
-// rather than one contract minus a trait, and a filter would let a later edit to the
-// unsealed roster silently redefine the sealed one. Serialize is retained: writing a
-// sealed value out is a read, and reading is not what the seal confines.
-fn sealed_record_derive_traits_heap() -> List<RustCapability> {
-  Cons {
-    head: RustDebug,
-    tail: Cons {
-      head: RustClone,
-      tail: Cons {
-        head: RustPartialEq,
-        tail: Cons { head: RustSerialize, tail: Empty }
-      }
-    }
+// generates a constructor inside the declaring module which any caller reaches through
+// `serde_json::from_value`, so a derived Deserialize is a second, unsealed mint standing
+// beside the declared one (DESIGN section 3 -- one fact, one home).
+//
+// THE CONTRACT IS TRANSITIVE, WHICH IS WHY THIS IS A FILTER AND NOT A SECOND ROSTER. A
+// coproduct carrying a sealed carrier as a variant payload mints one whenever IT is
+// deserialized, so the obligation reaches every container that transitively holds a sealed
+// carrier -- and containers come in as many derive shapes as this module has rosters, so an
+// authored sealed peer per roster would be six parallel rosters for one fact. The subtraction
+// is the fact: one capability, removed wherever construction is confined. Serialize is not
+// removed, because writing a value out is a read and reading is not what the seal confines.
+fn rust_capability_is_deserialize(capability: RustCapability) -> Bool {
+  match capability {
+    RustDeserialize => true
+    RustDebug => false
+    RustClone => false
+    RustCopy => false
+    RustPartialEq => false
+    RustEq => false
+    RustPartialOrd => false
+    RustOrd => false
+    RustHash => false
+    RustSerialize => false
+    RustAdd => false
+    RustSub => false
+    RustMul => false
+    RustDiv => false
+    RustRem => false
+    RustNeg => false
   }
 }
 
-fn sealed_record_derive_traits_copy() -> List<RustCapability> {
-  Cons {
-    head: RustDebug,
-    tail: Cons {
-      head: RustClone,
-      tail: Cons {
-        head: RustCopy,
-        tail: Cons {
-          head: RustPartialEq,
-          tail: Cons { head: RustSerialize, tail: Empty }
-        }
-      }
-    }
-  }
+fn rust_traits_without_deserialize(traits: List<RustCapability>) -> List<RustCapability> {
+  traits |> filter(capability => !rust_capability_is_deserialize(capability: capability))
+}
+
+fn rust_traits_for_construction_contract(traits: List<RustCapability>, deserialize_forbidden: Bool) -> List<RustCapability> {
+  if deserialize_forbidden { rust_traits_without_deserialize(traits: traits) } else { traits }
 }
 
 fn nullary_coproduct_derive_traits() -> List<RustCapability> {

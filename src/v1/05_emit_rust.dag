@@ -5499,6 +5499,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
   if is_product {
     let has_fn_fields = type_has_fn_fields(name: item_text, emit_info: emit_info)
     let sealed = item_seals_construction(item: item)
+    let deserialize_forbidden = item_forbids_deserialize(item: item, emit_info: emit_info, source_indices: env.source_indices)
     let capability_surface = v1_emit_struct_from_capability_table(
       module_path: env.module_path,
       name: item_text,
@@ -5513,7 +5514,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
         generic_param_names: item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)),
         emit_info: emit_info
       ),
-      sealed: sealed,
+      deserialize_forbidden: deserialize_forbidden,
       type_decl_items: emit_info.type_decl_items
     )
     let type_params = if !has_fn_fields {
@@ -5523,7 +5524,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     }
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
     let clone_bound_refusal = emit_item_clone_bound_refusal(item: item, item_name: item_text, emit_info: emit_info, source_indices: env.source_indices)
-    let struct_text = emit_struct_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, sealed: sealed, env: env, emit_info: emit_info)
+    let struct_text = emit_struct_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, sealed: sealed, deserialize_forbidden: deserialize_forbidden, env: env, emit_info: emit_info)
     if clone_bound_refusal == "" { struct_text } else { concat(clone_bound_refusal, "\n", struct_text) }
   } else if is_host_optional_carrier_alias(name: item_text) {
     let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
@@ -5673,7 +5674,7 @@ fn emit_sealed_struct_accessors(name: String, type_params: String, generic_param
   concat("\nimpl", type_params, " ", name, type_application_params, " {\n", fns_str, "\n}")
 }
 
-fn emit_struct_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, sealed: Bool, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
+fn emit_struct_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, sealed: Bool, deserialize_forbidden: Bool, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let has_fn_fields = type_has_fn_fields(name: name, emit_info: emit_info)
   let surface = v1_emit_struct_from_capability_table(
     module_path: env.module_path,
@@ -5689,7 +5690,7 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
       generic_param_names: generic_param_names,
       emit_info: emit_info
     ),
-    sealed: sealed,
+    deserialize_forbidden: deserialize_forbidden,
     type_decl_items: emit_info.type_decl_items
   )
   if children |> count == 0 {
@@ -5816,11 +5817,12 @@ fn emit_rust_field_definition(authored: String, final_ty: String, rename_attr: S
   concat(keyword_rename, rename_attr, indent, visibility, emitted, ": ", final_ty, ",")
 }
 
-fn enum_derives(name: String, children: List<Node>, has_fn_fields: Bool, generic_param_names: List<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
+fn enum_derives(name: String, children: List<Node>, has_fn_fields: Bool, deserialize_forbidden: Bool, generic_param_names: List<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
   v1_emit_enum_derives(
     children: children,
     has_fn_fields: has_fn_fields,
     map_key_required: set_contains(emit_info.map_key_required_type_names, name),
+    deserialize_forbidden: deserialize_forbidden,
     generic_param_names: generic_param_names,
     source_indices: source_indices
   )
@@ -5834,7 +5836,8 @@ fn enum_derives(name: String, children: List<Node>, has_fn_fields: Bool, generic
 // same has_fn_fields here rather than deriving it twice.
 fn emit_enum_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde, emit_info: EmitGraphInfo) -> String {
   let has_fn_fields = type_has_fn_fields(name: name, emit_info: emit_info)
-  let derives = enum_derives(name: name, children: children, has_fn_fields: has_fn_fields, generic_param_names: generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
+  let deserialize_forbidden = enum_variant_payloads_forbid_deserialize(name: name, children: children, emit_info: emit_info, source_indices: env.source_indices)
+  let derives = enum_derives(name: name, children: children, has_fn_fields: has_fn_fields, deserialize_forbidden: deserialize_forbidden, generic_param_names: generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
   let effective_serde_policy = if has_fn_fields {
     rust_serde_policy(enum_attr: "", rename_prefix: none, rename_suffix: none, rename_style: none)
   } else { serde_policy }
@@ -7880,6 +7883,68 @@ fn field_access_field_is_boxed(base: Node, field: String, scope: InferScope, sha
       }
     Absent => false
   }
+}
+
+// THE SEAL IS TRANSITIVE ON THE DESERIALIZE AXIS, and this is the population the rustc
+// census surfaced rather than one anticipated by reading. `extdeps.uri` declares two
+// coproducts carrying `UriValidatedScalar` as a variant payload; both derived Deserialize,
+// so deserializing the CONTAINER minted the sealed carrier with no mint call at all -- the
+// same forge one level out. So a type that transitively reaches a sealed carrier drops
+// Deserialize too. It does NOT become sealed itself: its own fields stay public and it gets
+// no accessors, because nothing confines ITS construction. Those are two facts and the
+// emitter carries them as two, `sealed` and `deserialize_forbidden`.
+//
+// The walk is bounded by a seen-set over declaration names rather than by a fuel counter:
+// the type graph is finite and a repeat visit adds nothing, so exhaustion is reached rather
+// than assumed, and a recursive carrier terminates on its second visit instead of at a
+// depth limit that would have to answer "unknown" and pick an arm.
+fn type_expr_reaches_sealed_carrier(n: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>, seen: Map<String, Bool>) -> Bool {
+  let name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n))
+  let child_reaches = n.children |> any(child =>
+    type_expr_reaches_sealed_carrier(n: child_type_node(ch: child), emit_info: emit_info, source_indices: source_indices, seen: seen)
+  )
+  if child_reaches {
+    true
+  } else if name == "" || emit_map_has(m: seen, key: name) {
+    false
+  } else {
+    match lookup_emit_type_decl(emit_info: emit_info, type_name: name) {
+      Present { value: decl } =>
+        if item_seals_construction(item: decl) {
+          true
+        } else {
+          let next_seen = map_insert(seen, name, true)
+          decl.children |> any(child =>
+            type_expr_reaches_sealed_carrier(n: child_type_node(ch: child), emit_info: emit_info, source_indices: source_indices, seen: next_seen)
+          )
+        }
+      Absent => false
+    }
+  }
+}
+
+fn decl_children_forbid_deserialize(name: String, children: List<Node>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let seen = map_insert(empty_map(), qualified_last_segment(name: name), true)
+  children |> any(child =>
+    type_expr_reaches_sealed_carrier(n: child_type_node(ch: child), emit_info: emit_info, source_indices: source_indices, seen: seen)
+  )
+}
+
+fn item_forbids_deserialize(item: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if item_seals_construction(item: item) {
+    true
+  } else {
+    decl_children_forbid_deserialize(name: authored_name_at(source_indices: source_indices, node: item), children: item.children, emit_info: emit_info, source_indices: source_indices)
+  }
+}
+
+fn enum_variant_payloads_forbid_deserialize(name: String, children: List<Node>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let seen = map_insert(empty_map(), qualified_last_segment(name: name), true)
+  children |> any(variant =>
+    variant.children |> any(field =>
+      type_expr_reaches_sealed_carrier(n: child_type_node(ch: field), emit_info: emit_info, source_indices: source_indices, seen: seen)
+    )
+  )
 }
 
 // A sealed record's fields are private in the emitted crate, so a stored-field read

@@ -241,9 +241,14 @@ pub struct UriUnicodeScalar {
     pub cp: i64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
 pub struct UriValidatedScalar {
-    pub admitted_cp: i64,
+    admitted_cp: i64,
+}
+impl UriValidatedScalar {
+    pub fn admitted_cp(&self) -> i64 {
+        self.admitted_cp.clone()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -711,7 +716,7 @@ pub fn uri_percent_encode_unicode_scalar(
 }
 
 pub fn uri_validated_scalar_code_point(scalar: UriValidatedScalar) -> i64 {
-    scalar.admitted_cp.clone()
+    scalar.admitted_cp()
 }
 
 pub fn uri_percent_encode_admitted_scalar_wire(
