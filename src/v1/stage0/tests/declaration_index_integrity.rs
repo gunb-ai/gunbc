@@ -58,6 +58,79 @@ fn findings_over(dir: &Path) -> Vec<(DeclarationIntegrityKind, String)> {
     }
 }
 
+// ── PLANT WELL-FORMEDNESS: the precondition every planted red owes before its verdict ──
+//
+// WHY THESE EXIST, and it is a finding rather than tidiness. Two fixture defects in this file
+// produced EXACTLY the observation a broken guard produces:
+//
+//   wrong module header      -> import target absent -> claim SKIPPED  -> no finding
+//   single-variant coproduct -> parse question       -> not admitted   -> no finding
+//
+// A MALFORMED PLANT AND A BROKEN GUARD ARE INDISTINGUISHABLE AT THE ASSERTION. So "no finding"
+// is a three-way ambiguity — fixture malformed, plant never reached, guard broken — and the
+// repair pressure points at the production predicate, which is how a correct guard nearly got
+// "fixed" to satisfy a bad fixture. That is the design doc's not-applicable-versus-malformed
+// conflation arrived at from the fixture side: SKIPPED and ADMITTED are different states and
+// the assertion could not see the difference.
+//
+// The remedy is a positive control ON THE PLANT, asserted BEFORE the guard's verdict, so the
+// guard's answer is the only remaining variable.
+
+/// The plant is in the index at the identity the fixture intended — i.e. it parsed AND
+/// declared the module path the rest of the test names.
+fn plant<'a>(index: &'a DeclarationIndex, module_path: &str) -> &'a ModuleDeclarationRecord {
+    index_get(index, module_path).unwrap_or_else(|| {
+        panic!(
+            "PLANT MALFORMED: no module `{module_path}` in the index. The fixture did not \
+             parse, or its `module` header names something else — this is not a verdict \
+             about the guard."
+        )
+    })
+}
+
+/// The plant declares the name the fixture is about, so a later "resolves" is a real answer.
+fn plant_declares(index: &DeclarationIndex, module_path: &str, name: &str) {
+    let record = plant(index, module_path);
+    assert!(
+        record.declared.contains(name) || record.variants.contains(name),
+        "PLANT MALFORMED: `{module_path}` was authored to declare `{name}` and the index does \
+         not see it (declared: {:?}, variants: {:?}) — not a verdict about the guard",
+        record.declared,
+        record.variants
+    );
+}
+
+/// The import claim REACHED the admit/refuse decision rather than being skipped because its
+/// target is absent from the index. This is the one that hid a fixture bug behind a zero.
+fn plant_import_target_resolves(index: &DeclarationIndex, importer: &str, target: &str) {
+    let record = plant(index, importer);
+    assert!(
+        record.imports.iter().any(|c| c.target == target),
+        "PLANT MALFORMED: `{importer}` was authored to import from `{target}` and no such \
+         claim is indexed — not a verdict about the guard"
+    );
+    assert!(
+        index_get(index, target).is_some(),
+        "PLANT NEVER REACHED: `{importer}` imports `{target}`, which is absent from the \
+         index, so the claim is SKIPPED rather than judged. A guard that never ran and a \
+         guard that found nothing are different states."
+    );
+}
+
+/// The citation is indexed at the identity the fixture intended.
+fn plant_cites(index: &DeclarationIndex, citer: &str, cited_module: &str, cited_decl: &str) {
+    let record = plant(index, citer);
+    assert!(
+        record
+            .cited
+            .iter()
+            .any(|c| c.module_path == cited_module && c.decl_name == cited_decl),
+        "PLANT MALFORMED: `{citer}` was authored to cite `{cited_module}` `{cited_decl}` and \
+         the extractor did not index it (cited: {:?}) — not a verdict about the guard",
+        record.cited
+    );
+}
+
 /// The authority module every fixture below imports from and cites into.
 const AUTHORITY: &str = "module probe.authority\n\ndata real_declaration: Bool = true\n";
 
@@ -127,6 +200,8 @@ fn kernel_named_import_member_is_admitted_but_counted() {
          data claimant_present: Bool = true\n",
     );
     let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    // PRECONDITION: the claim reached the decision rather than being skipped as target-absent.
+    plant_import_target_resolves(&sweep.index, "probe.claimant", "probe.authority");
     assert_eq!(
         index_findings(&sweep.index)
             .into_iter()
@@ -201,6 +276,12 @@ fn kernel_named_counter_splits_declared_from_undeclared() {
          import probe.silent { Unit }\n\ndata claimant_present: Bool = true\n",
     );
     let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    // PRECONDITION: both plants are well-formed and both claims REACHED the decision. Without
+    // this, a wrong module header makes the claim target-absent, the counter reads 0, and the
+    // failure is indistinguishable from a broken predicate — which is what happened.
+    plant_declares(&sweep.index, "probe.declares", "Unit");
+    plant_import_target_resolves(&sweep.index, "probe.claimant", "probe.declares");
+    plant_import_target_resolves(&sweep.index, "probe.claimant", "probe.silent");
     assert_eq!(
         index_findings(&sweep.index)
             .into_iter()
@@ -418,6 +499,14 @@ fn a_debt_row_whose_citation_still_refuses_is_live() {
          \u{20}\u{20}field: WholeDeclaration,\n}\n",
     );
     let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    // PRECONDITION: the citation was extracted at all. A citation the extractor missed is
+    // indistinguishable from one the roster suppressed.
+    plant_cites(
+        &sweep.index,
+        "probe.citer",
+        "probe.authority",
+        "no_such_declaration",
+    );
     let roster = [("probe.authority", "no_such_declaration", "")];
     assert_eq!(
         citation_debt_findings_against(&sweep.index, &roster),
@@ -555,6 +644,22 @@ fn corpus_findings_is_wired_to_the_production_suppression_roster() {
          \u{20}\u{20}field: WholeDeclaration,\n}\n",
     );
     let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    // PRECONDITION: the citation is indexed at the exact identity the production roster names,
+    // and the cited module really is present and really does NOT declare it. Otherwise a
+    // "suppressed" reading below could just be a citation nobody extracted.
+    plant_cites(
+        &sweep.index,
+        "probe.citer",
+        "std.bytes",
+        "builtin_function_registry",
+    );
+    assert!(
+        !plant(&sweep.index, "std.bytes")
+            .declared
+            .contains("builtin_function_registry"),
+        "PLANT MALFORMED: std.bytes must NOT declare the cited name, or there is nothing to \
+         refuse and nothing to suppress"
+    );
 
     let unenrolled: Vec<_> = index_findings(&sweep.index)
         .into_iter()
