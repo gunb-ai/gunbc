@@ -38,7 +38,7 @@ import gunbc.fabric_cell_converge {
   FabricCellUnexpectedCellEvidence,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.ownership { Owned }
 import gunbc.fleet_converge_plan {
   TimerRetirementMember,
@@ -1294,6 +1294,48 @@ test fn witness_fabric_cell_distinct_unexpected_slots_are_counted_separately() -
     fabric_cell_readback_all_present(), unexpected_readback_at(index: 7), unexpected_readback_at(index: 8),
   ])
   fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: two) == 2
+}
+
+// TWO HOST MISMATCHES REORDERED ARE ONE POPULATION, and the row above cannot see this. It pairs
+// ONE same-host unexpected cell with ONE mismatch, and the two classes are concatenated in a fixed
+// class order -- so nothing in it reorders two members WITHIN the mismatched list. The commit that
+// added that destination deduplicated it and appended in input order, which is the same defect the
+// unexpected side had been repaired for one field earlier.
+//
+// THE PAIR IS CHOSEN TO SHARE NO INDEX AND THEN A SECOND PAIR THAT DOES. srv1-08 and srv4-07
+// differ in both coordinates; srv1-07 and srv4-07 differ only in host, which is the case an
+// index-only comparison collapses -- and every member of this list is by construction a different
+// host from the enclosing one, so unlike the unexpected side there is no routing that makes index
+// alone total here.
+test fn witness_fabric_cell_host_mismatches_are_order_independent() -> Bool {
+  let a = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 8 })
+  let b = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 })
+  let forward = fabric_population_of(entries: [fabric_cell_readback_all_present(), a, b])
+  let reversed = fabric_population_of(entries: [fabric_cell_readback_all_present(), b, a])
+  fabric_fingerprint_with(population: forward) == fabric_fingerprint_with(population: reversed)
+    && fabric_rendered_lines(population: forward) == fabric_rendered_lines(population: reversed)
+    && fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: forward) == 2
+}
+
+test fn witness_fabric_cell_host_mismatches_sharing_an_index_are_order_independent() -> Bool {
+  let a = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 7 })
+  let b = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 })
+  let forward = fabric_population_of(entries: [fabric_cell_readback_all_present(), a, b])
+  let reversed = fabric_population_of(entries: [fabric_cell_readback_all_present(), b, a])
+  fabric_fingerprint_with(population: forward) == fabric_fingerprint_with(population: reversed)
+    && fabric_rendered_lines(population: forward) == fabric_rendered_lines(population: reversed)
+    && fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: forward) == 2
+}
+
+// AND ONE MISMATCH REPORTED TWICE IS ONE MISMATCH. The idempotence half, so the ordering rows above
+// cannot be satisfied by a fold that collapses the list to one member.
+test fn witness_fabric_cell_duplicate_host_mismatches_are_one_subject() -> Bool {
+  let a = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 })
+  let once = fabric_population_of(entries: [fabric_cell_readback_all_present(), a])
+  let twice = fabric_population_of(entries: [fabric_cell_readback_all_present(), a, a])
+  fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: once) == 1
+    && fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: twice) == 1
+    && fabric_rendered_lines(population: once) == fabric_rendered_lines(population: twice)
 }
 
 // AND A CONTRADICTED ADDRESS IS NOT AN UNREAD ONE. The blocked-address remedy was one sentence for
