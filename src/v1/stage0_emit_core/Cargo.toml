@@ -14,5 +14,5 @@ v1-stage0-runtime = { path = "../stage0_runtime" }
 v1-stage0-std-core = { path = "../stage0_std_core" }
 v1-stage0-std-surface = { path = "../stage0_std_surface" }
 v1-stage0-extdeps-languages = { path = "../stage0_extdeps_languages" }
-v1-stage0-v1-infer = { path = "../stage0_v1_infer" }
 v1-stage0-v1-artifact = { path = "../stage0_v1_artifact" }
+v1-stage0-v1-infer = { path = "../stage0_v1_infer" }
