@@ -1,5 +1,7 @@
 module v2.test.claim.source_root_tagging
 
+import v2.std.artifact { Artifact, SourceFile }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
