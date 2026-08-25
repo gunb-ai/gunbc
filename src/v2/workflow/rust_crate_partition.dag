@@ -426,7 +426,7 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "v1_compiler_infer_emit_info", to: "v1_compiler_coercion"),
     stage0_module_dag_edge(from: "v1_compiler_infer_env", to: "v1_compiler_type_head_exposure"),
     stage0_module_dag_edge(from: "v1_compiler_coercion", to: "v1_compiler_artifact"),
-    stage0_module_dag_edge(from: "v1_compiler_artifact", to: "v1_compiler_languages"),
+    stage0_module_dag_edge(from: "v1_compiler_languages", to: "v1_compiler_artifact"),
   ]
 }
 
