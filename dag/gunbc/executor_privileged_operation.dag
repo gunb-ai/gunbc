@@ -24,6 +24,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import v2.std.algebra { fold_list }
 import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
+import extdeps.systemd.systemctl { systemctl_enable_verb, systemctl_start_verb }
 import gunbc.fleet_posix_accounts {
   ci_runner_sudo_binary_path,
   SudoInstall,
@@ -43,6 +44,8 @@ type ExecutorPrivilegedOperation
     }
   | RemoveDirectoryTree { path: NonEmptyStr }
   | SystemdDaemonReload
+  | SystemdEnableUnit { unit: NonEmptyStr }
+  | SystemdStartUnit { unit: NonEmptyStr }
 
 // THE ONE PROJECTION. Everything else in this module derives from this function, so there is
 // exactly one place where an operation becomes words.
@@ -68,8 +71,31 @@ fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<N
       ci_runner_sudo_binary_path(b: SudoSystemctl),
       "daemon-reload" as NonEmptyStr
     ]
+    SystemdEnableUnit { unit: u } => [
+      ci_runner_sudo_binary_path(b: SudoSystemctl),
+      systemctl_enable_verb,
+      u
+    ]
+    SystemdStartUnit { unit: u } => [
+      ci_runner_sudo_binary_path(b: SudoSystemctl),
+      systemctl_start_verb,
+      u
+    ]
   }
 }
+
+// THE TWO SERVICE TRANSITIONS ARE TWO OPERATIONS, AND THE GRANT IS WHY THAT IS STRUCTURAL RATHER
+// THAN STYLISTIC. A single SystemdEnableNowUnit variant would render one sudoers line authorizing
+// `systemctl enable --now <unit>`, and a host holding it could activate a unit immediately with no
+// separate authorization for doing so -- the two transitions would be one grant, so no policy could
+// ever permit durable boot intent while withholding immediate activity, or the reverse. Naming them
+// separately makes each transition its own authorization, and the sudoers match derived from each is
+// exact: neither line matches the fused argv, so `enable --now` has no grant on any executor host and
+// is refused by sudo rather than by anybody remembering not to write it.
+//
+// THE UNIT IS A PARAMETER AND EVERY GRANTED UNIT IS NAMED IN FULL, for the same reason the directory
+// operations name their paths: a sudoers wildcard over unit names would authorize activating units
+// this fleet does not model, and `systemctl enable` accepts a path as a unit argument.
 
 // THE SUDOERS COMMAND MATCH IS THE ARGV. Derived, never authored beside it.
 fn executor_privileged_operation_sudoers_command(op: ExecutorPrivilegedOperation) -> NonEmptyStr {

@@ -7001,22 +7001,23 @@ pub fn load_sources_for_entry_with_pool_index(
 // census population, and the silent-pick gate -- and the first draft of this phase had
 // already drifted on the first of them.
 //
-// WHAT MAKES ONE SMALL ENTRY SUFFICIENT FOR THE ESCAPED CLASS, measured rather than
-// argued. An `--entry` compile is scoped in what it EMITS (the reference-derived closure)
-// and whole-tree in what it PARSES: every indexed module outside the closure enters the
-// name census, so the census parse reaches the whole of `dag` + `src/v2`. Measured on a
-// tree carrying the day's two fixes:
+// THE ENTRY IS THE v2 COMPILER ROOT, AND THE PARAGRAPH THAT USED TO SIT HERE ARGUED FOR
+// THE OPPOSITE (operator ruling, 2026-08-25). It chose the smallest entry in the tree and
+// its reasoning was sound on the facts it had: an `--entry` compile is scoped in what it
+// EMITS (the reference-derived closure) and whole-tree in what it PARSES -- every indexed
+// module outside the closure enters the name census, so the census parse reaches the whole
+// of `dag` + `src/v2` whichever entry is named. The class that escaped on 2026-08-23
+// therefore refuses on the small entry too, and the large entry's extra minutes bought
+// emission coverage of the compiler's own closure rather than coverage of that class.
+// Against a SERIAL required run, that was the wrong trade.
 //
-//   entry                        closure   census   emitted   wall
-//   dag/std/abi.dag                    4    3,847         9    135s
-//   src/v2/compiler/03_ingest.dag    ~180    ~3,670      176    349s
-//
-// and with the real specimen planted back into `dag/test/manual/` the SMALL entry refuses,
-// naming the file and byte range of the offending annotation. So the large entry's extra
-// 214s buys emission coverage of the compiler's own closure, not coverage of the class
-// that escaped. The entry roster is a `.dag` row (`gunbc.ci_layer_roots`
-// `required_v2_emission_entries`) precisely so that trade is re-decidable without a Rust
-// edit.
+// WHAT CHANGED IS THE DENOMINATOR, NOT THE ARGUMENT. The required run is now two parallel
+// jobs, and this phase rides the `build` lane opposite a witnesses lane that costs an order
+// of magnitude more, so the extra minutes are free rather than added. They buy exactly what
+// the old paragraph said they buy and declined: emission coverage of the v2 compiler's own
+// closure. The roster row and the one file of coverage the change gives up are in
+// `gunbc.ci_layer_roots` `required_v2_emission_entries`; the durations are not restated
+// here, because the producer named above re-derives them and a transcribed number rots.
 //
 // WHAT THE INVARIANT IS, AND WHAT IT IS NOT. NOT a file count: a legitimate compiler
 // change may alter a closure's size, so `emitted == 177` is a CHANGE DETECTOR wearing an
@@ -7025,8 +7026,13 @@ pub fn load_sources_for_entry_with_pool_index(
 // it is `v1_compiler_compile` `stage0_self_compile_refusal_message`, the same authority
 // the CLI already stops on (a blocking diagnostic, or an empty emitted file set), plus
 // the CLI's own silent-pick gate. A gate that refused on ANY diagnostic would be
-// permanently red -- 03_ingest carries 503 advisory diagnostics and 0 blocking -- so
-// advisory diagnostics are COUNTED and reported and never refused on.
+// permanently red -- the v2 compiler closure carries hundreds of advisory diagnostics
+// against zero blocking, which is a standing property of the corpus rather than a figure
+// worth pinning -- so advisory diagnostics are COUNTED and reported and never refused on.
+// Ratcheting that advisory population is a separate construction and is deliberately not
+// attempted here: a merge-blocking comparison against a count measured on the current tree
+// is the tree-copied census oracle DESIGN §5 rejects, and the honest form is a monotone
+// debt contract at IDENTITY grain over an independently closed subject universe.
 //
 // WHAT THIS DOES NOT CATCH, named rather than left to be inferred: a rustc error in the
 // emitted tree (nothing here compiles the emission), a semantic regression that still

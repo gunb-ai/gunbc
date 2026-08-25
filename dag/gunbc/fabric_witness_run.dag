@@ -43,10 +43,11 @@ import std.types { String, List }
 // THIS PARAGRAPH PREVIOUSLY CLAIMED THE OPPOSITE AND THE CLAIM WAS FALSE. It read
 // that the argv is "PRODUCED BY THE FABRIC UNDER A GRANT" and that "no grant, no
 // command -- so the authorization is not a label beside the run, it is the only
-// thing that can yield a run". Measured against the live tree: `floor_run_command`
-// is NULLARY, there is no grant anywhere on the workflow path, and of the ten
+// thing that can yield a run". Measured against the live tree: the run command
+// is a lane word away from NULLARY, there is no grant anywhere on the workflow path, and of the ten
 // functions in this module exactly ONE has a production consumer outside it --
-// this one, imported by gunbc.witness_floor_workflow to render a shell word.
+// this one (`required_ci_lane_command`, through its two lane bindings), imported by
+// gunbc.witness_floor_workflow to render a shell word.
 // Work contract, execution requirements, offer fungibility, affordability, buy
 // terms, admission terms, satisfaction requirement and grant duration have ZERO.
 //
@@ -220,15 +221,62 @@ fn floor_execution_requirements() -> ExecutionRequirements {
 fn floor_inputs_manifest_ref() -> ArtifactManifestRef {
   concat("gunbc.floor.inputs.source-roots:", join(witness_layer_roots, "+"))
 }
-fn floor_run_command() -> ArgvCommand {
+// ONE COMMAND SHAPE, TWO LANES (operator ruling, 2026-08-25: "we can add it as a parallel
+// job in github actions - we can do the same for regen now, we have more runners" /
+// "basically i would put regen + v2 full compile in one job, and witnesses into another
+// one").
+//
+// The required run's phases were composed into one process on 2026-08-20 and were therefore
+// SERIAL. They are also independent, which is the expensive combination: the witness floor
+// costs ~30 minutes and everything else waited behind it for no reason any data dependency
+// names, so the required check's wall clock was a SUM of things that could have been a MAX.
+// Two jobs with no `needs` edge make it a max.
+//
+// THE LANE IS THE ONLY THING THE TRANSPORT NAMES. It does not name phases, order them, or
+// wire one phase's precondition to another step's verdict -- which phases a lane owns is
+// decided in the binary, by an exhaustive match, so re-routing the roster is a change there
+// and never an edit to a YAML step list. That is the surviving half of the 2026-08-20
+// consolidation directive; the half the split supersedes is stated in
+// `gunbc.witness_floor_workflow`, beside the jobs it is about.
+//
+// WHY THIS PARTITION AND NOT ANOTHER. `build` is the EMISSION lane -- regen compares the
+// emitted stage0 mirrors against what is committed, and v2-emission compiles a v2 entry to
+// Rust; both ask "does the compiler still produce its outputs". `witnesses` is the CORPUS
+// lane -- the parse sweep and the floor fold, both asking "does the authored corpus hold".
+// The split is along the subject, not along a stopwatch, which is why it stays legible when
+// the costs move.
+//
+// A SINGLE ARGV, NOT TWO. Two hand-built invocations would be two spellings of the binary
+// path, the mode flag and the source roots, free to drift silently in exactly the way #8629
+// removed once already; the lane is a parameter of one command rather than a second command.
+fn required_ci_lane_command(lane: String) -> ArgvCommand {
   claim_executor_command(
     mode_flag: "--required-ci",
-    operands: fold(
-      witness_layer_roots,
-      init: [],
-      f: fn(acc, root) { append(acc, items: ["--source-root", root]) },
+    operands: append(
+      fold(
+        witness_layer_roots,
+        init: [],
+        f: fn(acc, root) { append(acc, items: ["--source-root", root]) },
+      ),
+      items: ["--required-lane", lane],
     ),
   )
+}
+
+data required_ci_lane_build: String = "build"
+
+data required_ci_lane_witnesses: String = "witnesses"
+
+// The witnesses lane: the .dag parse sweep and the witness floor fold. Named for its lane
+// rather than for the floor alone, because the parse phase rides here too and a name that
+// said `floor` would be a second, narrower account of what this command runs.
+fn witnesses_lane_run_command() -> ArgvCommand {
+  required_ci_lane_command(lane: required_ci_lane_witnesses)
+}
+
+// The build lane: regen's first-generation comparison and the v2 emission compile.
+fn build_lane_run_command() -> ArgvCommand {
+  required_ci_lane_command(lane: required_ci_lane_build)
 }
 
 // THE FLOOR IS MODELED AS AN ORDINARY PRICED DEMAND. NO PRICE IS CLEARED TODAY.
@@ -245,7 +293,7 @@ fn floor_run_command() -> ArgvCommand {
 // arm here that admits a floor run without clearing a price", present tense, as
 // though the guard were live. It is not reachable. `floor_offer_affordability` and
 // `floor_buy_terms` have NO production consumer -- the only function in this module
-// that any non-test module calls is `floor_run_command` -- so no floor run has ever
+// that any non-test module calls is `required_ci_lane_command` -- so no floor run has ever
 // cleared a price, and no arm could have admitted one without doing so, because no
 // arm runs at all. A fold with no caller cannot enforce anything, and describing it
 // as enforcement is the same inflation this file's header paragraph now records.

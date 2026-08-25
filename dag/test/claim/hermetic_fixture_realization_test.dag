@@ -1,7 +1,7 @@
 module test.claim.hermetic_fixture_realization
 
 // A PARTIAL import list is worse than none here. This module was fully bare, so every name it
-// used resolved by pool-membership coincidence (DESIGN Class B). Naming ONE dependency changed
+// used resolved by pool-membership coincidence (Class B; arm (3) of import_admission_closure_membership_note). Naming ONE dependency changed
 // the assembled closure and the extdeps rows this witness reads stopped resolving — the witness
 // went red on a diff that only added an import. The repair is the whole list, not the retraction:
 // a module that names some of its dependencies and leans on coincidence for the rest is in the
