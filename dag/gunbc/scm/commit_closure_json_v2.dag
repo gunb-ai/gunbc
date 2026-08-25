@@ -43,6 +43,19 @@ import gunbc.scm.json_member {
   MemberFailed,
   read_member,
   read_string_member,
+  unexpected_member_key,
+}
+import gunbc.scm.target_reference {
+  TargetReferenceRefusal,
+  TargetReference,
+  TargetContainedAt,
+  TargetUncontained,
+  TargetReferenceRefused,
+  TargetReferenceMemberReadRefused,
+  TargetReferenceUnexpectedMember,
+  TargetReferenceNotOneArm,
+  TargetReferenceUncontainedDigestInvalid,
+  decode_target_reference,
 }
 import extdeps.languages.json.grammar { JsonNumberLexeme, json_int_lexeme }
 import extdeps.languages.json.parse {
@@ -139,11 +152,10 @@ type ClosureDocRefusal
   | ClosureDocUnknownBehaviorTag { found: String }
   | ClosureDocUnknownLabelTag { found: String }
   | ClosureDocEdgeTargetUnresolved { reference: String }
-  | ClosureDocRootUnresolved { reference: String }
+  | ClosureDocRootPositionUnresolved { reference: String }
   | ClosureDocObjectCollision { identity: ObjectId }
   | ClosureDocUnexpectedMember { context: ClosureDocMemberContext, key: String }
-  | ClosureDocTargetNotOneArm { found: Int }
-  | ClosureDocUncontainedDigestInvalid { found: String }
+  | ClosureDocTargetReferenceRefused { cause: TargetReferenceRefusal }
 
 // THE ENCODE DOMAIN IS ITS OWN TYPE, and this split is a correctness fix rather than tidiness.
 //
@@ -188,37 +200,6 @@ type ClosureDocMemberContext
   | ClosureDocComputationKindMembers
   | ClosureDocNamedEdgeMembers
   | ClosureDocPositionalEdgeMembers
-  | ClosureDocTargetMembers
-
-fn member_key_allowed(allowed: List<String>, key: String) -> Bool {
-  fold(allowed, init: false, f: fn(acc, a) { acc || a == key })
-}
-
-fn unexpected_member_step(found: String?, m: JsonKeyValue, allowed: List<String>) -> String? {
-  match found {
-    Present { value: _ } => found
-    Absent =>
-      if member_key_allowed(allowed: allowed, key: m.key) {
-        none
-      } else {
-        Present { value: m.key }
-      }
-  }
-}
-
-// A non-object subject answers `none` here, and that is not a fail-open: every caller reads a
-// required member from the same subject, and read_member refuses a non-object subject outright.
-// Answering an unexpected-member refusal for something that is not an object at all would report the
-// wrong cause for the wrong defect.
-fn unexpected_member_key(v: JsonValue, allowed: List<String>) -> String? {
-  match v {
-    JsonObject { members: ms } =>
-      fold(ms, init: none, f: fn(found, m) {
-        unexpected_member_step(found: found, m: m, allowed: allowed)
-      })
-    _ => none
-  }
-}
 
 fn member_set_refusal(v: JsonValue, allowed: List<String>, context: ClosureDocMemberContext) -> ClosureDocRefusal? {
   match unexpected_member_key(v: v, allowed: allowed) {
@@ -736,23 +717,6 @@ type EdgeAcc {
 // consumer finds by joining against the store it has. Treating it as a refusal would put the codec
 // in the business of deciding whether a partial closure is acceptable, which is policy.
 //
-// The digest is MINTED THROUGH A VALIDATOR, never trusted as text: fnv1a64_structural_hex_digest
-// refuses anything that is not canonical lowercase hex of the exact length, so a malformed digest is
-// a typed refusal here rather than an ObjectId that lies about its own shape downstream.
-fn decode_target(positions: DecodePositions, target_value: JsonValue) -> TargetDecode {
-  match member_set_refusal(v: target_value, allowed: ["at", "uncontained"], context: ClosureDocTargetMembers) {
-    Present { value: c } => TargetDecodeFailed { cause: c }
-    Absent => {
-      let arms = target_arm_count(v: target_value)
-      if arms == 1 {
-        decode_target_arm(positions: positions, target_value: target_value)
-      } else {
-        TargetDecodeFailed { cause: ClosureDocTargetNotOneArm { found: arms } }
-      }
-    }
-  }
-}
-
 // EXACTLY ONE ARM, COUNTED BEFORE EITHER IS READ, and the counting is the whole point rather than a
 // tidier spelling of the same thing.
 //
@@ -764,22 +728,6 @@ fn decode_target(positions: DecodePositions, target_value: JsonValue) -> TargetD
 // the opposite was already true (found by review, not by the witnesses -- which is why one now
 // executes it).
 //
-// A duplicated key counts as PRESENT here, so a target carrying `at` twice reaches the arm reader
-// and is refused as a duplicated member rather than being miscounted as two arms; the two
-// failures are different and keep different names.
-fn target_arm_count(v: JsonValue) -> Int {
-  arm_present(v: v, key: "at") + arm_present(v: v, key: "uncontained")
-}
-
-fn arm_present(v: JsonValue, key: String) -> Int {
-  match json_object_unique_member(v: v, key: key) {
-    JsonMemberFound { value: _ } => 1
-    JsonMemberDuplicated { count: _ } => 1
-    JsonMemberAbsent => 0
-    JsonMemberNotAnObject => 0
-  }
-}
-
 // THE ARM IS SELECTED ON PRESENCE, NOT ON READ SUCCESS, and that distinction is the whole repair.
 //
 // An earlier revision matched `read_string_member(v, "at")` and treated ANY failure as "this is the
@@ -791,47 +739,6 @@ fn arm_present(v: JsonValue, key: String) -> Int {
 // mentioned. The comment above target_arm_count asserted the opposite was already true; it was not
 // (found by review, and the witness that now executes it is the reason the claim is worth anything).
 //
-// Presence answers the applicability question and nothing else, so each arm reports its own failures
-// with its own key and neither can be reached by the other's defect.
-fn decode_target_arm(positions: DecodePositions, target_value: JsonValue) -> TargetDecode {
-  match json_object_unique_member(v: target_value, key: "at") {
-    JsonMemberFound { value: _ } => decode_at_arm(positions: positions, target_value: target_value)
-    JsonMemberDuplicated { count: _ } =>
-      TargetDecodeFailed { cause: ClosureDocMemberReadRefused { cause: MemberReadDuplicated { key: "at" } } }
-    JsonMemberNotAnObject => TargetDecodeFailed { cause: ClosureDocMemberReadRefused { cause: MemberReadSubjectNotObject } }
-    JsonMemberAbsent => decode_uncontained_arm(target_value: target_value)
-  }
-}
-
-fn decode_at_arm(positions: DecodePositions, target_value: JsonValue) -> TargetDecode {
-  match read_string_member(v: target_value, key: "at") {
-    MemberString { value: reference } =>
-      match resolve_reference(positions: positions, reference: reference) {
-        Present { value: identity } => TargetDecoded { target: identity }
-        Absent =>
-          TargetDecodeFailed { cause: ClosureDocEdgeTargetUnresolved { reference: reference } }
-      }
-    MemberFailed { cause: c } => TargetDecodeFailed { cause: ClosureDocMemberReadRefused { cause: c } }
-    _ => TargetDecodeFailed { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "at" } } }
-  }
-}
-
-fn decode_uncontained_arm(target_value: JsonValue) -> TargetDecode {
-  match read_string_member(v: target_value, key: "uncontained") {
-    MemberString { value: hex } =>
-      match fnv1a64_structural_hex_digest(hex: hex) {
-        Present { value: digest } => TargetDecoded { target: digest }
-        Absent => TargetDecodeFailed { cause: ClosureDocUncontainedDigestInvalid { found: hex } }
-      }
-    MemberFailed { cause: c } => TargetDecodeFailed { cause: ClosureDocMemberReadRefused { cause: c } }
-    _ => TargetDecodeFailed { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "uncontained" } } }
-  }
-}
-
-type TargetDecode
-  = TargetDecoded { target: ObjectId }
-  | TargetDecodeFailed { cause: ClosureDocRefusal }
-
 fn decode_edge_step(positions: DecodePositions, acc: EdgeAcc, edge_value: JsonValue) -> EdgeAcc {
   match acc.refusal {
     Present { value: _ } => acc
@@ -843,13 +750,29 @@ fn decode_edge_step(positions: DecodePositions, acc: EdgeAcc, edge_value: JsonVa
             MemberFailed { cause: c } =>
               EdgeAcc { edges: acc.edges, refusal: Present { value: ClosureDocMemberReadRefused { cause: c } } }
             MemberObject { value: target_value } =>
-              match decode_target(positions: positions, target_value: target_value) {
-                TargetDecodeFailed { cause: c } =>
-                  EdgeAcc { edges: acc.edges, refusal: Present { value: c } }
-                TargetDecoded { target: identity } =>
+              match decode_target_reference(target_value: target_value) {
+                TargetReferenceRefused { cause: c } =>
+                  EdgeAcc {
+                    edges: acc.edges,
+                    refusal: Present { value: ClosureDocTargetReferenceRefused { cause: c } },
+                  }
+                TargetUncontained { digest: identity } =>
                   EdgeAcc {
                     edges: concat([StoredEdge { label: label, target: identity }], acc.edges),
                     refusal: acc.refusal,
+                  }
+                TargetContainedAt { reference: reference } =>
+                  match resolve_reference(positions: positions, reference: reference) {
+                    Present { value: identity } =>
+                      EdgeAcc {
+                        edges: concat([StoredEdge { label: label, target: identity }], acc.edges),
+                        refusal: acc.refusal,
+                      }
+                    Absent =>
+                      EdgeAcc {
+                        edges: acc.edges,
+                        refusal: Present { value: ClosureDocEdgeTargetUnresolved { reference: reference } },
+                      }
                   }
               }
             _ =>
@@ -1013,9 +936,16 @@ fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
               match read_member(v: v, key: "root") {
                 MemberFailed { cause: c } => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: c } }
                 MemberObject { value: root_value } =>
-                  match decode_target(positions: positions, target_value: root_value) {
-                    TargetDecodeFailed { cause: c } => ClosureDocRefused { cause: c }
-                    TargetDecoded { target: root } => ClosureDocLoaded { store: store, root: root }
+                  match decode_target_reference(target_value: root_value) {
+                    TargetReferenceRefused { cause: c } =>
+                      ClosureDocRefused { cause: ClosureDocTargetReferenceRefused { cause: c } }
+                    TargetUncontained { digest: root } => ClosureDocLoaded { store: store, root: root }
+                    TargetContainedAt { reference: reference } =>
+                      match resolve_reference(positions: positions, reference: reference) {
+                        Present { value: root } => ClosureDocLoaded { store: store, root: root }
+                        Absent =>
+                          ClosureDocRefused { cause: ClosureDocRootPositionUnresolved { reference: reference } }
+                      }
                   }
                 _ => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "root" } } }
               }
@@ -1075,9 +1005,14 @@ fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
     ClosureDocUnknownLabelTag { found: _ } => LoadDocumentMalformed
     ClosureDocUnexpectedMember { context: _, key: _ } => LoadDocumentMalformed
     ClosureDocEdgeTargetUnresolved { reference: _ } => LoadDocumentMalformed
-    ClosureDocRootUnresolved { reference: _ } => LoadDocumentMalformed
-    ClosureDocTargetNotOneArm { found: _ } => LoadDocumentMalformed
-    ClosureDocUncontainedDigestInvalid { found: _ } => LoadDocumentMalformed
+    ClosureDocRootPositionUnresolved { reference: _ } => LoadDocumentMalformed
+    ClosureDocTargetReferenceRefused { cause: c } =>
+      match c {
+        TargetReferenceMemberReadRefused { cause: _ } => LoadDocumentMalformed
+        TargetReferenceUnexpectedMember { key: _ } => LoadDocumentMalformed
+        TargetReferenceNotOneArm { found: _ } => LoadDocumentMalformed
+        TargetReferenceUncontainedDigestInvalid { found: _ } => LoadDocumentMalformed
+      }
   }
 }
 
