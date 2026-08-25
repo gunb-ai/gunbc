@@ -52,7 +52,7 @@ jobs:
           cd "$ROOT"
           'target/release/claim_executor' '--required-ci' '--source-root' 'dag' '--source-root' 'src/v2' '--required-lane' 'build'
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
-  witnesses:
+  floor:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 180
     steps:
@@ -110,3 +110,18 @@ jobs:
           if-no-files-found: error
           retention-days: 14
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
+  witnesses:
+    runs-on: [self-hosted, linux, arm64]
+    needs: [build, floor]
+    timeout-minutes: 5
+    steps:
+      - name: Both required lanes must have succeeded
+        run: |
+          BUILD="${{ needs.build.result }}"
+          FLOOR="${{ needs.floor.result }}"
+          echo "required lanes: build=$BUILD floor=$FLOOR"
+          if [ "$BUILD" != "success" ] || [ "$FLOOR" != "success" ]; then
+            echo "::error::a required lane did not succeed (build=$BUILD floor=$FLOOR) — open that job's log" >&2
+            exit 1
+          fi
+        if: always()

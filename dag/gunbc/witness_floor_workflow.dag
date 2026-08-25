@@ -81,7 +81,37 @@ import std.types { List, String, Int }
 // would emit for THEM). The two steps below add a third, unrelated failure surface to the job;
 // they do not change what the drift gate covers.
 
+// THE REQUIRED CONTEXT'S NAME, AND AS OF 2026-08-25 IT NAMES THE AGGREGATION JOB RATHER THAN
+// THE FLOOR JOB. The distinction is the whole of what keeps the split fail-closed, so it is
+// stated here rather than left to be inferred from the job list below.
+//
+// WHAT WAS WRONG WITH THE FIRST CUT OF THE SPLIT, measured rather than argued (found in review
+// of gunbc#9203, and confirmed against the live ruleset rather than against the workflow): the
+// repository's `passing CI` ruleset is ACTIVE, has NO bypass actors, and names exactly ONE
+// required status check -- `witnesses`. A GitHub required context is produced by the JOB, not
+// by the workflow, so a second job publishes its own check under its own name and that check is
+// not required. The first cut therefore moved regen and v2-emission into a `build` job whose
+// failure COULD NOT BLOCK A MERGE: the required `witnesses` check would go green over a regen
+// drift or a v2 emission break, and the PR would be mergeable. That is fail-open (DESIGN §5) --
+// and worse than the serial run it replaced, because the serial run's single job carried every
+// phase into the one context that gates.
+//
+// WHY AN AGGREGATION JOB AND NOT A RULESET EDIT. The ruleset is not a `.dag` fact and no wall
+// inside this repository can constrain what GitHub admits to main (the same boundary the
+// merge_group note below records). Landing a change whose safety depends on someone editing a
+// setting afterwards is a coverage gap with a promise attached, and it has a real window: until
+// the context is added, the lane is unguarded. An aggregation job needs no setting change and
+// no window -- the context that already gates keeps its name and now answers for BOTH lanes.
+//
+// WHAT IT COSTS, and it is not the parallelism. The two lane jobs still carry no `needs` edge
+// on each other and still start together; only the aggregator waits, and it does nothing but
+// read two results. The floor job is renamed to `floor` so its log is still findable by lane
+// name, and the aggregator's own output names which lane to open.
 data witness_floor_workflow_job_id: String = "witnesses"
+
+// The witness floor lane's job id. It was `witnesses` until the aggregation job took that name;
+// the check it publishes is not required and is not meant to be -- `witnesses` answers for it.
+data floor_lane_job_id: String = "floor"
 
 // THE BUILD LANE'S JOB ID, and it is the lane word from `gunbc.fabric_witness_run` rather than
 // a second name for the same thing. The job id is what GitHub publishes as the check name and
@@ -824,7 +854,7 @@ fn witness_floor_capability_closure_holds() -> Bool {
 // reading as coverage.
 fn witness_floor_job() -> Job {
   Job {
-    id: witness_floor_workflow_job_id,
+    id: floor_lane_job_id,
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
     steps: witness_floor_steps(),
@@ -902,6 +932,82 @@ fn build_lane_job() -> Job {
   }
 }
 
+// THE ONE JOB THAT GATES, AND THE ONLY PLACE IN THIS FILE THAT AUTHORS SHELL TEXT.
+//
+// Every other step in this workflow renders a modeled value -- an ArgvCommand through
+// `shell_command_render`, or `repo_self_build_command` -- and this one cannot, because there is
+// no modeled value for it to render: GitHub has no declarative "this job fails unless those
+// jobs succeeded". The nearest declarative form, a job-level `if` on the two results, is
+// exactly the fail-open being closed -- a job whose `if` is false is SKIPPED, and a skipped
+// required check does not stop a merge. So the refusal has to be a step that exits nonzero, and
+// a step that exits nonzero is shell.
+//
+// IT IS BUILT FROM THE JOB IDS RATHER THAN SPELLING THEM. A hand-typed `needs.build.result`
+// would be a second spelling of a name this file already declares, free to drift the moment
+// either job is renamed -- and it would drift SILENTLY, because an unknown `needs` context
+// renders as the empty string, which is not `success`, so the gate would refuse every run and
+// read as a broken lane rather than as a broken reference.
+//
+// `if: always()` IS LOAD-BEARING. Without it the step inherits `success()`, which is false the
+// moment a lane fails -- so the step would be skipped, the job would report success, and the
+// required check would go green over the exact failure it exists to catch.
+fn required_lane_result_expression(job_id: String) -> String {
+  concat("${{ needs.", concat(job_id, ".result }}"))
+}
+
+fn required_lanes_aggregate_script() -> String {
+  concat(
+    concat("BUILD=\"", concat(required_lane_result_expression(job_id: build_lane_job_id), "\"\n")),
+    concat(
+      concat("FLOOR=\"", concat(required_lane_result_expression(job_id: floor_lane_job_id), "\"\n")),
+      concat(
+        "echo \"required lanes: build=$BUILD floor=$FLOOR\"\n",
+        concat(
+          concat("if [ \"$BUILD\" != \"success\" ] || [ \"$FLOOR\" != \"success\" ]; then\n", ""),
+          concat(
+            "  echo \"::error::a required lane did not succeed (build=$BUILD floor=$FLOOR) — open that job's log\" >&2\n",
+            concat("  exit 1\n", "fi\n")
+          )
+        )
+      )
+    )
+  )
+}
+
+fn required_lanes_aggregate_step() -> Step {
+  RunStep {
+    name: Present { value: "Both required lanes must have succeeded" },
+    id: none,
+    run: required_lanes_aggregate_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// It checks out nothing, installs nothing and builds nothing: it reads two results. A five
+// minute bound is an order of magnitude above anything that can take, and it stops a stuck
+// aggregator from holding a runner for the inherited six hours.
+fn required_lanes_aggregate_job() -> Job {
+  Job {
+    id: witness_floor_workflow_job_id,
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: [required_lanes_aggregate_step()],
+    needs: [build_lane_job_id, floor_lane_job_id],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: 5,
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
 data witness_floor_workflow: Workflow = {
   name: witness_floor_workflow_name,
   on: [
@@ -941,7 +1047,7 @@ data witness_floor_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: [build_lane_job(), witness_floor_job()]
+  jobs: [build_lane_job(), witness_floor_job(), required_lanes_aggregate_job()]
 }
 
 // THE CLOSURE HAS A PRODUCTION CONSUMER, which is the difference between a check and a claim.

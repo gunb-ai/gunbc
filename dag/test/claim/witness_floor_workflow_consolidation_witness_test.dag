@@ -2,7 +2,7 @@ module test.claim.witness_floor_workflow_consolidation_witness_test
 
 import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, witness_floor_workflow_job_id }
+import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id }
 import gunbc.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
 
 // THE CI PHASES ARE THE PROGRAM'S TO SEQUENCE, NOT THE JOB'S (operator directive, 2026-08-20:
@@ -157,37 +157,68 @@ test fn w_RED_the_retired_step_names_do_not_return() -> Bool {
   }
 }
 
-// THE SPLIT IS TWO JOBS, AND BOTH LANE WORDS REACH THE EMITTED FILE.
+// THE SPLIT IS TWO LANES PLUS THE JOB THAT GATES, AND ALL THREE REACH THE EMITTED FILE.
 //
 // This is the positive half the negatives above cannot supply: every clause in this file up to
 // here is satisfied by a ONE-job workflow, so without this row the split could be reverted to a
-// single serial job and nothing here would notice. The lane words are read from the fabric's
-// own declarations rather than spelled, so a rename moves both sides together.
+// single serial job and nothing here would notice. The lane words and job ids are read from
+// their own declarations rather than spelled, so a rename moves both sides together.
 test fn w_the_required_workflow_carries_both_lanes() -> Bool {
   match expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
       string_contains(s: yml, pattern: concat("--required-lane' '", concat(required_ci_lane_build, "'")))
         && string_contains(s: yml, pattern: concat("--required-lane' '", concat(required_ci_lane_witnesses, "'")))
         && string_contains(s: yml, pattern: concat("  ", concat(build_lane_job_id, ":")))
+        && string_contains(s: yml, pattern: concat("  ", concat(floor_lane_job_id, ":")))
         && string_contains(s: yml, pattern: concat("  ", concat(witness_floor_workflow_job_id, ":")))
     WitnessFloorGenerationRefused => false
   }
 }
 
-// NO `needs` EDGE, WHICH IS THE ENTIRE CONTENT OF "PARALLEL".
+// NEITHER LANE WAITS ON THE OTHER, WHICH IS THE ENTIRE CONTENT OF "PARALLEL" -- and the
+// aggregation job waits on both, which is what keeps the split fail-closed.
 //
-// Two jobs that name each other in `needs` are the serial run with an extra checkout, and the
-// change would look identical in every other respect -- same jobs, same lane words, same
-// commands. So the discriminating clause is the absence of the key itself: the workflow emitter
-// renders `needs` only for a job that declares one, and neither of these does.
+// THE EARLIER FORM OF THIS ROW ASSERTED THAT THE FILE CONTAINED NO `needs:` AT ALL, and that
+// was the right claim for a workflow shape that was WRONG. Review of gunbc#9203 found it: the
+// repository's ruleset names exactly one required check, `witnesses`, and a GitHub context is
+// produced by the JOB, so a second job's failure could not block a merge. The fix is an
+// aggregation job that keeps the required name and refuses unless both lanes succeeded -- which
+// necessarily carries a `needs` edge, so a row forbidding the token outright would have made
+// the fail-closed repair unrepresentable.
 //
-// It is a RED that can be authored: adding a `needs` row to either job in
-// `gunbc.witness_floor_workflow` puts the token in the emitted file and fails this row.
+// The claim is therefore stated at the grain that actually matters. A lane waiting on the other
+// renders as that lane's job carrying `needs: [<other lane>]`, so both single-lane forms are
+// refused; the aggregator's two-lane edge is required to be present. That is a strictly sharper
+// discriminator than the token count was, because it distinguishes the serialization being
+// forbidden from the aggregation being demanded, which "no needs anywhere" could not.
+//
+// It is a RED that can be authored in both directions: giving either lane job a `needs` row
+// fails the negatives, and dropping the aggregator's fails the positive.
 test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
   match expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
-      !string_contains(s: yml, pattern: "needs:")
-        && string_contains(s: yml, pattern: "jobs:")
+      string_contains(s: yml, pattern: concat("needs: [", concat(build_lane_job_id, concat(", ", concat(floor_lane_job_id, "]")))))
+        && !string_contains(s: yml, pattern: concat("needs: [", concat(build_lane_job_id, "]")))
+        && !string_contains(s: yml, pattern: concat("needs: [", concat(floor_lane_job_id, "]")))
+    WitnessFloorGenerationRefused => false
+  }
+}
+
+// THE GATE ITSELF REFUSES RATHER THAN SKIPS, and this row exists because the failure it guards
+// is invisible in every other reading of the file.
+//
+// A required job that is SKIPPED does not stop a merge. So an aggregator whose step inherits
+// GitHub's implicit `success()` would be skipped exactly when a lane failed -- the job would
+// report success and the required check would go green over the failure it exists to catch.
+// `always()` is the status function that displaces the implicit default (the same substitution
+// rule the floor's own precondition paragraph records), and the nonzero exit is what turns a
+// read of two results into a refusal.
+test fn w_RED_the_gate_runs_and_refuses_on_a_failed_lane() -> Bool {
+  match expected_witness_floor_yml() {
+    WitnessFloorGenerated { content: yml } =>
+      string_contains(s: yml, pattern: "if: always()")
+        && string_contains(s: yml, pattern: "exit 1")
+        && string_contains(s: yml, pattern: "!= \"success\"")
     WitnessFloorGenerationRefused => false
   }
 }
