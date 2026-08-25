@@ -23,6 +23,9 @@ import gunbc.fabric_cell_converge {
   AddressObservationRefused,
   FabricCellReadback,
   FabricCellHostReadback,
+  FabricCellObservationRefusal,
+  ForeignArtifactObserved,
+  DiscoveryUnavailable,
 }
 
 data fabric_cell_observe_authority_disposition: Disposition = SingleAuthority
@@ -557,4 +560,60 @@ fn fabric_cell_discovery_insert(
 
 fn fabric_cell_discovery_holds(acc: List<FabricCellDiscoveredSubject>, wire: String) -> Bool {
   fold(acc, init: false, f: (seen, e) => seen || fabric_cell_discovered_subject_wire(s: e) == wire)
+}
+
+// ONE OBSERVER RESULT, BECAUSE TWO PARALLEL FUNCTIONS LET A CALLER TAKE HALF. The expected fold and
+// the discovery fold were separately callable, so a wet caller could read the authority's cells,
+// never enumerate the host, and hand a complete-looking readback to the classification kernel while
+// an out-of-band artifact sat on disk. The conservation law was true inside each function and
+// absent at the seam between them -- which is how a conservation law actually fails: not by losing
+// a subject, but by having a caller who never asks for one of the populations.
+//
+// THE PROJECTION IS THE ONLY THING THE WET PATH SHOULD CONSUME. Both halves come from ONE probe, so
+// they cannot disagree about which host was read, and `fabric_cell_population` now REQUIRES the
+// discovery-derived refusals, so there is no spelling for a population built from the expected side
+// alone.
+type FabricCellObserverProjection {
+  host: HostIdentity
+  expected_readback: FabricCellHostReadback
+  discovery: FabricCellDiscovery
+}
+
+fn fabric_cell_observe(probe: FabricCellHostProbe) -> FabricCellObserverProjection {
+  FabricCellObserverProjection {
+    host: probe.host,
+    expected_readback: fabric_cell_observe_host(probe: probe),
+    discovery: fabric_cell_discovered_subjects(probe: probe),
+  }
+}
+
+// DISCOVERY PROJECTS INTO THE REFUSAL VOCABULARY gunbc.fabric_cell_converge OWNS, which is what
+// keeps the direction acyclic: this module imports that one, so that one cannot name
+// FabricCellDiscovery. Only the two arms that are NOT already accounted for on the expected side
+// project: an expected cell and a committed slot on this host both reach the classification kernel
+// through the readback, and reporting them again here would double-count one subject in the plan
+// identity.
+//
+// A CROSS-HOST NAMED ARTIFACT PROJECTS AS FOREIGN, CARRYING THE NAME AND NOT THE IDENTITY IT
+// RESEMBLES. The discovery arm keeps the matched slot because the remedy differs -- an operator
+// seeing srv3-06 on srv4 looks somewhere specific -- but the refusal that enters the
+// content-addressed plan carries the observed NAME, because minting or citing an identity for an
+// artifact this host never committed is the uncited authority the whole classifier refuses.
+fn fabric_cell_discovery_refusals(discovery: FabricCellDiscovery) -> List<FabricCellObservationRefusal> {
+  match discovery {
+    DiscoveryRefused { host: h, cause: c } => [DiscoveryUnavailable { host: h, cause: c }]
+    DiscoveryEnumerated { host: h, subjects: ss } =>
+      fold(ss, init: [], f: (acc, sub) => concat(acc, fabric_cell_discovered_refusal(host: h, s: sub)))
+  }
+}
+
+fn fabric_cell_discovered_refusal(host: HostIdentity, s: FabricCellDiscoveredSubject) -> List<FabricCellObservationRefusal> {
+  match s {
+    DiscoveredExpectedCell { slot: _ } => []
+    DiscoveredUnexpectedCommittedSlot { slot: _ } => []
+    DiscoveredCrossHostNamedArtifact { observed_name: n, named_slot: _, observed_on: h } =>
+      [ForeignArtifactObserved { host: h, observed_name: n, location: fabric_cell_base_dir_name() }]
+    DiscoveredForeignArtifact { observed_name: n, location: l } =>
+      [ForeignArtifactObserved { host: host, observed_name: n, location: l }]
+  }
 }

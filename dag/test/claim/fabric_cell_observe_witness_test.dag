@@ -19,6 +19,10 @@ import gunbc.fabric_cell_converge {
   FabricCellReadback,
   FabricCellHostReadback,
   classify_fabric_cell_host,
+  fabric_cell_population,
+  FabricCellPopulation,
+  FabricCellPopulationObserved,
+  FabricCellPopulationObservationRefused,
   FabricCellHostClassification,
   FabricCellAddressStanding,
   StandingSatisfied,
@@ -54,6 +58,9 @@ import gunbc.fabric_cell_observe {
   DiscoveredForeignArtifact,
   DiscoveredCrossHostNamedArtifact,
   fabric_cell_discovered_subject_wire,
+  fabric_cell_observe,
+  FabricCellObserverProjection,
+  fabric_cell_discovery_refusals,
 }
 
 // ROUTED, BECAUSE AN UNROUTED WITNESS IS DISCOVERED AND NEVER RUN. A module that does not declare
@@ -651,5 +658,94 @@ fn discovery_host_wire(d: FabricCellDiscovery) -> String {
   match d {
     DiscoveryEnumerated { host: h, subjects: _ } => h as String
     DiscoveryRefused { host: h, cause: _ } => h as String
+  }
+}
+
+// LAW 26 -- A FOREIGN ARTIFACT REACHES THE POPULATION AS A REFUSAL, WHICH IS THE SEAM THE EARLIER
+// SHAPE LEFT OPEN. Discovery and the expected fold were separately callable, so a caller could read
+// the authority's cells, never enumerate the host, and obtain a fully `Observed` population while
+// an out-of-band artifact sat on disk. Conservation held inside each function and nowhere between
+// them -- which is how a conservation law actually fails: not by losing a subject, but by having a
+// caller who never asks for one of the populations.
+test fn witness_observer_foreign_artifact_refuses_the_population() -> Bool {
+  let projection = fabric_cell_observe(probe: converged_probe_with_foreign())
+  population_is_refused(p: fabric_cell_population(
+    readback: projection.expected_readback,
+    discovered: fabric_cell_discovery_refusals(discovery: projection.discovery),
+  ))
+}
+
+// AND THE DISCRIMINATING PAIR: the same host, read completely and converged, is OBSERVED when
+// nothing foreign is present. Without this the row above passes on an implementation that refuses
+// everything.
+test fn witness_observer_converged_projection_is_an_observed_population() -> Bool {
+  let projection = fabric_cell_observe(probe: converged_probe())
+  !population_is_refused(p: fabric_cell_population(
+    readback: projection.expected_readback,
+    discovered: fabric_cell_discovery_refusals(discovery: projection.discovery),
+  ))
+}
+
+// LAW 27 -- A REFUSED ROOT ENUMERATION REFUSES BOTH POPULATIONS, and the row exists to record that
+// they CANNOT disagree rather than to catch a case where they do. I first wrote this as "a refused
+// discovery refuses an otherwise converged population" and it would have been a decoration: the
+// cell-root address and discovery consume the SAME root enumeration, so a discovery that refused
+// while every expected address observed is unreachable by construction, and a row asserting it
+// could never go red. What is authorable, and asserted here, is that one refused enumeration
+// surfaces on both sides -- so no consumer can take the observed half of a host whose listing
+// failed.
+test fn witness_observer_refused_root_enumeration_refuses_both_populations() -> Bool {
+  let projection = fabric_cell_observe(probe: converged_probe_with_unreadable_root())
+  let discovery_refusals = fabric_cell_discovery_refusals(discovery: projection.discovery)
+  list_length(items: discovery_refusals) == 1
+    && count_refused(os: fabric_cell_readback_observations(r: projection.expected_readback)) > 0
+    && population_is_refused(p: fabric_cell_population(
+        readback: projection.expected_readback,
+        discovered: discovery_refusals,
+      ))
+}
+
+fn fabric_cell_readback_observations(r: FabricCellHostReadback) -> List<FabricCellAddressObservation> {
+  fold(r.cell_readbacks, init: [], f: (acc, c) => concat(acc, c.observations))
+}
+
+// LAW 28 -- AN EXPECTED CELL AND A COMMITTED SLOT ARE NOT COUNTED TWICE. Both already reach the
+// classification kernel through the readback, so projecting them again from discovery would
+// double-count one subject in the plan identity. The converged probe's own root listing holds
+// exactly the expected cell, and it contributes no refusal.
+test fn witness_observer_expected_cell_is_not_double_counted_from_discovery() -> Bool {
+  list_length(items: fabric_cell_discovery_refusals(
+    discovery: fabric_cell_discovered_subjects(probe: converged_probe())
+  )) == 0
+}
+
+fn converged_probe_with_foreign() -> FabricCellHostProbe {
+  FabricCellHostProbe {
+    host: operator_host_srv3,
+    namespaces: [
+      enumerated(ns: FabricCellsRootNamespace, entries: concat(observe_root_entries(), ["srv3-99"])),
+      enumerated(ns: FabricCellChildNamespace { slot: observe_slot() }, entries: ["attempts"]),
+      enumerated(ns: FabricCellSliceNamespace, entries: [fabric_cell_slice_name(slot: observe_slot())]),
+    ],
+    addresses: converged_probe().addresses,
+  }
+}
+
+fn converged_probe_with_unreadable_root() -> FabricCellHostProbe {
+  FabricCellHostProbe {
+    host: operator_host_srv3,
+    namespaces: [
+      enumeration_refused(ns: FabricCellsRootNamespace, cause: "permission denied"),
+      enumerated(ns: FabricCellChildNamespace { slot: observe_slot() }, entries: ["attempts"]),
+      enumerated(ns: FabricCellSliceNamespace, entries: [fabric_cell_slice_name(slot: observe_slot())]),
+    ],
+    addresses: converged_probe().addresses,
+  }
+}
+
+fn population_is_refused(p: FabricCellPopulation) -> Bool {
+  match p {
+    FabricCellPopulationObservationRefused { host: _, blocked: _ } => true
+    FabricCellPopulationObserved { host: _, observed: _ } => false
   }
 }

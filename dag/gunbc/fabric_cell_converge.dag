@@ -878,12 +878,36 @@ type FabricCellObservationRefusal
   = ExpectedAddressBlocked { disposition: FabricCellAddressDisposition }
   | UnexpectedCellEvidence { evidence: FabricCellUnexpectedCellEvidence }
   | ReadbackHostMismatch { mismatch: FabricCellReadbackHostMismatch }
+  | ForeignArtifactObserved { host: HostIdentity, observed_name: String, location: String }
+  | DiscoveryUnavailable { host: HostIdentity, cause: String }
 
 type FabricCellPopulation
   = FabricCellPopulationObserved { host: HostIdentity, observed: FabricCellObservedMembers }
   | FabricCellPopulationObservationRefused { host: HostIdentity, blocked: List<FabricCellObservationRefusal> }
 
-fn fabric_cell_population(readback: FabricCellHostReadback) -> FabricCellPopulation {
+// THE DISCOVERED SIDE IS A REQUIRED ARGUMENT, NOT AN OPTIONAL ONE, and that is the whole point of
+// the signature. The observer produces two conserved populations -- the authority's expected cells
+// and what the host actually holds -- and while this fold took only the first, a wet caller could
+// read the expected side, skip discovery entirely, and obtain a fully `Observed` population while
+// an out-of-band artifact sat on the host. "Second conserved population" was then true inside the
+// observer's own function and false at the seam that decides anything, which is the shape a
+// conservation law fails in: not by losing a subject, but by having a caller who never asks.
+//
+// SO THERE IS NO ONE-ARGUMENT SPELLING. A caller with nothing to report passes the reason it has
+// nothing -- `DiscoveryUnavailable` -- which is a refusal, so an unread host cannot silently become
+// a converged one. That is construction rather than a check: the omission has no syntax, instead of
+// having a syntax that a lens would have to catch (DESIGN section 5).
+//
+// THE REFUSALS ARRIVE AS THIS MODULE'S OWN VOCABULARY, WHICH IS WHAT KEEPS THE DIRECTION ACYCLIC.
+// The observer imports this module, so this module cannot name the observer's discovery type; it
+// owns the refusal coproduct and the observer projects into it. `ForeignArtifactObserved` therefore
+// carries an observed NAME and a location rather than any identity -- the artifact matched nothing
+// committed, and minting a RunnerSlotIdentity for it would be exactly the uncited authority the
+// observer refuses to derive from a string.
+fn fabric_cell_population(
+  readback: FabricCellHostReadback,
+  discovered: List<FabricCellObservationRefusal>,
+) -> FabricCellPopulation {
   let classification = classify_fabric_cell_host(
     expected_slots: fabric_cell_expected_slots(host: readback.host),
     readback: readback,
@@ -900,7 +924,10 @@ fn fabric_cell_population(readback: FabricCellHostReadback) -> FabricCellPopulat
     blocked_addresses,
     concat(
       map(classification.unexpected, u => UnexpectedCellEvidence { evidence: u }),
-      map(classification.host_mismatched, m => ReadbackHostMismatch { mismatch: m }),
+      concat(
+        map(classification.host_mismatched, m => ReadbackHostMismatch { mismatch: m }),
+        discovered,
+      ),
     ),
   )
   if list_length(items: blocked) > 0 {
@@ -1028,6 +1055,19 @@ data fabric_cell_no_observer_cause: String = "no fabric cell observer is wired: 
 // fabric_cell_population(FabricCellHostReadback { host: srv4, cell_readbacks: [] }) both answer
 // observed-empty, because both derive the expected set from the same authority. Before this they
 // disagreed -- the observing fold was already host-exact and this constructor was not.
+// THE ZERO-EXPECTED ARM RETURNS AN OBSERVED-EMPTY POPULATION, AND WHAT THAT DOES NOT COVER IS
+// NAMED HERE RATHER THAN LEFT TO BE REDISCOVERED. A host declaring no fabric cells has an empty
+// desired population and an empty expected roster, so no action is plannable and the arm is correct
+// about the EXPECTED side. It says nothing about the SUPPLIED side: nobody enumerated that host's
+// cells root, so an out-of-band artifact there is invisible through this constructor -- which is
+// exactly the hole `fabric_cell_population`'s required `discovered` argument closes for every
+// caller that actually read a host.
+//
+// IT IS LEFT OPEN BECAUSE THIS CONSTRUCTOR IS THE UNREAD-HOST PLACEHOLDER ITSELF. Refusing here
+// would make every non-fabric host emit a fabric refusal on every plan, which is a fleet-wide
+// behaviour change to report a fact no probe established. NEXT-RUNG TRIGGER: the wet observer
+// replacing this constructor at the `gunbc.fleet_converge_plan_cli` call sites, at which point the
+// host is genuinely read and the discovery arm carries a real verdict rather than a placeholder.
 fn fabric_cell_population_unobserved(host: HostIdentity) -> FabricCellPopulation {
   let expected = fabric_cell_expected_slots(host: host)
   if list_length(items: expected) == 0 {

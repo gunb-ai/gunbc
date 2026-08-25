@@ -46,6 +46,7 @@ import gunbc.fabric_cell_converge {
   fabric_cell_observed_members,
   FabricCellHostReadback,
   fabric_cell_population,
+  FabricCellObservationRefusal,
   FabricCellPopulation,
   FabricCellPopulationObserved,
   FabricCellPopulationObservationRefused,
@@ -63,6 +64,16 @@ import gunbc.fabric_cell_converge {
 // could sit here unrouted without anyone being careless. That is a single-authority defect, routed
 // to the floor lane; this declaration is the local repair, not the fix for the class.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A FIXTURE THAT READ THE HOST AND FOUND NOTHING TO REFUSE, WHICH IS A VALUE AND NOT AN OMISSION.
+// `fabric_cell_population` takes the discovery-derived refusals as a REQUIRED argument precisely so
+// that a caller cannot build a population from the expected side alone; these rows exercise the
+// expected side, so the honest thing to pass is an empty discovery, spelled once here. It is local
+// to this file rather than offered by the production module: a shared `no_discovery()` would be the
+// omission given a name, and production callers must state what they actually observed.
+fn no_discovery_refusals() -> List<FabricCellObservationRefusal> {
+  []
+}
 
 fn srv3_fabric_slot() -> RunnerSlotIdentity {
   RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 }
@@ -393,6 +404,7 @@ test fn witness_fabric_cell_unread_expected_cell_refuses_despite_a_complete_fore
   }
   population_is_observation_refused(
     p: fabric_cell_population(
+      discovered: no_discovery_refusals(),
       readback: FabricCellHostReadback {
         host: operator_host_srv3,
         cell_readbacks: [foreign_readback],
@@ -435,6 +447,7 @@ test fn witness_fabric_cell_unobserved_is_host_exact_not_the_global_roster() -> 
     && population_blocked_count(p: fabric_cell_population_unobserved(host: operator_host_srv3)) == 3
     && population_is_observed_empty(
         p: fabric_cell_population(
+          discovered: no_discovery_refusals(),
           readback: FabricCellHostReadback { host: operator_host_srv4, cell_readbacks: [] }
         )
       )
@@ -474,12 +487,12 @@ fn host_readback_of(entries: List<FabricCellReadback>) -> FabricCellHostReadback
 
 test fn witness_fabric_cell_duplicate_slot_readbacks_merge_rather_than_last_wins() -> Bool {
   population_is_observation_refused(
-    p: fabric_cell_population(readback: host_readback_of(entries: [converged_readback(), drifted_root_readback()]))
+    p: fabric_cell_population(discovered: no_discovery_refusals(), readback: host_readback_of(entries: [converged_readback(), drifted_root_readback()]))
   )
     && population_is_observation_refused(
-        p: fabric_cell_population(readback: host_readback_of(entries: [drifted_root_readback(), converged_readback()]))
+        p: fabric_cell_population(discovered: no_discovery_refusals(), readback: host_readback_of(entries: [drifted_root_readback(), converged_readback()]))
       )
     && !population_is_observation_refused(
-        p: fabric_cell_population(readback: host_readback_of(entries: [converged_readback()]))
+        p: fabric_cell_population(discovered: no_discovery_refusals(), readback: host_readback_of(entries: [converged_readback()]))
       )
 }
