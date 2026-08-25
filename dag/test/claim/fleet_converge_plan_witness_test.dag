@@ -33,6 +33,9 @@ import gunbc.fabric_cell_converge {
   fabric_cell_population_unobserved,
   fabric_cell_member_key,
   fabric_cell_resource_address_wire,
+  classify_fabric_cell_host,
+  fabric_cell_expected_slots,
+  FabricCellUnexpectedCellEvidence,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
@@ -847,6 +850,12 @@ test fn witness_fabric_cell_unreadable_population_is_not_an_empty_one() -> Bool 
 // would provision over a host it could not see; one answering nothing would skip a host that needs
 // provisioning; one answering clean ADDs it cannot perform is the fabricated plausible output at the
 // actuation seam.
+// THE COUNTS HERE WERE 1 AND ARE NOW 3, AND THE OLD NUMBER WAS THE DEFECT WRITTEN DOWN AS THE
+// CONTRACT. An unread srv3 host blocks THREE addresses -- cell-root, attempt-root and
+// resource-boundary -- and the plan surface used to collapse them into one generic sentence and
+// report a refusal count of 1 no matter how many were blocked. This row passed throughout, because
+// it asserted the collapsed number. A row that pins a count can only be as good as the count it
+// pins, and a count that cannot vary with the population is not measuring the population.
 test fn witness_fabric_cell_refusal_is_rendered_and_counted_not_silent() -> Bool {
   let refused_lines = fleet_converge_fabric_cell_lines(
     host: "srv3" as NonEmptyStr,
@@ -856,12 +865,12 @@ test fn witness_fabric_cell_refusal_is_rendered_and_counted_not_silent() -> Bool
     host: "srv3" as NonEmptyStr,
     observed_fabric_cells: fabric_cells_observed_empty(),
   )
-  list_length(items: refused_lines) == 1
+  list_length(items: refused_lines) == 3
     && list_length(items: empty_lines) == 3
     && fleet_converge_fabric_cell_refusal_count(
         host: "srv3" as NonEmptyStr,
         observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
-      ) == 1
+      ) == 3
     && fleet_converge_fabric_cell_refusal_count(
         host: "srv3" as NonEmptyStr,
         observed_fabric_cells: fabric_cells_observed_converged(),
@@ -1076,4 +1085,112 @@ test fn witness_fabric_cell_absent_address_plans_add_and_never_change() -> Bool 
 test fn witness_fabric_cell_drifted_and_absent_are_different_observations() -> Bool {
   fabric_fingerprint_with(population: fabric_population_of(entries: [fabric_cell_readback_boundary_drifted()]))
     != fabric_fingerprint_with(population: fabric_population_of(entries: [fabric_cell_readback_boundary_absent()]))
+}
+
+// THE KERNEL IS EXERCISED AT A WIDTH THE AUTHORITY DOES NOT HAVE, WHICH IS THE ENTIRE REASON IT WAS
+// SPLIT OUT. `fabric_execution_slot_identities` declares exactly ONE fabric slot today, so every
+// row that reaches the classification through the authority-bound wrapper is a one-cell fixture --
+// and five of the six defects this family has had were reachable only because a one-cell fixture
+// cannot express them. These rows hand the kernel synthetic rosters directly. They mint no sealed
+// carrier and license no actuation, so a wide fixture is not a second production authority.
+// THE INDEX LIST IS DERIVED FROM THE WIDTH, NOT AUTHORED. A hand-written 21-element literal is the
+// same fork against the type that a hand-maintained fixture roster always is: it can disagree with
+// the width it claims to have, and nothing would notice.
+fn synthetic_slot_indices(count: Int) -> List<Int> {
+  if count <= 0 { [] } else { concat(synthetic_slot_indices(count: count - 1), [count - 1]) }
+}
+
+fn synthetic_fabric_slots(count: Int) -> List<RunnerSlotIdentity> {
+  map(
+    synthetic_slot_indices(count: count),
+    i => RunnerSlotIdentity { host: operator_host_srv3, slot_index: i },
+  )
+}
+
+fn synthetic_absent_readback_for(slot: RunnerSlotIdentity) -> FabricCellReadback {
+  FabricCellReadback {
+    slot: slot,
+    observations: map(
+      fabric_cell_resource_addresses(),
+      a => AddressAbsent { slot: slot, address: a },
+    ),
+  }
+}
+
+fn synthetic_host_readback(slots: List<RunnerSlotIdentity>) -> FabricCellHostReadback {
+  FabricCellHostReadback {
+    host: operator_host_srv3,
+    cell_readbacks: map(slots, s => synthetic_absent_readback_for(slot: s)),
+  }
+}
+
+// CONSERVATION OF THE EXPECTED SIDE: exactly one standing per expected ref, at three widths. A
+// kernel with a hidden one-cell or single-digit enumeration passes at N=1 and fails here.
+test fn witness_fabric_cell_kernel_conserves_every_expected_ref() -> Bool {
+  fold(
+    [0, 1, 2, 21],
+    init: true,
+    f: (acc, n) => acc && (
+      list_length(
+        items: classify_fabric_cell_host(
+          expected_slots: synthetic_fabric_slots(count: n),
+          readback: synthetic_host_readback(slots: synthetic_fabric_slots(count: n)),
+        ).standings
+      ) == n * list_length(items: fabric_cell_resource_addresses())
+    ),
+  )
+}
+
+// CONSERVATION OF THE SUPPLIED SIDE, AND THIS IS THE ROW THAT WOULD HAVE CAUGHT THE SILENT
+// EXCLUSION. Twenty-one expected cells, twenty-two supplied readbacks: the extra one is not
+// consumed by any expected ref, and before the kernel returned both sides it simply disappeared --
+// the result was byte-identical to supplying twenty-one. Now it is conserved as unexpected
+// evidence, named by its slot.
+test fn witness_fabric_cell_kernel_conserves_unexpected_supplied_evidence() -> Bool {
+  let expected = synthetic_fabric_slots(count: 21)
+  let supplied = synthetic_fabric_slots(count: 22)
+  let classification = classify_fabric_cell_host(
+    expected_slots: expected,
+    readback: synthetic_host_readback(slots: supplied),
+  )
+  list_length(items: classification.standings) == 21 * list_length(items: fabric_cell_resource_addresses())
+    && list_length(items: classification.unexpected) == 1
+    && fold(
+        classification.unexpected,
+        init: true,
+        f: (acc, u) => acc && u.slot.slot_index == 21,
+      )
+}
+
+// AND AN EXACT ROSTER LEAVES NOTHING OVER. Without this control the row above could pass on a
+// kernel that reported every supplied readback as unexpected.
+test fn witness_fabric_cell_kernel_exact_roster_has_no_unexpected_evidence() -> Bool {
+  let slots = synthetic_fabric_slots(count: 21)
+  list_length(
+    items: classify_fabric_cell_host(
+      expected_slots: slots,
+      readback: synthetic_host_readback(slots: slots),
+    ).unexpected
+  ) == 0
+}
+
+// UNEXPECTED EVIDENCE REFUSES THE POPULATION RATHER THAN BEING DROPPED, and the discriminating
+// pair is the point: the same host, read completely and converged, is OBSERVED when nothing extra
+// is supplied and REFUSED when one unexpected cell is. If the two agreed, the evidence would be
+// being ignored exactly as it was before.
+test fn witness_fabric_cell_unexpected_readback_refuses_rather_than_vanishing() -> Bool {
+  let converged_only = fabric_population_of(entries: [fabric_cell_readback_all_present()])
+  let with_unexpected = fabric_population_of(entries: [
+    fabric_cell_readback_all_present(),
+    synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv3, slot_index: 7 }),
+  ])
+  list_length(
+    items: fleet_converge_fabric_cell_lines(host: "srv3" as NonEmptyStr, observed_fabric_cells: converged_only)
+  ) == 0
+    && fleet_converge_fabric_cell_refusal_count(
+        host: "srv3" as NonEmptyStr,
+        observed_fabric_cells: with_unexpected,
+      ) == 1
+    && fabric_fingerprint_with(population: converged_only)
+        != fabric_fingerprint_with(population: with_unexpected)
 }
