@@ -29,6 +29,15 @@ import v2.std.algebra { any, count_where, length, fold_list, list_snoc_item }
 // result, because it establishes that all thirteen are main-side facts and none
 // is branch content of the cut.
 
+// ONE SHAPE RECURS ACROSS THREE OF THE FOUR REAL SUBJECTS, and it is worth
+// naming once rather than three times: a cut deletes a population, rows
+// elsewhere go on naming what it removed, and nothing notices because the thing
+// that would notice does not run. The 2026-08-15 floor cut left two stale
+// non_fold_residue rows naming src/v2/workflow/ci_floor_plan.dag; the 2026-08-24
+// measurement bankruptcy left 19 doc roots and 12 links naming deleted
+// docs/probes/ files. Three separate cuts, the same residue, undetected for the
+// same reason.
+
 type DeclinedLiveIdentity {
   module_path: String
   function: String
@@ -98,7 +107,7 @@ data doc_graph_dangling_link_count_measured: Int = 16
 data doc_graph_orphan_count_measured: Int = 35
 data doc_graph_declared_root_count_measured: Int = 228
 
-data permanent_evidence_ruling_question: String = "The 2026-08-24 measurement bankruptcy deleted docs/probes/ whole, including the three g1-cited-symbol-control-* documents that gunbc.doc_graph_roots declares PlanHasNoRetirement -- permanent discriminating evidence under DESIGN 4b(4), which says a climb deletes production machinery and KEEPS the evidence. Two closures are available and they point opposite ways: delete the three binds (finishing the deletion, and conceding that a PlanHasNoRetirement declaration did not survive a cut) or restore the three files from history (reversing part of an operator cut). The other sixteen dead binds carry ordinary retirements and need no ruling."
+data permanent_evidence_ruling_question: String = "STATED AS A VIOLATION THAT ALREADY LANDED, NOT AS A NEUTRAL PAIR OF OPTIONS, BECAUSE THE FRAMING DECIDES WHO HAS TO ACT (manager ruling, swift-badger-524, 2026-08-25). DESIGN 4b(4) says a climb dissolves the redundant lower-rung PRODUCTION machinery and NEVER the evidence: the discriminating RED and its positive control stay enrolled, because deleting them recreates specification-without-execution one rung up. Three of the 19 dead binds are the g1-cited-symbol-control-* rows, declared PlanHasNoRetirement precisely so that a climb could not delete them. The 2026-08-24 measurement bankruptcy deleted them anyway, by a sweep that took docs/probes/ whole. So the two available closures are NOT peers. Deleting the three binds FINISHES a deletion 4b(4) forbids and makes it invisible; restoring the three files from history reverses part of an operator cut. Only the second is reversible by anyone other than the operator, which is why the question is theirs and why no lane may quietly take the first. The other sixteen dead binds carry ordinary retirements and need no ruling."
 
 data doc_reachability_rows: List<ClassifiedRow> = [
   ClassifiedRow {
@@ -157,24 +166,31 @@ data doc_reachability_rows: List<ClassifiedRow> = [
 // could ever be written for. The gate has never held on the live corpus and
 // cannot be made to hold by adding residue rows.
 //
-// The remedy is already named on the carrier: lens_module_gate's own
-// surface_table dissolve-on says the central table dissolves when each enrolled
-// lens declares its invariant surface ON ITS OWN MODULE. A surface declared per
-// lens is discriminating; a surface projected from a 58-arm table over two enums
-// cannot be. Routed there rather than repaired here, because narrowing the
-// criterion is a design decision on a load-bearing enforcement carrier.
+// THE SELF-REFUSAL IS THE PROOF, NOT THE ILLUSTRATION: a check whose FIRST
+// refusal is structurally uncoverable by its own escape mechanism is not
+// under-exempted, it is wrong.
+//
+// ADDING EXEMPTION ROWS IS FORBIDDEN (manager ruling, swift-badger-524,
+// 2026-08-25). Growing lens_module_gate_audit_residue_rows toward 42 is the
+// one-sided ratchet over hand-authored rows DESIGN 5's oracle ruling rules out,
+// and it would be silencing a criterion nobody has established is right. The
+// remedy is at the CRITERION, and the carrier already names it: lens_module_gate's
+// own surface_table dissolve-on says the central table dissolves when each
+// enrolled lens declares its invariant surface ON ITS OWN MODULE. A surface
+// declared per lens is discriminating; a surface projected from a 58-arm table
+// over two coarse enums cannot be. Routed there rather than repaired here.
 data lens_module_gate_rows: List<ClassifiedRow> = [
   ClassifiedRow {
     identity: identity(module_path: "v2.test.claim.enforcement.lens_module_gate_witness", function: "lens_module_gate_holds_live"),
     classification: WrongWitness { fault: CriterionCannotHoldOnLiveCorpus { measured: 42, denominator: 58 } },
     measured_evidence: "decomposed by execution on main: lens_module_gate_unenrolled_count() == 0 PASS, lens_module_gate_unjustified_count() == 0 PASS, lens_module_gate_redundant_blocking_count() == 0 FAIL; the 42 offending pairs were re-derived independently from the registry order and the surface table",
-    disposition: RoutedToOwner { owner: "v2.lens.enforcement.lens_module_gate -- its own surface-table dissolution condition (surface declared on-carrier) is the fix" }
+    disposition: RoutedToOwner { owner: "v2.lens.enforcement.lens_module_gate -- the fix is at the criterion (surface declared on-carrier, its own dissolution condition); adding exemption rows is ruled out" }
   },
   ClassifiedRow {
     identity: identity(module_path: "v2.test.claim.enforcement.lens_module_gate_witness", function: "question_zero_verdict_live_holds"),
     classification: WrongWitness { fault: CriterionCannotHoldOnLiveCorpus { measured: 42, denominator: 58 } },
     measured_evidence: "same redundant_claim leg; this witness passes facts: [] so its unenrolled and unjustified legs are vacuously clean and only the shared leg can fail",
-    disposition: RoutedToOwner { owner: "v2.lens.enforcement.lens_module_gate" }
+    disposition: RoutedToOwner { owner: "v2.lens.enforcement.lens_module_gate -- same criterion, same prohibition on exemption rows" }
   }
 ]
 
