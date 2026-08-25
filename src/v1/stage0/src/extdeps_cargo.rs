@@ -204,13 +204,13 @@ pub enum TestHarness {
     NoHarness,
 }
 
-pub fn default_profile() -> CargoProfile {
+pub fn default_profile() -> String {
     thread_local! {
-        static CACHED: CargoProfile = {
+        static CACHED: String = {
             "dev".to_string()
         };
     }
-    CACHED.with(|c: &CargoProfile| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn cargo_environment_variables_authority() -> Rc<ExternalAuthority> {
