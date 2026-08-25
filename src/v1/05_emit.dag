@@ -615,7 +615,7 @@ fn render_node_type(n: v1.std.core.Node, target: v1.compiler.artifact.RenderTarg
 
   let is_conj = n.connective == v1.std.core.Conj
   let is_disj = n.connective == v1.std.core.Disj
-  let shared = set_contains(shared_types, tn)
+  let shared = set_contains(shared_types, v1.std.core.qualified_last_segment(name: tn))
 
   if is_disj {
     let base = if n.ident_span != none {
