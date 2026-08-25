@@ -476,8 +476,14 @@ remaining 52 `String`-keyed sites are concentrated rather than diffuse: 50 of th
 in three lens files (`module_impact_query` 28, `reference_deps` 12,
 `module_graph` 10).
 
-1. **v1's 2093 `Map<String, _>` are not sloppiness.** They are the model
-   faithfully describing what the realization can express. Repointing them to
+1. **v1's 2093 `Map<String, _>` are not 2093 independent acts of sloppiness.**
+   They are the model faithfully describing what the realization can express —
+   though *the model had no alternative* would be too strong, and review flagged
+   that overreach: v2 shows source-level typed keys can exist even where lowering
+   erases them, so some v1 declarations **are** genuinely under-modelled and do
+   need repointing after realization. The accurate statement is a
+   **model/realization co-defect whose terminal repair must start at
+   realization.** Repointing them to
    typed keys while the emitter erases brands would move the fork rather than
    close it — DESIGN §4b rung honesty: a class's rung is the *minimum* across its
    in-scope paths, and citing the model path while the emission path stays silent
@@ -489,9 +495,24 @@ in three lens files (`module_impact_query` 28, `reference_deps` 12,
    that admits values the mint refuses. Brand erasure is the general case; that
    receipt is one instance of it.
 
-**Answering the sizing question directly: the identity work is one program with
-two ends, not one.** The emitter must stop erasing brands before the model-side
-repointing can mean anything.
+**The identity work is one program with two ends**, and the emitter end goes
+first — **for the parts that depend on it.** Adversarial review narrowed that
+dependency, and the narrowing matters because the earlier phrasing put the whole
+program behind one track:
+
+| work | needs nominal realization first? |
+|---|---|
+| unify closure construction | no |
+| remove whole-pool / proximity fallback | no |
+| produce exact occurrence bindings | no |
+| key exact registries by structured `DeclarationRef` | usually no |
+| change `Map<String, V>` → `Map<SubjectKey<K>, V>` | **yes** |
+| claim identity is preserved end-to-end | **yes** |
+| use emitted brands as runtime map keys | **yes** |
+
+Realization is a hard predecessor of **Track D's activation and of the rung
+claim**, not of Tracks B and C as a whole: those are compiler-semantic facts and
+do not require `Symbol` to lower as a Rust newtype.
 
 ## 5. The keying law, stated so it is enforceable
 
@@ -884,9 +905,19 @@ import-derived resolution and closure, not import syntax.** DESIGN §3 says
 work" — so once nothing reads an import, the grammar is a corpse and deleting a
 corpse is bounded cleanup. The invariant that keeps this honest:
 
-> **Repointing is per FACT, not per consumer.** No PR may leave two live
-> consumers of one fact reading different authorities for it. Dual authority is
-> what delete-first forbids; inert syntax is not dual authority.
+> **For each production semantic contract, exactly one producer supplies every
+> production consumer. Alternative producers may exist only as derived,
+> non-production observations. The producer changes once.**
+
+Dual authority is what delete-first forbids; inert syntax is not. The shape this
+licenses is what makes incremental landing safe: consumers move one PR at a time
+onto a common typed relation — `DependencyFacts` — whose **body** stays
+import-derived throughout preparation, with the reference-derived body existing
+only as a comparison receipt, and the body swapping once at F. Consumers may be
+adapted individually because they still receive **one** authoritative answer.
+What must never exist is `compile → reference closure` while
+`regen → import closure` and `topological_sort → import edges`: multiple live
+answers to one question, even with no individual consumer carrying a fallback.
 
 An earlier revision of this invariant said *each repoint moves one consumer all
 the way across*, which is **insufficient**, and the objection is the side chat's:
@@ -934,12 +965,35 @@ fixture red) · 0.2 `order_typed_call_args` (§3b) · 0.3 `build_data_body_index
 bare-name index (§3c) — sole blocker of whole-corpus emission, confirmed both
 directions · 0.4 the `coercion_widening.dag:29:49` parse failure.
 
-**Track A — realization.** A.1 `rust_nominal_identity_carrier_type_eligible`
-becomes a real predicate; brands emit as newtypes. Independently confirmed by
-`neat-fox-901`: the predicate has **5 call sites waiting on it**, and
-`rust_nominal_identity_carrier_def` directly above it **already emits
-`pub struct Name(pub String)`** — so both halves exist and only the admission
-predicate is stubbed. This is a switch, not a build. A.2 the `UriValidatedScalar`
+**Track A — realization. NOT a one-line switch**, and an earlier revision of this
+document said it was. The dormant path is real — the predicate has 5 call sites
+waiting and `rust_nominal_identity_carrier_def` directly above it already emits
+`pub struct Name(pub String)` — but adversarial review found three reasons it is
+a skeleton rather than a flip:
+
+1. **The predicate takes a `String`.** Implementing it as a name whitelist would
+   **recreate the exact defect this program removes.** Terminal eligibility
+   consumes an exact declaration or an already-derived carrier fact, never an
+   authored or bare name.
+2. **The dormant newtype's derives do not include `Hash`.** A carrier used as a
+   Rust `HashMap` key needs an explicit hash story before Track D can key on it.
+3. **`pub struct Name(pub String)` preserves a *brand*; it does not make a
+   *validated scalar* unforgeable.** The claim that A subsumes §4b's
+   `UriValidatedScalar` forgery class is therefore **too broad** — a brand
+   carrier and a validated carrier have different construction contracts, and
+   only the first is delivered here.
+
+The track splits, which also removes a hidden A↔C cycle:
+
+```
+A0  target capability — emit a distinct nominal carrier; equality, ordering,
+                        hash, serde, rendering. No production eligibility yet.
+C0  semantic carrier identity — exact declaration → carrier kind.
+                        No String-name whitelist.
+A1  activation        — exact carrier facts drive emission; brand-only and
+                        validated-construction policies kept distinct.
+D   repoint production key relations                       [gated on A1]
+``` A.2 the `UriValidatedScalar`
 forgery becomes A.1's enrolled regression control (§4b(4)). *Precedes every key
 repointing, because it is invisible to model-side checks.*
 
@@ -980,31 +1034,74 @@ unrelated module may not change an entry's closure, bindings, ambiguity results
 or visible services*. It stands on its own merits as the control for §3.3(b)'s
 ambient binding, which is measured and unretracted.
 
-**Track F/G — the flip, then the corpse.** F.1 the one motion: apply the rewrite,
-flip resolution and closure authority, delete every ambient fallback, regenerate
-stage0. F.2 repoint the last import *readers* — `source_visible_names`,
-`resolve_module_imports`, v2 `admit_imports`, translate, body-lowering,
-`topological_sort`'s ordering. G delete the grammar, AST, keyword and
-productions.
+**Track F/G — one semantic motion, then the corpse.** **Corrected by adversarial
+review; this was the sequence's largest defect.** An earlier revision had F.1 flip
+the authority, F.2 then repoint "the last import readers"
+(`source_visible_names`, `resolve_module_imports`, v2 `admit_imports`, translate,
+body-lowering, `topological_sort`'s ordering), and G delete the grammar. That is
+incoherent:
 
-**G carries one disposition it cannot skip.**
+> **If any F.2 reader remains reachable and affects a production result, the
+> authority transition did not finish in F.1. If it is unreachable, it should be
+> deleted as corpse — not repointed.**
+
+So the rule the operator's grammar-last framing actually licenses is narrower
+than what was written:
+
+> **Grammar deletion may safely trail the atomic cut. Live import readers may
+> not.**
+
+```
+F — one semantic motion
+    apply the binding-preserving rewrite
+    switch the single resolution/closure PRODUCER
+    move every live ordering / lowering / emission consumer to the derived facts
+    delete the old import-derived producers and all ambient fallbacks
+    retire import-semantic diagnostics and their witnesses
+    regenerate
+
+G — immediate, bounded corpse deletion
+    delete the import token, grammar, AST variant and parser production
+    delete unreachable import structures
+    retire the syntax-acceptance compatibility control
+    regenerate
+```
+
+There is no post-F "last reader repoint".
+
+**Corpse needs a behavioural definition, not grep-zero.** *Nothing calls this
+import function* is necessary and insufficient: import syntax can still reach
+occurrence allocation, authored ordering, candidate iteration,
+source-visible-name populations, topological order, diagnostics, cache keys,
+generated output and stable semantic ids. The criterion is
+
+```
+semantic_result(P) == semantic_result(add / remove / reorder / rewrite every import declaration in P)
+```
+
+over exact occurrence→declaration bindings, dependency edges, closure, reconcile
+decisions, diagnostic identities, target output and generation result — source
+positions may move; declaration identities and diagnostic causes may not. The
+implementation form: **at the end of F, `ImportDecl` is outside the transitive
+dependency cone of denotation, closure, ordering, inference, emission and
+semantic diagnostics.** Then G is genuinely bounded, and **if G changes any
+semantic fixture beyond turning accepted syntax into a parse refusal, F was
+incomplete.**
+
+**The last import's witness retires with F, not with G.** Also corrected here.
 `dag/test/claim/import_shadowed_by_local_definition_witness_test.dag` holds the
-last import in the corpus, and **its import is its subject**: it witnesses an
-explicit import silently discarded by a same-name local definition — the class
-main made refusable in #9166. `crisp-crab-430` states this as *one import must
-survive any cut*. That is right for every vehicle up to G and **wrong at G**,
-where keeping one file's import alive would leave the grammar half-deleted for a
-single test. The honest disposition is the one the ratified plan already applies
-to its own order-dependent obligation, and DESIGN §3 step 6 states generally:
-**evidence whose only subject is retired is retired with it, carrying a
-receipt.** #9166's refusal retires in the same motion for the same reason. A cut
-that deletes the witness silently leaves something that parses, passes, and tests
-nothing — which is the failure the witness itself was written to catch, one level
-up.
-
-F.1 stays one motion because that is the authority transition. F.2 and G are the
-trailing steps the operator's framing makes safe: after F.1 no consumer reads an
-import, so they are deletions of dead surface rather than a cutover.
+last import in the corpus and its import is its subject: it witnesses an explicit
+import silently discarded by a same-name local definition, the class main made
+refusable in #9166. `crisp-crab-430` states this as *one import must survive any
+cut*; an earlier revision of this document put its retirement at G. Both are
+wrong for the same reason — **it is not a grammar witness, it witnesses a
+semantic import-resolution decision.** Once F makes imports semantically inert
+that subject has retired, so the `ImportShadowedByLocalDefinition` diagnostic and
+its witness retire *with F*; a parser-only *imports remain accepted during the
+cleanup interval* control may survive to G. Waiting for G leaves either a live
+semantic import consumer after the claimed flip, or a passing witness whose
+subject no longer exists — the evidence-outliving-its-subject failure DESIGN §3
+step 6 names, reached from the direction that looks most conservative.
 
 ### Two decisions taken (operator, 2026-08-25)
 
