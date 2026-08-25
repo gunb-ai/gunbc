@@ -2,6 +2,7 @@ module test.claim.floor_non_verdict_classification_witness
 
 import gunbc.floor_non_verdict_classification {
   classified_non_verdict_identities_are_unique,
+  classification_joins_the_roster_exactly,
   classified_non_verdict_row_count,
   every_row_carries_measured_evidence,
   honest_debt_count,
@@ -11,17 +12,22 @@ import gunbc.floor_non_verdict_classification {
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-// SubstrateInputsOnly is truthful: this reads the classification carrier and nothing else.
-// It guards the carrier's STRUCTURE -- population, uniqueness, evidence present, an exact
-// partition -- and never the classifications themselves, which are measurements and not
+// SubstrateInputsOnly is truthful: this reads the classification carrier and, through it, the
+// floor_non_verdict roster -- both authored `.dag` data, no live tree and no host effect. It
+// guards STRUCTURE -- the identity join against that roster, uniqueness, evidence present, an
+// exact partition -- and never the classifications themselves, which are measurements and not
 // properties any witness can re-derive.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// 15 is not a tree-copied census: it is the size of v2.workflow.floor_non_verdict's roster, an
-// externally fixed population this carrier joins to by identity. If the roster shrinks, this
-// reds and names itself, which is the intended coupling.
-test fn classification_covers_the_fifteen_non_verdict_identities() -> Bool {
-  classified_non_verdict_row_count() == 15
+// THE POPULATION IS JOINED, NOT COUNTED. An earlier revision asserted `row_count() == 15` and
+// called 15 the roster's size; nothing in it read the roster, so it measured the rows this
+// module's own carrier declares -- the `measure() == measure()` change detector DESIGN section 5
+// forbids, green under any drift the author applied to both files. This runs the join instead:
+// every classified identity is rostered in v2.workflow.floor_non_verdict and every rostered
+// identity is classified, at identity grain and in both directions, so a roster row added or
+// removed elsewhere reds HERE and names itself. No count survives as an oracle.
+test fn classification_joins_the_floor_non_verdict_roster_by_identity() -> Bool {
+  classification_joins_the_roster_exactly()
 }
 
 test fn classified_non_verdict_identities_are_distinct() -> Bool {
@@ -37,13 +43,10 @@ test fn standing_partition_is_exact_over_the_population() -> Bool {
     == classified_non_verdict_row_count()
 }
 
-// The result this carrier exists to make unmissable: nine of the fifteen PASS when they reach
-// their subject, so their expected-red enrolment asserts a semantic red that does not exist.
-test fn nine_enrolments_assert_a_red_that_does_not_exist() -> Bool {
-  stale_enrolment_count() == 9
-}
-
-// And the two that were not measured stay countable rather than being folded into a neighbour.
-test fn two_identities_remain_unmeasured() -> Bool {
-  unmeasured_count() == 2
+// The result this carrier exists to make unmissable, stated as a partition property rather than
+// a literal: SOME rows assert a red that does not exist and SOME were never measured, so neither
+// class is empty and neither has swallowed the other. How many are in each is a measurement the
+// carrier's rows carry; asserting it here would re-mint the change detector removed above.
+test fn both_the_stale_and_the_unmeasured_classes_are_inhabited() -> Bool {
+  stale_enrolment_count() > 0 && unmeasured_count() > 0
 }

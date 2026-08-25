@@ -5,6 +5,7 @@ import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.algebra { any, count_where, fold_list, length, list_snoc_item }
+import v2.workflow.floor_non_verdict { floor_non_verdict_roster }
 
 // WHY THIS CARRIER EXISTS. v2.workflow.floor_non_verdict carries fifteen identities that the
 // required floor EXECUTES and that produce no verdict -- they throw before reaching their
@@ -29,22 +30,25 @@ type NonVerdictIdentity {
 }
 
 // The measured cause, at the grain where the remedy differs.
+//
+// ClosureDependentResolution: the witness passes under a small resolved closure and loses its
+// verdict only under the floor's whole-corpus prepared subject. The established defect of that
+// shape is the local-binding shadowing class (see local_binding_shadow_probe_note).
+// ClosureIndependent: the witness throws under every closure, independent of what else is loaded.
+// Unmeasured: no small closure exists for this witness, so the discriminating A/B cannot be run
+// outside a full floor run. Carried as a first-class state rather than folded into a neighbour.
 type NonVerdictCause =
-    // The witness passes under a small resolved closure and loses its verdict only under the
-    // floor's whole-corpus prepared subject. The established defect of that shape is the
-    // local-binding shadowing class (see local_binding_shadow_probe_note).
     ClosureDependentResolution
-    // The witness throws under every closure. Independent of what else is loaded.
   | ClosureIndependent { subject: String }
-    // No small closure exists for this witness, so the discriminating A/B cannot be run outside
-    // a full floor run. Carried as a first-class state rather than folded into a neighbour.
   | Unmeasured { obstacle: String }
 
 // What the expected-red enrolment turns out to be worth, once the row reaches its subject.
+//
+// AssertsARedThatDoesNotExist: it PASSES, so the enrolment asserts a red that does not exist.
+// HonestDebtWithStatedTrigger: real debt, and the enrolment names cause and repair trigger.
+// StandingUnmeasured: the row never reached its subject, so its enrolment is unadjudicated.
 type EnrolmentStanding =
-    // It PASSES. The enrolment asserts a semantic red that does not exist.
     AssertsARedThatDoesNotExist
-    // It is real debt, and the enrolment names cause and repair trigger.
   | HonestDebtWithStatedTrigger
   | StandingUnmeasured
 
@@ -198,6 +202,31 @@ fn classified_non_verdict_keys() -> List<String> {
     empty: no_non_verdict_keys,
     cons: fn(acc, row) { list_snoc_item(xs: acc, item: non_verdict_identity_key(i: row.identity)) }
   )
+}
+
+// THE JOIN, and it is the only thing in this carrier that is entitled to the word POPULATION.
+// The roster in v2.workflow.floor_non_verdict is discovered by the floor and gates on
+// observed == roster; this module's rows are hand-authored. So the coupling is stated as an
+// identity join in BOTH directions -- no classified identity the roster does not carry, and no
+// rostered identity left unclassified -- never as a count. A count literal here would be a
+// measurement of what someone typed next to it, which DESIGN section 5's oracle ruling refuses,
+// and it would go green while both sides drifted together.
+fn every_classified_identity_is_rostered() -> Bool {
+  !any(
+    xs: classified_non_verdict_keys(),
+    predicate: fn(k) { !any(xs: floor_non_verdict_roster(), predicate: fn(r) { r == k }) }
+  )
+}
+
+fn every_rostered_identity_is_classified() -> Bool {
+  !any(
+    xs: floor_non_verdict_roster(),
+    predicate: fn(r) { !any(xs: classified_non_verdict_keys(), predicate: fn(k) { k == r }) }
+  )
+}
+
+fn classification_joins_the_roster_exactly() -> Bool {
+  every_classified_identity_is_rostered() && every_rostered_identity_is_classified()
 }
 
 fn non_verdict_key_occurrences(key: String) -> Int {
