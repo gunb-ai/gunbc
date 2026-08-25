@@ -1,5 +1,7 @@
 module test.claim.host_standup_assimilation_deduction
 
+import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
