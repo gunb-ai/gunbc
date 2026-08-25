@@ -1,7 +1,11 @@
-# The run did not measure what you think: four attribution failures in one night (2026-08-23)
+# The run did not measure what you think: six attribution failures (2026-08-23, extended 2026-08-25)
 
-**Subject:** attributing a CI result to a change. **Deliverable:** one class, four measured
+**Subject:** attributing a CI result to a change. **Deliverable:** one class, six measured
 instances, and the check that closes each. **No repair is proposed here.**
+
+Instances 1–4 were measured 2026-08-23. Instances 5–6 were measured 2026-08-25 and one of them
+**falsified instance 4's own check**, which is why they are folded in here rather than filed
+beside: two accounts of one fact is the failure this document exists to describe.
 
 Every instance below cost real time on 2026-08-23, in four different lanes, and three of the
 four produced a *confident wrong attribution* rather than an ambiguous one. That is what makes
@@ -13,8 +17,10 @@ change, and the run's subject was not that change.
 > **A run reports the ref it BUILT. It never reports what that ref was FOR, and it is rarely
 > the ref you pushed.**
 
-Between "a change" and "a verdict" sit four independent substitutions, each invisible in the
-result. A green or red is equally plausible under all of them.
+Between "a change" and "a verdict" sit several independent substitutions, each invisible in the
+result. A green or red is equally plausible under all of them. Instances 5–6 add a second half to
+the class: **even once the subject is established, the field you read may not be the field that
+holds the verdict.**
 
 ## Instance 1 — `pull_request` builds the MERGE REF, not your head
 
@@ -72,26 +78,108 @@ push cadence: two hours in which every head had **zero floor evidence** while th
 normal. A cancelled run is not a failed run, and the only tell is in `gh run list`.
 
 With the floor at ~34 minutes single-threaded, any push cadence under ~45 minutes guarantees you
-never observe a completed floor.
+never observe a completed floor. **Re-measured 2026-08-25 and it has grown:** completed floors ran
+`50m41s` (`32907586489`) and `48m28s` (`32908485619`), so the cadence that starves the evidence is
+now under ~55 minutes. The figure is a property of the corpus, not of the workflow, and will keep
+moving.
 
 **Check:** read the run's `conclusion` explicitly. `cancelled` is not `failure` and is not
 `success`; absence of a verdict is not a verdict.
 
+> **CORRECTED 2026-08-25 — the check above is necessary and NOT sufficient, and it fails in the
+> flattering direction.** See "Instance 5" below: a run whose `conclusion` is `cancelled` may
+> contain a job that **failed terminally** before the cancellation arrived. Read jobs, not runs.
+
+
+## Instance 5 — the run-level `conclusion` CONCEALS a terminal job failure (2026-08-25)
+
+Instance 4's check reads the run's `conclusion`. That field reports only the **later** of several
+job outcomes, so a job that failed terminally is overwritten by a cancellation that arrived
+afterwards.
+
+Receipt, run `32909985425`:
+
+```
+build   COMPLETED     conclusion=FAILURE      23:35:43   <- real, terminal (rustfmt ETXTBSY)
+floor   in_progress -> CANCELLED              23:42      <- killed by the author's own push
+run-level conclusion:  cancelled
+```
+
+Both are true and **neither summarises the other**. The lane that found this had already been
+told "a cancelled floor is not a red" — correct at *floor* grain, and at *run* grain it discards
+a real defect. Had the run-level field been read, a genuine terminal failure would have been
+closed as noise.
+
+**The direction matters: the masking FLATTERS.** `cancelled` reads as no-verdict while a failure
+sits underneath, so this error always resolves toward "nothing is wrong."
+
+**Check:** `gh api …/runs/<id>/jobs` and read **`status` and `conclusion` per job, naming the
+lane**. A cancelled run is not a red, but it is not necessarily a non-red either.
+
+### The classification ladder
+
+Four rungs, each learned by getting it wrong. Only after all four are excluded is a red yours:
+
+| # | cause | tell |
+|---|---|---|
+| 1 | supersession | a newer run on the same **PR** — query by branch, not `head_sha` |
+| 2 | runner kill | a step at `status=in_progress` on a **COMPLETED** job |
+| 3 | runner setup | `Set up job` is the only named failure |
+| 4 | concealed failure | run-level `cancelled` with a job-level **FAILURE** inside |
+
+**Rung 4 must be checked even when rung 1 explains the run**, because supersession explains the
+*cancellation* without explaining what was underneath it.
+
+**One benign pattern, named so it is not chased:** `witnesses=failure` beside a cancelled floor is
+the `always()` aggregator reporting *Both required lanes must have succeeded*. It is expected by
+design. Anyone who adopts "read jobs, not runs" hits it immediately and it looks like a fifth
+failure mode.
+
+## Instance 6 — the supersession query that cannot see supersession (2026-08-25)
+
+A lane measured 12 of 13 recent floor lanes cancelled across 8 branches and reported it as
+environmental, explicitly **withholding an attribution rather than inventing one**. The
+measurement was right. The framing was not: it is instance 4's mechanism at fleet scale.
+
+They ruled out supersession by querying `runs?head_sha=X` and finding no newer run. **The
+observation was true and the conclusion was false**, because the concurrency group is keyed on
+**PR number** while the query projected onto `head_sha`. A newer run at a *different* head of the
+*same* PR cancels the older one and is invisible to that query **by construction**.
+
+That is the repository's index-domain congruence failure — `key(x) == key(y)` iff `x` and `y` are
+interchangeable for the fact the index answers — arriving in a REST query rather than in a
+resolver, on the same night the same class was being diagnosed in the compiler. **It is a receipt
+that the class is general rather than a compiler quirk**, which is worth more than the incident.
+
+**RESIDUE, DELIBERATELY LEFT OPEN.** The mechanism does not explain every instance. Run
+`32908485619` (PR 9231) is the newest run on its PR, was cancelled after 48 minutes with nothing
+to supersede it, and no host event correlates — three cancellations in that two-minute window ran
+on three different hosts. No attribution is offered here, because a corrected account that reads
+as *complete* sends the next person with an unsuperseded cancellation hunting for a push they
+never made. **Mechanism confirmed, residue open.**
+
+**Check:** query by **branch**, never by `head_sha`, and state which key the index uses.
+
 ## The shared shape
 
-Instances 1–3 are all *the subject was substituted*; instance 4 is *there was no subject*. Both
-halves are the same underlying error — **treating a run as a measurement of a change without
-establishing that it measured that change** — and both are cheap to close:
+Instances 1–3 are *the subject was substituted*; instance 4 is *there was no subject*; instances
+5–6 are *the subject was fine and the field you read was not the one holding the verdict*. All
+three are the same underlying error — **treating a run as a measurement of a change without
+establishing that it measured that change** — and all are cheap to close:
 
 | establish | command |
 |---|---|
 | which ref was built | `gh api …/runs/<id> -q .head_sha` |
 | whether it is a merge ref | `gh api …/runs/<id> -q .event` |
 | what that ref was for | `git log -1 --format='%s' <sha>` |
-| whether it reached a verdict | `gh api …/runs/<id> -q .conclusion` |
+| whether it reached a verdict | `gh api …/runs/<id>/jobs -q '.jobs[]\|"\(.name) \(.status)/\(.conclusion)"'` |
 
 Four commands. Tonight, each of the four was skipped exactly once, by four different lanes, and
 each skip produced a confident conclusion that was wrong.
+
+The fourth row **was `-q .conclusion` until 2026-08-25**, when it was measured wrong — the
+run-level field reports only the *later* of several job outcomes, so it conceals a terminal
+failure behind a cancellation. Instance 5 carries the receipt.
 
 ## What the corpus already says, and why it did not prevent this
 
@@ -99,5 +187,11 @@ The repository's own failure list names the **empty-observation narrow** — ⊥
 rendered as ⊥-as-answer — and instance 4 is precisely that. Instances 1–3 are its sibling in a
 position the list does not currently name: not the observation collapsing, but *the observation
 being about a different subject than the one claimed*. A number with no ref is not a number; the
-generalisation these four instances force is that **a verdict with no established subject is not
+generalisation these instances force is that **a verdict with no established subject is not
 a verdict**, and the subject of a CI run is not knowable from the run alone.
+
+Instances 5–6 extend it in a direction the 2026-08-23 draft did not anticipate, and both are the
+**flattering** direction: a concealed failure renders as a cancellation, and a supersession query
+on the wrong key renders as "nothing superseded it." Neither produces an alarming wrong answer.
+Both produce a reassuring one. That asymmetry is the reason this class keeps costing time —
+an error that resolves toward *nothing is wrong* is not investigated.
