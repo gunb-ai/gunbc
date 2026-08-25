@@ -2,14 +2,12 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode, ExitStatus};
+use std::process::{Command, ExitCode};
 use std::rc::Rc;
-use std::time::Instant;
 #[cfg(test)]
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
-    build_floor_discovery_request, make_eval_context, resolve_entry_graph_shared, run_value,
-    verify_floor_discovery_terminal_for_coordinator, PhaseProfile,
+    make_eval_context, resolve_entry_graph_shared, run_value, PhaseProfile,
 };
 use v1_compiler::memory_governor::{binding_cap_cgroup_dir, leaf_cgroup_dir, mem_total_bytes};
 use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext, Value};
