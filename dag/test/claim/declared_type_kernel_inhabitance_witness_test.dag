@@ -1,0 +1,133 @@
+module test.claim.declared_type_kernel_inhabitance_witness_test
+
+// A PLAIN KERNEL VALUE INHABITS NOTHING, AND SEVEN OF FOURTEEN DECLARED-TYPE POSITIONS ADMITTED IT.
+//
+// DESIGN section 4b puts `values inhabit declared types` in the ordinary compiler floor, beside
+// name resolution and exact-bijection binding, and calls a failure there a below-baseline safety
+// regression rather than a rung on the ladder. The census enumerated the declared-type positions
+// FROM THE GRAMMAR -- every call site of `parse_type_expr` in `v1.compiler.parse`, fourteen of them
+// -- and measured seven accepting an `Int` where a coproduct is declared, each with a reachability
+// control (an undefined name at the same position) that refused, so the silence is a measurement
+// that no judgment runs there and not a position inference never reached.
+//
+// This file is the executing evidence for the positions this change closes. Measured by execution
+// on the pre-wall binary, each of these fixtures compiled with `0 diagnostics` and EMITTED:
+//
+//   fn declared return       fn p1() -> KOuter { 5 }              0 diagnostics, 9 files emitted
+//   module-scope data        data p2: KOuter = 5                  0 diagnostics, 9 files emitted
+//   annotated let            let x: KOuter = 5                    0 diagnostics, 9 files emitted
+//   container element        data p4: List<KOuter> = [5]          0 diagnostics, 9 files emitted
+//
+// WHY THE RELATION IS NOT NEW AND THAT IS THE POINT. `kernel_value_declared_type_mismatch` in
+// `v1.compiler.infer` already decided exactly this question, and already refused
+// `KHold \{ subject: 5 \}` at the record-literal field seam. One position of fourteen consulted it.
+// So what is asserted here is not that a judgment was invented but that it is now performed where a
+// declared type is written, which is why `kernel_in_named_field_still_refuses` below is enrolled:
+// it is the position that was ALREADY closed, and it is the control proving the relation this
+// change reuses is the same one, not a second authority beside it.
+//
+// THE POSITIVE CONTROLS ARE NOT COSMETIC. Without them a compiler that refused every declaration
+// would satisfy every red above, and the reds would measure the mechanism rather than the
+// distinction. `correct_value_at_every_closed_position_still_compiles` carries the conforming
+// spelling at all four positions in one module, so a refusal anywhere in the set fails it.
+//
+// WHAT IS NOT ASSERTED HERE, stated rather than implied covered. Three of the seven measured
+// positions are NOT closed by this change and are declared with their triggers in the gap analysis
+// (`docs/plans/compiler-guarantee-recovery-gap-analysis.md`): the variant POSITIONAL payload, the
+// callable-type RETURN and the callable-type PARAMETER. Each still admits a kernel today. A reader
+// who takes this file as the class's closure will build on a guarantee covering four positions of
+// seven.
+//
+// dissolve-on: none. Per DESIGN section 4b(4) the evidence stays enrolled when the class climbs --
+// deleting it would recreate specification-without-execution one rung up.
+
+fn kernel_inhabitance_fn_return_fixture_source() -> String {
+  "module kin.ret\n\nimport std.types { Int }\n\ntype KInner { value: Int }\n\ntype KOuter\n  = KWrapped { inner: KInner }\n\nfn kin_ret() -> KOuter {\n  5\n}\n"
+}
+
+fn kernel_inhabitance_data_annotation_fixture_source() -> String {
+  "module kin.data\n\nimport std.types { Int }\n\ntype KInner { value: Int }\n\ntype KOuter\n  = KWrapped { inner: KInner }\n\ndata kin_data: KOuter = 5\n"
+}
+
+fn kernel_inhabitance_annotated_let_fixture_source() -> String {
+  "module kin.let\n\nimport std.types { Int }\n\ntype KInner { value: Int }\n\ntype KOuter\n  = KWrapped { inner: KInner }\n\nfn kin_let() -> Int {\n  let x: KOuter = 5\n  1\n}\n"
+}
+
+fn kernel_inhabitance_list_element_fixture_source() -> String {
+  "module kin.list\n\nimport std.types { Int, List }\n\ntype KInner { value: Int }\n\ntype KOuter\n  = KWrapped { inner: KInner }\n\ndata kin_list: List<KOuter> = [5]\n"
+}
+
+fn kernel_inhabitance_named_field_fixture_source() -> String {
+  "module kin.field\n\nimport std.types { Int }\n\ntype KInner { value: Int }\n\ntype KOuter\n  = KWrapped { inner: KInner }\n\ntype KHold { subject: KOuter }\n\nfn kin_field() -> KHold {\n  KHold { subject: 5 }\n}\n"
+}
+
+fn kernel_inhabitance_positive_control_source() -> String {
+  "module kin.control\n\nimport std.types { Int, List }\n\ntype KInner { value: Int }\n\ntype KOuter\n  = KWrapped { inner: KInner }\n\nfn kin_wrapped() -> KOuter {\n  KWrapped { inner: KInner { value: 7 } }\n}\n\ndata kin_ok_data: KOuter = KWrapped { inner: KInner { value: 7 } }\n\ndata kin_ok_list: List<KOuter> = [KWrapped { inner: KInner { value: 7 } }]\n\nfn kin_ok_let() -> Int {\n  let x: KOuter = kin_wrapped()\n  1\n}\n"
+}
+
+// THE DECLARED RETURN. `5` is not a `KOuter` and there is no representation in between: the produced
+// side is a ground kernel scalar, so a name difference here is a difference.
+test fn kernel_where_coproduct_declared_return_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    kernel_inhabitance_fn_return_fixture_source(),
+    "src/kin_ret.rs",
+    [],
+    []
+  )
+}
+
+// THE MODULE-SCOPE `data` ANNOTATION -- the seam the gap analysis filed as seam (3), unwalled.
+test fn kernel_where_coproduct_declared_data_annotation_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    kernel_inhabitance_data_annotation_fixture_source(),
+    "src/kin_data.rs",
+    [],
+    []
+  )
+}
+
+// THE ANNOTATED `let`. This position had NO conformance judgment at all before this change -- not a
+// judgment that missed a shape, an absent one.
+test fn kernel_where_coproduct_declared_annotated_let_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    kernel_inhabitance_annotated_let_fixture_source(),
+    "src/kin_let.rs",
+    [],
+    []
+  )
+}
+
+// THE CONTAINER ELEMENT -- the seam the gap analysis ranked FIRST of the unwalled two, because a
+// wrong element does not merely admit a bad value, it disables the comparison that would have caught
+// it. The declared type is reached as a type ARGUMENT rather than as a declaration of its own, which
+// is why nobody had named the position before the grammar census.
+test fn kernel_where_coproduct_declared_list_element_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    kernel_inhabitance_list_element_fixture_source(),
+    "src/kin_list.rs",
+    [],
+    []
+  )
+}
+
+// THE POSITION THAT WAS ALREADY CLOSED, enrolled as the discriminator that this change REUSES the
+// existing relation rather than minting a second one beside it. If this reds, the record-literal
+// field seam and the positions above have drifted apart and there are two authorities for one fact.
+test fn kernel_in_named_field_still_refuses() -> Bool {
+  !compile_dag_rust_emit_check(
+    kernel_inhabitance_named_field_fixture_source(),
+    "src/kin_field.rs",
+    [],
+    []
+  )
+}
+
+// THE POSITIVE CONTROL, carrying the conforming spelling at all four closed positions at once.
+test fn correct_value_at_every_closed_position_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    kernel_inhabitance_positive_control_source(),
+    "src/kin_control.rs",
+    [],
+    []
+  )
+}
