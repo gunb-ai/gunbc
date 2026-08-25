@@ -1,0 +1,152 @@
+module test.claim.scm_load_standing_witness
+
+// THE STANDING THAT COULD NOT EXIST, AND NOW HAS A PRODUCER.
+//
+// The predecessor format had no mechanism that could yield "loaded, and here is what is missing" --
+// a position denotes nothing outside its own document, so an unresolved reference was damage and a
+// fetchable-absence standing would have been an INVENTED ARM. These witnesses execute the arm end to
+// end, which is the difference between a disposition that exists and one that is merely declared.
+//
+// Each test pairs a cause with a cause that MUST land elsewhere. A classifier that collapsed
+// everything onto one standing would satisfy any single-arm assertion and is caught only here.
+
+import std.types { Bool, Int, List }
+import v2.std.node { Node, Edge, Named, Conj, Atom, TypeNode, node_synthetic }
+import gunbc.scm.object_store {
+  ObjectId, ObjectStore, StoreOutcome, Stored, LocatorCollision,
+  CopyOutcome, Copied, CopySourceAbsent, CopyLocatorCollision,
+  empty_store, copy_object, store_node,
+}
+import gunbc.scm.load_standing {
+  LoadStanding, LoadComplete, LoadPartial, LoadUnsupportedProtocol,
+  LoadDocumentMalformed, LoadIdentityCollision,
+  standing_may_supersede_generation, standing_loaded,
+}
+import gunbc.scm.commit_closure_json_v2 {
+  ClosureDocRefusal, ClosureDocFormatUnrecognized, ClosureDocObjectCollision,
+  ClosureDocNotAnObject, ClosureDocMemberMissing, ClosureDocUnknownKindTag,
+  ClosureDocUnexpectedMember, ClosureDocEnvelopeMembers, ClosureDocEdgeTargetUnresolved,
+  ClosureDocTargetNotOneArm,
+  closure_document_load_standing, loaded_closure_standing,
+}
+
+fn ls_child() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^load_standing_child } }, children: [])
+}
+
+fn ls_parent() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Named { name: ^only_child }, target: ls_child() }],
+  )
+}
+
+type LsBuilt { store: ObjectStore, root: ObjectId }
+
+fn ls_full() -> LsBuilt {
+  match store_node(store: empty_store(), n: ls_child()) {
+    LocatorCollision { identity: i, existing: _, incoming: _ } => LsBuilt { store: empty_store(), root: i }
+    Stored { store: s1, identity: _ } =>
+      match store_node(store: s1, n: ls_parent()) {
+        LocatorCollision { identity: i, existing: _, incoming: _ } => LsBuilt { store: empty_store(), root: i }
+        Stored { store: s2, identity: p } => LsBuilt { store: s2, root: p }
+      }
+  }
+}
+
+fn ls_grafted() -> ObjectStore {
+  let full = ls_full()
+  match copy_object(from: full.store, to: empty_store(), identity: full.root) {
+    Copied { store: s, identity: _ } => s
+    CopySourceAbsent { identity: _ } => empty_store()
+    CopyLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
+  }
+}
+
+fn standing_eq(a: LoadStanding, b: LoadStanding) -> Bool {
+  standing_tag(s: a) == standing_tag(s: b)
+}
+
+fn standing_tag(s: LoadStanding) -> Int {
+  match s {
+    LoadComplete => 0
+    LoadPartial => 1
+    LoadUnsupportedProtocol => 2
+    LoadDocumentMalformed => 3
+    LoadIdentityCollision => 4
+  }
+}
+
+// THE ARM THE RECUT EXISTS FOR. A grafted root lacks its child, so the load succeeds and the standing
+// is PARTIAL -- a success with an obligation, not a failure. The pairing against LoadComplete is what
+// makes it discriminating: a classifier answering Partial for everything would pass a lone assertion.
+test fn an_incomplete_closure_loads_partial_and_a_complete_one_does_not() -> Bool {
+  let full = ls_full()
+  let partial = loaded_closure_standing(store: ls_grafted(), root: full.root)
+  let complete = loaded_closure_standing(store: full.store, root: full.root)
+  standing_eq(a: partial, b: LoadPartial)
+    && standing_eq(a: complete, b: LoadComplete)
+    && standing_loaded(standing: partial)
+    && standing_loaded(standing: complete)
+}
+
+// A PARTIAL LOAD IS CORRECT AND DELIBERATELY INCOMPLETE, so superseding it would discard a valid
+// delta for doing exactly what it was asked to do. This is the arm that did not exist to be got
+// wrong before, and it is the one most likely to be got wrong now by treating "not everything" as
+// "damaged".
+test fn a_partial_load_is_never_supersedable() -> Bool {
+  !standing_may_supersede_generation(standing: LoadPartial)
+    && !standing_may_supersede_generation(standing: LoadComplete)
+}
+
+// MALFORMED IS THE SOLE SUPERSEDABLE STANDING, and the three refusals are refused for three
+// different reasons rather than by one rule. If this were the empty set the negative tests above
+// would pass vacuously.
+test fn malformed_is_the_only_standing_that_permits_replacement() -> Bool {
+  standing_may_supersede_generation(standing: LoadDocumentMalformed)
+    && !standing_may_supersede_generation(standing: LoadUnsupportedProtocol)
+    && !standing_may_supersede_generation(standing: LoadIdentityCollision)
+    && !standing_loaded(standing: LoadDocumentMalformed)
+}
+
+// ONLY A NAMED-BUT-ABSENT PROTOCOL MEANS THE WRITER MAY BE NEWER; a matched tag carrying an
+// unrecognized member or variant is a BROKEN DOCUMENT OF THIS SCHEMA, because this format's own
+// policy is that a schema which grows a member grows a new tag. Pairing them is the whole test.
+test fn only_an_unrecognized_format_is_a_protocol_gap() -> Bool {
+  let protocol = closure_document_load_standing(cause: ClosureDocFormatUnrecognized { found: "v9" })
+  let member = closure_document_load_standing(
+    cause: ClosureDocUnexpectedMember { context: ClosureDocEnvelopeMembers, key: "provenance" }
+  )
+  let tag = closure_document_load_standing(cause: ClosureDocUnknownKindTag { found: "quantum" })
+  standing_eq(a: protocol, b: LoadUnsupportedProtocol)
+    && standing_eq(a: member, b: LoadDocumentMalformed)
+    && standing_eq(a: tag, b: LoadDocumentMalformed)
+}
+
+// AN UNRESOLVED POSITION IS MALFORMED, NOT A FETCHABLE ABSENCE. A position denotes nothing outside
+// its own document, so nobody could supply what it names. Fetchable absence is the UNCONTAINED arm,
+// which is not a refusal and never reaches this classifier at all.
+test fn an_unresolved_position_is_malformed_not_fetchable() -> Bool {
+  standing_eq(
+    a: closure_document_load_standing(cause: ClosureDocEdgeTargetUnresolved { reference: "7" }),
+    b: LoadDocumentMalformed
+  )
+    && standing_eq(
+      a: closure_document_load_standing(cause: ClosureDocTargetNotOneArm { found: 2 }),
+      b: LoadDocumentMalformed
+    )
+}
+
+// THE DATA-LOSS GUARD. object_store rules both colliding records legitimate, so a collision means
+// the structural locator cannot represent both -- not that either is damaged. Classifying it as
+// malformed would let a reader discard a writer's valid generation over an honest hash coincidence.
+test fn an_honest_collision_is_its_own_standing_and_never_supersedes() -> Bool {
+  let collision = closure_document_load_standing(
+    cause: ClosureDocObjectCollision { identity: ls_full().root }
+  )
+  let malformed = closure_document_load_standing(cause: ClosureDocNotAnObject)
+  standing_eq(a: collision, b: LoadIdentityCollision)
+    && standing_eq(a: malformed, b: LoadDocumentMalformed)
+    && !standing_may_supersede_generation(standing: collision)
+    && standing_may_supersede_generation(standing: malformed)
+}
