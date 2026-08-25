@@ -3549,7 +3549,7 @@ pub fn section13_first_uncovered_law(
 pub fn section13_observation_joins_receipt(
     receipt: Rc<DeclarationRef>,
     observations: Rc<Vec<Rc<Section13ExactHeadExecutionObservation>>>,
-    required_head: String,
+    required_head: CommitSha,
 ) -> Option<bool> {
     observations.iter().cloned().fold(
         None,
@@ -3571,7 +3571,7 @@ pub fn section13_observation_joins_receipt(
 pub fn section13_adjudicate_row(
     row: Rc<Section13PopulationLawRosterRow>,
     observations: Rc<Vec<Rc<Section13ExactHeadExecutionObservation>>>,
-    required_head: String,
+    required_head: CommitSha,
 ) -> Rc<Section13PopulationLawRosterVerdict> {
     match (*row.evidence.clone()).clone() {
     Section13PopulationLawEvidence::Section13PopulationLawExecuting { receipt: receipt, .. } => if !section13_module_path_is_symbolic(receipt.module_path.clone()) {
@@ -3604,7 +3604,7 @@ pub fn section13_adjudicate_row(
 
 pub fn section13_population_law_roster_adjudicate(
     observations: Rc<Vec<Rc<Section13ExactHeadExecutionObservation>>>,
-    required_head: String,
+    required_head: CommitSha,
 ) -> Rc<Section13PopulationLawRosterVerdict> {
     {
         let rows = section13_population_law_roster();
@@ -3627,7 +3627,7 @@ pub fn section13_population_law_roster_adjudicate(
 
 pub fn section13_population_law_roster_denominator_holds(
     observations: Rc<Vec<Rc<Section13ExactHeadExecutionObservation>>>,
-    required_head: String,
+    required_head: CommitSha,
 ) -> bool {
     match (*section13_population_law_roster_adjudicate(observations.clone(), required_head.clone()))
         .clone()

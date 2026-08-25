@@ -1,0 +1,82 @@
+module test.claim.alias_identity_across_unwrap_witness
+
+import std.types { String, Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// RESOLVING A NAMED ALIAS REPLACED ITS DECLARATION IDENTITY WITH ITS TARGET'S.
+//
+// The zero-child type-reference arm unwraps a resolved alias through `.inferred` and returns the
+// RHS `target` whole. The alias declaration's LHS identity -- `Nat` -- is replaced by the RHS
+// head's, `std.algebra.CommutativeSemiring`. Every consumer downstream that asks for the authored
+// name then gets the RHS spelling, so `60` is checked against a semiring rather than against Nat.
+//
+// ONLY THE QUALIFIED SPELLING REACHES THAT ARM, which is the fact that made this hard to see and
+// the reason the bare arm is the control rather than a courtesy. Instrumenting the unwrap and
+// filtering on its OUTPUT gave 40 hits, every one `std.nat.Nat` and not one bare `Nat`. The bare
+// spelling never enters the arm at all, so one spelling kept the alias name and the other did not.
+//
+// THE REPAIR IS THE CONSTRUCTION THAT ALREADY EXISTED. `with_authored_identity` takes structural
+// fields from one node and authored identity from another, and joins their optional cardinality.
+// It is what this seam always wanted: the alias target supplies SHAPE, the alias declaration
+// supplies IDENTITY. No new helper -- minting one here would be a second name for a concept the
+// same file already owns.
+
+// MEASURED ON THE PRODUCTION EMIT PATH, deliberately. The diagnostic census arms
+// type_ref_hit_ne_bind_measure for its nested compile, which is a real but DIFFERENT path that
+// refuses pool-present non-authority refs -- it reports blocking for a qualified reference that
+// the production compile accepts. Asserting on emitted TEXT keeps this witness on the path the
+// defect actually lives on, and lets it see the alias NAME rather than only a diagnostic count.
+
+fn qualified_alias_emits_its_own_name() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_alias_qualified\n\nimport std.nat { Nat }\n\nfn qual1() -> std.nat.Nat {\n  60\n}\n",
+    "src/probe_alias_qualified.rs",
+    ["-> Nat"],
+    ["CommutativeSemiring"]
+  )
+}
+
+fn bare_alias_emits_its_own_name() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_alias_bare\n\nimport std.nat { Nat }\n\nfn bare1() -> Nat {\n  60\n}\n",
+    "src/probe_alias_bare.rs",
+    ["-> Nat"],
+    ["CommutativeSemiring"]
+  )
+}
+
+fn a_second_qualified_alias_emits_its_own_name() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_alias_second\n\nimport std.integer { IntPlatform }\n\nfn other() -> std.integer.IntPlatform {\n  60\n}\n",
+    "src/probe_alias_second.rs",
+    ["-> IntPlatform"],
+    ["Compose"]
+  )
+}
+
+fn a_direct_target_reference_stays_structural() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_alias_direct\n\nimport std.algebra { CommutativeSemiring }\nimport std.magnitude { Magnitude }\n\nfn direct(x: CommutativeSemiring<Magnitude>) -> CommutativeSemiring<Magnitude> {\n  x\n}\n",
+    "src/probe_alias_direct.rs",
+    ["CommutativeSemiring"],
+    []
+  )
+}
+
+test fn a_qualified_alias_keeps_its_own_declaration_identity() -> Bool {
+  qualified_alias_emits_its_own_name()
+}
+
+test fn the_bare_spelling_of_the_same_alias_is_unchanged() -> Bool {
+  bare_alias_emits_its_own_name()
+}
+
+test fn a_second_alias_still_emits_its_own_name_and_not_the_first() -> Bool {
+  a_second_qualified_alias_emits_its_own_name()
+}
+
+test fn a_direct_reference_to_the_alias_target_stays_structural() -> Bool {
+  a_direct_target_reference_stays_structural()
+}

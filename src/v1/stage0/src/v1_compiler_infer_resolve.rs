@@ -1672,7 +1672,10 @@ pub fn resolve_node_bounded(
                                                                 .resolved
                                                                 .clone()
                                                             } else {
-                                                                target.clone()
+                                                                with_authored_identity(
+                                                                    resolved.clone(),
+                                                                    target.clone(),
+                                                                )
                                                             }
                                                         }
                                                         _ => resolved.clone(),
