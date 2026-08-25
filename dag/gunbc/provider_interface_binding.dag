@@ -19,6 +19,41 @@ data provider_interface_binding_note: String = "ONE nested ProviderInterfaceBind
 type ProviderControlInterface
   = CodexAppServer {}
 
+// "PROVIDER" IS A HOMONYM IN THIS CORPUS, AND THIS CARRIER OWNS ONLY ONE OF THE TWO SENSES.
+// Written here rather than where the confusion was discovered, because this is the carrier a
+// search opens first, so it is where the mistake actually gets made.
+//
+// SENSE ONE, WHICH IS THIS TYPE: the coding-agent RUNTIME WE INSTALL AND CONTROL. Every field
+// below is about how a process is installed and controlled -- which control interface, over which
+// transport, from which executable, at which runtime and protocol-schema identity.
+// gunbc.codex_provider_runtime_receipt CodexProviderRuntimeReceipt is the same subject.
+//
+// SENSE TWO, WHICH LIVES NOWHERE: the INFERENCE BACKEND that process sends requests to -- upstream
+// codex's own use of the word, as in its `model_providers` config key. No carrier anywhere in
+// dag/ or src/v2/ models it, under any spelling.
+//
+// THE COST, WHICH IS WHY THIS IS WRITTEN DOWN AT ALL: a search for an endpoint or base URL under
+// the word "provider" lands here, finds a TRUE zero, AND THAT ZERO IS ABOUT THE WRONG SUBJECT --
+// so it reads as a zero everywhere. That has now happened three times independently. The first
+// two concluded the concept did not exist; the third re-derived the same finding from scratch
+// because nothing recorded the second. Nothing about this carrier is misnamed and no field is
+// missing from it: an endpoint here would fuse process-control with model-backend, one carrier
+// answering for another subject.
+//
+// This is section 3 read in the direction that grep cannot see. The ordinary nicknaming violation
+// is two names for one concept, and a name-level search finds it. This is ONE NAME FOR TWO
+// CONCEPTS, so every search for the second sense succeeds at matching the word and fails at the
+// subject -- which is precisely the failure mode that returns a confident answer.
+//
+// WHERE SENSE TWO WOULD LIVE IF IT IS EVER NEEDED, so a fourth search starts from a fact rather
+// than a zero: extdeps.ollama.api's scope note assigns "which model, which host, which endpoint
+// binding" to gunbc and keeps only the HTTP API surface for itself. That says the gunbc layer is
+// legitimate and EMPTY. It is not evidence that anyone needs it -- as of 2026-08-25 nothing in
+// ROADMAP.md, docs/plans/, the codex or llm module family, or any open PR names that binding as
+// live work. Whoever needs it should also read gunbc.spark.serving_desired
+// spark_serving_local_endpoint_url, which builds a dialled URL on the same OllamaEndpoint
+// grounding from the SERVING side: same shape, opposite sense, and the seam where the two senses
+// would silently fuse into one.
 type ProviderInterfaceBinding {
   interface: ProviderControlInterface
   transport: CodexAppServerTransport
