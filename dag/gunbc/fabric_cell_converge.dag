@@ -329,13 +329,6 @@ fn fabric_cell_readback_for_slot(
 // THE AUTHORITY-BOUND WRAPPER. It supplies the one thing the kernel refuses to know -- which slots
 // this host is declared to carry -- and nothing else. Keeping it a separate function is what lets
 // the kernel be exercised at a width the authority does not currently have.
-fn fabric_cell_host_standings(readback: FabricCellHostReadback) -> List<FabricCellAddressStanding> {
-  classify_fabric_cell_host(
-    expected_slots: fabric_cell_expected_slots(host: readback.host),
-    readback: readback,
-  ).standings
-}
-
 // AN ADDRESS REFERENCE NAMES ITS CELL, AND UNTIL THIS REVISION IT DID NOT.
 //
 // The dispositions carried a bare FabricCellResourceAddress, so "resource-boundary unreadable" could
@@ -629,6 +622,27 @@ fn fabric_cell_observed_members(observed: FabricCellObservedMembers) -> List<Fab
 type FabricCellHostClassification {
   standings: List<FabricCellAddressStanding>
   unexpected: List<FabricCellUnexpectedCellEvidence>
+  host_mismatched: List<FabricCellReadbackHostMismatch>
+}
+
+// A THIRD DESTINATION, BECAUSE A SUPPLIED READBACK HAS THREE HONEST FATES AND NOT TWO. An earlier
+// cut partitioned the supplied side into expected and unexpected, which is exhaustive over what a
+// readback IS and silent about whether it is about THIS HOST at all: `FabricCellHostReadback`
+// carries `host` and each child carries a full `RunnerSlotIdentity`, so an srv3 host readback may
+// hold an srv4-07 child and nothing refused it. It fell into `unexpected` -- a cell this host does
+// not declare, which is true and useless, because the remedy for "a foreign cell exists on srv3"
+// and "somebody handed me srv4's readback labelled srv3" are not the same remedy and the second is
+// a defect in the caller.
+//
+// IT IS ROUTED, NOT VALIDATED, and that distinction is what closes the ordering hole below rather
+// than merely reporting it. Because a cross-host readback never reaches the unexpected fold, every
+// member of that fold shares the enclosing host by construction -- so `slot_index` IS a total order
+// over it, and the assumption the canonical order used to admit is no longer an assumption. A
+// check placed beside the fold would have left the bad state writable and the order still
+// conditional on the check running (DESIGN section 5).
+type FabricCellReadbackHostMismatch {
+  enclosing_host: HostIdentity
+  supplied_slot: RunnerSlotIdentity
 }
 
 // NORMALIZED BY SLOT, BECAUSE THE SUBJECT IS THE CELL AND NOT THE PROBE. One unexpected cell
@@ -639,14 +653,19 @@ type FabricCellHostClassification {
 // (`fabric_cell_readback_for_slot` merges duplicate readbacks rather than taking the last), left
 // unmet on the supplied side because the two sides were written a PR apart.
 //
-// THE COUNTS ARE DIAGNOSTICS AND ARE DELIBERATELY NOT THE IDENTITY. The stable refusal identity is
-// the unique unexpected slot; `readback_count` and `observation_count` say how much evidence
-// arrived about it. The baseline row serializes the slot alone, so multiplicity cannot reach the
-// plan identity even as these numbers move.
+// THE MULTIPLICITY COUNTERS ARE GONE, AND THE REASON IS THAT "OUTSIDE THE MEMBER-SET FINGERPRINT"
+// IS NOT "OUTSIDE IDENTITY". An earlier cut carried `readback_count` and `observation_count` here
+// and called them diagnostics on the strength of the BASELINE row serializing the slot alone. The
+// baseline was indeed clean; the reviewer-facing refusal line rendered `observations=<n>`, that
+// line enters `plan_body`, and `fleet_converge_plan_artifact` content-hashes the whole body into
+// the held-lease owner fingerprint. So one probe and two identical probes produced the same
+// member-set fingerprint and a DIFFERENT plan artifact -- the very idempotence the normalization
+// was added to establish, defeated one layer out, by numbers whose own annotation said they could
+// not reach it. Probe multiplicity is not a host-state change, so it is not carried: the subject is
+// the unique unexpected slot and nothing else. There is no non-authoritative channel in this family
+// to publish the counts on, and a field with no consumer is dead data (DESIGN section 4c).
 type FabricCellUnexpectedCellEvidence {
   slot: RunnerSlotIdentity
-  readback_count: Int
-  observation_count: Int
 }
 
 fn fabric_cell_unexpected_holds_slot(
@@ -660,22 +679,8 @@ fn fabric_cell_merge_unexpected(
   acc: List<FabricCellUnexpectedCellEvidence>,
   r: FabricCellReadback,
 ) -> List<FabricCellUnexpectedCellEvidence> {
-  if fabric_cell_unexpected_holds_slot(acc: acc, slot: r.slot) {
-    map(acc, u =>
-      if runner_slot_identity_equal(a: u.slot, b: r.slot) {
-        FabricCellUnexpectedCellEvidence {
-          slot: u.slot,
-          readback_count: u.readback_count + 1,
-          observation_count: u.observation_count + list_length(items: r.observations),
-        }
-      } else { u })
-  } else {
-    concat(acc, [FabricCellUnexpectedCellEvidence {
-      slot: r.slot,
-      readback_count: 1,
-      observation_count: list_length(items: r.observations),
-    }])
-  }
+  if fabric_cell_unexpected_holds_slot(acc: acc, slot: r.slot) { acc }
+  else { concat(acc, [FabricCellUnexpectedCellEvidence { slot: r.slot }]) }
 }
 
 // PURE: NO AUTHORITY READ, NO SEALED MINT, NO ACTUATION LICENSED. The expected roster arrives as a
@@ -704,10 +709,35 @@ fn classify_fabric_cell_host(
       readback.cell_readbacks,
       init: [],
       f: (acc, r) =>
-        if fabric_cell_slot_is_expected(expected_slots: expected_slots, slot: r.slot) { acc }
+        if !fabric_cell_readback_names_enclosing_host(readback: readback, r: r) { acc }
+        else if fabric_cell_slot_is_expected(expected_slots: expected_slots, slot: r.slot) { acc }
         else { fabric_cell_merge_unexpected(acc: acc, r: r) }
     )),
+    host_mismatched: fold(
+      readback.cell_readbacks,
+      init: [],
+      f: (acc, r) =>
+        if fabric_cell_readback_names_enclosing_host(readback: readback, r: r) { acc }
+        else if fabric_cell_host_mismatch_holds_slot(acc: acc, slot: r.slot) { acc }
+        else {
+          concat(acc, [FabricCellReadbackHostMismatch {
+            enclosing_host: readback.host,
+            supplied_slot: r.slot,
+          }])
+        }
+    ),
   }
+}
+
+fn fabric_cell_readback_names_enclosing_host(readback: FabricCellHostReadback, r: FabricCellReadback) -> Bool {
+  (r.slot.host as String) == (readback.host as String)
+}
+
+fn fabric_cell_host_mismatch_holds_slot(
+  acc: List<FabricCellReadbackHostMismatch>,
+  slot: RunnerSlotIdentity,
+) -> Bool {
+  fold(acc, init: false, f: (seen, m) => seen || runner_slot_identity_equal(a: m.supplied_slot, b: slot))
 }
 
 // THE UNEXPECTED SIDE IS PUT IN A CANONICAL ORDER BECAUSE NOTHING ELSE ORDERS IT, and the asymmetry
@@ -733,13 +763,16 @@ fn classify_fabric_cell_host(
 // this fold needs a total order it can actually compute, not a dependency on a primitive that
 // raises.
 //
-// WHAT THIS ORDER ASSUMES, STATED BECAUSE IT IS AN ASSUMPTION AND NOT A THEOREM: slot index is a
-// total order over the unexpected slots of ONE host readback. Two unexpected slots that differ by
-// HOST rather than index would compare equal here. That case is not reachable through the expected
-// side, which is host-exact, but it is representable in a readback whose `slot.host` disagrees with
-// the enclosing `FabricCellHostReadback.host` -- and that disagreement is itself an unmodeled state
-// that should refuse rather than be ordered. Naming it here as the next-rung trigger rather than
-// letting the sort quietly decide it.
+// SLOT INDEX IS A TOTAL ORDER HERE BECAUSE THE FOLD IS HOST-EXACT, AND AN EARLIER REVISION OF THIS
+// ANNOTATION ADMITTED THAT IT WAS NOT. Two unexpected slots differing by HOST rather than index
+// compare equal under this comparison, and that state WAS representable: a child readback carries
+// its own `RunnerSlotIdentity`, so an srv3 host readback could hold srv3-07 and srv4-07 and the
+// reversed supply order produced the reversed canonical output and a different fingerprint. The
+// annotation named it as a next-rung trigger, which was the wrong disposition -- it was an admitted
+// live defect in the newly modeled denominator, not a bounded assumption about an unreachable one.
+// It is closed by routing rather than by comparison: a cross-host readback goes to
+// `host_mismatched` and never reaches this fold, so every element compared here shares one host and
+// index alone decides. Nothing was added to the sort.
 fn fabric_cell_unexpected_canonical(
   unexpected: List<FabricCellUnexpectedCellEvidence>,
 ) -> List<FabricCellUnexpectedCellEvidence> {
@@ -780,9 +813,16 @@ fn fabric_cell_slot_is_expected(
 // between those requires positive ownership evidence the model does not yet carry. Planning a
 // REMOVE against it would be "anything with a fabric-looking name is ours to delete", and ignoring
 // it is the silent exclusion this whole carrier exists to end.
+//
+// A HOST-MISMATCHED READBACK REFUSES TOO, RATHER THAN BEING ROUTED AWAY AND FORGOTTEN. Routing it
+// out of the unexpected fold is what makes the canonical order total; it is NOT a disposition of
+// the readback itself, and a subject that leaves every counted population without appearing in a
+// refusal is the silent exclusion this carrier exists to end, reintroduced by the repair for a
+// different silent exclusion.
 type FabricCellObservationRefusal
   = ExpectedAddressBlocked { disposition: FabricCellAddressDisposition }
   | UnexpectedCellEvidence { evidence: FabricCellUnexpectedCellEvidence }
+  | ReadbackHostMismatch { mismatch: FabricCellReadbackHostMismatch }
 
 type FabricCellPopulation
   = FabricCellPopulationObserved { host: HostIdentity, observed: FabricCellObservedMembers }
@@ -803,7 +843,10 @@ fn fabric_cell_population(readback: FabricCellHostReadback) -> FabricCellPopulat
     })
   let blocked = concat(
     blocked_addresses,
-    map(classification.unexpected, u => UnexpectedCellEvidence { evidence: u }),
+    concat(
+      map(classification.unexpected, u => UnexpectedCellEvidence { evidence: u }),
+      map(classification.host_mismatched, m => ReadbackHostMismatch { mismatch: m }),
+    ),
   )
   if list_length(items: blocked) > 0 {
     FabricCellPopulationObservationRefused { host: readback.host, blocked: blocked }

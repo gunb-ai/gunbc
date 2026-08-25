@@ -1219,6 +1219,24 @@ test fn witness_fabric_cell_duplicate_unexpected_readbacks_are_one_subject() -> 
   fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: once) == 1
     && fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: twice) == 1
     && fabric_fingerprint_with(population: once) == fabric_fingerprint_with(population: twice)
+    && fabric_rendered_lines(population: once) == fabric_rendered_lines(population: twice)
+}
+
+// THE RENDERED LINES ARE COMPARED BECAUSE "OUTSIDE THE MEMBER-SET FINGERPRINT" IS NOT "OUTSIDE
+// IDENTITY", AND THE ROW ABOVE PROVED THE WEAKER THING FIRST. An earlier cut carried
+// `readback_count`/`observation_count` on the unexpected evidence and asserted only the fingerprint
+// -- which was genuinely clean, because the BASELINE row serializes the slot alone. The refusal
+// LINE rendered `observations=<n>`, that line enters `plan_body`, and the plan artifact
+// content-hashes the whole body into the held-lease owner fingerprint. So one probe and two
+// identical probes agreed on the member set and disagreed on the plan artifact: the exact
+// idempotence the normalization was added to establish, defeated one layer out. Comparing the text
+// is strictly stronger than comparing its hash, and it is the layer where the defect lived.
+fn fabric_rendered_lines(population: FabricCellPopulation) -> String {
+  fold(
+    fleet_converge_fabric_cell_lines(host: "srv3" as NonEmptyStr, observed_fabric_cells: population),
+    init: "",
+    f: (acc, l) => join([acc, "\n", l], ""),
+  )
 }
 
 test fn witness_fabric_cell_unexpected_evidence_is_order_independent() -> Bool {
@@ -1229,6 +1247,46 @@ test fn witness_fabric_cell_unexpected_evidence_is_order_independent() -> Bool {
     unexpected_readback_at(index: 8), unexpected_readback_at(index: 7), fabric_cell_readback_all_present(),
   ])
   fabric_fingerprint_with(population: forward) == fabric_fingerprint_with(population: reversed)
+    && fabric_rendered_lines(population: forward) == fabric_rendered_lines(population: reversed)
+}
+
+// A READBACK NAMING ANOTHER HOST IS NEITHER EXPECTED NOR UNEXPECTED HERE, AND IT REFUSES. The
+// enclosing `FabricCellHostReadback` owns the host coordinate and each child carries a full
+// `RunnerSlotIdentity`, so an srv3 readback holding an srv4-07 child was representable and fell
+// into `unexpected` -- true (srv3 does not declare it) and useless, because "a foreign cell exists
+// on srv3" and "somebody handed me srv4's readback labelled srv3" have different remedies and the
+// second is a defect in the caller. It is routed to its own destination and refused there; a
+// subject that leaves every counted population without appearing in a refusal would be the silent
+// exclusion this carrier exists to end, reintroduced by the repair for a different one.
+test fn witness_fabric_cell_cross_host_readback_refuses_as_a_mismatch_not_as_unexpected() -> Bool {
+  let mixed = fabric_population_of(entries: [
+    fabric_cell_readback_all_present(),
+    synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 }),
+  ])
+  let lines = fleet_converge_fabric_cell_lines(host: "srv3" as NonEmptyStr, observed_fabric_cells: mixed)
+  fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: mixed) == 1
+    && fold(lines, init: false, f: (acc, l) => acc || string_contains(s: l, pattern: "host-mismatched-readback srv4-07"))
+    && fold(lines, init: true, f: (acc, l) => acc && !string_contains(s: l, pattern: "unexpected-cell srv4-07"))
+}
+
+// AND THE REVIEWER'S EXACT INPUT: srv3-07 AND srv4-07 IN BOTH ORDERS. The canonical order compares
+// `slot_index` alone, so these two compared EQUAL and the insertion reversed with the input --
+// reversed supply order, reversed baseline rows, different fingerprint. The repair is not a wider
+// comparison: the cross-host member never reaches that fold, so every element it orders shares one
+// host and index alone decides. This row reds if the routing is removed even though the sort is
+// untouched, which is the point -- the defect was a denominator, not a comparator.
+test fn witness_fabric_cell_cross_host_pair_is_order_independent() -> Bool {
+  let same_index_srv3 = unexpected_readback_at(index: 7)
+  let same_index_srv4 = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 })
+  let forward = fabric_population_of(entries: [
+    fabric_cell_readback_all_present(), same_index_srv3, same_index_srv4,
+  ])
+  let reversed = fabric_population_of(entries: [
+    fabric_cell_readback_all_present(), same_index_srv4, same_index_srv3,
+  ])
+  fabric_fingerprint_with(population: forward) == fabric_fingerprint_with(population: reversed)
+    && fabric_rendered_lines(population: forward) == fabric_rendered_lines(population: reversed)
+    && fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: forward) == 2
 }
 
 test fn witness_fabric_cell_distinct_unexpected_slots_are_counted_separately() -> Bool {
