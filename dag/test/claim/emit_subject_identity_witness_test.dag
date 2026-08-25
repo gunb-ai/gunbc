@@ -1,0 +1,219 @@
+module test.claim.emit_subject_identity_witness_test
+
+import std.types { Bool, String }
+import v2.std.resolution_policy { NameResolutionPolicy, ImportScoped, NamespaceOnlyY }
+import gunbc.emit_subject_identity {
+  EmitSubjectKind, ModuleClosure, DeclarationSurface, ProductClosure,
+  EmitSubjectKey, emit_subject_key_text, emit_subject_kind_text, name_resolution_policy_text,
+  MembershipObservation, MembershipObserved, MembershipUnobservable,
+  SubjectMembership, unobserved_resolution_candidates,
+  MembershipInvariantStanding, MembershipInvariantHolds, MembershipInvariantViolated,
+  MembershipInvariantNotEvaluated,
+  candidates_within_closure, closure_within_checked, membership_invariant_rows,
+  EmitSubjectMatrix, SubjectMatrix, SubjectMatrixRefused,
+  emit_subject_matrix, emit_subject_matrix_keys, emit_subject_kinds,
+  subject_key_roster_contains, orphan_admission_keys
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn key(root: String, kind: EmitSubjectKind) -> EmitSubjectKey {
+  EmitSubjectKey { root: root, kind: kind, resolution_policy: NamespaceOnlyY }
+}
+
+fn observed(ms: List<String>) -> MembershipObservation {
+  MembershipObserved { members: ms }
+}
+
+fn standing_holds(s: MembershipInvariantStanding) -> Bool {
+  match s {
+    MembershipInvariantHolds => true
+    MembershipInvariantViolated { relation: _, outside: _ } => false
+    MembershipInvariantNotEvaluated { relation: _, cause: _ } => false
+  }
+}
+
+fn standing_is_not_evaluated(s: MembershipInvariantStanding) -> Bool {
+  match s {
+    MembershipInvariantHolds => false
+    MembershipInvariantViolated { relation: _, outside: _ } => false
+    MembershipInvariantNotEvaluated { relation: _, cause: _ } => true
+  }
+}
+
+fn standing_outside(s: MembershipInvariantStanding) -> List<String> {
+  match s {
+    MembershipInvariantHolds => []
+    MembershipInvariantViolated { relation: _, outside: os } => os
+    MembershipInvariantNotEvaluated { relation: _, cause: _ } => []
+  }
+}
+
+// THE CORE OF THE SUBJECT RULING: one root under three kinds is THREE subjects, not one.
+test fn one_root_under_three_kinds_is_three_distinct_subjects() -> Bool {
+  let a = emit_subject_key_text(key: key(root: "dag/std/logic.dag", kind: ModuleClosure))
+  let b = emit_subject_key_text(key: key(root: "dag/std/logic.dag", kind: DeclarationSurface))
+  let c = emit_subject_key_text(key: key(root: "dag/std/logic.dag", kind: ProductClosure))
+  (a != b) && (b != c) && (a != c)
+}
+
+// AND THE RESOLUTION POLICY IS PART OF THE IDENTITY: the same root and kind read under two policies
+// are two subjects, so debt recorded under one reading cannot be discharged by switching readings.
+test fn the_same_root_and_kind_under_two_policies_are_two_subjects() -> Bool {
+  let scoped = EmitSubjectKey { root: "dag/std/logic.dag", kind: ModuleClosure, resolution_policy: ImportScoped }
+  let namespaced = EmitSubjectKey { root: "dag/std/logic.dag", kind: ModuleClosure, resolution_policy: NamespaceOnlyY }
+  emit_subject_key_text(key: scoped) != emit_subject_key_text(key: namespaced)
+}
+
+test fn the_three_kinds_and_two_policies_render_distinctly() -> Bool {
+  (emit_subject_kind_text(kind: ModuleClosure) != emit_subject_kind_text(kind: DeclarationSurface))
+    && (emit_subject_kind_text(kind: DeclarationSurface) != emit_subject_kind_text(kind: ProductClosure))
+    && (name_resolution_policy_text(policy: ImportScoped) != name_resolution_policy_text(policy: NamespaceOnlyY))
+}
+
+// MEMBERSHIP IS AN OBSERVATION, NOT A KEY. This is the mutation that matters: a subject that gains a
+// closure member is the SAME subject, so an admission recorded against it still applies. If closure
+// membership were keyed, this would be two subjects and the debt would silently vanish.
+test fn a_subject_that_gains_a_closure_member_is_the_same_subject() -> Bool {
+  let before = key(root: "dag/std/logic.dag", kind: ModuleClosure)
+  let after = key(root: "dag/std/logic.dag", kind: ModuleClosure)
+  let roster = [before]
+  emit_subject_key_text(key: before) == emit_subject_key_text(key: after)
+    && subject_key_roster_contains(roster: roster, key: after)
+}
+
+// THE INVARIANT'S OBSERVABLE HALF IS A REAL WALL: a checked population missing a closure member is a
+// violation and it NAMES the member.
+test fn a_closure_member_that_was_never_checked_is_a_violation_that_names_it() -> Bool {
+  let m = SubjectMembership {
+    resolution_candidates: unobserved_resolution_candidates(),
+    closure: observed(ms: ["a", "b"]),
+    checked: observed(ms: ["a"])
+  }
+  let s = closure_within_checked(membership: m)
+  !standing_holds(s: s) && (standing_outside(s: s) == ["b"])
+}
+
+// AND ITS GREEN CONTROL, so the wall above is discriminating rather than always-red.
+test fn a_closure_fully_inside_the_checked_population_holds() -> Bool {
+  standing_holds(
+    s: closure_within_checked(
+      membership: SubjectMembership {
+        resolution_candidates: unobserved_resolution_candidates(),
+        closure: observed(ms: ["a"]),
+        checked: observed(ms: ["a", "b"])
+      }
+    )
+  )
+}
+
+// THE DECLARED GAP, ASSERTED RATHER THAN ASSUMED: the candidate side is unobservable today, so the
+// relation that consumes it must report NOT-EVALUATED. A green here would mean the check had been
+// satisfied by an observation nobody made.
+test fn the_unobservable_candidate_population_makes_its_relation_not_evaluated() -> Bool {
+  standing_is_not_evaluated(
+    s: candidates_within_closure(
+      membership: SubjectMembership {
+        resolution_candidates: unobserved_resolution_candidates(),
+        closure: observed(ms: ["a", "b"]),
+        checked: observed(ms: ["a", "b"])
+      }
+    )
+  )
+}
+
+// THE DECORATION TEST, RUN AS A CLAIM: had the candidate field been populated from the closure, this
+// relation would be green over identical inputs. It is not, and this is the arm that proves the
+// carrier does not compare a value to itself.
+test fn candidates_copied_from_the_closure_would_have_been_green_which_is_why_they_are_not() -> Bool {
+  let copied = SubjectMembership {
+    resolution_candidates: observed(ms: ["a", "b"]),
+    closure: observed(ms: ["a", "b"]),
+    checked: observed(ms: ["a", "b"])
+  }
+  let honest = SubjectMembership {
+    resolution_candidates: unobserved_resolution_candidates(),
+    closure: observed(ms: ["a", "b"]),
+    checked: observed(ms: ["a", "b"])
+  }
+  standing_holds(s: candidates_within_closure(membership: copied))
+    && standing_is_not_evaluated(s: candidates_within_closure(membership: honest))
+}
+
+// AN UNOBSERVED OUTER SIDE DOES NOT SATISFY A SUBSET EITHER, in the direction that would otherwise
+// let an unobserved population contain anything.
+test fn an_unobservable_outer_side_is_not_evaluated_rather_than_satisfied() -> Bool {
+  standing_is_not_evaluated(
+    s: closure_within_checked(
+      membership: SubjectMembership {
+        resolution_candidates: unobserved_resolution_candidates(),
+        closure: observed(ms: ["a"]),
+        checked: MembershipUnobservable { cause: "no checked population was reported" }
+      }
+    )
+  )
+}
+
+// THE MATRIX IS INVENTORY-COMPLETE: roots times kinds, so an unmeasured subject is PRESENT and
+// arrives as unmeasured rather than being absent and reading as nothing to say.
+test fn the_matrix_is_every_root_crossed_with_every_kind() -> Bool {
+  let keys = emit_subject_matrix_keys(
+    matrix: emit_subject_matrix(roots: ["dag", "src/v2"], policy: NamespaceOnlyY)
+  )
+  count(keys) == (2 * count(emit_subject_kinds))
+}
+
+test fn an_empty_inventory_refuses_rather_than_yielding_an_empty_roster() -> Bool {
+  match emit_subject_matrix(roots: [], policy: NamespaceOnlyY) {
+    SubjectMatrix { keys: _ } => false
+    SubjectMatrixRefused { cause: _ } => true
+  }
+}
+
+// ADMISSION-ORPHAN, PRESERVED THROUGH THE KEY MIGRATION. An admission written against a kind the
+// roster does not carry is an orphan and is REPORTED, not silently ignored.
+test fn an_admission_against_a_subject_outside_the_roster_is_an_orphan() -> Bool {
+  let roster = [key(root: "dag", kind: ModuleClosure)]
+  let orphans = orphan_admission_keys(
+    roster: roster,
+    admitted: [key(root: "dag", kind: ModuleClosure), key(root: "dag", kind: ProductClosure)]
+  )
+  (count(orphans) == 1)
+    && (emit_subject_key_text(key: orphans[0]) == emit_subject_key_text(key: key(root: "dag", kind: ProductClosure)))
+}
+
+// ITS CONTROL: an admission that DOES name a roster subject is not an orphan, so the check above is
+// not simply reporting everything.
+test fn an_admission_naming_a_roster_subject_is_not_an_orphan() -> Bool {
+  count(
+    orphan_admission_keys(
+      roster: [key(root: "dag", kind: ModuleClosure), key(root: "dag", kind: ProductClosure)],
+      admitted: [key(root: "dag", kind: ProductClosure)]
+    )
+  ) == 0
+}
+
+// AND THE ORPHAN CHECK IS POLICY-SENSITIVE, which is the half a key migration loses: an admission
+// recorded under one resolution policy does not silently discharge debt under another.
+test fn an_admission_under_a_different_resolution_policy_is_an_orphan() -> Bool {
+  count(
+    orphan_admission_keys(
+      roster: [EmitSubjectKey { root: "dag", kind: ModuleClosure, resolution_policy: NamespaceOnlyY }],
+      admitted: [EmitSubjectKey { root: "dag", kind: ModuleClosure, resolution_policy: ImportScoped }]
+    )
+  ) == 1
+}
+
+// THE RENDERED ROWS CARRY THE SUBJECT AND BOTH RELATIONS, so a reader of the report can see that one
+// of them was not evaluated rather than reading two silent greens.
+test fn the_rendered_rows_carry_the_subject_and_both_relations() -> Bool {
+  let rows = membership_invariant_rows(
+    key: key(root: "dag/std/logic.dag", kind: ModuleClosure),
+    membership: SubjectMembership {
+      resolution_candidates: unobserved_resolution_candidates(),
+      closure: observed(ms: ["a"]),
+      checked: observed(ms: ["a"])
+    }
+  )
+  count(rows) == 6
+}

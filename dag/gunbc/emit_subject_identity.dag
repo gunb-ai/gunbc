@@ -1,0 +1,276 @@
+module gunbc.emit_subject_identity
+
+import std.types { Bool, Int, String, NonEmptyStr }
+import v2.std.resolution_policy { NameResolutionPolicy, ImportScoped, NamespaceOnlyY }
+import std.materialization_ladder { string_list_contains }
+
+// THE EMISSION RATCHET'S SUBJECT IDENTITY, and the observation fields that must never become part
+// of it.
+//
+// WHY THE SUBJECT IS NOT AN ENTRY PATH. The ratchet's first form keyed a subject on the path
+// `gunbc compile --entry` takes, which is what the compiler's own surface offers and nothing more.
+// That key answers "which file" and cannot answer "under which reading of the corpus", so two runs
+// that resolved the same file differently were one subject and their debt was one ledger.
+//
+// THE KEY IS { root, kind, resolution_policy }. The root names what is compiled, the KIND names
+// what the subject IS -- a module's closure, a declaration surface, or a product closure are three
+// different questions about one root and they can disagree -- and the resolution policy names the
+// reading under which the answer was produced. `NameResolutionPolicy` is CONSUMED from
+// `v2.std.resolution_policy` rather than re-coined here: a second spelling of the resolution
+// posture would be the §3 nicknaming violation inside the carrier that exists to keep identities
+// straight.
+type EmitSubjectKind
+  = ModuleClosure
+  | DeclarationSurface
+  | ProductClosure
+
+fn emit_subject_kind_text(kind: EmitSubjectKind) -> String {
+  match kind {
+    ModuleClosure => "module-closure"
+    DeclarationSurface => "declaration-surface"
+    ProductClosure => "product-closure"
+  }
+}
+
+fn name_resolution_policy_text(policy: NameResolutionPolicy) -> String {
+  match policy {
+    ImportScoped => "import-scoped"
+    NamespaceOnlyY => "namespace-only"
+  }
+}
+
+type EmitSubjectKey {
+  root: String
+  kind: EmitSubjectKind
+  resolution_policy: NameResolutionPolicy
+}
+
+fn emit_subject_key_text(key: EmitSubjectKey) -> String {
+  concat(
+    concat(key.root, concat("\t", emit_subject_kind_text(kind: key.kind))),
+    concat("\t", name_resolution_policy_text(policy: key.resolution_policy))
+  )
+}
+
+fn emit_subject_key_eq(a: EmitSubjectKey, b: EmitSubjectKey) -> Bool {
+  a == b
+}
+
+// ---------------------------------------------------------------------------------------------
+// MEMBERSHIP IS OBSERVED, NEVER KEYED.
+//
+// THIS IS THE LOAD-BEARING SEPARATION AND IT IS WORTH STATING WHY, because the opposite is the
+// natural thing to build. Closure and census membership describe what a subject CONTAINED when it
+// was measured. If they were part of the key, then adding one dependency would produce a different
+// closure and therefore a different subject -- and every admission recorded against the old one
+// would stop applying, silently, with no row anywhere saying debt had been dropped. A PR could
+// discharge its own debt by touching an import.
+//
+// So membership travels as OBSERVATION FIELDS beside the key. A subject that gains a dependency is
+// the same subject with a different observation, which is what makes its debt survive the change.
+// ---------------------------------------------------------------------------------------------
+
+// AND AN UNOBSERVABLE MEMBERSHIP IS NOT AN EMPTY ONE. The distinction is the same one the ratchet's
+// NotEvaluated arm exists for, one level in: "the set is empty" and "nobody could ask what the set
+// is" are different facts, and rendering the second as the first is what makes an invariant check
+// pass over an observation nobody made.
+type MembershipObservation
+  = MembershipObserved { members: List<String> }
+  | MembershipUnobservable { cause: String }
+
+fn membership_observation_text(observation: MembershipObservation) -> String {
+  match observation {
+    MembershipObserved { members: ms } =>
+      concat(to_string(count(ms)), " member(s)")
+    MembershipUnobservable { cause: c } => concat("unobservable — ", c)
+  }
+}
+
+// THE THREE POPULATIONS THE INVARIANT RELATES.
+//
+// resolution_candidates -- the modules that supplied resolution candidates for this subject
+// closure               -- the modules the closure constructor pulled in
+// checked               -- the modules the compiler actually checked
+//
+// THE INVARIANT IS resolution_candidates ⊆ closure ⊆ checked. A resolution candidate from outside
+// the closure means the subject bound a name its own closure does not contain, which is a subject
+// boundary that did not hold; a closure member that was never checked means the subject was
+// measured over less than it declared.
+type SubjectMembership {
+  resolution_candidates: MembershipObservation
+  closure: MembershipObservation
+  checked: MembershipObservation
+}
+
+// THE CANDIDATE POPULATION IS NOT OBSERVABLE TODAY, AND THIS ROW IS WHY THE FIELD IS STILL HERE.
+//
+// The compiler does not report WHICH modules supplied resolution candidates for a given subject, so
+// nothing in this repository can populate `resolution_candidates` by observation. The field is
+// present and its value is `MembershipUnobservable`, which is a declared gap rather than a hole:
+// the carrier can hold the fact as soon as a producer exists.
+//
+// WHAT IT MUST NEVER BE POPULATED FROM: the closure. Filling `resolution_candidates` with what the
+// closure happened to contain would make the invariant check compare a value to ITSELF -- it would
+// be green by construction, carry no information, and be worse than absent for being cited as
+// coverage. That is §4b's decoration test applied before the check is written rather than after.
+//
+// NEXT-RUNG TRIGGER: a compiler surface reporting per-subject resolution-candidate provenance. It
+// sits on the same seam as ClosureBoundResolution and is owned there, not here.
+data resolution_candidate_membership_unobservable: String = "The compiler reports no per-subject resolution-candidate provenance, so this population cannot be observed from this repository. It is NOT derived from the closure: doing so would compare the invariant's two sides to one value and green by construction. Next-rung trigger: a compiler surface reporting which modules supplied resolution candidates for a subject."
+
+fn unobserved_resolution_candidates() -> MembershipObservation {
+  MembershipUnobservable { cause: resolution_candidate_membership_unobservable }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE INVARIANT, WITH A THIRD STANDING RATHER THAN A BOOLEAN.
+// ---------------------------------------------------------------------------------------------
+type MembershipInvariantStanding
+  = MembershipInvariantHolds
+  | MembershipInvariantViolated { relation: String, outside: List<String> }
+  | MembershipInvariantNotEvaluated { relation: String, cause: String }
+
+fn membership_invariant_standing_text(standing: MembershipInvariantStanding) -> String {
+  match standing {
+    MembershipInvariantHolds => "holds"
+    MembershipInvariantViolated { relation: r, outside: os } =>
+      concat(
+        concat("VIOLATED ", r),
+        concat(" — outside: ", join(os, ", "))
+      )
+    MembershipInvariantNotEvaluated { relation: r, cause: c } =>
+      concat(concat("not-evaluated ", r), concat(" — ", c))
+  }
+}
+
+fn members_outside(inner: List<String>, outer: List<String>) -> List<String> {
+  fold(
+    inner,
+    init: [],
+    f: (acc, m) => if string_list_contains(xs: outer, wanted: m) { acc } else { concat(acc, [m]) }
+  )
+}
+
+// A SUBSET CHECK OVER AN UNOBSERVABLE SIDE IS NOT A PASSING SUBSET CHECK. Either side missing makes
+// the relation unevaluated, never satisfied -- an unobserved inner set would otherwise be trivially
+// contained in anything, which is the strongest verdict drawn from no observation at all.
+fn membership_subset_standing(
+  relation: String,
+  inner: MembershipObservation,
+  outer: MembershipObservation
+) -> MembershipInvariantStanding {
+  match inner {
+    MembershipUnobservable { cause: c } =>
+      MembershipInvariantNotEvaluated { relation: relation, cause: concat("inner side unobservable: ", c) }
+    MembershipObserved { members: is } =>
+      match outer {
+        MembershipUnobservable { cause: c } =>
+          MembershipInvariantNotEvaluated { relation: relation, cause: concat("outer side unobservable: ", c) }
+        MembershipObserved { members: os } => {
+          let outside = members_outside(inner: is, outer: os)
+          if count(outside) == 0 {
+            MembershipInvariantHolds
+          } else {
+            MembershipInvariantViolated { relation: relation, outside: outside }
+          }
+        }
+      }
+  }
+}
+
+fn candidates_within_closure(membership: SubjectMembership) -> MembershipInvariantStanding {
+  membership_subset_standing(
+    relation: "resolution_candidates ⊆ closure",
+    inner: membership.resolution_candidates,
+    outer: membership.closure
+  )
+}
+
+fn closure_within_checked(membership: SubjectMembership) -> MembershipInvariantStanding {
+  membership_subset_standing(
+    relation: "closure ⊆ checked",
+    inner: membership.closure,
+    outer: membership.checked
+  )
+}
+
+fn membership_invariant_rows(key: EmitSubjectKey, membership: SubjectMembership) -> List<String> {
+  [
+    concat("subject\t", emit_subject_key_text(key: key)),
+    concat("resolution_candidates\t", membership_observation_text(observation: membership.resolution_candidates)),
+    concat("closure\t", membership_observation_text(observation: membership.closure)),
+    concat("checked\t", membership_observation_text(observation: membership.checked)),
+    concat("invariant\t", membership_invariant_standing_text(standing: candidates_within_closure(membership: membership))),
+    concat("invariant\t", membership_invariant_standing_text(standing: closure_within_checked(membership: membership)))
+  ]
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE ROSTER IS AN INVENTORY-COMPLETE MATRIX, NOT A LIST OF WHAT WAS MEASURED.
+//
+// Every root crosses every kind. A subject that nothing measured is therefore PRESENT in the roster
+// and arrives at the ratchet as unmeasured, which refuses -- rather than being absent, which reads
+// as nothing to say. That is the same empty-observation narrow the ratchet's own denominator work
+// closed, one level in: the set of subjects must be derived from the inventory, never from the set
+// of measurements that happened to succeed.
+//
+// WHY THE ROOTS COME FROM THE FLOOR'S INVENTORY AND NOT ITS RESOLUTION ENVIRONMENT: the floor
+// prepares one shared environment over the whole corpus and resolves every discovered module
+// against it. Taking the roster from that environment would make the subject list a function of
+// what resolved, so a module that stopped resolving would leave the roster silently. The inventory
+// is the file-level fact and it does not move when resolution does.
+data emit_subject_kinds: List<EmitSubjectKind> = [ModuleClosure, DeclarationSurface, ProductClosure]
+
+type EmitSubjectMatrix
+  = SubjectMatrix { keys: List<EmitSubjectKey> }
+  | SubjectMatrixRefused { cause: String }
+
+fn emit_subject_matrix(roots: List<String>, policy: NameResolutionPolicy) -> EmitSubjectMatrix {
+  if count(roots) == 0 {
+    SubjectMatrixRefused { cause: "no roots — an empty inventory would make every subject vacuously absent rather than unmeasured" }
+  } else {
+    SubjectMatrix {
+      keys: fold(
+        roots,
+        init: [],
+        f: (acc, root) => concat(
+          acc,
+          map(
+            emit_subject_kinds,
+            k => EmitSubjectKey { root: root, kind: k, resolution_policy: policy }
+          )
+        )
+      )
+    }
+  }
+}
+
+fn emit_subject_matrix_keys(matrix: EmitSubjectMatrix) -> List<EmitSubjectKey> {
+  match matrix {
+    SubjectMatrix { keys: ks } => ks
+    SubjectMatrixRefused { cause: _ } => []
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// ADMISSION-ORPHAN, CARRIED THROUGH THE KEY CHANGE.
+//
+// An admission naming a subject the roster does not contain is an ORPHAN and refuses. It is the
+// property that makes the ratchet honest, and it is exactly what a key migration loses by accident:
+// once the key gains fields, an admission written against the old spelling stops matching anything
+// and -- absent this -- reads as a subject with no debt rather than a debt with no subject.
+// ---------------------------------------------------------------------------------------------
+fn subject_key_roster_contains(roster: List<EmitSubjectKey>, key: EmitSubjectKey) -> Bool {
+  string_list_contains(
+    xs: map(roster, k => emit_subject_key_text(key: k)),
+    wanted: emit_subject_key_text(key: key)
+  )
+}
+
+fn orphan_admission_keys(roster: List<EmitSubjectKey>, admitted: List<EmitSubjectKey>) -> List<EmitSubjectKey> {
+  fold(
+    admitted,
+    init: [],
+    f: (acc, a) => if subject_key_roster_contains(roster: roster, key: a) { acc } else { concat(acc, [a]) }
+  )
+}
