@@ -38,8 +38,6 @@ enum FloorBatchClampAuthority {
     },
 }
 
-impl FloorBatchClampAuthority {}
-
 /// A clamp plus the declaration that produced it. Constructing one without an authority is not
 /// expressible, which is what keeps the refusal's citation and its number from drifting apart.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -48,8 +46,6 @@ struct ResolvedFloorBatchClamp {
     per_unit_ms: u128,
     authority: FloorBatchClampAuthority,
 }
-
-impl ResolvedFloorBatchClamp {}
 
 /// SCAFFOLD (§7 seed-retained HAND-RUST — authority:
 /// `gunbc.ci_spec.gunbc_ci_floor_batch_stop_policy_claim_executor_seed_note`,
@@ -108,8 +104,6 @@ struct ParsedRunnableProfile {
     memory: ParsedMemoryClass,
     execution_mode: ExecutionMode,
 }
-
-impl ParsedRunnableProfile {}
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct ScopedScheduleEntry {
@@ -657,8 +651,6 @@ enum ProcessTermination {
     Unobserved,
 }
 
-impl ProcessTermination {}
-
 #[derive(Debug, PartialEq, Eq)]
 enum FloorWorkerTerminalReceipt {
     Observed(FloorWorkerTerminalReport),
@@ -1205,8 +1197,6 @@ struct ScopedExecutionRequest {
     /// in exactly the sense the rest of this carrier is — freeze it, hand it over.
     batch_stop_policy: FloorBatchStopPolicy,
 }
-
-impl ScopedExecutionRequest {}
 
 fn read_scoped_execution_requests() -> Result<Vec<ScopedExecutionRequest>, String> {
     let path = Path::new(SCOPED_EXECUTION_REQUESTS_PATH);
