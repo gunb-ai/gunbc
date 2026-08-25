@@ -160,6 +160,9 @@ pub enum DeclarationIntegrityKind {
     DuplicateModuleDeclaration,
     /// A `PRE_EXISTING_CITATION_DEBT` row whose citation no longer refuses.
     CitationDebtRowStale,
+    /// A `PLANTED_CONTROL_CITATIONS` row whose citation stopped refusing — the control is no
+    /// longer discriminating. The inverse reading of the same trigger as the row above.
+    PlantedControlNoLongerRefuses,
 }
 
 pub fn integrity_kind_label(kind: &DeclarationIntegrityKind) -> &'static str {
@@ -171,6 +174,7 @@ pub fn integrity_kind_label(kind: &DeclarationIntegrityKind) -> &'static str {
         DeclarationIntegrityKind::LensAuthorshipAbsent => "LENS-AUTHORSHIP-ABSENT",
         DeclarationIntegrityKind::DuplicateModuleDeclaration => "DUPLICATE-MODULE",
         DeclarationIntegrityKind::CitationDebtRowStale => "CITATION-DEBT-ROW-STALE",
+        DeclarationIntegrityKind::PlantedControlNoLongerRefuses => "PLANTED-CONTROL-RESOLVES",
     }
 }
 
@@ -729,14 +733,22 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// the teeth: repairing a citation forces deleting its row, so the roster can only shrink,
 /// and a roster that has rotted stops the line exactly like a violation does.
 ///
-/// FOUR ROWS AT THE END ARE NOT DEBT, AND THEY ARE MARKED RATHER THAN QUIETLY MIXED IN.
-/// They are the DELETED census's own planted controls — citations authored to refuse, in
-/// `gunbc.doc_graph_roots` and in `v2.lens.cited_symbol_resolution` itself, so that census
-/// could prove its resolver refused. They are not defects and repairing them would be
-/// wrong. They leave when the lens does, and their discriminating job is already re-done at
-/// the fixture boundary in `tests/declaration_index_integrity.rs`, where DESIGN §4b wants
-/// it — which is why this wall does not need them and does not keep them.
+/// THE FOUR PLANTED CONTROLS ARE NOT IN THIS ROSTER, AND THE PROSE THAT SAID THEY WERE WAS
+/// FALSE. An earlier revision of this comment read "FOUR ROWS AT THE END ARE NOT DEBT ... they
+/// are the DELETED census's own planted controls ... they leave when the lens does". Enumerating
+/// all 38 rows finds no such row — no `G1_planted` target, no `synthetic` namespace, and the
+/// actual last four are ordinary debt. The rows were never added, only described.
 ///
+/// It was caught by the wall's first corpus run, which reported all four controls as ordinary
+/// refusals: `synthetic.g1_planted_module_absent_control_RED`, two `v2.std.node` declarations
+/// and one `NodeKind` field. Recording that the claim was FALSE rather than silently correcting
+/// it is the point — a stale statement inside the carrier built to stop stale statements is the
+/// specimen, and deleting it quietly would lose the finding.
+///
+/// They now live in `PLANTED_CONTROL_CITATIONS`, which is a different KIND of roster and not a
+/// tidier corner of this one: debt shrinks to empty, controls never retire, and the two arms
+/// read the same trigger in opposite directions. See that constant.
+
 /// WHY THE LENS IS NOT DELETED IN THIS CHANGE, stated plainly rather than left as an
 /// omission. `v2.lens.cited_symbol_resolution` is invoked by nothing: the operator removed
 /// its CI job on 2026-08-23 and this change removes `--required-cited-symbol`, its last
@@ -782,7 +794,7 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str)] = &[
     ("extdeps.mediawiki", "extdeps_external_authority_anchor", ""),
     ("extdeps.network.ipv6", "parse_ipv6_address", ""),
     ("extdeps.network.mac", "parse_mac_address", ""),
-    ("extdeps.tcgplayer.store", "UpdateSkuPrice", ""),
+    ("extdeps.tcgplayer.store", "UpdateSkuPrice", "price"),
     (
         "gunbc.ci_floor_measurement",
         "gunbc_ci_legacy_host_modeled_residents",
@@ -862,6 +874,94 @@ fn citation_in_roster(cited: &CitedSymbol, roster: &[(&str, &str, &str)]) -> boo
 /// the only way to keep a row is for the violation to still be there.
 pub fn citation_debt_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegrityFinding> {
     citation_debt_findings_against(index, PRE_EXISTING_CITATION_DEBT)
+}
+
+/// THE DELETED CENSUS'S PLANTED CONTROLS — DELIBERATELY FALSE CITATIONS, NOT DEBT.
+///
+/// `v2.lens.cited_symbol_resolution` authors citations that MUST NOT RESOLVE: they are the
+/// discriminating evidence that a resolver refuses, one per refusal arm, and
+/// `cited_symbol_planted_control_home_note` records the operator ruling (2026-08-25) that
+/// rehomed them there as machine evidence rather than documents. A wall that refused them
+/// would be refusing the evidence for its own mechanism.
+///
+/// THEY ARE NOT ENROLLED AS DEBT, AND THE DISTINCTION IS THE WHOLE POINT. `PRE_EXISTING_CITATION_DEBT`
+/// is a monotone contract that may only SHRINK: a row leaves when someone repairs its citation.
+/// These never retire — DESIGN §4b(4) is explicit that an expecting-red probe which greens
+/// flips to a permanent regression control rather than being deleted. Putting them in the debt
+/// roster would have made "the roster only shrinks" false of four of its rows, and a contract
+/// with silent permanent members is not a contract.
+///
+/// SO THE STALENESS ARM IS INVERTED HERE, and that inversion is the carrier's whole content: a
+/// debt row refuses when its citation STOPS refusing; a control row refuses when its citation
+/// stops refusing TOO, but for the opposite reason — a control that resolves is no longer
+/// discriminating, and the mechanism it exists to prove has quietly lost its evidence. Same
+/// trigger, opposite meaning, so they are two carriers rather than one with a flag.
+///
+/// FOUND BY MEASUREMENT, AND THE PROSE THAT SHOULD HAVE SAID SO WAS FALSE. The roster's own
+/// doc comment claimed "FOUR ROWS AT THE END ARE NOT DEBT ... the deleted census's own planted
+/// controls". Enumerating all 38 rows finds no such row: the rows were never added, only
+/// described. The first corpus run reported all four controls as ordinary refusals, which is
+/// how the claim was caught. A false statement inside the carrier built to stop false
+/// statements is the specimen this whole change exists to make impossible, and it is recorded
+/// here rather than quietly corrected.
+const PLANTED_CONTROL_CITATIONS: &[(&str, &str, &str)] = &[
+    ("synthetic.g1_planted_module_absent_control_RED", "any", ""),
+    (
+        "v2.std.node",
+        "G1_planted_declaration_absent_control_RED",
+        "",
+    ),
+    ("v2.std.node", "G1_planted_ambiguous_control_RED", ""),
+    (
+        "v2.std.node",
+        "NodeKind",
+        "G1_planted_field_absent_control_RED",
+    ),
+];
+
+/// A control that has STOPPED refusing has lost its discriminating power, and that is a red in
+/// its own right — the inverse of a spent debt row, and the reason these are a separate roster.
+pub fn planted_control_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegrityFinding> {
+    planted_control_findings_against(index, PLANTED_CONTROL_CITATIONS)
+}
+
+pub fn planted_control_findings_against(
+    index: &DeclarationIndex,
+    roster: &[(&str, &str, &str)],
+) -> Vec<DeclarationIntegrityFinding> {
+    let mut still_refusing: BTreeSet<(String, String, String)> = BTreeSet::new();
+    for record in index.modules.values() {
+        for cited in &record.cited {
+            if citation_resolution_refusal(index, record, cited).is_some() {
+                still_refusing.insert((
+                    cited.module_path.clone(),
+                    cited.decl_name.clone(),
+                    cited.field.clone().unwrap_or_default(),
+                ));
+            }
+        }
+    }
+    roster
+        .iter()
+        .filter(|(module, decl, field)| {
+            !still_refusing.contains(&(module.to_string(), decl.to_string(), field.to_string()))
+        })
+        .map(|(module, decl, field)| DeclarationIntegrityFinding {
+            kind: DeclarationIntegrityKind::PlantedControlNoLongerRefuses,
+            rel_path: "src/v1/stage0/src/declaration_index.rs".to_string(),
+            offset: None,
+            message: format!(
+                "PLANTED_CONTROL_CITATIONS lists `{module}` `{decl}`{} as a control that must \
+                 NOT resolve, and it no longer refuses — the control has lost its \
+                 discriminating power and the mechanism it proves is now unevidenced",
+                if field.is_empty() {
+                    String::new()
+                } else {
+                    format!(" field `{field}`")
+                }
+            ),
+        })
+        .collect()
 }
 
 /// The debt join, over an EXPLICIT roster.
@@ -1105,10 +1205,11 @@ pub fn corpus_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegrityFind
     out.extend(import_member_findings(index));
     out.extend(cited_symbol_findings_against(
         index,
-        PRE_EXISTING_CITATION_DEBT,
+        &[PRE_EXISTING_CITATION_DEBT, PLANTED_CONTROL_CITATIONS].concat()[..],
     ));
     out.extend(lens_authorship_findings(index));
     out.extend(citation_debt_findings(index));
+    out.extend(planted_control_findings(index));
     out.sort();
     out
 }

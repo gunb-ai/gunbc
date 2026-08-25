@@ -684,3 +684,71 @@ fn corpus_findings_is_wired_to_the_production_suppression_roster() {
          matters"
     );
 }
+
+// THE PLANTED-CONTROL ARM READS THE SAME TRIGGER THE DEBT ARM DOES, IN THE OPPOSITE DIRECTION,
+// and that inversion is the only reason it is a second carrier rather than a flag on the first.
+// Both directions are planted, because a one-sided assertion here cannot tell a working arm
+// from one that never fires.
+#[test]
+fn a_planted_control_that_still_refuses_is_healthy() {
+    let dir = scratch_root("control_healthy");
+    author(&dir, "authority.dag", AUTHORITY);
+    author(
+        &dir,
+        "citer.dag",
+        "module probe.citer\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data probe_citation: DeclarationRef = DeclarationRef {\n\
+         \u{20}\u{20}module_path: \"probe.authority\",\n\
+         \u{20}\u{20}decl_name: \"deliberately_absent_RED\",\n\
+         \u{20}\u{20}field: WholeDeclaration,\n}\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    plant_cites(
+        &sweep.index,
+        "probe.citer",
+        "probe.authority",
+        "deliberately_absent_RED",
+    );
+    let roster = [("probe.authority", "deliberately_absent_RED", "")];
+    assert_eq!(
+        planted_control_findings_against(&sweep.index, &roster),
+        Vec::new(),
+        "a control that still refuses is doing its job and must not be reported"
+    );
+}
+
+#[test]
+fn a_planted_control_that_resolves_has_lost_its_power_and_refuses() {
+    let dir = scratch_root("control_lost");
+    // The control's target now EXISTS, so the citation resolves and the control is spent.
+    author(
+        &dir,
+        "authority.dag",
+        "module probe.authority\n\ndata deliberately_absent_RED: Bool = true\n",
+    );
+    author(
+        &dir,
+        "citer.dag",
+        "module probe.citer\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data probe_citation: DeclarationRef = DeclarationRef {\n\
+         \u{20}\u{20}module_path: \"probe.authority\",\n\
+         \u{20}\u{20}decl_name: \"deliberately_absent_RED\",\n\
+         \u{20}\u{20}field: WholeDeclaration,\n}\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    // PRECONDITION: the target really is declared now, or "resolves" is a fixture accident.
+    plant_declares(&sweep.index, "probe.authority", "deliberately_absent_RED");
+    plant_cites(
+        &sweep.index,
+        "probe.citer",
+        "probe.authority",
+        "deliberately_absent_RED",
+    );
+    let roster = [("probe.authority", "deliberately_absent_RED", "")];
+    let lost = planted_control_findings_against(&sweep.index, &roster);
+    assert_eq!(lost.len(), 1, "the spent control must refuse, got {lost:?}");
+    assert_eq!(
+        lost[0].kind,
+        DeclarationIntegrityKind::PlantedControlNoLongerRefuses
+    );
+}
