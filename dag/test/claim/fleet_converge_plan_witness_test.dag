@@ -6,9 +6,10 @@ import gunbc.fleet_posix_accounts {
   SudoInstall, SudoSystemctl, SudoRm,
 }
 import extdeps.github.actions_runner {
-  actions_runner_slot_extract_script, actions_runner_release_2_334_0,
+  actions_runner_slot_extract_script, actions_runner_release_2_336_0,
   ActionsRunnerBinaryArtifact, ActionsRunnerLinuxArm64,
 }
+import gunbc.runner_slot_provision { gunbc_runner_slot_privileged_commands }
 import std.content_hash { serialize_content_hash }
 import gunbc.membership_reconcile { MemberRemoved }
 import gunbc.host_axis_caps { CapMember }
@@ -31,10 +32,13 @@ import gunbc.fabric_cell_converge {
   fabric_cell_desired_members,
   fabric_cell_id_for_slot,
   fabric_cell_population_unobserved,
+  fabric_cell_member_key,
+  fabric_cell_resource_address_wire,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 import gunbc.ownership { Owned }
+import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
 import gunbc.fleet_converge_plan {
   TimerRetirementMember,
   FleetConvergePlanSubject,
@@ -93,6 +97,7 @@ test fn timer_retirement_plan_shows_refused_removal_for_foreign_cap() -> Bool {
     observed_spark: [],
     observed_slots: [],
     observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Present { value: artifact } =>
       string_contains(s: artifact.plan_body, pattern: "REFUSED-REMOVAL cap ")
@@ -122,6 +127,7 @@ test fn plan_artifact_hash_is_stable_for_fixed_observation() -> Bool {
     observed_spark: [],
     observed_slots: [],
     observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Present { value: a1 } =>
       match fleet_converge_plan_artifact(
@@ -132,7 +138,8 @@ test fn plan_artifact_hash_is_stable_for_fixed_observation() -> Bool {
         observed_spark: [],
         observed_slots: [],
         observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
-      ) {
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+  ) {
         Present { value: a2 } =>
           match fleet_converge_plan_artifact_hash(artifact: a1) {
             Present { value: h1 } =>
@@ -161,6 +168,7 @@ test fn observed_baseline_cas_refuses_after_drift() -> Bool {
     observed_spark: [],
     observed_slots: [],
     observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Present { value: artifact } => {
       let drifted = CapMember {
@@ -190,6 +198,7 @@ test fn plan_body_names_subject_host_and_generation() -> Bool {
     observed_spark: [],
     observed_slots: [],
     observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Present { value: artifact } =>
       string_contains(s: artifact.plan_body, pattern: "subject_host:srv1")
@@ -214,6 +223,7 @@ test fn cross_host_apply_refuses_subject_identity() -> Bool {
     observed_spark: [],
     observed_slots: [],
     observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Present { value: artifact } =>
       !fleet_converge_apply_subject_admits(
@@ -242,6 +252,7 @@ test fn same_host_different_generation_changes_plan_hash() -> Bool {
     observed_spark: [],
     observed_slots: [],
     observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Present { value: gen0 } =>
       match fleet_converge_plan_artifact(
@@ -252,7 +263,8 @@ test fn same_host_different_generation_changes_plan_hash() -> Bool {
         observed_spark: [],
         observed_slots: [],
         observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
-      ) {
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+  ) {
         Present { value: gen1 } =>
           match fleet_converge_plan_artifact_hash(artifact: gen0) {
             Present { value: h0 } =>
@@ -289,6 +301,7 @@ test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
     observed_spark: [],
     observed_slots: [],
     observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Present { value: artifact } => {
       let drifted = CapMember {
@@ -328,6 +341,7 @@ test fn bundle_hash_binds_apply_shell_not_plan_body_only() -> Bool {
     observed_spark: [],
     observed_slots: [],
     observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Present { value: artifact } =>
       match fleet_converge_plan_bundle_digest_hex(
@@ -501,6 +515,7 @@ test fn apply_shell_carries_dissolve_on_marker_not_host_gate() -> Bool {
     observed_spark: [],
     observed_slots: [],
     observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Present { value: artifact } =>
       string_contains(s: artifact.apply_shell, pattern: "dissolve-on: fleet_converge_apply_shell")
@@ -578,6 +593,7 @@ test fn a_slot_add_reaches_the_emitted_apply_script() -> Bool {
     observed_spark: [],
     observed_slots: [],
     observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Present { value: artifact } =>
       string_contains(s: artifact.plan_body, pattern: "ADD runner-slot srv1-01")
@@ -600,6 +616,7 @@ test fn slot_drift_breaks_the_member_set_fingerprint() -> Bool {
     observed_spark: [],
     observed_slots: [],
     observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Present { value: artifact } =>
       fleet_converge_member_set_fingerprint_matches(
@@ -660,18 +677,41 @@ test fn lease_guard_sudoes_only_granted_binaries() -> Bool {
 // PRIVILEGE IS SPENT ONCE AND ON OWNERSHIP. The RED here is the pair of ungranted verbs; the
 // positive control is that the directory is created already owned by the job principal, which is
 // what makes the extract and the cleanup after it unprivileged rather than merely un-sudo-ed.
+// THE PATTERNS ARE BUILT FROM THE AUTHORITY rather than spelled here. A literal
+// "sudo /usr/bin/install -d -m 755 ..." would be permanently red now that the words are
+// posix-quoted, and a literal that happened to match would still be a second spelling of a command
+// this repo already derives -- the exact drift the privileged-operation authority removes.
 test fn slot_extract_sudoes_only_granted_binaries() -> Bool {
   let sc = actions_runner_slot_extract_script(
     artifact: ActionsRunnerBinaryArtifact {
-      binary_release: actions_runner_release_2_334_0,
+      binary_release: actions_runner_release_2_336_0,
       arch: ActionsRunnerLinuxArm64,
     },
     slot_dir: "/opt/actions-runner/srv3-09" as NonEmptyStr,
-    job_user: "ghrunner" as NonEmptyStr,
+    privileged: gunbc_runner_slot_privileged_commands(
+      slot_dir: "/opt/actions-runner/srv3-09" as NonEmptyStr,
+      job_user: "ghrunner" as NonEmptyStr,
+    ),
   )
   !string_contains(s: sc, pattern: "sudo tar")
     && !string_contains(s: sc, pattern: "sudo chown")
-    && string_contains(s: sc, pattern: "sudo install -d -m 755 -o ghrunner -g ghrunner")
+    && string_contains(
+         s: sc,
+         pattern: executor_privileged_operation_shell_command(
+           op: EnsureOwnedDirectory {
+             path: "/opt/actions-runner/srv3-09" as NonEmptyStr,
+             owner: "ghrunner" as NonEmptyStr,
+             group: "ghrunner" as NonEmptyStr,
+             mode: executor_managed_directory_mode,
+           },
+         ),
+       )
+    && string_contains(
+         s: sc,
+         pattern: executor_privileged_operation_shell_command(
+           op: RemoveDirectoryTree { path: "/opt/actions-runner/srv3-09" as NonEmptyStr },
+         ),
+       )
     && string_contains(s: sc, pattern: "\ntar xzf /tmp/actions-runner.tar.gz")
 }
 
@@ -971,4 +1011,107 @@ test fn witness_fabric_cell_refusal_wording_is_not_the_member_set_identity() -> 
   )
     && fabric_fingerprint_with(population: fabric_population_of(entries: [refused_root_readback(cause: "transport reset")]))
         != fabric_fingerprint_with(population: fabric_population_of(entries: [refused_boundary_readback(cause: "transport reset")]))
+}
+
+// DRIFT IS A CHANGE AND ABSENCE IS AN ADD, AND THESE TWO ROWS ARE THE PAIR THAT DISTINGUISHES THEM.
+// The defect they close shipped to main in #9122 with two approvals and a green required floor:
+// `StandingUnmet` held BOTH "the resource is missing" and "the resource is present with the wrong
+// value", and the observed-member fold kept only `StandingSatisfied` -- so both states produced an
+// identical observed population and reconcile answered `MemberAdded` for both. The model chose
+// CREATE against a resource that already existed.
+//
+// WHY THE ASSERTION IS ON THE ACTION KIND RATHER THAN ON "UNPROVISIONED". A row that asserted only
+// that a drifted cell is unprovisioned passes on BOTH sides of the distinction being repaired --
+// it was true before the split and true after it, and it is exactly the kind of row that let the
+// defect through. Each row below therefore names the action it requires AND the action it forbids
+// for the same address: the ADD-count of zero is what goes red if drift ever collapses back into
+// absence, and the CHANGE-count of zero is what goes red in the other direction.
+fn fabric_cell_line_occurrences(lines: List<String>, target: String) -> Int {
+  fold(lines, init: 0, f: (acc, l) => if l == target { acc + 1 } else { acc })
+}
+
+fn fabric_boundary_desired_key() -> String {
+  fold(
+    fabric_cell_desired_members(host: operator_host_srv3),
+    init: "",
+    f: (acc, m) =>
+      if fabric_cell_resource_address_wire(address: m.address) == "resource-boundary" {
+        fabric_cell_member_key(member: m)
+      } else { acc },
+  )
+}
+
+// ONE ADDRESS DIVERGES AND THE OTHER TWO AGREE, so whatever the row proves is about that address
+// and not about a wholesale mismatch. A fixture in which everything drifts cannot tell "drift is a
+// change" from "any non-converged host replans itself".
+fn fabric_cell_readback_boundary_drifted() -> FabricCellReadback {
+  FabricCellReadback {
+    slot: fabric_witness_slot(),
+    observations: map(
+      fabric_cell_desired_members(host: operator_host_srv3),
+      m =>
+        if fabric_cell_resource_address_wire(address: m.address) == "resource-boundary" {
+          AddressObserved {
+            member: FabricCellMember {
+              slot: m.slot,
+              address: m.address,
+              state_digest: "drifted-boundary-digest" as NonEmptyStr,
+            },
+          }
+        } else { AddressObserved { member: m } },
+    ),
+  }
+}
+
+fn fabric_cell_readback_boundary_absent() -> FabricCellReadback {
+  FabricCellReadback {
+    slot: fabric_witness_slot(),
+    observations: map(
+      fabric_cell_desired_members(host: operator_host_srv3),
+      m =>
+        if fabric_cell_resource_address_wire(address: m.address) == "resource-boundary" {
+          AddressAbsent { slot: fabric_witness_slot(), address: m.address }
+        } else { AddressObserved { member: m } },
+    ),
+  }
+}
+
+test fn witness_fabric_cell_drifted_address_plans_change_and_never_add() -> Bool {
+  let lines = fleet_converge_fabric_cell_lines(
+    host: "srv3" as NonEmptyStr,
+    observed_fabric_cells: fabric_population_of(entries: [fabric_cell_readback_boundary_drifted()]),
+  )
+  list_length(items: lines) == 1
+    && fabric_cell_line_occurrences(
+        lines: lines,
+        target: concat("REFUSED-REALIZATION CHANGE fabric-cell ", fabric_boundary_desired_key()),
+      ) == 1
+    && fabric_cell_line_occurrences(
+        lines: lines,
+        target: concat("REFUSED-REALIZATION ADD fabric-cell ", fabric_boundary_desired_key()),
+      ) == 0
+}
+
+test fn witness_fabric_cell_absent_address_plans_add_and_never_change() -> Bool {
+  let lines = fleet_converge_fabric_cell_lines(
+    host: "srv3" as NonEmptyStr,
+    observed_fabric_cells: fabric_population_of(entries: [fabric_cell_readback_boundary_absent()]),
+  )
+  list_length(items: lines) == 1
+    && fabric_cell_line_occurrences(
+        lines: lines,
+        target: concat("REFUSED-REALIZATION ADD fabric-cell ", fabric_boundary_desired_key()),
+      ) == 1
+    && fabric_cell_line_occurrences(
+        lines: lines,
+        target: concat("REFUSED-REALIZATION CHANGE fabric-cell ", fabric_boundary_desired_key()),
+      ) == 0
+}
+
+// AND THE TWO STATES ARE NOT THE SAME OBSERVATION, which is the defect one layer below the action
+// kind. If the observed populations agreed, the rows above could only ever differ by accident of
+// rendering; this row pins the divergence at the population the reconcile consumes.
+test fn witness_fabric_cell_drifted_and_absent_are_different_observations() -> Bool {
+  fabric_fingerprint_with(population: fabric_population_of(entries: [fabric_cell_readback_boundary_drifted()]))
+    != fabric_fingerprint_with(population: fabric_population_of(entries: [fabric_cell_readback_boundary_absent()]))
 }

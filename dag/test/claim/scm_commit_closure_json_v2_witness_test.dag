@@ -80,10 +80,15 @@ import gunbc.scm.commit_closure_json_v2 {
   ClosureDocRefused,
   ClosureDocRefusal,
   ClosureDocFormatUnrecognized,
-  ClosureDocMemberMissing,
-  ClosureDocMemberDuplicated,
   ClosureDocEdgeTargetUnresolved,
-  ClosureDocRootUnresolved,
+  ClosureDocRootPositionUnresolved,
+  ClosureDocMemberReadRefused,
+  ClosureDocUnknownKindTag,
+  ClosureDocUnknownBehaviorTag,
+  ClosureDocUnknownLabelTag,
+  ClosureDocObjectCollision,
+  ClosureDocUnexpectedMember,
+  ClosureDocTargetReferenceRefused,
   ClosureDocUnknownConnectiveTag,
   encode_closure_document,
   decode_closure_document,
@@ -169,6 +174,32 @@ fn scm_image_loads_as(loaded: ClosureDocLoadOutcome, expected: Node) -> Bool {
         CheckedOut { program: program } =>
           (content_hash(n: program).digest as String)
             == (content_hash(n: canonicalize_node_for_content_hash(n: expected)).digest as String)
+      }
+  }
+}
+
+// REFUSAL-ONLY ASSERTIONS ARE WHY THE MISATTRIBUTION SURVIVED. Every claim in this file said only
+// "the document was refused", and a decoder that reports the wrong owner refuses exactly as loudly as
+// one that reports the right owner -- so the whole file stayed green while a closure root that named
+// no object was reported as an EDGE target unresolved: an edge that does not exist, inside an object
+// nobody named. This reader is what lets a claim name the cause, and the three claims below are the
+// ones that go red if the owners are ever merged again.
+fn scm_image_cause_tag(loaded: ClosureDocLoadOutcome) -> String {
+  match loaded {
+    ClosureDocLoaded { store: _, root: _ } => "loaded"
+    ClosureDocRefused { cause: c } =>
+      match c {
+        ClosureDocMemberReadRefused { cause: _ } => "member_read"
+        ClosureDocFormatUnrecognized { found: _ } => "format"
+        ClosureDocUnknownKindTag { found: _ } => "kind"
+        ClosureDocUnknownConnectiveTag { found: _ } => "connective"
+        ClosureDocUnknownBehaviorTag { found: _ } => "behavior"
+        ClosureDocUnknownLabelTag { found: _ } => "label"
+        ClosureDocEdgeTargetUnresolved { reference: _ } => "edge_target"
+        ClosureDocRootPositionUnresolved { reference: _ } => "root_position"
+        ClosureDocObjectCollision { identity: _ } => "collision"
+        ClosureDocUnexpectedMember { context: _, key: _ } => "unexpected_member"
+        ClosureDocTargetReferenceRefused { cause: _ } => "target_reference"
       }
   }
 }
@@ -330,8 +361,28 @@ test fn scm_image_a_duplicated_root_member_refuses() -> Bool {
   )
 }
 
-test fn scm_image_a_root_naming_no_object_refuses() -> Bool {
-  scm_image_refused(
+// THE ROOT CLAIM HAD TO BE REPAIRED BEFORE IT COULD DISCRIMINATE, and the repair is the reason it is
+// worth anything. It previously supplied a BARE STRING root, which is refused as a wrong-shape member
+// read before root resolution is ever reached -- so a claim named for "a root naming no object" was
+// green without executing the operation it names, and would have stayed green under any routing of
+// unresolved positions whatsoever. The object shape is what reaches the resolver.
+test fn scm_image_a_root_naming_no_object_refuses_as_the_roots_own_cause() -> Bool {
+  scm_image_cause_tag(
+    loaded: decode_closure_document(
+      v: scm_image_with(
+        v: scm_image_encoded(n: closure_doc_program()),
+        key: "root",
+        value: json_object(members: [json_kv(key: "at", value: json_string(s: "9999"))]),
+      )
+    )
+  ) == "root_position"
+}
+
+// THE BARE-STRING ROOT KEPT AS ITS OWN CLAIM, because the repair above would otherwise DELETE a real
+// distinction: a root that is not an object at all is a member-read defect, not an unresolved
+// position, and the two must not collapse into one another.
+test fn scm_image_a_bare_string_root_is_a_member_read_refusal() -> Bool {
+  scm_image_cause_tag(
     loaded: decode_closure_document(
       v: scm_image_with(
         v: scm_image_encoded(n: closure_doc_program()),
@@ -339,13 +390,13 @@ test fn scm_image_a_root_naming_no_object_refuses() -> Bool {
         value: json_string(s: "9999"),
       )
     )
-  )
+  ) == "member_read"
 }
 
 // An edge naming a position that has not been decoded yet. Only earlier positions are in scope, so
 // this is the arm that makes back-references safe rather than merely conventional.
-test fn scm_image_an_edge_naming_a_later_position_refuses() -> Bool {
-  scm_image_refused(
+test fn scm_image_an_edge_naming_a_later_position_refuses_as_the_edges_own_cause() -> Bool {
+  scm_image_cause_tag(
     loaded: decode_closure_document(
       v: json_object(
         members: [
@@ -388,7 +439,7 @@ test fn scm_image_an_edge_naming_a_later_position_refuses() -> Bool {
         ]
       )
     )
-  )
+  ) == "edge_target"
 }
 
 test fn scm_image_an_unknown_connective_tag_refuses() -> Bool {
@@ -655,13 +706,6 @@ fn scm_image_atom_object_members(kind_members: List<JsonKeyValue>, extra: List<J
     ],
     extra
   )
-}
-
-fn scm_image_refused(loaded: ClosureDocLoadOutcome) -> Bool {
-  match loaded {
-    ClosureDocRefused { cause: _ } => true
-    ClosureDocLoaded { store: _, root: _ } => false
-  }
 }
 
 test fn scm_image_an_unknown_envelope_member_refuses() -> Bool {

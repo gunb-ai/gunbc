@@ -47,12 +47,14 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index};
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
-pub use crate::v1_compiler_infer_lookup::{func_sig_if_resolved, lookup_func_sig};
+pub use crate::v1_compiler_infer_lookup::lookup_func_sig;
 pub use crate::v1_compiler_infer_service::{
     extract_typed_service_name, is_typed_service_call_receiver,
 };
 pub use crate::v1_compiler_infer_service::{OpEntry, UniqueAccum};
-pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
+pub use crate::v1_compiler_infer_sigs::func_sig_for_derivation;
+use crate::v1_compiler_infer_sigs::DerivedCalleeSig::{DerivedFromSig, NoDerivableSig};
+pub use crate::v1_compiler_infer_sigs::{DerivedCalleeSig, ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, for_each_element_type_node,
     is_declared_container_alias_spelling, is_product_type, is_unit_like, node_is_collection,
@@ -116,9 +118,10 @@ pub use crate::v1_std_core::{
     is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at, let_binding_name_at,
     let_body, let_value, local_transport_node, make_error_node, match_arm_nodes, match_scrutinee,
     method_arg_nodes, method_receiver, module_imports, module_items, operation_modifier_name,
-    param_node_default_value, param_node_name_at, param_node_type_expr, record_lit_type_name_at,
-    return_value, slice_base, slice_end, slice_start, transport_base_path, transport_has_auth,
-    transport_verb, tuple_type_name, unaryop_operand, with_required_cardinality,
+    param_node_default_value, param_node_name_at, param_node_type_expr, qualified_last_segment,
+    record_lit_type_name_at, return_value, slice_base, slice_end, slice_start, transport_base_path,
+    transport_has_auth, transport_verb, tuple_type_name, unaryop_operand,
+    with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, DeclaredFuncSig, ErrorNode, ExprData,
@@ -578,6 +581,7 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
             source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
             intern_table: empty_intern_table(),
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
+            authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
             symbol_index: empty_symbol_index(),
         }),
         func_env: Rc::new(ResolvedFuncEnv {
@@ -651,11 +655,16 @@ pub fn lookup_func_sig_in_scope(
     scope: Rc<InferScope>,
     name: String,
 ) -> Option<Rc<ResolvedFuncSig>> {
-    func_sig_if_resolved(lookup_func_sig(
+    match (*func_sig_for_derivation(lookup_func_sig(
         scope.func_env.clone(),
         scope.type_env.clone(),
         name.clone(),
-    ))
+    )))
+    .clone()
+    {
+        DerivedCalleeSig::DerivedFromSig { sig: sig, .. } => Some(sig.clone()),
+        DerivedCalleeSig::NoDerivableSig { reason: _, .. } => None,
+    }
 }
 
 pub fn order_typed_call_args(
@@ -1586,7 +1595,7 @@ pub fn render_node_type(
         }
         let is_conj = (n.connective.clone() == Connective::Conj);
         let is_disj = (n.connective.clone() == Connective::Disj);
-        let shared = v1_rt::set_contains(&shared_types, tn.clone());
+        let shared = v1_rt::set_contains(&shared_types, qualified_last_segment(tn.clone()));
         if is_disj.clone() {
             {
                 let base = if (n.ident_span.clone() != None) {

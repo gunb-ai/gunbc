@@ -1,0 +1,141 @@
+module extdeps.github.commits
+
+import extdeps.github.github { default_api_base, default_per_page }
+import extdeps.github.errors { GitHubErrorShape }
+import std.types { String, Int, CommitSha, NonEmptyStr, Timestamp, List }
+import std.credentials { EnvVar }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// The GitHub REST commits API area. Modeled here rather than folded into an existing github module
+// for the reason DESIGN's external-upstream decomposition gives: these are two distinct documented
+// endpoints of one upstream subject, and the modules in this folder are already split by API area
+// (checks, pulls, workflow_runs). Only the fields this repository actually reads are modeled; the
+// endpoints return more, and adding a field is ordinary upstream modeling rather than a change of
+// shape.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/commits/commits"
+  }
+}
+
+type CommitParentRef {
+  sha: CommitSha
+}
+
+// The committer date, NOT the author date, and the distinction is load-bearing for any consumer
+// asking WHEN A COMMIT CAME INTO EXISTENCE. An author date is metadata carried from wherever the
+// change was first written and survives rebase, cherry-pick and patch mail unchanged; the committer
+// date is stamped when this object was created. A test-merge commit that GitHub recomputes is a
+// NEW object with an OLD author date, so a consumer that read the author date would see the
+// original work's timestamp and conclude nothing had been recomputed.
+type CommitSignature {
+  date: Timestamp
+}
+
+type CommitMeta {
+  committer: CommitSignature
+}
+
+type CommitDetail {
+  sha: CommitSha
+  commit: CommitMeta
+  parents: List<CommitParentRef>
+}
+
+// The four states GitHub's compare endpoint reports, kept as the upstream's own closed vocabulary
+// rather than reduced to a Bool. `Behind` and `Ahead` are asymmetric answers about one pair, and
+// `Diverged` is neither — collapsing them would be the state-space conflation DESIGN names, and the
+// direction matters to every consumer: whether a base can fast-forward to a target is a different
+// question from whether the two have forked.
+type ComparisonStatus
+  = Diverged
+  | Ahead
+  | Behind
+  | Identical
+
+// `status` IS THE WIRE STRING, NOT THE DECODED VARIANT, and that is the upstream's shape rather
+// than a modeling shortcut: the REST response carries a JSON string, and decoding it is a fallible
+// step a consumer must perform and must be able to fail. Declaring the field as `ComparisonStatus`
+// would assert the decode already happened and had succeeded -- and was measured doing exactly
+// that, returning the raw "ahead" where a variant was declared. `parse_comparison_status` below is
+// the single decode, and its `Absent` is a real answer for a value this version does not know.
+type Comparison {
+  status: String
+  ahead_by: Int
+  behind_by: Int
+  total_commits: Int
+}
+
+// COMPARE TAKES ITS `basehead` AS ONE INPUT. The spelling is the upstream's, `{base}...{head}` with
+// three dots, and it is passed whole rather than assembled from two operands because that is the
+// shape the path segment actually takes. Splitting it here would invent a structure the endpoint
+// does not have and would then need re-joining at the transport, which is exactly where a
+// separator gets lost.
+service github.Commits {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_source: EnvVar { name: "GITHUB_TOKEN" }
+
+    rate_limit: { requests: 5000, per: hour, scope: core }
+  }
+
+  operation Get {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      ref: String
+    }
+    output {
+      detail: CommitDetail
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/commits/\{ref\}"
+    }
+    response {
+      200 => CommitDetail
+      401 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation Compare {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      basehead: String
+    }
+    output {
+      comparison: Comparison
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/compare/\{basehead\}"
+    }
+    response {
+      200 => Comparison
+      401 => GitHubErrorShape
+      404 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+}
+
+fn parse_comparison_status(raw: String) -> ComparisonStatus? {
+  match raw {
+    "diverged" => Present { value: Diverged }
+    "ahead" => Present { value: Ahead }
+    "behind" => Present { value: Behind }
+    "identical" => Present { value: Identical }
+    _ => Absent {}
+  }
+}

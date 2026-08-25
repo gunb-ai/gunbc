@@ -1,7 +1,7 @@
 module v2.test.execution.emit_on_demand_match_loop_fold_family_witness
 
 import std.logic { Bool }
-import std.types { String }
+import std.types { Int, String }
 import std.content_hash { ContentHash, Fnv1a64Structural }
 import std.measure { ByteSize, byte_size }
 import std.cache_interface {
@@ -73,7 +73,6 @@ import v2.test.emit.fold_call_closure_fixture {
   fold_fixture_param_canonical_arrow,
   fold_fixture_param_wrong_arrow,
 }
-import v2.std.machine { Byte }
 import v2.std.collection {
   List
 }
@@ -122,12 +121,12 @@ fn family_cache_root_for(test_id: String) -> String {
   concat(family_cache_root, "/", test_id)
 }
 
-data match_expected_octets: List<Byte> = [0, 1, 0, 0, 0]
-data match_alt_expected_octets: List<Byte> = [0, 2, 0, 0, 0]
-data loop_expected_octets: List<Byte> = [0, 1, 0, 0, 0]
-data loop_alt_expected_octets: List<Byte> = [0, 2, 0, 0, 0]
-data fold_expected_octets: List<Byte> = [0, 7, 0, 0, 0]
-data fold_alt_expected_octets: List<Byte> = [0, 255, 255, 255, 255]
+data match_expected_octets: List<Int> = [0, 1, 0, 0, 0]
+data match_alt_expected_octets: List<Int> = [0, 2, 0, 0, 0]
+data loop_expected_octets: List<Int> = [0, 1, 0, 0, 0]
+data loop_alt_expected_octets: List<Int> = [0, 2, 0, 0, 0]
+data fold_expected_octets: List<Int> = [0, 7, 0, 0, 0]
+data fold_alt_expected_octets: List<Int> = [0, 255, 255, 255, 255]
 
 fn match_fixture_inputs() -> Inputs {
   inputs_for_emit_host(
@@ -212,7 +211,7 @@ fn mlf_family_member_run(
   source: Medium<String>,
   member_id: String,
   expect_compile_skipped: Bool,
-  expected_octets: List<Byte>
+  expected_octets: List<Int>
 ) -> Bool {
   match run_emit_host_cached_with_run_args(
     workspace_dir: workspace,

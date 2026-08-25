@@ -1,0 +1,156 @@
+module v2.test.claim.local_binding_shadow
+
+import v2.test.claim.local_binding_shadow_peer { shadow_pred }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SILENT FACE LEADS, BECAUSE IT IS WHAT MAKES THIS BELOW FLOOR RATHER THAN A NAMING
+// NUISANCE. A call site that spells a name held by BOTH a local binding and a module-level free
+// function reaches the FREE FUNCTION. Where the two disagree in arity that refuses loudly; where
+// they AGREE it returns a plausible wrong value and no diagnostic at all. Reproduced twice
+// independently on live corpus symbols before this fixture existed: a local bound to a named fn
+// and called as `p` returned a ParagraphBlock from gunbc.plans.md_helpers (visible only because
+// an unrelated cross-representation equality guard tripped on `== 42`), and silent-bear-842's
+// fabric observer consumed the same displacement as a Bool predicate -- constantly true, a fold
+// over three elements returning 3 where the direct fold counts 2, with nothing to see.
+//
+// THE LAW, ESTABLISHED ON A COMPLETE GRID AND NOT INFERRED ACROSS IT. Two lanes measured three
+// binding forms against two bound values independently and agree in all six cells:
+//
+//     binding form   value = named top-level fn   value = lambda
+//     let            reaches the free function    reaches the local
+//     parameter      reaches the free function    reaches the local
+//     pattern        reaches the free function    reaches the local
+//
+// So the BINDING FORM IS NOT THE AXIS. An earlier revision of this finding said it was, from
+// three arms that varied the form while holding the value constant, and was retracted: three
+// arms agreeing on the wrong axis is not a result. The value is the axis, and the lambda column
+// is carried below as a GREEN CONTROL rather than dropped, because without it a reader concludes
+// every local binding is unsafe -- which is exactly what the retracted law said.
+//
+// AND THE COLLISION IS DECIDED AT THE CALL SITE, NOT AT THE BINDING (silent-bear-842, confirmed
+// here independently). The SAME named-fn value is wrong when called as `shadow_pred(0)` and
+// CORRECT when handed to a parameter spelled `pred` and applied there. That is why renaming
+// fixes it, and it narrows the law usefully: a local holding a named function is unsafe only at
+// a call site spelling its own name.
+//
+// PER-PATH QUALIFIER, so a reader running this the other way does not call it flaky
+// (silent-bear-842, measured): under ENTRY-SCOPED resolution the collision depends on the
+// module's import closure, and under WHOLE-CORPUS floor preparation it is UNCONDITIONAL -- the
+// floor folds every witness through one prepared subject, so a module that imports nothing still
+// meets the name. This fixture IMPORTS its shadowing symbol deliberately, so it reds on both
+// paths and needs no whole-corpus pool to reproduce.
+//
+// MEASUREMENT HYGIENE, and it is the reason the qualifier above exists at all
+// (silent-bear-842, from a wrong result they corrected): IMPORTS ARE MODULE-SCOPE, so an arm that
+// adds an import VOIDS EVERY EARLIER ARM'S MEASUREMENT IN THAT FILE. Five arms measured green
+// before the shadowing import was added all failed once it was present -- the arms did not
+// change, the module's name pool did. So an A/B across arms is only valid when the import block
+// is identical at both readings, which is a fact about how this defect is MEASURED rather than
+// about the defect.
+
+fn strictly_positive(n: Int) -> Bool {
+  n > 0
+}
+
+type PredCarrier {
+  shadow_pred: fn(Int) -> Bool
+}
+
+fn shadow_carrier_named() -> PredCarrier {
+  PredCarrier { shadow_pred: strictly_positive }
+}
+
+fn shadow_carrier_lambda() -> PredCarrier {
+  PredCarrier { shadow_pred: fn(n) { n > 0 } }
+}
+
+fn let_named() -> Bool {
+  let shadow_pred = strictly_positive
+  shadow_pred(0)
+}
+
+fn param_named(shadow_pred: fn(Int) -> Bool) -> Bool {
+  shadow_pred(0)
+}
+
+fn pattern_named() -> Bool {
+  match shadow_carrier_named() {
+    PredCarrier { shadow_pred: shadow_pred } => shadow_pred(0)
+  }
+}
+
+fn let_lambda() -> Bool {
+  let shadow_pred = fn(n) { n > 0 }
+  shadow_pred(0)
+}
+
+fn pattern_lambda() -> Bool {
+  match shadow_carrier_lambda() {
+    PredCarrier { shadow_pred: shadow_pred } => shadow_pred(0)
+  }
+}
+
+fn apply_as_pred(pred: fn(Int) -> Bool) -> Bool {
+  pred(0)
+}
+
+fn let_uncollided_named() -> Bool {
+  let uncollided_pred = strictly_positive
+  uncollided_pred(0)
+}
+
+fn let_named_applied_under_another_name() -> Bool {
+  let shadow_pred = strictly_positive
+  apply_as_pred(pred: shadow_pred)
+}
+
+fn pattern_named_applied_under_another_name() -> Bool {
+  match shadow_carrier_named() {
+    PredCarrier { shadow_pred: shadow_pred } => apply_as_pred(pred: shadow_pred)
+  }
+}
+
+// THE ONE ENROLLED ROW. Every conjunct asserts the DESIRED law -- the local binding is what the
+// call reaches -- so this is RED today and GREEN the day it is repaired. The three conjuncts are
+// one identity rather than three because they are one defect measured on one axis, and because
+// each returns a Bool: nothing here throws, so this row is an OBSERVED semantic red and never a
+// no-verdict. That distinction is the whole subject of the lane that authored it.
+//
+// A LOUD FACE EXISTS AND IS DELIBERATELY NOT AN ARM HERE. Against a shadowing symbol of a
+// DIFFERENT arity the call refuses (`call contract mismatch calling 'render': missing required
+// argument 'proto'`, measured against std.layout). A refusal is a thrown claim, which produces no
+// verdict at all, so expressing that face as a witness row would enrol exactly the non-verdict
+// debt this fixture's lane exists to reduce. It is recorded above instead.
+test fn local_named_function_binding_is_what_the_call_reaches() -> Bool {
+  !let_named()
+    && !param_named(shadow_pred: strictly_positive)
+    && !pattern_named()
+}
+
+// GREEN CONTROLS. They pass today and locate the boundary: the defect is the VALUE, not the
+// binding form, and not the act of binding locally at all.
+test fn lambda_binding_is_unaffected_control() -> Bool {
+  !let_lambda()
+    && !param_named(shadow_pred: fn(n) { n > 0 })
+    && !pattern_lambda()
+}
+
+// GREEN CONTROL for the call-site half: the same named-fn value, applied through a parameter
+// spelled differently, reaches the local. This is what makes the law narrow enough to imply its
+// own workaround.
+test fn named_binding_applied_under_another_name_is_unaffected_control() -> Bool {
+  !let_named_applied_under_another_name()
+    && !pattern_named_applied_under_another_name()
+}
+
+// GREEN CONTROL that makes the COLLISION the subject rather than named-function values generally:
+// the same named function, bound to a local whose name NOTHING shadows, called at that local's own
+// spelling -- the exact shape that reds above -- reaches the local. So the wrong arms differ from
+// this one in one variable only, the existence of a same-named free function.
+test fn uncollided_named_binding_is_unaffected_control() -> Bool {
+  !let_uncollided_named()
+}

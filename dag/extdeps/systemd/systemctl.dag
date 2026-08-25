@@ -49,8 +49,25 @@ fn systemctl_daemon_reload_argv() -> List<String> {
   ["systemctl", "daemon-reload"]
 }
 
+// ENABLE AND START ARE TWO VERBS AND TWO ROWS, AND THE SPELLINGS ARE HOISTED BECAUSE A THIRD
+// CONSUMER ARRIVED. These argv builders spelled their verbs inline while
+// gunbc.executor_privileged_operation needs the same words to build an ABSOLUTE-path argv that a
+// sudoers match is derived from -- so the verb would have been authored a second time in a module
+// whose whole purpose is that a grant and its command have one spelling. The rows carry the verb;
+// the builders below and the privileged operation both read them.
+//
+// enable --now IS DELIBERATELY NOT DERIVABLE FROM THESE. systemctl_enable_now_command exists and
+// keeps its own spelling, because fusing durable boot intent with immediate activity is a
+// DIFFERENT operation from doing both in order, not a shorthand for it: `enable` authorizes a
+// future boot to start the unit under readiness conditions nobody will re-observe at that boot,
+// and `start` acts under conditions observable now. A caller that wants both wants two
+// separately-admitted transitions.
+data systemctl_enable_verb: NonEmptyStr = "enable" as NonEmptyStr
+
+data systemctl_start_verb: NonEmptyStr = "start" as NonEmptyStr
+
 fn systemctl_enable_argv(unit: NonEmptyStr) -> List<String> {
-  ["systemctl", "enable", unit as String]
+  ["systemctl", systemctl_enable_verb as String, unit as String]
 }
 
 // START IS NOT RESTART, AND FOR A SLICE THE DIFFERENCE IS DESTRUCTIVE RATHER THAN STYLISTIC. Stopping a
@@ -59,7 +76,7 @@ fn systemctl_enable_argv(unit: NonEmptyStr) -> List<String> {
 // unit's resource directives, which is what a converger wants. The modeled `Start` operation already exists
 // on the service surface; this is its argv authority for the shell-body realization edge.
 fn systemctl_start_argv(unit: NonEmptyStr) -> List<String> {
-  ["systemctl", "start", unit as String]
+  ["systemctl", systemctl_start_verb as String, unit as String]
 }
 
 fn systemctl_restart_argv(unit: NonEmptyStr) -> List<String> {
