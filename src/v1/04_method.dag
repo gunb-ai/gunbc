@@ -1,31 +1,32 @@
 module v1.compiler.infer_method
 
+
 data filesystem_read_result_type_note: String = "filesystem_read was registered as a bare type_variable_node, so `filesystem_read(path: p).content` established no type at all: the field lookup found nothing to look in, and the result was a fabricated Primitive() carrying no name. Downstream `.split` on that value was then accepted with no judgment behind it, which is #7479's shape one layer down — and it survived because the runtime dispatches split on the native String regardless, so nothing ever failed loudly enough to be found. The return type was never unknown; runtime_rust.dag rt_filesystem already emits `pub struct FilesystemReadResult { pub content: String }`. Declaring it here makes the seed's Rust struct and the compiler's type ONE fact rather than two (DESIGN §3), so the field's type is read from the declaration instead of invented. Any future builtin returning a product declares it the same way; a bare type variable is correct only where the result genuinely IS parametric."
 
-fn filesystem_read_result_type() -> v1.std.core.Node {
+fn filesystem_read_result_type() -> Node {
   v1.compiler.infer_types.make_kernel_record_type(
     type_name: "FilesystemReadResult",
     fields: [v1.compiler.infer_types.make_kernel_record_field(field_name: "content", field_type: v1.std.core.string_type)]
   )
 }
 
-fn type_variable_node(id: String) -> v1.std.core.Node {
-  v1.std.core.Node { name: "", span: v1.std.core.no_span(), ident_span: none, children: [], connective: v1.std.core.NoConnective, params: [], inferred: Present { value: v1.std.core.TypeVariable { id: id } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
+fn type_variable_node(id: String) -> Node {
+  Node { name: "", span: v1.std.core.no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
 }
 
-fn map_of_type_variables() -> v1.std.core.Node {
+fn map_of_type_variables() -> Node {
   v1.compiler.infer_types.make_map_type(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value")).ty
 }
 
-fn list_of_type_variable(id: String) -> v1.std.core.Node {
+fn list_of_type_variable(id: String) -> Node {
   v1.compiler.infer_types.make_container_type(kind_name: "List", element: type_variable_node(id: id)).ty
 }
 
-fn list_of_element(element: v1.std.core.Node) -> v1.std.core.Node {
+fn list_of_element(element: Node) -> Node {
   v1.compiler.infer_types.make_container_type(kind_name: "List", element: element).ty
 }
 
-fn seed_node_map(key: String, value: v1.std.core.Node) -> Map<String, v1.std.core.Node> {
+fn seed_node_map(key: String, value: Node) -> Map<String, Node> {
   v2.std.collection.map_insert(v2.std.collection.empty_map(), key, value)
 }
 
@@ -74,7 +75,7 @@ data observe_declared_import_closure_symbol_binding_row_note: String = "CLASS B 
 // the typecheck honest: a caller outside that closure now gets an unresolved-name refusal at
 // compile time instead of a runtime `NoSuchFunction`.
 
-fn builtin_function_registry() -> Map<String, v1.std.core.Node> {
+fn builtin_function_registry() -> Map<String, Node> {
   let m = seed_node_map(key: "count", value: v1.std.core.int_type)
   let m = v2.std.collection.map_insert(m, "string_length", v1.std.core.int_type)
   let m = v2.std.collection.map_insert(m, "code_point", v1.std.core.int_type)
@@ -210,11 +211,11 @@ fn builtin_function_registry() -> Map<String, v1.std.core.Node> {
   m
 }
 
-fn infer_builtin_call_type(name: String) -> v1.std.core.Node? {
+fn infer_builtin_call_type(name: String) -> Node? {
   v2.std.collection.map_get(builtin_function_registry(), name)
 }
 
-fn resolve_builtin_call_type(name: String) -> v1.std.core.Node {
+fn resolve_builtin_call_type(name: String) -> Node {
   match infer_builtin_call_type(name: name) {
     Present { value: v } => v
     Absent => v1.std.core.unit_type

@@ -7,8 +7,8 @@ module v1.compiler.infer_sigs
 
 type ResolvedFuncSig {
   name: String
-  params: List<v1.std.core.Node>
-  inferred: v1.std.core.Node
+  params: List<Node>
+  inferred: Node
   is_async: Bool
   output_provenance: List<Map<String, std.induction.SubValueRelation>>
   variant_provenance: Map<String, Map<String, Map<String, std.induction.SubValueRelation>>>
@@ -43,10 +43,10 @@ type FlattenAccum {
 }
 
 fn flatten_parent_envs(direct_parents: List<ResolvedFuncEnv>) -> List<ResolvedFuncEnv> {
-  let ordered = flat_map(direct_parents |> reverse, p => concat([gunbc.plans.md_helpers.p], p.parents))
+  let ordered = flat_map(direct_parents |> reverse, p => concat([p], p.parents))
   let dedup = fold(ordered, init: FlattenAccum { seen: v2.std.collection.empty_map(), out: [] }, f: (acc, p) =>
     if v1.compiler.infer_types.emit_map_has(m: acc.seen, key: p.name) { acc }
-    else { FlattenAccum { seen: v2.std.collection.map_insert(acc.seen, p.name, true), out: list_push(acc.out, gunbc.plans.md_helpers.p) } }
+    else { FlattenAccum { seen: v2.std.collection.map_insert(acc.seen, p.name, true), out: list_push(acc.out, p) } }
   )
   dedup.out
 }
@@ -116,7 +116,7 @@ fn callable_identity_label(identity: CallableIdentity) -> String {
 }
 
 fn callable_candidate_labels(candidates: List<CallableCandidate>) -> List<String> {
-  v2.lens.grounding.candidates |> map(c => callable_identity_label(identity: c.identity))
+  candidates |> map(c => callable_identity_label(identity: c.identity))
 }
 
 type FuncSigLookup
@@ -203,17 +203,17 @@ fn parent_closure_callable_candidates(env: ResolvedFuncEnv, name: String) -> Lis
 // ambiguous, and on its own it hands the call back to the bridge exactly as before.
 fn decide_callable_candidates(candidates: List<CallableCandidate>) -> FuncSigLookup {
   match v1.compiler.infer_occurrence_binding.module_path_owner_binding_decide(
-    owners: v2.lens.grounding.candidates |> map(c => callable_identity_label(identity: c.identity))
+    owners: candidates |> map(c => callable_identity_label(identity: c.identity))
   ) {
     ModulePathBindingMiss => FuncSigUnresolved
     v1.compiler.infer_occurrence_binding.ModulePathBindingHit { owner: _ } =>
-      match v2.lens.grounding.candidates |> first {
+      match candidates |> first {
         Present { value: only } =>
           if only.is_builtin { FuncSigUnresolved } else { FuncSigResolved { sig: only.sig } }
         Absent => FuncSigUnresolved
       }
     v1.compiler.infer_occurrence_binding.ModulePathBindingAmbiguous { owners: _ } =>
-      FuncSigAmbiguous { candidates: v2.lens.grounding.candidates }
+      FuncSigAmbiguous { candidates: candidates }
   }
 }
 
@@ -273,17 +273,17 @@ fn none_resolved_sig() -> ResolvedFuncSig? {
   Absent
 }
 
-fn collect_func_call_edges(items: List<v1.std.core.Node>, local_func_set: Map<String, Bool>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<CallEdge> {
+fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<CallEdge> {
   flat_map(items, item =>
     if item.params |> count > 0 && item.body != none {
-      collect_calls_in_expr(caller: v1.std.core.authored_name_at(source_indices: source_indices, node: v2.test.resolve.qualified_module_projection_g1b_fixture.item), texpr: item.body.value, local_func_set: local_func_set, source_indices: source_indices)
+      collect_calls_in_expr(caller: v1.std.core.authored_name_at(source_indices: source_indices, node: item), texpr: item.body.value, local_func_set: local_func_set, source_indices: source_indices)
     } else {
       []
     }
   )
 }
 
-fn collect_calls_in_expr(caller: String, texpr: v1.std.core.Node, local_func_set: Map<String, Bool>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<CallEdge> {
+fn collect_calls_in_expr(caller: String, texpr: Node, local_func_set: Map<String, Bool>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<CallEdge> {
   let this_edges = match texpr.expr_data {
     v1.std.core.ExprCall { call_semantics: _, descent_evidence: _ } =>
       let f = v1.std.core.expr_call_func_at(texpr: texpr, source_indices: source_indices)
@@ -304,8 +304,8 @@ fn func_reaches_self(root: String, current: String, call_edges: List<CallEdge>, 
     let next_visited = v2.std.collection.map_insert(visited, current, true)
     let callees = call_edges |> v2.std.algebra.filter(e => e.caller == current) |> map(e => e.callee)
     callees |> v2.std.algebra.any(c =>
-      if c == test.claim.extdeps_llm_claude_trust_witness.root { true }
-      else { func_reaches_self(root: test.claim.extdeps_llm_claude_trust_witness.root, current: c, call_edges: call_edges, visited: next_visited) }
+      if c == root { true }
+      else { func_reaches_self(root: root, current: c, call_edges: call_edges, visited: next_visited) }
     )
   }
 }
@@ -393,7 +393,7 @@ fn topo_resolve_loop(
   )
 
   let ready_set = fold(ready, init: v2.std.collection.empty_map(), f: (acc, fn_name) => v2.std.collection.map_insert(acc, fn_name, true))
-  let next_remaining = remaining |> v2.std.algebra.filter(fn_name => v1.compiler.infer_types.emit_map_has(m: v2.std.dependency.ready_set, key: fn_name) == false)
+  let next_remaining = remaining |> v2.std.algebra.filter(fn_name => v1.compiler.infer_types.emit_map_has(m: ready_set, key: fn_name) == false)
 
   topo_resolve_loop(
     remaining: next_remaining,
@@ -411,13 +411,13 @@ fn topo_resolve_loop(
 fn resolve_func_sigs(
     declared_sigs: Map<String, v1.std.core.DeclaredFuncSig>,
     parent_envs: List<ResolvedFuncEnv>,
-    items: List<v1.std.core.Node>,
+    items: List<Node>,
     module_name: String,
     source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> ResolveFuncSigsResult {
   let local_func_names = items
     |> v2.std.algebra.filter(item => item.params |> count > 0 && item.body != none)
-    |> map(item => v1.std.core.authored_name_at(source_indices: source_indices, node: v2.test.resolve.qualified_module_projection_g1b_fixture.item))
+    |> map(item => v1.std.core.authored_name_at(source_indices: source_indices, node: item))
   let local_func_set = build_name_set(names: local_func_names)
   let call_edges = collect_func_call_edges(items: items, local_func_set: local_func_set, source_indices: source_indices)
   topo_resolve_loop(
