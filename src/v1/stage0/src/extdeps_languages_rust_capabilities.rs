@@ -246,6 +246,57 @@ pub fn record_derive_traits_copy() -> Rc<Vec<RustCapability>> {
     })
 }
 
+pub fn sealed_record_derive_traits_heap() -> Rc<Vec<RustCapability>> {
+    Rc::new({
+        let mut __cons_v = (*Rc::new({
+            let mut __cons_v = (*Rc::new({
+                let mut __cons_v = (*Rc::new({
+                    let mut __cons_v = (*Rc::new(vec![])).clone();
+                    __cons_v.insert(0, RustCapability::RustSerialize);
+                    __cons_v
+                }))
+                .clone();
+                __cons_v.insert(0, RustCapability::RustPartialEq);
+                __cons_v
+            }))
+            .clone();
+            __cons_v.insert(0, RustCapability::RustClone);
+            __cons_v
+        }))
+        .clone();
+        __cons_v.insert(0, RustCapability::RustDebug);
+        __cons_v
+    })
+}
+
+pub fn sealed_record_derive_traits_copy() -> Rc<Vec<RustCapability>> {
+    Rc::new({
+        let mut __cons_v = (*Rc::new({
+            let mut __cons_v = (*Rc::new({
+                let mut __cons_v = (*Rc::new({
+                    let mut __cons_v = (*Rc::new({
+                        let mut __cons_v = (*Rc::new(vec![])).clone();
+                        __cons_v.insert(0, RustCapability::RustSerialize);
+                        __cons_v
+                    }))
+                    .clone();
+                    __cons_v.insert(0, RustCapability::RustPartialEq);
+                    __cons_v
+                }))
+                .clone();
+                __cons_v.insert(0, RustCapability::RustCopy);
+                __cons_v
+            }))
+            .clone();
+            __cons_v.insert(0, RustCapability::RustClone);
+            __cons_v
+        }))
+        .clone();
+        __cons_v.insert(0, RustCapability::RustDebug);
+        __cons_v
+    })
+}
+
 pub fn nullary_coproduct_derive_traits() -> Rc<Vec<RustCapability>> {
     Rc::new({
         let mut __cons_v = (*Rc::new({

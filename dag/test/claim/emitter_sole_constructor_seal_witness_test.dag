@@ -1,0 +1,124 @@
+module test.claim.emitter_sole_constructor_seal_witness_test
+
+// Permanent regression control for the sole_constructor emission seal. THE DEFECT, now
+// repaired: `sole_constructor` is parsed onto a type declaration and consumed by inference
+// to refuse a cross-module record literal, but the RUST EMITTER read the fact zero times,
+// so the model's seal did not survive lowering. DESIGN section 4b carries the executed
+// receipt for the specimen -- `extdeps.uri` `UriValidatedScalar` emitted byte-identical to
+// the plain record beside it, public field and derived Deserialize, and both a direct
+// struct literal and serde_json admitted values its mint refuses, two of which reached
+// output as invalid percent-encoding. That was the single BELOW-FLOOR item in that
+// paragraph, and this file is the control that keeps it closed.
+//
+// WHAT THE SEAL IS AND IS NOT. It confines CONSTRUCTION, not ACCESS: the model lets any
+// module read a sole_constructor value, so the emitted shape is a private field PLUS a
+// public accessor, and a shape that also confined reading would refuse programs the model
+// accepts. Serialize is retained for the same reason -- writing a value out is a read.
+// Deserialize is not, because a derived Deserialize is a second, unsealed mint standing
+// beside the declared one.
+//
+// THE NEGATIVE CONTROLS ARE THE LOAD-BEARING HALF. A plain record in the same fixture must
+// keep its public field and its Deserialize, or this witness would pass equally over an
+// emitter that sealed everything -- which is a different realization, not a faithful one.
+// The two rustc receipts behind the repair (E0451 on a cross-module literal, E0277 on
+// serde_json::from_str) are compile-time facts about the emitted crate that this
+// byte-level instrument cannot itself execute; they are recorded in the PR that landed
+// this file. What this witness holds is the emitted SHAPE those receipts depend on, which
+// is the part an emitter regression would silently move.
+//
+// dissolve-on: never -- permanent regression alarm for the emitter arm.
+
+fn seal_fixture_source() -> String {
+  "module solector_seal\n\ntype Sealed sole_constructor { admitted: Int }\n\ntype Plain { open: Int }\n\nfn mint(v: Int) -> Sealed {\n  Sealed { admitted: v }\n}\n\nfn read_it(s: Sealed) -> Int {\n  s.admitted\n}\n"
+}
+
+fn w_sealed_record_field_is_private() -> Bool {
+  compile_dag_rust_emit_check(
+    seal_fixture_source(),
+    "src/solector_seal.rs",
+    ["    admitted: i64,"],
+    ["    pub admitted: i64,"]
+  )
+}
+
+fn w_sealed_record_drops_deserialize() -> Bool {
+  compile_dag_rust_emit_check(
+    seal_fixture_source(),
+    "src/solector_seal.rs",
+    ["#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]\npub struct Sealed {"],
+    []
+  )
+}
+
+fn w_sealed_record_emits_public_accessor() -> Bool {
+  compile_dag_rust_emit_check(
+    seal_fixture_source(),
+    "src/solector_seal.rs",
+    ["impl Sealed {", "pub fn admitted(&self) -> i64 {"],
+    []
+  )
+}
+
+fn w_sealed_field_read_routes_through_accessor() -> Bool {
+  compile_dag_rust_emit_check(
+    seal_fixture_source(),
+    "src/solector_seal.rs",
+    ["s.admitted()"],
+    []
+  )
+}
+
+fn w_declaring_module_mint_still_constructs_directly() -> Bool {
+  compile_dag_rust_emit_check(
+    seal_fixture_source(),
+    "src/solector_seal.rs",
+    ["Sealed {"],
+    []
+  )
+}
+
+fn w_plain_record_keeps_public_field() -> Bool {
+  compile_dag_rust_emit_check(
+    seal_fixture_source(),
+    "src/solector_seal.rs",
+    ["    pub open: i64,"],
+    []
+  )
+}
+
+fn w_plain_record_keeps_deserialize() -> Bool {
+  compile_dag_rust_emit_check(
+    seal_fixture_source(),
+    "src/solector_seal.rs",
+    ["#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]\npub struct Plain {"],
+    []
+  )
+}
+
+test fn sealed_record_field_is_private() -> Bool {
+  w_sealed_record_field_is_private()
+}
+
+test fn sealed_record_drops_deserialize() -> Bool {
+  w_sealed_record_drops_deserialize()
+}
+
+test fn sealed_record_emits_public_accessor() -> Bool {
+  w_sealed_record_emits_public_accessor()
+}
+
+test fn sealed_field_read_routes_through_accessor() -> Bool {
+  w_sealed_field_read_routes_through_accessor()
+}
+
+test fn declaring_module_mint_still_constructs_directly() -> Bool {
+  w_declaring_module_mint_still_constructs_directly()
+}
+
+test fn plain_record_keeps_public_field() -> Bool {
+  w_plain_record_keeps_public_field()
+}
+
+test fn plain_record_keeps_deserialize() -> Bool {
+  w_plain_record_keeps_deserialize()
+}
