@@ -1,7 +1,7 @@
 module gunbc.cli_services
 
 
-service Cli {
+service gunbc.Cli {
   operation Run {
     input {
       workdir: std.types.FilePath

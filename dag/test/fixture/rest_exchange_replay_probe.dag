@@ -1,7 +1,7 @@
 module test.fixture.rest_exchange_replay_probe
 
 
-service RestReplay {
+service test.RestReplay {
   config { endpoint: "https://rest-replay.invalid" }
 
   operation Observe {

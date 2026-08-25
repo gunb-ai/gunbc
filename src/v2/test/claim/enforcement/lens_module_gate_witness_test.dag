@@ -37,7 +37,7 @@ data lens_module_gate_genuinely_new_surface: List<v2.lens.enforcement.lens_modul
   }
 ]
 
-test fn v2.workflow.enforcement_live.lens_closure_question_zero_holds_live() -> Bool {
+test fn lens_closure_question_zero_holds_live() -> Bool {
   v2.workflow.enforcement_live.lens_closure_question_zero_holds_live()
 }
 

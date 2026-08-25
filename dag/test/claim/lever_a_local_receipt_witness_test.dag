@@ -3,6 +3,6 @@ module test.claim.lever_a_local_receipt_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
-test fn tools.dag_compile_clean_scope.lever_a_local_receipts_hold() -> Bool {
+test fn lever_a_local_receipts_hold() -> Bool {
   tools.dag_compile_clean_scope.lever_a_local_receipts_hold()
 }

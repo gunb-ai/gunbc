@@ -86,7 +86,7 @@ data packages: List<WorkspacePackage> = [
 
 ]
 
-service WitnessBin {
+service gunbc.WitnessBin {
   operation Run {
     input { workdir: std.types.FilePath, bin_path: std.types.FilePath, args: List<String> = [] }
     output {

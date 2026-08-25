@@ -15,7 +15,7 @@ type HttpPilotPost {
   body: String
 }
 
-service HttpPilot {
+service test.HttpPilot {
   config {
     endpoint: "https://jsonplaceholder.typicode.com"
   }
