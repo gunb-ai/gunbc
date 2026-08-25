@@ -8,6 +8,12 @@ import extdeps.git
 import extdeps.git.inspect
 import extdeps.cargo_build
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.crypto.hash { Digest }
+import extdeps.tools.sha256sum {
+  Sha256FileDigest,
+  Sha256FileDigestUnavailable,
+  sha256sum_file_digest_via_shell
+}
 import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
 import tools.self_host_curated_seed_linked_harness {
   cssl_std_bridge_shims_rel,
@@ -64,16 +70,90 @@ import extdeps.cargo_diagnostic {
 // appears in the carrier by name. A consumer cannot read a population without having been told
 // which stages produced it.
 //
+// AND SPLITTING THE STATES IS ONLY HALF OF IT. Naming the stages still lets two different compilers
+// report the same-looking population, so every outcome that carries a population also carries an
+// EmissionMeasurementSubject -- source revision, working-tree standing, and the digests of the two
+// binaries actually invoked -- established before the emitter runs. An unattributable population has
+// no representation here: the one arm without a subject is the one that took no measurement.
+//
 // IT IS NOT A GATE. Nothing here blocks a merge, nothing is enrolled in the required run, and the
 // exit status reports whether the MEASUREMENT completed, never whether the entry was clean: an
 // entry with a thousand diagnostics is a successful measurement. Gating on emission convergence is
 // a separate decision with a separate argument.
 
+// ---------------------------------------------------------------------------------------------
+// THE SUBJECT: WHAT PRODUCED THIS MEASUREMENT.
+//
+// Distinguishing the phase states above is necessary and it is NOT provenance. DESIGN separates the
+// two deliberately: state-space conflation is repaired by SPLITTING STATES, execution-provenance
+// loss is repaired by BINDING AN EXECUTION RECEIPT to the value. A carrier that names its stages but
+// not its compiler can report the same-looking population from two different compilers, which is
+// the same defect one level down from the one the stage split closes.
+//
+// So every outcome that carries a population also carries the subject that produced it, and the
+// subject is established BEFORE the emitter runs. A component that cannot be observed refuses the
+// run rather than being recorded as absent -- an unobserved digest is not the digest of nothing.
+// The identity vocabulary is REUSED, never re-coined: CommitSha from extdeps.git.inspect, Digest
+// from extdeps.crypto.hash. Minting a parallel identity vocabulary inside the instrument built to
+// enforce single authority would be the violation it exists to measure.
+//
+// WHAT IS NOT CARRIED, named rather than silently omitted: the emitted candidate tree's own digest
+// and the installed stage0 mirror's digest. Both are directory-wide readings whose cost is a walk
+// per run, and neither is needed to answer "which compiler produced this population" -- the two
+// binary digests answer that. They are the next things to bind if a consumer needs to join
+// measurements across trees rather than across compilers.
+type WorkingTreeStanding
+  = WorkingTreeClean
+  | WorkingTreeDirty
+
+// The assembly step is a coproduct rather than a directory string so a second assembly mode becomes
+// a variant here rather than an unlabelled path difference between two measurements.
+type EmissionAssemblyMode
+  = SeedLinkedAssembly { std_bridge_dir: String }
+
+type EmissionSubjectRead
+  = SubjectRead { subject: EmissionMeasurementSubject }
+  | SubjectUnreadable { cause: String }
+
+type EmissionMeasurementSubject {
+  entry: String
+  source_revision: CommitSha
+  working_tree: WorkingTreeStanding
+  compiler: Digest
+  assembler: Digest
+  assembly_mode: EmissionAssemblyMode
+}
+
+fn working_tree_standing_text(standing: WorkingTreeStanding) -> String {
+  match standing {
+    WorkingTreeClean => "clean"
+    WorkingTreeDirty => "dirty (the measured bytes are not the revision's bytes)"
+  }
+}
+
+fn emission_assembly_mode_text(mode: EmissionAssemblyMode) -> String {
+  match mode {
+    SeedLinkedAssembly { std_bridge_dir: d } => concat("seed-linked via ", d)
+  }
+}
+
+fn emission_subject_rows(subject: EmissionMeasurementSubject) -> List<String> {
+  [
+    concat("subject\t", subject.entry),
+    concat("source_revision\t", subject.source_revision as String),
+    concat("working_tree\t", working_tree_standing_text(standing: subject.working_tree)),
+    concat("compiler\t", subject.compiler.hex as String),
+    concat("assembler\t", subject.assembler.hex as String),
+    concat("assembly_mode\t", emission_assembly_mode_text(mode: subject.assembly_mode))
+  ]
+}
+
 // The stages, in the order they run. A stage names a place the line can stop, which is why the
 // list is a closed coproduct rather than a string: an unreachable-stage refusal must be as
 // enumerable as a diagnostic.
 type EmissionStage
-  = StageWorkspace
+  = StageSubject
+  | StageWorkspace
   | StageBinaries
   | StageEmit
   | StageEmitDecode
@@ -84,6 +164,7 @@ type EmissionStage
 
 fn emission_stage_name(stage: EmissionStage) -> String {
   match stage {
+    StageSubject => "subject"
     StageWorkspace => "workspace"
     StageBinaries => "binaries"
     StageEmit => "emit"
@@ -107,26 +188,31 @@ fn emission_stage_name(stage: EmissionStage) -> String {
 //                       not empty.
 // EmissionMeasured   -- every stage ran. Both populations are observations.
 type EmissionMeasurement
-  = EmissionUnreached {
+  = EmissionSubjectUnestablished {
       entry: String
       stage: EmissionStage
       cause: String
     }
+  | EmissionUnreached {
+      subject: EmissionMeasurementSubject
+      stage: EmissionStage
+      cause: String
+    }
   | EmissionEmitRefused {
-      entry: String
+      subject: EmissionMeasurementSubject
       exit_code: Int
       emit_diagnostics: List<GunbcDiagnostic>
       emitted_files: EmittedFileCount
     }
   | EmissionCargoUnreached {
-      entry: String
+      subject: EmissionMeasurementSubject
       stage: EmissionStage
       cause: String
       emit_diagnostics: List<GunbcDiagnostic>
       emitted_files: EmittedFileCount
     }
   | EmissionMeasured {
-      entry: String
+      subject: EmissionMeasurementSubject
       emitted_files: EmittedFileCount
       emit_diagnostics: List<GunbcDiagnostic>
       cargo_clean: Bool
@@ -140,16 +226,17 @@ type EmissionMeasurement
 // its subject.
 fn emission_measurement_completed(m: EmissionMeasurement) -> Bool {
   match m {
-    EmissionUnreached { entry: _, stage: _, cause: _ } => false
-    EmissionCargoUnreached { entry: _, stage: _, cause: _, emit_diagnostics: _, emitted_files: _ } => false
-    EmissionEmitRefused { entry: _, exit_code: _, emit_diagnostics: _, emitted_files: _ } => true
-    EmissionMeasured { entry: _, emitted_files: _, emit_diagnostics: _, cargo_clean: _, cargo_diagnostics: _, cargo_lines_scanned: _ } => true
+    EmissionSubjectUnestablished { entry: _, stage: _, cause: _ } => false
+    EmissionUnreached { subject: _, stage: _, cause: _ } => false
+    EmissionCargoUnreached { subject: _, stage: _, cause: _, emit_diagnostics: _, emitted_files: _ } => false
+    EmissionEmitRefused { subject: _, exit_code: _, emit_diagnostics: _, emitted_files: _ } => true
+    EmissionMeasured { subject: _, emitted_files: _, emit_diagnostics: _, cargo_clean: _, cargo_diagnostics: _, cargo_lines_scanned: _ } => true
   }
 }
 
-fn emit_decode_unreached(entry: String, read: EmitDiagnosticRead) -> EmissionMeasurement {
+fn emit_decode_unreached(subject: EmissionMeasurementSubject, read: EmitDiagnosticRead) -> EmissionMeasurement {
   EmissionUnreached {
-    entry: entry,
+    subject: subject,
     stage: StageEmitDecode,
     cause: emit_diagnostic_read_refusal_reason(read: read)
   }
@@ -165,9 +252,14 @@ fn emit_decode_unreached(entry: String, read: EmitDiagnosticRead) -> EmissionMea
 //
 // THE CARGO-DECODE ARM IS A REFUSAL, NOT A CLEAN BUILD. A message stream the decoder could not
 // read carries the decoder's own located cause, so the reader learns which line stopped it rather
-// than receiving a population that silently lost members.
+// than receiving a population that silently lost members. A stream that simply STOPS -- a killed
+// build -- refuses there too, so a prefix never reaches this carrier as a population.
+//
+// AND THE CLEAN VERDICT COMES FROM CARGO'S OWN TERMINAL MESSAGE, not from the transport's exit
+// status beside it: `build-finished` is emitted BY the run being measured, which is what makes it
+// a fact about that run rather than about a process someone observed nearby.
 fn measure_cargo_half(
-  entry: String,
+  subject: EmissionMeasurementSubject,
   root: String,
   out_dir: String,
   cssl_assemble_bin: String,
@@ -177,7 +269,7 @@ fn measure_cargo_half(
   let src_dir = shell.Mkdir.Parents(path: concat(out_dir, "/src"))
   if !src_dir.success {
     EmissionCargoUnreached {
-      entry: entry,
+      subject: subject,
       stage: StageAssemble,
       cause: concat("could not create the emitted crate's src directory under ", out_dir),
       emit_diagnostics: emit_diagnostics,
@@ -189,14 +281,14 @@ fn measure_cargo_half(
       bin_path: cssl_assemble_bin,
       args: [
         "--out-dir", out_dir,
-        "--entry-dag", entry,
+        "--entry-dag", subject.entry,
         "--root", root,
         "--std-bridge-dir", cssl_std_bridge_shims_rel
       ]
     )
     if !assemble.success || !string_contains(s: assemble.stdout, pattern: "CSSL_ASSEMBLE: PASS") {
       EmissionCargoUnreached {
-        entry: entry,
+        subject: subject,
         stage: StageAssemble,
         cause: concat("cssl_assemble refused: ", concat(assemble.stdout, assemble.stderr)),
         emit_diagnostics: emit_diagnostics,
@@ -209,7 +301,7 @@ fn measure_cargo_half(
       )
       if !manifest.success {
         EmissionCargoUnreached {
-          entry: entry,
+          subject: subject,
           stage: StageManifest,
           cause: concat("could not write the probe crate manifest under ", out_dir),
           emit_diagnostics: emit_diagnostics,
@@ -223,18 +315,18 @@ fn measure_cargo_half(
           extra_args: ["--release", "--lib"]
         )
         match cargo_scan_diagnostics(stdout: build.stdout) {
-          CargoDiagnosticsRead { diagnostics: ds, lines_scanned: n } =>
+          CargoDiagnosticsRead { diagnostics: ds, lines_scanned: n, build_succeeded: ok, terminal_seen: _ } =>
             EmissionMeasured {
-              entry: entry,
+              subject: subject,
               emitted_files: emitted_files,
               emit_diagnostics: emit_diagnostics,
-              cargo_clean: build.success,
+              cargo_clean: ok,
               cargo_diagnostics: ds,
               cargo_lines_scanned: n
             }
           scan =>
             EmissionCargoUnreached {
-              entry: entry,
+              subject: subject,
               stage: StageCargoDecode,
               cause: concat(
                 cargo_diagnostic_scan_refusal_reason(scan: scan),
@@ -254,11 +346,47 @@ fn measure_cargo_half(
 //
 // A COMPILER THAT RAN AND REFUSED IS A MEASUREMENT, not an instrument failure: the population it
 // produced is the answer, so it travels with the refusal rather than being discarded for it.
+// ESTABLISHING THE SUBJECT, and every component that cannot be observed REFUSES the run. There is
+// deliberately no partial subject: a measurement whose compiler digest is "unavailable" is a
+// population nobody can attribute, which is the state this receipt exists to make unrepresentable.
+fn establish_subject(entry: String, root: String, gunbc_bin: String, cssl_assemble_bin: String) -> EmissionSubjectRead {
+  let head = git.Inspect.HeadCommit()
+  if !head.success {
+    SubjectUnreadable { cause: "could not read the source revision (git rev-parse HEAD)" }
+  } else {
+    let status = git.Inspect.WorkingTreeStatus()
+    if !status.success {
+      SubjectUnreadable { cause: "could not read the working-tree standing (git status --porcelain)" }
+    } else {
+      match sha256sum_file_digest_via_shell(path: gunbc_bin as NonEmptyStr) {
+        Sha256FileDigestUnavailable { path: p, reason: r } =>
+          SubjectUnreadable { cause: concat(concat("could not digest the compiler at ", p as String), concat(": ", r)) }
+        Sha256FileDigest { digest: compiler } =>
+          match sha256sum_file_digest_via_shell(path: cssl_assemble_bin as NonEmptyStr) {
+            Sha256FileDigestUnavailable { path: p, reason: r } =>
+              SubjectUnreadable { cause: concat(concat("could not digest the assembler at ", p as String), concat(": ", r)) }
+            Sha256FileDigest { digest: assembler } =>
+              SubjectRead {
+                subject: EmissionMeasurementSubject {
+                  entry: entry,
+                  source_revision: head.sha,
+                  working_tree: if status.entries_nul == "" { WorkingTreeClean } else { WorkingTreeDirty },
+                  compiler: compiler,
+                  assembler: assembler,
+                  assembly_mode: SeedLinkedAssembly { std_bridge_dir: cssl_std_bridge_shims_rel }
+                }
+              }
+          }
+      }
+    }
+  }
+}
+
 fn measure_entry_emission(entry: String) -> EmissionMeasurement {
   let root = git.Inspect.Toplevel()
   let out_dir = shell.Mktemp.Dir()
   if !out_dir.success {
-    EmissionUnreached {
+    EmissionSubjectUnestablished {
       entry: entry,
       stage: StageWorkspace,
       cause: "could not create a temporary directory for the emitted crate"
@@ -267,7 +395,7 @@ fn measure_entry_emission(entry: String) -> EmissionMeasurement {
     let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
     let cssl_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "CSSL_ASSEMBLE", bin_name: "cssl_assemble"))
     if !gunbc_built || !cssl_built {
-      EmissionUnreached {
+      EmissionSubjectUnestablished {
         entry: entry,
         stage: StageBinaries,
         cause: "the gunbc and cssl_assemble release binaries are not both buildable — the instrument invokes the compiler it is measuring as a subprocess, so an absent binary is a refusal and never a clean measurement"
@@ -275,45 +403,69 @@ fn measure_entry_emission(entry: String) -> EmissionMeasurement {
     } else {
       let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
       let cssl_assemble_bin = witness_bin_release_path(root: root.path, bin_name: "cssl_assemble")
-      let emit = gunbc.WitnessBin.Run(
-        workdir: root.path,
-        bin_path: gunbc_bin,
-        args: [
-          "compile",
-          "--source-root", "dag",
-          "--source-root", "src/v2",
-          "--entry", entry,
-          "--output-dir", out_dir.path,
-          "--target", "rust",
-          "--dependency-pool-index", "primary-precedence"
-        ]
-      )
-      let read = read_emit_diagnostics(stderr: emit.stderr)
-      match read {
-        EmitDiagnosticsRead { diagnostics: ds, emitted_files: files, declared_total: _ } =>
-          if !emit.success {
-            EmissionEmitRefused {
-              entry: entry,
-              exit_code: emit.exit_code,
-              emit_diagnostics: ds,
-              emitted_files: files
-            }
-          } else {
-            measure_cargo_half(
-              entry: entry,
-              root: root.path,
-              out_dir: out_dir.path,
-              cssl_assemble_bin: cssl_assemble_bin,
-              emit_diagnostics: ds,
-              emitted_files: files
-            )
-          }
-        EmitSummaryAbsent => emit_decode_unreached(entry: entry, read: read)
-        EmitSummaryUnreadable { line: _ } => emit_decode_unreached(entry: entry, read: read)
-        EmitPopulationMismatch { decoded: _, declared: _ } => emit_decode_unreached(entry: entry, read: read)
-        EmitSummaryDisagreement { compiled_total: _, severity_total: _ } => emit_decode_unreached(entry: entry, read: read)
+      match establish_subject(entry: entry, root: root.path, gunbc_bin: gunbc_bin, cssl_assemble_bin: cssl_assemble_bin) {
+        SubjectUnreadable { cause: c } =>
+          EmissionSubjectUnestablished { entry: entry, stage: StageSubject, cause: c }
+        SubjectRead { subject: subject } =>
+          measure_with_subject(
+            subject: subject,
+            root: root.path,
+            out_dir: out_dir.path,
+            gunbc_bin: gunbc_bin,
+            cssl_assemble_bin: cssl_assemble_bin
+          )
       }
     }
+  }
+}
+
+// THE EMIT HALF, with the subject already bound. A compiler that RAN AND REFUSED is a measurement,
+// not an instrument failure: the population it produced is the answer, so it travels with the
+// refusal rather than being discarded for it.
+fn measure_with_subject(
+  subject: EmissionMeasurementSubject,
+  root: String,
+  out_dir: String,
+  gunbc_bin: String,
+  cssl_assemble_bin: String
+) -> EmissionMeasurement {
+  let emit = gunbc.WitnessBin.Run(
+    workdir: root,
+    bin_path: gunbc_bin,
+    args: [
+      "compile",
+      "--source-root", "dag",
+      "--source-root", "src/v2",
+      "--entry", subject.entry,
+      "--output-dir", out_dir,
+      "--target", "rust",
+      "--dependency-pool-index", "primary-precedence"
+    ]
+  )
+  let read = read_emit_diagnostics(stderr: emit.stderr)
+  match read {
+    EmitDiagnosticsRead { diagnostics: ds, emitted_files: files, declared_total: _ } =>
+      if !emit.success {
+        EmissionEmitRefused {
+          subject: subject,
+          exit_code: emit.exit_code,
+          emit_diagnostics: ds,
+          emitted_files: files
+        }
+      } else {
+        measure_cargo_half(
+          subject: subject,
+          root: root,
+          out_dir: out_dir,
+          cssl_assemble_bin: cssl_assemble_bin,
+          emit_diagnostics: ds,
+          emitted_files: files
+        )
+      }
+    EmitSummaryAbsent => emit_decode_unreached(subject: subject, read: read)
+    EmitSummaryUnreadable { line: _ } => emit_decode_unreached(subject: subject, read: read)
+    EmitPopulationMismatch { decoded: _, declared: _ } => emit_decode_unreached(subject: subject, read: read)
+    EmitSummaryDisagreement { compiled_total: _, severity_total: _ } => emit_decode_unreached(subject: subject, read: read)
   }
 }
 
@@ -327,39 +479,52 @@ fn measure_entry_emission(entry: String) -> EmissionMeasurement {
 
 fn emission_report_rows(m: EmissionMeasurement) -> List<String> {
   match m {
-    EmissionUnreached { entry: e, stage: s, cause: c } => [
+    EmissionSubjectUnestablished { entry: e, stage: s, cause: c } => [
       concat("subject\t", e),
-      concat("outcome\tunreached\tstage\t", emission_stage_name(stage: s)),
-      concat("cause\t", c)
+      concat("outcome\tsubject-unestablished\tstage\t", emission_stage_name(stage: s)),
+      concat("cause\t", c),
+      "provenance\t(none — the instrument could not say what would have produced a measurement, so it took none)"
     ]
-    EmissionEmitRefused { entry: e, exit_code: code, emit_diagnostics: ds, emitted_files: files } =>
+    EmissionUnreached { subject: subject, stage: s, cause: c } =>
       concat(
+        emission_subject_rows(subject: subject),
         [
-          concat("subject\t", e),
-          concat("outcome\temit-refused\texit_code\t", to_string(code)),
-          concat("emitted_files\t", emitted_file_count_text(files: files)),
-          concat(
-            concat("emit_population\t", to_string(count(ds))),
-            concat("\tblocking\t", to_string(emit_blocking_count(ds: ds)))
-          ),
-          "cargo_population\t(not produced — the emitter refused, so no crate was assembled)"
-        ],
+          concat("outcome\tunreached\tstage\t", emission_stage_name(stage: s)),
+          concat("cause\t", c)
+        ]
+      )
+    EmissionEmitRefused { subject: subject, exit_code: code, emit_diagnostics: ds, emitted_files: files } =>
+      concat(
+        concat(
+          emission_subject_rows(subject: subject),
+          [
+            concat("outcome\temit-refused\texit_code\t", to_string(code)),
+            concat("emitted_files\t", emitted_file_count_text(files: files)),
+            concat(
+              concat("emit_population\t", to_string(count(ds))),
+              concat("\tblocking\t", to_string(emit_blocking_count(ds: ds)))
+            ),
+            "cargo_population\t(not produced — the emitter refused, so no crate was assembled)"
+          ]
+        ),
         map(ds, d => concat("emit\t", gunbc_diagnostic_row(d: d)))
       )
-    EmissionCargoUnreached { entry: e, stage: s, cause: c, emit_diagnostics: ds, emitted_files: files } =>
+    EmissionCargoUnreached { subject: subject, stage: s, cause: c, emit_diagnostics: ds, emitted_files: files } =>
       concat(
-        [
-          concat("subject\t", e),
-          concat("outcome\tcargo-unreached\tstage\t", emission_stage_name(stage: s)),
-          concat("cause\t", c),
-          concat("emitted_files\t", emitted_file_count_text(files: files)),
-          concat("emit_population\t", to_string(count(ds))),
-          "cargo_population\t(not produced)"
-        ],
+        concat(
+          emission_subject_rows(subject: subject),
+          [
+            concat("outcome\tcargo-unreached\tstage\t", emission_stage_name(stage: s)),
+            concat("cause\t", c),
+            concat("emitted_files\t", emitted_file_count_text(files: files)),
+            concat("emit_population\t", to_string(count(ds))),
+            "cargo_population\t(not produced)"
+          ]
+        ),
         map(ds, d => concat("emit\t", gunbc_diagnostic_row(d: d)))
       )
     EmissionMeasured {
-      entry: e,
+      subject: subject,
       emitted_files: files,
       emit_diagnostics: ds,
       cargo_clean: clean,
@@ -368,19 +533,21 @@ fn emission_report_rows(m: EmissionMeasurement) -> List<String> {
     } =>
       concat(
         concat(
-          [
-            concat("subject\t", e),
-            concat("outcome\tmeasured\tcargo_clean\t", to_string(clean)),
-            concat("emitted_files\t", emitted_file_count_text(files: files)),
-            concat(
-              concat("emit_population\t", to_string(count(ds))),
-              concat("\tblocking\t", to_string(emit_blocking_count(ds: ds)))
-            ),
-            concat(
-              concat("cargo_population\t", to_string(count(rs))),
-              concat("\tcargo_message_lines\t", to_string(lines))
-            )
-          ],
+          concat(
+            emission_subject_rows(subject: subject),
+            [
+              concat("outcome\tmeasured\tcargo_clean\t", to_string(clean)),
+              concat("emitted_files\t", emitted_file_count_text(files: files)),
+              concat(
+                concat("emit_population\t", to_string(count(ds))),
+                concat("\tblocking\t", to_string(emit_blocking_count(ds: ds)))
+              ),
+              concat(
+                concat("cargo_population\t", to_string(count(rs))),
+                concat("\tcargo_message_lines\t", to_string(lines))
+              )
+            ]
+          ),
           map(ds, d => concat("emit\t", gunbc_diagnostic_row(d: d)))
         ),
         map(rs, r => concat("cargo\t", rustc_diagnostic_row(d: r)))

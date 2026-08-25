@@ -57,6 +57,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // to know whether ITS defect is still present looks it up.
 
 data cargo_compiler_message_reason: String = "compiler-message"
+data cargo_build_finished_reason: String = "build-finished"
+data cargo_build_finished_success_member: String = "success"
 data cargo_message_reason_member: String = "reason"
 data cargo_message_message_member: String = "message"
 data cargo_message_code_member: String = "code"
@@ -93,8 +95,23 @@ type RustcCodedDiagnostic {
 // failure this whole instrument exists to end, so it may not be reintroduced inside the decoder.
 // Skipping a message whose reason we READ and recognised as something else is a decision; skipping
 // a line we could not read at all is an absorbing fallback.
+// THE TERMINAL MESSAGE IS REQUIRED, AND THIS IS THE INSTRUMENT'S OWN FAILURE MODE TURNED ON ITSELF.
+// cargo closes every run it performed with a `build-finished` message. Without requiring it, ANY
+// nonempty parseable prefix reads as a complete population: cargo emits seventeen messages, the
+// process is SIGKILLed, `build-finished` never arrives, and a killed run's prefix is reported as a
+// finished measurement. That is exactly the fabricated count -- a truncated observation rendered
+// identically to a complete one -- that this whole instrument was built after. So a stream with no
+// terminal message REFUSES, and the terminal message's own `success` member is what says whether
+// the build was clean, rather than a transport exit status observed beside the stream.
 type CargoDiagnosticScan
-  = CargoDiagnosticsRead { diagnostics: List<RustcCodedDiagnostic>, lines_scanned: Int }
+  = CargoDiagnosticsRead {
+      diagnostics: List<RustcCodedDiagnostic>
+      lines_scanned: Int
+      build_succeeded: Bool
+      terminal_seen: Bool
+    }
+  | CargoDiagnosticStreamTruncated { lines_scanned: Int }
+  | CargoDiagnosticTerminalNotReadable { line_number: Int }
   | CargoDiagnosticStreamEmpty
   | CargoDiagnosticLineUnparseable { line_number: Int }
   | CargoDiagnosticLineNotAnObject { line_number: Int }
@@ -248,7 +265,7 @@ fn cargo_diagnostic_member(
   line_number: Int
 ) -> CargoDiagnosticScan {
   match scanned {
-    CargoDiagnosticsRead { diagnostics: ds, lines_scanned: n } =>
+    CargoDiagnosticsRead { diagnostics: ds, lines_scanned: n, build_succeeded: ok, terminal_seen: seen } =>
       match json_object_unique_member(v: message, key: cargo_message_level_member) {
         JsonMemberAbsent => CargoDiagnosticLevelAbsent { line_number: line_number }
         JsonMemberDuplicated { count: _ } =>
@@ -272,13 +289,17 @@ fn cargo_diagnostic_member(
                             location: location
                           }
                         ]),
-                        lines_scanned: n + 1
+                        lines_scanned: n + 1,
+                        build_succeeded: ok,
+                        terminal_seen: seen
                       }
                   }
               }
           }
       }
     CargoDiagnosticStreamEmpty => CargoDiagnosticStreamEmpty
+    CargoDiagnosticStreamTruncated { lines_scanned: l } => CargoDiagnosticStreamTruncated { lines_scanned: l }
+    CargoDiagnosticTerminalNotReadable { line_number: l } => CargoDiagnosticTerminalNotReadable { line_number: l }
     CargoDiagnosticLineUnparseable { line_number: l } => CargoDiagnosticLineUnparseable { line_number: l }
     CargoDiagnosticLineNotAnObject { line_number: l } => CargoDiagnosticLineNotAnObject { line_number: l }
     CargoDiagnosticReasonAbsent { line_number: l } => CargoDiagnosticReasonAbsent { line_number: l }
@@ -292,9 +313,40 @@ fn cargo_diagnostic_member(
   }
 }
 
+// THE TERMINAL MESSAGE'S OWN VERDICT. `build-finished` carries `success`, and that is the honest
+// authority on whether the build was clean: it is emitted BY the run being measured, whereas a
+// process exit status observed beside the stream says nothing about which stream it belongs to.
+fn cargo_diagnostic_terminal(
+  doc: JsonValue,
+  diagnostics: List<RustcCodedDiagnostic>,
+  lines_scanned: Int,
+  line_number: Int
+) -> CargoDiagnosticScan {
+  match json_object_unique_member(v: doc, key: cargo_build_finished_success_member) {
+    JsonMemberAbsent => CargoDiagnosticTerminalNotReadable { line_number: line_number }
+    JsonMemberDuplicated { count: _ } => CargoDiagnosticTerminalNotReadable { line_number: line_number }
+    JsonMemberNotAnObject => CargoDiagnosticTerminalNotReadable { line_number: line_number }
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonBool { value: b } =>
+          CargoDiagnosticsRead {
+            diagnostics: diagnostics,
+            lines_scanned: lines_scanned,
+            build_succeeded: b,
+            terminal_seen: true
+          }
+        JsonNull => CargoDiagnosticTerminalNotReadable { line_number: line_number }
+        JsonString { value: _ } => CargoDiagnosticTerminalNotReadable { line_number: line_number }
+        JsonNumber { lexeme: _ } => CargoDiagnosticTerminalNotReadable { line_number: line_number }
+        JsonArray { elements: _ } => CargoDiagnosticTerminalNotReadable { line_number: line_number }
+        JsonObject { members: _ } => CargoDiagnosticTerminalNotReadable { line_number: line_number }
+      }
+  }
+}
+
 fn cargo_diagnostic_scan_line(state: CargoDiagnosticScan, line: String) -> CargoDiagnosticScan {
   match state {
-    CargoDiagnosticsRead { diagnostics: ds, lines_scanned: n } => {
+    CargoDiagnosticsRead { diagnostics: ds, lines_scanned: n, build_succeeded: ok, terminal_seen: seen } => {
       let line_number = n + 1
       match parse_json(s: line) {
         Absent => CargoDiagnosticLineUnparseable { line_number: line_number }
@@ -308,8 +360,20 @@ fn cargo_diagnostic_scan_line(state: CargoDiagnosticScan, line: String) -> Cargo
               match cargo_diagnostic_string_value(v: reason_value) {
                 Absent => CargoDiagnosticReasonNotAString { line_number: line_number }
                 Present { value: reason } =>
-                  if reason != cargo_compiler_message_reason {
-                    CargoDiagnosticsRead { diagnostics: ds, lines_scanned: n + 1 }
+                  if reason == cargo_build_finished_reason {
+                    cargo_diagnostic_terminal(
+                      doc: doc,
+                      diagnostics: ds,
+                      lines_scanned: n + 1,
+                      line_number: line_number
+                    )
+                  } else if reason != cargo_compiler_message_reason {
+                    CargoDiagnosticsRead {
+                      diagnostics: ds,
+                      lines_scanned: n + 1,
+                      build_succeeded: ok,
+                      terminal_seen: seen
+                    }
                   } else {
                     match json_object_unique_member(v: doc, key: cargo_message_message_member) {
                       JsonMemberAbsent => CargoDiagnosticMessageAbsent { line_number: line_number }
@@ -318,7 +382,12 @@ fn cargo_diagnostic_scan_line(state: CargoDiagnosticScan, line: String) -> Cargo
                       JsonMemberNotAnObject => CargoDiagnosticLineNotAnObject { line_number: line_number }
                       JsonMemberFound { value: message } =>
                         cargo_diagnostic_member(
-                          scanned: CargoDiagnosticsRead { diagnostics: ds, lines_scanned: n },
+                          scanned: CargoDiagnosticsRead {
+                            diagnostics: ds,
+                            lines_scanned: n,
+                            build_succeeded: ok,
+                            terminal_seen: seen
+                          },
                           message: message,
                           line_number: line_number
                         )
@@ -329,6 +398,8 @@ fn cargo_diagnostic_scan_line(state: CargoDiagnosticScan, line: String) -> Cargo
       }
     }
     CargoDiagnosticStreamEmpty => CargoDiagnosticStreamEmpty
+    CargoDiagnosticStreamTruncated { lines_scanned: l } => CargoDiagnosticStreamTruncated { lines_scanned: l }
+    CargoDiagnosticTerminalNotReadable { line_number: l } => CargoDiagnosticTerminalNotReadable { line_number: l }
     CargoDiagnosticLineUnparseable { line_number: l } => CargoDiagnosticLineUnparseable { line_number: l }
     CargoDiagnosticLineNotAnObject { line_number: l } => CargoDiagnosticLineNotAnObject { line_number: l }
     CargoDiagnosticReasonAbsent { line_number: l } => CargoDiagnosticReasonAbsent { line_number: l }
@@ -351,11 +422,38 @@ fn cargo_scan_diagnostics(stdout: String) -> CargoDiagnosticScan {
   if stdout.length() == 0 {
     CargoDiagnosticStreamEmpty
   } else {
-    fold(
-      cargo_message_lines(stdout: stdout),
-      init: CargoDiagnosticsRead { diagnostics: [], lines_scanned: 0 },
-      f: (state, line) => cargo_diagnostic_scan_line(state: state, line: line)
+    cargo_scan_require_terminal(
+      scanned: fold(
+        cargo_message_lines(stdout: stdout),
+        init: CargoDiagnosticsRead {
+          diagnostics: [],
+          lines_scanned: 0,
+          build_succeeded: false,
+          terminal_seen: false
+        },
+        f: (state, line) => cargo_diagnostic_scan_line(state: state, line: line)
+      )
     )
+  }
+}
+
+// A stream that parsed cleanly to its last line and never reached `build-finished` did not finish.
+// The population it carries is a prefix, and a prefix reported as a population is the defect this
+// module exists to refuse, so the read is converted to a refusal here rather than returned.
+fn cargo_scan_require_terminal(scanned: CargoDiagnosticScan) -> CargoDiagnosticScan {
+  match scanned {
+    CargoDiagnosticsRead { diagnostics: ds, lines_scanned: n, build_succeeded: ok, terminal_seen: seen } =>
+      if seen {
+        CargoDiagnosticsRead {
+          diagnostics: ds,
+          lines_scanned: n,
+          build_succeeded: ok,
+          terminal_seen: seen
+        }
+      } else {
+        CargoDiagnosticStreamTruncated { lines_scanned: n }
+      }
+    other => other
   }
 }
 
@@ -385,7 +483,14 @@ fn rustc_diagnostic_row(d: RustcCodedDiagnostic) -> String {
 
 fn cargo_diagnostic_scan_refusal_reason(scan: CargoDiagnosticScan) -> String {
   match scan {
-    CargoDiagnosticsRead { diagnostics: _, lines_scanned: _ } => ""
+    CargoDiagnosticsRead { diagnostics: _, lines_scanned: _, build_succeeded: _, terminal_seen: _ } => ""
+    CargoDiagnosticStreamTruncated { lines_scanned: l } =>
+      concat(
+        concat("cargo's message stream ended after ", to_string(l)),
+        " line(s) with no build-finished message — the run did not complete, so the messages it did emit are a prefix and not a population; reporting them would be a killed process's partial output rendered as a finished measurement"
+      )
+    CargoDiagnosticTerminalNotReadable { line_number: l } =>
+      concat("cargo's build-finished message carries no readable success member at line ", to_string(l))
     CargoDiagnosticStreamEmpty =>
       "cargo produced no message stream at all — a build that ran emits at least a build-finished message, so an empty stream means the invocation was swallowed, never started, or read from the wrong field; reporting it as a clean build is the fabricated zero this decode exists to refuse"
     CargoDiagnosticLineUnparseable { line_number: l } => concat("cargo message line unparseable at line ", to_string(l))

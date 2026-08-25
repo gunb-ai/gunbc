@@ -28,6 +28,8 @@ data uncoded_line: String = "\{\"reason\":\"compiler-message\",\"message\":\{\"c
 
 data build_finished_line: String = "\{\"reason\":\"build-finished\",\"success\":false\}"
 
+data build_finished_ok_line: String = "\{\"reason\":\"build-finished\",\"success\":true\}"
+
 data not_json_line: String = "warning: this line is not json"
 
 fn stream_of(lines: List<String>) -> String {
@@ -40,7 +42,7 @@ fn scan_of(lines: List<String>) -> CargoDiagnosticScan {
 
 fn scanned_rows(lines: List<String>) -> List<String> {
   match scan_of(lines: lines) {
-    CargoDiagnosticsRead { diagnostics: ds, lines_scanned: _ } =>
+    CargoDiagnosticsRead { diagnostics: ds, lines_scanned: _, build_succeeded: _, terminal_seen: _ } =>
       map(ds, d => rustc_diagnostic_row(d: d))
     scan => [concat("REFUSED: ", cargo_diagnostic_scan_refusal_reason(scan: scan))]
   }
@@ -76,8 +78,34 @@ test fn an_unreadable_line_refuses_and_names_it_rather_than_reporting_zero() -> 
 // a clean build is the fabricated zero this whole instrument exists to end.
 test fn an_empty_stream_refuses_rather_than_reporting_a_clean_build() -> Bool {
   match cargo_scan_diagnostics(stdout: "") {
-    CargoDiagnosticsRead { diagnostics: _, lines_scanned: _ } => false
+    CargoDiagnosticsRead { diagnostics: _, lines_scanned: _, build_succeeded: _, terminal_seen: _ } => false
     CargoDiagnosticStreamEmpty => true
+    scan => false
+  }
+}
+
+// RED, AND IT IS THE INSTRUMENT'S OWN ORIGIN FAILURE TURNED ON ITSELF: cargo closes every run it
+// performed with a build-finished message, so a stream that parses cleanly and simply STOPS is a
+// killed run's prefix. Reporting its messages as the population is exactly the truncated-observation
+// -reported-as-complete defect this instrument was built after, so it refuses and says how far it got.
+test fn a_stream_with_no_terminal_message_refuses_rather_than_reporting_its_prefix() -> Bool {
+  scanned_rows(lines: [e0308_line, e0599_line_secondary_first])
+    == ["REFUSED: cargo's message stream ended after 2 line(s) with no build-finished message — the run did not complete, so the messages it did emit are a prefix and not a population; reporting them would be a killed process's partial output rendered as a finished measurement"]
+}
+
+// The clean verdict is cargo's OWN, read from the terminal message rather than from a process exit
+// status observed beside the stream.
+test fn the_clean_verdict_is_read_from_cargos_terminal_message() -> Bool {
+  match scan_of(lines: [artifact_line, build_finished_ok_line]) {
+    CargoDiagnosticsRead { diagnostics: ds, lines_scanned: _, build_succeeded: ok, terminal_seen: seen } =>
+      ok && seen && count(ds) == 0
+    scan => false
+  }
+}
+
+test fn a_failing_terminal_message_is_read_as_a_failing_build() -> Bool {
+  match scan_of(lines: [e0308_line, build_finished_line]) {
+    CargoDiagnosticsRead { diagnostics: _, lines_scanned: _, build_succeeded: ok, terminal_seen: _ } => !ok
     scan => false
   }
 }
@@ -178,14 +206,23 @@ test fn a_malformed_summary_line_refuses_rather_than_defaulting_to_zero() -> Boo
 // The carrier: an unreached stage and a zero-diagnostic measurement must not render alike
 // ---------------------------------------------------------------------------------------------
 
-data unreached_specimen: EmissionMeasurement = EmissionUnreached {
+data specimen_subject: EmissionMeasurementSubject = EmissionMeasurementSubject {
+  entry: "dag/extdeps/cpu/ampere.dag",
+  source_revision: "c271b75829" as CommitSha,
+  working_tree: WorkingTreeClean,
+  compiler: sha256_digest(hex: "aa" as NonEmptyStr),
+  assembler: sha256_digest(hex: "bb" as NonEmptyStr),
+  assembly_mode: SeedLinkedAssembly { std_bridge_dir: "dag/tools/self_host_std_bridge_shims" }
+}
+
+data unreached_specimen: EmissionMeasurement = EmissionSubjectUnestablished {
   entry: "dag/extdeps/cpu/ampere.dag",
   stage: StageBinaries,
   cause: "binaries not buildable"
 }
 
 data clean_specimen: EmissionMeasurement = EmissionMeasured {
-  entry: "dag/extdeps/cpu/ampere.dag",
+  subject: specimen_subject,
   emitted_files: FilesEmitted { count: 177 },
   emit_diagnostics: [],
   cargo_clean: true,
@@ -203,11 +240,25 @@ test fn an_unreached_stage_and_a_zero_population_are_not_the_same_reading() -> B
 }
 
 test fn an_unreached_report_names_the_stage_and_carries_no_counts() -> Bool {
-  string_contains(s: emission_report_text(m: unreached_specimen), pattern: "outcome\tunreached\tstage\tbinaries")
+  string_contains(s: emission_report_text(m: unreached_specimen), pattern: "outcome\tsubject-unestablished\tstage\tbinaries")
     && !string_contains(s: emission_report_text(m: unreached_specimen), pattern: "emit_population")
 }
 
 test fn a_measured_report_states_both_populations() -> Bool {
   string_contains(s: emission_report_text(m: clean_specimen), pattern: "emit_population\t0")
     && string_contains(s: emission_report_text(m: clean_specimen), pattern: "cargo_population\t0")
+}
+
+// PROVENANCE, ASSERTED RATHER THAN CLAIMED IN PROSE. A population is attributable only if the
+// report says which compiler produced it; a measurement carries that binding and an unestablished
+// subject carries no population to attribute.
+test fn a_measured_report_names_the_compiler_that_produced_it() -> Bool {
+  string_contains(s: emission_report_text(m: clean_specimen), pattern: "compiler\taa")
+    && string_contains(s: emission_report_text(m: clean_specimen), pattern: "source_revision\tc271b75829")
+    && string_contains(s: emission_report_text(m: clean_specimen), pattern: "working_tree\tclean")
+}
+
+test fn an_unestablished_subject_carries_no_provenance_and_no_population() -> Bool {
+  !string_contains(s: emission_report_text(m: unreached_specimen), pattern: "compiler\t")
+    && !string_contains(s: emission_report_text(m: unreached_specimen), pattern: "emit_population")
 }

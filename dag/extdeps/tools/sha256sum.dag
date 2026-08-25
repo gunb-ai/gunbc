@@ -7,6 +7,7 @@ import extdeps.tools { CliTool, SourceCoreutils }
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
+import extdeps.crypto.hash { Digest, sha256_digest }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
@@ -31,7 +32,25 @@ data sha256sum_cli_tool: CliTool = CliTool {
   installable_via: [SourceCoreutils],
 }
 
+// DigestFile DIGESTS a file rather than verifying it against one a caller already has. CheckFile
+// answers "does this file match this digest", which cannot be used to LEARN a digest: a caller that
+// wants to record which bytes it actually ran has nothing to compare against yet. coreutils prints
+// `<digest>  <path>` on stdout, so the reading is the first whitespace-delimited field.
 service sha256sum.Sha256 {
+  operation DigestFile {
+    input { path: NonEmptyStr }
+    output {
+      line: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["sha256sum", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "sha256sum could not read the file"
+    }
+  }
+
   operation CheckFile {
     input { checksum_file: NonEmptyStr }
     output { matches: Bool from "exit_success" }
@@ -62,6 +81,32 @@ data sha256_verify_native_transport_frontier_rows: List<FrontierRow> = [
 ]
 
 // sha256sum --check exits non-zero on DIGEST MISMATCH, which is this fn's Sha256Mismatch answer, not a fault — so the check call is OutcomeIsData. The guard holds on the same evidence as the caller: Sha256VerifyVerdict already separates the two content answers (Matches / Mismatch) from Sha256VerifyInfraFailure, the arm for the verification machinery itself breaking, so annotating the content comparison cannot silence an infra failure — that arm is reached by different conditions entirely.
+// THE READING, and its absence is a refusal rather than an empty digest. A digest that could not
+// be taken is not the digest of nothing: an artifact whose bytes were never observed must not be
+// recorded as though they were, which is the whole point of carrying a digest in a provenance
+// receipt at all.
+type Sha256FileDigest
+  = Sha256FileDigest { digest: Digest }
+  | Sha256FileDigestUnavailable { path: NonEmptyStr, reason: String }
+
+fn sha256sum_file_digest_via_shell(path: NonEmptyStr) -> Sha256FileDigest {
+  let observed = sha256sum.Sha256.DigestFile(path: path)
+  if observed.success == false {
+    Sha256FileDigestUnavailable { path: path, reason: "sha256sum could not read the file" }
+  } else {
+    match get(xs: split(s: trim(s: observed.line), delimiter: " "), index: 0) {
+      Absent =>
+        Sha256FileDigestUnavailable { path: path, reason: "sha256sum printed no digest field" }
+      Present { value: hex } =>
+        if hex.length() == 0 {
+          Sha256FileDigestUnavailable { path: path, reason: "sha256sum printed an empty digest field" }
+        } else {
+          Sha256FileDigest { digest: sha256_digest(hex: hex as NonEmptyStr) }
+        }
+    }
+  }
+}
+
 fn sha256sum_verify_via_shell(path: NonEmptyStr, expected_digest: NonEmptyStr) -> Sha256VerifyVerdict {
   let checksum_dir = shell.Mktemp.Dir()
   if checksum_dir.success == false {
