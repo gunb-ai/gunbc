@@ -34,16 +34,19 @@ import v2.std.collection { empty_map }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string, JsonValue, JsonObject }
 import extdeps.languages.json.parse { parse_json }
 import gunbc.scm.json_member { MemberReadDuplicated, MemberReadWrongShape }
+import gunbc.scm.target_reference {
+  TargetContainedAt,
+  TargetUncontained,
+  TargetReferenceRefused,
+  TargetReferenceNotOneArm,
+  TargetReferenceMemberReadRefused,
+  decode_target_reference,
+}
 import gunbc.scm.commit_closure_json_v2 {
   ClosureDocRefusal,
   ClosureDocIncompleteWithoutAdmission,
   ClosureDocEncodeRefusal,
-  ClosureDocTargetNotOneArm,
   ClosureDocMemberReadRefused,
-  TargetDecode,
-  TargetDecoded,
-  TargetDecodeFailed,
-  decode_target,
   ClosureDocEncodeOutcome,
   ClosureDocEncoded,
   ClosureDocEncodeRefused,
@@ -415,27 +418,28 @@ test fn a_target_must_carry_exactly_one_arm() -> Bool {
 }
 
 fn arm_count_refused(v: JsonValue, expected: Int) -> Bool {
-  match decode_target(positions: empty_map(), target_value: v) {
-    TargetDecodeFailed { cause: c } =>
+  match decode_target_reference(target_value: v) {
+    TargetReferenceRefused { cause: c } =>
       match c {
-        ClosureDocTargetNotOneArm { found: n } => n == expected
+        TargetReferenceNotOneArm { found: n } => n == expected
         _ => false
       }
-    TargetDecoded { target: _ } => false
+    TargetContainedAt { reference: _ } => false
+    TargetUncontained { digest: _ } => false
   }
 }
 
 // THE POSITIVE CONTROL, without which the two refusals above are satisfied by a decoder that refuses
 // every target. One arm, well formed, resolves.
 test fn a_target_carrying_one_arm_still_decodes() -> Bool {
-  match decode_target(
-    positions: empty_map(),
+  match decode_target_reference(
     target_value: json_object(
       members: [json_kv(key: "uncontained", value: json_string(s: "0000000000000000"))]
     )
   ) {
-    TargetDecoded { target: _ } => true
-    TargetDecodeFailed { cause: _ } => false
+    TargetUncontained { digest: _ } => true
+    TargetContainedAt { reference: _ } => false
+    TargetReferenceRefused { cause: _ } => false
   }
 }
 
@@ -454,8 +458,7 @@ test fn a_target_carrying_one_arm_still_decodes() -> Bool {
 // first reports ClosureDocMemberWrongShape("uncontained") and the second ClosureDocMemberMissing(
 // "uncontained"), so each goes red for a different wrong answer rather than by a shared accident.
 test fn a_duplicated_at_is_refused_against_at() -> Bool {
-  match decode_target(
-    positions: empty_map(),
+  match decode_target_reference(
     target_value: json_object(
       members: [
         json_kv(key: "at", value: json_string(s: "0")),
@@ -463,27 +466,28 @@ test fn a_duplicated_at_is_refused_against_at() -> Bool {
       ]
     )
   ) {
-    TargetDecodeFailed { cause: c } =>
+    TargetReferenceRefused { cause: c } =>
       match c {
-        ClosureDocMemberReadRefused { cause: MemberReadDuplicated { key: k } } => k == "at"
+        TargetReferenceMemberReadRefused { cause: MemberReadDuplicated { key: k } } => k == "at"
         _ => false
       }
-    TargetDecoded { target: _ } => false
+    TargetContainedAt { reference: _ } => false
+    TargetUncontained { digest: _ } => false
   }
 }
 
 test fn a_non_string_at_is_refused_against_at() -> Bool {
-  match decode_target(
-    positions: empty_map(),
+  match decode_target_reference(
     target_value: json_object(
       members: [json_kv(key: "at", value: json_object(members: []))]
     )
   ) {
-    TargetDecodeFailed { cause: c } =>
+    TargetReferenceRefused { cause: c } =>
       match c {
-        ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: k } } => k == "at"
+        TargetReferenceMemberReadRefused { cause: MemberReadWrongShape { key: k } } => k == "at"
         _ => false
       }
-    TargetDecoded { target: _ } => false
+    TargetContainedAt { reference: _ } => false
+    TargetUncontained { digest: _ } => false
   }
 }
