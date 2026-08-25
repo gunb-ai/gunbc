@@ -351,20 +351,25 @@ test fn clean_subject_gaining_a_blocker_refuses_which_is_the_wall_that_holds() -
   !fixture_standing_holds(roster: fixture_roster, admissions: [], readings: regressed)
 }
 
-// HOLE 2. A subject discovered only from the parsed declaration index VANISHES when its module
-// stops parsing, so the fold is never asked about it and the run reports one fewer subject rather
-// than one blocked one. Here the roster has lost `beta` — and the standing over the shrunken
-// universe HOLDS, with no row naming what disappeared. A regression reading as improvement.
+// HOLE 2. A subject discovered only from the parsed declaration index VANISHES when the index
+// cannot CLASSIFY its file — a fragment, a header preceded by non-comment text, an empty module
+// name — so the fold is never asked about it and the run reports one fewer subject rather than one
+// blocked one. MEASURED 2026-08-25: a broken file whose first line is `module ` refuses LOUDLY
+// (`module index refused`, exit 1); the same breakage behind an unrecognized header exits 0 with
+// zero refusal lines. This claim is about that silent arm only.
+//
+// Here the roster has lost `beta` — and the standing over the shrunken universe HOLDS, with no row
+// naming what disappeared. A regression reading as improvement.
 //
 // The control is the line beside it: the same readings over the WHOLE roster also hold, so the two
 // runs are indistinguishable by their verdicts, and only the roster identity separates them. That
 // is the whole argument for a second denominator — the digest can say two runs differ, it cannot
-// say a module stopped parsing.
+// say a file stopped being classifiable.
 //
-// DISSOLVES WHEN: a module inventory supplies ModuleSurface subjects, so a module that fails to
-// parse becomes a BLOCKED subject rather than an absent one. That landing is the precondition for
+// DISSOLVES WHEN: a file inventory supplies ModuleSurface subjects, so an unclassifiable file
+// becomes a BLOCKED subject rather than an absent one. That landing is the precondition for
 // enrolling this carrier anywhere.
-test fn a_module_that_stops_parsing_vanishes_from_the_universe_instead_of_blocking() -> Bool {
+test fn a_file_the_index_cannot_classify_vanishes_from_the_universe_instead_of_blocking() -> Bool {
   let readings = fixture_both_clean()
   fixture_standing_holds(roster: [fixture_alpha], admissions: [], readings: readings)
     && count(fixture_verdict_rows(roster: [fixture_alpha], admissions: [], readings: readings)) == 1

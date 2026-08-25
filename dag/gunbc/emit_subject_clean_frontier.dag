@@ -131,33 +131,49 @@ import tools.emission_entry_instrument {
 //
 // HOLE 2 -- THE UNIVERSE CAN NARROW SILENTLY, AND THAT IS THE PRECONDITION FOR ENROLMENT.
 //
-// THE MECHANISM, because the fact alone does not let a reader judge the risk. The roster is
-// discovered from the PARSED DECLARATION INDEX. A module is a subject because its declaration was
-// parsed and indexed. So if a module stops parsing -- an ingest regression, a grammar change, an
-// annotation in a position §4c does not admit -- its declaration is not indexed, the module is not
-// a subject, and the fold is never asked about it. It does not become blocked. It VANISHES from the
-// denominator, and a denominator that shrinks makes every remaining ratio look better.
+// THE MECHANISM, MEASURED RATHER THAN REASONED, because the obvious statement of it is WRONG and
+// this note carried the wrong one until it was checked against the compiler. "A module that stops
+// parsing vanishes" is FALSE for nearly every real module: `module_path_index` `parse_module_binding`
+// returns a TYPED, LOCATED refusal when a file fails to parse AND its first non-comment line begins
+// with `module `, and `refuse_unparseable_module_sources` stops the line on it. Almost every module
+// in the corpus leads with that header, so the common case is LOUD.
 //
-// SO A PARSE REGRESSION READS AS IMPROVEMENT. That is the empty-observation narrow, and DESIGN is
-// explicit that it is strictly worse than the widen §5 already forbids: a widen is merely
-// expensive, a narrow is silently uncovered. Identity grain does not save it either -- a subject
-// that vanishes has no identity left to compare against.
+// THE SILENT ARM IS NARROWER AND IT IS REAL: `ModuleBindingUnclassified`, which that module's own
+// source documents as a conflation it cannot resolve -- inhabitants include genuine fragments AND
+// parse failures, and the index cannot tell them apart. A file lands there when the leading-header
+// scan recognizes no module declaration: a fragment, a header preceded by any non-comment text, or
+// an empty module name. Such a file is skipped with NO diagnostic, so it is not indexed, so it is
+// not a subject, so the fold is never asked about it. It VANISHES from the denominator, and a
+// denominator that shrinks makes everything left look better.
+//
+// THE DISCRIMINATING MEASUREMENT (2026-08-25) holds "the file is broken" CONSTANT and varies only
+// whether the header scan recognizes it -- both fixtures carry the same parse error:
+//   header recognized     -> `module index refused: 1 unparseable .dag source(s)` + span, exit 1
+//   header not recognized -> exit 0, zero refusal lines, the file simply absent
+// A well-formed control compiled clean in the same harness, so the silence is a fact about the
+// file's classification rather than about a probe that never reached the compiler.
+//
+// SO A REGRESSION IN THAT ARM READS AS IMPROVEMENT. That is the empty-observation narrow, which
+// DESIGN calls strictly worse than the widen §5 already forbids: a widen is merely expensive, a
+// narrow is silently uncovered. Identity grain does not save it -- a subject that vanishes has no
+// identity left to compare against.
 //
 // WHY IT IS TOLERABLE TODAY AND NOT TOMORROW: nothing acts on this carrier. No workflow invokes it
 // and no merge decision rides on it, so a narrowing universe can produce a wrong READING by a human
 // who has this note in front of them, and cannot produce a wrong ADMISSION. The moment anything
-// GATES on it, the same hole becomes a gate reporting improvement when a module stops parsing --
-// fabricated plausible output with merge authority behind it.
+// GATES on it, the same hole becomes a gate reporting improvement when a file drops out of
+// classification -- fabricated plausible output with merge authority behind it.
 //
 // SO THIS IS NOT A TODO, IT IS A PRECONDITION: **the dual denominator must land before this carrier
 // is enrolled anywhere.** Whoever proposes enrolment closes it first. The construction is a second
-// subject kind -- a module inventory supplying ModuleSurface subjects beside the declaration index
-// -- so a module that fails to parse becomes a BLOCKED ModuleSurface rather than an absence, and a
-// declaration roster that shrinks must be a named transition (deletion, move, or refusal) rather
-// than silent improvement.
+// subject kind -- a FILE INVENTORY supplying ModuleSurface subjects beside the declaration index --
+// and its value is exactly that it SPLITS THE CONFLATION the index cannot: a file's presence on
+// disk is a fact independent of whether its header parsed, so an unclassifiable file becomes a
+// BLOCKED ModuleSurface rather than an absence, and a declaration roster that shrinks must be a
+// named transition (deletion, move, or refusal) rather than silent improvement.
 //
-// Pinned by `a_subject_that_vanishes_from_the_declaration_index_is_not_a_verdict` in the witness,
-// on the same terms as hole 1: green states the gap, and the dual denominator turns it red.
+// Pinned by `a_file_the_index_cannot_classify_vanishes_from_the_universe_instead_of_blocking` in the
+// witness, on the same terms as hole 1: green states the gap, and the dual denominator turns it red.
 // ---------------------------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------------------------
