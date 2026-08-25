@@ -204,7 +204,7 @@ test fn unobserved_readiness_refuses_loudly_without_aborting_apply() -> Bool {
     && string_contains(s: text, pattern: "no host observation transaction exists yet")
     && !string_contains(s: text, pattern: witness_transition_pattern(verb: systemctl_enable_verb, unit: "actions-runner@srv4-01.service" as NonEmptyStr))
     && !witness_activation_lines_contain(plans: plans, pattern: "exit ")
-    && !witness_activation_lines_contain(plans: plans, pattern: "systemctl")
+    && !witness_activation_lines_contain(plans: plans, pattern: witness_systemctl_word())
 }
 
 // THE NO-EXIT CONJUNCT IS ASKED OF THE ACTIVATION LINES, NOT OF THE WHOLE SCRIPT, and the difference
@@ -212,6 +212,14 @@ test fn unobserved_readiness_refuses_loudly_without_aborting_apply() -> Bool {
 // for an unmodeled host and the extract scripts carry their own error handling, so a whole-script
 // search for an exit would answer a question about somebody else's lines -- passing or failing for
 // reasons that have nothing to do with whether an activation refusal aborts.
+//
+// THE NO-COMMAND CONJUNCT ASKS FOR THE QUOTED BINARY PATH, NOT FOR THE WORD "systemctl", AND THE
+// FIRST DRAFT ASKED FOR THE WORD AND WENT RED. It was the assertion that was wrong rather than the
+// emitter: a refusal has to NAME the command it is withholding to be a useful diagnostic, so
+// `systemctl enable is not admitted on this host` is exactly what the line should say, and a witness
+// forbidding that word was demanding a worse message. What must be absent is a RUNNABLE command,
+// and the discriminator for that is the quoted absolute path the shell renderer emits -- which
+// appears only when an operation was actually rendered, never when one was described.
 fn witness_activation_lines_contain(plans: List<RunnerTransitionPlan>, pattern: String) -> Bool {
   fold(
     plans,
