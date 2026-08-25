@@ -1870,6 +1870,79 @@ and a symbol inside a prose string is not a citation — with the addition that
 prose rows in load-bearing authorities are exactly where an unresolvable
 citation survives longest, since they are read by people and by nothing else.
 
+### 11.2f BLOCKING PREREQUISITE — v2's grammar cannot parse a qualified record literal
+
+**`a.b.C { f: v }` does not parse.** `fierce-ram-94` established it by execution
+against a five-way cause ladder, and it is the single most consequential finding
+for this program so far, because **the cut's own target spelling produces this
+construct everywhere.**
+
+The dispatched hypothesis — a tail-position `if`/`match` nesting — is
+**FALSIFIED**, and cleanly: `port_reading` transcribed exactly into a bare
+module, same nesting, every arm a coproduct value, with constructors written
+**unqualified**, parses and normalizes clean. Every ablation of the
+tail-position axis is green (nested `if` with `Int` arms, no match at all, flat
+`if`, match alone at fn tail, no preceding lets).
+
+What discriminates is **qualification CROSSED WITH braces**, and the minimal
+case is two lines:
+
+```dag
+match arg_value_symbol(arg_capture: arg_capture) {
+  Present { value: sym } => a.b.c.PortBareName { name: sym }
+  Absent => PortComputedExpression { mentions: mentions }
+}
+```
+
+Qualified-bare: green. Unqualified-braced: green. **Qualified-braced: red.**
+`warm-hawk-909`'s correction was load-bearing — the three earlier fixtures
+probed variant *spelling* and the axis is spelling × braces.
+
+**THE ROOT, verified in `src/v2/extdeps/languages/dag.dag`:**
+
+- `dag_grammar_primary_ident_suffix_expr` — a bare ident's suffix is
+  `optional(choice(call_suffix, lbrace field_init_list rbrace))`. **Both
+  alternatives.**
+- `dag_grammar_postfix_expr_expr` — each dotted `.name` suffix is
+  `optional(postfix_call_suffix)`. **Call only. No brace alternative.**
+
+So `a.b.C` consumes as a complete postfix expression and `{ f: v }` is left
+over — which is exactly the `parse_g0_tokens_remain` leftover, and it is **a
+missing alternative in one production**, not a traversal failing to descend.
+
+**WHY THIS BLOCKS M6.** §7a settles the target spelling as the fully qualified
+declaring identity. Every cross-module constructor in a post-cut corpus is
+therefore `a.b.C { … }`, and **v2's modeled parser cannot read it.** v1 accepts
+the form (measured independently on main), so this is a v1/v2 divergence rather
+than a corpus-wide break today — but v2 cannot read a post-cut corpus, and v2 is
+the destination. This is a hard prerequisite of the semantic cutover, not
+post-cut cleanup, and it moves ahead of everything else in the F set.
+
+**NOT YET MEASURED, and explicitly not asserted:** whether adding the brace
+alternative to the dotted suffix is *safe*. It puts `if a.b { … }` into the same
+condition-versus-block ambiguity class that `if x { … }` already occupies, for
+which the grammar already carries an overlap-residue diagnostic. That
+measurement precedes any accept-versus-refuse proposal, and `dag.dag` is not
+touched before it.
+
+**A DIAGNOSTIC-READING TRAP FOUND ON THE WAY, worth more than the aside it
+arrived as.** On a rejected `parse_module` the HEAD diagnostic is
+`parse_grammar_choice_overlap_residue` — a grammar *advisory* that
+`rejected_with_pending` prepends ahead of the real refusal. A probe reading
+`d.head.reason` gets the advisory, not the parse cause. **Anything keying on the
+head diagnostic of a v2 parse rejection is reading the wrong one**, which is
+execution-provenance loss wearing a different hat: two distinct states rendering
+identically to a consumer that takes the first row.
+
+**AND THE FIVE-WAY LADDER EARNED ITSELF ON THIS ONE.** The same qualified record
+literal as a plain fn tail expression is not parse-rejected — it is
+`source_normalization_rejected`, because there the orphaned `{ f: v }` re-parses
+as a standalone anonymous record statement and dies one stage later. Same
+leftover, different rung. **A two-way accepted/rejected probe scores those two
+cells identically and reports the wrong construct**, with a green receipt behind
+it — which is precisely the failure the ladder was mandated to prevent, caught
+by the mandate rather than by luck.
+
 ### 11.2c A wall that dissolves silently at the cut — `authored_import_names`
 
 Found while unblocking a lane on an unrelated red, and it is the most direct
