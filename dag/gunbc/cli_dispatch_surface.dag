@@ -25,28 +25,6 @@ import std.types { Bool, Int, List, Port, String }
 // fusion rather than remove it. `CliOptionValue` therefore names the CONCEPT each option carries
 // (`std.types.Port`, `std.measure.Millisecond`) and never its machine type.
 
-// WHAT ONE OPTION CARRIES, AND ITS DEFAULT, WHICH ARE THE SAME FACT.
-//
-// Each arm names an authority that already exists rather than a Rust type: text is `String`, a
-// toggle is `Bool`, a port is `std.types.Port` (an `Int` bounded to 1..65535), and a budget is
-// `std.measure.Millisecond`. The last two are why this is a coproduct and not a `String` with a
-// spelling beside it -- `--port` and `--eval-budget-cpu-ms` differ in what they MEAN, and an
-// emitter that knows only "unsigned" has to be told the width by hand at every site.
-//
-// THE DEFAULT LIVES INSIDE THE ARM, and that placement is doing two jobs. An earlier revision
-// carried `default_value: String?` on the row, which flattened four domains into text: `"8080"`
-// was a port written as characters, so the row NAMED `Port` while CARRYING a string, and the only
-// thing relating the two was this comment. Putting the default in the arm makes the row carry the
-// authority it names -- `port_default` IS a `Port`, `millisecond_default` IS a `Millisecond` --
-// which is the anemic-leaf decomposition DESIGN section 2 asks for, onto concepts that already
-// exist rather than a fresh one.
-//
-// It also makes a state unwritable rather than checked. `CliToggleValue` has no default field, so
-// "a toggle with a default" -- which clap cannot realize, there being no third state for a default
-// to select -- has no constructor. A witness asserting toggles declare no default was enrolled
-// here and is DELETED rather than kept: its RED is no longer authorable in any source a fixture
-// could write, so it would be permanently green by construction and would read as coverage while
-// carrying no information (DESIGN section 4b). The climb removes the check, not the guarantee.
 // HOW MANY VALUES ONE OPTION ADMITS -- and this coproduct is minted here UNDER PROTEST, with the
 // reason recorded because minting it is the move this file otherwise argues against.
 //
@@ -75,6 +53,28 @@ type CliOptionArity
   | CliAtMostOne
   | CliRepeated
 
+// WHAT ONE OPTION CARRIES, AND ITS DEFAULT, WHICH ARE THE SAME FACT.
+//
+// Each arm names an authority that already exists rather than a Rust type: text is `String`, a
+// toggle is `Bool`, a port is `std.types.Port` (an `Int` bounded to 1..65535), and a budget is
+// `std.measure.Millisecond`. The last two are why this is a coproduct and not a `String` with a
+// spelling beside it -- `--port` and `--eval-budget-cpu-ms` differ in what they MEAN, and an
+// emitter that knows only "unsigned" has to be told the width by hand at every site.
+//
+// THE DEFAULT LIVES INSIDE THE ARM, and that placement is doing two jobs. An earlier revision
+// carried `default_value: String?` on the row, which flattened four domains into text: `"8080"`
+// was a port written as characters, so the row NAMED `Port` while CARRYING a string, and the only
+// thing relating the two was this comment. Putting the default in the arm makes the row carry the
+// authority it names -- `port_default` IS a `Port`, `millisecond_default` IS a `Millisecond` --
+// which is the anemic-leaf decomposition DESIGN section 2 asks for, onto concepts that already
+// exist rather than a fresh one.
+//
+// It also makes a state unwritable rather than checked. `CliToggleValue` has no default field, so
+// "a toggle with a default" -- which clap cannot realize, there being no third state for a default
+// to select -- has no constructor. A witness asserting toggles declare no default was enrolled
+// here and is DELETED rather than kept: its RED is no longer authorable in any source a fixture
+// could write, so it would be permanently green by construction and would read as coverage while
+// carrying no information (DESIGN section 4b). The climb removes the check, not the guarantee.
 type CliOptionValue
   = CliTextValue { text_default: String? }
   | CliToggleValue
