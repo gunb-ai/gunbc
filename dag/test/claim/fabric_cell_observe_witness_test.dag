@@ -31,6 +31,7 @@ import gunbc.fabric_cell_converge {
   StandingBlocked,
 }
 import gunbc.fabric_cell_observation_admission {
+  fabric_cell_observation_outcome,
   FabricCellObservationDecision,
   FabricCellObservationAdmitted,
   FabricCellObservationDenied,
@@ -742,7 +743,7 @@ fn converged_probe_with_unreadable_root() -> FabricCellHostProbe {
 }
 
 fn population_is_refused(p: FabricCellObservationDecision) -> Bool {
-  match p {
+  match fabric_cell_observation_outcome(decision: p) {
     FabricCellObservationDenied { host: _, blocked: _ } => true
     FabricCellObservationNotApplicable { host: _ } => false
     FabricCellObservationAdmitted { population: _ } => false

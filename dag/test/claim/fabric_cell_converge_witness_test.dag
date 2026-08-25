@@ -7,6 +7,7 @@ import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 import gunbc.ownership { Owned }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.fabric_cell_observation_admission {
+  fabric_cell_observation_outcome,
   FabricCellObservationDecision,
   FabricCellObservationAdmitted,
   FabricCellObservationDenied,
@@ -435,7 +436,7 @@ test fn witness_fabric_cell_unread_expected_cell_refuses_despite_a_complete_fore
 }
 
 fn decision_is_not_applicable(p: FabricCellObservationDecision) -> Bool {
-  match p {
+  match fabric_cell_observation_outcome(decision: p) {
     FabricCellObservationNotApplicable { host: _ } => true
     FabricCellObservationDenied { host: _, blocked: _ } => false
     FabricCellObservationAdmitted { population: _ } => false
@@ -443,7 +444,7 @@ fn decision_is_not_applicable(p: FabricCellObservationDecision) -> Bool {
 }
 
 fn decision_denial_reasons(p: FabricCellObservationDecision) -> List<String> {
-  match p {
+  match fabric_cell_observation_outcome(decision: p) {
     FabricCellObservationDenied { host: _, blocked: b } =>
       map(b, r => fabric_cell_observation_refusal_identity(refusal: r))
     FabricCellObservationNotApplicable { host: _ } => []

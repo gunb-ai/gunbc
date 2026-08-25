@@ -16,9 +16,6 @@ import gunbc.host_axis_caps { CapMember }
 import gunbc.host_converge { gunbc_runner_per_slot_dropin_path }
 import gunbc.fabric_cell_observation_admission {
   FabricCellObservationDecision,
-  FabricCellObservationAdmitted,
-  FabricCellObservationDenied,
-  FabricCellObservationNotApplicable,
   admit_fabric_cell_probe,
   fabric_cell_observation_unobserved,
 }
@@ -68,6 +65,7 @@ import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.ownership { Owned }
 import gunbc.fleet_converge_plan {
+  fabric_cell_observation_refusal_line,
   TimerRetirementMember,
   FleetConvergePlanSubject,
   fleet_converge_plan_artifact,
@@ -768,6 +766,18 @@ fn fabric_cell_readback_all_present() -> FabricCellReadback {
 }
 
 fn fabric_probe_of(entries: List<String>, addresses: List<FabricCellAddressProbeEntry>) -> FabricCellHostProbe {
+  fabric_probe_with_slice(
+    entries: entries,
+    slice_entries: [fabric_cell_slice_name(slot: fabric_witness_slot())],
+    addresses: addresses,
+  )
+}
+
+fn fabric_probe_with_slice(
+  entries: List<String>,
+  slice_entries: List<String>,
+  addresses: List<FabricCellAddressProbeEntry>,
+) -> FabricCellHostProbe {
   FabricCellHostProbe {
     host: operator_host_srv3,
     namespaces: [
@@ -781,11 +791,60 @@ fn fabric_probe_of(entries: List<String>, addresses: List<FabricCellAddressProbe
       },
       FabricCellNamespaceProbeEntry {
         namespace: FabricCellSliceNamespace,
-        probe: NamespaceEnumerated { entries: [fabric_cell_slice_name(slot: fabric_witness_slot())] },
+        probe: NamespaceEnumerated { entries: slice_entries },
       },
     ],
     addresses: addresses,
   }
+}
+
+// A CELL WHOSE BOUNDARY READS A DIFFERENT DIGEST -- present, and wrong. Expressed as a PROBE rather
+// than a hand-built readback, because drift is a positive-side fact the wet observer really does
+// produce, and the mint is now the only route to the population a plan acts on.
+fn fabric_probe_boundary_drifted() -> FabricCellHostProbe {
+  fabric_probe_of(
+    entries: [runner_slot_instance_name(slot: fabric_witness_slot())],
+    addresses: map(
+      fabric_cell_resource_addresses(),
+      a => FabricCellAddressProbeEntry {
+        slot: fabric_witness_slot(),
+        address: a,
+        probe: AddressStateRead {
+          state_digest: if fabric_cell_resource_address_wire(address: a)
+            == fabric_cell_resource_address_wire(address: FabricCellResourceBoundaryAddress) {
+            "a-different-boundary-reading" as NonEmptyStr
+          } else {
+            fabric_cell_desired_state_digest(slot: fabric_witness_slot(), address: a)
+          },
+        },
+      },
+    ),
+  )
+}
+
+// AND A CELL WHOSE BOUNDARY IS ABSENT -- the slice namespace enumerates and does not hold it, which
+// is the only route to absence, while the other two addresses read converged.
+fn fabric_probe_boundary_absent() -> FabricCellHostProbe {
+  fabric_probe_with_slice(
+    entries: [runner_slot_instance_name(slot: fabric_witness_slot())],
+    slice_entries: [],
+    addresses: [
+      FabricCellAddressProbeEntry {
+        slot: fabric_witness_slot(),
+        address: FabricCellRootAddress,
+        probe: AddressStateRead {
+          state_digest: fabric_cell_desired_state_digest(slot: fabric_witness_slot(), address: FabricCellRootAddress),
+        },
+      },
+      FabricCellAddressProbeEntry {
+        slot: fabric_witness_slot(),
+        address: FabricCellAttemptRootAddress,
+        probe: AddressStateRead {
+          state_digest: fabric_cell_desired_state_digest(slot: fabric_witness_slot(), address: FabricCellAttemptRootAddress),
+        },
+      },
+    ],
+  )
 }
 
 fn fabric_cells_observed_converged() -> FabricCellObservationDecision {
@@ -1051,11 +1110,26 @@ fn fabric_refusals_of(entries: List<FabricCellReadback>) -> List<FabricCellObser
   ))
 }
 
-fn fabric_population_of(entries: List<FabricCellReadback>) -> FabricCellObservationDecision {
-  FabricCellObservationDenied {
-    host: operator_host_srv3,
-    blocked: fabric_refusals_of(entries: entries),
-  }
+// AND THEY STOP AT THE REFUSAL POPULATION RATHER THAN ENTERING THE PLAN. An earlier cut wrapped
+// these refusals in a hand-written FabricCellObservationDenied and pushed that through the plan
+// renderer. That is no longer writable -- the DECISION is sealed too, not just its admitted arm --
+// and the reason it should not be writable is the not-applicable arm: any module able to write a
+// decision could write FabricCellObservationNotApplicable for a host that DOES expect cells, and
+// the plan would render exactly what a converged host renders, which is nothing.
+//
+// So these rows assert over the refusal LINE renderer directly. That is the layer that owns every
+// property they are about -- canonical order, one subject per identity, wording excluded from
+// identity -- and it is reached without any fixture claiming to be an observation.
+fn fabric_refusal_lines(entries: List<FabricCellReadback>) -> String {
+  fold(
+    map(fabric_refusals_of(entries: entries), r => fabric_cell_observation_refusal_line(refusal: r)),
+    init: "",
+    f: (acc, l) => join([acc, "\n", l], ""),
+  )
+}
+
+fn fabric_refusal_count_of(entries: List<FabricCellReadback>) -> Int {
+  list_length(items: fabric_refusals_of(entries: entries))
 }
 
 test fn witness_fabric_cell_refusal_wording_is_not_the_member_set_identity() -> Bool {
@@ -1131,7 +1205,7 @@ fn fabric_cell_readback_boundary_absent() -> FabricCellReadback {
 test fn witness_fabric_cell_drifted_address_plans_change_and_never_add() -> Bool {
   let lines = fleet_converge_fabric_cell_lines(
     host: "srv3" as NonEmptyStr,
-    observed_fabric_cells: fabric_population_of(entries: [fabric_cell_readback_boundary_drifted()]),
+    observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_probe_boundary_drifted()),
   )
   list_length(items: lines) == 1
     && fabric_cell_line_occurrences(
@@ -1147,7 +1221,7 @@ test fn witness_fabric_cell_drifted_address_plans_change_and_never_add() -> Bool
 test fn witness_fabric_cell_absent_address_plans_add_and_never_change() -> Bool {
   let lines = fleet_converge_fabric_cell_lines(
     host: "srv3" as NonEmptyStr,
-    observed_fabric_cells: fabric_population_of(entries: [fabric_cell_readback_boundary_absent()]),
+    observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_probe_boundary_absent()),
   )
   list_length(items: lines) == 1
     && fabric_cell_line_occurrences(
@@ -1164,8 +1238,8 @@ test fn witness_fabric_cell_absent_address_plans_add_and_never_change() -> Bool 
 // kind. If the observed populations agreed, the rows above could only ever differ by accident of
 // rendering; this row pins the divergence at the population the reconcile consumes.
 test fn witness_fabric_cell_drifted_and_absent_are_different_observations() -> Bool {
-  fabric_fingerprint_with(population: fabric_population_of(entries: [fabric_cell_readback_boundary_drifted()]))
-    != fabric_fingerprint_with(population: fabric_population_of(entries: [fabric_cell_readback_boundary_absent()]))
+  fabric_fingerprint_with(population: admit_fabric_cell_probe(probe: fabric_probe_boundary_drifted()))
+    != fabric_fingerprint_with(population: admit_fabric_cell_probe(probe: fabric_probe_boundary_absent()))
 }
 
 // THE KERNEL IS EXERCISED AT A WIDTH THE AUTHORITY DOES NOT HAVE, WHICH IS THE ENTIRE REASON IT WAS
@@ -1255,25 +1329,27 @@ test fn witness_fabric_cell_kernel_exact_roster_has_no_unexpected_evidence() -> 
   ) == 0
 }
 
+// WHAT THE SUPPLIED-SIDE ROWS BELOW DO AND DO NOT ESTABLISH, said once for the family. They run the
+// real classification kernel over a hand-authored readback and assert over the refusal population it
+// produces. So they establish that THE PURE KERNEL conserves malformed supplied inputs, that the
+// refusal population is canonical, and that the renderer does not depend on supplied order. They do
+// NOT establish that the wet observer can emit a host-mismatched readback -- it cannot, a probe has
+// no way to express one -- nor that admit_fabric_cell_probe ever traverses that arm. A value being
+// unreachable through the production observer does not make its handling unimportant; it makes the
+// kernel the only place the handling can be measured.
+
 // UNEXPECTED EVIDENCE REFUSES THE POPULATION RATHER THAN BEING DROPPED, and the discriminating
 // pair is the point: the same host, read completely and converged, is OBSERVED when nothing extra
 // is supplied and REFUSED when one unexpected cell is. If the two agreed, the evidence would be
 // being ignored exactly as it was before.
 test fn witness_fabric_cell_unexpected_readback_refuses_rather_than_vanishing() -> Bool {
-  let converged_only = fabric_population_of(entries: [fabric_cell_readback_all_present()])
-  let with_unexpected = fabric_population_of(entries: [
+  let with_unexpected = [
     fabric_cell_readback_all_present(),
     synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv3, slot_index: 7 }),
-  ])
-  list_length(
-    items: fleet_converge_fabric_cell_lines(host: "srv3" as NonEmptyStr, observed_fabric_cells: converged_only)
-  ) == 0
-    && fleet_converge_fabric_cell_refusal_count(
-        host: "srv3" as NonEmptyStr,
-        observed_fabric_cells: with_unexpected,
-      ) == 1
-    && fabric_fingerprint_with(population: converged_only)
-        != fabric_fingerprint_with(population: with_unexpected)
+  ]
+  fabric_refusal_count_of(entries: [fabric_cell_readback_all_present()]) == 0
+    && fabric_refusal_count_of(entries: with_unexpected) == 1
+    && string_contains(s: fabric_refusal_lines(entries: with_unexpected), pattern: "unexpected-cell srv3-07")
 }
 
 // ONE UNEXPECTED CELL REPORTED TWICE IS ONE UNEXPECTED CELL. The subject is the cell; the readback
@@ -1291,44 +1367,27 @@ fn unexpected_readback_at(index: Int) -> FabricCellReadback {
 }
 
 test fn witness_fabric_cell_duplicate_unexpected_readbacks_are_one_subject() -> Bool {
-  let once = fabric_population_of(entries: [fabric_cell_readback_all_present(), unexpected_readback_at(index: 7)])
-  let twice = fabric_population_of(entries: [
+  let once = [fabric_cell_readback_all_present(), unexpected_readback_at(index: 7)]
+  let twice = [
     fabric_cell_readback_all_present(),
     unexpected_readback_at(index: 7),
     unexpected_readback_at(index: 7),
-  ])
-  fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: once) == 1
-    && fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: twice) == 1
-    && fabric_fingerprint_with(population: once) == fabric_fingerprint_with(population: twice)
-    && fabric_rendered_lines(population: once) == fabric_rendered_lines(population: twice)
+  ]
+  fabric_refusal_count_of(entries: once) == 1
+    && fabric_refusal_count_of(entries: twice) == 1
+    && fabric_refusal_lines(entries: once) == fabric_refusal_lines(entries: twice)
 }
 
-// THE RENDERED LINES ARE COMPARED BECAUSE "OUTSIDE THE MEMBER-SET FINGERPRINT" IS NOT "OUTSIDE
-// IDENTITY", AND THE ROW ABOVE PROVED THE WEAKER THING FIRST. An earlier cut carried
-// `readback_count`/`observation_count` on the unexpected evidence and asserted only the fingerprint
-// -- which was genuinely clean, because the BASELINE row serializes the slot alone. The refusal
-// LINE rendered `observations=<n>`, that line enters `plan_body`, and the plan artifact
-// content-hashes the whole body into the held-lease owner fingerprint. So one probe and two
-// identical probes agreed on the member set and disagreed on the plan artifact: the exact
-// idempotence the normalization was added to establish, defeated one layer out. Comparing the text
-// is strictly stronger than comparing its hash, and it is the layer where the defect lived.
-fn fabric_rendered_lines(population: FabricCellObservationDecision) -> String {
-  fold(
-    fleet_converge_fabric_cell_lines(host: "srv3" as NonEmptyStr, observed_fabric_cells: population),
-    init: "",
-    f: (acc, l) => join([acc, "\n", l], ""),
-  )
-}
 
 test fn witness_fabric_cell_unexpected_evidence_is_order_independent() -> Bool {
-  let forward = fabric_population_of(entries: [
+  let forward = [
     fabric_cell_readback_all_present(), unexpected_readback_at(index: 7), unexpected_readback_at(index: 8),
-  ])
-  let reversed = fabric_population_of(entries: [
+  ]
+  let reversed = [
     unexpected_readback_at(index: 8), unexpected_readback_at(index: 7), fabric_cell_readback_all_present(),
-  ])
-  fabric_fingerprint_with(population: forward) == fabric_fingerprint_with(population: reversed)
-    && fabric_rendered_lines(population: forward) == fabric_rendered_lines(population: reversed)
+  ]
+  fabric_refusal_count_of(entries: forward) == 2
+    && fabric_refusal_lines(entries: forward) == fabric_refusal_lines(entries: reversed)
 }
 
 // A READBACK NAMING ANOTHER HOST IS NEITHER EXPECTED NOR UNEXPECTED HERE, AND IT REFUSES. The
@@ -1340,14 +1399,14 @@ test fn witness_fabric_cell_unexpected_evidence_is_order_independent() -> Bool {
 // subject that leaves every counted population without appearing in a refusal would be the silent
 // exclusion this carrier exists to end, reintroduced by the repair for a different one.
 test fn witness_fabric_cell_cross_host_readback_refuses_as_a_mismatch_not_as_unexpected() -> Bool {
-  let mixed = fabric_population_of(entries: [
+  let mixed = [
     fabric_cell_readback_all_present(),
     synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 }),
-  ])
-  let lines = fleet_converge_fabric_cell_lines(host: "srv3" as NonEmptyStr, observed_fabric_cells: mixed)
-  fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: mixed) == 1
-    && fold(lines, init: false, f: (acc, l) => acc || string_contains(s: l, pattern: "host-mismatched-readback srv4-07"))
-    && fold(lines, init: true, f: (acc, l) => acc && !string_contains(s: l, pattern: "unexpected-cell srv4-07"))
+  ]
+  let lines = fabric_refusal_lines(entries: mixed)
+  fabric_refusal_count_of(entries: mixed) == 1
+    && string_contains(s: lines, pattern: "host-mismatched-readback srv4-07")
+    && !string_contains(s: lines, pattern: "unexpected-cell srv4-07")
 }
 
 // AND THE REVIEWER'S EXACT INPUT: srv3-07 AND srv4-07 IN BOTH ORDERS. The canonical order compares
@@ -1359,22 +1418,16 @@ test fn witness_fabric_cell_cross_host_readback_refuses_as_a_mismatch_not_as_une
 test fn witness_fabric_cell_cross_host_pair_is_order_independent() -> Bool {
   let same_index_srv3 = unexpected_readback_at(index: 7)
   let same_index_srv4 = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 })
-  let forward = fabric_population_of(entries: [
-    fabric_cell_readback_all_present(), same_index_srv3, same_index_srv4,
-  ])
-  let reversed = fabric_population_of(entries: [
-    fabric_cell_readback_all_present(), same_index_srv4, same_index_srv3,
-  ])
-  fabric_fingerprint_with(population: forward) == fabric_fingerprint_with(population: reversed)
-    && fabric_rendered_lines(population: forward) == fabric_rendered_lines(population: reversed)
-    && fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: forward) == 2
+  let forward = [fabric_cell_readback_all_present(), same_index_srv3, same_index_srv4]
+  let reversed = [fabric_cell_readback_all_present(), same_index_srv4, same_index_srv3]
+  fabric_refusal_lines(entries: forward) == fabric_refusal_lines(entries: reversed)
+    && fabric_refusal_count_of(entries: forward) == 2
 }
 
 test fn witness_fabric_cell_distinct_unexpected_slots_are_counted_separately() -> Bool {
-  let two = fabric_population_of(entries: [
+  fabric_refusal_count_of(entries: [
     fabric_cell_readback_all_present(), unexpected_readback_at(index: 7), unexpected_readback_at(index: 8),
-  ])
-  fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: two) == 2
+  ]) == 2
 }
 
 // TWO HOST MISMATCHES REORDERED ARE ONE POPULATION, and the row above cannot see this. It pairs
@@ -1391,49 +1444,48 @@ test fn witness_fabric_cell_distinct_unexpected_slots_are_counted_separately() -
 test fn witness_fabric_cell_host_mismatches_are_order_independent() -> Bool {
   let a = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 8 })
   let b = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 })
-  let forward = fabric_population_of(entries: [fabric_cell_readback_all_present(), a, b])
-  let reversed = fabric_population_of(entries: [fabric_cell_readback_all_present(), b, a])
-  fabric_fingerprint_with(population: forward) == fabric_fingerprint_with(population: reversed)
-    && fabric_rendered_lines(population: forward) == fabric_rendered_lines(population: reversed)
-    && fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: forward) == 2
+  let forward = [fabric_cell_readback_all_present(), a, b]
+  let reversed = [fabric_cell_readback_all_present(), b, a]
+  fabric_refusal_lines(entries: forward) == fabric_refusal_lines(entries: reversed)
+    && fabric_refusal_count_of(entries: forward) == 2
 }
 
 test fn witness_fabric_cell_host_mismatches_sharing_an_index_are_order_independent() -> Bool {
   let a = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 7 })
   let b = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 })
-  let forward = fabric_population_of(entries: [fabric_cell_readback_all_present(), a, b])
-  let reversed = fabric_population_of(entries: [fabric_cell_readback_all_present(), b, a])
-  fabric_fingerprint_with(population: forward) == fabric_fingerprint_with(population: reversed)
-    && fabric_rendered_lines(population: forward) == fabric_rendered_lines(population: reversed)
-    && fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: forward) == 2
+  let forward = [fabric_cell_readback_all_present(), a, b]
+  let reversed = [fabric_cell_readback_all_present(), b, a]
+  fabric_refusal_lines(entries: forward) == fabric_refusal_lines(entries: reversed)
+    && fabric_refusal_count_of(entries: forward) == 2
 }
 
 // AND ONE MISMATCH REPORTED TWICE IS ONE MISMATCH. The idempotence half, so the ordering rows above
 // cannot be satisfied by a fold that collapses the list to one member.
 test fn witness_fabric_cell_duplicate_host_mismatches_are_one_subject() -> Bool {
   let a = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 })
-  let once = fabric_population_of(entries: [fabric_cell_readback_all_present(), a])
-  let twice = fabric_population_of(entries: [fabric_cell_readback_all_present(), a, a])
-  fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: once) == 1
-    && fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: twice) == 1
-    && fabric_rendered_lines(population: once) == fabric_rendered_lines(population: twice)
+  let once = [fabric_cell_readback_all_present(), a]
+  let twice = [fabric_cell_readback_all_present(), a, a]
+  fabric_refusal_count_of(entries: once) == 1
+    && fabric_refusal_count_of(entries: twice) == 1
+    && fabric_refusal_lines(entries: once) == fabric_refusal_lines(entries: twice)
 }
 
 // AND A CONTRADICTED ADDRESS IS NOT AN UNREAD ONE. The blocked-address remedy was one sentence for
 // all three blocked states -- "the address was not read" -- which is false of a contradiction: that
 // address WAS read and its observations disagree. Same typed class, opposite investigations.
 test fn witness_fabric_cell_contradiction_remedy_is_not_the_unread_remedy() -> Bool {
-  let contradicted = fabric_population_of(entries: [FabricCellReadback {
+  let contradicted_lines = fabric_refusal_lines(entries: [FabricCellReadback {
     slot: fabric_witness_slot(),
     observations: [
       AddressObserved { member: algebra_conflicting_member(digest: "digest-a") },
       AddressObserved { member: algebra_conflicting_member(digest: "digest-b") },
     ],
   }])
-  let unread = fabric_cell_observation_unobserved(host: operator_host_srv3)
-  let contradicted_lines = fleet_converge_fabric_cell_lines(host: "srv3" as NonEmptyStr, observed_fabric_cells: contradicted)
-  let unread_lines = fleet_converge_fabric_cell_lines(host: "srv3" as NonEmptyStr, observed_fabric_cells: unread)
-  fold(contradicted_lines, init: false, f: (acc, l) => acc || string_contains(s: l, pattern: "WAS read and its observations disagree"))
+  let unread_lines = fleet_converge_fabric_cell_lines(
+    host: "srv3" as NonEmptyStr,
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+  )
+  string_contains(s: contradicted_lines, pattern: "WAS read and its observations disagree")
     && fold(unread_lines, init: true, f: (acc, l) => acc && !string_contains(s: l, pattern: "WAS read and its observations disagree"))
 }
 
@@ -1493,26 +1545,21 @@ test fn witness_fabric_cell_foreign_expected_slot_is_its_own_refusal_subject() -
          acc || fold(readback_ids, init: false, f: (seen, b) => seen || a == b))
 }
 
-// A DENIAL CANNOT REACH AN ACTION, WHICH IS WHAT MAKES A FIXTURE-COMPOSED DENIAL SAFE TO AUTHOR.
-// The supplied-side ordering rows in this file build a denial by hand -- they must, because a probe
-// cannot express a MISLABELED READBACK, which is precisely the caller defect those rows are about.
-// The question that makes that legitimate or not is whether a hand-authored denial can produce
-// anything a planner would act on. It cannot, and the reason is structural rather than checked: the
-// action path runs only through the ADMITTED arm, which carries the sealed FabricCellObservedPopulation,
-// which has no constructor outside the mint. A denial carries refusals and no members, so there is
-// nothing for reconcile to receive.
+// A REFUSAL POPULATION CANNOT REACH AN ACTION, AND NOW THE TYPE SAYS SO RATHER THAN THIS ROW. An
+// earlier version of this law composed a FabricCellObservationDenied by hand and asserted that the
+// plan rendered only refusal lines for it. That fixture is no longer writable: the DECISION is
+// sealed, not only its admitted arm, so nothing outside the mint can present the planner with any
+// decision at all -- and the arm that made that worth closing is NotApplicable, which renders
+// nothing and would have let any caller declare a cell-bearing host out of scope.
 //
-// This row is the executable half of that argument: every line a denial renders is a refusal line,
-// and the refusal count equals the number of subjects rather than a count of planned work. The
-// second conjunct is the non-degeneracy control -- an implementation that rendered NOTHING for a
-// denial would satisfy the first conjunct perfectly.
-test fn witness_fabric_cell_denial_renders_only_refusals_and_no_actions() -> Bool {
-  let denial = fabric_population_of(entries: [
+// What survives as an executable law is the half that is still authorable: the refusals a supplied
+// readback produces are rendered as refusals, one line per subject. The action side is now
+// unreachable by construction rather than by assertion, which is the stronger place for it.
+test fn witness_fabric_cell_supplied_refusals_render_as_refusals() -> Bool {
+  let entries = [
     fabric_cell_readback_all_present(),
     synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 }),
-  ])
-  let lines = fleet_converge_fabric_cell_lines(host: "srv3" as NonEmptyStr, observed_fabric_cells: denial)
-  list_length(items: lines) == 1
-    && fold(lines, init: true, f: (acc, l) => acc && string_contains(s: l, pattern: "REFUSED-OBSERVATION fabric-cell "))
-    && fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: denial) == 1
+  ]
+  fabric_refusal_count_of(entries: entries) == 1
+    && string_contains(s: fabric_refusal_lines(entries: entries), pattern: "host-mismatched-readback ")
 }

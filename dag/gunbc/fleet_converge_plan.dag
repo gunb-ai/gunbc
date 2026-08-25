@@ -64,6 +64,8 @@ import gunbc.fabric_cell_converge {
 }
 import gunbc.fabric_cell_observation_admission {
   FabricCellObservationDecision,
+  FabricCellObservationOutcome,
+  fabric_cell_observation_outcome,
   FabricCellObservationAdmitted,
   FabricCellObservationDenied,
   FabricCellObservationNotApplicable,
@@ -498,7 +500,7 @@ fn fleet_converge_fabric_cell_family(
   host: NonEmptyStr,
   observed_fabric_cells: FabricCellObservationDecision,
 ) -> FleetConvergeFabricCellFamily {
-  match observed_fabric_cells {
+  match fabric_cell_observation_outcome(decision: observed_fabric_cells) {
     FabricCellObservationNotApplicable { host: _ } => FabricCellFamilyNotApplicable
     FabricCellObservationDenied { host: _, blocked: b } =>
       FabricCellFamilyObservationRefused { blocked: b }
@@ -893,7 +895,7 @@ fn fabric_cell_refusal_baseline_row(refusal: FabricCellObservationRefusal) -> St
 // belong, because the fingerprint is what a LATER apply re-checks, and it must not admit against a
 // baseline that could have come from somewhere else.
 fn fabric_cell_baseline_rows(population: FabricCellObservationDecision) -> List<String> {
-  match population {
+  match fabric_cell_observation_outcome(decision: population) {
     FabricCellObservationNotApplicable { host: h } =>
       [concat("fabric-cell-not-applicable:", h as String)]
     FabricCellObservationAdmitted { population: pop } =>

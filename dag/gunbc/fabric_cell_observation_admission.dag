@@ -74,10 +74,36 @@ fn fabric_cell_observed_population_members(population: FabricCellObservedPopulat
 // ADMITTED OR DENIED, AND DENIED IS NOT A WORSE ADMITTED. A denial says the host's state is UNKNOWN
 // in some named respect, so no consumer may treat it as either converged or unprovisioned -- the two
 // have opposite remedies and only one of them is safe to act on.
-type FabricCellObservationDecision
+type FabricCellObservationOutcome
   = FabricCellObservationAdmitted { population: FabricCellObservedPopulation }
   | FabricCellObservationDenied { host: HostIdentity, blocked: List<FabricCellObservationRefusal> }
   | FabricCellObservationNotApplicable { host: HostIdentity }
+
+// AND THE DECISION ITSELF IS SEALED, NOT ONLY ITS POSITIVE ARM. Sealing the admitted population
+// closed the fabricated-completeness hole and left two others open, because the PLAN consumes the
+// DECISION and any module could write one:
+//
+//   FabricCellObservationDenied { host: srv3, blocked: <anything> } -- an uncanonical refusal list
+//   reaching the baseline rows, the rendered lines and the lease identity, so plan identity becomes
+//   a function of a caller's list order. Fail-closed for actions, still a fabricated plan input.
+//
+//   FabricCellObservationNotApplicable { host: srv3 } -- and this one is worse, because it is the
+//   one arm that produces NO lines, NO refusals and NO obligation. A host that genuinely expects
+//   fabric cells could be declared out of scope by any caller, and the plan would render exactly
+//   what a correctly-converged host renders: nothing. That is the silent wrong answer this whole
+//   family exists to make unwritable, reachable through the arm added to REMOVE a silent wrong
+//   answer.
+//
+// So the outcome coproduct stays public -- every consumer must still match all three arms, and a
+// new arm must still break them -- and the DECISION is a sealed wrapper only this module mints. A
+// caller can name the states; it cannot present one to the planner.
+type FabricCellObservationDecision sole_constructor {
+  outcome: FabricCellObservationOutcome
+}
+
+fn fabric_cell_observation_outcome(decision: FabricCellObservationDecision) -> FabricCellObservationOutcome {
+  decision.outcome
+}
 
 // THE PRODUCTION MINT, AND THE ONLY ENTRY POINT. One probe, both halves, one decision.
 //
@@ -122,9 +148,11 @@ fn admit_fabric_cell_probe(probe: FabricCellHostProbe) -> FabricCellObservationD
   )
   let canonical_blocked = fabric_cell_canonical_refusals(refusals: blocked)
   if list_length(items: canonical_blocked) > 0 {
-    FabricCellObservationDenied { host: readback.host, blocked: canonical_blocked }
+    FabricCellObservationDecision {
+      outcome: FabricCellObservationDenied { host: readback.host, blocked: canonical_blocked },
+    }
   } else {
-    FabricCellObservationAdmitted {
+    FabricCellObservationDecision { outcome: FabricCellObservationAdmitted {
       population: FabricCellObservedPopulation {
         host: readback.host,
         members: fold(standings, init: [], f: (acc, st) =>
@@ -140,7 +168,7 @@ fn admit_fabric_cell_probe(probe: FabricCellHostProbe) -> FabricCellObservationD
             StandingBlocked { disposition: _ } => acc
           }),
       },
-    }
+    } }
   }
 }
 
@@ -165,11 +193,13 @@ fn admit_fabric_cell_probe(probe: FabricCellHostProbe) -> FabricCellObservationD
 // read and no placeholder is minted at all.
 fn fabric_cell_observation_unobserved(host: HostIdentity) -> FabricCellObservationDecision {
   if list_length(items: fabric_cell_expected_slots(host: host)) == 0 {
-    FabricCellObservationNotApplicable { host: host }
+    FabricCellObservationDecision { outcome: FabricCellObservationNotApplicable { host: host } }
   } else {
-    FabricCellObservationDenied {
-      host: host,
-      blocked: [ObserverUnavailable { host: host }],
+    FabricCellObservationDecision {
+      outcome: FabricCellObservationDenied {
+        host: host,
+        blocked: [ObserverUnavailable { host: host }],
+      },
     }
   }
 }
