@@ -1,5 +1,26 @@
 # Postmortem: gunbc#8282, and the identity program it revealed
 
+> **On the numbers in this document (2026-08-25).** Every count below is a
+> transcription unless it names the command that re-derives it, and under the
+> operator's *name the instrument, never transcribe its output* ruling a
+> transcription is debt. The counts retained here are retained on DESIGN's own
+> declared-exception test — **the magnitude is the subject of the claim**, not a
+> reading taken of something else: *zero* emitted newtypes and *zero* emission
+> reads of `sole_constructor` are the findings themselves, and a finding that a
+> mechanism is never reached is unreadable without the number that is zero.
+> Where a count is load-bearing, the deriving command is given inline so a
+> reader re-runs it rather than trusting it. Where one is not, it has been cut.
+>
+> This is not a formality and the receipt is in §11.2: `sole_constructor` was
+> published here as **176** production sites and corrected to **79** twenty
+> minutes later — 21 of the difference were `data …: String` prose rows
+> *discussing* the feature. The wrong number had already been sent to a lane as
+> the basis for a fan-out estimate. **A grep is a hypothesis; a count with no
+> producer behind it is not a measurement.** The standing repair is §11.2(4a) —
+> ask whether the subject already publishes its own answer — and the terminal
+> one is a lens over the `Node` tree, which is §7's open item.
+
+
 **Subject:** why three generations of import deletion failed, what single defect
 they were all standing on, and the terminal shape and landing order for each
 piece of it.
@@ -1077,10 +1098,11 @@ follow. Building brand rendering would be the realization half of a model fact
 that does not exist.
 
 What replaced it was already sitting in the corpus. `sole_constructor` is
-authored on **79 production type declarations** (`dag/` + `src/v2`, excluding
-`dag/test/`), parsed (17 occurrences in `02_parse.dag`), consumed by inference
-(12 in `04_infer.dag`) — and read by the emitter **zero** times, in both
-`05_emit.dag` and `05_emit_rust.dag`.
+authored on **79 production type declarations** — `grep -rnE '^\s*type\s+[A-Za-z0-9_]+\s+sole_constructor' dag/ src/v2/ --include=*.dag | grep -v '^dag/test/' | wc -l` —
+parsed (`grep -c sole_constructor src/v1/02_parse.dag` → 17), consumed by
+inference (`grep -c sole_constructor src/v1/04_infer.dag` → 12), and read by the
+emitter **zero** times: `grep -c sole_constructor src/v1/05_emit.dag
+src/v1/05_emit_rust.dag`. The zero is the claim; the other three size it.
 
 *(That count was published as 176 for about twenty minutes on 2026-08-25 and
 is corrected here rather than quietly restated. 176 is the raw occurrence count
@@ -1109,7 +1131,7 @@ a decidable gap in a working wall.
 Three things follow, and together they are why the correction improves A0 rather
 than shrinking it. The eligibility predicate is **deleted**, not repaired, so a
 spelling roster has no name in scope to be written against — construction rather
-than discipline. The fact is already in production at 176 sites, so
+than discipline. The fact is already in production on 79 declarations, so
 `compile_dag_rust_emit_check`, which *does* run in the required floor over
 emitted bytes, sees the change directly: no dependency on `src/v1/tests/claim`
 (which the floor does not run), no floor-root widening, and no §4b(2) trigger
@@ -1682,7 +1704,7 @@ incompleteness until the third shows what they have in common.
 |---|---|---|
 | `rust_nominal_identity_carrier_def` — emits `pub struct Name(pub String)` | written, complete | 0 — `rust_nominal_identity_carrier_type_eligible` returns `false`, 5 call sites waiting |
 | `sole_constructor` — parsed, consumed by inference | authored on 79 declarations | 0 in emission — `05_emit.dag` and `05_emit_rust.dag` read it zero times |
-| `char_at_ascii_aware` — takes a precomputed `is_ascii` flag | written, self-documenting, names its own defect (`STRING-INDEX-0`) | 0 — the bridge table maps `char_at` → the plain wrapper |
+| `char_at_ascii_aware` — takes a precomputed `is_ascii` flag | written, self-documenting, names its own defect (`STRING-INDEX-0`) | 0 — the bridge table maps `char_at` → the plain wrapper (`grep -n '"char_at"' src/v1/stage0/src/extdeps_languages_rust_emit.rs`) |
 
 **The shape: the capability exists, is correct, and nothing reaches it.** Each
 was priced as a build and each is a routing question. That inverts the estimate
@@ -1695,7 +1717,9 @@ through a single bridge-table row.
 the class worth writing down rather than just the observation.** Its doc
 comment names the carrier that supplies its precomputed flag: `RcStr`. **`RcStr`
 occurs exactly twice in the whole of `src/v1/stage0/src/` — the comment, and
-the copy of that comment inside the generator string that emits it.** The
+the copy of that comment inside the generator string that emits it**
+(`grep -rn RcStr src/v1/stage0/src/`; there is no `struct RcStr` and no type
+alias, in `.rs` or `.dag`).** The
 carrier does not exist. So this is not an unrouted repair; it is a repair whose
 **input has no producer**, and the wrapper that computes `s.is_ascii()` per call
 is not laziness but the only callable form. The other two have every input
