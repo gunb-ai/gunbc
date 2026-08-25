@@ -49,6 +49,16 @@ import gunbc.fabric_cell_observe {
 // THE ADMITTED CARRIER IS SEALED, so the only way to hold one is to have come through the mint. A
 // caller can still assemble members by hand; what it cannot do is present them as an observation
 // this repository's planner will accept.
+//
+// MEASURED, NOT ASSERTED: a cross-module literal was written into a witness module and the compiler
+// refused it -- "sole_constructor type 'FabricCellObservedPopulation' cannot be constructed outside
+// its defining module" -- so this is structural, not a naming convention. THE PROBE IS NOT ENROLLED
+// AND THE REASON IS THE HONEST PART: the refusal happens at RESOLVE, so the module carrying it does
+// not resolve, and the required floor prepares ONE subject over the whole corpus -- an unresolvable
+// module refuses preparation for everything, rather than failing one row. So the evidence exists as
+// a measurement and not as a standing control, which is strictly weaker. NEXT-RUNG TRIGGER: the
+// multi-module compile fixture DESIGN section 4b already names as missing, which is the same harness
+// every construction-refusal probe in this repository is waiting on.
 type FabricCellObservedPopulation sole_constructor {
   host: HostIdentity
   members: List<FabricCellMember>
