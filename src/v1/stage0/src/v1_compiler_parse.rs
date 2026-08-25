@@ -748,6 +748,15 @@ pub struct PostfixResult {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PipeCalleeResult {
+    pub spine: Option<Rc<Node>>,
+    pub method: String,
+    pub method_span: Rc<SourceSpan>,
+    pub tokens: Rc<TokenStream>,
+    pub err: Option<Rc<ErrorNode>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParserParam {
     pub name: String,
     pub span: Rc<SourceSpan>,
@@ -11649,6 +11658,72 @@ pub fn infix_bp(tokens: Rc<TokenStream>) -> Option<BindingPower> {
     }
 }
 
+pub fn pipe_callee_path_is_applied(candidate: Rc<PipeCalleeResult>) -> bool {
+    match candidate.spine.clone() {
+        None => true,
+        Some(_) => tok_is_lparen(token_stream_first(skip_newlines(candidate.tokens.clone()))),
+    }
+}
+
+pub fn parse_pipe_callee_rest(
+    mut tokens: Rc<TokenStream>,
+    mut spine: Option<Rc<Node>>,
+    mut name: String,
+    mut name_span: Rc<SourceSpan>,
+) -> Rc<PipeCalleeResult> {
+    loop {
+        if tok_is_dot(token_stream_first(tokens.clone())) {
+            let r = expect_name(token_stream_advance(tokens.clone(), 1));
+            if has_err(r.err.clone()) {
+                return Rc::new(PipeCalleeResult {
+                    spine: spine.clone(),
+                    method: name.clone(),
+                    method_span: name_span.clone(),
+                    tokens: r.tokens.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let next_spine = match spine.clone() {
+                None => make_named_expr_node(
+                    name.clone(),
+                    Rc::new(ExprData::ExprVar { binding_kind: None }),
+                    Rc::new(vec![]),
+                    None,
+                    name_span.clone(),
+                    name_span.clone(),
+                ),
+                Some(base) => make_named_expr_node(
+                    name.clone(),
+                    Rc::new(ExprData::ExprFieldAccess { summary: None }),
+                    Rc::new(vec![base.clone()]),
+                    None,
+                    name_span.clone(),
+                    name_span.clone(),
+                ),
+            };
+            {
+                let __tco_0 = r.tokens.clone();
+                let __tco_1 = Some(next_spine.clone());
+                let __tco_2 = r.name.clone();
+                let __tco_3 = r.span.clone();
+                tokens = __tco_0;
+                spine = __tco_1;
+                name = __tco_2;
+                name_span = __tco_3;
+                continue;
+            }
+        } else {
+            break Rc::new(PipeCalleeResult {
+                spine: spine.clone(),
+                method: name.clone(),
+                method_span: name_span.clone(),
+                tokens: tokens.clone(),
+                err: None,
+            });
+        }
+    }
+}
+
 pub fn parse_pipe_rhs(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
@@ -11666,8 +11741,40 @@ pub fn parse_pipe_rhs(
                 err: r.err.clone(),
             });
         }
-        let method = r.name.clone();
-        let tokens = skip_newlines(r.tokens.clone());
+        let dotted = parse_pipe_callee_rest(r.tokens.clone(), None, r.name.clone(), r.span.clone());
+        if has_err(dotted.err.clone()) {
+            return Rc::new(ExprResult {
+                expr: dummy_expr.clone(),
+                tokens: dotted.tokens.clone(),
+                ctx: ctx.clone(),
+                err: dotted.err.clone(),
+            });
+        }
+        let callee = if pipe_callee_path_is_applied(dotted.clone()) {
+            dotted.clone()
+        } else {
+            Rc::new(PipeCalleeResult {
+                spine: None,
+                method: r.name.clone(),
+                method_span: r.span.clone(),
+                tokens: r.tokens.clone(),
+                err: None,
+            })
+        };
+        let method = callee.method.clone();
+        let leading = match callee.spine.clone() {
+            None => Rc::new(vec![receiver.clone()]),
+            Some(qualifier) => Rc::new(vec![
+                qualifier.clone(),
+                make_arg_node(
+                    None,
+                    receiver.clone(),
+                    receiver.span.clone(),
+                    receiver.span.clone(),
+                ),
+            ]),
+        };
+        let tokens = skip_newlines(callee.tokens.clone());
         if tok_is_lparen(token_stream_first(tokens.clone())) {
             {
                 let r2 = parse_call_args(tokens.clone(), ctx.clone());
@@ -11686,7 +11793,7 @@ pub fn parse_pipe_rhs(
                             method_semantics: None,
                         }),
                         v1_rt::concat(
-                            Rc::new(vec![receiver.clone()]),
+                            leading.clone(),
                             Rc::new({
                                 let mut __result = Vec::new();
                                 for na in r2.args.clone().iter().cloned() {
@@ -11702,7 +11809,7 @@ pub fn parse_pipe_rhs(
                         ),
                         None,
                         span.clone(),
-                        r.span.clone(),
+                        callee.method_span.clone(),
                     ),
                     tokens: r2.tokens.clone(),
                     ctx: r2.ctx.clone(),
@@ -11716,10 +11823,10 @@ pub fn parse_pipe_rhs(
                     Rc::new(ExprData::ExprMethodCall {
                         method_semantics: None,
                     }),
-                    Rc::new(vec![receiver.clone()]),
+                    leading.clone(),
                     None,
                     span.clone(),
-                    r.span.clone(),
+                    callee.method_span.clone(),
                 ),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
