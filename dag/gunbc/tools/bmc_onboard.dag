@@ -1,6 +1,7 @@
 module gunbc.tools.bmc_onboard
 
 import extdeps.bmc.http
+import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.entropy
 import extdeps.cloud.gcp.secret_manager {
@@ -36,7 +37,7 @@ import gunbc.auth.access_token_source {
   access_token_upsert_required_reason,
   ensure_access_token,
 }
-import std.types { NonEmptyStr, Secret, String }
+import std.types { FilePath, NonEmptyStr, Secret, String }
 import std.logic { Bool }
 import std.resources { Network }
 import std.bytes { utf8_encode_bytes }
@@ -112,8 +113,23 @@ fn mint_bmc_credential() -> Secret {
   Urandom.ReadPassword(count: bmc_credential_length_chars).password as Secret
 }
 
+// THE NETRC FILE IS THE CREDENTIAL'S ONLY CARRIER NOW, so its MODE is load-bearing rather than
+// incidental. Every Redfish call in this tool authenticates through this path since the argv-borne
+// `-u {username}:{password}` arms were deleted from extdeps.bmc.http, which means a world-readable
+// netrc would simply move the exposure from the process table to the filesystem -- on hosts where
+// the audience is identical, since the same unprivileged reader that could ps the argv can stat /tmp.
+// Filesystem.Write creates with the ambient umask; WriteOwnerOnly creates 0600 at creation via
+// O_EXCL rather than writing first and chmod-ing after, so there is no window in which the bytes
+// exist at a wider mode.
+//
+// O_EXCL is why the shred precedes the write instead of following the read: WriteOwnerOnly REFUSES
+// an existing path, and this tool legitimately rewrites the netrc within one run -- once for the
+// factory login and again after rotation. Removing first makes the rewrite the ordinary case rather
+// than a failure, and it also means a netrc left behind by an earlier interrupted run is destroyed
+// before this one authenticates, instead of being silently reused.
 fn write_netrc(host: String, account: String, password: String) -> Bool {
-  Filesystem.Write(path: bmc_onboard_netrc_path, content: netrc_content(host: host, account: account, password: password)).success
+  let _ = shell.Remove.FileForce(path: bmc_onboard_netrc_path as FilePath)
+  Filesystem.WriteOwnerOnly(path: bmc_onboard_netrc_path, content: netrc_content(host: host, account: account, password: password)).success
 }
 
 func bmc_rotate_credential(plan: BmcOnboardingPlan, new_credential: Secret) -> ProcessExit
@@ -144,7 +160,14 @@ func bmc_rotate_credential(plan: BmcOnboardingPlan, new_credential: Secret) -> P
     return exit_failure(reason: rot.body)
   }
 
-  verify = redfish.Http.GetSystem(bmc_host: host, username: account, password: new_credential)
+  // Re-authenticating means re-writing the netrc, because the credential the BMC now expects is the
+  // one that was just installed. The write is checked rather than assumed: a silently-failed netrc
+  // would leave the PREVIOUS credential's file in place, and the reauth would then appear to succeed
+  // while proving nothing about the rotation it exists to confirm.
+  if write_netrc(host: host, account: account, password: new_credential as String) == false {
+    return exit_failure(reason: "rotate: netrc write for post-rotation reauth failed")
+  }
+  verify = redfish.Http.GetSystem(bmc_host: host, netrc_file: bmc_onboard_netrc_path as NonEmptyStr)
   return if verify.success {
     ExitSuccess
   } else {
@@ -213,10 +236,12 @@ func bmc_assimilate_credential(plan: BmcOnboardingPlan, token_source: AccessToke
   if root_resp.success == false {
     return exit_failure(reason: concat("acquire: service root unreachable: ", root_resp.body))
   }
+  if write_netrc(host: host, account: account, password: plan.factory_login.published_password) == false {
+    return exit_failure(reason: "acquire: netrc write failed")
+  }
   acq = redfish.Http.GetSystem(
     bmc_host: host,
-    username: account,
-    password: plan.factory_login.published_password as Secret
+    netrc_file: bmc_onboard_netrc_path as NonEmptyStr
   )
   if acq.success == false {
     return exit_failure(reason: concat("acquire: factory login failed: ", acq.body))
@@ -231,10 +256,16 @@ func bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTok
   let host = plan.bmc.host
   let account = plan.factory_login.username
 
+  // A netrc that could not be written is NOT evidence that the factory credential is inactive. The
+  // probe returns CredentialStateUnknown rather than falling through to the stored-credential arm,
+  // because reporting `factory login failed` for a local filesystem fault would send the operator to
+  // the BMC to investigate a problem that is on this host.
+  if write_netrc(host: host, account: account, password: plan.factory_login.published_password) == false {
+    return CredentialStateUnknown { reason: "netrc write for factory credential probe failed" }
+  }
   factory_check = redfish.Http.GetSystem(
     bmc_host: host,
-    username: account,
-    password: plan.factory_login.published_password as Secret
+    netrc_file: bmc_onboard_netrc_path as NonEmptyStr
   )
   if factory_check.success {
     return FactoryCredentialActive
@@ -254,10 +285,12 @@ func bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTok
       )
       match decode_sm_access_version_secret_wire(data_b64: secret_resp.data_b64) {
         SmAccessVersionSecretDecoded { credential: password } => {
+          if write_netrc(host: host, account: account, password: password as String) == false {
+            return CredentialStateUnknown { reason: "netrc write for stored credential probe failed" }
+          }
           rotated_verify = redfish.Http.GetSystem(
             bmc_host: host,
-            username: account,
-            password: password
+            netrc_file: bmc_onboard_netrc_path as NonEmptyStr
           )
           return if rotated_verify.success {
             RotatedCredentialActive
