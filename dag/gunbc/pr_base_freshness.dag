@@ -1,11 +1,17 @@
 module gunbc.pr_base_freshness
 
-import std.types { String, Bool, Int, List, CommitSha, EpochMs, Timestamp }
+import std.types { String, Bool, Int, List, CommitSha, Timestamp }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+// THE workflow_runs IMPORT BINDS NAMES THIS MODULE NEVER SPELLS, and it is load-bearing anyway:
+// importing the module is what registers `github.WorkflowRuns` as a callable service, and dropping
+// it fails at RUN time with `unknown service operation`, not at resolve time. It is a selective
+// import rather than a whole-module one because `WorkflowRunStatus` and `extdeps.github.pulls`'s
+// `ReviewState` both declare a `Pending` variant, and importing both modules wholesale is an
+// ambiguity the resolver refuses.
+import extdeps.github.workflow_runs { WorkflowRunList, WorkflowRun }
 import extdeps.github.pulls
 import extdeps.github.commits {
   CommitParentRef,
-  CommitDetail,
-  Comparison,
   ComparisonStatus,
   parse_comparison_status,
   Ahead,
@@ -85,35 +91,6 @@ type BaseFreshness
   | BaseAheadOfTarget
   | BaseDiverged
   | BaseUnknown { reason: BaseUnknownReason }
-
-fn tested_base_provenance(
-  merge_ref_base: CommitSha,
-  merge_ref_base_committed_at: EpochMs,
-  run_started_at: EpochMs,
-) -> TestedBaseProvenance {
-  if merge_ref_base_committed_at > run_started_at {
-    TestedBaseSuperseded { observed_base: merge_ref_base }
-  } else {
-    TestedBaseRecovered { base: merge_ref_base }
-  }
-}
-
-type PrBaseFreshnessRow {
-  pull_number: Int
-  freshness: BaseFreshness
-}
-
-// THE TARGET IS CARRIED ON THE REPORT, NOT LEFT AMBIENT, and this is a measured requirement rather
-// than tidiness. The merge target moved DURING the 48-pull-request measurement above
-// (05c627fd60 -> 7215f689b0), so a row reading "behind 4" is unreadable an hour later unless the
-// commit it was computed against travels with it. This is the same head-bound discipline the
-// required floor's own refusal states when it says a count is bound to the head it names and must
-// never be cited bare.
-type PrBaseFreshnessReport {
-  merge_target: CommitSha
-  observed_at: EpochMs
-  rows: List<PrBaseFreshnessRow>
-}
 
 fn base_freshness_is_current(f: BaseFreshness) -> Bool {
   match f {
@@ -230,6 +207,28 @@ fn base_unknown_reason_label(r: BaseUnknownReason) -> String {
   }
 }
 
+// THE RUN START IS ACQUIRED, NOT SUPPLIED, and that is what makes `NoRunForHead` a real state
+// rather than a declared one. An earlier revision took `run_started_at` as a parameter, which
+// pushed the hardest acquisition onto every caller and left the arm describing a case this module
+// could never reach. A head can genuinely carry no run -- the workflow was never triggered, the run
+// was garbage-collected, the head was force-pushed past -- and in that case there is no instant to
+// compare the merge ref against, so the provenance question has no answer at all.
+//
+// THE MOST RECENT RUN IS THE ONE THAT MATTERS. GitHub returns runs newest-first for a head, and it
+// is the newest run whose green a reader would be relying on at merge time.
+fn pull_request_run_started_at(owner: String, repo: String, head_sha: CommitSha) -> Timestamp? {
+  let runs = github.WorkflowRuns.ListForRef(
+    auth_token: "",
+    owner: owner,
+    repo: repo,
+    head_sha: head_sha,
+  )
+  match runs.runs.workflow_runs {
+    Cons { head, tail: _ } => Present { value: head.created_at }
+    Empty {} => Absent {}
+  }
+}
+
 // THE LIVE OBSERVATION FOR ONE PULL REQUEST. Four upstream facts, and every one of them has a way
 // of not being there -- which is why each `Absent` below becomes a typed reason rather than a
 // default. The forge computes the test-merge asynchronously, a commit can have no parents, and a
@@ -240,7 +239,6 @@ fn observe_pull_request_base_freshness(
   repo: String,
   pull_number: Int,
   merge_target: CommitSha,
-  run_started_at: Timestamp,
 ) -> BaseFreshness {
   let pr = github.Pulls.Get(
     auth_token: "",
@@ -248,6 +246,9 @@ fn observe_pull_request_base_freshness(
     repo: repo,
     pull_number: pull_number,
   )
+  match pull_request_run_started_at(owner: owner, repo: repo, head_sha: pr.pr.head.sha) {
+    Absent {} => BaseUnknown { reason: NoRunForHead }
+    Present { value: run_started_at } =>
   match pr.pr.merge_commit_sha {
     Absent {} => BaseUnknown { reason: MergeCommitNotComputed }
     Present { value: merge_commit } => {
@@ -285,5 +286,52 @@ fn observe_pull_request_base_freshness(
         }
       }
     }
+  }
+  }
+}
+
+// THE ENTRY. The operator's question at merge time is a yes/no — is this pull request's green about
+// the tree it would merge into — so the exit code answers exactly that, and everything that is not
+// a confirmed yes is a failure carrying its reason. `BaseUnknown` FAILS here rather than passing:
+// the entry's contract is "this evidence is current", and an unvouchable run does not establish it.
+// That is the whole asymmetry this module exists to preserve, expressed one last time at the point
+// where a human acts on it.
+//
+// THE MERGE TARGET IS AN ARGUMENT, NOT AN AMBIENT READ, and it is echoed in every failure reason.
+// The target moved DURING the 48-pull-request measurement that motivated this module, so a verdict
+// that did not name the commit it was computed against would be unreadable minutes later — the same
+// head-bound discipline the required floor's own refusal states when it says a count is bound to
+// the head it names and must never be cited bare.
+//
+// Invoked as the explicit actuator DESIGN names:
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/pr_base_freshness.dag --function main \
+//     --arg owner=gunb-ai --arg repo=gunbc --arg pull_number=9122 \
+//     --arg merge_target=$(git rev-parse origin/main)
+fn main(
+  owner: String,
+  repo: String,
+  pull_number: Int,
+  merge_target: String,
+) -> ProcessExit {
+  let freshness = observe_pull_request_base_freshness(
+    owner: owner,
+    repo: repo,
+    pull_number: pull_number,
+    merge_target: merge_target as CommitSha,
+  )
+  match freshness {
+    BaseAtTarget => ExitSuccess
+    BaseBehind { commits: _ } => merge_target_failure(f: freshness, merge_target: merge_target)
+    BaseAheadOfTarget => merge_target_failure(f: freshness, merge_target: merge_target)
+    BaseDiverged => merge_target_failure(f: freshness, merge_target: merge_target)
+    BaseUnknown { reason: _ } => merge_target_failure(f: freshness, merge_target: merge_target)
+  }
+}
+
+fn merge_target_failure(f: BaseFreshness, merge_target: String) -> ProcessExit {
+  ExitFailure {
+    code: 1,
+    reason: join([base_freshness_label(f: f), " (merge target ", merge_target, ")"], ""),
   }
 }
