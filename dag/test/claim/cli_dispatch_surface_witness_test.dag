@@ -1,0 +1,116 @@
+module test.claim.cli_dispatch_surface
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THIS WITNESS SEPARATES, because the two halves have different oracles.
+//
+// The FOLD's behaviour is checked against a controlled fixture below -- rows authored here, with
+// the expected gap authored beside them, so the assertion has a referent independent of the
+// production population. Checking `cli_emitter_gap_of` against the gunbc rows instead would be
+// `measure() == measure()`: a transcription of the same declarations the fold reads.
+//
+// The LIVE rows are checked only for structural invariants that hold for any well-formed CLI --
+// distinct verbs, distinct long spellings within a verb, no default on a toggle. Those are
+// properties a new row can violate, so their RED is authorable, and they say nothing about which
+// rows happen to exist today.
+
+fn option_row(long: String, emission: CliSurfaceEmission) -> CliOptionRow {
+  CliOptionRow {
+    field: long,
+    long: long,
+    value: CliTextValue,
+    cardinality: Required,
+    default_value: none,
+    doc: [],
+    emission: emission
+  }
+}
+
+fn fixture_subcommands() -> List<CliSubcommandRow> {
+  [
+    CliSubcommandRow {
+      verb: "alpha",
+      variant: "Alpha",
+      doc: [],
+      options: [option_row(long: "kept", emission: EmittedByEmitMainRs), option_row(long: "missing", emission: AbsentFromEmitMainRs)],
+      realization: CliRetainedHostKernel,
+      emission: EmittedByEmitMainRs
+    },
+    CliSubcommandRow {
+      verb: "beta",
+      variant: "Beta",
+      doc: [],
+      options: [option_row(long: "one", emission: AbsentFromEmitMainRs), option_row(long: "two", emission: AbsentFromEmitMainRs)],
+      realization: CliRetainedHostKernel,
+      emission: AbsentFromEmitMainRs
+    }
+  ]
+}
+
+fn render_names(names: List<String>) -> String {
+  fold(names, init: "", f: fn(acc, n) { if acc == "" { n } else { concat(acc, concat(",", n)) } })
+}
+
+// The fixture plants exactly one absent option under a PRESENT verb and two absent options under
+// an ABSENT verb. The expected answer is authored here, not measured: the present verb
+// contributes its one missing option, the absent verb contributes itself ONCE and its two options
+// not at all. A fold that listed an absent verb's options beside it would answer
+// "alpha.missing,beta,beta.one,beta.two" and go red here.
+test fn gap_subsumes_options_under_an_absent_verb() -> Bool {
+  render_names(names: cli_emitter_gap_of(subcommands: fixture_subcommands())) == "alpha.missing,beta"
+}
+
+test fn gap_is_empty_when_every_row_is_emitted() -> Bool {
+  let all_present = [
+    CliSubcommandRow {
+      verb: "alpha",
+      variant: "Alpha",
+      doc: [],
+      options: [option_row(long: "kept", emission: EmittedByEmitMainRs)],
+      realization: CliRetainedHostKernel,
+      emission: EmittedByEmitMainRs
+    }
+  ]
+  cli_emitter_gap_of(subcommands: all_present) |> count == 0
+}
+
+fn occurrences(names: List<String>, needle: String) -> Int {
+  fold(names, init: 0, f: fn(acc, n) { if n == needle { acc + 1 } else { acc } })
+}
+
+fn verb_names() -> List<String> {
+  gunbc_cli_subcommands() |> map(sub => sub.verb)
+}
+
+test fn live_verbs_are_distinct() -> Bool {
+  verb_names() |> all(v => occurrences(names: verb_names(), needle: v) == 1)
+}
+
+test fn live_long_spellings_are_distinct_within_a_verb() -> Bool {
+  gunbc_cli_subcommands() |> all(sub => {
+    let longs = sub.options |> map(opt => opt.long)
+    longs |> all(l => occurrences(names: longs, needle: l) == 1)
+  })
+}
+
+// A toggle is present-or-absent on the command line; there is no third state for a default to
+// select, so a default beside one is a declaration that cannot be realized.
+test fn live_toggles_declare_no_default() -> Bool {
+  gunbc_cli_subcommands() |> all(sub => sub.options |> all(opt =>
+    match opt.value {
+      CliToggleValue => match opt.default_value { Present { value: _ } => false, Absent => true }
+      CliTextValue => true
+      CliPortValue => true
+      CliMillisecondValue => true
+    }
+  ))
+}
+
+// The gap is the reason the divergence registration for `main.rs` still stands. If it ever
+// empties, that registration's restoration trigger has fired and the row must be deleted -- so
+// this asserts the two are consistent TODAY, and goes red the moment the surface closes without
+// the registration being removed.
+test fn gap_is_non_empty_while_the_divergence_row_stands() -> Bool {
+  gunbc_cli_emitter_gap() |> count > 0
+    && emitter_produced_divergent_registrations |> any(row => row.basename == "main")
+}

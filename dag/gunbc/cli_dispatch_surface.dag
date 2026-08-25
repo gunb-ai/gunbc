@@ -1,0 +1,400 @@
+module gunbc.cli_dispatch_surface
+
+import std.constructors { Cardinality, Many, Optional, Required }
+import std.types { Bool, Int, List, String }
+
+// THE gunbc CLI'S OWN DISPATCH SURFACE, AS ROWS.
+//
+// This is a PRODUCT fact -- which verbs gunbc offers, which options each takes, and what each
+// verb's arm delegates to. It is not a fact about the Rust language and it is not a fact about
+// clap. It lives here because DESIGN section 3 separates interface, realization and policy: the
+// surface below is policy, `clap` is one realization of it, and `v1.compiler.emit_rust` is where
+// that realization is rendered.
+//
+// WHERE IT LIVED BEFORE, AND WHY THAT WAS WRONG. Every row below was, until this module, a Rust
+// string literal inside `emit_main_rs` (`src/v1/05_emit_rust.dag`) -- the GENERIC Rust emitter --
+// selected by a `has_pipeline` predicate that asks whether the corpus being compiled contains
+// `v1.compiler.compile`. That predicate is an "am I gunbc?" test sitting inside the interface, and
+// everything it guards is one product's argv policy welded into the emitter every other product
+// shares. The tell DESIGN section 3 names is exact: an argv carrying a literal it should receive
+// as a parameter.
+//
+// WHAT THIS MODULE DOES NOT DO. It renders no Rust. A `Vec<String>` for a repeated option, a
+// `u16` for a port, an `Option<u64>` for a budget -- those are target spellings derived from the
+// declarations below by whichever emitter is rendering, and spelling them here would move the
+// fusion rather than remove it. `CliOptionValue` therefore names the CONCEPT each option carries
+// (`std.types.Port`, `std.measure.Millisecond`) and never its machine type.
+
+// WHAT ONE OPTION CARRIES. Each arm names an authority that already exists rather than a Rust
+// type: text is `String`, a toggle is `Bool`, a port is `std.types.Port` (an Int bounded to
+// 1..65535), and a budget is `std.measure.Millisecond`. The last two are the reason this is a
+// coproduct and not a `String` with a spelling beside it -- `--port` and `--eval-budget-cpu-ms`
+// differ in what they MEAN, and an emitter that knows only "unsigned" has to be told the width by
+// hand at every site.
+type CliOptionValue
+  = CliTextValue
+  | CliToggleValue
+  | CliPortValue
+  | CliMillisecondValue
+
+// WHETHER `emit_main_rs` PRODUCES THIS ROW TODAY.
+//
+// This is the divergence census carried at ROW GRAIN, and it replaces a line count. The
+// registration in `v2.compiler.self_host.stage0_crate_layout` that suppresses main.rs from the
+// required-regen comparison carried the divergence as the prose "552 lines against the committed
+// 1318" -- a measurement transcribed into a carrier that cannot re-derive it, which the DESIGN
+// CI clause rules is debt for exactly the reason it proved to be here: the committed file is
+// 1426 lines today and nothing moved the sentence. `gunbc_cli_emitter_gap` answers the same
+// question as an identity join over declarations, so it is a fact about the surface rather than
+// about the day someone counted.
+type CliSurfaceEmission
+  = EmittedByEmitMainRs
+  | AbsentFromEmitMainRs
+
+// WHAT THE ARM DOES, which is a THIRD fact beside the option list and the emission state.
+//
+// `CliRefusesUnwired` is not a missing arm. `converge`'s arm is a typed refusal naming a
+// successor that exists (the modeled convergence spine), and modeling it as absent would erase
+// the distinction between a verb nobody wired and a verb deliberately routed elsewhere -- the
+// not-applicable-rendered-as-malformed collapse DESIGN lists among the recurring failure modes.
+type CliArmRealization
+  = CliDelegatesToHostFn { symbol: String }
+  | CliRetainedHostKernel
+  | CliRefusesUnwired { successor: String }
+
+type CliOptionRow {
+  field: String
+  long: String
+  value: CliOptionValue
+  cardinality: Cardinality
+  default_value: String?
+  doc: List<String>
+  emission: CliSurfaceEmission
+}
+
+type CliSubcommandRow {
+  verb: String
+  variant: String
+  doc: List<String>
+  options: List<CliOptionRow>
+  realization: CliArmRealization
+  emission: CliSurfaceEmission
+}
+
+fn gunbc_cli_binary_name() -> String {
+  "gunbc"
+}
+
+fn gunbc_cli_about() -> String {
+  "A causal compiler: write .dag, get Rust/Python/Go."
+}
+
+// WHAT IS DELIBERATELY NOT HERE: `--dry-run`.
+//
+// It is not a gunbc row. The generic emitter puts a `dry_run` field on EVERY product's parser
+// root, because dry-run is a property of how a compiled program's service calls are realized, not
+// of gunbc's verbs. Declaring it below would create a second authority for a field this module
+// does not own and the emitter would keep emitting from its own -- the parallel-representation
+// debt DESIGN section 3 forbids, marked or not. The surface below is the SUBCOMMAND surface, and
+// that is the whole of what `has_pipeline` fused into the emitter.
+
+fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
+  [
+    CliSubcommandRow {
+      verb: "compile",
+      variant: "Compile",
+      doc: ["Compile .dag source files to a target language"],
+      options: [
+        CliOptionRow {
+          field: "source_roots",
+          long: "source-root",
+          value: CliTextValue,
+          cardinality: Many,
+          default_value: none,
+          doc: [
+            "Source root directories (searched recursively for .dag files).",
+            "Module imports are resolved transitively from these roots."
+          ],
+          emission: EmittedByEmitMainRs
+        },
+        CliOptionRow {
+          field: "source_dir",
+          long: "source-dir",
+          value: CliTextValue,
+          cardinality: Optional,
+          default_value: none,
+          doc: ["Legacy: single source directory (all .dag files loaded, no import resolution)"],
+          emission: EmittedByEmitMainRs
+        },
+        CliOptionRow {
+          field: "output_dir",
+          long: "output-dir",
+          value: CliTextValue,
+          cardinality: Required,
+          default_value: none,
+          doc: [],
+          emission: EmittedByEmitMainRs
+        },
+        CliOptionRow {
+          field: "target",
+          long: "target",
+          value: CliTextValue,
+          cardinality: Required,
+          default_value: Present { value: "rust" },
+          doc: ["Target language: rust, python, go, dag, or + separated set such as rust+dag"],
+          emission: EmittedByEmitMainRs
+        },
+        CliOptionRow {
+          field: "dependency_pool_index",
+          long: "dependency-pool-index",
+          value: CliTextValue,
+          cardinality: Required,
+          default_value: Present { value: "strict" },
+          doc: [],
+          emission: EmittedByEmitMainRs
+        },
+        CliOptionRow {
+          field: "entry",
+          long: "entry",
+          value: CliTextValue,
+          cardinality: Optional,
+          default_value: none,
+          doc: [
+            "Entry `.dag` file: compile only this module and its transitive imports",
+            "(not every `.dag` file under the first --source-root). Scopes the compile",
+            "to a subtree so a small closure can be emitted without a whole-tree pass."
+          ],
+          emission: AbsentFromEmitMainRs
+        }
+      ],
+      realization: CliRetainedHostKernel,
+      emission: EmittedByEmitMainRs
+    },
+    CliSubcommandRow {
+      verb: "ci",
+      variant: "Ci",
+      doc: [],
+      options: [],
+      realization: CliDelegatesToHostFn { symbol: "run_verb" },
+      emission: AbsentFromEmitMainRs
+    },
+    CliSubcommandRow {
+      verb: "run",
+      variant: "Run",
+      doc: ["Execute a .dag program directly (interpreter)"],
+      options: [
+        CliOptionRow {
+          field: "source_roots",
+          long: "source-root",
+          value: CliTextValue,
+          cardinality: Many,
+          default_value: none,
+          doc: ["Source root directories (searched recursively for .dag files)"],
+          emission: EmittedByEmitMainRs
+        },
+        CliOptionRow {
+          field: "function",
+          long: "function",
+          value: CliTextValue,
+          cardinality: Required,
+          default_value: Present { value: "main" },
+          doc: ["Entry function to execute (default: \"main\")"],
+          emission: EmittedByEmitMainRs
+        },
+        CliOptionRow {
+          field: "entry",
+          long: "entry",
+          value: CliTextValue,
+          cardinality: Optional,
+          default_value: none,
+          doc: [
+            "Entry `.dag` file: load only this module and its transitive imports",
+            "(not every file under --source-root). Required for scoped TestClaim runs."
+          ],
+          emission: EmittedByEmitMainRs
+        },
+        CliOptionRow {
+          field: "claim_run",
+          long: "claim-run",
+          value: CliToggleValue,
+          cardinality: Required,
+          default_value: none,
+          doc: ["TestClaim / witness run: Bool false -> exit 1; requires --entry"],
+          emission: EmittedByEmitMainRs
+        },
+        CliOptionRow {
+          field: "args",
+          long: "arg",
+          value: CliTextValue,
+          cardinality: Many,
+          default_value: none,
+          doc: [
+            "Named argument for the entry function, repeatable: `--arg name=value`.",
+            "Values enter as String; a missing `=` refuses rather than guessing."
+          ],
+          emission: EmittedByEmitMainRs
+        }
+      ],
+      realization: CliDelegatesToHostFn { symbol: "run_verb" },
+      emission: EmittedByEmitMainRs
+    },
+    CliSubcommandRow {
+      verb: "converge",
+      variant: "Converge",
+      doc: [
+        "Apply a host's typed converge policy in-process",
+        "(`gunbc.fleet_converge_cli.converge_cli_run`) and print a",
+        "`converge-receipt` line on the byte-locked receipt grammar."
+      ],
+      options: [
+        CliOptionRow {
+          field: "host",
+          long: "host",
+          value: CliTextValue,
+          cardinality: Required,
+          default_value: none,
+          doc: ["Fleet host identity (e.g. \"srv1\") to converge"],
+          emission: AbsentFromEmitMainRs
+        }
+      ],
+      realization: CliRefusesUnwired { successor: "gunbc.fleet_converge_apply" },
+      emission: AbsentFromEmitMainRs
+    },
+    CliSubcommandRow {
+      verb: "serve",
+      variant: "Serve",
+      doc: [
+        "Long-running HTTP server: compile once, then answer each request by",
+        "calling ONE .dag entry `fn(method, path, body) -> ServeWireResponse`.",
+        "The seam is parse/write only -- routing and handlers live in .dag."
+      ],
+      options: [
+        CliOptionRow {
+          field: "source_roots",
+          long: "source-root",
+          value: CliTextValue,
+          cardinality: Many,
+          default_value: none,
+          doc: ["Source root directories (searched recursively for .dag files)"],
+          emission: AbsentFromEmitMainRs
+        },
+        CliOptionRow {
+          field: "entry",
+          long: "entry",
+          value: CliTextValue,
+          cardinality: Required,
+          default_value: none,
+          doc: ["Entry `.dag` file: load only this module and its transitive imports"],
+          emission: AbsentFromEmitMainRs
+        },
+        CliOptionRow {
+          field: "function",
+          long: "function",
+          value: CliTextValue,
+          cardinality: Required,
+          default_value: none,
+          doc: ["Handler function: fn(method: String, path: String, body: String) -> ServeWireResponse"],
+          emission: AbsentFromEmitMainRs
+        },
+        CliOptionRow {
+          field: "host",
+          long: "host",
+          value: CliTextValue,
+          cardinality: Required,
+          default_value: Present { value: "127.0.0.1" },
+          doc: [],
+          emission: AbsentFromEmitMainRs
+        },
+        CliOptionRow {
+          field: "port",
+          long: "port",
+          value: CliPortValue,
+          cardinality: Required,
+          default_value: Present { value: "8080" },
+          doc: [],
+          emission: AbsentFromEmitMainRs
+        },
+        CliOptionRow {
+          field: "release_revision",
+          long: "release-revision",
+          value: CliTextValue,
+          cardinality: Required,
+          default_value: none,
+          doc: [
+            "Release revision this process serves, bound ONCE at startup and",
+            "immutable for the process lifetime."
+          ],
+          emission: AbsentFromEmitMainRs
+        },
+        CliOptionRow {
+          field: "eval_budget_cpu_ms",
+          long: "eval-budget-cpu-ms",
+          value: CliMillisecondValue,
+          cardinality: Optional,
+          default_value: none,
+          doc: ["Per-request THREAD-CPU evaluation budget in milliseconds."],
+          emission: AbsentFromEmitMainRs
+        },
+        CliOptionRow {
+          field: "eval_budget_wall_ms",
+          long: "eval-budget-wall-ms",
+          value: CliMillisecondValue,
+          cardinality: Optional,
+          default_value: none,
+          doc: ["Per-request MONOTONIC-WALL evaluation budget in milliseconds."],
+          emission: AbsentFromEmitMainRs
+        }
+      ],
+      realization: CliDelegatesToHostFn { symbol: "handle_serve" },
+      emission: AbsentFromEmitMainRs
+    }
+  ]
+}
+
+// THE GAP, AS AN IDENTITY JOIN.
+//
+// Every declaration the committed CLI carries that `emit_main_rs` does not produce, named at the
+// grain a repair acts on: a verb, or one option of a verb. Not a count -- DESIGN's oracle rule
+// says completeness is an identity join, and a count equality here would go green the moment two
+// unrelated rows moved in opposite directions.
+//
+// An option under an absent verb is NOT listed separately: the verb subsumes it, and listing both
+// would report one repair twice and make the population's size depend on how many options a
+// missing verb happens to declare.
+fn gunbc_cli_emitter_gap() -> List<String> {
+  cli_emitter_gap_of(subcommands: gunbc_cli_subcommands())
+}
+
+// The fold is PARAMETERIZED on the population rather than reaching for the gunbc rows directly,
+// so its behaviour is checkable against a controlled fixture whose input and expected output are
+// authored independently. Folded over the live rows it would only ever be checkable against a
+// transcription of those same rows, which is the change detector DESIGN's oracle rule rejects.
+fn cli_emitter_gap_of(subcommands: List<CliSubcommandRow>) -> List<String> {
+  fold(subcommands, init: [], f: fn(acc, sub) {
+    match sub.emission {
+      AbsentFromEmitMainRs => concat(acc, [sub.verb])
+      EmittedByEmitMainRs => concat(acc, fold(sub.options, init: [], f: fn(inner, opt) {
+        match opt.emission {
+          AbsentFromEmitMainRs => concat(inner, [concat(sub.verb, concat(".", opt.long))])
+          EmittedByEmitMainRs => inner
+        }
+      }))
+    }
+  })
+}
+
+fn gunbc_cli_emitter_gap_rendered() -> String {
+  fold(gunbc_cli_emitter_gap(), init: "", f: fn(acc, name) {
+    if acc == "" { name } else { concat(acc, concat(", ", name)) }
+  })
+}
+
+// Every option the surface declares, verb-qualified, so a consumer can ask about the whole
+// surface without re-walking the nesting.
+fn gunbc_cli_qualified_option_names() -> List<String> {
+  fold(gunbc_cli_subcommands(), init: [], f: fn(acc, sub) {
+    concat(acc, fold(sub.options, init: [], f: fn(inner, opt) {
+      concat(inner, [concat(sub.verb, concat(".", opt.long))])
+    }))
+  })
+}

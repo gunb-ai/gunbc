@@ -48,6 +48,19 @@ import extdeps.languages.rust.emit {
 import extdeps.cargo_version { render_cargo_package_header_prefix }
 import gunbc.stage0_crate_layout_generated { generated_pub_mod_block }
 import gunbc.rust_decl_type_overlay { rust_decl_type_container_overlay_is_admitted }
+import gunbc.cli_dispatch_surface {
+  AbsentFromEmitMainRs,
+  CliMillisecondValue,
+  CliOptionRow,
+  CliPortValue,
+  CliSubcommandRow,
+  CliSurfaceEmission,
+  CliTextValue,
+  CliToggleValue,
+  EmittedByEmitMainRs,
+  gunbc_cli_subcommands
+}
+import std.constructors { Many, Optional, Required }
 import gunbc.stage0_emitted_population_manifest {
   emitted_population_manifest_basename,
   emitted_population_manifest_line_prefix,
@@ -12550,52 +12563,30 @@ fn emit_cli_struct(workflow_funcs: List<WorkflowFunc>, binary_name: String, abou
   )
 }
 
+// THE gunbc-SPECIFIC VARIANTS ARE ROWS NOW, NOT LITERALS IN THIS FILE.
+//
+// This function used to carry gunbc's `Compile` and `Run` subcommands as Rust text, selected by
+// `has_pipeline` -- a predicate asking whether the corpus being compiled happens to contain
+// `v1.compiler.compile`. That is one product's argv policy welded into the emitter every product
+// shares, and it decayed exactly the way DESIGN section 3 says a fused fact decays: the committed
+// CLI grew `ci`, `converge` and `serve` and a `--entry` flag on `compile`, and none of them
+// reached the literals here, because nothing related the two.
+//
+// The rows live in `gunbc.cli_dispatch_surface`. What survives in this file is the RENDERING --
+// how a declared option becomes a clap attribute and a Rust field type -- which is realization
+// and belongs on the Rust target's side of the seam. `has_pipeline` still selects WHETHER gunbc's
+// surface participates; that selector is the residue of the same fusion and dissolves when the
+// surface arrives as part of the compiled corpus rather than by import.
 fn emit_subcommand_enum(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool) -> String {
   let depth = 0
   let variants = workflow_funcs |> map(wf => emit_subcommand_variant(wf: wf, depth: depth + 1))
-  let compile_variant = if has_pipeline {
-    concat(
-      "/// Compile .dag source files to a target language\n",
-      make_indent(level: depth + 1), "Compile {\n",
-      make_indent(level: depth + 2), "/// Source root directories (searched recursively for .dag files).\n",
-      make_indent(level: depth + 2), "/// Module imports are resolved transitively from these roots.\n",
-      make_indent(level: depth + 2), "#[arg(long = \"source-root\")]\n",
-      make_indent(level: depth + 2), "source_roots: Vec<String>,\n",
-      make_indent(level: depth + 2), "/// Legacy: single source directory (all .dag files loaded, no import resolution)\n",
-      make_indent(level: depth + 2), "#[arg(long = \"source-dir\")]\n",
-      make_indent(level: depth + 2), "source_dir: Option<String>,\n",
-      make_indent(level: depth + 2), "#[arg(long)]\n",
-      make_indent(level: depth + 2), "output_dir: String,\n",
-      make_indent(level: depth + 2), "/// Target language: rust, python, go, dag, or + separated set such as rust+dag\n",
-      make_indent(level: depth + 2), "#[arg(long, default_value = \"rust\")]\n",
-      make_indent(level: depth + 2), "target: String,\n",
-      make_indent(level: depth + 2), "#[arg(long = \"dependency-pool-index\", default_value = \"strict\")]\n",
-      make_indent(level: depth + 2), "dependency_pool_index: String,\n",
-      make_indent(level: depth + 1), "},")
-  } else { "" }
-  let run_variant_lines = [
-    "/// Execute a .dag program directly (interpreter)\n",
-    make_indent(level: depth + 1), "Run {\n",
-    make_indent(level: depth + 2), "/// Source root directories (searched recursively for .dag files)\n",
-    make_indent(level: depth + 2), "#[arg(long = \"source-root\")]\n",
-    make_indent(level: depth + 2), "source_roots: Vec<String>,\n",
-    make_indent(level: depth + 2), "/// Entry function to execute (default: \"main\")\n",
-    make_indent(level: depth + 2), "#[arg(long, default_value = \"main\")]\n",
-    make_indent(level: depth + 2), "function: String,\n",
-    make_indent(level: depth + 2), "/// Entry `.dag` file: load only this module and its transitive imports\n",
-    make_indent(level: depth + 2), "/// (not every file under --source-root). Required for scoped TestClaim runs.\n",
-    make_indent(level: depth + 2), "#[arg(long)]\n",
-    make_indent(level: depth + 2), "entry: Option<String>,\n",
-    make_indent(level: depth + 2), "/// TestClaim / witness run: Bool false → exit 1; requires --entry\n",
-    make_indent(level: depth + 2), "#[arg(long)]\n",
-    make_indent(level: depth + 2), "claim_run: bool,\n",
-    make_indent(level: depth + 2), "/// Named argument for the entry function, repeatable: `--arg name=value`.\n",
-    make_indent(level: depth + 2), "/// Values enter as String; a missing `=` refuses rather than guessing.\n",
-    make_indent(level: depth + 2), "#[arg(long = \"arg\")]\n",
-    make_indent(level: depth + 2), "args: Vec<String>,\n",
-    make_indent(level: depth + 1), "},"]
-  let run_variant = if has_pipeline { run_variant_lines |> join(separator: "") } else { "" }
-  let all_variants = if has_pipeline { concat(variants, [compile_variant, run_variant]) } else { variants }
+  let modeled_rows = if has_pipeline {
+    gunbc_cli_subcommands() |> filter(sub => cli_row_is_emitted(emission: sub.emission))
+  } else {
+    []
+  }
+  let modeled = modeled_rows |> map(sub => emit_modeled_subcommand_variant(sub: sub, depth: depth))
+  let all_variants = concat(variants, modeled)
   let variants_str = all_variants |> join(separator: "\n")
   concat(
     "#[derive(Subcommand)]\n",
@@ -12603,6 +12594,86 @@ fn emit_subcommand_enum(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool) 
     make_indent(level: depth + 1),variants_str, "\n",
     "}"
   )
+}
+
+fn cli_row_is_emitted(emission: CliSurfaceEmission) -> Bool {
+  match emission {
+    EmittedByEmitMainRs => true
+    AbsentFromEmitMainRs => false
+  }
+}
+
+fn emit_modeled_subcommand_variant(sub: CliSubcommandRow, depth: Int) -> String {
+  let doc_lines = sub.doc |> map(d => concat("/// ", d))
+  let doc_str = if doc_lines |> count == 0 {
+    ""
+  } else {
+    concat(doc_lines |> join(separator: concat("\n", make_indent(level: depth + 1))), "\n")
+  }
+  let emitted_options = sub.options |> filter(opt => cli_row_is_emitted(emission: opt.emission))
+  if emitted_options |> count == 0 {
+    concat(doc_str, make_indent(level: depth + 1), sub.variant, ",")
+  } else {
+    let field_str = emitted_options
+      |> map(opt => emit_modeled_option_field(opt: opt, depth: depth + 2))
+      |> join(separator: "")
+    concat(
+      doc_str,
+      make_indent(level: depth + 1), sub.variant, " {\n",
+      field_str,
+      make_indent(level: depth + 1), "},")
+  }
+}
+
+// One declared option becomes three rendered things: its doc lines, its clap attribute, and its
+// Rust field. All three are DERIVED. The attribute in particular is not stored on the row: a row
+// carrying "--source-root" would re-spell the long-option convention once per option and could
+// silently disagree with it, which is the same argument `v2.std.compilers.cli_surface` makes for
+// owning that rule in one place rather than on each tool.
+fn emit_modeled_option_field(opt: CliOptionRow, depth: Int) -> String {
+  let indent = make_indent(level: depth)
+  let doc_str = opt.doc |> map(d => concat(indent, "/// ", d, "\n")) |> join(separator: "")
+  concat(
+    doc_str,
+    indent, "#[arg(", cli_option_arg_attribute_body(opt: opt), ")]\n",
+    indent, opt.field, ": ", cli_option_rust_type(opt: opt), ",\n")
+}
+
+// The long spelling is written out ONLY where clap could not derive it from the field name.
+// `source_roots` carries `--source-root` and `args` carries `--arg`, so those two must say so;
+// `output_dir` and `claim_run` derive, so restating them would be a second spelling of a fact
+// the field name already fixes.
+fn cli_option_arg_attribute_body(opt: CliOptionRow) -> String {
+  let derived_long = replace(opt.field, "_", "-")
+  let long_part = if derived_long == opt.long {
+    "long"
+  } else {
+    concat("long = \"", opt.long, "\"")
+  }
+  match opt.default_value {
+    Present { value: v } => concat(long_part, ", default_value = \"", v, "\"")
+    Absent => long_part
+  }
+}
+
+// WHERE THE MACHINE TYPE IS DECIDED, and why it is decided HERE.
+//
+// The row says a port is a port and a budget is milliseconds; it does not say `u16` or `u64`.
+// Those are Rust's answers to those concepts, so they are chosen on the Rust target's side. A
+// second target rendering the same rows picks its own without the rows changing -- the N-rows,
+// not N-times-M-adapters shape DESIGN section 4 asks for.
+fn cli_option_rust_type(opt: CliOptionRow) -> String {
+  let base = match opt.value {
+    CliTextValue => "String"
+    CliToggleValue => "bool"
+    CliPortValue => "u16"
+    CliMillisecondValue => "u64"
+  }
+  match opt.cardinality {
+    Required => base
+    Optional => concat("Option<", base, ">")
+    Many => concat("Vec<", base, ">")
+  }
 }
 
 fn emit_subcommand_variant(wf: WorkflowFunc, depth: Int) -> String {
