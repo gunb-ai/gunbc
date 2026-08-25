@@ -823,10 +823,25 @@ import-derived resolution and closure, not import syntax.** DESIGN §3 says
 work" — so once nothing reads an import, the grammar is a corpse and deleting a
 corpse is bounded cleanup. The invariant that keeps this honest:
 
-> **No PR may leave a consumer that reads an import *and* a consumer that derives
-> the same fact from references.** Each repoint moves one consumer all the way
-> across. Dual authority is what delete-first forbids; inert syntax is not dual
-> authority.
+> **Repointing is per FACT, not per consumer.** No PR may leave two live
+> consumers of one fact reading different authorities for it. Dual authority is
+> what delete-first forbids; inert syntax is not dual authority.
+
+An earlier revision of this invariant said *each repoint moves one consumer all
+the way across*, which is **insufficient**, and the objection is the side chat's:
+per-consumer atomicity still permits two simultaneously-live consumers to
+disagree with each other before the authority flip. Each is internally coherent;
+they answer the same question differently. That is not a hypothetical — it is
+#9088 exactly, where regen's subject was walked from imports while other
+consumers derived theirs elsewhere, so a green regen was green over a different
+corpus than the one it claimed.
+
+The consequence for the wave order is concrete: **B.1 is not one wave-1 item
+among several, it is what makes per-consumer repointing safe at all.** Once
+closure has a single authority, consumers cannot disagree about it by
+construction, and a repoint becomes a local change rather than a straddle. Every
+fact repointed after B.1 inherits that property; anything repointed before it
+must move all of that fact's consumers in one PR.
 
 ### The backward chain
 
@@ -867,8 +882,9 @@ predicate is stubbed. This is a switch, not a build. A.2 the `UriValidatedScalar
 forgery becomes A.1's enrolled regression control (§4b(4)). *Precedes every key
 repointing, because it is invisible to model-side checks.*
 
-**Track B — one closure authority (chain step 1).** B.1 route every subject
-construction through one authority — ordinary compile, test helpers, floor
+**Track B — one closure authority (chain step 1).** **B.1 is the hard
+prerequisite of the whole program**, per the per-fact invariant above — route
+every subject construction through one authority — ordinary compile, test helpers, floor
 preparation, generation, emitter entry (#9088 did regen; the rest remain).
 B.2 every closure edge carries source occurrence + exact provider identity.
 B.3 replace the raw-text reference scanner with parser-owned occurrence and
