@@ -51,6 +51,30 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // winner satisfies the default's requirement. Collision alone is not the fault; collision
 // ACROSS DECLARATION KINDS is.
 //
+// THE CONTROL AND THE CASE SHARE ONE CHECK, AND THAT IS READ OFF THE CHECK RATHER THAN INFERRED
+// FROM THE OUTPUT. `v1.05_emit_rust` `validate_workflow_param_defaults` is a `flat_map` over
+// every workflow func and a `flat_map` over every param, collecting errors -- no `first`, no
+// `any`, no early return -- so every parameter carrying a default is examined and every failure
+// is emitted. Its predicate is explicit about why a bare reference passes: the name must be
+// present in the func's `resolved_defaults` map (a DATA reference) or be a literal. `owner` was
+// in neither, because the flat-namespace winner was the `fn`.
+//
+// THAT DISTINCTION HAD TO BE SETTLED BY READING, and the reason is worth keeping, because the
+// obvious reading of the evidence was wrong in the direction of my own conclusion. The compile
+// emitted exactly TWO diagnostics, one per func -- which is equally the signature of a pass
+// that stops at the first bad parameter in each func. Under that reading `pr_repo` and
+// `default_model` sit AFTER the failing parameter in their list and were never examined at all,
+// and BOTH controls collapse rather than one. Adjacency cannot tell those apart; the fold can.
+// (Raised as exactly that objection by a peer, whose own withdrawal rested on a third and also
+// wrong reason -- a caller-scope note governing a different func in a different file. Three
+// readings, one check, and only the check decides.)
+//
+// WHAT THE PAIR DOES NOT ESTABLISH, stated because the boundary is easy to walk past: it shows
+// that a same-kind divergent homonym is accepted IN A WORKFLOW-CLI-DEFAULT POSITION. It says
+// nothing about how a same-kind homonym resolves in an ordinary evaluated expression, which is
+// a different check and was not measured. Reading the second from the first would be the
+// authority-substitution failure DESIGN names.
+//
 // WHAT THIS FIX DOES NOT DO, stated because the rename looks like more than it is: it removes
 // this instance and not the class. A bare cross-kind homonym is still writable and still
 // resolves by fold order, and nothing refuses the next one. The class's next-rung trigger is a

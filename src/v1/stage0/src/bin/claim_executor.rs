@@ -10451,8 +10451,8 @@ fn run() -> Result<ExitCode, ExitCode> {
                             } => {
                                 not_completed += 1;
                                 eprintln!(
-                                    "required-ci: v2-emission EmissionRefused entry={} phase={phase} cause={cause}",
-                                    run.entry
+                                    "required-ci: v2-emission EmissionRefused {} phase={phase} cause={cause}",
+                                    run.subject.receipt()
                                 );
                             }
                             v1_compiler::cli_run::EntryEmissionDisposition::NotExecuted {
@@ -10461,8 +10461,8 @@ fn run() -> Result<ExitCode, ExitCode> {
                             } => {
                                 not_completed += 1;
                                 eprintln!(
-                                    "required-ci: v2-emission EmissionNotExecuted entry={} earlier_phase={earlier_phase} cause={cause}",
-                                    run.entry
+                                    "required-ci: v2-emission EmissionNotExecuted {} earlier_phase={earlier_phase} cause={cause}",
+                                    run.subject.receipt()
                                 );
                             }
                         }
@@ -10544,8 +10544,8 @@ fn run() -> Result<ExitCode, ExitCode> {
                         } => {
                             not_completed += 1;
                             eprintln!(
-                                "required-v2-emission: EmissionRefused entry={} phase={phase} cause={cause}",
-                                run.entry
+                                "required-v2-emission: EmissionRefused {} phase={phase} cause={cause}",
+                                run.subject.receipt()
                             );
                         }
                         v1_compiler::cli_run::EntryEmissionDisposition::NotExecuted {
@@ -10554,8 +10554,8 @@ fn run() -> Result<ExitCode, ExitCode> {
                         } => {
                             not_completed += 1;
                             eprintln!(
-                                "required-v2-emission: EmissionNotExecuted entry={} earlier_phase={earlier_phase} cause={cause}",
-                                run.entry
+                                "required-v2-emission: EmissionNotExecuted {} earlier_phase={earlier_phase} cause={cause}",
+                                run.subject.receipt()
                             );
                         }
                     }

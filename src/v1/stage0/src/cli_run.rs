@@ -7064,7 +7064,7 @@ pub fn required_v2_emission_entries() -> Vec<String> {
 /// So the disposition is a variant, every rendering carries it, and "did not run" is
 /// structurally unable to be read as "ran and found nothing".
 #[derive(Debug, Clone)]
-pub enum EntryEmissionDisposition {
+pub enum CompileDisposition {
     /// The transaction ran to its end and produced a tree.
     Completed { emitted_count: usize },
     /// The compiler REACHED the subject and refused it. `cause` is the refusal verbatim.
@@ -7098,8 +7098,12 @@ impl EntryEmissionDisposition {
 /// they are reported BESIDE a disposition that says which state produced them, never in
 /// place of one.
 #[derive(Debug, Clone)]
-pub struct EntryEmissionRun {
-    pub entry: String,
+pub struct CompileRun {
+    /// WHAT THIS RUN WAS ABOUT. Named `entry: String` until the subject coproduct landed, at
+    /// which point the field silently widened to hold a directory -- a consumer reading it for
+    /// a `PrimaryRoot` compile got a root from a field promising a file. One name, two
+    /// meanings, which is the §3 violation the fork closure exists to remove.
+    pub subject: CompileSubject,
     pub closure_modules: usize,
     pub census_modules: usize,
     pub blocking_diagnostics: usize,
@@ -7111,14 +7115,14 @@ pub struct EntryEmissionRun {
     pub silent_pick: crate::v1_rt::SilentPickTelemetry,
 }
 
-impl EntryEmissionRun {
+impl CompileRun {
     /// The self-describing line both consumers print. One line, one disposition, no
     /// state inferable only from the presence of a neighbour.
     pub fn measurement_line(&self, prefix: &str) -> String {
         format!(
-            "{prefix}: {} entry={} closure={} census={} emitted={} blocking={} advisory={} wall_ms={}",
+            "{prefix}: {} subject={} closure={} census={} emitted={} blocking={} advisory={} wall_ms={}",
             self.disposition.tag(),
-            self.entry,
+            self.subject.receipt(),
             self.closure_modules,
             self.census_modules,
             match &self.disposition {
@@ -7261,13 +7265,13 @@ mod entry_admission_tests {
 }
 
 fn entry_emission_not_executed(
-    subject_label: &str,
+    subject: &CompileSubject,
     started: std::time::Instant,
     earlier_phase: &str,
     cause: String,
 ) -> EntryEmissionRun {
-    EntryEmissionRun {
-        entry: subject_label.to_string(),
+    CompileRun {
+        subject: subject.clone(),
         closure_modules: 0,
         census_modules: 0,
         blocking_diagnostics: 0,
@@ -7321,6 +7325,18 @@ impl CompileSubject {
             CompileSubject::PrimaryRoot(root) => format!("{root} (whole root)"),
         }
     }
+
+    /// THE RECEIPT SAYS WHICH ARM, NOT ONLY WHICH PATH. `subject=src/v2` and
+    /// `subject=primary-root:src/v2` read the same to a human and differently to a reader
+    /// deciding whether a run measured what it was asked for -- an entry named `src/v2` is not
+    /// a thing, but a reader cannot know that from the bare string, and the whole reason this
+    /// field exists is that a wrong-subject run must be visible without reconstructing argv.
+    pub fn receipt(&self) -> String {
+        match self {
+            CompileSubject::Entry(path) => format!("entry:{path}"),
+            CompileSubject::PrimaryRoot(root) => format!("primary-root:{root}"),
+        }
+    }
 }
 
 /// One compile, fully described by its inputs. Held as a struct rather than passed as four
@@ -7335,10 +7351,63 @@ pub struct CompileRequest {
     pub render_target: crate::v1_compiler_artifact::RenderTarget,
 }
 
-/// The result carrier's terminal name. `EntryEmissionRun` is what it was called when `Entry`
-/// was the only subject; the alias is the name it has now that it is not.
-pub type CompileRun = EntryEmissionRun;
-pub type CompileDisposition = EntryEmissionDisposition;
+impl CompileRequest {
+    /// THE SUBJECT AND THE PRECEDENCE ROOT MUST BE THE SAME ROOT, AND THIS REFUSES WHEN THEY
+    /// ARE NOT.
+    ///
+    /// The trap is entirely in argv order and it is invisible from the receipt. The live
+    /// workflow passes `--source-root dag --source-root src/v2`, and the no-entry CLI law is
+    /// `PrimaryRoot(source_roots[0])`, so THAT argv asks for `PrimaryRoot(dag)` -- with
+    /// `src/v2` as a pool. A caller that means "compile v2" and writes the roots in the
+    /// workflow's habitual order gets the other subject, compiles ~2000 different modules, and
+    /// the run reports a completed compile the whole way. Nothing is wrong with any single
+    /// component; the request is simply about a different program than its author believed.
+    ///
+    /// Measured, and this is why it is a refusal rather than a note: the two subjects do not
+    /// merely differ in scope, they differ in RESOLUTION. `dag`-primary refuses on two
+    /// `review_codex` CLI defaults that `src/v2`-primary never reaches, and `src/v2`-primary
+    /// refuses on 36 diagnostics `dag`-primary never sees. A debt ledger bootstrapped from the
+    /// wrong one is not a coarser ledger, it is a ledger about another population.
+    ///
+    /// So the transaction refuses a request whose `PrimaryRoot` is not the precedence root,
+    /// rather than silently honouring the vector. A caller that wants a different primary must
+    /// say so by ordering the roots, which makes the disagreement unwritable instead of
+    /// merely detectable -- and the required phase constructs its typed request in the binary,
+    /// where it is not obliged to inherit the floor's generic argv ordering at all.
+    fn primary_root_agrees_with_precedence(&self) -> Result<(), String> {
+        match &self.subject {
+            CompileSubject::Entry(_) => Ok(()),
+            CompileSubject::PrimaryRoot(root) => match self.source_roots.first() {
+                Some(first) if first == root => Ok(()),
+                Some(first) => Err(format!(
+                    "subject is primary-root:{root} but the first --source-root is {first}, \
+                     which is the root that takes precedence in the module index -- the \
+                     request names one program and would compile another (order the roots so \
+                     {root} comes first, or name {first} as the subject)"
+                )),
+                None => Err(format!(
+                    "subject is primary-root:{root} but no --source-root was supplied, so \
+                     there is no module index to compile it from"
+                )),
+            },
+        }
+    }
+}
+
+/// THE ALIAS DIRECTION IS LOAD-BEARING AND IT WAS BACKWARDS.
+///
+/// It read `pub type CompileRun = EntryEmissionRun`, which makes the generic name an alias of
+/// the entry-named authority -- so the canonical carrier stays the one named for a subject it
+/// no longer describes, and every reader is sent to a type whose name contradicts two of its
+/// three uses. The direction below is the other way: `CompileRun` IS the type, and the
+/// entry-named spellings are the compatibility aliases that disappear with their last caller.
+///
+/// Same reason the run carries `subject` rather than an `entry` field. `entry` silently widened
+/// to hold a root, so a consumer reading `run.entry` for a `PrimaryRoot` compile got a
+/// directory from a field that promises a file -- a name meaning two things, which is the §3
+/// violation the fork closure exists to remove, reintroduced one field down.
+pub type EntryEmissionRun = CompileRun;
+pub type EntryEmissionDisposition = CompileDisposition;
 
 /// THE EMISSION TRANSACTION. One entry, one render target, over `source_roots`.
 ///
@@ -7376,6 +7445,9 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
     let primary_precedence = request.primary_precedence;
     let subject_label = request.subject.label();
     let started = std::time::Instant::now();
+    if let Err(cause) = request.primary_root_agrees_with_precedence() {
+        return entry_emission_not_executed(&request.subject, started, "subject-admission", cause);
+    }
     // ADMISSION FOR A WHOLE-ROOT SUBJECT, ASKED BEFORE ANYTHING IS INDEXED. The host budget
     // was readable here and joined to nothing: a whole-tree run started a resolve it could not
     // hold and was SIGKILLed -- exit 137, no diagnostic, and a harness grepping the captured
@@ -7389,7 +7461,38 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
         if let Some(diagnostic) =
             crate::memory_governor::whole_corpus_compile_refusal_diagnostic(&admission)
         {
-            return entry_emission_not_executed(&subject_label, started, "admission", diagnostic);
+            return entry_emission_not_executed(&request.subject, started, "admission", diagnostic);
+        }
+    }
+    // A PRIMARY ROOT OUTSIDE THE WORKSPACE REFUSES HERE, for the same reason and by the same
+    // predicate as the entry arm below. Measured while exercising the new subject:
+    // `--source-root /tmp/emptyroot` reached `repo_relative_path_normalized` four frames down
+    // and PANICKED -- `rc=101`, no phase, no located cause. The entry arm had carried this
+    // guard since review 55344 and the root arm inherited the panic instead, which is what a
+    // second open-coded pipeline costs: one arm's repair does not reach its twin. Now that both
+    // subjects are arms of one transaction, they share the guard rather than agreeing by
+    // inspection. A root under the workspace that simply holds no module is a DIFFERENT state
+    // and refuses at `subject-discovery` below -- outside-the-repository and empty-of-modules
+    // have different remedies and are not collapsed.
+    if let CompileSubject::PrimaryRoot(root) = &request.subject {
+        let root_abs = if std::path::Path::new(root).is_absolute() {
+            std::path::PathBuf::from(root)
+        } else {
+            process_workspace_root().join(root)
+        };
+        if repo_relative_path(&root_abs).is_err() {
+            return entry_emission_not_executed(
+                &request.subject,
+                started,
+                "root-admission",
+                format!(
+                    "primary source root is outside the workspace root: {} is not under {} \
+                     (--source-root names a path inside the repository; a tree written \
+                     elsewhere cannot be keyed into the module graph)",
+                    root_abs.display(),
+                    process_workspace_root().display()
+                ),
+            );
         }
     }
     let entry_path: &str = match &request.subject {
@@ -7406,7 +7509,7 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
         };
         if !entry_abs.is_file() {
             return entry_emission_not_executed(
-            entry_path,
+            &request.subject,
             started,
             "entry-read",
             format!(
@@ -7453,7 +7556,7 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
         // without saying which root the process resolved.
         if repo_relative_path(&entry_abs).is_err() {
             return entry_emission_not_executed(
-                entry_path,
+                &request.subject,
                 started,
                 "entry-admission",
                 format!(
@@ -7488,7 +7591,7 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
             Err(e) => {
                 let _ = crate::v1_rt::resolution_silent_pick_disable();
                 return entry_emission_not_executed(
-                    &subject_label,
+                    &request.subject,
                     started,
                     "closure-load",
                     format!("reference-derived closure load failed: {e}"),
@@ -7519,7 +7622,7 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
             if entry_sources.is_empty() {
                 let _ = crate::v1_rt::resolution_silent_pick_disable();
                 return entry_emission_not_executed(
-                    &subject_label,
+                    &request.subject,
                     started,
                     "subject-discovery",
                     format!(
@@ -7529,7 +7632,46 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
                 );
             }
             entry_sources.sort_by(|a, b| a.path.cmp(&b.path));
-            resolve_transitively_bfs_legacy(entry_sources, &index.source_files, seen)
+            let import_closure =
+                resolve_transitively_bfs_legacy(entry_sources, &index.source_files, seen);
+            // THEN THE REFERENCE CLOSURE, FOR THE SAME REASON THE ENTRY ARM USES IT.
+            //
+            // The import-edge walk alone was wrong here, and the assumption that made it look
+            // right is worth stating because it is nearly true: when every module under the
+            // root is already an entry, reference derivation can only over-pull WITHIN the
+            // root. That holds inside the root and fails at the POOL boundary. This corpus
+            // resolves most cross-module references with no import line at all, so a module
+            // under the root that names a type or fn in a pool module has NO edge to walk, the
+            // provider stays census-only -- a name for lookup, no definition for emit -- and
+            // the compile refuses with `unresolved type` or `function not found in scope`
+            // against a module that is present and correct.
+            //
+            // Measured on the specimen that produced this fix: compiling `src/v2` with `dag` as
+            // the pool refused with 36 blocking diagnostics, of which 16 were exactly this --
+            // `ContextAccess` and `StringLiteral` in `dag/extdeps/github/expressions.dag`,
+            // `run_bootstrap_witness` in `dag/tools/bootstrap_witness_transport.dag`,
+            // `KvmObservedScreen` in `dag/gunbc/os_install_deduction.dag`, every one of them a
+            // live module the walk could not reach. They are not 16 defects; they are one
+            // closure being derived from the wrong relation.
+            //
+            // `extend_sources_to_both_closure_fixpoint` is the SAME function the entry arm
+            // calls -- bare-reference closure and pool-reference closure iterated to a
+            // fixpoint -- so the two subjects now derive their closures by one relation
+            // instead of two that had to agree by luck. That they did not agree is what this
+            // repair is: DESIGN's namespace Rule-1 reasoning applied to the arm that was left
+            // out of it.
+            match extend_sources_to_both_closure_fixpoint(import_closure, &index) {
+                Ok(closure) => closure,
+                Err(e) => {
+                    let _ = crate::v1_rt::resolution_silent_pick_disable();
+                    return entry_emission_not_executed(
+                        &request.subject,
+                        started,
+                        "closure-load",
+                        format!("reference-derived closure load failed: {e}"),
+                    );
+                }
+            }
         }
     };
     let closure_modules: std::collections::HashSet<String> = closure
@@ -7595,8 +7737,8 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
         },
     };
 
-    EntryEmissionRun {
-        entry: subject_label,
+    CompileRun {
+        subject: request.subject.clone(),
         closure_modules: closure.len(),
         census_modules,
         blocking_diagnostics: blocking,
