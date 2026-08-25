@@ -1,29 +1,38 @@
 module v1.compiler.coercion
 
-fn target_checkpoints(target: RenderTarget) -> List<TypeCheckpoint> {
+
+
+
+
+
+
+
+
+
+fn target_checkpoints(target: v1.compiler.artifact.RenderTarget) -> List<std.coercion.TypeCheckpoint> {
   match target {
-    Rust => rust_type_checkpoints
-    Python => python_type_checkpoints
-    Go => go_type_checkpoints
-    Dag => dag_type_checkpoints
+    Rust => extdeps.languages.rust.types.rust_type_checkpoints
+    Python => extdeps.languages.python.types.python_type_checkpoints
+    Go => extdeps.languages.go.types.go_type_checkpoints
+    Dag => extdeps.languages.dag.types.dag_type_checkpoints
   }
 }
 
-fn target_inhabitants(target: RenderTarget) -> List<InhabitantDecl> {
+fn target_inhabitants(target: v1.compiler.artifact.RenderTarget) -> List<std.coercion.InhabitantDecl> {
   match target {
-    Rust => rust_algebra_inhabitants
-    Python => python_algebra_inhabitants
-    Go => go_algebra_inhabitants
+    Rust => extdeps.languages.rust.types.rust_algebra_inhabitants
+    Python => extdeps.languages.python.types.python_algebra_inhabitants
+    Go => extdeps.languages.go.types.go_algebra_inhabitants
     Dag => []
   }
 }
 
-fn target_callable(target: RenderTarget) -> CallableRepr {
+fn target_callable(target: v1.compiler.artifact.RenderTarget) -> std.coercion.CallableRepr {
   match target {
-    Rust => rust_callable
-    Python => python_callable
-    Go => go_callable
-    Dag => CallableRepr {
+    Rust => extdeps.languages.rust.types.rust_callable
+    Python => extdeps.languages.python.types.python_callable
+    Go => extdeps.languages.go.types.go_callable
+    Dag => std.coercion.CallableRepr {
       template: "fn(\{params\}) -> \{return\}",
       param_separator: ", ",
       return_separator: " -> ",
@@ -32,49 +41,49 @@ fn target_callable(target: RenderTarget) -> CallableRepr {
   }
 }
 
-fn target_optional_template(target: RenderTarget) -> String {
+fn target_optional_template(target: v1.compiler.artifact.RenderTarget) -> String {
   match target {
-    Rust => rust_optional_template
-    Python => python_optional_template
-    Go => go_optional_template
+    Rust => extdeps.languages.rust.types.rust_optional_template
+    Python => extdeps.languages.python.types.python_optional_template
+    Go => extdeps.languages.go.types.go_optional_template
     Dag => "\{0\}?"
   }
 }
 
-fn target_cast_syntax(target: RenderTarget) -> CastSyntax? {
+fn target_cast_syntax(target: v1.compiler.artifact.RenderTarget) -> std.coercion.CastSyntax? {
   match target {
-    Rust => Present { value: rust_cast_syntax }
-    Python => Present { value: python_cast_syntax }
-    Go => Present { value: go_cast_syntax }
+    Rust => Present { value: extdeps.languages.rust.types.rust_cast_syntax }
+    Python => Present { value: extdeps.languages.python.types.python_cast_syntax }
+    Go => Present { value: extdeps.languages.go.types.go_cast_syntax }
     Dag => none
   }
 }
 
-fn can_cast(target: RenderTarget, source_type: String, target_type: String) -> Bool {
+fn can_cast(target: v1.compiler.artifact.RenderTarget, source_type: String, target_type: String) -> Bool {
   match target_cast_syntax(target: target) {
     Present { value: syntax } => syntax.cast_rules |> any(r => r.from_type == source_type && r.to_type == target_type)
     Absent => false
   }
 }
 
-fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> String {
+fn render_cast(expr_str: String, type_str: String, target: v1.compiler.artifact.RenderTarget) -> String {
   let syntax = match target_cast_syntax(target: target) {
     Present { value: s } => s
-    Absent => CastSyntax { template: "\{expr\}", cast_rules: [] }
+    Absent => std.coercion.CastSyntax { template: "\{expr\}", cast_rules: [] }
   }
   replace(replace(syntax.template, "\{expr\}", expr_str), "\{type\}", type_str)
 }
 
-fn decl_identity_file(item: Node) -> String {
+fn decl_identity_file(item: v1.std.core.Node) -> String {
   match item.ident_span {
     Present { value: sp } => sp.file
     Absent => ""
   }
 }
 
-fn type_reference_decl_file(n: Node) -> String {
+fn type_reference_decl_file(n: v1.std.core.Node) -> String {
   match n.inferred {
-    Present { value: Resolved { node: rt } } => decl_identity_file(item: rt)
+    Present { value: v1.std.core.Resolved { node: rt } } => decl_identity_file(item: rt)
     _ => decl_identity_file(item: n)
   }
 }
@@ -183,8 +192,8 @@ fn rust_seed_host_numeric_alias(name: String, decl_file: String) -> String? {
 // here: the earlier per-code boards use incompatible subjects and refs, and cross-code partitioning
 // owns any later census rather than this producer repair.
 fn type_realization_decision(
-  target: RenderTarget, dag_name: String, decl_file: String
-) -> TypeRealizationDecision {
+  target: v1.compiler.artifact.RenderTarget, dag_name: String, decl_file: String
+) -> std.coercion.TypeRealizationDecision {
   if decl_file == "" {
     Refused { cause: "declaration identity unknown: empty decl_file" }
   } else if decl_file_declares_structurally(dag_name: dag_name, decl_file: decl_file) {
@@ -193,9 +202,9 @@ fn type_realization_decision(
     match target_checkpoints(target: target) |> filter(cp => cp.dag_name == dag_name) |> first {
       Present { value: cp } => Realized { checkpoint: cp }
       Absent =>
-        let native = if (target == Rust) { rust_seed_host_numeric_alias(name: dag_name, decl_file: decl_file) } else { none }
+        let native = if (target == v1.compiler.artifact.Rust) { rust_seed_host_numeric_alias(name: dag_name, decl_file: decl_file) } else { none }
         match native {
-          Present { value: host } => Realized { checkpoint: TypeCheckpoint { dag_name: dag_name, target_type: host, grounding_type: host, default_expr: none, is_copy: none, literal_suffix: none } }
+          Present { value: host } => Realized { checkpoint: std.coercion.TypeCheckpoint { dag_name: dag_name, target_type: host, grounding_type: host, default_expr: none, is_copy: none, literal_suffix: none } }
           Absent => Unrealized
         }
     }
@@ -252,7 +261,7 @@ fn type_realization_decision(
 // legitimate steady state for a production call site and lookup_checkpoint's bypass arm deletes,
 // leaving type_realization_decision as the sole authority. Until then this is a declared, bounded
 // narrowing, not a completed supersession.
-fn lookup_checkpoint(target: RenderTarget, dag_name: String, decl_file: String) -> TypeCheckpoint? {
+fn lookup_checkpoint(target: v1.compiler.artifact.RenderTarget, dag_name: String, decl_file: String) -> std.coercion.TypeCheckpoint? {
   if decl_file == "" {
     target_checkpoints(target: target) |> filter(cp => cp.dag_name == dag_name) |> first
   } else {
@@ -266,21 +275,21 @@ fn lookup_checkpoint(target: RenderTarget, dag_name: String, decl_file: String) 
 
 data coerce_primitive_type_dotted_fallback_note: String = "Construction wall for the dotted-render class in TYPE position (sibling of variant_pattern_dotted_qualification_note in v1.compiler.05_emit_rust, which as of 2026-08-21 covers every position that emits a Rust Parent::Variant path, enumerated by producer rather than by position). Every target's checkpoint dag_names are bare (Int, String, ...), so a namespace-QUALIFIED type name (post source_authority, e.g. v2.std.node.Edge) never matches a checkpoint and previously fell through this Absent arm verbatim, dots and all -- not a valid identifier in any target language, a PARSE error masking every later diagnostic in the module. Rendering a type never needs a crate::-qualified path here (this fn is target-agnostic, shared by Rust/Python/Go/Dag, and the existing convention across all of them is a bare type name; qualification, where a target needs it, is a separate import-line-synthesis seam) so the fix is to route the fallback through qualified_last_segment (v1.std.core, the same single authority rust_variant_path reuses) instead of forking a second dotted-name fallback. Every already-bare dag_name renders exactly as before (qualified_last_segment is the identity on an unqualified name)."
 
-fn coerce_primitive_type(target: RenderTarget, dag_name: String, decl_file: String) -> String {
+fn coerce_primitive_type(target: v1.compiler.artifact.RenderTarget, dag_name: String, decl_file: String) -> String {
   match lookup_checkpoint(target: target, dag_name: dag_name, decl_file: decl_file) {
     Present { value: cp } => cp.target_type
-    Absent => qualified_last_segment(name: dag_name)
+    Absent => v1.std.core.qualified_last_segment(name: dag_name)
   }
 }
 
-fn is_copy(target: RenderTarget, dag_name: String, decl_file: String) -> Bool? {
+fn is_copy(target: v1.compiler.artifact.RenderTarget, dag_name: String, decl_file: String) -> Bool? {
   match lookup_checkpoint(target: target, dag_name: dag_name, decl_file: decl_file) {
     Present { value: cp } => cp.is_copy
     Absent => none
   }
 }
 
-fn literal_suffix(target: RenderTarget, dag_name: String, decl_file: String) -> String? {
+fn literal_suffix(target: v1.compiler.artifact.RenderTarget, dag_name: String, decl_file: String) -> String? {
   match lookup_checkpoint(target: target, dag_name: dag_name, decl_file: decl_file) {
     Present { value: cp } => match cp.literal_suffix {
       Present { value: s } => Present { value: s }
@@ -290,12 +299,12 @@ fn literal_suffix(target: RenderTarget, dag_name: String, decl_file: String) -> 
   }
 }
 
-fn lookup_inhabitant(target: RenderTarget, algebra: String) -> InhabitantDecl? {
+fn lookup_inhabitant(target: v1.compiler.artifact.RenderTarget, algebra: String) -> std.coercion.InhabitantDecl? {
   target_inhabitants(target: target) |> filter(inh => inh.algebra == algebra) |> first
 }
 
-fn coerce_container_template(target: RenderTarget, container_name: String) -> String? {
-  match container_template_algebra(name: container_name) {
+fn coerce_container_template(target: v1.compiler.artifact.RenderTarget, container_name: String) -> String? {
+  match std.types.container_template_algebra(name: container_name) {
     Present { value: algebra } => match lookup_inhabitant(target: target, algebra: algebra) {
       Present { value: inh } => Present { value: inh.template }
       Absent => none
@@ -313,9 +322,9 @@ fn apply_inhabitant_template2(template: String, first: String, second: String) -
 }
 
 type CoercionAssertion
-  = CheckpointAssertion { target: RenderTarget, dag_name: String, expected_type: String }
-  | ContainerAssertion { target: RenderTarget, container_name: String, expected_template: String }
-  | CopyAssertion { target: RenderTarget, dag_name: String, expected_copy: Bool }
+  = CheckpointAssertion { target: v1.compiler.artifact.RenderTarget, dag_name: String, expected_type: String }
+  | ContainerAssertion { target: v1.compiler.artifact.RenderTarget, container_name: String, expected_template: String }
+  | CopyAssertion { target: v1.compiler.artifact.RenderTarget, dag_name: String, expected_copy: Bool }
   | TemplateAssertion { template: String, args: List<String>, expected: String }
 
 type CoercionTestEntry {
@@ -323,7 +332,7 @@ type CoercionTestEntry {
   assertions: List<CoercionAssertion>
 }
 
-fn target_label(target: RenderTarget) -> String {
+fn target_label(target: v1.compiler.artifact.RenderTarget) -> String {
   match target {
     Rust => "rust"
     Python => "python"
@@ -332,7 +341,7 @@ fn target_label(target: RenderTarget) -> String {
   }
 }
 
-fn checkpoint_tests(target: RenderTarget) -> List<CoercionTestEntry> {
+fn checkpoint_tests(target: v1.compiler.artifact.RenderTarget) -> List<CoercionTestEntry> {
   let label = target_label(target: target)
   let cps = target_checkpoints(target: target)
   if cps |> count == 0 { [] }
@@ -346,10 +355,10 @@ fn checkpoint_tests(target: RenderTarget) -> List<CoercionTestEntry> {
 }
 
 fn inhabitant_test_names() -> List<String> {
-  canonical_container_names()
+  std.types.canonical_container_names()
 }
 
-fn inhabitant_tests(target: RenderTarget) -> List<CoercionTestEntry> {
+fn inhabitant_tests(target: v1.compiler.artifact.RenderTarget) -> List<CoercionTestEntry> {
   let label = target_label(target: target)
   let assertions = inhabitant_test_names() |> flat_map(name =>
     match coerce_container_template(target: target, container_name: name) {
@@ -366,10 +375,10 @@ fn inhabitant_tests(target: RenderTarget) -> List<CoercionTestEntry> {
 }
 
 fn copy_tests() -> List<CoercionTestEntry> {
-  let cps = target_checkpoints(target: Rust)
+  let cps = target_checkpoints(target: v1.compiler.artifact.Rust)
   let copy_assertions = cps |> flat_map(cp =>
     match cp.is_copy {
-      Present { value: v } => [CopyAssertion { target: Rust, dag_name: cp.dag_name, expected_copy: v }]
+      Present { value: v } => [CopyAssertion { target: v1.compiler.artifact.Rust, dag_name: cp.dag_name, expected_copy: v }]
       Absent => []
     })
   if copy_assertions |> count == 0 { [] }
@@ -381,7 +390,7 @@ fn copy_tests() -> List<CoercionTestEntry> {
   }
 }
 
-fn unique_inhabitants_for_template_tests(inhs: List<InhabitantDecl>) -> List<InhabitantDecl> {
+fn unique_inhabitants_for_template_tests(inhs: List<std.coercion.InhabitantDecl>) -> List<std.coercion.InhabitantDecl> {
   inhs |> fold(init: [], f: fn(acc, inh) {
     if acc |> any(prev => prev.template == inh.template && prev.arity == inh.arity) { acc }
     else { concat(acc, [inh]) }
@@ -389,7 +398,7 @@ fn unique_inhabitants_for_template_tests(inhs: List<InhabitantDecl>) -> List<Inh
 }
 
 fn template_application_tests() -> List<CoercionTestEntry> {
-  let targets = [Rust, Python, Go]
+  let targets = [v1.compiler.artifact.Rust, v1.compiler.artifact.Python, v1.compiler.artifact.Go]
   let assertions = targets |> flat_map(t =>
     let inhs = unique_inhabitants_for_template_tests(inhs: target_inhabitants(target: t))
     let int_target = coerce_primitive_type(target: t, dag_name: "Int", decl_file: "")
@@ -413,12 +422,12 @@ fn template_application_tests() -> List<CoercionTestEntry> {
 
 fn extract_coercion_tests() -> List<CoercionTestEntry> {
   concat(
-    checkpoint_tests(target: Rust),
-    checkpoint_tests(target: Python),
-    checkpoint_tests(target: Go),
-    inhabitant_tests(target: Rust),
-    inhabitant_tests(target: Python),
-    inhabitant_tests(target: Go),
+    checkpoint_tests(target: v1.compiler.artifact.Rust),
+    checkpoint_tests(target: v1.compiler.artifact.Python),
+    checkpoint_tests(target: v1.compiler.artifact.Go),
+    inhabitant_tests(target: v1.compiler.artifact.Rust),
+    inhabitant_tests(target: v1.compiler.artifact.Python),
+    inhabitant_tests(target: v1.compiler.artifact.Go),
     copy_tests(),
     template_application_tests())
 }

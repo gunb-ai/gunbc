@@ -626,7 +626,7 @@ fn ct_type_size_test() -> String {
 }
 
 fn ct_coercion_tests() -> String {
-  let entries = extract_coercion_tests()
+  let entries = v1.compiler.coercion.extract_coercion_tests()
   let test_fns = entries |> map(e => render_coercion_test_rust(entry: e))
   concat(
     "    // =========================================================================\n",
@@ -835,16 +835,16 @@ fn second_or_empty(items: List<String>) -> String {
 
 fn render_coercion_assertion_rust(a: v1.compiler.coercion.CoercionAssertion) -> String {
   match a {
-    CheckpointAssertion { target: t, dag_name: name, expected_type: expected } =>
+    v1.compiler.coercion.CheckpointAssertion { target: t, dag_name: name, expected_type: expected } =>
       concat("        assert_eq!(coerce_primitive_type(", render_target_rust_enum(target: t),
         ", \"", name, "\".into(), \"\".into()), \"", expected, "\");\n")
-    ContainerAssertion { target: t, container_name: name, expected_template: expected } =>
+    v1.compiler.coercion.ContainerAssertion { target: t, container_name: name, expected_template: expected } =>
       concat("        assert_eq!(coerce_container_template(", render_target_rust_enum(target: t),
         ", \"", name, "\".into()), Some(\"", expected, "\".to_string()));\n")
-    CopyAssertion { target: t, dag_name: name, expected_copy: expected } =>
+    v1.compiler.coercion.CopyAssertion { target: t, dag_name: name, expected_copy: expected } =>
       concat("        assert_eq!(is_copy(", render_target_rust_enum(target: t),
         ", \"", name, "\".into(), \"\".into()), Some(", if expected { "true" } else { "false" }, "));\n")
-    TemplateAssertion { template: tmpl, args: arg_list, expected: expected } =>
+    v1.compiler.coercion.TemplateAssertion { template: tmpl, args: arg_list, expected: expected } =>
       if arg_list |> count == 1 {
         let arg0 = first_or_empty(items: arg_list)
         concat("        assert_eq!(apply_inhabitant_template1(\"", tmpl, "\".into(), \"",
@@ -1424,6 +1424,7 @@ fn ct_profile_reconcile_test() -> String {
     "                        typed_path,\n",
     "                        crate::v1_compiler_infer::build_variant_export_surface(\n",
     "                            typed.clone(),\n",
+    "                            variant_surfaces.clone(),\n",
     "                            source_indices.clone(),\n",
     "                        ),\n",
     "                    );\n",
@@ -1445,6 +1446,59 @@ fn ct_profile_reconcile_test() -> String {
 
 fn ct_module_footer() -> String {
   "}\n"
+}
+
+fn ct_unlisted_import_use_witness_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn unlisted_import_use_witness() {\n",
+    "        // Discriminating witness for the selective-import fail-closed mask\n",
+    "        // (resolve_node_bounded masked boundary). module_b references `Widget`\n",
+    "        // without importing it (imports only `Gadget`) -> UnlistedImportUse must\n",
+    "        // be emitted. module_c imports `Widget` -> must NOT be flagged (red control:\n",
+    "        // an inert mask fails the first assert; an over-firing mask fails the second).\n",
+    "        let result = std::thread::Builder::new()\n",
+    "            .stack_size(8 * 1024 * 1024)\n",
+    "            .spawn(|| {\n",
+    "                let module_a = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
+    "                    path: \"module_a.dag\".to_string(),\n",
+    "                    content: \"module module_a\\ntype Widget { x: String }\\ntype Gadget { y: String }\\n\".to_string(),\n",
+    "                });\n",
+    "                let module_b = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
+    "                    path: \"module_b.dag\".to_string(),\n",
+    "                    content: \"module module_b\\nimport module_a { Gadget }\\nfn use_widget(w: Widget) -> Widget { w }\\n\".to_string(),\n",
+    "                });\n",
+    "                let module_c = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
+    "                    path: \"module_c.dag\".to_string(),\n",
+    "                    content: \"module module_c\\nimport module_a { Widget }\\nfn use_widget(w: Widget) -> Widget { w }\\n\".to_string(),\n",
+    "                });\n",
+    "                let result = crate::v1_compiler_compile::compile_sources(\n",
+    "                    std::rc::Rc::new(im::vector![module_a, module_b, module_c]),\n",
+    "                    crate::v1_compiler_artifact::RenderTarget::Rust,\n",
+    "                );\n",
+    "                let unlisted: Vec<_> = result.diagnostics.iter()\n",
+    "                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse { .. }))\n",
+    "                    .collect();\n",
+    "                let widget_in_b = unlisted.iter().any(|e| {\n",
+    "                    e.module_name == \"module_b\"\n",
+    "                        && matches!(&*e.diagnostic, crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse { name, .. } if name == \"Widget\")\n",
+    "                });\n",
+    "                assert!(\n",
+    "                    widget_in_b,\n",
+    "                    \"expected UnlistedImportUse 'Widget' in module_b (uses Widget, imports only Gadget), got: {:?}\",\n",
+    "                    result.diagnostics\n",
+    "                );\n",
+    "                let flagged_in_c = unlisted.iter().any(|e| e.module_name == \"module_c\");\n",
+    "                assert!(\n",
+    "                    !flagged_in_c,\n",
+    "                    \"module_c imports Widget -> must NOT be flagged (mask over-firing), got: {:?}\",\n",
+    "                    unlisted\n",
+    "                );\n",
+    "            })\n",
+    "            .expect(\"failed to spawn thread\")\n",
+    "            .join();\n",
+    "        result.expect(\"unlisted_import_use_witness panicked\");\n",
+    "    }\n\n")
 }
 
 fn ct_sole_constructor_test() -> String {
@@ -2726,6 +2780,7 @@ fn compiler_tests_source() -> String {
     ct_tokenizer_tests(),
     ct_parse_tests(),
     ct_pipeline_test(),
+    ct_unlisted_import_use_witness_test(),
     ct_call_shape_wall_witness_test(),
     ct_call_deficit_red_witness_test(),
     ct_call_shape_duplicate_wall_witness_test(),

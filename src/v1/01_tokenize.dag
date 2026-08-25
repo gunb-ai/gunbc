@@ -14,11 +14,11 @@ fn is_keyword_text(text: String) -> Bool {
 }
 
 data single_punct: Map<String, v1.std.core.TokenShape> = {
-  "(": ShLParen, ")": ShRParen,
-  "[": ShLBracket, "]": ShRBracket,
-  ":": ShColon, ",": ShComma, ".": ShDot,
-  "+": ShPlus, "*": ShStar, "%": ShPercent, "/": ShSlash,
-  "^": ShCaret
+  "(": v1.std.core.ShLParen, ")": v1.std.core.ShRParen,
+  "[": v1.std.core.ShLBracket, "]": v1.std.core.ShRBracket,
+  ":": v1.std.core.ShColon, ",": v1.std.core.ShComma, ".": v1.std.core.ShDot,
+  "+": v1.std.core.ShPlus, "*": v1.std.core.ShStar, "%": v1.std.core.ShPercent, "/": v1.std.core.ShSlash,
+  "^": v1.std.core.ShCaret
 }
 
 type TokenizerState {
@@ -106,9 +106,9 @@ fn tokenize_artifact(source: String, file: String) -> V1LexArtifact {
   let src = SourceRef { file: file, text: source, source_chars: c }
   let initial = TokPos { pos: 0, interp_depth: [] }
   let final_state = tokenize_loop(source: src, tokens: [], annotations: [], pos: initial, fuel: source_len(source: src) + 1)
-  let eof_span = make_file_span(file: src.file, start: final_state.pos, end: final_state.pos)
+  let eof_span = v1.std.core.make_file_span(file: src.file, start: final_state.pos, end: final_state.pos)
   V1LexArtifact {
-    tokens: list_push(final_state.tokens, make_token(text: "", span: eof_span, shape: ShEof)),
+    tokens: list_push(final_state.tokens, make_token(text: "", span: eof_span, shape: v1.std.core.ShEof)),
     annotations: final_state.annotations
   }
 }
@@ -142,7 +142,7 @@ fn preceded_by_blank_line(source: SourceRef, pos: Int) -> Bool {
   if line_start <= 0 {
     false
   } else {
-    advance_line_prefix_indent_only_text(
+    std.source_annotation.advance_line_prefix_indent_only_text(
       previous: true,
       lexeme: source_substring(
         source: source,
@@ -183,7 +183,7 @@ fn preceded_by_annotation_line(source: SourceRef, pos: Int) -> Bool {
 }
 
 fn line_prefix_is_indent_only(source: SourceRef, pos: Int) -> Bool {
-  advance_line_prefix_indent_only_text(
+  std.source_annotation.advance_line_prefix_indent_only_text(
     previous: true,
     lexeme: source_substring(source: source, start: source_line_start(source: source, pos: pos), end: pos)
   )
@@ -195,7 +195,7 @@ fn scan_next_token(source: SourceRef, pos: TokPos) -> ScanStep {
   if ch == 10 {
     return ScannedToken { result: ScanResult {
       pos: pos.pos + 1,
-      token: make_token(text: "\n", span: make_file_span(file: source.file, start: pos.pos, end: pos.pos + 1), shape: ShNewline),
+      token: make_token(text: "\n", span: v1.std.core.make_file_span(file: source.file, start: pos.pos, end: pos.pos + 1), shape: v1.std.core.ShNewline),
       interp_depth: pos.interp_depth
     } }
   }
@@ -209,8 +209,8 @@ fn scan_next_token(source: SourceRef, pos: TokPos) -> ScanStep {
       pos: eol,
       capture: std.source_annotation.UnboundAnnotationCapture {
         lexeme: source_substring(source: source, start: pos.pos, end: eol),
-        origin: make_file_span(file: source.file, start: pos.pos, end: eol),
-        placement: placement_from_line_prefix(indent_only: line_prefix_is_indent_only(source: source, pos: pos.pos)),
+        origin: v1.std.core.make_file_span(file: source.file, start: pos.pos, end: eol),
+        placement: std.source_annotation.placement_from_line_prefix(indent_only: line_prefix_is_indent_only(source: source, pos: pos.pos)),
         preceded_by_blank_line: preceded_by_blank_line(source: source, pos: pos.pos),
         preceded_by_annotation_line: preceded_by_annotation_line(source: source, pos: pos.pos)
       },
@@ -227,7 +227,7 @@ fn scan_next_token(source: SourceRef, pos: TokPos) -> ScanStep {
     } else {
       return ScannedToken { result: ScanResult {
         pos: pos.pos + 1,
-        token: make_token(text: "}", span: make_file_span(file: source.file, start: pos.pos, end: pos.pos + 1), shape: ShRBrace),
+        token: make_token(text: "}", span: v1.std.core.make_file_span(file: source.file, start: pos.pos, end: pos.pos + 1), shape: v1.std.core.ShRBrace),
         interp_depth: replace_last(stack: pos.interp_depth, value: top - 1)
       } }
     }
@@ -258,25 +258,25 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: Int) -> ScanResult {
     source_code_point(source: source, pos: pos.pos + 1)
   } else { 0 }
 
-  if ch == 61 && next_ch == 62 { return v1.compiler.tokenize.emit(pos: pos, shape: ShFatArrow, text: "=>", len: 2, file: source.file) }
-  if ch == 45 && next_ch == 62 { return v1.compiler.tokenize.emit(pos: pos, shape: ShArrow, text: "->", len: 2, file: source.file) }
-  if ch == 61 && next_ch == 61 { return v1.compiler.tokenize.emit(pos: pos, shape: ShEqEq, text: "==", len: 2, file: source.file) }
-  if ch == 33 && next_ch == 61 { return v1.compiler.tokenize.emit(pos: pos, shape: ShNe, text: "!=", len: 2, file: source.file) }
-  if ch == 60 && next_ch == 61 { return v1.compiler.tokenize.emit(pos: pos, shape: ShLe, text: "<=", len: 2, file: source.file) }
-  if ch == 62 && next_ch == 61 { return v1.compiler.tokenize.emit(pos: pos, shape: ShGe, text: ">=", len: 2, file: source.file) }
-  if ch == 38 && next_ch == 38 { return v1.compiler.tokenize.emit(pos: pos, shape: ShAnd, text: "&&", len: 2, file: source.file) }
-  if ch == 124 && next_ch == 124 { return v1.compiler.tokenize.emit(pos: pos, shape: ShOr, text: "||", len: 2, file: source.file) }
-  if ch == 124 && next_ch == 62 { return v1.compiler.tokenize.emit(pos: pos, shape: ShPipeArrow, text: "|>", len: 2, file: source.file) }
-  if ch == 124 { return v1.compiler.tokenize.emit(pos: pos, shape: ShPipe, text: "|", len: 1, file: source.file) }
-  if ch == 63 && next_ch == 63 { return v1.compiler.tokenize.emit(pos: pos, shape: ShNullCoalesce, text: "??", len: 2, file: source.file) }
-  if ch == 46 && next_ch == 46 { return v1.compiler.tokenize.emit(pos: pos, shape: ShDotDot, text: "..", len: 2, file: source.file) }
+  if ch == 61 && next_ch == 62 { return emit(pos: pos, shape: v1.std.core.ShFatArrow, text: "=>", len: 2, file: source.file) }
+  if ch == 45 && next_ch == 62 { return emit(pos: pos, shape: v1.std.core.ShArrow, text: "->", len: 2, file: source.file) }
+  if ch == 61 && next_ch == 61 { return emit(pos: pos, shape: v1.std.core.ShEqEq, text: "==", len: 2, file: source.file) }
+  if ch == 33 && next_ch == 61 { return emit(pos: pos, shape: v1.std.core.ShNe, text: "!=", len: 2, file: source.file) }
+  if ch == 60 && next_ch == 61 { return emit(pos: pos, shape: v1.std.core.ShLe, text: "<=", len: 2, file: source.file) }
+  if ch == 62 && next_ch == 61 { return emit(pos: pos, shape: v1.std.core.ShGe, text: ">=", len: 2, file: source.file) }
+  if ch == 38 && next_ch == 38 { return emit(pos: pos, shape: v1.std.core.ShAnd, text: "&&", len: 2, file: source.file) }
+  if ch == 124 && next_ch == 124 { return emit(pos: pos, shape: v1.std.core.ShOr, text: "||", len: 2, file: source.file) }
+  if ch == 124 && next_ch == 62 { return emit(pos: pos, shape: v1.std.core.ShPipeArrow, text: "|>", len: 2, file: source.file) }
+  if ch == 124 { return emit(pos: pos, shape: v1.std.core.ShPipe, text: "|", len: 1, file: source.file) }
+  if ch == 63 && next_ch == 63 { return emit(pos: pos, shape: v1.std.core.ShNullCoalesce, text: "??", len: 2, file: source.file) }
+  if ch == 46 && next_ch == 46 { return emit(pos: pos, shape: v1.std.core.ShDotDot, text: "..", len: 2, file: source.file) }
 
-  if ch == 61 { return v1.compiler.tokenize.emit(pos: pos, shape: ShEq, text: "=", len: 1, file: source.file) }
-  if ch == 60 { return v1.compiler.tokenize.emit(pos: pos, shape: ShLt, text: "<", len: 1, file: source.file) }
-  if ch == 62 { return v1.compiler.tokenize.emit(pos: pos, shape: ShGt, text: ">", len: 1, file: source.file) }
-  if ch == 45 { return v1.compiler.tokenize.emit(pos: pos, shape: ShMinus, text: "-", len: 1, file: source.file) }
-  if ch == 33 { return v1.compiler.tokenize.emit(pos: pos, shape: ShBang, text: "!", len: 1, file: source.file) }
-  if ch == 63 { return v1.compiler.tokenize.emit(pos: pos, shape: ShQuestion, text: "?", len: 1, file: source.file) }
+  if ch == 61 { return emit(pos: pos, shape: v1.std.core.ShEq, text: "=", len: 1, file: source.file) }
+  if ch == 60 { return emit(pos: pos, shape: v1.std.core.ShLt, text: "<", len: 1, file: source.file) }
+  if ch == 62 { return emit(pos: pos, shape: v1.std.core.ShGt, text: ">", len: 1, file: source.file) }
+  if ch == 45 { return emit(pos: pos, shape: v1.std.core.ShMinus, text: "-", len: 1, file: source.file) }
+  if ch == 33 { return emit(pos: pos, shape: v1.std.core.ShBang, text: "!", len: 1, file: source.file) }
+  if ch == 63 { return emit(pos: pos, shape: v1.std.core.ShQuestion, text: "?", len: 1, file: source.file) }
 
   if ch == 123 {
     let new_depth = if count(pos.interp_depth) > 0 {
@@ -284,14 +284,14 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: Int) -> ScanResult {
     } else {
       pos.interp_depth
     }
-    let tok = make_token(text: "{", span: make_file_span(file: source.file, start: pos.pos, end: pos.pos + 1), shape: ShLBrace)
+    let tok = make_token(text: "{", span: v1.std.core.make_file_span(file: source.file, start: pos.pos, end: pos.pos + 1), shape: v1.std.core.ShLBrace)
     return ScanResult {
       pos: pos.pos + 1, token: tok, interp_depth: new_depth
     }
   }
 
   if ch == 125 {
-    let tok = make_token(text: "}", span: make_file_span(file: source.file, start: pos.pos, end: pos.pos + 1), shape: ShRBrace)
+    let tok = make_token(text: "}", span: v1.std.core.make_file_span(file: source.file, start: pos.pos, end: pos.pos + 1), shape: v1.std.core.ShRBrace)
     return ScanResult {
       pos: pos.pos + 1, token: tok, interp_depth: pos.interp_depth
     }
@@ -299,13 +299,13 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: Int) -> ScanResult {
 
   let ch_text = source_char(source: source, pos: pos.pos)
   match lookup(single_punct, key: ch_text) {
-    Present { value: sh } => v1.compiler.tokenize.emit(pos: pos, shape: sh, text: ch_text, len: 1, file: source.file)
-    Absent => v1.compiler.tokenize.emit(pos: pos, shape: ShUnknown, text: ch_text, len: 1, file: source.file)
+    Present { value: sh } => emit(pos: pos, shape: sh, text: ch_text, len: 1, file: source.file)
+    Absent => emit(pos: pos, shape: v1.std.core.ShUnknown, text: ch_text, len: 1, file: source.file)
   }
 }
 
 fn emit(pos: TokPos, shape: v1.std.core.TokenShape, text: String, len: Int, file: String) -> ScanResult {
-  let token = make_token(text: text, span: make_file_span(file: file, start: pos.pos, end: pos.pos + len), shape: shape)
+  let token = make_token(text: text, span: v1.std.core.make_file_span(file: file, start: pos.pos, end: pos.pos + len), shape: shape)
   ScanResult {
     pos: pos.pos + len,
     token: token,
@@ -316,10 +316,10 @@ fn emit(pos: TokPos, shape: v1.std.core.TokenShape, text: String, len: Int, file
 fn scan_ident(source: SourceRef, pos: TokPos) -> ScanResult {
   let end = source_scan_while(source: source, start: pos.pos, pred: is_ident_char)
   let text = source_substring(source: source, start: pos.pos, end: end)
-  let shape = if is_reserved_emit_sentinel(text: text) { ShUnknown }
-    else if is_keyword_text(text: text) { ShKeyword }
-    else { ShIdent }
-  let token = make_token(text: text, span: make_file_span(file: source.file, start: pos.pos, end: end), shape: shape)
+  let shape = if is_reserved_emit_sentinel(text: text) { v1.std.core.ShUnknown }
+    else if is_keyword_text(text: text) { v1.std.core.ShKeyword }
+    else { v1.std.core.ShIdent }
+  let token = make_token(text: text, span: v1.std.core.make_file_span(file: source.file, start: pos.pos, end: end), shape: shape)
   ScanResult { pos: end, token: token, interp_depth: pos.interp_depth }
 }
 
@@ -328,16 +328,16 @@ fn scan_number(source: SourceRef, pos: TokPos) -> ScanResult {
   if int_end + 1 < source_len(source: source) && source_code_point(source: source, pos: int_end) == 46 && is_digit(ch: source_code_point(source: source, pos: int_end + 1)) {
     let frac_end = source_scan_while(source: source, start: int_end + 1, pred: is_digit)
     let text = source_substring(source: source, start: pos.pos, end: frac_end)
-    let token = make_token(text: text, span: make_file_span(file: source.file, start: pos.pos, end: frac_end), shape: ShLitFloat)
+    let token = make_token(text: text, span: v1.std.core.make_file_span(file: source.file, start: pos.pos, end: frac_end), shape: v1.std.core.ShLitFloat)
     return ScanResult { pos: frac_end, token: token, interp_depth: pos.interp_depth }
   }
   let text = source_substring(source: source, start: pos.pos, end: int_end)
   let parsed = parse_int(s: text)
   let shape = match parsed {
-    Present { value: _ } => ShLitInt
-    Absent => ShUnknown
+    Present { value: _ } => v1.std.core.ShLitInt
+    Absent => v1.std.core.ShUnknown
   }
-  let token = make_token(text: text, span: make_file_span(file: source.file, start: pos.pos, end: int_end), shape: shape)
+  let token = make_token(text: text, span: v1.std.core.make_file_span(file: source.file, start: pos.pos, end: int_end), shape: shape)
   ScanResult { pos: int_end, token: token, interp_depth: pos.interp_depth }
 }
 
@@ -362,7 +362,7 @@ fn make_processed_string_token(
       make_token(
         text: chars_to_string(chars: content, start: 0, end: count(content)),
         span: span,
-        shape: ShUnknown
+        shape: v1.std.core.ShUnknown
       )
   }
 }
@@ -375,8 +375,8 @@ fn scan_string(source: SourceRef, pos: TokPos) -> ScanResult {
     ClosedString { content, end_pos } => {
       let token = make_processed_string_token(
         content: content,
-        span: make_file_span(file: source.file, start: span_start, end: end_pos + 1),
-        accepted_shape: ShLitStr
+        span: v1.std.core.make_file_span(file: source.file, start: span_start, end: end_pos + 1),
+        accepted_shape: v1.std.core.ShLitStr
       )
       ScanResult {
         pos: end_pos + 1, token: token,
@@ -386,8 +386,8 @@ fn scan_string(source: SourceRef, pos: TokPos) -> ScanResult {
     InterpolationStart { content, end_pos } => {
       let token = make_processed_string_token(
         content: content,
-        span: make_file_span(file: source.file, start: span_start, end: end_pos + 1),
-        accepted_shape: ShStrBegin
+        span: v1.std.core.make_file_span(file: source.file, start: span_start, end: end_pos + 1),
+        accepted_shape: v1.std.core.ShStrBegin
       )
       ScanResult {
         pos: end_pos + 1,
@@ -398,8 +398,8 @@ fn scan_string(source: SourceRef, pos: TokPos) -> ScanResult {
     UnterminatedString { content, end_pos } => {
       let token = make_processed_string_token(
         content: content,
-        span: make_file_span(file: source.file, start: span_start, end: end_pos),
-        accepted_shape: ShUnknown
+        span: v1.std.core.make_file_span(file: source.file, start: span_start, end: end_pos),
+        accepted_shape: v1.std.core.ShUnknown
       )
       ScanResult {
         pos: end_pos, token: token,
@@ -415,8 +415,8 @@ fn scan_str_cont(source: SourceRef, pos: TokPos, span_start: Int) -> ScanResult 
     ClosedString { content, end_pos } => {
       let token = make_processed_string_token(
         content: content,
-        span: make_file_span(file: source.file, start: span_start, end: end_pos + 1),
-        accepted_shape: ShStrEnd
+        span: v1.std.core.make_file_span(file: source.file, start: span_start, end: end_pos + 1),
+        accepted_shape: v1.std.core.ShStrEnd
       )
       ScanResult {
         pos: end_pos + 1, token: token,
@@ -426,8 +426,8 @@ fn scan_str_cont(source: SourceRef, pos: TokPos, span_start: Int) -> ScanResult 
     InterpolationStart { content, end_pos } => {
       let token = make_processed_string_token(
         content: content,
-        span: make_file_span(file: source.file, start: span_start, end: end_pos + 1),
-        accepted_shape: ShStrMid
+        span: v1.std.core.make_file_span(file: source.file, start: span_start, end: end_pos + 1),
+        accepted_shape: v1.std.core.ShStrMid
       )
       ScanResult {
         pos: end_pos + 1,
@@ -438,8 +438,8 @@ fn scan_str_cont(source: SourceRef, pos: TokPos, span_start: Int) -> ScanResult 
     UnterminatedString { content, end_pos } => {
       let token = make_processed_string_token(
         content: content,
-        span: make_file_span(file: source.file, start: span_start, end: end_pos),
-        accepted_shape: ShUnknown
+        span: v1.std.core.make_file_span(file: source.file, start: span_start, end: end_pos),
+        accepted_shape: v1.std.core.ShUnknown
       )
       ScanResult {
         pos: end_pos, token: token,
@@ -687,7 +687,7 @@ fn sentinel_suffix_matches(text: String, suffix: String, pos: Int, sfx_len: Int,
 }
 
 fn is_reserved_emit_sentinel(text: String) -> Bool {
-  let rule = canonical_emoji_char_escape()
+  let rule = v1.compiler.languages.canonical_emoji_char_escape()
   let pfx = rule.prefix
   let sfx = rule.suffix
   let pfx_len = string_length(s: pfx)

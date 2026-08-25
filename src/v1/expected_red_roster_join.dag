@@ -1,5 +1,6 @@
 module v1.compiler.expected_red_roster_join
 
+
 // Identity-grain join of the floor's expected-red roster against witness verdicts.
 //
 // Every enrolled identity receives exactly one of three outcomes:

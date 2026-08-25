@@ -14,14 +14,14 @@ fn stage0_member_entry(spec: v1.compiler.stage0_crates.Stage0CrateSpec) -> Strin
 }
 
 fn stage0_workspace_member_region() -> String {
-  match stage0_crate_plan_outcome() {
-    Stage0CratePlanOk { plan: plan } =>
+  match v1.compiler.stage0_crates.stage0_crate_plan_outcome() {
+    v1.compiler.stage0_crates.Stage0CratePlanOk { plan: plan } =>
       plan.crates |> map(stage0_member_entry) |> join(separator: "\n")
-    Stage0CratePlanRefused { cause: cause } =>
+    v1.compiler.stage0_crates.Stage0CratePlanRefused { cause: cause } =>
       concat(
         "    # REFUSED: ",
-        stage0_crate_boundary_emit_refusal_message(
-          cause: stage0_map_package_dir_refusal_to_boundary(cause: cause)
+        v1.compiler.stage0_crates.stage0_crate_boundary_emit_refusal_message(
+          cause: v1.compiler.stage0_crates.stage0_map_package_dir_refusal_to_boundary(cause: cause)
         )
       )
   }

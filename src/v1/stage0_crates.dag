@@ -141,7 +141,7 @@ type Stage0CrateBoundaryEmitOutcome
   | Stage0CrateBoundaryEmitRefused { cause: Stage0CrateBoundaryEmitRefusalCause }
 
 fn stage0_lookup_module_owner_package_name(module_basename: String) -> Stage0ModuleOwnerLookup {
-  let matches = generated_partition_crate_rows
+  let matches = gunbc.stage0_crate_partition_generated.generated_partition_crate_rows
     |> filter(row =>
       stage0_partition_row_is_module_bearing(row: row)
         && (row.modules |> any(m => m == module_basename))
@@ -159,7 +159,7 @@ fn stage0_lookup_module_owner_package_name(module_basename: String) -> Stage0Mod
 }
 
 fn stage0_lookup_package_crate_dir(package_name: String) -> Stage0PackageCrateDirLookup {
-  let matches = generated_partition_crate_rows
+  let matches = gunbc.stage0_crate_partition_generated.generated_partition_crate_rows
     |> filter(row => row.package_name == package_name)
   let crate_dir = matches
     |> fold(init: "", f: fn(acc, row) { if acc == "" { row.crate_dir } else { acc } })
@@ -255,7 +255,7 @@ fn stage0_reexport_path_dependencies_outcome(
 }
 
 fn stage0_emit_shell_path_dependencies() -> List<extdeps.cargo.CargoDependency> {
-  generated_partition_crate_rows
+  gunbc.stage0_crate_partition_generated.generated_partition_crate_rows
     |> filter(row => stage0_partition_row_is_module_bearing(row: row))
     |> map(row =>
       extdeps.cargo.CargoDependency {
@@ -337,9 +337,9 @@ fn stage0_partition_row_to_spec_outcome(
 
 fn render_stage0_crate_dep(dep: extdeps.cargo.CargoDependency) -> String {
   match dep.source {
-    RegistryDep { version: version, features: features } =>
-      emit_cargo_dep(name: dep.name, version: version, features: features)
-    LocalPathDep { path: path } =>
+    extdeps.cargo.RegistryDep { version: version, features: features } =>
+      v1.compiler.emit_rust.emit_cargo_dep(name: dep.name, version: version, features: features)
+    extdeps.cargo.LocalPathDep { path: path } =>
       concat(dep.name, " = { path = \"", path, "\" }\n")
   }
 }
@@ -368,7 +368,7 @@ fn render_stage0_crate_features_section(features: List<extdeps.cargo.CargoFeatur
 fn emit_stage0_crate_manifest(spec: Stage0CrateSpec) -> v1.std.core.TextFile {
   let deps = spec.dependencies |> map(render_stage0_crate_dep) |> join(separator: "")
   let content = concat(
-    render_cargo_package_header_prefix(name: spec.package_name),
+    extdeps.cargo_version.render_cargo_package_header_prefix(name: spec.package_name),
     "\nedition = \"2021\"",
     render_stage0_crate_features_section(features: spec.features),
     "\n\n[dependencies]\n",
@@ -395,7 +395,7 @@ fn render_stage0_foundation_lib(spec: Stage0CrateSpec) -> String {
     includes
   )
   if spec.carries_non_empty_wrappers {
-    concat(head, "\n\n", emit_non_empty_wrappers(), "\n")
+    concat(head, "\n\n", v1.compiler.emit_rust.emit_non_empty_wrappers(), "\n")
   } else {
     concat(head, "\n")
   }
@@ -500,7 +500,7 @@ fn emit_stage0_crate_lib_outcome(spec: Stage0CrateSpec) -> Stage0CrateLibEmitOut
 }
 
 fn stage0_crate_plan_outcome() -> Stage0CratePlanOutcome {
-  generated_partition_crate_rows
+  gunbc.stage0_crate_partition_generated.generated_partition_crate_rows
     |> fold(init: Stage0CratePlanOk { plan: Stage0CratePlan { crates: [] } }, f: fn(acc, row) {
       match acc {
         Stage0CratePlanRefused { cause: cause } =>
@@ -557,4 +557,4 @@ fn stage0_crate_boundary_emit_outcome() -> Stage0CrateBoundaryEmitOutcome {
   }
 }
 
-data stage0_crate_plan_list_wrapper_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_crate_plan — deleted; receipt paths must call stage0_crate_plan_outcome (§5 empty-plan wrapper collapsed Stage0CratePlanRefused to crates:[]). workspace_members and regen_stage0 consume outcome surfaces only.")
+data stage0_crate_plan_list_wrapper_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: stage0_crate_plan — deleted; receipt paths must call stage0_crate_plan_outcome (§5 empty-plan wrapper collapsed Stage0CratePlanRefused to crates:[]). workspace_members and regen_stage0 consume outcome surfaces only.")

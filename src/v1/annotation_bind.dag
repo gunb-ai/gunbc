@@ -6,13 +6,13 @@ module v1.compiler.annotation_bind
 
 
 
-data annotation_render_consumer_scope_note: String = "WHAT CONSUMES THIS TODAY, stated because the honest answer is `no production renderer yet` and the reason is measured rather than assumed. There is no authored-.dag-source renderer in this tree to wire the canonical form into: `gunbc compile --target dag` emits dag-artifact.json, a JSON graph dump, and extdeps.languages.dag.emit is a keyword-and-template vocabulary consumed by the shared emitter fold rather than a module that writes .dag text. Threading the annotation graph to such a renderer additionally requires crossing the erasure boundary property 4 pinned, where ResolvedPipelineResult and emit_resolved_for_target carry no authored graph at all.\n\nSo this module supplies the canonical spelling and the round-trip evidence, and the production consumer is EXPLICITLY OPEN rather than quietly implied. That distinction is the whole point of saying it here: a helper with no consumer that is described as an emitter would read as delivered.\n\nWHAT THE OPEN RENDERER DOES AND DOES NOT BLOCK, corrected 2026-08-05 by operator ruling because an earlier cut of this note asserted the wrong dependency. The renderer is required before any AUTOMATED SOURCE RECONSTRUCTION OR FORMATTING may rewrite .dag source — a machine that regenerates a file from the semantic graph must be able to write prose back, or it silently drops it. It does NOT block migrating hand-authored .dag files. Their committed bytes are the authority, no process in this tree reconstructs and overwrites them from the semantic graph, and M1A already captures, attaches, admits, and retains their annotations. An author replacing a `data ..._note: String` row with authored `//` text is editing the authority directly; there is no rendering path in between to drop anything. The earlier claim — that a rendering path could still drop newly modeled prose — reasoned about a path that does not exist, and an absent hypothetical cannot rewrite a committed file.\n\nDISSOLVE-ON: an authored-source renderer exists and carries the annotation graph; then the round-trip property re-executes through it end to end and this note goes away with the scaffolding it describes."
+data annotation_render_consumer_scope_note: std.types.String = "WHAT CONSUMES THIS TODAY, stated because the honest answer is `no production renderer yet` and the reason is measured rather than assumed. There is no authored-.dag-source renderer in this tree to wire the canonical form into: `gunbc compile --target dag` emits dag-artifact.json, a JSON graph dump, and extdeps.languages.dag.emit is a keyword-and-template vocabulary consumed by the shared emitter fold rather than a module that writes .dag text. Threading the annotation graph to such a renderer additionally requires crossing the erasure boundary property 4 pinned, where ResolvedPipelineResult and emit_resolved_for_target carry no authored graph at all.\n\nSo this module supplies the canonical spelling and the round-trip evidence, and the production consumer is EXPLICITLY OPEN rather than quietly implied. That distinction is the whole point of saying it here: a helper with no consumer that is described as an emitter would read as delivered.\n\nWHAT THE OPEN RENDERER DOES AND DOES NOT BLOCK, corrected 2026-08-05 by operator ruling because an earlier cut of this note asserted the wrong dependency. The renderer is required before any AUTOMATED SOURCE RECONSTRUCTION OR FORMATTING may rewrite .dag source — a machine that regenerates a file from the semantic graph must be able to write prose back, or it silently drops it. It does NOT block migrating hand-authored .dag files. Their committed bytes are the authority, no process in this tree reconstructs and overwrites them from the semantic graph, and M1A already captures, attaches, admits, and retains their annotations. An author replacing a `data ..._note: String` row with authored `//` text is editing the authority directly; there is no rendering path in between to drop anything. The earlier claim — that a rendering path could still drop newly modeled prose — reasoned about a path that does not exist, and an absent hypothetical cannot rewrite a committed file.\n\nDISSOLVE-ON: an authored-source renderer exists and carries the annotation graph; then the round-trip property re-executes through it end to end and this note goes away with the scaffolding it describes."
 // The roster comes from the occurrence INDEX, not from OccurrenceTransport.declarations, and the difference is measured rather than assumed. Parsing `module p.q` with one data row, one type, and one fn yields four declaration-role rows — the module, the fn, and two lexical binders inside the fn body — while the index carries fifteen entries including `alpha` at ancestor depth 1 and `Thing` at ancestor depth 1.
 
 // So `data` and `type` module items DO receive occurrence identities; they are absent only from the declaration-role projection, because parsed_occurrence_role_for_node classifies a node carrying both a body and a type annotation as unclassified. Rostering from `declarations` would therefore have made exactly the population this feature exists to serve — the `_note` rows that hold this repository's prose — permanently unattachable, and it would have looked like a narrow first cut rather than a defect. That role-projection gap is real and pre-existing; it is NOT repaired here, because widening a declaration role changes what binding and resolution see, which is a semantic change this lane has no business making.
 
 // Ancestor depth is the module-item test: depth 0 is the module itself, depth 1 its direct members, depth 2 and beyond nested structure.
-fn entry_ancestor_depth(entry: std.occurrence_identity.OccurrenceIndexEntry) -> Int {
+fn entry_ancestor_depth(entry: std.occurrence_identity.OccurrenceIndexEntry) -> std.types.Int {
   count(entry.containment.ancestors)
 }
 
@@ -28,9 +28,9 @@ fn module_item_entries(transport: std.occurrence_identity.OccurrenceTransport) -
 
 fn next_module_item_start(
   items: List<std.occurrence_identity.OccurrenceIndexEntry>,
-  after: Int,
-  fallback: Int
-) -> Int {
+  after: std.types.Int,
+  fallback: std.types.Int
+) -> std.types.Int {
   fold(
     items,
     init: fallback,
@@ -42,10 +42,10 @@ fn next_module_item_start(
 
 fn module_item_extent_end(
   entries: List<std.occurrence_identity.OccurrenceIndexEntry>,
-  start: Int,
-  limit: Int,
-  own_end: Int
-) -> Int {
+  start: std.types.Int,
+  limit: std.types.Int,
+  own_end: std.types.Int
+) -> std.types.Int {
   fold(
     entries,
     init: own_end,
@@ -62,10 +62,10 @@ fn module_item_extent_end(
 
 // The module itself is rostered with its raw span and no derived extent. Its true extent is the whole file, which would swallow every capture; a degenerate span makes the two cases that matter come out right, since a comment above `module` still finds the module as its nearest following subject and a comment on the line immediately after `module` also attaches to the module when no blank line separates them (std.source_annotation `module_header_gap_subject`).
 
-data subject_extent_derivation_note: String = "DISSOLVE-ON: index entries expose source order, or a declaration carries its own extent; then the successor is a neighbor lookup and the extent is read rather than derived."
+data subject_extent_derivation_note: std.types.String = "DISSOLVE-ON: index entries expose source order, or a declaration carries its own extent; then the successor is a neighbor lookup and the extent is read rather than derived."
 fn annotation_subjects(
   transport: std.occurrence_identity.OccurrenceTransport,
-  source_length: Int
+  source_length: std.types.Int
 ) -> List<std.source_annotation.AnnotationSubject> {
   let entries = transport.index.entries
   let items = module_item_entries(transport: transport)
@@ -101,7 +101,7 @@ fn annotation_subjects(
 // The single place `//` is removed, and it is here rather than in the tokenizer on purpose. A capture carries RAW syntax so the lexer reports what it saw; normalization into durable text is a language fact, and .dag's fact is that the delimiter is two slashes optionally followed by one space.
 
 // Exactly one space is consumed, never a run, because `//   indented` is authored indentation the writer chose and swallowing it would silently rewrite the prose. A lexeme not starting with the delimiter passes through unchanged rather than being truncated by a fixed offset — that arm is unreachable through the .dag annotation rule today, and the alternative is a normalizer that corrupts content when it is wrong about its input.
-fn strip_line_comment_delimiter(lexeme: String) -> String {
+fn strip_line_comment_delimiter(lexeme: std.types.String) -> std.types.String {
   let len = string_length(s: lexeme)
   if starts_with(s: lexeme, prefix: "// ") {
     substring(s: lexeme, start: 3, end: len)
@@ -119,13 +119,13 @@ fn strip_line_comment_delimiter(lexeme: String) -> String {
 // The form is a single `//` followed by one space, then the line's normalized text. The empty line renders as a bare `//` with NO trailing space, and that is a correctness case rather than tidiness: `// ` and `//` both normalize to the empty string, so either round-trips, but a trailing space is the character formatters and editors strip on save — so choosing the spelling that survives contact with a text editor is choosing the one that keeps the fixed point stable. An empty line inside a block is reachable: an author writing a bare `//` between two commented lines produces one block whose middle line is empty.
 
 // Text is NOT re-indented, re-wrapped, or trimmed. `//   indented` normalizes to two spaces plus `indented` and renders back to `//   indented`, because the authored indentation is content — the strip step consumes exactly one space for exactly this reason, and a renderer that trimmed would delete authored structure on the first round trip.
-fn render_line_comment_delimiter(line: String) -> String {
+fn render_line_comment_delimiter(line: std.types.String) -> std.types.String {
   if string_length(s: line) == 0 { "//" } else { concat("// ", line) }
 }
 
 
 // One row becomes one BLOCK: its embedded line breaks become adjacent annotation lines with nothing between them. Adjacency is what the grouping fold reads back as `one block`, so the joiner here and the blank-line rule below are the two halves of one law stated in std.source_annotation.
-fn render_annotation_block(text: String) -> String {
+fn render_annotation_block(text: std.types.String) -> std.types.String {
   split(s: text, delimiter: "\n")
     |> map(line => render_line_comment_delimiter(line: line))
     |> join(separator: "\n")
@@ -142,9 +142,9 @@ fn render_annotation_block(text: String) -> String {
 fn render_subject_annotation_blocks(
   graph: std.source_annotation.SourceAnnotationGraph,
   subject: std.occurrence_identity.OccurrenceId
-) -> String? {
+) -> std.types.String? {
   let texts = fold(
-    source_annotation_graph_rows(graph: graph),
+    std.source_annotation.source_annotation_graph_rows(graph: graph),
     init: [],
     f: (acc, row) => if row.subject.value == subject.value { list_push(acc, row.text) } else { acc }
   )
@@ -169,7 +169,7 @@ fn eligible_key_entries(transport: std.occurrence_identity.OccurrenceTransport) 
   )
 }
 
-fn authored_name_among(entries: List<std.occurrence_identity.OccurrenceIndexEntry>, id: std.occurrence_identity.OccurrenceId) -> String? {
+fn authored_name_among(entries: List<std.occurrence_identity.OccurrenceIndexEntry>, id: std.occurrence_identity.OccurrenceId) -> std.types.String? {
   fold(
     entries,
     init: none,
@@ -182,7 +182,7 @@ fn authored_name_among(entries: List<std.occurrence_identity.OccurrenceIndexEntr
   )
 }
 
-fn eligible_name_count(entries: List<std.occurrence_identity.OccurrenceIndexEntry>, name: String) -> Int {
+fn eligible_name_count(entries: List<std.occurrence_identity.OccurrenceIndexEntry>, name: std.types.String) -> std.types.Int {
   fold(
     entries,
     init: 0,
@@ -190,7 +190,7 @@ fn eligible_name_count(entries: List<std.occurrence_identity.OccurrenceIndexEntr
   )
 }
 
-fn eligible_names_unique(entries: List<std.occurrence_identity.OccurrenceIndexEntry>) -> Bool {
+fn eligible_names_unique(entries: List<std.occurrence_identity.OccurrenceIndexEntry>) -> std.types.Bool {
   fold(
     entries,
     init: true,
@@ -219,7 +219,7 @@ fn keyed_annotation_rows(
     none
   } else {
     fold(
-      source_annotation_graph_rows(graph: graph),
+      std.source_annotation.source_annotation_graph_rows(graph: graph),
       init: Present { value: empty_keyed_rows() },
       f: (acc, row) =>
         match acc {
@@ -252,9 +252,9 @@ fn normalize_dag_annotation(capture: std.source_annotation.UnboundAnnotationCapt
 fn bind_annotations(
   transport: std.occurrence_identity.OccurrenceTransport,
   captures: List<std.source_annotation.UnboundAnnotationCapture>,
-  source_length: Int
+  source_length: std.types.Int
 ) -> std.source_annotation.AnnotationAttachmentResult {
-  attach_annotations(
+  std.source_annotation.attach_annotations(
     captures: fold(
       captures,
       init: [],
@@ -276,18 +276,18 @@ type AdmittedSourceAnnotations {
 fn admit_source_annotations(
   transport: std.occurrence_identity.OccurrenceTransport,
   captures: List<std.source_annotation.UnboundAnnotationCapture>,
-  source_length: Int
+  source_length: std.types.Int
 ) -> AdmittedSourceAnnotations {
-  match admit_annotations(
+  match std.source_annotation.admit_annotations(
     result: bind_annotations(transport: transport, captures: captures, source_length: source_length)
   ) {
-    AnnotationsAdmitted { graph: graph } =>
+    std.source_annotation.AnnotationsAdmitted { graph: graph } =>
       AdmittedSourceAnnotations { graph: graph, diagnostics: [] }
-    AnnotationsRefused { refusals: refusals } =>
+    std.source_annotation.AnnotationsRefused { refusals: refusals } =>
       AdmittedSourceAnnotations {
-        graph: source_annotation_graph_empty(),
+        graph: std.source_annotation.source_annotation_graph_empty(),
         diagnostics: fold(
-          non_empty_refusals_all(refusals: refusals),
+          std.source_annotation.non_empty_refusals_all(refusals: refusals),
           init: [],
           f: (acc, refusal) => list_push(acc, v1.std.core.SourceAnnotationRefused { refusal: refusal })
         ),

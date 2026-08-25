@@ -12,17 +12,17 @@ type NormalizeResult {
 fn check_bare_containers(n: v1.std.core.Node, module_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<v1.std.core.ErrorNode> {
   let has_structure = match n.body { Present { value: _ } => true  Absent => false } || (n.uses |> count) > 0 || (n.properties |> count) > 0
   let is_expr = match n.expr_data { NoExprData => false  _ => true }
-  let nname = authored_name_at(source_indices: source_indices, node: n)
-  let self_diags = if is_expr { [] } else { match authored_container_spelling_verdict(node: n, source_indices: source_indices) {
-    ContainerSpellingDeclared { arity: expected } =>
-      if (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == NoConnective && !has_structure {
-        [make_error_node(
+  let nname = v1.std.core.authored_name_at(source_indices: source_indices, node: n)
+  let self_diags = if is_expr { [] } else { match v1.std.core.authored_container_spelling_verdict(node: n, source_indices: source_indices) {
+    v1.std.core.ContainerSpellingDeclared { arity: expected } =>
+      if (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == v1.std.core.NoConnective && !has_structure {
+        [v1.std.core.make_error_node(
           diagnostic: v1.std.core.ArityMismatch { name: nname, expected: expected, got: 0, span: n.span },
           module_name: module_name
         )]
       } else { [] }
-    ContainerSpellingUnknown { container_leaf: leaf } =>
-      [make_error_node(
+    v1.std.core.ContainerSpellingUnknown { container_leaf: leaf } =>
+      [v1.std.core.make_error_node(
         diagnostic: v1.std.core.ContainerSpellingUnrecognized { name: nname, container_leaf: leaf, span: n.span },
         module_name: module_name
       )]
@@ -43,7 +43,7 @@ fn check_bare_containers(n: v1.std.core.Node, module_name: String, source_indice
   } else {
     match n.inferred {
       Present { value: inf } => match inf {
-        Resolved { node: rn } => check_bare_containers(n: rn, module_name: module_name, source_indices: source_indices)
+        v1.std.core.Resolved { node: rn } => check_bare_containers(n: rn, module_name: module_name, source_indices: source_indices)
         _ => []
       }
       Absent => []
@@ -55,8 +55,8 @@ fn check_bare_containers(n: v1.std.core.Node, module_name: String, source_indice
 }
 
 fn normalize_module_diagnostics(m: v1.compiler.resolve.ResolvedModule, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<v1.std.core.ErrorNode> {
-  let items = module_items(n: m.module)
-  flat_map(items, item => check_bare_containers(n: item, module_name: authored_name_at(source_indices: source_indices, node: m.module), source_indices: source_indices))
+  let items = v1.std.core.module_items(n: m.module)
+  flat_map(items, item => check_bare_containers(n: item, module_name: v1.std.core.authored_name_at(source_indices: source_indices, node: m.module), source_indices: source_indices))
 }
 
 fn normalize_graph(graph: v1.compiler.resolve.ModuleGraph, source_indices: Map<String, v1.std.core.NewlineIndex>) -> NormalizeResult {

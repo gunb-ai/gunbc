@@ -5,7 +5,7 @@ module v1.compiler.infer_access
 
 
 type AccessCheckResultNode {
-  inferred: InferredNode?
+  inferred: v1.std.core.InferredNode?
   diagnostics: List<v1.std.core.ErrorNode>
 }
 
@@ -15,7 +15,7 @@ type KeyedCollectionParts {
 }
 
 fn access_error(message: String, span: std.types.SourceSpan, module_name: String) -> v1.std.core.ErrorNode {
-  make_error_node(diagnostic: v1.std.core.InternalError { message: message, span: span }, module_name: module_name)
+  v1.std.core.make_error_node(diagnostic: v1.std.core.InternalError { message: message, span: span }, module_name: module_name)
 }
 
 fn access_result(inferred: v1.std.core.Node, diagnostics: List<v1.std.core.ErrorNode>, span: std.types.SourceSpan, fallback_message: String) -> AccessCheckResultNode {
@@ -26,7 +26,7 @@ fn access_result(inferred: v1.std.core.Node, diagnostics: List<v1.std.core.Error
     }
   } else {
     let message = match diagnostics |> first {
-      Present { value: diag } => diagnostic_to_message(d: diag.diagnostic)
+      Present { value: diag } => v1.std.core.diagnostic_to_message(d: diag.diagnostic)
       Absent => fallback_message
     }
     AccessCheckResultNode {
@@ -37,11 +37,11 @@ fn access_result(inferred: v1.std.core.Node, diagnostics: List<v1.std.core.Error
 }
 
 fn keyed_collection_parts(n: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> KeyedCollectionParts? {
-  if node_is_keyed_collection(n: n, source_indices: source_indices) && n.children |> count >= 2 {
+  if v1.compiler.infer_types.node_is_keyed_collection(n: n, source_indices: source_indices) && n.children |> count >= 2 {
     match n.children |> first {
       Present { value: key_child } =>
         match n.children |> skip(1) |> first {
-          Present { value: value_child } => Present { value: KeyedCollectionParts { key_type: resolved_type(n: key_child), value_type: resolved_type(n: value_child) } }
+          Present { value: value_child } => Present { value: KeyedCollectionParts { key_type: v1.compiler.infer_types.resolved_type(n: key_child), value_type: v1.compiler.infer_types.resolved_type(n: value_child) } }
           Absent => none
         }
       Absent => none
@@ -52,52 +52,52 @@ fn keyed_collection_parts(n: v1.std.core.Node, source_indices: Map<String, v1.st
 }
 
 fn check_index_access_node(base_type: v1.std.core.Node, index_type: v1.std.core.Node, span: std.types.SourceSpan, module_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> AccessCheckResultNode {
-  let normed = normalize_access_type_node(n: base_type)
-  let normed_index = normalize_access_type_node(n: index_type)
-  let base_is_string = node_type_equals(left: normed, right: string_type, source_indices: source_indices)
-  let index_is_int = node_type_equals(left: normed_index, right: int_type, source_indices: source_indices)
+  let normed = v1.compiler.infer_types.normalize_access_type_node(n: base_type)
+  let normed_index = v1.compiler.infer_types.normalize_access_type_node(n: index_type)
+  let base_is_string = v1.compiler.infer_types.node_type_equals(left: normed, right: v1.std.core.string_type, source_indices: source_indices)
+  let index_is_int = v1.compiler.infer_types.node_type_equals(left: normed_index, right: v1.std.core.int_type, source_indices: source_indices)
   if base_is_string {
     let diags = if index_is_int { [] }
     else { [access_error(message: "string index requires an Int index", span: span, module_name: module_name)] }
-    access_result(inferred: string_type, diagnostics: diags, span: span, fallback_message: "invalid string index access")
+    access_result(inferred: v1.std.core.string_type, diagnostics: diags, span: span, fallback_message: "invalid string index access")
   } else {
     match keyed_collection_parts(n: normed, source_indices: source_indices) {
       Present { value: parts } =>
-        let key_diags = if node_type_equals(left: parts.key_type, right: normed_index, source_indices: source_indices) { [] }
+        let key_diags = if v1.compiler.infer_types.node_type_equals(left: parts.key_type, right: normed_index, source_indices: source_indices) { [] }
         else { [access_error(message: "keyed collection index key type does not match the collection key type", span: span, module_name: module_name)] }
-        access_result(inferred: with_optional_cardinality(n: parts.value_type), diagnostics: key_diags, span: span, fallback_message: "invalid keyed collection index access")
+        access_result(inferred: v1.std.core.with_optional_cardinality(n: parts.value_type), diagnostics: key_diags, span: span, fallback_message: "invalid keyed collection index access")
       Absent =>
-        if node_is_keyed_collection(n: normed, source_indices: source_indices) {
+        if v1.compiler.infer_types.node_is_keyed_collection(n: normed, source_indices: source_indices) {
           let malformed_diags = [access_error(message: "malformed keyed collection type in index access", span: span, module_name: module_name)]
-          access_result(inferred: unit_type, diagnostics: malformed_diags, span: span, fallback_message: "malformed keyed collection type in index access")
-        } else if is_ordered_element_collection(name: authored_name_at(source_indices: source_indices, node: normed)) && node_is_element_collection(n: normed, source_indices: source_indices) && index_is_int {
-          let elem = for_each_element_type_node(n: normed, source_indices: source_indices)
-          access_result(inferred: with_optional_cardinality(n: elem), diagnostics: [], span: span, fallback_message: "list index access")
+          access_result(inferred: v1.std.core.unit_type, diagnostics: malformed_diags, span: span, fallback_message: "malformed keyed collection type in index access")
+        } else if std.types.is_ordered_element_collection(name: v1.std.core.authored_name_at(source_indices: source_indices, node: normed)) && v1.compiler.infer_types.node_is_element_collection(n: normed, source_indices: source_indices) && index_is_int {
+          let elem = v1.compiler.infer_types.for_each_element_type_node(n: normed, source_indices: source_indices)
+          access_result(inferred: v1.std.core.with_optional_cardinality(n: elem), diagnostics: [], span: span, fallback_message: "list index access")
         } else {
           let diags = [access_error(message: "indexing is only supported for String, keyed collection, and list values", span: span, module_name: module_name)]
-          access_result(inferred: unit_type, diagnostics: diags, span: span, fallback_message: "invalid index access")
+          access_result(inferred: v1.std.core.unit_type, diagnostics: diags, span: span, fallback_message: "invalid index access")
         }
     }
   }
 }
 
 fn check_slice_access_node(base_type: v1.std.core.Node, start_type: v1.std.core.Node, end_type: v1.std.core.Node, span: std.types.SourceSpan, module_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> AccessCheckResultNode {
-  let normed_base = normalize_access_type_node(n: base_type)
-  let base_is_string = node_type_equals(left: normed_base, right: string_type, source_indices: source_indices)
-  let base_is_list = is_ordered_element_collection(name: authored_name_at(source_indices: source_indices, node: normed_base))
-    && node_is_element_collection(n: normed_base, source_indices: source_indices)
+  let normed_base = v1.compiler.infer_types.normalize_access_type_node(n: base_type)
+  let base_is_string = v1.compiler.infer_types.node_type_equals(left: normed_base, right: v1.std.core.string_type, source_indices: source_indices)
+  let base_is_list = std.types.is_ordered_element_collection(name: v1.std.core.authored_name_at(source_indices: source_indices, node: normed_base))
+    && v1.compiler.infer_types.node_is_element_collection(n: normed_base, source_indices: source_indices)
   let base_diags = if base_is_string || base_is_list { [] }
   else { [access_error(message: "slice is only supported for String and list values", span: span, module_name: module_name)] }
-  let normed_start = normalize_access_type_node(n: start_type)
-  let start_diags = if node_type_equals(left: normed_start, right: int_type, source_indices: source_indices) { [] }
+  let normed_start = v1.compiler.infer_types.normalize_access_type_node(n: start_type)
+  let start_diags = if v1.compiler.infer_types.node_type_equals(left: normed_start, right: v1.std.core.int_type, source_indices: source_indices) { [] }
   else { [access_error(message: "slice start requires an Int index", span: span, module_name: module_name)] }
-  let normed_end = normalize_access_type_node(n: end_type)
-  let end_diags = if node_type_equals(left: normed_end, right: int_type, source_indices: source_indices) { [] }
+  let normed_end = v1.compiler.infer_types.normalize_access_type_node(n: end_type)
+  let end_diags = if v1.compiler.infer_types.node_type_equals(left: normed_end, right: v1.std.core.int_type, source_indices: source_indices) { [] }
   else { [access_error(message: "slice end requires an Int index", span: span, module_name: module_name)] }
   let all_diags = concat(base_diags, start_diags, end_diags)
-  let slice_result_type = if base_is_string { string_type }
+  let slice_result_type = if base_is_string { v1.std.core.string_type }
   else if base_is_list { normed_base }
-  else { string_type }
+  else { v1.std.core.string_type }
   access_result(
     inferred: slice_result_type,
     diagnostics: all_diags,

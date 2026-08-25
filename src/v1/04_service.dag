@@ -23,11 +23,11 @@ type ServiceMethodResult {
 
 fn is_typed_service_call_receiver(receiver: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   match receiver.expr_data {
-    ExprFieldAccess { summary: _ } =>
-      let f = field_access_field_at(texpr: receiver, source_indices: source_indices)
-      let b = field_access_base(texpr: receiver)
+    v1.std.core.ExprFieldAccess { summary: _ } =>
+      let f = v1.std.core.field_access_field_at(texpr: receiver, source_indices: source_indices)
+      let b = v1.std.core.field_access_base(texpr: receiver)
       match b.expr_data {
-        ExprVar { binding_kind: _ } => {
+        v1.std.core.ExprVar { binding_kind: _ } => {
           match f |> chars |> first {
             Present { value: ch } => ch >= 65 && ch <= 90
             Absent => false
@@ -41,12 +41,12 @@ fn is_typed_service_call_receiver(receiver: v1.std.core.Node, source_indices: Ma
 
 fn extract_typed_service_name(receiver: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String? {
   match receiver.expr_data {
-    ExprFieldAccess { summary: _ } =>
-      let f = field_access_field_at(texpr: receiver, source_indices: source_indices)
-      let b = field_access_base(texpr: receiver)
+    v1.std.core.ExprFieldAccess { summary: _ } =>
+      let f = v1.std.core.field_access_field_at(texpr: receiver, source_indices: source_indices)
+      let b = v1.std.core.field_access_base(texpr: receiver)
       match b.expr_data {
-        ExprVar { binding_kind: _ } =>
-          let ns = expr_var_name_at(texpr: b, source_indices: source_indices)
+        v1.std.core.ExprVar { binding_kind: _ } =>
+          let ns = v1.std.core.expr_var_name_at(texpr: b, source_indices: source_indices)
           Present { value: concat(ns, ".", f) }
         _ => none
       }
@@ -61,12 +61,12 @@ fn collect_typed_service_calls(texpr: v1.std.core.Node, source_indices: Map<Stri
 
 fn collect_typed_service_calls_into(texpr: v1.std.core.Node, acc: UniqueAccum, source_indices: Map<String, v1.std.core.NewlineIndex>) -> UniqueAccum {
   let this_acc = match texpr.expr_data {
-    ExprMethodCall { method_semantics: _ } =>
-      let r = method_receiver(texpr: texpr)
+    v1.std.core.ExprMethodCall { method_semantics: _ } =>
+      let r = v1.std.core.method_receiver(texpr: texpr)
       if is_typed_service_call_receiver(receiver: r, source_indices: source_indices) {
         match extract_typed_service_name(receiver: r, source_indices: source_indices) {
           Present { value: service_name } =>
-            if emit_map_has(m: acc.seen, key: service_name) { acc }
+            if v1.compiler.infer_types.emit_map_has(m: acc.seen, key: service_name) { acc }
             else { UniqueAccum { seen: map_insert(acc.seen, service_name, true), result: list_push(acc.result, service_name) } }
           Absent => acc
         }
@@ -81,9 +81,9 @@ fn collect_typed_service_calls_into(texpr: v1.std.core.Node, acc: UniqueAccum, s
 
 fn collect_called_func_names_into(texpr: v1.std.core.Node, acc: UniqueAccum, source_indices: Map<String, v1.std.core.NewlineIndex>) -> UniqueAccum {
   let this_acc = match texpr.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
-      let f = expr_call_func_at(texpr: texpr, source_indices: source_indices)
-      if emit_map_has(m: acc.seen, key: f) { acc }
+    v1.std.core.ExprCall { call_semantics: _, descent_evidence: _ } =>
+      let f = v1.std.core.expr_call_func_at(texpr: texpr, source_indices: source_indices)
+      if v1.compiler.infer_types.emit_map_has(m: acc.seen, key: f) { acc }
       else { UniqueAccum { seen: map_insert(acc.seen, f, true), result: list_push(acc.result, f) } }
     _ => acc
   }
@@ -120,7 +120,7 @@ type ModuleCallees {
 }
 
 fn item_callees_for(m: v1.compiler.infer_items.TypedModule, item: v1.std.core.Node) -> ItemCallees {
-  let item_name = authored_name_at(source_indices: m.type_env.source_indices, node: item)
+  let item_name = v1.std.core.authored_name_at(source_indices: m.type_env.source_indices, node: item)
   let has_no_body = item.body == none
   if has_no_body {
     ItemCallees { item_name: item_name, has_body: false, called: [] }
@@ -197,31 +197,31 @@ fn expand_transitive_services(modules: List<v1.compiler.infer_items.TypedModule>
 }
 
 fn check_service_field_access_node(base_type: v1.std.core.Node, field: String, service_registry: Map<String, List<OpEntry>>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.Node? {
-  if base_type.connective == NoConnective && base_type.children |> count == 0 {
-    let path = concat(authored_name_at(source_indices: source_indices, node: base_type), ".", field)
+  if base_type.connective == v1.std.core.NoConnective && base_type.children |> count == 0 {
+    let path = concat(v1.std.core.authored_name_at(source_indices: source_indices, node: base_type), ".", field)
     match map_get(service_registry, path) {
-      Present { value: _ } => Present { value: nominal_type_ref(name: path) }
+      Present { value: _ } => Present { value: v1.compiler.infer_types.nominal_type_ref(name: path) }
       Absent => none
     }
   } else { none }
 }
 
 fn check_service_method_call_node(receiver_type: v1.std.core.Node, method: String, service_registry: Map<String, List<OpEntry>>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> ServiceMethodResult? {
-  if receiver_type.connective == NoConnective && receiver_type.children |> count == 0 {
-    match map_get(service_registry, authored_name_at(source_indices: source_indices, node: receiver_type)) {
+  if receiver_type.connective == v1.std.core.NoConnective && receiver_type.children |> count == 0 {
+    match map_get(service_registry, v1.std.core.authored_name_at(source_indices: source_indices, node: receiver_type)) {
       Present { value: ops } =>
         let matching = ops |> filter(op => op.name == method)
         match matching |> first {
           Present { value: op } =>
             if op.outputs |> count == 0 {
-              Present { value: ServiceMethodResult { result_type: unit_type, op_params: op.params } }
+              Present { value: ServiceMethodResult { result_type: v1.std.core.unit_type, op_params: op.params } }
             } else {
               Present { value: ServiceMethodResult {
                 result_type: v1.std.core.Node {
-                  name: "", span: no_span(), ident_span: none,
-                  children: map(op.outputs, f => v1.std.core.Node { name: f.name, span: f.span, ident_span: f.ident_span, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.Resolved { node: param_node_type_expr(n: f) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }),
-                  connective: Conj,
-                  params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+                  name: "", span: v1.std.core.no_span(), ident_span: none,
+                  children: map(op.outputs, f => v1.std.core.Node { name: f.name, span: f.span, ident_span: f.ident_span, children: [], connective: v1.std.core.NoConnective, params: [], inferred: Present { value: v1.std.core.Resolved { node: v1.std.core.param_node_type_expr(n: f) } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }),
+                  connective: v1.std.core.Conj,
+                  params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData
                 },
                 op_params: op.params
               } }
@@ -234,5 +234,5 @@ fn check_service_method_call_node(receiver_type: v1.std.core.Node, method: Strin
 }
 
 fn service_op_entry(child: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> OpEntry {
-  OpEntry { name: authored_name_at(source_indices: source_indices, node: child), outputs: inferred_to_outputs(inferred: child.inferred, span: child.span, source_indices: source_indices), params: child.params }
+  OpEntry { name: v1.std.core.authored_name_at(source_indices: source_indices, node: child), outputs: v1.compiler.infer_items.inferred_to_outputs(inferred: child.inferred, span: child.span, source_indices: source_indices), params: child.params }
 }

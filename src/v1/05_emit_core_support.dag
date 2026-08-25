@@ -7,6 +7,7 @@ module v1.compiler.emit_core_support
 
 
 
+
 type EmitResult {
   files: List<v1.std.core.TextFile>
   diagnostics: List<v1.std.core.ErrorNode>
@@ -44,7 +45,7 @@ fn make_indent(level: Int) -> String {
 
 fn unique_strings(items: List<String>) -> List<String> {
   let result = items |> fold(init: v1.compiler.infer_service.UniqueAccum { seen: empty_map(), result: [] }, f: fn(acc, item) {
-    if emit_map_has(m: acc.seen, key: item) { acc }
+    if v1.compiler.infer_types.emit_map_has(m: acc.seen, key: item) { acc }
     else { v1.compiler.infer_service.UniqueAccum { seen: map_insert(acc.seen, item, true), result: list_push(acc.result, item) } }
   })
   result.result
@@ -96,7 +97,7 @@ fn to_snake(name: String) -> String {
 
 fn to_screaming_snake(name: String) -> String {
   let snake = to_snake(name: name)
-  snake |> chars |> map(ch => v1.compiler.emit_core_support.to_upper_char(ch: ch)) |> join(separator: "")
+  snake |> chars |> map(ch => to_upper_char(ch: ch)) |> join(separator: "")
 }
 
 fn is_upper(ch: Int) -> Bool {
@@ -125,7 +126,7 @@ fn to_upper_char(ch: Int) -> String {
 
 fn sanitize_service_name(name: String) -> String {
   let parts = name |> split(delimiter: ".")
-  let pascal_parts = parts |> map(p => v1.compiler.emit_core_support.capitalize_first(s: p))
+  let pascal_parts = parts |> map(p => capitalize_first(s: p))
   pascal_parts |> join(separator: "")
 }
 
@@ -136,7 +137,7 @@ fn capitalize_first(s: String) -> String {
   } else {
     chars_list |> enumerate |> map(pair =>
       if pair.first == 0 {
-        v1.compiler.emit_core_support.to_upper_char(ch: pair.second)
+        to_upper_char(ch: pair.second)
       } else {
         from_code_point(cp: pair.second)
       }
@@ -151,12 +152,12 @@ fn service_var_name(service_name: String) -> String {
 fn to_pascal(name: String) -> String {
   let snake = to_snake(name: name)
   let parts = snake |> split(delimiter: "_")
-  let pascal_parts = parts |> map(p => v1.compiler.emit_core_support.capitalize_first(s: p))
+  let pascal_parts = parts |> map(p => capitalize_first(s: p))
   pascal_parts |> join(separator: "")
 }
 
 fn test_function_name(projection: TestProjection, target: v1.compiler.artifact.RenderTarget) -> String {
-  let conventions = test_conventions_for_target(target: target)
+  let conventions = v1.compiler.languages.test_conventions_for_target(target: target)
   let formatted = match conventions.name_style {
     SnakeCaseTestNames => concat(
       to_snake(name: sanitize_service_name(name: projection.service_name)),
@@ -213,7 +214,7 @@ fn apply_named_template_nested(template: String, bindings: Map<String, String>, 
 }
 
 fn language_spec(target: v1.compiler.artifact.RenderTarget) -> v1.compiler.languages.LanguageSpec {
-  language_spec_for_target(target: target)
+  v1.compiler.languages.language_spec_for_target(target: target)
 }
 
 data escape_string_literal_control_chars_note: String = "TWO defects, one in each half of the CR step. The DELIMITER used to be \"\\r\", but this language's tokenizer has no \\r escape (its table is \\\" \\\\ \\n \\t \\{ \\} and \\xHH), so that delimiter was the two characters backslash and r, not a carriage return: carriage returns have passed through unescaped into every emitted target for as long as the function has existed, dead in practice only because no corpus string carried one. The first that did turned it into a hard emit failure. The REPLACEMENT was then briefly \\r and \\0, which is a second, subtler version of the same mistake: this function is TARGET-INDEPENDENT — emit_string_literal invokes it for Rust, Dag, Go and Python alike, and never sees a RenderTarget — so a Rust-shaped escape is only correct for one of the four projections, and \\r emitted into a Dag literal reproduces the exact backslash-r bug the delimiter half just fixed (review 2026-07-30). The spelling is therefore \\x0d and \\x00, the hex form all four target grammars accept, and the acceptance is a round trip through every target rather than a Rust regen fixed point, which proves only the Rust projection. Recorded rather than quietly respelled because the class is the point: a target-specific escape inside a target-independent function is invisible until a projection other than the one under test carries the character."
@@ -244,14 +245,14 @@ fn extract_test_projections(typed: v1.compiler.infer_items.ResolvedGraph) -> Lis
       |> filter(item => is_service_item(item: item))
       |> flat_map(item =>
         item.children
-          |> filter(c => c.properties |> any(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_indices: tm.type_env.source_indices))))
+          |> filter(c => c.properties |> any(p => has_mock_prefix(name: v1.std.core.field_init_node_name_at(n: p, source_indices: tm.type_env.source_indices))))
           |> map(c => TestProjection {
-            module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module),
-            service_name: authored_name_at(source_indices: tm.type_env.source_indices, node: item),
-            operation_name: authored_name_at(source_indices: tm.type_env.source_indices, node: c),
-            inferred: resolved_type(n: c),
+            module_name: v1.std.core.authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module),
+            service_name: v1.std.core.authored_name_at(source_indices: tm.type_env.source_indices, node: item),
+            operation_name: v1.std.core.authored_name_at(source_indices: tm.type_env.source_indices, node: c),
+            inferred: v1.compiler.infer_types.resolved_type(n: c),
             params: c.params,
-            mock_field_inits: c.properties |> filter(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_indices: tm.type_env.source_indices))),
+            mock_field_inits: c.properties |> filter(p => has_mock_prefix(name: v1.std.core.field_init_node_name_at(n: p, source_indices: tm.type_env.source_indices))),
             source_indices: tm.type_env.source_indices,
             type_env: tm.type_env
           })
@@ -260,7 +261,7 @@ fn extract_test_projections(typed: v1.compiler.infer_items.ResolvedGraph) -> Lis
 }
 
 fn is_type_alias_return_node(n: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
-  v1.std.core.qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n)) != "Unit"
+  v1.std.core.authored_name_at(source_indices: source_indices, node: n) != "Unit"
 }
 
 fn is_service_item(item: v1.std.core.Node) -> Bool {
@@ -268,19 +269,19 @@ fn is_service_item(item: v1.std.core.Node) -> Bool {
 }
 
 fn is_type_def_item(item: v1.std.core.Node) -> Bool {
-  item.connective != NoConnective && item.transport == none
+  item.connective != v1.std.core.NoConnective && item.transport == none
 }
 
 fn is_bare_leaf_item(item: v1.std.core.Node) -> Bool {
-  item.connective == NoConnective && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0
+  item.connective == v1.std.core.NoConnective && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0
 }
 
 fn is_type_alias_item(item: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
-  is_bare_leaf_item(item: item) && is_type_alias_return_node(n: resolved_type(n: item), source_indices: source_indices)
+  is_bare_leaf_item(item: item) && is_type_alias_return_node(n: v1.compiler.infer_types.resolved_type(n: item), source_indices: source_indices)
 }
 
 fn is_type_decl_item(item: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
-  (is_bare_leaf_item(item: item) && !is_type_alias_return_node(n: resolved_type(n: item), source_indices: source_indices))
+  (is_bare_leaf_item(item: item) && !is_type_alias_return_node(n: v1.compiler.infer_types.resolved_type(n: item), source_indices: source_indices))
   || (item.params |> count > 0 && item.body == none && item.transport == none && item.children |> count == 0)
 }
 

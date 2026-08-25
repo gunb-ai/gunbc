@@ -42,7 +42,7 @@ fn frontend_phase_receipt(frontend: v1.compiler.compile.FrontendResult) -> Front
 // never has to assert that resolve-and-beyond did not run (§5: construction
 // over validation).
 fn observe_ordinary_frontend(sources: List<v1.compiler.compile.SourceFile>) -> OrdinaryFrontendObservation {
-  let frontend = front_end_sources(sources: sources)
+  let frontend = v1.compiler.compile.front_end_sources(sources: sources)
   OrdinaryFrontendObservation {
     subject: sources,
     occurrence_transport: frontend.occurrence_transport,

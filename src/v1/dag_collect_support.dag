@@ -17,11 +17,11 @@ type DagCollectAcc {
   collision_errors: List<v1.std.core.ErrorNode>
 }
 
-fn dag_collect_slot_seq(slots: Map<String, v1.compiler.dag_collect_support.DagCollectSlot>) -> Int {
+fn dag_collect_slot_seq(slots: Map<String, DagCollectSlot>) -> Int {
   slots |> count
 }
 
-fn dag_collect_pack_slots(slots: Map<String, v1.compiler.dag_collect_support.DagCollectSlot>, collision_errors: List<v1.std.core.ErrorNode>) -> v1.compiler.dag_collect_support.DagCollectAcc {
+fn dag_collect_pack_slots(slots: Map<String, DagCollectSlot>, collision_errors: List<v1.std.core.ErrorNode>) -> DagCollectAcc {
   let ordered_slots = slots |> map_values |> sort_by(s => s.seq)
   let order = ordered_slots |> map(s => s.node)
   let seen = ordered_slots |> fold(init: empty_map(), f: (acc, s) => map_insert(acc, s.key, s.fp))
@@ -32,12 +32,12 @@ fn json_quote(s: String) -> String {
   concat("\"", v1.compiler.emit_core_support.escape_json_string(s: s), "\"")
 }
 
-fn inferred_fingerprint(value: InferredNode?) -> String {
+fn inferred_fingerprint(value: v1.std.core.InferredNode?) -> String {
   match value {
     Absent => "none"
     Present { value: v1.std.core.Resolved { node: _ } } => "Resolved"
-    Present { value: TypeVariable { id } } => concat("TypeVariable:", id)
-    Present { value: CompilerError { message: m } } => concat("CompilerError:", m)
+    Present { value: v1.std.core.TypeVariable { id } } => concat("TypeVariable:", id)
+    Present { value: v1.std.core.CompilerError { message: m } } => concat("CompilerError:", m)
   }
 }
 
@@ -104,26 +104,26 @@ fn dag_node_surface_leaf_mix(node: v1.std.core.Node) -> String {
 
 fn literal_value_fingerprint(value: std.syntax.LiteralValue) -> String {
   match value {
-    LitStr { value: v } => concat("LitStr:", v)
-    LitInt { value: v } => concat("LitInt:", to_string(value: v))
-    LitFloat { value: v } => concat("LitFloat:", v)
-    LitBool { value: v } => concat("LitBool:", to_string(value: v))
+    std.syntax.LitStr { value: v } => concat("LitStr:", v)
+    std.syntax.LitInt { value: v } => concat("LitInt:", to_string(value: v))
+    std.syntax.LitFloat { value: v } => concat("LitFloat:", v)
+    std.syntax.LitBool { value: v } => concat("LitBool:", to_string(value: v))
     LitNull => "LitNull"
-    LitSymbol { value: v } => concat("LitSymbol:", v)
+    std.syntax.LitSymbol { value: v } => concat("LitSymbol:", v)
   }
 }
 
 // match_pattern is a SubValueField (v1.std.core node_field_roles) carrying the
-// match-arm/field-binding semantics; the pattern's own v1.std.core.Node subtrees
+// match-arm/field-binding semantics; the pattern's own Node subtrees
 // (Bind.declaration, VariantPattern.field_bindings) must be folded in
 // recursively or two arms/bindings differing only by pattern collapse to the
 // same fingerprint.
-fn match_pattern_fingerprint_rec(pattern: MatchPattern?) -> String {
+fn match_pattern_fingerprint_rec(pattern: v1.std.core.MatchPattern?) -> String {
   match pattern {
     Absent => atom_identity_hash("^dag_collect_match_pattern_absent")
     Present { value: v1.std.core.Bind { declaration: d } } =>
       hash_combine(atom_identity_hash("Bind"), dag_node_surface_fingerprint_rec(node: d))
-    Present { value: LitPattern { value: v } } =>
+    Present { value: v1.std.core.LitPattern { value: v } } =>
       atom_identity_hash(concat("LitPattern:", literal_value_fingerprint(value: v)))
     Present { value: v1.std.core.VariantPattern { name: n, parent_enum: pe, field_bindings: fbs } } =>
       let base = atom_identity_hash(concat(
@@ -155,14 +155,14 @@ fn dag_node_surface_fingerprint_memo(node: v1.std.core.Node) -> String {
   dag_node_surface_fingerprint(node: node)
 }
 
-fn dag_node_key_collision_error(key: String, span: std.types.SourceSpan) -> v1.std.core.ErrorNode {
+fn dag_node_key_collision_error(key: String, span: v1.std.core.SourceSpan) -> v1.std.core.ErrorNode {
   let synthetic = span.start == 0 && span.end == 0
   let detail = if synthetic {
     " (synthetic 0..0 span; provisional key cannot alias distinct scaffold nodes)"
   } else {
     ""
   }
-  make_error_node(
+  v1.std.core.make_error_node(
     diagnostic: v1.std.core.InternalError {
       message: concat("dag artifact: distinct nodes share identity key ", json_quote(s: key), detail),
       span: span

@@ -88,7 +88,7 @@ fn extract_func_entries(typed: v1.compiler.infer_items.ResolvedGraph) -> List<v1
     |> flat_map(m =>
       m.items |> filter(item => item.body != Absent) |> map(item =>
         v1.compiler.complexity.FuncEntry {
-          name: authored_name_at(source_indices: m.type_env.source_indices, node: item),
+          name: v1.std.core.authored_name_at(source_indices: m.type_env.source_indices, node: item),
           body: item.body.value,
           params: item.params,
           span: item.span,
@@ -104,7 +104,7 @@ fn build_recursion_context(typed: v1.compiler.infer_items.ResolvedGraph) -> v1.c
 
 fn module_ownership_proofs(m: v1.compiler.infer_items.TypedModule) -> List<v1.compiler.ownership.OwnershipProof> {
   m.items |> filter(item => item.body != Absent) |> map(item =>
-    analyze_ownership(func_name: authored_name_at(source_indices: m.type_env.source_indices, node: item), params: item.params, body: item.body.value, si: m.type_env.source_indices)
+    v1.compiler.ownership.analyze_ownership(func_name: v1.std.core.authored_name_at(source_indices: m.type_env.source_indices, node: item), params: item.params, body: item.body.value, si: m.type_env.source_indices)
   )
 }
 
@@ -118,8 +118,8 @@ fn ownership_diagnostics(proofs: List<v1.compiler.ownership.OwnershipProof>) -> 
   proofs |> flat_map(proof =>
     proof.decisions |> flat_map(decision =>
       match decision {
-        SharedError { binding: binding, consumer_count: count, sites: sites } =>
-          [make_error_node(diagnostic: v1.std.core.OwnershipViolation { binding: binding, fn_name: proof.func_name, consumers: count, span: no_span() }, module_name: proof.func_name)]
+        v1.compiler.ownership.SharedError { binding: binding, consumer_count: count, sites: sites } =>
+          [v1.std.core.make_error_node(diagnostic: v1.std.core.OwnershipViolation { binding: binding, fn_name: proof.func_name, consumers: count, span: v1.std.core.no_span() }, module_name: proof.func_name)]
         _ => []
       }
     )
@@ -128,24 +128,24 @@ fn ownership_diagnostics(proofs: List<v1.compiler.ownership.OwnershipProof>) -> 
 
 type CompilePipelineOptions {
   analyze_complexity: Bool,
-  census_only_sources: List<v1.compiler.compile.SourceFile>
+  census_only_sources: List<SourceFile>
 }
 
 data census_only_sources_note: String = "Sources included in the NAME CENSUS but not compiled (fill = whole tree; policy gates lookup, never fill — namespace-resolution-design.md 7.5). Qualified references to modules outside the compile closure resolve against these; compiling them here instead would subject them to this invocation's pool-precedence tree view, where cross-tree bare names break (measured: 344 diagnostics, the Empty/Cons poisoning class)."
 
-fn default_compile_pipeline_options() -> v1.compiler.compile.CompilePipelineOptions {
+fn default_compile_pipeline_options() -> CompilePipelineOptions {
   CompilePipelineOptions { analyze_complexity: false, census_only_sources: [] }
 }
 
 fn run_complexity_analysis(typed: v1.compiler.infer_items.ResolvedGraph, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.compiler.complexity.ComplexityReport {
   let func_entries = extract_func_entries(typed: typed)
   let recursion_ctx = build_recursion_context(typed: typed)
-  build_complexity_report(func_entries: func_entries, recursion_ctx: recursion_ctx, source_indices: source_indices)
+  v1.compiler.complexity.build_complexity_report(func_entries: func_entries, recursion_ctx: recursion_ctx, source_indices: source_indices)
 }
 
 fn complexity_diagnostics(complexity: v1.compiler.complexity.ComplexityReport) -> List<v1.std.core.ErrorNode> {
   complexity.violations |> map(v =>
-    make_error_node(diagnostic: v1.std.core.ComplexityUnknown { func_name: v.func_name, reason: v.reason, span: v.span }, module_name: v.func_name)
+    v1.std.core.make_error_node(diagnostic: ComplexityUnknown { func_name: v.func_name, reason: v.reason, span: v.span }, module_name: v.func_name)
   )
 }
 
@@ -154,18 +154,18 @@ fn empty_artifact_plan() -> v1.compiler.artifact.ArtifactPlan {
 }
 
 fn compile_bundle_error(message: String) -> v1.std.core.ErrorNode {
-  make_error_node(diagnostic: v1.std.core.InternalError { message: message, span: no_span() }, module_name: "")
+  v1.std.core.make_error_node(diagnostic: v1.std.core.InternalError { message: message, span: v1.std.core.no_span() }, module_name: "")
 }
 
 fn emit_artifact(typed: v1.compiler.infer_items.ResolvedGraph, artifact: v1.compiler.artifact.Artifact) -> v1.compiler.emit_core_support.EmitResult {
-  let unmodeled_transports = unmodeled_file_transport_diagnostics(typed: typed, target: artifact.target)
+  let unmodeled_transports = v1.compiler.emit.unmodeled_file_transport_diagnostics(typed: typed, target: artifact.target)
   if unmodeled_transports |> count > 0 {
     return v1.compiler.emit_core_support.EmitResult { files: [], diagnostics: unmodeled_transports }
   }
   match artifact.target {
-    Rust => emit_rust(typed: typed)
-    Python => emit_python(typed: typed)
-    Go => emit_go(typed: typed)
+    Rust => v1.compiler.emit_rust.emit_rust(typed: typed)
+    Python => v1.compiler.emit_python.emit_python(typed: typed)
+    Go => v1.compiler.emit_go.emit_go(typed: typed)
     Dag => emit_dag_artifact(typed: typed)
   }
 }
@@ -176,16 +176,16 @@ fn json_list(items: List<String>) -> String {
 
 fn json_optional_string(value: String?) -> String {
   match value {
-    Present { value: inner } => json_quote(s: inner)
+    Present { value: inner } => v1.compiler.dag_collect_support.json_quote(s: inner)
     Absent => "null"
   }
 }
 
 
 fn dag_node_missing_ref_error(node: v1.std.core.Node) -> v1.std.core.ErrorNode {
-  make_error_node(
+  v1.std.core.make_error_node(
     diagnostic: v1.std.core.InternalError {
-      message: concat("dag artifact: node missing from nodes table (key=", dag_node_key(node: node), ")"),
+      message: concat("dag artifact: node missing from nodes table (key=", v1.compiler.dag_collect.dag_node_key(node: node), ")"),
       span: node.span
     },
     module_name: ""
@@ -193,7 +193,7 @@ fn dag_node_missing_ref_error(node: v1.std.core.Node) -> v1.std.core.ErrorNode {
 }
 
 fn dag_emit_check_ref_target(node: v1.std.core.Node, key_to_id: Map<String, String>) -> List<v1.std.core.ErrorNode> {
-  match map_get(key_to_id, dag_node_key(node: node)) {
+  match map_get(key_to_id, v1.compiler.dag_collect.dag_node_key(node: node)) {
     Present { value: _ } => []
     Absent => [dag_node_missing_ref_error(node: node)]
   }
@@ -206,7 +206,7 @@ fn dag_emit_check_optional_ref_target(value: v1.std.core.Node?, key_to_id: Map<S
   }
 }
 
-fn dag_emit_check_inferred_ref_target(value: InferredNode?, key_to_id: Map<String, String>) -> List<v1.std.core.ErrorNode> {
+fn dag_emit_check_inferred_ref_target(value: v1.std.core.InferredNode?, key_to_id: Map<String, String>) -> List<v1.std.core.ErrorNode> {
   match value {
     Present { value: v1.std.core.Resolved { node: n } } => dag_emit_check_ref_target(node: n, key_to_id: key_to_id)
     _ => []
@@ -220,7 +220,7 @@ fn dag_emit_check_node_refs(node: v1.std.core.Node, key_to_id: Map<String, Strin
     } else {
       node.children |> flat_map(c => dag_emit_check_ref_target(node: c, key_to_id: key_to_id))
     },
-    if is_module_shell_node(n: node) {
+    if v1.compiler.dag_collect.is_module_shell_node(n: node) {
       []
     } else {
       node.params |> flat_map(p => dag_emit_check_ref_target(node: p, key_to_id: key_to_id))
@@ -240,7 +240,7 @@ fn dag_emit_ref_errors(order: List<v1.std.core.Node>, key_to_id: Map<String, Str
 
 fn build_dag_key_to_id(order: List<v1.std.core.Node>) -> Map<String, String> {
   order |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
-    map_insert(acc, dag_node_key(node: pair.second), concat("n", to_string(value: pair.first)))
+    map_insert(acc, v1.compiler.dag_collect.dag_node_key(node: pair.second), concat("n", to_string(value: pair.first)))
   )
 }
 
@@ -249,8 +249,8 @@ fn dag_graph_source_indices(typed: v1.compiler.infer_items.ResolvedGraph) -> Map
 }
 
 fn serialize_node_ref(node: v1.std.core.Node, key_to_id: Map<String, String>) -> String {
-  match map_get(key_to_id, dag_node_key(node: node)) {
-    Present { value: id } => concat("{\"$ref\": ", json_quote(s: id), "}")
+  match map_get(key_to_id, v1.compiler.dag_collect.dag_node_key(node: node)) {
+    Present { value: id } => concat("{\"$ref\": ", v1.compiler.dag_collect_support.json_quote(s: id), "}")
     Absent => "{\"$ref\": null}"
   }
 }
@@ -262,16 +262,16 @@ fn json_optional_node_ref(value: v1.std.core.Node?, key_to_id: Map<String, Strin
   }
 }
 
-fn json_optional_inferred_node_ref(value: InferredNode?, key_to_id: Map<String, String>) -> String {
+fn json_optional_inferred_node_ref(value: v1.std.core.InferredNode?, key_to_id: Map<String, String>) -> String {
   match value {
     Present { value: inner } => serialize_inferred_node_ref(inferred: inner, key_to_id: key_to_id)
     Absent => "null"
   }
 }
 
-fn json_optional_span(value: std.types.SourceSpan?) -> String {
+fn json_optional_span(value: v1.std.core.SourceSpan?) -> String {
   match value {
-    Present { value: inner } => v1.compiler.compile.serialize_span(span: inner)
+    Present { value: inner } => serialize_span(span: inner)
     Absent => "null"
   }
 }
@@ -356,65 +356,65 @@ fn unary_op_name(value: v1.std.core.UnaryOpKind) -> String {
   }
 }
 
-fn serialize_span(span: std.types.SourceSpan) -> String {
+fn serialize_span(span: v1.std.core.SourceSpan) -> String {
   concat("{\"start\": ", to_string(value: span.start), ", \"end\": ", to_string(value: span.end), "}")
 }
 
 fn serialize_import_node(imp: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
-  let names_json = if import_is_all(n: imp) {
+  let names_json = if v1.std.core.import_is_all(n: imp) {
     "{\"kind\": \"ImportAll\"}"
   } else {
     concat(
       "{\"kind\": \"ImportSpecific\", \"names\": ",
-      json_list(items: import_specific_names_at(n: imp, source_indices: source_indices) |> map(v => json_quote(s: v))),
+      json_list(items: v1.std.core.import_specific_names_at(n: imp, source_indices: source_indices) |> map(v => v1.compiler.dag_collect_support.json_quote(s: v))),
       "}")
   }
   concat(
-    "{\"module_path\": ", json_quote(s: authored_name_at(source_indices: source_indices, node: imp)),
+    "{\"module_path\": ", v1.compiler.dag_collect_support.json_quote(s: v1.std.core.authored_name_at(source_indices: source_indices, node: imp)),
     ", \"names\": ", names_json,
-    ", \"span\": ", v1.compiler.compile.serialize_span(span: imp.span),
+    ", \"span\": ", serialize_span(span: imp.span),
     "}")
 }
 
 fn serialize_field_summary(summary: v1.std.core.FieldSummary) -> String {
   concat(
-    "{\"access_style\": ", json_quote(s: field_access_style_name(value: summary.access_style)),
-    ", \"value_shape\": ", json_quote(s: field_value_shape_name(value: summary.value_shape)),
+    "{\"access_style\": ", v1.compiler.dag_collect_support.json_quote(s: field_access_style_name(value: summary.access_style)),
+    ", \"value_shape\": ", v1.compiler.dag_collect_support.json_quote(s: field_value_shape_name(value: summary.value_shape)),
     "}")
 }
 
 fn serialize_literal(value: std.syntax.LiteralValue) -> String {
   match value {
     LitStr { value: inner } =>
-      concat("{\"kind\": \"LitStr\", \"value\": ", json_quote(s: inner), "}")
+      concat("{\"kind\": \"LitStr\", \"value\": ", v1.compiler.dag_collect_support.json_quote(s: inner), "}")
     LitInt { value: inner } =>
       concat("{\"kind\": \"LitInt\", \"value\": ", to_string(value: inner), "}")
     LitFloat { value: inner } =>
-      concat("{\"kind\": \"LitFloat\", \"value\": ", json_quote(s: inner), "}")
+      concat("{\"kind\": \"LitFloat\", \"value\": ", v1.compiler.dag_collect_support.json_quote(s: inner), "}")
     LitBool { value: inner } =>
-      concat("{\"kind\": \"LitBool\", \"value\": ", v1.compiler.compile.json_bool(value: inner), "}")
+      concat("{\"kind\": \"LitBool\", \"value\": ", json_bool(value: inner), "}")
     LitNull => "{\"kind\": \"LitNull\"}"
     LitSymbol { value: inner } =>
-      concat("{\"kind\": \"LitSymbol\", \"value\": ", json_quote(s: inner), "}")
+      concat("{\"kind\": \"LitSymbol\", \"value\": ", v1.compiler.dag_collect_support.json_quote(s: inner), "}")
   }
 }
 
 fn serialize_field_binding(binding: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   concat(
-    "{\"field_name\": ", json_quote(s: field_binding_name_at(n: binding, source_indices: source_indices)),
-    ", \"binding\": ", serialize_match_pattern(pattern: field_binding_pattern(n: binding), source_indices: source_indices),
+    "{\"field_name\": ", v1.compiler.dag_collect_support.json_quote(s: v1.std.core.field_binding_name_at(n: binding, source_indices: source_indices)),
+    ", \"binding\": ", serialize_match_pattern(pattern: v1.std.core.field_binding_pattern(n: binding), source_indices: source_indices),
     "}")
 }
 
 fn serialize_match_pattern(pattern: v1.std.core.MatchPattern, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   match pattern {
     Bind { declaration: declaration } =>
-      concat("{\"kind\": \"Bind\", \"name\": ", json_quote(s: declaration.name), "}")
+      concat("{\"kind\": \"Bind\", \"name\": ", v1.compiler.dag_collect_support.json_quote(s: declaration.name), "}")
     LitPattern { value: inner } =>
       concat("{\"kind\": \"LitPattern\", \"value\": ", serialize_literal(value: inner), "}")
     VariantPattern { name: inner, parent_enum: parent_enum, field_bindings: field_bindings } =>
       concat(
-        "{\"kind\": \"VariantPattern\", \"name\": ", json_quote(s: inner),
+        "{\"kind\": \"VariantPattern\", \"name\": ", v1.compiler.dag_collect_support.json_quote(s: inner),
         ", \"parent_enum\": ", json_optional_string(value: parent_enum),
         ", \"field_bindings\": ", json_list(items: field_bindings |> map(fb => serialize_field_binding(binding: fb, source_indices: source_indices))),
         "}")
@@ -424,30 +424,30 @@ fn serialize_match_pattern(pattern: v1.std.core.MatchPattern, source_indices: Ma
 
 fn serialize_named_arg(arg: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
-    "{\"name\": ", json_optional_string(value: arg_name_at(n: arg, source_indices: source_indices)),
-    ", \"value\": ", serialize_node_ref(node: arg_value(n: arg), key_to_id: key_to_id),
+    "{\"name\": ", json_optional_string(value: v1.std.core.arg_name_at(n: arg, source_indices: source_indices)),
+    ", \"value\": ", serialize_node_ref(node: v1.std.core.arg_value(n: arg), key_to_id: key_to_id),
     "}")
 }
 
 fn serialize_match_arm(arm: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
-    "{\"pattern\": ", serialize_match_pattern(pattern: arm_pattern(n: arm), source_indices: source_indices),
-    ", \"guard\": ", json_optional_node_ref(value: arm_guard(n: arm), key_to_id: key_to_id),
-    ", \"body\": ", serialize_node_ref(node: arm_body(n: arm), key_to_id: key_to_id),
+    "{\"pattern\": ", serialize_match_pattern(pattern: v1.std.core.arm_pattern(n: arm), source_indices: source_indices),
+    ", \"guard\": ", json_optional_node_ref(value: v1.std.core.arm_guard(n: arm), key_to_id: key_to_id),
+    ", \"body\": ", serialize_node_ref(node: v1.std.core.arm_body(n: arm), key_to_id: key_to_id),
     "}")
 }
 
 fn serialize_field_init(field_init: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
-    "{\"name\": ", json_quote(s: field_init_node_name_at(n: field_init, source_indices: source_indices)),
-    ", \"value\": ", serialize_node_ref(node: field_init_node_value(n: field_init), key_to_id: key_to_id),
+    "{\"name\": ", v1.compiler.dag_collect_support.json_quote(s: v1.std.core.field_init_node_name_at(n: field_init, source_indices: source_indices)),
+    ", \"value\": ", serialize_node_ref(node: v1.std.core.field_init_node_value(n: field_init), key_to_id: key_to_id),
     "}")
 }
 
 fn serialize_string_part(part: v1.std.core.StringPart, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   match part {
     Text { value: inner } =>
-      concat("{\"kind\": \"Text\", \"value\": ", json_quote(s: inner), "}")
+      concat("{\"kind\": \"Text\", \"value\": ", v1.compiler.dag_collect_support.json_quote(s: inner), "}")
     Interpolation { expr: inner } =>
       concat("{\"kind\": \"Interpolation\", \"expr\": ", serialize_node_ref(node: inner, key_to_id: key_to_id), "}")
   }
@@ -456,27 +456,27 @@ fn serialize_string_part(part: v1.std.core.StringPart, source_indices: Map<Strin
 fn serialize_call_semantics(value: v1.std.core.CallSemantics?) -> String {
   match value {
     Present { value: inner } =>
-      concat("{\"kind\": ", json_quote(s: call_semantics_name(value: inner)), "}")
+      concat("{\"kind\": ", v1.compiler.dag_collect_support.json_quote(s: call_semantics_name(value: inner)), "}")
     Absent => "null"
   }
 }
 
-fn serialize_method_semantics(value: MethodSemantics?, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
+fn serialize_method_semantics(value: v1.std.core.MethodSemantics?, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   match value {
-    Present { value: PlainMethodSemantics } =>
+    Present { value: v1.std.core.PlainMethodSemantics } =>
       "{\"kind\": \"PlainMethodSemantics\"}"
-    Present { value: AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: fold_accumulator_type, size_effect: _, cost_shape: _, algebra_template: _ } } =>
-      let mn = authored_name_at(source_indices: source_indices, node: method_def)
+    Present { value: v1.std.core.AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: fold_accumulator_type, size_effect: _, cost_shape: _, algebra_template: _ } } =>
+      let mn = v1.std.core.authored_name_at(source_indices: source_indices, node: method_def)
       concat(
         "{\"kind\": \"AlgebraMethodSemantics\", \"method_name\": ",
-        json_quote(s: mn),
+        v1.compiler.dag_collect_support.json_quote(s: mn),
         ", \"fold_accumulator_type\": ",
         json_optional_node_ref(value: fold_accumulator_type, key_to_id: key_to_id),
         "}")
     Present { value: v1.std.core.ServiceMethodSemantics { service_name: service_name, op_params: op_params } } =>
       concat(
         "{\"kind\": \"ServiceMethodSemantics\", \"service_name\": ",
-        json_quote(s: service_name),
+        v1.compiler.dag_collect_support.json_quote(s: service_name),
         ", \"op_params\": ",
         json_list(items: op_params |> map(p => serialize_param(param: p, source_indices: source_indices, key_to_id: key_to_id))),
         "}")
@@ -496,9 +496,9 @@ fn serialize_recursion_shape(shape: std.induction.RecursionShape) -> String {
 
 fn serialize_inductive_field(field: std.induction.InductiveField) -> String {
   concat(
-    "{\"type_name\": ", json_quote(s: field.type_name),
-    ", \"variant_name\": ", json_quote(s: field.variant_name),
-    ", \"field_name\": ", json_quote(s: field.field_name),
+    "{\"type_name\": ", v1.compiler.dag_collect_support.json_quote(s: field.type_name),
+    ", \"variant_name\": ", v1.compiler.dag_collect_support.json_quote(s: field.variant_name),
+    ", \"field_name\": ", v1.compiler.dag_collect_support.json_quote(s: field.field_name),
     ", \"shape\": ", serialize_recursion_shape(shape: field.shape),
     "}")
 }
@@ -506,7 +506,7 @@ fn serialize_inductive_field(field: std.induction.InductiveField) -> String {
 fn serialize_positive_descent_amount(steps: std.termination.PositiveDescentAmount) -> String {
   match steps {
     OneStep => "{\"_variant\": \"OneStep\"}"
-    AdditionalStep { previous: p } =>
+    std.termination.AdditionalStep { previous: p } =>
       concat("{\"_variant\": \"AdditionalStep\", \"previous\": ", serialize_positive_descent_amount(steps: p), "}")
   }
 }
@@ -514,7 +514,7 @@ fn serialize_positive_descent_amount(steps: std.termination.PositiveDescentAmoun
 fn serialize_proportional_divisor(d: std.termination.ProportionalDivisor) -> String {
   match d {
     DivideByTwo => "{\"_variant\": \"DivideByTwo\"}"
-    StrictlyLarger { inner: i } =>
+    std.termination.StrictlyLarger { inner: i } =>
       concat("{\"_variant\": \"StrictlyLarger\", \"inner\": ", serialize_proportional_divisor(d: i), "}")
   }
 }
@@ -522,23 +522,23 @@ fn serialize_proportional_divisor(d: std.termination.ProportionalDivisor) -> Str
 fn serialize_shrink_factor(factor: std.computation.ShrinkFactor) -> String {
   match factor {
     UnitShrink => "{\"_variant\": \"UnitShrink\"}"
-    ConstantShrink { steps: s } =>
+    std.computation.ConstantShrink { steps: s } =>
       concat("{\"_variant\": \"ConstantShrink\", \"steps\": ", serialize_positive_descent_amount(steps: s), "}")
-    ProportionalShrink { divisor: d } =>
+    std.computation.ProportionalShrink { divisor: d } =>
       concat("{\"_variant\": \"ProportionalShrink\", \"divisor\": ", serialize_proportional_divisor(d: d), "}")
   }
 }
 
 fn serialize_sub_value_relation(rel: std.induction.SubValueRelation) -> String {
   match rel {
-    StrictSubValue { field: f, factor: fac } =>
+    std.induction.StrictSubValue { field: f, factor: fac } =>
       concat(
         "{\"_variant\": \"StrictSubValue\", \"field\": ", serialize_inductive_field(field: f),
         ", \"factor\": ", serialize_shrink_factor(factor: fac), "}")
-    IteratedSubValue { field: f } =>
+    std.induction.IteratedSubValue { field: f } =>
       concat("{\"_variant\": \"IteratedSubValue\", \"field\": ", serialize_inductive_field(field: f), "}")
-    ArithmeticDescent { param: p, factor: fac } =>
-      concat("{\"_variant\": \"ArithmeticDescent\", \"param\": ", json_quote(s: p), ", \"factor\": ", serialize_shrink_factor(factor: fac), "}")
+    std.induction.ArithmeticDescent { param: p, factor: fac } =>
+      concat("{\"_variant\": \"ArithmeticDescent\", \"param\": ", v1.compiler.dag_collect_support.json_quote(s: p), ", \"factor\": ", serialize_shrink_factor(factor: fac), "}")
     PreservedValue => "{\"_variant\": \"PreservedValue\"}"
     NonIncreasingValue => "{\"_variant\": \"NonIncreasingValue\"}"
     StrictAxisErased => "{\"_variant\": \"StrictAxisErased\"}"
@@ -556,26 +556,26 @@ fn serialize_descent_evidence(de: List<std.induction.SubValueRelation>?) -> Stri
 
 fn serialize_expr_data(expr_node: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   let ch = expr_node.children
-  let name = authored_name_at(source_indices: source_indices, node: expr_node)
+  let name = v1.std.core.authored_name_at(source_indices: source_indices, node: expr_node)
   match expr_node.expr_data {
     NoExprData => "{\"kind\": \"NoExprData\"}"
     ExprLiteral { value: value } =>
       concat("{\"kind\": \"ExprLiteral\", \"value\": ", serialize_literal(value: value), "}")
     ExprError { kind: kind, message: message } =>
       concat(
-        "{\"kind\": \"ExprError\", \"error_kind\": ", json_quote(s: expr_error_kind_name(value: kind)),
-        ", \"message\": ", json_quote(s: message),
+        "{\"kind\": \"ExprError\", \"error_kind\": ", v1.compiler.dag_collect_support.json_quote(s: expr_error_kind_name(value: kind)),
+        ", \"message\": ", v1.compiler.dag_collect_support.json_quote(s: message),
         "}")
     ExprVar { binding_kind: binding_kind } =>
       concat(
-        "{\"kind\": \"ExprVar\", \"name\": ", json_quote(s: name),
+        "{\"kind\": \"ExprVar\", \"name\": ", v1.compiler.dag_collect_support.json_quote(s: name),
         ", \"binding_kind\": ",
         match binding_kind {
           Present { value: inner } =>
-            concat("{\"kind\": ", json_quote(s: var_binding_kind_name(value: inner)),
+            concat("{\"kind\": ", v1.compiler.dag_collect_support.json_quote(s: var_binding_kind_name(value: inner)),
               match inner {
                 VariantValueBinding { parent_enum: parent_enum } =>
-                  concat(", \"parent_enum\": ", json_quote(s: parent_enum))
+                  concat(", \"parent_enum\": ", v1.compiler.dag_collect_support.json_quote(s: parent_enum))
                 _ => ""
               },
             "}")
@@ -583,9 +583,9 @@ fn serialize_expr_data(expr_node: v1.std.core.Node, source_indices: Map<String, 
         },
         "}")
     ExprFieldAccess { summary: summary } =>
-      let field = field_access_field_at(texpr: expr_node, source_indices: source_indices)
+      let field = v1.std.core.field_access_field_at(texpr: expr_node, source_indices: source_indices)
       concat(
-        "{\"kind\": \"ExprFieldAccess\", \"field\": ", json_quote(s: field),
+        "{\"kind\": \"ExprFieldAccess\", \"field\": ", v1.compiler.dag_collect_support.json_quote(s: field),
         ", \"summary\": ",
         match summary {
           Present { value: inner } => serialize_field_summary(summary: inner)
@@ -594,53 +594,53 @@ fn serialize_expr_data(expr_node: v1.std.core.Node, source_indices: Map<String, 
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprCall { call_semantics: call_semantics, descent_evidence: de } =>
-      let func = expr_call_func_at(texpr: expr_node, source_indices: source_indices)
+      let func = v1.std.core.expr_call_func_at(texpr: expr_node, source_indices: source_indices)
       concat(
-        "{\"kind\": \"ExprCall\", \"func\": ", json_quote(s: func),
+        "{\"kind\": \"ExprCall\", \"func\": ", v1.compiler.dag_collect_support.json_quote(s: func),
         ", \"call_semantics\": ", serialize_call_semantics(value: call_semantics),
         ", \"descent_evidence\": ", serialize_descent_evidence(de: de),
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprMethodCall { method_semantics: method_semantics } =>
-      let method = expr_method_name_at(texpr: expr_node, source_indices: source_indices)
+      let method = v1.std.core.expr_method_name_at(texpr: expr_node, source_indices: source_indices)
       concat(
-        "{\"kind\": \"ExprMethodCall\", \"method\": ", json_quote(s: method),
+        "{\"kind\": \"ExprMethodCall\", \"method\": ", v1.compiler.dag_collect_support.json_quote(s: method),
         ", \"method_semantics\": ", serialize_method_semantics(value: method_semantics, source_indices: source_indices, key_to_id: key_to_id),
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprBinOp { op: op, algebra_field: af } =>
       concat(
-        "{\"kind\": \"ExprBinOp\", \"op\": ", json_quote(s: bin_op_name(value: op)),
-        ", \"algebra_field\": ", match af { Present { value: f } => json_quote(s: algebra_field_kind_name(kind: f))  Absent => "null" },
+        "{\"kind\": \"ExprBinOp\", \"op\": ", v1.compiler.dag_collect_support.json_quote(s: bin_op_name(value: op)),
+        ", \"algebra_field\": ", match af { Present { value: f } => v1.compiler.dag_collect_support.json_quote(s: v1.compiler.infer_types.algebra_field_kind_name(kind: f))  Absent => "null" },
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprUnaryOp { op: op } =>
       concat(
-        "{\"kind\": \"ExprUnaryOp\", \"op\": ", json_quote(s: unary_op_name(value: op)),
+        "{\"kind\": \"ExprUnaryOp\", \"op\": ", v1.compiler.dag_collect_support.json_quote(s: unary_op_name(value: op)),
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprLambda =>
-      let params = lambda_param_names_at(texpr: expr_node, source_indices: source_indices)
+      let params = v1.std.core.lambda_param_names_at(texpr: expr_node, source_indices: source_indices)
       concat(
-        "{\"kind\": \"ExprLambda\", \"params\": ", json_list(items: params |> map(p => json_quote(s: p))),
+        "{\"kind\": \"ExprLambda\", \"params\": ", json_list(items: params |> map(p => v1.compiler.dag_collect_support.json_quote(s: p))),
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprLet =>
       concat(
-        "{\"kind\": \"ExprLet\", \"name\": ", json_quote(s: name),
+        "{\"kind\": \"ExprLet\", \"name\": ", v1.compiler.dag_collect_support.json_quote(s: name),
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprRecordLit { parent_enum: parent_enum } =>
-      let type_name = record_lit_type_name_at(texpr: expr_node, source_indices: source_indices)
+      let type_name = v1.std.core.record_lit_type_name_at(texpr: expr_node, source_indices: source_indices)
       concat(
         "{\"kind\": \"ExprRecordLit\", \"type_name\": ", json_optional_string(value: type_name),
         ", \"parent_enum\": ", json_optional_string(value: parent_enum),
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprForEach =>
-      let variable = foreach_variable_at(texpr: expr_node, source_indices: source_indices)
+      let variable = v1.std.core.foreach_variable_at(texpr: expr_node, source_indices: source_indices)
       concat(
-        "{\"kind\": \"ExprForEach\", \"variable\": ", json_quote(s: variable),
+        "{\"kind\": \"ExprForEach\", \"variable\": ", v1.compiler.dag_collect_support.json_quote(s: variable),
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node_ref(node: c, key_to_id: key_to_id))),
         "}")
     ExprMatch =>
@@ -691,56 +691,56 @@ fn serialize_expr_data(expr_node: v1.std.core.Node, source_indices: Map<String, 
   }
 }
 
-fn serialize_inferred_node_ref(inferred: InferredNode, key_to_id: Map<String, String>) -> String {
+fn serialize_inferred_node_ref(inferred: v1.std.core.InferredNode, key_to_id: Map<String, String>) -> String {
   match inferred {
-    Resolved { node: node } =>
+    v1.std.core.Resolved { node: node } =>
       concat("{\"kind\": \"Resolved\", \"node\": ", serialize_node_ref(node: node, key_to_id: key_to_id), "}")
-    CompilerError { message: message, span: span } =>
+    v1.std.core.CompilerError { message: message, span: span } =>
       concat(
-        "{\"kind\": \"CompilerError\", \"message\": ", json_quote(s: message),
-        ", \"span\": ", v1.compiler.compile.serialize_span(span: span),
+        "{\"kind\": \"CompilerError\", \"message\": ", v1.compiler.dag_collect_support.json_quote(s: message),
+        ", \"span\": ", serialize_span(span: span),
         "}")
-    TypeVariable { id: id } =>
-      concat("{\"kind\": \"TypeVariable\", \"id\": ", json_quote(s: id), "}")
+    v1.std.core.TypeVariable { id: id } =>
+      concat("{\"kind\": \"TypeVariable\", \"id\": ", v1.compiler.dag_collect_support.json_quote(s: id), "}")
   }
 }
 
 fn serialize_resource_use(resource_use: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
-    "{\"name\": ", json_quote(s: resource_use_name_at(n: resource_use, source_indices: source_indices)),
-    ", \"resource\": ", serialize_node_ref(node: resource_use_resource(n: resource_use), key_to_id: key_to_id),
-    ", \"span\": ", v1.compiler.compile.serialize_span(span: resource_use.span),
+    "{\"name\": ", v1.compiler.dag_collect_support.json_quote(s: v1.std.core.resource_use_name_at(n: resource_use, source_indices: source_indices)),
+    ", \"resource\": ", serialize_node_ref(node: v1.std.core.resource_use_resource(n: resource_use), key_to_id: key_to_id),
+    ", \"span\": ", serialize_span(span: resource_use.span),
     "}")
 }
 
 fn serialize_field(field: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
-    "{\"name\": ", json_quote(s: field_node_name_at(n: field, source_indices: source_indices)),
-    ", \"type_expr\": ", serialize_node_ref(node: field_node_type_expr(n: field), key_to_id: key_to_id),
-    ", \"cardinality\": ", json_quote(s: cardinality_name(value: field_node_cardinality(n: field))),
-    ", \"default_value\": ", json_optional_node_ref(value: field_node_default_value(n: field), key_to_id: key_to_id),
-    ", \"from_key\": ", json_optional_string(value: field_node_from_key(n: field, source_indices: source_indices)),
-    ", \"span\": ", v1.compiler.compile.serialize_span(span: field_node_span(n: field)),
+    "{\"name\": ", v1.compiler.dag_collect_support.json_quote(s: v1.std.core.field_node_name_at(n: field, source_indices: source_indices)),
+    ", \"type_expr\": ", serialize_node_ref(node: v1.std.core.field_node_type_expr(n: field), key_to_id: key_to_id),
+    ", \"cardinality\": ", v1.compiler.dag_collect_support.json_quote(s: cardinality_name(value: v1.std.core.field_node_cardinality(n: field))),
+    ", \"default_value\": ", json_optional_node_ref(value: v1.std.core.field_node_default_value(n: field), key_to_id: key_to_id),
+    ", \"from_key\": ", json_optional_string(value: v1.std.core.field_node_from_key(n: field, source_indices: source_indices)),
+    ", \"span\": ", serialize_span(span: v1.std.core.field_node_span(n: field)),
     "}")
 }
 
 fn serialize_param(param: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
-    "{\"name\": ", json_quote(s: param_node_name_at(n: param, source_indices: source_indices)),
-    ", \"type_expr\": ", serialize_node_ref(node: param_node_type_expr(n: param), key_to_id: key_to_id),
-    ", \"default_value\": ", json_optional_node_ref(value: param_node_default_value(n: param), key_to_id: key_to_id),
-    ", \"span\": ", v1.compiler.compile.serialize_span(span: param_node_span(n: param)),
+    "{\"name\": ", v1.compiler.dag_collect_support.json_quote(s: v1.std.core.param_node_name_at(n: param, source_indices: source_indices)),
+    ", \"type_expr\": ", serialize_node_ref(node: v1.std.core.param_node_type_expr(n: param), key_to_id: key_to_id),
+    ", \"default_value\": ", json_optional_node_ref(value: v1.std.core.param_node_default_value(n: param), key_to_id: key_to_id),
+    ", \"span\": ", serialize_span(span: v1.std.core.param_node_span(n: param)),
     "}")
 }
 
 fn is_import_statement_node(n: v1.std.core.Node) -> Bool {
-  import_is_all(n: n) || (
+  v1.std.core.import_is_all(n: n) || (
     (n.children |> count) > 0 && n.body == none && n.expr_data == NoExprData
       && (n.params |> count) == 0)
 }
 
 fn serialize_node_params_json(node: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
-  if is_module_shell_node(n: node) {
+  if v1.compiler.dag_collect.is_module_shell_node(n: node) {
     "[]"
   } else {
     json_list(items: node.params |> map(param => serialize_param(param: param, source_indices: source_indices, key_to_id: key_to_id)))
@@ -748,7 +748,7 @@ fn serialize_node_params_json(node: v1.std.core.Node, source_indices: Map<String
 }
 
 fn serialize_module_imports_json(node: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
-  let imports = module_imports(n: node)
+  let imports = v1.std.core.module_imports(n: node)
   if imports |> count == 0 {
     "[]"
   } else if imports |> all(imp => imp.params |> count == 0) {
@@ -760,28 +760,28 @@ fn serialize_module_imports_json(node: v1.std.core.Node, source_indices: Map<Str
 
 fn serialize_node_record(node: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
-    "{\"name\": ", json_quote(s: authored_name_at(source_indices: source_indices, node: node)),
+    "{\"name\": ", v1.compiler.dag_collect_support.json_quote(s: v1.std.core.authored_name_at(source_indices: source_indices, node: node)),
     ", \"imports\": ", serialize_module_imports_json(node: node, source_indices: source_indices),
-    ", \"span\": ", v1.compiler.compile.serialize_span(span: node.span),
+    ", \"span\": ", serialize_span(span: node.span),
     ", \"ident_span\": ", json_optional_span(value: node.ident_span),
     ", \"children\": ", json_list(items: node.children |> map(child => serialize_node_ref(node: child, key_to_id: key_to_id))),
     ", \"connective\": ",
     match node.connective {
-      Conj => json_quote(s: connective_name(value: Conj))
-      Disj => json_quote(s: connective_name(value: Disj))
+      Conj => v1.compiler.dag_collect_support.json_quote(s: v1.compiler.dag_collect_support.connective_name(value: Conj))
+      Disj => v1.compiler.dag_collect_support.json_quote(s: v1.compiler.dag_collect_support.connective_name(value: Disj))
       NoConnective => "null"
-      Arrow => json_quote(s: connective_name(value: Arrow))
+      Arrow => v1.compiler.dag_collect_support.json_quote(s: v1.compiler.dag_collect_support.connective_name(value: v1.std.core.Arrow))
     },
     ", \"params\": ", serialize_node_params_json(node: node, source_indices: source_indices, key_to_id: key_to_id),
     ", \"inferred\": ", json_optional_inferred_node_ref(value: node.inferred, key_to_id: key_to_id),
-    ", \"return_cardinality\": ", json_quote(s: cardinality_name(value: node.return_cardinality)),
+    ", \"return_cardinality\": ", v1.compiler.dag_collect_support.json_quote(s: cardinality_name(value: node.return_cardinality)),
     ", \"uses\": ", json_list(items: node.uses |> map(item => serialize_resource_use(resource_use: item, source_indices: source_indices, key_to_id: key_to_id))),
     ", \"body\": ", json_optional_node_ref(value: node.body, key_to_id: key_to_id),
     ", \"transport\": ", json_optional_node_ref(value: node.transport, key_to_id: key_to_id),
     ", \"properties\": ", json_list(items: node.properties |> map(prop => serialize_field_init(field_init: prop, source_indices: source_indices, key_to_id: key_to_id))),
     ", \"type_annotation\": ", json_optional_node_ref(value: node.type_annotation, key_to_id: key_to_id),
-    ", \"is_self_recursive\": ", v1.compiler.compile.json_bool(value: node.is_self_recursive),
-    ", \"has_non_tail_self_call\": ", v1.compiler.compile.json_bool(value: node.has_non_tail_self_call),
+    ", \"is_self_recursive\": ", json_bool(value: node.is_self_recursive),
+    ", \"has_non_tail_self_call\": ", json_bool(value: node.has_non_tail_self_call),
     ", \"expr_data\": ", serialize_expr_data(expr_node: node, source_indices: source_indices, key_to_id: key_to_id),
     "}")
 }
@@ -790,14 +790,14 @@ fn serialize_typed_module(module: v1.compiler.infer_items.TypedModule, key_to_id
   concat(
     "{\"module\": ", serialize_node_ref(node: module.module, key_to_id: key_to_id),
     ", \"items\": ", json_list(items: module.items |> map(item => serialize_node_ref(node: item, key_to_id: key_to_id))),
-    ", \"item_registry_keys\": ", json_list(items: map_keys(module.item_registry) |> map(k => json_quote(s: k))),
+    ", \"item_registry_keys\": ", json_list(items: map_keys(module.item_registry) |> map(k => v1.compiler.dag_collect_support.json_quote(s: k))),
     "}")
 }
 
 fn serialize_dag_nodes_table(order: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   order |> enumerate |> map(pair =>
     concat(
-      json_quote(s: concat("n", to_string(value: pair.first))),
+      v1.compiler.dag_collect_support.json_quote(s: concat("n", to_string(value: pair.first))),
       ": ",
       serialize_node_record(node: pair.second, source_indices: source_indices, key_to_id: key_to_id))
   ) |> join(separator: ", ")
@@ -806,16 +806,16 @@ fn serialize_dag_nodes_table(order: List<v1.std.core.Node>, source_indices: Map<
 fn serialize_diagnostic(diagnostic: v1.std.core.ErrorNode) -> String {
   let severity = "error"
   concat(
-    "{\"severity\": ", json_quote(s: severity),
-    ", \"message\": ", json_quote(s: diagnostic_to_message(d: diagnostic.diagnostic)),
-    ", \"span\": ", v1.compiler.compile.serialize_span(span: diagnostic_to_span(d: diagnostic.diagnostic)),
+    "{\"severity\": ", v1.compiler.dag_collect_support.json_quote(s: severity),
+    ", \"message\": ", v1.compiler.dag_collect_support.json_quote(s: v1.std.core.diagnostic_to_message(d: diagnostic.diagnostic)),
+    ", \"span\": ", serialize_span(span: v1.std.core.diagnostic_to_span(d: diagnostic.diagnostic)),
     ", \"module_name\": ", json_optional_string(value: Present { value: diagnostic.module_name }),
     ", \"category\": ", "null",
     "}")
 }
 
 fn emit_dag_artifact(typed: v1.compiler.infer_items.ResolvedGraph) -> v1.compiler.emit_core_support.EmitResult {
-  let collected = collect_dag_nodes(typed: typed)
+  let collected = v1.compiler.dag_collect.collect_dag_nodes(typed: typed)
   let _ = trace_mark("compile.emit.dag.collect.done")
   if collected.collision_errors |> count > 0 {
     return v1.compiler.emit_core_support.EmitResult { files: [], diagnostics: collected.collision_errors }
@@ -830,7 +830,7 @@ fn emit_dag_artifact(typed: v1.compiler.infer_items.ResolvedGraph) -> v1.compile
   let nodes_json = serialize_dag_nodes_table(order: order, source_indices: source_indices, key_to_id: key_to_id)
   let modules_json = typed.modules |> map(m => serialize_typed_module(module: m, key_to_id: key_to_id)) |> join(separator: ", ")
   let diagnostics_json = typed.diagnostics |> map(d => serialize_diagnostic(diagnostic: d)) |> join(separator: ", ")
-  let item_registry_json = map_keys(typed.item_registry) |> map(k => json_quote(s: k)) |> join(separator: ", ")
+  let item_registry_json = map_keys(typed.item_registry) |> map(k => v1.compiler.dag_collect_support.json_quote(s: k)) |> join(separator: ", ")
   let json = concat(
     "{\n  \"version\": \"0.2.0\",\n  \"nodes\": {", nodes_json,
     "},\n  \"modules\": [", modules_json,
@@ -864,23 +864,23 @@ type EmittableGraph sole_constructor {
   graph: v1.compiler.infer_items.ResolvedGraph
 }
 
-fn emittable_graph(resolved: v1.compiler.compile.ResolvedPipelineResult) -> v1.compiler.compile.EmittableGraph? {
-  let blocking = resolved.diagnostics |> filter(d => is_interpreter_blocking_diagnostic(d: d.diagnostic))
+fn emittable_graph(resolved: ResolvedPipelineResult) -> EmittableGraph? {
+  let blocking = resolved.diagnostics |> filter(d => v1.std.core.is_interpreter_blocking_diagnostic(d: d.diagnostic))
   if blocking |> count > 0 {
     none
   } else {
     match resolved.graph {
-      Present { value: typed } => Present { value: v1.compiler.compile.EmittableGraph { graph: typed } }
+      Present { value: typed } => Present { value: EmittableGraph { graph: typed } }
       Absent => none
     }
   }
 }
 
-fn emittable_graph_from_graph(typed: v1.compiler.infer_items.ResolvedGraph) -> v1.compiler.compile.EmittableGraph {
+fn emittable_graph_from_graph(typed: v1.compiler.infer_items.ResolvedGraph) -> EmittableGraph {
   EmittableGraph { graph: typed }
 }
 
-fn emit_from_artifact_plan(emittable: v1.compiler.compile.EmittableGraph, artifact_plan: v1.compiler.artifact.ArtifactPlan) -> v1.compiler.emit_core_support.EmitResult {
+fn emit_from_artifact_plan(emittable: EmittableGraph, artifact_plan: v1.compiler.artifact.ArtifactPlan) -> v1.compiler.emit_core_support.EmitResult {
   let typed = emittable.graph
   if artifact_plan.artifacts |> count == 0 {
     return v1.compiler.emit_core_support.EmitResult {
@@ -911,20 +911,20 @@ fn resolve_frontend_occurrence_transport(
   module_inputs: List<v1.compiler.resolve.ModuleOccurrenceInput>,
   source_indices: Map<String, v1.std.core.NewlineIndex>,
   occurrence_transport: std.occurrence_identity.OccurrenceTransport
-) -> v1.compiler.compile.FrontendOccurrenceResolution {
-  match occurrence_transport_refusal(transport: occurrence_transport) {
+) -> FrontendOccurrenceResolution {
+  match std.occurrence_identity.occurrence_transport_refusal(transport: occurrence_transport) {
     Present { value: refusal } =>
       FrontendOccurrenceResolution {
         graph: none,
         diagnostics: [
-          make_error_node(
+          v1.std.core.make_error_node(
             diagnostic: v1.std.core.OccurrenceTransportViolation { refusal: refusal },
             module_name: ""
           )
         ],
       }
     Absent =>
-      let graph = resolve_modules_with_occurrence_transport(
+      let graph = v1.compiler.resolve.resolve_modules_with_occurrence_transport(
         module_inputs: module_inputs,
         source_indices: source_indices,
         occurrence_transport: occurrence_transport
@@ -936,10 +936,10 @@ fn resolve_frontend_occurrence_transport(
   }
 }
 
-fn front_end_sources(sources: List<v1.compiler.compile.SourceFile>) -> v1.compiler.compile.FrontendResult {
+fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
   let prepared = sources |> map(s =>
-    let artifact = tokenize_artifact(source: s.content, file: s.path)
-    let si = build_newline_index(file: s.path, source: s.content)
+    let artifact = v1.compiler.tokenize.tokenize_artifact(source: s.content, file: s.path)
+    let si = v1.std.core.build_newline_index(file: s.path, source: s.content)
     FrontendPrepared {
       tokens: artifact.tokens,
       annotations: artifact.annotations,
@@ -947,17 +947,17 @@ fn front_end_sources(sources: List<v1.compiler.compile.SourceFile>) -> v1.compil
       newline_index: si,
     }
   )
-  let intern_table = prepared |> fold(init: empty_intern_table(), f: (t, p) => pre_intern_tokens(tokens: p.tokens, table: t))
-  let parsed = prepared |> fold(init: v1.compiler.compile.FrontendAccum {
+  let intern_table = prepared |> fold(init: v1.std.core.empty_intern_table(), f: (t, p) => v1.std.core.pre_intern_tokens(tokens: p.tokens, table: t))
+  let parsed = prepared |> fold(init: FrontendAccum {
     parse_results: [],
     module_inputs: [],
     newline_indices: [],
     intern_table: intern_table,
-    occurrence_allocator: occurrence_id_allocator_initial(),
-    annotations: source_annotation_graph_empty(),
+    occurrence_allocator: std.occurrence_identity.occurrence_id_allocator_initial(),
+    annotations: std.source_annotation.source_annotation_graph_empty(),
     annotation_diagnostics: [],
   }, f: (acc, p) =>
-    let parsed = parse_with_table_in_occurrence_scope(
+    let parsed = v1.compiler.parse.parse_with_table_in_occurrence_scope(
       tokens: p.tokens,
       source_indices: map_insert(
         empty_map(),
@@ -967,7 +967,7 @@ fn front_end_sources(sources: List<v1.compiler.compile.SourceFile>) -> v1.compil
       intern_table: acc.intern_table,
       occurrence_allocator: acc.occurrence_allocator
     )
-    let bound = admit_source_annotations(
+    let bound = v1.compiler.annotation_bind.admit_source_annotations(
       transport: parsed.occurrence_transport,
       captures: p.annotations,
       source_length: p.source_length
@@ -976,7 +976,7 @@ fn front_end_sources(sources: List<v1.compiler.compile.SourceFile>) -> v1.compil
       parse_results: list_push(acc.parse_results, parsed.result),
       module_inputs: match parsed.result.module {
         Present { value: parsed_module } =>
-          list_push(acc.module_inputs, module_occurrence_input(
+          list_push(acc.module_inputs, v1.compiler.resolve.module_occurrence_input(
             module: parsed_module,
             occurrence_transport: parsed.occurrence_transport
           ))
@@ -985,10 +985,10 @@ fn front_end_sources(sources: List<v1.compiler.compile.SourceFile>) -> v1.compil
       newline_indices: list_push(acc.newline_indices, p.newline_index),
       intern_table: parsed.intern_table,
       occurrence_allocator: parsed.occurrence_allocator,
-      annotations: source_annotation_graph_concat(left: acc.annotations, right: bound.graph),
+      annotations: std.source_annotation.source_annotation_graph_concat(left: acc.annotations, right: bound.graph),
       annotation_diagnostics: concat(
         acc.annotation_diagnostics,
-        bound.diagnostics |> map(d => make_error_node(diagnostic: d, module_name: p.newline_index.file))
+        bound.diagnostics |> map(d => v1.std.core.make_error_node(diagnostic: d, module_name: p.newline_index.file))
       ),
     }
   )
@@ -997,9 +997,9 @@ fn front_end_sources(sources: List<v1.compiler.compile.SourceFile>) -> v1.compil
   let parse_diagnostics = collect_diagnostics(parse_results: parse_results)
   let module_inputs = parsed.module_inputs
   let source_indices = fold(newline_indices, init: empty_map(), f: (acc, si) => map_insert(acc, si.file, si))
-  let occurrence_transport = v1.compiler.compile.merge_occurrence_transports(
+  let occurrence_transport = merge_occurrence_transports(
     transports: module_inputs |> map(input =>
-      module_occurrence_input_transport(input: input)
+      v1.compiler.resolve.module_occurrence_input_transport(input: input)
     )
   )
   let resolution = resolve_frontend_occurrence_transport(
@@ -1027,10 +1027,10 @@ type CensusFillParse {
 
 data parse_census_fill_note: String = "Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve (a fill module's imports live in the compile closure or a different tree view; resolving against a fill-only pool fabricates unresolved-import diagnostics about the view, not the modules). Diagnostics are parse errors only — those are load-bearing (a broken-parse module contributes no names to the census) and must surface, never be skipped."
 
-fn parse_census_fill_sources(sources: List<v1.compiler.compile.SourceFile>) -> v1.compiler.compile.CensusFillParse {
+fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
   let prepared = sources |> map(s =>
-    let artifact = tokenize_artifact(source: s.content, file: s.path)
-    let si = build_newline_index(file: s.path, source: s.content)
+    let artifact = v1.compiler.tokenize.tokenize_artifact(source: s.content, file: s.path)
+    let si = v1.std.core.build_newline_index(file: s.path, source: s.content)
     FrontendPrepared {
       tokens: artifact.tokens,
       annotations: artifact.annotations,
@@ -1038,17 +1038,17 @@ fn parse_census_fill_sources(sources: List<v1.compiler.compile.SourceFile>) -> v
       newline_index: si,
     }
   )
-  let intern_table = prepared |> fold(init: empty_intern_table(), f: (t, p) => pre_intern_tokens(tokens: p.tokens, table: t))
-  let parsed = prepared |> fold(init: v1.compiler.compile.FrontendAccum {
+  let intern_table = prepared |> fold(init: v1.std.core.empty_intern_table(), f: (t, p) => v1.std.core.pre_intern_tokens(tokens: p.tokens, table: t))
+  let parsed = prepared |> fold(init: FrontendAccum {
     parse_results: [],
     module_inputs: [],
     newline_indices: [],
     intern_table: intern_table,
-    occurrence_allocator: occurrence_id_allocator_initial(),
-    annotations: source_annotation_graph_empty(),
+    occurrence_allocator: std.occurrence_identity.occurrence_id_allocator_initial(),
+    annotations: std.source_annotation.source_annotation_graph_empty(),
     annotation_diagnostics: [],
   }, f: (acc, p) =>
-    let parsed = parse_with_table_in_occurrence_scope(
+    let parsed = v1.compiler.parse.parse_with_table_in_occurrence_scope(
       tokens: p.tokens,
       source_indices: map_insert(
         empty_map(),
@@ -1058,7 +1058,7 @@ fn parse_census_fill_sources(sources: List<v1.compiler.compile.SourceFile>) -> v
       intern_table: acc.intern_table,
       occurrence_allocator: acc.occurrence_allocator
     )
-    let bound = admit_source_annotations(
+    let bound = v1.compiler.annotation_bind.admit_source_annotations(
       transport: parsed.occurrence_transport,
       captures: p.annotations,
       source_length: p.source_length
@@ -1067,7 +1067,7 @@ fn parse_census_fill_sources(sources: List<v1.compiler.compile.SourceFile>) -> v
       parse_results: list_push(acc.parse_results, parsed.result),
       module_inputs: match parsed.result.module {
         Present { value: parsed_module } =>
-          list_push(acc.module_inputs, module_occurrence_input(
+          list_push(acc.module_inputs, v1.compiler.resolve.module_occurrence_input(
             module: parsed_module,
             occurrence_transport: parsed.occurrence_transport
           ))
@@ -1076,10 +1076,10 @@ fn parse_census_fill_sources(sources: List<v1.compiler.compile.SourceFile>) -> v
       newline_indices: list_push(acc.newline_indices, p.newline_index),
       intern_table: parsed.intern_table,
       occurrence_allocator: parsed.occurrence_allocator,
-      annotations: source_annotation_graph_concat(left: acc.annotations, right: bound.graph),
+      annotations: std.source_annotation.source_annotation_graph_concat(left: acc.annotations, right: bound.graph),
       annotation_diagnostics: concat(
         acc.annotation_diagnostics,
-        bound.diagnostics |> map(d => make_error_node(diagnostic: d, module_name: p.newline_index.file))
+        bound.diagnostics |> map(d => v1.std.core.make_error_node(diagnostic: d, module_name: p.newline_index.file))
       ),
     }
   )
@@ -1087,25 +1087,25 @@ fn parse_census_fill_sources(sources: List<v1.compiler.compile.SourceFile>) -> v
   let module_inputs = parsed.module_inputs
   CensusFillParse {
     modules: module_inputs |> map(input =>
-      module_occurrence_input_node(input: input)
+      v1.compiler.resolve.module_occurrence_input_node(input: input)
     ),
     newline_indices: parsed.newline_indices,
     diagnostics: concat(collect_diagnostics(parse_results: parse_results), parsed.annotation_diagnostics),
-    occurrence_transport: v1.compiler.compile.merge_occurrence_transports(
+    occurrence_transport: merge_occurrence_transports(
       transports: module_inputs |> map(input =>
-        module_occurrence_input_transport(input: input)
+        v1.compiler.resolve.module_occurrence_input_transport(input: input)
       )
     ),
     annotations: parsed.annotations,
   }
 }
 
-fn resolve_sources(sources: List<v1.compiler.compile.SourceFile>) -> v1.std.core.CompileResult {
+fn resolve_sources(sources: List<SourceFile>) -> v1.std.core.CompileResult {
   let frontend = front_end_sources(sources: sources)
   v1.std.core.CompileResult { files: [], diagnostics: frontend.diagnostics }
 }
 
-fn compile_sources(sources: List<v1.compiler.compile.SourceFile>, target: v1.compiler.artifact.RenderTarget) -> v1.compiler.compile.PipelineResult {
+fn compile_sources(sources: List<SourceFile>, target: v1.compiler.artifact.RenderTarget) -> PipelineResult {
   compile_sources_with_options(
     sources: sources,
     target: target,
@@ -1113,7 +1113,7 @@ fn compile_sources(sources: List<v1.compiler.compile.SourceFile>, target: v1.com
   )
 }
 
-fn compile_sources_with_options(sources: List<v1.compiler.compile.SourceFile>, target: v1.compiler.artifact.RenderTarget, options: v1.compiler.compile.CompilePipelineOptions) -> v1.compiler.compile.PipelineResult {
+fn compile_sources_with_options(sources: List<SourceFile>, target: v1.compiler.artifact.RenderTarget, options: CompilePipelineOptions) -> PipelineResult {
   emit_resolved_for_target(
     resolved: compile_to_resolved_with_options(sources: sources, options: options),
     target: target
@@ -1122,11 +1122,11 @@ fn compile_sources_with_options(sources: List<v1.compiler.compile.SourceFile>, t
 
 fn interpreter_blocking_diagnostic_messages(diagnostics: List<v1.std.core.ErrorNode>) -> List<String> {
   diagnostics
-    |> filter(d => is_interpreter_blocking_diagnostic(d: d.diagnostic))
+    |> filter(d => v1.std.core.is_interpreter_blocking_diagnostic(d: d.diagnostic))
     |> map(d => {
-      let span = diagnostic_to_span(d: d.diagnostic)
+      let span = v1.std.core.diagnostic_to_span(d: d.diagnostic)
       concat(
-        diagnostic_to_message(d: d.diagnostic),
+        v1.std.core.diagnostic_to_message(d: d.diagnostic),
         " (",
         span.file,
         ":",
@@ -1142,7 +1142,7 @@ fn interpreter_blocking_diagnostic_messages(diagnostics: List<v1.std.core.ErrorN
 // "v2 self-compile" while the generic compile path reached them, so a user compiling
 // their own fixture was told a compile they never ran had failed -- a false subject
 // costs the next reader's search, the stale-citation harm class.
-fn stage0_self_compile_refusal_message(subject: String, result: v1.compiler.compile.PipelineResult) -> String? {
+fn stage0_self_compile_refusal_message(subject: String, result: PipelineResult) -> String? {
   let hard_messages = interpreter_blocking_diagnostic_messages(diagnostics: result.diagnostics)
   if hard_messages |> count > 0 {
     Present {
@@ -1170,18 +1170,18 @@ type ResolvedPipelineResult {
   newline_indices: List<v1.std.core.NewlineIndex>
 }
 
-fn compile_to_resolved(sources: List<v1.compiler.compile.SourceFile>) -> v1.compiler.compile.ResolvedPipelineResult {
+fn compile_to_resolved(sources: List<SourceFile>) -> ResolvedPipelineResult {
   compile_to_resolved_with_options(
     sources: sources,
     options: default_compile_pipeline_options()
   )
 }
 
-fn compile_to_resolved_discovery_corpus_advisory(sources: List<v1.compiler.compile.SourceFile>) -> v1.compiler.compile.ResolvedPipelineResult {
+fn compile_to_resolved_discovery_corpus_advisory(sources: List<SourceFile>) -> ResolvedPipelineResult {
   compile_to_resolved(sources: sources)
 }
 
-fn compile_to_resolved_with_options(sources: List<v1.compiler.compile.SourceFile>, options: v1.compiler.compile.CompilePipelineOptions) -> v1.compiler.compile.ResolvedPipelineResult {
+fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompilePipelineOptions) -> ResolvedPipelineResult {
   let _ = trace_mark("compile.frontend.begin")
   let frontend = front_end_sources(sources: sources)
   let _ = trace_mark("compile.frontend.done")
@@ -1192,24 +1192,24 @@ fn compile_to_resolved_with_options(sources: List<v1.compiler.compile.SourceFile
         graph: none,
         diagnostics: frontend.diagnostics,
         source_indices: empty_map(),
-        complexity: empty_complexity_report(),
+        complexity: v1.compiler.complexity.empty_complexity_report(),
         ownership: [],
         newline_indices: newline_indices
       }
     Present { value: graph } => {
       let source_indices = fold(newline_indices, init: empty_map(), f: (acc, index) => map_insert(acc, index.file, index))
-      let norm = normalize_graph(graph: graph, source_indices: source_indices)
+      let norm = v1.compiler.normalize.normalize_graph(graph: graph, source_indices: source_indices)
       let _ = trace_mark("compile.normalize.done")
       let norm_diags = norm.diagnostics
       let fill = parse_census_fill_sources(sources: options.census_only_sources)
       let census_si = fold(fill.newline_indices, init: source_indices, f: (acc, index) => map_insert(acc, index.file, index))
-      let typed = reconcile_with_census_extra(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table, census_fill_modules: fill.modules, census_si: census_si)
+      let typed = v1.compiler.infer.reconcile_with_census_extra(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table, census_fill_modules: fill.modules, census_si: census_si)
       let _ = trace_mark("compile.reconcile.done")
       let typed_diags = typed.diagnostics
       let complexity = if options.analyze_complexity {
         run_complexity_analysis(typed: typed, source_indices: source_indices)
       } else {
-        empty_complexity_report()
+        v1.compiler.complexity.empty_complexity_report()
       }
       let complexity_diags = if options.analyze_complexity {
         complexity_diagnostics(complexity: complexity)
@@ -1232,7 +1232,7 @@ fn compile_to_resolved_with_options(sources: List<v1.compiler.compile.SourceFile
   }
 }
 
-fn emit_resolved_for_target(resolved: v1.compiler.compile.ResolvedPipelineResult, target: v1.compiler.artifact.RenderTarget) -> v1.compiler.compile.PipelineResult {
+fn emit_resolved_for_target(resolved: ResolvedPipelineResult, target: v1.compiler.artifact.RenderTarget) -> PipelineResult {
   match emittable_graph(resolved: resolved) {
     Absent =>
       PipelineResult {
@@ -1245,8 +1245,8 @@ fn emit_resolved_for_target(resolved: v1.compiler.compile.ResolvedPipelineResult
       }
     Present { value: emittable } => {
       let typed = emittable.graph
-      let artifact_plan = default_artifact_plan(
-        root_modules: typed.modules |> map(m => authored_name_at(source_indices: resolved.source_indices, node: m.module)),
+      let artifact_plan = v1.compiler.artifact.default_artifact_plan(
+        root_modules: typed.modules |> map(m => v1.std.core.authored_name_at(source_indices: resolved.source_indices, node: m.module)),
         target: target
       )
       let _ = trace_mark("compile.emit.begin")
@@ -1254,7 +1254,7 @@ fn emit_resolved_for_target(resolved: v1.compiler.compile.ResolvedPipelineResult
       let _ = trace_mark("compile.emit.done")
       let emit_files = emit_result.files
       let emit_diags = emit_result.diagnostics
-      let emit_errors = emit_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+      let emit_errors = emit_diags |> filter(d => v1.std.core.is_error_diagnostic(d: d.diagnostic))
       let final_files = if emit_errors |> count > 0 { [] } else { emit_files }
       PipelineResult {
         files: final_files,

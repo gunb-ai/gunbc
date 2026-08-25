@@ -11,7 +11,7 @@ fn probe_source() -> v1.compiler.compile.SourceFile {
 }
 
 fn probe_emitted() -> String {
-  let result = compile_sources(sources: [probe_source()], target: Rust)
+  let result = v1.compiler.compile.compile_sources(sources: [probe_source()], target: v1.compiler.artifact.Rust)
   result.files |> map(f => f.content) |> join(separator: "\n")
 }
 
@@ -24,6 +24,6 @@ fn probe_emits_fn_add() -> Bool {
 }
 
 fn probe_clean_source_has_no_diagnostics() -> Bool {
-  let result = compile_sources(sources: [probe_source()], target: Rust)
+  let result = v1.compiler.compile.compile_sources(sources: [probe_source()], target: v1.compiler.artifact.Rust)
   (result.diagnostics |> count) == 0
 }

@@ -1,8 +1,9 @@
 module v1.std.core
 
+
 type Token {
   text: String
-  span: SourceSpan
+  span: std.types.SourceSpan
   shape: TokenShape
 }
 
@@ -38,7 +39,7 @@ type FieldSummary {
 
 type InferredNode
   = Resolved { node: Node }
-  | CompilerError { message: String, span: SourceSpan }
+  | CompilerError { message: String, span: std.types.SourceSpan }
   | TypeVariable { id: String }
 
 fn inferred_to_node(inferred: InferredNode) -> Node? {
@@ -74,25 +75,25 @@ type CallSemantics
 
 type MethodSemantics
   = PlainMethodSemantics
-  | AlgebraMethodSemantics { method_def: Node, fold_accumulator_type: Node?, size_effect: CollectionSizeEffect?, cost_shape: CostShape?, algebra_template: AlgebraFieldTemplate? }
+  | AlgebraMethodSemantics { method_def: Node, fold_accumulator_type: Node?, size_effect: std.algebra.CollectionSizeEffect?, cost_shape: std.algebra.CostShape?, algebra_template: std.algebra.AlgebraFieldTemplate? }
   | ServiceMethodSemantics { service_name: String, op_params: List<Node> }
 
 type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError | CensusHeadsBodyStripped
 
 type ExprData
   = NoExprData
-  | ExprLiteral { value: LiteralValue }
+  | ExprLiteral { value: std.syntax.LiteralValue }
   | ExprError { kind: ExprErrorKind, message: String }
   | ExprVar { binding_kind: VarBindingKind? }
   | ExprFieldAccess { summary: FieldSummary? }
-  | ExprCall { call_semantics: CallSemantics?, descent_evidence: List<SubValueRelation>? }
+  | ExprCall { call_semantics: CallSemantics?, descent_evidence: List<std.induction.SubValueRelation>? }
   | ExprMethodCall { method_semantics: MethodSemantics? }
   | ExprMatch
   | ExprIf
   | ExprLet
   | ExprRecordLit { parent_enum: String? }
   | ExprListLit
-  | ExprBinOp { op: BinOp, algebra_field: AlgebraFieldKind? }
+  | ExprBinOp { op: std.syntax.BinOp, algebra_field: std.syntax.AlgebraFieldKind? }
   | ExprUnaryOp { op: UnaryOpKind }
   | ExprLambda
   | ExprStringInterp
@@ -105,7 +106,7 @@ type ExprData
 
 type MatchPattern
   = Bind { declaration: Node }
-  | LitPattern { value: LiteralValue }
+  | LitPattern { value: std.syntax.LiteralValue }
   | VariantPattern { name: String, parent_enum: String?, field_bindings: List<Node> }
   | Wildcard
 
@@ -130,62 +131,62 @@ type CompileResult {
 }
 
 type TextFile {
-  path: FilePath
+  path: std.types.FilePath
   content: String
 }
 
 type CompilerDiagnostic
-  = UnresolvedImport   { module_path: String, importing_module: String, span: SourceSpan }
-  | MissingExport      { name: String, module_path: String, importing_module: String, span: SourceSpan }
-  | UnresolvedType     { name: String, span: SourceSpan }
-  | TypeMismatch       { expected: String, got: String, span: SourceSpan }
-  | ArityMismatch      { name: String, expected: Int, got: Int, span: SourceSpan }
-  | VariantNotFound    { variant: String, type_name: String, span: SourceSpan }
-  | FieldNotFound      { field: String, type_name: String, span: SourceSpan }
-  | MethodNotFound     { method: String, receiver_type: String, span: SourceSpan }
-  | MethodExistenceUndecided { method: String, receiver_type: String, span: SourceSpan }
-  | MethodExistenceFrontierAdmitted { method: String, receiver_type: String, trigger: String, span: SourceSpan }
-  | ReceiverTypeUnestablished { method: String, span: SourceSpan }
-  | FrontierOccurrenceBudgetExceeded { method: String, receiver_type: String, declared: Int, observed: Int, span: SourceSpan }
-  | MissingField       { field: String, type_name: String, span: SourceSpan }
-  | NonExhaustiveMatch { missing: List<String>, span: SourceSpan }
-  | CircularDependency { modules: List<String>, span: SourceSpan }
-  | DuplicateModule    { name: String, span: SourceSpan }
-  | MissingAnnotation  { fn_name: String, what: String, span: SourceSpan }
-  | ParseError         { message: String, span: SourceSpan }
-  | InternalError      { message: String, span: SourceSpan }
-  | ComplexityUnknown  { func_name: String, reason: String, span: SourceSpan }
-  | WhereRefinementUnenforced { predicate: String, formal_type: String, reason: String, span: SourceSpan }
-  | OwnershipViolation   { binding: String, fn_name: String, consumers: Int, span: SourceSpan }
-  | VariantCollision { variant: String, enum1: String, enum2: String, span: SourceSpan }
-  | SoleConstructorViolation { type_name: String, span: SourceSpan }
-  | OptionalCastNotEliminated { source_type: String, target_type: String, span: SourceSpan }
-  | BareNoneNotAdmittedByFieldType { field: String, type_name: String, declared_type: String, span: SourceSpan }
-  | SourceAnnotationRefused { refusal: AnnotationAttachmentRefusal }
+  = UnresolvedImport   { module_path: String, importing_module: String, span: std.types.SourceSpan }
+  | MissingExport      { name: String, module_path: String, importing_module: String, span: std.types.SourceSpan }
+  | UnresolvedType     { name: String, span: std.types.SourceSpan }
+  | TypeMismatch       { expected: String, got: String, span: std.types.SourceSpan }
+  | ArityMismatch      { name: String, expected: Int, got: Int, span: std.types.SourceSpan }
+  | VariantNotFound    { variant: String, type_name: String, span: std.types.SourceSpan }
+  | FieldNotFound      { field: String, type_name: String, span: std.types.SourceSpan }
+  | MethodNotFound     { method: String, receiver_type: String, span: std.types.SourceSpan }
+  | MethodExistenceUndecided { method: String, receiver_type: String, span: std.types.SourceSpan }
+  | MethodExistenceFrontierAdmitted { method: String, receiver_type: String, trigger: String, span: std.types.SourceSpan }
+  | ReceiverTypeUnestablished { method: String, span: std.types.SourceSpan }
+  | FrontierOccurrenceBudgetExceeded { method: String, receiver_type: String, declared: Int, observed: Int, span: std.types.SourceSpan }
+  | MissingField       { field: String, type_name: String, span: std.types.SourceSpan }
+  | NonExhaustiveMatch { missing: List<String>, span: std.types.SourceSpan }
+  | CircularDependency { modules: List<String>, span: std.types.SourceSpan }
+  | DuplicateModule    { name: String, span: std.types.SourceSpan }
+  | MissingAnnotation  { fn_name: String, what: String, span: std.types.SourceSpan }
+  | ParseError         { message: String, span: std.types.SourceSpan }
+  | InternalError      { message: String, span: std.types.SourceSpan }
+  | ComplexityUnknown  { func_name: String, reason: String, span: std.types.SourceSpan }
+  | WhereRefinementUnenforced { predicate: String, formal_type: String, reason: String, span: std.types.SourceSpan }
+  | OwnershipViolation   { binding: String, fn_name: String, consumers: Int, span: std.types.SourceSpan }
+  | VariantCollision { variant: String, enum1: String, enum2: String, span: std.types.SourceSpan }
+  | SoleConstructorViolation { type_name: String, span: std.types.SourceSpan }
+  | OptionalCastNotEliminated { source_type: String, target_type: String, span: std.types.SourceSpan }
+  | BareNoneNotAdmittedByFieldType { field: String, type_name: String, declared_type: String, span: std.types.SourceSpan }
+  | SourceAnnotationRefused { refusal: std.source_annotation.AnnotationAttachmentRefusal }
   | ConstructorCallAdmissionRefused {
       constructor_module_path: String,
       constructor_decl_name: String,
       caller_module_path: String,
       caller_decl_name: String,
       permitted_callers: List<String>,
-      span: SourceSpan
+      span: std.types.SourceSpan
     }
-  | AdmitCallersEntryNotDeclRef { constructor_decl_name: String, span: SourceSpan }
-  | UnlistedImportUse { name: String, span: SourceSpan }
-  | AmbiguousReference { name: String, candidates: List<String>, span: SourceSpan }
-  | AmbiguousAnonymousRecordLiteral { candidates: List<String>, span: SourceSpan }
-  | CallArgumentNameUnknown { callee: String, argument: String, declared: List<String>, span: SourceSpan }
-  | CallPositionalSurplus { callee: String, supplied: Int, capacity: Int, span: SourceSpan }
-  | CallArgumentDuplicate { callee: String, argument: String, span: SourceSpan }
-  | CallPositionalDeficit { callee: String, parameter: String, supplied: Int, required: Int, span: SourceSpan }
-  | CallNamedArgOnFunctionValue { callee: String, argument: String, span: SourceSpan }
-  | OccurrenceTransportViolation { refusal: OccurrenceTransportRefusal }
-  | ContainerSpellingUnrecognized { name: String, container_leaf: String, span: SourceSpan }
+  | AdmitCallersEntryNotDeclRef { constructor_decl_name: String, span: std.types.SourceSpan }
+  | UnlistedImportUse { name: String, span: std.types.SourceSpan }
+  | AmbiguousReference { name: String, candidates: List<String>, span: std.types.SourceSpan }
+  | AmbiguousAnonymousRecordLiteral { candidates: List<String>, span: std.types.SourceSpan }
+  | CallArgumentNameUnknown { callee: String, argument: String, declared: List<String>, span: std.types.SourceSpan }
+  | CallPositionalSurplus { callee: String, supplied: Int, capacity: Int, span: std.types.SourceSpan }
+  | CallArgumentDuplicate { callee: String, argument: String, span: std.types.SourceSpan }
+  | CallPositionalDeficit { callee: String, parameter: String, supplied: Int, required: Int, span: std.types.SourceSpan }
+  | CallNamedArgOnFunctionValue { callee: String, argument: String, span: std.types.SourceSpan }
+  | OccurrenceTransportViolation { refusal: std.occurrence_identity.OccurrenceTransportRefusal }
+  | ContainerSpellingUnrecognized { name: String, container_leaf: String, span: std.types.SourceSpan }
   | ServiceConfigReferenceJudgmentDeferred {
       field: String,
       referenced_name: String,
       trigger: String,
-      span: SourceSpan
+      span: std.types.SourceSpan
     }
   | TransportEmissionNotModeled {
       transport_kind: String,
@@ -194,7 +195,7 @@ type CompilerDiagnostic
       declaring_module: String,
       target: String,
       missing_realization_fact: String,
-      span: SourceSpan
+      span: std.types.SourceSpan
     }
 
 type ErrorNode {
@@ -209,60 +210,60 @@ type ErrorDAG {
 data occurrence_transport_refusal_span_absence_note: String = "Span absence for OccurrenceTransportRefusal is decided HERE, by a total wildcard-free match, and rendered by diagnostic_to_span as no_span() -- the corpus's single authority for 'no authored location' (review 45364).\n\nWHY THERE IS NO SPAN TO CARRY: UnknownOccurrenceIdentity is raised when an OccurrenceId is in neither entries_by_id nor references_by_id (std.occurrence_binding_resolve resolve_reference_occurrence_binding_validated). resolve_reference_occurrence_binding takes ONLY an OccurrenceId (review 45106) precisely so caller-supplied span facts cannot bypass the validated carrier, so at that point no authored span exists to report. This is absence by construction, not a failure to compute one.\n\nWHAT WAS DELETED AND WHY: this arm previously minted two placeholder SourceSpans -- file '<unknown-occurrence:N>' and a wildcard '<occurrence-transport-refusal>'. Both are removed. The wildcard was the DESIGN section 5 absorbing arm: a future spanless variant would have been absorbed into an anonymous placeholder instead of stopping the line. It is now unreachable-by-construction rather than merely unused, because adding a variant reds the total match below AND the total match in occurrence_transport_refusal_diagnostic_message. The '<unknown-occurrence:N>' file name was additionally a section 2 duplicate: the occurrence id is already carried by occurrence_transport_refusal_diagnostic_message, so the span restated a fact the message owns, and a bespoke pseudo-file was a section 3 nickname for no_span().\n\nBOUND, STATED HONESTLY: diagnostic_to_span returns SourceSpan, not SourceSpan?, so span-absence is rendered rather than typed at that boundary. Making it typed changes a load-bearing v1 seed signature with 3 dag and 24 Rust call sites and is a separate corpus-wide change, not this node's scope. Until then no_span() is the honest rendering and the message carries the identity."
 
 fn occurrence_transport_refusal_diagnostic_span(
-  refusal: OccurrenceTransportRefusal
-) -> SourceSpan? {
+  refusal: std.occurrence_identity.OccurrenceTransportRefusal
+) -> std.types.SourceSpan? {
   match refusal {
-    MissingAuthoredOccurrenceIdentity { diagnostic_span: span } => Present { value: span }
-    DuplicateAuthoredOccurrenceIdentity {
+    std.occurrence_identity.MissingAuthoredOccurrenceIdentity { diagnostic_span: span } => Present { value: span }
+    std.occurrence_identity.DuplicateAuthoredOccurrenceIdentity {
       occurrence: _,
       diagnostic_span: span,
     } => Present { value: span }
-    DuplicateSuppliedCandidateIdentity {
+    std.occurrence_identity.DuplicateSuppliedCandidateIdentity {
       occurrence: _,
       diagnostic_span: span,
     } => Present { value: span }
-    InconsistentOccurrenceContainment {
+    std.occurrence_identity.InconsistentOccurrenceContainment {
       occurrence: _,
       diagnostic_span: span,
     } => Present { value: span }
-    WrongOccurrenceRole {
+    std.occurrence_identity.WrongOccurrenceRole {
       occurrence: _,
       expected: _,
       observed: _,
       diagnostic_span: span,
     } => Present { value: span }
-    UnknownOccurrenceIdentity { occurrence: _ } => Absent
+    std.occurrence_identity.UnknownOccurrenceIdentity { occurrence: _ } => Absent
   }
 }
 
 fn occurrence_transport_refusal_diagnostic_message(
-  refusal: OccurrenceTransportRefusal
+  refusal: std.occurrence_identity.OccurrenceTransportRefusal
 ) -> String {
   match refusal {
-    MissingAuthoredOccurrenceIdentity { diagnostic_span: _ } =>
+    std.occurrence_identity.MissingAuthoredOccurrenceIdentity { diagnostic_span: _ } =>
       "occurrence transport refused: missing authored occurrence identity"
-    DuplicateAuthoredOccurrenceIdentity {
+    std.occurrence_identity.DuplicateAuthoredOccurrenceIdentity {
       occurrence: occurrence,
       diagnostic_span: _,
     } => concat(
       "occurrence transport refused: duplicate authored occurrence identity ",
       to_string(value: occurrence.value)
     )
-    DuplicateSuppliedCandidateIdentity {
+    std.occurrence_identity.DuplicateSuppliedCandidateIdentity {
       occurrence: occurrence,
       diagnostic_span: _,
     } => concat(
       "occurrence binding refused: duplicate supplied candidate identity ",
       to_string(value: occurrence.value)
     )
-    InconsistentOccurrenceContainment {
+    std.occurrence_identity.InconsistentOccurrenceContainment {
       occurrence: occurrence,
       diagnostic_span: _,
     } => concat(
       "occurrence transport refused: inconsistent containment for authored occurrence identity ",
       to_string(value: occurrence.value)
     )
-    WrongOccurrenceRole {
+    std.occurrence_identity.WrongOccurrenceRole {
       occurrence: occurrence,
       expected: _,
       observed: _,
@@ -271,7 +272,7 @@ fn occurrence_transport_refusal_diagnostic_message(
       "occurrence transport refused: wrong role for authored occurrence identity ",
       to_string(value: occurrence.value)
     )
-    UnknownOccurrenceIdentity { occurrence: occurrence } =>
+    std.occurrence_identity.UnknownOccurrenceIdentity { occurrence: occurrence } =>
       concat(
         "occurrence transport refused: unknown occurrence identity ",
         to_string(value: occurrence.value)
@@ -279,7 +280,7 @@ fn occurrence_transport_refusal_diagnostic_message(
   }
 }
 
-fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
+fn diagnostic_to_span(d: CompilerDiagnostic) -> std.types.SourceSpan {
   match d {
     UnresolvedImport   { module_path: _, importing_module: _, span: s } => s
     MissingExport      { name: _, module_path: _, importing_module: _, span: s } => s
@@ -307,7 +308,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     SoleConstructorViolation { type_name: _, span: s } => s
     OptionalCastNotEliminated { source_type: _, target_type: _, span: s } => s
     BareNoneNotAdmittedByFieldType { field: _, type_name: _, declared_type: _, span: s } => s
-    SourceAnnotationRefused { refusal: r } => annotation_attachment_refusal_origin(refusal: r)
+    SourceAnnotationRefused { refusal: r } => std.source_annotation.annotation_attachment_refusal_origin(refusal: r)
     ConstructorCallAdmissionRefused {
       constructor_module_path: _,
       constructor_decl_name: _,
@@ -368,7 +369,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("cannot cast optional '", st, "' to '", tt, "': a cast does not eliminate the absence, it re-types the wrapper — match on Present/Absent first")
     BareNoneNotAdmittedByFieldType { field: f, type_name: t, declared_type: dt, span: _ } =>
       concat("bare 'None' cannot inhabit field '", f, "' of '", t, "': declared type '", dt, "' carries no absence — it is not optional and declares no 'None' variant")
-    SourceAnnotationRefused { refusal: r } => annotation_attachment_refusal_message(refusal: r)
+    SourceAnnotationRefused { refusal: r } => std.source_annotation.annotation_attachment_refusal_message(refusal: r)
     ConstructorCallAdmissionRefused {
       constructor_module_path: cm,
       constructor_decl_name: cn,
@@ -501,8 +502,8 @@ type DeclaredFuncSig {
   params: List<Node>
   inferred: Node?
   is_async: Bool
-  output_provenance: List<Map<String, SubValueRelation>>
-  variant_provenance: Map<String, Map<String, Map<String, SubValueRelation>>>
+  output_provenance: List<Map<String, std.induction.SubValueRelation>>
+  variant_provenance: Map<String, Map<String, Map<String, std.induction.SubValueRelation>>>
 }
 
 type DeclaredFuncEnv {
@@ -512,8 +513,8 @@ type DeclaredFuncEnv {
 type Node {
   name: String
   ident: Int?
-  span: SourceSpan
-  ident_span: SourceSpan?
+  span: std.types.SourceSpan
+  ident_span: std.types.SourceSpan?
   children: List<Node>
   connective: Connective
 
@@ -532,11 +533,11 @@ type Node {
   expr_data: ExprData
 }
 
-fn default_ident_span(name: String, span: SourceSpan) -> SourceSpan? {
+fn default_ident_span(name: String, span: std.types.SourceSpan) -> std.types.SourceSpan? {
   if name == "" { none } else { Present { value: span } }
 }
 
-fn node_name_span(n: Node) -> SourceSpan {
+fn node_name_span(n: Node) -> std.types.SourceSpan {
   match n.ident_span { Present { value: s } => s  Absent => n.span }
 }
 
@@ -544,7 +545,7 @@ fn empty_node_list() -> List<Node> {
   []
 }
 
-fn make_expr_node(expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan) -> Node {
+fn make_expr_node(expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: std.types.SourceSpan) -> Node {
   Node {
     name: "", span: span, ident_span: none, children: children,
     connective: NoConnective,
@@ -556,7 +557,7 @@ fn make_expr_node(expr_data: ExprData, children: List<Node>, inferred: InferredN
   }
 }
 
-fn make_named_expr_node(name: String, expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan, name_span: SourceSpan) -> Node {
+fn make_named_expr_node(name: String, expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
   Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children,
     connective: NoConnective,
@@ -568,7 +569,7 @@ fn make_named_expr_node(name: String, expr_data: ExprData, children: List<Node>,
   }
 }
 
-fn make_pattern_binder_declaration_node(name: String, span: SourceSpan) -> Node {
+fn make_pattern_binder_declaration_node(name: String, span: std.types.SourceSpan) -> Node {
   make_named_expr_node(
     name: name,
     expr_data: NoExprData,
@@ -579,7 +580,7 @@ fn make_pattern_binder_declaration_node(name: String, span: SourceSpan) -> Node 
   )
 }
 
-fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) -> Node {
+fn make_expr_error_node(kind: ExprErrorKind, message: String, span: std.types.SourceSpan) -> Node {
   Node {
     name: "", span: span, ident_span: none, children: [], connective: NoConnective,
 
@@ -591,7 +592,7 @@ fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) 
   }
 }
 
-fn make_arg_node(name: String?, value: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
+fn make_arg_node(name: String?, value: Node, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
   let arg_name = match name { Present { value: n } => n  Absent => "" }
   Node {
     name: arg_name, span: span, ident_span: default_ident_span(name: arg_name, span: name_span), children: [value], connective: NoConnective,
@@ -603,7 +604,7 @@ fn make_arg_node(name: String?, value: Node, span: SourceSpan, name_span: Source
   }
 }
 
-fn make_arm_node(pattern: MatchPattern, guard: Node?, body: Node, span: SourceSpan) -> Node {
+fn make_arm_node(pattern: MatchPattern, guard: Node?, body: Node, span: std.types.SourceSpan) -> Node {
   let children = match guard { Present { value: g } => [g, body]  Absent => [body] }
   Node {
     name: "", span: span, ident_span: none, children: children, connective: NoConnective,
@@ -616,7 +617,7 @@ fn make_arm_node(pattern: MatchPattern, guard: Node?, body: Node, span: SourceSp
   }
 }
 
-fn make_resource_use_node(name: String, resource: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
+fn make_resource_use_node(name: String, resource: Node, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
   Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: [resource], connective: NoConnective,
 
@@ -636,7 +637,7 @@ fn resource_use_resource(n: Node) -> Node {
   }
 }
 
-fn make_field_init_node(name: String, value: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
+fn make_field_init_node(name: String, value: Node, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
   Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: [value], connective: NoConnective,
 
@@ -647,7 +648,7 @@ fn make_field_init_node(name: String, value: Node, span: SourceSpan, name_span: 
   }
 }
 
-fn make_field_binding_node(field_name: String, binding: MatchPattern, span: SourceSpan, name_span: SourceSpan) -> Node {
+fn make_field_binding_node(field_name: String, binding: MatchPattern, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
   Node {
     name: field_name, span: span, ident_span: default_ident_span(name: field_name, span: name_span), children: [], connective: NoConnective,
     params: [], inferred: none, return_cardinality: Required,
@@ -663,7 +664,7 @@ fn field_binding_pattern(n: Node) -> MatchPattern {
   match n.match_pattern { Present { value: p } => p  Absent => Wildcard }
 }
 
-fn make_text_part_node(text: String, span: SourceSpan) -> Node {
+fn make_text_part_node(text: String, span: std.types.SourceSpan) -> Node {
   Node {
     name: "", span: span, ident_span: none, children: [], connective: NoConnective,
 
@@ -671,11 +672,11 @@ fn make_text_part_node(text: String, span: SourceSpan) -> Node {
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none,
-    expr_data: ExprLiteral { value: LitStr { value: text } }
+    expr_data: ExprLiteral { value: std.syntax.LitStr { value: text } }
   }
 }
 
-fn make_interp_part_node(expr: Node, span: SourceSpan) -> Node {
+fn make_interp_part_node(expr: Node, span: std.types.SourceSpan) -> Node {
   Node {
     name: "", span: span, ident_span: none, children: [expr], connective: NoConnective,
 
@@ -686,7 +687,7 @@ fn make_interp_part_node(expr: Node, span: SourceSpan) -> Node {
   }
 }
 
-fn make_param_node(name: String, type_expr: Node, default_value: Node?, span: SourceSpan, name_span: SourceSpan) -> Node {
+fn make_param_node(name: String, type_expr: Node, default_value: Node?, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
   let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
   Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children, connective: NoConnective,
@@ -697,7 +698,7 @@ fn make_param_node(name: String, type_expr: Node, default_value: Node?, span: So
   }
 }
 
-fn make_resolved_param_node(name: String, type_expr: Node, default_value: Node?, properties: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
+fn make_resolved_param_node(name: String, type_expr: Node, default_value: Node?, properties: List<Node>, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
   let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
   Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children, connective: NoConnective,
@@ -754,9 +755,9 @@ fn param_node_default_value(n: Node) -> Node? {
   } else { none }
 }
 
-fn param_node_span(n: Node) -> SourceSpan { n.span }
+fn param_node_span(n: Node) -> std.types.SourceSpan { n.span }
 
-fn make_field_node(name: String, type_expr: Node, cardinality: Cardinality, default_value: Node?, from_key: String?, span: SourceSpan, name_span: SourceSpan) -> Node {
+fn make_field_node(name: String, type_expr: Node, cardinality: Cardinality, default_value: Node?, from_key: String?, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
   let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
   let props = match from_key {
     Present { value: fk } => [make_field_init_node(name: "from_key", value: Node { name: fk, span: no_span(), ident_span: default_ident_span(name: fk, span: no_span()), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, span: no_span(), name_span: no_span())]
@@ -795,9 +796,9 @@ fn field_node_from_key(n: Node, source_indices: Map<String, NewlineIndex>) -> St
   }
 }
 
-fn field_node_span(n: Node) -> SourceSpan { n.span }
+fn field_node_span(n: Node) -> std.types.SourceSpan { n.span }
 
-fn make_variant_node(name: String, fields: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
+fn make_variant_node(name: String, fields: List<Node>, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
   Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: fields, connective: NoConnective,
     params: [], inferred: none, return_cardinality: Required,
@@ -809,7 +810,7 @@ fn make_variant_node(name: String, fields: List<Node>, span: SourceSpan, name_sp
 
 fn variant_node_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
 fn variant_node_fields(n: Node) -> List<Node> { n.children }
-fn variant_node_span(n: Node) -> SourceSpan { n.span }
+fn variant_node_span(n: Node) -> std.types.SourceSpan { n.span }
 
 type ChildRole {
   name: String
@@ -1038,7 +1039,7 @@ fn call_named_arg_string_optional(
 
 type AdmitCallersEntry
   = AdmitCallersEntryCoords { coords: DeclRefCoords }
-  | AdmitCallersEntryUninterpretable { span: SourceSpan }
+  | AdmitCallersEntryUninterpretable { span: std.types.SourceSpan }
 
 fn decl_ref_coords_from_call_expr(
   expr: Node,
@@ -1109,7 +1110,7 @@ fn fn_admit_callers(n: Node, source_indices: Map<String, NewlineIndex>) -> List<
   }
 }
 
-fn admit_callers_entry_uninterpretable_spans(entries: List<AdmitCallersEntry>) -> List<SourceSpan> {
+fn admit_callers_entry_uninterpretable_spans(entries: List<AdmitCallersEntry>) -> List<std.types.SourceSpan> {
   flat_map(
     entries,
     e =>
@@ -1176,7 +1177,7 @@ fn field_access_spine(texpr: Node, source_indices: Map<String, NewlineIndex>) ->
 
 fn expr_call_func_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
 
-fn expr_call_descent_evidence(texpr: Node) -> List<SubValueRelation>? {
+fn expr_call_descent_evidence(texpr: Node) -> List<std.induction.SubValueRelation>? {
   match texpr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: de } => de
     _ => none
@@ -1236,7 +1237,7 @@ data transport_headers_key: String = "headers"
 data transport_auth_basic_key: String = "auth_basic"
 data transport_tls_key: String = "tls"
 
-fn make_transport_node(properties: List<Node>, children: List<Node>, body: Node?, span: SourceSpan) -> Node {
+fn make_transport_node(properties: List<Node>, children: List<Node>, body: Node?, span: std.types.SourceSpan) -> Node {
   Node {
     name: "", span: span, ident_span: none, children: children, connective: NoConnective,
 
@@ -1247,11 +1248,11 @@ fn make_transport_node(properties: List<Node>, children: List<Node>, body: Node?
   }
 }
 
-fn local_transport_node(span: SourceSpan) -> Node {
+fn local_transport_node(span: std.types.SourceSpan) -> Node {
   make_transport_node(properties: [], children: [], body: none, span: span)
 }
 
-fn rest_transport_node(base_url: Node, auth_props: List<Node>, headers: List<Node>, method: Node?, path: Node?, query: Node?, request_body: Node?, response_format: Node?, span: SourceSpan) -> Node {
+fn rest_transport_node(base_url: Node, auth_props: List<Node>, headers: List<Node>, method: Node?, path: Node?, query: Node?, request_body: Node?, response_format: Node?, span: std.types.SourceSpan) -> Node {
   let zero_span = no_span()
   let url_field = make_field_init_node(name: transport_url_key, value: base_url, span: zero_span, name_span: zero_span)
   let method_props = match method {
@@ -1278,7 +1279,7 @@ fn rest_transport_node(base_url: Node, auth_props: List<Node>, headers: List<Nod
   make_transport_node(properties: props, children: [], body: none, span: span)
 }
 
-fn shell_transport_node(argv: List<Node>, env: List<Node>, stdin: Node?, span: SourceSpan) -> Node {
+fn shell_transport_node(argv: List<Node>, env: List<Node>, stdin: Node?, span: std.types.SourceSpan) -> Node {
   let shell_marker = Node { name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let zero_span = no_span()
   let stdin_props = match stdin {
@@ -1295,7 +1296,7 @@ fn shell_transport_node(argv: List<Node>, env: List<Node>, stdin: Node?, span: S
   }
 }
 
-fn file_transport_node(base_path: Node, verb: Node?, span: SourceSpan) -> Node {
+fn file_transport_node(base_path: Node, verb: Node?, span: std.types.SourceSpan) -> Node {
   let path_field = make_field_init_node(name: transport_path_key, value: base_path, span: no_span(), name_span: no_span())
   let props = match verb {
     Present { value: verb_expr } =>
@@ -1323,7 +1324,7 @@ fn expr_literal_int_optional(expr: Node) -> Int? {
   match expr.expr_data {
     ExprLiteral { value: lit } =>
       match lit {
-        LitInt { value: v } => Present { value: v }
+        std.syntax.LitInt { value: v } => Present { value: v }
         _ => none
       }
     ExprUnaryOp { op: Neg } =>
@@ -1339,7 +1340,7 @@ fn expr_literal_string_optional(expr: Node) -> String? {
   match expr.expr_data {
     ExprLiteral { value: lit } =>
       match lit {
-        LitStr { value: v } => Present { value: v }
+        std.syntax.LitStr { value: v } => Present { value: v }
         _ => none
       }
     _ => none
@@ -1350,7 +1351,7 @@ fn expr_literal_symbol_optional(expr: Node) -> String? {
   match expr.expr_data {
     ExprLiteral { value: lit } =>
       match lit {
-        LitSymbol { value: v } => Present { value: v }
+        std.syntax.LitSymbol { value: v } => Present { value: v }
         _ => none
       }
     _ => none
@@ -1736,7 +1737,7 @@ fn service_config_auth_source(n: Node, source_indices: Map<String, NewlineIndex>
   find_property(props: n.properties, prop_name: "svc_auth_source", source_indices: source_indices)
 }
 
-fn module_node(name: String, imports: List<Node>, items: List<Node>, span: SourceSpan) -> Node {
+fn module_node(name: String, imports: List<Node>, items: List<Node>, span: std.types.SourceSpan) -> Node {
   Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: items, connective: NoConnective,
 
@@ -1747,7 +1748,7 @@ fn module_node(name: String, imports: List<Node>, items: List<Node>, span: Sourc
   }
 }
 
-fn import_node(module_path: String, is_all: Bool, specific_names: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
+fn import_node(module_path: String, is_all: Bool, specific_names: List<Node>, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
   let wildcard_marker = if is_all {
     Present { value: Node { name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData } }
   } else { none }
@@ -1777,12 +1778,12 @@ fn module_items(n: Node) -> List<Node> {
   n.children
 }
 
-fn leaf_node_with_span(name: String, span: SourceSpan) -> Node {
+fn leaf_node_with_span(name: String, span: std.types.SourceSpan) -> Node {
   Node { name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
-fn kernel_span(name: String) -> SourceSpan {
-  SourceSpan { file: concat("<kernel:", name, ">"), start: 0, end: string_length(s: name) }
+fn kernel_span(name: String) -> std.types.SourceSpan {
+  std.types.SourceSpan { file: concat("<kernel:", name, ">"), start: 0, end: string_length(s: name) }
 }
 
 data unit_type: Node = Node { name: "Unit", span: kernel_span(name: "Unit"), ident_span: Present { value: kernel_span(name: "Unit") }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -1795,8 +1796,8 @@ data none_type: Node = Node { name: "None", span: kernel_span(name: "None"), ide
 data tuple_type_name: String = "Tuple"
 data error_type: Node = Node { name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: CompilerError { message: "unresolved type", span: no_span() } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: ExprError { kind: SemanticExprError, message: "unresolved type" } }
 
-fn make_file_span(file: String, start: Int, end: Int) -> SourceSpan {
-  SourceSpan { file: file, start: start, end: end }
+fn make_file_span(file: String, start: Int, end: Int) -> std.types.SourceSpan {
+  std.types.SourceSpan { file: file, start: start, end: end }
 }
 
 // The ONLY fileless SourceSpan constructor, and it takes no offsets. A span either
@@ -1810,8 +1811,8 @@ fn make_file_span(file: String, start: Int, end: Int) -> SourceSpan {
 // The "<synthetic>" file name itself is NOT this rule's subject -- it is the FilePath
 // non_empty sentinel tracked by std.types file_path_sentinel_scaffold_note and dissolves
 // with feature:optional-textfile-and-source-span.
-fn no_span() -> SourceSpan {
-  SourceSpan { file: "<synthetic>", start: 0, end: 0 }
+fn no_span() -> std.types.SourceSpan {
+  std.types.SourceSpan { file: "<synthetic>", start: 0, end: 0 }
 }
 
 type LineCol {
@@ -1863,7 +1864,7 @@ fn source_line_at(index: NewlineIndex, line: Int) -> String {
   chars_to_string(chars: index.char_codes, start: line_start, end: line_end)
 }
 
-fn source_text_at(index: NewlineIndex, span: SourceSpan) -> String {
+fn source_text_at(index: NewlineIndex, span: std.types.SourceSpan) -> String {
   chars_to_string(chars: index.char_codes, start: span.start, end: span.end)
 }
 
@@ -1871,7 +1872,7 @@ type InternTable {
   strings: List<String>
   index: Map<String, Int>
   next_id: Int
-  authored_token_ordinals: AuthoredTokenOrdinalSpace
+  authored_token_ordinals: std.occurrence_identity.AuthoredTokenOrdinalSpace
 }
 
 type InternResult {
@@ -1884,13 +1885,13 @@ fn empty_intern_table() -> InternTable {
     strings: [""],
     index: map_insert(empty_map(), "", 0),
     next_id: 1,
-    authored_token_ordinals: authored_token_ordinal_space_initial(),
+    authored_token_ordinals: std.occurrence_identity.authored_token_ordinal_space_initial(),
   }
 }
 
 fn intern_table_with_authored_token_ordinals(
   table: InternTable,
-  authored_token_ordinals: AuthoredTokenOrdinalSpace
+  authored_token_ordinals: std.occurrence_identity.AuthoredTokenOrdinalSpace
 ) -> InternTable {
   InternTable {
     strings: table.strings,
@@ -1940,13 +1941,13 @@ fn intern_find_or_empty(table: InternTable, s: String) -> Int {
 
 fn merge_intern_tables(tables: List<InternTable>) -> InternTable {
   tables |> fold(init: empty_intern_table(), f: (merged, t) =>
-    let merged_allocator = occurrence_id_allocator_advance_to(
+    let merged_allocator = std.occurrence_identity.occurrence_id_allocator_advance_to(
       alloc: merged.authored_token_ordinals.allocator,
       min_next: t.authored_token_ordinals
     )
     let merged = intern_table_with_authored_token_ordinals(
       table: merged,
-      authored_token_ordinals: authored_token_ordinal_space_from_allocator(
+      authored_token_ordinals: std.occurrence_identity.authored_token_ordinal_space_from_allocator(
         alloc: merged_allocator
       )
     )
@@ -2026,14 +2027,14 @@ type ContainerSpellingVerdict
 // wrong about what kind of name it is looking at.
 fn known_container_leaf(name: String) -> String? {
   let leaf = qualified_last_segment(name: name)
-  match container_expected_arity(name: leaf) {
+  match std.types.container_expected_arity(name: leaf) {
     Present { value: _ } => Present { value: leaf }
     Absent => none
   }
 }
 
 fn container_spelling_verdict(name: String) -> ContainerSpellingVerdict {
-  match container_expected_arity(name: name) {
+  match std.types.container_expected_arity(name: name) {
     Present { value: arity } => ContainerSpellingDeclared { arity: arity }
     Absent =>
       match known_container_leaf(name: name) {
@@ -2067,7 +2068,7 @@ fn authored_container_spelling_verdict(node: Node, source_indices: Map<String, N
   if type_node_name_is_authored(node: node, source_indices: source_indices) {
     container_spelling_verdict(name: authored_name_at(source_indices: source_indices, node: node))
   } else {
-    match container_expected_arity(name: authored_name_at(source_indices: source_indices, node: node)) {
+    match std.types.container_expected_arity(name: authored_name_at(source_indices: source_indices, node: node)) {
       Present { value: arity } => ContainerSpellingDeclared { arity: arity }
       Absent => NotAContainerSpelling
     }

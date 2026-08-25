@@ -36,8 +36,26 @@ fn module_occurrence_input_transport(
 
 type ResolvedModule {
   module: v1.std.core.Node
+  resolved_imports: List<ResolvedImport>
   dep_order: Int
   occurrence_transport: std.occurrence_identity.OccurrenceTransport
+}
+
+type ResolvedImport {
+  module_path: String
+  is_all: Bool
+  specific_names: List<String>
+  target_module: v1.std.core.Node?
+}
+
+type DepEdge {
+  from_module: String
+  to_module: String
+}
+
+type ResolveAccum {
+  imports_by_name: Map<String, List<ResolvedImport>>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 fn map_has(m: Map<String, Bool>, key: String) -> Bool {
@@ -59,16 +77,27 @@ fn resolve_modules_with_occurrence_transport(
   let dup_diags = check_duplicate_modules(modules: modules, source_indices: source_indices)
 
   let module_index = modules |> fold(init: empty_map(), f: (acc, m) =>
-    map_insert(acc, authored_name_at(source_indices: source_indices, node: m), m)
+    map_insert(acc, v1.std.core.authored_name_at(source_indices: source_indices, node: m), m)
   )
 
   let export_sets = modules |> fold(init: empty_map(), f: (acc, m) =>
     let exported = get_exported_names(module: m, source_indices: source_indices)
     let exported_set = fold(exported, init: empty_map(), f: (inner_acc, name) => map_insert(inner_acc, name, true))
-    map_insert(acc, authored_name_at(source_indices: source_indices, node: m), exported_set)
+    map_insert(acc, v1.std.core.authored_name_at(source_indices: source_indices, node: m), exported_set)
   )
 
-  let import_diags = []
+  let resolve_accum = modules |> fold(init: ResolveAccum {
+    imports_by_name: empty_map(),
+    diagnostics: []
+  }, f: (acc, m) =>
+    let result = resolve_module_imports(module: m, module_index: module_index, export_sets: export_sets, source_indices: source_indices)
+    ResolveAccum {
+      imports_by_name: map_insert(acc.imports_by_name, v1.std.core.authored_name_at(source_indices: source_indices, node: m), result.resolved_imports),
+      diagnostics: concat(acc.diagnostics, result.diagnostics)
+    }
+  )
+  let imports_by_name = resolve_accum.imports_by_name
+  let import_diags = resolve_accum.diagnostics
 
   let topo_result = topological_sort(modules: modules, source_indices: source_indices)
   let topo_diags = match topo_result.cycle_error {
@@ -82,13 +111,18 @@ fn resolve_modules_with_occurrence_transport(
   )
   let acyclic_resolved = module_inputs |> flat_map(input =>
     let m = module_occurrence_input_node(input: input)
-    match map_get(sorted_order_map, authored_name_at(source_indices: source_indices, node: m)) {
+    match map_get(sorted_order_map, v1.std.core.authored_name_at(source_indices: source_indices, node: m)) {
       Present { value: order } =>
-        [ResolvedModule {
-          module: m,
-          dep_order: order,
-          occurrence_transport: module_occurrence_input_transport(input: input),
-        }]
+        match map_get(imports_by_name, v1.std.core.authored_name_at(source_indices: source_indices, node: m)) {
+          Present { value: imps } =>
+            [ResolvedModule {
+              module: m,
+              resolved_imports: imps,
+              dep_order: order,
+              occurrence_transport: module_occurrence_input_transport(input: input),
+            }]
+          Absent => []
+        }
       Absent => []
     }
   )
@@ -128,20 +162,91 @@ fn find_module(module_index: Map<String, v1.std.core.Node>, path: String) -> v1.
   map_get(module_index, path)
 }
 
+type ModuleResolveResult {
+  resolved_imports: List<ResolvedImport>
+  diagnostics: List<v1.std.core.ErrorNode>
+}
+
+fn resolve_module_imports(module: v1.std.core.Node, module_index: Map<String, v1.std.core.Node>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> ModuleResolveResult {
+  let results = v1.std.core.module_imports(n: module) |> map(imp =>
+    resolve_import(import: imp, module_index: module_index, importing_module: v1.std.core.authored_name_at(source_indices: source_indices, node: module), export_sets: export_sets, source_indices: source_indices)
+  )
+  let resolved = results
+    |> filter(r => r.resolved.target_module != none && (r.diagnostics |> count == 0))
+    |> map(r => r.resolved)
+  let diags = results |> flat_map(r => r.diagnostics)
+  ModuleResolveResult {
+    resolved_imports: resolved,
+    diagnostics: diags
+  }
+}
+
+type ImportResolveResult {
+  resolved: ResolvedImport
+  diagnostics: List<v1.std.core.ErrorNode>
+}
+
+fn resolve_import(
+  module_index: Map<String, v1.std.core.Node>,
+  importing_module: String,
+  export_sets: Map<String, Map<String, Bool>>,
+  source_indices: Map<String, v1.std.core.NewlineIndex>
+) -> ImportResolveResult {
+  let import_path = v1.std.core.authored_name_at(source_indices: source_indices, node: import)
+  let target = find_module(module_index: module_index, path: import_path)
+  match target {
+    Absent => {
+      let diag = v1.std.core.make_error_node(diagnostic: v1.std.core.UnresolvedImport { module_path: import_path, importing_module: importing_module, span: import.span }, module_name: importing_module)
+      ImportResolveResult {
+        resolved: ResolvedImport {
+          module_path: import_path,
+          is_all: v1.std.core.import_is_all(n: import),
+          specific_names: v1.std.core.import_specific_names_at(n: import, source_indices: source_indices),
+          target_module: Absent
+        },
+        diagnostics: [diag]
+      }
+    }
+    Present { value: target_mod } => {
+      let exported_set = match map_get(export_sets, import_path) {
+        Present { value: set } => set
+        Absent => empty_map()
+      }
+      let name_diags = if v1.std.core.import_is_all(n: import) { [] } else {
+          |> filter(child => map_has(m: exported_set, key: v1.std.core.authored_name_at(source_indices: source_indices, node: child)) == false)
+          |> map(child =>
+            v1.std.core.make_error_node(diagnostic: v1.std.core.MissingExport { name: v1.std.core.authored_name_at(source_indices: source_indices, node: child), module_path: import_path, importing_module: importing_module, span: child.span }, module_name: importing_module)
+          )
+      }
+      ImportResolveResult {
+        resolved: ResolvedImport {
+          module_path: import_path,
+          is_all: v1.std.core.import_is_all(n: import),
+          specific_names: v1.std.core.import_specific_names_at(n: import, source_indices: source_indices),
+          target_module: Present { value: target_mod }
+        },
+        diagnostics: name_diags
+      }
+    }
+  }
+}
+
 fn get_exported_names(module: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<String> {
-  let item_names = module_items(n: module) |> map(item => get_item_name(item: item, source_indices: source_indices))
-  let variant_names = module_items(n: module)
+  let item_names = v1.std.core.module_items(n: module) |> map(item => get_item_name(item: item, source_indices: source_indices))
+  let variant_names = v1.std.core.module_items(n: module)
     |> flat_map(item => get_variant_names(item: item, source_indices: source_indices))
-  concat(item_names, variant_names, map_keys(kernel_type_set))
+  let imported_names = v1.std.core.module_imports(n: module)
+    |> flat_map(imp => if v1.std.core.import_is_all(n: imp) { [] } else { v1.std.core.import_specific_names_at(n: imp, source_indices: source_indices) })
+  concat(item_names, variant_names, imported_names, map_keys(std.types.kernel_type_set))
 }
 
 fn get_item_name(item: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
-  authored_name_at(source_indices: source_indices, node: item)
+  v1.std.core.authored_name_at(source_indices: source_indices, node: item)
 }
 
 fn get_variant_names(item: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<String> {
   let is_coproduct = item.connective == v1.std.core.Disj
-  if is_coproduct { item.children |> map(c => authored_name_at(source_indices: source_indices, node: c)) }
+  if is_coproduct { item.children |> map(c => v1.std.core.authored_name_at(source_indices: source_indices, node: c)) }
   else { [] }
 }
 
@@ -155,12 +260,12 @@ fn check_duplicate_modules(modules: List<v1.std.core.Node>, source_indices: Map<
     seen_names: empty_map(),
     diagnostics: []
   }, f: fn(state, m) {
-    let m_name = authored_name_at(source_indices: source_indices, node: m)
+    let m_name = v1.std.core.authored_name_at(source_indices: source_indices, node: m)
     let is_dup = map_has(m: state.seen_names, key: m_name)
     if is_dup {
       DuplicateCheckState {
         seen_names: state.seen_names,
-        diagnostics: concat(state.diagnostics, [make_error_node(diagnostic: v1.std.core.DuplicateModule { name: m_name, span: m.span }, module_name: m_name)])
+        diagnostics: concat(state.diagnostics, [v1.std.core.make_error_node(diagnostic: v1.std.core.DuplicateModule { name: m_name, span: m.span }, module_name: m_name)])
       }
     } else {
       DuplicateCheckState {
@@ -177,16 +282,119 @@ type TopoResult {
   cycle_error: v1.std.core.ErrorNode?
 }
 
+fn adjacency_add_edge(adjacency: Map<String, List<String>>, from_module: String, to_module: String) -> Map<String, List<String>> {
+  let existing = match map_get(adjacency, from_module) {
+    Present { value: lst } => lst
+    Absent => []
+  }
+  map_insert(adjacency, from_module, list_push(existing, to_module))
+}
+
 fn topo_sort_key(name: String) -> String {
 
   if name == "std.types" { "" } else { name }
 }
 
 fn topological_sort(modules: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> TopoResult {
+  let module_names = modules |> map(m => v1.std.core.authored_name_at(source_indices: source_indices, node: m))
 
-  let module_names = modules |> map(m => authored_name_at(source_indices: source_indices, node: m))
-  TopoResult {
-    sorted: module_names |> sort_by(name => topo_sort_key(name: name)),
-    cycle_error: Absent
+  let module_name_set = module_names |> fold(init: empty_map(), f: (acc, name) =>
+    map_insert(acc, name, true)
+  )
+
+  let explicit_edges = modules |> flat_map(m =>
+    v1.std.core.module_imports(n: m)
+      |> filter(imp => map_has(m: module_name_set, key: v1.std.core.authored_name_at(source_indices: source_indices, node: imp)))
+      |> map(imp => DepEdge { from_module: v1.std.core.authored_name_at(source_indices: source_indices, node: imp), to_module: v1.std.core.authored_name_at(source_indices: source_indices, node: m) })
+  )
+
+  let adjacency = explicit_edges |> fold(init: empty_map(), f: (acc, edge) =>
+    adjacency_add_edge(adjacency: acc, from_module: edge.from_module, to_module: edge.to_module)
+  )
+
+  let in_degree_map = modules |> fold(init: empty_map(), f: (acc, m) =>
+    let m_name = v1.std.core.authored_name_at(source_indices: source_indices, node: m)
+    map_insert(acc, m_name, v1.std.core.module_imports(n: m)
+      |> filter(imp => map_has(m: module_name_set, key: v1.std.core.authored_name_at(source_indices: source_indices, node: imp)))
+      |> count)
+  )
+
+  let initial_queue = module_names
+    |> filter(name => match map_get(in_degree_map, name) {
+      Present { value: 0 } => true
+      _ => false
+    })
+    |> sort_by(name => topo_sort_key(name: name))
+  let module_count = modules |> count
+
+  let result = kahn_drain(
+    queue: initial_queue,
+    sorted: [],
+    in_degree_map: in_degree_map,
+    adjacency: adjacency,
+    fuel: module_count
+  )
+
+  if result.sorted |> count == module_count {
+    TopoResult { sorted: result.sorted, cycle_error: Absent }
+  } else {
+    let sorted_set = result.sorted |> fold(init: empty_map(), f: (acc, name) =>
+      map_insert(acc, name, true)
+    )
+    let cycle_members = module_names
+      |> filter(name => map_has(m: sorted_set, key: name) == false)
+    let cycle_desc = cycle_members |> join(separator: " -> ")
+    TopoResult {
+      sorted: result.sorted,
+      cycle_error: Present { value: v1.std.core.make_error_node(diagnostic: v1.std.core.CircularDependency { modules: cycle_members, span: v1.std.core.no_span() }, module_name: "") }
+    }
   }
+}
+
+type KahnDrainState {
+  sorted: List<String>
+  in_degree_map: Map<String, Int>
+}
+
+fn kahn_drain(queue: List<String>, sorted: List<String>, in_degree_map: Map<String, Int>, adjacency: Map<String, List<String>>, fuel: Int) -> KahnDrainState {
+  if queue |> count == 0 {
+    return KahnDrainState { sorted: sorted, in_degree_map: in_degree_map }
+  }
+
+  let batch_result = queue |> fold(init: KahnDrainState { sorted: sorted, in_degree_map: in_degree_map }, f: fn(state, node) {
+    let new_sorted = list_push(state.sorted, node)
+    let neighbors = match map_get(adjacency, node) {
+      Present { value: ns } => ns
+      Absent => []
+    }
+    let new_degrees = neighbors |> fold(init: state.in_degree_map, f: fn(deg_map, neighbor) {
+      let current = match map_get(deg_map, neighbor) {
+        Present { value: d } => d
+        Absent => 0
+      }
+      map_insert(deg_map, neighbor, current - 1)
+    })
+    KahnDrainState { sorted: new_sorted, in_degree_map: new_degrees }
+  })
+
+  let new_zero_set = queue |> flat_map(node =>
+    match map_get(adjacency, node) {
+      Present { value: ns } => ns
+      Absent => []
+    }
+  ) |> filter(neighbor =>
+    match map_get(batch_result.in_degree_map, neighbor) {
+      Present { value: 0 } => true
+      _ => false
+    }
+  ) |> fold(init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+  let new_zero = map_keys(new_zero_set) |> sort_by(name => name)
+
+  kahn_drain(
+    queue: new_zero,
+    sorted: batch_result.sorted,
+    in_degree_map: batch_result.in_degree_map,
+    adjacency: adjacency,
+    fuel: fuel - 1
+  )
 }
