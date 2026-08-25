@@ -1004,6 +1004,22 @@ fn required_lane_result_expression(job_id: String) -> String {
   concat("${{ needs.", concat(job_id, ".result }}"))
 }
 
+// THE COMPARISON IS `!= "success"` AND NOT A LIST OF BAD STATES, and that is now a measured
+// fact rather than a preference. Run 32883390033 (2026-08-25) had both lanes ended by a fleet
+// event with no push involved, and the aggregator read:
+//
+//     BUILD="cancelled"   FLOOR="abandoned"
+//
+// `abandoned` is a `needs.*.result` value nobody here knew was reachable. An enumerated guard
+// -- `== "failure" || == "cancelled"`, which is the form a reader's instinct reaches for -- would
+// have admitted it and reported the required context GREEN over two lanes that never ran. The
+// strict inequality admits exactly one state and refuses every other, including the ones the
+// author has never heard of, which is the whole difference between a closed vocabulary and a
+// remembered one (DESIGN §5).
+//
+// The same run is this gate's first executing receipt: the aggregator ran under `always()` with
+// both lanes non-success, refused, and published `witnesses` as a FAILURE, which is the
+// behaviour the job exists for and the behaviour the pre-repair shape could not produce.
 fn required_lanes_aggregate_script() -> String {
   concat(
     concat("BUILD=\"", concat(required_lane_result_expression(job_id: build_lane_job_id), "\"\n")),
