@@ -1,0 +1,330 @@
+module gunbc.emit_diagnostic_observation
+
+import std.types { Bool, Int, String }
+
+// THE EMIT STAGE'S OWN POPULATION, decoded from the only surface `gunbc compile` offers.
+//
+// WHY A DECODER AND NOT A NEW COMPILER OUTPUT. Emission is v1 05_emit territory and the v1 seed is
+// frozen with maintenance active: the admission test is PURPOSE, and it admits repair rather than
+// growth. Adding a machine-readable diagnostic stream to the CLI would be growth, so this reads what
+// the CLI already prints -- the same rendering a person reads -- rather than widening the seed for
+// an instrument's convenience. That choice has a cost and the cost is named below: this is a prose
+// decode, and a prose decode that skips what it does not recognise is an absorbing fallback.
+//
+// WHAT STOPS IT BEING ONE. The compiler states its own diagnostic total, and this decode REFUSES
+// when the population it recovered is not that total. So an unrecognised diagnostic shape does not
+// quietly shrink the population -- it makes the accounts disagree and stops the line, naming both
+// numbers. The cross-check is the whole reason the decode is admissible at all: without it, a
+// rendering change upstream would silently turn a real population into a smaller one, which is
+// exactly the fabricated measurement this instrument exists to end.
+//
+// THE TOTAL HAS TWO SOURCES BECAUSE THE COMPILER HAS TWO PATHS, and reading only one of them would
+// have made this decode refuse every entry it is most useful on. `gunbc compile --entry` prints
+// `compiled: N files emitted, M diagnostics` on the COMPLETED path and exits after the refusal
+// cause and the rendered diagnostics on the REFUSED path, where no tree is written and no such line
+// appears. The renderer's own closing line -- `H blocking error(s), A advisory diagnostic(s) ...`,
+// or `H error(s)` when there are no advisories -- survives both. Where both are present they are a
+// THIRD check against each other and a disagreement refuses; where neither is present the compile
+// never reached the point where it counts its own diagnostics, and no population may be reported.
+
+data emit_error_bracket_prefix: String = "error["
+data emit_advisory_bracket_prefix: String = "advisory["
+data emit_error_bare_prefix: String = "error: "
+data emit_advisory_bare_prefix: String = "advisory: "
+data emit_location_separator: String = "]: "
+data emit_summary_prefix: String = "compiled: "
+data emit_severity_blocking_marker: String = " blocking error(s), "
+data emit_severity_error_suffix: String = " error(s)"
+
+// SEVERITY IS THE COMPILER'S OWN WORD, kept verbatim rather than re-coded into a local enum. The
+// blocking/advisory split is `gunbc.compile_clean_diagnostic_policy`'s fact; re-minting it here as a
+// second vocabulary is the nicknaming this repository removes.
+type GunbcDiagnostic {
+  severity: String
+  location: String
+  message: String
+}
+
+// A REFUSED COMPILE WRITES NO TREE, so "how many files were emitted" has no answer on that path
+// and is not zero. The two states are named rather than collapsed onto 0, which would read as a
+// compile that ran and produced nothing.
+type EmittedFileCount
+  = FilesEmitted { count: Int }
+  | FilesNotWritten
+
+type EmitDiagnosticRead
+  = EmitDiagnosticsRead {
+      diagnostics: List<GunbcDiagnostic>
+      emitted_files: EmittedFileCount
+      declared_total: Int
+    }
+  | EmitSummaryAbsent
+  | EmitSummaryUnreadable { line: String }
+  | EmitPopulationMismatch { decoded: Int, declared: Int }
+  | EmitSummaryDisagreement { compiled_total: Int, severity_total: Int }
+
+type EmitLineRead
+  = EmitLineDiagnostic { diagnostic: GunbcDiagnostic }
+  | EmitLineOther
+
+fn emit_line_severity(line: String) -> String {
+  if starts_with(s: line, prefix: emit_error_bracket_prefix) {
+    "error"
+  } else {
+    if starts_with(s: line, prefix: emit_advisory_bracket_prefix) {
+      "advisory"
+    } else {
+      if starts_with(s: line, prefix: emit_error_bare_prefix) {
+        "error"
+      } else {
+        if starts_with(s: line, prefix: emit_advisory_bare_prefix) {
+          "advisory"
+        } else {
+          ""
+        }
+      }
+    }
+  }
+}
+
+fn emit_line_is_bracketed(line: String) -> Bool {
+  starts_with(s: line, prefix: emit_error_bracket_prefix)
+    || starts_with(s: line, prefix: emit_advisory_bracket_prefix)
+}
+
+// The location is read by LENGTH from the one separator the renderer emits, not by searching the
+// line for something that looks like a path. A message may legitimately contain a colon, a bracket,
+// or a path fragment; anchoring on the separator means those cannot be mistaken for structure.
+fn emit_line_read(line: String) -> EmitLineRead {
+  let severity = emit_line_severity(line: line)
+  if severity == "" {
+    EmitLineOther
+  } else {
+    if emit_line_is_bracketed(line: line) {
+      let parts = split(s: line, delimiter: emit_location_separator)
+      match get(xs: parts, index: 0) {
+        Absent => EmitLineOther
+        Present { value: head } => {
+          let open = severity.length() + 1
+          let body_start = head.length() + emit_location_separator.length()
+          if body_start > line.length() || head.length() < open {
+            EmitLineOther
+          } else {
+            EmitLineDiagnostic {
+              diagnostic: GunbcDiagnostic {
+                severity: severity,
+                location: substring(s: head, start: open, end: head.length()),
+                message: substring(s: line, start: body_start, end: line.length())
+              }
+            }
+          }
+        }
+      }
+    } else {
+      let bare = severity.length() + 2
+      EmitLineDiagnostic {
+        diagnostic: GunbcDiagnostic {
+          severity: severity,
+          location: "",
+          message: substring(s: line, start: bare, end: line.length())
+        }
+      }
+    }
+  }
+}
+
+type EmitSummaryRead
+  = EmitSummaryRead { emitted_files: Int, declared_total: Int }
+  | EmitSummaryNotFound
+  | EmitSummaryMalformed { line: String }
+
+// `compiled: N files emitted, M diagnostics` -- the two numbers are read by POSITION IN THE WORD
+// LIST of the compiler's own summary line, and a line that does not yield two integers at those
+// positions is malformed rather than defaulted. A default here would be the fabricated zero: a
+// summary this decode could not read would report a clean compile.
+//
+// THIS LINE IS PRINTED ONLY WHERE THE COMPILE COMPLETED. `gunbc compile --entry` writes the tree
+// and prints it on the completed path; on a refusal it exits after the refusal cause and the
+// rendered diagnostics, having written no tree at all. So its ABSENCE is not a defect -- it is how
+// this decode learns that no tree was emitted -- and the population's total then comes from the
+// severity summary below instead.
+fn emit_summary_of_line(line: String) -> EmitSummaryRead {
+  let words = split(s: line, delimiter: " ")
+  match get(xs: words, index: 1) {
+    Absent => EmitSummaryMalformed { line: line }
+    Present { value: files_word } =>
+      match get(xs: words, index: 4) {
+        Absent => EmitSummaryMalformed { line: line }
+        Present { value: diag_word } =>
+          match parse_int(s: files_word) {
+            Absent => EmitSummaryMalformed { line: line }
+            Present { value: files } =>
+              match parse_int(s: diag_word) {
+                Absent => EmitSummaryMalformed { line: line }
+                Present { value: diags } =>
+                  EmitSummaryRead { emitted_files: files, declared_total: diags }
+              }
+          }
+      }
+  }
+}
+
+fn emit_summary_fold(acc: EmitSummaryRead, line: String) -> EmitSummaryRead {
+  if starts_with(s: line, prefix: emit_summary_prefix) {
+    emit_summary_of_line(line: line)
+  } else {
+    acc
+  }
+}
+
+// THE SECOND ANCHOR, and the one that is present on BOTH the completed and the refused path: the
+// renderer's own closing line. It has two shapes, because the renderer names the policy only when
+// there is an advisory population to attribute to it:
+//   `9 blocking error(s), 119 advisory diagnostic(s) (policy: ...)`
+//   `9 error(s)`
+// A run whose diagnostic list is EMPTY prints neither -- the renderer returns before it -- which is
+// why this reading is an option rather than a requirement, and why the two anchors are combined
+// below rather than either being trusted alone.
+type EmitSeverityRead
+  = EmitSeverityRead { blocking: Int, advisory: Int }
+  | EmitSeverityNotFound
+  | EmitSeverityMalformed { line: String }
+
+fn emit_severity_of_line(line: String) -> EmitSeverityRead {
+  let words = split(s: line, delimiter: " ")
+  match get(xs: words, index: 0) {
+    Absent => EmitSeverityMalformed { line: line }
+    Present { value: first } =>
+      match parse_int(s: first) {
+        Absent => EmitSeverityMalformed { line: line }
+        Present { value: blocking } =>
+          if string_contains(s: line, pattern: emit_severity_blocking_marker) {
+            match get(xs: words, index: 3) {
+              Absent => EmitSeverityMalformed { line: line }
+              Present { value: advisory_word } =>
+                match parse_int(s: advisory_word) {
+                  Absent => EmitSeverityMalformed { line: line }
+                  Present { value: advisory } =>
+                    EmitSeverityRead { blocking: blocking, advisory: advisory }
+                }
+            }
+          } else {
+            EmitSeverityRead { blocking: blocking, advisory: 0 }
+          }
+      }
+  }
+}
+
+fn emit_line_is_severity_summary(line: String) -> Bool {
+  string_contains(s: line, pattern: emit_severity_blocking_marker)
+    || ends_with(s: line, suffix: emit_severity_error_suffix)
+}
+
+fn emit_severity_fold(acc: EmitSeverityRead, line: String) -> EmitSeverityRead {
+  if emit_line_is_severity_summary(line: line) {
+    emit_severity_of_line(line: line)
+  } else {
+    acc
+  }
+}
+
+// THREE INDEPENDENT ACCOUNTS OF ONE POPULATION, AND THEY MUST AGREE.
+//
+// The decoded rows, the compiler's `compiled:` total where it printed one, and the renderer's own
+// blocking/advisory split are three readings of the same set. Requiring them to agree is what makes
+// a PROSE decode admissible at all: an unrecognised diagnostic shape does not quietly shrink the
+// population, it makes the accounts disagree and stops the line, naming both numbers.
+//
+// AND AT LEAST ONE DECLARED TOTAL MUST EXIST. If neither anchor is present the compile did not
+// reach the point where it states its own total -- which is exactly the state that must never be
+// reported as a clean, empty population.
+fn read_emit_diagnostics(stderr: String) -> EmitDiagnosticRead {
+  let lines = split(s: stderr, delimiter: "\n")
+  let compiled = fold(lines, init: EmitSummaryNotFound, f: (acc, line) => emit_summary_fold(acc: acc, line: line))
+  let severity = fold(lines, init: EmitSeverityNotFound, f: (acc, line) => emit_severity_fold(acc: acc, line: line))
+  match compiled {
+    EmitSummaryMalformed { line: l } => EmitSummaryUnreadable { line: l }
+    EmitSummaryNotFound =>
+      match severity {
+        EmitSeverityNotFound => EmitSummaryAbsent
+        EmitSeverityMalformed { line: l } => EmitSummaryUnreadable { line: l }
+        EmitSeverityRead { blocking: b, advisory: a } =>
+          emit_population_against(lines: lines, declared: b + a, files: FilesNotWritten)
+      }
+    EmitSummaryRead { emitted_files: files, declared_total: declared } =>
+      match severity {
+        EmitSeverityNotFound =>
+          emit_population_against(lines: lines, declared: declared, files: FilesEmitted { count: files })
+        EmitSeverityMalformed { line: l } => EmitSummaryUnreadable { line: l }
+        EmitSeverityRead { blocking: b, advisory: a } =>
+          if b + a != declared {
+            EmitSummaryDisagreement { compiled_total: declared, severity_total: b + a }
+          } else {
+            emit_population_against(lines: lines, declared: declared, files: FilesEmitted { count: files })
+          }
+      }
+  }
+}
+
+fn emit_collect_diagnostics(acc: List<GunbcDiagnostic>, line: String) -> List<GunbcDiagnostic> {
+  match emit_line_read(line: line) {
+    EmitLineOther => acc
+    EmitLineDiagnostic { diagnostic: d } => concat(acc, [d])
+  }
+}
+
+fn emit_population_against(lines: List<String>, declared: Int, files: EmittedFileCount) -> EmitDiagnosticRead {
+  let found = fold(lines, init: [], f: (acc, line) => emit_collect_diagnostics(acc: acc, line: line))
+  let decoded = count(found)
+  if decoded != declared {
+    EmitPopulationMismatch { decoded: decoded, declared: declared }
+  } else {
+    EmitDiagnosticsRead {
+      diagnostics: found,
+      emitted_files: files,
+      declared_total: declared
+    }
+  }
+}
+
+fn gunbc_diagnostic_is_blocking(d: GunbcDiagnostic) -> Bool {
+  d.severity == "error"
+}
+
+fn emit_blocking_count(ds: List<GunbcDiagnostic>) -> Int {
+  count(filter(ds, d => gunbc_diagnostic_is_blocking(d: d)))
+}
+
+fn emitted_file_count_text(files: EmittedFileCount) -> String {
+  match files {
+    FilesEmitted { count: n } => to_string(n)
+    FilesNotWritten => "(no tree written — the compiler refused)"
+  }
+}
+
+fn gunbc_diagnostic_row(d: GunbcDiagnostic) -> String {
+  concat(
+    concat(d.severity, concat("\t", d.location)),
+    concat("\t", d.message)
+  )
+}
+
+fn emit_diagnostic_read_refusal_reason(read: EmitDiagnosticRead) -> String {
+  match read {
+    EmitDiagnosticsRead { diagnostics: _, emitted_files: _, declared_total: _ } => ""
+    EmitSummaryAbsent =>
+      "gunbc compile stated no diagnostic total of its own — neither a `compiled:` line nor a rendered severity summary — so the compile did not reach the point where it counts its own diagnostics, and any population read from this output would be a fabricated zero"
+    EmitSummaryUnreadable { line: l } =>
+      concat("gunbc compile summary line is not readable: ", l)
+    EmitPopulationMismatch { decoded: d, declared: n } =>
+      concat(
+        concat("decoded ", to_string(d)),
+        concat(" diagnostic line(s) against a compiler-declared total of ", to_string(n))
+      )
+    EmitSummaryDisagreement { compiled_total: c, severity_total: s } =>
+      concat(
+        concat("the compiler's own two totals disagree: `compiled:` says ", to_string(c)),
+        concat(" and the rendered severity summary says ", to_string(s))
+      )
+  }
+}

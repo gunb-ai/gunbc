@@ -1,0 +1,402 @@
+module extdeps.cargo_diagnostic
+
+import std.types { Bool, Int, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.cargo_message { cargo_message_lines }
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonNull,
+  JsonBool,
+  JsonNumber,
+  JsonString,
+  JsonArray,
+  JsonObject
+}
+import extdeps.languages.json.parse {
+  parse_json,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/cargo/reference/external-tools.html#json-messages"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cargo_diagnostic",
+      decl_name: "cargo_compiler_message_reason",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.cargo_diagnostic.extdeps_external_authority_anchor,
+  further_citations: [extdeps.cargo_message.extdeps_external_authority_anchor]
+}
+
+// WHY THIS MODULE IS A SIBLING OF extdeps.cargo_message RATHER THAN A WIDENING OF IT.
+// That module's own boundary note declares its scope deliberately narrow -- it decodes exactly
+// which executable a named target produced, and it says in as many words that a consumer needing
+// compiler-message diagnostics "should model them under its own subject instead of widening this
+// one". This is that subject. The line framing is shared rather than re-coined: cargo_message_lines
+// is imported, so the two decoders cannot disagree about where one message ends.
+//
+// THE SUBJECT IS THE POPULATION, NOT A TOTAL. A count is what rots: two runs reporting 128 say
+// nothing about whether they are the same 128, so nothing downstream can join, dedup, or difference
+// them. Every member therefore carries its own identity (the rustc error code, where rustc issued
+// one) and its own location (the primary span's file and line), and the population is returned as a
+// list rather than summed here. A consumer that wants a histogram folds one; a consumer that wants
+// to know whether ITS defect is still present looks it up.
+
+data cargo_compiler_message_reason: String = "compiler-message"
+data cargo_message_reason_member: String = "reason"
+data cargo_message_message_member: String = "message"
+data cargo_message_code_member: String = "code"
+data cargo_message_level_member: String = "level"
+data cargo_message_spans_member: String = "spans"
+data cargo_span_file_member: String = "file_name"
+data cargo_span_line_member: String = "line_start"
+data cargo_span_primary_member: String = "is_primary"
+
+// AN UNCODED DIAGNOSTIC IS A MEMBER, NOT AN ABSENCE. rustc issues plenty of errors with no E-code
+// -- a parse failure, `aborting due to N previous errors`, a lint without one -- and dropping them
+// because the identity field is empty would make the population a function of which findings happen
+// to be codeable. The two states are named instead, so a consumer that groups by code can still see
+// how much of the population it is not grouping.
+type RustcDiagnosticIdentity
+  = RustcCoded { code: String }
+  | RustcUncoded
+
+// LOCATION IS ABSENT FOR REAL DIAGNOSTICS, and it is not the same fact as a diagnostic whose span
+// we failed to read. The first is `spans: []`, which rustc emits for whole-crate messages; the
+// second refuses the scan below and never becomes a member at all.
+type RustcDiagnosticLocation
+  = RustcSpan { file: String, line: Int }
+  | RustcSpanAbsent
+
+type RustcCodedDiagnostic {
+  identity: RustcDiagnosticIdentity
+  level: String
+  location: RustcDiagnosticLocation
+}
+
+// EVERY REFUSAL CARRIES THE LINE IT COULD NOT READ. A stream this decode cannot understand is not
+// an empty population -- reporting it as one is exactly the empty-observation narrow, and it is the
+// failure this whole instrument exists to end, so it may not be reintroduced inside the decoder.
+// Skipping a message whose reason we READ and recognised as something else is a decision; skipping
+// a line we could not read at all is an absorbing fallback.
+type CargoDiagnosticScan
+  = CargoDiagnosticsRead { diagnostics: List<RustcCodedDiagnostic>, lines_scanned: Int }
+  | CargoDiagnosticStreamEmpty
+  | CargoDiagnosticLineUnparseable { line_number: Int }
+  | CargoDiagnosticLineNotAnObject { line_number: Int }
+  | CargoDiagnosticReasonAbsent { line_number: Int }
+  | CargoDiagnosticReasonNotAString { line_number: Int }
+  | CargoDiagnosticMemberDuplicated { line_number: Int, key: String }
+  | CargoDiagnosticMessageAbsent { line_number: Int }
+  | CargoDiagnosticLevelAbsent { line_number: Int }
+  | CargoDiagnosticLevelNotAString { line_number: Int }
+  | CargoDiagnosticCodeNotReadable { line_number: Int }
+  | CargoDiagnosticSpanUnreadable { line_number: Int }
+
+fn cargo_diagnostic_string_value(v: JsonValue) -> String? {
+  match v {
+    JsonString { value: s } => Present { value: s }
+    JsonNull => none
+    JsonBool { value: _ } => none
+    JsonNumber { lexeme: _ } => none
+    JsonArray { elements: _ } => none
+    JsonObject { members: _ } => none
+  }
+}
+
+fn cargo_diagnostic_int_value(v: JsonValue) -> Int? {
+  match v {
+    JsonNumber { lexeme: l } => parse_int(s: l as String)
+    JsonString { value: _ } => none
+    JsonNull => none
+    JsonBool { value: _ } => none
+    JsonArray { elements: _ } => none
+    JsonObject { members: _ } => none
+  }
+}
+
+fn cargo_diagnostic_bool_value(v: JsonValue) -> Bool {
+  match v {
+    JsonBool { value: b } => b
+    JsonString { value: _ } => false
+    JsonNull => false
+    JsonNumber { lexeme: _ } => false
+    JsonArray { elements: _ } => false
+    JsonObject { members: _ } => false
+  }
+}
+
+// `code` is documented as an object carrying its own `code` member, or null where rustc issued
+// none. Both are ordinary readings. Anything else -- a string, a number, a duplicated member -- is
+// cargo's shape having drifted out from under this decode, and it refuses rather than defaulting to
+// uncoded, which would silently reclassify the whole population.
+type RustcCodeRead
+  = RustcCodeRead { identity: RustcDiagnosticIdentity }
+  | RustcCodeUnreadable
+
+fn cargo_diagnostic_identity(message: JsonValue) -> RustcCodeRead {
+  match json_object_unique_member(v: message, key: cargo_message_code_member) {
+    JsonMemberAbsent => RustcCodeRead { identity: RustcUncoded }
+    JsonMemberDuplicated { count: _ } => RustcCodeUnreadable
+    JsonMemberNotAnObject => RustcCodeUnreadable
+    JsonMemberFound { value: code_value } =>
+      match code_value {
+        JsonNull => RustcCodeRead { identity: RustcUncoded }
+        JsonObject { members: _ } =>
+          match json_object_unique_member(v: code_value, key: cargo_message_code_member) {
+            JsonMemberAbsent => RustcCodeUnreadable
+            JsonMemberDuplicated { count: _ } => RustcCodeUnreadable
+            JsonMemberNotAnObject => RustcCodeUnreadable
+            JsonMemberFound { value: inner } =>
+              match cargo_diagnostic_string_value(v: inner) {
+                Absent => RustcCodeUnreadable
+                Present { value: c } => RustcCodeRead { identity: RustcCoded { code: c } }
+              }
+          }
+        JsonString { value: _ } => RustcCodeUnreadable
+        JsonBool { value: _ } => RustcCodeUnreadable
+        JsonNumber { lexeme: _ } => RustcCodeUnreadable
+        JsonArray { elements: _ } => RustcCodeUnreadable
+      }
+  }
+}
+
+// THE PRIMARY SPAN IS SELECTED BY ITS OWN FLAG, never by position. rustc documents `is_primary`
+// precisely because the first element of `spans` is not reliably the one the message is about; a
+// position-anchored read would be correct by accident and would drift without any edit here.
+type RustcSpanRead
+  = RustcSpanRead { location: RustcDiagnosticLocation }
+  | RustcSpanUnreadable
+
+fn cargo_diagnostic_span_of(element: JsonValue) -> RustcSpanRead {
+  if cargo_diagnostic_bool_value(v: span_member_or_null(element: element, key: cargo_span_primary_member)) {
+    match cargo_diagnostic_string_value(v: span_member_or_null(element: element, key: cargo_span_file_member)) {
+      Absent => RustcSpanUnreadable
+      Present { value: f } =>
+        match cargo_diagnostic_int_value(v: span_member_or_null(element: element, key: cargo_span_line_member)) {
+          Absent => RustcSpanUnreadable
+          Present { value: n } => RustcSpanRead { location: RustcSpan { file: f, line: n } }
+        }
+    }
+  } else {
+    RustcSpanRead { location: RustcSpanAbsent }
+  }
+}
+
+// A member this reader cannot resolve becomes JsonNull, and every caller above treats JsonNull as
+// unreadable rather than as a value -- the refusal happens at the typed read, not here. This exists
+// so the three span members are looked up by ONE route instead of three copies of the same match.
+fn span_member_or_null(element: JsonValue, key: String) -> JsonValue {
+  match json_object_unique_member(v: element, key: key) {
+    JsonMemberFound { value: v } => v
+    JsonMemberAbsent => JsonNull
+    JsonMemberDuplicated { count: _ } => JsonNull
+    JsonMemberNotAnObject => JsonNull
+  }
+}
+
+fn cargo_diagnostic_fold_span(acc: RustcSpanRead, element: JsonValue) -> RustcSpanRead {
+  match acc {
+    RustcSpanUnreadable => RustcSpanUnreadable
+    RustcSpanRead { location: found } =>
+      match found {
+        RustcSpan { file: f, line: n } => RustcSpanRead { location: RustcSpan { file: f, line: n } }
+        RustcSpanAbsent => cargo_diagnostic_span_of(element: element)
+      }
+  }
+}
+
+fn cargo_diagnostic_location(message: JsonValue) -> RustcSpanRead {
+  match json_object_unique_member(v: message, key: cargo_message_spans_member) {
+    JsonMemberAbsent => RustcSpanRead { location: RustcSpanAbsent }
+    JsonMemberDuplicated { count: _ } => RustcSpanUnreadable
+    JsonMemberNotAnObject => RustcSpanUnreadable
+    JsonMemberFound { value: spans } =>
+      match spans {
+        JsonArray { elements: els } =>
+          fold(
+            els,
+            init: RustcSpanRead { location: RustcSpanAbsent },
+            f: (acc, element) => cargo_diagnostic_fold_span(acc: acc, element: element)
+          )
+        JsonNull => RustcSpanUnreadable
+        JsonString { value: _ } => RustcSpanUnreadable
+        JsonBool { value: _ } => RustcSpanUnreadable
+        JsonNumber { lexeme: _ } => RustcSpanUnreadable
+        JsonObject { members: _ } => RustcSpanUnreadable
+      }
+  }
+}
+
+fn cargo_diagnostic_member(
+  scanned: CargoDiagnosticScan,
+  message: JsonValue,
+  line_number: Int
+) -> CargoDiagnosticScan {
+  match scanned {
+    CargoDiagnosticsRead { diagnostics: ds, lines_scanned: n } =>
+      match json_object_unique_member(v: message, key: cargo_message_level_member) {
+        JsonMemberAbsent => CargoDiagnosticLevelAbsent { line_number: line_number }
+        JsonMemberDuplicated { count: _ } =>
+          CargoDiagnosticMemberDuplicated { line_number: line_number, key: cargo_message_level_member }
+        JsonMemberNotAnObject => CargoDiagnosticLineNotAnObject { line_number: line_number }
+        JsonMemberFound { value: level_value } =>
+          match cargo_diagnostic_string_value(v: level_value) {
+            Absent => CargoDiagnosticLevelNotAString { line_number: line_number }
+            Present { value: level } =>
+              match cargo_diagnostic_identity(message: message) {
+                RustcCodeUnreadable => CargoDiagnosticCodeNotReadable { line_number: line_number }
+                RustcCodeRead { identity: identity } =>
+                  match cargo_diagnostic_location(message: message) {
+                    RustcSpanUnreadable => CargoDiagnosticSpanUnreadable { line_number: line_number }
+                    RustcSpanRead { location: location } =>
+                      CargoDiagnosticsRead {
+                        diagnostics: concat(ds, [
+                          RustcCodedDiagnostic {
+                            identity: identity,
+                            level: level,
+                            location: location
+                          }
+                        ]),
+                        lines_scanned: n + 1
+                      }
+                  }
+              }
+          }
+      }
+    CargoDiagnosticStreamEmpty => CargoDiagnosticStreamEmpty
+    CargoDiagnosticLineUnparseable { line_number: l } => CargoDiagnosticLineUnparseable { line_number: l }
+    CargoDiagnosticLineNotAnObject { line_number: l } => CargoDiagnosticLineNotAnObject { line_number: l }
+    CargoDiagnosticReasonAbsent { line_number: l } => CargoDiagnosticReasonAbsent { line_number: l }
+    CargoDiagnosticReasonNotAString { line_number: l } => CargoDiagnosticReasonNotAString { line_number: l }
+    CargoDiagnosticMemberDuplicated { line_number: l, key: k } => CargoDiagnosticMemberDuplicated { line_number: l, key: k }
+    CargoDiagnosticMessageAbsent { line_number: l } => CargoDiagnosticMessageAbsent { line_number: l }
+    CargoDiagnosticLevelAbsent { line_number: l } => CargoDiagnosticLevelAbsent { line_number: l }
+    CargoDiagnosticLevelNotAString { line_number: l } => CargoDiagnosticLevelNotAString { line_number: l }
+    CargoDiagnosticCodeNotReadable { line_number: l } => CargoDiagnosticCodeNotReadable { line_number: l }
+    CargoDiagnosticSpanUnreadable { line_number: l } => CargoDiagnosticSpanUnreadable { line_number: l }
+  }
+}
+
+fn cargo_diagnostic_scan_line(state: CargoDiagnosticScan, line: String) -> CargoDiagnosticScan {
+  match state {
+    CargoDiagnosticsRead { diagnostics: ds, lines_scanned: n } => {
+      let line_number = n + 1
+      match parse_json(s: line) {
+        Absent => CargoDiagnosticLineUnparseable { line_number: line_number }
+        Present { value: doc } =>
+          match json_object_unique_member(v: doc, key: cargo_message_reason_member) {
+            JsonMemberNotAnObject => CargoDiagnosticLineNotAnObject { line_number: line_number }
+            JsonMemberAbsent => CargoDiagnosticReasonAbsent { line_number: line_number }
+            JsonMemberDuplicated { count: _ } =>
+              CargoDiagnosticMemberDuplicated { line_number: line_number, key: cargo_message_reason_member }
+            JsonMemberFound { value: reason_value } =>
+              match cargo_diagnostic_string_value(v: reason_value) {
+                Absent => CargoDiagnosticReasonNotAString { line_number: line_number }
+                Present { value: reason } =>
+                  if reason != cargo_compiler_message_reason {
+                    CargoDiagnosticsRead { diagnostics: ds, lines_scanned: n + 1 }
+                  } else {
+                    match json_object_unique_member(v: doc, key: cargo_message_message_member) {
+                      JsonMemberAbsent => CargoDiagnosticMessageAbsent { line_number: line_number }
+                      JsonMemberDuplicated { count: _ } =>
+                        CargoDiagnosticMemberDuplicated { line_number: line_number, key: cargo_message_message_member }
+                      JsonMemberNotAnObject => CargoDiagnosticLineNotAnObject { line_number: line_number }
+                      JsonMemberFound { value: message } =>
+                        cargo_diagnostic_member(
+                          scanned: CargoDiagnosticsRead { diagnostics: ds, lines_scanned: n },
+                          message: message,
+                          line_number: line_number
+                        )
+                    }
+                  }
+              }
+          }
+      }
+    }
+    CargoDiagnosticStreamEmpty => CargoDiagnosticStreamEmpty
+    CargoDiagnosticLineUnparseable { line_number: l } => CargoDiagnosticLineUnparseable { line_number: l }
+    CargoDiagnosticLineNotAnObject { line_number: l } => CargoDiagnosticLineNotAnObject { line_number: l }
+    CargoDiagnosticReasonAbsent { line_number: l } => CargoDiagnosticReasonAbsent { line_number: l }
+    CargoDiagnosticReasonNotAString { line_number: l } => CargoDiagnosticReasonNotAString { line_number: l }
+    CargoDiagnosticMemberDuplicated { line_number: l, key: k } => CargoDiagnosticMemberDuplicated { line_number: l, key: k }
+    CargoDiagnosticMessageAbsent { line_number: l } => CargoDiagnosticMessageAbsent { line_number: l }
+    CargoDiagnosticLevelAbsent { line_number: l } => CargoDiagnosticLevelAbsent { line_number: l }
+    CargoDiagnosticLevelNotAString { line_number: l } => CargoDiagnosticLevelNotAString { line_number: l }
+    CargoDiagnosticCodeNotReadable { line_number: l } => CargoDiagnosticCodeNotReadable { line_number: l }
+    CargoDiagnosticSpanUnreadable { line_number: l } => CargoDiagnosticSpanUnreadable { line_number: l }
+  }
+}
+
+// An EMPTY STREAM IS NOT AN EMPTY POPULATION, and this is the one place the distinction is cheap
+// enough to get wrong. cargo emits at least a build-finished message on any run it performed, so
+// zero lines means the run did not produce a message stream at all -- a wrapper swallowed it, the
+// process never started, or the caller passed the wrong field. Reading that as "no diagnostics"
+// is precisely the fabricated zero this instrument was built to stop, so it refuses at line 0.
+fn cargo_scan_diagnostics(stdout: String) -> CargoDiagnosticScan {
+  if stdout.length() == 0 {
+    CargoDiagnosticStreamEmpty
+  } else {
+    fold(
+      cargo_message_lines(stdout: stdout),
+      init: CargoDiagnosticsRead { diagnostics: [], lines_scanned: 0 },
+      f: (state, line) => cargo_diagnostic_scan_line(state: state, line: line)
+    )
+  }
+}
+
+fn rustc_diagnostic_code_or_uncoded(d: RustcCodedDiagnostic) -> String {
+  match d.identity {
+    RustcCoded { code: c } => c
+    RustcUncoded => "uncoded"
+  }
+}
+
+fn rustc_diagnostic_location_text(d: RustcCodedDiagnostic) -> String {
+  match d.location {
+    RustcSpan { file: f, line: n } => concat(concat(f, ":"), to_string(n))
+    RustcSpanAbsent => "(no span)"
+  }
+}
+
+// ONE MEMBER, ONE LINE, IDENTITY FIRST. The rendering is deliberately joinable rather than pretty:
+// a consumer differencing two runs sorts and compares these lines, which a prose summary cannot
+// support and a bare count cannot support at all.
+fn rustc_diagnostic_row(d: RustcCodedDiagnostic) -> String {
+  concat(
+    concat(rustc_diagnostic_code_or_uncoded(d: d), concat("\t", d.level)),
+    concat("\t", rustc_diagnostic_location_text(d: d))
+  )
+}
+
+fn cargo_diagnostic_scan_refusal_reason(scan: CargoDiagnosticScan) -> String {
+  match scan {
+    CargoDiagnosticsRead { diagnostics: _, lines_scanned: _ } => ""
+    CargoDiagnosticStreamEmpty =>
+      "cargo produced no message stream at all — a build that ran emits at least a build-finished message, so an empty stream means the invocation was swallowed, never started, or read from the wrong field; reporting it as a clean build is the fabricated zero this decode exists to refuse"
+    CargoDiagnosticLineUnparseable { line_number: l } => concat("cargo message line unparseable at line ", to_string(l))
+    CargoDiagnosticLineNotAnObject { line_number: l } => concat("cargo message line is not an object at line ", to_string(l))
+    CargoDiagnosticReasonAbsent { line_number: l } => concat("cargo message carries no reason at line ", to_string(l))
+    CargoDiagnosticReasonNotAString { line_number: l } => concat("cargo message reason is not a string at line ", to_string(l))
+    CargoDiagnosticMemberDuplicated { line_number: l, key: k } => concat(concat("cargo message duplicates member ", k), concat(" at line ", to_string(l)))
+    CargoDiagnosticMessageAbsent { line_number: l } => concat("compiler-message carries no message at line ", to_string(l))
+    CargoDiagnosticLevelAbsent { line_number: l } => concat("compiler-message carries no level at line ", to_string(l))
+    CargoDiagnosticLevelNotAString { line_number: l } => concat("compiler-message level is not a string at line ", to_string(l))
+    CargoDiagnosticCodeNotReadable { line_number: l } => concat("compiler-message code member is not readable at line ", to_string(l))
+    CargoDiagnosticSpanUnreadable { line_number: l } => concat("compiler-message spans are not readable at line ", to_string(l))
+  }
+}

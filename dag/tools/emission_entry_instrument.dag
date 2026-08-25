@@ -1,0 +1,436 @@
+module tools.emission_entry_instrument
+
+import std.types { Bool, Int, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.shell
+import extdeps.gunbc
+import extdeps.git
+import extdeps.git.inspect
+import extdeps.cargo_build
+import extdeps.filesystem.filesystem_io { Filesystem }
+import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
+import tools.self_host_curated_seed_linked_harness {
+  cssl_std_bridge_shims_rel,
+  cssl_v1_compiled_probe_lib_cargo_toml
+}
+import gunbc.emit_diagnostic_observation {
+  GunbcDiagnostic,
+  EmitDiagnosticRead,
+  EmitDiagnosticsRead,
+  EmitSummaryAbsent,
+  EmitSummaryUnreadable,
+  EmitPopulationMismatch,
+  EmitSummaryDisagreement,
+  EmittedFileCount,
+  FilesEmitted,
+  FilesNotWritten,
+  emitted_file_count_text,
+  read_emit_diagnostics,
+  emit_blocking_count,
+  emit_diagnostic_read_refusal_reason,
+  gunbc_diagnostic_row
+}
+import extdeps.cargo_diagnostic {
+  RustcCodedDiagnostic,
+  CargoDiagnosticScan,
+  CargoDiagnosticsRead,
+  cargo_scan_diagnostics,
+  cargo_diagnostic_scan_refusal_reason,
+  rustc_diagnostic_row
+}
+
+// THE PER-ENTRY EMISSION INSTRUMENT.
+//
+// DESIGN's Building-&-checks section carries a declared rung drop titled "THE MEASUREMENT
+// BANKRUPTCY DELETED A CAPABILITY, NOT ONLY ARTIFACTS". It states the temporary state plainly --
+// no executable route to a per-entry emission board measurement exists, so a board figure quoted
+// from the tree names nothing that can produce it -- and it names its own restoration trigger: a
+// `.dag` entry point that emits, assembles and compiles ONE entry and returns the coded-diagnostic
+// population, cited by name wherever a board figure is quoted. This module is that entry point.
+// It is the INSTRUMENT, not a board: it produces the numbers and stores none of them.
+//
+// WHY ONE ENTRY AND NOT THE CORPUS. gunbc.whole_corpus_compile_admission refuses a whole-bundle
+// compile on the default remote runner -- the declared demand exceeds the runner's budget, and
+// before that refusal existed the same run was killed with no diagnostic, so anything reading its
+// output for a count read a fabricated zero. That module's own scope note records the measured
+// alternative: a scoped `--entry` compile FITS on the runner that killed the whole-corpus run,
+// because its working set is one import closure rather than the whole tree.
+//
+// EXECUTION PROVENANCE IS THE CARRIER'S FIRST JOB, ahead of any count it reports. DESIGN's
+// execution-provenance-loss failure mode is the exact defect this instrument exists to end: a
+// count of zero and an unreached stage must not render identically. So `refused before the emitter
+// ran` has no spelling in the same shape as `emitted with zero diagnostics` -- they are different
+// variants of EmissionMeasurement, and every stage that can prevent a later stage from executing
+// appears in the carrier by name. A consumer cannot read a population without having been told
+// which stages produced it.
+//
+// IT IS NOT A GATE. Nothing here blocks a merge, nothing is enrolled in the required run, and the
+// exit status reports whether the MEASUREMENT completed, never whether the entry was clean: an
+// entry with a thousand diagnostics is a successful measurement. Gating on emission convergence is
+// a separate decision with a separate argument.
+
+// The stages, in the order they run. A stage names a place the line can stop, which is why the
+// list is a closed coproduct rather than a string: an unreachable-stage refusal must be as
+// enumerable as a diagnostic.
+type EmissionStage
+  = StageWorkspace
+  | StageBinaries
+  | StageEmit
+  | StageEmitDecode
+  | StageAssemble
+  | StageManifest
+  | StageCargo
+  | StageCargoDecode
+
+fn emission_stage_name(stage: EmissionStage) -> String {
+  match stage {
+    StageWorkspace => "workspace"
+    StageBinaries => "binaries"
+    StageEmit => "emit"
+    StageEmitDecode => "emit-decode"
+    StageAssemble => "assemble"
+    StageManifest => "manifest"
+    StageCargo => "cargo"
+    StageCargoDecode => "cargo-decode"
+  }
+}
+
+// FOUR OUTCOMES, AND THE FIRST THREE ARE THE POINT.
+//
+// EmissionUnreached  -- a stage refused before the emitter produced anything. There is no
+//                       population, and the carrier cannot pretend there is an empty one.
+// EmissionEmitRefused-- the emitter RAN and refused. This is a real measurement: the emit-stage
+//                       population is exactly what the caller wants, and it is carried here rather
+//                       than discarded because a refusing entry is the interesting case.
+// EmissionCargoUnreached -- the emitter completed and a later stage refused. The emit population is
+//                       real; the rustc population was never produced and is therefore absent,
+//                       not empty.
+// EmissionMeasured   -- every stage ran. Both populations are observations.
+type EmissionMeasurement
+  = EmissionUnreached {
+      entry: String
+      stage: EmissionStage
+      cause: String
+    }
+  | EmissionEmitRefused {
+      entry: String
+      exit_code: Int
+      emit_diagnostics: List<GunbcDiagnostic>
+      emitted_files: EmittedFileCount
+    }
+  | EmissionCargoUnreached {
+      entry: String
+      stage: EmissionStage
+      cause: String
+      emit_diagnostics: List<GunbcDiagnostic>
+      emitted_files: EmittedFileCount
+    }
+  | EmissionMeasured {
+      entry: String
+      emitted_files: EmittedFileCount
+      emit_diagnostics: List<GunbcDiagnostic>
+      cargo_clean: Bool
+      cargo_diagnostics: List<RustcCodedDiagnostic>
+      cargo_lines_scanned: Int
+    }
+
+// The measurement is COMPLETE whenever the instrument reached a verdict about the entry, which
+// includes an entry the compiler refused. It is INCOMPLETE only where the instrument itself could
+// not run. Conflating the two is how an instrument reports its own breakage as a finding about
+// its subject.
+fn emission_measurement_completed(m: EmissionMeasurement) -> Bool {
+  match m {
+    EmissionUnreached { entry: _, stage: _, cause: _ } => false
+    EmissionCargoUnreached { entry: _, stage: _, cause: _, emit_diagnostics: _, emitted_files: _ } => false
+    EmissionEmitRefused { entry: _, exit_code: _, emit_diagnostics: _, emitted_files: _ } => true
+    EmissionMeasured { entry: _, emitted_files: _, emit_diagnostics: _, cargo_clean: _, cargo_diagnostics: _, cargo_lines_scanned: _ } => true
+  }
+}
+
+fn emit_decode_unreached(entry: String, read: EmitDiagnosticRead) -> EmissionMeasurement {
+  EmissionUnreached {
+    entry: entry,
+    stage: StageEmitDecode,
+    cause: emit_diagnostic_read_refusal_reason(read: read)
+  }
+}
+
+// THE CARGO HALF, run only once the emit half has produced a real population. It is a separate
+// function so that "the emitter completed" is established before anything downstream can be
+// reported, and so the stage that refuses is named at the site that knows it.
+//
+// THE ASSEMBLE ARM CHECKS BOTH the assembler's exit status and the verdict marker it prints.
+// Reading only the status would admit a future arm that exits 0 while refusing; reading only the
+// marker would admit a crash that never printed anything.
+//
+// THE CARGO-DECODE ARM IS A REFUSAL, NOT A CLEAN BUILD. A message stream the decoder could not
+// read carries the decoder's own located cause, so the reader learns which line stopped it rather
+// than receiving a population that silently lost members.
+fn measure_cargo_half(
+  entry: String,
+  root: String,
+  out_dir: String,
+  cssl_assemble_bin: String,
+  emit_diagnostics: List<GunbcDiagnostic>,
+  emitted_files: EmittedFileCount
+) -> EmissionMeasurement {
+  let src_dir = shell.Mkdir.Parents(path: concat(out_dir, "/src"))
+  if !src_dir.success {
+    EmissionCargoUnreached {
+      entry: entry,
+      stage: StageAssemble,
+      cause: concat("could not create the emitted crate's src directory under ", out_dir),
+      emit_diagnostics: emit_diagnostics,
+      emitted_files: emitted_files
+    }
+  } else {
+    let assemble = gunbc.WitnessBin.Run(
+      workdir: root,
+      bin_path: cssl_assemble_bin,
+      args: [
+        "--out-dir", out_dir,
+        "--entry-dag", entry,
+        "--root", root,
+        "--std-bridge-dir", cssl_std_bridge_shims_rel
+      ]
+    )
+    if !assemble.success || !string_contains(s: assemble.stdout, pattern: "CSSL_ASSEMBLE: PASS") {
+      EmissionCargoUnreached {
+        entry: entry,
+        stage: StageAssemble,
+        cause: concat("cssl_assemble refused: ", concat(assemble.stdout, assemble.stderr)),
+        emit_diagnostics: emit_diagnostics,
+        emitted_files: emitted_files
+      }
+    } else {
+      let manifest = Filesystem.Write(
+        path: concat(out_dir, "/Cargo.toml"),
+        content: cssl_v1_compiled_probe_lib_cargo_toml(root: root)
+      )
+      if !manifest.success {
+        EmissionCargoUnreached {
+          entry: entry,
+          stage: StageManifest,
+          cause: concat("could not write the probe crate manifest under ", out_dir),
+          emit_diagnostics: emit_diagnostics,
+          emitted_files: emitted_files
+        }
+      } else {
+        let build = cargo.Build.BuildManifestMessages(
+          workdir: out_dir,
+          manifest_path: concat(out_dir, "/Cargo.toml"),
+          target_dir: concat(out_dir, "/target"),
+          extra_args: ["--release", "--lib"]
+        )
+        match cargo_scan_diagnostics(stdout: build.stdout) {
+          CargoDiagnosticsRead { diagnostics: ds, lines_scanned: n } =>
+            EmissionMeasured {
+              entry: entry,
+              emitted_files: emitted_files,
+              emit_diagnostics: emit_diagnostics,
+              cargo_clean: build.success,
+              cargo_diagnostics: ds,
+              cargo_lines_scanned: n
+            }
+          scan =>
+            EmissionCargoUnreached {
+              entry: entry,
+              stage: StageCargoDecode,
+              cause: concat(
+                cargo_diagnostic_scan_refusal_reason(scan: scan),
+                concat(" — cargo stderr: ", build.stderr)
+              ),
+              emit_diagnostics: emit_diagnostics,
+              emitted_files: emitted_files
+            }
+        }
+      }
+    }
+  }
+}
+
+// ONE ENTRY IN, ONE MEASUREMENT OUT. `entry` is a repository-relative `.dag` path, exactly what
+// `gunbc compile --entry` takes.
+//
+// A COMPILER THAT RAN AND REFUSED IS A MEASUREMENT, not an instrument failure: the population it
+// produced is the answer, so it travels with the refusal rather than being discarded for it.
+fn measure_entry_emission(entry: String) -> EmissionMeasurement {
+  let root = git.Inspect.Toplevel()
+  let out_dir = shell.Mktemp.Dir()
+  if !out_dir.success {
+    EmissionUnreached {
+      entry: entry,
+      stage: StageWorkspace,
+      cause: "could not create a temporary directory for the emitted crate"
+    }
+  } else {
+    let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
+    let cssl_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "CSSL_ASSEMBLE", bin_name: "cssl_assemble"))
+    if !gunbc_built || !cssl_built {
+      EmissionUnreached {
+        entry: entry,
+        stage: StageBinaries,
+        cause: "the gunbc and cssl_assemble release binaries are not both buildable — the instrument invokes the compiler it is measuring as a subprocess, so an absent binary is a refusal and never a clean measurement"
+      }
+    } else {
+      let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
+      let cssl_assemble_bin = witness_bin_release_path(root: root.path, bin_name: "cssl_assemble")
+      let emit = gunbc.WitnessBin.Run(
+        workdir: root.path,
+        bin_path: gunbc_bin,
+        args: [
+          "compile",
+          "--source-root", "dag",
+          "--source-root", "src/v2",
+          "--entry", entry,
+          "--output-dir", out_dir.path,
+          "--target", "rust",
+          "--dependency-pool-index", "primary-precedence"
+        ]
+      )
+      let read = read_emit_diagnostics(stderr: emit.stderr)
+      match read {
+        EmitDiagnosticsRead { diagnostics: ds, emitted_files: files, declared_total: _ } =>
+          if !emit.success {
+            EmissionEmitRefused {
+              entry: entry,
+              exit_code: emit.exit_code,
+              emit_diagnostics: ds,
+              emitted_files: files
+            }
+          } else {
+            measure_cargo_half(
+              entry: entry,
+              root: root.path,
+              out_dir: out_dir.path,
+              cssl_assemble_bin: cssl_assemble_bin,
+              emit_diagnostics: ds,
+              emitted_files: files
+            )
+          }
+        EmitSummaryAbsent => emit_decode_unreached(entry: entry, read: read)
+        EmitSummaryUnreadable { line: _ } => emit_decode_unreached(entry: entry, read: read)
+        EmitPopulationMismatch { decoded: _, declared: _ } => emit_decode_unreached(entry: entry, read: read)
+        EmitSummaryDisagreement { compiled_total: _, severity_total: _ } => emit_decode_unreached(entry: entry, read: read)
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// RENDERING. Joinable rows, never a summary sentence.
+//
+// The header states the stage the run reached BEFORE any number appears, so a reader cannot take a
+// count out of context: a report whose first line says the emitter never ran carries no counts at
+// all, because there are none to carry.
+// ---------------------------------------------------------------------------------------------
+
+fn emission_report_rows(m: EmissionMeasurement) -> List<String> {
+  match m {
+    EmissionUnreached { entry: e, stage: s, cause: c } => [
+      concat("subject\t", e),
+      concat("outcome\tunreached\tstage\t", emission_stage_name(stage: s)),
+      concat("cause\t", c)
+    ]
+    EmissionEmitRefused { entry: e, exit_code: code, emit_diagnostics: ds, emitted_files: files } =>
+      concat(
+        [
+          concat("subject\t", e),
+          concat("outcome\temit-refused\texit_code\t", to_string(code)),
+          concat("emitted_files\t", emitted_file_count_text(files: files)),
+          concat(
+            concat("emit_population\t", to_string(count(ds))),
+            concat("\tblocking\t", to_string(emit_blocking_count(ds: ds)))
+          ),
+          "cargo_population\t(not produced — the emitter refused, so no crate was assembled)"
+        ],
+        map(ds, d => concat("emit\t", gunbc_diagnostic_row(d: d)))
+      )
+    EmissionCargoUnreached { entry: e, stage: s, cause: c, emit_diagnostics: ds, emitted_files: files } =>
+      concat(
+        [
+          concat("subject\t", e),
+          concat("outcome\tcargo-unreached\tstage\t", emission_stage_name(stage: s)),
+          concat("cause\t", c),
+          concat("emitted_files\t", emitted_file_count_text(files: files)),
+          concat("emit_population\t", to_string(count(ds))),
+          "cargo_population\t(not produced)"
+        ],
+        map(ds, d => concat("emit\t", gunbc_diagnostic_row(d: d)))
+      )
+    EmissionMeasured {
+      entry: e,
+      emitted_files: files,
+      emit_diagnostics: ds,
+      cargo_clean: clean,
+      cargo_diagnostics: rs,
+      cargo_lines_scanned: lines
+    } =>
+      concat(
+        concat(
+          [
+            concat("subject\t", e),
+            concat("outcome\tmeasured\tcargo_clean\t", to_string(clean)),
+            concat("emitted_files\t", emitted_file_count_text(files: files)),
+            concat(
+              concat("emit_population\t", to_string(count(ds))),
+              concat("\tblocking\t", to_string(emit_blocking_count(ds: ds)))
+            ),
+            concat(
+              concat("cargo_population\t", to_string(count(rs))),
+              concat("\tcargo_message_lines\t", to_string(lines))
+            )
+          ],
+          map(ds, d => concat("emit\t", gunbc_diagnostic_row(d: d)))
+        ),
+        map(rs, r => concat("cargo\t", rustc_diagnostic_row(d: r)))
+      )
+  }
+}
+
+fn emission_report_text(m: EmissionMeasurement) -> String {
+  concat(join(emission_report_rows(m: m), "\n"), "\n")
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE CLI SURFACE.
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/tools/emission_entry_instrument.dag --function measure \
+//     --arg entry=dag/extdeps/cpu/ampere.dag --arg report=/tmp/board.tsv
+//
+// The report is WRITTEN rather than returned because `gunbc run` maps a returned value to an exit
+// status and has no value-printing verb; the same wall tools.self_host_curated_probe_cargo records.
+// The typed measurement is what measure_entry_emission returns -- this wrapper only renders it.
+//
+// THE EXIT STATUS REPORTS THE INSTRUMENT, NOT THE SUBJECT. A completed measurement exits zero even
+// when the entry it measured is full of errors, and an instrument that could not run exits nonzero
+// even though it found nothing wrong with anything. Any other mapping would make a broken
+// instrument indistinguishable from a clean subject, which is the failure this whole module is a
+// response to.
+fn measure(entry: String, report: String) -> ProcessExit {
+  if entry == "" {
+    exit_failure(reason: "measure: --arg entry=<repo-relative .dag path> is required")
+  } else {
+    if report == "" {
+      exit_failure(reason: "measure: --arg report=<path> is required — the measurement is written, not printed")
+    } else {
+      let m = measure_entry_emission(entry: entry)
+      let write = Filesystem.Write(path: report, content: emission_report_text(m: m))
+      if !write.success {
+        exit_failure(reason: concat("measure: could not write the report to ", report))
+      } else {
+        if emission_measurement_completed(m: m) {
+          ExitSuccess
+        } else {
+          exit_failure(
+            reason: concat(
+              concat("measure: the instrument did not complete for ", entry),
+              concat(" — the report at ", concat(report, " names the stage that stopped it"))
+            )
+          )
+        }
+      }
+    }
+  }
+}

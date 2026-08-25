@@ -1,0 +1,213 @@
+module test.claim.emission_entry_instrument_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE INSTRUMENT'S OWN EVIDENCE. Every claim here is a controlled fixture: the input stream and
+// the expected population are authored side by side, so nothing is compared against a measurement
+// taken from the tree the claims are judging.
+//
+// THE REDS ARE THE POINT. A decoder that only ever reported a population has not been shown to
+// report anything -- what makes these two decoders admissible is that a stream they cannot read
+// REFUSES instead of shrinking silently, and each of those refusals is asserted below against an
+// input authored to trigger it.
+
+// ---------------------------------------------------------------------------------------------
+// cargo --message-format=json: the rustc coded-diagnostic population
+// ---------------------------------------------------------------------------------------------
+
+data artifact_line: String = "\{\"reason\":\"compiler-artifact\",\"target\":\{\"name\":\"probe\"\},\"executable\":null\}"
+
+data e0308_line: String = "\{\"reason\":\"compiler-message\",\"message\":\{\"code\":\{\"code\":\"E0308\"\},\"level\":\"error\",\"spans\":[\{\"file_name\":\"src/a.rs\",\"line_start\":12,\"is_primary\":true\}]\}\}"
+
+// A NON-PRIMARY SPAN FIRST. A decode that read spans[0] would answer src/secondary.rs:1 here; the
+// claim asserts src/a.rs:12, so the is_primary read is what the claim is about rather than an
+// accident of ordering.
+data e0599_line_secondary_first: String = "\{\"reason\":\"compiler-message\",\"message\":\{\"code\":\{\"code\":\"E0599\"\},\"level\":\"error\",\"spans\":[\{\"file_name\":\"src/secondary.rs\",\"line_start\":1,\"is_primary\":false\},\{\"file_name\":\"src/a.rs\",\"line_start\":12,\"is_primary\":true\}]\}\}"
+
+data uncoded_line: String = "\{\"reason\":\"compiler-message\",\"message\":\{\"code\":null,\"level\":\"error\",\"spans\":[]\}\}"
+
+data build_finished_line: String = "\{\"reason\":\"build-finished\",\"success\":false\}"
+
+data not_json_line: String = "warning: this line is not json"
+
+fn stream_of(lines: List<String>) -> String {
+  concat(join(lines, "\n"), "\n")
+}
+
+fn scan_of(lines: List<String>) -> CargoDiagnosticScan {
+  cargo_scan_diagnostics(stdout: stream_of(lines: lines))
+}
+
+fn scanned_rows(lines: List<String>) -> List<String> {
+  match scan_of(lines: lines) {
+    CargoDiagnosticsRead { diagnostics: ds, lines_scanned: _ } =>
+      map(ds, d => rustc_diagnostic_row(d: d))
+    scan => [concat("REFUSED: ", cargo_diagnostic_scan_refusal_reason(scan: scan))]
+  }
+}
+
+test fn cargo_population_carries_identity_and_location_per_finding() -> Bool {
+  scanned_rows(lines: [artifact_line, e0308_line, build_finished_line])
+    == ["E0308\terror\tsrc/a.rs:12"]
+}
+
+test fn the_primary_span_is_selected_by_its_flag_not_by_position() -> Bool {
+  scanned_rows(lines: [e0599_line_secondary_first, build_finished_line])
+    == ["E0599\terror\tsrc/a.rs:12"]
+}
+
+test fn an_uncoded_diagnostic_is_a_member_not_an_absence() -> Bool {
+  scanned_rows(lines: [uncoded_line, build_finished_line])
+    == ["uncoded\terror\t(no span)"]
+}
+
+test fn every_message_is_kept_so_two_findings_are_two_rows() -> Bool {
+  count(scanned_rows(lines: [e0308_line, e0599_line_secondary_first, build_finished_line])) == 2
+}
+
+// RED: a stream this decode cannot read must not report an empty population. The line number is
+// asserted exactly, because a refusal that names the wrong line sends the reader to the wrong place.
+test fn an_unreadable_line_refuses_and_names_it_rather_than_reporting_zero() -> Bool {
+  scanned_rows(lines: [e0308_line, not_json_line, build_finished_line])
+    == ["REFUSED: cargo message line unparseable at line 2"]
+}
+
+// RED: an empty stream is the shape a swallowed or never-started build produces, and reading it as
+// a clean build is the fabricated zero this whole instrument exists to end.
+test fn an_empty_stream_refuses_rather_than_reporting_a_clean_build() -> Bool {
+  match cargo_scan_diagnostics(stdout: "") {
+    CargoDiagnosticsRead { diagnostics: _, lines_scanned: _ } => false
+    CargoDiagnosticStreamEmpty => true
+    scan => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// gunbc compile: the emit-stage population
+// ---------------------------------------------------------------------------------------------
+
+data emit_error_line: String = "error[dag/extdeps/cpu/ampere.dag:31:3]: ambiguous anonymous record literal"
+
+data emit_advisory_line: String = "advisory[dag/std/logic.dag:9:1]: method existence undecided"
+
+data emit_summary_two: String = "compiled: 177 files emitted, 2 diagnostics"
+
+data emit_summary_three: String = "compiled: 177 files emitted, 3 diagnostics"
+
+// The renderer's own closing line, in both of its shapes. This is the anchor that survives a
+// REFUSED compile, where no `compiled:` line is printed at all because no tree was written.
+data emit_severity_summary_two: String = "1 blocking error(s), 1 advisory diagnostic(s) (policy: gunbc.compile_clean_diagnostic_policy)"
+
+data emit_severity_summary_one_error: String = "1 error(s)"
+
+data emit_noise_line: String = "resolved 3892 sources (transitive import closure)"
+
+fn emit_read_of(lines: List<String>) -> EmitDiagnosticRead {
+  read_emit_diagnostics(stderr: stream_of(lines: lines))
+}
+
+fn emit_rows(lines: List<String>) -> List<String> {
+  match emit_read_of(lines: lines) {
+    EmitDiagnosticsRead { diagnostics: ds, emitted_files: _, declared_total: _ } =>
+      map(ds, d => gunbc_diagnostic_row(d: d))
+    read => [concat("REFUSED: ", emit_diagnostic_read_refusal_reason(read: read))]
+  }
+}
+
+test fn the_emit_population_carries_severity_location_and_message() -> Bool {
+  emit_rows(lines: [emit_noise_line, emit_error_line, emit_advisory_line, emit_summary_two, emit_severity_summary_two])
+    == [
+      "error\tdag/extdeps/cpu/ampere.dag:31:3\tambiguous anonymous record literal",
+      "advisory\tdag/std/logic.dag:9:1\tmethod existence undecided"
+    ]
+}
+
+test fn blocking_is_counted_from_the_population_not_from_the_summary() -> Bool {
+  match emit_read_of(lines: [emit_error_line, emit_advisory_line, emit_summary_two, emit_severity_summary_two]) {
+    EmitDiagnosticsRead { diagnostics: ds, emitted_files: files, declared_total: _ } =>
+      emit_blocking_count(ds: ds) == 1 && emitted_file_count_text(files: files) == "177"
+    read => false
+  }
+}
+
+// A REFUSED COMPILE prints the rendered diagnostics and its severity summary but NO `compiled:`
+// line, because it wrote no tree. The population is still fully readable, and the file count is
+// the named absent state rather than a zero that would read as an empty emission.
+test fn a_refused_compile_reads_its_population_from_the_severity_summary() -> Bool {
+  match emit_read_of(lines: [emit_error_line, emit_severity_summary_one_error]) {
+    EmitDiagnosticsRead { diagnostics: ds, emitted_files: files, declared_total: n } =>
+      count(ds) == 1 && n == 1
+        && emitted_file_count_text(files: files) == "(no tree written — the compiler refused)"
+    read => false
+  }
+}
+
+// RED: the compiler states its total twice on a completed compile, and the two accounts must
+// agree. A disagreement is the decode's own alarm that it is reading a rendering it does not
+// understand, and it stops the line instead of picking one of the two numbers.
+test fn the_compilers_two_own_totals_disagreeing_refuses() -> Bool {
+  emit_rows(lines: [emit_error_line, emit_advisory_line, emit_summary_three, emit_severity_summary_two])
+    == ["REFUSED: the compiler's own two totals disagree: `compiled:` says 3 and the rendered severity summary says 2"]
+}
+
+// RED, AND IT IS THE ONE THAT MAKES THE PROSE DECODE ADMISSIBLE AT ALL: the compiler declares its
+// own total, so a diagnostic shape this decode does not recognise makes the two numbers disagree
+// and stops the line, instead of quietly returning a smaller population.
+test fn a_population_smaller_than_the_compilers_own_total_refuses() -> Bool {
+  emit_rows(lines: [emit_error_line, emit_advisory_line, emit_summary_three])
+    == ["REFUSED: decoded 2 diagnostic line(s) against a compiler-declared total of 3"]
+}
+
+// RED: no summary line means the compile never reached the point where it states its own total, so
+// there is no total to check a population against and no population may be reported.
+test fn output_with_no_summary_line_refuses_rather_than_reporting_zero() -> Bool {
+  match emit_read_of(lines: [emit_noise_line]) {
+    EmitSummaryAbsent => true
+    read => false
+  }
+}
+
+test fn a_malformed_summary_line_refuses_rather_than_defaulting_to_zero() -> Bool {
+  match emit_read_of(lines: ["compiled: some files emitted, lots diagnostics"]) {
+    EmitSummaryUnreadable { line: _ } => true
+    read => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The carrier: an unreached stage and a zero-diagnostic measurement must not render alike
+// ---------------------------------------------------------------------------------------------
+
+data unreached_specimen: EmissionMeasurement = EmissionUnreached {
+  entry: "dag/extdeps/cpu/ampere.dag",
+  stage: StageBinaries,
+  cause: "binaries not buildable"
+}
+
+data clean_specimen: EmissionMeasurement = EmissionMeasured {
+  entry: "dag/extdeps/cpu/ampere.dag",
+  emitted_files: FilesEmitted { count: 177 },
+  emit_diagnostics: [],
+  cargo_clean: true,
+  cargo_diagnostics: [],
+  cargo_lines_scanned: 4
+}
+
+// THE WHOLE CARRIER'S REASON FOR EXISTING, asserted rather than described. A count of zero and an
+// unreached stage are different values, they render to different text, and only one of them counts
+// as a completed measurement.
+test fn an_unreached_stage_and_a_zero_population_are_not_the_same_reading() -> Bool {
+  emission_measurement_completed(m: unreached_specimen) == false
+    && emission_measurement_completed(m: clean_specimen) == true
+    && emission_report_text(m: unreached_specimen) != emission_report_text(m: clean_specimen)
+}
+
+test fn an_unreached_report_names_the_stage_and_carries_no_counts() -> Bool {
+  string_contains(s: emission_report_text(m: unreached_specimen), pattern: "outcome\tunreached\tstage\tbinaries")
+    && !string_contains(s: emission_report_text(m: unreached_specimen), pattern: "emit_population")
+}
+
+test fn a_measured_report_states_both_populations() -> Bool {
+  string_contains(s: emission_report_text(m: clean_specimen), pattern: "emit_population\t0")
+    && string_contains(s: emission_report_text(m: clean_specimen), pattern: "cargo_population\t0")
+}
