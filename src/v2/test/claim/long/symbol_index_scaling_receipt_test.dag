@@ -1,6 +1,12 @@
 module v2.test.long.symbol_index_scaling_receipt
 
-import v2.lens.complexity_accumulator_copy.roster_gate { NoSuspect, file_gate, file_standing }
+import v2.lens.complexity_accumulator_copy.roster_gate {
+  FindingNotEstablished,
+  NoSuspect,
+  SuspectObserved,
+  file_gate,
+  file_standing
+}
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -18,9 +24,12 @@ data complexity_lens_receipt_note: String = "COMPLEXITY LENS (2026-07-13): Poly2
 fn file_has_no_suspect(path: String, refusal_ceiling: Int) -> Bool {
   match file_standing(path: path, refusal_ceiling: refusal_ceiling).finding {
     NoSuspect => true
-    _ => false
+    SuspectObserved { suspects: _ } => false
+    FindingNotEstablished { cause: _ } => false
   }
 }
+
+data finding_standing_bool_boundary_note: String = "These legacy receipt identities must return Bool, so SuspectObserved and FindingNotEstablished are both non-holding here even though the typed standing preserves their different owners and remedies. The descent is explicit: a future finding-standing arm must be adjudicated rather than silently inheriting false through a wildcard."
 
 test fn symbol_index_fill_zero_poly2_suspects_holds() -> Bool {
   file_has_no_suspect(path: "src/v2/compiler/symbol_index_fill.dag", refusal_ceiling: 6)
