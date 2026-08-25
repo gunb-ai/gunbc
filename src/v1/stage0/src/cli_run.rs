@@ -22,7 +22,6 @@ use crate::v1_compiler_infer_env::{
     symbol_index_lookup, GlobalBareLookupState, SymbolIndex, TypeEnv,
 };
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
-use crate::v1_compiler_infer_lookup::func_sig_if_resolved;
 use crate::v1_compiler_infer_lookup::global_bare_callable_node;
 use crate::v1_compiler_infer_method::infer_builtin_call_type;
 use crate::v1_compiler_infer_sigs::{lookup_resolved_sig, ResolvedFuncEnv, ResolvedFuncSig};
@@ -462,6 +461,23 @@ pub fn project_roadmap_acceptance_event_history_from_authority_text_builtin(
 }
 
 pub mod roadmap_acceptance_history_carrier;
+
+#[cfg(test)]
+/// The erasing projection `func_sig_if_resolved` was deleted from production in the
+/// callable-candidate cut: mapping `FuncSigAmbiguous` onto the same `None` that means "no such
+/// signature" is what kept the ambiguity arm unreachable for its consumers. These tests are the
+/// eleventh consumer, and they are the one place the collapse is legitimate -- they PIN the
+/// legacy `ImportScoped` policy and assert its first-hit behaviour, where an ambiguity cannot
+/// arise, and the other assertion is a genuine miss. Keeping the collapse here, named and local
+/// to the tests, is what stops it from becoming a production projection again.
+fn test_sig_or_none(
+    lookup: Rc<crate::v1_compiler_infer_sigs::FuncSigLookup>,
+) -> Option<Rc<crate::v1_compiler_infer_sigs::ResolvedFuncSig>> {
+    match (*crate::v1_compiler_infer_sigs::func_sig_for_derivation(lookup)).clone() {
+        crate::v1_compiler_infer_sigs::DerivedCalleeSig::DerivedFromSig { sig, .. } => Some(sig),
+        crate::v1_compiler_infer_sigs::DerivedCalleeSig::NoDerivableSig { .. } => None,
+    }
+}
 
 #[cfg(test)]
 mod bare_reference_scanner_tests {
@@ -16993,21 +17009,45 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<usize, Ve
                 // the parse diagnostics and the annotation refusals in one population. Called
                 // with a single source, so files stay independent and nothing resolves across
                 // them.
+                let path_str = path.to_string_lossy().to_string();
                 let fill = crate::v1_compiler_compile::parse_census_fill_sources(std::rc::Rc::new(
                     vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-                        path: path.to_string_lossy().to_string(),
-                        content,
+                        path: path_str.clone(),
+                        content: content.clone(),
                     })]
                     .into(),
                 ));
                 if fill.diagnostics.is_empty() {
                     count.fetch_add(1, Ordering::Relaxed);
                 } else {
+                    // THE SPAN IS CARRIED, NOT DROPPED. Every `CompilerDiagnostic` answers
+                    // `diagnostic_to_span`, and an annotation refusal carries the origin of the
+                    // exact `//` line that could not attach -- but this printer used to render
+                    // only the file and the message, so 52 refusals in one file arrived as 52
+                    // byte-identical sentences with no way to tell which annotation was at
+                    // fault. A typed, LOCATED diagnostic rendered as untyped prose is the
+                    // opposite of what DESIGN section 5 requires of a refusal.
+                    //
+                    // The index is built from the same `content` the parse consumed, and
+                    // `byte_to_line_col` reads CHAR offsets -- which is what spans carry, since
+                    // `build_newline_index` indexes `chars()` and the tokenizer's positions are
+                    // char positions. A synthetic span (`no_span()`, file `<synthetic>`) names
+                    // no position in this file, so it renders as the path alone rather than as
+                    // a fabricated `1:1`.
+                    let index = crate::v1_std_core::build_newline_index(path_str.clone(), content);
                     let mut lock = errors.lock().expect("parse error lock");
                     for d in fill.diagnostics.iter() {
+                        let span = crate::v1_std_core::diagnostic_to_span(d.diagnostic.clone());
+                        let located = if span.file == path_str {
+                            let lc =
+                                crate::v1_std_core::byte_to_line_col(index.clone(), span.start);
+                            format!("{path_str}:{}:{}", lc.line, lc.col)
+                        } else {
+                            path_str.clone()
+                        };
                         lock.push(format!(
                             "{}: {}",
-                            path.display(),
+                            located,
                             crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()),
                         ));
                     }
@@ -40922,18 +40962,15 @@ mod sigs_env_flat_parents {
                 let b = w2_env(&format!("b{i}"), &[], vec![prev.clone()]);
                 prev = w2_env(&format!("j{i}"), &[], vec![a, b]);
             }
-            let deep_hit = crate::v1_compiler_infer_lookup::func_sig_if_resolved(
-                crate::v1_compiler_infer_sigs::lookup_resolved_sig(
+            let deep_hit =
+                super::test_sig_or_none(crate::v1_compiler_infer_sigs::lookup_resolved_sig(
                     prev.clone(),
                     "bottom_fn".to_string(),
-                ),
-            );
-            let miss = crate::v1_compiler_infer_lookup::func_sig_if_resolved(
-                crate::v1_compiler_infer_sigs::lookup_resolved_sig(
-                    prev.clone(),
-                    "absent_fn".to_string(),
-                ),
-            );
+                ));
+            let miss = super::test_sig_or_none(crate::v1_compiler_infer_sigs::lookup_resolved_sig(
+                prev.clone(),
+                "absent_fn".to_string(),
+            ));
             let _ = tx.send((
                 prev.parents.len(),
                 deep_hit.map(|s| s.inferred.name.clone()),
@@ -40982,9 +41019,10 @@ mod sigs_env_flat_parents {
         crate::v1_rt::name_resolution_policy_set_namespace_only(false);
 
         let read = |env: &Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>, f: &str| {
-            crate::v1_compiler_infer_lookup::func_sig_if_resolved(
-                crate::v1_compiler_infer_sigs::lookup_resolved_sig(env.clone(), f.to_string()),
-            )
+            super::test_sig_or_none(crate::v1_compiler_infer_sigs::lookup_resolved_sig(
+                env.clone(),
+                f.to_string(),
+            ))
             .map(|s| s.inferred.name.clone())
         };
 
@@ -43115,6 +43153,24 @@ pub struct RequiredFloorOutcome {
     /// either lets an enrollment cover a witness that has not actually run since the day it was
     /// enrolled.
     pub known_red_runtime_errored: Vec<String>,
+    /// BLOCKING. An enrolled expected-red identity that produced no verdict and is not enrolled
+    /// in `v2.workflow.floor_non_verdict`. This is the conjunct that makes the composition
+    /// honest: the arms above are true observations, and returning CLEAN over them while an
+    /// enrolled assertion has stopped asserting is what was below floor.
+    pub non_verdict_unenrolled: Vec<String>,
+    /// BLOCKING, and an earlier revision of this field had it reported-only on the argument that
+    /// refusing a repaid row "punishes the fix". That argument was wrong, and review 55361 found
+    /// why: a stale row is a LIVE EXEMPTION. The identity is repaired, the row stays, and if the
+    /// witness later stops producing a verdict again it is ALREADY ROSTERED — so the regression
+    /// this wall exists to refuse is admitted in silence. Repayment without deletion converts a
+    /// bounded debt row into a permanent licence, which is the absorbing fallback wearing the
+    /// word "diagnostic".
+    ///
+    /// Refusing does not punish a repair; it requires the repair to be COMPLETE. The diagnostic
+    /// names every row to delete, deletion is mechanical, and this is exactly the discipline
+    /// `stale_route_gap` and the expected-red staleness join already enforce. Consistency with
+    /// them turned out to be the correct answer rather than the lazy one.
+    pub stale_non_verdict: Vec<String>,
     /// See `known_red_runtime_errored`.
     pub known_red_observation_unreadable: Vec<String>,
     /// Host tool could not be resolved — infra undecided, not budget-refused.
@@ -43792,6 +43848,61 @@ fn floor_cgroup_envelope(when: &str) {
             break;
         }
     }
+}
+
+/// The non-verdict admission, as a PURE FUNCTION OF TWO IDENTITY SETS.
+///
+/// It is written this way so it can be exercised without a floor run, a fixture, or a witness
+/// that actually throws — the thing that decides admission should be a pure function of two
+/// sets, and the seed's discriminating red lives in `tests` below rather than only in the
+/// modeled admission it mirrors.
+///
+/// `added` is what the run observed and the roster does not carry: the growth this wall exists
+/// to refuse. `repaid` is what the roster carries and the run did not observe: a debt paid,
+/// REPORTED and never refused, because refusing it makes the merge that repairs the population
+/// the merge that reds the floor.
+///
+/// SETS, NEVER COUNTS. The case that decides the shape is a swap — one identity repaired while a
+/// different identity begins producing no verdict — where `added` and `repaid` are both nonempty
+/// and every count in the run is unchanged. A length comparison admits exactly that trade, which
+/// is a repaired witness buying permission for an unrelated witness to lose its verdict.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct NonVerdictAdmission {
+    pub added: Vec<String>,
+    pub repaid: Vec<String>,
+}
+
+pub fn non_verdict_admission(
+    observed: &HashSet<String>,
+    roster: &HashSet<String>,
+) -> NonVerdictAdmission {
+    let mut added: Vec<String> = observed
+        .iter()
+        .filter(|q| !roster.contains(q.as_str()))
+        .cloned()
+        .collect();
+    let mut repaid: Vec<String> = roster
+        .iter()
+        .filter(|q| !observed.contains(q.as_str()))
+        .cloned()
+        .collect();
+    added.sort();
+    repaid.sort();
+    NonVerdictAdmission { added, repaid }
+}
+
+/// The admission itself: `added` AND `repaid` are both empty. Kept separate from the sets so a
+/// caller reads the rule rather than reconstructing it. Both arms refuse for different reasons: a
+/// row in `added` is an unenrolled non-verdict, and a row in `repaid` is a STALE ROW — the
+/// identity answers again while the roster still names it, which is a live exemption if it later
+/// regresses. Repaying and deleting the row are one act, so the repaired population is admitted
+/// only once the roster row goes with it.
+///
+/// CORRECTED 2026-08-24 (review 55577): this docstring and the body both described an asymmetry in
+/// which `repaid` was admitted, while the executing gate already refused it via
+/// `stale_non_verdict`.
+pub fn non_verdict_admits(admission: &NonVerdictAdmission) -> bool {
+    admission.added.is_empty() && admission.repaid.is_empty()
 }
 
 pub fn run_required_floor(
@@ -44527,6 +44638,88 @@ pub fn run_required_floor(
         }
     }
 
+    // THE NON-VERDICT ROSTER. See `v2.workflow.floor_non_verdict` for the contract; the short
+    // form is that an enrolled expected-red identity which produces NO VERDICT — it throws, or
+    // answers a non-Bool — must be enrolled here, and an unenrolled one STOPS THE LINE.
+    //
+    // THE POLARITY IS THE CONSTRUCTION. An identity that is not enrolled BLOCKS, so an EMPTY
+    // roster is the STRICTEST state rather than the most permissive one, and a read failure
+    // here cannot flatter a run — it can only red one that would otherwise be green. The
+    // opposite polarity (a roster of things to gate ON) would have made losing the roster
+    // produce a greener answer, which is the absorbing-fallback shape rebuilt inside the
+    // mechanism written to close an absorbing fallback.
+    let non_verdict_roster: HashSet<String> = {
+        let value = v1_interpreter::run_in_context(
+            &hermetic,
+            "v2.workflow.floor_non_verdict.floor_non_verdict_roster",
+            false,
+        )
+        .map_err(|e| format!("floor_non_verdict_roster: {e}"))?;
+        let items = floor_decode_list(&hermetic, Some(&value))
+            .map_err(|e| format!("floor_non_verdict_roster: {e}"))?;
+        let mut out = HashSet::new();
+        for item in items {
+            match item {
+                v1_interpreter::Value::Str(s) => {
+                    if !out.insert(s.to_string()) {
+                        return Err(format!(
+                            "floor_non_verdict_roster: duplicate enrolled identity: {s}"
+                        ));
+                    }
+                }
+                other => {
+                    return Err(format!(
+                        "floor_non_verdict_roster: expected a qualified name, got {}",
+                        floor_value_shape(Some(other))
+                    ));
+                }
+            }
+        }
+        out
+    };
+    eprintln!(
+        "[floor-non-verdict] roster carries {} enrolled identity(ies)",
+        non_verdict_roster.len()
+    );
+
+    // AND THIS ROSTER NEEDS NO SEPARATE FREEZE-DISJOINTNESS CHECK, which is worth saying because
+    // the wall below now covers three rosters and this is a fourth. The refusal immediately
+    // beneath enforces non-verdict SUBSET-OF expected-red, and expected-red is already
+    // cross-referenced against `frozen_path_deferrals` there — so an identity claiming both
+    // "produced no verdict while executing" and "never executes" is already refused, transitively
+    // and by construction. A fourth arm would be a second representation of a fact the subset
+    // relation already carries.
+
+    // A NON-VERDICT ROW THAT IS NOT ALSO EXPECTED-RED CAN NEVER FIRE, so it is refused rather
+    // than left in the tree. Only an ENROLLED identity reaches the arms this roster classifies;
+    // an unenrolled one that throws goes through the ordinary failure path. So such a row is not
+    // a guard sitting quiet — the mechanism cannot produce the state it names — and DESIGN's
+    // reachability rule is explicit that unreachable is not empty: a check whose red cannot be
+    // authored is a decoration, worse than absent, because it is cited as coverage.
+    {
+        let mut orphans: Vec<&String> = non_verdict_roster
+            .iter()
+            .filter(|q| !expected_red_roster.contains(q.as_str()))
+            .collect();
+        orphans.sort();
+        if !orphans.is_empty() {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=NonVerdictRowUnreachable count={} — these \
+                 identities are enrolled in v2.workflow.floor_non_verdict but NOT in \
+                 v2.workflow.floor_expected_red. Only an enrolled identity can reach the \
+                 non-verdict arms, so these rows can never classify anything: they read as debt \
+                 while being incapable of being debt. Enroll the identity as expected-red, or \
+                 delete the row: {}",
+                orphans.len(),
+                orphans
+                    .iter()
+                    .map(|q| q.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+    }
+
     // CONTRADICTORY-INTERSECTION WALL: both executing-roster classifications and
     // `witness_deferral_freeze`'s
     // `frozen_path_deferrals` (`LegacyFrozenPathDeferral` — admitted as NEVER EXECUTED) make
@@ -44663,6 +44856,8 @@ pub fn run_required_floor(
         interrupted_before_verdict: Vec::new(),
         completed_over_cost_requirement: Vec::new(),
         known_red_runtime_errored: Vec::new(),
+        non_verdict_unenrolled: Vec::new(),
+        stale_non_verdict: Vec::new(),
         known_red_observation_unreadable: Vec::new(),
         host_tool_unresolved: Vec::new(),
         route_gap: Vec::new(),
@@ -44750,6 +44945,10 @@ pub fn run_required_floor(
     // "is this enrollment still real", which is exactly how a skip list rots.
     let mut route_gap_seen: HashSet<String> = HashSet::new();
     let mut route_gap_held: usize = 0;
+    // IDENTITY GRAIN, NEVER COUNTS. The whole point of the roster is the case where one
+    // identity is repaired while a different one begins throwing and the COUNT DOES NOT MOVE.
+    let mut non_verdict_seen: HashSet<String> = HashSet::new();
+    let mut non_verdict_detail: BTreeMap<String, String> = BTreeMap::new();
     let mut expected_red_seen: HashSet<String> = HashSet::new();
     let mut claim_rss_kb_max: u64 = 0;
     let mut claim_rss_kb_max_row = String::new();
@@ -45137,6 +45336,8 @@ pub fn run_required_floor(
                             format!("{other:?}")
                         }
                     };
+                    non_verdict_seen.insert(claim.qualified.clone());
+                    non_verdict_detail.insert(claim.qualified.clone(), detail.clone());
                     outcome.known_red_runtime_errored.push(format!(
                         "{} is enrolled as expected-red but RUNTIME-ERRORED, not failed: {}. \
                          Enrollment asserts an expected verdict; a claim that threw \
@@ -45149,6 +45350,11 @@ pub fn run_required_floor(
                 }
                 ExpectedRedArm::ObservationUnreadable => {
                     known_red_observation_unreadable_count += 1;
+                    non_verdict_seen.insert(claim.qualified.clone());
+                    non_verdict_detail.insert(
+                        claim.qualified.clone(),
+                        format!("returned {result:?}, which is not a Bool"),
+                    );
                     outcome.known_red_observation_unreadable.push(format!(
                         "{} is enrolled as expected-red but returned something that is NOT A \
                          VERDICT ({:?}), so it is neither the enrolled failure nor a \
@@ -45428,6 +45634,48 @@ pub fn run_required_floor(
     // row — and separating them would ask the reader to learn two names for it. An identity
     // that executed and did not gap, and an identity that did not execute at all (renamed,
     // deleted, or declined), are distinguished in the message rather than in the mechanism.
+    // ONE DECISION POINT, TAKEN AFTER THE FOLD, over the two identity sets. The arms above only
+    // RECORD what they observed; nothing there decides admission, so there is no second place
+    // where the rule could drift from the one written in
+    // `v2.workflow.floor_non_verdict_admission`.
+    {
+        let admission = non_verdict_admission(&non_verdict_seen, &non_verdict_roster);
+        for identity in &admission.added {
+            let detail = non_verdict_detail
+                .get(identity)
+                .map(|d| d.as_str())
+                .unwrap_or("no verdict");
+            outcome.non_verdict_unenrolled.push(format!(
+                "{identity} is enrolled as expected-red and produced NO VERDICT ({detail}), and \
+                 it is NOT enrolled in v2.workflow.floor_non_verdict. Enrollment as expected-red \
+                 admits a known SEMANTIC VERDICT -- this witness reaches its subject and answers \
+                 false -- and is not permission for the subject to stop evaluating. Repair the \
+                 witness or its subject. Enrolling the identity records the debt; it does not \
+                 make the missing verdict acceptable, and the roster is frozen against growth."
+            ));
+        }
+        // REFUSED, NOT MERELY REPORTED. A repaid row left standing is a live exemption: the
+        // identity is fixed today, and if it regresses tomorrow it is already rostered and the
+        // wall admits it. So repayment and roster deletion are one act.
+        for identity in &admission.repaid {
+            let ran = receipted.contains(identity.as_str());
+            outcome.stale_non_verdict.push(if ran {
+                format!(
+                    "{identity} is enrolled in v2.workflow.floor_non_verdict but PRODUCED A \
+                     VERDICT this run -- it reaches its subject again. Delete the row; the debt \
+                     is repaid."
+                )
+            } else {
+                format!(
+                    "{identity} is enrolled in v2.workflow.floor_non_verdict but did not \
+                     execute at all, so no non-verdict could be observed. It was renamed, \
+                     deleted, or declined. Delete the row or restore the identity to the routed \
+                     roster."
+                )
+            });
+        }
+    }
+
     {
         let mut stale: Vec<&String> = route_gap_roster
             .iter()
