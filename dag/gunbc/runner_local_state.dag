@@ -327,7 +327,29 @@ type RunnerLocalStanding
       occupants: RunnerListenerPopulation,
     }
   | StoppedAndEmpty { slot: RunnerSlotIdentity }
+  | UnitNotLoadedForSlot {
+      slot: RunnerSlotIdentity,
+      unit: NonEmptyStr,
+      occupants: RunnerListenerPopulation,
+    }
 
+// A UNIT THE MANAGER HAS NEVER HEARD OF IS NOT A STOPPED UNIT, AND AN EARLIER REVISION OF THIS
+// FOLD SAID IT WAS. `UnitNotLoaded` routed into the stopped-slot projection, so a slot whose unit
+// does not exist answered `StoppedAndEmpty` -- byte-identical to a correctly installed slot that is
+// correctly not running. The match over `RunnerUnitObservation` was exhaustive the whole time,
+// which is exactly why nothing caught it: there was no missing arm to report, only an arm
+// inheriting a remedy that belongs to a different cause.
+//
+// THE REMEDIES ARE OPPOSITE, WHICH IS WHAT MAKES IT A DEFECT RATHER THAN A NUANCE. `StoppedAndEmpty`
+// asks for nothing. `UnitNotLoadedForSlot` says systemd has no such unit -- it was never installed,
+// or the name it is being asked for is not the name that exists. That second reading is this PR's
+// own subject: a unit-name fork is precisely how a caller ends up asking the manager for a name
+// nothing installs, and the arm that would have reported it was answering "nothing to do".
+//
+// IT CARRIES THE UNIT NAME BECAUSE THE NAME IS THE EVIDENCE. A reader must be able to see WHICH
+// name the manager did not recognise in order to tell an uninstalled slot from a misnamed lookup,
+// and the occupants are carried too rather than dropped, because a cgroup can still hold processes
+// from an incarnation that ran before the unit definition went away.
 fn join_runner_local_standing(
   slot: RunnerSlotIdentity,
   purpose: RunnerSlotPurpose,
@@ -343,8 +365,8 @@ fn join_runner_local_standing(
           StandingUndecidable {
             cause: concat("the unit was not observed, so no local standing can be decided: ", c as String) as NonEmptyStr,
           }
-        UnitNotLoaded { unit: _ } =>
-          standing_for_stopped_slot(slot: slot, population: population.listeners)
+        UnitNotLoaded { unit: u } =>
+          UnitNotLoadedForSlot { slot: slot, unit: u, occupants: population.listeners }
         UnitLoaded { unit: _, enabled: _, active_state: st, control_group: _, main_process: _ } =>
           standing_for_active_state(slot: slot, active_state: st, settling: settling, population: population.listeners)
       }
@@ -451,6 +473,7 @@ fn standing_is_hard_drift(standing: RunnerLocalStanding) -> Bool {
     ActiveUnitNotServing { slot: _ } => false
     ResidualOccupantInStoppedSlot { slot: _, occupants: _ } => false
     StoppedAndEmpty { slot: _ } => false
+    UnitNotLoadedForSlot { slot: _, unit: _, occupants: _ } => false
   }
 }
 
@@ -535,6 +558,7 @@ fn tally_add(acc: RunnerLocalStandingTally, standing: RunnerLocalStanding) -> Ru
     ActiveUnitNotServing { slot: _ } => count_only(acc: acc)
     ResidualOccupantInStoppedSlot { slot: _, occupants: _ } => count_only(acc: acc)
     StoppedAndEmpty { slot: _ } => count_only(acc: acc)
+    UnitNotLoadedForSlot { slot: _, unit: _, occupants: _ } => count_only(acc: acc)
   }
 }
 

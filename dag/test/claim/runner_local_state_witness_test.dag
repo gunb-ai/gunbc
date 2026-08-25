@@ -79,6 +79,7 @@ import gunbc.runner_local_state {
   MultipleListenersInOneSlot,
   ResidualOccupantInStoppedSlot,
   StoppedAndEmpty,
+  UnitNotLoadedForSlot,
   join_runner_local_standing,
   standing_is_hard_drift,
   listener_population_size,
@@ -155,6 +156,7 @@ fn doubled_is_hard_drift_at(settling: RunnerUnitSettling, doubled: RunnerListene
     ActiveUnitNotServing { slot: _ } => false
     ResidualOccupantInStoppedSlot { slot: _, occupants: _ } => false
     StoppedAndEmpty { slot: _ } => false
+    UnitNotLoadedForSlot { slot: _, unit: _, occupants: _ } => false
   }
 }
 
@@ -633,4 +635,52 @@ test fn witness_reparented_to_init_carries_no_comparable_pid() -> Bool {
         }
       _ => false
     }
+}
+
+// A UNIT THE MANAGER DOES NOT HAVE MUST NOT READ AS A CORRECTLY STOPPED ONE, and this is the
+// regression control for a collapse that an exhaustive match hid. Both subjects below hold no
+// listeners; the only difference is whether systemd knows the unit. If the two ever answer the
+// same standing again, the arm carrying "install this" has been given the remedy for "nothing to
+// do", which is how a unit-name fork becomes invisible to the very model built to catch it.
+test fn witness_absent_unit_is_not_a_stopped_unit() -> Bool {
+  let slot = srv4_slot(index: 4)
+  let empty = population(listeners: NoListener)
+  let absent = join_runner_local_standing(
+    slot: slot, purpose: SlotServesGitHubActions,
+    unit: UnitNotLoaded { unit: runner_slot_unit_name(slot: slot) },
+    settling: Settled, population: empty,
+  )
+  let stopped = join_runner_local_standing(
+    slot: slot, purpose: SlotServesGitHubActions,
+    unit: loaded_unit(slot: slot, state: Inactive), settling: Settled, population: empty,
+  )
+  let absent_names_the_unit = match absent {
+    UnitNotLoadedForSlot { slot: s, unit: u, occupants: _ } =>
+      s.slot_index == 4 && (u as String) == "actions-runner@srv4-04.service"
+    _ => false
+  }
+  let stopped_is_stopped = match stopped {
+    StoppedAndEmpty { slot: _ } => true
+    _ => false
+  }
+  absent_names_the_unit && stopped_is_stopped
+}
+
+// AN ABSENT UNIT WHOSE CGROUP STILL HOLDS PROCESSES KEEPS THEM. Dropping the occupants would lose
+// the only evidence that an incarnation ran before the unit definition went away.
+test fn witness_absent_unit_retains_its_occupants() -> Bool {
+  let slot = srv4_slot(index: 4)
+  match join_runner_local_standing(
+    slot: slot, purpose: SlotServesGitHubActions,
+    unit: UnitNotLoaded { unit: runner_slot_unit_name(slot: slot) },
+    settling: Settled,
+    population: population(listeners: SingletonListener { listener: orphan(pid: 8080) }),
+  ) {
+    UnitNotLoadedForSlot { slot: _, unit: _, occupants: o } =>
+      match o {
+        SingletonListener { listener: l } => l.process.pid == 8080
+        _ => false
+      }
+    _ => false
+  }
 }
