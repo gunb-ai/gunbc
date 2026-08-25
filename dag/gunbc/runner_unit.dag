@@ -1,0 +1,223 @@
+module gunbc.runner_unit
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.nat { Nat }
+import std.disposition { Disposition, SingleAuthority }
+import product.placement_supply { HostIdentity }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import extdeps.systemd.unit_file {
+  SystemdKillMode,
+  SystemdExitType,
+  ExitTypeMain,
+  ExitTypeCgroup,
+  KillModeControlGroup,
+  systemd_kill_mode_reaches_whole_cgroup,
+}
+
+data gunbc_runner_unit_scope_disposition: Disposition = SingleAuthority
+
+// THE OWNED UNIT CONTRACT: WHICH SYSTEMD UNIT A RUNNER SLOT IS, SPELLED ONCE.
+//
+// The mapping slot -> unit name was SIX independent spellings of one rule. gunbc.runner_lifecycle,
+// gunbc.runner_incarnation, gunbc.runner_host_deploy and gunbc.runner_connectivity_recovery each
+// concatenated the prefix, an instance name and the suffix; gunbc.host_converge spelled the
+// template and a per-host glob; gunbc.build_cache_endpoint_observe carried the prefix a SEVENTH
+// time in order to parse a slot index back OUT of an observed cgroup path. Nothing related them,
+// so nothing could refuse a disagreement.
+//
+// THIS IS THE SAME DEFECT gunbc.build_cache_instance ALREADY REPAIRED ONE LAYER DOWN, and that
+// repair is the argument for this one. The two-digit index suffix was three implementations, one
+// of which collided every index above 8 onto a single string; the collision was unreachable only
+// because an unrelated width cap happened to be in the way. The suffix now has one home. The unit
+// name built ON TOP of that suffix did not, and gunbc.runner_connectivity_recovery
+// recovery_runner_slot_unit_name proves the fork was live rather than theoretical: it re-derived
+// the zero-pad by hand instead of consuming the repaired authority, so the de-fork below is not a
+// tidy-up of identical code, it is the removal of a second implementation of a rule that has
+// already been wrong once in this repository.
+//
+// WHY IT IS ONE CONCEPT AND NOT FOUR SIMILAR ONES. Every consumer is asking the same question --
+// which unit does systemd manage for this slot -- and each got its own answer to it. A registration
+// name, a unit name, a per-host glob and a template name are four PROJECTIONS of one contract, so
+// they are derived here from one prefix and one suffix rather than agreeing by convention at six
+// call sites.
+
+data runner_unit_prefix: String = "actions-runner@"
+
+data runner_unit_suffix: String = ".service"
+
+// THE TEMPLATE'S OWN NAME IS THE PREFIX AND SUFFIX WITH NO INSTANCE, which is what systemd's
+// template syntax means, so it is derived rather than spelled a second time.
+data runner_unit_template_name: NonEmptyStr = join([runner_unit_prefix, runner_unit_suffix], "") as NonEmptyStr
+
+data runner_unit_dropin_dir: NonEmptyStr = join(["/etc/systemd/system/", runner_unit_template_name as String, ".d"], "") as NonEmptyStr
+
+fn runner_unit_dropin_path(file_name: NonEmptyStr) -> NonEmptyStr {
+  join([runner_unit_dropin_dir as String, "/", file_name as String], "") as NonEmptyStr
+}
+
+// THE REGISTRATION NAME AND THE UNIT NAME ARE THE SAME INSTANCE READ AT TWO BOUNDARIES -- GitHub's
+// runner namespace and systemd's instance namespace -- and that is precisely why they must be
+// derived from one function. gunbc.runner_incarnation carries both on one record, and a record
+// whose two fields are independently spelled can hold a pair that disagrees.
+fn runner_registration_name(slot: RunnerSlotIdentity) -> NonEmptyStr {
+  runner_slot_instance_name(slot: slot) as NonEmptyStr
+}
+
+fn runner_slot_unit_name(slot: RunnerSlotIdentity) -> NonEmptyStr {
+  join([runner_unit_prefix, runner_slot_instance_name(slot: slot), runner_unit_suffix], "") as NonEmptyStr
+}
+
+fn runner_unit_name_of_registration(registration_name: NonEmptyStr) -> NonEmptyStr {
+  join([runner_unit_prefix, registration_name as String, runner_unit_suffix], "") as NonEmptyStr
+}
+
+// THE TWO GLOBS ARE DIFFERENT SUBJECTS AND ARE DELIBERATELY NOT ONE FUNCTION WITH AN OPTIONAL HOST.
+// The fleet glob enumerates every runner unit a host's systemd knows; the per-host glob names the
+// units belonging to ONE host's slots and is used where a read must not pick up a neighbour's
+// naming. Folding them into one call with an absent host would make "every unit" and "this host's
+// units" the same expression with a field left empty, which is the state-space conflation this
+// repository keeps paying for.
+data runner_all_slots_unit_glob: NonEmptyStr = join([runner_unit_prefix, "*", runner_unit_suffix], "") as NonEmptyStr
+
+fn runner_host_slots_unit_glob(host: HostIdentity) -> NonEmptyStr {
+  join([runner_unit_prefix, host as String, "-*", runner_unit_suffix], "") as NonEmptyStr
+}
+
+// READING THE CONTRACT BACKWARDS IS THE SAME CONTRACT, NOT A SECOND ONE.
+//
+// gunbc.build_cache_endpoint_observe needs the inverse -- given a unit name observed in a cgroup
+// path, which slot is it -- and held its own copy of the prefix to do it. That copy is the reason
+// the inverse belongs here: a parser built on an independently spelled prefix stops agreeing with
+// the renderer the moment either moves, and the failure is silent, because an unrecognised name
+// simply falls through to "not a runner slot" rather than refusing.
+//
+// THE ANSWER IS THREE-ARMED RATHER THAN AN OPTIONAL INSTANCE NAME, and the middle arm is the point.
+// A name that does not carry the prefix and suffix is NOT A RUNNER UNIT AT ALL -- a perfectly
+// well-formed fact about some other unit. A name that carries both but whose instance is empty is
+// MALFORMED -- it claims to be a runner unit and cannot say which slot. Collapsing those two into
+// one absent answer is the not-applicable-rendered-as-malformed conflation, and their remedies are
+// opposite: the first is ignored, the second is a refusal that names the observed text.
+type RunnerUnitNameReading
+  = NotARunnerUnit { observed: NonEmptyStr }
+  | RunnerUnitInstanceMalformed { observed: NonEmptyStr, cause: NonEmptyStr }
+  | RunnerUnitInstance { registration_name: NonEmptyStr }
+
+fn read_runner_unit_name(observed: NonEmptyStr) -> RunnerUnitNameReading {
+  let text = observed as String
+  if text.starts_with(runner_unit_prefix) && text.ends_with(runner_unit_suffix) {
+    let instance = text.substring(
+      start: string_length(s: runner_unit_prefix),
+      end: string_length(s: text) - string_length(s: runner_unit_suffix),
+    )
+    if instance == "" {
+      RunnerUnitInstanceMalformed {
+        observed: observed,
+        cause: "the name carries the runner unit prefix and suffix but no instance, so it names no slot" as NonEmptyStr,
+      }
+    } else {
+      RunnerUnitInstance { registration_name: instance as NonEmptyStr }
+    }
+  } else {
+    NotARunnerUnit { observed: observed }
+  }
+}
+
+// THE ROUND TRIP IS THE PROPERTY THAT MAKES THE PAIR ONE AUTHORITY RATHER THAN TWO THAT AGREE
+// TODAY. Rendering a slot and reading the result back must return that slot's registration name;
+// anything else means the renderer and the parser have drifted, which is exactly the state that was
+// unrefusable while the prefix was spelled in two modules.
+fn runner_unit_name_round_trips(slot: RunnerSlotIdentity) -> Bool {
+  match read_runner_unit_name(observed: runner_slot_unit_name(slot: slot)) {
+    RunnerUnitInstance { registration_name: n } => (n as String) == (runner_registration_name(slot: slot) as String)
+    RunnerUnitInstanceMalformed { observed: _, cause: _ } => false
+    NotARunnerUnit { observed: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE PROCESS-LIFECYCLE PROPERTIES OF THE TEMPLATE
+// ---------------------------------------------------------------------------
+
+// gunbc.host_converge OWNS FOUR RESOURCE DROP-INS FOR THIS TEMPLATE AND NO PROCESS-LIFECYCLE
+// PROPERTY, WHICH IS WHY A HAND-DEPLOYED KillMode= COULD NOT BE SEEN BY ANYTHING.
+//
+// Width, swap, high and tasks are all converged: each is a declared value, an installed drop-in and
+// a read-back. What decides whether a stopped unit's processes actually stop -- Type=, ExitType=,
+// KillMode=, Restart= -- is carried by the unit template on the host and by no carrier in this
+// repository. So it is not that the fleet's lifecycle configuration drifted from intent; there was
+// no intent to drift from, and a converger cannot refuse a property it does not know exists.
+//
+// THIS RECORD IS THE INTENT, AND IT IS DELIBERATELY NOT A RENDERED UNIT FILE. Rendering the whole
+// template would make this module a second authority for what the runner unit IS, competing with
+// whatever the installer wrote; carrying the lifecycle properties alone states exactly the facts
+// this lane owns and leaves the rest observable-but-unclaimed. Every field is a modeled value
+// rather than a string: kill_mode and exit_type are extdeps.systemd.unit_file's closed coproducts,
+// so `KillMode=controlgroup` -- a spelling systemd rejects at load time, long after delivery -- has
+// no representation here.
+type RunnerUnitLifecycleIntent {
+  exit_type: SystemdExitType
+  kill_mode: SystemdKillMode
+}
+
+// THE ONE PROPERTY THE INTENT EXISTS TO GUARANTEE, STATED AS A PREDICATE OVER THE PAIR RATHER THAN
+// AS A CHOSEN CONSTANT.
+//
+// A slot cannot leave a live process behind at teardown unless BOTH hold: the stop must reach every
+// process in the cgroup (kill_mode), and systemd must not consider the service finished while
+// processes remain (exit_type). Either one alone is insufficient, and that is the trap the brief
+// names -- KillMode=control-group with ExitType=main still lets the manager decide the service
+// ended when a wrapper exits, so the teardown that would have reached the cgroup is never issued
+// for the survivors.
+//
+// THE PARAMETER IS WHETHER THE LISTENER IS THE MAIN PROCESS, NOT WHETHER A WRAPPER EXECS, AND THE
+// DIFFERENCE IS THE WHOLE MEASUREMENT. An earlier revision asked the second question, on the
+// reasoning that a wrapper which execs leaves the listener as the tracked process. That reasoning
+// is wrong here for a reason no amount of reading the wrapper would have shown: jit-runner.sh DOES
+// exec, and the listener is still not the main process, because what it execs into is GitHub's
+// stock run.sh, which does not exec. Measured process tree, srv1 2026-08-25 -- run.sh at pid
+// 702572 with ppid 1 as MainPID, its run-helper.sh child at 702921, and Runner.Listener at 702930.
+// The listener is a GRANDCHILD of the process systemd supervises.
+//
+// So the predicate takes the fact that decides the outcome rather than a proxy for it. A proxy that
+// happens to be true while the thing it stands for is false is worse than no parameter at all.
+fn lifecycle_intent_cannot_orphan(intent: RunnerUnitLifecycleIntent, listener_is_main_process: Bool) -> Bool {
+  systemd_kill_mode_reaches_whole_cgroup(mode: intent.kill_mode)
+    && match intent.exit_type {
+      ExitTypeCgroup => true
+      ExitTypeMain => listener_is_main_process
+    }
+}
+
+// THE DECLARED RESTING FORM, AND IT IS FORCED BY MEASUREMENT RATHER THAN CHOSEN.
+//
+// The preferred form was that the listener become the tracked main process, because then nothing
+// has to wait on a cgroup to know the service is over. That form is UNREACHABLE without forking
+// run.sh -- vendor code that also carries the return-code-2 relaunch loop and the deprecation exit
+// path -- so it is not on the table, and this row records that as the reason rather than presenting
+// ExitTypeCgroup as a preference.
+//
+// WHAT THE OTHER HALF FIXES, MEASURED BY EXECUTION ON srv4-04 2026-08-25. An explicit
+// `systemctl restart` of an idle slot killed the main process and NOTHING ELSE: the outgoing
+// incarnation's own run-helper.sh and Runner.Listener survived, were reparented, and the slot's
+// process population GREW from five to seven. The restart did not fail to clean up a leftover -- it
+// MANUFACTURED a fresh orphan pair out of the live chain it was replacing.
+//
+// THAT IS WHY THE SURPLUS IS A STEADY STATE AND NOT A LEAK. Restart=always means every JIT
+// succession is a unit restart, so on this contract every completed job converts its own outgoing
+// chain into an orphan pair. The measured regeneration -- a cleared surplus fully back within about
+// forty minutes, at roughly one job per slot -- is that arithmetic, not an intermittent fault. The
+// ordinary success path is the producer.
+//
+// Restart=always is deliberately NOT touched. A JIT runner's clean exit after one job is expected
+// and must create the next incarnation; the defect is that the outgoing one survives, which is a
+// teardown property, not a restart-policy one. Narrowing Restart= would stop the fleet serving in
+// order to stop it leaking.
+data gunbc_runner_lifecycle_intent: RunnerUnitLifecycleIntent = RunnerUnitLifecycleIntent {
+  exit_type: ExitTypeCgroup,
+  kill_mode: KillModeControlGroup,
+}
+
+// THE LISTENER IS NOT THE MAIN PROCESS ON THIS FLEET, stated as its own row because it is the input
+// the predicate above needs and it is an observation about vendor code rather than a choice. It
+// changes only if run.sh changes or is replaced.
+data gunbc_runner_listener_is_main_process: Bool = false

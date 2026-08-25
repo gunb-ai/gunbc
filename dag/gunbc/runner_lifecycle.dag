@@ -192,9 +192,12 @@ fn runner_slot_caps_precede_start() -> Bool {
   runner_slot_add_step_index(step: AddStepMemoryCaps) < runner_slot_add_step_index(step: AddStepStartUnit)
 }
 
-fn runner_slot_unit_name(slot: RunnerSlotIdentity) -> NonEmptyStr {
-  join(["actions-runner@", runner_slot_instance_name(slot: slot), ".service"], "") as NonEmptyStr
-}
+// THE UNIT NAME FUNCTION THAT USED TO LIVE HERE IS DELETED, NOT DELEGATED. It concatenated the
+// prefix, the instance name and the suffix itself -- one of five such spellings -- so
+// gunbc.host_axis_caps set memory caps on a unit name derived independently of the one
+// gunbc.host_converge writes drop-ins for. gunbc.runner_unit runner_slot_unit_name is the single
+// authority; its consumers import it from there. Leaving a one-line forwarder here would keep a
+// second name for one function, which is the nicknaming the consolidation exists to remove.
 
 fn runner_slot_dir_path(slot: RunnerSlotIdentity) -> NonEmptyStr {
   join([actions_runner_base_dir, "/", runner_slot_instance_name(slot: slot)], "") as NonEmptyStr

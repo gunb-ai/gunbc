@@ -52,6 +52,20 @@ data systemd_exec_directive_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// KillMode= AND KillSignal= ARE systemd.kill(5), WHICH IS A FIFTH SUBJECT AND NOT A CORNER OF
+// systemd.service(5). The distinction is load-bearing rather than pedantic: systemd.kill defines
+// what a unit's TEARDOWN reaches -- the whole cgroup, the main process only, or nothing -- for
+// every unit type that can be stopped, which is why it is specified apart from the service
+// directives that decide what STARTING one does. A module that renders KillMode= while citing only
+// systemd.service claims a grammar wider than its declared scope, which is the extdeps citation
+// duty (DESIGN section 3).
+data systemd_kill_directive_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.freedesktop.org/software/systemd/man/latest/systemd.kill.html"
+  }
+}
+
 // Slice=, MemoryMax= and MemoryHigh= belong to none of the three subjects above. systemd.unit owns
 // [Unit] and [Install], systemd.service owns [Service]'s execution directives, and systemd.exec owns
 // the execution environment -- but the cgroup RESOURCE CONTROL vocabulary is its own upstream
@@ -80,6 +94,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     systemd_timer_directive_authority,
     systemd_exec_directive_authority,
     systemd_resource_control_directive_authority,
+    systemd_kill_directive_authority,
   ]
 }
 
@@ -117,6 +132,9 @@ type SystemdServiceDirective
   | ServiceNice { priority: Int }
   | ServiceIoSchedulingClass { scheduling_class: SystemdIoSchedulingClass }
   | TimeoutStartSec { duration: NonEmptyStr }
+  | RestartSec { duration: NonEmptyStr }
+  | ServiceExitType { exit_type: SystemdExitType }
+  | ServiceKillMode { mode: SystemdKillMode }
 
 // THE THREE RESOURCE-DISCIPLINE DIRECTIVES, AND WHY THE MIDDLE ONE IS A COPRODUCT AND NOT A STRING.
 //
@@ -137,6 +155,68 @@ type SystemdIoSchedulingClass
   = IoSchedulingRealtime
   | IoSchedulingBestEffort
   | IoSchedulingIdle
+
+// THE TWO DIRECTIVES THAT DECIDE WHEN A SERVICE IS OVER, AND WHAT ITS END REACHES.
+//
+// They are separate directives answering separate questions, and a consumer that conflates them
+// gets a unit that looks converged and leaks processes. `ExitType=` decides when systemd considers
+// the service FINISHED: `main` watches the main process alone, so a wrapper that spawns a worker
+// and exits ends the service while the worker is still running; `cgroup` waits for the last
+// process in the cgroup to leave. `KillMode=` decides, once systemd HAS decided to stop the unit,
+// what the stop reaches: `control-group` signals every process in the cgroup, `mixed` sends SIGTERM
+// to the main process and SIGKILL to the rest, `process` signals only the main process and leaves
+// its children running, and `none` signals nothing at all.
+//
+// So `ExitType=main` with `KillMode=process` is the pair under which a supervised unit can be
+// simultaneously "not running" and still holding live processes -- the state the manager's own
+// view cannot express, because ActiveState answers for the main process and the cgroup is where the
+// survivors are.
+//
+// BOTH VALUE SETS ARE CLOSED BY systemd, so both are coproducts here for the reason
+// `SystemdIoSchedulingClass` above already gives: an authority that closes a value set and then
+// carries it as `NonEmptyStr` has re-opened it, and every consumer must re-validate what the
+// upstream already decided. The variant names carry their directive's prefix because `Process`,
+// `Mixed`, `None` and `Main` are words this corpus uses for other subjects, and a bare `None` in
+// particular would collide with optionality at every call site that reads one of these.
+type SystemdExitType
+  = ExitTypeMain
+  | ExitTypeCgroup
+
+type SystemdKillMode
+  = KillModeControlGroup
+  | KillModeMixed
+  | KillModeProcess
+  | KillModeNone
+
+fn systemd_exit_type_wire(exit_type: SystemdExitType) -> String {
+  match exit_type {
+    ExitTypeMain => "main"
+    ExitTypeCgroup => "cgroup"
+  }
+}
+
+fn systemd_kill_mode_wire(mode: SystemdKillMode) -> String {
+  match mode {
+    KillModeControlGroup => "control-group"
+    KillModeMixed => "mixed"
+    KillModeProcess => "process"
+    KillModeNone => "none"
+  }
+}
+
+// WHETHER A STOP REACHES EVERY PROCESS IN THE CGROUP IS A PROPERTY OF THE KILL MODE ALONE, and it
+// is spelled here rather than at each consumer because it is a fact about systemd.kill(5)'s
+// vocabulary, not about any one unit. `mixed` qualifies: it reaches the whole cgroup, differing
+// from `control-group` only in which signal each process receives, and a consumer asking "can a
+// process survive this unit's teardown" must get the same answer for both.
+fn systemd_kill_mode_reaches_whole_cgroup(mode: SystemdKillMode) -> Bool {
+  match mode {
+    KillModeControlGroup => true
+    KillModeMixed => true
+    KillModeProcess => false
+    KillModeNone => false
+  }
+}
 
 fn systemd_io_scheduling_class_wire(scheduling_class: SystemdIoSchedulingClass) -> String {
   match scheduling_class {
@@ -218,6 +298,9 @@ fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String 
     ServiceIoSchedulingClass { scheduling_class: v } =>
       join(["IOSchedulingClass=", systemd_io_scheduling_class_wire(scheduling_class: v)], "")
     TimeoutStartSec { duration: v } => join(["TimeoutStartSec=", v as String], "")
+    RestartSec { duration: v } => join(["RestartSec=", v as String], "")
+    ServiceExitType { exit_type: v } => join(["ExitType=", systemd_exit_type_wire(exit_type: v)], "")
+    ServiceKillMode { mode: v } => join(["KillMode=", systemd_kill_mode_wire(mode: v)], "")
   }
 }
 

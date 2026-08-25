@@ -20,6 +20,7 @@ import extdeps.container.docker_ce { docker_ce_apt_repo_noble_arm64, docker_ce_p
 import gunbc.fleet_intent { fleet_intent_known_hosts }
 import product.placement_supply { HostIdentity }
 import gunbc.build_cache_instance { runner_slot_index_suffix }
+import gunbc.runner_unit { runner_unit_name_of_registration }
 import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 
@@ -231,7 +232,10 @@ fn runner_instance_names(deploy: RunnerHostDeploy) -> List<String> {
 
 fn runner_enable_command_argv(deploy: RunnerHostDeploy) -> ArgvCommand {
   systemctl_enable_now_command(
-    units: map(runner_instance_names(deploy: deploy), n => join(["actions-runner@", n, ".service"], "")),
+    units: map(
+      runner_instance_names(deploy: deploy),
+      n => runner_unit_name_of_registration(registration_name: n as NonEmptyStr) as String,
+    ),
   )
 }
 

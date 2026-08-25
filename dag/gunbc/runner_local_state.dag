@@ -1,0 +1,497 @@
+module gunbc.runner_local_state
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.nat { Nat }
+import std.disposition { Disposition, SingleAuthority }
+import extdeps.systemd {
+  SystemdUnitActiveState,
+  Active,
+  Inactive,
+  Activating,
+  Deactivating,
+  Reloading,
+  Failed,
+}
+import gunbc.build_cache_instance { ProcessIdentity, RunnerSlotIdentity }
+import gunbc.runner_slot_allocation {
+  RunnerSlotPurpose,
+  SlotServesGitHubActions,
+  SlotServesFabricExecution,
+}
+
+data gunbc_runner_local_state_scope_disposition: Disposition = SingleAuthority
+
+// ONE PHYSICAL READ TRANSACTION, PROJECTED INTO SEPARATE AUTHORITIES.
+//
+// A runner slot is four different subjects that happen to be observed together: what is INSTALLED
+// on disk, what the MANAGER believes, what is actually RUNNING, and what the PROVIDER thinks of the
+// session. They are read in one pass because reading them apart would let a consumer join facts
+// from different moments -- but they are typed apart because they fail independently and their
+// remedies differ. A slot can be perfectly materialized with a dead unit, correctly active with no
+// listener, and hold a listener whose provider session is invalid.
+//
+// THE FIELDS DO NOT GO ON RunnerSlotMember, AND THAT IS THE POINT OF THE SPLIT. That record is a
+// filesystem materialization fact. Hanging a pid on it would refuse the same conflation this lane
+// exists to undo -- installed-ness and running-ness would share one carrier again, so a consumer
+// could not ask about one without the other having an answer.
+
+// ---------------------------------------------------------------------------
+// 1. MATERIALIZATION -- what is installed
+// ---------------------------------------------------------------------------
+
+type RunnerMaterializationObservation
+  = MaterializationUnobserved { cause: NonEmptyStr }
+  | SlotDirectoryAbsent { slot_directory: NonEmptyStr }
+  | SlotMaterialized {
+      slot_directory: NonEmptyStr,
+      installed_release: NonEmptyStr,
+      wrapper_path: NonEmptyStr,
+    }
+
+// ---------------------------------------------------------------------------
+// 2. THE MANAGER'S VIEW
+// ---------------------------------------------------------------------------
+
+// MainPID IS AN OBSERVATION WITH THREE STATES AND NOT A Nat, because systemd answers `0` for a unit
+// it supervises no process for, and `0` is not a pid. Carrying it as a bare number would make
+// "supervises nothing" arithmetically indistinguishable from a real pid at every consumer, and the
+// two have opposite meanings when joined against a cgroup that holds processes: no main process
+// plus a populated cgroup is exactly the orphan state this lane is chasing.
+type RunnerUnitMainProcess
+  = MainProcessUnread { cause: NonEmptyStr }
+  | NoMainProcess
+  | MainProcess { pid: Nat }
+
+type RunnerUnitObservation
+  = UnitUnobserved { cause: NonEmptyStr }
+  | UnitNotLoaded { unit: NonEmptyStr }
+  | UnitLoaded {
+      unit: NonEmptyStr,
+      enabled: Bool,
+      active_state: SystemdUnitActiveState,
+      control_group: NonEmptyStr,
+      main_process: RunnerUnitMainProcess,
+    }
+
+// ---------------------------------------------------------------------------
+// 3. THE LIVE PROCESS POPULATION -- identities, never a count
+// ---------------------------------------------------------------------------
+
+// THE POPULATION KEEPS EVERY PROCESS IDENTITY AND DOES NOT REDUCE TO "OCCUPIED".
+//
+// gunbc.host_hygiene_reaper_observe already folds a slot's pids down to a CgroupOccupant -- empty,
+// a build-cache server, or something else. That is the right answer to ITS question, which is
+// whether an inactive slot still holds anything worth reaping. It is the wrong answer to this one:
+// a reader that learns a slot is "occupied" cannot tell one listener from three, cannot say WHICH
+// process outlived a restart, and cannot compare a population before and after a convergence. Those
+// are the only questions this lane has.
+//
+// A ProcessIdentity rather than a pid, for the reason gunbc.build_cache_instance already fixes: a
+// pid is an identity only relative to a boot and a start time. Comparing bare pids across a
+// restart is how a reused pid reads as a survivor.
+
+// LINEAGE IS THE DISCRIMINATOR, AND A TIMING WINDOW IS NOT. THIS IS A MEASURED CORRECTION.
+//
+// The first shape of this model separated a legitimate JIT succession from a stacked slot by asking
+// whether the unit had SETTLED -- if the population is odd but the unit is young, re-observe. That
+// is wrong, and it was proven wrong by execution rather than argued: on 2026-08-25 the surplus was
+// cleared on srv3 and srv4 (32 idle orphans, leaving both hosts exactly one-to-one) and had FULLY
+// REGENERATED about forty minutes later, back to the same 13 and 22. A surplus that returns at
+// roughly one per slot per forty minutes is not distinguishable from a succession window by any
+// delay a converger could wait: the two overlap.
+//
+// What DOES distinguish them is shape. A legitimate successor is inside the unit's own process
+// tree, descending from the process systemd supervises. An orphan is a run-helper chain reparented
+// to pid 1 -- still in the cgroup, because nothing moved it out, but outside the main process's
+// tree entirely. That is a structural fact available in the same read, it does not depend on when
+// the read happened, and it is what makes "this slot is mid-succession" and "this slot has
+// accumulated a survivor" different observations rather than the same observation at two ages.
+//
+// LineageUnread REFUSES RATHER THAN ASSUMING EITHER. Guessing "in tree" hides a surplus; guessing
+// "orphan" would justify killing a live successor.
+type RunnerListenerLineage
+  = LineageUnread { cause: NonEmptyStr }
+  | DescendsFromMainProcess
+  | ReparentedOutsideUnitTree { parent_pid: Nat }
+
+type ObservedListener {
+  process: ProcessIdentity
+  lineage: RunnerListenerLineage
+}
+
+fn listener_is_orphaned(listener: ObservedListener) -> Bool {
+  match listener.lineage {
+    ReparentedOutsideUnitTree { parent_pid: _ } => true
+    DescendsFromMainProcess => false
+    LineageUnread { cause: _ } => false
+  }
+}
+
+// MultipleListeners IS STRUCTURALLY MULTIPLE. It carries two listeners and a remainder rather than
+// a list, so an arm named for a plurality cannot hold one element or none. The alternative -- a
+// list plus a comment saying it must have at least two -- puts the invariant somewhere no
+// constructor enforces it, and the arm whose whole meaning is "more than one" is exactly the wrong
+// place to make that a matter of care.
+//
+// ZERO IS A STATE AND NOT A FAILURE, which is the distinction the whole coproduct exists to hold. A
+// JIT runner exits cleanly after one job and its successor has not started yet; during that window
+// the correct listener count is zero. A blanket `count != 1 => broken` rule reports that succession
+// as a defect, and a rule that then tolerates zero everywhere stops being able to see an active
+// unit that is serving nothing.
+type RunnerListenerPopulation
+  = ListenerPopulationUnobserved { cause: NonEmptyStr }
+  | NoListener
+  | SingletonListener { listener: ObservedListener }
+  | MultipleListeners {
+      first: ObservedListener,
+      second: ObservedListener,
+      rest: List<ObservedListener>,
+    }
+
+fn population_listeners(population: RunnerListenerPopulation) -> List<ObservedListener> {
+  match population {
+    ListenerPopulationUnobserved { cause: _ } => []
+    NoListener => []
+    SingletonListener { listener: l } => [l]
+    MultipleListeners { first: a, second: b, rest: r } => append([a, b], items: r)
+  }
+}
+
+fn population_orphans(population: RunnerListenerPopulation) -> List<ObservedListener> {
+  filter(population_listeners(population: population), listener_is_orphaned)
+}
+
+type RunnerListenerPopulationObservation {
+  listeners: RunnerListenerPopulation
+  workers: List<ProcessIdentity>
+}
+
+fn listener_population_size(population: RunnerListenerPopulation) -> Nat? {
+  match population {
+    ListenerPopulationUnobserved { cause: _ } => Absent
+    NoListener => Present { value: 0 }
+    SingletonListener { listener: _ } => Present { value: 1 }
+    MultipleListeners { first: _, second: _, rest: r } => Present { value: 2 + length(r) }
+  }
+}
+
+// A SLOT WITH A LIVE WORKER IS DOING PAID WORK, and every mutating operation in this lane is
+// required to consult this before it touches anything. It is deliberately three-armed: not knowing
+// whether a job is running must refuse exactly as a running job does, because "I could not tell"
+// and "it is busy" carry the same obligation and only differ in what to report.
+type RunnerSlotBusyStanding
+  = BusyStandingUnavailable { cause: NonEmptyStr }
+  | SlotRunningJob { worker: ProcessIdentity }
+  | SlotIdle
+
+fn busy_standing_of(observation: RunnerListenerPopulationObservation) -> RunnerSlotBusyStanding {
+  match observation.listeners {
+    ListenerPopulationUnobserved { cause: c } =>
+      BusyStandingUnavailable {
+        cause: concat("the listener population was unread, so whether this slot is running a job is unknown: ", c as String) as NonEmptyStr,
+      }
+    NoListener => busy_standing_of_workers(workers: observation.workers)
+    SingletonListener { listener: _ } => busy_standing_of_workers(workers: observation.workers)
+    MultipleListeners { first: _, second: _, rest: _ } => busy_standing_of_workers(workers: observation.workers)
+  }
+}
+
+fn busy_standing_of_workers(workers: List<ProcessIdentity>) -> RunnerSlotBusyStanding {
+  match workers.first() {
+    Present { value: w } => SlotRunningJob { worker: w }
+    Absent => SlotIdle
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 4. THE PROVIDER'S VIEW OF THE SESSION
+// ---------------------------------------------------------------------------
+
+// WHAT THIS AUTHORITY MAY AND MAY NOT CLAIM.
+//
+// A listener whose credentials were overwritten by a later incarnation reports a missing RSA key
+// file and an invalid signature in its own log, and that IS locally observable -- it is this host's
+// process saying its own session is dead. So SessionSignatureInvalid is a real, grounded arm.
+//
+// WHAT IS NOT OBSERVED, and must not be encoded here as though it were: that any particular stale
+// registration was ASSIGNED a job by the provider. The runners API answers 403 for this
+// repository's token, so the hop from "a stale session exists" to "it received work" has never been
+// joined by any read this repository can perform. There is deliberately no arm for it. An earlier
+// account of this incident asserted that join and was wrong to; modeling it as a state would make
+// the assertion constructible again, and a consumer would then be able to report an unobserved
+// provider fact as an observation.
+//
+// SO THE ARMS ARE LOCAL EVIDENCE ONLY. ProviderStandingUnobserved is what a reader gets when the
+// provider's own view is wanted and unavailable, which is the honest answer today for every
+// question about assignment.
+type RunnerProviderStanding
+  = ProviderStandingUnobserved { cause: NonEmptyStr }
+  | SessionValid { session_observed_at: NonEmptyStr }
+  | SessionSignatureInvalid { evidence: NonEmptyStr }
+  | SessionCredentialsMissing { evidence: NonEmptyStr }
+
+// ---------------------------------------------------------------------------
+// THE JOIN
+// ---------------------------------------------------------------------------
+
+// SETTLING IS A SEPARATE FACT FROM ACTIVENESS, and without it the join cannot tell a transient from
+// a defect. `Activating` covers the manager's own start-up window, but a unit reaches `Active` the
+// moment its main process is up -- the JIT succession window sits INSIDE the active state, not
+// before it. So a consumer needs to know whether the unit has been active long enough for its
+// population to have converged, and that is a comparison against an observed timestamp rather than
+// a property of the active state.
+//
+// UNKNOWN REFUSES RATHER THAN ASSUMING SETTLED, because assuming settled is what turns a legitimate
+// succession window into a reported hard drift, and this lane's mutating arm is a restart.
+type RunnerUnitSettling
+  = SettlingUnknown { cause: NonEmptyStr }
+  | WithinTransientWindow
+  | Settled
+
+// THE STANDING IS THE JOIN OF THE MANAGER'S VIEW AND THE CGROUP'S, AND ITS WHOLE VALUE IS THAT
+// NEITHER ALONE DECIDES.
+//
+// Every arm below is a pair the two views produce together. An active, settled unit holding two
+// listeners is HARD drift and always invalid -- there is no window in which one slot legitimately
+// runs two listeners, because they share one slot directory and the later one overwrites the
+// earlier one's credentials. An active, settled unit holding none is a unit the manager reports as
+// serving and which serves nothing, which is a different defect with a different repair. An
+// inactive unit holding anything is residual occupancy, which is the reaper's subject and not this
+// module's to act on.
+//
+// THE FABRIC ARM IS FIRST AND IT REFUSES RATHER THAN REPORTING HEALTH. A compute-fabric slot has no
+// GitHub listener to have a population of, so every arm below is a category error for it. Answering
+// "healthy" because it happens to hold zero listeners would enrol it in a population it is
+// reserved OUT of, which is exactly what the reserved slot exists to prevent.
+type RunnerLocalStanding
+  = StandingUndecidable { cause: NonEmptyStr }
+  | NoGitHubListenerDesired { slot: RunnerSlotIdentity }
+  | LocallyHealthy { slot: RunnerSlotIdentity, listener: ObservedListener }
+  | ListenerSuccessionInFlight { slot: RunnerSlotIdentity }
+  | ActiveUnitNotServing { slot: RunnerSlotIdentity }
+  | MultipleListenersInOneSlot {
+      slot: RunnerSlotIdentity,
+      first: ObservedListener,
+      second: ObservedListener,
+      rest: List<ObservedListener>,
+      orphans: List<ObservedListener>,
+    }
+  | ResidualOccupantInStoppedSlot {
+      slot: RunnerSlotIdentity,
+      occupants: RunnerListenerPopulation,
+    }
+  | StoppedAndEmpty { slot: RunnerSlotIdentity }
+
+fn join_runner_local_standing(
+  slot: RunnerSlotIdentity,
+  purpose: RunnerSlotPurpose,
+  unit: RunnerUnitObservation,
+  settling: RunnerUnitSettling,
+  population: RunnerListenerPopulationObservation,
+) -> RunnerLocalStanding {
+  match purpose {
+    SlotServesFabricExecution => NoGitHubListenerDesired { slot: slot }
+    SlotServesGitHubActions =>
+      match unit {
+        UnitUnobserved { cause: c } =>
+          StandingUndecidable {
+            cause: concat("the unit was not observed, so no local standing can be decided: ", c as String) as NonEmptyStr,
+          }
+        UnitNotLoaded { unit: u } =>
+          standing_for_stopped_slot(slot: slot, population: population.listeners)
+        UnitLoaded { unit: _, enabled: _, active_state: st, control_group: _, main_process: _ } =>
+          standing_for_active_state(slot: slot, active_state: st, settling: settling, population: population.listeners)
+      }
+  }
+}
+
+fn standing_for_active_state(
+  slot: RunnerSlotIdentity,
+  active_state: SystemdUnitActiveState,
+  settling: RunnerUnitSettling,
+  population: RunnerListenerPopulation,
+) -> RunnerLocalStanding {
+  match active_state {
+    Inactive => standing_for_stopped_slot(slot: slot, population: population)
+    Failed => standing_for_stopped_slot(slot: slot, population: population)
+    Activating => standing_for_settling_slot(slot: slot, settling: WithinTransientWindow, population: population)
+    Deactivating => standing_for_settling_slot(slot: slot, settling: WithinTransientWindow, population: population)
+    Reloading => standing_for_settling_slot(slot: slot, settling: WithinTransientWindow, population: population)
+    Active => standing_for_settling_slot(slot: slot, settling: settling, population: population)
+  }
+}
+
+// MULTIPLE LISTENERS IS DECIDED BEFORE SETTLING IS CONSULTED, AND THAT ORDER IS THE SAFETY
+// PROPERTY. It is also what keeps the settling axis honest now that lineage carries the real
+// discrimination: settling separates a young empty slot from a stalled one, and it is deliberately
+// NOT asked to separate a successor from an orphan, because the measured regeneration rate proved
+// no delay can. Two listeners in one slot is invalid in every window -- there is no moment at which two
+// processes may share one slot directory, because the second one's registration overwrites the
+// first one's credentials the instant it starts. Consulting settling first would let an unknown or
+// transient window absorb a hard drift into "re-observe later", which is the absorbing fallback:
+// the defect's frequency would drop to whatever fraction of reads happen to land outside the
+// window, and its remedy would never be reached.
+fn standing_for_settling_slot(
+  slot: RunnerSlotIdentity,
+  settling: RunnerUnitSettling,
+  population: RunnerListenerPopulation,
+) -> RunnerLocalStanding {
+  match population {
+    MultipleListeners { first: a, second: b, rest: r } =>
+      MultipleListenersInOneSlot {
+        slot: slot,
+        first: a,
+        second: b,
+        rest: r,
+        orphans: population_orphans(population: MultipleListeners { first: a, second: b, rest: r }),
+      }
+    ListenerPopulationUnobserved { cause: c } =>
+      StandingUndecidable {
+        cause: concat("the unit is running but its listener population was unread: ", c as String) as NonEmptyStr,
+      }
+    SingletonListener { listener: p } =>
+      match settling {
+        Settled => LocallyHealthy { slot: slot, listener: p }
+        WithinTransientWindow => ListenerSuccessionInFlight { slot: slot }
+        SettlingUnknown { cause: c } =>
+          StandingUndecidable {
+            cause: concat("one listener is present but whether the unit has settled is unknown, so healthy and mid-succession cannot be told apart: ", c as String) as NonEmptyStr,
+          }
+      }
+    NoListener =>
+      match settling {
+        Settled => ActiveUnitNotServing { slot: slot }
+        WithinTransientWindow => ListenerSuccessionInFlight { slot: slot }
+        SettlingUnknown { cause: c } =>
+          StandingUndecidable {
+            cause: concat("no listener is present but whether the unit has settled is unknown, so a stalled unit and a succession window cannot be told apart: ", c as String) as NonEmptyStr,
+          }
+      }
+  }
+}
+
+fn standing_for_stopped_slot(
+  slot: RunnerSlotIdentity,
+  population: RunnerListenerPopulation,
+) -> RunnerLocalStanding {
+  match population {
+    ListenerPopulationUnobserved { cause: c } =>
+      StandingUndecidable {
+        cause: concat("the unit is stopped but its cgroup was unread, so residual occupancy is unknown: ", c as String) as NonEmptyStr,
+      }
+    NoListener => StoppedAndEmpty { slot: slot }
+    SingletonListener { listener: p } =>
+      ResidualOccupantInStoppedSlot { slot: slot, occupants: SingletonListener { listener: p } }
+    MultipleListeners { first: a, second: b, rest: r } =>
+      ResidualOccupantInStoppedSlot {
+        slot: slot,
+        occupants: MultipleListeners { first: a, second: b, rest: r },
+      }
+  }
+}
+
+// THE ACCEPTANCE PREDICATE, STATED ONCE SO EVERY CONSUMER ASKS THE SAME QUESTION.
+//
+// It is written as "no slot may hold two listeners" rather than as "every slot is healthy" because
+// those are different bars and only the first is this lane's. A slot mid-succession, a stopped slot
+// and a reserved fabric slot are all acceptable; two listeners never is.
+fn standing_is_hard_drift(standing: RunnerLocalStanding) -> Bool {
+  match standing {
+    MultipleListenersInOneSlot { slot: _, first: _, second: _, rest: _, orphans: _ } => true
+    StandingUndecidable { cause: _ } => false
+    NoGitHubListenerDesired { slot: _ } => false
+    LocallyHealthy { slot: _, listener: _ } => false
+    ListenerSuccessionInFlight { slot: _ } => false
+    ActiveUnitNotServing { slot: _ } => false
+    ResidualOccupantInStoppedSlot { slot: _, occupants: _ } => false
+    StoppedAndEmpty { slot: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE REFUSAL IS COUNTED, BECAUSE ON TWO OF FOUR HOSTS IT IS THE STEADY STATE
+// ---------------------------------------------------------------------------
+
+// A REFUSAL THAT FIRES CONTINUOUSLY AND IS NOT COUNTED BECOMES NOISE NOBODY READS, WHICH IS THE
+// ABSORBING FALLBACK ARRIVING FROM THE OTHER SIDE.
+//
+// DESIGN's rule is that a failure arm must refuse rather than widen, and that every degradation be
+// a typed, located, COUNTABLE diagnostic so its frequency stays observable. The countability half
+// is usually the easy one because the arm is rare. Here it is not: the surplus was cleared on srv3
+// and srv4 and had fully regenerated within about forty minutes, so MultipleListenersInOneSlot is
+// the resting state of two hosts rather than an event. A per-slot refusal alone would emit thirteen
+// and twenty-two identical diagnostics per pass, forever, and the honest reading of that is not
+// "thirteen problems" but "one problem with a rate".
+//
+// So the fold reports a population and not a verdict, and it keeps the orphan count separate from
+// the drifted-slot count. Those measure different things: how many slots are affected, and how many
+// survivors they hold between them. The second is what moves between passes when nothing structural
+// has changed, and it is the number that shows whether a remediation held.
+//
+// IT IS DELIBERATELY NOT A PASS/FAIL. A boolean over a fleet in this state answers "no" every time,
+// which carries no information at all -- the same reason a permanently-green check carries none.
+type RunnerLocalStandingTally {
+  slots_observed: Nat
+  slots_locally_healthy: Nat
+  slots_with_multiple_listeners: Nat
+  surplus_orphan_listeners: Nat
+  slots_undecidable: Nat
+}
+
+fn tally_zero() -> RunnerLocalStandingTally {
+  RunnerLocalStandingTally {
+    slots_observed: 0,
+    slots_locally_healthy: 0,
+    slots_with_multiple_listeners: 0,
+    surplus_orphan_listeners: 0,
+    slots_undecidable: 0,
+  }
+}
+
+fn tally_add(acc: RunnerLocalStandingTally, standing: RunnerLocalStanding) -> RunnerLocalStandingTally {
+  match standing {
+    MultipleListenersInOneSlot { slot: _, first: _, second: _, rest: _, orphans: o } =>
+      RunnerLocalStandingTally {
+        slots_observed: acc.slots_observed + 1,
+        slots_locally_healthy: acc.slots_locally_healthy,
+        slots_with_multiple_listeners: acc.slots_with_multiple_listeners + 1,
+        surplus_orphan_listeners: acc.surplus_orphan_listeners + length(o),
+        slots_undecidable: acc.slots_undecidable,
+      }
+    LocallyHealthy { slot: _, listener: _ } =>
+      RunnerLocalStandingTally {
+        slots_observed: acc.slots_observed + 1,
+        slots_locally_healthy: acc.slots_locally_healthy + 1,
+        slots_with_multiple_listeners: acc.slots_with_multiple_listeners,
+        surplus_orphan_listeners: acc.surplus_orphan_listeners,
+        slots_undecidable: acc.slots_undecidable,
+      }
+    StandingUndecidable { cause: _ } =>
+      RunnerLocalStandingTally {
+        slots_observed: acc.slots_observed + 1,
+        slots_locally_healthy: acc.slots_locally_healthy,
+        slots_with_multiple_listeners: acc.slots_with_multiple_listeners,
+        surplus_orphan_listeners: acc.surplus_orphan_listeners,
+        slots_undecidable: acc.slots_undecidable + 1,
+      }
+    NoGitHubListenerDesired { slot: _ } => count_only(acc: acc)
+    ListenerSuccessionInFlight { slot: _ } => count_only(acc: acc)
+    ActiveUnitNotServing { slot: _ } => count_only(acc: acc)
+    ResidualOccupantInStoppedSlot { slot: _, occupants: _ } => count_only(acc: acc)
+    StoppedAndEmpty { slot: _ } => count_only(acc: acc)
+  }
+}
+
+fn count_only(acc: RunnerLocalStandingTally) -> RunnerLocalStandingTally {
+  RunnerLocalStandingTally {
+    slots_observed: acc.slots_observed + 1,
+    slots_locally_healthy: acc.slots_locally_healthy,
+    slots_with_multiple_listeners: acc.slots_with_multiple_listeners,
+    surplus_orphan_listeners: acc.surplus_orphan_listeners,
+    slots_undecidable: acc.slots_undecidable,
+  }
+}
+
+fn tally_standings(standings: List<RunnerLocalStanding>) -> RunnerLocalStandingTally {
+  fold(standings, init: tally_zero(), f: (acc, standing) => tally_add(acc: acc, standing: standing))
+}

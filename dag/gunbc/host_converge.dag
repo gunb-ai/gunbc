@@ -5,6 +5,12 @@ import std.measure { ByteSize, byte_size_count, hardware_thread_count_value, per
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
+import gunbc.runner_unit {
+  runner_unit_template_name,
+  runner_all_slots_unit_glob,
+  runner_unit_dropin_path,
+  runner_host_slots_unit_glob,
+}
 import gunbc.package_delivery { codex_runtime_version_identity_marker }
 import gunbc.ci_runner_placement {
   RunnerDeploymentPlan,
@@ -48,12 +54,22 @@ import extdeps.systemd.oomd {
 data gunbc_cgroup_v2_root: String = "/sys/fs/cgroup"
 data gunbc_sessions_legacy_parent_slice: String = "system.slice"
 
-data gunbc_runner_unit_template: String = "actions-runner@.service"
-data gunbc_runner_all_slots_unit_glob: String = "actions-runner@*.service"
-data gunbc_runner_per_slot_dropin_path: String = "/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf"
-data gunbc_runner_per_slot_swap_dropin_path: String = "/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf"
-data gunbc_runner_per_slot_high_dropin_path: String = "/etc/systemd/system/actions-runner@.service.d/40-fleet-high.conf"
-data gunbc_runner_per_slot_tasks_dropin_path: String = "/etc/systemd/system/actions-runner@.service.d/50-fleet-tasks.conf"
+// THE UNIT NAME AND ITS DROP-IN DIRECTORY COME FROM gunbc.runner_unit AND ARE NO LONGER SPELLED
+// HERE. Each of these six rows carried the template name as a literal -- four of them by embedding
+// it inside a path -- so the drop-in directory agreed with the unit it configures by convention
+// across six independent strings. Renaming the unit would have left four drop-ins writing into a
+// directory systemd no longer reads, with nothing to refuse it: a drop-in in the wrong directory is
+// not an error, it is simply never applied, so the caps would silently stop being enforced while
+// every row here still read correctly.
+//
+// The ROW NAMES stay, because the drop-in FILE names -- which knob is 20, which is 30 -- are this
+// module's own fact and not the unit contract's.
+data gunbc_runner_unit_template: String = runner_unit_template_name as String
+data gunbc_runner_all_slots_unit_glob: String = runner_all_slots_unit_glob as String
+data gunbc_runner_per_slot_dropin_path: String = runner_unit_dropin_path(file_name: "20-fleet-width.conf" as NonEmptyStr) as String
+data gunbc_runner_per_slot_swap_dropin_path: String = runner_unit_dropin_path(file_name: "30-fleet-swap.conf" as NonEmptyStr) as String
+data gunbc_runner_per_slot_high_dropin_path: String = runner_unit_dropin_path(file_name: "40-fleet-high.conf" as NonEmptyStr) as String
+data gunbc_runner_per_slot_tasks_dropin_path: String = runner_unit_dropin_path(file_name: "50-fleet-tasks.conf" as NonEmptyStr) as String
 data gunbc_runner_control_dropin_dir_prefix: String = "/etc/systemd/system.control/"
 data gunbc_runner_jobserver_env_file: String = "/etc/default/ctrl-jobserver"
 data gunbc_runner_jobserver_env_key: String = "CTRL_JOBSERVER_TOKENS"
@@ -296,7 +312,7 @@ type ConvergePolicy
   | ConvergePolicyUnsound { reason: String }
 
 fn runner_instance_glob(host: HostIdentity) -> String {
-  concat(concat("actions-runner@", host), "-*.service")
+  runner_host_slots_unit_glob(host: host) as String
 }
 
 fn converge_apply_mode_label(m: ConvergeApplyMode) -> String {

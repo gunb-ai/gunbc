@@ -18,6 +18,13 @@ import extdeps.linux.proc_self_cgroup {
   MembershipMalformed,
   read_unified_cgroup_membership,
 }
+import gunbc.runner_unit {
+  read_runner_unit_name,
+  RunnerUnitNameReading,
+  NotARunnerUnit,
+  RunnerUnitInstanceMalformed,
+  RunnerUnitInstance,
+}
 import gunbc.build_cache_instance {
   BuildCacheInstance,
   ProcessIdentity,
@@ -345,7 +352,15 @@ data currency_is_read_first_and_never_derived_note: String = "CURRENCY IS THE BO
 
 // --- cgroup classification --------------------------------------------------
 
-data runner_slot_unit_prefix: String = "actions-runner@"
+// THE RUNNER UNIT PREFIX IS NOT SPELLED HERE ANY MORE. This module held the SEVENTH copy of it,
+// and the only one used to read the contract BACKWARDS -- given a cgroup path, which runner slot
+// owns it. A parser built on an independently spelled prefix fails silently when the renderer
+// moves: an unrecognised name does not refuse, it falls through to "some other systemd unit", so a
+// runner-owned build cache would have been reclassified as a managed one and the placement wall
+// this module exists to hold would have opened without a single diagnostic.
+//
+// The `.service` suffix stays as its own row because this module uses it for a different question
+// -- whether a cgroup's last segment is ANY systemd service -- which is not the runner contract.
 data systemd_unit_suffix: String = ".service"
 
 fn cgroup_last_segment_from(segments: List<String>) -> String {
@@ -363,11 +378,14 @@ fn unit_name_of_cgroup_path(cgroup_path: NonEmptyStr) -> String {
 data runner_slot_index_is_decided_against_current_intent_note: String = "THE LIFECYCLE IS A QUESTION ABOUT TODAY'S FLEET, ASKED AT CLASSIFICATION TIME. gunbc.build_cache_instance runner_slot_lifecycle_note fixes the rule -- a slot is retired exactly when it does not appear in the fleet's desired slots now, not when someone remembers it being decommissioned -- so the index parsed out of the cgroup is compared against gunbc_runner_slots_per_host for the host the instance names. That comparison is why the coproduct can carry a slot and a lifecycle together and never half-filled: finding the slot and deciding its lifecycle are the same act (review 46217). A cgroup whose unit looks like a runner slot but whose index does not parse is OwnerContextUndecided, never a fabricated index."
 
 fn runner_slot_index_text(unit_name: String) -> String {
-  let after_at = unit_name.substring(start: string_length(s: runner_slot_unit_prefix), end: string_length(s: unit_name))
-  let instance_token = after_at.substring(start: 0, end: string_length(s: after_at) - string_length(s: systemd_unit_suffix))
-  match instance_token.split("-").last() {
-    Present { value: tail } => tail
-    Absent => ""
+  match read_runner_unit_name(observed: unit_name as NonEmptyStr) {
+    NotARunnerUnit { observed: _ } => ""
+    RunnerUnitInstanceMalformed { observed: _, cause: _ } => ""
+    RunnerUnitInstance { registration_name: n } =>
+      match (n as String).split("-").last() {
+        Present { value: tail } => tail
+        Absent => ""
+      }
   }
 }
 
@@ -424,10 +442,18 @@ fn owner_context_of_cgroup_path(
       detail: "the endpoint owner's cgroup ends in no systemd unit, so no supervisor owns it" as NonEmptyStr,
       observed_cgroup: cgroup_path,
     }
-  } else if unit_name.starts_with(runner_slot_unit_prefix) {
-    runner_owner_context(instance: instance, unit_name: unit_name, cgroup_path: cgroup_path)
   } else {
-    OwnerInSystemdUnit { unit: unit_name as NonEmptyStr, observed_cgroup: cgroup_path }
+    match read_runner_unit_name(observed: unit_name as NonEmptyStr) {
+      RunnerUnitInstance { registration_name: _ } =>
+        runner_owner_context(instance: instance, unit_name: unit_name, cgroup_path: cgroup_path)
+      RunnerUnitInstanceMalformed { observed: _, cause: c } =>
+        OwnerContextUndecided {
+          detail: concat("the endpoint owner's cgroup names a runner-slot unit that names no slot: ", c as String) as NonEmptyStr,
+          observed_cgroup: cgroup_path,
+        }
+      NotARunnerUnit { observed: _ } =>
+        OwnerInSystemdUnit { unit: unit_name as NonEmptyStr, observed_cgroup: cgroup_path }
+    }
   }
 }
 

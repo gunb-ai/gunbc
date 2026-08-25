@@ -1,0 +1,573 @@
+module test.claim.runner_local_state
+
+import std.logic { Bool }
+import std.types { NonEmptyStr, String, List }
+import std.nat { Nat }
+import extdeps.systemd { SystemdUnitActiveState }
+import extdeps.systemd { Active, Inactive, Failed, Activating }
+import extdeps.systemd.unit_file {
+  SystemdKillMode,
+  SystemdExitType,
+  ExitTypeMain,
+  ExitTypeCgroup,
+  KillModeControlGroup,
+  KillModeMixed,
+  KillModeProcess,
+  KillModeNone,
+  systemd_kill_mode_wire,
+  systemd_exit_type_wire,
+  systemd_kill_mode_reaches_whole_cgroup,
+}
+import gunbc.build_cache_instance { ProcessIdentity, RunnerSlotIdentity }
+import gunbc.runner_slot_allocation { SlotServesGitHubActions, SlotServesFabricExecution }
+import gunbc.runner_unit {
+  runner_slot_unit_name,
+  runner_unit_name_of_registration,
+  runner_unit_template_name,
+  runner_all_slots_unit_glob,
+  runner_host_slots_unit_glob,
+  runner_unit_dropin_path,
+  runner_unit_name_round_trips,
+  read_runner_unit_name,
+  NotARunnerUnit,
+  RunnerUnitInstanceMalformed,
+  RunnerUnitInstance,
+  RunnerUnitLifecycleIntent,
+  lifecycle_intent_cannot_orphan,
+  gunbc_runner_lifecycle_intent,
+  gunbc_runner_listener_is_main_process,
+}
+import gunbc.runner_local_state {
+  RunnerUnitObservation,
+  UnitUnobserved,
+  UnitNotLoaded,
+  UnitLoaded,
+  RunnerUnitMainProcess,
+  MainProcessUnread,
+  NoMainProcess,
+  MainProcess,
+  RunnerListenerPopulation,
+  ListenerPopulationUnobserved,
+  NoListener,
+  SingletonListener,
+  MultipleListeners,
+  ObservedListener,
+  RunnerListenerLineage,
+  LineageUnread,
+  DescendsFromMainProcess,
+  ReparentedOutsideUnitTree,
+  listener_is_orphaned,
+  population_orphans,
+  RunnerLocalStandingTally,
+  tally_standings,
+  RunnerListenerPopulationObservation,
+  RunnerUnitSettling,
+  SettlingUnknown,
+  WithinTransientWindow,
+  Settled,
+  RunnerLocalStanding,
+  StandingUndecidable,
+  NoGitHubListenerDesired,
+  LocallyHealthy,
+  ListenerSuccessionInFlight,
+  ActiveUnitNotServing,
+  MultipleListenersInOneSlot,
+  ResidualOccupantInStoppedSlot,
+  StoppedAndEmpty,
+  join_runner_local_standing,
+  standing_is_hard_drift,
+  listener_population_size,
+  busy_standing_of,
+  RunnerSlotBusyStanding,
+  BusyStandingUnavailable,
+  SlotRunningJob,
+  SlotIdle,
+}
+import gunbc.host_converge {
+  gunbc_runner_unit_template,
+  gunbc_runner_all_slots_unit_glob,
+  gunbc_runner_per_slot_dropin_path,
+  runner_instance_glob,
+}
+import gunbc.runner_connectivity_recovery { recovery_runner_slot_unit_name }
+import gunbc.host_runner_memory_cap_verify { runner_memory_cap_probe_unit }
+import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
+
+// Every subject below is a modeled value constructed in this file -- no host is read, so the floor
+// may fold these without a live tree. Omitting this row would have the fail-closed default treat
+// the witnesses as live-tree readers: discovered, counted, and never executed.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn srv4_slot(index: Nat) -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv4, slot_index: index }
+}
+
+fn in_tree(pid: Nat) -> ObservedListener {
+  ObservedListener { process: pid_at(pid: pid), lineage: DescendsFromMainProcess }
+}
+
+fn orphan(pid: Nat) -> ObservedListener {
+  ObservedListener { process: pid_at(pid: pid), lineage: ReparentedOutsideUnitTree { parent_pid: 1 } }
+}
+
+fn pid_at(pid: Nat) -> ProcessIdentity {
+  ProcessIdentity {
+    boot_id: "9d1f0c62-0000-4000-8000-000000000001" as NonEmptyStr,
+    pid: pid,
+    start_time: "884512" as NonEmptyStr,
+  }
+}
+
+fn loaded_unit(slot: RunnerSlotIdentity, state: SystemdUnitActiveState) -> RunnerUnitObservation {
+  UnitLoaded {
+    unit: runner_slot_unit_name(slot: slot),
+    enabled: true,
+    active_state: state,
+    control_group: "/system.slice/system-actions.slice/x.service" as NonEmptyStr,
+    main_process: MainProcess { pid: 4001 },
+  }
+}
+
+fn population(listeners: RunnerListenerPopulation) -> RunnerListenerPopulationObservation {
+  RunnerListenerPopulationObservation { listeners: listeners, workers: [] }
+}
+
+fn doubled_is_hard_drift_at(settling: RunnerUnitSettling, doubled: RunnerListenerPopulationObservation) -> Bool {
+  let slot = srv4_slot(index: 7)
+  match join_runner_local_standing(
+    slot: slot,
+    purpose: SlotServesGitHubActions,
+    unit: loaded_unit(slot: slot, state: Active),
+    settling: settling,
+    population: doubled,
+  ) {
+    MultipleListenersInOneSlot { slot: s, first: a, second: b, rest: _, orphans: o } =>
+      s.slot_index == 7 && a.process.pid == 4101 && b.process.pid == 4102 && length(o) == 1
+    StandingUndecidable { cause: _ } => false
+    NoGitHubListenerDesired { slot: _ } => false
+    LocallyHealthy { slot: _, listener: _ } => false
+    ListenerSuccessionInFlight { slot: _ } => false
+    ActiveUnitNotServing { slot: _ } => false
+    ResidualOccupantInStoppedSlot { slot: _, occupants: _ } => false
+    StoppedAndEmpty { slot: _ } => false
+  }
+}
+
+fn fabric_slot_is_answered(slot: RunnerSlotIdentity, p: RunnerListenerPopulation) -> Bool {
+  match join_runner_local_standing(
+    slot: slot, purpose: SlotServesFabricExecution,
+    unit: loaded_unit(slot: slot, state: Active), settling: Settled, population: population(listeners: p),
+  ) {
+    NoGitHubListenerDesired { slot: s } => s.slot_index == 6
+    _ => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE UNIT CONTRACT IS ONE AUTHORITY
+// ---------------------------------------------------------------------------
+
+// THE DISCRIMINATING PROPERTY OF THE DE-FORK. Every site that used to spell the unit name now
+// derives it, so they agree BY CONSTRUCTION rather than by six authors having typed the same
+// string. This witness compares the surviving projections against the one authority; it goes red
+// if any of them is re-forked, which is the failure the consolidation exists to prevent.
+test fn witness_every_unit_name_projection_agrees() -> Bool {
+  let slot = srv4_slot(index: 1)
+  let expected = "actions-runner@srv4-01.service"
+  (runner_slot_unit_name(slot: slot) as String) == expected
+    && (recovery_runner_slot_unit_name(slot: slot) as String) == expected
+    && (runner_memory_cap_probe_unit(host: operator_host_srv4) as String) == expected
+    && (runner_unit_name_of_registration(registration_name: "srv4-01" as NonEmptyStr) as String) == expected
+}
+
+// THE TEMPLATE, THE GLOBS AND THE DROP-IN DIRECTORY ARE PROJECTIONS OF THE SAME PREFIX AND SUFFIX.
+// The drop-in path is the one that mattered most and was hardest to see: a drop-in written into a
+// directory whose name does not match the unit is never applied and never refused.
+test fn witness_template_glob_and_dropin_share_one_contract() -> Bool {
+  (runner_unit_template_name as String) == "actions-runner@.service"
+    && gunbc_runner_unit_template == "actions-runner@.service"
+    && (runner_all_slots_unit_glob as String) == "actions-runner@*.service"
+    && gunbc_runner_all_slots_unit_glob == "actions-runner@*.service"
+    && (runner_host_slots_unit_glob(host: operator_host_srv3) as String) == "actions-runner@srv3-*.service"
+    && runner_instance_glob(host: operator_host_srv3) == "actions-runner@srv3-*.service"
+    && gunbc_runner_per_slot_dropin_path
+       == "/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf"
+    && (runner_unit_dropin_path(file_name: "99-x.conf" as NonEmptyStr) as String)
+       == "/etc/systemd/system/actions-runner@.service.d/99-x.conf"
+}
+
+// THE INVERSE IS THE SAME AUTHORITY READ BACKWARDS, and the round trip is what makes that true
+// rather than merely claimed. The two-digit suffix is exercised on both sides of index 10, because
+// that boundary is exactly where three earlier implementations of the suffix disagreed.
+test fn witness_unit_name_round_trips_across_the_suffix_boundary() -> Bool {
+  runner_unit_name_round_trips(slot: srv4_slot(index: 1))
+    && runner_unit_name_round_trips(slot: srv4_slot(index: 9))
+    && runner_unit_name_round_trips(slot: srv4_slot(index: 10))
+    && runner_unit_name_round_trips(slot: srv4_slot(index: 21))
+    && (runner_slot_unit_name(slot: srv4_slot(index: 21)) as String) == "actions-runner@srv4-21.service"
+}
+
+// NOT-A-RUNNER-UNIT AND MALFORMED ARE DIFFERENT ANSWERS. The RED here is the conflation: a reading
+// that folded both into one absent answer would make this witness unable to tell a neighbouring
+// service from a runner unit that names no slot, and those have opposite remedies -- ignore, versus
+// refuse and report the text.
+test fn witness_unit_name_reading_separates_foreign_from_malformed() -> Bool {
+  let foreign = match read_runner_unit_name(observed: "ctrl-jobserver.service" as NonEmptyStr) {
+    NotARunnerUnit { observed: o } => (o as String) == "ctrl-jobserver.service"
+    RunnerUnitInstanceMalformed { observed: _, cause: _ } => false
+    RunnerUnitInstance { registration_name: _ } => false
+  }
+  let malformed = match read_runner_unit_name(observed: "actions-runner@.service" as NonEmptyStr) {
+    NotARunnerUnit { observed: _ } => false
+    RunnerUnitInstanceMalformed { observed: _, cause: _ } => true
+    RunnerUnitInstance { registration_name: _ } => false
+  }
+  let instance = match read_runner_unit_name(observed: "actions-runner@srv3-06.service" as NonEmptyStr) {
+    NotARunnerUnit { observed: _ } => false
+    RunnerUnitInstanceMalformed { observed: _, cause: _ } => false
+    RunnerUnitInstance { registration_name: n } => (n as String) == "srv3-06"
+  }
+  foreign && malformed && instance
+}
+
+// ---------------------------------------------------------------------------
+// THE LIFECYCLE VOCABULARY
+// ---------------------------------------------------------------------------
+
+test fn witness_kill_mode_and_exit_type_render_upstream_spellings() -> Bool {
+  systemd_kill_mode_wire(mode: KillModeControlGroup) == "control-group"
+    && systemd_kill_mode_wire(mode: KillModeMixed) == "mixed"
+    && systemd_kill_mode_wire(mode: KillModeProcess) == "process"
+    && systemd_kill_mode_wire(mode: KillModeNone) == "none"
+    && systemd_exit_type_wire(exit_type: ExitTypeMain) == "main"
+    && systemd_exit_type_wire(exit_type: ExitTypeCgroup) == "cgroup"
+}
+
+// `mixed` REACHES THE WHOLE CGROUP AND `process` DOES NOT, and this is the discriminating pair: a
+// predicate that answered only for `control-group` would report `mixed` as leaky, and one that
+// answered by "is it not none" would report `process` as safe. Both are wrong in the direction that
+// matters -- the second would license the exact configuration that orphans listeners.
+test fn witness_only_cgroup_reaching_kill_modes_reach_the_cgroup() -> Bool {
+  systemd_kill_mode_reaches_whole_cgroup(mode: KillModeControlGroup)
+    && systemd_kill_mode_reaches_whole_cgroup(mode: KillModeMixed)
+    && !systemd_kill_mode_reaches_whole_cgroup(mode: KillModeProcess)
+    && !systemd_kill_mode_reaches_whole_cgroup(mode: KillModeNone)
+}
+
+// THE PAIR IS WHAT DECIDES ORPHANING, NOT EITHER HALF. KillMode=control-group with ExitType=main
+// under a wrapper that does NOT exec is the trap: the teardown would reach the cgroup, but systemd
+// considers the service finished when the wrapper exits, so that teardown is never issued for the
+// survivors. This witness goes red if the predicate is weakened to consult kill_mode alone.
+// THE FOUR CASES, IN THE ORDER THAT MAKES THE PAIR LOAD-BEARING. ExitTypeMain is sufficient ONLY
+// when the listener is the main process -- the unreachable form -- and is exactly the trap when it
+// is not, which is this fleet. ExitTypeCgroup is sufficient regardless. A kill mode that leaves
+// children behind is never sufficient, whatever the exit type says, so the last two cases go red
+// if the predicate is ever weakened to consult exit_type alone.
+test fn witness_orphan_freedom_needs_both_halves() -> Bool {
+  let cg_main = RunnerUnitLifecycleIntent { exit_type: ExitTypeMain, kill_mode: KillModeControlGroup }
+  let cg_cgroup = RunnerUnitLifecycleIntent { exit_type: ExitTypeCgroup, kill_mode: KillModeControlGroup }
+  let proc_cgroup = RunnerUnitLifecycleIntent { exit_type: ExitTypeCgroup, kill_mode: KillModeProcess }
+  lifecycle_intent_cannot_orphan(intent: cg_main, listener_is_main_process: true)
+    && !lifecycle_intent_cannot_orphan(intent: cg_main, listener_is_main_process: false)
+    && lifecycle_intent_cannot_orphan(intent: cg_cgroup, listener_is_main_process: false)
+    && !lifecycle_intent_cannot_orphan(intent: proc_cgroup, listener_is_main_process: false)
+    && !lifecycle_intent_cannot_orphan(intent: proc_cgroup, listener_is_main_process: true)
+}
+
+// THE DECLARED INTENT IS ORPHAN-FREE ON THE FLEET AS MEASURED, AND THIS IS THE WITNESS THAT BINDS
+// THE TWO ROWS TOGETHER. Declaring a lifecycle intent and separately declaring that the listener is
+// not the main process would leave the pair unchecked -- the interesting failure is an intent that
+// is sound only under an assumption the fleet does not satisfy.
+test fn witness_declared_intent_is_orphan_free_on_this_fleet() -> Bool {
+  lifecycle_intent_cannot_orphan(
+    intent: gunbc_runner_lifecycle_intent,
+    listener_is_main_process: gunbc_runner_listener_is_main_process,
+  )
+    && !gunbc_runner_listener_is_main_process
+}
+
+// THE MEASURED CURRENT BEHAVIOUR, EXPRESSED AS THE INTENT IT IS INDISTINGUISHABLE FROM. On srv4-04
+// a restart killed the main process and left its own run-helper and listener alive, which is what
+// a teardown that does not reach the cgroup does. Whatever directives spell it on that host, the
+// contract it BEHAVES as cannot avoid orphaning, and the declared intent above must differ from it
+// -- a witness that let the two agree would be green over a change that changed nothing.
+test fn witness_the_orphaning_contract_and_the_declared_one_differ() -> Bool {
+  let as_observed = RunnerUnitLifecycleIntent { exit_type: ExitTypeMain, kill_mode: KillModeProcess }
+  !lifecycle_intent_cannot_orphan(intent: as_observed, listener_is_main_process: gunbc_runner_listener_is_main_process)
+    && lifecycle_intent_cannot_orphan(
+      intent: gunbc_runner_lifecycle_intent,
+      listener_is_main_process: gunbc_runner_listener_is_main_process,
+    )
+}
+
+// ---------------------------------------------------------------------------
+// THE LISTENER POPULATION AND THE JOIN
+// ---------------------------------------------------------------------------
+
+// MultipleListeners CANNOT HOLD FEWER THAN TWO, which is why the size fold needs no guard. The
+// witness states the sizes rather than the shape because a size is what a consumer reaching for a
+// count would have asked for, and it must not be able to get 0 or 1 out of the plural arm.
+test fn witness_population_sizes_are_structural() -> Bool {
+  let unobserved = match listener_population_size(population: ListenerPopulationUnobserved { cause: "x" as NonEmptyStr }) {
+    Present { value: _ } => false
+    Absent => true
+  }
+  let zero = match listener_population_size(population: NoListener) {
+    Present { value: n } => n == 0
+    Absent => false
+  }
+  let one = match listener_population_size(population: SingletonListener { listener: in_tree(pid: 10) }) {
+    Present { value: n } => n == 1
+    Absent => false
+  }
+  let three = match listener_population_size(
+    population: MultipleListeners { first: in_tree(pid: 10), second: orphan(pid: 11), rest: [orphan(pid: 12)] },
+  ) {
+    Present { value: n } => n == 3
+    Absent => false
+  }
+  unobserved && zero && one && three
+}
+
+// THE ACCEPTANCE CRITERION: NO SLOT MAY HOLD TWO LISTENERS WITHOUT A TYPED, LOCATED REFUSAL, AND IT
+// HOLDS IN EVERY WINDOW. The three settling states are all exercised against the same doubled
+// population, because the failure this guards against is precisely an implementation that consults
+// settling first and lets a transient or unknown window absorb the drift.
+test fn witness_two_listeners_is_hard_drift_in_every_window() -> Bool {
+  let doubled = population(
+    listeners: MultipleListeners { first: in_tree(pid: 4101), second: orphan(pid: 4102), rest: [] },
+  )
+  doubled_is_hard_drift_at(settling: Settled, doubled: doubled)
+    && doubled_is_hard_drift_at(settling: WithinTransientWindow, doubled: doubled)
+    && doubled_is_hard_drift_at(settling: SettlingUnknown { cause: "clock unread" as NonEmptyStr }, doubled: doubled)
+}
+
+// ZERO LISTENERS IS NOT A DEFECT DURING SUCCESSION AND IS ONE ONCE SETTLED. This is the pair a
+// blanket `count != 1` rule cannot express, and the reason the join takes the unit's own state.
+test fn witness_zero_listeners_reads_by_window_not_by_count() -> Bool {
+  let empty = population(listeners: NoListener)
+  let slot = srv4_slot(index: 3)
+  let settled = match join_runner_local_standing(
+    slot: slot, purpose: SlotServesGitHubActions,
+    unit: loaded_unit(slot: slot, state: Active), settling: Settled, population: empty,
+  ) {
+    ActiveUnitNotServing { slot: s } => s.slot_index == 3
+    _ => false
+  }
+  let activating = match join_runner_local_standing(
+    slot: slot, purpose: SlotServesGitHubActions,
+    unit: loaded_unit(slot: slot, state: Activating), settling: Settled, population: empty,
+  ) {
+    ListenerSuccessionInFlight { slot: _ } => true
+    _ => false
+  }
+  let mid_succession = match join_runner_local_standing(
+    slot: slot, purpose: SlotServesGitHubActions,
+    unit: loaded_unit(slot: slot, state: Active), settling: WithinTransientWindow, population: empty,
+  ) {
+    ListenerSuccessionInFlight { slot: _ } => true
+    _ => false
+  }
+  settled && activating && mid_succession
+}
+
+// A STOPPED SLOT HOLDING A PROCESS IS RESIDUAL OCCUPANCY AND KEEPS THE IDENTITIES. The population is
+// carried through rather than reduced, which is the difference between this observation and the
+// reaper's `occupied`: a consumer must be able to say WHICH process outlived the stop.
+test fn witness_stopped_slot_reports_residual_occupants_with_identities() -> Bool {
+  let slot = srv4_slot(index: 5)
+  let residual = match join_runner_local_standing(
+    slot: slot, purpose: SlotServesGitHubActions,
+    unit: loaded_unit(slot: slot, state: Failed), settling: Settled,
+    population: population(listeners: SingletonListener { listener: orphan(pid: 9090) }),
+  ) {
+    ResidualOccupantInStoppedSlot { slot: _, occupants: o } =>
+      match o {
+        SingletonListener { listener: p } => p.process.pid == 9090 && listener_is_orphaned(listener: p)
+        _ => false
+      }
+    _ => false
+  }
+  let clean = match join_runner_local_standing(
+    slot: slot, purpose: SlotServesGitHubActions,
+    unit: loaded_unit(slot: slot, state: Inactive), settling: Settled,
+    population: population(listeners: NoListener),
+  ) {
+    StoppedAndEmpty { slot: _ } => true
+    _ => false
+  }
+  residual && clean
+}
+
+// THE RESERVED FABRIC SLOT NEVER ENTERS THE RUNNER POPULATION. It is answered before any listener
+// question is asked, so an empty fabric slot cannot be reported as a healthy runner and a fabric
+// slot that somehow held processes cannot be reported as runner drift.
+test fn witness_fabric_slot_has_no_listener_population_desired() -> Bool {
+  let slot = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 }
+  fabric_slot_is_answered(slot: slot, p: NoListener)
+    && fabric_slot_is_answered(slot: slot, p: SingletonListener { listener: in_tree(pid: 1) })
+    && fabric_slot_is_answered(slot: slot, p: MultipleListeners { first: in_tree(pid: 1), second: orphan(pid: 2), rest: [] })
+}
+
+// AN UNREAD POPULATION REFUSES RATHER THAN READING AS HEALTHY OR AS DRIFT. Both fabrications are
+// available and both are wrong: reporting healthy hides a stacked slot, reporting drift would
+// restart a slot on no evidence.
+test fn witness_unread_population_refuses() -> Bool {
+  let slot = srv4_slot(index: 2)
+  match join_runner_local_standing(
+    slot: slot, purpose: SlotServesGitHubActions,
+    unit: loaded_unit(slot: slot, state: Active), settling: Settled,
+    population: population(listeners: ListenerPopulationUnobserved { cause: "cgroup.procs unreadable" as NonEmptyStr }),
+  ) {
+    StandingUndecidable { cause: _ } => true
+    _ => false
+  }
+}
+
+// A LIVE WORKER IS BUSY, AN UNREAD POPULATION IS NOT IDLE. The second half is the safety property
+// every mutating arm depends on: the rollout must refuse when busy standing is unavailable exactly
+// as it refuses when the slot is busy, and an implementation that returned SlotIdle for an unread
+// population would restart a slot that might be mid-job.
+test fn witness_busy_standing_never_fabricates_idle() -> Bool {
+  let busy = match busy_standing_of(
+    observation: RunnerListenerPopulationObservation {
+      listeners: SingletonListener { listener: in_tree(pid: 10) },
+      workers: [pid_at(pid: 55)],
+    },
+  ) {
+    SlotRunningJob { worker: w } => w.pid == 55
+    _ => false
+  }
+  let idle = match busy_standing_of(
+    observation: RunnerListenerPopulationObservation {
+      listeners: SingletonListener { listener: in_tree(pid: 10) },
+      workers: [],
+    },
+  ) {
+    SlotIdle => true
+    _ => false
+  }
+  let unavailable = match busy_standing_of(
+    observation: RunnerListenerPopulationObservation {
+      listeners: ListenerPopulationUnobserved { cause: "unread" as NonEmptyStr },
+      workers: [],
+    },
+  ) {
+    BusyStandingUnavailable { cause: _ } => true
+    _ => false
+  }
+  busy && idle && unavailable
+}
+
+// THE ACCEPTANCE PREDICATE FLAGS EXACTLY ONE STANDING. A predicate that also flagged
+// ActiveUnitNotServing or a residual occupant would make the rollout's stop condition fire on
+// states this lane does not own; one that flagged nothing would be inert.
+test fn witness_hard_drift_is_exactly_the_doubled_slot() -> Bool {
+  let slot = srv4_slot(index: 1)
+  standing_is_hard_drift(
+    standing: MultipleListenersInOneSlot {
+      slot: slot, first: in_tree(pid: 1), second: orphan(pid: 2), rest: [], orphans: [orphan(pid: 2)],
+    },
+  )
+    && !standing_is_hard_drift(standing: LocallyHealthy { slot: slot, listener: in_tree(pid: 1) })
+    && !standing_is_hard_drift(standing: ListenerSuccessionInFlight { slot: slot })
+    && !standing_is_hard_drift(standing: ActiveUnitNotServing { slot: slot })
+    && !standing_is_hard_drift(standing: StoppedAndEmpty { slot: slot })
+    && !standing_is_hard_drift(standing: NoGitHubListenerDesired { slot: slot })
+    && !standing_is_hard_drift(standing: StandingUndecidable { cause: "x" as NonEmptyStr })
+    && !standing_is_hard_drift(
+      standing: ResidualOccupantInStoppedSlot { slot: slot, occupants: SingletonListener { listener: in_tree(pid: 1) } },
+    )
+}
+
+// ---------------------------------------------------------------------------
+// LINEAGE IS THE DISCRIMINATOR, AND THE TALLY IS WHY THE REFUSAL STAYS READABLE
+// ---------------------------------------------------------------------------
+
+// AN UNREAD LINEAGE IS NOT AN ORPHAN. Both fabrications are available and both are harmful in
+// opposite directions: calling it in-tree hides a survivor, calling it an orphan is a licence to
+// kill a live successor. The predicate must answer false for unread, and this witness is what goes
+// red if it is ever written as "not in-tree".
+test fn witness_unread_lineage_is_not_an_orphan() -> Bool {
+  listener_is_orphaned(listener: orphan(pid: 7))
+    && !listener_is_orphaned(listener: in_tree(pid: 7))
+    && !listener_is_orphaned(
+      listener: ObservedListener {
+        process: pid_at(pid: 7),
+        lineage: LineageUnread { cause: "/proc/7/stat unreadable" as NonEmptyStr },
+      },
+    )
+}
+
+// THE ORPHAN PROJECTION SELECTS ONLY THE REPARENTED MEMBERS OF A STACKED SLOT. This is the fact the
+// measurement made load-bearing: on a host where the surplus regenerates within the hour, a
+// consumer needs to know WHICH of a slot's listeners are survivors, because the in-tree one is the
+// current incarnation and is doing real work.
+test fn witness_orphan_projection_selects_only_reparented() -> Bool {
+  let stacked = MultipleListeners {
+    first: in_tree(pid: 100),
+    second: orphan(pid: 101),
+    rest: [orphan(pid: 102), in_tree(pid: 103)],
+  }
+  let orphans = population_orphans(population: stacked)
+  length(orphans) == 2
+    && match orphans.first() {
+      Present { value: o } => o.process.pid == 101
+      Absent => false
+    }
+}
+
+// THE STACKED STANDING NAMES ITS ORPHANS RATHER THAN ONLY ITS COUNT, so a reader can act on the
+// survivors without re-deriving which they were.
+test fn witness_stacked_standing_carries_its_orphans() -> Bool {
+  let slot = srv4_slot(index: 19)
+  match join_runner_local_standing(
+    slot: slot,
+    purpose: SlotServesGitHubActions,
+    unit: loaded_unit(slot: slot, state: Active),
+    settling: Settled,
+    population: population(
+      listeners: MultipleListeners { first: in_tree(pid: 200), second: orphan(pid: 201), rest: [orphan(pid: 202)] },
+    ),
+  ) {
+    MultipleListenersInOneSlot { slot: s, first: a, second: _, rest: _, orphans: o } =>
+      s.slot_index == 19 && a.process.pid == 200 && length(o) == 2
+    _ => false
+  }
+}
+
+// THE TALLY SEPARATES AFFECTED SLOTS FROM SURVIVING PROCESSES, and this witness fixes the
+// arithmetic on a population shaped like the measured one: a healthy slot, a stacked slot holding
+// two survivors, a slot mid-succession and an undecidable read. Reporting one number for both
+// would make "one slot got worse" and "one more slot went bad" the same reading, and those move
+// differently between passes.
+test fn witness_tally_counts_slots_and_survivors_separately() -> Bool {
+  let slot = srv4_slot(index: 1)
+  let t = tally_standings(
+    standings: [
+      LocallyHealthy { slot: slot, listener: in_tree(pid: 1) },
+      MultipleListenersInOneSlot {
+        slot: slot, first: in_tree(pid: 2), second: orphan(pid: 3), rest: [orphan(pid: 4)],
+        orphans: [orphan(pid: 3), orphan(pid: 4)],
+      },
+      ListenerSuccessionInFlight { slot: slot },
+      StandingUndecidable { cause: "cgroup unread" as NonEmptyStr },
+    ],
+  )
+  t.slots_observed == 4
+    && t.slots_locally_healthy == 1
+    && t.slots_with_multiple_listeners == 1
+    && t.surplus_orphan_listeners == 2
+    && t.slots_undecidable == 1
+}
+
+// AN EMPTY FLEET TALLIES TO ZEROES AND NOT TO A VERDICT. A fold that answered "healthy" for an
+// unobserved fleet would be the empty-observation narrow: nothing seen rendered as nothing wrong.
+test fn witness_empty_tally_is_zero_not_healthy() -> Bool {
+  let t = tally_standings(standings: [])
+  t.slots_observed == 0
+    && t.slots_locally_healthy == 0
+    && t.slots_with_multiple_listeners == 0
+    && t.surplus_orphan_listeners == 0
+    && t.slots_undecidable == 0
+}

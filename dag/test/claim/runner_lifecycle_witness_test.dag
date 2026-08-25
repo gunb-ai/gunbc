@@ -3,6 +3,7 @@ module test.claim.runner_lifecycle
 import std.logic { Bool }
 import std.types { list_length, NonEmptyStr }
 import std.measure { byte_size, byte_size_count }
+import gunbc.runner_unit { runner_slot_unit_name }
 import gunbc.runner_lifecycle {
   runner_slot_add_sequence_for,
   RunnerSlotAddSequence,
@@ -22,7 +23,6 @@ import gunbc.runner_lifecycle {
   DiskHeadroomUnobserved,
   host_runner_capacity_converged,
   HostRunnerCapacityReceipt,
-  runner_slot_unit_name,
 }
 import gunbc.build_cache_instance { runner_slot_instance_name, runner_slot_index_suffix }
 import gunbc.runner_incarnation { runner_slot_incarnation }
