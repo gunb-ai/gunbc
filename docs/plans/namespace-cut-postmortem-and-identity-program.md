@@ -1077,10 +1077,20 @@ follow. Building brand rendering would be the realization half of a model fact
 that does not exist.
 
 What replaced it was already sitting in the corpus. `sole_constructor` is
-authored at **176 production sites** (`dag/` + `src/v2`, excluding
+authored on **79 production type declarations** (`dag/` + `src/v2`, excluding
 `dag/test/`), parsed (17 occurrences in `02_parse.dag`), consumed by inference
 (12 in `04_infer.dag`) — and read by the emitter **zero** times, in both
-`05_emit.dag` and `05_emit_rust.dag`. The consequence is visible in the
+`05_emit.dag` and `05_emit_rust.dag`.
+
+*(That count was published as 176 for about twenty minutes on 2026-08-25 and
+is corrected here rather than quietly restated. 176 is the raw occurrence count
+of the token; **21 of those sit inside `data …: String` prose rows** that merely
+discuss `sole_constructor`, and the remainder are references rather than
+declarations. The declaration count is 79. The error is the one §11.2 records
+immediately below — a population derived by grepping a corpus rather than by
+asking the producer — committed by this document's author while writing the
+section that names it, which is why the section says the discipline is not
+knowledge but a habit.)* The consequence is visible in the
 committed mirror:
 
 ```rust
@@ -1109,7 +1119,7 @@ subject it is the evidence of *failure*, because if the emitter consumes the
 fact and nothing changes, the fact did not reach emission.
 
 The standing requirement on A0 is therefore a measurement before a shape: the
-production fan-out of private-field-plus-no-`Deserialize` across 176
+production fan-out of private-field-plus-no-`Deserialize` across 79
 declarations is the delete-first census, and a forging call site it breaks is a
 finding rather than an obstacle — never repaired by widening what the mint
 admits, and never by an escape hatch. A.2 the `UriValidatedScalar`
@@ -1586,6 +1596,43 @@ Concretely: `#9182` is a semantic object (it changes emitted bytes) held here; i
 **(2) No per-consumer straddle across the cutover.** No consumer may be correct under both the old and the new producer during the transition. A consumer that works either way is not a compatibility win — it is the absence of a discriminating input, so the cutover has no observable moment and its failure has no detector.
 
 **(3) No oracle repair by normalization.** When a comparison refuses, the repair is never to normalize both sides until it agrees. That is the rustfmt double-normalization defect the required run already paid for: an identity that holds only if the normalizer is idempotent, whose sole reachable green was the hand-edit the gate exists to refuse. Where two consumers normalize one artifact differently, the artifact is stored in the normalizer's fixed point — the contradiction made unrepresentable rather than detected.
+
+**(4a) Ask whether the subject already publishes its own answer, before
+deriving a population from the tree.** A measurement that disagrees with the
+producer's own published output is evidence about the *measurement*, not
+evidence of a gap. The required floor uploads a per-entry roster on every run
+(`gh run download <id> -n required-floor-disposition` → one row per identity
+with its disposition and the prefix that matched); the compile phase carries
+its own disposition records rather than exit codes. Re-deriving either from
+file contents is not independent corroboration — it is a second representation
+with no authority, and the producer knows things the files do not (exclusion
+rosters, explicit admission, discovery scope).
+
+Two receipts, one in each direction, both from 2026-08-25. A lane read
+`floor_discovery_producer.dag` correctly — a missing declaration resolves to
+`ReadsLiveTree` — and inferred that ~3,000 witnesses were silently declined.
+The source reading was right and the inference was false: files with no
+disposition row come back **`planned`**, and the modules actually declined
+declare `ReadsLiveTree` **explicitly**. Declines are declared, not defaulted.
+Three successive static measurements each disagreed with the floor's own counts
+by roughly 4×, and refining the static measurement could not have converged,
+because it was measuring the wrong thing more precisely each time. That error
+has a name and it is the **mirror** of the one this repository already
+documents: *reachability read as occupancy* normally DELETES a quiet guard
+because nothing lands in it; this direction reads a quiet guard as a FIRING one
+because the arm exists in source. The documented direction removes a real wall;
+this one manufactures a defect that does not exist. Same conflation, and only
+one half was written down.
+
+The second receipt is this document's own, and it is here because it is worse:
+§7a published `sole_constructor` as authored at **176 production sites**, a raw
+token count in which **21 occurrences sit inside `data …: String` prose rows**
+discussing the feature and most of the rest are references. The declaration
+count is **79**. It was written into a committed document, sent to a lane as
+the basis for a fan-out estimate, and it was authored *in the same session as
+this section*. The discipline is therefore not knowledge — everyone involved
+already knew it — it is a habit, and the habit is: **a grep is a hypothesis, and
+a count with no producer behind it is not a measurement.**
 
 **(4) No evidence laundering, and no collapsed absence.** A measurement is cited by naming the producer that re-derives it. A row reporting *the check passed* may not share a carrier with *the check did not run* — six distinct inhabitants are in play across this program's measurements (`ran and clean`, `ran and found`, `refused upstream`, `declined by home policy`, `no route at the hermetic boundary`, `not discovered`) and every pair of them has been conflated by something in this repository within the last week. deep-ant's own stale-base catch is invariant (4) applied by hand: a diagnostic measured on a 23-commit-stale base and one measured on main render identically, and only provenance separates them.
 
