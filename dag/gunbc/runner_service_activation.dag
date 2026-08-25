@@ -453,12 +453,19 @@ fn runner_activation_reachability_report() -> String {
 // rung inflation section 4b(1) names -- a carrier claiming the top rung while occupying a lower one --
 // in the module whose whole job is to stop an unadmitted activation.
 //
+// IT IS NAMED FOR THE STALL IT IS, NOT FOR THE GUARANTEE IT WITHHOLDS. This row was
+// runner_activation_safety_guarantee, and the fields were already honest while the NAME asserted the
+// rung they deny -- so a grep for what this repository guarantees about activation returned a symbol
+// saying guarantee whose value says Mitigatable. That is section 4b(1)'s tell verbatim, a carrier
+// named for the top rung while occupying a lower one, and it is worse than sitting low because an
+// inflated class never ranks for climbing. The sibling reachability row was right the first time.
+//
 // WHAT WOULD MAKE IT STRUCTURAL: ghrunner never receives the systemctl verbs at all. Either it
 // invokes only a root-owned helper that takes an activation receipt and validates it before touching
 // systemd, or a root-owned convergence service holds the systemd authority and the job user holds
 // none. Both remove the door rather than posting a sign on it; a narrower sudoers match cannot,
 // because any grant that lets the sanctioned path run the command lets the grantee run it too.
-data runner_activation_safety_guarantee: GuaranteeStall = GuaranteeStall {
+data runner_activation_safety_stall: GuaranteeStall = GuaranteeStall {
   subject: "gunbc.runner_service_activation -- a runner unit activated without a RunnerActivationAdmission",
   current: Mitigatable,
   ceiling: StructurallyGuaranteed,
@@ -470,5 +477,5 @@ data runner_activation_safety_guarantee: GuaranteeStall = GuaranteeStall {
 }
 
 fn runner_activation_safety_report() -> String {
-  stall_report_message(s: runner_activation_safety_guarantee)
+  stall_report_message(s: runner_activation_safety_stall)
 }

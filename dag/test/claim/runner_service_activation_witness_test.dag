@@ -44,7 +44,7 @@ import gunbc.runner_service_activation {
   runner_activation_readiness_unobserved_no_transaction,
   runner_transition_sequence_label,
   runner_activation_reachability_stall,
-  runner_activation_safety_guarantee,
+  runner_activation_safety_stall,
   runner_transition_affected_set_identity,
   runner_host_activation_units,
 }
@@ -395,14 +395,14 @@ test fn the_declared_stall_agrees_with_the_executed_refusal() -> Bool {
 // charity -- and asserted as an EQUALITY on the current rung, not merely as below-ceiling, because
 // below-ceiling would still pass at MechanicallyPreventable.
 test fn the_safety_row_does_not_claim_the_host_boundary_is_structural() -> Bool {
-  match runner_activation_safety_guarantee.current {
+  match runner_activation_safety_stall.current {
     Mitigatable => true
     OutsideTheLadder => false
     _ => false
   }
-    && stall_is_below_ceiling(s: runner_activation_safety_guarantee)
-    && !stall_is_permanent(s: runner_activation_safety_guarantee)
-    && string_contains(s: runner_activation_safety_guarantee.next_rung_trigger, pattern: "root-owned")
+    && stall_is_below_ceiling(s: runner_activation_safety_stall)
+    && !stall_is_permanent(s: runner_activation_safety_stall)
+    && string_contains(s: runner_activation_safety_stall.next_rung_trigger, pattern: "root-owned")
 }
 
 // THE REFUSAL CARRIES ITS AFFECTED POPULATION, IN BOTH MAGNITUDE AND IDENTITY. A count alone cannot
