@@ -38,10 +38,10 @@ that had just added four rows to the declined population and measured the delta 
 `data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree`, on the premise that reaching
 the live tree implies "cannot run in the hermetic frame this floor folds".
 
-That premise is false, and had been for some time. Hermetic mode carries the **checkout-read
-carve-out** (`v1_interpreter`, the `Filesystem.Read` arm guarded by
-`hermetic_checkout_read_disposition`): a read whose path the disposition *confirms* sits under
-the checkout root, with no `.git` or `target` component below it, **dispatches to a real read** —
+That premise is false, and had been for some time. Hermetic mode carries the **checkout-input
+carve-out** (`v1_interpreter`, the readonly `Filesystem.Read|List` arm guarded by
+`hermetic_checkout_input_disposition`): a readonly filesystem operation whose path the disposition *confirms* sits under
+the checkout root, with no `.git` or `target` component below it, **dispatches to real input access** —
 the commit is the run's deterministic input, so it is input access, not a host effect. Reading
 committed `.dag` and `.rs` sources is exactly that case, and it is what most of the 778 do.
 
