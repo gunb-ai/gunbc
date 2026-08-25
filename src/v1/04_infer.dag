@@ -2235,6 +2235,14 @@ fn type_name_transparently_aliases_to(
 // the confusion instead of inferring it from an absence, so a refusal here always names a
 // spelling the author can point at: the wrapping arm is in the same declaration.
 //
+// THAT REASONING BOUNDS THE PAYLOAD ARM, AND IT DOES NOT BOUND THE WALL. A SECOND ARM WAS ADDED --
+// foreign_concrete_coproduct_where_parent_required, below -- for the case where the actual is a
+// wholly different coproduct rather than one of this one's payloads. It is not the general field-type
+// wall this paragraph declines to build: it does not refuse ANY actual, it refuses only an actual
+// that POSITIVELY RESOLVES to its own concrete coproduct declaration whose arms disagree with this
+// one's. The four representation gaps named above are excluded by construction there and the reasons
+// are written out on that function.
+//
 // NAME IDENTITY IS BORROWED, NOT REBUILT. A first measured version of this wall refused the direct
 // shape (`CppHolder { subject: cpp_inner() }`) and stayed SILENT on the production specimen this
 // lane was given as its acceptance target -- `v2.std.materialize` storing `content_hash(n)` into a
@@ -2276,6 +2284,96 @@ fn coproduct_variant_payload_admits_type_name(
       payload_name != "" && names_agree
     )
   )
+}
+
+// A FOREIGN CONCRETE COPRODUCT WHERE THIS COPRODUCT IS DECLARED -- the second arm of the same wall,
+// established the same way and admitted on the same argument.
+//
+// The payload arm above refuses an actual that is one of the FORMAL'S OWN variant payload types. It
+// says nothing about an actual that is a wholly DIFFERENT coproduct, and the field seam judged that
+// by nothing: measured by execution on the pre-arm binary, a field declared `DcpAlpha` initialised
+// from a fn returning `DcpBeta` compiled with 0 diagnostics, exactly as the payload shape did before
+// #8876. The live specimen is gunbc#9215's: `decode_commit_members` wrapped a `MemberReadRefusal`
+// into `RepositoryDecodeClosureDocRefusal`, whose field is declared `ClosureDocRefusal`, and the
+// correct arm sat three lines away in the same match.
+//
+// WHY THIS IS THE CONFORMANCE NOTE'S OWN ARGUMENT AND NOT AN EXEMPTION TO IT.
+// declared_type_conformance_note widened from a ground kernel scalar to a ground element collection
+// on the grounds that no alias, brand, coproduct, anonymous-literal or cardinality representation
+// stands between the two sides, so a name difference IS a real difference. Two RESOLVED nominal
+// coproducts meet that same test, and each of the note's four measured false-positive classes is
+// excluded by construction rather than carved out: (1) optionality is excluded on both sides by the
+// caller's cardinality guard and by the `Optional` carrier exclusion; (2) a brand alias does not
+// resolve to a `Disj` declaration, so it never reaches this arm, and a TRANSPARENT alias of the same
+// coproduct is settled by `transparent_alias_identity_agrees` before it; (3) an anonymous record
+// literal has no authored name, and this arm requires both sides to resolve BY NAME to a
+// declaration; (4) cardinality is read from the nodes the seam already holds, not rebuilt.
+//
+// AND EXPANSION DEPTH -- the class that inflated the conformance frontier from 1566 to 3005, one
+// type compared against itself at two depths -- is refused POSITIVELY rather than assumed away:
+// `coproduct_variant_name_sets_differ` requires the two declarations to disagree about their own
+// arms. Two spellings of one coproduct have identical variant sets and are silently admitted here,
+// whatever their names or depths. That is what makes this arm establishment rather than inference
+// from an absence, and it is the same discipline the payload arm uses when it requires the actual to
+// BE one of the formal's declared payload types.
+//
+// KERNEL NAMES ARE EXCLUDED ON BOTH SIDES, and that is a DISJOINTNESS condition between walls, not a
+// carve-out. `dag/std/types.dag` declares `type Bool = True | False`, so `Bool` is simultaneously a
+// kernel type and a declared coproduct, and `dag/std/bit.dag` declares `type Bit = Bool`. Kernel
+// scalars are already `kernel_value_declared_type_mismatch`'s judgment at this very seam; letting
+// this arm judge them too would be two authorities for one fact, and the disagreement would surface
+// as a refusal on correct code. The exclusion is applied to the alias REPRESENTATIVE as well as the
+// authored name, because `Bit` is the one alias in the corpus that names a coproduct.
+//
+// COST. Two map lookups and a walk bounded by the two declarations' own arm counts. Nothing is
+// re-derived from normalized structure and nothing is denominated in the corpus.
+fn coproduct_variant_name_sets_differ(
+  left: Node,
+  right: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  let counts_differ = (left.children |> count) != (right.children |> count)
+  let left_has_unmatched = left.children |> any(v =>
+    has_child_named(n: right, name: authored_name_at(source_indices: source_indices, node: v), source_indices: source_indices) == false)
+  counts_differ || left_has_unmatched
+}
+
+fn coproduct_name_is_kernel_or_optional_carrier(name: String) -> Bool {
+  let last = qualified_last_segment(name: name)
+  last == "" || last == "Optional" || is_kernel_type(name: last)
+}
+
+fn foreign_concrete_coproduct_where_parent_required(
+  formal_decl: Node,
+  formal_name: String,
+  actual_name: String,
+  actual_rep: String,
+  scope: InferScope
+) -> Bool {
+  let source_indices = scope.type_env.source_indices
+  if coproduct_name_is_kernel_or_optional_carrier(name: formal_name)
+    || coproduct_name_is_kernel_or_optional_carrier(name: actual_name)
+    || (actual_rep != "" && coproduct_name_is_kernel_or_optional_carrier(name: actual_rep)) {
+    false
+  } else {
+    match lookup_type_by_name(env: scope.type_env, name: actual_name) {
+      Absent => false
+      Present { value: actual_decl } =>
+        let actual_is_concrete_coproduct = actual_decl.connective == Disj
+          && (actual_decl.params |> count) == 0
+          && (actual_decl.children |> count) > 0
+        let actual_decl_name = authored_name_at(source_indices: source_indices, node: actual_decl)
+        let resolved_name_is_kernel = actual_decl_name != ""
+          && coproduct_name_is_kernel_or_optional_carrier(name: actual_decl_name)
+        let formal_is_variant_of_actual = has_child_named(
+          n: actual_decl, name: qualified_last_segment(name: formal_name), source_indices: source_indices)
+        actual_is_concrete_coproduct
+          && resolved_name_is_kernel == false
+          && formal_is_variant_of_actual == false
+          && coproduct_variant_name_sets_differ(
+            left: formal_decl, right: actual_decl, source_indices: source_indices)
+    }
+  }
 }
 
 // The wall's decision procedure, over the record-literal field seam's own formal/actual pair.
@@ -2332,6 +2430,12 @@ fn coproduct_payload_where_parent_required(
               type_env: scope.type_env,
               module_name: scope.module_name,
               source_indices: source_indices)
+              || foreign_concrete_coproduct_where_parent_required(
+                formal_decl: decl,
+                formal_name: formal_name,
+                actual_name: actual_name,
+                actual_rep: actual_rep,
+                scope: scope)
           }
         Absent => false
       }
