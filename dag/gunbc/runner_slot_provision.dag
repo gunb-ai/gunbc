@@ -31,7 +31,6 @@ import extdeps.github.actions_runner {
   actions_runner_cache_dir,
   ActionsRunnerBinaryArtifact,
   actions_runner_release_2_334_0,
-  actions_runner_base_dir,
   actions_runner_base_dir_ensure_script,
   actions_runner_slot_extract_script,
 }
@@ -39,7 +38,6 @@ import product.placement_supply { HostIdentity }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.runner_slot_allocation { identity_is_fabric_execution_member }
 import gunbc.fleet_host_budget { declared_runner_count_for }
-import gunbc.fleet_posix_accounts { ci_runner_sudo_binary_path, SudoInstall, SudoRm }
 import gunbc.command_runner {
   ProcessOutcome,
   ProcessOutputPresent,
