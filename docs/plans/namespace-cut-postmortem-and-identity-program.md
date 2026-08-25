@@ -1715,6 +1715,31 @@ author could have written would have caught it** — it took the real corpus —
 diff.** So the arm is not a review practice or a better-witness practice; it is
 a different instrument, and nothing cheaper substitutes.
 
+**THE ARM IS PER-STAGE, NOT ONE INSTRUMENT, AND THE STAGES HAVE DIFFERENT
+DENOMINATORS.** `crisp-crab-430` bounded this on their own passing PR rather
+than banking the coverage, which is the version to hold:
+
+| a fix in… | its arm | denominator |
+|---|---|---|
+| resolve / typecheck | floor strict preparation | **3930 modules** — full |
+| parse | the parse phase, three source roots | full |
+| **emission** | regen's closure + the one v2-emission entry | **135 modules + 1 entry — partial, and the gap is declared** |
+
+So a fix must get the arm *for the stage it changes*, and "green CI" is not the
+claim. #9199 is an emitter fix that passed the strongest emitter arm that
+currently exists; the honest statement is **"it passed the arm that exists"**,
+not "it is corpus-clean". Reading its green as whole-corpus coverage is
+reachability-read-as-occupancy again — the phase exists, it ran, and its
+denominator is 135 rather than 3930.
+
+This also explains why #9200 *was* caught: it is an INFERENCE fix, so its
+regression landed in the one stage that has full corpus coverage. **Had the
+same class of mistake been made in the emitter, the arm would have had roughly
+a 96% chance of not containing the victim.** That is a stronger argument for
+closing DESIGN's declared emit-over-closures gap than anything derivable from
+the gap itself — the gap's cost is not "some diagnostics hide", it is "the
+invariant above is unenforceable in exactly one stage".
+
 The same requirement arrived independently the same day from the opposite
 direction: the coproduct-field widening (§11.2b's neighbour) is admissible only
 at zero false positives over `dag/` + `src/v2`, because `declared_type_conformance_note`
