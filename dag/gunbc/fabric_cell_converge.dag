@@ -540,7 +540,16 @@ fn fabric_cell_observed_member_at(ref: FabricCellAddressRef, state_digest: NonEm
 }
 
 type FabricCellAddressStanding
-  = StandingSatisfied { address: FabricCellResourceAddress, member: FabricCellMember }
+//
+// THE SATISFIED ARM CARRIES A REF AND NOTHING ELSE, FOR THE REASON THE DRIFT ARM DOES. An earlier
+// cut wrote `StandingSatisfied { address, member }`, where `member` already contains that address
+// -- two writable copies of one coordinate, which every consumer discarded one of and which the
+// variant permitted to disagree (codex review 55704). The repair is not to drop the duplicated
+// field and keep the member: `satisfied` MEANS the observed digest equals the desired one, so the
+// whole member is a function of the ref, and carrying it stores a value the ref already decides.
+// Both parallel copies go, and the three non-blocked arms now read as one shape -- a ref, plus
+// exactly the fact the ref does not determine.
+  = StandingSatisfied { ref: FabricCellAddressRef }
   | StandingObservedDrift { ref: FabricCellAddressRef, observed_state_digest: NonEmptyStr }
   | StandingExplicitlyAbsent { ref: FabricCellAddressRef }
   | StandingBlocked { disposition: FabricCellAddressDisposition }
@@ -556,7 +565,7 @@ fn fabric_cell_address_standing(
     AddressUnobserved { ref: _ } => StandingBlocked { disposition: d }
     AddressPresent { ref: r, member: m } =>
       if (m.state_digest as String) == (fabric_cell_desired_state_digest(slot: r.slot, address: r.address) as String) {
-        StandingSatisfied { address: r.address, member: m }
+        StandingSatisfied { ref: r }
       } else {
         StandingObservedDrift { ref: r, observed_state_digest: m.state_digest }
       }
@@ -839,7 +848,7 @@ fn fabric_cell_population(readback: FabricCellHostReadback) -> FabricCellPopulat
       StandingBlocked { disposition: d } => concat(acc, [ExpectedAddressBlocked { disposition: d }])
       StandingObservedDrift { ref: _, observed_state_digest: _ } => acc
       StandingExplicitlyAbsent { ref: _ } => acc
-      StandingSatisfied { address: _, member: _ } => acc
+      StandingSatisfied { ref: _ } => acc
     })
   let blocked = concat(
     blocked_addresses,
@@ -853,7 +862,11 @@ fn fabric_cell_population(readback: FabricCellHostReadback) -> FabricCellPopulat
   } else {
     let satisfied_members = fold(standings, init: [], f: (acc, st) =>
       match st {
-        StandingSatisfied { address: _, member: m } => concat(acc, [m])
+        StandingSatisfied { ref: r } =>
+          concat(acc, [fabric_cell_observed_member_at(
+            ref: r,
+            state_digest: fabric_cell_desired_state_digest(slot: r.slot, address: r.address),
+          )])
         StandingObservedDrift { ref: r, observed_state_digest: g } =>
           concat(acc, [fabric_cell_observed_member_at(ref: r, state_digest: g)])
         StandingExplicitlyAbsent { ref: _ } => acc
@@ -884,7 +897,7 @@ fn fabric_cell_substrate_verdict(readback: FabricCellReadback) -> FabricCellSubs
       StandingBlocked { disposition: d } => concat(acc, [d])
       StandingObservedDrift { ref: _, observed_state_digest: _ } => acc
       StandingExplicitlyAbsent { ref: _ } => acc
-      StandingSatisfied { address: _, member: _ } => acc
+      StandingSatisfied { ref: _ } => acc
     })
   if list_length(items: blocked) > 0 {
     FabricCellSubstrateObservationRefused { cell: cell, blocked: blocked }
@@ -895,7 +908,7 @@ fn fabric_cell_substrate_verdict(readback: FabricCellReadback) -> FabricCellSubs
           concat(acc, [AddressPresent { ref: r, member: fabric_cell_observed_member_at(ref: r, state_digest: g) }])
         StandingExplicitlyAbsent { ref: r } => concat(acc, [AddressMissingOnHost { ref: r }])
         StandingBlocked { disposition: d } => concat(acc, [d])
-        StandingSatisfied { address: _, member: _ } => acc
+        StandingSatisfied { ref: _ } => acc
       })
     if list_length(items: unmet) > 0 {
       FabricCellSubstrateUnprovisioned { cell: cell, missing_or_drifted: unmet }
