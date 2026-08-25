@@ -343,7 +343,7 @@ fn join_runner_local_standing(
           StandingUndecidable {
             cause: concat("the unit was not observed, so no local standing can be decided: ", c as String) as NonEmptyStr,
           }
-        UnitNotLoaded { unit: u } =>
+        UnitNotLoaded { unit: _ } =>
           standing_for_stopped_slot(slot: slot, population: population.listeners)
         UnitLoaded { unit: _, enabled: _, active_state: st, control_group: _, main_process: _ } =>
           standing_for_active_state(slot: slot, active_state: st, settling: settling, population: population.listeners)
