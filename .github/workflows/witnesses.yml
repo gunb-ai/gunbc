@@ -76,3 +76,8 @@ jobs:
           if-no-files-found: error
           retention-days: 14
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
+      - name: Every v1-compiler binary target compiles
+        id: build_all_binary_targets
+        run: |
+          cargo build --release -p v1-compiler
+        if: "!cancelled()"
