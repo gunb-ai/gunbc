@@ -1701,6 +1701,52 @@ carrier does not exist. So this is not an unrouted repair; it is a repair whose
 is not laziness but the only callable form. The other two have every input
 present and want a routing edge; this one wants a carrier that was never built.
 
+**The buckets were re-sorted on challenge, and the challenge was refuted by
+measurement — which is the only reason the sort is worth trusting.**
+`warm-hawk-909` objected that instance 1 was mis-filed as a routing case (its
+predicate takes a `String`, and C0 — what declaration fact denotes a brand — is
+precisely a fact nobody built), and speculated that if `sole_constructor` also
+turned out to want a fact, the routing bucket would be **empty**, which would
+say the tree does not produce dormant repairs by forgetting an edge but by
+shipping capability ahead of the model it consumes. That is a stronger claim
+than the class made, so it was checked rather than adopted.
+
+It does not hold, and the disconfirming evidence sits in the same file as the
+defect. `05_emit_rust.dag` calls `find_property(props: n.properties, …)` **29
+times**, so reading a declaration property at emission is routine and
+exercised. `sole_constructor` is stored exactly that way — `04_infer.dag`
+consumes it as `decl.properties |> any(p => p.name == "sole_constructor")` —
+so emission consuming it is one more call of a form the file already makes 29
+times. That is a real routing edge, and the bucket is not empty.
+
+The same measurement re-sorts instance 1 more precisely than either of us had
+it. Twelve lines below the broken predicate sits
+`rust_nominal_ord_type_decl_ord_eligible(decl: Node, source_indices)` — an
+eligibility predicate **that already takes a `Node`**, which is exactly the
+shape C0 requires. So the emitter-side mechanism is not missing; the
+correctly-shaped sibling is adjacent to the mis-shaped one. What is missing for
+brands is upstream, in the model: `type Brand = String` admits
+`take_string(s: b)` with zero diagnostics, so there is no distinction for any
+predicate to read.
+
+**So the axis is not *routing edge vs model fact*, it is WHERE the missing
+piece lives**, and the three instances land in three different places rather
+than two:
+
+| instance | fact | carrier | consumer can read it | missing piece |
+|---|---|---|---|---|
+| `sole_constructor` | authored ×79 | node property | yes — 29 existing calls | the edge |
+| nominal identity | none | — | yes, sibling proves it | the **model distinction** |
+| `char_at_ascii_aware` | — | **`RcStr` does not exist** | n/a | the **carrier** |
+
+A missing edge is an afternoon. A missing distinction is a language change. A
+missing carrier is a representation change that closes six entry points at
+once — `scan_while`, `skip_horizontal_ws`, `scan_to_eol`, `scan_string_end`,
+`substring` and `char_at` all route through the same bridge table to plain
+entry points whose bodies open with `if s.is_ascii()`. Anyone sizing that lane
+by counting `char_at` references is measuring the wrong symbol: the denominator
+is calls to any of the six.
+
 The operative rule, and it applies before any lane sizes a population:
 **ask whether the mechanism already exists and is merely unrouted — and if it
 is, ask whether the thing that would route to it exists either.** A dormant
