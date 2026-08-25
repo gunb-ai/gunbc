@@ -3598,22 +3598,152 @@ impl CallArgumentFormalSelection {
     }
 }
 
+pub fn call_argument_label_selects_formal_index(
+    label: String,
+    formal_index: i64,
+    value_params: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for candidate in Rc::new(
+            value_params
+                .clone()
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, v)| (i as i64, v))
+                .collect::<Vec<_>>(),
+        )
+        .iter()
+        .cloned()
+        {
+            if {
+                let mut __found = false;
+                for caller_label in call_param_caller_labels(authored_name_at(
+                    source_indices.clone(),
+                    candidate.1.clone(),
+                ))
+                .iter()
+                .cloned()
+                {
+                    if (caller_label.clone() == label.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                __result.push(candidate);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(named) => (named.0.clone() == formal_index.clone()),
+        None => false,
+    }
+}
+
+pub fn call_formal_claimed_by_a_label(
+    formal_index: i64,
+    arguments: Rc<Vec<Rc<Node>>>,
+    value_params: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let mut __found = false;
+        for other in arguments.iter().cloned() {
+            if match arg_name_at(other.clone(), source_indices.clone()) {
+                Some(label) => call_argument_label_selects_formal_index(
+                    label.clone(),
+                    formal_index.clone(),
+                    value_params.clone(),
+                    source_indices.clone(),
+                ),
+                None => false,
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn call_argument_positional_rank(
+    arguments: Rc<Vec<Rc<Node>>>,
+    argument_index: i64,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> i64 {
+    (Rc::new({
+        let mut __result = Vec::new();
+        for other in Rc::new(
+            arguments
+                .clone()
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, v)| (i as i64, v))
+                .collect::<Vec<_>>(),
+        )
+        .iter()
+        .cloned()
+        {
+            if ((other.0.clone() < argument_index.clone())
+                && match arg_name_at(other.1.clone(), source_indices.clone()) {
+                    Some(_) => false,
+                    None => true,
+                })
+            {
+                __result.push(other);
+            }
+        }
+        __result
+    })
+    .len() as i64)
+}
+
 pub fn call_argument_formal_at_position(
+    arguments: Rc<Vec<Rc<Node>>>,
     value_params: Rc<Vec<Rc<Node>>>,
     argument_index: i64,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<CallArgumentFormalSelection> {
-    match Rc::new(
-        value_params
-            .clone()
-            .iter()
-            .cloned()
-            .enumerate()
-            .map(|(i, v)| (i as i64, v))
-            .collect::<Vec<_>>(),
-    )
+    match Rc::new({
+        let mut __result = Vec::new();
+        for candidate in Rc::new(
+            value_params
+                .clone()
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, v)| (i as i64, v))
+                .collect::<Vec<_>>(),
+        )
+        .iter()
+        .cloned()
+        {
+            if !call_formal_claimed_by_a_label(
+                candidate.0.clone(),
+                arguments.clone(),
+                value_params.clone(),
+                source_indices.clone(),
+            ) {
+                __result.push(candidate);
+            }
+        }
+        __result
+    })
     .iter()
     .cloned()
-    .skip(argument_index.clone() as usize)
+    .skip(call_argument_positional_rank(
+        arguments.clone(),
+        argument_index.clone(),
+        source_indices.clone(),
+    ) as usize)
     .next()
     {
         Some(positional) => Rc::new(CallArgumentFormalSelection::CallArgumentFormalSelected {
@@ -3627,6 +3757,7 @@ pub fn call_argument_formal_at_position(
 pub fn select_formal_for_call_argument(
     argument: Rc<Node>,
     argument_index: i64,
+    arguments: Rc<Vec<Rc<Node>>>,
     value_params: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<CallArgumentFormalSelection> {
@@ -3673,9 +3804,19 @@ pub fn select_formal_for_call_argument(
                 formal_index: named.0.clone(),
                 formal: named.1.clone(),
             }),
-            None => call_argument_formal_at_position(value_params.clone(), argument_index.clone()),
+            None => call_argument_formal_at_position(
+                arguments.clone(),
+                value_params.clone(),
+                argument_index.clone(),
+                source_indices.clone(),
+            ),
         },
-        None => call_argument_formal_at_position(value_params.clone(), argument_index.clone()),
+        None => call_argument_formal_at_position(
+            arguments.clone(),
+            value_params.clone(),
+            argument_index.clone(),
+            source_indices.clone(),
+        ),
     }
 }
 
@@ -3683,12 +3824,14 @@ pub fn call_argument_selects_formal_index(
     argument: Rc<Node>,
     argument_index: i64,
     formal_index: i64,
+    arguments: Rc<Vec<Rc<Node>>>,
     value_params: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match (*select_formal_for_call_argument(
         argument.clone(),
         argument_index.clone(),
+        arguments.clone(),
         value_params.clone(),
         source_indices.clone(),
     ))
@@ -3778,6 +3921,7 @@ pub fn build_call_application_plan(
                                     candidate.1.clone(),
                                     candidate.0.clone(),
                                     pair.0.clone(),
+                                    typed_args.clone(),
                                     value_params.clone(),
                                     source_indices.clone(),
                                 ) {
@@ -4427,10 +4571,10 @@ pub fn direct_call_shape_diags(
             .iter()
             .cloned()
             {
-                __result.extend((*match (*select_formal_for_call_argument(pair.1.clone(), pair.0.clone(), sig_params.clone(), source_indices.clone())).clone() {
+                __result.extend((*match (*select_formal_for_call_argument(pair.1.clone(), pair.0.clone(), typed_args.clone(), sig_params.clone(), source_indices.clone())).clone() {
     CallArgumentFormalSelection::CallArgumentFormalSelected { formal_index: mine, formal: chosen, .. } => {
             let my_label = arg_name_at(pair.1.clone(), source_indices.clone());
-let earlier_same_formal = { let mut __found = false; for other in Rc::new(typed_args.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (((other.0.clone() < pair.0.clone()) && !(arg_name_at(other.1.clone(), source_indices.clone()).as_deref() == my_label.clone().as_deref())) && match (*select_formal_for_call_argument(other.1.clone(), other.0.clone(), sig_params.clone(), source_indices.clone())).clone() {
+let earlier_same_formal = { let mut __found = false; for other in Rc::new(typed_args.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (((other.0.clone() < pair.0.clone()) && !(arg_name_at(other.1.clone(), source_indices.clone()).as_deref() == my_label.clone().as_deref())) && match (*select_formal_for_call_argument(other.1.clone(), other.0.clone(), typed_args.clone(), sig_params.clone(), source_indices.clone())).clone() {
     CallArgumentFormalSelection::CallArgumentFormalSelected { formal_index: theirs, .. } => (theirs.clone() == mine.clone()),
     CallArgumentFormalSelection::CallArgumentFormalUnavailable => false,
 }) { __found = true; break; } } __found };
@@ -6972,7 +7116,7 @@ pub fn infer_expr_body(
     subst: v1_rt::rc_empty_map::<String, Rc<Node>>(),
 }), |st: Rc<ArgGenericFoldState>, pair: (i64, Rc<Node>)| {
                         let a = pair.1.clone();
-let formal_selection = select_formal_for_call_argument(a.clone(), pair.0.clone(), value_params.clone(), scope.type_env.clone().source_indices.clone());
+let formal_selection = select_formal_for_call_argument(a.clone(), pair.0.clone(), call_args.clone(), value_params.clone(), scope.type_env.clone().source_indices.clone());
 let formal_raw = match (*formal_selection.clone()).clone() {
     CallArgumentFormalSelection::CallArgumentFormalSelected { formal: p, .. } => param_node_type_expr(p.clone()),
     CallArgumentFormalSelection::CallArgumentFormalUnavailable => type_variable_node("callable_param".to_string()),

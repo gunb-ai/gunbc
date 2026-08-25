@@ -2416,25 +2416,49 @@ data call_argument_formal_selection_note: String = "SINGLE AUTHORITY (DESIGN §3
 
 type CallArgumentFormalSelection = CallArgumentFormalSelected { formal_index: Int, formal: Node } | CallArgumentFormalUnavailable
 
-fn call_argument_formal_at_position(value_params: List<Node>, argument_index: Int) -> CallArgumentFormalSelection {
-  match value_params |> enumerate |> skip(argument_index) |> first {
+fn call_argument_label_selects_formal_index(label: String, formal_index: Int, value_params: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match value_params |> enumerate |> filter(candidate => call_param_caller_labels(param_name: authored_name_at(source_indices: source_indices, node: candidate.second)) |> any(caller_label => caller_label == label)) |> first {
+    Present { value: named } => named.first == formal_index
+    Absent => false
+  }
+}
+
+fn call_formal_claimed_by_a_label(formal_index: Int, arguments: List<Node>, value_params: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  arguments |> any(other =>
+    match arg_name_at(n: other, source_indices: source_indices) {
+      Present { value: label } => call_argument_label_selects_formal_index(label: label, formal_index: formal_index, value_params: value_params, source_indices: source_indices)
+      Absent => false
+    })
+}
+
+fn call_argument_positional_rank(arguments: List<Node>, argument_index: Int, source_indices: Map<String, NewlineIndex>) -> Int {
+  arguments |> enumerate |> filter(other =>
+    other.first < argument_index
+      && match arg_name_at(n: other.second, source_indices: source_indices) {
+           Present { value: _ } => false
+           Absent => true
+         }) |> count
+}
+
+fn call_argument_formal_at_position(arguments: List<Node>, value_params: List<Node>, argument_index: Int, source_indices: Map<String, NewlineIndex>) -> CallArgumentFormalSelection {
+  match value_params |> enumerate |> filter(candidate => !call_formal_claimed_by_a_label(formal_index: candidate.first, arguments: arguments, value_params: value_params, source_indices: source_indices)) |> skip(call_argument_positional_rank(arguments: arguments, argument_index: argument_index, source_indices: source_indices)) |> first {
     Present { value: positional } => CallArgumentFormalSelected { formal_index: positional.first, formal: positional.second }
     Absent => CallArgumentFormalUnavailable
   }
 }
 
-fn select_formal_for_call_argument(argument: Node, argument_index: Int, value_params: List<Node>, source_indices: Map<String, NewlineIndex>) -> CallArgumentFormalSelection {
+fn select_formal_for_call_argument(argument: Node, argument_index: Int, arguments: List<Node>, value_params: List<Node>, source_indices: Map<String, NewlineIndex>) -> CallArgumentFormalSelection {
   match arg_name_at(n: argument, source_indices: source_indices) {
     Present { value: label } => match value_params |> enumerate |> filter(candidate => call_param_caller_labels(param_name: authored_name_at(source_indices: source_indices, node: candidate.second)) |> any(caller_label => caller_label == label)) |> first {
       Present { value: named } => CallArgumentFormalSelected { formal_index: named.first, formal: named.second }
-      Absent => call_argument_formal_at_position(value_params: value_params, argument_index: argument_index)
+      Absent => call_argument_formal_at_position(arguments: arguments, value_params: value_params, argument_index: argument_index, source_indices: source_indices)
     }
-    Absent => call_argument_formal_at_position(value_params: value_params, argument_index: argument_index)
+    Absent => call_argument_formal_at_position(arguments: arguments, value_params: value_params, argument_index: argument_index, source_indices: source_indices)
   }
 }
 
-fn call_argument_selects_formal_index(argument: Node, argument_index: Int, formal_index: Int, value_params: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  match select_formal_for_call_argument(argument: argument, argument_index: argument_index, value_params: value_params, source_indices: source_indices) {
+fn call_argument_selects_formal_index(argument: Node, argument_index: Int, formal_index: Int, arguments: List<Node>, value_params: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match select_formal_for_call_argument(argument: argument, argument_index: argument_index, arguments: arguments, value_params: value_params, source_indices: source_indices) {
     CallArgumentFormalSelected { formal_index: selected, formal: _ } => selected == formal_index
     CallArgumentFormalUnavailable => false
   }
@@ -2469,7 +2493,7 @@ fn build_call_application_plan(
         param_name: param_name,
         formal_subst: formal_subst,
         formal: peel_nominal_alias_identity(n: formal_subst, env: type_env, module_name: module_name),
-        matched_arg: match typed_args |> enumerate |> filter(candidate => call_argument_selects_formal_index(argument: candidate.second, argument_index: candidate.first, formal_index: pair.first, value_params: value_params, source_indices: source_indices)) |> first {
+        matched_arg: match typed_args |> enumerate |> filter(candidate => call_argument_selects_formal_index(argument: candidate.second, argument_index: candidate.first, formal_index: pair.first, arguments: typed_args, value_params: value_params, source_indices: source_indices)) |> first {
           Present { value: bound } => Present { value: bound.second }
           Absent => none
         }
@@ -2742,13 +2766,13 @@ fn direct_call_shape_diags(func_name: String, sig_params: List<Node>, typed_args
       Absent => []
     })
   let formal_identity_duplicate_diags = typed_args |> enumerate |> flat_map(pair =>
-    match select_formal_for_call_argument(argument: pair.second, argument_index: pair.first, value_params: sig_params, source_indices: source_indices) {
+    match select_formal_for_call_argument(argument: pair.second, argument_index: pair.first, arguments: typed_args, value_params: sig_params, source_indices: source_indices) {
       CallArgumentFormalSelected { formal_index: mine, formal: chosen } =>
         let my_label = arg_name_at(n: pair.second, source_indices: source_indices)
         let earlier_same_formal = typed_args |> enumerate |> any(other =>
                other.first < pair.first
                  && !(arg_name_at(n: other.second, source_indices: source_indices) == my_label)
-                 && match select_formal_for_call_argument(argument: other.second, argument_index: other.first, value_params: sig_params, source_indices: source_indices) {
+                 && match select_formal_for_call_argument(argument: other.second, argument_index: other.first, arguments: typed_args, value_params: sig_params, source_indices: source_indices) {
                       CallArgumentFormalSelected { formal_index: theirs, formal: _ } => theirs == mine
                       CallArgumentFormalUnavailable => false
                     })
@@ -4010,7 +4034,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         let generic_names = call_sig_split.generic_names
         let final_state = fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: empty_map() }, f: (st, pair) =>
           let a = pair.second
-          let formal_selection = select_formal_for_call_argument(argument: a, argument_index: pair.first, value_params: value_params, source_indices: scope.type_env.source_indices)
+          let formal_selection = select_formal_for_call_argument(argument: a, argument_index: pair.first, arguments: call_args, value_params: value_params, source_indices: scope.type_env.source_indices)
           let formal_raw = match formal_selection {
             CallArgumentFormalSelected { formal_index: _, formal: p } => param_node_type_expr(n: p)
             CallArgumentFormalUnavailable => type_variable_node(id: "callable_param")
