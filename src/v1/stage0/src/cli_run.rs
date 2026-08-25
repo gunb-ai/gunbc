@@ -7100,18 +7100,18 @@ pub enum CompileDisposition {
     },
 }
 
-impl EntryEmissionDisposition {
+impl CompileDisposition {
     /// The single word every rendering of this run carries, so one line is self-describing.
     pub fn tag(&self) -> &'static str {
         match self {
-            EntryEmissionDisposition::Completed { .. } => "EmissionCompleted",
-            EntryEmissionDisposition::Refused { .. } => "EmissionRefused",
-            EntryEmissionDisposition::NotExecuted { .. } => "EmissionNotExecuted",
+            CompileDisposition::Completed { .. } => "EmissionCompleted",
+            CompileDisposition::Refused { .. } => "EmissionRefused",
+            CompileDisposition::NotExecuted { .. } => "EmissionNotExecuted",
         }
     }
 
     pub fn is_completed(&self) -> bool {
-        matches!(self, EntryEmissionDisposition::Completed { .. })
+        matches!(self, CompileDisposition::Completed { .. })
     }
 }
 
@@ -7119,6 +7119,16 @@ impl EntryEmissionDisposition {
 /// disposition, because a stopped line is analysed before it restarts (DESIGN §5) -- but
 /// they are reported BESIDE a disposition that says which state produced them, never in
 /// place of one.
+/// One render target's emission from a shared resolution.
+#[derive(Debug, Clone)]
+pub struct TargetEmission {
+    /// The target's AUTHORED name (`rust`, `dag`), carried because a multi-target caller
+    /// writes each target to its own subdirectory and cannot derive that name from the
+    /// `RenderTarget` value without a second naming authority.
+    pub target_name: String,
+    pub result: Rc<v1_compiler_compile::PipelineResult>,
+}
+
 #[derive(Debug, Clone)]
 pub struct CompileRun {
     /// WHAT THIS RUN WAS ABOUT. Named `entry: String` until the subject coproduct landed, at
@@ -7131,9 +7141,15 @@ pub struct CompileRun {
     pub blocking_diagnostics: usize,
     pub advisory_diagnostics: usize,
     pub wall_ms: u128,
-    pub disposition: EntryEmissionDisposition,
-    /// `None` exactly when the disposition is `NotExecuted` -- there is no result to hold.
-    pub result: Option<Rc<v1_compiler_compile::PipelineResult>>,
+    pub disposition: CompileDisposition,
+    /// ONE ENTRY PER REQUESTED RENDER TARGET, in the order the request named them. Empty
+    /// exactly when the disposition is `NotExecuted` -- there is no emission to hold.
+    ///
+    /// This was `result: Option<..>` while the transaction took ONE target, and the shape is
+    /// what forced multi-target callers to stay outside the transaction on a second pipeline.
+    /// Resolution is shared across targets (`compile_to_resolved_with_options` runs once);
+    /// only emission is per target, which is the whole reason `--target rust,dag` exists.
+    pub emissions: Vec<TargetEmission>,
     pub silent_pick: crate::v1_rt::SilentPickTelemetry,
 }
 
@@ -7148,23 +7164,26 @@ impl CompileRun {
             self.closure_modules,
             self.census_modules,
             match &self.disposition {
-                EntryEmissionDisposition::Completed { emitted_count } => emitted_count.to_string(),
+                CompileDisposition::Completed { emitted_count } => emitted_count.to_string(),
                 // NOT "0": a transaction that never ran has no emitted count, and a zero
                 // there reads as a clean empty emission to anything summing the column.
-                EntryEmissionDisposition::Refused { .. } => self
-                    .result
-                    .as_ref()
-                    .map(|r| r.files.len().to_string())
-                    .unwrap_or_else(|| "n/a".to_string()),
-                EntryEmissionDisposition::NotExecuted { .. } => "n/a".to_string(),
+                CompileDisposition::Refused { .. } if self.emissions.is_empty() =>
+                    "n/a".to_string(),
+                CompileDisposition::Refused { .. } => self
+                    .emissions
+                    .iter()
+                    .map(|emission| emission.result.files.len())
+                    .sum::<usize>()
+                    .to_string(),
+                CompileDisposition::NotExecuted { .. } => "n/a".to_string(),
             },
             match self.disposition {
-                EntryEmissionDisposition::NotExecuted { .. } =>
+                CompileDisposition::NotExecuted { .. } =>
                     "n/a".to_string(),
                 _ => self.blocking_diagnostics.to_string(),
             },
             match self.disposition {
-                EntryEmissionDisposition::NotExecuted { .. } =>
+                CompileDisposition::NotExecuted { .. } =>
                     "n/a".to_string(),
                 _ => self.advisory_diagnostics.to_string(),
             },
@@ -7190,9 +7209,9 @@ impl CompileRun {
 mod entry_admission_tests {
     use super::*;
 
-    fn cause_of(run: &EntryEmissionRun) -> (String, String) {
+    fn cause_of(run: &CompileRun) -> (String, String) {
         match &run.disposition {
-            EntryEmissionDisposition::NotExecuted {
+            CompileDisposition::NotExecuted {
                 earlier_phase,
                 cause,
             } => (earlier_phase.clone(), cause.clone()),
@@ -7269,6 +7288,83 @@ mod entry_admission_tests {
         let _ = std::fs::remove_file(&outside);
     }
 
+    /// THE MULTI-TARGET REGRESSION, HELD AT THE TRANSACTION.
+    ///
+    /// `--target rust+dag` over a `--source-root` argv used to fall past the routing gate --
+    /// which conjoined the subject with `render_targets.len() == 1` -- into a branch whose
+    /// only remaining subject is `--source-dir`, and exited with "provide --source-root or
+    /// --source-dir" over an argv that had provided one.
+    ///
+    /// The gate is deleted rather than corrected, so the fall-through has no spelling; this
+    /// arm holds the property the deletion buys: TWO targets produce TWO emissions from ONE
+    /// resolution, each carrying its own authored name, and both complete. A run that emitted
+    /// only the first target would still satisfy a disposition check, which is why the
+    /// assertion is on the emission set and its names rather than on `Completed`.
+    #[test]
+    fn two_render_targets_emit_twice_from_one_resolution() {
+        let run = compile_emission(&CompileRequest {
+            subject: CompileSubject::Entry(
+                "fixtures/v2_emission_gate/green/subject.dag".to_string(),
+            ),
+            source_roots: vec!["fixtures/v2_emission_gate/green".to_string()],
+            primary_precedence: true,
+            render_targets: vec![
+                (
+                    "rust".to_string(),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                ),
+                (
+                    "dag".to_string(),
+                    crate::v1_compiler_artifact::RenderTarget::Dag,
+                ),
+            ],
+        });
+        assert!(
+            matches!(run.disposition, CompileDisposition::Completed { .. }),
+            "the two-target request must execute, not refuse: {:?}",
+            run.disposition.tag()
+        );
+        let names: Vec<String> = run
+            .emissions
+            .iter()
+            .map(|emission| emission.target_name.clone())
+            .collect();
+        assert_eq!(
+            names,
+            vec!["rust".to_string(), "dag".to_string()],
+            "one emission per requested target, in the requested order"
+        );
+        for emission in &run.emissions {
+            assert!(
+                !emission.result.files.is_empty(),
+                "target {} emitted nothing",
+                emission.target_name
+            );
+        }
+    }
+
+    /// The paired RED for the arm above: a request naming NO target refuses, and refuses at
+    /// its own phase. Without this, "resolves a closure and emits nothing" would report
+    /// `Completed { emitted_count: 0 }` -- a run that never reached emission rendered as a
+    /// clean empty one, which is the empty-observation narrow.
+    #[test]
+    fn a_request_naming_no_target_refuses_before_it_resolves() {
+        let run = compile_emission(&CompileRequest {
+            subject: CompileSubject::Entry(
+                "fixtures/v2_emission_gate/green/subject.dag".to_string(),
+            ),
+            source_roots: vec!["fixtures/v2_emission_gate/green".to_string()],
+            primary_precedence: true,
+            render_targets: Vec::new(),
+        });
+        let (phase, cause) = cause_of(&run);
+        assert_eq!(phase, "target-admission");
+        assert!(
+            cause.contains("names no render target"),
+            "the refusal must say what was missing: {cause}"
+        );
+    }
+
     #[test]
     fn a_missing_entry_keeps_its_own_distinct_refusal() {
         let run = compile_entry_emission(
@@ -7286,12 +7382,12 @@ mod entry_admission_tests {
     }
 }
 
-fn entry_emission_not_executed(
+fn compile_not_executed(
     subject: &CompileSubject,
     started: std::time::Instant,
     earlier_phase: &str,
     cause: String,
-) -> EntryEmissionRun {
+) -> CompileRun {
     CompileRun {
         subject: subject.clone(),
         closure_modules: 0,
@@ -7299,11 +7395,11 @@ fn entry_emission_not_executed(
         blocking_diagnostics: 0,
         advisory_diagnostics: 0,
         wall_ms: started.elapsed().as_millis(),
-        disposition: EntryEmissionDisposition::NotExecuted {
+        disposition: CompileDisposition::NotExecuted {
             earlier_phase: earlier_phase.to_string(),
             cause,
         },
-        result: None,
+        emissions: Vec::new(),
         silent_pick: crate::v1_rt::SilentPickTelemetry::default(),
     }
 }
@@ -7326,8 +7422,18 @@ fn entry_emission_not_executed(
 /// the whole-root arm and not of the entry arm -- an unasked question, not an all-clear. And
 /// the closure derivation genuinely differs: with imports stripped, an entry's cross-module
 /// dependencies are derivable only from its REFERENCES, while for a whole primary root every
-/// module is already an entry, so reference derivation would only over-pull and the import-edge
-/// walk stays the authority.
+/// module under the root is ALREADY in the subject, so nothing inside the root depends on a
+/// derivation at all.
+///
+/// WHAT THE IMPORT WALK IS FOR IN THAT ARM, stated precisely because an earlier revision of
+/// this comment called it "the authority" and that overclaims in a way that matters. It pulls
+/// modules OUT of the root -- from the dependency pool -- and an import edge is a strictly
+/// WEAKER relation than a reference in this corpus: the whole-tree namespace is flat, so a
+/// cross-module reference usually resolves with no import edge at all. So the walk under-pulls
+/// from the pool by construction, and what covers the difference is the census fill, which
+/// puts every remaining indexed module in front of the name census. The import walk is a
+/// cheap over-approximation of what to COMPILE, not the authority on what the subject
+/// DEPENDS on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompileSubject {
     /// One `.dag` file and its reference-derived closure.
@@ -7370,7 +7476,15 @@ pub struct CompileRequest {
     pub subject: CompileSubject,
     pub source_roots: Vec<String>,
     pub primary_precedence: bool,
-    pub render_target: crate::v1_compiler_artifact::RenderTarget,
+    /// EVERY TARGET THIS ONE RESOLUTION IS EMITTED FOR, as (authored name, target). Non-empty
+    /// or the request refuses at `target-admission`: a compile that resolves a closure and
+    /// emits nothing is not an empty compile, it is a run that never reached emission, and
+    /// reporting it `Completed { emitted_count: 0 }` is the empty-observation narrow.
+    ///
+    /// Rust has no non-empty vector in this seed, so the constraint is a refusal rather than
+    /// a constructor; that is the honest rung (mitigatable), and its next-rung trigger is a
+    /// `NonEmptyVec` carrier in `std` that this field can be typed by.
+    pub render_targets: Vec<(String, crate::v1_compiler_artifact::RenderTarget)>,
 }
 
 impl CompileRequest {
@@ -7396,6 +7510,30 @@ impl CompileRequest {
     /// say so by ordering the roots, which makes the disagreement unwritable instead of
     /// merely detectable -- and the required phase constructs its typed request in the binary,
     /// where it is not obliged to inherit the floor's generic argv ordering at all.
+    ///
+    /// IT IS A REFUSAL TO EXECUTE, NOT A COMPILE ERROR, and the distinction is the honest rung.
+    /// The disagreement is still WRITABLE: a caller constructs the two fields independently and
+    /// this checks them afterwards, which is validation standing where construction was
+    /// available (DESIGN §5). Rung: mechanically preventable.
+    ///
+    /// TERMINAL FORM, so the gap is named rather than left to be rediscovered: one carrier,
+    /// `SourcePool { primary, dependencies, index_policy }`, in which the primary root and the
+    /// precedence root are THE SAME FIELD. Under it the disagreement has no spelling and this
+    /// function has nothing to check, which is what dissolution on climb means -- this
+    /// predicate is deleted by that carrier landing, not kept beside it.
+    /// A REQUEST NAMING NO TARGET CANNOT EXECUTE, and this is the refusal rather than a
+    /// vacuous completion.
+    fn names_at_least_one_target(&self) -> Result<(), String> {
+        if self.render_targets.is_empty() {
+            return Err(
+                "the request names no render target -- a resolution with nothing to emit is a \
+                 run that never reached emission, not an empty compile"
+                    .to_string(),
+            );
+        }
+        Ok(())
+    }
+
     fn primary_root_agrees_with_precedence(&self) -> Result<(), String> {
         match &self.subject {
             CompileSubject::Entry(_) => Ok(()),
@@ -7416,20 +7554,18 @@ impl CompileRequest {
     }
 }
 
-/// THE ALIAS DIRECTION IS LOAD-BEARING AND IT WAS BACKWARDS.
+/// THE ENTRY-NAMED ALIASES ARE GONE, AND THAT COMPLETES A RENAME THAT HAD SHIPPED HALF.
 ///
-/// It read `pub type CompileRun = EntryEmissionRun`, which makes the generic name an alias of
-/// the entry-named authority -- so the canonical carrier stays the one named for a subject it
-/// no longer describes, and every reader is sent to a type whose name contradicts two of its
-/// three uses. The direction below is the other way: `CompileRun` IS the type, and the
-/// entry-named spellings are the compatibility aliases that disappear with their last caller.
+/// They were introduced pointing the wrong way -- `pub type CompileRun = CompileRun` --
+/// which makes the generic name an alias of the entry-named authority, so the canonical carrier
+/// stays the one named for a subject it no longer describes. Reversing the direction fixed the
+/// authority but left both spellings live, and two spellings for one type is the §3 violation
+/// the fork closure exists to remove, one layer out: a reader greps `CompileRun`, finds
+/// callers, and concludes the entry-shaped carrier is still a thing.
 ///
 /// Same reason the run carries `subject` rather than an `entry` field. `entry` silently widened
 /// to hold a root, so a consumer reading `run.entry` for a `PrimaryRoot` compile got a
-/// directory from a field that promises a file -- a name meaning two things, which is the §3
-/// violation the fork closure exists to remove, reintroduced one field down.
-pub type EntryEmissionRun = CompileRun;
-pub type EntryEmissionDisposition = CompileDisposition;
+/// directory from a field that promises a file.
 
 /// THE EMISSION TRANSACTION. One entry, one render target, over `source_roots`.
 ///
@@ -7441,17 +7577,31 @@ pub type EntryEmissionDisposition = CompileDisposition;
 /// Silent-pick telemetry is captured INSIDE the transaction because the CLI's own gate
 /// reads it: a run that leaves it to the caller lets one consumer refuse where the other
 /// does not.
+/// THE AUTHORED NAME FOR A RENDER TARGET, so a single-target caller does not have to invent
+/// one and two callers cannot invent different ones. It is the inverse of the CLI's
+/// `--target` parse, and the pair is what keeps `compiled[rust]` and the `rust/` output
+/// subdirectory spelling one name rather than two.
+pub fn render_target_name(target: &crate::v1_compiler_artifact::RenderTarget) -> String {
+    match target {
+        crate::v1_compiler_artifact::RenderTarget::Rust => "rust",
+        crate::v1_compiler_artifact::RenderTarget::Python => "python",
+        crate::v1_compiler_artifact::RenderTarget::Go => "go",
+        crate::v1_compiler_artifact::RenderTarget::Dag => "dag",
+    }
+    .to_string()
+}
+
 pub fn compile_entry_emission(
     source_roots: &[String],
     entry_path: &str,
     primary_precedence: bool,
     render_target: crate::v1_compiler_artifact::RenderTarget,
-) -> EntryEmissionRun {
+) -> CompileRun {
     compile_emission(&CompileRequest {
         subject: CompileSubject::Entry(entry_path.to_string()),
         source_roots: source_roots.to_vec(),
         primary_precedence,
-        render_target,
+        render_targets: vec![(render_target_name(&render_target), render_target)],
     })
 }
 
@@ -7467,8 +7617,11 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
     let primary_precedence = request.primary_precedence;
     let subject_label = request.subject.label();
     let started = std::time::Instant::now();
+    if let Err(cause) = request.names_at_least_one_target() {
+        return compile_not_executed(&request.subject, started, "target-admission", cause);
+    }
     if let Err(cause) = request.primary_root_agrees_with_precedence() {
-        return entry_emission_not_executed(&request.subject, started, "subject-admission", cause);
+        return compile_not_executed(&request.subject, started, "subject-admission", cause);
     }
     // ADMISSION FOR A WHOLE-ROOT SUBJECT, ASKED BEFORE ANYTHING IS INDEXED. The host budget
     // was readable here and joined to nothing: a whole-tree run started a resolve it could not
@@ -7483,7 +7636,7 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
         if let Some(diagnostic) =
             crate::memory_governor::whole_corpus_compile_refusal_diagnostic(&admission)
         {
-            return entry_emission_not_executed(&request.subject, started, "admission", diagnostic);
+            return compile_not_executed(&request.subject, started, "admission", diagnostic);
         }
     }
     // A PRIMARY ROOT OUTSIDE THE WORKSPACE REFUSES HERE, for the same reason and by the same
@@ -7503,7 +7656,7 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
             process_workspace_root().join(root)
         };
         if repo_relative_path(&root_abs).is_err() {
-            return entry_emission_not_executed(
+            return compile_not_executed(
                 &request.subject,
                 started,
                 "root-admission",
@@ -7530,7 +7683,7 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
             process_workspace_root().join(entry_path)
         };
         if !entry_abs.is_file() {
-            return entry_emission_not_executed(
+            return compile_not_executed(
             &request.subject,
             started,
             "entry-read",
@@ -7577,7 +7730,7 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
         // names both the path and the root, because "not under the workspace root" is unactionable
         // without saying which root the process resolved.
         if repo_relative_path(&entry_abs).is_err() {
-            return entry_emission_not_executed(
+            return compile_not_executed(
                 &request.subject,
                 started,
                 "entry-admission",
@@ -7612,7 +7765,7 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
             Ok(closure) => closure,
             Err(e) => {
                 let _ = crate::v1_rt::resolution_silent_pick_disable();
-                return entry_emission_not_executed(
+                return compile_not_executed(
                     &request.subject,
                     started,
                     "closure-load",
@@ -7667,7 +7820,7 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
 
             if entry_sources.is_empty() {
                 let _ = crate::v1_rt::resolution_silent_pick_disable();
-                return entry_emission_not_executed(
+                return compile_not_executed(
                     &request.subject,
                     started,
                     "subject-discovery",
@@ -7710,7 +7863,7 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
                 Ok(closure) => closure,
                 Err(e) => {
                     let _ = crate::v1_rt::resolution_silent_pick_disable();
-                    return entry_emission_not_executed(
+                    return compile_not_executed(
                         &request.subject,
                         started,
                         "closure-load",
@@ -7747,39 +7900,76 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
         analyze_complexity: false,
         census_only_sources: Rc::new(census_only.into()),
     });
-    let result = v1_compiler_compile::compile_sources_with_options(
+    // RESOLVE ONCE, EMIT N TIMES. `compile_sources_with_options` is literally
+    // `emit_resolved_for_target ∘ compile_to_resolved_with_options`, so the single-target
+    // path through this pair is the same computation it was before multi-target routing --
+    // not an equivalent-looking substitute (checked against that function's body, which is
+    // exactly that composition).
+    let resolved = v1_compiler_compile::compile_to_resolved_with_options(
         Rc::new(closure.clone().into()),
-        request.render_target.clone(),
         options,
     );
+    let emissions: Vec<TargetEmission> = request
+        .render_targets
+        .iter()
+        .map(|(name, target)| TargetEmission {
+            target_name: name.clone(),
+            result: v1_compiler_compile::emit_resolved_for_target(resolved.clone(), target.clone()),
+        })
+        .collect();
     let silent_pick = crate::v1_rt::resolution_silent_pick_disable();
+
+    // THE REFUSAL IS OVER EVERY TARGET, NOT THE FIRST. Emission is per target, so a target
+    // that emits nothing or emits a blocking diagnostic must stop the line even when an
+    // earlier target completed -- citing target 1 while target 2 is silent is the
+    // strongest-path inflation DESIGN §4b(1) forbids. The FIRST refusing target is reported,
+    // named, so the message says which one.
+    let target_refusal = emissions.iter().find_map(|emission| {
+        v1_compiler_compile::stage0_self_compile_refusal_message(
+            format!("compile of {subject_label} [{}]", emission.target_name),
+            emission.result.clone(),
+        )
+    });
 
     // ONE REFUSAL AUTHORITY, NOT A SECOND ONE SPELLED HERE. `stage0_self_compile_refusal_message`
     // is what `gunbc compile` itself stops on; restating "blocking, or zero files" would be
     // a second representation of one rule (DESIGN §2/§3), free to drift.
-    let refusal = v1_compiler_compile::stage0_self_compile_refusal_message(
-        format!("compile of {subject_label}"),
-        result.clone(),
-    );
-    let blocking =
-        v1_compiler_compile::interpreter_blocking_diagnostic_messages(result.diagnostics.clone())
-            .len();
+    let refusal = target_refusal;
+    // COUNTED OVER EVERY TARGET's diagnostics, deduplicated by nothing: a diagnostic produced
+    // by the shared resolution appears once per target, which is what a per-target ledger
+    // means. A single-target run -- every required caller -- is unaffected.
+    let blocking: usize = emissions
+        .iter()
+        .map(|emission| {
+            v1_compiler_compile::interpreter_blocking_diagnostic_messages(
+                emission.result.diagnostics.clone(),
+            )
+            .len()
+        })
+        .sum();
+    let total_diagnostics: usize = emissions
+        .iter()
+        .map(|emission| emission.result.diagnostics.len())
+        .sum();
     // The silent-pick gate is part of the CLI's refusal, so it is part of the transaction's:
     // a gate that skipped it would green on a tree `gunbc compile` exits nonzero on.
     let disposition = match refusal {
-        Some(cause) => EntryEmissionDisposition::Refused {
+        Some(cause) => CompileDisposition::Refused {
             phase: "emit".to_string(),
             cause,
         },
-        None if !silent_pick.fn_parent_first_hits.is_empty() => EntryEmissionDisposition::Refused {
+        None if !silent_pick.fn_parent_first_hits.is_empty() => CompileDisposition::Refused {
             phase: "silent-pick-gate".to_string(),
             cause: format!(
                 "{} fn_parent_first_hit silent pick(s) in this compile",
                 silent_pick.fn_parent_first_hits.len()
             ),
         },
-        None => EntryEmissionDisposition::Completed {
-            emitted_count: result.files.len(),
+        None => CompileDisposition::Completed {
+            emitted_count: emissions
+                .iter()
+                .map(|emission| emission.result.files.len())
+                .sum(),
         },
     };
 
@@ -7790,10 +7980,10 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
         blocking_diagnostics: blocking,
         // Derived from one population rather than scanned twice, so the two counts cannot
         // disagree with the total.
-        advisory_diagnostics: result.diagnostics.len().saturating_sub(blocking),
+        advisory_diagnostics: total_diagnostics.saturating_sub(blocking),
         wall_ms: started.elapsed().as_millis(),
         disposition,
-        result: Some(result),
+        emissions,
         silent_pick,
     }
 }
@@ -7805,7 +7995,7 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
 /// The pool-index policy is `primary-precedence`, matching the board's own invocation
 /// (`docs/probes/curated_cargo_probe_one.sh`) rather than the CLI's default -- the gate
 /// and the board must resolve the same modules or they are measuring different programs.
-pub fn run_required_v2_emission(source_roots: &[String]) -> Result<Vec<EntryEmissionRun>, String> {
+pub fn run_required_v2_emission(source_roots: &[String]) -> Result<Vec<CompileRun>, String> {
     let entries = required_v2_emission_entries();
     if entries.is_empty() {
         // An EMPTY ROSTER REFUSES. Zero entries compiled is not zero breaks -- it is the
@@ -7853,7 +8043,7 @@ pub fn run_required_v2_emission_selftest() -> Vec<String> {
         crate::v1_compiler_artifact::RenderTarget::Rust,
     );
     match &red.disposition {
-        EntryEmissionDisposition::Completed { emitted_count } => failures.push(format!(
+        CompileDisposition::Completed { emitted_count } => failures.push(format!(
             "selftest RED did not refuse: {emitted_count} file(s) emitted from the trailing-annotation fixture"
         )),
         // The refusal must be the ANNOTATION one. A fixture that refuses for an unrelated
@@ -7867,7 +8057,7 @@ pub fn run_required_v2_emission_selftest() -> Vec<String> {
         // spelling of a sentence one function owns, which a rewording silently invalidates
         // (DESIGN §3). Grounded this way, a rewording moves both sides together and the
         // check cannot rot; the variant, not the wording, is the identity being asserted.
-        EntryEmissionDisposition::Refused { cause, .. } => {
+        CompileDisposition::Refused { cause, .. } => {
             let expected = crate::std_source_annotation::annotation_attachment_refusal_message(
                 Rc::new(
                     crate::std_source_annotation::AnnotationAttachmentRefusal::UnattachedAtScopeEnd {
@@ -7885,7 +8075,7 @@ pub fn run_required_v2_emission_selftest() -> Vec<String> {
                 ));
             }
         }
-        EntryEmissionDisposition::NotExecuted {
+        CompileDisposition::NotExecuted {
             earlier_phase,
             cause,
         } => failures.push(format!(
@@ -7900,11 +8090,11 @@ pub fn run_required_v2_emission_selftest() -> Vec<String> {
         crate::v1_compiler_artifact::RenderTarget::Rust,
     );
     match &green.disposition {
-        EntryEmissionDisposition::Completed { .. } => {}
-        EntryEmissionDisposition::Refused { phase, cause } => {
+        CompileDisposition::Completed { .. } => {}
+        CompileDisposition::Refused { phase, cause } => {
             failures.push(format!("selftest GREEN refused at {phase}: {cause}"))
         }
-        EntryEmissionDisposition::NotExecuted {
+        CompileDisposition::NotExecuted {
             earlier_phase,
             cause,
         } => failures.push(format!(
@@ -41548,6 +41738,12 @@ mod peel_alias_fixpoint_termination {
                 source_indices: crate::v1_rt::rc_empty_map(),
                 intern_table: crate::v1_std_core::empty_intern_table(),
                 source_visible_names: crate::v1_rt::rc_empty_map(),
+                // EMPTY, NOT OMITTED. `TypeEnv` gained this field without this test site
+                // being updated, which broke `cargo test --lib` outright -- invisible because
+                // the Rust suite was removed from CI in 2026-07 and runs locally only. The
+                // fixture asserts resolution over authored bindings, so no authored import
+                // name is in play here and the empty map is the fixture's real value.
+                authored_import_names: crate::v1_rt::rc_empty_map(),
                 symbol_index,
             });
             // The pre-fix firing set: the old peel called this same resolver,

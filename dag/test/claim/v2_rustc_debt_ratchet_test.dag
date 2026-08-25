@@ -3,13 +3,22 @@ module test.claim.v2_rustc_debt_ratchet_test
 import gunbc.v2_rustc_debt {
   RustcDebtKey,
   RustcDebtRow,
+  rustc_debt_key_equal,
+  rustc_debt_multiplicity,
   rustc_debt_receipt_line,
   rustc_debt_verdict,
-  rustc_debt_verdict_admits
+  rustc_debt_verdict_tag
 }
 import std.types { String, Int, List, Bool }
 
 // THE RATCHET'S DISCRIMINATING ARMS, EXECUTED.
+//
+// EVERY ARM ASSERTS WHICH VERDICT, NOT WHETHER IT ADMITS. The suite used to compare a Boolean
+// collapse of the coproduct, which made three distinct refusals indistinguishable: an arm
+// authored to provoke `LedgerExceedsBaseline` stayed green when the contract refused it as
+// `DebtPopulationMalformed` for an unrelated reason, so the fixture and the relation it was
+// written to exercise could drift apart silently. Comparing the variant closes that, and the
+// Boolean predicate is deleted rather than kept beside it (review 55911).
 //
 // Every fixture here authors BOTH the input and the expected verdict, which is what DESIGN
 // requires of an oracle: none of these populations is measured from the live tree, so none of
@@ -22,7 +31,7 @@ fn key(path: String, code: String) -> RustcDebtKey {
 }
 
 fn row(path: String, code: String, n: Int) -> RustcDebtRow {
-  RustcDebtRow { key: key(path: path, code: code), admitted_multiplicity: n }
+  RustcDebtRow { key: key(path: path, code: code), multiplicity: n }
 }
 
 fn one_error() -> List<RustcDebtRow> {
@@ -35,35 +44,35 @@ fn a_different_error() -> List<RustcDebtRow> {
 
 // A NEW ERROR WITH NO LEDGER EDIT REFUSES. This is the arm the whole mechanism exists for.
 test fn a_new_error_without_a_ledger_edit_refuses() -> Bool {
-  rustc_debt_verdict_admits(
+  rustc_debt_verdict_tag(
     v: rustc_debt_verdict(observed: one_error(), admitted: [], baseline: [])
-  ) == false
+  ) == "ObservedDivergesFromLedger"
 }
 
 // AN ERROR INCREASE WITH A MATCHING LEDGER INCREASE STILL REFUSES, because the ledger has grown
 // against the baseline. Without this relation a regression could be admitted by editing one
 // line, which is a change detector wearing a ratchet's name.
 test fn a_ledger_increase_matching_a_regression_still_refuses() -> Bool {
-  rustc_debt_verdict_admits(
+  rustc_debt_verdict_tag(
     v: rustc_debt_verdict(observed: one_error(), admitted: one_error(), baseline: [])
-  ) == false
+  ) == "LedgerExceedsBaseline"
 }
 
 // AN ERROR REPAIRED BUT THE ALLOWANCE RETAINED REFUSES AS STALE. The tree is BETTER than the
 // ledger here and it still refuses -- deliberately, because the retained row is a slot a future
 // regression occupies silently.
 test fn a_repair_without_a_ledger_reduction_refuses_as_stale() -> Bool {
-  rustc_debt_verdict_admits(
+  rustc_debt_verdict_tag(
     v: rustc_debt_verdict(observed: [], admitted: one_error(), baseline: one_error())
-  ) == false
+  ) == "ObservedDivergesFromLedger"
 }
 
 // THE SAME REPAIR WITH THE LEDGER REDUCED PASSES. Without this arm every arm above is satisfied
 // by a contract that refuses unconditionally.
 test fn a_repair_with_its_ledger_reduction_passes() -> Bool {
-  rustc_debt_verdict_admits(
+  rustc_debt_verdict_tag(
     v: rustc_debt_verdict(observed: [], admitted: [], baseline: one_error())
-  )
+  ) == "DebtAdmitted"
 }
 
 // ONE ERROR REPLACED BY ANOTHER *IN A DIFFERENT BUCKET* AT AN EQUAL TOTAL REFUSES. This is the
@@ -77,21 +86,90 @@ test fn a_repair_with_its_ledger_reduction_passes() -> Bool {
 // claim while testing the special case is worse than one that omits the case: it is cited as
 // coverage. Raised in review of the contract, and correct.
 test fn one_error_swapped_for_another_across_buckets_refuses() -> Bool {
-  rustc_debt_verdict_admits(
+  rustc_debt_verdict_tag(
     v: rustc_debt_verdict(
       observed: a_different_error(),
       admitted: a_different_error(),
       baseline: one_error()
     )
-  ) == false
+  ) == "LedgerExceedsBaseline"
 }
 
-// THE BLIND SPOT, EXECUTED AND EXPECTED TO PASS. Fix one E0308 in a file and introduce a
-// different E0308 in the same file, and both the key and the multiplicity are unchanged --
-// `(src/foo.rs, E0308) -> 1` before and after -- so the contract ADMITS a real substitution.
+// THE BLIND SPOT, EXECUTED AND EXPECTED TO PASS -- AND THE SUBSTITUTION IS AUTHORED RATHER
+// THAN ASSERTED IN PROSE.
 //
-// This arm exists to make the ceiling a measured fact rather than a caveat in a comment. It
-// asserts admission, so it goes RED the day the key descends below bucket grain, which is
+// An earlier revision of this arm passed `one_error()` on both sides and CLAIMED in a comment
+// that the two were different errors. Nothing in the fixture said so, so the arm was a tautology
+// (`x == x`) wearing the name of a substitution: it would have stayed green under a contract
+// that could see through the bucket, which is precisely the day it is supposed to go red.
+//
+// So the fixture authors DIAGNOSTICS, each carrying a latent site the key does not read, and
+// projects them through bucketization. The two populations below are DIFFERENT diagnostics --
+// `site` differs -- and their projections are EQUAL, which is the ceiling stated as an executed
+// identity rather than as a caveat.
+type SyntheticRustcDiagnostic {
+  source_path: String,
+  code: String,
+  latent_site: String
+}
+
+// THE FIXTURE'S OWN PROJECTION, not a second production bucketizer. The real observer does not
+// exist yet; what this models is the LOSS -- everything but `(source_path, code)` is dropped --
+// which is the only property the arms below depend on. When the observer lands, this projection
+// is what it must agree with, and the disagreement will surface here.
+fn bucketize(diagnostics: List<SyntheticRustcDiagnostic>) -> List<RustcDebtRow> {
+  fold(
+    diagnostics,
+    init: [],
+    f: fn(acc, d) {
+      let k = key(path: d.source_path, code: d.code)
+      if rustc_debt_multiplicity(rows: acc, key: k) == 0 {
+        append(acc, items: [RustcDebtRow { key: k, multiplicity: 1 }])
+      } else {
+        map(acc, f: fn(existing) {
+          if rustc_debt_key_equal(left: existing.key, right: k) {
+            RustcDebtRow { key: existing.key, multiplicity: existing.multiplicity + 1 }
+          } else {
+            existing
+          }
+        })
+      }
+    }
+  )
+}
+
+fn diagnostic_before_the_substitution() -> List<SyntheticRustcDiagnostic> {
+  [SyntheticRustcDiagnostic {
+    source_path: "src/v2_compiler_00_compile.rs",
+    code: "E0308",
+    latent_site: "fn compile_module, argument 2"
+  }]
+}
+
+fn diagnostic_after_the_substitution() -> List<SyntheticRustcDiagnostic> {
+  [SyntheticRustcDiagnostic {
+    source_path: "src/v2_compiler_00_compile.rs",
+    code: "E0308",
+    latent_site: "fn emit_module, return position"
+  }]
+}
+
+// FIRST, THE SUBSTITUTION IS REAL: the two diagnostic populations differ. Without this the arm
+// below proves nothing, because equal inputs trivially produce equal projections.
+test fn the_authored_substitution_changes_the_diagnostic() -> Bool {
+  let before = diagnostic_before_the_substitution()
+  let after = diagnostic_after_the_substitution()
+  first_latent_site(diagnostics: before) != first_latent_site(diagnostics: after)
+}
+
+fn first_latent_site(diagnostics: List<SyntheticRustcDiagnostic>) -> String {
+  fold(diagnostics, init: "", f: fn(acc, d) { if acc == "" { d.latent_site } else { acc } })
+}
+
+// AND SECOND, BUCKETIZATION ERASES IT, so the contract admits a run in which a real defect was
+// swapped for a different real defect.
+//
+// This arm asserts ADMISSION, so it goes RED the day the key descends below bucket grain --
 // exactly when someone should be forced to come back and read this. It is not a defect being
 // tolerated quietly; it is the boundary of what `(path, code)` can decide, and the contract's
 // declared rung is per-file-per-code multiplicity, NOT individual error identity.
@@ -101,12 +179,12 @@ test fn one_error_swapped_for_another_across_buckets_refuses() -> Bool {
 // `(emission_unit, cargo_target, dag_source_origin, rustc_code)`. That survives line movement
 // and emitted-file re-layout, which a Rust line/column coordinate does not, and it is the only
 // candidate that does not churn on unrelated edits. Until it exists this arm stays green.
-// The fixture is identical before and after: one E0308 in one file. The contract cannot see
-// that it is a DIFFERENT E0308, because nothing in the key distinguishes them.
 test fn the_same_bucket_substitution_blind_spot_is_admitted() -> Bool {
-  rustc_debt_verdict_admits(
-    v: rustc_debt_verdict(observed: one_error(), admitted: one_error(), baseline: one_error())
-  )
+  let before = bucketize(diagnostics: diagnostic_before_the_substitution())
+  let after = bucketize(diagnostics: diagnostic_after_the_substitution())
+  rustc_debt_verdict_tag(
+    v: rustc_debt_verdict(observed: after, admitted: before, baseline: before)
+  ) == "DebtAdmitted"
 }
 
 // A SECOND DIMENSION THE KEY DOES NOT CARRY, recorded beside the first because it has the same
@@ -118,50 +196,50 @@ test fn the_same_bucket_substitution_blind_spot_is_admitted() -> Bool {
 // behaviour of an unwritten decoder would be a decoration.
 
 // MULTIPLICITY GROWTH WITHIN ONE KEY REFUSES. A set-valued ledger would admit this silently.
-test fn multiplicity_growth_within_one_identity_refuses() -> Bool {
-  rustc_debt_verdict_admits(
+test fn multiplicity_growth_within_one_bucket_refuses() -> Bool {
+  rustc_debt_verdict_tag(
     v: rustc_debt_verdict(
       observed: [row(path: "src/v2_compiler_00_compile.rs", code: "E0599", n: 2)],
       admitted: [row(path: "src/v2_compiler_00_compile.rs", code: "E0599", n: 2)],
       baseline: one_error()
     )
-  ) == false
+  ) == "LedgerExceedsBaseline"
 }
 
 // MULTIPLICITY SHRINKING WITHIN ONE KEY PASSES when the ledger records the shrink -- the
 // positive control for the arm above.
 test fn multiplicity_shrinking_with_its_ledger_reduction_passes() -> Bool {
-  rustc_debt_verdict_admits(
+  rustc_debt_verdict_tag(
     v: rustc_debt_verdict(
       observed: one_error(),
       admitted: one_error(),
       baseline: [row(path: "src/v2_compiler_00_compile.rs", code: "E0599", n: 3)]
     )
-  )
+  ) == "DebtAdmitted"
 }
 
 // EMPTY OBSERVATION AND EMPTY LEDGER PASSES: the terminal state, and the arm that proves the
 // contract does not require debt to exist.
 test fn an_empty_observation_over_an_empty_ledger_passes() -> Bool {
-  rustc_debt_verdict_admits(v: rustc_debt_verdict(observed: [], admitted: [], baseline: []))
+  rustc_debt_verdict_tag(v: rustc_debt_verdict(observed: [], admitted: [], baseline: [])) == "DebtAdmitted"
 }
 
 // A ZERO-MULTIPLICITY ROW IS MALFORMED, not an empty ledger. Admitting it would give absence two
 // spellings and let a stale-allowance refusal be dodged by editing a count instead of deleting
 // a row.
 test fn a_zero_multiplicity_row_is_malformed() -> Bool {
-  rustc_debt_verdict_admits(
+  rustc_debt_verdict_tag(
     v: rustc_debt_verdict(
       observed: [],
       admitted: [row(path: "src/v2_compiler_00_compile.rs", code: "E0599", n: 0)],
       baseline: []
     )
-  ) == false
+  ) == "DebtPopulationMalformed"
 }
 
 // A DUPLICATE KEY IS MALFORMED: the admitted multiplicity would have two answers.
 test fn a_duplicate_ledger_key_is_malformed() -> Bool {
-  rustc_debt_verdict_admits(
+  rustc_debt_verdict_tag(
     v: rustc_debt_verdict(
       observed: one_error(),
       admitted: [
@@ -170,17 +248,88 @@ test fn a_duplicate_ledger_key_is_malformed() -> Bool {
       ],
       baseline: one_error()
     )
-  ) == false
+  ) == "DebtPopulationMalformed"
 }
 
 // THE RECEIPT REPORTS THE TOTALS AND THE TOTALS DECIDE NOTHING. This asserts the separation
-// directly: the admitting verdict's line carries the occurrence and identity counts, and the
+// directly: the admitting verdict's line carries the occurrence and bucket counts, and the
 // arms above already established that the same counts do not move the verdict.
 test fn the_receipt_carries_both_totals_on_an_admitted_verdict() -> Bool {
   let line = rustc_debt_receipt_line(
     v: rustc_debt_verdict(observed: one_error(), admitted: one_error(), baseline: one_error())
   )
   string_contains(s: line, pattern: "occurrences=1")
-    && string_contains(s: line, pattern: "identities=1")
+    && string_contains(s: line, pattern: "buckets=1")
     && string_contains(s: line, pattern: "disposition=held")
+}
+
+// THE OBSERVATION IS VALIDATED TOO, AND THIS IS THE ARM THAT SAYS SO. An earlier revision
+// validated the LEDGER only, so a duplicated key in the OBSERVATION -- an instrument defect --
+// made `rustc_debt_multiplicity` answer with whichever row the fold reached first, and the
+// comparison silently compared the wrong quantity. The fixture is otherwise the passing state,
+// so nothing but the observation's shape can be producing this refusal.
+test fn a_duplicate_observed_key_is_malformed() -> Bool {
+  rustc_debt_verdict_tag(
+    v: rustc_debt_verdict(
+      observed: [
+        row(path: "src/v2_compiler_00_compile.rs", code: "E0599", n: 1),
+        row(path: "src/v2_compiler_00_compile.rs", code: "E0599", n: 1)
+      ],
+      admitted: one_error(),
+      baseline: one_error()
+    )
+  ) == "DebtPopulationMalformed"
+}
+
+// AND THE BASELINE: a malformed baseline means the wrong prior state was loaded, and comparing
+// against it would be a ratchet measured from a population nobody validated.
+test fn a_nonpositive_baseline_row_is_malformed() -> Bool {
+  rustc_debt_verdict_tag(
+    v: rustc_debt_verdict(
+      observed: [],
+      admitted: [],
+      baseline: [row(path: "src/v2_compiler_00_compile.rs", code: "E0599", n: 0)]
+    )
+  ) == "DebtPopulationMalformed"
+}
+
+// A NON-CANONICAL ORDER REFUSES RATHER THAN BEING SORTED. Sorting would make two textually
+// different ledgers compare equal, so a reviewer could no longer read a ledger diff as the
+// change it describes; refusing keeps the producer honest instead.
+test fn a_ledger_out_of_canonical_order_is_malformed() -> Bool {
+  rustc_debt_verdict_tag(
+    v: rustc_debt_verdict(
+      observed: [],
+      admitted: [
+        row(path: "src/z_last.rs", code: "E0599", n: 1),
+        row(path: "src/a_first.rs", code: "E0308", n: 1)
+      ],
+      baseline: [
+        row(path: "src/a_first.rs", code: "E0308", n: 1),
+        row(path: "src/z_last.rs", code: "E0599", n: 1)
+      ]
+    )
+  ) == "DebtPopulationMalformed"
+}
+
+// THE POSITIVE CONTROL FOR THE ORDER ARM: the same two rows, in canonical order, are not
+// malformed. Without it the arm above is satisfied by a contract that refuses every two-row
+// ledger.
+test fn the_same_two_rows_in_canonical_order_are_wellformed() -> Bool {
+  rustc_debt_verdict_tag(
+    v: rustc_debt_verdict(
+      observed: [
+        row(path: "src/a_first.rs", code: "E0308", n: 1),
+        row(path: "src/z_last.rs", code: "E0599", n: 1)
+      ],
+      admitted: [
+        row(path: "src/a_first.rs", code: "E0308", n: 1),
+        row(path: "src/z_last.rs", code: "E0599", n: 1)
+      ],
+      baseline: [
+        row(path: "src/a_first.rs", code: "E0308", n: 1),
+        row(path: "src/z_last.rs", code: "E0599", n: 1)
+      ]
+    )
+  ) == "DebtAdmitted"
 }

@@ -319,9 +319,13 @@ fn main() {
             // facts about two producers (DESIGN §3). The handler keeps what is genuinely its
             // own: writing the tree, rendering diagnostics, and choosing an exit code.
             //
-            // The multi-target case is NOT routed here and that is a scope statement rather
-            // than an exemption: the transaction takes one render target, so `--target a,b`
-            // still walks the loop below. It is named in `compile_multi_target_fork_note`.
+            // THE MULTI-TARGET CASE ROUTES HERE TOO, as of the transaction taking a target
+            // VECTOR. It did not, briefly, and that was a REGRESSION rather than a scope
+            // statement: `--source-root X --target rust+dag` fell past this gate into a branch
+            // whose only remaining subject is `--source-dir`, and exited with
+            // "provide --source-root or --source-dir" over an argv that provided one. The
+            // transaction now resolves once and emits per target, which is what the deleted
+            // loop did, so the fork is closed rather than documented.
             let cli_subject = match (&entry, &source_roots.is_empty()) {
                 (Some(entry_path), _) => Some(cli_run::CompileSubject::Entry(entry_path.clone())),
                 (None, false) => Some(cli_run::CompileSubject::PrimaryRoot(
@@ -330,7 +334,8 @@ fn main() {
                 // `--source-dir` (no source roots at all) keeps the legacy flat scan below.
                 (None, true) => None,
             };
-            if let (Some(subject), 1) = (cli_subject, render_targets.len()) {
+            if let Some(subject) = cli_subject {
+                let multi_target = render_targets.len() > 1;
                 let run = cli_run::compile_emission(&cli_run::CompileRequest {
                     subject,
                     source_roots: source_roots.clone(),
@@ -338,7 +343,7 @@ fn main() {
                         pool_index,
                         DependencyPoolIndex::PrimaryPrecedence
                     ),
-                    render_target: render_targets[0].1.clone(),
+                    render_targets: render_targets.clone(),
                 });
                 match &run.disposition {
                     cli_run::CompileDisposition::NotExecuted {
@@ -359,8 +364,8 @@ fn main() {
                         // The tree is NOT written on a refusal: writing a partial tree the
                         // compiler has disowned is a fabricated plausible output (DESIGN §5).
                         eprintln!("gunbc compile: refused at {phase}: {cause}");
-                        if let Some(result) = &run.result {
-                            render_diagnostics(result);
+                        for emission in &run.emissions {
+                            render_diagnostics(&emission.result);
                         }
                         std::process::exit(1);
                     }
@@ -369,17 +374,38 @@ fn main() {
                             "resolved {} sources, {} indexed modules in the name census only",
                             run.closure_modules, run.census_modules
                         );
-                        let result = run
-                            .result
-                            .clone()
-                            .expect("a completed emission carries its result");
-                        write_output_files(&output_dir, &result);
+                        // NOTHING IS MATERIALIZED UNTIL EVERY TARGET HAS COMPLETED. The
+                        // disposition above is over the whole emission set, so reaching here
+                        // means no target refused -- a per-target write inside the emit loop
+                        // would leave one target's tree on disk beside another target's
+                        // refusal, which is the partial fabricated output §5 forbids.
+                        //
+                        // A single target writes to `output_dir` itself; several write to
+                        // `output_dir/<name>`, which is the layout the deleted loop used and
+                        // which downstream consumers already read.
+                        let mut total_diagnostics = 0usize;
+                        for emission in &run.emissions {
+                            let target_dir = if multi_target {
+                                format!("{}/{}", output_dir, emission.target_name)
+                            } else {
+                                output_dir.clone()
+                            };
+                            write_output_files(&target_dir, &emission.result);
+                            if multi_target {
+                                eprintln!(
+                                    "compiled[{}]: {} files emitted, {} diagnostics",
+                                    emission.target_name,
+                                    emission.result.files.len(),
+                                    emission.result.diagnostics.len()
+                                );
+                            }
+                            render_diagnostics(&emission.result);
+                            total_diagnostics += emission.result.diagnostics.len();
+                        }
                         eprintln!(
                             "compiled: {} files emitted, {} diagnostics",
-                            emitted_count,
-                            result.diagnostics.len()
+                            emitted_count, total_diagnostics
                         );
-                        render_diagnostics(&result);
                         std::process::exit(0);
                     }
                 }
@@ -398,6 +424,29 @@ fn main() {
             // subject with no source roots, no index and no dependency pool, which the
             // transaction's two subjects do not describe. It is named rather than swept in,
             // and it is the remaining fork in this handler.
+            //
+            // THE CENSUS BEHIND "ONE COMPILATION CONCEPT", AT CALL-SITE GRAIN RATHER THAN
+            // FILE GRAIN, because a file-grain claim is not checkable and this one was
+            // overstated once already. Direct calls to the compile kernel
+            // (`compile_sources_with_options` / `compile_to_resolved_with_options` /
+            // `emit_resolved_for_target`) outside `cli_run::compile_emission`, in non-test
+            // code:
+            //
+            //   - main.rs, this handler, the `--source-dir` arm (3 sites) -- the legacy flat
+            //     scan above. A FORK, declared. It survives because the transaction models a
+            //     source-root subject and this one has no root, no index and no pool; the
+            //     terminal form is a third subject or the flag's deletion, and nothing in the
+            //     repository passes `--source-dir` today.
+            //   - cli_run compile-clean oracle (2 sites) -- deliberately index-independent
+            //     and cache-independent, which is the whole point of it: it exists to
+            //     disagree with the via-index path. Routing it through the transaction would
+            //     destroy the property it measures.
+            //   - cli_run synthesized-resolved emit (1 site) -- emits a `ResolvedPipelineResult`
+            //     assembled in memory, so there is no source set for a transaction to take.
+            //
+            // NOT a claim that nothing else compiles: the test files and the witness bins call
+            // the kernel directly too, and they are outside this census by scope, not because
+            // they were checked and cleared.
             let compile_subject = match &source_dir {
                 Some(dir) => format!("compile of {dir}"),
                 None => "compile".to_string(),

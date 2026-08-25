@@ -27,7 +27,7 @@ import std.types { String, Int, List, Bool }
 
 data v2_rustc_debt_key_law: String = "A RustcDebtKey is (normalized emitted-crate-relative primary-source path, rustc diagnostic code). The path is relative to the emitted crate root, never absolute, because an absolute path is a property of the machine that compiled and would mint a fresh identity per runner. The code is rustc's own (E0599, E0308) and is upstream's name for the class, not one coined here -- DESIGN section 3, cite the source and keep its real names. A diagnostic carrying NO code, or no span that normalizes to a crate-relative path, is NOT given a synthesized key: it refuses, because a fabricated identity would silently join to whatever row it happened to collide with."
 
-data v2_rustc_debt_admission_law: String = "Admission is exactly: observed == admitted_here, AND admitted_here is a multiplicity-wise subset of admitted_at_baseline. The first relation refuses a new error with no ledger edit and refuses a stale allowance left behind by a repair; the second refuses a ledger increase, including one that matches a real regression, because the baseline does not contain it. Together they make every reduction PERMANENT, which is the property a ceiling does not have. Neither total participates: occurrences and identities are printed as receipts and are read by humans, never by the verdict."
+data v2_rustc_debt_admission_law: String = "Admission is exactly: observed == admitted_here, AND admitted_here is a multiplicity-wise subset of admitted_at_baseline. The first relation refuses a new error with no ledger edit and refuses a stale allowance left behind by a repair; the second refuses a ledger increase, including one that matches a real regression, because the baseline does not contain it. Together they make every reduction PERMANENT, which is the property a ceiling does not have. Neither total participates: occurrences and buckets are printed as receipts and are read by humans, never by the verdict."
 
 data v2_rustc_debt_bucket_grain_law: String = "THIS IS A PER-FILE-PER-CODE MULTIPLICITY RATCHET, NOT AN INDIVIDUAL ERROR IDENTITY, and the distinction is stated here because an earlier revision of this module called the key an identity throughout and its test suite carried an arm named for the general swap case while exercising only the special one. WHAT IT CATCHES: a swap across files, a swap across codes, and multiplicity growth within one bucket. WHAT IT DOES NOT CATCH: equal-multiplicity substitution INSIDE one bucket -- fix one E0308 in a file, introduce a different E0308 in the same file, and the key and the multiplicity are both unchanged, so the contract admits it. That blind spot is executed rather than described, by test.claim.v2_rustc_debt_ratchet_test the_same_bucket_substitution_blind_spot_is_admitted, which asserts ADMISSION and therefore goes red the day the key descends -- the boundary is a measured fact with a regression control, not a caveat in prose. NEXT-RUNG TRIGGER: an emitter sidecar mapping emitted Rust byte ranges back to a stable Daglang origin (module identity, declaration identity, occurrence identity), keyed as (emission_unit, cargo_target, dag_source_origin, rustc_code). That survives line movement and emitted-file re-layout, which a Rust line/column coordinate does not; diagnostic text is not a candidate because a spelling change is not an identity change. A SECOND UNCARRIED DIMENSION, same shape and different cause: the observation runs --all-targets, so one source may compile under several cargo targets and a TARGET-GRAPH change can move multiplicity with no source defect changing. The key must carry the cargo target name and kind, or the observer must deduplicate across targets deliberately rather than by accident."
 
@@ -44,21 +44,36 @@ type RustcDebtKey {
   code: String
 }
 
-// ADMITTED MULTIPLICITY IS AN INT AND NOT A BOOL, because two occurrences of one code in one
+// MULTIPLICITY IS AN INT AND NOT A BOOL, because two occurrences of one code in one
 // file is a different state from one, and a set would silently admit the second.
 type RustcDebtRow {
   key: RustcDebtKey,
-  admitted_multiplicity: Int
+  multiplicity: Int
+}
+
+// WHICH OF THE THREE POPULATIONS A MALFORMEDNESS IS ABOUT. It is a closed coproduct rather than
+// a String because the three have DIFFERENT owners and different repairs: the observation is
+// produced by the compile and a defect there is an instrument defect; the ledger is authored in
+// this repository and is the author's to edit; the baseline is content-addressed prior state and
+// a defect there means the wrong baseline was loaded. A String would have let a reader guess.
+type RustcDebtPopulation = ObservedPopulation | LedgerPopulation | BaselinePopulation
+
+fn rustc_debt_population_render(p: RustcDebtPopulation) -> String {
+  match p {
+    ObservedPopulation => "observed"
+    LedgerPopulation => "ledger"
+    BaselinePopulation => "baseline"
+  }
 }
 
 // WHY THE VERDICT IS A COPRODUCT AND NOT A BOOL. A refusal must say WHICH relation failed and
 // over WHICH identity, or the author reads "the ratchet refused" and has to re-derive the cause
 // by hand. The arms are the failure modes, each carrying what locates it.
 type RustcDebtVerdict
-  = DebtAdmitted { occurrences: Int, identities: Int }
+  = DebtAdmitted { occurrences: Int, buckets: Int }
   | ObservedDivergesFromLedger { unledgered: List<RustcDebtKey>, stale: List<RustcDebtKey>, multiplicity_mismatch: List<RustcDebtKey> }
   | LedgerExceedsBaseline { grown: List<RustcDebtKey> }
-  | LedgerMalformed { cause: String }
+  | DebtPopulationMalformed { population: RustcDebtPopulation, cause: String, keys: List<RustcDebtKey> }
 
 fn rustc_debt_key_equal(left: RustcDebtKey, right: RustcDebtKey) -> Bool {
   left.source_path == right.source_path && left.code == right.code
@@ -87,7 +102,7 @@ fn rustc_debt_row_for_key(rows: List<RustcDebtRow>, key: RustcDebtKey) -> RustcD
 
 fn rustc_debt_multiplicity(rows: List<RustcDebtRow>, key: RustcDebtKey) -> Int {
   match rustc_debt_row_for_key(rows: rows, key: key) {
-    Present { value: row } => row.admitted_multiplicity
+    Present { value: row } => row.multiplicity
     Absent => 0
   }
 }
@@ -96,20 +111,103 @@ fn rustc_debt_multiplicity(rows: List<RustcDebtRow>, key: RustcDebtKey) -> Int {
 // that a key is admitted zero times, which is what ABSENCE already says; admitting both
 // spellings gives one fact two representations and lets a stale-allowance refusal be dodged by
 // editing a count to zero instead of deleting the row (DESIGN section 3).
-fn rustc_debt_rows_wellformed(rows: List<RustcDebtRow>) -> Bool {
-  fold(rows, init: true, f: fn(acc, row) { acc && row.admitted_multiplicity > 0 })
-}
-
-fn rustc_debt_rows_unique(rows: List<RustcDebtRow>) -> Bool {
+fn rustc_debt_nonpositive_keys(rows: List<RustcDebtRow>) -> List<RustcDebtKey> {
   fold(
     rows,
-    init: true,
+    init: [],
     f: fn(acc, row) {
-      acc && fold(rows, init: 0, f: fn(n, other) {
-        if rustc_debt_key_equal(left: row.key, right: other.key) { n + 1 } else { n }
-      }) == 1
+      if row.multiplicity > 0 { acc } else { append(acc, items: [row.key]) }
     }
   )
+}
+
+fn rustc_debt_key_occurrences(rows: List<RustcDebtRow>, key: RustcDebtKey) -> Int {
+  fold(rows, init: 0, f: fn(n, other) {
+    if rustc_debt_key_equal(left: key, right: other.key) { n + 1 } else { n }
+  })
+}
+
+fn rustc_debt_duplicate_keys(rows: List<RustcDebtRow>) -> List<RustcDebtKey> {
+  fold(
+    rows,
+    init: [],
+    f: fn(acc, row) {
+      if rustc_debt_key_occurrences(rows: rows, key: row.key) > 1 {
+        append(acc, items: [row.key])
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+// CANONICAL ORDER IS STRICTLY ASCENDING BY RENDERED KEY, AND IT REFUSES RATHER THAN SORTS.
+// Sorting here would be the absorbing widen: an out-of-order population is a producer that does
+// not canonicalize, and quietly repairing it destroys the only signal that says so, while making
+// two textually different ledgers compare equal so a diff stops being reviewable.
+//
+// The scan carries the PREVIOUS rendered key rather than indexing, so it is one linear pass and
+// the first row -- which has no predecessor -- is distinguished by the sentinel being empty
+// rather than by a position test. Every rendered key is nonempty (it contains a colon), so no
+// real key can collide with the sentinel.
+type RustcDebtOrderScan {
+  previous: String,
+  disordered: List<RustcDebtKey>
+}
+
+fn rustc_debt_disordered_keys(rows: List<RustcDebtRow>) -> List<RustcDebtKey> {
+  fold(
+    rows,
+    init: { previous: "", disordered: [] },
+    f: fn(acc, row) {
+      let rendered = rustc_debt_key_render(k: row.key)
+      if acc.previous != "" && !(acc.previous < rendered) {
+        { previous: rendered, disordered: append(acc.disordered, items: [row.key]) }
+      } else {
+        { previous: rendered, disordered: acc.disordered }
+      }
+    }
+  ).disordered
+}
+
+// ONE POPULATION'S OWN WELLFORMEDNESS, ASKED OF ALL THREE. An earlier revision asked it of the
+// LEDGER ONLY, which is a fail-open in the exact place a ratchet must not have one: a duplicated
+// key in the OBSERVATION makes `rustc_debt_multiplicity` answer with whichever row the fold
+// reached first, so the observation-versus-ledger comparison silently compares the wrong
+// quantity and the run reads as held. Positivity and uniqueness are preconditions of the
+// COMPARISON, not properties of one side of it.
+fn rustc_debt_population_defect(
+  population: RustcDebtPopulation,
+  rows: List<RustcDebtRow>
+) -> RustcDebtVerdict? {
+  let nonpositive = rustc_debt_nonpositive_keys(rows: rows)
+  let duplicates = rustc_debt_duplicate_keys(rows: rows)
+  let disordered = rustc_debt_disordered_keys(rows: rows)
+  if count(nonpositive) > 0 {
+    Present { value: DebtPopulationMalformed {
+      population: population,
+      cause: "a row carries a nonpositive multiplicity; absence is how zero is spelled",
+      keys: nonpositive
+    } }
+  } else {
+    if count(duplicates) > 0 {
+      Present { value: DebtPopulationMalformed {
+        population: population,
+        cause: "one (source_path, code) key appears more than once, so its multiplicity has two answers",
+        keys: duplicates
+      } }
+    } else {
+      if count(disordered) > 0 {
+        Present { value: DebtPopulationMalformed {
+          population: population,
+          cause: "rows are not in strictly ascending rendered-key order, so the population is not canonical",
+          keys: disordered
+        } }
+      } else {
+        none
+      }
+    }
+  }
 }
 
 // OBSERVED KEYS THE LEDGER DOES NOT ADMIT AT THE OBSERVED MULTIPLICITY.
@@ -150,7 +248,7 @@ fn rustc_debt_multiplicity_mismatch(observed: List<RustcDebtRow>, admitted: List
     init: [],
     f: fn(acc, row) {
       let admitted_count = rustc_debt_multiplicity(rows: admitted, key: row.key)
-      if admitted_count > 0 && admitted_count != row.admitted_multiplicity {
+      if admitted_count > 0 && admitted_count != row.multiplicity {
         append(acc, items: [row.key])
       } else {
         acc
@@ -168,7 +266,7 @@ fn rustc_debt_grown(admitted: List<RustcDebtRow>, baseline: List<RustcDebtRow>) 
     admitted,
     init: [],
     f: fn(acc, row) {
-      if row.admitted_multiplicity > rustc_debt_multiplicity(rows: baseline, key: row.key) {
+      if row.multiplicity > rustc_debt_multiplicity(rows: baseline, key: row.key) {
         append(acc, items: [row.key])
       } else {
         acc
@@ -178,7 +276,7 @@ fn rustc_debt_grown(admitted: List<RustcDebtRow>, baseline: List<RustcDebtRow>) 
 }
 
 fn rustc_debt_occurrences(rows: List<RustcDebtRow>) -> Int {
-  fold(rows, init: 0, f: fn(acc, row) { acc + row.admitted_multiplicity })
+  fold(rows, init: 0, f: fn(acc, row) { acc + row.multiplicity })
 }
 
 // THE VERDICT. The order of the arms is the order of the questions: a malformed ledger cannot
@@ -189,12 +287,13 @@ fn rustc_debt_verdict(
   admitted: List<RustcDebtRow>,
   baseline: List<RustcDebtRow>
 ) -> RustcDebtVerdict {
-  if !rustc_debt_rows_wellformed(rows: admitted) {
-    LedgerMalformed { cause: "a ledger row admits a nonpositive multiplicity; absence is how zero is spelled" }
-  } else {
-    if !rustc_debt_rows_unique(rows: admitted) {
-      LedgerMalformed { cause: "the ledger declares one (source_path, code) key more than once, so its admitted multiplicity has two answers" }
-    } else {
+  match rustc_debt_population_defect(population: ObservedPopulation, rows: observed) {
+    Present { value: defect } => defect
+    Absent => match rustc_debt_population_defect(population: LedgerPopulation, rows: admitted) {
+      Present { value: defect } => defect
+      Absent => match rustc_debt_population_defect(population: BaselinePopulation, rows: baseline) {
+        Present { value: defect } => defect
+        Absent => {
       let unledgered = rustc_debt_unledgered(observed: observed, admitted: admitted)
       let stale = rustc_debt_stale(observed: observed, admitted: admitted)
       let mismatch = rustc_debt_multiplicity_mismatch(observed: observed, admitted: admitted)
@@ -211,20 +310,35 @@ fn rustc_debt_verdict(
         } else {
           DebtAdmitted {
             occurrences: rustc_debt_occurrences(rows: observed),
-            identities: count(observed)
+            buckets: count(observed)
           }
+        }
+      }
         }
       }
     }
   }
 }
 
-fn rustc_debt_verdict_admits(v: RustcDebtVerdict) -> Bool {
+// THE VERDICT IS READ AS ITSELF, AND THERE IS NO BOOLEAN COLLAPSE OF IT.
+//
+// An earlier revision carried `rustc_debt_verdict_admits(v) -> Bool`, matching every variant and
+// mapping one to true and the rest to false. That is predicate dissolution: it takes a coproduct
+// whose whole purpose is to say WHICH relation failed and over WHICH keys, and hands the consumer
+// one bit -- so every consumer that refuses on it prints "the ratchet refused" and the author
+// re-derives the cause by hand, which is the typed-cause-erased-at-the-consumer failure. Raised
+// in review 55911 and correct.
+//
+// What replaces it is a RENDERING, not a decision: the variant's own name, for a consumer that
+// needs to say which state it is in (a test asserting the discriminating refusal, a receipt).
+// A consumer that must ACT on the verdict matches the coproduct directly and keeps the payload,
+// because the payload is the actionable half.
+fn rustc_debt_verdict_tag(v: RustcDebtVerdict) -> String {
   match v {
-    DebtAdmitted { occurrences: _, identities: _ } => true
-    ObservedDivergesFromLedger { unledgered: _, stale: _, multiplicity_mismatch: _ } => false
-    LedgerExceedsBaseline { grown: _ } => false
-    LedgerMalformed { cause: _ } => false
+    DebtAdmitted { occurrences: _, buckets: _ } => "DebtAdmitted"
+    ObservedDivergesFromLedger { unledgered: _, stale: _, multiplicity_mismatch: _ } => "ObservedDivergesFromLedger"
+    LedgerExceedsBaseline { grown: _ } => "LedgerExceedsBaseline"
+    DebtPopulationMalformed { population: _, cause: _, keys: _ } => "DebtPopulationMalformed"
   }
 }
 
@@ -233,13 +347,13 @@ fn rustc_debt_verdict_admits(v: RustcDebtVerdict) -> Bool {
 // compute is deliberate -- a number that decides nothing cannot rot into an oracle.
 fn rustc_debt_receipt_line(v: RustcDebtVerdict) -> String {
   match v {
-    DebtAdmitted { occurrences: o, identities: i } =>
-      "v2-rustc-debt: occurrences={o} identities={i} disposition=held"
+    DebtAdmitted { occurrences: o, buckets: b } =>
+      "v2-rustc-debt: occurrences={o} buckets={b} disposition=held"
     ObservedDivergesFromLedger { unledgered: u, stale: s, multiplicity_mismatch: m } =>
       "v2-rustc-debt: REFUSED observation diverges from ledger unledgered={count(u)} stale={count(s)} multiplicity_mismatch={count(m)}"
     LedgerExceedsBaseline { grown: g } =>
       "v2-rustc-debt: REFUSED ledger exceeds baseline grown={count(g)}"
-    LedgerMalformed { cause: c } =>
-      "v2-rustc-debt: REFUSED ledger malformed: {c}"
+    DebtPopulationMalformed { population: p, cause: c, keys: k } =>
+      "v2-rustc-debt: REFUSED {rustc_debt_population_render(p: p)} population malformed ({count(k)} key(s)): {c}"
   }
 }
