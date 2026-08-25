@@ -1,0 +1,161 @@
+module v2.test.resolve.spelling_agreement_probe
+
+import v2.compiler.resolve {
+  Namespace,
+  ResolveContext,
+  empty_canonical_symbol_set,
+  resolve_node,
+  scope_from_namespace
+}
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
+import v2.extdeps.languages.dag {
+  dag_grammar_atom,
+  dag_language_model,
+  dag_named_edge
+}
+import v2.std.algebra { fold_list_node }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.collection { empty_map }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Disj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
+import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_snoc }
+import v2.std.resolution_policy { NamespaceOnlyY }
+import v2.std.symbol_index { empty_symbol_index, SymbolIndex }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn sap_qn_spine(segments: FreeMonoid<Symbol>) -> Node {
+  fold_list_node(
+    xs: segments,
+    item_node: fn(sym) {
+      Node {
+        kind: TypeNode { connective: Atom { identity: sym } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+    }
+  )
+}
+
+data sap_provider_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+  dotted: "v2.test.resolve.qualified_module_projection_provider"
+)
+
+data sap_provider_root: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    dag_named_edge(
+      name: ^dag_surface_module_header,
+      target: dag_grammar_atom(id: ^dag_surface_module_header)
+    ),
+    dag_named_edge(
+      name: ^dag_surface_module_header_qualified_name,
+      target: sap_qn_spine(segments: sap_provider_qn)
+    ),
+    Edge {
+      label: Named { name: ^ProviderType },
+      target: Node {
+        kind: TypeNode { connective: Atom { identity: ^ProviderType } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+    }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data sap_provider_index: SymbolIndex = symbol_index_fill_module_root(
+  index: empty_symbol_index(),
+  root: sap_provider_root
+)
+
+data sap_consumer_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+  dotted: "v2.test.resolve.qualified_module_projection_stripped_fixture"
+)
+
+data sap_qualified_ref: Node = sap_qn_spine(
+  segments: qualified_name_from_dotted_string(
+    dotted: "v2.test.resolve.qualified_module_projection_provider.ProviderType"
+  )
+)
+
+fn sap_namespace(index: SymbolIndex) -> Namespace {
+  Namespace {
+    bindings: empty_map(),
+    canonical_symbols: empty_canonical_symbol_set(),
+    symbol_index: index,
+    module_qn: sap_consumer_qn
+  }
+}
+
+
+data sap_bare_ref: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^ProviderType } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+fn sap_resolve(n: Node) -> Bool {
+  let namespace = sap_namespace(index: sap_provider_index)
+  match resolve_node(
+    ctx: ResolveContext {
+      scope: scope_from_namespace(namespace: namespace),
+      namespace: namespace,
+      policy: NamespaceOnlyY,
+      position: qualified_name_snoc(qn: sap_consumer_qn, segment: ^LocalAlias),
+      lm: dag_language_model(),
+      under_module_root: false
+    },
+    n: n
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn sap_resolved_identity(n: Node) -> Symbol {
+  let namespace = sap_namespace(index: sap_provider_index)
+  match resolve_node(
+    ctx: ResolveContext {
+      scope: scope_from_namespace(namespace: namespace),
+      namespace: namespace,
+      policy: NamespaceOnlyY,
+      position: qualified_name_snoc(qn: sap_consumer_qn, segment: ^LocalAlias),
+      lm: dag_language_model(),
+      under_module_root: false
+    },
+    n: n
+  ) {
+    Accepted { value: r, diagnostics: _ } =>
+      match r.kind {
+        TypeNode { connective: Atom { identity: sym } } => sym
+        _ => ^sap_not_an_atom
+      }
+    Rejected { diagnostics: _ } => ^sap_refused
+  }
+}
+
+fn probe_qualified_resolves() -> Bool { sap_resolve(n: sap_qualified_ref) }
+
+fn probe_bare_resolves() -> Bool { sap_resolve(n: sap_bare_ref) }
+
+fn probe_both_spellings_yield_the_same_identity() -> Bool {
+  sap_resolved_identity(n: sap_qualified_ref) == sap_resolved_identity(n: sap_bare_ref)
+}
+
+fn probe_identity_is_not_the_refusal_sentinel() -> Bool {
+  sap_resolved_identity(n: sap_qualified_ref) != ^sap_refused &&
+  sap_resolved_identity(n: sap_bare_ref) != ^sap_refused
+}
