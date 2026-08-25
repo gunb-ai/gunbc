@@ -708,6 +708,8 @@ fn floor_route_gap_expectation_chunk_03() -> List<FloorRouteGapExpectation> {
 // interpreter-observed Run refusal in the first post-merge execution, run 32768782787. They
 // therefore join the typed route-gap population at the operation and remedy ground actually
 // observed; they are not expected-red because no semantic verdict was produced.
+// Run 32794539384 added the sixth row after main advanced: the Claude SDK parser-drop wet
+// control reached Read / NoMockResponse, likewise producing no semantic verdict.
 fn floor_route_gap_expectation_chunk_04() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.effect_plan_bash_materialize_real_execution_witness.effect_plan_bash_two_declared_operations_execute", operation: "Run", ground: NoMockResponse {} },
@@ -719,7 +721,10 @@ fn floor_route_gap_expectation_chunk_04() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.transport_script_stdin_byte_fidelity_witness.transport_script_stdin_delivers_exact_bytes", operation: "Run", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.transport_script_stdin_byte_fidelity_witness.transport_script_stdin_fidelity_is_independent_of_terminal_newline", operation: "Run", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.claude_sdk_parser_drop_live_witness.witness_wet_receipt_control_response_parser_drop_holds", operation: "Read", ground: NoMockResponse {} },
     tail: Empty {}
+  }
   }
   }
   }
