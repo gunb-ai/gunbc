@@ -251,7 +251,7 @@ impl UriValidatedScalar {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(tag = "_variant")]
 pub enum UriValidatedScalarConstruction {
     UriValidatedScalarConstructed(UriValidatedScalar),
@@ -276,7 +276,7 @@ impl UriValidatedScalarConstruction {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(tag = "_variant")]
 pub enum UriUnicodeScalarConstruction {
     UriUnicodeScalarConstructed(UriValidatedScalar),

@@ -13160,6 +13160,11 @@ pub fn emit_type_def_from_connective(
             {
                 let has_fn_fields = type_has_fn_fields(item_text.clone(), emit_info.clone());
                 let sealed = item_seals_construction(item.clone());
+                let deserialize_forbidden = item_forbids_deserialize(
+                    item.clone(),
+                    emit_info.clone(),
+                    env.source_indices.clone(),
+                );
                 let capability_surface = v1_emit_struct_from_capability_table(
                     env.module_path.clone(),
                     item_text.clone(),
@@ -13193,7 +13198,7 @@ pub fn emit_type_def_from_connective(
                         }),
                         emit_info.clone(),
                     ),
-                    sealed.clone(),
+                    deserialize_forbidden.clone(),
                     emit_info.type_decl_items.clone(),
                 );
                 let type_params = if !has_fn_fields.clone() {
@@ -13227,6 +13232,7 @@ pub fn emit_type_def_from_connective(
                     recursive_types.clone(),
                     shared_types.clone(),
                     sealed.clone(),
+                    deserialize_forbidden.clone(),
                     env.clone(),
                     emit_info.clone(),
                 );
@@ -13668,6 +13674,7 @@ pub fn emit_struct_from_children(
     recursive_types: Rc<BTreeSet<String>>,
     shared_types: Rc<BTreeSet<String>>,
     sealed: bool,
+    deserialize_forbidden: bool,
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
@@ -13687,7 +13694,7 @@ pub fn emit_struct_from_children(
                 generic_param_names.clone(),
                 emit_info.clone(),
             ),
-            sealed.clone(),
+            deserialize_forbidden.clone(),
             emit_info.type_decl_items.clone(),
         );
         if ((children.clone().len() as i64) == 0) {
@@ -14252,6 +14259,7 @@ pub fn enum_derives(
     name: String,
     children: Rc<Vec<Rc<Node>>>,
     has_fn_fields: bool,
+    deserialize_forbidden: bool,
     generic_param_names: Rc<Vec<String>>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -14260,6 +14268,7 @@ pub fn enum_derives(
         children.clone(),
         has_fn_fields.clone(),
         v1_rt::set_contains(&emit_info.map_key_required_type_names.clone(), name.clone()),
+        deserialize_forbidden.clone(),
         generic_param_names.clone(),
         source_indices.clone(),
     )
@@ -14278,10 +14287,17 @@ pub fn emit_enum_from_children(
 ) -> String {
     {
         let has_fn_fields = type_has_fn_fields(name.clone(), emit_info.clone());
+        let deserialize_forbidden = enum_variant_payloads_forbid_deserialize(
+            name.clone(),
+            children.clone(),
+            emit_info.clone(),
+            env.source_indices.clone(),
+        );
         let derives = enum_derives(
             name.clone(),
             children.clone(),
             has_fn_fields.clone(),
+            deserialize_forbidden.clone(),
             generic_param_names.clone(),
             emit_info.clone(),
             env.source_indices.clone(),
@@ -19493,6 +19509,154 @@ pub fn field_access_field_is_boxed(
                 }
             }
             None => false,
+        }
+    }
+}
+
+pub fn type_expr_reaches_sealed_carrier(
+    n: Rc<Node>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    seen: Rc<HashMap<String, bool>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let name = qualified_last_segment(authored_name_at(source_indices.clone(), n.clone()));
+        let child_reaches = {
+            let mut __found = false;
+            for child in n.children.clone().iter().cloned() {
+                if type_expr_reaches_sealed_carrier(
+                    child_type_node(child.clone()),
+                    emit_info.clone(),
+                    source_indices.clone(),
+                    seen.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        };
+        if child_reaches.clone() {
+            true
+        } else {
+            if ((name.clone() == "".to_string()) || emit_map_has(seen.clone(), name.clone())) {
+                false
+            } else {
+                match lookup_emit_type_decl(emit_info.clone(), name.clone()) {
+                    Some(decl) => {
+                        if item_seals_construction(decl.clone()) {
+                            true
+                        } else {
+                            {
+                                let next_seen =
+                                    v1_rt::rc_map_insert(seen.clone(), name.clone(), true);
+                                {
+                                    let mut __found = false;
+                                    for child in decl.children.clone().iter().cloned() {
+                                        if type_expr_reaches_sealed_carrier(
+                                            child_type_node(child.clone()),
+                                            emit_info.clone(),
+                                            source_indices.clone(),
+                                            next_seen.clone(),
+                                        ) {
+                                            __found = true;
+                                            break;
+                                        }
+                                    }
+                                    __found
+                                }
+                            }
+                        }
+                    }
+                    None => false,
+                }
+            }
+        }
+    })
+}
+
+pub fn decl_children_forbid_deserialize(
+    name: String,
+    children: Rc<Vec<Rc<Node>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let seen = v1_rt::rc_map_insert(
+            v1_rt::rc_empty_map::<String, bool>(),
+            qualified_last_segment(name.clone()),
+            true,
+        );
+        {
+            let mut __found = false;
+            for child in children.iter().cloned() {
+                if type_expr_reaches_sealed_carrier(
+                    child_type_node(child.clone()),
+                    emit_info.clone(),
+                    source_indices.clone(),
+                    seen.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    }
+}
+
+pub fn item_forbids_deserialize(
+    item: Rc<Node>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if item_seals_construction(item.clone()) {
+        true
+    } else {
+        decl_children_forbid_deserialize(
+            authored_name_at(source_indices.clone(), item.clone()),
+            item.children.clone(),
+            emit_info.clone(),
+            source_indices.clone(),
+        )
+    }
+}
+
+pub fn enum_variant_payloads_forbid_deserialize(
+    name: String,
+    children: Rc<Vec<Rc<Node>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let seen = v1_rt::rc_map_insert(
+            v1_rt::rc_empty_map::<String, bool>(),
+            qualified_last_segment(name.clone()),
+            true,
+        );
+        {
+            let mut __found = false;
+            for variant in children.iter().cloned() {
+                if {
+                    let mut __found = false;
+                    for field in variant.children.clone().iter().cloned() {
+                        if type_expr_reaches_sealed_carrier(
+                            child_type_node(field.clone()),
+                            emit_info.clone(),
+                            source_indices.clone(),
+                            seen.clone(),
+                        ) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
         }
     }
 }
