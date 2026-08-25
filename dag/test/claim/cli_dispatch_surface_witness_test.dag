@@ -18,9 +18,8 @@ fn option_row(long: String, emission: CliSurfaceEmission) -> CliOptionRow {
   CliOptionRow {
     field: long,
     long: long,
-    value: CliTextValue,
+    value: CliTextValue { text_default: none },
     arity: CliRequired,
-    default_value: none,
     doc: [],
     emission: emission
   }
@@ -93,18 +92,14 @@ test fn live_long_spellings_are_distinct_within_a_verb() -> Bool {
   })
 }
 
-// A toggle is present-or-absent on the command line; there is no third state for a default to
-// select, so a default beside one is a declaration that cannot be realized.
-test fn live_toggles_declare_no_default() -> Bool {
-  gunbc_cli_subcommands() |> all(sub => sub.options |> all(opt =>
-    match opt.value {
-      CliToggleValue => match opt.default_value { Present { value: _ } => false, Absent => true }
-      CliTextValue => true
-      CliPortValue => true
-      CliMillisecondValue => true
-    }
-  ))
-}
+// THE TOGGLE-DEFAULT CHECK IS DELETED, NOT MOVED.
+//
+// A witness here asserted that no toggle option declares a default. `CliToggleValue` now has no
+// default field at all, so that state has no constructor: it is unwritable in any source a
+// fixture could author, not merely absent from the live rows. A check whose RED cannot be
+// produced anywhere it could run is permanently green by construction and would be cited as
+// coverage while carrying no information (DESIGN section 4b). The guarantee climbed; the check
+// went with the machinery it replaced, and this note is what remains of it.
 
 // The gap is the reason the divergence registration for `main.rs` still stands. If it ever
 // empties, that registration's restoration trigger has fired and the row must be deleted -- so

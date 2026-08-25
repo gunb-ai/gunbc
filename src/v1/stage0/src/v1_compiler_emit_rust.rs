@@ -34,6 +34,10 @@ pub use crate::std_coercion::TypeCheckpoint;
 pub use crate::std_content_hash::Fnv1a64Structural;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
+pub use crate::std_magnitude::Magnitude;
+pub use crate::std_measure::millisecond_count;
+pub use crate::std_measure::Millisecond;
+pub use crate::std_nat::Nat;
 use crate::std_serialization::VariantEncoding::*;
 use crate::std_serialization::VariantNaming::*;
 pub use crate::std_serialization::{CoproductWireContract, VariantEncoding, VariantNaming};
@@ -41,6 +45,7 @@ use crate::std_syntax::AlgebraFieldKind::*;
 use crate::std_syntax::BinOp::*;
 use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
+pub use crate::std_types::Port;
 pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{container_template_algebra, is_container_type, is_kernel_type};
 pub use crate::v1_compiler_artifact::RenderTarget;
@@ -33580,7 +33585,7 @@ pub fn cli_option_arg_attribute_body(opt: Rc<CliOptionRow>) -> String {
                 "\"".to_string(),
             )
         };
-        match opt.default_value.clone() {
+        match cli_option_default_literal(opt.value.clone()) {
             Some(v) => v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(long_part.clone(), ", default_value = \"".to_string()),
@@ -33593,13 +33598,35 @@ pub fn cli_option_arg_attribute_body(opt: Rc<CliOptionRow>) -> String {
     }
 }
 
+pub fn cli_option_default_literal(value: Rc<CliOptionValue>) -> Option<String> {
+    match (*value.clone()).clone() {
+        CliOptionValue::CliTextValue {
+            text_default: d, ..
+        } => d.clone(),
+        CliOptionValue::CliToggleValue => None,
+        CliOptionValue::CliPortValue {
+            port_default: d, ..
+        } => match d.clone() {
+            Some(p) => Some((p.clone()).to_string()),
+            None => None,
+        },
+        CliOptionValue::CliMillisecondValue {
+            millisecond_default: d,
+            ..
+        } => match d.clone() {
+            Some(ms) => Some((millisecond_count(ms.clone())).to_string()),
+            None => None,
+        },
+    }
+}
+
 pub fn cli_option_rust_type(opt: Rc<CliOptionRow>) -> String {
     {
-        let base = match opt.value.clone() {
-            CliOptionValue::CliTextValue => "String".to_string(),
+        let base = match (*opt.value.clone()).clone() {
+            CliOptionValue::CliTextValue { .. } => "String".to_string(),
             CliOptionValue::CliToggleValue => "bool".to_string(),
-            CliOptionValue::CliPortValue => "u16".to_string(),
-            CliOptionValue::CliMillisecondValue => "u64".to_string(),
+            CliOptionValue::CliPortValue { .. } => "u16".to_string(),
+            CliOptionValue::CliMillisecondValue { .. } => "u64".to_string(),
         };
         match opt.arity.clone() {
             CliOptionArity::CliRequired => base,

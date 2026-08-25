@@ -52,6 +52,7 @@ import gunbc.cli_dispatch_surface {
   CliAtMostOne,
   CliMillisecondValue,
   CliOptionRow,
+  CliOptionValue,
   CliRepeated,
   CliRequired,
   CliPortValue,
@@ -61,6 +62,7 @@ import gunbc.cli_dispatch_surface {
   cli_subcommand_emitted_options,
   gunbc_cli_emitted_subcommands
 }
+import std.measure { millisecond_count }
 import gunbc.stage0_emitted_population_manifest {
   emitted_population_manifest_basename,
   emitted_population_manifest_line_prefix,
@@ -12639,9 +12641,29 @@ fn cli_option_arg_attribute_body(opt: CliOptionRow) -> String {
   } else {
     concat("long = \"", opt.long, "\"")
   }
-  match opt.default_value {
+  match cli_option_default_literal(value: opt.value) {
     Present { value: v } => concat(long_part, ", default_value = \"", v, "\"")
     Absent => long_part
+  }
+}
+
+// A DEFAULT IS A TYPED VALUE IN THE ROW AND A STRING ONLY IN THE ATTRIBUTE, because clap's
+// `default_value` is literal argv text -- the characters a user would have typed. So this is a
+// rendering, and it is the one place the port's `Int` and the budget's `Millisecond` become
+// characters. The row never stores them that way, which is what stops `"8080"` from being a port
+// spelled as text with nothing relating the spelling to the concept.
+fn cli_option_default_literal(value: CliOptionValue) -> String? {
+  match value {
+    CliTextValue { text_default: d } => d
+    CliToggleValue => none
+    CliPortValue { port_default: d } => match d {
+      Present { value: p } => Present { value: to_string(value: p) }
+      Absent => none
+    }
+    CliMillisecondValue { millisecond_default: d } => match d {
+      Present { value: ms } => Present { value: to_string(value: millisecond_count(m: ms)) }
+      Absent => none
+    }
   }
 }
 

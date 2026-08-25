@@ -5,8 +5,10 @@ use self::CliArmRealization::*;
 use self::CliOptionArity::*;
 use self::CliOptionValue::*;
 use self::CliSurfaceEmission::*;
+pub use crate::std_measure::millisecond_count;
+pub use crate::std_measure::Millisecond;
 use crate::std_types::Bool::*;
-pub use crate::std_types::{Bool, List};
+pub use crate::std_types::{Bool, List, Port};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -24,15 +26,19 @@ pub enum CliOptionArity {
     CliRepeated,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CliOptionValue {
-    CliTextValue,
+    CliTextValue {
+        text_default: Option<String>,
+    },
     CliToggleValue,
-    CliPortValue,
-    CliMillisecondValue,
+    CliPortValue {
+        port_default: Option<Port>,
+    },
+    CliMillisecondValue {
+        millisecond_default: Option<Millisecond>,
+    },
 }
 
 #[derive(
@@ -56,9 +62,8 @@ pub enum CliArmRealization {
 pub struct CliOptionRow {
     pub field: String,
     pub long: String,
-    pub value: CliOptionValue,
+    pub value: Rc<CliOptionValue>,
     pub arity: CliOptionArity,
-    pub default_value: Option<String>,
     pub doc: Rc<Vec<String>>,
     pub emission: CliSurfaceEmission,
 }
@@ -89,49 +94,55 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     options: Rc::new(vec![Rc::new(CliOptionRow {
     field: "source_roots".to_string(),
     long: "source-root".to_string(),
-    value: CliOptionValue::CliTextValue,
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: None,
+}),
     arity: CliOptionArity::CliRepeated,
-    default_value: None,
     doc: Rc::new(vec!["Source root directories (searched recursively for .dag files).".to_string(), "Module imports are resolved transitively from these roots.".to_string()]),
     emission: CliSurfaceEmission::EmittedByEmitMainRs,
 }), Rc::new(CliOptionRow {
     field: "source_dir".to_string(),
     long: "source-dir".to_string(),
-    value: CliOptionValue::CliTextValue,
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: None,
+}),
     arity: CliOptionArity::CliAtMostOne,
-    default_value: None,
     doc: Rc::new(vec!["Legacy: single source directory (all .dag files loaded, no import resolution)".to_string()]),
     emission: CliSurfaceEmission::EmittedByEmitMainRs,
 }), Rc::new(CliOptionRow {
     field: "output_dir".to_string(),
     long: "output-dir".to_string(),
-    value: CliOptionValue::CliTextValue,
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: None,
+}),
     arity: CliOptionArity::CliRequired,
-    default_value: None,
     doc: Rc::new(vec![]),
     emission: CliSurfaceEmission::EmittedByEmitMainRs,
 }), Rc::new(CliOptionRow {
     field: "target".to_string(),
     long: "target".to_string(),
-    value: CliOptionValue::CliTextValue,
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: Some("rust".to_string()),
+}),
     arity: CliOptionArity::CliRequired,
-    default_value: Some("rust".to_string()),
     doc: Rc::new(vec!["Target language: rust, python, go, dag, or + separated set such as rust+dag".to_string()]),
     emission: CliSurfaceEmission::EmittedByEmitMainRs,
 }), Rc::new(CliOptionRow {
     field: "dependency_pool_index".to_string(),
     long: "dependency-pool-index".to_string(),
-    value: CliOptionValue::CliTextValue,
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: Some("strict".to_string()),
+}),
     arity: CliOptionArity::CliRequired,
-    default_value: Some("strict".to_string()),
     doc: Rc::new(vec![]),
     emission: CliSurfaceEmission::EmittedByEmitMainRs,
 }), Rc::new(CliOptionRow {
     field: "entry".to_string(),
     long: "entry".to_string(),
-    value: CliOptionValue::CliTextValue,
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: None,
+}),
     arity: CliOptionArity::CliAtMostOne,
-    default_value: None,
     doc: Rc::new(vec!["Entry `.dag` file: compile only this module and its transitive imports".to_string(), "(not every `.dag` file under the first --source-root). Scopes the compile".to_string(), "to a subtree so a small closure can be emitted without a whole-tree pass.".to_string()]),
     emission: CliSurfaceEmission::AbsentFromEmitMainRs,
 })]),
@@ -153,41 +164,44 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     options: Rc::new(vec![Rc::new(CliOptionRow {
     field: "source_roots".to_string(),
     long: "source-root".to_string(),
-    value: CliOptionValue::CliTextValue,
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: None,
+}),
     arity: CliOptionArity::CliRepeated,
-    default_value: None,
     doc: Rc::new(vec!["Source root directories (searched recursively for .dag files)".to_string()]),
     emission: CliSurfaceEmission::EmittedByEmitMainRs,
 }), Rc::new(CliOptionRow {
     field: "function".to_string(),
     long: "function".to_string(),
-    value: CliOptionValue::CliTextValue,
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: Some("main".to_string()),
+}),
     arity: CliOptionArity::CliRequired,
-    default_value: Some("main".to_string()),
     doc: Rc::new(vec!["Entry function to execute (default: \"main\")".to_string()]),
     emission: CliSurfaceEmission::EmittedByEmitMainRs,
 }), Rc::new(CliOptionRow {
     field: "entry".to_string(),
     long: "entry".to_string(),
-    value: CliOptionValue::CliTextValue,
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: None,
+}),
     arity: CliOptionArity::CliAtMostOne,
-    default_value: None,
     doc: Rc::new(vec!["Entry `.dag` file: load only this module and its transitive imports".to_string(), "(not every file under --source-root). Required for scoped TestClaim runs.".to_string()]),
     emission: CliSurfaceEmission::EmittedByEmitMainRs,
 }), Rc::new(CliOptionRow {
     field: "claim_run".to_string(),
     long: "claim-run".to_string(),
-    value: CliOptionValue::CliToggleValue,
+    value: Rc::new(CliOptionValue::CliToggleValue),
     arity: CliOptionArity::CliRequired,
-    default_value: None,
     doc: Rc::new(vec!["TestClaim / witness run: Bool false -> exit 1; requires --entry".to_string()]),
     emission: CliSurfaceEmission::EmittedByEmitMainRs,
 }), Rc::new(CliOptionRow {
     field: "args".to_string(),
     long: "arg".to_string(),
-    value: CliOptionValue::CliTextValue,
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: None,
+}),
     arity: CliOptionArity::CliRepeated,
-    default_value: None,
     doc: Rc::new(vec!["Named argument for the entry function, repeatable: `--arg name=value`.".to_string(), "Values enter as String; a missing `=` refuses rather than guessing.".to_string()]),
     emission: CliSurfaceEmission::EmittedByEmitMainRs,
 })]),
@@ -202,9 +216,10 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     options: Rc::new(vec![Rc::new(CliOptionRow {
     field: "host".to_string(),
     long: "host".to_string(),
-    value: CliOptionValue::CliTextValue,
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: None,
+}),
     arity: CliOptionArity::CliRequired,
-    default_value: None,
     doc: Rc::new(vec!["Fleet host identity (e.g. \"srv1\") to converge".to_string()]),
     emission: CliSurfaceEmission::AbsentFromEmitMainRs,
 })]),
@@ -219,65 +234,73 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     options: Rc::new(vec![Rc::new(CliOptionRow {
     field: "source_roots".to_string(),
     long: "source-root".to_string(),
-    value: CliOptionValue::CliTextValue,
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: None,
+}),
     arity: CliOptionArity::CliRepeated,
-    default_value: None,
     doc: Rc::new(vec!["Source root directories (searched recursively for .dag files)".to_string()]),
     emission: CliSurfaceEmission::AbsentFromEmitMainRs,
 }), Rc::new(CliOptionRow {
     field: "entry".to_string(),
     long: "entry".to_string(),
-    value: CliOptionValue::CliTextValue,
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: None,
+}),
     arity: CliOptionArity::CliRequired,
-    default_value: None,
     doc: Rc::new(vec!["Entry `.dag` file: load only this module and its transitive imports".to_string()]),
     emission: CliSurfaceEmission::AbsentFromEmitMainRs,
 }), Rc::new(CliOptionRow {
     field: "function".to_string(),
     long: "function".to_string(),
-    value: CliOptionValue::CliTextValue,
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: None,
+}),
     arity: CliOptionArity::CliRequired,
-    default_value: None,
     doc: Rc::new(vec!["Handler function: fn(method: String, path: String, body: String) -> ServeWireResponse".to_string()]),
     emission: CliSurfaceEmission::AbsentFromEmitMainRs,
 }), Rc::new(CliOptionRow {
     field: "host".to_string(),
     long: "host".to_string(),
-    value: CliOptionValue::CliTextValue,
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: Some("127.0.0.1".to_string()),
+}),
     arity: CliOptionArity::CliRequired,
-    default_value: Some("127.0.0.1".to_string()),
     doc: Rc::new(vec![]),
     emission: CliSurfaceEmission::AbsentFromEmitMainRs,
 }), Rc::new(CliOptionRow {
     field: "port".to_string(),
     long: "port".to_string(),
-    value: CliOptionValue::CliPortValue,
+    value: Rc::new(CliOptionValue::CliPortValue {
+    port_default: Some(8080),
+}),
     arity: CliOptionArity::CliRequired,
-    default_value: Some("8080".to_string()),
     doc: Rc::new(vec![]),
     emission: CliSurfaceEmission::AbsentFromEmitMainRs,
 }), Rc::new(CliOptionRow {
     field: "release_revision".to_string(),
     long: "release-revision".to_string(),
-    value: CliOptionValue::CliTextValue,
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: None,
+}),
     arity: CliOptionArity::CliRequired,
-    default_value: None,
     doc: Rc::new(vec!["Release revision this process serves, bound ONCE at startup and".to_string(), "immutable for the process lifetime.".to_string()]),
     emission: CliSurfaceEmission::AbsentFromEmitMainRs,
 }), Rc::new(CliOptionRow {
     field: "eval_budget_cpu_ms".to_string(),
     long: "eval-budget-cpu-ms".to_string(),
-    value: CliOptionValue::CliMillisecondValue,
+    value: Rc::new(CliOptionValue::CliMillisecondValue {
+    millisecond_default: None,
+}),
     arity: CliOptionArity::CliAtMostOne,
-    default_value: None,
     doc: Rc::new(vec!["Per-request THREAD-CPU evaluation budget in milliseconds.".to_string()]),
     emission: CliSurfaceEmission::AbsentFromEmitMainRs,
 }), Rc::new(CliOptionRow {
     field: "eval_budget_wall_ms".to_string(),
     long: "eval-budget-wall-ms".to_string(),
-    value: CliOptionValue::CliMillisecondValue,
+    value: Rc::new(CliOptionValue::CliMillisecondValue {
+    millisecond_default: None,
+}),
     arity: CliOptionArity::CliAtMostOne,
-    default_value: None,
     doc: Rc::new(vec!["Per-request MONOTONIC-WALL evaluation budget in milliseconds.".to_string()]),
     emission: CliSurfaceEmission::AbsentFromEmitMainRs,
 })]),
@@ -391,14 +414,6 @@ pub struct CliRequired;
 pub struct CliAtMostOne;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CliRepeated;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct CliTextValue;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct CliToggleValue;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct CliPortValue;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct CliMillisecondValue;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct EmittedByEmitMainRs;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

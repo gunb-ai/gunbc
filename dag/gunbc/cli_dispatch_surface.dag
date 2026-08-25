@@ -1,6 +1,7 @@
 module gunbc.cli_dispatch_surface
 
-import std.types { Bool, Int, List, String }
+import std.measure { Millisecond, millisecond_count }
+import std.types { Bool, Int, List, Port, String }
 
 // THE gunbc CLI'S OWN DISPATCH SURFACE, AS ROWS.
 //
@@ -24,12 +25,28 @@ import std.types { Bool, Int, List, String }
 // fusion rather than remove it. `CliOptionValue` therefore names the CONCEPT each option carries
 // (`std.types.Port`, `std.measure.Millisecond`) and never its machine type.
 
-// WHAT ONE OPTION CARRIES. Each arm names an authority that already exists rather than a Rust
-// type: text is `String`, a toggle is `Bool`, a port is `std.types.Port` (an Int bounded to
-// 1..65535), and a budget is `std.measure.Millisecond`. The last two are the reason this is a
-// coproduct and not a `String` with a spelling beside it -- `--port` and `--eval-budget-cpu-ms`
-// differ in what they MEAN, and an emitter that knows only "unsigned" has to be told the width by
-// hand at every site.
+// WHAT ONE OPTION CARRIES, AND ITS DEFAULT, WHICH ARE THE SAME FACT.
+//
+// Each arm names an authority that already exists rather than a Rust type: text is `String`, a
+// toggle is `Bool`, a port is `std.types.Port` (an `Int` bounded to 1..65535), and a budget is
+// `std.measure.Millisecond`. The last two are why this is a coproduct and not a `String` with a
+// spelling beside it -- `--port` and `--eval-budget-cpu-ms` differ in what they MEAN, and an
+// emitter that knows only "unsigned" has to be told the width by hand at every site.
+//
+// THE DEFAULT LIVES INSIDE THE ARM, and that placement is doing two jobs. An earlier revision
+// carried `default_value: String?` on the row, which flattened four domains into text: `"8080"`
+// was a port written as characters, so the row NAMED `Port` while CARRYING a string, and the only
+// thing relating the two was this comment. Putting the default in the arm makes the row carry the
+// authority it names -- `port_default` IS a `Port`, `millisecond_default` IS a `Millisecond` --
+// which is the anemic-leaf decomposition DESIGN section 2 asks for, onto concepts that already
+// exist rather than a fresh one.
+//
+// It also makes a state unwritable rather than checked. `CliToggleValue` has no default field, so
+// "a toggle with a default" -- which clap cannot realize, there being no third state for a default
+// to select -- has no constructor. A witness asserting toggles declare no default was enrolled
+// here and is DELETED rather than kept: its RED is no longer authorable in any source a fixture
+// could write, so it would be permanently green by construction and would read as coverage while
+// carrying no information (DESIGN section 4b). The climb removes the check, not the guarantee.
 // HOW MANY VALUES ONE OPTION ADMITS -- and this coproduct is minted here UNDER PROTEST, with the
 // reason recorded because minting it is the move this file otherwise argues against.
 //
@@ -59,10 +76,10 @@ type CliOptionArity
   | CliRepeated
 
 type CliOptionValue
-  = CliTextValue
+  = CliTextValue { text_default: String? }
   | CliToggleValue
-  | CliPortValue
-  | CliMillisecondValue
+  | CliPortValue { port_default: Port? }
+  | CliMillisecondValue { millisecond_default: Millisecond? }
 
 // WHETHER `emit_main_rs` PRODUCES THIS ROW TODAY.
 //
@@ -94,7 +111,6 @@ type CliOptionRow {
   long: String
   value: CliOptionValue
   arity: CliOptionArity
-  default_value: String?
   doc: List<String>
   emission: CliSurfaceEmission
 }
@@ -135,9 +151,8 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
         CliOptionRow {
           field: "source_roots",
           long: "source-root",
-          value: CliTextValue,
+          value: CliTextValue { text_default: none },
           arity: CliRepeated,
-          default_value: none,
           doc: [
             "Source root directories (searched recursively for .dag files).",
             "Module imports are resolved transitively from these roots."
@@ -147,45 +162,40 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
         CliOptionRow {
           field: "source_dir",
           long: "source-dir",
-          value: CliTextValue,
+          value: CliTextValue { text_default: none },
           arity: CliAtMostOne,
-          default_value: none,
           doc: ["Legacy: single source directory (all .dag files loaded, no import resolution)"],
           emission: EmittedByEmitMainRs
         },
         CliOptionRow {
           field: "output_dir",
           long: "output-dir",
-          value: CliTextValue,
+          value: CliTextValue { text_default: none },
           arity: CliRequired,
-          default_value: none,
           doc: [],
           emission: EmittedByEmitMainRs
         },
         CliOptionRow {
           field: "target",
           long: "target",
-          value: CliTextValue,
+          value: CliTextValue { text_default: Present { value: "rust" } },
           arity: CliRequired,
-          default_value: Present { value: "rust" },
           doc: ["Target language: rust, python, go, dag, or + separated set such as rust+dag"],
           emission: EmittedByEmitMainRs
         },
         CliOptionRow {
           field: "dependency_pool_index",
           long: "dependency-pool-index",
-          value: CliTextValue,
+          value: CliTextValue { text_default: Present { value: "strict" } },
           arity: CliRequired,
-          default_value: Present { value: "strict" },
           doc: [],
           emission: EmittedByEmitMainRs
         },
         CliOptionRow {
           field: "entry",
           long: "entry",
-          value: CliTextValue,
+          value: CliTextValue { text_default: none },
           arity: CliAtMostOne,
-          default_value: none,
           doc: [
             "Entry `.dag` file: compile only this module and its transitive imports",
             "(not every `.dag` file under the first --source-root). Scopes the compile",
@@ -213,27 +223,24 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
         CliOptionRow {
           field: "source_roots",
           long: "source-root",
-          value: CliTextValue,
+          value: CliTextValue { text_default: none },
           arity: CliRepeated,
-          default_value: none,
           doc: ["Source root directories (searched recursively for .dag files)"],
           emission: EmittedByEmitMainRs
         },
         CliOptionRow {
           field: "function",
           long: "function",
-          value: CliTextValue,
+          value: CliTextValue { text_default: Present { value: "main" } },
           arity: CliRequired,
-          default_value: Present { value: "main" },
           doc: ["Entry function to execute (default: \"main\")"],
           emission: EmittedByEmitMainRs
         },
         CliOptionRow {
           field: "entry",
           long: "entry",
-          value: CliTextValue,
+          value: CliTextValue { text_default: none },
           arity: CliAtMostOne,
-          default_value: none,
           doc: [
             "Entry `.dag` file: load only this module and its transitive imports",
             "(not every file under --source-root). Required for scoped TestClaim runs."
@@ -245,16 +252,14 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           long: "claim-run",
           value: CliToggleValue,
           arity: CliRequired,
-          default_value: none,
           doc: ["TestClaim / witness run: Bool false -> exit 1; requires --entry"],
           emission: EmittedByEmitMainRs
         },
         CliOptionRow {
           field: "args",
           long: "arg",
-          value: CliTextValue,
+          value: CliTextValue { text_default: none },
           arity: CliRepeated,
-          default_value: none,
           doc: [
             "Named argument for the entry function, repeatable: `--arg name=value`.",
             "Values enter as String; a missing `=` refuses rather than guessing."
@@ -277,9 +282,8 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
         CliOptionRow {
           field: "host",
           long: "host",
-          value: CliTextValue,
+          value: CliTextValue { text_default: none },
           arity: CliRequired,
-          default_value: none,
           doc: ["Fleet host identity (e.g. \"srv1\") to converge"],
           emission: AbsentFromEmitMainRs
         }
@@ -299,54 +303,48 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
         CliOptionRow {
           field: "source_roots",
           long: "source-root",
-          value: CliTextValue,
+          value: CliTextValue { text_default: none },
           arity: CliRepeated,
-          default_value: none,
           doc: ["Source root directories (searched recursively for .dag files)"],
           emission: AbsentFromEmitMainRs
         },
         CliOptionRow {
           field: "entry",
           long: "entry",
-          value: CliTextValue,
+          value: CliTextValue { text_default: none },
           arity: CliRequired,
-          default_value: none,
           doc: ["Entry `.dag` file: load only this module and its transitive imports"],
           emission: AbsentFromEmitMainRs
         },
         CliOptionRow {
           field: "function",
           long: "function",
-          value: CliTextValue,
+          value: CliTextValue { text_default: none },
           arity: CliRequired,
-          default_value: none,
           doc: ["Handler function: fn(method: String, path: String, body: String) -> ServeWireResponse"],
           emission: AbsentFromEmitMainRs
         },
         CliOptionRow {
           field: "host",
           long: "host",
-          value: CliTextValue,
+          value: CliTextValue { text_default: Present { value: "127.0.0.1" } },
           arity: CliRequired,
-          default_value: Present { value: "127.0.0.1" },
           doc: [],
           emission: AbsentFromEmitMainRs
         },
         CliOptionRow {
           field: "port",
           long: "port",
-          value: CliPortValue,
+          value: CliPortValue { port_default: Present { value: 8080 } },
           arity: CliRequired,
-          default_value: Present { value: "8080" },
           doc: [],
           emission: AbsentFromEmitMainRs
         },
         CliOptionRow {
           field: "release_revision",
           long: "release-revision",
-          value: CliTextValue,
+          value: CliTextValue { text_default: none },
           arity: CliRequired,
-          default_value: none,
           doc: [
             "Release revision this process serves, bound ONCE at startup and",
             "immutable for the process lifetime."
@@ -356,18 +354,16 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
         CliOptionRow {
           field: "eval_budget_cpu_ms",
           long: "eval-budget-cpu-ms",
-          value: CliMillisecondValue,
+          value: CliMillisecondValue { millisecond_default: none },
           arity: CliAtMostOne,
-          default_value: none,
           doc: ["Per-request THREAD-CPU evaluation budget in milliseconds."],
           emission: AbsentFromEmitMainRs
         },
         CliOptionRow {
           field: "eval_budget_wall_ms",
           long: "eval-budget-wall-ms",
-          value: CliMillisecondValue,
+          value: CliMillisecondValue { millisecond_default: none },
           arity: CliAtMostOne,
-          default_value: none,
           doc: ["Per-request MONOTONIC-WALL evaluation budget in milliseconds."],
           emission: AbsentFromEmitMainRs
         }
