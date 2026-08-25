@@ -136,20 +136,6 @@ fn file_verdict(path: String, refusal_ceiling: Int) -> RosterVerdict {
   }
 }
 
-fn file_suspect_count(path: String) -> Int {
-  match ingest_findings(path: path) {
-    SourceFindingsNotEstablished { cause: _ } => -1
-    SourceFindingsEstablished { findings: fs } => count_matching(fs: fs, pred: v2.lens.identity_captured_navigation.analyze.finding_is_suspect)
-  }
-}
-
-fn file_refusal_count(path: String) -> Int {
-  match ingest_findings(path: path) {
-    SourceFindingsNotEstablished { cause: _ } => -1
-    SourceFindingsEstablished { findings: fs } => count_matching(fs: fs, pred: v2.lens.identity_captured_navigation.analyze.finding_is_refusal)
-  }
-}
-
 fn file_gate(path: String, refusal_ceiling: Int) -> Bool {
   match file_verdict(path: path, refusal_ceiling: refusal_ceiling) {
     RosterClean => true

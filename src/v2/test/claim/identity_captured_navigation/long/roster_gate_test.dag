@@ -22,5 +22,3 @@ test fn roster_parse_stage_zero_suspects_within_ratchet() -> Bool {
 test fn roster_accumulator_copy_analyze_zero_suspects_within_ratchet() -> Bool {
   v2.lens.identity_captured_navigation.roster_gate.file_gate(path: "src/v2/lens/complexity_accumulator_copy/analyze.dag", refusal_ceiling: 0)
 }
-
-data corpus_sweep_covers_ratchet_note: String = "roster_dag_language_model_zero_suspects_within_ratchet (and its siblings above) already exercise v2.lens.identity_captured_navigation.roster_gate.file_gate end-to-end on src/v2/extdeps/languages/dag.dag and the other corpus-sweep targets - a separate file_suspect_count/file_refusal_count pin on the same file would be a redundant second read of the identical fact (DESIGN.md S2), not an added control."
