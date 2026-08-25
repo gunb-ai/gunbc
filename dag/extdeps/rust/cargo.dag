@@ -1,7 +1,7 @@
 module extdeps.cargo
 
 import extdeps.cargo_version { CargoPackageVersion, CargoVersionRequirement, CargoToolVersionFloor }
-import std.types { FilePathParts }
+import std.types { FilePathParts, NonEmptyStr }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -89,3 +89,44 @@ type CargoFeature {
 type TestHarness = Harness | NoHarness
 
 data default_profile: CargoProfile = "dev"
+
+// The variables named here are CARGO'S OWN INTERFACE, not a devboot or CI convention: the cargo
+// book's environment-variables reference lists what cargo reads, and a caller that spells
+// "CARGO_TARGET_DIR=" inline is a second authority for a name upstream already owns. The failure
+// that authority prevents is silent rather than loud -- a misspelled variable is not an error to
+// cargo, it is simply not read, so the build runs to completion under a default the caller
+// believed it had overridden and the divergence surfaces as an artifact built somewhere else.
+//
+// RUSTUP_HOME is deliberately ABSENT from this coproduct. Rustup is an independently governed
+// upstream product with its own book and its own release cadence (DESIGN section 3, external
+// upstream decomposition), so its variable lives in extdeps.rustup; enumerating it here would
+// make a rustup change require editing cargo's module.
+data cargo_environment_variables_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/cargo/reference/environment-variables.html"
+  }
+}
+
+type CargoEnvironmentVariable
+  = CargoHomeEnv
+  | CargoTargetDirEnv
+  | CargoBuildJobsEnv
+  | RustcWrapperEnv
+
+// THE NAMES LIVE HERE, THE OPERAND FORM DOES NOT, and an earlier revision of this module got that
+// wrong. It carried a cargo_environment_assignment rendering "NAME=value" beside these names,
+// following what extdeps.ollama.server_env and extdeps.cache.sccache already did. That form is
+// env(1)'s argument syntax, not cargo's -- cargo owns WHICH NAMES IT READS and nothing about how a
+// process launcher spells an assignment -- so extdeps.tools.env is its single authority, and
+// rendering it again here would be the DESIGN section 3 fork this migration exists to remove,
+// committed by the change removing it. Callers pair a name from this function with an EnvSet
+// binding and let extdeps.tools.env env_bindings_argv render the operand.
+fn cargo_environment_variable_name(variable: CargoEnvironmentVariable) -> NonEmptyStr {
+  match variable {
+    CargoHomeEnv => "CARGO_HOME"
+    CargoTargetDirEnv => "CARGO_TARGET_DIR"
+    CargoBuildJobsEnv => "CARGO_BUILD_JOBS"
+    RustcWrapperEnv => "RUSTC_WRAPPER"
+  }
+}

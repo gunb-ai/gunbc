@@ -6,7 +6,7 @@ import std.currency { CurrencyCode }
 import std.nat { Nat }
 import std.types { Int, Bool, String, NonEmptyStr }
 import extdeps.units.iec_80000_13 { iec_kibi_factor, octet_bit_count }
-import extdeps.units.iso8601 { iso8601_seconds_per_minute, iso8601_minutes_per_hour }
+import extdeps.units.iso8601 { iso8601_seconds_per_minute, iso8601_minutes_per_hour, iso8601_hours_per_day }
 import extdeps.units.iso_80000_3 {
   square_millimetres_per_square_metre,
   cubic_millimetres_per_cubic_metre,
@@ -126,6 +126,14 @@ fn seconds_per_minute() -> Nat {
 
 fn minutes_per_hour() -> Nat {
   iso8601_minutes_per_hour()
+}
+
+fn hours_per_day() -> Nat {
+  iso8601_hours_per_day()
+}
+
+fn seconds_per_day() -> Nat {
+  hours_per_day() * minutes_per_hour() * seconds_per_minute()
 }
 
 fn milliseconds_per_second() -> Nat {

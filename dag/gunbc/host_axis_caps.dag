@@ -40,11 +40,10 @@ import std.measure { byte_size_count }
 import v2.extdeps.languages.bash_build {
   bash_build_command_with_words,
   bash_build_with_redir_to_file,
-  bash_build_word_concat_from_nodes,
   bash_build_word_lit,
-  bash_build_word_var,
 }
 import v2.std.node { Node }
+import gunbc.live_deploy.operations { deploy_stage_path_word }
 import gunbc.shell_command_text {
   shell_command_intent,
   shell_literal_words,
@@ -292,27 +291,16 @@ fn runner_slot_service_units_for_host(host: HostIdentity) -> List<NonEmptyStr> {
   )
 }
 
-// The staged path is a WORD, not a spelled-out quotation: variable reference and literal
-// suffix are two parts of one concat word, so nothing here decides how "$_gunbc_stage" is
-// quoted — the grammar does, at both the redirection target and the install argument, from
-// the same word.
-fn deploy_cap_stage_path_word(stage_name: String) -> Node {
-  bash_build_word_concat_from_nodes(parts: [
-    bash_build_word_var(name: "_gunbc_stage"),
-    bash_build_word_lit(text: concat("/", stage_name)),
-  ])
-}
-
 fn deploy_cap_upsert_staged_stmts(m: CapMember, stage_name: String) -> List<Node> {
   [
     cap_write_content_intent(
       content: m.content,
-      path: deploy_cap_stage_path_word(stage_name: stage_name),
+      path: deploy_stage_path_word(stage_name: stage_name),
     ),
     bash_build_command_with_words(words: concat(
       shell_literal_words(words: ["sudo", "-n", "install", "-m", "0644"]),
       [
-        deploy_cap_stage_path_word(stage_name: stage_name),
+        deploy_stage_path_word(stage_name: stage_name),
         bash_build_word_lit(text: m.dropin_path as String),
       ],
     )),

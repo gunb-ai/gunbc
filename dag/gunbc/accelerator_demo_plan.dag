@@ -54,7 +54,7 @@ fn relu_mul_add_schedule() -> std.realization_schedule.Schedule {
 
 fn build_realization_plan(schedule: std.realization_schedule.Schedule) -> RealizationPlan<Nano> {
   RealizationPlan {
-    target: demo_target_label
+    target: std.content_hash.content_hash_of_value(value: demo_target_label)
     objective: RealizationObjective { goals: [] }
     schedule: schedule
     total: demo_plan_total()

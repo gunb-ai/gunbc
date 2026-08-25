@@ -175,7 +175,7 @@ service gcloud.Auth {
     }
     readonly
 
-    transport file { op: READ, path: "\{path\}" }
+    transport file { path: "\{path\}" }
   }
 }
 

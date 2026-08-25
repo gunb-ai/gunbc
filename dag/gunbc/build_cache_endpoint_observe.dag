@@ -6,6 +6,9 @@ import std.disposition { Disposition, SingleAuthority }
 import std.algebra { trim }
 import std.checked_arithmetic { CheckedNat, CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
 import extdeps.linux.procfs { ProcfsPath, ProcNetUnix, procfs_path_literal }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.gnu_coreutils { cat_command, readlink_command }
+import extdeps.tools.stat { stat_file_type_command, stat_owner_user_name_command }
 import extdeps.cache.sccache { SccacheServerUnixSocket, SccacheServerTcpPort }
 import extdeps.linux.proc_self_cgroup {
   ProcPidCgroupMembershipRecord,
@@ -100,38 +103,42 @@ type BuildCacheEndpointSurvey {
 
 data listener_chain_is_the_receipt_chain_note: String = "THIS IS THE CHAIN THE STEP-1 PLACEMENT RECEIPT EXECUTED BY HAND, and it is here rather than a tool that answers the same question in one call because the receipt and gunbc.build_cache_instance endpoint_ownership_note both specify it and both explicitly exclude ss, pgrep, head -1 and lsof. An earlier revision of this module DID use ss, on the stated ground that resolving a socket inode to its holder needs a glob over /proc and therefore a shell this lane may not emit. THAT GROUND WAS FALSE and was refuted by execution 2026-08-21, twice independently: find takes the whole walk as one argv with no shell (extdeps.shell shell.Find SocketInodeHolders), so the receipt's chain was reachable the whole time and the substitution bought nothing. The measurement that produced the error is worth as much as the one that corrected it -- the first probe used the bracketed pattern socket:[N], find read the brackets as a glob character class, it matched nothing, and 'found nothing' was accepted as confirmation that the walk could not be done. A zero with no nonzero beside it in the same run is not a measurement. It is recorded rather than quietly corrected because the false claim had already been written into three carrier notes and a PR body as a capability boundary, and a fabricated boundary is worse than a missing feature -- it tells the next person not to try.\n\nWHAT THE CORRECTION BUYS, concretely: the fd-holder step IS clause (3) of gunbc.build_cache_endpoint_path's stale-socket observer contract -- no open descriptor anywhere in /proc still resolves to the socket's inode. Under ss that clause was unreadable, so EndpointStaleSocket could never be produced and srv4's stranded socket refused forever. It is readable now, so the arm is produced and the admitted unlink is reachable."
 
-fn proc_net_unix_read_argv() -> List<String> {
-  ["cat", procfs_path_literal(p: ProcNetUnix) as String]
+// THE READS ARE COMMANDS, NOT WORD LISTS. Each of these was a bare argv literal whose first element
+// happened to be a tool name; they now derive from the cited coreutils authorities, and the two
+// transports that consume them take the same value -- the local one runs it, the ssh ones flatten it
+// with extdeps.exec.command argv_words. One construction, two addressings.
+fn proc_net_unix_read_command() -> ArgvCommand {
+  cat_command(path: procfs_path_literal(p: ProcNetUnix) as String)
 }
 
 data boot_id_path: String = "/proc/sys/kernel/random/boot_id"
 
-fn boot_id_read_argv() -> List<String> {
-  ["cat", boot_id_path]
+fn boot_id_read_command() -> ArgvCommand {
+  cat_command(path: boot_id_path)
 }
 
-fn endpoint_path_kind_argv(path: NonEmptyStr) -> List<String> {
-  ["stat", "-c", "%F", "--", path as String]
+fn endpoint_path_kind_command(path: NonEmptyStr) -> ArgvCommand {
+  stat_file_type_command(path: path as String)
 }
 
 fn proc_pid_path(pid: Nat, leaf: String) -> String {
   join(["/proc/", to_string(pid), "/", leaf], "")
 }
 
-fn owner_cgroup_argv(pid: Nat) -> List<String> {
-  ["cat", proc_pid_path(pid: pid, leaf: "cgroup")]
+fn owner_cgroup_command(pid: Nat) -> ArgvCommand {
+  cat_command(path: proc_pid_path(pid: pid, leaf: "cgroup"))
 }
 
-fn owner_proc_stat_argv(pid: Nat) -> List<String> {
-  ["cat", proc_pid_path(pid: pid, leaf: "stat")]
+fn owner_proc_stat_command(pid: Nat) -> ArgvCommand {
+  cat_command(path: proc_pid_path(pid: pid, leaf: "stat"))
 }
 
-fn owner_principal_argv(pid: Nat) -> List<String> {
-  ["stat", "-c", "%U", "--", proc_pid_path(pid: pid, leaf: "")]
+fn owner_principal_command(pid: Nat) -> ArgvCommand {
+  stat_owner_user_name_command(path: proc_pid_path(pid: pid, leaf: ""))
 }
 
-fn owner_executable_argv(pid: Nat) -> List<String> {
-  ["readlink", proc_pid_path(pid: pid, leaf: "exe")]
+fn owner_executable_command(pid: Nat) -> ArgvCommand {
+  readlink_command(path: proc_pid_path(pid: pid, leaf: "exe"))
 }
 
 // --- decoders ---------------------------------------------------------------

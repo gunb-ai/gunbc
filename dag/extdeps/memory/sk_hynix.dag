@@ -13,13 +13,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data stick_capacity_bytes: ByteSize = byte_size(17179869184)
+data stick_capacity_bytes_16g: ByteSize = byte_size(17179869184)
 
 data hma82gr7afr4n_vk_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
   part_number: "HMA82GR7AFR4N-VK",
   manufacturer: sk_hynix,
   generation: dram_generation_ddr4,
-  capacity_bytes: stick_capacity_bytes,
+  capacity_bytes: stick_capacity_bytes_16g,
   data_rate_mts: 2666,
   ecc: true,
   buffering: Registered,
@@ -33,7 +33,7 @@ data hma82gr7afr8n_vk_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
   part_number: "HMA82GR7AFR8N-VK",
   manufacturer: sk_hynix,
   generation: dram_generation_ddr4,
-  capacity_bytes: stick_capacity_bytes,
+  capacity_bytes: stick_capacity_bytes_16g,
   data_rate_mts: 2666,
   ecc: true,
   buffering: Registered,

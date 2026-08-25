@@ -21,6 +21,7 @@ import extdeps.github.actions {
   checkout_action, setup_rust_action
 }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
+import gunbc.claim_executor_cli { claim_executor_command }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import std.types { List, String, Int }
@@ -63,9 +64,7 @@ data corpus_type_judgment_workflow_job_id: String = "corpus_type_judgment"
 // `--source-root` to render here. The workflow therefore has no spelling for "measure part of it",
 // which is the constraint held as construction rather than as a flag a future editor must not add.
 fn corpus_type_judgment_run_command() -> ArgvCommand {
-  ArgvCommand {
-    argv: ["target/release/claim_executor", "--corpus-type-judgment"],
-  }
+  claim_executor_command(mode_flag: "--corpus-type-judgment", operands: [])
 }
 
 fn corpus_type_judgment_checkout_step() -> Step {

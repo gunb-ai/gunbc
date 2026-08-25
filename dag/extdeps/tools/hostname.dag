@@ -3,6 +3,7 @@ module extdeps.tools.hostname
 import std.types { String, List, Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.dns.domain_name { DnsLabel }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -60,4 +61,22 @@ service os.Hostname {
       0 => { success: true, stderr: "" } "hermetic os.Hostname.Set"
     }
   }
+}
+
+// PATH-resolved program name, deliberately: this repository has made no filesystem observation of
+// the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
+// criterion for climbing to an absolute row, and the counter-example that makes the distinction
+// load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
+data hostname_program: NonEmptyStr = "hostname"
+
+// TWO BUILDERS BECAUSE THEY ANSWER DIFFERENT QUESTIONS. `hostname` prints whatever the host is
+// configured to call itself, which may be fully qualified; `hostname -s` prints the first label
+// only. A receipt that records identity wants the former, a converge that matches a fleet member's
+// short name wants the latter, and collapsing them would silently change which one a caller got.
+fn hostname_read_command() -> ArgvCommand {
+  argv_command(program: hostname_program, arguments: [])
+}
+
+fn hostname_short_read_command() -> ArgvCommand {
+  argv_command(program: hostname_program, arguments: ["-s"])
 }

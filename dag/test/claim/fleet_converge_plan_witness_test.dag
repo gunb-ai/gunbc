@@ -33,7 +33,10 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_content_hash_path,
   fleet_converge_plan_bundle_digest_hex,
   fleet_converge_plan_bundle_matches,
+  fleet_converge_slot_lines,
+  fleet_converge_slot_refusal_count,
 }
+import gunbc.runner_slot_provision { runner_slot_member_from_instance_name }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.fleet_converge_plan_cli { fleet_converge_plan_cli_note }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -55,6 +58,7 @@ test fn timer_retirement_plan_shows_refused_removal_for_foreign_cap() -> Bool {
     observed_timers: [],
     observed_caps: [foreign],
     observed_spark: [],
+    observed_slots: [],
   ) {
     Present { value: artifact } =>
       string_contains(s: artifact.plan_body, pattern: "REFUSED-REMOVAL cap ")
@@ -82,6 +86,7 @@ test fn plan_artifact_hash_is_stable_for_fixed_observation() -> Bool {
     observed_timers: [],
     observed_caps: [observed_cap],
     observed_spark: [],
+    observed_slots: [],
   ) {
     Present { value: a1 } =>
       match fleet_converge_plan_artifact(
@@ -90,6 +95,7 @@ test fn plan_artifact_hash_is_stable_for_fixed_observation() -> Bool {
         observed_timers: [],
         observed_caps: [observed_cap],
         observed_spark: [],
+        observed_slots: [],
       ) {
         Present { value: a2 } =>
           match fleet_converge_plan_artifact_hash(artifact: a1) {
@@ -117,6 +123,7 @@ test fn observed_baseline_cas_refuses_after_drift() -> Bool {
     observed_timers: [],
     observed_caps: [observed_cap],
     observed_spark: [],
+    observed_slots: [],
   ) {
     Present { value: artifact } => {
       let drifted = CapMember {
@@ -129,6 +136,7 @@ test fn observed_baseline_cas_refuses_after_drift() -> Bool {
         observed_timers: [],
         observed_caps: [drifted],
         observed_spark: [],
+        observed_slots: [],
       )
     }
     Absent => false
@@ -142,6 +150,7 @@ test fn plan_body_names_subject_host_and_generation() -> Bool {
     observed_timers: [],
     observed_caps: [],
     observed_spark: [],
+    observed_slots: [],
   ) {
     Present { value: artifact } =>
       string_contains(s: artifact.plan_body, pattern: "subject_host:srv1")
@@ -164,6 +173,7 @@ test fn cross_host_apply_refuses_subject_identity() -> Bool {
     observed_timers: [],
     observed_caps: [observed_cap],
     observed_spark: [],
+    observed_slots: [],
   ) {
     Present { value: artifact } =>
       !fleet_converge_apply_subject_admits(
@@ -172,6 +182,7 @@ test fn cross_host_apply_refuses_subject_identity() -> Bool {
         observed_timers: [],
         observed_caps: [observed_cap],
         observed_spark: [],
+        observed_slots: [],
       )
     Absent => false
   }
@@ -188,6 +199,7 @@ test fn same_host_different_generation_changes_plan_hash() -> Bool {
     observed_timers: [],
     observed_caps: [observed_cap],
     observed_spark: [],
+    observed_slots: [],
   ) {
     Present { value: gen0 } =>
       match fleet_converge_plan_artifact(
@@ -196,6 +208,7 @@ test fn same_host_different_generation_changes_plan_hash() -> Bool {
         observed_timers: [],
         observed_caps: [observed_cap],
         observed_spark: [],
+        observed_slots: [],
       ) {
         Present { value: gen1 } =>
           match fleet_converge_plan_artifact_hash(artifact: gen0) {
@@ -231,6 +244,7 @@ test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
     observed_timers: [],
     observed_caps: [observed_cap],
     observed_spark: [],
+    observed_slots: [],
   ) {
     Present { value: artifact } => {
       let drifted = CapMember {
@@ -243,6 +257,7 @@ test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
         observed_timers: [],
         observed_caps: [drifted],
         observed_spark: [],
+        observed_slots: [],
       )
     }
     Absent => false
@@ -266,6 +281,7 @@ test fn bundle_hash_binds_apply_shell_not_plan_body_only() -> Bool {
     observed_timers: [],
     observed_caps: [],
     observed_spark: [],
+    observed_slots: [],
   ) {
     Present { value: artifact } =>
       match fleet_converge_plan_bundle_digest_hex(
@@ -437,6 +453,7 @@ test fn apply_shell_carries_dissolve_on_marker_not_host_gate() -> Bool {
     observed_timers: [],
     observed_caps: [],
     observed_spark: [],
+    observed_slots: [],
   ) {
     Present { value: artifact } =>
       string_contains(s: artifact.apply_shell, pattern: "dissolve-on: fleet_converge_apply_shell")
@@ -460,4 +477,98 @@ test fn locked_apply_stale_diagnostic_keeps_observed_value_in_one_word() -> Bool
   )
   !string_contains(s: inner, pattern: "observed= ")
     && string_contains(s: inner, pattern: "observed=")
+}
+
+
+// --- the slot family: the third member family joins plan and apply -----------------------------
+
+// A HOST NOBODY MODELED PRODUCES A REFUSAL LINE IN THE PLAN, not an empty slot section. This is the
+// discriminating RED for the arm: an empty section reads to a reviewer as "this axis is converged",
+// which is the exact opposite of what an unresolvable host means.
+test fn an_unmodeled_host_refuses_in_the_slot_section() -> Bool {
+  let lines = fleet_converge_slot_lines(
+    host: "srv-nonexistent" as NonEmptyStr,
+    observed_slots: [],
+  )
+  any(lines, l => string_contains(s: l, pattern: "REFUSED-UNMODELED-HOST runner-slot"))
+    && fleet_converge_slot_refusal_count(
+         host: "srv-nonexistent" as NonEmptyStr,
+         observed_slots: [],
+       ) == 1
+}
+
+// THE POSITIVE CONTROL, without which the row above is satisfied by a family that refuses always.
+// srv1 is modeled and carries a committed width, so an empty observation must propose ADDs.
+test fn a_modeled_host_proposes_the_slots_it_is_missing() -> Bool {
+  let lines = fleet_converge_slot_lines(host: witness_host_srv1, observed_slots: [])
+  any(lines, l => string_contains(s: l, pattern: "ADD runner-slot srv1-01"))
+    && (any(lines, l => string_contains(s: l, pattern: "REFUSED-UNMODELED-HOST")) == false)
+}
+
+// AN OUT-OF-BAND SLOT IS REFUSED REMOVAL RATHER THAN DELETED. gunbc.runner_slot_provision cannot yet
+// establish that a directory under /opt/actions-runner was placed there by gunbc, so ownership is
+// Absent and reconcile must produce MemberRemovalRefused. A plan that silently emitted REMOVE here
+// would delete a stranger's directory on apply.
+test fn an_unowned_observed_slot_is_refused_removal_not_removed() -> Bool {
+  let lines = fleet_converge_slot_lines(
+    host: witness_host_srv1,
+    observed_slots: [runner_slot_member_from_instance_name(instance_name: "srv1-99")],
+  )
+  any(lines, l => string_contains(s: l, pattern: "REFUSED-REMOVAL runner-slot srv1-99"))
+    && (any(lines, l => string_contains(s: l, pattern: "REMOVE runner-slot srv1-99")) == false)
+}
+
+// THE SLOT FAMILY REACHES apply.sh, WHICH IS THE HALF THAT MAKES THIS A CONVERGENCE RATHER THAN A
+// REPORT. Timer teardown was the only thing the emitted script executed; a slot ADD must now appear
+// in it, and the plan body must name the same axis, so a reviewer approving plan.txt is approving
+// what apply runs.
+test fn a_slot_add_reaches_the_emitted_apply_script() -> Bool {
+  match fleet_converge_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    observed_spark: [],
+    observed_slots: [],
+  ) {
+    Present { value: artifact } =>
+      string_contains(s: artifact.plan_body, pattern: "ADD runner-slot srv1-01")
+        && string_contains(s: artifact.plan_body, pattern: "# slot-refusals=0")
+        && string_contains(s: artifact.apply_shell, pattern: "actions-runner")
+        && (string_contains(s: artifact.apply_shell, pattern: "no slots to add") == false)
+    Absent => false
+  }
+}
+
+// AND THE SLOT POPULATION IS PART OF THE SUBJECT IDENTITY, so a host whose slot roster drifted
+// between plan and apply fails the member-set gate instead of applying a stale plan. Without this
+// the slot family would be rendered in the plan and unprotected by the CAS that guards the others.
+test fn slot_drift_breaks_the_member_set_fingerprint() -> Bool {
+  match fleet_converge_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    observed_spark: [],
+    observed_slots: [],
+  ) {
+    Present { value: artifact } =>
+      fleet_converge_member_set_fingerprint_matches(
+        planned_fingerprint_text: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
+        host: witness_host_srv1,
+        observed_timers: [],
+        observed_caps: [],
+        observed_spark: [],
+        observed_slots: [],
+      )
+      && (fleet_converge_member_set_fingerprint_matches(
+        planned_fingerprint_text: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
+        host: witness_host_srv1,
+        observed_timers: [],
+        observed_caps: [],
+        observed_spark: [],
+        observed_slots: [runner_slot_member_from_instance_name(instance_name: "srv1-01")],
+      ) == false)
+    Absent => false
+  }
 }

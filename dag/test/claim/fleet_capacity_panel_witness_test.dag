@@ -1,0 +1,184 @@
+module test.claim.fleet_capacity_panel_witness_test
+
+import std.types { Bool, String, List }
+import extdeps.languages.html { EmitOk, EmitRejected, HtmlEmitResult, try_serialize_html_source }
+import gunbc.roadmap_document { RoadmapDocument }
+import gunbc.roadmap_page { roadmap_daily_workspace_page }
+import gunbc.fleet_capacity_panel {
+  fleet_capacity_summary_line,
+  fleet_committed_slot_total,
+  fleet_committed_slot_total_ignoring_withdrawals,
+  fleet_capacity_withdrawn_line,
+}
+import gunbc.runner_slot_allocation {
+  gunbc_runner_slots_per_host, host_binding_width_axes, host_width_binding_label,
+  width_axis_binds_at,
+}
+import gunbc.fleet_intent_network {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+}
+
+fn workspace_emission() -> HtmlEmitResult {
+  try_serialize_html_source(node: roadmap_daily_workspace_page(
+    doc: RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
+    merged: [],
+  ))
+}
+
+// A REFUSED SERIALIZATION MUST NOT ANSWER AS AN EMPTY PAGE (review 55040, DESIGN §5).
+//
+// This arm returned "" on EmitRejected, which is the absorbing fallback in the direction that
+// costs the most here: every !string_contains assertion in this file is SATISFIED by the empty
+// string, so a total serialization failure would have rendered the negative rows green and left
+// the positive rows unable to distinguish "the panel is missing" from "nothing serialized at all".
+// Two states with opposite remedies, one answer.
+//
+// The rejected arm now carries the reason, so a positive assertion fails on it and the text names
+// what happened rather than vanishing. The reason is prefixed with a marker no assertion in this
+// file searches for, so it cannot accidentally satisfy one either.
+fn empty_workspace_html() -> String {
+  match workspace_emission() {
+    EmitOk { html: h } => h
+    EmitRejected { reason: r } => join(["EMISSION-REFUSED: ", r as String], "")
+  }
+}
+
+fn workspace_emission_is_ok() -> Bool {
+  match workspace_emission() {
+    EmitOk { html: _ } => true
+    EmitRejected { reason: _ } => false
+  }
+}
+
+// THE REFUSAL IS ITS OWN RED, NOT A CONDITION ATTACHED TO OTHER ROWS.
+//
+// Without this, a serialization refusal is only ever observed indirectly, through whichever
+// assertion happens to notice the page is not what it expected. This makes it a finding in its own
+// right with its own name, so the ledger says "emission refused" rather than "the panel is absent".
+test fn the_workspace_actually_serializes() -> Bool {
+  workspace_emission_is_ok()
+}
+
+// THE PANEL REACHES THE RENDERED PAGE, WHICH IS THE ONLY SURFACE THE OPERATOR SEES.
+//
+// A witness over fleet_capacity_panel() alone would prove the fragment builds and say nothing
+// about whether it is composed into the workspace -- the specification-without-execution failure,
+// where a green test sits beside a page that never shows the thing. This serializes the actual
+// daily workspace document and looks for the panel in the HTML.
+test fn the_capacity_panel_reaches_the_rendered_workspace() -> Bool {
+  let h = empty_workspace_html()
+  string_contains(s: h, pattern: "fleet-capacity-panel")
+    && string_contains(s: h, pattern: "fleet capacity")
+    && string_contains(s: h, pattern: "srv1")
+    && string_contains(s: h, pattern: "srv4")
+    && string_contains(s: h, pattern: "slots committed")
+}
+
+// THE PANEL SAYS ITS NUMBERS ARE COMMITTED RATHER THAN OBSERVED, IN THE OUTPUT AND NOT ONLY IN A
+// COMMENT. runner_slot_allocation states that srv3/srv4's width of 6 is a provisioning target --
+// two slots that do not exist yet -- so a reader summing the column gets 22 for a fleet running
+// 20. The qualifier is the difference between a number and a misleading number, and an annotation
+// cannot carry it because no operator reads the source.
+test fn the_panel_labels_its_widths_as_committed_not_observed() -> Bool {
+  let h = empty_workspace_html()
+  workspace_emission_is_ok() &&
+  string_contains(s: h, pattern: "committed allocations, not observed incarnations")
+    && !string_contains(s: h, pattern: "slots running")
+}
+
+// THE SUMMARY IS DERIVED FROM THE ALLOCATION AUTHORITY, NOT TRANSCRIBED.
+//
+// Asserted as the relation against gunbc_runner_slots_per_host rather than against the literal 22.
+// A literal would be a change detector that goes red on a correct width ruling and stays green if
+// the panel silently stopped reading the authority at all.
+// THE TOTAL JOINS TO THE ALLOCATION AUTHORITY PER HOST, AND NAMES EVERY HOST TO DO IT.
+//
+// An earlier revision asserted srv1 * 2 + srv3 * 2, which was true only while the fleet was two
+// symmetric pairs. #8976 made CPU an admission axis and the symmetry ended: srv1/srv3/srv4 became
+// core-bound while srv2 stayed memory-bound on 8x16 GiB, because its 64 GiB upgrade failed training
+// and was reverted. The doubling was never the property under test -- it was a shortcut that
+// happened to hold -- and it turned a real fleet asymmetry into a red on a witness about summing.
+//
+// Naming all four hosts keeps the join (the panel's total must equal the allocation authority's
+// per-host widths) while carrying no assumption about which hosts resemble each other. It also
+// stays a genuine oracle rather than measure() == measure(): the right side reads
+// gunbc_runner_slot_allocation, a different authority from the panel fold on the left.
+test fn the_slot_total_sums_the_allocation_authority() -> Bool {
+  fleet_committed_slot_total_ignoring_withdrawals()
+    == gunbc_runner_slots_per_host(host: operator_host_srv1)
+       + gunbc_runner_slots_per_host(host: operator_host_srv2)
+       + gunbc_runner_slots_per_host(host: operator_host_srv3)
+       + gunbc_runner_slots_per_host(host: operator_host_srv4)
+    && fleet_committed_slot_total() > 0
+}
+
+// WITH NOTHING WITHDRAWN THE TWO TOTALS AGREE AND THE WITHDRAWN LINE IS ABSENT.
+//
+// The absent line is the point: a standing "0 withdrawn" row is noise on every ordinary day and
+// trains the reader to skip the row where a non-zero number finally matters.
+test fn nothing_withdrawn_means_no_withdrawn_line() -> Bool {
+  let line_absent = match fleet_capacity_withdrawn_line() {
+    Present { value: _ } => false
+    Absent => true
+  }
+  fleet_committed_slot_total() == fleet_committed_slot_total_ignoring_withdrawals()
+    && line_absent
+}
+
+test fn the_summary_line_names_both_axes() -> Bool {
+  let line = fleet_capacity_summary_line()
+  string_contains(s: line, pattern: "hosts")
+    && string_contains(s: line, pattern: "runtimes")
+    && string_contains(s: line, pattern: "slots committed")
+}
+
+// AN UNMEASURED AXIS IS NEVER REPORTED AS BINDING, AND NEVER AS ADMITTING EITHER.
+//
+// Disk returns DiskWidthUnconstrained on every host today, and runner_slot_allocation's own reason
+// string is explicit that this is "an unmeasured axis, not a measured all-clear". Rendering it as
+// "disk admits any width" would turn an absence of observation into a positive clearance -- the
+// conflation where not-applicable and not-observed wear one symbol. The discriminating half is
+// that disk is excluded from the BINDING set: a fold that treated an unstated width as
+// satisfying the minimum would list disk beside memory and read as two independent confirmations
+// of a width only one axis actually measured.
+test fn an_unmeasured_axis_is_not_reported_as_binding() -> Bool {
+  let binding = host_binding_width_axes(host: operator_host_srv1)
+  let label = host_width_binding_label(host: operator_host_srv1)
+  (binding |> count) == 1
+    && string_contains(s: label, pattern: "disk unmeasured")
+    && !string_contains(s: label, pattern: "disk admits")
+}
+
+// TWO HOSTS, TWO DIFFERENT BINDING AXES -- THE WHOLE REASON THE COLUMN EXISTS.
+//
+// srv1 is core-bound at 21 and srv2 is memory-bound at 5, because srv2's 64 GiB DIMM install
+// failed training and was reverted while the other three carry 8x64. So the fleet total is two
+// unrelated stories, and an operator reading only the total would go buy the wrong thing for one
+// of these hosts. This is the discriminating witness: a label function that named one axis for the
+// whole fleet passes every other assertion here and fails this one.
+test fn srv1_and_srv2_are_bound_by_different_axes() -> Bool {
+  let one = host_width_binding_label(host: operator_host_srv1)
+  let two = host_width_binding_label(host: operator_host_srv2)
+  one != two
+    && string_contains(s: one, pattern: "bound by cores")
+    && string_contains(s: two, pattern: "bound by memory")
+}
+
+// THE BINDING AXIS IS DERIVED FROM THE COMMITTED WIDTH RATHER THAN ASSERTED BESIDE IT.
+//
+// Asserted as the relation: whatever axis is named as binding must actually sit at the committed
+// width. A label authored independently of the arithmetic could name memory while the minimum came
+// from somewhere else, and nothing downstream would catch it -- the panel would explain a number
+// using a cause that did not produce it.
+test fn the_binding_axis_sits_at_the_committed_width() -> Bool {
+  all([operator_host_srv1, operator_host_srv3], h =>
+    all(host_binding_width_axes(host: h), a =>
+      width_axis_binds_at(standing: a, committed: gunbc_runner_slots_per_host(host: h))))
+}
+
+test fn the_panel_renders_the_binding_axis_for_every_host() -> Bool {
+  let h = empty_workspace_html()
+  string_contains(s: h, pattern: "bound by cores")
+    && string_contains(s: h, pattern: "bound by memory")
+    && string_contains(s: h, pattern: "unmeasured")
+}

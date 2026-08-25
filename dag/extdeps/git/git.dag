@@ -3,6 +3,7 @@ module extdeps.git
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
 import std.measure { Percent, percent }
 import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, NonEmptyStr, Seconds, Timestamp }
 import v2.std.algebra { length, skip }
@@ -522,6 +523,8 @@ fn shape_git_add_argv() -> List<String> {
   ["git", "add"]
 }
 
+data git_binary_name: NonEmptyStr = "git"
+
 fn shape_git_commit_no_verify_no_edit_argv() -> List<String> {
   ["git", "commit", "--no-verify", "--no-edit"]
 }
@@ -530,8 +533,24 @@ fn shape_git_config_argv(key: String, value: String) -> List<String> {
   ["git", "config", key, value]
 }
 
+// THE PROGRAM AND ITS OPERANDS, NAMED SEPARATELY, so the two addressings of one fact derive from
+// one row instead of agreeing by coincidence: the actuator wants the whole word list, the hook
+// emitter wants a command it can render, and `--local` is spelled once for both.
+//
+// `git` is deliberately NOT an absolute path here, unlike every other binary row in extdeps. These
+// words are emitted into a repository-local hook script that runs in a developer's own checkout,
+// where the git that resolves through PATH is the git that clone is being managed by; pinning
+// /usr/bin/git would name a different program than the one the developer is running.
+fn git_config_local_set_args(key: String, value: String) -> List<String> {
+  ["config", "--local", key, value]
+}
+
 fn shape_git_config_local_argv(key: String, value: String) -> List<String> {
-  ["git", "config", "--local", key, value]
+  append([git_binary_name as String], items: git_config_local_set_args(key: key, value: value))
+}
+
+fn git_config_local_set_command(key: String, value: String) -> ArgvCommand {
+  argv_command(program: git_binary_name, arguments: git_config_local_set_args(key: key, value: value))
 }
 
 fn shape_git_config_get_argv(key: String) -> List<String> {

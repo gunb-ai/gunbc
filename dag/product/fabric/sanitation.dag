@@ -1,0 +1,208 @@
+module product.fabric.sanitation
+
+import std.types { String, NonEmptyStr, Bool, List, Int }
+
+// A CELL RETURNS TO SUPPLY ONLY AFTER TEARDOWN IS PROVEN, NOT WHEN THE PROCESS EXITS.
+//
+// "The process exited" and "this cell is reusable" are different facts, and conflating them is how
+// one tenant's residue reaches the next one. A job can exit zero and leave a detached child holding
+// a mount, a populated writable layer, a secret tmpfs, or a network namespace; every one of those
+// is visible to whoever runs next on that cell. So the exit status is an input to sanitation, never
+// its verdict.
+//
+// THE STABLE UNIT IS THE CELL AND THE DISPOSABLE ONE IS THE SANDBOX. A cell -- srv3-06 -- is a
+// schedulable resource identity that persists and runs many attempts over time. A sandbox exists
+// for exactly one attempt and no sandbox survives into the next. That split is what makes "fresh
+// spawn with caching" coherent rather than contradictory: fresh WRITABLE state per attempt, reused
+// IMMUTABLE material underneath, and the cache is never edited in place by tenant code.
+data fabric_sanitation_note: String = "Per-attempt teardown and the readback that returns a cell to supply. Process exit is an input, never the verdict. Distinct from persistent host hygiene, which runs on its own cadence and answers a different question."
+
+// THIS IS NOT THE PERSISTENT-HYGIENE LOOP, AND THE TWO MUST NOT MERGE.
+//
+// gunbc.host_disk_reclaim compacts git packs, rotates diagnostics and prunes build caches on a
+// timer; it answers "is this host healthy over weeks". This answers "did attempt N leave anything
+// behind", once per attempt, and it is the only one of the two that gates reuse. They share the
+// word cleanup and nothing else: one is a cadence over a host, the other a barrier between two
+// tenants. Folding them would make a slow disk-space job into a correctness dependency for every
+// job start, and would let a hygiene backlog read as a sanitation failure.
+data sanitation_is_not_host_hygiene_note: String = "Per-attempt sanitation gates cell reuse and runs once per attempt; persistent host hygiene (gunbc.host_disk_reclaim) runs on a cadence and does not gate anything. Both feed cell readiness, from different directions."
+
+type CellId = NonEmptyStr where brand("CellId")
+
+type SandboxId = NonEmptyStr where brand("SandboxId")
+
+// WHAT TEARDOWN MUST ESTABLISH, AS A CLOSED SET OF SEPARATELY-OBSERVABLE FACTS.
+//
+// Each is checked independently because each fails independently and each leaks something
+// different: a surviving process can still write, a mounted overlay exposes the previous tenant's
+// files, a live network namespace can hold a listening socket, an undeleted writable layer is the
+// previous attempt's entire working tree, and a secret tmpfs is credentials. A single
+// "cleaned: Bool" would let any one of these fail invisibly behind the others succeeding.
+type SanitationFact
+  = NoSurvivingProcesses
+  | CgroupEmpty
+  | MountsRemoved
+  | NetworkNamespaceRemoved
+  | WritableLayersDeleted
+  | SecretsRemoved
+
+fn sanitation_fact_label(fact: SanitationFact) -> String {
+  match fact {
+    NoSurvivingProcesses => "no-surviving-processes"
+    CgroupEmpty => "cgroup-empty"
+    MountsRemoved => "mounts-removed"
+    NetworkNamespaceRemoved => "network-namespace-removed"
+    WritableLayersDeleted => "writable-layers-deleted"
+    SecretsRemoved => "secrets-removed"
+  }
+}
+
+fn required_sanitation_facts() -> List<SanitationFact> {
+  [
+    NoSurvivingProcesses,
+    CgroupEmpty,
+    MountsRemoved,
+    NetworkNamespaceRemoved,
+    WritableLayersDeleted,
+    SecretsRemoved,
+  ]
+}
+
+// AN OBSERVATION IS THREE-VALUED, AND THE THIRD VALUE IS THE ONE THAT MATTERS.
+//
+// Confirmed and Refuted are the obvious pair. Unobservable is separate and is NOT a soft refusal:
+// it says the readback could not reach the fact at all -- the host agent was unreachable, the
+// cgroup file could not be read, the mount table did not parse. Collapsing it into Refuted would
+// be defensible; collapsing it into Confirmed is how residue reaches the next tenant. It is kept
+// distinct from both because its REMEDY differs: a refuted fact means teardown failed and the cell
+// is dirty, while an unobservable one means we do not know, and those call for different operator
+// action even though both must refuse reuse.
+type SanitationObservation
+  = FactConfirmed { fact: SanitationFact }
+  | FactRefuted { fact: SanitationFact, detail: NonEmptyStr }
+  | FactUnobservable { fact: SanitationFact, reason: NonEmptyStr }
+
+fn observed_fact(observation: SanitationObservation) -> SanitationFact {
+  match observation {
+    FactConfirmed { fact: f } => f
+    FactRefuted { fact: f, detail: _ } => f
+    FactUnobservable { fact: f, reason: _ } => f
+  }
+}
+
+fn observation_confirms(observation: SanitationObservation) -> Bool {
+  match observation {
+    FactConfirmed { fact: _ } => true
+    FactRefuted { fact: _, detail: _ } => false
+    FactUnobservable { fact: _, reason: _ } => false
+  }
+}
+
+type SanitationReadback {
+  cell: CellId
+  sandbox: SandboxId
+  observations: List<SanitationObservation>
+}
+
+fn observation_for(
+  readback: SanitationReadback,
+  wanted: SanitationFact,
+) -> SanitationObservation? {
+  filter(readback.observations, o => observed_fact(observation: o) == wanted).first()
+}
+
+// A FACT NOBODY LOOKED FOR IS NOT A FACT THAT HOLDS, AND THIS IS WHERE THAT IS DECIDED.
+//
+// A readback carrying five confirmations and simply omitting the sixth must not pass. Absence of
+// an observation is the empty-observation narrow in its most dangerous form: the reader concludes
+// "nothing was reported wrong" from a report that never covered the subject. So the fold walks the
+// REQUIRED list and demands an observation for each, rather than walking what happened to be
+// observed and checking those.
+type UnprovenFact
+  = FactNotObserved { fact: SanitationFact }
+  | FactObservedFailing { observation: SanitationObservation }
+
+fn unproven_fact_label(unproven: UnprovenFact) -> String {
+  match unproven {
+    FactNotObserved { fact: f } =>
+      join([sanitation_fact_label(fact: f), ": not observed"], "")
+    FactObservedFailing { observation: o } =>
+      match o {
+        FactConfirmed { fact: f } => join([sanitation_fact_label(fact: f), ": confirmed"], "")
+        FactRefuted { fact: f, detail: d } =>
+          join([sanitation_fact_label(fact: f), ": refuted — ", d as String], "")
+        FactUnobservable { fact: f, reason: r } =>
+          join([sanitation_fact_label(fact: f), ": unobservable — ", r as String], "")
+      }
+  }
+}
+
+fn unproven_for_required(
+  readback: SanitationReadback,
+  required: SanitationFact,
+) -> List<UnprovenFact> {
+  match observation_for(readback: readback, wanted: required) {
+    Absent => [FactNotObserved { fact: required }]
+    Present { value: o } =>
+      if observation_confirms(observation: o) { [] } else { [FactObservedFailing { observation: o }] }
+  }
+}
+
+fn unproven_facts(readback: SanitationReadback) -> List<UnprovenFact> {
+  fold(required_sanitation_facts(), init: [], f: (acc, required) =>
+    concat(acc, unproven_for_required(readback: readback, required: required)))
+}
+
+// THE VERDICT, AND THE ONLY ARM THAT RETURNS A CELL TO SUPPLY.
+//
+// The attempt's own outcome is not a parameter, and its absence is the enforcement: a caller cannot
+// let a successful run stand in for a proven teardown, because there is no argument through which
+// the exit status could arrive. A successful run with a failed teardown is a dirty cell, and a
+// failed run with a clean teardown is a reusable one.
+//
+// CellQuarantined carries what was unproven, because "this cell is dirty" is unactionable while
+// "writable-layers-deleted: refuted" tells an operator what to go look at. A quarantined cell does
+// NOT return to the offer population on a retry, a timer, or a subsequent successful attempt: it
+// returns when someone establishes the facts, which is a different event from time passing.
+type CellReadiness
+  = CellReady { cell: CellId }
+  | CellQuarantined { cell: CellId, unproven: List<UnprovenFact> }
+
+fn cell_readiness_after(readback: SanitationReadback) -> CellReadiness {
+  let unproven = unproven_facts(readback: readback)
+  if (unproven |> count) == 0 {
+    CellReady { cell: readback.cell }
+  } else {
+    CellQuarantined { cell: readback.cell, unproven: unproven }
+  }
+}
+
+fn cell_is_ready(readiness: CellReadiness) -> Bool {
+  match readiness {
+    CellReady { cell: _ } => true
+    CellQuarantined { cell: _, unproven: _ } => false
+  }
+}
+
+fn cell_readiness_line(readiness: CellReadiness) -> String {
+  match readiness {
+    CellReady { cell: c } => join([c as String, ": ready"], "")
+    CellQuarantined { cell: c, unproven: u } =>
+      join([c as String, ": quarantined — ",
+            join(map(u, x => unproven_fact_label(unproven: x)), "; ")], "")
+  }
+}
+
+// HOST-AGENT LOSS AFTER A CLAIM MUST NOT SILENTLY RETURN THE CELL.
+//
+// If the agent disappears mid-attempt there is no readback at all, and the tempting arm is to treat
+// a missing report as nothing-to-clean. That is the same narrow one level out: no observation
+// becomes no problem. An absent readback yields every required fact unobserved, so the cell
+// quarantines with a full list rather than returning to supply.
+fn readiness_without_readback(cell: CellId, sandbox: SandboxId) -> CellReadiness {
+  cell_readiness_after(readback: SanitationReadback {
+    cell: cell,
+    sandbox: sandbox,
+    observations: [],
+  })
+}

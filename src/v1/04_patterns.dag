@@ -262,6 +262,20 @@ fn variant_not_found_result(scrut: Node, variant_name: String, module_name: Stri
   )
 }
 
+// A qualified pattern head must bind what the bare spelling binds. The dotted
+// branch answers from the SYMBOL INDEX, which returns the coproduct's
+// DECLARATION -- uninstantiated -- while the bare branch answers from the
+// scrutinee, which carries the instantiation. So a bare `Ok { value: r }` bound
+// r to the scrutinee's type ARGUMENT and the qualified spelling of the same
+// pattern bound it to the declaration's type PARAMETER, so every field read off
+// r reported no such field on type 'T'. Measured on a two-function probe whose
+// only difference is the spelling of the head.
+//
+// The index lookup still runs first and still decides ADMISSION: a head naming
+// a variant of some other coproduct misses there exactly as before. What changes
+// is where the bound NODE comes from once admission succeeds -- the scrutinee
+// when it carries that variant, the declaration otherwise, which is the
+// pre-existing answer for a scrutinee that does not.
 fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_name: String, env: TypeEnv, field_binding_count: Int) -> NodeLookupResult {
   match scrut {
     PatternLookupBlocked =>
@@ -275,7 +289,11 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
           Present { value: resolved } =>
             if (resolved.connective == Disj) {
               match find_child_named(n: resolved, name: qualified_last_segment(name: variant_name), source_indices: source_indices) {
-                Present { value: variant_child } => node_lookup_resolved(node: variant_child)
+                Present { value: variant_child } =>
+                  match find_child_named(n: expand_scrut_type_for_variant_lookup(scrut_node: scrut_node, env: env), name: qualified_last_segment(name: variant_name), source_indices: source_indices) {
+                    Present { value: scrut_child } => node_lookup_resolved(node: scrut_child)
+                    Absent => node_lookup_resolved(node: variant_child)
+                  }
                 Absent =>
                   variant_not_found_result(scrut: scrut_node, variant_name: variant_name, module_name: module_name, source_indices: source_indices)
               }
