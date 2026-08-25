@@ -30,7 +30,7 @@ fn english_emit_add_canonical_grounding(
   }
 }
 
-fn english_emit_add_canonical_grounding_for(node: v2.std.node.Node) -> v2.std.witness.Witness<v2.std.constraints.CanonicalGrounding> {
+fn english_emit_add_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == english_emit_add_emitted_root {
     v2.std.witness.Holds {
       value: english_emit_add_canonical_grounding(

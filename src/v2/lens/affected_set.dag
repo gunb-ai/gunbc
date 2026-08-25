@@ -909,7 +909,7 @@ fn affected_set_from_diff(
   post_edit_dag: fn(v2.lens.affected_set.Dag, Edit) -> v2.lens.affected_set.AffectedPostEditDagRead,
   dag: v2.lens.affected_set.Dag,
   diff: v2.std.node.Diff
-) -> v2.std.witness.Witness<v2.std.change.AffectedSet> {
+) -> Witness<v2.std.change.AffectedSet> {
   v2.std.witness.Holds {
     value: affected_set_from_fold_acc(
       acc: fold(diff.edits, init: empty_affected_set_fold_acc(dag: dag), f: fn(acc, edit) {
@@ -929,7 +929,7 @@ fn re_exec_frontier_from_diff(
   post_edit_dag: fn(v2.lens.affected_set.Dag, Edit) -> v2.lens.affected_set.AffectedPostEditDagRead,
   dag: v2.lens.affected_set.Dag,
   diff: v2.std.node.Diff
-) -> v2.std.witness.Witness<v2.lens.affected_set.ReExecFrontier> {
+) -> Witness<v2.lens.affected_set.ReExecFrontier> {
   v2.std.witness.Holds {
     value: frontier_from_fold_acc(
       acc: fold(diff.edits, init: empty_affected_fold_acc(dag: dag), f: fn(acc, edit) {
@@ -1203,7 +1203,7 @@ fn canonical_post_edit_dag(dag: v2.lens.affected_set.Dag, edit: v2.std.node.Edit
   }
 }
 
-fn affected_set(dag: v2.lens.affected_set.Dag, diff: v2.std.node.Diff) -> v2.std.witness.Witness<v2.lens.affected_set.ReExecFrontier> {
+fn affected_set(dag: v2.lens.affected_set.Dag, diff: v2.std.node.Diff) -> Witness<v2.lens.affected_set.ReExecFrontier> {
   re_exec_frontier_from_diff(
     read_model: canonical_affected_set_read(),
     post_edit_dag: canonical_post_edit_dag,

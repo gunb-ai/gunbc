@@ -80,11 +80,11 @@ type BootstrapRoundtripEqual {
   expected_stage: v2.compiler.compile.CoreNode
 }
 
-type StageEmissionEquality = v2.std.node.v2.std.witness.Witness<StructurallyEqual>
+type StageEmissionEquality = Witness<StructurallyEqual>
 
-type BootstrapRoundtripCheck = v2.std.node.v2.std.witness.Witness<BootstrapRoundtripEqual>
+type BootstrapRoundtripCheck = Witness<BootstrapRoundtripEqual>
 
-type FixedPointCheck = v2.std.node.v2.std.witness.Witness<SelfHostFixpointEqual>
+type FixedPointCheck = Witness<SelfHostFixpointEqual>
 
 type PromotionWitness {
   candidate_bootstrap_roundtrip_sub_check: BootstrapRoundtripCheck
@@ -283,12 +283,12 @@ fn boundary_tag_bytes(filename: v2.std.text.String, content: v2.std.text.String)
   concat(filename, concat("\n", content))
 }
 
-fn read_roster_manifest(manifest_path: v2.std.text.String) -> v2.std.collection.List<v2.std.text.String> {
+fn read_roster_manifest(manifest_path: v2.std.text.String) -> List<v2.std.text.String> {
   let raw = filesystem_read(path: manifest_path).content
   v2.std.algebra.filter(xs: raw.split("\n"), predicate: fn(s) { !v2.std.text.string_is_empty(s: s) })
 }
 
-fn fold_side_bytes(root: v2.std.text.String, roster: v2.std.collection.List<v2.std.text.String>) -> v2.std.text.String {
+fn fold_side_bytes(root: v2.std.text.String, roster: List<v2.std.text.String>) -> v2.std.text.String {
   v2.std.algebra.fold_list(
     xs: roster,
     empty: "",
@@ -303,7 +303,7 @@ fn fold_side_bytes(root: v2.std.text.String, roster: v2.std.collection.List<v2.s
 fn source_models_from_roster_and_roots(
   committed_root: v2.std.text.String,
   emitted_root: v2.std.text.String,
-  roster: v2.std.collection.List<v2.std.text.String>
+  roster: List<v2.std.text.String>
 ) -> SourceModels {
   SourceModels {
     stage1_committed_seed_source: extdeps.communication.medium.Medium {

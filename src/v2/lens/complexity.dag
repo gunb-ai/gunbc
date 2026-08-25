@@ -151,7 +151,7 @@ fn complexity_projection_diagnostic() -> v2.std.diagnostic.Diagnostic {
   }
 }
 
-fn asymptotic_projection(cost_witness: v2.std.witness.Witness<v2.lens.cost.SymbolicCost>) -> ComplexityBound {
+fn asymptotic_projection(cost_witness: Witness<v2.lens.cost.SymbolicCost>) -> ComplexityBound {
   match cost_witness {
     Holds { value: cost } =>
       complexity_bound_from_cost(cost: cost)

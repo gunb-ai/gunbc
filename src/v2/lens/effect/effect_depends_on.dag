@@ -33,7 +33,7 @@ fn effect_claim_tree() -> v2.compiler.inferred_tree.InferredTree {
 type LensEffectClaim {
   input: v2.compiler.inferred_tree.InferredTree
   expected: v2.lens.effect.EffectFact
-  actual: v2.std.witness.Witness<v2.lens.effect.EffectFact>
+  actual: Witness<v2.lens.effect.EffectFact>
 }
 
 data effect_depends_on_claim: LensEffectClaim = LensEffectClaim {

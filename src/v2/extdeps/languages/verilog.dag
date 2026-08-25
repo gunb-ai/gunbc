@@ -1012,7 +1012,7 @@ fn verilog_relation_row_for_productions(
   productions: List<v2.std.grammar.FormalProduction>,
   lhs: v2.std.node.Symbol,
   emitted: v2.std.node.Node
-) -> v2.std.witness.Witness<v2.std.node.Node> {
+) -> Witness<v2.std.node.Node> {
   match v2.std.grammar.formal_production_for_lhs_exact(productions: productions, lhs: lhs, child: emitted) {
     Holds { value: production } =>
       v2.std.grammar.derive_grammar_relation_row_node(
@@ -1031,7 +1031,7 @@ fn verilog_emission_formal_productions_reversed() -> List<v2.std.grammar.FormalP
   reverse(verilog_emission_formal_productions())
 }
 
-fn verilog_relation_row_for(lhs: v2.std.node.Symbol, emitted: v2.std.node.Node) -> v2.std.witness.Witness<v2.std.node.Node> {
+fn verilog_relation_row_for(lhs: v2.std.node.Symbol, emitted: v2.std.node.Node) -> Witness<v2.std.node.Node> {
   let productions = verilog_emission_formal_productions()
   match v2.std.grammar.formal_production_for_lhs_exact(productions: productions, lhs: lhs, child: emitted) {
     Holds { value: production } =>
@@ -1044,7 +1044,7 @@ fn verilog_relation_row_for(lhs: v2.std.node.Symbol, emitted: v2.std.node.Node) 
   }
 }
 
-fn verilog_module_relation_row() -> v2.std.witness.Witness<v2.std.node.Node> {
+fn verilog_module_relation_row() -> Witness<v2.std.node.Node> {
   verilog_relation_row_for(
     lhs: ^verilog_production_ansi_module_decl,
     emitted: verilog_interlock_emitted()

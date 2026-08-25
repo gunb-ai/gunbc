@@ -338,7 +338,7 @@ fn mc_integer_facts_node(facts: MachineIntegerPrimitiveFacts) -> v2.std.node.Nod
 }
 }
 
-fn mc_integer_spec_facts(facts: MachineIntegerPrimitiveFacts) -> std.types.Map<v2.std.node.Symbol, v2.std.node.Node> {
+fn mc_integer_spec_facts(facts: MachineIntegerPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(
       v2.std.collection.map_insert(

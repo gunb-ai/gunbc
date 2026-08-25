@@ -13,7 +13,7 @@ fn enforce_reject_tree() -> v2.compiler.inferred_tree.InferredTree {
   )
 }
 
-fn enforce_rejecting_gate(_tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<v2.std.witness.Witness<v2.std.node.Node>> {
+fn enforce_rejecting_gate(_tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>> {
   v2.std.diagnostic.outcome_rejected(
     v2.compiler.compile.compile_lens_gate_rejected_diagnostic(at: v2.std.diagnostic.port_locus(port: ^enforce_reject_gate_at))
   )

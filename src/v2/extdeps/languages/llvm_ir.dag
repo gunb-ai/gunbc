@@ -605,7 +605,7 @@ fn llvm_float_facts_node(facts: LlvmFloatPrimitiveFacts) -> v2.std.node.Node {
 }
 }
 
-fn llvm_integer_spec_facts(facts: LlvmIntegerPrimitiveFacts) -> std.types.Map<v2.std.node.Symbol, v2.std.node.Node> {
+fn llvm_integer_spec_facts(facts: LlvmIntegerPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(
       v2.std.collection.map_insert(
@@ -621,7 +621,7 @@ fn llvm_integer_spec_facts(facts: LlvmIntegerPrimitiveFacts) -> std.types.Map<v2
   )
 }
 
-fn llvm_float_spec_facts(facts: LlvmFloatPrimitiveFacts) -> std.types.Map<v2.std.node.Symbol, v2.std.node.Node> {
+fn llvm_float_spec_facts(facts: LlvmFloatPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(
       v2.std.collection.empty_map(),

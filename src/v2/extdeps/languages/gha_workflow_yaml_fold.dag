@@ -90,7 +90,7 @@ fn gha_fold_flow_labels_emitted_from_list_suffix_witness(
   labels: List<String>,
   accumulated: v2.std.node.Node,
   index: Int
-) -> v2.std.witness.Witness<v2.std.node.Node> {
+) -> Witness<v2.std.node.Node> {
   match v2.std.collection.list_at_optional(xs: labels, index: index) {
     Present { value: label } =>
       gha_fold_flow_labels_emitted_from_list_suffix_witness(
@@ -105,7 +105,7 @@ fn gha_fold_flow_labels_emitted_from_list_suffix_witness(
   }
 }
 
-fn gha_fold_flow_labels_emitted_witness(labels: List<String>) -> v2.std.witness.Witness<v2.std.node.Node> {
+fn gha_fold_flow_labels_emitted_witness(labels: List<String>) -> Witness<v2.std.node.Node> {
   match v2.std.collection.list_nth(
     xs: labels,
     wanted: 0,
@@ -200,7 +200,7 @@ fn gha_fold_uses_ref_text(uses: extdeps.github.actions.ActionRef) -> String {
   )
 }
 
-fn gha_fold_step_head_emitted_from_emit(emit: v2.extdeps.github.gha_fold_pilot_emit.GhaPilotStepEmit) -> v2.std.witness.Witness<v2.std.node.Node> {
+fn gha_fold_step_head_emitted_from_emit(emit: v2.extdeps.github.gha_fold_pilot_emit.GhaPilotStepEmit) -> Witness<v2.std.node.Node> {
   match emit {
     GhaPilotRunEmit { run: r } =>
       v2.std.witness.Holds {
@@ -217,7 +217,7 @@ fn gha_fold_step_head_emitted_from_emit(emit: v2.extdeps.github.gha_fold_pilot_e
   }
 }
 
-fn gha_fold_step_tail_emitted_from_emit(emit: v2.extdeps.github.gha_fold_pilot_emit.GhaPilotStepEmit) -> v2.std.witness.Witness<v2.std.node.Node> {
+fn gha_fold_step_tail_emitted_from_emit(emit: v2.extdeps.github.gha_fold_pilot_emit.GhaPilotStepEmit) -> Witness<v2.std.node.Node> {
   match emit {
     GhaPilotRunEmit { run: r } =>
       v2.std.witness.Holds {
@@ -238,7 +238,7 @@ fn gha_fold_step_list_emitted_from_suffix_witness(
   job: extdeps.github.actions.Job,
   accumulated: v2.std.node.Node,
   index: Int
-) -> v2.std.witness.Witness<v2.std.node.Node> {
+) -> Witness<v2.std.node.Node> {
   match v2.std.collection.list_at_optional(xs: job.steps, index: index) {
     Present { value: step } =>
       match v2.extdeps.github.gha_fold_pilot_emit.gha_fold_pilot_emit_step(step: step) {
@@ -261,7 +261,7 @@ fn gha_fold_step_list_emitted_from_suffix_witness(
   }
 }
 
-fn gha_fold_step_list_emitted_witness(job: extdeps.github.actions.Job) -> v2.std.witness.Witness<v2.std.node.Node> {
+fn gha_fold_step_list_emitted_witness(job: extdeps.github.actions.Job) -> Witness<v2.std.node.Node> {
   match v2.std.collection.list_nth(
     xs: job.steps,
     wanted: 0,
@@ -338,7 +338,7 @@ fn gha_fold_job_emitted(runs_on: v2.std.node.Node, steps_block: v2.std.node.Node
   }
 }
 
-fn gha_fold_job_bundle_witness(job: extdeps.github.actions.Job) -> v2.std.witness.Witness<GhaFoldJobBundle> {
+fn gha_fold_job_bundle_witness(job: extdeps.github.actions.Job) -> Witness<GhaFoldJobBundle> {
   match job.runner {
     SelfHosted { labels: ls } =>
       match gha_fold_flow_labels_emitted_witness(labels: ls) {
@@ -541,7 +541,7 @@ fn gha_fold_formal_productions() -> List<v2.std.grammar.FormalProduction> {
   )
 }
 
-fn gha_fold_relation_row_witness(emitted: v2.std.node.Node, lhs: v2.std.node.Symbol) -> v2.std.witness.Witness<v2.std.node.Node> {
+fn gha_fold_relation_row_witness(emitted: v2.std.node.Node, lhs: v2.std.node.Symbol) -> Witness<v2.std.node.Node> {
   let productions = gha_fold_formal_productions()
   match v2.std.grammar.formal_production_for_lhs_exact(
     productions: productions,
@@ -558,7 +558,7 @@ fn gha_fold_relation_row_witness(emitted: v2.std.node.Node, lhs: v2.std.node.Sym
   }
 }
 
-fn gha_fold_formal_production_for_job_witness(emitted: v2.std.node.Node) -> v2.std.witness.Witness<v2.std.grammar.FormalProduction> {
+fn gha_fold_formal_production_for_job_witness(emitted: v2.std.node.Node) -> Witness<v2.std.grammar.FormalProduction> {
   v2.std.grammar.formal_production_for_lhs_exact(
     productions: gha_fold_formal_productions(),
     lhs: ^gha_production_fold_job,
@@ -593,7 +593,7 @@ fn gha_fold_serialize_source_witness(
   emitted: v2.std.node.Node,
   source_literal: v2.std.node.Symbol,
   production_binding: v2.std.node.Symbol
-) -> v2.std.witness.Witness<v2.std.node.Node> {
+) -> Witness<v2.std.node.Node> {
   match gha_fold_relation_row_witness(emitted: emitted, lhs: production_binding) {
     Holds { value: row } =>
       match v2.std.node_query.find_named_child(root: row, name: ^grammar_relation_field_tokens) {
@@ -628,7 +628,7 @@ fn gha_fold_translation_rules_node_for_emitted(
   emitted: v2.std.node.Node,
   lhs: v2.std.node.Symbol,
   rule_name: v2.std.node.Symbol
-) -> v2.std.witness.Witness<v2.std.node.Node> {
+) -> Witness<v2.std.node.Node> {
   match gha_fold_relation_row_witness(emitted: emitted, lhs: lhs) {
     Holds { value: row } =>
       v2.std.witness.Holds {
@@ -712,7 +712,7 @@ fn gha_fold_target_model_bundle_witness(
   source_literal: v2.std.node.Symbol,
   production_binding: v2.std.node.Symbol,
   rule_name: v2.std.node.Symbol
-) -> v2.std.witness.Witness<v2.std.node.Node> {
+) -> Witness<v2.std.node.Node> {
   match gha_fold_serialize_source_witness(
     emitted: emitted,
     source_literal: source_literal,
@@ -743,7 +743,7 @@ fn gha_fold_target_model_for_emitted_witness(
   source_text: String,
   production_binding: v2.std.node.Symbol,
   rule_name: v2.std.node.Symbol
-) -> v2.std.witness.Witness<v2.std.compilers.target_model.TargetModel> {
+) -> Witness<v2.std.compilers.target_model.TargetModel> {
   match gha_fold_target_model_bundle_witness(
     emitted: emitted,
     source_literal: source_literal,
@@ -765,14 +765,14 @@ fn gha_fold_target_model_for_emitted_witness(
   }
 }
 
-fn gha_fold_job_emitted_witness(job: extdeps.github.actions.Job) -> v2.std.witness.Witness<v2.std.node.Node> {
+fn gha_fold_job_emitted_witness(job: extdeps.github.actions.Job) -> Witness<v2.std.node.Node> {
   match gha_fold_job_bundle_witness(job: job) {
     Holds { value: bundle } => v2.std.witness.Holds { value: bundle.emitted }
     Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 
-fn gha_fold_target_model_for_job_witness(job: extdeps.github.actions.Job, source_text: String) -> v2.std.witness.Witness<v2.std.compilers.target_model.TargetModel> {
+fn gha_fold_target_model_for_job_witness(job: extdeps.github.actions.Job, source_text: String) -> Witness<v2.std.compilers.target_model.TargetModel> {
   match gha_fold_job_bundle_witness(job: job) {
     Holds { value: bundle } =>
       gha_fold_target_model_for_emitted_witness(
@@ -862,7 +862,7 @@ data gha_fold_flat_steps_wrong_emitted: v2.std.node.Node = v2.std.node.Node {
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-fn gha_fold_flat_steps_wrong_target_model_witness(source_text: String) -> v2.std.witness.Witness<v2.std.compilers.target_model.TargetModel> {
+fn gha_fold_flat_steps_wrong_target_model_witness(source_text: String) -> Witness<v2.std.compilers.target_model.TargetModel> {
   gha_fold_target_model_for_emitted_witness(
     emitted: gha_fold_flat_steps_wrong_emitted,
     source_literal: ^gha_fold_flat_steps_wrong_source_literal,
@@ -889,7 +889,7 @@ data gha_fold_job_wrong_production_emitted: v2.std.node.Node = v2.std.node.Node 
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-fn gha_fold_job_wrong_production_target_model_witness(source_text: String) -> v2.std.witness.Witness<v2.std.compilers.target_model.TargetModel> {
+fn gha_fold_job_wrong_production_target_model_witness(source_text: String) -> Witness<v2.std.compilers.target_model.TargetModel> {
   gha_fold_target_model_for_emitted_witness(
     emitted: gha_fold_job_wrong_production_emitted,
     source_literal: ^gha_fold_job_wrong_production_source_literal,

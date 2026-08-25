@@ -13,7 +13,7 @@ fn apply_lens_mode_tree() -> v2.compiler.inferred_tree.InferredTree {
   )
 }
 
-fn apply_lens_mode_rejecting_gate(_tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<v2.std.witness.Witness<v2.std.node.Node>> {
+fn apply_lens_mode_rejecting_gate(_tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>> {
   v2.std.diagnostic.outcome_rejected(
     v2.compiler.compile.compile_lens_gate_rejected_diagnostic(at: v2.std.diagnostic.port_locus(port: ^apply_lens_mode_gate_at))
   )
@@ -32,7 +32,7 @@ fn apply_lens_mode_gate_rejects_enforce() -> v2.std.logic.Bool {
   }
 }
 
-fn introspect_witness_violates_reason_matches(w: v2.std.witness.Witness<v2.std.node.Node>) -> v2.std.logic.Bool {
+fn introspect_witness_violates_reason_matches(w: Witness<v2.std.node.Node>) -> v2.std.logic.Bool {
   match w {
     Violates { diagnostic: d } => d.reason == ^compile_lens_gate_rejected
     Holds { value: _ } => false

@@ -122,7 +122,7 @@ fn model_core_bool_fact_lookup(facts: v2.std.logic.BoolPrimitiveFacts, axis: v2.
   }
 }
 
-fn model_core_bool_spec_facts(facts: v2.std.logic.BoolPrimitiveFacts) -> std.types.Map<v2.std.node.Symbol, v2.std.node.Node> {
+fn model_core_bool_spec_facts(facts: v2.std.logic.BoolPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(
       v2.std.collection.empty_map(),

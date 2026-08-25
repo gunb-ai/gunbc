@@ -341,7 +341,7 @@ fn scheduler_plan_for_layers<S>(layers: List<v2.std.dependency.ReadinessLayer<S>
   }
 }
 
-fn scheduler_first_readiness_layer<S>(layers: List<v2.std.dependency.ReadinessLayer<S>>) -> v2.std.witness.Witness<v2.std.dependency.ReadinessLayer<S>> {
+fn scheduler_first_readiness_layer<S>(layers: List<v2.std.dependency.ReadinessLayer<S>>) -> Witness<v2.std.dependency.ReadinessLayer<S>> {
   optional_present_witness(
     opt: list_at_optional(xs: layers, index: 0)
   )

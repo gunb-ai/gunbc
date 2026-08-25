@@ -74,7 +74,7 @@ fn sql_lhs_exact_relation_row_witness(
   lhs: v2.std.node.Symbol,
   tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
   emitted: v2.std.node.Node
-) -> v2.std.witness.Witness<v2.std.node.Node> {
+) -> Witness<v2.std.node.Node> {
   let production = sql_formal_production_from_fixture(lhs: lhs, tokens: tokens)
   let productions = [production]
   match v2.std.grammar.formal_production_for_lhs_exact(
@@ -97,7 +97,7 @@ fn sql_relation_translation_rules_witness(
   lhs: v2.std.node.Symbol,
   tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
   emitted: v2.std.node.Node
-) -> v2.std.witness.Witness<v2.std.node.Node> {
+) -> Witness<v2.std.node.Node> {
   match sql_lhs_exact_relation_row_witness(
     lhs: lhs,
     tokens: tokens,

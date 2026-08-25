@@ -562,7 +562,7 @@ fn witness_cache_violates_digest(diag: v2.std.diagnostic.Diagnostic) -> v2.std.n
   )
 }
 
-fn descent_witness_digest(d: v2.std.witness.Witness<v2.std.cardinality.TerminationProof>) -> v2.std.node.Hash {
+fn descent_witness_digest(d: Witness<v2.std.cardinality.TerminationProof>) -> v2.std.node.Hash {
   match d {
     Holds { value: proof } =>
       witness_cache_holds_digest(payload: termination_proof_digest(proof: proof))
@@ -780,7 +780,7 @@ fn eval_default_interpretation() -> v2.std.runtime.InterpretationAlgebra {
   v2.extdeps.runtimes.v2_evaluator.v2_evaluator_interpretation()
 }
 
-fn inferred_facts_witness_for_eval(tree: v2.compiler.inferred_tree.InferredTree, node: v2.std.node.Node) -> v2.std.witness.Witness<v2.compiler.inferred_tree.InferredFacts> {
+fn inferred_facts_witness_for_eval(tree: v2.compiler.inferred_tree.InferredTree, node: v2.std.node.Node) -> Witness<v2.compiler.inferred_tree.InferredFacts> {
   v2.std.witness.witness_from_optional(opt: tree.facts.lookup(node), absent: v2.compiler.infer.infer_facts_lookup_miss_diagnostic(key: node))
 }
 
@@ -855,9 +855,9 @@ fn control_transfer_value(
 }
 
 type RuntimeValueAcceptanceWitness {
-  resolved_type: v2.std.witness.Witness<v2.std.node.Node>
-  inhabitance: v2.std.witness.Witness<v2.compiler.inferred_tree.InferredFacts>
-  canonical: v2.std.witness.Witness<v2.compiler.inferred_tree.InferredFacts>
+  resolved_type: Witness<v2.std.node.Node>
+  inhabitance: Witness<v2.compiler.inferred_tree.InferredFacts>
+  canonical: Witness<v2.compiler.inferred_tree.InferredFacts>
 }
 
 fn eval_runtime_value_acceptance_witness(
@@ -915,7 +915,7 @@ fn eval_accept_runtime_value_with_facts(
   }
 }
 
-fn eval_witness_outcome<T>(witness: v2.std.witness.Witness<T>) -> v2.std.diagnostic.Outcome<T> {
+fn eval_witness_outcome<T>(witness: Witness<T>) -> v2.std.diagnostic.Outcome<T> {
   match witness {
     Holds { value: v } => v2.std.diagnostic.Accepted { value: v, diagnostics: v2.std.diagnostic.None }
     Violates { diagnostic: d } => v2.std.diagnostic.outcome_rejected(d: d)

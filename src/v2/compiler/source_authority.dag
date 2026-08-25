@@ -1290,7 +1290,7 @@ fn source_authority_node_equal(left: v2.std.node.Node, right: v2.std.node.Node) 
 fn source_ast_equal_witness(
   original: DagSourceAst,
   reparsed: DagSourceAst
-) -> v2.std.witness.Witness<SourceAstEqual> {
+) -> Witness<SourceAstEqual> {
   if source_authority_node_equal(left: original.tree, right: reparsed.tree) {
     v2.std.witness.Holds { value: SourceAstEqual { original: original, reparsed: reparsed } }
   } else {
@@ -1303,7 +1303,7 @@ fn source_ast_equal_witness(
 fn normalized_source_ast_equal_witness(
   original: NormalizedDagSourceAst,
   reparsed: NormalizedDagSourceAst
-) -> v2.std.witness.Witness<NormalizedSourceAstEqual> {
+) -> Witness<NormalizedSourceAstEqual> {
   if source_authority_node_equal(left: original.tree, right: reparsed.tree) {
     v2.std.witness.Holds { value: NormalizedSourceAstEqual { original: original, reparsed: reparsed } }
   } else {
@@ -1316,7 +1316,7 @@ fn normalized_source_ast_equal_witness(
 fn semantic_ir_equal_witness(
   original: DagSemanticIr,
   reparsed: DagSemanticIr
-) -> v2.std.witness.Witness<SemanticIrEqual> {
+) -> Witness<SemanticIrEqual> {
   if source_authority_node_equal(left: original.tree, right: reparsed.tree) {
     v2.std.witness.Holds { value: SemanticIrEqual { original: original, reparsed: reparsed } }
   } else {
@@ -1329,7 +1329,7 @@ fn semantic_ir_equal_witness(
 fn deterministic_dag_source_serializer_witness(
   first: extdeps.communication.medium.Medium<String>,
   second: extdeps.communication.medium.Medium<String>
-) -> v2.std.witness.Witness<DeterministicDagSourceSerializerLaw> {
+) -> Witness<DeterministicDagSourceSerializerLaw> {
   if extdeps.communication.fidelity_carriers.medium_section_equal(left: first, right: second) {
     v2.std.witness.Holds {
       value: DeterministicDagSourceSerializerLaw {
@@ -1349,7 +1349,7 @@ fn canonical_dag_source_emission_law_from_parts(
   canonical_source_first: extdeps.communication.medium.Medium<String>,
   canonical_source_second: extdeps.communication.medium.Medium<String>,
   reparsed_ast: DagSourceAst
-) -> v2.std.diagnostic.Outcome<v2.std.witness.Witness<CanonicalDagSourceEmissionLaw>> {
+) -> v2.std.diagnostic.Outcome<Witness<CanonicalDagSourceEmissionLaw>> {
   v2.std.diagnostic.bind_outcome(
     o: normalize_dag_source_ast(ast: original_ast),
     f: fn(original_normalized_ast) {
@@ -1398,7 +1398,7 @@ fn source_authority_law_from_parts(
   original_ir: DagSemanticIr,
   reparsed_ir: DagSemanticIr,
   canonical_source_law: CanonicalDagSourceEmissionLaw
-) -> v2.std.diagnostic.Outcome<v2.std.witness.Witness<SourceAuthorityRoundTripLaw>> {
+) -> v2.std.diagnostic.Outcome<Witness<SourceAuthorityRoundTripLaw>> {
   let source_law = source_ast_equal_witness(original: original_ast, reparsed: reparsed_ast)
   let semantic_law = semantic_ir_equal_witness(original: original_ir, reparsed: reparsed_ir)
   match source_law {
@@ -1427,7 +1427,7 @@ fn source_authority_round_trip_with_model(
   source: extdeps.communication.medium.Medium<String>,
   canonical_source_target: v2.std.compilers.target_model.TargetModel,
   lm: v2.std.language_model.LanguageModel
-) -> v2.std.diagnostic.Outcome<v2.std.witness.Witness<SourceAuthorityRoundTripLaw>> {
+) -> v2.std.diagnostic.Outcome<Witness<SourceAuthorityRoundTripLaw>> {
   v2.std.diagnostic.bind_outcome(
     o: parse_dag_source_ast_with_model(
       source: source,
@@ -1500,7 +1500,7 @@ fn source_authority_round_trip_with_model(
 fn canonical_dag_source_parse_print_law(
   source: extdeps.communication.medium.Medium<String>,
   canonical_source_target: v2.std.compilers.target_model.TargetModel
-) -> v2.std.diagnostic.Outcome<v2.std.witness.Witness<CanonicalDagSourceEmissionLaw>> {
+) -> v2.std.diagnostic.Outcome<Witness<CanonicalDagSourceEmissionLaw>> {
   v2.std.diagnostic.bind_outcome(
     o: parse_dag_source_ast(source: source),
     f: fn(original_ast) {
@@ -1546,7 +1546,7 @@ fn canonical_dag_source_parse_print_law(
 fn source_authority_round_trip(
   source: extdeps.communication.medium.Medium<String>,
   canonical_source_target: v2.std.compilers.target_model.TargetModel
-) -> v2.std.diagnostic.Outcome<v2.std.witness.Witness<SourceAuthorityRoundTripLaw>> {
+) -> v2.std.diagnostic.Outcome<Witness<SourceAuthorityRoundTripLaw>> {
   source_authority_round_trip_with_model(
     source: source,
     canonical_source_target: canonical_source_target,

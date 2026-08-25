@@ -21,7 +21,7 @@ type NodeGrounding
 
 type InferredFacts {
   grounding: NodeGrounding
-  descent: v2.std.witness.Witness<v2.std.cardinality.TerminationProof>
+  descent: Witness<v2.std.cardinality.TerminationProof>
 }
 
 type InferredTree {

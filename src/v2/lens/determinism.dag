@@ -82,7 +82,7 @@ fn determinism_leak_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnos
   }
 }
 
-fn determinism_contract_witness(signature: v2.std.node.Symbol, n: v2.std.node.Node) -> v2.std.witness.Witness<v2.std.determinism.DeterminismFact> {
+fn determinism_contract_witness(signature: v2.std.node.Symbol, n: v2.std.node.Node) -> Witness<v2.std.determinism.DeterminismFact> {
   let fact = determinism_fact_for_node(signature: signature, n: n)
   match fact.classification {
     std.determinism.NonDeterministic { source: _ } => v2.std.witness.Violates { diagnostic: determinism_leak_diagnostic(n: n) }
@@ -124,7 +124,7 @@ fn determinism_findings(root: v2.std.node.Node) -> List<v2.std.diagnostic.Diagno
   )
 }
 
-fn determinism_compile_gate(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.witness.Witness<v2.std.node.Node>> {
+fn determinism_compile_gate(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>> {
   match concat(determinism_denominator_findings(), determinism_findings(root: node)) {
     std.algebra.Cons { head: first, tail: rest } =>
       v2.std.diagnostic.Rejected {

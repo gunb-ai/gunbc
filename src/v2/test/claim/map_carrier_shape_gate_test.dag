@@ -5,10 +5,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE GATE ON THE MAP CONSTRUCTION DELEGATE, AND WHY IT IS A WITNESS RATHER THAN AN AGREEMENT.
 //
-// `std.types.Map` is reached through two constructors today: `v2.std.collection.empty_map()` yields the host's native map,
-// and a `std.types.Map { lookup: ... }` record literal yields a closure carrying its own lookup. The
+// `Map` is reached through two constructors today: `v2.std.collection.empty_map()` yields the host's native map,
+// and a `Map { lookup: ... }` record literal yields a closure carrying its own lookup. The
 // interpreter grounds `v2.std.collection` `v2.std.collection.map_insert` on the NATIVE shape only —
-// `eval_builtin`'s `free_call.map_insert` arm matches `[Value::std.types.Map, k, v]` and answers `Ok(None)`
+// `eval_builtin`'s `free_call.map_insert` arm matches `[Value::Map, k, v]` and answers `Ok(None)`
 // for anything else, which `try_v2_std_collection_map_primitive_grounding` turns into `None`,
 // falling through to the `.dag` body. So `v2.std.collection.map_insert`'s body is NOT dead: it is the live arm for
 // every record-shaped map.
@@ -21,10 +21,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // These two arms are that measurement, enrolled. `record_shaped` is the discriminating one: it
 // passes only while a record-shaped map can still reach `v2.std.collection.map_insert`, so it goes RED the moment
-// the delegate lands while any `std.types.Map { lookup: ... }` literal survives — which is exactly the
+// the delegate lands while any `Map { lookup: ... }` literal survives — which is exactly the
 // premature-landing defect, caught in seconds instead of by a floor run.
 //
-// DISSOLUTION: when the finite `std.types.Map { lookup: ... }` literals have migrated to
+// DISSOLUTION: when the finite `Map { lookup: ... }` literals have migrated to
 // `v2.std.collection.empty_map` + `v2.std.collection.map_insert` and the delegate lands as the closing move, `record_shaped` inverts —
 // it must then assert that the record route is unrepresentable, not that it works. It does not
 // simply delete: deleting it would remove the only executing evidence that the two shapes were
@@ -58,7 +58,7 @@ fn native_map_after_insert() -> Optional<String> {
 }
 
 fn record_shaped_map_after_insert() -> Optional<String> {
-  let m = std.types.Map { lookup: fn(_) { Absent } }
+  let m = Map { lookup: fn(_) { Absent } }
   v2.std.collection.map_lookup(m: v2.std.collection.map_insert(m, "k", "v"), key: "k")
 }
 

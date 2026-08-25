@@ -225,7 +225,7 @@ fn sql_nonnumeric_facts_node(facts: SqlNonNumericPrimitiveFacts) -> v2.std.node.
 }
 }
 
-fn sql_integer_spec_facts(facts: SqlIntegerPrimitiveFacts) -> std.types.Map<v2.std.node.Symbol, v2.std.node.Node> {
+fn sql_integer_spec_facts(facts: SqlIntegerPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(
       v2.std.collection.empty_map(),
@@ -237,7 +237,7 @@ fn sql_integer_spec_facts(facts: SqlIntegerPrimitiveFacts) -> std.types.Map<v2.s
   )
 }
 
-fn sql_float_spec_facts(facts: SqlFloatPrimitiveFacts) -> std.types.Map<v2.std.node.Symbol, v2.std.node.Node> {
+fn sql_float_spec_facts(facts: SqlFloatPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
   v2.std.collection.map_insert(
     v2.std.collection.empty_map(),
     discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}),
@@ -245,7 +245,7 @@ fn sql_float_spec_facts(facts: SqlFloatPrimitiveFacts) -> std.types.Map<v2.std.n
   )
 }
 
-fn sql_nonnumeric_spec_facts(facts: SqlNonNumericPrimitiveFacts) -> std.types.Map<v2.std.node.Symbol, v2.std.node.Node> {
+fn sql_nonnumeric_spec_facts(facts: SqlNonNumericPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
   v2.std.collection.map_insert(
     v2.std.collection.map_insert(
       v2.std.collection.empty_map(),

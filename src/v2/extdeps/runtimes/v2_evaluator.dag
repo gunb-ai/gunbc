@@ -69,7 +69,7 @@ fn v2_eval_runtime_diagnostic(node: v2.std.node.Node) -> v2.std.diagnostic.Diagn
   }
 }
 
-fn v2_eval_binding_lookup_miss(_key: v2.std.runtime.EnvironmentBindingKey) -> v2.std.witness.Witness<v2.std.runtime.RuntimeValue> {
+fn v2_eval_binding_lookup_miss(_key: v2.std.runtime.EnvironmentBindingKey) -> Witness<v2.std.runtime.RuntimeValue> {
   v2.std.witness.Violates {
     diagnostic: v2.std.diagnostic.Diagnostic {
       reason: ^v2_eval_binding_miss,

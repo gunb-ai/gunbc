@@ -705,7 +705,7 @@ data emit_summary_map_collision_population: List<CollisionPopulation> = [
 // EXACTLY-ONE side produces a summary (13): AdmissionState, Byte, FilePath, FixedPointCheck, Float32,
 // Float64, Json, Nat, NonNegativeInt, ObjectId, PositiveInt, ReservedWordStrategy, SourceSpan.
 // NEITHER side produces one (24): Compose, CoreNode, Float, Int, Int128, Int16, Int32, Int64, Int8,
-// IntPlatform, std.types.List, MachineWidth, PointerWidth, RustPrimitive, ShapeFromCatalogInput, String, UInt,
+// IntPlatform, List, MachineWidth, PointerWidth, RustPrimitive, ShapeFromCatalogInput, String, UInt,
 // UInt128, UInt16, UInt32, UInt64, UInt8, UIntPlatform, Unit.
 
 // THE Connective SPECIMEN, NOW A COUNTED ROW: THE POOL IS NAMED AND I VERIFIED IT MYSELF.

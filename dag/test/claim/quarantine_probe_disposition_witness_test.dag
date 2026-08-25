@@ -17,7 +17,7 @@ module test.claim.quarantine_probe_disposition_witness_test
 // live-reading and fail-closed. Both consumers get a true answer from the same silence.
 data quarantine_probe_disposition_witness_note: v2.std.text.String = "Live claim plus controls for the total quarantine-probe disposition join. THE LIVE CLAIM IS DELIBERATELY NOT WHERE THE DISCRIMINATION LIVES: it is a universal over the live admission rows, so it stays meaningful at any population size including zero, and it would pass vacuously on an empty roster. The discrimination is carried by the synthetic controls below, which are authored here and cannot lose their subject when a live quarantine dissolves -- each of the five holder arms is shown to derive HeldByExactlyOne on its own, held-by-nothing is shown to derive the alarm, and held-by-two is shown to refuse. The controls therefore prove the fold DISCRIMINATES rather than merely agreeing with today's tree."
 
-fn witness_pool_roots() -> v2.std.collection.List<v2.std.text.String> {
+fn witness_pool_roots() -> List<v2.std.text.String> {
   ["dag", "src/v2"]
 }
 
@@ -28,7 +28,7 @@ fn witness_pool_roots() -> v2.std.collection.List<v2.std.text.String> {
 // dropping a segment and a suffix, and dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag
 // declares test.claim.self_host_03_normalize_behavioral_witness. Deriving the identity from the
 // path would silently miss the roster this fold joins against, and a miss reads as an alarm.
-fn module_for_entry(facts: v2.std.collection.List<v2.lens.module_graph.ModuleDeclarationFact>, entry: v2.std.text.String) -> v2.std.text.String {
+fn module_for_entry(facts: List<v2.lens.module_graph.ModuleDeclarationFact>, entry: v2.std.text.String) -> v2.std.text.String {
   v2.std.algebra.fold_list(
     xs: facts,
     empty: "",
@@ -64,7 +64,7 @@ fn entry_declares_reads_live_tree(entry: v2.std.text.String) -> v2.std.logic.Boo
   source.contains("LiveTreeDisposition") && source.contains("ReadsLiveTree")
 }
 
-fn live_tree_declined_entries(rows: v2.std.collection.List<gunbc.explicit_witness_admission.ExplicitWitnessAdmission>) -> v2.std.collection.List<v2.std.text.String> {
+fn live_tree_declined_entries(rows: List<gunbc.explicit_witness_admission.ExplicitWitnessAdmission>) -> List<v2.std.text.String> {
   v2.std.algebra.fold_list(
     xs: rows,
     empty: v2.std.algebra.Empty {},
@@ -79,7 +79,7 @@ fn live_tree_declined_entries(rows: v2.std.collection.List<gunbc.explicit_witnes
 }
 
 fn subject_for_admission(
-  facts: v2.std.collection.List<v2.lens.module_graph.ModuleDeclarationFact>,
+  facts: List<v2.lens.module_graph.ModuleDeclarationFact>,
   row: gunbc.explicit_witness_admission.ExplicitWitnessAdmission
 ) -> gunbc.quarantine_probe_disposition.QuarantineProbeSubject {
   gunbc.quarantine_probe_disposition.QuarantineProbeSubject {
@@ -89,7 +89,7 @@ fn subject_for_admission(
   }
 }
 
-fn live_quarantine_probe_subjects() -> v2.std.collection.List<gunbc.quarantine_probe_disposition.QuarantineProbeSubject> {
+fn live_quarantine_probe_subjects() -> List<gunbc.quarantine_probe_disposition.QuarantineProbeSubject> {
   let facts = v2.lens.module_graph.module_declaration_facts_live(pool_roots: witness_pool_roots())
   v2.std.algebra.fold_list(
     xs: gunbc.quarantine_probe_disposition.quarantine_probe_admissions(rows: gunbc.explicit_witness_admission.explicit_witness_admissions),
@@ -143,7 +143,7 @@ test fn every_supplied_population_is_load_bearing_on_the_live_claim() -> v2.std.
     && gunbc.quarantine_probe_disposition.quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_quarantine_probe_facts())
 }
 
-fn probe_no_strings() -> v2.std.collection.List<v2.std.text.String> {
+fn probe_no_strings() -> List<v2.std.text.String> {
   v2.std.algebra.Empty {}
 }
 

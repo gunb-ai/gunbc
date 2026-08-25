@@ -150,7 +150,7 @@ fn loop_eval_node_is_loop(node: v2.std.node.Node) -> v2.std.logic.Bool {
   }
 }
 
-fn loop_eval_bounded_descent() -> v2.std.witness.Witness<v2.std.cardinality.TerminationProof> {
+fn loop_eval_bounded_descent() -> Witness<v2.std.cardinality.TerminationProof> {
   v2.std.witness.Holds { value: v2.std.cardinality.structural_node_size_termination_proof() }
 }
 

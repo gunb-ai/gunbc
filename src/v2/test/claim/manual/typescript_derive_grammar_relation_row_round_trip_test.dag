@@ -17,7 +17,7 @@ fn ts_grammar_relation_row_std_node() -> v2.std.node.Node {
   )
 }
 
-data ts_derive_row_node_receipt: v2.std.witness.Witness<v2.std.node.Node> = v2.std.grammar.derive_grammar_relation_row_node(
+data ts_derive_row_node_receipt: Witness<v2.std.node.Node> = v2.std.grammar.derive_grammar_relation_row_node(
   production: v2.extdeps.languages.typescript.ts_formal_production_fn_add(),
   productions: [v2.extdeps.languages.typescript.ts_formal_production_fn_add()],
   emitted: v2.extdeps.languages.typescript.ts_emitted_add_fn_node()

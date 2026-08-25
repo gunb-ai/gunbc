@@ -32,7 +32,7 @@ fn parallelism_claim_tree() -> v2.compiler.inferred_tree.InferredTree {
 type LensParallelismClaim {
   input: v2.compiler.inferred_tree.InferredTree
   expected: v2.lens.parallelism.ParallelismFact
-  actual: v2.std.witness.Witness<v2.lens.parallelism.ParallelismFact>
+  actual: Witness<v2.lens.parallelism.ParallelismFact>
 }
 
 data parallelism_data_dependency_claim: LensParallelismClaim = LensParallelismClaim {

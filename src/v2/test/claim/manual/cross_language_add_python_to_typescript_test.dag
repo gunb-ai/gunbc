@@ -11,9 +11,9 @@ type ParseTreeToTargetModelBridge {
   intended_target_language: v2.std.node.Symbol
 }
 
-type ParseTreeToTargetModelBridgeCheck = v2.std.witness.Witness<ParseTreeToTargetModelBridge>
+type ParseTreeToTargetModelBridgeCheck = Witness<ParseTreeToTargetModelBridge>
 
-fn parse_tree_to_target_model_bridge_scaffold() -> v2.std.witness.Witness<ParseTreeToTargetModelBridge> {
+fn parse_tree_to_target_model_bridge_scaffold() -> Witness<ParseTreeToTargetModelBridge> {
   if v2.test.manual.ingest_bridge.ingest_bridge_realized() {
     v2.std.witness.Holds {
       value: ParseTreeToTargetModelBridge {

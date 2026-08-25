@@ -401,7 +401,7 @@ fn mandatory_tag_findings_count(root: v2.std.node.Node) -> v2.std.integer.Int {
   v2.std.algebra.length(xs: mandatory_tag_findings(root: root))
 }
 
-fn mandatory_tag_compile_gate(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.witness.Witness<v2.std.node.Node>> {
+fn mandatory_tag_compile_gate(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>> {
   match mandatory_tag_findings(root: node) {
     Cons { head: first, tail: rest } =>
       v2.std.diagnostic.Rejected {

@@ -31,7 +31,7 @@ fn span_index_occurrence_absent_diagnostic() -> v2.std.diagnostic.Diagnostic {
   }
 }
 
-fn span_index_lookup(index: SpanIndex, id: std.occurrence_identity.OccurrenceId) -> v2.std.witness.Witness<OriginEvent> {
+fn span_index_lookup(index: SpanIndex, id: std.occurrence_identity.OccurrenceId) -> Witness<OriginEvent> {
   v2.std.witness.witness_from_optional(opt: index.entries.lookup(id), absent: span_index_occurrence_absent_diagnostic())
 }
 
@@ -65,7 +65,7 @@ fn span_index_origin_chain_exhausted_diagnostic() -> v2.std.diagnostic.Diagnosti
 fn span_index_resolve_textual_locus_from_ids(
   index: SpanIndex,
   ids: List<std.occurrence_identity.OccurrenceId>
-) -> v2.std.witness.Witness<v2.std.diagnostic.Locus> {
+) -> Witness<v2.std.diagnostic.Locus> {
   v2.std.algebra.fold_list(
     xs: ids,
     empty: v2.std.witness.Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() },
@@ -79,7 +79,7 @@ fn span_index_resolve_textual_locus_from_ids(
   )
 }
 
-fn span_index_resolve_textual_locus(index: SpanIndex, id: std.occurrence_identity.OccurrenceId) -> v2.std.witness.Witness<v2.std.diagnostic.Locus> {
+fn span_index_resolve_textual_locus(index: SpanIndex, id: std.occurrence_identity.OccurrenceId) -> Witness<v2.std.diagnostic.Locus> {
   match span_index_lookup(index: index, id: id) {
     Holds { value: event } =>
       match event {

@@ -133,11 +133,11 @@ type QuarantineProbeSubject {
 
 // THE SUPPLIED FACTS. Four populations, four owners, none of them this module.
 type QuarantineProbeHoldingFacts {
-  expected_red_roster: v2.std.collection.List<v2.std.text.String>
-  route_gap_roster: v2.std.collection.List<v2.std.text.String>
-  home_prefixes: v2.std.collection.List<v2.std.text.String>
-  live_tree_declined_entries: v2.std.collection.List<v2.std.text.String>
-  path_exclusion_substrings: v2.std.collection.List<v2.std.text.String>
+  expected_red_roster: List<v2.std.text.String>
+  route_gap_roster: List<v2.std.text.String>
+  home_prefixes: List<v2.std.text.String>
+  live_tree_declined_entries: List<v2.std.text.String>
+  path_exclusion_substrings: List<v2.std.text.String>
 }
 
 // THE ALARM IS AN ARM OF THE OUTCOME, NEVER A STABLE DISPOSITION.
@@ -157,7 +157,7 @@ type QuarantineProbeHoldingFacts {
 type QuarantineProbeDisposition =
     HeldByExactlyOne { identity: v2.std.text.String, holder: QuarantineProbeHolder }
   | QuarantineProbeNowPassing { identity: v2.std.text.String, entry: v2.std.text.String, function: v2.std.text.String }
-  | QuarantineProbeHeldByMoreThanOne { identity: v2.std.text.String, holders: v2.std.collection.List<QuarantineProbeHolder> }
+  | QuarantineProbeHeldByMoreThanOne { identity: v2.std.text.String, holders: List<QuarantineProbeHolder> }
 
 // WHAT A HOLDER ESTABLISHES ABOUT THE CLAIM, derived totally from the holder and never stored.
 // Three states, because "the witness ran and failed as declared", "the witness ran and produced
@@ -194,7 +194,7 @@ fn quarantine_probe_subject_identity(subject: QuarantineProbeSubject) -> v2.std.
 // identity nor multiplicity, which is the weakness the exact-admission authority was built to
 // remove in the first place, and it is why the two arms that genuinely are substring-shaped
 // (home prefix, path exclusion) are matched by their own functions and carry what they matched.
-fn exact_member(needle: v2.std.text.String, population: v2.std.collection.List<v2.std.text.String>) -> v2.std.logic.Bool {
+fn exact_member(needle: v2.std.text.String, population: List<v2.std.text.String>) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: population,
     empty: false,
@@ -202,7 +202,7 @@ fn exact_member(needle: v2.std.text.String, population: v2.std.collection.List<v
   )
 }
 
-fn first_matching_prefix(module: v2.std.text.String, prefixes: v2.std.collection.List<v2.std.text.String>) -> v2.std.collection.List<v2.std.text.String> {
+fn first_matching_prefix(module: v2.std.text.String, prefixes: List<v2.std.text.String>) -> List<v2.std.text.String> {
   v2.std.algebra.fold_list(
     xs: prefixes,
     empty: v2.std.algebra.Empty {},
@@ -220,7 +220,7 @@ fn first_matching_prefix(module: v2.std.text.String, prefixes: v2.std.collection
   )
 }
 
-fn first_matching_substring(entry: v2.std.text.String, substrings: v2.std.collection.List<v2.std.text.String>) -> v2.std.collection.List<v2.std.text.String> {
+fn first_matching_substring(entry: v2.std.text.String, substrings: List<v2.std.text.String>) -> List<v2.std.text.String> {
   v2.std.algebra.fold_list(
     xs: substrings,
     empty: v2.std.algebra.Empty {},
@@ -244,7 +244,7 @@ fn first_matching_substring(entry: v2.std.text.String, substrings: v2.std.collec
 fn quarantine_probe_holders(
   subject: QuarantineProbeSubject,
   facts: QuarantineProbeHoldingFacts
-) -> v2.std.collection.List<QuarantineProbeHolder> {
+) -> List<QuarantineProbeHolder> {
   let identity = quarantine_probe_subject_identity(subject: subject)
   let floor_held =
     if exact_member(needle: identity, population: facts.expected_red_roster) {
@@ -286,7 +286,7 @@ fn quarantine_probe_holders(
   )
 }
 
-fn concat_holders(a: v2.std.collection.List<QuarantineProbeHolder>, b: v2.std.collection.List<QuarantineProbeHolder>) -> v2.std.collection.List<QuarantineProbeHolder> {
+fn concat_holders(a: List<QuarantineProbeHolder>, b: List<QuarantineProbeHolder>) -> List<QuarantineProbeHolder> {
   match a {
     v2.std.algebra.Empty {} => b
     v2.std.algebra.Cons { head: h, tail: t } => v2.std.algebra.Cons { head: h, tail: concat_holders(a: t, b: b) }
@@ -330,9 +330,9 @@ fn quarantine_probe_disposition_holds(disposition: QuarantineProbeDisposition) -
 }
 
 fn quarantine_probe_dispositions(
-  subjects: v2.std.collection.List<QuarantineProbeSubject>,
+  subjects: List<QuarantineProbeSubject>,
   facts: QuarantineProbeHoldingFacts
-) -> v2.std.collection.List<QuarantineProbeDisposition> {
+) -> List<QuarantineProbeDisposition> {
   v2.std.algebra.fold_list(
     xs: subjects,
     empty: v2.std.algebra.Empty {},
@@ -343,7 +343,7 @@ fn quarantine_probe_dispositions(
 }
 
 fn quarantine_probe_dispositions_all_hold(
-  subjects: v2.std.collection.List<QuarantineProbeSubject>,
+  subjects: List<QuarantineProbeSubject>,
   facts: QuarantineProbeHoldingFacts
 ) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
@@ -364,7 +364,7 @@ fn admission_is_quarantine_probe(row: gunbc.explicit_witness_admission.ExplicitW
   }
 }
 
-fn quarantine_probe_admissions(rows: v2.std.collection.List<gunbc.explicit_witness_admission.ExplicitWitnessAdmission>) -> v2.std.collection.List<gunbc.explicit_witness_admission.ExplicitWitnessAdmission> {
+fn quarantine_probe_admissions(rows: List<gunbc.explicit_witness_admission.ExplicitWitnessAdmission>) -> List<gunbc.explicit_witness_admission.ExplicitWitnessAdmission> {
   v2.std.algebra.fold_list(
     xs: rows,
     empty: v2.std.algebra.Empty {},
