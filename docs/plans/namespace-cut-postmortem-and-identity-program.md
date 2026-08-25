@@ -25,7 +25,10 @@
 they were all standing on, and the terminal shape and landing order for each
 piece of it.
 
-**Status:** postmortem + direction. **It supersedes nothing.**
+**Status:** postmortem + direction. **It supersedes nothing on its own
+authority.** It does record one operator supersession — the 2026-08-25 reordering
+that moves grammar deletion to last, §7a — which is a ruling relayed, not a
+conclusion this document reached; the ratified plan's ROOT is unchanged by it.
 [namespace-cut-replacement-plan.md](namespace-cut-replacement-plan.md) is ratified
 — DESIGN §3 links it as one of two cut programs — and its 2026-08-15 operator
 ruling *predicted this document's findings by name*: "delete all the grammar/import
@@ -765,10 +768,25 @@ relations that were never unique. Success arm reachable only through
 `keyed_roster_build`/`insert`. Already declared as
 `feature:keyed-roster-construction-wall`.
 
-**T4 — nominal identity survives emission.** `rust_nominal_identity_carrier_type_eligible`
-returns a real predicate; a branded scalar emits as a newtype, not a `String`
-alias. `Secret` and `String` stop being one Rust type. This subsumes §4b's
-`UriValidatedScalar` forgery receipt.
+**T4 — a sealed carrier survives emission sealed.** A `sole_constructor`
+declaration emits a Rust carrier that cannot be forged: private field, no
+derived `Deserialize`, construction only through the mint. This subsumes §4b's
+`UriValidatedScalar` forgery receipt, which is the single below-floor item in
+that paragraph.
+
+*T4's subject was corrected on 2026-08-25 and this row states the corrected
+terminal, not the superseded one.* It previously read
+*`rust_nominal_identity_carrier_type_eligible` returns a real predicate; a
+branded scalar emits as a newtype* — which contradicts §7a's A0 correction, where
+that predicate is **deleted** rather than repaired, and where the reason is not
+scheduling: `type Brand = String` admits `take_string(s: b)` with zero
+diagnostics on unpatched main, so brand transparency is a **model** fact and the
+emitter follows the alias RHS because there is nothing else to follow. Brand
+rendering is therefore blocked upstream on a model fact that does not exist, and
+naming it as a terminal here would have been a second authority for one
+construction — the §2/§3 violation this document spends §11 recording. What
+reaches emission at the cut's terminal is the seal, which is already authored on
+79 production declarations and read by the emitter zero times.
 
 **T5 — one identity authority in the compiler.** `04_occurrence_binding` is the
 sole answer to *what does this reference denote*. `authored_name_at` survives with
@@ -933,12 +951,41 @@ schedule; none of this cements Rust into templates.
 ## 7a. The PR sequence, derived backward from the goal
 
 Operator framing (2026-08-25): work backward from the goal, and **the grammar
-deletion is the last step, not the first**. That is not a reversal of delete-first
-and the reconciliation is one sentence: **the root being replaced is
-import-derived resolution and closure, not import syntax.** DESIGN §3 says
-"atomic describes the authority transition, not the amount of implementation
-work" — so once nothing reads an import, the grammar is a corpse and deleting a
-corpse is bounded cleanup. The invariant that keeps this honest:
+deletion is the last step, not the first**.
+
+**This reverses a ratified ordering, and the reversal is recorded here rather
+than absorbed into a re-derivation of the root.** The ratified
+[namespace-cut replacement plan](namespace-cut-replacement-plan.md) states its
+root verbatim as *"the `import` concept — the grammar production, the parse
+surface, and the import-name universe"*, under an operator ruling of 2026-08-15:
+*"delete all the grammar/import up front, then solve each problem as it is
+revealed."* An earlier revision of this paragraph reconciled the two by asserting
+that the root "is import-derived resolution and closure, not import syntax" —
+i.e. by narrowing the ratified root while also saying that plan was not
+superseded. That is the move review 55844 correctly refused: a root narrowed in
+prose converts delete-first into deferred cleanup, and does it invisibly, because
+both documents then read as agreeing.
+
+The actual situation is simpler and is stated as such. **The root is unchanged —
+grammar, parse surface and import-name universe are all inside it.** What changed
+is the ORDER in which that root is cut, by a later ruling from the same authority
+(2026-08-25, recorded above; the same exchange also ruled the cut "doesn't have
+to be atomic technically"). The 2026-08-15 ruling is superseded on order and on
+nothing else. Neither this document nor the replacement plan may claim the two
+rulings agree.
+
+**What the reordering costs, stated because a supersession that reports no cost
+is the tell that it was not priced.** Deleting the grammar first makes the census
+a single refusal storm — every real dependent refuses at once, which is exactly
+the property DESIGN §3 credits delete-first with. Deleting it last spreads that
+census across the sequence and makes each consumer's move *individually*
+reversible, which is the property that lets an eleven-PR sequence land without a
+dual-authority interval on main. The exposure that buys is the one §3 names: while
+the grammar stands it is an attractor, and every question asked near it gets
+answered in import vocabulary. The bound on that exposure is the invariant below
+plus a terminal that names grammar deletion as a required step rather than a
+cleanup item — if the sequence completes and the production still parses
+`import`, the cut did not complete.
 
 > **For each production semantic contract, exactly one producer supplies every
 > production consumer. Alternative producers may exist only as derived,
@@ -1415,7 +1462,10 @@ So the split is clean, and it falls exactly along the line that clause draws:
   value that remains is narrow: if the sweep ever needs a second output format,
   `namespace-resolution-design` §8 is where that shape is already worked out.
 - **per-subtree migration** is a *sequencing* question. It is explicitly
-  superseded by the ruling above. Big-bang deletion stands.
+  superseded by the ruling above. Big-bang deletion stands — one authority
+  transition, not a per-subtree policy flip. That is a different axis from §7a's
+  2026-08-25 reordering, which moves grammar deletion to the END of the sequence
+  without splitting the transition: the producer still changes once.
 
 **What survives from the dissent regardless, and should be adopted:**
 
