@@ -1,5 +1,7 @@
 module test.claim.fleet_convergence_verdict_witness
 
+import gunbc.network_identity_subsumption { srv3_post_install_lease_table_fixture }
+import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
 import std.types { Bool, String, NonEmptyStr, List, Int }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1 }
