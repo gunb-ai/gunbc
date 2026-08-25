@@ -3338,6 +3338,87 @@ pub fn coproduct_variant_payload_admits_type_name(
     }
 }
 
+pub fn coproduct_variant_name_sets_differ(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let counts_differ =
+            ((left.children.clone().len() as i64) != (right.children.clone().len() as i64));
+        let left_has_unmatched = {
+            let mut __found = false;
+            for v in left.children.clone().iter().cloned() {
+                if (has_child_named(
+                    right.clone(),
+                    authored_name_at(source_indices.clone(), v.clone()),
+                    source_indices.clone(),
+                ) == false)
+                {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        };
+        (counts_differ.clone() || left_has_unmatched.clone())
+    }
+}
+
+pub fn coproduct_name_is_kernel_or_optional_carrier(name: String) -> bool {
+    {
+        let last = qualified_last_segment(name.clone());
+        (((last.clone() == "".to_string()) || (last.clone() == "Optional".to_string()))
+            || is_kernel_type(last.clone()))
+    }
+}
+
+pub fn foreign_concrete_coproduct_where_parent_required(
+    formal_decl: Rc<Node>,
+    formal_name: String,
+    actual_name: String,
+    actual_rep: String,
+    scope: Rc<InferScope>,
+) -> bool {
+    {
+        let source_indices = scope.type_env.clone().source_indices.clone();
+        if ((coproduct_name_is_kernel_or_optional_carrier(formal_name.clone())
+            || coproduct_name_is_kernel_or_optional_carrier(actual_name.clone()))
+            || ((actual_rep.clone() != "".to_string())
+                && coproduct_name_is_kernel_or_optional_carrier(actual_rep.clone())))
+        {
+            false
+        } else {
+            match lookup_type_by_name(scope.type_env.clone(), actual_name.clone()) {
+                None => false,
+                Some(actual_decl) => {
+                    let actual_is_concrete_coproduct = (((actual_decl.connective.clone()
+                        == Connective::Disj)
+                        && ((actual_decl.params.clone().len() as i64) == 0))
+                        && ((actual_decl.children.clone().len() as i64) > 0));
+                    let actual_decl_name =
+                        authored_name_at(source_indices.clone(), actual_decl.clone());
+                    let resolved_name_is_kernel = ((actual_decl_name.clone() != "".to_string())
+                        && coproduct_name_is_kernel_or_optional_carrier(actual_decl_name.clone()));
+                    let formal_is_variant_of_actual = has_child_named(
+                        actual_decl.clone(),
+                        qualified_last_segment(formal_name.clone()),
+                        source_indices.clone(),
+                    );
+                    (((actual_is_concrete_coproduct.clone()
+                        && (resolved_name_is_kernel.clone() == false))
+                        && (formal_is_variant_of_actual.clone() == false))
+                        && coproduct_variant_name_sets_differ(
+                            formal_decl.clone(),
+                            actual_decl.clone(),
+                            source_indices.clone(),
+                        ))
+                }
+            }
+        }
+    }
+}
+
 pub fn coproduct_payload_where_parent_required(
     formal: Rc<Node>,
     actual: Rc<Node>,
@@ -3409,13 +3490,7 @@ pub fn coproduct_payload_where_parent_required(
                                             if names_a_variant.clone() {
                                                 false
                                             } else {
-                                                coproduct_variant_payload_admits_type_name(
-                                                    decl.clone(),
-                                                    actual_name.clone(),
-                                                    scope.type_env.clone(),
-                                                    scope.module_name.clone(),
-                                                    source_indices.clone(),
-                                                )
+                                                (coproduct_variant_payload_admits_type_name(decl.clone(), actual_name.clone(), scope.type_env.clone(), scope.module_name.clone(), source_indices.clone()) || foreign_concrete_coproduct_where_parent_required(decl.clone(), formal_name.clone(), actual_name.clone(), actual_rep.clone(), scope.clone()))
                                             }
                                         }
                                     }
