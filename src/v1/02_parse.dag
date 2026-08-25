@@ -354,6 +354,7 @@ type GuardResult { guard: Node?, tokens: TokenStream, ctx: ParseContext, err: Er
 type FromKeyResult { from_key: String?, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 
 type PostfixResult { expr: Node, changed: Bool, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type PipeCalleeResult { spine: Node?, method: String, method_span: SourceSpan, tokens: TokenStream, err: ErrorNode? }
 type ParserParam { name: String, span: SourceSpan }
 type LambdaCheckResult { is_lambda: Bool, params: List<ParserParam>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 type IdentCollectResult { success: Bool, params: List<ParserParam>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
@@ -4253,19 +4254,39 @@ fn infix_bp(tokens: TokenStream) -> BindingPower? {
   }
 }
 
+fn parse_pipe_callee_rest(tokens: TokenStream, spine: Node?, name: String, name_span: SourceSpan) -> PipeCalleeResult {
+  if tok_is_dot(tok: token_stream_first(stream: tokens)) {
+    let r = expect_name(tokens: token_stream_advance(stream: tokens, n: 1))
+    if has_err(err: r.err) { return PipeCalleeResult { spine: spine, method: name, method_span: name_span, tokens: r.tokens, err: r.err } }
+    let next_spine = match spine {
+      Absent => make_named_expr_node(name: name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: name_span, name_span: name_span)
+      Present { value: base } => make_named_expr_node(name: name, expr_data: ExprFieldAccess { summary: none }, children: [base], inferred: none, span: name_span, name_span: name_span)
+    }
+    parse_pipe_callee_rest(tokens: r.tokens, spine: Present { value: next_spine }, name: r.name, name_span: r.span)
+  } else {
+    PipeCalleeResult { spine: spine, method: name, method_span: name_span, tokens: tokens, err: none }
+  }
+}
+
 fn parse_pipe_rhs(tokens: TokenStream, ctx: ParseContext, receiver: Node, span: SourceSpan) -> ExprResult {
   let dummy_expr = parse_recovery_placeholder()
   let r = expect_name(tokens: tokens)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
-  let method = r.name
-  let tokens = skip_newlines(tokens: r.tokens)
+  let callee = parse_pipe_callee_rest(tokens: r.tokens, spine: none, name: r.name, name_span: r.span)
+  if has_err(err: callee.err) { return ExprResult { expr: dummy_expr, tokens: callee.tokens, ctx: ctx, err: callee.err } }
+  let method = callee.method
+  let leading = match callee.spine {
+    Absent => [receiver]
+    Present { value: qualifier } => [qualifier, make_arg_node(name: none, value: receiver, span: receiver.span, name_span: no_span())]
+  }
+  let tokens = skip_newlines(tokens: callee.tokens)
 
   if tok_is_lparen(tok: token_stream_first(stream: tokens)) {
     let r2 = parse_call_args(tokens: tokens, ctx: ctx)
     if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
-    ExprResult { expr: make_named_expr_node(name: method, expr_data: ExprMethodCall { method_semantics: none }, children: concat([receiver], r2.args |> map(na => make_arg_node(name: arg_name_at(n: na, source_indices: ctx.source_indices), value: arg_value(n: na), span: na.span, name_span: node_name_span(n: na)))), inferred: none, span: span, name_span: r.span), tokens: r2.tokens, ctx: r2.ctx, err: none }
+    ExprResult { expr: make_named_expr_node(name: method, expr_data: ExprMethodCall { method_semantics: none }, children: concat(leading, r2.args |> map(na => make_arg_node(name: arg_name_at(n: na, source_indices: ctx.source_indices), value: arg_value(n: na), span: na.span, name_span: node_name_span(n: na)))), inferred: none, span: span, name_span: callee.method_span), tokens: r2.tokens, ctx: r2.ctx, err: none }
   } else {
-    ExprResult { expr: make_named_expr_node(name: method, expr_data: ExprMethodCall { method_semantics: none }, children: [receiver], inferred: none, span: span, name_span: r.span), tokens: tokens, ctx: ctx, err: none }
+    ExprResult { expr: make_named_expr_node(name: method, expr_data: ExprMethodCall { method_semantics: none }, children: leading, inferred: none, span: span, name_span: callee.method_span), tokens: tokens, ctx: ctx, err: none }
   }
 }
 
