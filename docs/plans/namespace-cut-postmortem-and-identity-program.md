@@ -2301,6 +2301,81 @@ the value position."* Ceiling: structurally guaranteed, since admission is
 decidable from the consumer's own `resolved_imports` joined to the census
 candidate's owner module, both already carried.
 
+### 11.2h A scoped guarantee written as a global one — and a call path that cannot see locals
+
+**BELOW FLOOR, dispatched standalone, and explicitly NOT subsumed by this cut.**
+
+`src/v2/compiler/emit_produced.dag` pattern-binds a function-valued field and
+calls it:
+
+```dag
+ProducedDeclWired { render: render, … } => bind_outcome(o: render(decl), …)
+```
+
+`render(decl)` resolved to **`dag/std/layout.dag:59` `fn render(doc, proto)`** —
+a module `emit_produced.dag` does not import. Executed evidence (CI run
+32882906668): *"call contract mismatch calling `render`: missing required
+argument `proto` (1 of 2 required argument(s) supplied)."* `fn render(` is
+corpus-globally unique (verified across `dag/`, `src/v2/`, `src/v1/`: exactly
+one), so it arrived through the one-candidate `global_bare` case.
+
+**THE SEVERITY IS NOT THE ARITY ERROR.** It failed loudly only because one
+argument was supplied against two required. **Had the signatures matched, the
+call would have silently invoked an unrelated function from an unimported
+module, with wrong output as the only symptom.** So the class is: *a local
+binding can be captured by a corpus-global homonym, and whether you find out
+depends on an accident of signature shape.* Silent wrongness — outside the
+ladder.
+
+**THE MECHANISM IS NOT A PRECEDENCE FAILURE.** `04_lookup.dag`
+`callable_lookup_over_candidates` — the production call path — has exactly this
+candidate space: `map_get(func_env.local, name)`, then
+`parent_closure_callable_candidates`, then `builtin_callable_candidates`, then
+`func_sig_from_global_bare`. Grepping its body for
+`str_bindings|ancestry_str_bindings|.bindings` returns **0**. The value
+environment is not on the call path at all. A pattern-bound field is a *value*
+binding, so **the local does not lose a contest — the lookup that resolves calls
+cannot see it.**
+
+**AND THE PROSE THAT MISLED BOTH OF US IS THE GENERALISABLE PART.**
+`global_bare_fallback_invariant` states: *"lookup_binding_by_name consults
+global_bare ONLY AFTER str_bindings/ancestry_str_bindings/intern+bindings all
+miss."* That is **true**, and it is about `lookup_binding_by_name`. The call
+went through `lookup_func_sig`, a different lookup with no such guarantee and no
+reason to have one, since it never touches those maps.
+
+That is **authority substitution**: a guarantee stated for one path, asserted
+about another, with no relation claimed by either carrier — and DESIGN's own
+entry explains why review reads past it, *both halves check out and only the
+arrow between them is missing*. The reporting lane committed the class **while
+quoting the document that names it**, in an escalation whose subject was a
+resolution defect. The note reads like a global precedence rule; nothing in it
+signals that its guarantee is scoped to one lookup among several. **It misled
+two people in one day**, so the repair carries a second half: the note names
+which lookups it does *not* govern.
+
+**NOT SUBSUMED BY THE CUT, AND THIS IS THE DISPOSITION THAT SOUNDS RIGHT AND IS
+WRONG.** `global_bare_fallback_invariant` says the corpus fallback's removal is
+downstream of reference-derived closure, which makes "wait for the cut" the
+plausible parking spot. **Removing the fallback deletes the WRONG ANSWER without
+adding value bindings to the call path.** After the flip, `render(decl)` stops
+resolving to `std.layout.render` and starts failing to resolve *at all* — a
+different wrong outcome from the same root. The defect survives the cut
+untouched, so it is standalone and must not wait on this lane.
+
+The repair that unblocked CI was a **rename of the local**, which is correct as
+an unblock and is the workaround shape: it dodges the collision without touching
+the rule that allowed it, and the next author who pattern-binds a
+corpus-globally-unique name gets the same behaviour with no warning. Population
+declined rather than estimated — *any pattern-bound name that happens to be
+corpus-globally unique elsewhere is exposed* is the honest statement, and the
+fix is a lookup-path change rather than a burndown, so no count is needed.
+
+**The exact mirror of gunbc#9166**, which made an explicit import silently
+discarded by a same-name local definition *refuse*. This is a local **binding**
+silently discarded in favour of a corpus-global one. Same principle, opposite
+direction.
+
 ### 11.3 The dispatch protocol
 
 Every dispatch across a lane boundary carries five lines, and a dispatch without them is refused rather than interpreted:
