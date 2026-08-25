@@ -3562,7 +3562,7 @@ pub fn direct_call_structured_record_literal_resolved_type_mismatch(
 pub fn call_argument_formal_selection_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "SINGLE AUTHORITY (DESIGN §3) for one question: which declared formal does a call argument bind to. The question was answered in TWO places with DIFFERENT rules, and the divergence produced wrong emitted types with no diagnostic anywhere. build_call_application_plan matched an argument to a formal by AUTHORED LABEL, falling back to position -- the same rule the interpreter's call_function_inner uses. The ExprCall inference fold, which chooses the EXPECTED type each argument is inferred under, selected purely by SOURCE POSITION and read the argument's label only to tag the result node. So a call passing named arguments in a different order than declared handed each argument its NEIGHBOUR's formal, while the type check -- running the other rule -- correctly paired them and reported nothing. Measured live: src/v1/05_emit.dag:2993 calls emit_typed_match_unified with all seven arguments named and source_indices ahead of recurse, so the recurse lambda was inferred against render_pattern's fn(MatchPattern) -> String; it emitted |node: Rc<MatchPattern>, d| and the stage0 build failed E0308 + E0282, from a call the compiler had declared clean. THE FIX IS NOT A SECOND COPY OF THE NAME-FIRST SEARCH. Pasting the rule into the fold would leave two implementations that agree today and drift later, which is the same §3 failure one layer down. This selector is the rule, held once; the fold consumes it directly, and the plan builder consumes it INVERTED -- a formal's argument is the argument that selects that formal's index -- so neither side can encode a rule the other does not. It returns the formal's INDEX as well as its node precisely so that inversion needs no second search. It is deliberately PRE-TYPE: it reads authored labels only, needs no substitution and no inferred types, so it is available before recursive argument inference begins and call_subst still accumulates in authored source order, leaving generic unification order untouched. Unknown and duplicate labels stay owned by direct_call_shape_wall_note's walls; this selector decides correspondence, never admission.".to_string()
+            "SINGLE AUTHORITY (DESIGN §3) for one question: which declared formal does a call argument bind to. The question was answered in TWO places with DIFFERENT rules, and the divergence produced wrong emitted types with no diagnostic anywhere. build_call_application_plan matched an argument to a formal by AUTHORED LABEL, falling back to position -- the same rule the interpreter's call_function_inner uses. The ExprCall inference fold, which chooses the EXPECTED type each argument is inferred under, selected purely by SOURCE POSITION and read the argument's label only to tag the result node. So a call passing named arguments in a different order than declared handed each argument its NEIGHBOUR's formal, while the type check -- running the other rule -- correctly paired them and reported nothing. Measured live: src/v1/05_emit.dag:2993 calls emit_typed_match_unified with all seven arguments named and source_indices ahead of recurse, so the recurse lambda was inferred against render_pattern's fn(MatchPattern) -> String; it emitted |node: Rc<MatchPattern>, d| and the stage0 build failed E0308 + E0282, from a call the compiler had declared clean. THE FIX IS NOT A SECOND COPY OF THE NAME-FIRST SEARCH. Pasting the rule into the fold would leave two implementations that agree today and drift later, which is the same §3 failure one layer down. This selector is the rule, held once; the fold consumes it directly, and the plan builder consumes it INVERTED -- a formal's argument is the argument that selects that formal's index -- so neither side can encode a rule the other does not. It returns the formal's INDEX as well as its node precisely so that inversion needs no second search. It is deliberately PRE-TYPE: it reads authored labels only, needs no substitution and no inferred types, so it is available before recursive argument inference begins and call_subst still accumulates in authored source order, leaving generic unification order untouched. Unknown and duplicate labels stay owned by direct_call_shape_wall_note's walls; this selector decides correspondence, never admission. THE LABEL TEST IS call_param_caller_labels, NOT EXACT EQUALITY, and the distinction is the underscore idiom: a parameter declared _ctx is addressable by callers as ctx, so exact equality missed it and fell through to the positional arm -- measured, ignore_ctx(n: 1, ctx: []) against fn ignore_ctx(_ctx: List<Int>, n: Int) kept the fabricated empty-list refusal until this was corrected. call_param_caller_labels is used rather than call_arg_label_matches_param because the two answer different questions: that predicate governs ADMISSION and returns true for a bare _ against ANY label, which is correct for asking whether a label names a declared parameter and catastrophic for asking WHICH parameter a label selects -- an anonymous parameter would claim the first label it saw. call_param_caller_labels answers the selection question directly, yielding [] for a bare _ so it can never be selected by name, so the hazard is closed by the authority chosen rather than by a guard beside it. INJECTIVITY, AND WHY IT DOES NOT SUBSUME THE RUNTIME-KEY WALL. The relation this selector defines must be a partial bijection: functional -- one argument selects one formal -- falls out of the selector's shape, but INJECTIVE -- one formal receives at most one argument -- does not, and its absence was silent wrongness below the floor. Measured on both compilers before the fix: f(a: 1, _a: 2, b: 3) against fn f(_a: Int, b: Int) compiled CLEAN and emitted f(2, 3), dropping the argument a: 1 with no diagnostic anywhere, because a and _a are two caller spellings of ONE formal and nothing asked whether two arguments had chosen the same one. formal_identity_duplicate_diags closes that: an argument whose selected formal index was already claimed by an EARLIER argument is refused. THE TWO WALLS PARTITION BY CAUSE AND MUST NOT BE MERGED. duplicate_label_diags asks whether two arguments produce the same RUNTIME BINDING KEY, via call_arg_bound_param_at's running counter over positionally-eligible names, and it also catches collisions this selector cannot see; it stays separate by operator ruling. This wall asks whether two arguments select the same SEMANTIC FORMAL. The questions coincide on exactly one input shape -- two arguments carrying the SAME authored label -- and there the key wall already owns the refusal, so this wall is guarded to fire only when the two labels DIFFER. Without that guard both fired and f(a: 1, a: 2, b: 3) produced TWO byte-identical diagnostics, measured; suppressing on identical labels is not a courtesy to the reader but the statement of which wall owns which cause.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -3645,8 +3645,22 @@ pub fn select_formal_for_call_argument(
             .iter()
             .cloned()
             {
-                if (authored_name_at(source_indices.clone(), candidate.1.clone()) == label.clone())
-                {
+                if {
+                    let mut __found = false;
+                    for caller_label in call_param_caller_labels(authored_name_at(
+                        source_indices.clone(),
+                        candidate.1.clone(),
+                    ))
+                    .iter()
+                    .cloned()
+                    {
+                        if (caller_label.clone() == label.clone()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
                     __result.push(candidate);
                 }
             }
@@ -4399,6 +4413,42 @@ pub fn direct_call_shape_diags(
             }
             __result
         });
+        let formal_identity_duplicate_diags = Rc::new({
+            let mut __result = Vec::new();
+            for pair in Rc::new(
+                typed_args
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(i, v)| (i as i64, v))
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            {
+                __result.extend((*match (*select_formal_for_call_argument(pair.1.clone(), pair.0.clone(), sig_params.clone(), source_indices.clone())).clone() {
+    CallArgumentFormalSelection::CallArgumentFormalSelected { formal_index: mine, formal: chosen, .. } => {
+            let my_label = arg_name_at(pair.1.clone(), source_indices.clone());
+let earlier_same_formal = { let mut __found = false; for other in Rc::new(typed_args.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (((other.0.clone() < pair.0.clone()) && !(arg_name_at(other.1.clone(), source_indices.clone()).as_deref() == my_label.clone().as_deref())) && match (*select_formal_for_call_argument(other.1.clone(), other.0.clone(), sig_params.clone(), source_indices.clone())).clone() {
+    CallArgumentFormalSelection::CallArgumentFormalSelected { formal_index: theirs, .. } => (theirs.clone() == mine.clone()),
+    CallArgumentFormalSelection::CallArgumentFormalUnavailable => false,
+}) { __found = true; break; } } __found };
+if earlier_same_formal.clone() {
+                Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::CallArgumentDuplicate {
+    callee: func_name.clone(),
+    argument: authored_name_at(source_indices.clone(), chosen.clone()),
+    span: pair.1.clone().span.clone(),
+}), module_name.clone())])
+            } else {
+                Rc::new(vec![])
+            }
+},
+    CallArgumentFormalSelection::CallArgumentFormalUnavailable => Rc::new(vec![]),
+}).iter().cloned());
+            }
+            __result
+        });
         let arity_scan = scan_call_shape_arity(
             sig_params.clone(),
             typed_args.clone(),
@@ -4419,8 +4469,11 @@ pub fn direct_call_shape_diags(
             None => Rc::new(vec![]),
         };
         v1_rt::concat(
-            v1_rt::concat(unknown_label_diags.clone(), surplus_diags.clone()),
-            v1_rt::concat(duplicate_label_diags.clone(), deficit_diags.clone()),
+            v1_rt::concat(
+                v1_rt::concat(unknown_label_diags.clone(), surplus_diags.clone()),
+                v1_rt::concat(duplicate_label_diags.clone(), deficit_diags.clone()),
+            ),
+            formal_identity_duplicate_diags.clone(),
         )
     }
 }
