@@ -30,7 +30,7 @@ test fn witness_run_as_is_root_not_all() -> Bool {
 // `..` -- fnmatch's * declines to cross `/`, and `..` contains none -- so it would authorize
 // `rm -rf /opt/actions-runner/..`. Every managed path is named in full instead.
 test fn witness_rendered_grants_carry_no_wildcard() -> Bool {
-  let body = runner_host_sudoers_content(deploy: srv3_runner_host_deploy)
+  let body = srv3_runner_host_sudoers()
   !string_contains(s: body, pattern: "*") && !string_contains(s: body, pattern: "?")
 }
 
@@ -69,7 +69,7 @@ test fn witness_executed_command_is_the_granted_command() -> Bool {
 // omits the slot the provisioner is about to mutate is the srv3 failure exactly.
 test fn witness_grant_population_covers_the_provisioned_slot() -> Bool {
   string_contains(
-    s: runner_host_sudoers_content(deploy: srv3_runner_host_deploy),
+    s: srv3_runner_host_sudoers(),
     pattern: "/usr/bin/rm -rf /opt/actions-runner/srv3-09",
   )
 }

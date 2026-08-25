@@ -62,16 +62,25 @@ fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorP
     ]
 }
 
-// THE HEADER IS THE INSTALLED FILE'S ONLY POINTER BACK TO ITS AUTHORITY, so it names the module
-// that actually defines the renderer and the entry point that reproduces it. It said
-// executor_privileged_operation.dag until review 55626: TRUE WHEN WRITTEN, and invalidated by the
-// module split that moved this function here -- the §3 stale-citation decay, in the one string that
-// a human reads off a production host while deciding whether the file is safe to regenerate.
-data runner_host_sudoers_header: String = "# GENERATED from dag/gunbc/runner_host_grants.dag srv3_runner_host_sudoers — do not hand-edit\n"
-
-fn runner_host_sudoers_content(deploy: RunnerHostDeploy) -> String {
+// THE HEADER IS THE INSTALLED FILE'S ONLY POINTER BACK TO ITS AUTHORITY, so it names the module that
+// defines the renderer AND the entry point that reproduces THIS host's file. It has now been wrong
+// twice, in two different ways, which is why it takes a parameter instead of a constant: it named
+// executor_privileged_operation.dag until the module split moved the function (review 55626), and
+// then named srv3's entry point for every host once srv1 and srv4 rendered through the same function
+// (review 55653) -- so srv1's installed file told a reader to reproduce it with srv3's command.
+// A constant cannot be right here: the reproducing entry point is a fact about the host, not about
+// the renderer, so it is supplied by the caller that knows which host it is rendering.
+fn runner_host_sudoers_header(entry_point: NonEmptyStr) -> String {
   join([
-    runner_host_sudoers_header,
+    "# GENERATED from dag/gunbc/runner_host_grants.dag ",
+    entry_point as String,
+    " — do not hand-edit\n"
+  ], "")
+}
+
+fn runner_host_sudoers_content(deploy: RunnerHostDeploy, entry_point: NonEmptyStr) -> String {
+  join([
+    runner_host_sudoers_header(entry_point: entry_point),
     executor_privileged_operations_sudoers_body(
       grantee: deploy.job_user,
       ops: runner_host_privileged_operations(deploy: deploy),
@@ -87,7 +96,10 @@ fn runner_host_sudoers_content(deploy: RunnerHostDeploy) -> String {
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/runner_host_grants.dag --function srv3_runner_host_sudoers
 fn srv3_runner_host_sudoers() -> String {
-  runner_host_sudoers_content(deploy: srv3_runner_host_deploy)
+  runner_host_sudoers_content(
+    deploy: srv3_runner_host_deploy,
+    entry_point: "srv3_runner_host_sudoers" as NonEmptyStr,
+  )
 }
 
 // THE BOOTSTRAP PRINCIPAL, RECORDED BECAUSE IT WAS DISCOVERED THE EXPENSIVE WAY. A grantee cannot
@@ -132,9 +144,15 @@ fn bootstrap_principal_is_not_the_grantee(
 // host's own slot roster and job user, so these are three call sites of one function rather than
 // three hand-maintained grant lists.
 fn srv1_runner_host_sudoers() -> String {
-  runner_host_sudoers_content(deploy: srv1_runner_host_deploy)
+  runner_host_sudoers_content(
+    deploy: srv1_runner_host_deploy,
+    entry_point: "srv1_runner_host_sudoers" as NonEmptyStr,
+  )
 }
 
 fn srv4_runner_host_sudoers() -> String {
-  runner_host_sudoers_content(deploy: srv4_runner_host_deploy)
+  runner_host_sudoers_content(
+    deploy: srv4_runner_host_deploy,
+    entry_point: "srv4_runner_host_sudoers" as NonEmptyStr,
+  )
 }
