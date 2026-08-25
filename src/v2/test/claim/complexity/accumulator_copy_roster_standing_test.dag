@@ -1,0 +1,60 @@
+module v2.test.claim.complexity.accumulator_copy_roster_standing
+
+import v2.lens.complexity_accumulator_copy.roster_gate {
+  AnalysisNotEstablished,
+  FindingNotEstablished,
+  NoSuspect,
+  RefusalBudgetExceeded,
+  RosterStanding,
+  RosterIngestRegressed,
+  SuspectObserved,
+  Within,
+  not_established_standing,
+  standing_from_counts
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// PURE CLASSIFIER EVIDENCE. These fixtures discriminate the product standing without reading or
+// re-parsing the repository. The live file censuses remain a separate, offline coverage question.
+test fn suspect_and_analysis_standings_are_both_preserved() -> Bool {
+  match standing_from_counts(suspects: 1, refusals: 1, refusal_ceiling: 0) {
+    RosterStanding {
+      finding: SuspectObserved { suspects: 1 },
+      analysis: RefusalBudgetExceeded { refusals: 1, ceiling: 0 }
+    } => true
+    _ => false
+  }
+}
+
+test fn refusal_above_ceiling_is_analysis_coverage_debt() -> Bool {
+  match standing_from_counts(suspects: 0, refusals: 4, refusal_ceiling: 3) {
+    RosterStanding {
+      finding: NoSuspect,
+      analysis: RefusalBudgetExceeded { refusals: 4, ceiling: 3 }
+    } => true
+    _ => false
+  }
+}
+
+test fn refusal_at_ceiling_is_within_standing() -> Bool {
+  match standing_from_counts(suspects: 0, refusals: 3, refusal_ceiling: 3) {
+    RosterStanding {
+      finding: NoSuspect,
+      analysis: Within { refusals: 3, ceiling: 3 }
+    } => true
+    _ => false
+  }
+}
+
+test fn unavailable_ingest_is_not_established_on_both_axes() -> Bool {
+  match not_established_standing(cause: RosterIngestRegressed) {
+    RosterStanding {
+      finding: FindingNotEstablished { cause: RosterIngestRegressed },
+      analysis: AnalysisNotEstablished { cause: RosterIngestRegressed }
+    } => true
+    _ => false
+  }
+}
