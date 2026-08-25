@@ -35,7 +35,10 @@ import gunbc.fabric_cell_converge {
   fabric_cell_member_key,
   fabric_cell_resource_address_wire,
   classify_fabric_cell_host,
+  fabric_cell_observation_refusal_identity,
+  ReadbackHostMismatch,
   fabric_cell_expected_slots,
+  FabricCellObservationRefusal,
   FabricCellUnexpectedCellEvidence,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
@@ -753,6 +756,7 @@ fn fabric_cell_readback_all_present() -> FabricCellReadback {
 
 fn fabric_cells_observed_converged() -> FabricCellPopulation {
   fabric_cell_population(
+    discovered: no_discovery_refusals(),
     readback: FabricCellHostReadback {
       host: operator_host_srv3,
       cell_readbacks: [fabric_cell_readback_all_present()],
@@ -766,6 +770,7 @@ fn fabric_cells_observed_converged() -> FabricCellPopulation {
 // the model suite: read-and-empty plans every member, unread plans nothing.
 fn fabric_cells_observed_empty() -> FabricCellPopulation {
   fabric_cell_population(
+    discovered: no_discovery_refusals(),
     readback: FabricCellHostReadback {
       host: operator_host_srv3,
       cell_readbacks: [fabric_cell_readback_all_absent()],
@@ -838,6 +843,7 @@ fn fabric_cell_readback_all_present_reversed() -> FabricCellReadback {
 
 fn fabric_cells_observed_converged_reversed() -> FabricCellPopulation {
   fabric_cell_population(
+    discovered: no_discovery_refusals(),
     readback: FabricCellHostReadback {
       host: operator_host_srv3,
       cell_readbacks: [fabric_cell_readback_all_present_reversed()],
@@ -928,6 +934,7 @@ test fn witness_fabric_cell_converged_population_plans_nothing() -> Bool {
 // work. The count assertion below is what separates "refused" from "planned six things".
 fn fabric_cells_observed_on_srv4() -> FabricCellPopulation {
   fabric_cell_population(
+    discovered: no_discovery_refusals(),
     readback: FabricCellHostReadback {
       host: operator_host_srv4,
       cell_readbacks: [],
@@ -992,8 +999,19 @@ fn refused_boundary_readback(cause: String) -> FabricCellReadback {
   }
 }
 
+// A FIXTURE THAT READ THE HOST AND FOUND NOTHING TO REFUSE, WHICH IS A VALUE AND NOT AN OMISSION.
+// `fabric_cell_population` takes the discovery-derived refusals as a REQUIRED argument precisely so
+// that a caller cannot build a population from the expected side alone; these rows exercise the
+// expected side, so the honest thing to pass is an empty discovery, spelled once here. It is local
+// to this file rather than offered by the production module: a shared `no_discovery()` would be the
+// omission given a name, and production callers must state what they actually observed.
+fn no_discovery_refusals() -> List<FabricCellObservationRefusal> {
+  []
+}
+
 fn fabric_population_of(entries: List<FabricCellReadback>) -> FabricCellPopulation {
   fabric_cell_population(
+    discovered: no_discovery_refusals(),
     readback: FabricCellHostReadback { host: operator_host_srv3, cell_readbacks: entries }
   )
 }
@@ -1386,4 +1404,52 @@ fn algebra_conflicting_member(digest: String) -> FabricCellMember {
     address: FabricCellResourceBoundaryAddress,
     state_digest: digest as NonEmptyStr,
   }
+}
+
+// THE PARTITION IS EXCLUSIVE FOR EVERY INPUT THE CONTRACT PERMITS, NOT ONLY THE ONES THE WRAPPER
+// PRODUCES. The kernel is public exactly so a synthetic roster can reach it, and an unrestricted
+// roster let ONE supplied subject land in TWO destinations: an expected slot naming srv4, under an
+// srv3 readback that supplies srv4's evidence, produced a STANDING (the readback matched it by
+// identity) and simultaneously a HOST MISMATCH (its host is not the enclosing one). The production
+// wrapper's host filtering hid it, which is precisely why it is not the wrapper's job -- a contract
+// enforced only by who happens to call it is not enforced (codex review 55760).
+test fn witness_fabric_cell_kernel_partitions_a_foreign_expected_slot_exactly_once() -> Bool {
+  let foreign = RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 }
+  let classification = classify_fabric_cell_host(
+    expected_slots: [foreign],
+    readback: FabricCellHostReadback {
+      host: operator_host_srv3,
+      cell_readbacks: [synthetic_absent_readback_for(slot: foreign)],
+    },
+  )
+  list_length(items: classification.standings) == 0
+    && list_length(items: classification.unexpected) == 0
+    && list_length(items: classification.host_mismatched) == 1
+    && list_length(items: classification.roster_mismatched) == 1
+}
+
+// AND THE MIS-SCOPED SLOT IS REFUSED AS ITS OWN SUBJECT, NOT FILTERED AND NOT FOLDED INTO THE
+// READBACK MISMATCH. Dropping it silently would satisfy the exclusivity row above while
+// re-committing the exclusion this kernel has been repaired for twice; reporting it as a readback
+// mismatch would satisfy both while collapsing two caller defects with different remedies -- one
+// says the ROSTER asked about another host, the other says a READBACK was labelled with one. The
+// law is stated over the refusal identity, because that is what a remedy router reads.
+test fn witness_fabric_cell_foreign_expected_slot_is_its_own_refusal_subject() -> Bool {
+  let foreign = RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 }
+  let classification = classify_fabric_cell_host(
+    expected_slots: [foreign],
+    readback: FabricCellHostReadback {
+      host: operator_host_srv3,
+      cell_readbacks: [synthetic_absent_readback_for(slot: foreign)],
+    },
+  )
+  let roster_ids = map(classification.roster_mismatched, r => fabric_cell_observation_refusal_identity(refusal: r))
+  let readback_ids = map(
+    classification.host_mismatched,
+    m => fabric_cell_observation_refusal_identity(refusal: ReadbackHostMismatch { mismatch: m }),
+  )
+  list_length(items: roster_ids) == 1
+    && list_length(items: readback_ids) == 1
+    && !fold(roster_ids, init: false, f: (acc, a) =>
+         acc || fold(readback_ids, init: false, f: (seen, b) => seen || a == b))
 }

@@ -54,7 +54,15 @@ import gunbc.fabric_cell_converge {
   ExpectedAddressBlocked,
   UnexpectedCellEvidence,
   ReadbackHostMismatch,
+  ForeignArtifactObserved,
+  DiscoveryUnavailable,
+  SuppliedProbeUnconsumed,
+  SuppliedNamespaceUnconsumed,
+  UnexpectedCommittedSlotArtifact,
+  ExpectedRosterHostMismatch,
+  CrossHostNamedArtifactObserved,
   fabric_cell_member_key,
+  fabric_cell_resource_address_wire,
   fabric_cell_desired_members,
 }
 import gunbc.membership_reconcile {
@@ -755,6 +763,18 @@ fn fabric_cell_blocked_remedy(d: FabricCellAddressDisposition) -> String {
   }
 }
 
+// THE RAW CAUSE IS NOT RENDERED, AND THIS IS THE SAME LESSON THE MULTIPLICITY COUNTERS TAUGHT
+// APPLIED BEFORE IT COST ANYTHING. `DiscoveryUnavailable` carries a free-text cause, and these
+// lines enter `plan_body`, which `fleet_converge_plan_artifact` content-hashes into the held-lease
+// owner fingerprint. Interpolating the cause would make the plan identity a function of how a
+// transport happened to word a failure -- two runs against one unchanged host producing two plan
+// artifacts because a timeout message carried a different duration. What is stable and host-derived
+// is that the host's discovery could not be completed, and that is what is rendered; the typed
+// cause survives on the refusal for a consumer that is not the plan.
+//
+// THE FOREIGN ARTIFACT RENDERS ITS NAME AND LOCATION BECAUSE THOSE ARE HOST STATE, not wording: a
+// different name is a different artifact, and the plan identity SHOULD move when the host's
+// contents do.
 fn fabric_cell_observation_refusal_line(refusal: FabricCellObservationRefusal) -> String {
   match refusal {
     ExpectedAddressBlocked { disposition: d } =>
@@ -770,6 +790,50 @@ fn fabric_cell_observation_refusal_line(refusal: FabricCellObservationRefusal) -
         " enclosing-host=", m.enclosing_host as String,
         "; this readback names a slot on another host, so it is evidence about neither this host's expected cells nor an unexpected cell here -- the caller labelled it wrong and the remedy is upstream of this fold",
       )
+    ForeignArtifactObserved { host: h, observed_name: n, location: l } =>
+      concat(
+        "foreign-artifact ", n, " in ", l, " on ", h as String,
+        "; the host holds an artifact matching no slot it committed, and no ownership provenance exists to decide whether it is ours to remove -- it is reported by the name observed, never by an identity derived from that name",
+      )
+    SuppliedProbeUnconsumed { host: h, slot: sl, address: a } =>
+      concat(
+        "unconsumed-probe ", runner_slot_instance_name(slot: sl),
+        " ", fabric_cell_resource_address_wire(address: a), " on ", h as String,
+        "; a state read was supplied for a slot this host does not declare, so it was not consumed by any expected address -- evidence that arrived about something nobody asked about is refused rather than dropped",
+      )
+    SuppliedNamespaceUnconsumed { host: h, slot: sl } =>
+      concat(
+        "unconsumed-namespace ", runner_slot_instance_name(slot: sl), " on ", h as String,
+        "; a cell namespace was enumerated for a slot this host does not declare, so nothing consumed it",
+      )
+    ExpectedRosterHostMismatch { enclosing_host: h, expected_slot: sl } =>
+      concat(
+        "expected-roster-host-mismatch ", runner_slot_instance_name(slot: sl),
+        " enclosing-host=", h as String,
+        "; the roster asked this host about a slot on ANOTHER host, so no observation of this host can answer for it -- the remedy is upstream of this fold, in whatever scoped the roster",
+      )
+    UnexpectedCommittedSlotArtifact { host: h, slot: sl, location: l } =>
+      concat(
+        "unexpected-committed-slot-artifact ", runner_slot_instance_name(slot: sl),
+        " in ", l, " on ", h as String,
+        "; the host holds a cell artifact for a slot it committed but which the fabric authority does not expect -- the identity is the host's own commitment, not one parsed from the name, and no ownership provenance exists to decide whether it is ours to remove",
+      )
+    CrossHostNamedArtifactObserved {
+      observed_on: oh
+      observed_name: n
+      matched_committed_slot: ms
+      location: l
+    } =>
+      concat(
+        "cross-host-named-artifact ", n, " in ", l, " on ", oh as String,
+        " matches-committed=", runner_slot_instance_name(slot: ms),
+        "; the name matches a slot committed on ANOTHER host, so it is evidence about neither this host's cells nor an artifact nobody committed -- the match is recorded, and it does not assert the artifact IS that slot",
+      )
+    DiscoveryUnavailable { host: h, cause: _ } =>
+      concat(
+        "discovery-unavailable on ", h as String,
+        "; the host's own cells were not enumerated, so an out-of-band artifact would be invisible and no membership may be planned against a population that was only half read",
+      )
   }
 }
 
@@ -780,6 +844,25 @@ fn fabric_cell_refusal_baseline_row(refusal: FabricCellObservationRefusal) -> St
       concat("unexpected-cell:", runner_slot_instance_name(slot: e.slot))
     ReadbackHostMismatch { mismatch: m } =>
       concat("host-mismatched-readback:", runner_slot_instance_name(slot: m.supplied_slot))
+    ForeignArtifactObserved { host: h, observed_name: n, location: l } =>
+      concat("foreign-artifact:", h as String, ":", l, ":", n)
+    DiscoveryUnavailable { host: h, cause: _ } =>
+      concat("discovery-unavailable:", h as String)
+    SuppliedProbeUnconsumed { host: h, slot: sl, address: a } =>
+      concat("unconsumed-probe:", h as String, ":", runner_slot_instance_name(slot: sl), ":", fabric_cell_resource_address_wire(address: a))
+    SuppliedNamespaceUnconsumed { host: h, slot: sl } =>
+      concat("unconsumed-namespace:", h as String, ":", runner_slot_instance_name(slot: sl))
+    ExpectedRosterHostMismatch { enclosing_host: h, expected_slot: sl } =>
+      concat("expected-roster-host-mismatch:", h as String, ":", runner_slot_instance_name(slot: sl))
+    UnexpectedCommittedSlotArtifact { host: h, slot: sl, location: l } =>
+      concat("unexpected-committed-slot-artifact:", h as String, ":", l, ":", runner_slot_instance_name(slot: sl))
+    CrossHostNamedArtifactObserved {
+      observed_on: oh
+      observed_name: n
+      matched_committed_slot: ms
+      location: l
+    } =>
+      concat("cross-host-named-artifact:", oh as String, ":", l, ":", n, ":", runner_slot_instance_name(slot: ms))
   }
 }
 
