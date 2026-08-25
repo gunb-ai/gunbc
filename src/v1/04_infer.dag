@@ -2297,6 +2297,35 @@ fn coproduct_variant_payload_admits_type_name(
 // was produced; declared_type_inhabitance is the single relation that decides; the position
 // travels with the obligation so the diagnostic can locate the refusal without the decision
 // procedure forking per position.
+// TWO OF THE TWELVE ARE WIRED. THE OTHER TEN ARE DECLARED HERE AND PRODUCE NOTHING YET, AND
+// THAT IS STATED AS A COUNT RATHER THAN LEFT TO BE DISCOVERED FROM THE ABSENCE OF CALLERS.
+// Measured by construction site, not by reading: PositionDirectCallArgument and
+// PositionListElement are the only two members CONSTRUCTED anywhere -- every other member
+// occurs solely in declared_type_position_label's match, which renders a name and judges
+// nothing. So this coproduct is today an OBLIGATION VOCABULARY, of which two positions have a
+// producer.
+//
+// WHY THAT IS NOT AN UNDECIDABLE ARM AND MUST NEVER BE FILED AS ONE: an unwired position is a
+// MISSING OBLIGATION PRODUCER, not a fact the model cannot settle. It is absent from the census
+// rather than present with a verdict -- so it produces no diagnostic, blocking or advisory, and
+// nothing in the corpus is red on its account. Recording these as expected-red rows would be
+// exactly the rung inflation 4b names, since there is no red to expect; and recording them as
+// InhabitanceUndecidable would report "we did not look" as "it cannot be decided", which is the
+// same inflation aimed at this relation's own self-description.
+//
+// NEXT-RUNG TRIGGER, one per position and all the same shape: a producer at that grammar seam
+// that builds a DeclaredTypeObligation and hands it to declared_type_obligation_diags. The
+// decision procedure is already shared and position-agnostic, so wiring one is authoring a
+// construction site, never extending this relation -- which is the whole point of the carrier
+// and is why the residual ten cost a call each rather than a rule each.
+//
+// THE TEN AWAITING A PRODUCER: PositionRecordLiteralField, PositionMapValue,
+// PositionDataInitializer, PositionDeclaredReturn, PositionLetAnnotation, PositionVariantPayload,
+// PositionGenericTypeArgument, PositionCastTarget, PositionParameterDefault,
+// PositionCallableReturn. Wiring any of them is a separate change with its own evidence: a
+// discriminating RED at that seam plus an accepted positive control, per 4b(1). Until then this
+// carrier's honest claim is TWO POSITIONS JUDGED, ten declared -- and any statement that it
+// judges "every grammar type position" is false.
 type DeclaredTypePosition
   = PositionRecordLiteralField
   | PositionListElement
