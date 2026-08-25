@@ -5411,7 +5411,7 @@ fn infer_record_lit_structural(type_name: String?, field_inits: List<v1.std.core
   }
   let is_zero_field_variant_tag_reference = (field_inits |> count) == 0
     && presence_variant_owner != none
-  let presence_name_is_ambiguous = v1.compiler.infer_env.global_bare_is_ambiguous(env: scope.type_env, name: tn_str)
+  let presence_name_is_ambiguous: Bool = v1.compiler.infer_env.global_bare_is_ambiguous(env: scope.type_env, name: tn_str)
     && map_get(scope.type_env.str_bindings, tn_str) == none
   let presence_ambiguity_refusal_diags = if tn_str != "" && map_get(scope.type_env.str_bindings, tn_str) == none {
     let strict_cands = v1.compiler.infer_env.global_bare_strict_ambiguity_candidates(env: scope.type_env, name: tn_str)
