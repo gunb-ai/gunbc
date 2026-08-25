@@ -76,6 +76,46 @@ The TypeScript rows are the interesting arm: the key *is* the spelling, and the 
 *is* the identity under the upstream grammar's relation. That is a correct String key,
 not a tolerated one — the upstream vocabulary case.
 
+### 3b. Two key ROLES this census's vocabulary cannot express
+
+Raised by adversarial review of this PR, and it is a real defect in the classification
+scheme rather than a measurement error — recorded because a bucket that does not exist
+cannot receive a site, so its absence is invisible in the table above.
+
+The six buckets classify what a key DENOTES. They do not express two legitimate key
+ROLES:
+
+- **cache determinant** — *is the prior result semantically reusable?* The minimal such
+  key includes every result-determining input (source digest, dependency interfaces,
+  compiler identity, target realization, result-changing options) and excludes the rest.
+  It is deliberately MORE than the subject's identity, so it is not `SubjectKey` and it is
+  not a defect.
+- **grouping key** — *which equivalence class does this fall into?* Multiplicity is
+  expected, so it must never go through a unique roster.
+
+**Measured occupancy in this population: effectively zero.** The `Map<String, _>` sites
+whose names suggest memoization — `seen`, `visited`, `depth_map`, `accepted_map`, and the
+`*_index` family — are memo or membership structures whose KEY is still a declared
+identity (a module, function or declaration name), so they are correctly
+`SubjectKey_as_text`. Exactly one genuine cache-keyed String map exists corpus-wide,
+`census_cache` in `v2.lens.reference_deps`, and it is outside this denominator. The
+repo's real cache determinants are keyed on content hashes and realization plans, not on
+`Map<String, _>`.
+
+So the counts in §3 do not move. What moves is the **law's phrasing**, and that matters
+beyond this census: *"nothing else is spellable in key position"* is false for a cache
+determinant, where including more than subject identity is correct. The relation-
+parameterised form survives the counterexample:
+
+> `key_R(x) = key_R(y)` **iff** `same_R(x, y)`
+
+Breaking the forward direction is under-keying (collapse); breaking the reverse is
+over-keying (aliasing). Both error terms fall out of one statement, and because the
+relation `R` is a parameter, cache determinants, grouping keys and locators are ordinary
+instances rather than exceptions carved out of a subject-identity rule. **A keying program
+must classify the key's ROLE first**, or it degenerates into wrapping every map key in
+`SubjectKey`.
+
 ## 4. Track D is ~238 decisions, not 2093 sites
 
 This is the finding that should size the work, and it is not visible from the site count.
