@@ -1,24 +1,11 @@
 module gunbc.pr_base_freshness
 
-import std.types { String, Bool, Int, List, CommitSha, Timestamp }
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
 // THE workflow_runs IMPORT BINDS NAMES THIS MODULE NEVER SPELLS, and it is load-bearing anyway:
 // importing the module is what registers `github.WorkflowRuns` as a callable service, and dropping
 // it fails at RUN time with `unknown service operation`, not at resolve time. It is a selective
 // import rather than a whole-module one because `WorkflowRunStatus` and `extdeps.github.pulls`'s
 // `ReviewState` both declare a `Pending` variant, and importing both modules wholesale is an
 // ambiguity the resolver refuses.
-import extdeps.github.workflow_runs { WorkflowRunList, WorkflowRun }
-import extdeps.github.pulls
-import extdeps.github.commits {
-  CommitParentRef,
-  ComparisonStatus,
-  parse_comparison_status,
-  Ahead,
-  Behind,
-  Diverged,
-  Identical,
-}
 
 // WHAT THIS MEASURES, AND WHAT IT DELIBERATELY IS NOT. This module answers ONE question about an
 // open pull request: WHICH BASE COMMIT DID ITS CHECK RUN ACTUALLY TEST, and where does that commit
@@ -67,8 +54,8 @@ import extdeps.github.commits {
 // discriminating fact is ordinary and decidable -- a merge ref whose base parent was committed
 // after the run started cannot be the base that run tested.
 type TestedBaseProvenance
-  = TestedBaseRecovered { base: CommitSha }
-  | TestedBaseSuperseded { observed_base: CommitSha }
+  = TestedBaseRecovered { base: std.types.CommitSha }
+  | TestedBaseSuperseded { observed_base: std.types.CommitSha }
 
 // THE FRESHNESS ANSWER. Four states, and the fourth is not a degenerate case of the other three.
 // WHY THE UNKNOWNS SHARE ONE ARM AND A TYPED REASON, rather than becoming four more peers. They are
@@ -79,7 +66,7 @@ type TestedBaseProvenance
 // the deficit COUNTABLE per cause, which is what makes a specific gap rank for repair instead of
 // disappearing into an aggregate.
 type BaseUnknownReason
-  = MergeRefRecomputed { observed_base: CommitSha }
+  = MergeRefRecomputed { observed_base: std.types.CommitSha }
   | MergeCommitNotComputed
   | MergeCommitHasNoParents
   | NoRunForHead
@@ -137,9 +124,9 @@ fn base_freshness_label(f: BaseFreshness) -> String {
 // A MERGE COMMIT'S FIRST PARENT IS THE BASE IT WAS MERGED INTO. `Absent` is not a formality: a
 // commit with no parents is a root commit, which is a real object and simply not a test-merge, so
 // the caller gets a state it must decide about rather than a fabricated sha.
-fn first_parent(parents: List<CommitParentRef>) -> CommitSha? {
+fn first_parent(parents: List<CommitParentRef>) -> std.types.CommitSha? {
   match parents {
-    Cons { head, tail: _ } => Present { value: head.sha }
+    std.algebra.Cons { head, tail: _ } => Present { value: head.sha }
     Empty {} => Absent {}
   }
 }
@@ -152,16 +139,16 @@ fn first_parent(parents: List<CommitParentRef>) -> CommitSha? {
 // This soundness depends on the fixed-width UTC form and would NOT survive an offset like `+01:00`,
 // which GitHub does not emit here.
 fn merge_ref_was_recomputed(
-  merge_ref_base_committed_at: Timestamp,
-  run_started_at: Timestamp,
+  merge_ref_base_committed_at: std.types.Timestamp,
+  run_started_at: std.types.Timestamp,
 ) -> Bool {
   (merge_ref_base_committed_at as String) > (run_started_at as String)
 }
 
 fn tested_base_provenance_from_timestamps(
-  merge_ref_base: CommitSha,
-  merge_ref_base_committed_at: Timestamp,
-  run_started_at: Timestamp,
+  merge_ref_base: std.types.CommitSha,
+  merge_ref_base_committed_at: std.types.Timestamp,
+  run_started_at: std.types.Timestamp,
 ) -> TestedBaseProvenance {
   if merge_ref_was_recomputed(
     merge_ref_base_committed_at: merge_ref_base_committed_at,
@@ -216,15 +203,15 @@ fn base_unknown_reason_label(r: BaseUnknownReason) -> String {
 //
 // THE MOST RECENT RUN IS THE ONE THAT MATTERS. GitHub returns runs newest-first for a head, and it
 // is the newest run whose green a reader would be relying on at merge time.
-fn pull_request_run_started_at(owner: String, repo: String, head_sha: CommitSha) -> Timestamp? {
+fn pull_request_run_started_at(owner: String, repo: String, head_sha: std.types.CommitSha) -> std.types.Timestamp? {
   let runs = github.WorkflowRuns.ListForRef(
     auth_token: "",
     owner: owner,
-    repo: repo,
+    repo: gunbc.tools.review_codex.repo,
     head_sha: head_sha,
   )
   match runs.runs.workflow_runs {
-    Cons { head, tail: _ } => Present { value: head.created_at }
+    std.algebra.Cons { head, tail: _ } => Present { value: head.created_at }
     Empty {} => Absent {}
   }
 }
@@ -238,15 +225,15 @@ fn observe_pull_request_base_freshness(
   owner: String,
   repo: String,
   pull_number: Int,
-  merge_target: CommitSha,
+  merge_target: std.types.CommitSha,
 ) -> BaseFreshness {
   let pr = github.Pulls.Get(
     auth_token: "",
     owner: owner,
-    repo: repo,
+    repo: gunbc.tools.review_codex.repo,
     pull_number: pull_number,
   )
-  match pull_request_run_started_at(owner: owner, repo: repo, head_sha: pr.pr.head.sha) {
+  match pull_request_run_started_at(owner: owner, repo: gunbc.tools.review_codex.repo, head_sha: pr.pr.head.sha) {
     Absent {} => BaseUnknown { reason: NoRunForHead }
     Present { value: run_started_at } =>
   match pr.pr.merge_commit_sha {
@@ -255,7 +242,7 @@ fn observe_pull_request_base_freshness(
       let detail = github.Commits.Get(
         auth_token: "",
         owner: owner,
-        repo: repo,
+        repo: gunbc.tools.review_codex.repo,
         ref: merge_commit as String,
       )
       match first_parent(parents: detail.detail.parents) {
@@ -264,7 +251,7 @@ fn observe_pull_request_base_freshness(
           let comparison = github.Commits.Compare(
             auth_token: "",
             owner: owner,
-            repo: repo,
+            repo: gunbc.tools.review_codex.repo,
             basehead: join([tested_base as String, "...", merge_target as String], ""),
           )
           match parse_comparison_status(raw: comparison.comparison.status) {
@@ -313,12 +300,12 @@ fn main(
   repo: String,
   pull_number: Int,
   merge_target: String,
-) -> ProcessExit {
+) -> std.process.ProcessExit {
   let freshness = observe_pull_request_base_freshness(
     owner: owner,
-    repo: repo,
+    repo: gunbc.tools.review_codex.repo,
     pull_number: pull_number,
-    merge_target: merge_target as CommitSha,
+    merge_target: merge_target as std.types.CommitSha,
   )
   match freshness {
     BaseAtTarget => ExitSuccess
@@ -329,8 +316,8 @@ fn main(
   }
 }
 
-fn merge_target_failure(f: BaseFreshness, merge_target: String) -> ProcessExit {
-  ExitFailure {
+fn merge_target_failure(f: BaseFreshness, merge_target: String) -> std.process.ProcessExit {
+  std.process.ExitFailure {
     code: 1,
     reason: join([base_freshness_label(f: f), " (merge target ", merge_target, ")"], ""),
   }

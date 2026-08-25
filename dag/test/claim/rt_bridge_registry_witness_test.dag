@@ -1,6 +1,5 @@
 module test.claim.rt_bridge_registry_witness_test
 
-import extdeps.languages.rust.emit { rt_function_registry, rt_bridge_name }
 
 // This witness lives in its own module rather than beside the other
 // registry-derivation checks in test.claim.v1_source_audit_witness_test because
@@ -19,5 +18,5 @@ import extdeps.languages.rust.emit { rt_function_registry, rt_bridge_name }
 // future row whose override is dropped from the derived map goes red here
 // instead of emitting a call to a v1_rt symbol that does not exist.
 test fn rt_bridge_name_agrees_with_registry_on_every_row() -> Bool {
-  rt_function_registry |> all(entry => rt_bridge_name(name: entry.name) == entry.bridge_name)
+  extdeps.languages.rust.emit.rt_function_registry |> all(entry => extdeps.languages.rust.emit.rt_bridge_name(name: entry.name) == entry.bridge_name)
 }

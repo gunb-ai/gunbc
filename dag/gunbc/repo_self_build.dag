@@ -1,6 +1,5 @@
 module gunbc.repo_self_build
 
-import std.types { String, List, NonEmptyStr }
 
 // THE SINGLE POINT THROUGH WHICH THIS REPOSITORY BUILDS ITS OWN BINARIES.
 // Before this module the same operation was spelled independently in three
