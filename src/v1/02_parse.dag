@@ -4681,9 +4681,27 @@ fn parse_expr_bp_no_brace(tokens: TokenStream, ctx: ParseContext, min_bp: Int) -
   }
 }
 
+fn qualified_ctor_literal_here(lhs: v1.std.core.Node, ctx: ParseContext, min_bp: Int) -> Bool {
+  match lhs.expr_data {
+    v1.std.core.ExprFieldAccess { summary: _ } =>
+      is_uppercase_start(name: v1.std.core.field_access_field_at(texpr: lhs, source_indices: ctx.source_indices))
+        && min_bp < 14
+    _ => false
+  }
+}
+
 fn parse_expr_loop_no_brace(tokens: TokenStream, ctx: ParseContext, lhs: v1.std.core.Node, min_bp: Int) -> ExprResult {
   let tok = token_stream_first(stream: tokens)
-  if tok_is_eof(tok: tok) || tok_is_lbrace(tok: tok) {
+  if tok_is_lbrace(tok: tok) && qualified_ctor_literal_here(lhs: lhs, ctx: ctx, min_bp: min_bp) {
+    match v1.std.core.field_access_spine(texpr: lhs, source_indices: ctx.source_indices) {
+      Present { value: spine } => {
+        let r = parse_record_literal_named(tokens: tokens, ctx: ctx, name: spine.dotted, span: field_access_chain_span(texpr: lhs), name_span: v1.std.core.kernel_span(name: spine.dotted))
+        if has_err(err: r.err) { return ExprResult { expr: lhs, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+        parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, min_bp: min_bp)
+      }
+      Absent => ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
+    }
+  } else if tok_is_eof(tok: tok) || tok_is_lbrace(tok: tok) {
     ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
   } else {
     let loop_span = token_span(tok: tok)
