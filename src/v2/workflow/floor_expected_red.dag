@@ -494,7 +494,7 @@ fn floor_expected_red_chunk_20() -> List<String> {
 // The partition of the 164 and the measurements behind this family are
 // docs/plans/receipts/floor-runtime-error-partition-2026-08-23/.
 fn floor_expected_red_chunk_21() -> List<String> {
-  Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_extra_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_missing_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_wrong_argument_type_must_refuse_at_compile", tail: Empty {} } } }
+  Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_extra_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_missing_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_wrong_argument_type_must_refuse_at_compile", tail: Cons { head: "test.claim.function_value_argument_binding_probe.probe_imported_coproduct_parameterized_counts_two", tail: Cons { head: "test.claim.function_value_argument_binding_probe.probe_imported_coproduct_boundary_parameterized_counts_one", tail: Empty {} } } } } }
 }
 
 fn floor_expected_red_chunks() -> List<List<String>> {

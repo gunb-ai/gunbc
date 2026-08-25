@@ -1,0 +1,249 @@
+module test.claim.function_value_argument_binding_probe
+
+import std.types { Bool, String, List, Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.fabric_cell_converge {
+  FabricCellResourceAddress,
+  FabricCellRootAddress,
+  FabricCellAttemptRootAddress,
+  FabricCellResourceBoundaryAddress,
+}
+
+// ROUTED, BECAUSE AN UNROUTED WITNESS IS DISCOVERED AND NEVER RUN. A module that does not declare
+// its live-tree disposition defaults to ReadsLiveTree and the floor declines it -- counted, never
+// executed. Every row in this file reads only values the fixture authors, so the honest
+// declaration is also the one that makes the rows gate anything.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A TWO-FUNCTION PROBE FOR ONE DISCRIMINATOR, AND IT DELIBERATELY NAMES NO MECHANISM. The subject
+// is a single question: does passing a NAMED FUNCTION where a `fn(T) -> Bool` parameter is declared
+// agree with computing the same fold directly? The two arms take the same input and differ only in
+// how the predicate reaches the fold. Arity, named-versus-positional binding, and resolution
+// selecting a different symbol are three different defects with three different owners; a plausible
+// mechanism written here is exactly what would stop the next reader checking, so this file records
+// what discriminates and stops.
+//
+// PROVENANCE: found while authoring gunbc#9185's observer laws, where six rows over
+// `count_where(os: .., p: observation_is_absent)` returned wrong counts and the identical folds
+// written inline returned right ones. That is a before/after on production code; this is the
+// minimal fixture.
+
+fn probe_is_two(n: Int) -> Bool {
+  n == 2
+}
+
+// THE PARAMETERIZED ARM: the predicate arrives as a value and is called positionally, which is the
+// shape the production code used.
+fn probe_count_via_parameter(xs: List<Int>, p: fn(Int) -> Bool) -> Int {
+  fold(xs, init: 0, f: (acc, x) => if p(x) { acc + 1 } else { acc })
+}
+
+// THE DIRECT ARM: the same fold with the predicate called by name. This is the oracle, and it is
+// independent of the parameterized arm rather than derived from it.
+fn probe_count_direct(xs: List<Int>) -> Int {
+  fold(xs, init: 0, f: (acc, x) => if probe_is_two(n: x) { acc + 1 } else { acc })
+}
+
+fn probe_input() -> List<Int> {
+  [1, 2, 3]
+}
+
+// THE ORACLE, ASSERTED AGAINST A LITERAL THE FIXTURE AUTHORS. Exactly one element of [1, 2, 3] is
+// two. Without this row the disagreement below could be read as the direct arm being wrong.
+test fn probe_direct_fold_counts_one() -> Bool {
+  probe_count_direct(xs: probe_input()) == 1
+}
+
+// THE DISCRIMINATOR. Same input, same predicate, same fold body -- the only difference is that the
+// predicate arrives through a declared `fn(Int) -> Bool` parameter as a NAMED FUNCTION.
+test fn probe_named_function_argument_agrees_with_direct_fold() -> Bool {
+  probe_count_via_parameter(xs: probe_input(), p: probe_is_two) == probe_count_direct(xs: probe_input())
+}
+
+// THE CONTROL THAT LOCATES IT. The same parameter, the same call site, the same predicate -- but
+// wrapped in a lambda instead of passed by name. If this passes while the row above fails, the
+// parameter mechanism and the fold are both sound and the defect is in how a NAMED FUNCTION becomes
+// a value; if both fail, the parameter mechanism itself is implicated. Keeping the pair is what
+// makes either outcome a measurement.
+test fn probe_lambda_argument_agrees_with_direct_fold() -> Bool {
+  probe_count_via_parameter(xs: probe_input(), p: x => probe_is_two(n: x)) == probe_count_direct(xs: probe_input())
+}
+
+// AND THE ABSOLUTE VALUE THROUGH THE PARAMETER: an inequality alone cannot tell a wrong count from
+// a raised error swallowed into a default.
+test fn probe_named_function_argument_counts_one() -> Bool {
+  probe_count_via_parameter(xs: probe_input(), p: probe_is_two) == 1
+}
+
+test fn probe_lambda_argument_counts_one() -> Bool {
+  probe_count_via_parameter(xs: probe_input(), p: x => probe_is_two(n: x)) == 1
+}
+
+// A SECOND PREDICATE OF THE IDENTICAL TYPE, BECAUSE THE PRODUCTION SITE HAD THREE. The first arms
+// above pass and therefore refute the simplest reading of the production symptom: one named
+// function through one `fn(Int) -> Bool` parameter agrees with the direct fold. What the production
+// code additionally had was THREE distinct predicates of one signature reaching one parameterized
+// consumer, which is the shape a resolution defect would need. These rows test that and nothing
+// else; if they pass too, the production symptom is still unexplained and this file says so rather
+// than closing on the arms that happened to be written first.
+fn probe_is_three(n: Int) -> Bool {
+  n == 3
+}
+
+fn probe_multi_input() -> List<Int> {
+  [2, 2, 3]
+}
+
+fn probe_count_direct_three(xs: List<Int>) -> Int {
+  fold(xs, init: 0, f: (acc, x) => if probe_is_three(n: x) { acc + 1 } else { acc })
+}
+
+// THE ORACLE FOR THE PAIR, ASSERTED AGAINST LITERALS THE FIXTURE AUTHORS. [2, 2, 3] holds two twos
+// and one three, so the two predicates MUST disagree -- which is what makes a confusion between
+// them observable at all.
+test fn probe_two_predicates_disagree_directly() -> Bool {
+  probe_count_direct(xs: probe_multi_input()) == 2 && probe_count_direct_three(xs: probe_multi_input()) == 1
+}
+
+// THE DISCRIMINATOR FOR THE MULTI-PREDICATE SHAPE. Same consumer, same input, two different named
+// predicates of one type. If the parameterized arm returns the same number for both, or either
+// number disagrees with its direct oracle, a named function is not reaching the call site it was
+// written for.
+test fn probe_two_named_predicates_are_not_confused() -> Bool {
+  probe_count_via_parameter(xs: probe_multi_input(), p: probe_is_two) == 2
+    && probe_count_via_parameter(xs: probe_multi_input(), p: probe_is_three) == 1
+}
+
+// THE LAST STRUCTURAL DIFFERENCE I CAN NAME BETWEEN THIS FIXTURE AND THE PRODUCTION SITE, tested
+// rather than assumed away. There, the consumer's fold bound its element as `o` AND the named
+// predicate's own parameter was also `o`; here it binds `x` against a predicate parameter named
+// `n`. That is a coincidence of names across two scopes, which is exactly the kind of thing a
+// binding defect is sensitive to and a reader is not. This arm makes the two names collide.
+fn probe_count_via_parameter_colliding_binder(xs: List<Int>, p: fn(Int) -> Bool) -> Int {
+  fold(xs, init: 0, f: (acc, n) => if p(n) { acc + 1 } else { acc })
+}
+
+test fn probe_colliding_binder_name_agrees_with_direct_fold() -> Bool {
+  probe_count_via_parameter_colliding_binder(xs: probe_multi_input(), p: probe_is_two) == 2
+    && probe_count_via_parameter_colliding_binder(xs: probe_multi_input(), p: probe_is_three) == 1
+}
+
+// THE SCALAR ARMS ABOVE ALL PASS AND THE PRODUCTION SITE REPRODUCES, so the discriminator is not
+// "a named function through a declared parameter" -- that shape is sound over `Int`. The next
+// structural difference between this fixture and the production site is the ELEMENT TYPE: there the
+// predicates take a COPRODUCT and match on it, here they take a machine scalar and compare it.
+// These arms move only that.
+type ProbeColour
+  = ProbeRed
+  | ProbeGreen
+
+fn probe_colour_is_red(c: ProbeColour) -> Bool {
+  match c {
+    ProbeRed => true
+    ProbeGreen => false
+  }
+}
+
+fn probe_colour_is_green(c: ProbeColour) -> Bool {
+  match c {
+    ProbeGreen => true
+    ProbeRed => false
+  }
+}
+
+fn probe_colours() -> List<ProbeColour> {
+  [ProbeRed, ProbeRed, ProbeGreen]
+}
+
+fn probe_count_colours_via_parameter(cs: List<ProbeColour>, p: fn(ProbeColour) -> Bool) -> Int {
+  fold(cs, init: 0, f: (acc, c) => if p(c) { acc + 1 } else { acc })
+}
+
+fn probe_count_red_direct(cs: List<ProbeColour>) -> Int {
+  fold(cs, init: 0, f: (acc, c) => if probe_colour_is_red(c: c) { acc + 1 } else { acc })
+}
+
+fn probe_count_green_direct(cs: List<ProbeColour>) -> Int {
+  fold(cs, init: 0, f: (acc, c) => if probe_colour_is_green(c: c) { acc + 1 } else { acc })
+}
+
+// THE ORACLE FOR THE COPRODUCT ARM, against literals the fixture authors: two reds and one green.
+test fn probe_colour_direct_folds_count_two_and_one() -> Bool {
+  probe_count_red_direct(cs: probe_colours()) == 2 && probe_count_green_direct(cs: probe_colours()) == 1
+}
+
+// THE COPRODUCT DISCRIMINATOR.
+test fn probe_colour_named_predicates_through_parameter_agree_with_direct_folds() -> Bool {
+  probe_count_colours_via_parameter(cs: probe_colours(), p: probe_colour_is_red) == probe_count_red_direct(cs: probe_colours())
+    && probe_count_colours_via_parameter(cs: probe_colours(), p: probe_colour_is_green) == probe_count_green_direct(cs: probe_colours())
+}
+
+// AND THE ABSOLUTE VALUES, so a disagreement is reported as numbers rather than as an inequality.
+test fn probe_colour_parameterized_counts_are_two_and_one() -> Bool {
+  probe_count_colours_via_parameter(cs: probe_colours(), p: probe_colour_is_red) == 2
+    && probe_count_colours_via_parameter(cs: probe_colours(), p: probe_colour_is_green) == 1
+}
+
+// THIS IS THE ARM THAT REPRODUCES, AND THE ONLY THING IT MOVES IS WHERE THE TYPE IS DECLARED.
+// Every arm above passes -- named function through a declared parameter over Int, two distinct
+// predicates of one signature, a colliding binder name, and a LOCAL coproduct. The production site
+// reproduces. The one remaining structural difference is that the production element type is
+// declared in ANOTHER MODULE, and moving only that reproduces it here.
+//
+// MEASURED, NOT INFERRED: over the three-element list below, whose direct fold counts two roots,
+// the parameterized fold returns THREE -- and the boundary predicate over the same list also
+// returns three where its direct fold returns one. The predicate is constantly true. That number is
+// recorded here rather than asserted by a row, because a row asserting the defect would turn red
+// when the defect is fixed and invite the next reader to restore it.
+//
+// NO MECHANISM IS NAMED. Arity, named-versus-positional binding, and resolution selecting a
+// different symbol are three defects with three owners, and a plausible mechanism written here is
+// what would stop the next reader checking. What is established is the discriminating pair and the
+// value, by execution.
+fn probe_address_is_root(a: FabricCellResourceAddress) -> Bool {
+  match a {
+    FabricCellRootAddress => true
+    FabricCellAttemptRootAddress => false
+    FabricCellResourceBoundaryAddress => false
+  }
+}
+
+fn probe_address_is_boundary(a: FabricCellResourceAddress) -> Bool {
+  match a {
+    FabricCellResourceBoundaryAddress => true
+    FabricCellRootAddress => false
+    FabricCellAttemptRootAddress => false
+  }
+}
+
+fn probe_addresses() -> List<FabricCellResourceAddress> {
+  [FabricCellRootAddress, FabricCellRootAddress, FabricCellResourceBoundaryAddress]
+}
+
+fn probe_count_addresses_via_parameter(as_: List<FabricCellResourceAddress>, p: fn(FabricCellResourceAddress) -> Bool) -> Int {
+  fold(as_, init: 0, f: (acc, a) => if p(a) { acc + 1 } else { acc })
+}
+
+fn probe_count_root_direct(as_: List<FabricCellResourceAddress>) -> Int {
+  fold(as_, init: 0, f: (acc, a) => if probe_address_is_root(a: a) { acc + 1 } else { acc })
+}
+
+test fn probe_imported_coproduct_direct_fold_counts_two() -> Bool {
+  probe_count_root_direct(as_: probe_addresses()) == 2
+}
+
+test fn probe_imported_coproduct_parameterized_counts_two() -> Bool {
+  probe_count_addresses_via_parameter(as_: probe_addresses(), p: probe_address_is_root) == 2
+}
+
+// THE LAMBDA CONTROL FOR THE IMPORTED COPRODUCT, which is the arm that completes the pair: the
+// same parameter, the same call site, the same predicate -- reached through a lambda instead of by
+// name. It is also the shape the production repair used, so its verdict says whether that repair
+// was a fix or a coincidence.
+test fn probe_imported_coproduct_lambda_parameterized_counts_two() -> Bool {
+  probe_count_addresses_via_parameter(as_: probe_addresses(), p: a => probe_address_is_root(a: a)) == 2
+}
+
+test fn probe_imported_coproduct_boundary_parameterized_counts_one() -> Bool {
+  probe_count_addresses_via_parameter(as_: probe_addresses(), p: probe_address_is_boundary) == 1
+}
