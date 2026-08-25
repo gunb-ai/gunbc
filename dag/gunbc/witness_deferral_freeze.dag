@@ -111,6 +111,72 @@ type FrozenPathDeferral {
   functions: List<String>
 }
 
+// ARMING A WALL OVER THIS ROSTER: BOTH POLARITIES, MEASURED.
+//
+// Two walls read this roster -- expected_red_freeze_intersection and route_gap_freeze_intersection,
+// both in v1_compiler.cli_run, each refusing an identity that is simultaneously frozen here and
+// enrolled in a roster asserting the required floor executes it. Only one of the two landed
+// against an empty population. The difference is not a new principle: it is DESIGN's own admission
+// test seen from the arming side rather than the phase-enrolment side it is stated on -- "the
+// admission test is whether every red is closable by the author who caused it at the moment they
+// caused it".
+//
+// A wall armed over an ALREADY NON-EMPTY population fails that test by construction. The red it
+// produces is not closable by the author who caused it, because the author who caused it is
+// whoever pushes next, and the row that makes it red was authored elsewhere by someone who never
+// touched the wall.
+//
+// SATISFIED -- #8494, 521d4cfc659, 2026-08-19. The 38 colliding rows were deleted and
+// expected_red_freeze_intersection was wired in ONE diff, so the governed population was empty at
+// the moment the wall began refusing. Recorded in the 2026-08-19 shrink log entry above.
+//
+// VIOLATED -- #9114, 96cd1bff611, 2026-08-24 14:10, which armed route_gap_freeze_intersection over
+// a population of 4. Retired by #9133, recorded in the 2026-08-24 shrink log entry above.
+//
+// WHY IT VIOLATED IS NOT CARELESSNESS, and the distinction is the whole reason this row is worth
+// reading. #9049 (664b339af06) enrolled the four identities in v2.workflow.floor_route_gap
+// floor_route_gap_roster at 14:09 -- SIXTY SECONDS earlier -- and it is an ancestor of #9114, so
+// the arming commit's own base already carried them. Sixty seconds is far less than a witnesses
+// run, so #9114's green was established against a base WITHOUT the collision and it landed on a
+// base WITH it. Neither author could see the contradiction from inside their own change: #9049
+// added rows to a roster no wall yet guarded, and #9114 armed a wall it had measured as empty.
+// The union was red and neither half was.
+//
+// SO THE TEST IS NOT "COUNT THE POPULATION BY HAND BEFORE ARMING", which is what a reading of the
+// two polarities alone suggests and which would not have helped here. It is that a wall's green
+// must be established on the base the wall actually lands on. The satisfied instance got this for
+// free by clearing and arming in one diff -- there was no interval in which another change could
+// enter the governed population.
+//
+// WHAT THE FAILURE COST, since the harm is what makes it worth a row rather than a note: main's
+// own head refused, and it went unobserved because every main witnesses run since was queued, so
+// the first executions to reach the wall were per-PR runs on branches touching NEITHER roster. At
+// least three lanes each diagnosed it independently as their own breakage before the shared cause
+// was found.
+//
+// RE-DERIVABLE, not recalled: join floor_route_gap_roster (110 entries) against this file's
+// frozen_path_deferrals (128 rows, 614 qualified identities), qualifying every frozen row through
+// its own entry's module line and not its path string -- 4 of 614 at commit 8ab8a8e75af, matching
+// the wall's own count=4.
+//
+// THE RUNG, AND ITS NEXT-RUNG TRIGGER (DESIGN section 4b(2)) -- written as a trigger rather than
+// as a ceiling, because an unnamed stall and a real ceiling read identically and only one of them
+// is permanent. The class sits at MITIGATABLE: the harm is contained by the one-diff discipline
+// above -- clear and arm together, leaving no interval -- and nothing enforces that discipline, so
+// it holds exactly as long as authors remember it.
+//
+// No ROSTER-SHAPED check can climb it. The defect is a property of merge sequencing, not of any
+// authored row: at the moment #9114 was authored, measured and reviewed, its governed population
+// WAS empty, so there is no state in either roster that a wall could have refused. A check over
+// authored rows would be a ratchet, which DESIGN section 5 would not call a wall.
+//
+// NEXT-RUNG TRIGGER, at the layer the defect actually lives on: requiring a branch to be up to
+// date with its target base before merge -- strict required status checks, or a merge queue --
+// makes "green on the base it lands on" true by construction rather than remembered, which is this
+// row's mechanism enforced. That is a repository-settings decision for the operator and is NOT
+// asserted here to be configured or unconfigured today; the setting was not readable when this row
+// was written.
+
 data frozen_path_deferrals: List<FrozenPathDeferral> = [
   FrozenPathDeferral {
     entry: "dag/test/claim/artifact_store_fs_witness_test.dag",

@@ -104,29 +104,51 @@ module gunbc.scm.commit_closure
 //   admit closure A  ->  token T
 //   encode closure B with T  ->  ACCEPTED
 //
-// The encoder checks that a token is PRESENT, never that it is ABOUT the closure being encoded. That
-// is authority substitution in the exact form this repository has already named: a true admission
-// about one subject answering for another because no relation binds them. The existing mutation
-// (delete the check) proves the check is READ; it proves nothing about what the token is about.
+// THE ADMISSION IS BOUND TO ITS SUBJECT, and that binding is the whole guarantee.
 //
-// So the honest rung is MITIGATABLE, not structural: an accidental partial write is caught, a
-// mis-attributed one is not. This paragraph exists because the reported rung must equal the rung
-// executed evidence establishes, and review 54944 read the wall as "structural" -- which is the
-// inflation section 4b calls worse than sitting low, since an inflated class never ranks for
-// climbing.
+// THE DEFECT THIS REPLACES. The predecessor was PartialClosureAdmission { reason } -- a token minted
+// by a public function, carrying no subject. The encoder took a closure PLUS an optional token and
+// checked only that a token was PRESENT, never that it was ABOUT the closure being encoded:
 //
-// NEXT-RUNG TRIGGER, and it is a shape change rather than a check: the admitted carrier binds the
-// closure and its unresolved population together --
+//     admit closure A -> token T
+//     encode closure B with T -> ACCEPTED
 //
-//   AdmittedPartialCommitClosure sole_constructor { closure, unresolved, reason }
+// That is authority substitution in its exact form: a true admission about one subject answering for
+// another because no relation binds them. sole_constructor did not help, because `.dag` has no
+// module privacy -- it blocks the record literal while the public mint stays freely callable. And
+// the mutation that existed (delete the check) could never have caught it: deleting a check proves
+// the check is READ, which a bearer token satisfies perfectly.
 //
-// minted by a function that DERIVES `unresolved` from the closure it is given, with the encoder
-// taking the admitted carrier instead of a closure plus a free-floating token. Then "a token for A
-// used on B" has no spelling at all. Discriminator the repair owes: an admission produced for A,
-// attempted against B, refuses or cannot be constructed.
-type PartialClosureAdmission sole_constructor {
+// WHY THE REPAIR IS A SHAPE, NOT A CHECK. The carrier holds the closure it admits, so the encoder
+// takes ONE argument and there is no second closure to disagree with it. "A token for A used on B"
+// is not refused at runtime -- it has no spelling. The mismatch is unconstructible rather than
+// caught, which is DESIGN section 4b's top rung and the reason no validator appears beside this.
+//
+// `unresolved` is DERIVED here from the closure rather than supplied, so it cannot disagree with the
+// objects it describes; a caller-supplied population would reintroduce the same substitution one
+// field down. The mint refuses a COMPLETE closure, because admitting a partial write for something
+// with nothing missing is a category error and would make the carrier's own name a lie.
+//
+// REMAINING RUNG, stated so it is not read as more than it is: `unresolved` is a List, so an EMPTY
+// admitted population is representable in the type even though this mint cannot produce one. The
+// corpus has no NonEmptyList, and minting one solely for this field would grow net concepts to buy a
+// guarantee the mint's refusal already provides -- so the emptiness exclusion sits at mitigatable
+// while the SUBJECT BINDING, which is what the defect was about, is structural. Next-rung trigger: a
+// NonEmptyList authority earning its place from more than one consumer.
+type AdmittedPartialCommitClosure sole_constructor {
+  closure: CommitClosure
+  unresolved: List<ObjectId>
   reason: PartialClosureReason
 }
+
+// THE REFUSAL IS AN ARM OF THE OUTCOME, not a one-member coproduct beside it. There is exactly one
+// way to be refused here -- the closure has nothing missing -- and wrapping that in its own type
+// would either read as a type alias or invite a second arm invented to justify the wrapper. If a
+// second genuine refusal appears, it joins this coproduct and every match fails to compile HERE,
+// which is the behaviour the nesting was for.
+type PartialClosureAdmissionOutcome
+  = PartialClosureAdmitted { admitted: AdmittedPartialCommitClosure }
+  | ClosureCompleteSoNothingToAdmit
 
 // WHY A CLOSED VOCABULARY RATHER THAN A STRING. A reason nobody can enumerate is a reason nobody can
 // refuse, and the two admitted causes have genuinely different owners: one is a transfer decision,
@@ -135,12 +157,34 @@ type PartialClosureReason
   = ClosureTrimmedForTransfer
   | ClosureGraftedWithoutChildren
 
-fn admit_partial_closure(reason: PartialClosureReason) -> PartialClosureAdmission {
-  PartialClosureAdmission { reason: reason }
+fn admit_partial_commit_closure(
+  closure: CommitClosure,
+  reason: PartialClosureReason
+) -> PartialClosureAdmissionOutcome {
+  let unresolved = unresolved_identities(closure: closure)
+  if list_length(items: unresolved) == 0 {
+    ClosureCompleteSoNothingToAdmit
+  } else {
+    PartialClosureAdmitted {
+      admitted: AdmittedPartialCommitClosure {
+        closure: closure,
+        unresolved: unresolved,
+        reason: reason,
+      }
+    }
+  }
 }
 
-fn admission_reason(admission: PartialClosureAdmission) -> PartialClosureReason {
-  admission.reason
+fn admitted_reason(admitted: AdmittedPartialCommitClosure) -> PartialClosureReason {
+  admitted.reason
+}
+
+fn admitted_closure(admitted: AdmittedPartialCommitClosure) -> CommitClosure {
+  admitted.closure
+}
+
+fn admitted_unresolved(admitted: AdmittedPartialCommitClosure) -> List<ObjectId> {
+  admitted.unresolved
 }
 
 // A closure is the store plus the root the commit names. Nothing about how it is written down.

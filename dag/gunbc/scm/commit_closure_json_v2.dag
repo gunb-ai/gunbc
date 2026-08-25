@@ -47,7 +47,22 @@ type ClosureDocRefusal
   | ClosureDocUnexpectedMember { context: ClosureDocMemberContext, key: String }
   | ClosureDocTargetNotOneArm { found: Int }
   | ClosureDocUncontainedDigestInvalid { found: String }
-  | ClosureDocIncompleteWithoutAdmission { identity: String }
+
+// THE ENCODE DOMAIN IS ITS OWN TYPE, and this split is a correctness fix rather than tidiness.
+//
+// ClosureDocIncompleteWithoutAdmission is produced by encode_complete_closure_document and by nothing
+// else -- no decode path can reach it. It nevertheless sat in ClosureDocRefusal, which the LOAD
+// classifier matches exhaustively, so closure_document_load_standing was forced to assign a standing
+// to a state the loader cannot produce. It answered LoadDocumentMalformed, and malformed is the ONE
+// standing standing_may_supersede_generation permits to overwrite a newer document. An encode-only
+// state therefore had a route to "may supersede".
+//
+// That is a closed match over a dishonest domain: exhaustiveness is satisfied, the compiler is
+// content, and the arm is answering for something that cannot occur. Splitting the type does not
+// hide the arm -- it makes the question unaskable, because the classifier's parameter can no longer
+// name this cause. DESIGN section 4b's top rung: not validated, not proven, unrepresentable.
+type ClosureDocEncodeRefusal
+  = ClosureDocIncompleteWithoutAdmission { identity: String }
 
 // THE FORMAT TAG MEANS "I UNDERSTAND THIS EXACT SCHEMA", not "I understand some subset of whatever
 // this writer may have meant". So once the tag matches, every JSON object in the document has a
@@ -356,7 +371,7 @@ fn encoded_root_reference(acc: EncodeAcc, root: ObjectId) -> JsonValue {
 
 type ClosureDocEncodeOutcome
   = ClosureDocEncoded { value: JsonValue }
-  | ClosureDocEncodeRefused { cause: ClosureDocRefusal }
+  | ClosureDocEncodeRefused { cause: ClosureDocEncodeRefusal }
 
 // AN INCOMPLETE CLOSURE IS NOW REPRESENTABLE, SO THE QUESTION CHANGES FROM "CAN IT BE WRITTEN" TO
 // "WAS IT DECIDED".
@@ -368,44 +383,55 @@ type ClosureDocEncodeOutcome
 // closure may be PUBLISHED is a policy question that does not belong in a codec (DESIGN section 3).
 //
 // What must NOT happen is the refusal quietly becoming optional -- a caller who forgets, and a
-// partial document written by accident. So the encoder does not accept a closure plus a caller's
-// assurance: it requires a PartialClosureAdmission, which is `sole_constructor` in gunbc.scm.
-// commit_closure and therefore cannot be fabricated here. An undeclared partial closure has no token
-// to offer and is refused, typed and naming the first identity that would have gone uncontained.
+// partial document written by accident. The two questions are therefore two ENTRY POINTS rather than
+// one entry point with an optional token:
 //
-// RUNG, STATED HONESTLY BECAUSE THE TOKEN'S STRENGTH IS NOT THE PATH'S. The admission itself is
-// unforgeable (structural). This GATE is only mechanically preventable: `encode_closure_document`
-// below remains callable directly, so a caller bypassing this entry can still emit uncontained arms
-// with no admission. The wall is at the entry, not on the carrier.
+//   encode_complete_closure_document(closure)      refuses if anything is uncontained
+//   encode_admitted_partial_closure_document(a)    total; the admission IS the decision
+//
+// WHY THE PARTIAL ENTRY TAKES ONE ARGUMENT. Its predecessor took a closure PLUS an optional
+// admission and checked only that the admission was PRESENT -- so an admission minted for closure A
+// authorized encoding closure B, and no amount of checking inside this function could have noticed,
+// because the token carried no subject. The admitted carrier holds its own closure, so there is no
+// second closure to disagree with it and the mismatch has no spelling. That is why this entry
+// performs no validation at all: there is nothing left to validate.
+//
+// RUNG, STATED HONESTLY BECAUSE THE CARRIER'S STRENGTH IS NOT THE PATH'S. The subject binding is
+// structural. This GATE is still only mechanically preventable: encode_closure_document below
+// remains callable directly, so a caller bypassing these entries can emit uncontained arms with no
+// admission at all. The wall is on the carrier now, but the module's front door is still ajar.
 // dissolve-on: module-private functions in .dag, at which point the unchecked encoder stops being
 // reachable and the gate becomes structural. Until then this comment is the only thing saying so.
-fn encode_closure_document_checked(
-  store: ObjectStore,
-  root: ObjectId,
-  admission: PartialClosureAdmission?
-) -> ClosureDocEncodeOutcome {
-  match unresolved_identities(closure: CommitClosure { store: store, root: root }) {
+fn encode_complete_closure_document(closure: CommitClosure) -> ClosureDocEncodeOutcome {
+  match unresolved_identities(closure: closure) {
     missing =>
       if list_length(items: missing) == 0 {
-        ClosureDocEncoded { value: encode_closure_document(store: store, root: root) }
+        ClosureDocEncoded {
+          value: encode_closure_document(store: closure.store, root: closure.root)
+        }
       } else {
-        match admission {
-          Present { value: _ } =>
-            ClosureDocEncoded { value: encode_closure_document(store: store, root: root) }
-          Absent =>
-            ClosureDocEncodeRefused {
-              cause: ClosureDocIncompleteWithoutAdmission {
-                identity: first_uncontained_key(missing: missing)
-              }
-            }
+        ClosureDocEncodeRefused {
+          cause: ClosureDocIncompleteWithoutAdmission {
+            identity: an_uncontained_key(missing: missing)
+          }
         }
       }
   }
 }
 
+// TOTAL, AND THE TOTALITY IS THE CLAIM. Every way of obtaining an AdmittedPartialCommitClosure runs
+// through a mint that derived the unresolved population from this very closure, so by the time one
+// exists there is nothing this function could refuse that the mint did not already settle.
+fn encode_admitted_partial_closure_document(admitted: AdmittedPartialCommitClosure) -> JsonValue {
+  encode_closure_document(store: admitted.closure.store, root: admitted.closure.root)
+}
+
 // The first identity that would have been written as an uncontained arm. Naming one is what makes
 // the refusal actionable; naming all of them is the caller's own query via unresolved_identities.
-fn first_uncontained_key(missing: List<ObjectId>) -> String {
+// AN uncontained key, not THE FIRST. Same correction as an_uncontained_target in repository_envelope:
+// the refusal needs one actionable example and no consumer depends on which, so the name should not
+// promise an ordering nothing verifies.
+fn an_uncontained_key(missing: List<ObjectId>) -> String {
   fold(missing, init: "", f: fn(acc, id) {
     if acc == "" { object_id_key(identity: id) } else { acc }
   })
@@ -921,5 +947,72 @@ fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
           }
       }
     _ => ClosureDocRefused { cause: ClosureDocMemberWrongShape { key: "objects" } }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Publication standing
+// ---------------------------------------------------------------------------
+
+// THIS FORMAT'S REFUSALS, CLASSIFIED BESIDE THE REFUSALS THEMSELVES.
+//
+// The standing vocabulary is format-agnostic and lives in gunbc.scm.load_standing; the mapping from
+// THIS format's causes into it belongs HERE, next to the coproduct it reads, so a new refusal
+// variant fails to compile where its author already is rather than in a consumer that has never
+// heard of it. A consumer computing this by matching on ClosureDocRefusal would be reaching into one
+// format's error enum for a format-agnostic answer -- the placement defect that closed gunbc#8940.
+//
+// WHY UNKNOWN MEMBERS AND UNKNOWN VARIANT TAGS ARE MALFORMED, NOT A NEWER WRITER, which follows from
+// this module's own policy rather than from taste: a schema that grows a member grows a NEW FORMAT
+// TAG. So a conforming newer writer emits a new tag; it does not emit this one carrying extras. A
+// document under a MATCHED tag with an unrecognized member or variant is a broken document of THIS
+// schema, and calling it "needs a compatible reader" would name a remedy that cannot arrive, because
+// no conforming writer produced it.
+//
+// WHY AN UNRESOLVED POSITION IS MALFORMED AND NOT A FETCHABLE ABSENCE. A position denotes nothing
+// outside the document that defines it, so an unresolved `at` names no object anyone could supply.
+// Fetchable absence is the UNCONTAINED arm, which is not a refusal at all and never reaches here.
+//
+// WHY A COLLISION IS ITS OWN STANDING. object_store states both colliding records are legitimate and
+// the forged pairing is prevented by construction, so a collision means the structural locator
+// cannot represent both -- not that either is damaged. Classifying it as malformed would let a
+// reader DISCARD A WRITER'S VALID GENERATION over an honest hash coincidence.
+fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
+  match cause {
+    ClosureDocFormatUnrecognized { found: _ } => LoadUnsupportedProtocol
+    ClosureDocObjectCollision { identity: _ } => LoadIdentityCollision
+    ClosureDocNotAnObject => LoadDocumentMalformed
+    ClosureDocMemberMissing { key: _ } => LoadDocumentMalformed
+    ClosureDocMemberDuplicated { key: _ } => LoadDocumentMalformed
+    ClosureDocMemberWrongShape { key: _ } => LoadDocumentMalformed
+    ClosureDocUnknownKindTag { found: _ } => LoadDocumentMalformed
+    ClosureDocUnknownConnectiveTag { found: _ } => LoadDocumentMalformed
+    ClosureDocUnknownBehaviorTag { found: _ } => LoadDocumentMalformed
+    ClosureDocUnknownLabelTag { found: _ } => LoadDocumentMalformed
+    ClosureDocUnexpectedMember { context: _, key: _ } => LoadDocumentMalformed
+    ClosureDocEdgeTargetUnresolved { reference: _ } => LoadDocumentMalformed
+    ClosureDocRootUnresolved { reference: _ } => LoadDocumentMalformed
+    ClosureDocTargetNotOneArm { found: _ } => LoadDocumentMalformed
+    ClosureDocUncontainedDigestInvalid { found: _ } => LoadDocumentMalformed
+  }
+}
+
+// A LOAD THAT SUCCEEDED STILL HAS A STANDING, and it is not always LoadComplete. This is the arm the
+// predecessor format could not produce: a document whose uncontained references leave objects the
+// store does not hold loads correctly and is PARTIAL, which is a success with an obligation rather
+// than a failure. Completeness is derived from the objects, never a flag beside them.
+fn loaded_closure_standing(store: ObjectStore, root: ObjectId) -> LoadStanding {
+  if closure_is_complete(closure: CommitClosure { store: store, root: root }) {
+    LoadComplete
+  } else {
+    LoadPartial
+  }
+}
+
+fn closure_document_standing(outcome: ClosureDocLoadOutcome) -> LoadStanding {
+  match outcome {
+    ClosureDocLoaded { store: store, root: root } =>
+      loaded_closure_standing(store: store, root: root)
+    ClosureDocRefused { cause: cause } => closure_document_load_standing(cause: cause)
   }
 }

@@ -2,7 +2,7 @@ module v2.lens.fact_cardinality
 
 
 type FactCardinalityTree
-  = v2.lens.affected_set.Dag
+  = Dag
   | V2
 
 type FactCardinalityDeclFact {

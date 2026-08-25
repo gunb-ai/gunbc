@@ -189,10 +189,64 @@ test fn a_closure_missing_its_own_root_names_the_root() -> Bool {
 // evidence that belongs with it. What executes here is only that the reason is carried faithfully,
 // which is the part a later refactor could silently break.
 test fn an_admission_carries_the_decision_that_produced_it() -> Bool {
-  let transfer = admit_partial_closure(reason: ClosureTrimmedForTransfer)
-  let graft = admit_partial_closure(reason: ClosureGraftedWithoutChildren)
-  reason_is_transfer(r: admission_reason(admission: transfer))
-    && !reason_is_transfer(r: admission_reason(admission: graft))
+  let full = build_full_store()
+  let grafted = build_grafted_store()
+  let closure = CommitClosure { store: grafted, root: full.root }
+  match admit_partial_commit_closure(closure: closure, reason: ClosureTrimmedForTransfer) {
+    ClosureCompleteSoNothingToAdmit => false
+    PartialClosureAdmitted { admitted: transfer } =>
+      match admit_partial_commit_closure(closure: closure, reason: ClosureGraftedWithoutChildren) {
+        ClosureCompleteSoNothingToAdmit => false
+        PartialClosureAdmitted { admitted: graft } =>
+          reason_is_transfer(r: admitted_reason(admitted: transfer))
+            && !reason_is_transfer(r: admitted_reason(admitted: graft))
+      }
+  }
+}
+
+// THE ADMISSION NAMES THE POPULATION IT ADMITS, derived from the closure rather than supplied. A
+// caller-supplied population would reintroduce the same substitution one field down: an admission
+// truthfully about closure A, carrying B's missing objects.
+test fn an_admission_names_the_objects_it_admits_as_missing() -> Bool {
+  let full = build_full_store()
+  let grafted = build_grafted_store()
+  match admitted_for(store: grafted, root: full.root) {
+    ClosureCompleteSoNothingToAdmit => false
+    PartialClosureAdmitted { admitted: a } =>
+      (list_length(items: admitted_unresolved(admitted: a)) == 1)
+        && names_exactly(missing: admitted_unresolved(admitted: a), expected: full.child)
+  }
+}
+
+// THE MINT REFUSES A COMPLETE CLOSURE. Admitting a partial write for something with nothing missing
+// is a category error, and letting it through would make the carrier's own name a lie -- an
+// AdmittedPartialCommitClosure over a closure that is not partial.
+//
+// This is also the claim that keeps the mint honest about DERIVING the population: a mint that
+// trusted a caller could mint this carrier over a complete closure and nothing here would object.
+test fn the_mint_refuses_a_complete_closure() -> Bool {
+  let full = build_full_store()
+  match admitted_for(store: full.store, root: full.root) {
+    PartialClosureAdmitted { admitted: _ } => false
+    ClosureCompleteSoNothingToAdmit => true
+  }
+}
+
+
+// Mints an admission for the closure under test, or reports the refusal. Every claim below routes
+// through this, so none of them can accidentally encode a closure the mint never admitted.
+fn admitted_for(store: ObjectStore, root: ObjectId) -> PartialClosureAdmissionOutcome {
+  admit_partial_commit_closure(
+    closure: CommitClosure { store: store, root: root },
+    reason: ClosureTrimmedForTransfer
+  )
+}
+
+fn json_is_object(v: JsonValue) -> Bool {
+  match v {
+    JsonObject { members: _ } => true
+    _ => false
+  }
 }
 
 fn reason_is_transfer(r: PartialClosureReason) -> Bool {
@@ -202,33 +256,6 @@ fn reason_is_transfer(r: PartialClosureReason) -> Bool {
   }
 }
 
-fn commit_closure_witness_main() -> ProcessExit {
-  if !a_complete_closure_names_nothing_missing() {
-    ExitFailure { code: 1, reason: "a_complete_closure_names_nothing_missing" }
-  } else if !a_grafted_root_names_exactly_the_child_it_lacks() {
-    ExitFailure { code: 1, reason: "a_grafted_root_names_exactly_the_child_it_lacks" }
-  } else if !a_closure_missing_its_own_root_names_the_root() {
-    ExitFailure { code: 1, reason: "a_closure_missing_its_own_root_names_the_root" }
-  } else if !an_admission_carries_the_decision_that_produced_it() {
-    ExitFailure { code: 1, reason: "an_admission_carries_the_decision_that_produced_it" }
-  } else if !a_partial_closure_encodes_only_with_an_admission() {
-    ExitFailure { code: 1, reason: "a_partial_closure_encodes_only_with_an_admission" }
-  } else if !an_uncontained_object_survives_the_wire_and_is_still_named() {
-    ExitFailure { code: 1, reason: "an_uncontained_object_survives_the_wire_and_is_still_named" }
-  } else if !a_target_must_carry_exactly_one_arm() {
-    ExitFailure { code: 1, reason: "a_target_must_carry_exactly_one_arm" }
-  } else if !a_target_carrying_one_arm_still_decodes() {
-    ExitFailure { code: 1, reason: "a_target_carrying_one_arm_still_decodes" }
-  } else if !a_duplicated_at_is_refused_against_at() {
-    ExitFailure { code: 1, reason: "a_duplicated_at_is_refused_against_at" }
-  } else if !a_non_string_at_is_refused_against_at() {
-    ExitFailure { code: 1, reason: "a_non_string_at_is_refused_against_at" }
-  } else if !two_uncontained_children_are_named_in_order() {
-    ExitFailure { code: 1, reason: "two_uncontained_children_are_named_in_order" }
-  } else {
-    ExitSuccess
-  }
-}
 
 // ------------------------------------------------------------------------------------------------
 // THE WIRE HALF OF THE ACCEPTANCE TEST.
@@ -246,25 +273,36 @@ fn commit_closure_witness_main() -> ProcessExit {
 test fn a_partial_closure_encodes_only_with_an_admission() -> Bool {
   let full = build_full_store()
   let grafted = build_grafted_store()
-  let refused = match encode_closure_document_checked(store: grafted, root: full.root, admission: none) {
+  let refused = match encode_complete_closure_document(
+    closure: CommitClosure { store: grafted, root: full.root }
+  ) {
     ClosureDocEncodeRefused { cause: c } => cause_is_incomplete_without_admission(cause: c)
     ClosureDocEncoded { value: _ } => false
   }
-  let admitted = match encode_closure_document_checked(
-    store: grafted,
-    root: full.root,
-    admission: Present { value: admit_partial_closure(reason: ClosureTrimmedForTransfer) }
-  ) {
-    ClosureDocEncoded { value: _ } => true
-    ClosureDocEncodeRefused { cause: _ } => false
+  let admitted = match admitted_for(store: grafted, root: full.root) {
+    ClosureCompleteSoNothingToAdmit => false
+    PartialClosureAdmitted { admitted: a } =>
+      json_is_object(v: encode_admitted_partial_closure_document(admitted: a))
   }
   refused && admitted
 }
 
-fn cause_is_incomplete_without_admission(cause: ClosureDocRefusal) -> Bool {
+// THIS HELPER IS NOW TOTAL BY CONSTRUCTION, and saying so is the point rather than an apology.
+//
+// Before the encode/decode split it discriminated: the cause could have been any of sixteen decode
+// refusals and this asked whether it was the encode-only one. ClosureDocEncodeRefusal has a single
+// arm, so the match cannot answer anything else, and the runtime question it used to pose is gone.
+//
+// That is what a climb to structural impossibility LOOKS like from the test side -- the check does
+// not get stronger, it becomes unnecessary, because the state it excluded is no longer nameable
+// here. DESIGN section 4b(4) says the production machinery a climb obsoletes is deleted while the
+// evidence stays enrolled, so this stays as the positive control that encode still refuses an
+// unadmitted partial closure; what it no longer carries is the discrimination, which moved to the
+// type. The claim that the LOAD classifier cannot name this cause is a compile-time property and is
+// recorded by the probe in the commit message, not by a runtime assertion that cannot express it.
+fn cause_is_incomplete_without_admission(cause: ClosureDocEncodeRefusal) -> Bool {
   match cause {
     ClosureDocIncompleteWithoutAdmission { identity: _ } => true
-    _ => false
   }
 }
 
@@ -277,14 +315,12 @@ fn cause_is_incomplete_without_admission(cause: ClosureDocRefusal) -> Bool {
 test fn an_uncontained_object_survives_the_wire_and_is_still_named() -> Bool {
   let full = build_full_store()
   let grafted = build_grafted_store()
-  match encode_closure_document_checked(
-    store: grafted,
-    root: full.root,
-    admission: Present { value: admit_partial_closure(reason: ClosureTrimmedForTransfer) }
-  ) {
-    ClosureDocEncodeRefused { cause: _ } => false
-    ClosureDocEncoded { value: encoded } =>
-      match parse_json(s: serialize_json(v: encoded)) {
+  match admitted_for(store: grafted, root: full.root) {
+    ClosureCompleteSoNothingToAdmit => false
+    PartialClosureAdmitted { admitted: a } =>
+      match parse_json(
+        s: serialize_json(v: encode_admitted_partial_closure_document(admitted: a))
+      ) {
         Absent => false
         Present { value: reparsed } =>
           match decode_closure_document(v: reparsed) {

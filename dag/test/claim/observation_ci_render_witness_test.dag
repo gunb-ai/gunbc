@@ -555,6 +555,90 @@ test fn w_RED_human_elapsed_minute_switch_boundary_holds() -> Bool {
     && gunbc.observation_ci_render.ci_human_elapsed(d: std.measure.nanosecond(count: 90000000000)) == "1 minutes"
 }
 
+// THE CAUSE REACHES THE ROW. Before this, a throwing witness rendered `ERROR in <duration>` and
+// the reason it threw -- known at the witness boundary, where InterpError is still typed -- was
+// dropped. The pair is asserted by KEY, not by offset: `cause=` is addressable without counting
+// columns, which is the property that failed when a reader's padding-sensitive pattern silently
+// selected only long identities out of a 142-row population.
+test fn w_witness_claim_line_carries_the_runtime_cause() -> Bool {
+  let text = ci_witness_claim_result_text(
+    subject: "test.claim.foo",
+    function: "w_bar",
+    verdict: WitnessRuntimeError { cause: WitnessCauseNoSuchVariable },
+    wall: nanosecond(count: 230000000)
+  )
+  string_contains(s: text, pattern: "//test/claim/foo:w_bar")
+    && string_contains(s: text, pattern: "ERROR in 230ms")
+    && string_contains(s: text, pattern: "cause=no-such-variable")
+}
+
+// THE DISCRIMINATING HALF, and the reason the witness above is not enough on its own: a renderer
+// that appended a CONSTANT cause field would satisfy it. Two rows identical in every argument but
+// the cause must differ, so the field has to be a function of the cause and not decoration.
+test fn w_RED_two_causes_do_not_render_the_same_row() -> Bool {
+  let missing_name = ci_witness_claim_result_text(
+    subject: "test.claim.foo",
+    function: "w_bar",
+    verdict: WitnessRuntimeError { cause: WitnessCauseNoSuchVariable },
+    wall: nanosecond(count: 230000000)
+  )
+  let wrong_type = ci_witness_claim_result_text(
+    subject: "test.claim.foo",
+    function: "w_bar",
+    verdict: WitnessRuntimeError { cause: WitnessCauseTypeError },
+    wall: nanosecond(count: 230000000)
+  )
+  missing_name != wrong_type
+    && string_contains(s: wrong_type, pattern: "cause=type-error")
+    && !string_contains(s: wrong_type, pattern: "cause=no-such-variable")
+}
+
+// A CAUSE BELONGS TO A THROW AND TO NOTHING ELSE. Carried as the arm's payload this is nearly
+// tautological -- no other arm has a field to hold one -- but the RENDERER could still have
+// appended something, and a PASSED row that grew a trailing field would break every consumer
+// reading the existing format. This pins that the addition is confined to the arm that needed it.
+test fn w_RED_non_error_rows_carry_no_cause_field() -> Bool {
+  let passed = ci_witness_claim_result_text(
+    subject: "test.claim.foo",
+    function: "w_bar",
+    verdict: WitnessPassed,
+    wall: nanosecond(count: 230000000)
+  )
+  let known_red = ci_witness_claim_result_text(
+    subject: "test.claim.foo",
+    function: "w_bar",
+    verdict: WitnessKnownRed,
+    wall: nanosecond(count: 230000000)
+  )
+  !string_contains(s: passed, pattern: "cause=")
+    && !string_contains(s: known_red, pattern: "cause=")
+    && passed == "//test/claim/foo:w_bar                                      PASSED in 230ms"
+}
+
+// THE MAPPER'S ESCAPE HATCH IS NOT SILENT. Five InterpError variants have their own ClaimOutcome
+// arm and cannot reach the cause classifier; if one ever does, the row says so in the same field
+// a real cause uses rather than presenting the throw as an ordinary one. Asserted here because
+// the arm is unreachable TODAY, and an unreachable arm with no evidence is the one that quietly
+// stops meaning anything.
+test fn w_mapped_outcome_escape_renders_its_own_cause() -> Bool {
+  ci_witness_runtime_cause_token(cause: WitnessCauseMappedOutcomeEscaped) == "mapped-outcome-escaped"
+    && ci_witness_runtime_cause_token(cause: WitnessCauseMappedOutcomeEscaped)
+      != ci_witness_runtime_cause_token(cause: WitnessCauseTypeError)
+}
+
+// THE FOUR CAUSES THE MEASURED POPULATION ACTUALLY CARRIES, pinned as distinct tokens. On main
+// f9963a762 the floor reported 65 distinct "signatures" across 142 non-verdict identities because
+// the key was the first twelve words of the message and the message embeds the missing NAME --
+// so `no declaration named X` and `no declaration named Y` counted separately. These four are
+// what that population reduces to once the cause is read from the type instead of the prose.
+test fn w_measured_population_causes_are_four_distinct_tokens() -> Bool {
+  let a = ci_witness_runtime_cause_token(cause: WitnessCauseNoSuchVariable)
+  let b = ci_witness_runtime_cause_token(cause: WitnessCauseTypeError)
+  let c = ci_witness_runtime_cause_token(cause: WitnessCauseNoSuchFunction)
+  let d = ci_witness_runtime_cause_token(cause: WitnessCauseCallContractMismatch)
+  a != b && a != c && a != d && b != c && b != d && c != d
+}
+
 test fn w_witness_bazel_target_label_normalizes_both_subject_shapes() -> Bool {
   gunbc.observation_ci_render.ci_witness_bazel_target_label(
     subject: "gunbc.output_policy",
@@ -671,7 +755,7 @@ test fn w_every_verdict_arm_renders_a_distinct_token() -> Bool {
   let t0 = ci_witness_outcome_token(verdict: WitnessPassed)
   let t1 = ci_witness_outcome_token(verdict: WitnessFailed)
   let t2 = ci_witness_outcome_token(verdict: WitnessNotBool)
-  let t3 = ci_witness_outcome_token(verdict: WitnessRuntimeError)
+  let t3 = ci_witness_outcome_token(verdict: WitnessRuntimeError { cause: WitnessCauseTypeError })
   let t4 = ci_witness_outcome_token(verdict: WitnessBudgetRefused)
   let t5 = ci_witness_outcome_token(verdict: WitnessHostToolUnresolved)
   let t6 = ci_witness_outcome_token(verdict: WitnessKnownRed)

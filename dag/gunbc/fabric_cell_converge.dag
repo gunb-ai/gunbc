@@ -390,7 +390,7 @@ fn observations_for_address(
 type FabricCellAddressEvidence
   = NoEvidence
   | EvidenceRefused { cause: String }
-  | gunbc.roadmap_publish.EvidenceAbsent
+  | EvidenceAbsent
   | EvidenceObserved { member: FabricCellMember }
   | EvidenceConflict
 

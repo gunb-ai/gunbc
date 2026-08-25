@@ -1,0 +1,54 @@
+module gunbc.witness_runtime_cause_seed_growth
+
+
+// FORWARD-FREEZE RECEIPT for the hand Rust added by the typed witness-runtime-cause repair.
+// Authored because gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note makes
+// unenumerated hand growth in src/v1 a stop-line, and this change adds three hand items to
+// v1_compiler.cli_run. Authored WITH the change rather than after a review found it missing --
+// the neighbouring receipt gunbc.reference_closure_binder_seed_growth records the other order,
+// and its own header names the review that had to catch it.
+//
+// WHAT THE CHANGE IS. v1_interpreter.InterpError is a closed 24-arm coproduct. At the witness
+// boundary in run_claim, every arm without its own ClaimOutcome variant was flattened by
+// format!("{other}") into ClaimOutcome::RuntimeError { message: String }, and the console then
+// printed the identity and the duration and dropped the message entirely. The cause was known at
+// the moment of routing and reached no reader. Downstream, the floor's aggregate census
+// reconstituted a guess by slicing the first twelve whitespace-separated words off that prose --
+// a key that EMBEDS THE MISSING NAME, so `no declaration named X` and `no declaration named Y`
+// counted as different causes. Measured on main f9963a762: 65 distinct "signatures" over 142
+// non-verdict identities, for a population with about four actual causes. The repair carries the
+// typed cause across the seam instead, as the payload of the error arm.
+//
+// WHY IT IS RUST AND NOT .dag, which is the question this receipt exists to answer honestly.
+// The CLASSIFICATION is not modeled here at all -- CiWitnessRuntimeCause and its token function
+// live in gunbc.observation_ci_render, and the seed's WitnessRuntimeCause is a MIRROR of that
+// coproduct in exactly the sense CiWitnessVerdict already mirrors it, with a parity test
+// asserting the two render byte-identically. What cannot move is the PROJECTION FROM
+// v1_interpreter::InterpError, because InterpError is a seed type: the .dag side has no
+// representation of a Rust enum raised inside the interpreter, so the only place the typed value
+// still exists is the arm that receives it. Modeling that projection would require the substrate
+// to name the seed's own error variants, which is a layer inversion and not a migration.
+//
+// WHAT IS NOT NETTED. Several existing items were MODIFIED rather than added and are
+// ExistingSeedItemModified per gunbc.seed_growth_admission SeedGrowthChangeDisposition, so they
+// are not counted as additions and no deletions are netted against the three below:
+// ClaimOutcome (one field), CiWitnessVerdict (one arm gains a payload), CiWitnessVerdict::token,
+// CiWitnessVerdict::from_outcome, render_witness_claim_result_text_mirror, run_claim, and the
+// floor fold's known-red cause census.
+//
+// HAND-ITEM DELTA: +3 citable declarations, all in v1_compiler.cli_run.
+// HAND-LOC DELTA: +205 / -28 in src/v1/stage0/src/cli_run.rs, +48 / -5 in
+// src/v1/stage0/src/bin/claim_executor.rs, +7 / -2 in src/v1/stage0/src/bin/claim_batch.rs,
+// measured by `git diff --numstat` against the merge subject. The two bin files add no
+// declarations -- their deltas are call-site repairs and one test-table extension.
+data witness_runtime_cause_seed_growth_justification: gunbc.seed_growth.SeedGrowthJustification = gunbc.seed_growth.SeedGrowthJustification {
+  hand_authored_declarations: [
+    std.decl_ref.DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "WitnessRuntimeCause", field: std.decl_ref.WholeDeclaration },
+    std.decl_ref.DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "token", field: std.decl_ref.WholeDeclaration },
+    std.decl_ref.DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "of_interp_error", field: std.decl_ref.WholeDeclaration }
+  ],
+  reason: "The projection from v1_interpreter::InterpError to a cause cannot leave the seed, because InterpError is a seed type and the substrate has no representation of a Rust enum raised inside the interpreter. The modeled half DID move: the coproduct and its tokens are gunbc.observation_ci_render CiWitnessRuntimeCause and ci_witness_runtime_cause_token, and WitnessRuntimeCause is their mirror under an executed byte-equality parity test, exactly as CiWitnessVerdict already was. So these three items are the seam, not the vocabulary.\n\nENUMERATED RATHER THAN COUNTED. `token` and `of_interp_error` are impl methods on the new enum and are cited as their own rows because gunbc.class_b_import_closure_overlay's receipt sets that precedent; no Display impl or trait method is involved, so the citable count and the real count are both three.\n\nDeclared even though nothing would have caught it: gunbc.seed_growth_admission's G1 join is not enrolled (diff populations absent until rust_item_host_observation), so this roster is honest only if authors add rows they were not asked for.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as gunbc.roadmap_model.RoadmapNodeId,
+  trigger: "Delete all three when the interpreter's error vocabulary itself is modeled -- i.e. when InterpError is a .dag coproduct rather than a Rust enum, at which point the projection becomes an ordinary total match in the substrate and the mirror has nothing to mirror. No partial migration is admissible: splitting a .dag classifier from a seed-side raise site would be two authorities for one decision, which is the fork this change exists to close rather than to relocate.",
+  current_boundary: "Confined to classifying one InterpError value into one cause token at the witness boundary. The classification is total over InterpError, decides nothing else, and no consumer reads WitnessRuntimeCause except the row renderer, the floor's cause census, and the two bin reporters. The five InterpError variants that carry their own ClaimOutcome arm cannot reach it; if one ever does it renders MappedOutcomeEscaped rather than being folded into a neighbour."
+}

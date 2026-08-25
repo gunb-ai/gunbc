@@ -89,8 +89,19 @@ type RepositoryEnvelope {
 // An ObjectId and a wire position are not one type because both render as text. On the encode side
 // the domain type is now carried directly, so the identity no longer round-trips through a string
 // nobody can resolve back.
+// THE ENCODE DOMAIN CARRIES ONLY WHAT ENCODING CAN PRODUCE, and the arm this replaces is the same
+// dishonest-domain shape the codec carried one layer down.
+//
+// RepositoryEncodeClosureDocRefusal wrapped the WHOLE ClosureDocRefusal decode population -- fifteen
+// causes, of which encoding can produce exactly one. A reader could not tell from the type which of
+// them were real, and a consumer matching it had to handle format-tag and unknown-connective causes
+// that no encode path can raise. The type was answering for a domain it does not own.
+//
+// The single producible cause is an uncontained target found in the store being written, so that is
+// the arm. It carries ObjectId rather than a rendered key, which also closes a string round-trip the
+// two sibling arms below never had: an identity left as text is one nobody can resolve back.
 type RepositoryEncodeRefusal
-  = RepositoryEncodeClosureDocRefusal { cause: ClosureDocRefusal }
+  = RepositoryEncodeUncontainedTarget { target: ObjectId }
   | RepositoryCommitRootNotInStore { root: ObjectId }
   | RepositoryCheckoutNotInCommits { selected: ObjectId }
 
@@ -295,20 +306,28 @@ type RepositoryEncodeOutcome
 // and admitting it here would widen the change beyond what was decided. When a repository-grain
 // partial write is actually wanted, it takes an admission exactly as the closure encoder does; until
 // then this refusal stands rather than being loosened by proximity.
-fn first_uncontained_target(store: ObjectStore) -> String? {
+// AN uncontained target, not THE FIRST one, and the name says only what the evidence establishes.
+//
+// This returns whichever member the fold reaches first, but the refusal needs one ACTIONABLE EXAMPLE
+// and nothing downstream depends on which. Naming it `first_` promised a stable ordering the witness
+// does not check -- and could not cheaply check, since with a single uncontained object every member
+// is also the first. Pinning order here would additionally freeze an incidental traversal order into
+// the interface, which a later keyed or canonical representation of uncontained_targets should not
+// be forced to preserve.
+fn an_uncontained_target(store: ObjectStore) -> ObjectId? {
   fold(uncontained_targets(store: store), init: none, f: fn(acc, id) {
     match acc {
       Present { value: _ } => acc
-      Absent => Present { value: object_id_key(identity: id) }
+      Absent => Present { value: id }
     }
   })
 }
 
 fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcome {
   let acc = encode_object_table(store: repo.store)
-  match first_uncontained_target(store: repo.store) {
-    Present { value: reference } =>
-      RepositoryEncodeRefused { cause: RepositoryEncodeClosureDocRefusal { cause: ClosureDocEdgeTargetUnresolved { reference: reference } } }
+  match an_uncontained_target(store: repo.store) {
+    Present { value: target } =>
+      RepositoryEncodeRefused { cause: RepositoryEncodeUncontainedTarget { target: target } }
     Absent =>
       match unresolved_commit_root(acc: acc, commits: repo.commits) {
         Present { value: root } =>
