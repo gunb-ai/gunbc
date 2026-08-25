@@ -21,7 +21,7 @@ import gunbc.doc_graph_roots {
   hand_authored_doc_binds,
   hand_authored_binds_to_keyed_rows,
   hand_authored_bind_key_eq,
-  HandAuthoredDocBind,
+  HandAuthoredDocBind, PlanDoc,
   HandAuthoredDocBindsBuilt,
   HandAuthoredDocBindsDuplicateKey,
 }
@@ -31,7 +31,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data live_tree_disposition_correction_note: String = "Corrected 2026-07-15: the 2026-07-12 machine-stamped SubstrateInputsOnly row (#6479 batch, entry-text classifier) was FALSE — every test fn below reads the live docs/ tree through the doc_graph_* host builtins (cli_run.rs build_doc_graph_report), the exact hidden-behind-a-builtin blind spot live_tree.dag:5 declares for that classifier. ReadsLiveTree restores the never-skip tooth so the orphan wall runs on every full floor; the false stamp let a docs-only PR (gunbc#6654) mint an orphan with green CI. #7023 recurrence: the shell documentation_only_skip shortcut exited before claim_executor, bypassing this lane entirely on docs-only PRs — retired proud-cat-517; floor_skip_discovery_witness proves by execution that docs-only diffs RUN this entry."
 
-data hand_authored_bind_keyed_roster_note: String = "HandAuthoredDocBind rows are keyed by hand_authored_bind_key (the slug; the DocHome axis was deleted 2026-08-25 with the last ProbeDoc row, so the key space is one home wide and a probe bind is unwritable rather than merely absent). std.keyed_roster keyed_roster_build refuses a repeated key at construction — the wall that makes a colliding bind identity unwritable rather than detectable only after merge. keyed_roster_union models the git clean-merge failure mode: two branches each append disjoint binds admit; overlapping bind keys refuse at per-PR admission instead of stalling main with duplicate slugs no per-branch uniqueness check can see."
+data hand_authored_bind_keyed_roster_note: String = "HandAuthoredDocBind rows are keyed by hand_authored_bind_key (home + slug). std.keyed_roster keyed_roster_build refuses a repeated key at construction — the wall that makes a colliding bind identity unwritable rather than detectable only after merge. keyed_roster_union models the git clean-merge failure mode: two branches each append disjoint binds admit; overlapping bind keys refuse at per-PR admission instead of stalling main with duplicate slugs no per-branch uniqueness check can see."
 
 test fn doc_graph_has_no_orphan_docs() -> Bool {
   return doc_graph_floor_orphan_clean_holds()
@@ -51,6 +51,7 @@ test fn doc_graph_hand_authored_slugs_not_registered() -> Bool {
 
 test fn doc_graph_slug_wall_reds_on_registered_slug() -> Bool {
   return hand_authored_plan_slug_is_unregistered(b: HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "typescript-gap-census",
     primary_work: DeclarationRef { module_path: "gunbc.plans.typescript_gap_census", decl_name: "typescript_gap_census_plan", field: WholeDeclaration },
     additional_works: [],
@@ -77,6 +78,7 @@ test fn doc_graph_bind_keyed_build_admits_live_incomings() -> Bool {
 
 test fn doc_graph_duplicate_bind_key_red_control() -> Bool {
   let dup = HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "synthetic-duplicate-identity-control",
     primary_work: DeclarationRef { module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_bind_key", field: WholeDeclaration },
     additional_works: [],
@@ -93,6 +95,7 @@ test fn doc_graph_duplicate_bind_key_red_control() -> Bool {
 
 fn fixture_union_branch_a_bind() -> HandAuthoredDocBind {
   HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "synthetic-union-branch-a",
     primary_work: DeclarationRef { module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_bind_key", field: WholeDeclaration },
     additional_works: [],
@@ -102,6 +105,7 @@ fn fixture_union_branch_a_bind() -> HandAuthoredDocBind {
 
 fn fixture_union_branch_b_disjoint_bind() -> HandAuthoredDocBind {
   HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "synthetic-union-branch-b-disjoint",
     primary_work: DeclarationRef { module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_bind_key_eq", field: WholeDeclaration },
     additional_works: [],
@@ -111,6 +115,7 @@ fn fixture_union_branch_b_disjoint_bind() -> HandAuthoredDocBind {
 
 fn fixture_union_branch_b_overlap_bind() -> HandAuthoredDocBind {
   HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "synthetic-union-branch-a",
     primary_work: DeclarationRef { module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_doc_binds", field: WholeDeclaration },
     additional_works: [],
