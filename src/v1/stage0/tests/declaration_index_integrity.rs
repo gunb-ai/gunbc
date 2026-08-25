@@ -752,3 +752,78 @@ fn a_planted_control_that_resolves_has_lost_its_power_and_refuses() {
         DeclarationIntegrityKind::PlantedControlNoLongerRefuses
     );
 }
+
+// THE DESYNCHRONIZATION IS ASSERTED HERE RATHER THAN OBSERVED IN A REPORT.
+//
+// The first corpus run reported two CONTRADICTORY findings about ONE citation:
+// `extdeps.tcgplayer.store` `UpdateSkuPrice` was called unenrolled debt by the suppression arm
+// AND its roster row was called spent by the staleness arm. Cause: the citation carries
+// `field: NamedField { "price" }` and its roster row carried an empty field, so the two arms
+// were matching on different identities. Both arms were locally correct. Both were wrong.
+//
+// NEITHER ARM CAN DETECT THAT ALONE — each is right about its own half — so the only observable
+// is the two answers being present together and disagreeing. That was caught by a human reading
+// two lines of a report, which is not a mechanism. This test makes it a wall: plant the exact
+// identity mismatch and require BOTH findings, then repair the row and require NEITHER.
+#[test]
+fn a_roster_row_on_the_wrong_identity_desynchronizes_both_arms() {
+    let dir = scratch_root("desync");
+    author(
+        &dir,
+        "authority.dag",
+        "module probe.authority\n\ndata real_declaration: Bool = true\n",
+    );
+    author(
+        &dir,
+        "citer.dag",
+        "module probe.citer\n\nimport std.decl_ref { DeclarationRef, NamedField }\n\n\
+         data probe_citation: DeclarationRef = DeclarationRef {\n\
+         \u{20}\u{20}module_path: \"probe.authority\",\n\
+         \u{20}\u{20}decl_name: \"absent_declaration\",\n\
+         \u{20}\u{20}field: NamedField { field_name: \"price\" },\n}\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    plant_cites(
+        &sweep.index,
+        "probe.citer",
+        "probe.authority",
+        "absent_declaration",
+    );
+
+    // THE MISMATCH: the row names the same declaration with NO field, the citation has one.
+    let mismatched = [("probe.authority", "absent_declaration", "")];
+    let unsuppressed = cited_symbol_findings_against(&sweep.index, &mismatched);
+    let spent = citation_debt_findings_against(&sweep.index, &mismatched);
+    assert_eq!(
+        unsuppressed.len(),
+        1,
+        "arm 1 must still refuse the citation, because the row does not name its identity: \
+         {unsuppressed:?}"
+    );
+    assert_eq!(
+        spent.len(),
+        1,
+        "arm 2 must call the row spent, because no live citation carries the row's identity: \
+         {spent:?}"
+    );
+    assert_eq!(
+        spent[0].kind,
+        DeclarationIntegrityKind::CitationDebtRowStale,
+        "the two findings together are the desynchronization signal: one says this citation is \
+         unenrolled, the other says its enrollment is obsolete, about the same citation in the \
+         same run"
+    );
+
+    // THE REPAIR: the row on the citation's real identity silences both arms at once.
+    let matched = [("probe.authority", "absent_declaration", "price")];
+    assert_eq!(
+        cited_symbol_findings_against(&sweep.index, &matched),
+        Vec::new(),
+        "enrolled at the right identity, the citation is suppressed"
+    );
+    assert_eq!(
+        citation_debt_findings_against(&sweep.index, &matched),
+        Vec::new(),
+        "and the row is live, not spent — both arms agree only when the identity matches"
+    );
+}

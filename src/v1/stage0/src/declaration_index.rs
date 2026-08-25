@@ -1197,6 +1197,29 @@ pub fn index_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegrityFindi
     out
 }
 
+/// PAIRED INVERSE ARMS MUST RUN IN ONE REPORT OVER ONE SUBJECT SET.
+///
+/// This function carries four arms that come in two inverse pairs, and the pairing is
+/// load-bearing rather than incidental. `cited_symbol_findings_against` SUPPRESSES what a roster
+/// enrolls; `citation_debt_findings` refuses a roster row nothing enrolls. `planted_control_findings`
+/// reads the same trigger as the latter in the opposite direction. Each arm is a partial answer
+/// and each is individually honest.
+///
+/// SPLITTING A PAIR ACROSS SEPARATE CHECKS DOES NOT WEAKEN IT, IT DESTROYS IT — different jobs,
+/// different cadences, or different roster arguments all have the same effect, and the reasons
+/// for doing it are usually good ones about job granularity. The receipt: one roster row carrying
+/// an empty field where its citation carries `NamedField { "price" }` desynchronized the two
+/// arms, so the suppression arm reported the citation as UNENROLLED DEBT while the staleness arm
+/// reported its row as SPENT — contradictory answers about one citation in one run. Both arms
+/// were locally correct. Both were wrong. NEITHER COULD DETECT IT ALONE, because each is right
+/// about its own half; the only observable is the two answers being present together and
+/// disagreeing.
+///
+/// So the arms share this one entry point and this one subject set, and the desynchronization is
+/// asserted rather than left to a reader noticing two lines in a report:
+/// `a_roster_row_on_the_wrong_identity_desynchronizes_both_arms` plants the exact mismatch and
+/// requires BOTH findings, then repairs the row and requires NEITHER.
+///
 /// What a run OVER THIS REPOSITORY must answer: everything the index derives, plus the debt
 /// contract, whose subject universe is this corpus. This is what the required run and the
 /// standalone sweep call; nothing else should.
