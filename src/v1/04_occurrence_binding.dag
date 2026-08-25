@@ -1,15 +1,15 @@
 module v1.compiler.infer_occurrence_binding
 
 
-data infer_occurrence_binding_canonical_decide_note: std.types.String = "Narrow v1 stage0 adapter: global_bare chain and func parent-closure cardinality fold through module_path_owner_binding_decide, which mirrors occurrence_binding_from_candidates 0/1/many semantics on supplied owner module paths without importing generic std.occurrence_binding into stage0. Candidate enumeration stays outside this adapter. Scaffold receipt: gunbc.infer_occurrence_binding_scaffold binds std.occurrence_binding.occurrence_binding_from_candidates. DISSOLVE-ON: stage0 emits the generic BindingCandidate<N> carrier with its required bounds and this adapter delegates to occurrence_binding_from_candidates by execution. ROADMAP lane: namespace-binding-kernel."
+data infer_occurrence_binding_canonical_decide_note: String = "Narrow v1 stage0 adapter: global_bare chain and func parent-closure cardinality fold through module_path_owner_binding_decide, which mirrors occurrence_binding_from_candidates 0/1/many semantics on supplied owner module paths without importing generic std.occurrence_binding into stage0. Candidate enumeration stays outside this adapter. Scaffold receipt: gunbc.infer_occurrence_binding_scaffold binds std.occurrence_binding.occurrence_binding_from_candidates. DISSOLVE-ON: stage0 emits the generic BindingCandidate<N> carrier with its required bounds and this adapter delegates to occurrence_binding_from_candidates by execution. ROADMAP lane: namespace-binding-kernel."
 
 type ModulePathBindingProjection
-  = ModulePathBindingHit { owner: std.types.String }
+  = ModulePathBindingHit { owner: String }
   | ModulePathBindingMiss
-  | ModulePathBindingAmbiguous { owners: List<std.types.String> }
+  | ModulePathBindingAmbiguous { owners: List<String> }
 
 fn module_path_owner_binding_decide(
-  owners: List<std.types.String>
+  owners: List<String>
 ) -> ModulePathBindingProjection {
   let owner_count = owners |> count
   if owner_count == 0 {
@@ -24,12 +24,12 @@ fn module_path_owner_binding_decide(
   }
 }
 
-data ambiguity_labels_single_authority_note: std.types.String = "ONE labeller for both production candidate sites (review 45364). global_bare_chain_ambiguity_labels_from_decide and func_parent_closure_ambiguity_labels_from_decide were token-identical modulo a local bind name -- a section 3 nickname pair, two names for one concept, which the predicate-dissolution pass left resident. The call site is not part of the fact: qualifying an ambiguous owner list is the same operation whether the candidates came from the global_bare chain (04_env) or a fn parent closure (04_sigs), so the site-prefixed names encoded a distinction that does not exist. Collapsed to ambiguity_labels_from_decide, consumed by both.\n\nWILDCARD-FREE (review 45417): the collapsed fn inherited a _ => [] arm from the two it replaced. ModulePathBindingProjection is a closed 3-arm type, so a wildcard means a future variant silently yields no labels -- an ambiguity that reports as unambiguous, which is the DESIGN section 5 absorbing shape and the same arm this PR deleted from v1.std.core diagnostic_to_span. Hit and Miss are now spelled out, so adding a variant is a compile error here rather than a silent empty label list."
+data ambiguity_labels_single_authority_note: String = "ONE labeller for both production candidate sites (review 45364). global_bare_chain_ambiguity_labels_from_decide and func_parent_closure_ambiguity_labels_from_decide were token-identical modulo a local bind name -- a section 3 nickname pair, two names for one concept, which the predicate-dissolution pass left resident. The call site is not part of the fact: qualifying an ambiguous owner list is the same operation whether the candidates came from the global_bare chain (04_env) or a fn parent closure (04_sigs), so the site-prefixed names encoded a distinction that does not exist. Collapsed to ambiguity_labels_from_decide, consumed by both.\n\nWILDCARD-FREE (review 45417): the collapsed fn inherited a _ => [] arm from the two it replaced. ModulePathBindingProjection is a closed 3-arm type, so a wildcard means a future variant silently yields no labels -- an ambiguity that reports as unambiguous, which is the DESIGN section 5 absorbing shape and the same arm this PR deleted from v1.std.core diagnostic_to_span. Hit and Miss are now spelled out, so adding a variant is a compile error here rather than a silent empty label list."
 
 fn ambiguity_labels_from_decide(
-  owners: List<std.types.String>,
-  name: std.types.String
-) -> List<std.types.String> {
+  owners: List<String>,
+  name: String
+) -> List<String> {
   match module_path_owner_binding_decide(owners: owners) {
     ModulePathBindingAmbiguous { owners: ambiguous_owners } =>
       ambiguous_owners |> map(owner => concat(owner, ".", name))

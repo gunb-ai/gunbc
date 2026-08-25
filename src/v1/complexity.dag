@@ -2045,7 +2045,7 @@ fn is_list_shrinkage_descent(body: v1.std.core.Node, func_name: String, params: 
 
 fn is_arithmetic_descent_expr(expr: v1.std.core.Node, param_name: String, si: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   match expr.expr_data {
-    v1.std.core.ExprBinOp { op: v1.std.core.Sub, algebra_field: _ } =>
+    v1.std.core.ExprBinOp { op: std.syntax.Sub, algebra_field: _ } =>
       let left = v1.std.core.binop_left(texpr: expr)
       let right = v1.std.core.binop_right(texpr: expr)
       match left.expr_data {
