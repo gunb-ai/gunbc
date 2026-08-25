@@ -1048,6 +1048,19 @@ unrelated module may not change an entry's closure, bindings, ambiguity results
 or visible services*. It stands on its own merits as the control for §3.3(b)'s
 ambient binding, which is measured and unretracted.
 
+**Wave 4 is sequenced behind a PR this lane does not own, and that is correct.**
+M0 — *no gate may report a prefix of the truth as the truth* — and E.2's
+acceptance gates are closed by **a required phase that actually emits over a
+closure**, which is `cool-hawk-324`'s gunbc#9203 in the observation tree, not by
+anything on this side of the implementation/observation seam. DESIGN already
+declares that class as sitting **outside the ladder**, with an uncounted and
+unbounded population. The seam's normal direction is *we fix, they gate*; this is
+the one required dependency running the other way. **The response is to consume
+their phase, never to build a second emitting gate to escape the wait** — a second
+gate would be the parallel-authority debt this document is about, reached by
+impatience. Needing it earlier than they plan to land it is an escalation, not an
+engineering decision.
+
 **Track F/G — one semantic motion, then the corpse.** **Corrected by adversarial
 review; this was the sequence's largest defect.** An earlier revision had F.1 flip
 the authority, F.2 then repoint "the last import readers"
@@ -1168,12 +1181,15 @@ WAVE 3   C.3 remaining emitter sites   [needs C.2]
          D.3 KeyedRoster wall          [needs D.2]
 
 WAVE 4   E.1 derived projection  [needs C.4]
-         E.2 acceptance gates    [needs E.1]
+         E.2 acceptance gates    [needs E.1, and BLOCKED ON ANOTHER TREE — below]
          E.3 perturbation falsifier — the control for ambient binding
 
-WAVE 5   F.1 the flip                       ← one motion, single owner
+WAVE 5   F   one semantic motion             ← single owner
+             rewrite · switch the producer · move EVERY live consumer
+             · delete old producers and ambient fallbacks
+             · retire import-semantic diagnostics and witnesses · regenerate
 
-WAVE 6   F.2 last import readers    G grammar deletion
+WAVE 6   G   bounded corpse deletion — grammar, token, AST, production
 ```
 
 The two hard edges: **C.4 must follow C.1** — a ledger built while ambient
