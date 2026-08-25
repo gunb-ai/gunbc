@@ -351,69 +351,71 @@ independent below-floor defect with a fixture, extractable on its own merits, wi
 corpus-wide ordering blast radius that argues for its own lane rather than a
 rider.
 
-## 3c. A fifth consumer, at reconcile, and it is live on main
+## 3c. A fifth consumer — one bare-name index, and a retraction worth keeping
 
-Relayed from `smart-ram-730`, found while confirming an unrelated emitter defect.
-Both arms on one host, clean detached worktree at main `4f080fd88ae`, `DIRTY=0`,
-same compiler binary, **one variable**.
+**This section previously reported something else and was wrong.** It claimed
+that renaming one private function changed anonymous-record *type resolution* in
+four unrelated files, that the resulting 8 diagnostics arose at reconcile, and
+that compile outcome was therefore a function of the whole corpus name set. That
+claim is **retracted by its own author** (`smart-ram-730`, same day) and nothing
+in this program depends on it. The retraction is recorded rather than quietly
+deleted, because how it failed is itself one of the classes this document is
+about.
 
-**Treatment: one rename in one file** —
-`dag/test/claim/srv3_path_ownership_witness_test`, `fn owner` →
-`fn posix_owner_spec_of`, plus its 23 call sites *in that same file*. Nothing else
-touched.
+### What is real
 
-```
-BASELINE    reconcile 15m, emit 43s -> 2 hard diagnostics (both emit-stage)
-TREATMENT   the 2 disappear, and 8 NEW hard diagnostics appear,
-            none of them in the edited file:
+`v1.compiler` `build_data_body_index` indexes **every item with a body under its
+bare unqualified name, across all 3927 modules, functions included,
+last-write-wins.** A witness module's `fn owner` collided with a production
+`data owner`, and that collision was the **sole blocker of whole-corpus
+emission**. Confirmed by execution in both directions: removing the function
+clears it, and filtering functions out of the index clears it.
 
-  ambiguous anonymous record literal matches 2 structs: FileOwnership, PosixSubject
-      dag/test/claim/access_validation_test.dag  (x3)
-  ambiguous anonymous record literal matches 4 structs: FirmwareSemanticVersion,
-      GitReleaseVersion, MercurialUpstreamVersion, OllamaSemanticVersion
-      dag/extdeps/git/versioning.dag
-  ambiguous anonymous record literal matches 2 structs: DeclarationRef, RustItemDeclarationRef
-      dag/test/claim/cache_retention_axes_witness_test.dag
-      dag/extdeps/realization/reconcile_in_process.dag
-```
+That is this document's class exactly — a bare name standing in for an identity,
+in an index whose key admits two different subjects — and it is a Track C row. It
+is simply an ordinary instance rather than a corpus-wide coupling.
 
-**The 8 cannot be pre-existing-but-unreported, and the argument is what makes
-this a finding rather than a curiosity.** Ambiguous-record errors arise at
-*reconcile*, which is upstream of emit. The baseline run **reached emit** — it
-reports emit done in 43 seconds — and reported exactly 2 diagnostics, both
-emit-stage. A baseline whose reconcile held 8 hard errors could not have reached
-emit at all. So the 8 were genuinely absent before the rename and present after.
+### What was wrong, and why it is worth a paragraph
 
-Renaming one function private to one witness module changed **which structs an
-anonymous record literal matches in four files that do not import it and were
-never opened**. The disambiguation is evidently deciding against a corpus-wide
-struct census, so compile outcome is a function of the **whole name set** rather
-than of any module's own content. Two consequences belong on the ledger
-explicitly:
+The 8 diagnostics arise at **emit**, not reconcile, and they were **masked**.
+`emit_rust`'s body is a sequence of early returns: the workflow-default check runs
+first and returns on any hit, so while those 2 diagnostics stood, the
+anonymous-record check **never executed**. Both classes are emit-stage; one gated
+the other.
 
-- **a lane can turn main red by renaming something private to its own file**,
-  with no import edge to the affected code and nothing a reviewer could see in
-  the diff; and
-- **every "the corpus compiles" claim is true only for the exact name-set that
-  produced it** — which makes compile-clean receipts contingent on a fact nobody
-  records. That reaches DESIGN §4b's evidence rules directly: a green measured
-  under one name set is not evidence about another.
+The confirming run is what makes this certain rather than merely plausible: with
+the 2 cleared by a **compiler-only** patch — zero `.dag` renames, no source edit
+anywhere — the **same 8 appear in the same four files**. A compiler-internal
+change and a source rename produced identical populations, which is impossible if
+the rename caused them. And the corroborating detail that was on screen the whole
+time: emit took 43s in the baseline and 78s with the 2 cleared. **It ran longer
+because it got further.**
 
-This is §3.3(b) generalized past the branch. Ambient whole-pool resolution was
-never confined to the bare-reference scanner or to the import-free corpus: the
-same *a name's meaning is a function of which other files exist* regime is live on
-main today, at reconcile, over anonymous record shape matching. It is the fifth
-direction found in one day and **the only one that reaches type resolution** —
-the others being positional-vs-named argument binding, `order_typed_call_args`
-(§3b), two accepted `contains` functions requiring different emitted authorities,
-and `build_data_body_index` indexing every item with a body under its bare name.
+So the 8 are ordinary pre-existing ambiguities nobody could see because an earlier
+gate returned first. They still block emission and are worth fixing —
+`DeclarationRef` vs `RustItemDeclarationRef` among them is plausibly this class —
+but as independent ambiguities carrying none of the severity first attached.
 
-**Not established, so it is not inherited as an overclaim:** no read of the
-disambiguation code — this is a black-box before/after, not a mechanism. And the
-rename *adds and removes a name at once*, so whether the trigger is the removed
-name, the added name, or a shift in fold order is undetermined. The separating
-experiment — add `posix_owner_spec_of` without removing `owner`, and the converse
-— is cheap on the instrument that produced this and is the next step for this row.
+### Why this stays in the document
+
+This is **execution-provenance loss**, which DESIGN already names in its recurring
+failure modes: *if a count of zero and an unreached stage produce the same output,
+the number is not an observation.* Here the shape is one step subtler than the
+canonical form — not a stage that refused, but a stage that **returned early on a
+different class**, so a real emit run reported a real population that was a
+*prefix* of the truth.
+
+Two things generalize. First, **the producing stage must be read, not inferred
+from a diagnostic's wording** — the whole false conclusion rests on reading
+"ambiguous record literal" as a reconcile-stage message. Second, **corroboration
+is not confirmation**: a second lane agreed from adjacent prior experience about
+bare-name lookup collisions, which are real, and that agreement made an inference
+feel verified when it had only been echoed. Both are cheap to guard and neither
+was.
+
+The methodological receipt is worth more to this program than the retracted claim
+would have been, because every remaining measurement here is a staged-pipeline
+measurement with the same exposure.
 
 ## 4. The realization half — and it changes the diagnosis
 
@@ -837,19 +839,24 @@ corpse is bounded cleanup. The invariant that keeps this honest:
 | **3** | the migration is binding-preserving | an exact occurrence→declaration ledger exists |
 | **2** | the ledger is truth, not a guess | ambient/whole-pool + proximity fallback is gone |
 | **1** | those delete safely | one closure authority feeds every subject |
-| **0** | any of it is measurable | compile outcome is a function of content, not the name set |
+| **0** | any of it is measurable | every measurement names the stage that produced it, and no stage silently returns a prefix |
 
-Step 0 is §3c, and it is load-bearing in a way that only appears under backward
-derivation: **if a rename in an untouched file changes diagnostics elsewhere,
-then no ledger is reproducible and no acceptance gate downstream means
-anything.** Its placement is the open question in §9 — it is simultaneously what
-makes the rest measurable and the only item with no known mechanism.
+Step 0 survives §3c's retraction in a weaker and more general form. The original
+reading — *a rename in an untouched file changes diagnostics elsewhere* — is
+withdrawn. What remains is what the retraction itself demonstrated: **`emit_rust`
+returns early on the first failing class, so a real run reports a population that
+is a prefix of the truth**, and every gate in Waves 4–5 is a staged-pipeline
+measurement with exactly that exposure. The requirement is therefore not a new
+mechanism but a property of the gates: each names the stage that produced it, and
+a gate that could be short-circuited by an earlier class says so. That is
+`E.2`'s obligation, not a Wave-1 blocker.
 
 ### Tracks
 
 **Track 0 — independent, no ordering cost.** 0.1 pipe-position lowering (§3a,
-fixture red) · 0.2 `order_typed_call_args` (§3b) · 0.3 the reconcile name-set
-dependency (§3c) · 0.4 the `coercion_widening.dag:29:49` parse failure.
+fixture red) · 0.2 `order_typed_call_args` (§3b) · 0.3 `build_data_body_index`'s
+bare-name index (§3c) — sole blocker of whole-corpus emission, confirmed both
+directions · 0.4 the `coercion_widening.dag:29:49` parse failure.
 
 **Track A — realization.** A.1 `rust_nominal_identity_carrier_type_eligible`
 becomes a real predicate; brands emit as newtypes. Independently confirmed by
@@ -884,8 +891,11 @@ names occur exactly once. Pricing this track per site overstates it by more than
 third.
 
 **Track E — the migration (chain steps 4–5).** E.1 the derived projection.
-E.2 the acceptance gates. E.3 the perturbation falsifier, which is 0.3's
-permanent wall.
+E.2 the acceptance gates, each naming its producing stage per step 0. E.3 the
+perturbation falsifier the branch itself derived — *adding or removing an
+unrelated module may not change an entry's closure, bindings, ambiguity results
+or visible services*. It stands on its own merits as the control for §3.3(b)'s
+ambient binding, which is measured and unretracted.
 
 **Track F/G — the flip, then the corpse.** F.1 the one motion: apply the rewrite,
 flip resolution and closure authority, delete every ambient fallback, regenerate
@@ -933,7 +943,7 @@ import, so they are deletions of dead surface rather than a cutover.
 
 | | milestone | the check that closes it |
 |---|---|---|
-| **M0** | **Measurable.** Compile outcome is a function of a module's content, not the corpus name set | §3c's perturbation control: renaming a private declaration changes no diagnostic elsewhere |
+| **M0** | **Measurable.** No gate can report a prefix of the truth as the truth | every acceptance count names its producing stage; a gate reachable only past an earlier early-return declares that |
 | **M1** | **Emission preserves identity.** A branded scalar is a distinct Rust type | a `Secret` cannot be passed where a `String` is expected in emitted Rust; `UriValidatedScalar` forgery refused |
 | **M2** | **One closure authority.** Every subject is built the same way | no second `extract_imports`; every closure edge names its occurrence and provider |
 | **M3** | **Identity survives the pipeline.** Resolution's answer reaches emission intact | the 12 censused emitter sites key on declaration identity; `build_emit_graph_info` has a collision arm |
@@ -952,7 +962,7 @@ WAVE 1   0.1 pipe lowering   0.2 arg ordering   0.4 coercion parse
          A.1 nominal identity switch    A.2 forgery control
          B.1 closure authority          B.2 edge provenance
          D.1 key algebra authoring
-         0.3 name-set investigation  (ordering open — see §9)
+         0.3 build_data_body_index: bare-name index over 3927 modules
 
 WAVE 2   B.3 parser-owned reference facts        [needs B.1]
          C.1 delete ambient + proximity fallback [needs B.1]
@@ -965,7 +975,7 @@ WAVE 3   C.3 remaining emitter sites   [needs C.2]
 
 WAVE 4   E.1 derived projection  [needs C.4]
          E.2 acceptance gates    [needs E.1]
-         E.3 perturbation falsifier — 0.3's permanent wall
+         E.3 perturbation falsifier — the control for ambient binding
 
 WAVE 5   F.1 the flip                       ← one motion, single owner
 
@@ -1082,13 +1092,12 @@ So the split is clean, and it falls exactly along the line that clause draws:
   declined**. deep-ant-102 explicitly does not conclude which, and names the first
   check: whether the file glob is wider than the floor's discovery scan. Separate
   lane; it is not import work and should not be folded into this program.
-- **The reconcile name-set dependency (§3c)** — the separating add/remove
-  experiment, then a read of the disambiguation code. Owned here; the instrument
-  is `smart-ram-730`'s. **Its ORDERING is deliberately left open** (operator,
-  2026-08-25): the backward chain puts it at step 0 because it is what makes
-  everything downstream measurable, and it is simultaneously the only item with
-  no known mechanism, so front-loading it is the least predictable choice on the
-  board. Decided when the separating experiment says what the trigger is.
+- ~~The reconcile name-set dependency~~ — **RETRACTED by its author**, see §3c.
+  The operator had left its ordering open; that question is dissolved rather than
+  answered, and no work is sequenced behind it. What replaces it as an open item
+  is narrower: the 8 anonymous-record ambiguities are real, still block emission,
+  and are unclassified — `DeclarationRef` vs `RustItemDeclarationRef` among them
+  is plausibly this document's class.
 - ~~The FreeText denominator~~ — **ANSWERED**: 8 of 2272, 0.35%
   (→ [keying-census.md](keying-census.md)). Carried into T1 and Track D above.
   What remains open on it is the census's own declared bound: it is
