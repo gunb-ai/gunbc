@@ -108,10 +108,20 @@ fn actions_runner_download_url(artifact: ActionsRunnerBinaryArtifact) -> String 
   )
 }
 
-data actions_runner_release_2_334_0: ActionsRunnerRelease = ActionsRunnerRelease {
-  version: "2.334.0",
-  digest_aarch64: sha256_digest(hex: "f44255bd3e80160eb25f71bc83d06ea025f6908748807a584687b3184759f7e4"),
-  digest_x86_64: sha256_digest(hex: "048024cd2c848eb6f14d5646d56c13a4def2ae7ee3ad12122bee960c56f3d271"),
+// WHY 2.334.0 IS GONE RATHER THAN KEPT BESIDE THIS ROW. GitHub retired it server-side: a runner of
+// that version authenticates, reaches "Listening for Jobs", and is then refused with
+// "Runner version v2.334.0 is deprecated and cannot receive messages", exits 0, and is restarted by
+// systemd forever. Measured on srv3 2026-08-25 across all 13 newly provisioned slots. A deprecated
+// pin is not a version that merely lags -- it provisions a runner that CANNOT take work, so keeping
+// it as a selectable row would only preserve a way to build dead slots.
+//
+// THE DIGESTS ARE THE UPSTREAM'S OWN, not recomputed here: actions/runner release v2.336.0 publishes
+// them in its release body, and the emitted install script verifies with sha256sum -c, so a wrong
+// value fails loudly at the host rather than installing an unverified tarball.
+data actions_runner_release_2_336_0: ActionsRunnerRelease = ActionsRunnerRelease {
+  version: "2.336.0",
+  digest_aarch64: sha256_digest(hex: "58b758e420b87093fbd4bfddd368074960053e2f1388f01848c82624b90f27d1"),
+  digest_x86_64: sha256_digest(hex: "04cf0be1aff4c3ec3554466c39124ca250e3effd8873bb7e8d68535aa9505d5d"),
 }
 
 data actions_runner_base_dir: String = "/opt/actions-runner"
@@ -211,7 +221,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.github.actions_runner",
-      decl_name: "actions_runner_release_2_334_0",
+      decl_name: "actions_runner_release_2_336_0",
       field: WholeDeclaration
     }
   },

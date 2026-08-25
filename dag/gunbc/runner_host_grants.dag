@@ -62,7 +62,12 @@ fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorP
     ]
 }
 
-data runner_host_sudoers_header: String = "# GENERATED from dag/gunbc/executor_privileged_operation.dag runner_host_sudoers_content — do not hand-edit\n"
+// THE HEADER IS THE INSTALLED FILE'S ONLY POINTER BACK TO ITS AUTHORITY, so it names the module
+// that actually defines the renderer and the entry point that reproduces it. It said
+// executor_privileged_operation.dag until review 55626: TRUE WHEN WRITTEN, and invalidated by the
+// module split that moved this function here -- the §3 stale-citation decay, in the one string that
+// a human reads off a production host while deciding whether the file is safe to regenerate.
+data runner_host_sudoers_header: String = "# GENERATED from dag/gunbc/runner_host_grants.dag srv3_runner_host_sudoers — do not hand-edit\n"
 
 fn runner_host_sudoers_content(deploy: RunnerHostDeploy) -> String {
   join([
