@@ -10,9 +10,11 @@ import gunbc.target_binding {
   BehavioralReceiptPlanProducer, HeadsReadingDifferentialProducer,
   BehavioralReceiptPlanStanding, BehavioralReceiptPlanCompleted,
   BehavioralReceiptPlanNoSubject, BehavioralReceiptPlanRefused,
-  BehavioralReceiptDiverged,
+  BehavioralReceiptDiverged, ReceiptPlanMergeBaseUnresolvable,
   HeadsReadingDifferentialStanding, HeadsReadingDifferentialCompleted,
-  HeadsReadingDifferentialRefused, HeadsReadingDifferentialObservation,
+  HeadsReadingDifferentialSubjectUnreached, HeadsReadingDifferentialRefused,
+  HeadsReadingDifferentialObservation,
+  DifferentialSourceRootUnreadable, DifferentialReadingExecutionRefused,
 }
 import gunbc.build_target {
   BuildTarget, TestRule,
@@ -114,7 +116,7 @@ test fn behavioral_receipt_plan_keeps_completion_subject_and_observation_apart()
   }
   let absent: BehavioralReceiptPlanStanding = BehavioralReceiptPlanNoSubject { head: "abc123" }
   let refused: BehavioralReceiptPlanStanding = BehavioralReceiptPlanRefused {
-    detail: "merge base unreadable"
+    cause: ReceiptPlanMergeBaseUnresolvable {}
   }
   (negative != absent) && (absent != refused) && (negative != refused)
 }
@@ -140,9 +142,16 @@ test fn heads_reading_completion_is_distinct_from_divergence_and_refusal() -> Bo
     observation: differential_observation(divergent: ["dag/example.dag"])
   }
   let refused: HeadsReadingDifferentialStanding = HeadsReadingDifferentialRefused {
-    detail: "source root unreadable"
+    cause: DifferentialReadingExecutionRefused {}
   }
-  (agreement != divergence) && (divergence != refused) && (agreement != refused)
+  let unreached: HeadsReadingDifferentialStanding = HeadsReadingDifferentialSubjectUnreached {
+    source_roots: ["dag"]
+    cause: DifferentialSourceRootUnreadable {}
+  }
+  (agreement != divergence)
+    && (divergence != refused)
+    && (divergence != unreached)
+    && (unreached != refused)
 }
 
 fn required_verdict_for(s: HeadsReadingDifferentialStanding) -> StandingVerdict {
@@ -171,6 +180,6 @@ test fn required_policy_does_not_interpret_heads_reading_observations() -> Bool 
   })) && refuses_as_outside_required(v: required_verdict_for(s: HeadsReadingDifferentialCompleted {
     observation: differential_observation(divergent: ["dag/example.dag"])
   })) && refuses_as_outside_required(v: required_verdict_for(s: HeadsReadingDifferentialRefused {
-    detail: "source root unreadable"
+    cause: DifferentialReadingExecutionRefused {}
   }))
 }

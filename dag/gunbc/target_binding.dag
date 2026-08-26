@@ -141,10 +141,16 @@ type BehavioralReceiptPlanObservation
   = BehavioralReceiptAgreed
   | BehavioralReceiptDiverged
 
+type BehavioralReceiptPlanRefusalCause
+  = ReceiptPlanMergeBaseUnresolvable
+  | ReceiptPlanChangedAuthoritySetUnreadable
+  | ReceiptPlanModuleCorpusUnreadable
+  | ReceiptPlanExecutionRefused
+
 type BehavioralReceiptPlanStanding
   = BehavioralReceiptPlanCompleted { observation: BehavioralReceiptPlanObservation }
   | BehavioralReceiptPlanNoSubject { head: String }
-  | BehavioralReceiptPlanRefused { detail: String }
+  | BehavioralReceiptPlanRefused { cause: BehavioralReceiptPlanRefusalCause }
 
 type BehavioralReceiptCensusObservation {
   modules_planned: Int
@@ -156,17 +162,37 @@ type BehavioralReceiptCensusObservation {
   derived_calls: Int
 }
 
+type BehavioralReceiptCensusRefusalCause
+  = ReceiptCensusSourceCorpusUnreadable
+  | ReceiptCensusModuleParseRefused
+  | ReceiptCensusTypeReadRefused
+
+// Census constructs its subject from the source-root corpus supplied to the producer. There is no
+// external diff subject that can be absent: failure to construct or read that corpus is one of the
+// typed producer refusals below, while a completed partial census carries its out-of-scope
+// population in the observation rather than reporting subject absence.
 type BehavioralReceiptCensusStanding
   = BehavioralReceiptCensusCompleted { observation: BehavioralReceiptCensusObservation }
-  | BehavioralReceiptCensusRefused { detail: String }
+  | BehavioralReceiptCensusRefused { cause: BehavioralReceiptCensusRefusalCause }
 
 type BehavioralReceiptSelftestObservation
   = BehavioralReceiptArmsDiscriminate
   | BehavioralReceiptArmsDoNotDiscriminate
 
+type BehavioralReceiptSelftestRefusalCause
+  = ReceiptSelftestFixtureAuthorityUnreadable
+  | ReceiptSelftestFixturePlanningRefused
+  | ReceiptSelftestFixturePreconditionUnsatisfied
+  | ReceiptSelftestCandidateUnreadable
+  | ReceiptSelftestExecutionRefused
+
+// Selftest owns a fixed authored fixture and two fixed candidate arms, so it likewise has no
+// caller-selected subject that can be absent. An unreadable fixture, an underived discriminating
+// input, or an execution failure is a typed producer refusal; a completed control whose arms no
+// longer discriminate remains an observation.
 type BehavioralReceiptSelftestStanding
   = BehavioralReceiptSelftestCompleted { observation: BehavioralReceiptSelftestObservation }
-  | BehavioralReceiptSelftestRefused { detail: String }
+  | BehavioralReceiptSelftestRefused { cause: BehavioralReceiptSelftestRefusalCause }
 
 type HeadsReadingDifferentialObservation {
   modules_compared: Int
@@ -176,6 +202,19 @@ type HeadsReadingDifferentialObservation {
   both_refused: List<String>
 }
 
+type HeadsReadingDifferentialSubjectCause
+  = DifferentialSourceRootAbsent
+  | DifferentialSourceRootUnreadable
+  | DifferentialSourcePopulationIndexRefused
+
+type HeadsReadingDifferentialRefusalCause
+  = DifferentialReadingExecutionRefused
+  | DifferentialObservationAssemblyRefused
+
 type HeadsReadingDifferentialStanding
   = HeadsReadingDifferentialCompleted { observation: HeadsReadingDifferentialObservation }
-  | HeadsReadingDifferentialRefused { detail: String }
+  | HeadsReadingDifferentialSubjectUnreached {
+      source_roots: List<String>
+      cause: HeadsReadingDifferentialSubjectCause
+    }
+  | HeadsReadingDifferentialRefused { cause: HeadsReadingDifferentialRefusalCause }
