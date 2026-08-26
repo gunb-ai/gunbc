@@ -42,6 +42,22 @@ import v2.workflow.legacy_binding_observation {
 // IS NOT A JOIN. A correspondence that cannot fail has its deficit frequency zeroed by
 // construction, so it never ranks for repair, and it gets cited as coverage.
 
+// AND NOTHING HERE MAY READ AN ORDINAL AS AN ORDER, WHICH IS A SEPARATE PROHIBITION FROM THE ONE
+// ABOVE AND ARRIVES FROM THE OTHER END OF THE SAME FACT.
+//
+// The prohibition above is about comparing ordinals ACROSS compiles. This one is about reading them
+// as a SEQUENCE WITHIN one. Once identity is minted at parser construction rather than by a later
+// traversal, children are often constructed before their parents, so a parent's ordinal may be
+// numerically GREATER than its child's -- and adding an unrelated earlier construction renumbers
+// later ids without changing a single binding, closure, diagnostic or emitted byte.
+//
+// So no law in this module sorts, ranges over, or compares the magnitude of an occurrence ordinal.
+// Every one of them is set membership or multiplicity, both of which are order-free by
+// construction, and containment is the explicit ancestor relation rather than an inequality between
+// ids. Stated here rather than left implicit because the tempting use is exactly the plausible one:
+// a projector comparing two projections would naturally want a stable traversal order, and the
+// ordinals look like one.
+
 // A PROJECTION PAIR RELATES ONE TARGET OCCURRENCE TO ITS SOURCE, AND THE ABSENT SOURCE IS A
 // FIRST-CLASS ARM RATHER THAN AN EXCEPTION.
 //
