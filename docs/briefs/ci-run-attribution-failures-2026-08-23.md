@@ -328,6 +328,26 @@ none of them yield to closer reading of the same one.
 **Check:** before reporting an absence, re-derive it through a second index whose bound differs.
 If you cannot name the first query's bound, you have not established the absence.
 
+**The stronger check, and the only one in this document that caught a live error rather than
+explaining one after the fact: run a POSITIVE CONTROL.** Before trusting a zero, search the same
+way for something you *know* is present. If the control also returns zero, the instrument is
+wrong and the finding is void.
+
+This is cheap, it is mechanical, and it does not depend on noticing anything. It fires on the
+dangerous case — the zero that confirms what you expected — where surprise never will. Its
+receipt: a lane was about to report that a complete `std` carrier had **no consumers**, on a
+repo-wide grep returning one file. Grepping the same way for a symbol read minutes earlier with
+their own eyes also returned nothing — because the worktree was **164 files behind `main`** and
+did not contain the file at all. Every "whole tree" measurement that session had silently been
+"my stale branch". The real answer was one consumer, not zero, and the correction arrived before
+the claim was published rather than after.
+
+Note what the control tests. Not the query — the *reachability of the subject*. Instance 8's
+original repair (re-query through a second index) would not have caught this: both indexes were
+bounded by the same missing files. **A second projection over the same absent subject reproduces
+the absence perfectly.** The control is the only instrument here that distinguishes *the thing is
+not there* from *I am not where the thing is*.
+
 **A grep pattern is a bounded query too**, and the same night produced the receipt. A lane was
 about to report that a gate did not print cargo's diagnostics, on the strength of grepping its
 log and getting zero hits. The gate prints them — prefixed `cargo|`, which their pattern did not
@@ -713,7 +733,7 @@ questions and corroborating each other rather than competing:
 
 | scope | grain | count |
 |---|---|---|
-| `src/` + `dag/`, `BuildFailed`/`RunFailed` arms | files / arms | **16 files, 68 arms** |
+| `src/` + `dag/`, `BuildFailed`/`RunFailed` arms | files / arms | **16 files, 70 arms** |
 | `src/v2/test/`, exact literal `(BuildFailed\|RunFailed\|Deferred) { actual: _, diagnostic: _ } => false` | files / arms | **19 files, 108 arms** |
 | `src/v2/test/`, arms binding `diagnostic: _` | arms | **41 arms** |
 | `src/v2/`, fold-grain fns | folds / files | **23 folds, 13 files** |
