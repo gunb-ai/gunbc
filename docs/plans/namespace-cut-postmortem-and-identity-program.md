@@ -3375,9 +3375,19 @@ the *semantic* arms it is load-bearing and only execution settles it. **Holding
 for evidence that cannot exist in the form requested looks like rigor and is a
 stall.**
 
-### 11.2n MEASURED — the cut's headline consequence has a number: 512 fully-dead provider edges, 2.5%, across 362 files, and every one is a closure edge
+### 11.2n MEASURED — the cut's frontier has a number: 512 **textually-unused** provider edges, 2.5%, across 362 files — an upper bound on what the cut can remove, not a removable population
 
-*(This heading read "~6187 dead import members across 40% of files" for two hours. That is the MEMBER grain and this section's own grain correction below retires it; a heading is the sentence most readers take away, so leaving it stating the superseded figure while the body corrects it would have been the two-accounts-of-one-fact failure at the loudest position in the row.)*
+*(This heading has been wrong twice and both corrections are recorded rather
+than swept, because the pattern is the finding. It read "~6187 dead import
+members across 40% of files" for two hours — the MEMBER grain, retired by this
+section's grain correction. It then read "512 fully-dead provider edges … and
+every one is a closure edge" for one hour, which asserted a **semantic**
+classification — dead, removable — that this section's own method correction
+says a lexical scan cannot establish (`review 56078`). A heading is the sentence
+most readers take away, so a body that corrects a headline it leaves standing is
+the two-accounts-of-one-fact failure at the loudest position in the row. The
+honest word is **textually-unused**: it names exactly what was measured and
+claims nothing about what may be deleted.)*
 
 The program has asserted architecturally that reference-derived closure differs
 from import-derived closure. **On 2026-08-26 that difference acquired a
@@ -3446,9 +3456,10 @@ Re-measured on the same scan, both grains:
 | grain | dead | total | share | files |
 |---|---|---|---|---|
 | member | 6187 | 76702 | 8.1% | 1576 |
-| **edge** — no listed member appears outside the import blocks | **512** | **20726** | **2.5%** | **362** |
+| **edge** — no listed member appears outside the import blocks (**textually-unused**, not established dead) | **512** | **20726** | **2.5%** | **362** |
 
-**So the figure to size the cut against is 2.5% and 362 files**, not 8.1% and
+**So the figure to size the cut against is 2.5% and 362 files — and it is a
+CEILING, not a work queue.** Not 8.1% and
 1576 — the consequential number overstated ~3.2x and the affected-file count
 ~4.3x. The member figure survives as a real measurement of *member-surface
 redundancy*, which is a genuine cleanup subject and not the closure one. Both
@@ -3559,8 +3570,10 @@ measured population of **one** (`gunbc.floor_component_receipt`, multiline
 spelling, deleted in the wall's own diff — and confirmed inert *for that file* by
 two byte-identical compile logs in which `std.realization_schedule` is
 typechecked either way, so it is reachable through another of that file's six
-imports). One against 512 fully-dead provider edges — at least, and at the
-grain that shapes the closure — with identical effect on the subject. The
+imports). One against **at most** 512 textually-unused provider edges — the
+grain that shapes the closure, and an upper bound rather than a population, since
+an unknown share of those edges are load-bearing closure carriers — with
+identical effect on the subject. The
 wall is still worth building — cheap, operator-steered, an unwritable degenerate
 case — but **it closes *arity-zero imports*, not "vacuous imports"**, and the
 ratio between what it closes and what it leaves is roughly one to six thousand.
