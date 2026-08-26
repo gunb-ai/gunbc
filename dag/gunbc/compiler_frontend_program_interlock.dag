@@ -30,6 +30,8 @@ type ProgramMilestone
   | NamespaceFirstSemanticWave
   | NamespaceFixForwardComplete
   | NamespaceGrammarRetired
+  | SelfHostCorpusEmitsCleanly
+  | SelfHostBehavioralEquivalenceReestablished
   | SelfHostSeedRetirement
 
 fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
@@ -43,7 +45,9 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
     NamespaceFirstSemanticWave => "namespace: first semantic wave (Step 1, deletion of the import-name universe)" as NonEmptyStr
     NamespaceFixForwardComplete => "namespace: Steps 2-4 complete (host and emit machinery, repoints, fix-forward at class grain)" as NonEmptyStr
     NamespaceGrammarRetired => "namespace: Step 5, the LAST step -- grammar and parse deletion, a no-op over a corpus that already spells nothing that way" as NonEmptyStr
-    SelfHostSeedRetirement => "self-host: S6 retirement of the v1 seed" as NonEmptyStr
+    SelfHostCorpusEmitsCleanly => "self-host S5 terminal: the whole v2 corpus emits Rust that cargo builds with zero blocking diagnostics" as NonEmptyStr
+    SelfHostBehavioralEquivalenceReestablished => "self-host: behavioral equivalence to the seed re-established on a discriminating corpus -- a clean corpus PERMITS S6 to be planned, this AUTHORIZES it" as NonEmptyStr
+    SelfHostSeedRetirement => "self-host: S6 retirement of the v1 seed, the irreversible step" as NonEmptyStr
   }
 }
 
@@ -141,6 +145,25 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
 // findable by joining the file against the programs it claims to describe.
 // That join has no mechanism today and this annotation is not one.
 //
+// THE JOIN WAS THEN PERFORMED BY A REVIEWER, AND IT FOUND A SIXTH (review 56390,
+// 2026-08-26). SelfHostSeedRetirement depended on NamespaceGrammarRetired ALONE,
+// while the self-host plan requires two further conditions before S6: that the
+// emitted Rust compiles, and that behavioral equivalence to the seed is
+// re-established. Neither existed as a milestone, so the authoritative carrier
+// permitted THE ONE IRREVERSIBLE STEP IN EITHER PROGRAM on strictly weaker
+// conditions than the plan it claims to sequence.
+//
+// The plan draws the distinction this repair turns on, and it is why these are
+// TWO milestones rather than one: a rustc-clean corpus permits S6 to be PLANNED,
+// it does not AUTHORIZE it. Compiling is a property of the emitted text;
+// equivalence is a property of what that text DOES. Fusing them would have been
+// this file's characteristic defect committed while repairing its mirror image.
+//
+// That a reviewer found this by joining the carrier to the plan is evidence FOR
+// the limit stated above rather than against it: the join is what finds
+// omissions, no census of this file can, and the join currently happens only
+// when a human or a reviewer happens to perform it.
+//
 // THE PRECEDENCE RELATION AS A TOTAL FUNCTION, not a list of edges. A list is
 // satisfied by omission -- a milestone nobody wrote an edge for silently has no
 // prerequisites, and the failure is invisible. An exhaustive match over a closed
@@ -158,7 +181,9 @@ fn milestone_prerequisites(m: ProgramMilestone) -> List<ProgramMilestone> {
     NamespaceFirstSemanticWave => [SelfHostRatchetGateEnrolled, NamespaceWaveAdmissionEnrolled, NamespaceBaselineObservationComplete]
     NamespaceFixForwardComplete => [NamespaceFirstSemanticWave]
     NamespaceGrammarRetired => [NamespaceFixForwardComplete]
-    SelfHostSeedRetirement => [NamespaceGrammarRetired]
+    SelfHostCorpusEmitsCleanly => [SelfHostRatchetGateEnrolled]
+    SelfHostBehavioralEquivalenceReestablished => [SelfHostCorpusEmitsCleanly]
+    SelfHostSeedRetirement => [NamespaceGrammarRetired, SelfHostBehavioralEquivalenceReestablished]
   }
 }
 
