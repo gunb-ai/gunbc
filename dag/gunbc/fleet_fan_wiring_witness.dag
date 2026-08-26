@@ -3,6 +3,8 @@ module gunbc.fleet_fan_wiring_witness
 import std.types { Bool, List, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.fleet_fan_tach_expectation {
+  expected_tach_headers,
+  host_fan_tach_expectation,
   srv1_fan_tach_expectation,
   srv3_fan_tach_expectation,
   srv4_fan_tach_expectation,
@@ -324,6 +326,39 @@ fn unobserved_and_not_carried_answer_differently() -> Bool {
   }
 }
 
+// THE REQUIRED TACH LIST IS A PER-HOST FACT, AND A FLEET-WIDE LITERAL GOT IT WRONG. The intent
+// carried required_tach_inputs: ["FAN1","FAN2","FAN3","FAN4"] for every host. That is exactly
+// right for srv4 and wrong for srv3 IN BOTH DIRECTIONS -- it required FAN2, an empty bay that can
+// only ever read absent, and omitted FAN5, a real fan nothing was then watching. So the same row
+// manufactured a permanent false failure and a blind spot at once, which is why this is a single
+// authority question and not a tuning one: the expectation module already answers "which headers
+// carry a fan on this host", and a literal beside it is a second answer that disagreed.
+fn required_tach_is_per_host_not_fleet_wide() -> Bool {
+  let srv3_headers = expected_tach_headers(expectation: srv3_fan_tach_expectation)
+  let srv4_headers = expected_tach_headers(expectation: srv4_fan_tach_expectation)
+  let srv3_skips_empty_bay = !srv3_headers.contains(item: "FAN2")
+  let srv3_watches_its_fifth = srv3_headers.contains(item: "FAN5")
+  let srv4_watches_its_second = srv4_headers.contains(item: "FAN2")
+  let srv4_skips_empty_bay = !srv4_headers.contains(item: "FAN5")
+  srv3_headers != srv4_headers
+    && srv3_skips_empty_bay
+    && srv3_watches_its_fifth
+    && srv4_watches_its_second
+    && srv4_skips_empty_bay
+    && srv3_headers.length() == 4
+    && srv4_headers.length() == 4
+}
+
+// AN UNMODELLED HOST HAS NO ANSWER, rather than an empty one. Returning [] would make the tach
+// requirement permanently satisfied for every machine nobody has modelled -- monitoring switched
+// off by a lookup miss, and silently.
+fn unmodelled_host_has_no_tach_expectation() -> Bool {
+  match host_fan_tach_expectation(host: srv3_fan_wiring.host) {
+    Present { value } => true
+    none => false
+  }
+}
+
 fn fan_wiring_witness() -> ProcessExit {
   if srv3_srv4_differ_by_identity_not_count()
     && unobserved_tach_is_not_an_expected_readback()
@@ -332,6 +367,8 @@ fn fan_wiring_witness() -> ProcessExit {
     && unknown_model_still_derives_control()
     && coverage_refuses_both_directions()
     && all_hosts_cover()
+    && required_tach_is_per_host_not_fleet_wide()
+    && unmodelled_host_has_no_tach_expectation()
     && label_evidence_gates_physical_inventory()
     && unobserved_tach_refuses_the_readback_population()
     && unobserved_and_not_carried_answer_differently()

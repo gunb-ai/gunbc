@@ -89,6 +89,29 @@ fn expected_tach_headers(expectation: HostFanTachExpectation) -> List<NonEmptySt
   )
 }
 
+// THE ROSTER, AND A LOOKUP THAT REFUSES RATHER THAN GUESSING. A host with no expectation row has
+// no answer here, and the arm that would return an empty list instead is the one that turns
+// "nobody modelled this machine" into "this machine expects no tach at all" -- a permanently
+// satisfied requirement, which is the quietest way to stop monitoring a fleet.
+data fleet_fan_tach_expectations: List<HostFanTachExpectation> = [
+  srv1_fan_tach_expectation,
+  srv2_fan_tach_expectation,
+  srv3_fan_tach_expectation,
+  srv4_fan_tach_expectation,
+]
+
+fn host_fan_tach_expectation(host: HostIdentity) -> HostFanTachExpectation? {
+  fold(
+    fleet_fan_tach_expectations,
+    init: none,
+    f: (acc, row) =>
+      match acc {
+        Present { value } => Present { value: value }
+        none => if row.host == host { Present { value: row } } else { none }
+      },
+  )
+}
+
 fn expected_tach_count(expectation: HostFanTachExpectation) -> Int {
   expected_tach_headers(expectation: expectation).length()
 }

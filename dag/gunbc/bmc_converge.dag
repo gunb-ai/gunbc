@@ -29,6 +29,10 @@ import extdeps.uri { Uri }
 import gunbc.bmc_intent {
   BmcControlPlaneIntent,
 }
+import gunbc.fleet_fan_tach_expectation {
+  expected_tach_headers,
+  host_fan_tach_expectation,
+}
 import gunbc.bmc_fan_projection {
   BmcFanConfigReadbackSubject,
   BmcFanDurabilityEvidence,
@@ -116,6 +120,7 @@ type BmcFanConfigPersistenceApplyRefusalCause
 type FanPolicySuitabilityRefusalCause
   = FanPolicyFirmwareMustConvergeBeforeRealizer
   | FanPolicyInstalledTachTopologyDiffersFromIntent
+  | FanPolicyTachExpectationAbsentForHost
   | FanPolicyProjectionCapabilityRefused {
       cause: BmcFanProjectionApplyRefusalCause,
     }
@@ -169,7 +174,9 @@ fn bmc_fan_policy_suitability_refusal_reason(
     FanPolicyFirmwareMustConvergeBeforeRealizer =>
       "bmc firmware must converge and be re-observed before selecting a version-specific fan-policy realizer"
     FanPolicyInstalledTachTopologyDiffersFromIntent =>
-      "bmc fan projection installed-tach topology differs from fleet intent"
+      "bmc fan projection installed-tach topology differs from this host's declared tach expectation"
+    FanPolicyTachExpectationAbsentForHost =>
+      "bmc fan apply refused: no fan tach expectation is declared for this host, so which headers must report is unknown"
     FanPolicyProjectionCapabilityRefused { cause: cause } =>
       match cause {
         BmcFanProjectionAlignmentStandingAbsent =>
@@ -399,7 +406,13 @@ fn bmc_fan_policy_apply_suitability(
       cause: FanPolicyFirmwareMustConvergeBeforeRealizer,
     }
   } else {
-    if projection.required_tach_inputs != intent.fan_policy.required_tach_inputs {
+    match host_fan_tach_expectation(host: host) {
+      none =>
+        FanPolicySuitabilityRefused {
+          cause: FanPolicyTachExpectationAbsentForHost,
+        }
+      Present { value: expectation } =>
+    if projection.required_tach_inputs != expected_tach_headers(expectation: expectation) {
       FanPolicySuitabilityRefused {
         cause: FanPolicyInstalledTachTopologyDiffersFromIntent,
       }
@@ -444,6 +457,7 @@ fn bmc_fan_policy_apply_suitability(
               }
           }
       }
+    }
     }
   }
 }
