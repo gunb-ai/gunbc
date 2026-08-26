@@ -44491,6 +44491,37 @@ fn process_cpu_ms() -> u64 {
 /// That is the attribution failure this PR's own thesis is about, introduced by this PR, caught
 /// by comparing the two runs rather than by reasoning about the code. `wall_s` was already
 /// right; only the CPU counter was absolute.
+/// The one spelling of "this reading would not read". Named rather than inlined so a check can
+/// bind to the arm that produces it: an unreadable field is `na` in every reader, and a fabricated
+/// number can only appear here by deleting this arm.
+const FLOOR_SAMPLE_UNREADABLE: &str = "na";
+
+/// ONE RENDERING FOR ONE STATE, for every numeric field of the heartbeat sample. A reading that
+/// would not read is the sentinel; a reading that read is its number. There is no third answer,
+/// and no field renders itself, so "fabricate a zero for this one field" is a change to a line
+/// that names the field -- which is what makes it detectable rather than a silent substitution.
+fn floor_sampled_field(v: Option<u64>) -> String {
+    match v {
+        Some(n) => n.to_string(),
+        None => FLOOR_SAMPLE_UNREADABLE.to_string(),
+    }
+}
+
+/// Resident kilobytes from `/proc/self/statm`, or `None` when the file will not read or parse.
+/// `None` is the ONLY absent answer -- never `Some(0)`, which is a resident set a live process
+/// cannot have and which read identically to an unreadable file before this was split out.
+fn floor_statm_rss_kb() -> Option<u64> {
+    const KB_PER_PAGE: u64 = 4;
+    std::fs::read_to_string("/proc/self/statm")
+        .ok()
+        .and_then(|m| {
+            m.split_whitespace()
+                .nth(1)
+                .and_then(|v| v.parse::<u64>().ok())
+        })
+        .map(|pages| pages * KB_PER_PAGE)
+}
+
 fn floor_resource_sample(cpu_baseline_ms: u64) -> String {
     // ONE SENTINEL FOR ONE STATE. The cgroup and vmstat readers below answer `na` when their
     // file will not read; these three answered a fabricated `0`, so `rss_kb=0` rendered
@@ -44511,23 +44542,15 @@ fn floor_resource_sample(cpu_baseline_ms: u64) -> String {
     // Fields are indexed from the field AFTER comm: utime/stime are 12/13 here, majflt is 10.
     let tick = |i: usize| f.get(i).and_then(|v| v.parse::<u64>().ok());
     let hz = 100u64;
-    let na = || "na".to_string();
-    let cpu_ms = match (tick(11), tick(12)) {
+    let na = || FLOOR_SAMPLE_UNREADABLE.to_string();
+    let cpu_ms = floor_sampled_field(match (tick(11), tick(12)) {
         (Some(utime), Some(stime)) => {
-            (((utime + stime) * 1000 / hz).saturating_sub(cpu_baseline_ms)).to_string()
+            Some(((utime + stime) * 1000 / hz).saturating_sub(cpu_baseline_ms))
         }
-        _ => na(),
-    };
-    let majflt = tick(9).map(|v| v.to_string()).unwrap_or_else(na);
-    let rss_kb = std::fs::read_to_string("/proc/self/statm")
-        .ok()
-        .and_then(|m| {
-            m.split_whitespace()
-                .nth(1)
-                .and_then(|v| v.parse::<u64>().ok())
-        })
-        .map(|pages| (pages * 4).to_string())
-        .unwrap_or_else(na);
+        _ => None,
+    });
+    let majflt = floor_sampled_field(tick(9));
+    let rss_kb = floor_sampled_field(floor_statm_rss_kb());
     // THE CGROUP CHARGE AND THE THROTTLE EVENTS, on every beat, because the runs that most need
     // them are the ones that never reach an exit line. `floor_cgroup_envelope` reports the full
     // picture at entry; these three carry the parts that CHANGE, so a killed run still leaves
