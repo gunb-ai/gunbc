@@ -721,6 +721,12 @@ fn witness_floor_tsv_upload_step(step_name: String, artifact_name: String, path:
 // jobs, so they are authored ONCE here and each job appends only the step that distinguishes it.
 // Two copies would be two definitions of one fact, free to drift the moment either is edited --
 // the §3 fork this file already closes for the step/role pair, reintroduced across jobs.
+// THE SAME ACTION PROVIDES THE SAME CAPABILITIES WHEREVER IT RUNS. The Install Rust toolchain
+// binding below declared only [Cargo, Rustfmt] while gunbc.fleet_workflow_steps ci_setup_rust_step
+// declares [Cargo, Rustc, Rustfmt, Rustup] for the identical setup_rust_action -- one action with
+// two capability stories, which is the DESIGN 3 fork. It went unnoticed because nothing here
+// consumed Rustup until the pin step did, and then the closure refused. The under-declaration is
+// corrected rather than the consumer weakened: the action really does install rustup and rustc.
 fn prepared_bound_steps() -> List<WitnessFloorBoundStep> {
   [
     WitnessFloorBoundStep {
@@ -735,13 +741,6 @@ fn prepared_bound_steps() -> List<WitnessFloorBoundStep> {
     },
     WitnessFloorBoundStep {
       step: witness_floor_toolchain_step(),
-      // THE SAME ACTION PROVIDES THE SAME CAPABILITIES WHEREVER IT RUNS. This declared only
-      // [Cargo, Rustfmt] while gunbc.fleet_workflow_steps ci_setup_rust_step declares
-      // [Cargo, Rustc, Rustfmt, Rustup] for the identical setup_rust_action -- one action with two
-      // capability stories, which is the DESIGN 3 fork. It went unnoticed because nothing in this
-      // workflow consumed Rustup until the pin step below did, and then the closure refused. The
-      // under-declaration is corrected rather than the consumer weakened: the action really does
-      // install rustup and rustc.
       role: provides_only(capabilities: [
         CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
       ]),
