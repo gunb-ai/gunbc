@@ -497,6 +497,10 @@ fn aggregate_standing_is_unindexable(a: AggregateStanding, cause: TargetStanding
 // resolves the contradiction at all fails it whichever row it prefers. The duplicate arm carries
 // both standings in collision order, which is the fact a reader needs to see that the observers
 // disagreed rather than merely repeated themselves.
+//
+// The third clause, `without_the_duplicate`, is the POSITIVE CONTROL: the same population with the
+// duplicate removed must still hold, so the two refusals above are the duplicate being caught and
+// not a join that has stopped answering.
 test fn w_duplicate_standings_refuse_rather_than_resolving_by_list_order() -> Bool {
   let green = built_target_standing(l: bazel_dep_a(), test: TestRunByFloor { disposition: Passed {} })
   let red = built_target_standing(l: bazel_dep_a(), test: TestRunByFloor { disposition: Failed {} })
@@ -518,8 +522,6 @@ test fn w_duplicate_standings_refuse_rather_than_resolving_by_list_order() -> Bo
     cause: DuplicateTargetStanding { target: bazel_dep_a(), standings: [red, green] }
   )
 
-  // POSITIVE CONTROL. The same population with the duplicate removed holds, so the refusal above
-  // is the duplicate and not a join that has stopped answering.
   let without_the_duplicate = match required_aggregate_standing(
     aggregate: three_dep_aggregate(),
     standings: [green, b_ok, c_ok]
