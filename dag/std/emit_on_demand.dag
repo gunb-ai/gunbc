@@ -148,17 +148,6 @@ data main_wet_regen_surface: InterpreterWetSurface = InterpreterWetSurface {
   }
 }
 
-data gunbc_ci_emission_surface: InterpreterWetSurface = InterpreterWetSurface {
-  id: "gunbc-ci-emission",
-  membership: DeclaredFrontier {
-    authorities: [
-      wet_surface_ref(module_path: "tools.gunbc_ci", decl_name: "main")
-    ],
-    reason: "gunbc ci is modeled, but its shell Exec.Run realization still dispatches through the seed interpreter and exact declaration-Node resolution is unavailable",
-    dissolution: unbound_dissolution(description: "the typed CI plan runs through the v2-emitted shell handler selected from its covering grant")
-  }
-}
-
 data pre_push_transport_surface: InterpreterWetSurface = InterpreterWetSurface {
   id: "pre-push-transport",
   membership: DeclaredFrontier {
@@ -185,7 +174,6 @@ data probe_bins_surface: InterpreterWetSurface = InterpreterWetSurface {
 data interpreter_wet_surfaces: List<InterpreterWetSurface> = [
   gunbc_serve_wet_surface,
   main_wet_regen_surface,
-  gunbc_ci_emission_surface,
   pre_push_transport_surface,
   probe_bins_surface
 ]
