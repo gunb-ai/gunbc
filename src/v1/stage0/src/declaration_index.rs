@@ -531,6 +531,15 @@ pub struct DeclarationIndexPopulation {
     pub citations: usize,
     /// Citations suppressed by an enumerated `PRE_EXISTING_CITATION_DEBT` row. Counted, so
     /// a reader can watch the contract shrink rather than take the roster on trust.
+    ///
+    /// THE `!is_fixture_carrier` FILTER THAT USED TO GUARD THIS IS GONE, and its absence is a
+    /// property of the row grain rather than of the current roster's contents. A row now names
+    /// its citing module, so "is this citation enrolled in the debt roster" is answered by the
+    /// row itself; a carrier-shaped pre-filter could only ever change the answer by disagreeing
+    /// with the rows, which is the paired-arm desynchronization this module already carries a
+    /// receipt for. It is not safe merely because today's debt rows happen to name no fixture
+    /// citer: were one enrolled there tomorrow, counting it is the CORRECT reading of this
+    /// field, whose subject is the roster and not the carrier.
     pub citations_pre_existing_debt: usize,
     /// Citations authored inside a witness or fixture carrier, where deliberately false
     /// text is the evidence rather than a defect. Counted, never silently dropped.
