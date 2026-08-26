@@ -41,9 +41,8 @@ import gunbc.scm.ancestry {
   DescendsFrom,
   RepositoryCommitRef,
   repository_commit_ref_eq,
-  CommitAncestryLookup,
-  AncestryKnown,
-  AncestryUnknownCommit,
+  AncestryStep,
+  RepositoryHistory,
   AncestryWalk,
   AncestryTraced,
   AncestryBrokenAt,
@@ -535,51 +534,58 @@ fn unresolved_commit_parent(commits: List<RepositoryCommit>) -> RepositoryCommit
 // so on a history containing a revert it answered with the wrong record's ancestry -- and answered
 // confidently, since a first match is a successful lookup. Resolving through commit_at_reference
 // means there is nothing to be first among: a reference denotes one row or none.
-fn repository_ancestry_lookup(
-  commits: List<RepositoryCommit>,
-  wanted: RepositoryCommitRef,
-) -> CommitAncestryLookup {
-  match commit_at_reference(commits: commits, reference: wanted.reference) {
-    Absent => AncestryUnknownCommit
-    Present { value: c } => AncestryKnown { ancestry: c.ancestry }
+// THE COMMIT LIST PROJECTS ONTO THE WALK'S CARRIER, and this is the only place the two meet.
+//
+// It replaces a `lookup` function paired with a separate reference list. That pairing let the two
+// disagree -- one answered membership, the other bounded the walk -- and the walk's own module now
+// refuses to accept them separately. Building the carrier here means a row's REFERENCE and its
+// ANCESTRY are derived in one pass from one list, so a position can never name a row whose ancestry
+// came from somewhere else.
+// THIS BUILDER IS WHERE REFERENCE UNIQUENESS IS DISCHARGED, and saying so is not decoration: the
+// carrier does not enforce it.
+//
+// `history_step_at` resolves by first match, so a RepositoryHistory carrying two rows at one
+// reference would silently answer with the earlier -- the exact defect this whole change removed,
+// one level up. It has NO PRODUCER today: every reference is minted from this fold's own index
+// counter, so two rows cannot collide, and no other production code constructs the carrier.
+//
+// It is nevertheless AUTHORABLE IN A FIXTURE, which is the honest statement of the rung (DESIGN
+// section 4b): uniqueness is an invariant of this builder, not a property of the type, so it sits at
+// mechanically-preventable-by-construction-here rather than structurally impossible. Adding a
+// uniqueness CHECK would be the wrong repair -- it would concede the duplicate is writable and guard
+// one instance of it. NEXT-RUNG TRIGGER: an unforgeable-construction wall that makes this the sole
+// constructor of RepositoryHistory, at which point the invariant moves from this comment into the
+// type and a fixture cannot express the collision either.
+fn repository_history(commits: List<RepositoryCommit>) -> RepositoryHistory {
+  RepositoryHistory {
+    steps: fold(commits, init: HistoryBuildAcc { index: 0, steps: [] }, f: fn(acc, c) {
+      HistoryBuildAcc {
+        index: acc.index + 1,
+        steps: concat(acc.steps, [AncestryStep {
+          at: RepositoryCommitRef { reference: position_reference(n: acc.index) },
+          ancestry: c.ancestry,
+        }]),
+      }
+    }).steps,
   }
 }
 
-// THE POPULATION THE WALK RANGES OVER IS ROWS. `commit_roots` returned programs, which collapsed two
-// occurrences of one program into a single member -- so a history of three records containing a
-// revert presented as two, and the walk's step budget shrank with it.
-fn commit_references(commits: List<RepositoryCommit>) -> List<RepositoryCommitRef> {
-  index_references(index: 0, remaining: commits)
-}
-
-fn index_references(index: Int, remaining: List<RepositoryCommit>) -> List<RepositoryCommitRef> {
-  fold(remaining, init: IndexRefAcc { index: index, refs: [] }, f: fn(acc, _c) {
-    IndexRefAcc {
-      index: acc.index + 1,
-      refs: concat(acc.refs, [RepositoryCommitRef { reference: position_reference(n: acc.index) }]),
-    }
-  }).refs
-}
-
-type IndexRefAcc {
+type HistoryBuildAcc {
   index: Int
-  refs: List<RepositoryCommitRef>
+  steps: List<AncestryStep>
 }
+
 
 // Answers A commit a cycle was detected from, not THE first one, matching an_uncontained_target: the
 // refusal needs one actionable example and nothing downstream depends on which, so naming an order
 // would freeze an incidental traversal into the interface.
 fn a_cyclic_commit(commits: List<RepositoryCommit>) -> RepositoryCommitRef? {
-  let history = commit_references(commits: commits)
-  fold(history, init: none, f: fn(acc, start) {
+  let history = repository_history(commits: commits)
+  fold(history.steps, init: none, f: fn(acc, step) {
     match acc {
       Present { value: _ } => acc
       Absent =>
-        match ancestry_walk(
-          start: start,
-          history: history,
-          lookup: fn(id) { repository_ancestry_lookup(commits: commits, wanted: id) },
-        ) {
+        match ancestry_walk(start: step.at, history: history) {
           AncestryRevisitsACommit { detected_from: from } => Present { value: from }
           AncestryTraced { chain: _ } => none
           AncestryBrokenAt { commit: _, missing_parent: _ } => none

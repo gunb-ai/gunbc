@@ -130,17 +130,54 @@ type CommitAncestry
 // plausible-output failure at the exact boundary a commit is supposed to be trustworthy. They are
 // blocked on a ruling; parent was not. Recording that difference is the point of this note.
 
+
 // The history this walk may traverse, supplied as the commit identities the repository holds. It is
 // a PROJECTION of the envelope's own commit list rather than a second authority: nothing here stores
 // history, and a caller that passed a different population would be describing a different
 // repository, not corrupting this one.
-type CommitAncestryLookup
-  = AncestryKnown { ancestry: CommitAncestry }
-  | AncestryUnknownCommit
-
 type AncestryStep {
   at: RepositoryCommitRef
   ancestry: CommitAncestry
+}
+
+// ONE CARRIER, SO THERE IS NOTHING FOR TWO AUTHORITIES TO DISAGREE ABOUT.
+//
+// The walk previously took a `history` list AND a `lookup` function, and that pairing was the defect:
+// `history` was consumed only as the fold's sequence, its element bound to `_unused`, so it supplied
+// the STEP BUDGET and nothing else while every membership question was answered by `lookup`. Two
+// authorities for one fact (DESIGN section 3), and they were free to disagree:
+//
+//   an EMPTY history folded zero times, so the accumulator's INITIAL value survived as the verdict
+//   and the walk announced a revisit having observed nothing at all;
+//
+//   a start ABSENT from history but known to lookup traced normally, so the arm named
+//   `AncestryStartNotInHistory` was decided by a lookup fact rather than the history fact it names;
+//
+//   a parent ABSENT from history but known to lookup was traversed instead of reaching `BrokenAt`.
+//
+// A membership check before the fold would have closed the first of those and left the third
+// constructible -- it concedes the bad state is writable and guards one instance. The carrier makes
+// the disagreement UNREPRESENTABLE instead: membership, relation and step bound all derive from
+// these rows, because there is no second place to look.
+type RepositoryHistory {
+  steps: List<AncestryStep>
+}
+
+// The single question the walk asks: is there a row at this reference, and what does it say. It
+// replaces the `lookup` parameter, and it cannot disagree with the step budget because the budget is
+// this same list.
+fn history_step_at(history: RepositoryHistory, at: RepositoryCommitRef) -> AncestryStep? {
+  fold(history.steps, init: none, f: fn(found, step) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        if repository_commit_ref_eq(left: step.at, right: at) {
+          Present { value: step }
+        } else {
+          none
+        }
+    }
+  })
 }
 
 // THREE OUTCOMES, AND THE THIRD IS THE ONE A NAIVE WALK GETS WRONG BY LOOPING FOREVER.
@@ -176,9 +213,15 @@ type AncestryWalk
   | AncestryStartNotInHistory { start: RepositoryCommitRef }
   | AncestryRevisitsACommit { detected_from: RepositoryCommitRef }
 
+// IT CARRIES THE RESOLVED ROW, NOT A BARE REFERENCE, and that is what removes an arm rather than
+// handling it. With a bare cursor the step had to look the cursor up again every iteration and answer
+// for a not-found case that the walk's own invariant makes impossible -- an arm with no producer,
+// which the previous shape filled with `AncestryStartNotInHistory` even mid-walk, where the cursor is
+// not the start. Holding the row means the only lookup is the PARENT's, whose absence is a real and
+// nameable state.
 type AncestryWalkAcc {
   chain: List<RepositoryCommitRef>
-  cursor: RepositoryCommitRef
+  current: AncestryStep
   done: Bool
   outcome: AncestryWalk
 }
@@ -195,46 +238,33 @@ type AncestryWalkAcc {
 // review names is not the same as not having the defect; the lesson here is that reading the note is
 // not either. The reversal is at the single completion point rather than at each consumer, so the
 // exported chain order -- descendant first -- is unchanged and no caller can observe the fix.
-fn ancestry_walk_step(
-  acc: AncestryWalkAcc,
-  lookup: fn(RepositoryCommitRef) -> CommitAncestryLookup,
-) -> AncestryWalkAcc {
+fn ancestry_walk_step(acc: AncestryWalkAcc, history: RepositoryHistory) -> AncestryWalkAcc {
   if acc.done {
     acc
   } else {
-    match lookup(acc.cursor) {
-      AncestryUnknownCommit =>
+    match acc.current.ancestry {
+      RootCommit =>
         AncestryWalkAcc {
           chain: acc.chain,
-          cursor: acc.cursor,
+          current: acc.current,
           done: true,
-          outcome: AncestryStartNotInHistory { start: acc.cursor },
+          outcome: AncestryTraced { chain: reverse(acc.chain) },
         }
-      AncestryKnown { ancestry: ancestry } =>
-        match ancestry {
-          RootCommit =>
+      DescendsFrom { parent: parent } =>
+        match history_step_at(history: history, at: parent) {
+          Absent =>
             AncestryWalkAcc {
               chain: acc.chain,
-              cursor: acc.cursor,
+              current: acc.current,
               done: true,
-              outcome: AncestryTraced { chain: reverse(acc.chain) },
+              outcome: AncestryBrokenAt { commit: acc.current.at, missing_parent: parent },
             }
-          DescendsFrom { parent: parent } =>
-            match lookup(parent) {
-              AncestryUnknownCommit =>
-                AncestryWalkAcc {
-                  chain: acc.chain,
-                  cursor: acc.cursor,
-                  done: true,
-                  outcome: AncestryBrokenAt { commit: acc.cursor, missing_parent: parent },
-                }
-              AncestryKnown { ancestry: _ } =>
-                AncestryWalkAcc {
-                  chain: concat([parent], acc.chain),
-                  cursor: parent,
-                  done: false,
-                  outcome: acc.outcome,
-                }
+          Present { value: next } =>
+            AncestryWalkAcc {
+              chain: concat([parent], acc.chain),
+              current: next,
+              done: false,
+              outcome: acc.outcome,
             }
         }
     }
@@ -244,29 +274,6 @@ fn ancestry_walk_step(
 // The walk is bounded by the population it walks: `history` supplies both the membership test and
 // the step budget, so the fold is total and terminates by construction rather than by a guard this
 // module has to keep correct.
-//
-// MEMBERSHIP IS DECIDED BEFORE THE WALK, AND THAT IS WHAT MAKES THE PIGEONHOLE ARM HONEST
-// (review 56225). The fallthrough below concludes "a chain longer than the population must have
-// revisited a commit". That argument needs at least one step to have been taken: with an EMPTY
-// history the fold runs zero times, `done` stays false, and the walk reported a CYCLE having looked
-// at nothing at all. An empty population cannot contain a cycle, so that was a fabricated cause --
-// the exact failure this module's own header refuses, committed in its own walker.
-//
-// The repair is not a special case for empty. The start's membership in `history` is decidable up
-// front, and answering AncestryStartNotInHistory when it is absent is what the first step would have
-// concluded anyway, since lookup would have said so. The empty history then falls out as an
-// instance -- nothing is a member of nothing -- rather than being a branch someone has to remember.
-// It also makes the arm's meaning honest: the refusal now names the population it is about, instead
-// of relying on `lookup`'s domain agreeing with `history`.
-fn repository_commit_ref_in(
-  population: List<RepositoryCommitRef>,
-  wanted: RepositoryCommitRef,
-) -> Bool {
-  fold(population, init: false, f: fn(seen, r) {
-    if seen { true } else { repository_commit_ref_eq(left: r, right: wanted) }
-  })
-}
-
 // THERE IS DELIBERATELY NO BOOLEAN ANCESTOR PREDICATE HERE, and its absence is the point.
 //
 // A `commit_is_ancestor_of` returning Bool answered `false` for FOUR different facts: a completed
@@ -285,30 +292,27 @@ fn repository_commit_ref_in(
 // answer from `ancestry_walk` and decides for itself what a broken chain means to IT, which is a
 // judgment this module cannot make on its behalf.
 
-fn ancestry_walk(
-  start: RepositoryCommitRef,
-  history: List<RepositoryCommitRef>,
-  lookup: fn(RepositoryCommitRef) -> CommitAncestryLookup,
-) -> AncestryWalk {
-  if !repository_commit_ref_in(population: history, wanted: start) {
-    AncestryStartNotInHistory { start: start }
-  } else {
-  match fold(
-    history,
-    init: AncestryWalkAcc {
-      chain: [start],
-      cursor: start,
-      done: false,
-      outcome: AncestryRevisitsACommit { detected_from: start },
-    },
-    f: fn(acc, _unused) { ancestry_walk_step(acc: acc, lookup: lookup) },
-  ) {
-    AncestryWalkAcc { chain: _, cursor: _, done: done, outcome: outcome } =>
-      if done {
-        outcome
-      } else {
-        AncestryRevisitsACommit { detected_from: start }
+fn ancestry_walk(start: RepositoryCommitRef, history: RepositoryHistory) -> AncestryWalk {
+  match history_step_at(history: history, at: start) {
+    Absent => AncestryStartNotInHistory { start: start }
+    Present { value: first } =>
+      match fold(
+        history.steps,
+        init: AncestryWalkAcc {
+          chain: [start],
+          current: first,
+          done: false,
+          outcome: AncestryRevisitsACommit { detected_from: start },
+        },
+        f: fn(acc, _budget) { ancestry_walk_step(acc: acc, history: history) },
+      ) {
+        AncestryWalkAcc { chain: _, current: _, done: done, outcome: outcome } =>
+          if done {
+            outcome
+          } else {
+            AncestryRevisitsACommit { detected_from: start }
+          }
       }
   }
-  }
 }
+
