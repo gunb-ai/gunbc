@@ -11,7 +11,10 @@ import extdeps.linux.cgroup_v2_memory {
   Instantaneous, LifetimeEpochScoped, CumulativeCounter,
   cgroup_memory_metric_kind,
 }
-import gunbc.session_demand_observe { cgroup_child_names, managed_placements, legacy_placements }
+import gunbc.session_demand_observe {
+  cgroup_child_names, managed_placements, legacy_placements,
+  cgroup_name_is_docker_scope, flat_session_candidates,
+}
 import gunbc.session_demand {
   ManagedSession, LegacyFlatSession, SessionPlacementUnclassifiable,
   SessionPlacementCensusComplete, SessionPlacementCensusIncomplete,
@@ -205,12 +208,29 @@ fn child_name_parsing_holds() -> Bool {
 // classification argument, and it needs no docker naming convention to hold.
 fn placement_classification_needs_no_naming_authority() -> Bool {
   let managed = managed_placements(identities: ["x", "y"])
-  let legacy = legacy_placements(identities: ["z"])
+  let legacy = legacy_placements(identities: ["docker-0000000000000000000000000000000000000000000000000000000000000000.scope"])
   let all_managed = all(managed, p => placement_is_managed(p: p))
   let none_guessed = all(legacy, p => placement_is_unclassifiable(p: p))
   count(managed) == 2 && count(legacy) == 1 && all_managed && none_guessed
 }
 
+// A SYSTEMD UNIT IS NOT AN UNCLASSIFIABLE SESSION, IT IS NOT A SESSION AT ALL. This is the
+// discriminating pair the live srv1 run forced: system.slice there holds 37 children, all ordinary
+// units and zero docker scopes, so a producer that fed every child into the legacy arm would mark
+// 37 containers unclassifiable and REFUSE the census of a perfectly converged host. The names below
+// are taken from that receipt, not invented.
+fn systemd_units_are_not_session_candidates() -> Bool {
+  let observed = ["cron.service", "containerd.service", "systemd-networkd.service", "systemd-udevd.service"]
+  let a_real_scope = "docker-aa3d9bb8a098135107b8f25f6e024f423ceeecf089c0773e0a5ce40f2721e8f0.scope"
+  let none_of_the_units = count(flat_session_candidates(identities: observed)) == 0
+  let the_scope_is_a_candidate = cgroup_name_is_docker_scope(name: a_real_scope)
+  let mixed = flat_session_candidates(identities: ["cron.service", a_real_scope, "containerd.service"])
+  let units_do_not_refuse_the_census = count(legacy_placements(identities: observed)) == 0
+  none_of_the_units && the_scope_is_a_candidate && count(mixed) == 1 && units_do_not_refuse_the_census
+}
+
 fn session_demand_producer_pure_half_holds() -> Bool {
-  child_name_parsing_holds() && placement_classification_needs_no_naming_authority()
+  child_name_parsing_holds()
+    && placement_classification_needs_no_naming_authority()
+    && systemd_units_are_not_session_candidates()
 }

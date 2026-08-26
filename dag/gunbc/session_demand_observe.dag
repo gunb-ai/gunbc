@@ -155,10 +155,32 @@ fn managed_placements(identities: List<NonEmptyStr>) -> List<SessionPlacement> {
   })
 }
 
+// NOT-A-SESSION AND UNCLASSIFIABLE ARE DIFFERENT STATES, and collapsing them is the
+// not-applicable-rendered-as-malformed failure DESIGN names. system.slice is mostly ORDINARY
+// SYSTEMD UNITS -- measured on srv1: 37 children, of which cron.service, containerd.service,
+// systemd-networkd.service and the rest are not containers at all. Those are not in the session
+// population and must not enter it; rendering cron.service as an unclassifiable SESSION would
+// refuse the census of every converged host in the fleet, for a reason that has nothing to do
+// with sessions.
+//
+// A candidate flat session is a docker scope. THIS NAMING IS OBSERVED, NOT INVENTED: the managed
+// slice on srv1 holds 23 children and every one is docker-<64 hex>.scope, which is the receipt
+// this branch took before asserting the convention. A docker scope found FLAT under system.slice
+// is a candidate that cgroup structure still cannot attribute to an agent session, so it stays
+// Unclassifiable and refuses the census -- which is the arm that matters, and which measured ZERO
+// on srv1 because that host is fully converged.
+fn cgroup_name_is_docker_scope(name: NonEmptyStr) -> Bool {
+  starts_with(name as String, "docker-") && ends_with(name as String, ".scope")
+}
+
+fn flat_session_candidates(identities: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  filter(identities, i => cgroup_name_is_docker_scope(name: i))
+}
+
 fn legacy_placements(identities: List<NonEmptyStr>) -> List<SessionPlacement> {
-  map(identities, i => SessionPlacementUnclassifiable {
+  map(flat_session_candidates(identities: identities), i => SessionPlacementUnclassifiable {
     identity: i,
-    cause: "flat scope under system.slice: cgroup structure alone cannot attribute this container to an agent session, and no authority in this repository models docker scope naming",
+    cause: "flat docker scope under system.slice: it is a container rather than a systemd unit, but cgroup structure alone cannot attribute it to an agent session, so it refuses the census rather than being counted as either managed or legacy",
   })
 }
 
