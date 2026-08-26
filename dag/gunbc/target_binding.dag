@@ -27,8 +27,9 @@ type TargetBinding {
 // THE REGISTRY IS INDEXED ON THE LABEL'S CANONICAL RENDERING, which is derived from the one target
 // identity rather than accepted as a second key. Construction refuses duplicate targets, a second
 // producer for one target, and bindings for unknown targets. Lookup is then one map_get, never a
-// first-match scan through the population.
-type TargetBindingIndex {
+// first-match scan through the population. sole_constructor keeps those admission facts attached
+// to the carrier: an external module cannot forge map contents that bypass the builder.
+type TargetBindingIndex sole_constructor {
   targets_by_identity: Map<String, Label>
   bindings_by_identity: Map<String, TargetBinding>
 }
