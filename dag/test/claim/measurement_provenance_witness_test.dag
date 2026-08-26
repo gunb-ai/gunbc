@@ -1,11 +1,28 @@
 module test.claim.measurement_provenance_witness
 
-import std.types { Bool, Int, String, NonEmptyStr }
+import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.measure { byte_size }
 import std.content_hash { content_hash_of_value, sha256_hex_digest }
 
 import extdeps.git.object_store { git_object_id_from_untagged_hex }
+import extdeps.toolchain.types {
+  TargetTriple,
+  ToolchainRequirement,
+  X86_64,
+  UnknownVendor,
+  Linux,
+  Gnu,
+}
+import extdeps.gnu.libc { GnuLibc }
+import extdeps.cargo { Bin }
 
+import gunbc.devboot.subject {
+  BuildSubject,
+  admit_build_subject,
+  build_subject_equal,
+  SubjectAdmitted,
+  SubjectRefused,
+}
 import gunbc.devboot.outcome {
   BuildExecutionOutcome,
   ExecutionProduced,
@@ -20,6 +37,9 @@ import gunbc.devboot.outcome {
   ArtifactMissing,
   ArtifactUnreadable,
   StoredArtifact,
+  StoredArtifactRecord,
+  DevbootWorkStatus,
+  DevbootWorkId,
   availability_permits_retrieval,
 }
 import gunbc.devboot.produce { corrupt_artifact_observation }
@@ -33,16 +53,21 @@ import gunbc.measurement_provenance {
   observation_is_bound,
 }
 
-// WHAT THIS WITNESS COVERS. observe folds two devboot retrievability observations into an
-// Observation<Value>. The claim is that the bound arm (Observed) is reachable only when BOTH
-// sides landed on ArtifactAvailable — never on the strength of a past ExecutionProduced, and
-// never when either side's bytes are missing, corrupt or unreadable — regardless of how
-// plausible the value handed to observe looks.
-//
-// The four specimens the carrier was built from appear here as four separate rows rather than
-// as one, because they fail on different axes: (3) is an instrument whose build failed, (4) is
-// a subject that could not be fetched, and (1) is the one the fold onto devboot newly closes —
-// a build that genuinely succeeded in the past, whose artifact is not the artifact now.
+// WHAT THIS WITNESS COVERS. observe folds two devboot work statuses into an Observation<Value>.
+// Two claims are under test. The first is unchanged: the bound arm (Observed) is reachable only
+// when BOTH sides landed on ArtifactAvailable — never on the strength of a past ExecutionProduced,
+// and never when either side's bytes are missing, corrupt or unreadable — regardless of how
+// plausible the value handed to observe looks. The second is new: the identity the bound arm
+// carries includes the SOURCE VINTAGE of the instrument, so two instruments whose bytes are both
+// perfectly retrievable but which were built from different trees are distinguishable at the
+// observation. That second claim is why the rows below carry BuildSubjects at all; before this
+// revision the bound arm had no subject to compare and the discriminating row was unwritable.
+
+data tree_hex_provenance_doc: String = "The two tree object ids below are REAL git tree oids, taken from the measured set in test.claim.devboot_subject_identity_witness rather than invented here — that witness read them out of this repository and records how. What these rows need of them is weaker than what that witness needs: only that they are two DISTINCT admissible tree oids, standing for an instrument built from one tree and an instrument built from another. Reusing measured values rather than minting plausible hex keeps the fixture falsifiable — an invented pair could not have failed to differ."
+
+data current_tree_hex: String = "4a712980497e1d0a45374185b2184a094cca4c8f"
+
+data stale_tree_hex: String = "96817c95aa43c3aead837ca3a8f37d77f6fc2d61"
 
 data instrument_blob_hex: String = "8a472fff9e9000600e33cc3559ecfad4ba55e3a3"
 
@@ -52,10 +77,44 @@ data instrument_sha_hex: String = "1f2e3d4c5b6a798807162534435261708f9e0d1c2b3a4
 
 data subject_sha_hex: String = "0a1b2c3d4e5f60718293a4b5c6d7e8f90112233445566778899aabbccddeeff0"
 
+// ONE BUILDER FOR EVERY SUBJECT, so a row meaning to vary the tree cannot accidentally vary a
+// toolchain, a target or a profile. It returns an option because admission refuses rather than
+// fabricates, and because the oid parser refuses too — a fixture that cast bad hex into an oid
+// would be asserting the property the parser exists to establish.
+fn a_subject(tree_hex: String) -> BuildSubject? {
+  match git_object_id_from_untagged_hex(hex: tree_hex) {
+    Absent => none
+    Present { value: oid } =>
+      match admit_build_subject(
+        tree_oid: oid,
+        package: "gunbc",
+        cargo_target: Bin { name: "gunbc" },
+        toolchain: ToolchainRequirement {
+          name: "rustup" as NonEmptyStr,
+          version: "1.89.0" as NonEmptyStr,
+        },
+        target: TargetTriple {
+          arch: X86_64,
+          vendor: UnknownVendor,
+          os: Linux,
+          env: Present { value: Gnu },
+        },
+        profile: "release",
+        features: [],
+        rustflags: [],
+        linker: none,
+        sysroot: none,
+        cargo_config: [],
+        platform_c_library: GnuLibc { version: "2.36" as NonEmptyStr },
+      ) {
+        SubjectRefused { cause } => none
+        SubjectAdmitted { subject } => Present { value: subject }
+      }
+  }
+}
+
 // ONE BUILDER FOR EVERY AVAILABLE ARM, so a row meaning to vary one axis cannot accidentally
-// vary another. It returns an option because both hex parsers refuse rather than fabricate —
-// a fixture that cast bad hex into a digest would be asserting the property the parser exists
-// to establish, which is the fabrication this repository forbids.
+// vary another. It returns an option because both hex parsers refuse rather than fabricate.
 fn an_available_artifact(tag: NonEmptyStr, blob_hex: String, sha_hex: String) -> ArtifactAvailability? {
   match git_object_id_from_untagged_hex(hex: blob_hex) {
     Absent => none
@@ -93,6 +152,24 @@ fn an_available_subject() -> ArtifactAvailability? {
   )
 }
 
+// A STATUS PAIRS THE TWO AXES WITH THE REQUEST THEY DESCRIBE, which is the whole reason observe
+// takes one rather than two loose parameters. Every row below goes through this builder, so no
+// row can quietly pair one build's execution with another build's availability — the hazard the
+// carrier's status-pairing note records.
+fn a_status(
+  id: String,
+  subject: BuildSubject,
+  execution: BuildExecutionOutcome,
+  availability: ArtifactAvailability,
+) -> DevbootWorkStatus {
+  DevbootWorkStatus {
+    work_id: id as NonEmptyStr as DevbootWorkId,
+    subject: subject,
+    execution: execution,
+    availability: availability,
+  }
+}
+
 // Specimen (3): `cargo build 2>&1 | tail -4 && next` took tail's exit status, so a failed
 // compilation proceeded as success. Typed here as what it was — a fact about the subject, for
 // which retrying without changing the source is pointless.
@@ -113,93 +190,202 @@ fn an_unfetchable_subject() -> BuildExecutionOutcome {
   }
 }
 
-fn bound(
-  instrument_execution: BuildExecutionOutcome,
-  instrument_availability: ArtifactAvailability,
-  subject_execution: BuildExecutionOutcome,
-  subject_availability: ArtifactAvailability,
-) -> Bool {
-  observation_is_bound(
-    o: observe(
-      instrument_execution: instrument_execution,
-      instrument_availability: instrument_availability,
-      subject_execution: subject_execution,
-      subject_availability: subject_availability,
-      value: 42,
-    )
-  )
+fn bound(instrument: DevbootWorkStatus, subject: DevbootWorkStatus) -> Bool {
+  observation_is_bound(o: observe(instrument: instrument, subject: subject, value: 42))
+}
+
+// THE FIXTURE EVERY ROW SHARES: an instrument built from current_tree_hex and a subject, both
+// with retrievable bytes, varied one axis at a time by the rows below.
+fn an_instrument_status(
+  tree_hex: String,
+  execution: BuildExecutionOutcome,
+  availability: ArtifactAvailability,
+) -> DevbootWorkStatus? {
+  match a_subject(tree_hex: tree_hex) {
+    Absent => none
+    Present { value: subject } =>
+      Present {
+        value: a_status(
+          id: "instrument-work",
+          subject: subject,
+          execution: execution,
+          availability: availability,
+        ),
+      }
+  }
+}
+
+fn a_subject_status(
+  execution: BuildExecutionOutcome,
+  availability: ArtifactAvailability,
+) -> DevbootWorkStatus? {
+  match a_subject(tree_hex: current_tree_hex) {
+    Absent => none
+    Present { value: subject } =>
+      Present {
+        value: a_status(
+          id: "subject-work",
+          subject: subject,
+          execution: execution,
+          availability: availability,
+        ),
+      }
+  }
+}
+
+fn an_available_subject_status() -> DevbootWorkStatus? {
+  match an_available_subject() {
+    Absent => none
+    Present { value: availability } =>
+      a_subject_status(execution: ExecutionProduced, availability: availability)
+  }
+}
+
+fn a_current_available_instrument_status() -> DevbootWorkStatus? {
+  match an_available_instrument() {
+    Absent => none
+    Present { value: availability } =>
+      an_instrument_status(
+        tree_hex: current_tree_hex,
+        execution: ExecutionProduced,
+        availability: availability,
+      )
+  }
 }
 
 // POSITIVE CONTROL. Without this, every RED below is satisfied by a predicate that refuses
 // unconditionally — one incapable of ever reporting a bound observation, which is exactly the
 // broken instrument shape this work item exists about.
 test fn both_sides_available_yields_a_bound_observation() -> Bool {
-  match an_available_instrument() {
+  match a_current_available_instrument_status() {
     Absent => false
     Present { value: instrument } =>
-      match an_available_subject() {
+      match an_available_subject_status() {
         Absent => false
-        Present { value: subject } =>
-          bound(
-            instrument_execution: ExecutionProduced,
-            instrument_availability: instrument,
-            subject_execution: ExecutionProduced,
-            subject_availability: subject,
-          )
+        Present { value: subject } => bound(instrument: instrument, subject: subject)
       }
   }
 }
 
 // THE DISCRIMINATING RED FOR SPECIMEN (3). A build that failed behind an unguarded pipe must
 // not let the downstream measurement be reported as bound to any instrument at all — there is
-// no arm on Observation carrying a StoredArtifact for the plausible value to ride along with.
+// no arm on Observation carrying a record for the plausible value to ride along with.
 test fn w_RED_a_failed_instrument_build_never_yields_a_bound_observation() -> Bool {
-  match an_available_subject() {
+  match an_instrument_status(
+    tree_hex: current_tree_hex,
+    execution: a_failed_build(),
+    availability: ArtifactMissing,
+  ) {
     Absent => false
-    Present { value: subject } =>
-      !bound(
-        instrument_execution: a_failed_build(),
-        instrument_availability: ArtifactMissing,
-        subject_execution: ExecutionProduced,
-        subject_availability: subject,
-      )
+    Present { value: instrument } =>
+      match an_available_subject_status() {
+        Absent => false
+        Present { value: subject } => !bound(instrument: instrument, subject: subject)
+      }
   }
 }
 
 // THE SAME LAW ON THE SUBJECT HALF, SPECIMEN (4). A treatment merge that refused on a shallow
 // clone must not let the baseline's numbers be reported as though they described the treatment.
 test fn w_RED_an_unfetchable_subject_never_yields_a_bound_observation() -> Bool {
-  match an_available_instrument() {
+  match a_current_available_instrument_status() {
     Absent => false
     Present { value: instrument } =>
-      !bound(
-        instrument_execution: ExecutionProduced,
-        instrument_availability: instrument,
-        subject_execution: an_unfetchable_subject(),
-        subject_availability: ArtifactMissing,
-      )
+      match a_subject_status(
+        execution: an_unfetchable_subject(),
+        availability: ArtifactMissing,
+      ) {
+        Absent => false
+        Present { value: subject } => !bound(instrument: instrument, subject: subject)
+      }
   }
 }
 
-// THE RED THE FOLD ONTO devboot NEWLY BUYS, SPECIMEN (1). The instrument's build SUCCEEDED —
+// THE RED THE FOLD ONTO devboot BOUGHT, SPECIMEN (1). The instrument's build SUCCEEDED —
 // ExecutionProduced, genuinely, in the past — and the bytes now in the store do not match the
 // digest that success recorded. That is the stale-binary specimen exactly: a past success read
-// as evidence about a present binary. The earlier revision of this carrier had no arm that
-// could tell these apart and declared the axis outside the modeled guarantee; observe now
-// selects on availability alone, so history has no vote and this refuses.
+// as evidence about a present binary. observe selects on availability alone, so history has no
+// vote and this refuses.
 test fn w_RED_a_past_build_success_does_not_bind_when_the_artifact_is_corrupt_now() -> Bool {
-  match an_available_subject() {
+  match an_instrument_status(
+    tree_hex: current_tree_hex,
+    execution: ExecutionProduced,
+    availability: corrupt_artifact_observation(
+      expected_hex: instrument_sha_hex,
+      observed_hex: subject_sha_hex,
+    ),
+  ) {
     Absent => false
-    Present { value: subject } =>
-      !bound(
-        instrument_execution: ExecutionProduced,
-        instrument_availability: corrupt_artifact_observation(
-          expected_hex: instrument_sha_hex,
-          observed_hex: subject_sha_hex,
-        ),
-        subject_execution: ExecutionProduced,
-        subject_availability: subject,
-      )
+    Present { value: instrument } =>
+      match an_available_subject_status() {
+        Absent => false
+        Present { value: subject } => !bound(instrument: instrument, subject: subject)
+      }
+  }
+}
+
+fn observed_instrument_matches(o: Observation<Int>, expected: BuildSubject) -> Bool {
+  match o {
+    Observed { instrument, subject, value } =>
+      build_subject_equal(left: instrument.subject, right: expected)
+    InstrumentNotHeld { execution, availability } => false
+    SubjectNotHeld { execution, availability } => false
+  }
+}
+
+// THE ROW THIS REVISION EXISTS FOR, AND IT IS A COUNTER PAIR RATHER THAN A SINGLE RED. The
+// fourth specimen is an instrument whose bytes are beyond reproach and whose SOURCE TREE is
+// stale: it binds, correctly, because the bytes really are retrievable — refusing it here would
+// be this carrier inventing a question about the reader's intent that it has no way to answer.
+// What must hold is that the observation now CARRIES enough to tell the two apart. So both
+// directions are asserted: an instrument built from the current tree matches the current
+// subject, and one built from a different tree does not. Asserting only the second would be
+// satisfied by a comparison that is false for everything, which is the broken-instrument shape.
+// Before this revision neither conjunct was writable — the bound arm had no subject at all.
+test fn a_bound_observation_carries_the_instrument_source_vintage() -> Bool {
+  match a_subject(tree_hex: current_tree_hex) {
+    Absent => false
+    Present { value: current_subject } =>
+      match an_available_instrument() {
+        Absent => false
+        Present { value: availability } =>
+          match an_available_subject_status() {
+            Absent => false
+            Present { value: measured } =>
+              match an_instrument_status(
+                tree_hex: current_tree_hex,
+                execution: ExecutionProduced,
+                availability: availability,
+              ) {
+                Absent => false
+                Present { value: current_instrument } =>
+                  match an_instrument_status(
+                    tree_hex: stale_tree_hex,
+                    execution: ExecutionProduced,
+                    availability: availability,
+                  ) {
+                    Absent => false
+                    Present { value: stale_instrument } =>
+                      observed_instrument_matches(
+                        o: observe(
+                          instrument: current_instrument,
+                          subject: measured,
+                          value: 42,
+                        ),
+                        expected: current_subject,
+                      )
+                      && !observed_instrument_matches(
+                        o: observe(
+                          instrument: stale_instrument,
+                          subject: measured,
+                          value: 42,
+                        ),
+                        expected: current_subject,
+                      )
+                  }
+              }
+          }
+      }
   }
 }
 
@@ -208,16 +394,40 @@ test fn w_RED_a_past_build_success_does_not_bind_when_the_artifact_is_corrupt_no
 // Asserted rather than assumed, since DESIGN section 5 forbids a failure arm absorbing a second
 // failure into silence.
 test fn a_doubly_unavailable_fold_reports_the_instrument_refusal() -> Bool {
-  match observe(
-    instrument_execution: a_failed_build(),
-    instrument_availability: ArtifactMissing,
-    subject_execution: an_unfetchable_subject(),
-    subject_availability: ArtifactMissing,
-    value: 42,
+  match an_instrument_status(
+    tree_hex: current_tree_hex,
+    execution: a_failed_build(),
+    availability: ArtifactMissing,
   ) {
-    InstrumentNotHeld { execution, availability } => true
-    SubjectNotHeld { execution, availability } => false
-    Observed { instrument, subject, value } => false
+    Absent => false
+    Present { value: instrument } =>
+      match a_subject_status(
+        execution: an_unfetchable_subject(),
+        availability: ArtifactMissing,
+      ) {
+        Absent => false
+        Present { value: subject } =>
+          match observe(instrument: instrument, subject: subject, value: 42) {
+            InstrumentNotHeld { execution, availability } => true
+            SubjectNotHeld { execution, availability } => false
+            Observed { instrument, subject, value } => false
+          }
+      }
+  }
+}
+
+fn bound_with_instrument_availability(availability: ArtifactAvailability) -> Bool {
+  match an_instrument_status(
+    tree_hex: current_tree_hex,
+    execution: ExecutionProduced,
+    availability: availability,
+  ) {
+    Absent => false
+    Present { value: instrument } =>
+      match an_available_subject_status() {
+        Absent => false
+        Present { value: subject } => bound(instrument: instrument, subject: subject)
+      }
   }
 }
 
@@ -230,44 +440,26 @@ test fn a_doubly_unavailable_fold_reports_the_instrument_refusal() -> Bool {
 test fn binding_agrees_with_devboot_availability_authority_on_every_arm() -> Bool {
   match an_available_instrument() {
     Absent => false
-    Present { value: instrument } =>
-      match an_available_subject() {
-        Absent => false
-        Present { value: subject } =>
-          (bound(
-            instrument_execution: ExecutionProduced,
-            instrument_availability: instrument,
-            subject_execution: ExecutionProduced,
-            subject_availability: subject,
-          ) == availability_permits_retrieval(availability: instrument))
-          && (bound(
-            instrument_execution: ExecutionProduced,
-            instrument_availability: ArtifactMissing,
-            subject_execution: ExecutionProduced,
-            subject_availability: subject,
-          ) == availability_permits_retrieval(availability: ArtifactMissing))
-          && (bound(
-            instrument_execution: ExecutionProduced,
-            instrument_availability: ArtifactUnreadable { detail: "store read returned EIO" },
-            subject_execution: ExecutionProduced,
-            subject_availability: subject,
-          ) == availability_permits_retrieval(
-            availability: ArtifactUnreadable { detail: "store read returned EIO" }
-          ))
-          && (bound(
-            instrument_execution: ExecutionProduced,
-            instrument_availability: corrupt_artifact_observation(
-              expected_hex: instrument_sha_hex,
-              observed_hex: subject_sha_hex,
-            ),
-            subject_execution: ExecutionProduced,
-            subject_availability: subject,
-          ) == availability_permits_retrieval(
-            availability: corrupt_artifact_observation(
-              expected_hex: instrument_sha_hex,
-              observed_hex: subject_sha_hex,
-            )
-          ))
-      }
+    Present { value: available } =>
+      (bound_with_instrument_availability(availability: available)
+        == availability_permits_retrieval(availability: available))
+      && (bound_with_instrument_availability(availability: ArtifactMissing)
+        == availability_permits_retrieval(availability: ArtifactMissing))
+      && (bound_with_instrument_availability(
+        availability: ArtifactUnreadable { detail: "store read returned EIO" }
+      ) == availability_permits_retrieval(
+        availability: ArtifactUnreadable { detail: "store read returned EIO" }
+      ))
+      && (bound_with_instrument_availability(
+        availability: corrupt_artifact_observation(
+          expected_hex: instrument_sha_hex,
+          observed_hex: subject_sha_hex,
+        )
+      ) == availability_permits_retrieval(
+        availability: corrupt_artifact_observation(
+          expected_hex: instrument_sha_hex,
+          observed_hex: subject_sha_hex,
+        )
+      ))
   }
 }
