@@ -5280,3 +5280,89 @@ to one transaction; what *cannot* happen later is **recovering** correspondence 
 the constraint. Where they would conflict — an artifact that serializes lineage and is joined days
 later — **§11.2ac governs and that artifact is admissible**, because the lineage travelled with it
 rather than being rediscovered.
+
+### 11.2ae ESCALATED — Step 2 passes the purpose test and is **presumptively a refused class**; the freeze admission is an operator decision, not a lane's
+
+The two judgments are separate, and collapsing them is what a lane is tempted to do:
+
+```
+PURPOSE TEST          YES, unequivocally — necessary construction for the ratified v2 namespace cut
+FREEZE ADMISSION      NOT AUTOMATIC — a required field on exported v1 `Node` is presumptively
+                      PublicSurfaceGrowth, a REFUSED class
+```
+
+Verified at source: `gunbc.v1_maintenance_standing` lists `PublicSurfaceGrowth` among the refused
+classes, and `v1_maintenance_vocabulary_shape_note` states the ordering plainly — **"Any refusal
+dominates every admission."** The 2026-08-20 purpose ruling widened *which shapes count as serving
+the program*; it explicitly left the refused classes "untouched" and "dominant." So the purpose test
+being satisfied **does not admit this change**, and holding dispatch was correct.
+
+**THE ALTERNATIVES ARE EXHAUSTED, WHICH IS WHY THIS IS A REQUEST RATHER THAN A QUESTION.** Each of
+these is a ruling or a measurement already in this document, not a fresh argument:
+
+```
+graph-level P is ruled                                       §11.2ac
+the graph X consumes is not occurrence-bearing               §11.2ab (measured)
+no lawful post-hoc correspondence key exists                 §11.2ac (the dichotomy)
+a sidecar cannot be rejoined to X by name/span/structure/
+  path/content — all forbidden identity inputs               §11.2aa (verified law)
+a bounded partial carrier does not make the graph
+  occurrence-bearing                                         below
+```
+
+So **refusing the field refuses the namespace cut's only admissible correspondence construction** —
+it is not choosing a cheaper implementation over a more expensive one. That is what makes it direct
+support for v2 self-host rather than completion of an unrelated v1 feature.
+
+**SCOPE, IF ADMITTED: THE WHOLE `Node` SURFACE, WITH A BOUNDED MINTED POPULATION.** Not the node
+kinds X happens to decide over today.
+
+```
+structural surface   every Node carries a REQUIRED NodeOccurrenceIdentity
+semantic population  authored/projected → OccurrenceMinted · compiler-created → OccurrenceSynthetic
+```
+
+Four reasons a node-kind subset is wrong, and the first two are the load-bearing ones:
+
+1. **It encodes today's incomplete resolver coverage as the ontology, and absence becomes
+   self-preserving:** X does not decide `Type` declarations → those nodes get no identity → X can
+   never decide them exactly → the absence is then cited as why they stay outside the carrier.
+   §11.2u already showed those categories are *producer gaps*, not semantic irrelevance. **The
+   carrier must describe the language graph, not the current resolver's coverage.**
+2. **P needs graph provenance, not lookup-site provenance** — preserved nodes, rewritten references,
+   inserted segments, retired imports, copied containers and ancestors, rebuilt nodes whose children
+   changed. Most are not lookup subjects. Identity only on nodes presented to X leaves the transform
+   crossing identityless regions and **reconstructing lineage at their boundaries** — the forbidden
+   move, reintroduced by scoping.
+3. **Rebuild preservation is independent of node kind.** The law is about *origin* — rebuild of an
+   authored node preserves `Minted`, a fresh compiler artifact is `Synthetic` — not about whether the
+   shape is `ExprVar`, a type head, or a callable.
+4. **A partial carrier needs an absorbing absence arm.** `identity: NodeOccurrenceIdentity?` forces
+   every consumer to decide whether absence means genuinely synthetic, not yet enrolled, dropped
+   during rebuild, category unsupported, or producer never ran — **recreating precisely the
+   conflation the closed `OccurrenceSynthetic | OccurrenceMinted` carrier avoids.**
+
+And the broad compile fallout is **the wall, not incidental cost**: every bare `Node {` literal and
+every builder accounting for a required field is what makes a future identity drop **loud**. A
+bounded subset produces a smaller diff by leaving most identity-dropping construction sites
+type-correct — which is the §11.2y construction ruling applied at scale.
+
+**DO NOT FILL 375 SITES WITH `OccurrenceSynthetic`.** A mechanical default would compile and
+**silently erase the distinction the field exists to carry.** The construction partition:
+
+| construction kind | required behaviour |
+|---|---|
+| parser creates an authored semantic node | constructed, then stamped `OccurrenceMinted` exactly once |
+| builder updates/rebuilds an existing node | **preserve the input identity** |
+| builder creates a genuinely compiler-synthetic node | `OccurrenceSynthetic` |
+| projector copies or rewrites a source occurrence | mint target-subject identity **and emit provenance from source** |
+| projector inserts qualifier syntax | mint target-subject identity, first-class inserted, with its cause |
+| deserialization/transport of an occurrence-bearing graph | carry the identity; **never silently synthesize one** |
+
+Field spelling: `occurrence_identity: NodeOccurrenceIdentity` — **not optional, not defaultable**
+(§11.2y).
+
+**STATUS: ESCALATED, NOT DISPATCHED.** This lane does not hold the authority and will not manufacture
+it by re-reading the purpose rule until it yields the answer it wants — which is exactly what
+`v1_maintenance_standing` warns of when it names the danger of an active-maintenance arm becoming an
+absorbing one if every proposal classifies as admissible.
