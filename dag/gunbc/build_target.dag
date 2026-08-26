@@ -2,7 +2,7 @@ module gunbc.build_target
 
 import extdeps.bazel.label {
   Label, RootPackage, TargetName, render_label, label_eq,
-  target_label_is_canonical,
+  label_is_canonical,
 }
 import extdeps.bazel.test_status {
   BlazeTestStatus,
@@ -351,7 +351,7 @@ type AggregateStanding
 // trip, and `Label` is a freely constructible record whose segments are only `NonEmptyStr` — so
 // `PackagePath(["a", "b"]) + "c"` and `PackagePath(["a/b"]) + "c"` render the same String, and
 // `label_eq` calls them equal too because its package comparison renders before it compares.
-// `target_label_is_canonical` is the one authority for that precondition and is REUSED from
+// `label_is_canonical` is the one authority for that precondition and is REUSED from
 // `extdeps.bazel.label` rather than copied: canonicality is a property of the cited label grammar
 // — `render_label`'s own header already documents `parse(render(l)) == l` as what it guarantees —
 // so it is stated once beside that grammar and read here. A second canonicality predicate in a
@@ -383,7 +383,7 @@ fn index_standing(acc: TargetStandingIndexAcc, standing: TargetStanding) -> Targ
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
-      if !target_label_is_canonical(target: standing.target) {
+      if !label_is_canonical(label: standing.target) {
         TargetStandingIndexAcc {
           index: acc.index
           refusal: Present { value: StandingLabelNotCanonical { target: standing.target } }
@@ -441,7 +441,7 @@ type TargetStandingLookup
   | StandingLookupLabelNotCanonical { target: Label }
 
 fn target_standing_lookup(index: TargetStandingIndex, target: Label) -> TargetStandingLookup {
-  if !target_label_is_canonical(target: target) {
+  if !label_is_canonical(label: target) {
     StandingLookupLabelNotCanonical { target: target }
   } else {
     match map_get(index.standings_by_identity, render_label(l: target)) {
