@@ -3578,6 +3578,52 @@ wall is still worth building — cheap, operator-steered, an unwritable degenera
 case — but **it closes *arity-zero imports*, not "vacuous imports"**, and the
 ratio between what it closes and what it leaves is roughly one to six thousand.
 
+### 11.2o CONFIRMED — the new data-reference resolver models its causes exactly, then collapses all three into `InternalError` at the one place an author reads
+
+Reported by `jolly-deer-475` as *the ambiguity refusal is emitted as
+`InternalError`*, and confirmed here by source read on main — but the confirmed
+shape is **worse than the report**, and in a way that matters for this cut.
+
+The report reads as *this class has no stable identity to key on*. It has two.
+`v1.compiler.emit_rust` declares a purpose-built cause vocabulary —
+`DataReferenceUnresolvableCause = DataReferenceAmbiguous { modules } |
+DataReferenceVisibilityBudgetExhausted` — under a header that argues, correctly
+and at length, why the cause must be **typed** rather than flattened into a
+module list: *an ambiguity names the declarations the author must choose between,
+and an exhausted visibility walk names no declarations at all because it never
+finished looking; a list that is empty for one reason and populated for another
+is the `Bool` with nowhere to put "not asked".* And `v1.compiler.infer` has
+carried an `AmbiguousReference { name, candidates, span }` diagnostic variant all
+along, in live use.
+
+**The distinction is carried faithfully through every intermediate type —
+`DataRefAmbiguous`, `ConstantFoldAmbiguousDataReference`,
+`ParamDefaultAmbiguousDataReference`, `UnresolvableDataReference` — and then all
+three terminal arms emit `InternalError`.** Ambiguity, exhausted visibility
+budget, and absence render as one variant whose meaning to a reader is *the
+compiler has a bug*.
+
+**This is not a missing vocabulary; it is a modeled distinction discarded at the
+boundary where it was the whole point.** Every argument in that module's own
+header for typing the cause applies verbatim to the diagnostic, and the module
+wins the argument four types deep and loses it in the last expression. The tell
+generalizes: **a carefully typed cause chain terminating in a single generic
+diagnostic is the modeling equivalent of computing a precise answer and printing
+`⊤`** — the state-space work was done, and the one consumer who needed it gets
+none of it.
+
+**Why it is this program's problem and not only that module's.** *Becomes
+ambiguous* is one of the delta wall's four acceptance conditions (§11.2n): the
+wall must distinguish *this occurrence still binds to the same declaration* from
+*this occurrence now has two candidates* from *this occurrence no longer
+resolves*. A resolver that renders its own ambiguity as an internal error is
+teaching the corpus that ambiguity has no author-facing identity — and the cut
+turns ambiguity from an edge case into a **routine, expected outcome** of
+reference-derived resolution, since removing the import lists removes exactly the
+mechanism that was disambiguating by hand. The repair is one arm per cause at
+the three emission points, reusing `AmbiguousReference` rather than minting a
+fifth spelling.
+
 ### 11.3 The dispatch protocol
 
 Every dispatch across a lane boundary carries five lines, and a dispatch without them is refused rather than interpreted:
