@@ -22,7 +22,11 @@ pub use v1_stage0_extdeps_languages::*;
 pub use v1_stage0_runtime::*;
 pub use v1_stage0_std_core::*;
 pub use v1_stage0_std_surface::*;
+pub use v1_stage0_v1_artifact::*;
 
+#[rustfmt::skip]
+#[path = "../../stage0/src/v1_compiler_coercion.rs"]
+pub mod v1_compiler_coercion;
 #[rustfmt::skip]
 #[path = "../../stage0/src/v1_compiler_infer_emit_info.rs"]
 pub mod v1_compiler_infer_emit_info;
@@ -44,3 +48,6 @@ pub mod v1_compiler_infer_sigs;
 #[rustfmt::skip]
 #[path = "../../stage0/src/v1_compiler_infer_types.rs"]
 pub mod v1_compiler_infer_types;
+#[rustfmt::skip]
+#[path = "../../stage0/src/v1_compiler_type_head_exposure.rs"]
+pub mod v1_compiler_type_head_exposure;

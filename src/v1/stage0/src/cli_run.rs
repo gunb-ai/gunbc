@@ -47,6 +47,8 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
+#[path = "declaration_index.rs"]
+pub mod declaration_index;
 pub(crate) mod floor_discovery_snapshot;
 pub(crate) mod materialization_provider_consumer;
 #[path = "phase_profile.rs"]
@@ -1283,52 +1285,6 @@ mod process_workspace_root_tests {
             super::CLI_RUN_SELECTED_CLOSURE_OVERLAP_SCAFFOLD_MARKER,
             "cli_run_selected_closure_overlap_probe"
         );
-    }
-
-    /// THE PLANT MUST BE A DEFECT, not a shape. If the planted module compiled clean, the
-    /// census's `PlantedDefectUnobserved` refusal would be guarding a control that can never fire,
-    /// and the whole instrument would be back to a probe whose RED and its absence look alike.
-    ///
-    /// This asserts the plant's CONTENT rather than merely that it parses: the callee name it
-    /// calls must be absent from the module, which is the property that makes the compiler judge
-    /// it. A plant edited into something declared would pass any "it has a body" assertion.
-    #[test]
-    fn planted_control_source_calls_a_name_it_does_not_declare() {
-        let planted = super::corpus_judgment_planted_source();
-        let content = &planted.content;
-        assert!(
-            content.contains(&format!("module {}", super::CORPUS_JUDGMENT_PLANTED_MODULE)),
-            "the plant must be the module the census excludes and requires: {content}"
-        );
-        let callee = "corpus_type_judgment_absent_callee_zzz";
-        assert!(
-            content.contains(callee),
-            "the plant must call the absent name: {content}"
-        );
-        assert!(
-            !content.contains(&format!("fn {callee}")),
-            "the plant must NOT declare the name it calls — a declared callee compiles clean and \
-             the control silently stops discriminating: {content}"
-        );
-    }
-
-    /// The join key is the whole of constraint 2, so its rendering is asserted rather than trusted:
-    /// a key that dropped the offsets would silently degrade an identity join into a per-file
-    /// count, which is the comparison DESIGN rules out as an oracle.
-    #[test]
-    fn judgment_site_identity_carries_file_offsets_and_class() {
-        let site = super::CorpusJudgmentSite {
-            file: "dag/std/x.dag".to_string(),
-            start: 12,
-            end: 34,
-            line: 3,
-            col: 5,
-            class: "TypeMismatch".to_string(),
-            subject_name: "Foo".to_string(),
-            severity: super::CorpusJudgmentSeverity::Blocking,
-            module: "std.x".to_string(),
-        };
-        assert_eq!(site.identity(), "dag/std/x.dag:12:34:TypeMismatch:Foo");
     }
 
     #[test]
@@ -4377,7 +4333,7 @@ fn witness_layer_roots_compile_clean_sources_for_plan(
 }
 
 /// Test-only inject: append an unresolved-import module to the compile-clean closure so
-/// `install_floor_compile_clean_receipt` + `consume_floor_compile_clean_gate_verdict` can be
+/// `install_floor_compile_clean_receipt` + `install_or_consume_floor_compile_clean_gate_receipt` can be
 /// proven end-to-end (§5 discriminating RED) without mutating the workspace tree.
 fn append_test_floor_compile_clean_inject(sources: &mut Vec<Rc<v1_compiler_compile::SourceFile>>) {
     if std::env::var("GUNBC_TEST_FLOOR_COMPILE_CLEAN_INJECT_UNRESOLVED")
@@ -4401,6 +4357,25 @@ enum FloorCompileCleanReceipt {
     Compiled { ok: bool, failure_detail: String },
 }
 
+/// Host mirror of `gunbc.ci_gate` `GateReceipt` — what a CI gate answers to the substrate.
+///
+/// The three arms are three OWNERS, not three severities. `Clean`/`Failed` are the gate
+/// having reached its subject and decided (`GateObserved`); `NotApplicable` is the gate's
+/// own scope disposition selecting nothing to check; `NotRun` is could-not-measure — the
+/// instrument never arrived at its subject. The predecessors of this type collapsed all
+/// four into a `bool` plus a second `String` builtin over the same global, so "the gate
+/// did not run in this process" and "the compile found hard diagnostics" rendered
+/// identically at the `.dag` call site (DESIGN §5, execution-provenance loss). `NotRun`
+/// still stops the line — `gate_receipt_exit` refuses it — it simply stops it in its own
+/// vocabulary instead of the subject's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GateReceipt {
+    Clean,
+    Failed { detail: String },
+    NotApplicable { reason: String },
+    NotRun { cause: String },
+}
+
 static FLOOR_COMPILE_CLEAN_RECEIPT: Mutex<Option<FloorCompileCleanReceipt>> = Mutex::new(None);
 
 static GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL: Mutex<Option<String>> = Mutex::new(None);
@@ -4411,15 +4386,46 @@ pub fn record_generated_artifact_drift_gate_failure_detail(detail: String) {
     }
 }
 
-pub fn consume_generated_artifact_drift_gate_failure_detail() -> String {
+#[cfg(test)]
+fn reset_generated_artifact_drift_gate_detail_for_test() {
+    if let Ok(mut guard) = GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
+        *guard = None;
+    }
+}
+
+/// The clean-side counterpart of the recorder above. It exists so that "ran, no drift" is
+/// WRITTEN rather than inferred from the absence of a failure detail: without it the
+/// global's `None` carries both "clean" and "never ran", which is the conflation this
+/// retype exists to close, one layer down from the builtin.
+pub fn record_generated_artifact_drift_gate_clean() {
+    if let Ok(mut guard) = GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
+        *guard = Some(String::new());
+    }
+}
+
+/// Gate consumer: the drift gate body records a located reason on the failing side and
+/// records NOTHING on the clean side, so the global's `None` is genuinely two states —
+/// "the body ran and found no drift" is indistinguishable from "the body never ran" at
+/// this seam. The predecessor answered a `String` and papered the second one over with
+/// the prose "gate body did not run in this process", which is a fabricated plausible
+/// output standing exactly where the distinction was lost. It is not reconstructible from
+/// the global alone, so the honest arm is `NotRun`: the gate body is the only thing that
+/// can establish it ran, and it establishes that by recording — the clean side is recorded
+/// by `record_generated_artifact_drift_gate_clean`.
+pub fn consume_generated_artifact_drift_gate_receipt() -> GateReceipt {
     match GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
-        Ok(guard) => guard.clone().unwrap_or_else(|| {
-            "generated-artifact drift failure detail unavailable (gate body did not run in this process)"
-                .to_string()
-        }),
-        Err(e) => format!(
-            "generated-artifact drift failure detail refused: gate detail lock poisoned ({e})"
-        ),
+        Ok(guard) => match guard.as_ref() {
+            Some(detail) if detail.is_empty() => GateReceipt::Clean,
+            Some(detail) => GateReceipt::Failed {
+                detail: detail.clone(),
+            },
+            None => GateReceipt::NotRun {
+                cause: "generated-artifact drift gate: no in-run observation recorded (the gate body did not run in this process)".to_string(),
+            },
+        },
+        Err(e) => GateReceipt::NotRun {
+            cause: format!("generated-artifact drift gate: detail lock poisoned ({e})"),
+        },
     }
 }
 
@@ -4754,16 +4760,31 @@ pub fn floor_compile_clean_receipt_installed() -> bool {
         .unwrap_or(false)
 }
 
-/// Gate consumer: reads the receipt from `install_floor_compile_clean_receipt` only.
-/// Refuses when no receipt exists — never runs a second compile.
-pub fn consume_floor_compile_clean_gate_verdict() -> bool {
+/// Gate consumer for the floor's ONE whole-tree `--target dag` compile.
+///
+/// IT MAY RUN THAT COMPILE. When `claim_executor` armed `FLOOR_COMPILE_CLEAN_LAZY_INSTALL`
+/// this call installs the receipt on first consume, which is a whole-tree compile — the name
+/// says `install_or_consume` for that reason. The two functions this replaces were named
+/// `consume_*` and documented as "reads the receipt only ... never runs a second compile",
+/// which was false of the first of them and invisible at the `.dag` call site; a reader had
+/// no way to see that a `Bool` read could cost a whole-tree compile.
+///
+/// The other half of the replacement is the return type. `consume_floor_compile_clean_gate_verdict`
+/// answered `bool`, folding FIVE states into `false` — lock poisoned, install failed, no
+/// receipt at all, the receipt's typed `Refused`, and a real `Compiled { ok: false }` — and
+/// folding `Skipped` into `true`; its located detail arrived through a SECOND builtin over
+/// the same global, so recovering one fact took two correlated reads. Here the detail rides
+/// the arm that produced it and cannot be read without it, and the three states with
+/// different owners are three arms.
+pub fn install_or_consume_floor_compile_clean_gate_receipt() -> GateReceipt {
     if FLOOR_COMPILE_CLEAN_LAZY_INSTALL.load(Ordering::SeqCst)
         && !floor_compile_clean_receipt_installed()
     {
         if let Err(msg) = install_floor_compile_clean_receipt() {
             if !floor_compile_clean_receipt_installed() {
-                eprintln!("compile-clean gate: refused — receipt install failed ({msg})");
-                return false;
+                return GateReceipt::NotRun {
+                    cause: format!("compile-clean gate: receipt install failed ({msg})"),
+                };
             }
             // Serial `run_walk` today; if a future scheduler fans out batch-1, a concurrent
             // lazy install may win first — consume the installed receipt, do not refuse.
@@ -4772,51 +4793,35 @@ pub fn consume_floor_compile_clean_gate_verdict() -> bool {
     let guard = match FLOOR_COMPILE_CLEAN_RECEIPT.lock() {
         Ok(g) => g,
         Err(e) => {
-            eprintln!("compile-clean gate: refused — receipt lock poisoned ({e})");
-            return false;
+            return GateReceipt::NotRun {
+                cause: format!("compile-clean gate: receipt lock poisoned ({e})"),
+            };
         }
     };
     match guard.as_ref() {
-        None => {
-            eprintln!(
-                "compile-clean gate: refused — no in-run compile receipt (gate must consume the executor's one whole-tree --target dag compile)"
-            );
-            false
-        }
-        Some(FloorCompileCleanReceipt::Skipped { reason }) => {
-            eprintln!("compile-clean gate: skipped ({reason})");
-            true
-        }
-        Some(FloorCompileCleanReceipt::Refused { reason }) => {
-            eprintln!("compile-clean gate: refused ({reason})");
-            false
-        }
-        Some(FloorCompileCleanReceipt::Compiled { ok, .. }) => *ok,
-    }
-}
-
-/// Failure-receipt companion for the compile-clean gate: reads the in-run receipt only.
-pub fn consume_floor_compile_clean_gate_failure_detail() -> String {
-    let guard = match FLOOR_COMPILE_CLEAN_RECEIPT.lock() {
-        Ok(g) => g,
-        Err(e) => {
-            return format!("compile-clean failure detail refused: receipt lock poisoned ({e})");
-        }
-    };
-    match guard.as_ref() {
-        None => "compile-clean failure detail unavailable: no in-run compile receipt".to_string(),
-        Some(FloorCompileCleanReceipt::Skipped { reason }) => {
-            format!("compile-clean gate skipped: {reason}")
-        }
-        Some(FloorCompileCleanReceipt::Refused { reason }) => reason.clone(),
+        None => GateReceipt::NotRun {
+            cause: "compile-clean gate: no in-run compile receipt (the gate consumes the executor's one whole-tree --target dag compile, and it was never installed in this process)".to_string(),
+        },
+        Some(FloorCompileCleanReceipt::Skipped { reason }) => GateReceipt::NotApplicable {
+            reason: reason.clone(),
+        },
+        Some(FloorCompileCleanReceipt::Refused { reason }) => GateReceipt::NotRun {
+            cause: reason.clone(),
+        },
         Some(FloorCompileCleanReceipt::Compiled {
             ok: true,
             failure_detail: _,
-        }) => String::new(),
+        }) => GateReceipt::Clean,
         Some(FloorCompileCleanReceipt::Compiled {
             ok: false,
             failure_detail,
-        }) => failure_detail.clone(),
+        }) => GateReceipt::Failed {
+            detail: if failure_detail.is_empty() {
+                "dag compile-clean gate failed: compile receipt records failure with no located diagnostic".to_string()
+            } else {
+                failure_detail.clone()
+            },
+        },
     }
 }
 
@@ -5095,6 +5100,10 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             "ConstructorCallAdmissionRefused"
         }
         CompilerDiagnostic::AdmitCallersEntryNotDeclRef { .. } => "AdmitCallersEntryNotDeclRef",
+        CompilerDiagnostic::DeclaredTypeNotInhabited { .. } => "DeclaredTypeNotInhabited",
+        CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { .. } => {
+            "DeclaredTypeInhabitanceUndecided"
+        }
         CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
         CompilerDiagnostic::AmbiguousReference { .. } => "AmbiguousReference",
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { .. } => {
@@ -5151,6 +5160,8 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             constructor_decl_name,
             ..
         } => constructor_decl_name.clone(),
+        CompilerDiagnostic::DeclaredTypeNotInhabited { position, .. } => position.clone(),
+        CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position, .. } => position.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { candidates, .. } => {
@@ -5265,7 +5276,7 @@ pub fn witness_layer_roots_compile_clean_check() -> bool {
 
 /// Emit leg: `--target dag` compile over witness layer roots without shell or disk write.
 /// Direct-run oracle for non-floor contexts (cargo tests, enrolled witnesses). The CI
-/// floor gate consumes `consume_floor_compile_clean_gate_verdict` instead (Lever A).
+/// floor gate consumes `install_or_consume_floor_compile_clean_gate_receipt` instead (Lever A).
 pub fn witness_layer_roots_compile_clean_emit_check() -> bool {
     match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
         Ok(None) => true,
@@ -6999,22 +7010,23 @@ pub fn load_sources_for_entry_with_pool_index(
 // census population, and the silent-pick gate -- and the first draft of this phase had
 // already drifted on the first of them.
 //
-// WHAT MAKES ONE SMALL ENTRY SUFFICIENT FOR THE ESCAPED CLASS, measured rather than
-// argued. An `--entry` compile is scoped in what it EMITS (the reference-derived closure)
-// and whole-tree in what it PARSES: every indexed module outside the closure enters the
-// name census, so the census parse reaches the whole of `dag` + `src/v2`. Measured on a
-// tree carrying the day's two fixes:
+// THE ENTRY IS THE v2 COMPILER ROOT, AND THE PARAGRAPH THAT USED TO SIT HERE ARGUED FOR
+// THE OPPOSITE (operator ruling, 2026-08-25). It chose the smallest entry in the tree and
+// its reasoning was sound on the facts it had: an `--entry` compile is scoped in what it
+// EMITS (the reference-derived closure) and whole-tree in what it PARSES -- every indexed
+// module outside the closure enters the name census, so the census parse reaches the whole
+// of `dag` + `src/v2` whichever entry is named. The class that escaped on 2026-08-23
+// therefore refuses on the small entry too, and the large entry's extra minutes bought
+// emission coverage of the compiler's own closure rather than coverage of that class.
+// Against a SERIAL required run, that was the wrong trade.
 //
-//   entry                        closure   census   emitted   wall
-//   dag/std/abi.dag                    4    3,847         9    135s
-//   src/v2/compiler/03_ingest.dag    ~180    ~3,670      176    349s
-//
-// and with the real specimen planted back into `dag/test/manual/` the SMALL entry refuses,
-// naming the file and byte range of the offending annotation. So the large entry's extra
-// 214s buys emission coverage of the compiler's own closure, not coverage of the class
-// that escaped. The entry roster is a `.dag` row (`gunbc.ci_layer_roots`
-// `required_v2_emission_entries`) precisely so that trade is re-decidable without a Rust
-// edit.
+// WHAT CHANGED IS THE DENOMINATOR, NOT THE ARGUMENT. The required run is now two parallel
+// jobs, and this phase rides the `build` lane opposite a witnesses lane that costs an order
+// of magnitude more, so the extra minutes are free rather than added. They buy exactly what
+// the old paragraph said they buy and declined: emission coverage of the v2 compiler's own
+// closure. The roster row and the one file of coverage the change gives up are in
+// `gunbc.ci_layer_roots` `required_v2_emission_entries`; the durations are not restated
+// here, because the producer named above re-derives them and a transcribed number rots.
 //
 // WHAT THE INVARIANT IS, AND WHAT IT IS NOT. NOT a file count: a legitimate compiler
 // change may alter a closure's size, so `emitted == 177` is a CHANGE DETECTOR wearing an
@@ -7023,8 +7035,13 @@ pub fn load_sources_for_entry_with_pool_index(
 // it is `v1_compiler_compile` `stage0_self_compile_refusal_message`, the same authority
 // the CLI already stops on (a blocking diagnostic, or an empty emitted file set), plus
 // the CLI's own silent-pick gate. A gate that refused on ANY diagnostic would be
-// permanently red -- 03_ingest carries 503 advisory diagnostics and 0 blocking -- so
-// advisory diagnostics are COUNTED and reported and never refused on.
+// permanently red -- the v2 compiler closure carries hundreds of advisory diagnostics
+// against zero blocking, which is a standing property of the corpus rather than a figure
+// worth pinning -- so advisory diagnostics are COUNTED and reported and never refused on.
+// Ratcheting that advisory population is a separate construction and is deliberately not
+// attempted here: a merge-blocking comparison against a count measured on the current tree
+// is the tree-copied census oracle DESIGN §5 rejects, and the honest form is a monotone
+// debt contract at IDENTITY grain over an independently closed subject universe.
 //
 // WHAT THIS DOES NOT CATCH, named rather than left to be inferred: a rustc error in the
 // emitted tree (nothing here compiles the emission), a semantic regression that still
@@ -16907,8 +16924,19 @@ pub const DAG_PARSE_SWEEP_ROOTS: [&str; 3] = ["src/v1", "dag", "src/v2"];
 /// on a root sees the top-level modules and nothing below them, so a walk that finds no
 /// files in a directory it never opened is indistinguishable from a clean one.
 ///
-/// Returns the count of parse-clean files, or every error found — never a partial success.
-pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<usize, Vec<String>> {
+/// What one sweep produced: the parse-clean count, and the per-module declaration index
+/// built from the SAME parse trees rather than by a second walk.
+///
+/// The index rides here rather than being derived by its own corpus pass because that is
+/// the entire point of DESIGN's two next-rung triggers: the modules are parsed anyway, so
+/// one module's facts come from one module's source, at the moment it is read.
+pub struct DagParseSweep {
+    pub parse_clean: usize,
+    pub index: declaration_index::DeclarationIndex,
+}
+
+/// Returns the sweep result, or every error found — never a partial success.
+pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseSweep, Vec<String>> {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
@@ -16983,6 +17011,9 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<usize, Ve
 
     let errors: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let count = Arc::new(AtomicUsize::new(0));
+    // THE INDEX IS BUILT BY INSERTION FROM THIS WALK, never by a walk of its own.
+    let records: Arc<Mutex<Vec<declaration_index::ModuleDeclarationRecord>>> =
+        Arc::new(Mutex::new(Vec::new()));
 
     // Each file gets its own `Rc<HashMap>` — no shared parse state — so parsing is
     // embarrassingly parallel. Thread panics propagate via scope (fail-closed).
@@ -16990,6 +17021,7 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<usize, Ve
         for path in &dag_paths {
             let errors = Arc::clone(&errors);
             let count = Arc::clone(&count);
+            let records = Arc::clone(&records);
             let path = path.clone();
             scope.spawn(move || {
                 let content = match std::fs::read_to_string(&path) {
@@ -17029,6 +17061,33 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<usize, Ve
                 ));
                 if fill.diagnostics.is_empty() {
                     count.fetch_add(1, Ordering::Relaxed);
+                    // ONE RECORD PER MODULE, FROM THE PARSE THAT JUST RAN. Only a
+                    // parse-clean file contributes: a file whose tree did not parse has
+                    // already stopped the line above, and deriving declarations from a
+                    // failed parse would report a module's surface as smaller than it is.
+                    let rel = path
+                        .strip_prefix(workspace)
+                        .unwrap_or(&path)
+                        .to_string_lossy()
+                        .into_owned();
+                    let source_indices: std::rc::Rc<
+                        im::HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>,
+                    > = std::rc::Rc::new(
+                        fill.newline_indices
+                            .iter()
+                            .fold(im::HashMap::new(), |acc, i| {
+                                acc.update(i.file.clone(), i.clone())
+                            }),
+                    );
+                    let mut built = Vec::new();
+                    for module in fill.modules.iter() {
+                        built.push(declaration_index::record_from_module(
+                            module,
+                            &source_indices,
+                            &rel,
+                        ));
+                    }
+                    records.lock().expect("record lock").extend(built);
                 } else {
                     // THE SPAN IS CARRIED, NOT DROPPED. Every `CompilerDiagnostic` answers
                     // `diagnostic_to_span`, and an annotation refusal carries the origin of the
@@ -17073,9 +17132,25 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<usize, Ve
     if !errors.is_empty() {
         return Err(errors);
     }
-    Ok(Arc::try_unwrap(count)
-        .expect("parse count arc is uniquely held after scope")
-        .into_inner())
+    let records = Arc::try_unwrap(records)
+        .expect("record arc is uniquely held after scope")
+        .into_inner()
+        .expect("record lock");
+    let mut index = declaration_index::DeclarationIndex::default();
+    // Sorted by module path first, so a duplicate declaration names the same pair of
+    // files whatever order the threads finished in — a refusal that moves between runs
+    // is a refusal nobody can act on.
+    let mut records = records;
+    records.sort_by(|a, b| (&a.module_path, &a.rel_path).cmp(&(&b.module_path, &b.rel_path)));
+    for record in records {
+        declaration_index::index_insert(&mut index, record);
+    }
+    Ok(DagParseSweep {
+        parse_clean: Arc::try_unwrap(count)
+            .expect("parse count arc is uniquely held after scope")
+            .into_inner(),
+        index,
+    })
 }
 
 /// WHY THE OUTPUT POLICY CANNOT BE INSTALLED, AS A TYPED CAUSE.
@@ -37343,9 +37418,15 @@ mod witness_layer_roots_compile_clean_tests {
     fn floor_compile_clean_gate_refuses_without_receipt() {
         with_env_test_lock(|| {
             reset_floor_compile_clean_receipt_for_test();
+            // Sharper than the `!verdict` this replaces: it pins the arm, so a future
+            // change that makes the gate refuse for a DIFFERENT reason (a real failed
+            // compile, say) fails here instead of passing as "still false".
             assert!(
-                !consume_floor_compile_clean_gate_verdict(),
-                "gate must refuse when no in-run compile receipt exists"
+                matches!(
+                    install_or_consume_floor_compile_clean_gate_receipt(),
+                    GateReceipt::NotRun { .. }
+                ),
+                "gate must answer NotRun when no in-run compile receipt exists"
             );
             assert!(!floor_compile_clean_receipt_installed());
         });
@@ -37360,15 +37441,105 @@ mod witness_layer_roots_compile_clean_tests {
                 ok: false,
                 failure_detail: "compile-clean: synthetic hard diagnostic".to_string(),
             });
-            assert!(
-                !consume_floor_compile_clean_gate_verdict(),
-                "gate must refuse when the installed receipt records compile failure"
+            // The discriminating half against the test above: a recorded compile failure
+            // must reach `Failed` carrying its located detail, NOT `NotRun`. Under the
+            // predecessor `bool` these two tests asserted the same value.
+            assert_eq!(
+                install_or_consume_floor_compile_clean_gate_receipt(),
+                GateReceipt::Failed {
+                    detail: "compile-clean: synthetic hard diagnostic".to_string()
+                },
+                "gate must report the receipt's located failure detail, not a bare refusal"
             );
         });
     }
 
+    /// The distinction the predecessor `bool` could not express, asserted in both
+    /// directions in one test: a scope disposition that selected nothing (`Skipped`) and a
+    /// clean compile both used to answer `true`, so no test could tell them apart. They are
+    /// different owners — the first is the disposition's answer, the second is the tree's —
+    /// and only the second is evidence about the tree.
+    #[test]
+    fn floor_compile_clean_gate_separates_not_applicable_from_clean() {
+        with_env_test_lock(|| {
+            reset_floor_compile_clean_receipt_for_test();
+            install_floor_compile_clean_receipt_fixture(FloorCompileCleanReceipt::Skipped {
+                reason: "compile-clean scope: no shard intersection".to_string(),
+            });
+            assert_eq!(
+                install_or_consume_floor_compile_clean_gate_receipt(),
+                GateReceipt::NotApplicable {
+                    reason: "compile-clean scope: no shard intersection".to_string()
+                },
+                "a scope disposition selecting nothing is NotApplicable, never Clean"
+            );
+
+            reset_floor_compile_clean_receipt_for_test();
+            install_floor_compile_clean_receipt_fixture(FloorCompileCleanReceipt::Compiled {
+                ok: true,
+                failure_detail: String::new(),
+            });
+            assert_eq!(
+                install_or_consume_floor_compile_clean_gate_receipt(),
+                GateReceipt::Clean,
+                "a compiled-ok receipt is Clean"
+            );
+
+            // The receipt's own typed Refused arm is ignorance, not a verdict on the tree.
+            reset_floor_compile_clean_receipt_for_test();
+            install_floor_compile_clean_receipt_fixture(FloorCompileCleanReceipt::Refused {
+                reason: "compile-clean: index roots never armed".to_string(),
+            });
+            assert!(
+                matches!(
+                    install_or_consume_floor_compile_clean_gate_receipt(),
+                    GateReceipt::NotRun { .. }
+                ),
+                "a Refused receipt is NotRun, never Failed — nothing was measured about the tree"
+            );
+            reset_floor_compile_clean_receipt_for_test();
+        });
+    }
+
+    /// Same split on the generated-artifact drift gate, whose predecessor answered a
+    /// `String` and FABRICATED the prose "gate body did not run in this process" for the
+    /// state it had lost. Unrecorded is now `NotRun`; the clean side is recorded, so it is
+    /// no longer inferred from the absence of a failure detail.
+    #[test]
+    fn generated_artifact_drift_gate_separates_unrecorded_from_clean() {
+        with_env_test_lock(|| {
+            reset_generated_artifact_drift_gate_detail_for_test();
+            assert!(
+                matches!(
+                    consume_generated_artifact_drift_gate_receipt(),
+                    GateReceipt::NotRun { .. }
+                ),
+                "no recorded observation must read as NotRun, never as clean"
+            );
+
+            record_generated_artifact_drift_gate_clean();
+            assert_eq!(
+                consume_generated_artifact_drift_gate_receipt(),
+                GateReceipt::Clean,
+                "a recorded clean observation is Clean"
+            );
+
+            record_generated_artifact_drift_gate_failure_detail(
+                "generated-artifact drift: docs/plans/x.md".to_string(),
+            );
+            assert_eq!(
+                consume_generated_artifact_drift_gate_receipt(),
+                GateReceipt::Failed {
+                    detail: "generated-artifact drift: docs/plans/x.md".to_string()
+                },
+                "a recorded failure carries its located path"
+            );
+            reset_generated_artifact_drift_gate_detail_for_test();
+        });
+    }
+
     /// §5 discriminating RED (end-to-end): real whole-tree compile with an injected broken module
-    /// must refuse through install_floor_compile_clean_receipt → consume_floor_compile_clean_gate_verdict.
+    /// must refuse through install_floor_compile_clean_receipt → install_or_consume_floor_compile_clean_gate_receipt.
     /// Ignored in CI: ~minutes cold whole-tree compile; recorded execution receipt in PR #6361 body.
     #[test]
     #[ignore = "manual ~minutes whole-tree compile; recorded execution receipt in PR #6361 body (clever-koi demand 1)"]
@@ -37387,8 +37558,11 @@ mod witness_layer_roots_compile_clean_tests {
                 install_floor_compile_clean_receipt()
                     .expect("real whole-tree compile with injected unresolved import");
                 assert!(
-                    !consume_floor_compile_clean_gate_verdict(),
-                    "gate must refuse when the one real compile hits hard errors"
+                    matches!(
+                        install_or_consume_floor_compile_clean_gate_receipt(),
+                        GateReceipt::Failed { .. }
+                    ),
+                    "gate must report Failed when the one real compile hits hard errors"
                 );
             });
         });
@@ -41204,10 +41378,17 @@ mod peel_alias_fixpoint_termination {
                 type_head_exposures: crate::v1_rt::rc_empty_map(),
             });
             let env = std::rc::Rc::new(crate::v1_compiler_infer_env::TypeEnv {
+                authored_import_names: crate::v1_rt::rc_empty_map::<String, bool>(),
                 module_path: "".to_string(),
                 bindings: crate::v1_rt::rc_empty_map(),
                 str_bindings: crate::v1_rt::rc_empty_map(),
                 ancestry_str_bindings: crate::v1_rt::rc_empty_map(),
+                // Pre-existing on main and unrelated to this change: the field landed on the
+                // GENERATED `TypeEnv` and this hand-written `#[cfg(test)]` constructor was never
+                // updated, so the whole lib-test target failed to compile. No gate could see it
+                // — CI builds the binary, and the Rust suite left CI on 2026-07-11 — which is
+                // why it stood. Repaired here because this PR's evidence cannot execute otherwise.
+                authored_import_names: crate::v1_rt::rc_empty_map(),
                 parents: std::rc::Rc::new(im::vector![]),
                 recursive_types: std::rc::Rc::new(im::vector![]),
                 recursive_type_set: crate::v1_rt::rc_empty_map(),
@@ -42590,292 +42771,6 @@ pub fn prepare_repository_once(
         },
         inventory,
     ))
-}
-
-/// WHERE ONE DIAGNOSTIC CLASS SITS IN THE SEVERITY POLICY — three states, never two.
-///
-/// `Unclassified` exists because the policy is TWO INDEPENDENT PREDICATES, not a partition:
-/// `compile_clean_diagnostic_is_hard` decides blocking, and `compile_clean_diagnostic_is_advisory`
-/// is a CLOSED ALLOWLIST rather than its complement. A non-blocking variant absent from that
-/// allowlist is therefore admitted by neither, and a census that folded it into "advisory" — or,
-/// worse, dropped it — would report a frontier as counted while nothing counted it. That exact
-/// defect has already been found once in this repository (the method/conformance wall's residue,
-/// recorded on `CompilerDiagnostic`'s hand-Rust gate receipt). A third constructor makes the
-/// unpoliced case a visible number instead of an absence.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum CorpusJudgmentSeverity {
-    Blocking,
-    Advisory,
-    Unclassified,
-}
-
-impl CorpusJudgmentSeverity {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Blocking => "blocking",
-            Self::Advisory => "advisory",
-            Self::Unclassified => "unclassified",
-        }
-    }
-
-    fn of(d: &Rc<ErrorNode>) -> Self {
-        if compile_clean_diagnostic_is_hard(d) {
-            Self::Blocking
-        } else if compile_clean_diagnostic_is_advisory(d) {
-            Self::Advisory
-        } else {
-            Self::Unclassified
-        }
-    }
-}
-
-/// ONE JUDGMENT AT ONE SOURCE LOCUS — the unit of the census, and deliberately NOT an aggregate.
-///
-/// The census reports sites rather than per-class counts because ACCEPTANCE IS AN IDENTITY JOIN,
-/// NOT A COUNT (DESIGN §5, the oracle rule): two different sets of the same size satisfy a count
-/// and prove nothing, so a per-class histogram cannot be checked against required-ci's own output
-/// at all. `file`/`start`/`end` are the join key — byte offsets rather than line/column, because
-/// they are what the diagnostic actually carries; `line`/`col` are rendered beside them for a
-/// human and are derived, never the identity.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct CorpusJudgmentSite {
-    pub file: String,
-    pub start: i64,
-    pub end: i64,
-    pub line: i64,
-    pub col: i64,
-    pub class: String,
-    pub subject_name: String,
-    pub severity: CorpusJudgmentSeverity,
-    pub module: String,
-}
-
-impl CorpusJudgmentSite {
-    /// The identity a join is performed on. Rendering it in one place means the receipt's key and
-    /// any consumer's key cannot drift apart.
-    pub fn identity(&self) -> String {
-        format!(
-            "{}:{}:{}:{}:{}",
-            self.file, self.start, self.end, self.class, self.subject_name
-        )
-    }
-}
-
-/// The judgment the v1 resolve+typecheck passed over the required run's own subject.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CorpusTypeJudgmentCensus {
-    /// Content identity of exactly what was compiled — stronger than a commit sha, which names a
-    /// tree the process may not have read.
-    pub subject_digest: String,
-    /// The commit, when the environment states one. Absent is reported as absent, never as a
-    /// plausible default.
-    pub commit: Option<String>,
-    pub source_roots: Vec<String>,
-    pub modules_resolved: usize,
-    pub modules_excluded: usize,
-    pub declarations_reached: usize,
-    pub sites: Vec<CorpusJudgmentSite>,
-    pub blocking_total: usize,
-    pub advisory_total: usize,
-    pub unclassified_total: usize,
-    /// The planted defect's own sites, kept OUT of `sites` and reported separately: the control
-    /// must be visible without contaminating the population it vouches for.
-    pub planted_sites: Vec<CorpusJudgmentSite>,
-}
-
-impl CorpusTypeJudgmentCensus {
-    pub fn subject_statement(&self) -> String {
-        format!(
-            "subject={} commit={} roots={} modules_resolved={} modules_excluded={} declarations={}",
-            self.subject_digest,
-            self.commit.as_deref().unwrap_or("<unstated>"),
-            self.source_roots.join(","),
-            self.modules_resolved,
-            self.modules_excluded,
-            self.declarations_reached
-        )
-    }
-}
-
-/// The module path of the planted control. Named once; the census excludes exactly this module
-/// from the population and requires exactly this module to have been judged.
-pub const CORPUS_JUDGMENT_PLANTED_MODULE: &str = "corpus_type_judgment_planted_control";
-
-/// THE PLANTED DEFECT, compiled by the real pipeline alongside the corpus.
-///
-/// The previous revision of this control was a hand-built `ErrorNode` pushed through the census
-/// fold. That proved the fold could count, and NOTHING ELSE — it never reached the compiler, so it
-/// could not distinguish a working measurement from a compile that judged nothing at all, which is
-/// precisely the failure this instrument exists to prevent (a probe whose RED and its absence
-/// produce identical verdicts). The plant is now a source module carrying a call to a name no
-/// declaration provides: the compiler must judge it, the census must observe that judgment at the
-/// plant's own locus, and a run where it does not is refused rather than reported.
-///
-/// It is injected into the assembled subject rather than written to the tree, so the measurement
-/// leaves no artifact and cannot be forgotten in a working copy.
-///
-/// ITS NAMES ARE CHECKED-UNIQUE, not assumed so. The plant joins a FLAT namespace, so a name it
-/// declares that the corpus also declares would make the plant perturb the very population it
-/// vouches for — a control that changes the measurement is not a control. Measured 2026-08-22:
-/// `planted_caller` and `corpus_type_judgment_absent_callee_zzz` occur zero times across `dag/`
-/// and `src/v2/`. Keep any name added here equally distinctive.
-fn corpus_judgment_planted_source() -> Rc<v1_compiler_compile::SourceFile> {
-    Rc::new(v1_compiler_compile::SourceFile {
-        path: format!("<planted>/{CORPUS_JUDGMENT_PLANTED_MODULE}.dag"),
-        content: format!(
-            "module {CORPUS_JUDGMENT_PLANTED_MODULE}\n\nfn planted_caller() -> Int {{\n  \
-             corpus_type_judgment_absent_callee_zzz(a: 1)\n}}\n"
-        ),
-    })
-}
-
-/// Fold one diagnostic into a located site. Returns `None` only when the diagnostic carries no
-/// file at all, which is itself counted by the caller rather than dropped.
-fn corpus_judgment_site(
-    d: &Rc<ErrorNode>,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-) -> Option<CorpusJudgmentSite> {
-    let span = diagnostic_to_span(d.diagnostic.clone());
-    if span.file.is_empty() {
-        return None;
-    }
-    let (line, col) = match source_indices.get(&span.file) {
-        Some(idx) => {
-            let lc = byte_to_line_col(idx.clone(), span.start);
-            (lc.line, lc.col)
-        }
-        None => (-1, -1),
-    };
-    let (class, subject_name) = compile_clean_diagnostic_histogram_key(d);
-    Some(CorpusJudgmentSite {
-        file: normalize_repo_relative_path_for_census(&span.file),
-        start: span.start,
-        end: span.end,
-        line,
-        col,
-        class,
-        subject_name,
-        severity: CorpusJudgmentSeverity::of(d),
-        module: d.module_name.clone(),
-    })
-}
-
-/// MEASURE THE COMPILER'S JUDGMENT OVER THE REQUIRED RUN'S SUBJECT, AND STOP THERE.
-///
-/// This is the required run's preparation up to — and deliberately not past — the point where a
-/// verdict is taken: the same subject assembly (`assemble_prepared_subject` with the floor's own
-/// exclusions) over the same source roots, and the same whole-corpus `compile_to_resolved` that
-/// [`prepare_repository_once`]'s strict gate runs. It builds no evaluation context, resolves no
-/// claim scope, and runs no witness.
-///
-/// THE SUBJECT IS NOT A PARAMETER. The roots come from `witness_layer_roots()` — the
-/// `gunbc.ci_layer_roots` authority the workflow itself passes — and this function takes no root
-/// or entry argument at all. That is the construction move rather than a check: every instrument
-/// this lane has seen fail measured some closure and reported it as the corpus, and a scoping flag
-/// only relocates that error onto whoever forgets it. There is no spelling of "measure part of it"
-/// here, so there is nothing to forget.
-///
-/// WHAT IT ADDS, and why the required run cannot answer it today: the strict gate asks that compile
-/// one question — is any diagnostic blocking — and having answered it, discards the population.
-/// Every advisory the corpus's typecheck produced (the method-existence frontier, the unenforced
-/// refinements, the unlisted-import residue) is computed on every CI run and thrown away uncounted,
-/// which is the state DESIGN §4b forbids: a frontier whose deficit frequency is unobservable never
-/// ranks for climbing.
-///
-/// IT CANNOT FAIL TOWARD ZERO. Each way this measurement could report a falsely small number is a
-/// refusal rather than a small number:
-///   * subject assembly fails, or the corpus is empty — refused by `assemble_prepared_subject`;
-///   * the compile produced no graph — refused here: a compile that did not get far enough to
-///     judge the corpus has not judged it quiet;
-///   * the compile judged nothing it was PLANTED to judge — refused here: the planted module's
-///     diagnostic must appear, at the plant's own locus, in the same run that reports the
-///     population, so every zero is paired with a nonzero taken by the same instrument on the same
-///     pass.
-/// And every figure is reported with the subject it was taken over, so a narrowed population
-/// cannot be read as a quiet one. A real zero remains possible and reportable — that is the point
-/// of the plant being a separate, visible row beside it.
-pub fn corpus_type_judgment_census() -> Result<CorpusTypeJudgmentCensus, String> {
-    let source_roots = witness_layer_roots();
-    let subject = assemble_prepared_subject(&source_roots, &floor_prepared_subject_exclusions())
-        .map_err(|e| format!("CORPUS-TYPE-JUDGMENT REFUSAL cause=SubjectUnassembled — {e}"))?;
-    let subject_digest = subject.subject_digest.clone();
-    let modules_resolved = subject.modules_resolved;
-    let modules_excluded = subject.modules_excluded;
-
-    // The plant rides in the same compile as the corpus. Appended AFTER the digest is taken, so
-    // the reported subject identity names the corpus and not the instrument's own addition.
-    let mut sources = subject.sources;
-    sources.push(corpus_judgment_planted_source());
-
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
-    let Some(graph) = result.graph.clone() else {
-        return Err(format!(
-            "CORPUS-TYPE-JUDGMENT REFUSAL cause=NoResolvedGraph — the corpus compile produced no \
-             graph, so no judgment over the corpus was reached; a diagnostic count taken here \
-             would describe how far the compile got, not what it judged (subject={subject_digest})"
-        ));
-    };
-    let declarations_reached = graph.item_registry.len();
-
-    let source_indices: HashMap<String, Rc<NewlineIndex>> = result
-        .newline_indices
-        .iter()
-        .map(|idx| (idx.file.clone(), idx.clone()))
-        .collect();
-
-    let mut sites: Vec<CorpusJudgmentSite> = Vec::new();
-    let mut planted_sites: Vec<CorpusJudgmentSite> = Vec::new();
-    let mut spanless = 0usize;
-    for d in result.diagnostics.iter() {
-        match corpus_judgment_site(d, &source_indices) {
-            Some(site) => {
-                if site.module == CORPUS_JUDGMENT_PLANTED_MODULE
-                    || site.file.contains(CORPUS_JUDGMENT_PLANTED_MODULE)
-                {
-                    planted_sites.push(site);
-                } else {
-                    sites.push(site);
-                }
-            }
-            // A judgment with no file is still a judgment. It cannot enter an identity join, so it
-            // is refused rather than silently dropped from a population the join will be checked
-            // against — a dropped row is exactly the narrow this instrument exists to prevent.
-            None => spanless += 1,
-        }
-    }
-    if spanless > 0 {
-        return Err(format!(
-            "CORPUS-TYPE-JUDGMENT REFUSAL cause=SpanlessJudgment — {spanless} diagnostic(s) carry \
-             no source file, so they have no join identity; reporting the remaining rows would be \
-             a partial population presented as a population (subject={subject_digest})"
-        ));
-    }
-    if planted_sites.is_empty() {
-        return Err(format!(
-            "CORPUS-TYPE-JUDGMENT REFUSAL cause=PlantedDefectUnobserved — the planted module \
-             `{CORPUS_JUDGMENT_PLANTED_MODULE}` calls a name no declaration provides and the \
-             compile reported no judgment against it, so this run cannot be shown capable of \
-             observing a defect it was given; its population figure is not reportable \
-             (subject={subject_digest})"
-        ));
-    }
-
-    sites.sort();
-    planted_sites.sort();
-    let total_for = |s: CorpusJudgmentSeverity| sites.iter().filter(|r| r.severity == s).count();
-    Ok(CorpusTypeJudgmentCensus {
-        subject_digest,
-        commit: std::env::var("GITHUB_SHA").ok().filter(|s| !s.is_empty()),
-        source_roots,
-        modules_resolved,
-        modules_excluded,
-        declarations_reached,
-        blocking_total: total_for(CorpusJudgmentSeverity::Blocking),
-        advisory_total: total_for(CorpusJudgmentSeverity::Advisory),
-        unclassified_total: total_for(CorpusJudgmentSeverity::Unclassified),
-        sites,
-        planted_sites,
-    })
 }
 
 /// THE EXACT SCOPE ONE CLAIM EVALUATES IN — a projection of the one preparation, never a

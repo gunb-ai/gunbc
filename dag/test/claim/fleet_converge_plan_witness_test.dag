@@ -34,10 +34,17 @@ import gunbc.fabric_cell_converge {
   fabric_cell_population_unobserved,
   fabric_cell_member_key,
   fabric_cell_resource_address_wire,
+  classify_fabric_cell_host,
+  fabric_cell_observation_refusal_identity,
+  ReadbackHostMismatch,
+  fabric_cell_expected_slots,
+  FabricCellObservationRefusal,
+  FabricCellUnexpectedCellEvidence,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.ownership { Owned }
+import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
 import gunbc.fleet_converge_plan {
   TimerRetirementMember,
   FleetConvergePlanSubject,
@@ -96,6 +103,7 @@ test fn timer_retirement_plan_shows_refused_removal_for_foreign_cap() -> Bool {
     observed_spark: [],
     observed_slots: [],
     observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Present { value: artifact } =>
       string_contains(s: artifact.plan_body, pattern: "REFUSED-REMOVAL cap ")
@@ -125,6 +133,7 @@ test fn plan_artifact_hash_is_stable_for_fixed_observation() -> Bool {
     observed_spark: [],
     observed_slots: [],
     observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Present { value: a1 } =>
       match fleet_converge_plan_artifact(
@@ -135,7 +144,8 @@ test fn plan_artifact_hash_is_stable_for_fixed_observation() -> Bool {
         observed_spark: [],
         observed_slots: [],
         observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
-      ) {
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+  ) {
         Present { value: a2 } =>
           match fleet_converge_plan_artifact_hash(artifact: a1) {
             Present { value: h1 } =>
@@ -164,6 +174,7 @@ test fn observed_baseline_cas_refuses_after_drift() -> Bool {
     observed_spark: [],
     observed_slots: [],
     observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Present { value: artifact } => {
       let drifted = CapMember {
@@ -193,6 +204,7 @@ test fn plan_body_names_subject_host_and_generation() -> Bool {
     observed_spark: [],
     observed_slots: [],
     observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Present { value: artifact } =>
       string_contains(s: artifact.plan_body, pattern: "subject_host:srv1")
@@ -217,6 +229,7 @@ test fn cross_host_apply_refuses_subject_identity() -> Bool {
     observed_spark: [],
     observed_slots: [],
     observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Present { value: artifact } =>
       !fleet_converge_apply_subject_admits(
@@ -245,6 +258,7 @@ test fn same_host_different_generation_changes_plan_hash() -> Bool {
     observed_spark: [],
     observed_slots: [],
     observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Present { value: gen0 } =>
       match fleet_converge_plan_artifact(
@@ -255,7 +269,8 @@ test fn same_host_different_generation_changes_plan_hash() -> Bool {
         observed_spark: [],
         observed_slots: [],
         observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
-      ) {
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+  ) {
         Present { value: gen1 } =>
           match fleet_converge_plan_artifact_hash(artifact: gen0) {
             Present { value: h0 } =>
@@ -292,6 +307,7 @@ test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
     observed_spark: [],
     observed_slots: [],
     observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Present { value: artifact } => {
       let drifted = CapMember {
@@ -331,6 +347,7 @@ test fn bundle_hash_binds_apply_shell_not_plan_body_only() -> Bool {
     observed_spark: [],
     observed_slots: [],
     observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Present { value: artifact } =>
       match fleet_converge_plan_bundle_digest_hex(
@@ -504,6 +521,7 @@ test fn apply_shell_carries_dissolve_on_marker_not_host_gate() -> Bool {
     observed_spark: [],
     observed_slots: [],
     observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Present { value: artifact } =>
       string_contains(s: artifact.apply_shell, pattern: "dissolve-on: fleet_converge_apply_shell")
@@ -581,6 +599,7 @@ test fn a_slot_add_reaches_the_emitted_apply_script() -> Bool {
     observed_spark: [],
     observed_slots: [],
     observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Present { value: artifact } =>
       string_contains(s: artifact.plan_body, pattern: "ADD runner-slot srv1-01")
@@ -603,6 +622,7 @@ test fn slot_drift_breaks_the_member_set_fingerprint() -> Bool {
     observed_spark: [],
     observed_slots: [],
     observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Present { value: artifact } =>
       fleet_converge_member_set_fingerprint_matches(
@@ -750,6 +770,7 @@ fn fabric_cell_readback_all_present() -> FabricCellReadback {
 
 fn fabric_cells_observed_converged() -> FabricCellPopulation {
   fabric_cell_population(
+    discovered: no_discovery_refusals(),
     readback: FabricCellHostReadback {
       host: operator_host_srv3,
       cell_readbacks: [fabric_cell_readback_all_present()],
@@ -763,6 +784,7 @@ fn fabric_cells_observed_converged() -> FabricCellPopulation {
 // the model suite: read-and-empty plans every member, unread plans nothing.
 fn fabric_cells_observed_empty() -> FabricCellPopulation {
   fabric_cell_population(
+    discovered: no_discovery_refusals(),
     readback: FabricCellHostReadback {
       host: operator_host_srv3,
       cell_readbacks: [fabric_cell_readback_all_absent()],
@@ -835,6 +857,7 @@ fn fabric_cell_readback_all_present_reversed() -> FabricCellReadback {
 
 fn fabric_cells_observed_converged_reversed() -> FabricCellPopulation {
   fabric_cell_population(
+    discovered: no_discovery_refusals(),
     readback: FabricCellHostReadback {
       host: operator_host_srv3,
       cell_readbacks: [fabric_cell_readback_all_present_reversed()],
@@ -871,6 +894,12 @@ test fn witness_fabric_cell_unreadable_population_is_not_an_empty_one() -> Bool 
 // would provision over a host it could not see; one answering nothing would skip a host that needs
 // provisioning; one answering clean ADDs it cannot perform is the fabricated plausible output at the
 // actuation seam.
+// THE COUNTS HERE WERE 1 AND ARE NOW 3, AND THE OLD NUMBER WAS THE DEFECT WRITTEN DOWN AS THE
+// CONTRACT. An unread srv3 host blocks THREE addresses -- cell-root, attempt-root and
+// resource-boundary -- and the plan surface used to collapse them into one generic sentence and
+// report a refusal count of 1 no matter how many were blocked. This row passed throughout, because
+// it asserted the collapsed number. A row that pins a count can only be as good as the count it
+// pins, and a count that cannot vary with the population is not measuring the population.
 test fn witness_fabric_cell_refusal_is_rendered_and_counted_not_silent() -> Bool {
   let refused_lines = fleet_converge_fabric_cell_lines(
     host: "srv3" as NonEmptyStr,
@@ -880,12 +909,12 @@ test fn witness_fabric_cell_refusal_is_rendered_and_counted_not_silent() -> Bool
     host: "srv3" as NonEmptyStr,
     observed_fabric_cells: fabric_cells_observed_empty(),
   )
-  list_length(items: refused_lines) == 1
+  list_length(items: refused_lines) == 3
     && list_length(items: empty_lines) == 3
     && fleet_converge_fabric_cell_refusal_count(
         host: "srv3" as NonEmptyStr,
         observed_fabric_cells: fabric_cell_population_unobserved(host: operator_host_srv3),
-      ) == 1
+      ) == 3
     && fleet_converge_fabric_cell_refusal_count(
         host: "srv3" as NonEmptyStr,
         observed_fabric_cells: fabric_cells_observed_converged(),
@@ -919,6 +948,7 @@ test fn witness_fabric_cell_converged_population_plans_nothing() -> Bool {
 // work. The count assertion below is what separates "refused" from "planned six things".
 fn fabric_cells_observed_on_srv4() -> FabricCellPopulation {
   fabric_cell_population(
+    discovered: no_discovery_refusals(),
     readback: FabricCellHostReadback {
       host: operator_host_srv4,
       cell_readbacks: [],
@@ -983,8 +1013,19 @@ fn refused_boundary_readback(cause: String) -> FabricCellReadback {
   }
 }
 
+// A FIXTURE THAT READ THE HOST AND FOUND NOTHING TO REFUSE, WHICH IS A VALUE AND NOT AN OMISSION.
+// `fabric_cell_population` takes the discovery-derived refusals as a REQUIRED argument precisely so
+// that a caller cannot build a population from the expected side alone; these rows exercise the
+// expected side, so the honest thing to pass is an empty discovery, spelled once here. It is local
+// to this file rather than offered by the production module: a shared `no_discovery()` would be the
+// omission given a name, and production callers must state what they actually observed.
+fn no_discovery_refusals() -> List<FabricCellObservationRefusal> {
+  []
+}
+
 fn fabric_population_of(entries: List<FabricCellReadback>) -> FabricCellPopulation {
   fabric_cell_population(
+    discovered: no_discovery_refusals(),
     readback: FabricCellHostReadback { host: operator_host_srv3, cell_readbacks: entries }
   )
 }
@@ -1100,4 +1141,329 @@ test fn witness_fabric_cell_absent_address_plans_add_and_never_change() -> Bool 
 test fn witness_fabric_cell_drifted_and_absent_are_different_observations() -> Bool {
   fabric_fingerprint_with(population: fabric_population_of(entries: [fabric_cell_readback_boundary_drifted()]))
     != fabric_fingerprint_with(population: fabric_population_of(entries: [fabric_cell_readback_boundary_absent()]))
+}
+
+// THE KERNEL IS EXERCISED AT A WIDTH THE AUTHORITY DOES NOT HAVE, WHICH IS THE ENTIRE REASON IT WAS
+// SPLIT OUT. `fabric_execution_slot_identities` declares exactly ONE fabric slot today, so every
+// row that reaches the classification through the authority-bound wrapper is a one-cell fixture --
+// and five of the six defects this family has had were reachable only because a one-cell fixture
+// cannot express them. These rows hand the kernel synthetic rosters directly. They mint no sealed
+// carrier and license no actuation, so a wide fixture is not a second production authority.
+// THE INDEX LIST IS DERIVED FROM THE WIDTH, NOT AUTHORED. A hand-written 21-element literal is the
+// same fork against the type that a hand-maintained fixture roster always is: it can disagree with
+// the width it claims to have, and nothing would notice.
+fn synthetic_slot_indices(count: Int) -> List<Int> {
+  if count <= 0 { [] } else { concat(synthetic_slot_indices(count: count - 1), [count - 1]) }
+}
+
+fn synthetic_fabric_slots(count: Int) -> List<RunnerSlotIdentity> {
+  map(
+    synthetic_slot_indices(count: count),
+    i => RunnerSlotIdentity { host: operator_host_srv3, slot_index: i },
+  )
+}
+
+fn synthetic_absent_readback_for(slot: RunnerSlotIdentity) -> FabricCellReadback {
+  FabricCellReadback {
+    slot: slot,
+    observations: map(
+      fabric_cell_resource_addresses(),
+      a => AddressAbsent { slot: slot, address: a },
+    ),
+  }
+}
+
+fn synthetic_host_readback(slots: List<RunnerSlotIdentity>) -> FabricCellHostReadback {
+  FabricCellHostReadback {
+    host: operator_host_srv3,
+    cell_readbacks: map(slots, s => synthetic_absent_readback_for(slot: s)),
+  }
+}
+
+// CONSERVATION OF THE EXPECTED SIDE: exactly one standing per expected ref, at three widths. A
+// kernel with a hidden one-cell or single-digit enumeration passes at N=1 and fails here.
+test fn witness_fabric_cell_kernel_conserves_every_expected_ref() -> Bool {
+  fold(
+    [0, 1, 2, 21],
+    init: true,
+    f: (acc, n) => acc && (
+      list_length(
+        items: classify_fabric_cell_host(
+          expected_slots: synthetic_fabric_slots(count: n),
+          readback: synthetic_host_readback(slots: synthetic_fabric_slots(count: n)),
+        ).standings
+      ) == n * list_length(items: fabric_cell_resource_addresses())
+    ),
+  )
+}
+
+// CONSERVATION OF THE SUPPLIED SIDE, AND THIS IS THE ROW THAT WOULD HAVE CAUGHT THE SILENT
+// EXCLUSION. Twenty-one expected cells, twenty-two supplied readbacks: the extra one is not
+// consumed by any expected ref, and before the kernel returned both sides it simply disappeared --
+// the result was byte-identical to supplying twenty-one. Now it is conserved as unexpected
+// evidence, named by its slot.
+test fn witness_fabric_cell_kernel_conserves_unexpected_supplied_evidence() -> Bool {
+  let expected = synthetic_fabric_slots(count: 21)
+  let supplied = synthetic_fabric_slots(count: 22)
+  let classification = classify_fabric_cell_host(
+    expected_slots: expected,
+    readback: synthetic_host_readback(slots: supplied),
+  )
+  list_length(items: classification.standings) == 21 * list_length(items: fabric_cell_resource_addresses())
+    && list_length(items: classification.unexpected) == 1
+    && fold(
+        classification.unexpected,
+        init: true,
+        f: (acc, u) => acc && u.slot.slot_index == 21,
+      )
+}
+
+// AND AN EXACT ROSTER LEAVES NOTHING OVER. Without this control the row above could pass on a
+// kernel that reported every supplied readback as unexpected.
+test fn witness_fabric_cell_kernel_exact_roster_has_no_unexpected_evidence() -> Bool {
+  let slots = synthetic_fabric_slots(count: 21)
+  list_length(
+    items: classify_fabric_cell_host(
+      expected_slots: slots,
+      readback: synthetic_host_readback(slots: slots),
+    ).unexpected
+  ) == 0
+}
+
+// UNEXPECTED EVIDENCE REFUSES THE POPULATION RATHER THAN BEING DROPPED, and the discriminating
+// pair is the point: the same host, read completely and converged, is OBSERVED when nothing extra
+// is supplied and REFUSED when one unexpected cell is. If the two agreed, the evidence would be
+// being ignored exactly as it was before.
+test fn witness_fabric_cell_unexpected_readback_refuses_rather_than_vanishing() -> Bool {
+  let converged_only = fabric_population_of(entries: [fabric_cell_readback_all_present()])
+  let with_unexpected = fabric_population_of(entries: [
+    fabric_cell_readback_all_present(),
+    synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv3, slot_index: 7 }),
+  ])
+  list_length(
+    items: fleet_converge_fabric_cell_lines(host: "srv3" as NonEmptyStr, observed_fabric_cells: converged_only)
+  ) == 0
+    && fleet_converge_fabric_cell_refusal_count(
+        host: "srv3" as NonEmptyStr,
+        observed_fabric_cells: with_unexpected,
+      ) == 1
+    && fabric_fingerprint_with(population: converged_only)
+        != fabric_fingerprint_with(population: with_unexpected)
+}
+
+// ONE UNEXPECTED CELL REPORTED TWICE IS ONE UNEXPECTED CELL. The subject is the cell; the readback
+// is the probe. Before the supplied side was normalized by slot, the identical unexpected readback
+// supplied twice produced two refusals, a refusal count of 2 and a DIFFERENT member-set
+// fingerprint -- with the host substrate unchanged and only probe multiplicity differing. A plan
+// identity that moves when you look twice is not identifying the host.
+//
+// THE THREE ROWS BELOW SEPARATE THE THREE THINGS THAT COULD BE TRUE. Idempotence (twice is once),
+// order independence (reversed is the same), and NON-degeneracy -- two DISTINCT unexpected slots
+// must still count two, or a kernel that collapsed everything to one would satisfy the first two
+// perfectly.
+fn unexpected_readback_at(index: Int) -> FabricCellReadback {
+  synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv3, slot_index: index })
+}
+
+test fn witness_fabric_cell_duplicate_unexpected_readbacks_are_one_subject() -> Bool {
+  let once = fabric_population_of(entries: [fabric_cell_readback_all_present(), unexpected_readback_at(index: 7)])
+  let twice = fabric_population_of(entries: [
+    fabric_cell_readback_all_present(),
+    unexpected_readback_at(index: 7),
+    unexpected_readback_at(index: 7),
+  ])
+  fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: once) == 1
+    && fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: twice) == 1
+    && fabric_fingerprint_with(population: once) == fabric_fingerprint_with(population: twice)
+    && fabric_rendered_lines(population: once) == fabric_rendered_lines(population: twice)
+}
+
+// THE RENDERED LINES ARE COMPARED BECAUSE "OUTSIDE THE MEMBER-SET FINGERPRINT" IS NOT "OUTSIDE
+// IDENTITY", AND THE ROW ABOVE PROVED THE WEAKER THING FIRST. An earlier cut carried
+// `readback_count`/`observation_count` on the unexpected evidence and asserted only the fingerprint
+// -- which was genuinely clean, because the BASELINE row serializes the slot alone. The refusal
+// LINE rendered `observations=<n>`, that line enters `plan_body`, and the plan artifact
+// content-hashes the whole body into the held-lease owner fingerprint. So one probe and two
+// identical probes agreed on the member set and disagreed on the plan artifact: the exact
+// idempotence the normalization was added to establish, defeated one layer out. Comparing the text
+// is strictly stronger than comparing its hash, and it is the layer where the defect lived.
+fn fabric_rendered_lines(population: FabricCellPopulation) -> String {
+  fold(
+    fleet_converge_fabric_cell_lines(host: "srv3" as NonEmptyStr, observed_fabric_cells: population),
+    init: "",
+    f: (acc, l) => join([acc, "\n", l], ""),
+  )
+}
+
+test fn witness_fabric_cell_unexpected_evidence_is_order_independent() -> Bool {
+  let forward = fabric_population_of(entries: [
+    fabric_cell_readback_all_present(), unexpected_readback_at(index: 7), unexpected_readback_at(index: 8),
+  ])
+  let reversed = fabric_population_of(entries: [
+    unexpected_readback_at(index: 8), unexpected_readback_at(index: 7), fabric_cell_readback_all_present(),
+  ])
+  fabric_fingerprint_with(population: forward) == fabric_fingerprint_with(population: reversed)
+    && fabric_rendered_lines(population: forward) == fabric_rendered_lines(population: reversed)
+}
+
+// A READBACK NAMING ANOTHER HOST IS NEITHER EXPECTED NOR UNEXPECTED HERE, AND IT REFUSES. The
+// enclosing `FabricCellHostReadback` owns the host coordinate and each child carries a full
+// `RunnerSlotIdentity`, so an srv3 readback holding an srv4-07 child was representable and fell
+// into `unexpected` -- true (srv3 does not declare it) and useless, because "a foreign cell exists
+// on srv3" and "somebody handed me srv4's readback labelled srv3" have different remedies and the
+// second is a defect in the caller. It is routed to its own destination and refused there; a
+// subject that leaves every counted population without appearing in a refusal would be the silent
+// exclusion this carrier exists to end, reintroduced by the repair for a different one.
+test fn witness_fabric_cell_cross_host_readback_refuses_as_a_mismatch_not_as_unexpected() -> Bool {
+  let mixed = fabric_population_of(entries: [
+    fabric_cell_readback_all_present(),
+    synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 }),
+  ])
+  let lines = fleet_converge_fabric_cell_lines(host: "srv3" as NonEmptyStr, observed_fabric_cells: mixed)
+  fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: mixed) == 1
+    && fold(lines, init: false, f: (acc, l) => acc || string_contains(s: l, pattern: "host-mismatched-readback srv4-07"))
+    && fold(lines, init: true, f: (acc, l) => acc && !string_contains(s: l, pattern: "unexpected-cell srv4-07"))
+}
+
+// AND THE REVIEWER'S EXACT INPUT: srv3-07 AND srv4-07 IN BOTH ORDERS. The canonical order compares
+// `slot_index` alone, so these two compared EQUAL and the insertion reversed with the input --
+// reversed supply order, reversed baseline rows, different fingerprint. The repair is not a wider
+// comparison: the cross-host member never reaches that fold, so every element it orders shares one
+// host and index alone decides. This row reds if the routing is removed even though the sort is
+// untouched, which is the point -- the defect was a denominator, not a comparator.
+test fn witness_fabric_cell_cross_host_pair_is_order_independent() -> Bool {
+  let same_index_srv3 = unexpected_readback_at(index: 7)
+  let same_index_srv4 = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 })
+  let forward = fabric_population_of(entries: [
+    fabric_cell_readback_all_present(), same_index_srv3, same_index_srv4,
+  ])
+  let reversed = fabric_population_of(entries: [
+    fabric_cell_readback_all_present(), same_index_srv4, same_index_srv3,
+  ])
+  fabric_fingerprint_with(population: forward) == fabric_fingerprint_with(population: reversed)
+    && fabric_rendered_lines(population: forward) == fabric_rendered_lines(population: reversed)
+    && fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: forward) == 2
+}
+
+test fn witness_fabric_cell_distinct_unexpected_slots_are_counted_separately() -> Bool {
+  let two = fabric_population_of(entries: [
+    fabric_cell_readback_all_present(), unexpected_readback_at(index: 7), unexpected_readback_at(index: 8),
+  ])
+  fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: two) == 2
+}
+
+// TWO HOST MISMATCHES REORDERED ARE ONE POPULATION, and the row above cannot see this. It pairs
+// ONE same-host unexpected cell with ONE mismatch, and the two classes are concatenated in a fixed
+// class order -- so nothing in it reorders two members WITHIN the mismatched list. The commit that
+// added that destination deduplicated it and appended in input order, which is the same defect the
+// unexpected side had been repaired for one field earlier.
+//
+// THE PAIR IS CHOSEN TO SHARE NO INDEX AND THEN A SECOND PAIR THAT DOES. srv1-08 and srv4-07
+// differ in both coordinates; srv1-07 and srv4-07 differ only in host, which is the case an
+// index-only comparison collapses -- and every member of this list is by construction a different
+// host from the enclosing one, so unlike the unexpected side there is no routing that makes index
+// alone total here.
+test fn witness_fabric_cell_host_mismatches_are_order_independent() -> Bool {
+  let a = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 8 })
+  let b = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 })
+  let forward = fabric_population_of(entries: [fabric_cell_readback_all_present(), a, b])
+  let reversed = fabric_population_of(entries: [fabric_cell_readback_all_present(), b, a])
+  fabric_fingerprint_with(population: forward) == fabric_fingerprint_with(population: reversed)
+    && fabric_rendered_lines(population: forward) == fabric_rendered_lines(population: reversed)
+    && fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: forward) == 2
+}
+
+test fn witness_fabric_cell_host_mismatches_sharing_an_index_are_order_independent() -> Bool {
+  let a = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 7 })
+  let b = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 })
+  let forward = fabric_population_of(entries: [fabric_cell_readback_all_present(), a, b])
+  let reversed = fabric_population_of(entries: [fabric_cell_readback_all_present(), b, a])
+  fabric_fingerprint_with(population: forward) == fabric_fingerprint_with(population: reversed)
+    && fabric_rendered_lines(population: forward) == fabric_rendered_lines(population: reversed)
+    && fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: forward) == 2
+}
+
+// AND ONE MISMATCH REPORTED TWICE IS ONE MISMATCH. The idempotence half, so the ordering rows above
+// cannot be satisfied by a fold that collapses the list to one member.
+test fn witness_fabric_cell_duplicate_host_mismatches_are_one_subject() -> Bool {
+  let a = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 })
+  let once = fabric_population_of(entries: [fabric_cell_readback_all_present(), a])
+  let twice = fabric_population_of(entries: [fabric_cell_readback_all_present(), a, a])
+  fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: once) == 1
+    && fleet_converge_fabric_cell_refusal_count(host: "srv3" as NonEmptyStr, observed_fabric_cells: twice) == 1
+    && fabric_rendered_lines(population: once) == fabric_rendered_lines(population: twice)
+}
+
+// AND A CONTRADICTED ADDRESS IS NOT AN UNREAD ONE. The blocked-address remedy was one sentence for
+// all three blocked states -- "the address was not read" -- which is false of a contradiction: that
+// address WAS read and its observations disagree. Same typed class, opposite investigations.
+test fn witness_fabric_cell_contradiction_remedy_is_not_the_unread_remedy() -> Bool {
+  let contradicted = fabric_population_of(entries: [FabricCellReadback {
+    slot: fabric_witness_slot(),
+    observations: [
+      AddressObserved { member: algebra_conflicting_member(digest: "digest-a") },
+      AddressObserved { member: algebra_conflicting_member(digest: "digest-b") },
+    ],
+  }])
+  let unread = fabric_cell_population_unobserved(host: operator_host_srv3)
+  let contradicted_lines = fleet_converge_fabric_cell_lines(host: "srv3" as NonEmptyStr, observed_fabric_cells: contradicted)
+  let unread_lines = fleet_converge_fabric_cell_lines(host: "srv3" as NonEmptyStr, observed_fabric_cells: unread)
+  fold(contradicted_lines, init: false, f: (acc, l) => acc || string_contains(s: l, pattern: "WAS read and its observations disagree"))
+    && fold(unread_lines, init: true, f: (acc, l) => acc && !string_contains(s: l, pattern: "WAS read and its observations disagree"))
+}
+
+fn algebra_conflicting_member(digest: String) -> FabricCellMember {
+  FabricCellMember {
+    slot: fabric_witness_slot(),
+    address: FabricCellResourceBoundaryAddress,
+    state_digest: digest as NonEmptyStr,
+  }
+}
+
+// THE PARTITION IS EXCLUSIVE FOR EVERY INPUT THE CONTRACT PERMITS, NOT ONLY THE ONES THE WRAPPER
+// PRODUCES. The kernel is public exactly so a synthetic roster can reach it, and an unrestricted
+// roster let ONE supplied subject land in TWO destinations: an expected slot naming srv4, under an
+// srv3 readback that supplies srv4's evidence, produced a STANDING (the readback matched it by
+// identity) and simultaneously a HOST MISMATCH (its host is not the enclosing one). The production
+// wrapper's host filtering hid it, which is precisely why it is not the wrapper's job -- a contract
+// enforced only by who happens to call it is not enforced (codex review 55760).
+test fn witness_fabric_cell_kernel_partitions_a_foreign_expected_slot_exactly_once() -> Bool {
+  let foreign = RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 }
+  let classification = classify_fabric_cell_host(
+    expected_slots: [foreign],
+    readback: FabricCellHostReadback {
+      host: operator_host_srv3,
+      cell_readbacks: [synthetic_absent_readback_for(slot: foreign)],
+    },
+  )
+  list_length(items: classification.standings) == 0
+    && list_length(items: classification.unexpected) == 0
+    && list_length(items: classification.host_mismatched) == 1
+    && list_length(items: classification.roster_mismatched) == 1
+}
+
+// AND THE MIS-SCOPED SLOT IS REFUSED AS ITS OWN SUBJECT, NOT FILTERED AND NOT FOLDED INTO THE
+// READBACK MISMATCH. Dropping it silently would satisfy the exclusivity row above while
+// re-committing the exclusion this kernel has been repaired for twice; reporting it as a readback
+// mismatch would satisfy both while collapsing two caller defects with different remedies -- one
+// says the ROSTER asked about another host, the other says a READBACK was labelled with one. The
+// law is stated over the refusal identity, because that is what a remedy router reads.
+test fn witness_fabric_cell_foreign_expected_slot_is_its_own_refusal_subject() -> Bool {
+  let foreign = RunnerSlotIdentity { host: operator_host_srv4, slot_index: 7 }
+  let classification = classify_fabric_cell_host(
+    expected_slots: [foreign],
+    readback: FabricCellHostReadback {
+      host: operator_host_srv3,
+      cell_readbacks: [synthetic_absent_readback_for(slot: foreign)],
+    },
+  )
+  let roster_ids = map(classification.roster_mismatched, r => fabric_cell_observation_refusal_identity(refusal: r))
+  let readback_ids = map(
+    classification.host_mismatched,
+    m => fabric_cell_observation_refusal_identity(refusal: ReadbackHostMismatch { mismatch: m }),
+  )
+  list_length(items: roster_ids) == 1
+    && list_length(items: readback_ids) == 1
+    && !fold(roster_ids, init: false, f: (acc, a) =>
+         acc || fold(readback_ids, init: false, f: (seen, b) => seen || a == b))
 }

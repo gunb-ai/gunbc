@@ -10,6 +10,24 @@ module gunbc.scm.json_member
 // authority substitution: one carrier's vocabulary borrowed to answer for another's, with nothing
 // false in either half and the arrow between them invented.
 //
+// THAT CLASS WAS CLOSED INCOMPLETELY, and this paragraph is the correction rather than a rewrite of
+// the one above. Extracting this module (#9048) rerouted most of those reads but left TWO of the four
+// it names -- `root` and `message`, in repository_envelope's decode_commit_members -- still wrapping a
+// MemberReadRefusal in RepositoryDecodeClosureDocRefusal, whose declared field is ClosureDocRefusal.
+// They were repaired later, in the object-table authority cut.
+//
+// The header stood for a day claiming a coverage it did not have, which is the more serious half: a
+// carrier asserting a class is closed is read as evidence, and a reader checking this module would
+// have found the claim and stopped. The two sites survived review because the CORRECT arm sits three
+// and seven lines away in the same match, shape-identical to the wrong one.
+//
+// They also compiled, and that is a separate defect this module cannot fix: a coproduct value of the
+// wrong coproduct type is accepted into a declared record field with no diagnostic. Measured with a
+// four-arm fixture -- coproduct-vs-primitive refuses, an unresolved name refuses, coproduct-vs-
+// coproduct is admitted silently. That is the ordinary compiler floor ("values inhabit declared
+// types"), it is handed to the compiler lane with the fixture, and until it is walled, nothing
+// mechanically prevents this class from recurring here.
+//
 // The refusal population here is exactly what reading a named member can fail with, and nothing
 // wider. A domain wraps it in one arm rather than restating its members, so a new member-read
 // failure mode is added once here and every domain's classifier refuses to compile until it says

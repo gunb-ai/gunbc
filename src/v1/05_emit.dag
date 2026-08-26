@@ -3,7 +3,7 @@ module v1.compiler.emit
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
 import v1.std.core {
   Node, ErrorNode, make_error_node, TransportEmissionNotModeled, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
-  module_imports, module_items, param_node_name_at, param_node_type_expr,
+  module_imports, module_items, param_node_name_at, param_node_type_expr, qualified_last_segment,
   param_node_default_value, NewlineIndex, authored_name_at, empty_intern_table,
   expr_var_name_at, expr_call_func_at, let_binding_name_at, field_access_field_at, ExprData,
   NoExprData, VarBindingKind, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
@@ -702,7 +702,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
 
   let is_conj = n.connective == Conj
   let is_disj = n.connective == Disj
-  let shared = set_contains(shared_types, tn)
+  let shared = set_contains(shared_types, qualified_last_segment(name: tn))
 
   if is_disj {
     let base = if n.ident_span != none {

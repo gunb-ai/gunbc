@@ -1,0 +1,71 @@
+module test.claim.emitter_qualified_type_shared_wrap_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Permanent regression control for the bare-keyed-lookup-fed-an-authored-spelling class,
+// at the ONE position that reaches v1.compiler.emit render_node_type: a struct FIELD.
+//
+// WHAT THE DEFECT WAS. shared_types is a set of BARE declared names -- v1.compiler.emit_rust
+// build_shared_types folds type_summaries keys and the container pascal names into it, and
+// nothing in it is ever dotted. render_node_type bound tn = authored_name_at(..) RAW and asked
+// that set about it, so a namespace-QUALIFIED spelling matched nothing, the type was not
+// treated as shared, and the Rc wrap was skipped. The two arms below differ in SPELLING ONLY.
+//
+// WHY THIS SITE AND NOT ITS SIBLINGS. fn-signature positions already route their leaf-name
+// extraction through rust_fn_sig_leaf_name, which peels -- see rust_fn_sig_leaf_name_dotted_note.
+// A parameter-position or container-element fixture in a fn signature therefore comes back
+// byte-identical in both arms and proves nothing about this site. The struct-FIELD position is
+// the one that was never routed, which is why the discriminating arms below are fields.
+//
+// WHERE THE ARMS DIVERGE, and it is not where a reader expects. The TOP-LEVEL field agrees in
+// both spellings; only the ELEMENT inside the container loses its wrap. So `one:` is not a
+// discriminator and `many:` is, and an assertion written only against the outer type would be
+// permanently green -- a decoration, not a wall (DESIGN 4b).
+//
+// THE BARE ARM IS THE POSITIVE CONTROL and stays enrolled with the qualified one. Measured on
+// main before the repair: bare true, qualified false. A single-arm fixture could not tell this
+// defect apart from the emitter never wrapping elements at all.
+
+fn w_bare_element_is_shared_wrapped() -> Bool {
+  compile_dag_rust_emit_check(
+    "module sharedwrap.bare\n\nimport std.decl_ref { DeclarationRef }\n\ntype BareHolder {\n  one: DeclarationRef\n  many: List<DeclarationRef>\n}\n",
+    "src/sharedwrap_bare.rs",
+    ["Rc<Vec<Rc<DeclarationRef>>>"],
+    []
+  )
+}
+
+fn w_qualified_element_is_shared_wrapped() -> Bool {
+  compile_dag_rust_emit_check(
+    "module sharedwrap.qual\n\nimport std.decl_ref { DeclarationRef }\n\ntype QualHolder {\n  one: std.decl_ref.DeclarationRef\n  many: List<std.decl_ref.DeclarationRef>\n}\n",
+    "src/sharedwrap_qual.rs",
+    ["Rc<Vec<Rc<DeclarationRef>>>"],
+    []
+  )
+}
+
+// The qualified spelling must not merely be wrapped -- it must never reach emitted Rust with its
+// dots intact, which is a PARSE error in Rust and masks every later error in the module.
+fn w_qualified_spelling_never_reaches_emitted_rust() -> Bool {
+  compile_dag_rust_emit_check(
+    "module sharedwrap.dots\n\nimport std.decl_ref { DeclarationRef }\n\ntype DotHolder {\n  many: List<std.decl_ref.DeclarationRef>\n}\n",
+    "src/sharedwrap_dots.rs",
+    [],
+    ["std.decl_ref.DeclarationRef"]
+  )
+}
+
+test fn bare_spelling_wraps_the_container_element() -> Bool {
+  w_bare_element_is_shared_wrapped()
+}
+
+test fn qualified_spelling_wraps_the_container_element_identically() -> Bool {
+  w_qualified_element_is_shared_wrapped()
+}
+
+test fn qualified_spelling_is_peeled_before_emission() -> Bool {
+  w_qualified_spelling_never_reaches_emitted_rust()
+}

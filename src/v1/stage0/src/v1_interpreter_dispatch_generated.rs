@@ -97,10 +97,10 @@ pub enum EvalBuiltinArm {
     FreeCallClassBImportClosureGateNotAffectedSkip,
     FreeCallWitnessLayerRootsCompileCleanCheck,
     FreeCallWitnessLayerRootsCompileCleanEmitCheck,
-    FreeCallConsumeFloorCompileCleanGateVerdict,
-    FreeCallConsumeFloorCompileCleanGateFailureDetail,
+    FreeCallInstallOrConsumeFloorCompileCleanGateReceipt,
     FreeCallRecordGeneratedArtifactDriftGateFailureDetail,
-    FreeCallConsumeGeneratedArtifactDriftGateFailureDetail,
+    FreeCallRecordGeneratedArtifactDriftGateClean,
+    FreeCallConsumeGeneratedArtifactDriftGateReceipt,
     FreeCallWitnessCompileCleanCliFloorVerdictsAgree,
     FreeCallTestMigrationDebtModuleNames,
     FreeCallTestMigrationLegacyBehaviorIds,
@@ -227,10 +227,10 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "class_b_import_closure_gate_not_affected_skip" => Some(EvalBuiltinArm::FreeCallClassBImportClosureGateNotAffectedSkip),
         "witness_layer_roots_compile_clean_check" => Some(EvalBuiltinArm::FreeCallWitnessLayerRootsCompileCleanCheck),
         "witness_layer_roots_compile_clean_emit_check" => Some(EvalBuiltinArm::FreeCallWitnessLayerRootsCompileCleanEmitCheck),
-        "consume_floor_compile_clean_gate_verdict" => Some(EvalBuiltinArm::FreeCallConsumeFloorCompileCleanGateVerdict),
-        "consume_floor_compile_clean_gate_failure_detail" => Some(EvalBuiltinArm::FreeCallConsumeFloorCompileCleanGateFailureDetail),
+        "install_or_consume_floor_compile_clean_gate_receipt" => Some(EvalBuiltinArm::FreeCallInstallOrConsumeFloorCompileCleanGateReceipt),
         "record_generated_artifact_drift_gate_failure_detail" => Some(EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateFailureDetail),
-        "consume_generated_artifact_drift_gate_failure_detail" => Some(EvalBuiltinArm::FreeCallConsumeGeneratedArtifactDriftGateFailureDetail),
+        "record_generated_artifact_drift_gate_clean" => Some(EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateClean),
+        "consume_generated_artifact_drift_gate_receipt" => Some(EvalBuiltinArm::FreeCallConsumeGeneratedArtifactDriftGateReceipt),
         "witness_compile_clean_cli_floor_verdicts_agree" => Some(EvalBuiltinArm::FreeCallWitnessCompileCleanCliFloorVerdictsAgree),
         "test_migration_debt_module_names" => Some(EvalBuiltinArm::FreeCallTestMigrationDebtModuleNames),
         "test_migration_legacy_behavior_ids" => Some(EvalBuiltinArm::FreeCallTestMigrationLegacyBehaviorIds),
@@ -355,10 +355,10 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.class_b_import_closure_gate_not_affected_skip") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallClassBImportClosureGateNotAffectedSkip };
     ("free_call.witness_layer_roots_compile_clean_check") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallWitnessLayerRootsCompileCleanCheck };
     ("free_call.witness_layer_roots_compile_clean_emit_check") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallWitnessLayerRootsCompileCleanEmitCheck };
-    ("free_call.consume_floor_compile_clean_gate_verdict") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallConsumeFloorCompileCleanGateVerdict };
-    ("free_call.consume_floor_compile_clean_gate_failure_detail") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallConsumeFloorCompileCleanGateFailureDetail };
+    ("free_call.install_or_consume_floor_compile_clean_gate_receipt") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallInstallOrConsumeFloorCompileCleanGateReceipt };
     ("free_call.record_generated_artifact_drift_gate_failure_detail") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateFailureDetail };
-    ("free_call.consume_generated_artifact_drift_gate_failure_detail") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallConsumeGeneratedArtifactDriftGateFailureDetail };
+    ("free_call.record_generated_artifact_drift_gate_clean") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateClean };
+    ("free_call.consume_generated_artifact_drift_gate_receipt") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallConsumeGeneratedArtifactDriftGateReceipt };
     ("free_call.witness_compile_clean_cli_floor_verdicts_agree") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallWitnessCompileCleanCliFloorVerdictsAgree };
     ("free_call.test_migration_debt_module_names") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallTestMigrationDebtModuleNames };
     ("free_call.test_migration_legacy_behavior_ids") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallTestMigrationLegacyBehaviorIds };

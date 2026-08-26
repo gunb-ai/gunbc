@@ -23,6 +23,7 @@ import gunbc.runner_slot_provision {
 }
 import product.placement_supply { HostIdentity }
 import gunbc.fabric_cell_converge { fabric_cell_population_unobserved }
+import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
 import gunbc.fleet_converge_plan {
   TimerRetirementMember,
   fleet_converge_plan_artifact,
@@ -162,6 +163,7 @@ func fleet_converge_plan_wet() -> ProcessExit
     observed_spark: [],
     observed_slots: observed_slots,
     observed_fabric_cells: fabric_cell_population_unobserved(host: host as HostIdentity),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Absent =>
       exit_failure(reason: "fleet_converge_plan: observed baseline is not Fnv1a64Structural — plan refused")
