@@ -26,7 +26,7 @@ import v2.compiler.parse {
   parse_skip_to_sync,
 }
 import v2.std.witness { Holds, Violates }
-import v2.std.diagnostic { Accepted, Diagnostics, None, Outcome, Rejected, Some, port_locus }
+import v2.std.diagnostic { Accepted, Diagnostics, None, Outcome, Rejected, Some, invariant_port_locus }
 import std.algebra { Cons, Empty }
 import v2.std.collection { List }
 import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
@@ -173,7 +173,7 @@ data validation_disjoint_choice_root: GrammarRoot = GrammarRoot {
 }
 
 fn validation_overlap_choice_validate_accepts_with_residue() -> Bool {
-  let at = port_locus(port: ^parse_stage_locus_port)
+  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_validation_grammar_contract)
   match grammar_validate_for_parse(root: validation_ambiguous_choice_root, at: at) {
     Accepted { value: _, diagnostics: d } =>
       match d {
@@ -201,7 +201,7 @@ data validation_nullable_ambiguous_choice_root: GrammarRoot = GrammarRoot {
 }
 
 fn validation_nullable_ambiguity_validate_rejects() -> Bool {
-  let at = port_locus(port: ^parse_stage_locus_port)
+  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_validation_grammar_contract)
   match grammar_validate_for_parse(root: validation_nullable_ambiguous_choice_root, at: at) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
@@ -209,7 +209,7 @@ fn validation_nullable_ambiguity_validate_rejects() -> Bool {
 }
 
 fn validation_disjoint_choice_residue_is_none() -> Bool {
-  let at = port_locus(port: ^parse_stage_locus_port)
+  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_validation_grammar_contract)
   match grammar_validate_for_parse(root: validation_disjoint_choice_root, at: at) {
     Accepted { value: _, diagnostics: d } =>
       match d {
@@ -221,7 +221,7 @@ fn validation_disjoint_choice_residue_is_none() -> Bool {
 }
 
 fn validation_disjoint_choice_validate_accepts() -> Bool {
-  let at = port_locus(port: ^parse_stage_locus_port)
+  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_validation_grammar_contract)
   match grammar_validate_for_parse(root: validation_disjoint_choice_root, at: at) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -253,7 +253,7 @@ data validation_two_token_list: List<Token> = Cons {
 }
 
 fn validation_right_recursive_parse_fixture() -> Outcome<ParseTree> {
-  let at = port_locus(port: ^parse_stage_locus_port)
+  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_validation_grammar_contract)
   match grammar_validate_for_parse(root: validation_right_recursive_root, at: at) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
     Accepted { value: validated, diagnostics: _ } =>

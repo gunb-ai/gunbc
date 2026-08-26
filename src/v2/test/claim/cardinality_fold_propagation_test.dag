@@ -3,7 +3,7 @@ module v2.test.claim.cardinality_fold_propagation
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn fold_locus() -> Locus { port_locus(port: ^cardinality_fold_propagation) }
+fn fold_locus() -> Locus { invariant_port_locus(port: ^cardinality_fold_propagation, invariant: ^cardinality_fold_propagation) }
 
 test fn cardinality_is_a_fold_homomorphism() -> Bool {
   let a = [1, 2, 3]

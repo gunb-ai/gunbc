@@ -279,26 +279,84 @@ fn some_json_value(v: JsonValue) -> JsonValue? {
   Present { value: v }
 }
 
-fn parse_json_fully_consumed(s: String, v: JsonValue, n: Int) -> JsonValue? {
-  if json_text_skip_ws(s: s, i: n) == s.length() {
-    some_json_value(v: v)
-  } else {
-    none
+// THE OFFSET WAS ALREADY COMPUTED AND THROWN AWAY, WHICH IS WHY THIS CUT INVENTS NOTHING.
+// parse_json_value_at has answered JsonParseFail { at: Int } since it was written; parse_json
+// matched that arm as `at: _` and returned `none`. So every consumer that wanted to say WHERE a
+// document stopped being readable was, for its entire life, one discarded binding away from being
+// able to -- and the fail-open repairs across this corpus each had to reconstruct a prose
+// approximation of a fact the parser had already located.
+//
+// TWO GAPS, NOT ONE, AND THE SECOND IS THE ONE THE OPTIONAL HID BEST. `{"a":1} garbage` PARSES --
+// completely, into a valid value -- and was then rejected by full-consumption with the same `none`
+// as `{ not json`. Those have opposite remedies: the first says a writer appended to a document or
+// two were concatenated, the second says the bytes are damaged. A reader told only "not readable"
+// investigates the wrong half.
+//
+// NEITHER GAP IS INVENTED AND NEITHER IS A DECORATION: both are produced by executing paths already
+// in this file, and both are reachable from a two-line fixture. There is deliberately NO arm for an
+// EMPTY document -- empty text fails at offset 0 like any other malformed input, and minting a
+// variant for it would assert a distinction this parser does not draw.
+type JsonDocumentGap
+  = JsonDocumentMalformedAt { at: Int }
+  | JsonDocumentTrailingContentAt { at: Int }
+
+// ONE REFUSAL ARM CARRYING THE DISTINCTION INSIDE, RATHER THAN TWO ARMS AT FORTY-FIVE CALL SITES,
+// and the shape is chosen against a failure this document names rather than for brevity.
+//
+// Two peer refusal arms would have forced every caller to write both, and the overwhelmingly common
+// honest answer at those sites is one domain fact ("this receipt is not one complete JSON value")
+// that covers both gaps exactly. Forty-five mechanically duplicated arms would be forty-five places
+// for the two to silently drift apart, and the duplication would read as a considered distinction
+// where none was made.
+//
+// The inverse risk is real and is why the gap is a PAYLOAD rather than erased: DESIGN's "total at
+// the level examined, blind one level down" is precisely a match that is exhaustive over its type
+// while the distinction that decides the remedy hides inside an arm. The defence is that the
+// distinction is CARRIED, not summarised -- a caller holding `gap` can descend the moment its
+// remedies diverge, and one that renders it through json_document_gap_text is stating the located
+// fact rather than a fabricated one. What is forbidden is binding it as `_` and asserting a cause;
+// that is discarding a computed fact, which is the defect this whole cut exists to end.
+type JsonDocumentParse
+  = JsonDocumentParsed { value: JsonValue }
+  | JsonDocumentUnreadable { gap: JsonDocumentGap }
+
+// THE SHARED RENDERING FOR CONSUMERS WHOSE REFUSAL CARRIES PROSE. It exists so a dozen decoders do
+// not each invent a spelling for one fact -- that is the section 3 nicknaming this corpus keeps
+// paying for. A consumer with a typed cause of its own should carry the gap, not this string.
+fn json_document_gap_text(gap: JsonDocumentGap) -> String {
+  match gap {
+    JsonDocumentMalformedAt { at: at } =>
+      concat("not readable as JSON at offset ", to_string(n: at))
+    JsonDocumentTrailingContentAt { at: at } =>
+      concat("one complete JSON value followed by trailing content at offset ", to_string(n: at))
   }
 }
 
-fn parse_json(s: String) -> JsonValue? {
+fn parse_json_fully_consumed(s: String, v: JsonValue, n: Int) -> JsonDocumentParse {
+  let end = json_text_skip_ws(s: s, i: n)
+  if end == s.length() {
+    JsonDocumentParsed { value: v }
+  } else {
+    JsonDocumentUnreadable { gap: JsonDocumentTrailingContentAt { at: end } }
+  }
+}
+
+fn parse_json_document(s: String) -> JsonDocumentParse {
   match parse_json_value_at(s: s, i: 0) {
-    JsonParseFail { at: _ } => none
+    JsonParseFail { at: at } => JsonDocumentUnreadable { gap: JsonDocumentMalformedAt { at: at } }
     JsonParsed { value: v, next: n } => parse_json_fully_consumed(s: s, v: v, n: n)
   }
 }
 
 data json_text_parseable_derivation_note: String = "This is the single recognition authority: whether text IS JSON is decided by whether it PARSES, not by a second scanner that answers the same question independently. The span scanner in extdeps.languages.json.grammar previously carried its own json_text_parseable, which meant one procedure decided whether a document was JSON and another decided what it contained - two readings of one RFC that can disagree, which is the fork DESIGN 3 names (the exponent defect in review 44043 was exactly that, caught only because a witness pinned the two surfaces to each other). Recognition now derives from construction, so a document this returns true for is a document parse_json produced a value from, by definition rather than by agreement. The scanner keeps its span productions, which parse_json calls to find value boundaries; what it no longer keeps is an opinion about the whole document."
 
+// THE ONE CONSUMER THAT HONESTLY DISCARDS THE GAP, and its licence is that its entire question IS
+// whether the text parses -- the Bool is the domain fact here, not a collapse of one. It binds the
+// gap as `_` and asserts nothing about the cause, which is the difference between discarding a fact
+// you were not asked about and discarding one you then answer over.
 fn json_text_parseable(s: String) -> Bool {
-  match parse_json(s: s) {
-    Present { value: _ } => true
-    Absent => false
+  match parse_json_document(s: s) {
+    JsonDocumentParsed { value: _ } => true
+    JsonDocumentUnreadable { gap: _ } => false
   }
 }

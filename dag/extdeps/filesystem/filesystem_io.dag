@@ -41,7 +41,7 @@ service Filesystem {
     input { path: String }
     output {
       content: String from "content"
-      success: Bool from "write_success"
+      success: Bool from "read_success"
       error: String from "error"
     }
     readonly
@@ -51,7 +51,7 @@ service Filesystem {
   operation Delete {
     input { path: String }
     output {
-      success: Bool from "write_success"
+      success: Bool from "delete_success"
       error: String from "error"
     }
     transport file { path: "{path}", verb: "delete" }
@@ -60,8 +60,8 @@ service Filesystem {
   operation List {
     input { path: String }
     output {
-      entries: String from "content"
-      success: Bool from "write_success"
+      entries: String from "entries"
+      success: Bool from "list_success"
       error: String from "error"
     }
     readonly

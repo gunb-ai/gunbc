@@ -11,7 +11,7 @@ fn empty_generic_substitution() -> GenericSubstitution {
 fn generic_substitution_bind_conflict_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^generic_substitution_bind_conflict,
-    at: port_locus(port: ^generic_substitution_bind_once_port),
+    at: invariant_port_locus(port: ^generic_substitution_bind_once_port, invariant: ^generic_substitution_bind_conflict),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

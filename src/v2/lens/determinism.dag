@@ -29,7 +29,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, NonEmptyDiagnostics, Outcome, Rejected, Unavailable, node_locus, port_locus, outcome_accepted }
+import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, NonEmptyDiagnostics, Outcome, Rejected, Unavailable, node_locus, invariant_port_locus, outcome_accepted }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Edge, Node, NodeFold, Symbol, TypeNode, fold_node }
 import v2.std.node_query { node_is_call, node_positional_child_targets }
@@ -132,7 +132,10 @@ data determinism_denominator_gate_note: String = "The enrollment half of the wal
 fn determinism_denominator_diagnostic(d: PrimitiveDefinition) -> Diagnostic {
   Diagnostic {
     reason: ^determinism_primitive_missing_traversal_fact,
-    at: port_locus(port: symbol_intern_lexeme(lexeme: d.semantic_contract.canonical_name as String)),
+    at: invariant_port_locus(
+      port: symbol_intern_lexeme(lexeme: d.semantic_contract.canonical_name as String),
+      invariant: ^determinism_primitive_missing_traversal_fact
+    ),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
