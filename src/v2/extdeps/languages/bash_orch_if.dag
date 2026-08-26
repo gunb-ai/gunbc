@@ -18,7 +18,7 @@ import v2.std.diagnostic {
   bind_outcome,
   outcome_accepted,
   outcome_rejected,
-  port_locus
+  invariant_port_locus
 }
 import std.filesystem.types { EntryKind }
 import v2.std.node { Node, Symbol }
@@ -219,7 +219,7 @@ fn bash_test_path_kind_target_model(op: String, operand: String) -> Outcome<Targ
 fn bash_path_intent_invalid_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^bash_path_intent_operand_invalid,
-    at: port_locus(port: ^bash_path_intent_operand_port),
+    at: invariant_port_locus(port: ^bash_path_intent_operand_port, invariant: ^bash_path_intent_operand_invalid),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

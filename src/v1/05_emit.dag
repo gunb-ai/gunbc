@@ -1049,11 +1049,11 @@ fn transport_binding_refusal_fact(cause: TransportBindingRefusal) -> String {
 // The single authority for which declared output keys the file realization can
 // answer. `is_modeled_file_output_channel` is derived from it.
 fn file_result_channel_of_key(key: String) -> FileResultChannel? {
-  if key == "write_success" || key == "success" { Present { value: FileChanSuccess } }
+  if key == "write_success" || key == "read_success" || key == "delete_success" || key == "list_success" || key == "success" { Present { value: FileChanSuccess } }
   else if key == "bytes_written" || key == "bytes" || key == "byte_count" { Present { value: FileChanByteCount } }
   else if key == "path" { Present { value: FileChanPath } }
   else if key == "error" { Present { value: FileChanError } }
-  else if key == "content" { Present { value: FileChanContent } }
+  else if key == "content" || key == "entries" { Present { value: FileChanContent } }
   else { none }
 }
 
@@ -2108,7 +2108,7 @@ fn file_emission_refusal_fact(refusal: FileEmissionRefusal) -> String {
         "' writes a payload, and the operation declares no `content` input to write -- the payload is an input to the operation, never a value the emitter may invent")
     FileOutputKeyNotModeled { key: k } =>
       concat("file transport output key '", k,
-        "' has no modeled channel -- the modeled channels are write_success, success, bytes_written, bytes, byte_count, path, error and content")
+        "' has no modeled channel -- the modeled channels are write_success, read_success, delete_success, list_success, success, bytes_written, bytes, byte_count, path, error, content and entries")
     FileOutputShapeNotModeled =>
       "the file transport operation's declared output must be a product of named fields; the emitted realization answers per FIELD, so a return shape with no fields to answer for has no rendering"
   }

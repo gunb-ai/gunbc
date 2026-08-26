@@ -118,7 +118,7 @@ data claim_port_diagnostic_carries_port_locus: TestClaim = DiagnosticClaim {
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: ^correction_port_reason,
-        at: port_locus(port: ^correction_port_symbol),
+        at: invariant_port_locus(port: ^correction_port_symbol, invariant: ^correction_port_reason),
         correction: Suggested { node: transport_correction_expected_node }
       }
     ),

@@ -1,0 +1,237 @@
+module gunbc.bare_name_fork_lens
+
+import std.types { Bool, Int, String }
+import v2.std.decl_index { DeclFact, ItemKind, FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem, decl_facts }
+import std.materialization_ladder { string_list_contains }
+
+// WHAT THIS ANSWERS, AND WHY A COMPILE CANNOT.
+//
+// Two modules declaring one bare name is not an error at either declaration. It becomes an error at
+// a CALL SITE, and only under a closure that contains both declarers. A per-entry compile contains
+// ONE of them, so the call resolves and the entry reports clean; the floor's whole-corpus
+// preparation contains both, and the same call fails to resolve. The class is therefore invisible to
+// the check an author naturally runs and visible only to the one that gates -- which is exactly
+// backwards, and expensive: the cheap check cannot see it and the check that can costs a CI round
+// trip.
+//
+// MEASURED SPECIMEN (2026-08-25, gunbc#9213, run 32896104450). `dag/tools/frontier_ingestion_probe`
+// declares `roster_identity` over a list of frontier members; a second module declared the same name
+// over a different subject returning a different type. `gunbc compile --entry <the caller>` reported
+// zero blocking errors. The floor refused with `function 'roster_identity' not found in scope`.
+//
+// AND THE DIAGNOSTIC DOES NOT SAY WHAT HAPPENED. Two declarers and zero declarers arrive as the same
+// message -- `not found in scope` -- which is state-space conflation: they are different states with
+// opposite remedies (rename one of two authorities; write the missing one) rendered identically. A
+// reader of that refusal has no reason to suspect a collision, which is why this lens reports the
+// DECLARERS and not merely the fact of a fork.
+//
+// THIS IS THE INTERIM SHAPE, NOT THE TERMINAL ONE. The terminal answer is that a declaration fact
+// belongs on the module's own declaration, checked at ingestion where the module is parsed anyway --
+// one module's facts from one module's source. This lens is the corpus-wide reconstruction that
+// trigger exists to retire, and it is written down here so that it is never later cited as the
+// finished thing.
+//
+// IT IS ALSO NOT A CENSUS AND MUST NOT BECOME ONE. The question is scoped to ONE SUBJECT MODULE:
+// do the names THIS module declares already have a declarer elsewhere. A corpus-wide count of every
+// forked name in the repository is a different artifact with a different cost, and the number would
+// not be the valuable part anyway -- the mechanism is.
+
+fn item_kind_text(kind: ItemKind) -> String {
+  match kind {
+    FnItem => "fn"
+    FuncItem => "func"
+    TypeItem => "type"
+    DataItem => "data"
+    ServiceItem => "service"
+    OtherItem => "other"
+  }
+}
+
+// COVERAGE IS THE `ItemKind` VOCABULARY AND NOTHING WIDER, and this row is the declaration of that
+// bound rather than a caveat a reader has to infer. `decl_facts` carries TOP-LEVEL declarations. A
+// coproduct's VARIANT ARMS are constructor names that also resolve bare and can also fork, and they
+// are not in this population. So a clean standing from this lens means "no top-level declaration of
+// mine is forked", never "no name of mine is forked".
+//
+// NEXT-RUNG TRIGGER: variant constructors carried as their own facts, at which point this bound is
+// deleted rather than widened here -- widening it here would rebuild the constructor index a second
+// time, which is the fork this lens exists to find.
+data bare_name_fork_lens_coverage_bound: String = "top-level declarations only, per the ItemKind vocabulary: fn, func, type, data, service, other. Variant constructor names are NOT in this population and can fork undetected. Next-rung trigger: variant constructors carried as decl facts."
+
+type BareNameStanding
+  = BareNameSoleDeclarer { name: String, kind: ItemKind }
+  | BareNameForked { name: String, kind: ItemKind, declarers: List<String> }
+
+fn bare_name_standing_text(standing: BareNameStanding) -> String {
+  match standing {
+    BareNameSoleDeclarer { name: n, kind: k } =>
+      concat("sole\t", concat(item_kind_text(kind: k), concat("\t", n)))
+    BareNameForked { name: n, kind: k, declarers: ds } =>
+      concat(
+        "FORKED\t",
+        concat(
+          item_kind_text(kind: k),
+          concat("\t", concat(n, concat("\tdeclarers: ", join(ds, ", "))))
+        )
+      )
+  }
+}
+
+// AN OBSERVATION THAT COULD NOT BE MADE IS NOT AN OBSERVATION OF NOTHING.
+//
+// If the subject path contributes no declarations, the honest answer is that the subject was not
+// read -- a mistyped path, a file outside the roots, a module the index could not classify. Rendering
+// that as "no forks" would be the empty-observation narrow: the strongest possible verdict drawn from
+// the weakest possible observation, and the one shape that makes this lens worse than absent, since
+// it would be cited as coverage.
+type BareNameForkStanding
+  = SubjectUnread { subject: String, roots: List<String> }
+  | SubjectRead { subject: String, standings: List<BareNameStanding> }
+
+// THE PURE CORE READS A PROJECTION, NOT `DeclFact`, and the reason is testability rather than
+// taste. `DeclFact` carries a `Node`, so every hand-authored fixture over it would have to mint a
+// syntax node to say something about a NAME -- and a fixture that expensive is a fixture nobody
+// writes, which is how a lens ends up with a host call and no evidence. The host boundary projects
+// once; everything below it is pure and witnessable from authored rows.
+type BareNameDeclaration {
+  name: String
+  qualified_name: String
+  rel_path: String
+  kind: ItemKind
+}
+
+fn bare_name_declarations_of(facts: List<DeclFact>) -> List<BareNameDeclaration> {
+  map(
+    facts,
+    f => BareNameDeclaration {
+      name: f.name,
+      qualified_name: f.qualified_name,
+      rel_path: f.rel_path,
+      kind: f.kind
+    }
+  )
+}
+
+fn subject_declarations(subject_rel_path: String, declarations: List<BareNameDeclaration>) -> List<BareNameDeclaration> {
+  fold(declarations, init: [], f: (acc, d) => if d.rel_path == subject_rel_path { concat(acc, [d]) } else { acc })
+}
+
+fn declarers_of_name(name: String, subject_rel_path: String, facts: List<BareNameDeclaration>) -> List<String> {
+  fold(
+    facts,
+    init: [],
+    f: (acc, f) =>
+      if (f.name == name) && !(f.rel_path == subject_rel_path) {
+        if string_list_contains(xs: acc, wanted: f.qualified_name) { acc } else { concat(acc, [f.qualified_name]) }
+      } else {
+        acc
+      }
+  )
+}
+
+fn bare_name_fork_standing_over(
+  subject_rel_path: String,
+  roots: List<String>,
+  facts: List<BareNameDeclaration>
+) -> BareNameForkStanding {
+  let mine = subject_declarations(subject_rel_path: subject_rel_path, declarations: facts)
+  if count(mine) == 0 {
+    SubjectUnread { subject: subject_rel_path, roots: roots }
+  } else {
+    SubjectRead {
+      subject: subject_rel_path,
+      standings: map(
+        mine,
+        f => {
+          let others = declarers_of_name(name: f.name, subject_rel_path: subject_rel_path, facts: facts)
+          if count(others) == 0 {
+            BareNameSoleDeclarer { name: f.name, kind: f.kind }
+          } else {
+            BareNameForked { name: f.name, kind: f.kind, declarers: others }
+          }
+        }
+      )
+    }
+  }
+}
+
+fn forked_standings(standing: BareNameForkStanding) -> List<BareNameStanding> {
+  match standing {
+    SubjectUnread { subject: _, roots: _ } => []
+    SubjectRead { subject: _, standings: ss } =>
+      fold(
+        ss,
+        init: [],
+        f: (acc, s) =>
+          match s {
+            BareNameSoleDeclarer { name: _, kind: _ } => acc
+            BareNameForked { name: _, kind: _, declarers: _ } => concat(acc, [s])
+          }
+      )
+  }
+}
+
+// THE VERDICT REFUSES ON AN UNREAD SUBJECT, which is the arm that separates this from a decoration.
+// A lens whose only failure mode is "found a fork" reads clean whenever it cannot read at all.
+type BareNameForkVerdict
+  = NoForkedDeclaration { subject: String, checked: Int }
+  | ForkedDeclarations { subject: String, forked: List<BareNameStanding> }
+  | SubjectContributedNoDeclarations { subject: String, roots: List<String> }
+
+fn bare_name_fork_verdict(standing: BareNameForkStanding) -> BareNameForkVerdict {
+  match standing {
+    SubjectUnread { subject: s, roots: rs } => SubjectContributedNoDeclarations { subject: s, roots: rs }
+    SubjectRead { subject: s, standings: ss } => {
+      let forked = forked_standings(standing: standing)
+      if count(forked) == 0 {
+        NoForkedDeclaration { subject: s, checked: count(ss) }
+      } else {
+        ForkedDeclarations { subject: s, forked: forked }
+      }
+    }
+  }
+}
+
+fn bare_name_fork_verdict_holds(verdict: BareNameForkVerdict) -> Bool {
+  match verdict {
+    NoForkedDeclaration { subject: _, checked: _ } => true
+    ForkedDeclarations { subject: _, forked: _ } => false
+    SubjectContributedNoDeclarations { subject: _, roots: _ } => false
+  }
+}
+
+fn bare_name_fork_report(verdict: BareNameForkVerdict) -> List<String> {
+  match verdict {
+    NoForkedDeclaration { subject: s, checked: n } => [
+      concat("subject\t", s),
+      concat("checked\t", to_string(n)),
+      "verdict\tno forked top-level declaration",
+      concat("coverage\t", bare_name_fork_lens_coverage_bound)
+    ]
+    SubjectContributedNoDeclarations { subject: s, roots: rs } => [
+      concat("subject\t", s),
+      concat("roots\t", join(rs, ", ")),
+      "verdict\tREFUSED — the subject contributed no declarations, so nothing was read about it; this is not a clean result"
+    ]
+    ForkedDeclarations { subject: s, forked: fs } =>
+      concat(
+        [
+          concat("subject\t", s),
+          concat("forked\t", to_string(count(fs))),
+          "verdict\tREFUSED — a name declared here is already declared elsewhere; it resolves under a per-entry compile and refuses under whole-corpus preparation"
+        ],
+        map(fs, f => bare_name_standing_text(standing: f))
+      )
+  }
+}
+
+
+// THE HOST BOUNDARY, and it is the only thing here that touches the corpus. Everything the verdict
+// depends on is above it and pure.
+fn bare_name_fork_standing(subject_rel_path: String, pool_roots: List<String>) -> BareNameForkStanding {
+  bare_name_fork_standing_over(
+    subject_rel_path: subject_rel_path,
+    roots: pool_roots,
+    facts: bare_name_declarations_of(facts: decl_facts(pool_roots: pool_roots))
+  )
+}

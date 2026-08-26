@@ -61,7 +61,7 @@ fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
 fn reference_ingest_refusal_diagnostic(refusal: ReferenceIngestRefusal) -> Diagnostic {
   Diagnostic {
     reason: refusal.reason,
-    at: port_locus(port: reference_deps_file_anchor),
+    at: invariant_port_locus(port: reference_deps_file_anchor, invariant: refusal.reason),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -72,7 +72,7 @@ fn reference_first_refusal_diagnostic(refusals: List<ReferenceIngestRefusal>) ->
     HeadAbsent =>
       Diagnostic {
         reason: reference_deps_closure_ingest_refused,
-        at: port_locus(port: reference_deps_file_anchor),
+        at: invariant_port_locus(port: reference_deps_file_anchor, invariant: reference_deps_closure_ingest_refused),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
   }
@@ -837,7 +837,7 @@ fn reference_closure_live_excluding(
   if reference_path_excluded(path: entry_path, exclude_substrings: exclude_substrings) {
     outcome_rejected(d: Diagnostic {
       reason: reference_deps_closure_entry_excluded,
-      at: port_locus(port: reference_deps_file_anchor),
+      at: invariant_port_locus(port: reference_deps_file_anchor, invariant: reference_deps_closure_entry_excluded),
       correction: Unavailable { reason: ExternalContractUnknown }
     })
   } else {
@@ -857,7 +857,7 @@ fn reference_closure_parsed_live_excluding(
   if reference_path_excluded(path: entry_path, exclude_substrings: exclude_substrings) {
     outcome_rejected(d: Diagnostic {
       reason: reference_deps_closure_entry_excluded,
-      at: port_locus(port: reference_deps_file_anchor),
+      at: invariant_port_locus(port: reference_deps_file_anchor, invariant: reference_deps_closure_entry_excluded),
       correction: Unavailable { reason: ExternalContractUnknown }
     })
   } else {

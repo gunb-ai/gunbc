@@ -11,12 +11,12 @@ import v2.extdeps.languages.typescript {
   ts_fn_add_lex
 }
 import v2.std.compilers.lexing { token_stream_remaining }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, port_locus }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, invariant_port_locus }
 import v2.std.grammar { ParseTree }
 import v2.std.logic { Bool }
 
 test fn typescript_grammar_validates_fixture() -> Bool {
-  let at = port_locus(port: ^parse_stage_locus_port)
+  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^typescript_grammar_claim_test_grammar_contract)
   match grammar_validate_for_parse(root: ts_fn_add_grammar_root(), at: at) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -31,7 +31,7 @@ test fn typescript_grammar_parse_accepted() -> Bool {
 }
 
 fn typescript_grammar_parse_fixture() -> Outcome<ParseTree> {
-  let at = port_locus(port: ^parse_stage_locus_port)
+  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^typescript_grammar_claim_test_grammar_contract)
   match tokenize(
     text: ts_source_text,
     file: ^typescript_parse_fixture_file,
