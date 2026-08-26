@@ -1,9 +1,9 @@
 module gunbc.session_demand
 
 import std.types { Bool, List, NonEmptyStr, String, Timestamp }
+import std.nat { Nat }
 import std.measure { ByteSize }
 import product.placement_supply { HostIdentity }
-import extdeps.linux.cgroup_v2_memory { CgroupMemoryCountValue, CgroupMemoryLimitValue }
 import gunbc.oomd_install {
   SessionMembershipStanding,
   SliceMembershipSignal,
@@ -117,10 +117,33 @@ fn census_membership_signal(c: SessionPlacementCensus) -> SliceMembershipSignal?
 // documented as a plain byte count, so its parse has exactly two outcomes, and a container whose
 // counter could not be read must not contribute a fabricated zero to an aggregate -- a zero and an
 // unreadable counter are the same number and opposite facts.
+// AN UNREAD COUNTER AND A MALFORMED ONE ARE DIFFERENT FACTS (review 56218). The producer used to
+// manufacture a body like "<read failed: memory.current>" on a failed read and hand it to the
+// PARSER, which duly classified it as Unparseable -- so "we never got a body" and "the kernel wrote
+// something we cannot parse" landed in one arm, and the `body` field held a string this repository
+// invented rather than anything the kernel produced. That is fabricated plausible output feeding a
+// state-space conflation, and it is the same not-applicable-rendered-as-malformed class this
+// module's own commentary cites as the bar.
+//
+// THE SPLIT IS AT THE RIGHT LAYER. extdeps.linux.cgroup_v2_memory keeps its two arms because it is
+// an authority on PARSING A BODY IT WAS GIVEN; whether a body was obtained at all is an
+// OBSERVATION fact and belongs here. So the parse authority is unchanged and the third state is
+// added by the layer that actually knows about reads.
+type ObservedMemoryCount
+  = MemoryCountRead { bytes: ByteSize }
+  | MemoryCountMalformed { body: String }
+  | MemoryCountUnread { cause: String }
+
+type ObservedMemoryLimit
+  = MemoryLimitRead { bytes: ByteSize }
+  | MemoryLimitUnlimited
+  | MemoryLimitMalformed { body: String }
+  | MemoryLimitUnread { cause: String }
+
 type SessionMemoryDemand {
   identity: NonEmptyStr
   cgroup: NonEmptyStr
-  memory_current: CgroupMemoryCountValue
+  memory_current: ObservedMemoryCount
 }
 
 // THE PARENT SLICE CARRIES ITS PEAK WITH THE EPOCH THAT PRODUCED IT. memory.peak is
@@ -130,10 +153,10 @@ type SessionMemoryDemand {
 // exactly that reading and nothing could detect it.
 type ParentSliceDemand {
   cgroup: NonEmptyStr
-  memory_current: CgroupMemoryCountValue
-  memory_peak: CgroupMemoryCountValue
+  memory_current: ObservedMemoryCount
+  memory_peak: ObservedMemoryCount
   memory_peak_epoch: String
-  memory_max: CgroupMemoryLimitValue
+  memory_max: ObservedMemoryLimit
 }
 
 // EACH SAMPLE CARRIES ITS OWN POPULATION. Session arrival and departure is part of what is being
@@ -181,29 +204,38 @@ type SessionDemandObservation
 // all-managed arm may establish an aggregate, for the same reason it is the only arm that grounds
 // the oomd backstop: in every other arm some running session is outside the cgroup the aggregate is
 // computed over, so the aggregate is measuring a proper subset while naming the whole.
+// BOTH OUTCOMES ARE NAMED (review 56218). The gate returned SessionDemandObservation?, where
+// Absent meant "the gate admits, proceed" and Present meant "the gate produced a terminal
+// verdict" -- one Option carrying two unrelated meanings, which is the state-space conflation
+// DESIGN's recurring-failures list names. Nothing about "admits" is an ABSENCE of anything; it is
+// a positive finding with its own payload, and it was the arm a caller most needed to recognise.
+type SessionDemandMembershipGate
+  = MembershipAdmitsAggregate { managed_count: Nat }
+  | MembershipRefusesAggregate { observation: SessionDemandObservation }
+
 fn session_demand_membership_gate(
   host: HostIdentity,
   m: SessionMembershipStanding,
-) -> SessionDemandObservation? {
+) -> SessionDemandMembershipGate {
   match m {
-    AllSessionsManaged { managed_count: _ } => none
+    AllSessionsManaged { managed_count: n } => MembershipAdmitsAggregate { managed_count: n }
     MixedSessionMembership { managed_count: mc, legacy_count: lc } =>
-      Present {
-        value: SessionDemandPopulationIncomplete {
+      MembershipRefusesAggregate {
+        observation: SessionDemandPopulationIncomplete {
           host: host,
           membership: m,
           cause: "mixed session membership: some sessions are parented under the managed slice and some are flat under system.slice, so an aggregate over the slice measures a proper subset of concurrent demand while naming the whole. The unparented sessions are precisely the ones the slice cannot account for",
         }
       }
     AllSessionsLegacy { legacy_count: _ } =>
-      Present {
-        value: SessionDemandPopulationIncomplete {
+      MembershipRefusesAggregate {
+        observation: SessionDemandPopulationIncomplete {
           host: host,
           membership: m,
           cause: "all sessions are flat under system.slice and none are parented under the managed slice: the slice aggregate would read near zero while the host carries real concurrent demand, which is the most dangerous direction this instrument can be wrong in",
         }
       }
     NoSessionsObserved =>
-      Present { value: NoConcurrentSessionDemandObserved { host: host } }
+      MembershipRefusesAggregate { observation: NoConcurrentSessionDemandObserved { host: host } }
   }
 }

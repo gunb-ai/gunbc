@@ -15,8 +15,8 @@ import extdeps.linux.cgroup_v2_memory {
   MemoryCurrent, MemoryPeak, MemoryMax,
   cgroup_memory_interface_file_name,
   parse_cgroup_memory_count, parse_cgroup_memory_limit,
-  CgroupMemoryCount, CgroupMemoryCountUnparseable, CgroupMemoryCountValue,
-  CgroupMemoryLimited, CgroupMemoryUnlimited, CgroupMemoryLimitUnparseable, CgroupMemoryLimitValue,
+  CgroupMemoryCount, CgroupMemoryCountUnparseable,
+  CgroupMemoryLimited, CgroupMemoryUnlimited, CgroupMemoryLimitUnparseable,
 }
 import gunbc.host_effect { HostEffectTransport, LocalShell }
 import gunbc.host_operation_exec {
@@ -31,6 +31,9 @@ import gunbc.session_demand {
   SessionPlacement, ManagedSession, SessionPlacementUnclassifiable,
   SessionMemoryDemand, ParentSliceDemand,
   SessionPopulation, SessionPopulationEstablished, SessionPopulationUnavailable,
+  ObservedMemoryCount, MemoryCountRead, MemoryCountMalformed, MemoryCountUnread,
+  ObservedMemoryLimit, MemoryLimitRead, MemoryLimitUnlimited, MemoryLimitMalformed, MemoryLimitUnread,
+  SessionDemandMembershipGate, MembershipAdmitsAggregate, MembershipRefusesAggregate,
   session_placement_census, census_membership_signal, session_demand_membership_gate,
   SessionPlacementCensusComplete, SessionPlacementCensusIncomplete,
   SessionDemandObservationUnavailable, SessionDemandPopulationIncomplete,
@@ -65,8 +68,18 @@ fn managed_slice_path() -> NonEmptyStr {
 // plain listing of the same directory returned 92 interface files. So success-with-no-lines must
 // reach the caller as an observed empty population; treating it as unavailable would be the
 // empty-observation narrow, and treating a FAILED read as empty would be worse.
+// THE FILTER PRECEDES THE CAST (review 56218). It used to cast every split element to NonEmptyStr
+// and filter empties AFTERWARDS, so an empty element -- a blank line anywhere in find's output --
+// was cast to NonEmptyStr before anything removed it. That inverts construction-before-validation,
+// and its current safety depends on the cast NOT being enforced: the ragged-input witness passes
+// today precisely because the cast does not refuse "", which means this code was relying on a
+// substrate gap and would have started KILLING THE OBSERVATION the day that wall landed.
+// Filtering first makes the empty case unreachable at the cast rather than tolerated past it.
 fn cgroup_child_names(stdout: String) -> List<NonEmptyStr> {
-  filter(map(split(s: trim(stdout), delimiter: "\n"), l => trim(l) as NonEmptyStr), l => (l as String) != "")
+  map(
+    filter(map(split(s: trim(stdout), delimiter: "\n"), l => trim(l)), l => l != ""),
+    l => l as NonEmptyStr
+  )
 }
 
 fn observe_cgroup_children(
@@ -95,15 +108,20 @@ fn observe_cgroup_children(
   }
 }
 
-// A COUNTER THAT COULD NOT BE READ IS NOT A ZERO. The read's own outcome rides through as
-// CgroupMemoryCountUnparseable rather than being defaulted, because an unreadable counter and an
-// idle container are the same number and opposite facts -- and an aggregate that silently absorbed
-// the first would read as a smaller, more attractive demand than the host actually has.
-fn read_memory_count(
+// A COUNTER THAT COULD NOT BE READ IS NOT A ZERO, AND IT IS NOT MALFORMED EITHER. This used to
+// return a String and manufacture "<read failed: memory.current>" on failure, which the PARSER then
+// classified as Unparseable -- a body this repository invented, occupying the arm reserved for
+// bytes the kernel actually wrote. It now returns whether a body was obtained, and nothing
+// downstream can confuse the two.
+type CgroupInterfaceRead
+  = CgroupInterfaceBody { body: String }
+  | CgroupInterfaceReadFailed { cause: String }
+
+fn read_interface_file(
   transport: HostEffectTransport,
   cgroup_path: NonEmptyStr,
   file: NonEmptyStr,
-) -> String {
+) -> CgroupInterfaceRead {
   match host_operation_exec(
     transport: transport,
     operation: CgroupReadInterfaceFile {
@@ -111,8 +129,42 @@ fn read_memory_count(
     },
   ) {
     HostOperationObserved { stdout: out, success: ok, stderr: _ } =>
-      if ok { out } else { concat("<read failed: ", concat(file as String, ">")) }
-    HostOperationRefused { operation: _, reason: why } => concat("<refused: ", concat(why, ">"))
+      if ok {
+        CgroupInterfaceBody { body: out }
+      } else {
+        CgroupInterfaceReadFailed {
+          cause: concat("cat exited unsuccessfully for ", file as String),
+        }
+      }
+    HostOperationRefused { operation: _, reason: why } =>
+      CgroupInterfaceReadFailed { cause: why }
+  }
+}
+
+// The two adapters that carry the read outcome into the observation carriers. A failed read
+// becomes Unread with its cause; a body that WAS obtained is handed to the parse authority and
+// keeps whatever that authority says about it, including the bytes the kernel really wrote when it
+// is malformed.
+fn observed_memory_count(r: CgroupInterfaceRead) -> ObservedMemoryCount {
+  match r {
+    CgroupInterfaceReadFailed { cause: why } => MemoryCountUnread { cause: why }
+    CgroupInterfaceBody { body: b } =>
+      match parse_cgroup_memory_count(body: b) {
+        CgroupMemoryCount { bytes: n } => MemoryCountRead { bytes: n }
+        CgroupMemoryCountUnparseable { body: raw } => MemoryCountMalformed { body: raw }
+      }
+  }
+}
+
+fn observed_memory_limit(r: CgroupInterfaceRead) -> ObservedMemoryLimit {
+  match r {
+    CgroupInterfaceReadFailed { cause: why } => MemoryLimitUnread { cause: why }
+    CgroupInterfaceBody { body: b } =>
+      match parse_cgroup_memory_limit(body: b) {
+        CgroupMemoryLimited { bytes: n } => MemoryLimitRead { bytes: n }
+        CgroupMemoryUnlimited => MemoryLimitUnlimited
+        CgroupMemoryLimitUnparseable { body: raw } => MemoryLimitMalformed { body: raw }
+      }
   }
 }
 
@@ -125,8 +177,8 @@ fn observe_session_memory_demand(
   SessionMemoryDemand {
     identity: identity,
     cgroup: cgroup,
-    memory_current: parse_cgroup_memory_count(
-      body: read_memory_count(
+    memory_current: observed_memory_count(
+      r: read_interface_file(
         transport: transport,
         cgroup_path: cgroup,
         file: cgroup_memory_interface_file_name(f: MemoryCurrent),
@@ -141,15 +193,15 @@ fn observe_parent_slice_demand(
 ) -> ParentSliceDemand {
   ParentSliceDemand {
     cgroup: parent,
-    memory_current: parse_cgroup_memory_count(
-      body: read_memory_count(transport: transport, cgroup_path: parent, file: cgroup_memory_interface_file_name(f: MemoryCurrent))
+    memory_current: observed_memory_count(
+      r: read_interface_file(transport: transport, cgroup_path: parent, file: cgroup_memory_interface_file_name(f: MemoryCurrent))
     ),
-    memory_peak: parse_cgroup_memory_count(
-      body: read_memory_count(transport: transport, cgroup_path: parent, file: cgroup_memory_interface_file_name(f: MemoryPeak))
+    memory_peak: observed_memory_count(
+      r: read_interface_file(transport: transport, cgroup_path: parent, file: cgroup_memory_interface_file_name(f: MemoryPeak))
     ),
     memory_peak_epoch: "cgroup lifetime since creation or last reset; this observation did not reset it and cannot bound it to its own window",
-    memory_max: parse_cgroup_memory_limit(
-      body: read_memory_count(transport: transport, cgroup_path: parent, file: cgroup_memory_interface_file_name(f: MemoryMax))
+    memory_max: observed_memory_limit(
+      r: read_interface_file(transport: transport, cgroup_path: parent, file: cgroup_memory_interface_file_name(f: MemoryMax))
     ),
   }
 }
@@ -248,18 +300,20 @@ fn observed_host_identity(transport: HostEffectTransport) -> HostIdentity? {
   }
 }
 
-fn count_value_word(v: CgroupMemoryCountValue) -> String {
+fn count_value_word(v: ObservedMemoryCount) -> String {
   match v {
-    CgroupMemoryCount { bytes: b } => to_string(byte_size_count(b: b))
-    CgroupMemoryCountUnparseable { body: raw } => concat("UNREADABLE(", concat(trim(raw), ")"))
+    MemoryCountRead { bytes: b } => to_string(byte_size_count(b: b))
+    MemoryCountMalformed { body: raw } => concat("MALFORMED(", concat(trim(raw), ")"))
+    MemoryCountUnread { cause: why } => concat("UNREAD(", concat(why, ")"))
   }
 }
 
-fn limit_value_word(v: CgroupMemoryLimitValue) -> String {
+fn limit_value_word(v: ObservedMemoryLimit) -> String {
   match v {
-    CgroupMemoryLimited { bytes: b } => to_string(byte_size_count(b: b))
-    CgroupMemoryUnlimited => "max"
-    CgroupMemoryLimitUnparseable { body: raw } => concat("UNREADABLE(", concat(trim(raw), ")"))
+    MemoryLimitRead { bytes: b } => to_string(byte_size_count(b: b))
+    MemoryLimitUnlimited => "max"
+    MemoryLimitMalformed { body: raw } => concat("MALFORMED(", concat(trim(raw), ")"))
+    MemoryLimitUnread { cause: why } => concat("UNREAD(", concat(why, ")"))
   }
 }
 
@@ -277,6 +331,18 @@ fn parent_slice_lines(p: ParentSliceDemand) -> String {
   ], "")
 }
 
+// THE CLASSIFICATION IS EXERCISED, NOT JUST THE ENUMERATION. A receipt that printed rows and
+// stopped would leave the census and the membership gate unexecuted on real hosts, so the one
+// thing this cut claims -- that a COMPLETE observation can be established -- would rest on
+// fixtures. Running it here makes a converged host and a mixed host produce visibly different
+// verdicts from the same code path.
+//
+// COMPLETED IS STAMPED AFTER EVERY READ AND AFTER THE VERDICT, NOWHERE EARLIER (review 56218). It
+// previously sat in the header, which is bound BEFORE the per-session memory.current reads, so the
+// receipt named a completion time that did not bound the observation it described. The header is
+// therefore assembled last; the ordering IS the guarantee, and it is not restated inside the body
+// because DESIGN 4c admits annotations only at module-item grain.
+//
 // THE RECEIPT RECORDS WHAT WAS READ AND WHERE, INCLUDING THE EMPTY CASES. A host with no sessions
 // emits a receipt with zero session rows and says so, which is a counted zero; a host whose
 // enumeration refused emits the refusal cause instead. The two are different lines, never the same
@@ -312,11 +378,6 @@ func session_demand_observe_ci_wet() -> ProcessExit {
         SessionContainerInventoryUnavailable { host: _, cause: why } =>
           join(["system_slice_children\tUNAVAILABLE\t", why, "\n"], "")
       }
-      // THE CLASSIFICATION IS EXERCISED, NOT JUST THE ENUMERATION. A receipt that printed rows
-      // and stopped would leave the census and the membership gate unexecuted on real hosts, so
-      // the one thing the cut claims -- that a COMPLETE observation can be established -- would
-      // rest on fixtures. Running it here makes a converged host and a mixed host produce visibly
-      // different verdicts from the same code path.
       let population = session_population(managed: managed, legacy: legacy)
       let verdict = match population {
         SessionPopulationUnavailable { cause: why } =>
@@ -330,8 +391,9 @@ func session_demand_observe_ci_wet() -> ProcessExit {
                 Absent => "census\tCOMPLETE\tbut no membership signal could be projected\n"
                 Present { value: sig } =>
                   match session_demand_membership_gate(host: host, m: session_membership_standing(m: sig)) {
-                    Absent => join(["census\tCOMPLETE\tAllSessionsManaged over ", to_string(count(ps)), " session(s); an aggregate may be established\n"], "")
-                    Present { value: o } => match o {
+                    MembershipAdmitsAggregate { managed_count: _ } =>
+                      join(["census\tCOMPLETE\tAllSessionsManaged over ", to_string(count(ps)), " session(s); an aggregate may be established\n"], "")
+                    MembershipRefusesAggregate { observation: o } => match o {
                       SessionDemandPopulationIncomplete { host: _, membership: _, cause: why } =>
                         join(["census\tCOMPLETE\tbut membership refuses the aggregate: ", why, "\n"], "")
                       NoConcurrentSessionDemandObserved { host: _ } =>
@@ -344,10 +406,6 @@ func session_demand_observe_ci_wet() -> ProcessExit {
               }
           }
       }
-      // COMPLETED IS STAMPED HERE AND NOWHERE EARLIER (review 56217). It previously sat in the
-      // header, which is bound BEFORE the per-session memory.current reads -- so the receipt named
-      // a completion time that did not bound the observation it described. Every read above this
-      // line has happened by the time this clock is consulted.
       let header = join([
         "collector\t", session_demand_collector_revision as String, "\n",
         "host\t", host as String, "\n",

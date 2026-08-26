@@ -25,6 +25,7 @@ import gunbc.session_demand {
   session_demand_membership_gate,
   SessionDemandPopulationIncomplete, NoConcurrentSessionDemandObserved,
   SessionDemandObservationUnavailable, SessionDemandObserved,
+  MembershipAdmitsAggregate, MembershipRefusesAggregate,
 }
 import gunbc.oomd_install {
   AllSessionsManaged, MixedSessionMembership, AllSessionsLegacy, NoSessionsObserved,
@@ -134,13 +135,13 @@ fn incomplete_census_yields_no_signal() -> Bool {
 // would look correct on every host that actually has sessions.
 fn counted_zero_is_not_unavailable() -> Bool {
   let zero = match session_demand_membership_gate(host: operator_host_srv1, m: NoSessionsObserved) {
-    Present { value: o } => match o {
+    MembershipAdmitsAggregate { managed_count: _ } => false
+    MembershipRefusesAggregate { observation: o } => match o {
       NoConcurrentSessionDemandObserved { host: _ } => true
       SessionDemandObservationUnavailable { host: _, cause: _ } => false
       SessionDemandPopulationIncomplete { host: _, membership: _, cause: _ } => false
       SessionDemandObserved { receipt: _ } => false
     }
-    Absent => false
   }
   zero
 }
@@ -153,32 +154,32 @@ fn only_all_managed_opens_the_gate() -> Bool {
     host: operator_host_srv1,
     m: AllSessionsManaged { managed_count: 19 },
   ) {
-    Absent => true
-    Present { value: _ } => false
+    MembershipAdmitsAggregate { managed_count: n } => n == 19
+    MembershipRefusesAggregate { observation: _ } => false
   }
   let mixed_refuses = match session_demand_membership_gate(
     host: operator_host_srv1,
     m: MixedSessionMembership { managed_count: 1, legacy_count: 50 },
   ) {
-    Present { value: o } => match o {
+    MembershipAdmitsAggregate { managed_count: _ } => false
+    MembershipRefusesAggregate { observation: o } => match o {
       SessionDemandPopulationIncomplete { host: _, membership: _, cause: _ } => true
       NoConcurrentSessionDemandObserved { host: _ } => false
       SessionDemandObservationUnavailable { host: _, cause: _ } => false
       SessionDemandObserved { receipt: _ } => false
     }
-    Absent => false
   }
   let legacy_refuses = match session_demand_membership_gate(
     host: operator_host_srv1,
     m: AllSessionsLegacy { legacy_count: 19 },
   ) {
-    Present { value: o } => match o {
+    MembershipAdmitsAggregate { managed_count: _ } => false
+    MembershipRefusesAggregate { observation: o } => match o {
       SessionDemandPopulationIncomplete { host: _, membership: _, cause: _ } => true
       NoConcurrentSessionDemandObserved { host: _ } => false
       SessionDemandObservationUnavailable { host: _, cause: _ } => false
       SessionDemandObserved { receipt: _ } => false
     }
-    Absent => false
   }
   opens && mixed_refuses && legacy_refuses
 }
