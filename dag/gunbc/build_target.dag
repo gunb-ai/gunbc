@@ -228,10 +228,6 @@ fn claim_disposition_verdict(d: ClaimDisposition) -> StandingVerdict {
       StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: NotAttemptedAfterAbort {} } }
     ObservationUnreadableBeforeVerdict =>
       StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: ObservationUnreadableBeforeVerdict {} } }
-    PanickedBeforeVerdict =>
-      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: PanickedBeforeVerdict {} } }
-    NotAttemptedAfterAbort =>
-      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: NotAttemptedAfterAbort {} } }
   }
 }
 
@@ -472,8 +468,6 @@ fn blaze_test_status_of_claim_disposition(d: ClaimDisposition) -> BlazeTestStatu
     PanickedBeforeVerdict => TestStatusFailed {}
     NotAttemptedAfterAbort => TestStatusHaltedBeforeTesting {}
     ObservationUnreadableBeforeVerdict => TestStatusIncomplete {}
-    PanickedBeforeVerdict => TestStatusFailed {}
-    NotAttemptedAfterAbort => TestStatusIncomplete {}
   }
 }
 

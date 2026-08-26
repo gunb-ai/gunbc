@@ -482,17 +482,28 @@ test fn w_export_maps_budget_and_unreached_arms_apart() -> Bool {
 // THE TWO ABORT-SIDE ARMS ARE SPLIT BY WHETHER THE CLAIM RAN, NOT BY SEVERITY, and this witness is
 // what makes that split executable rather than a comment. A panic means the claim executed and
 // died, so it exports as `FAILED` beside `RuntimeErroredBeforeVerdict`. An unattempted claim never
-// executed at all, so it exports as `INCOMPLETE` beside `RouteGapBeforeVerdict`.
+// executed at all, so it exports as `HALTED_BEFORE_TESTING`.
 //
-// The `INCOMPLETE` half is the assertion that earns its keep. Exporting a claim that never ran as
-// `FAILED` would report that an assertion failed when no assertion executed — a verdict fabricated
-// for an observation nobody made — so this witness goes red on exactly the collapse that is
-// tempting to make, and the disposition-level pairing beneath it keeps the two from being merged
-// in the other direction either.
+// THE NEVER-RAN HALF IS THE ASSERTION THAT EARNS ITS KEEP, and its VALUE was sharpened after this
+// witness was first written. Exporting a claim that never ran as `FAILED` would report that an
+// assertion failed when no assertion executed — a verdict fabricated for an observation nobody
+// made — so this witness goes red on exactly the collapse that is tempting to make, and the
+// disposition-level pairing beneath it keeps the two from being merged in the other direction
+// either. That argument is unchanged and is what the run/never-ran split still tests.
+//
+// What changed is WHICH never-ran member is exact. This arm asserted `INCOMPLETE`, which is in the
+// never-ran family and is therefore not wrong about the split — it is merely vaguer than upstream
+// allows. `NotAttemptedAfterAbort` is built from `NotAttempted { halted_by }`, the halt is NAMED in
+// the source state, and `extdeps.bazel.test_status` carries `TestStatusHaltedBeforeTesting` as wire
+// number 8, `BLAZE_HALTED_BEFORE_TESTING`, meaning a test that did not run because the build was
+// halted. Same fact, exact member, so the export loses nothing where `INCOMPLETE` dropped it in the
+// lossy pile. The refinement is recorded rather than silently applied because this witness and the
+// arm it guards were decided twice, in opposite directions, and met in a merge (gunbc#9343 chose
+// `INCOMPLETE`, gunbc#9336 this); `gunbc.build_target`'s export comment carries the full receipt.
 test fn w_export_splits_panic_from_unattempted_by_whether_the_claim_ran() -> Bool {
   (blaze_test_status_of_claim_disposition(d: PanickedBeforeVerdict {}) == TestStatusFailed {})
     && (blaze_test_status_of_claim_disposition(d: RuntimeErroredBeforeVerdict {}) == TestStatusFailed {})
-    && (blaze_test_status_of_claim_disposition(d: NotAttemptedAfterAbort {}) == TestStatusIncomplete {})
+    && (blaze_test_status_of_claim_disposition(d: NotAttemptedAfterAbort {}) == TestStatusHaltedBeforeTesting {})
     && !verdict_holds(v: claim_disposition_verdict(d: PanickedBeforeVerdict {}))
     && !verdict_holds(v: claim_disposition_verdict(d: NotAttemptedAfterAbort {}))
 }
