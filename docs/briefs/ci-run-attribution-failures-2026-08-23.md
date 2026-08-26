@@ -831,6 +831,39 @@ enumerates `match` arms will report full coverage while every conjunct of this s
 standing — which is instance 12's shape (a bounded query reporting its boundary as an answer)
 reappearing inside the remediation rather than inside the diagnosis.
 
+## The decision rule for gate-produced diffs — the one positive control in this document
+
+Every other entry here is an error. This one is a rule that produced the right answer twice in
+opposite directions in a single commit, and it is recorded because both of the obvious rules are
+wrong and are wrong in *opposite* directions.
+
+A build or a gate leaves diffs in your worktree that you did not type. Two tempting policies:
+
+- **"Regenerate everything the gate touches."** Absorbs other authors' pending drift into your PR,
+  hides it from the person who owns it, and makes your diff unreviewable.
+- **"Touch nothing you did not author."** Leaves your own change's projection uncommitted, so the
+  next consumer discovers it as a failure whose cause is invisible from where it fires.
+
+neat-pike-374 hit both in one commit (`d00d5306f2a`) and applied a third rule:
+
+> Is this the projection of an authority **this branch changed**?
+
+`Cargo.lock` — yes: the dependency-tier move was their own #9243, and a lock disagreeing with the
+manifests breaks `--locked` builds. **Committed.** `fleet-converge.yml` — no: pre-existing drift
+from #9167. **Deliberately excluded**, and reported rather than silently absorbed.
+
+**The distinction that decides it is authorship of the CAUSE, not whether the diff appeared in
+your worktree.** Appearing in your worktree is a fact about what you happened to run; it carries
+no information about who owns the fact. That is this brief's subject in its constructive form:
+the same conflation between *an observation I made* and *a fact about the thing observed*, caught
+before it produced an error rather than after.
+
+The receipt on the excluded half is the part that makes it a rule rather than a preference. `main`
+genuinely fails `cargo metadata --locked` (exit 101) while the repairing branch passes (exit 0) —
+so the absorbed diff was load-bearing and the excluded one was somebody else's, and both calls
+were checkable rather than tasteful. `fleet-converge.yml` remains drifted and unclaimed, which is
+the correct outcome: visible, owned by its author, not laundered through an unrelated PR.
+
 ## The shared shape
 
 Instances 1–3 are *the subject was substituted*; instance 4 is *there was no subject*; instances
