@@ -38,6 +38,29 @@ import gunbc.fleet_intent_network {
 //
 // This carrier is therefore an interlock, not a note. A comment on a pull request is evidence
 // that someone knew; it is not a thing the apply path consults.
+//
+// HOW FAR THE INTERLOCK IS ACTUALLY PROVEN, at the grain the evidence supports and no further.
+// The gate is read inside bmc_fan_policy_projection_apply_suitability, ahead of that function's
+// board, firmware, curve, config-path and controller-service comparisons, and the witness proves
+// that ordering with a positive control that isolates the standing as the cause. It is NOT first
+// across the whole classification path: an observation must exist, the fleet firmware requirement
+// may refuse, an exact projection must exist, and required_tach_inputs must match the intent,
+// all before this gate runs. Those are earlier refusals and every one of them is safe, so the
+// invariant worth stating is the narrow one -- NO APPLY PLAN IS CONSTRUCTED AFTER PROJECTION
+// SELECTION UNLESS ALIGNMENT ADMITS -- rather than the flattering one, that every invocation
+// consults alignment first.
+//
+// TWO CONSEQUENCES OF THAT, which a reader would otherwise take on the strong reading:
+//
+//   srv3  its converge target carries `projection: none`, so it refuses BEFORE alignment is
+//         evaluated, on the absent exact projection. Safe, by a different cause. It reaches this
+//         gate only once an exact srv3 projection exists.
+//   srv4  reaches the gate and refuses here, on the unrepresentable observed program.
+//
+// AND THE ACTUATOR WRITES NOTHING TODAY. The Apply arm of bmc_fan_converge is a phase-partial
+// refusal pending the content-addressed backup transaction, so no BMC fan write can presently
+// occur by any route. That makes this gate a guard on a path that does not yet actuate, which is
+// the right time to build it and the wrong time to describe it as guarding a live write.
 
 // THE THREE ARMS, and why the third is not a synonym for the second:
 //   IntentMatchesObservedProgram            the projected program IS the program on the host.
