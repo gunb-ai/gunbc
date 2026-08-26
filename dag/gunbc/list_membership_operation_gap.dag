@@ -125,8 +125,10 @@ data list_membership_gap_sites: List<ListMembershipGapSite> = [
 // That is the whole argument for enrollment in one specimen: hand-verification and name-level grep
 // both certify a citation whose ADDRESS is wrong, and only resolution asks the question they skip.
 
-// ENROLLMENT PROJECTION — the `collection_producer` refs, exposed so
-// `v2.lens.cited_symbol_resolution` can resolve them. Enrolled in the same change as the sibling
+// ENROLLMENT PROJECTION — the `collection_producer` refs, exposed so a resolver can reach
+// them. It was `v2.lens.cited_symbol_resolution` until that lens was deleted 2026-08-26;
+// `v1_compiler.declaration_index` now resolves them corpus-wide at ingestion and
+// `test.claim.long.carrier_reference_integrity_witness_test` holds the population claims. Enrolled in the same change as the sibling
 // instance carrier `gunbc.lambda_argument_typing_gate`, and not after it: two carriers of one shape
 // where only one is enrolled is the exact asymmetry that lens's own widening note was written
 // against — one class of reference enforced and an adjacent one silently exempt.

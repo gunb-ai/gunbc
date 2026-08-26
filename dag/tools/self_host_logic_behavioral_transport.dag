@@ -21,7 +21,10 @@ import v2.compiler.self_host.promotion_admission {
   FaultCaught,
   FaultNotCaught,
   Observed,
-  ObservationUnavailable
+  ObservationUnavailable,
+  BehavioralReceiptStanding,
+  behavioral_receipt_standing,
+  behavioral_receipt_standing_holds
 }
 import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
 
@@ -103,11 +106,36 @@ fn slb_cargo_toml(root: String) -> String {
 // Catching the fault now requires the driver to REPORT the divergence it was made to
 // find, over the declared corpus. A nonzero exit with no such report is unavailable,
 // not caught.
+//
+// THE SCRATCH SOURCE ROOT STAGES UNDER target/, NOT /tmp, AND BOTH HALVES ARE LOAD-BEARING.
+//
+// The compile in this function is scoped with --entry, and entry-admission REFUSES an entry outside the
+// workspace root: "a fixture written elsewhere, such as /tmp, cannot be keyed into the module
+// graph -- write it under a source root and delete it afterwards". Without --entry the compile
+// is the WHOLE-CORPUS path, which a current compiler refuses against a memory budget
+// (WholeCorpusCompileBudgetBelowMeasuredDemand, measured rc=1 with zero files emitted on a
+// 7.0 GiB runner). So a /tmp scratch root left BOTH admission paths refusing, which is why this
+// receipt could not execute at all.
+//
+// target/ is gitignored (.gitignore:7 `/target/`) and under the workspace root, so it satisfies
+// entry-admission WITHOUT the working tree ever going dirty. That second property is not
+// hygiene: WorkingTreeDirty is a MODELLED state that refuses a pricing receipt
+// (tools.emission_entry_instrument WorkingTreeStanding), so a transport staging into tracked
+// paths would make any concurrent pricing or emission run refuse for a reason unrelated to what
+// it was measuring. Staging under an ignored path makes that interaction unrepresentable rather
+// than unlikely -- and when a run dies mid-flight, as these repeatedly did while this was being
+// diagnosed, the residue is invisible to git instead of inherited by whoever works next.
+//
+// DirWithTemplate rather than a fixed path: concurrent receipts must not share a scratch root,
+// which is the one property Mktemp.Dir was providing and a hardcoded directory would lose.
 fn slb_comparison_observation() -> BehavioralComparisonObservation {
   let root = git.Inspect.Toplevel()
   let logic_read = Filesystem.Read(path: slb_repo_path(root: root.path, rel: slb_logic_source_rel))
 
-  let scratch_src = shell.Mktemp.Dir()
+  let stage_root = shell.Mkdir.Parents(path: concat(root.path, "/target/wet-stage"))
+  let scratch_src = shell.Mktemp.DirWithTemplate(
+    template: concat(root.path, "/target/wet-stage/logic-XXXXXX")
+  )
   let scratch_src_std = shell.Mkdir.Parents(path: concat(scratch_src.path, "/std"))
   let logic_written = Filesystem.Write(path: concat(scratch_src.path, "/std/logic.dag"), content: logic_read.content)
 
@@ -120,6 +148,7 @@ fn slb_comparison_observation() -> BehavioralComparisonObservation {
     args: [
       "compile",
       "--source-root", scratch_src.path,
+      "--entry", concat(scratch_src.path, "/std/logic.dag"),
       "--output-dir", out_dir.path,
       "--target", "rust",
       "--dependency-pool-index", "primary-precedence"
@@ -144,6 +173,7 @@ fn slb_comparison_observation() -> BehavioralComparisonObservation {
   let cleanup_out = shell.Remove.RecursiveForce(path: out_dir.path)
 
   let staged = logic_read.success
+    && stage_root.success
     && scratch_src.success && scratch_src_std.success && logic_written.success
     && out_dir.success && gunbc_built && emit.success
     && manifest.success && main_rs.success
@@ -202,32 +232,16 @@ fn slb_comparison_observation() -> BehavioralComparisonObservation {
 // lane keeps its consumer. It is now a PROJECTION of the observation rather than the
 // authority: the receipt holds when the driver built, behavior agreed with the seed
 // over the declared corpus, and the planted fault was reported caught. Every other
-// combination — including every unavailable observation — is false, and the observation
-// itself says which, so the deficit stays countable rather than collapsing to one bit.
+// combination -- including every unavailable observation -- is false. THAT SECOND CLAUSE USED TO
+// READ that the observation itself says which, so the deficit stays countable rather than
+// collapsing to one bit. The observation did say which; this function did not pass it on. It
+// matched the payload to `_` at three sites and answered false, so no consumer could count
+// anything, and the sentence describing the property was the only place the property existed.
+// The standing below is now the return value and the Bool is derived from it at one site.
+fn slb_behavioral_receipt_standing() -> BehavioralReceiptStanding {
+  behavioral_receipt_standing(o: slb_comparison_observation())
+}
+
 fn slb_behavioral_receipt_holds() -> Bool {
-  let o = slb_comparison_observation()
-  match o.build {
-    Observed { value: b } =>
-      match b {
-        BuildGreen =>
-          match o.equivalence {
-            Observed { value: e } =>
-              match e {
-                BehaviorAgrees =>
-                  match o.fault {
-                    Observed { value: f } =>
-                      match f {
-                        FaultCaught => true
-                        FaultNotCaught { at_case: _ } => false
-                      }
-                    ObservationUnavailable { cause: _ } => false
-                  }
-                BehaviorDiverges { at_case: _ } => false
-              }
-            ObservationUnavailable { cause: _ } => false
-          }
-        BuildFailed { cause: _ } => false
-      }
-    ObservationUnavailable { cause: _ } => false
-  }
+  behavioral_receipt_standing_holds(s: slb_behavioral_receipt_standing())
 }
