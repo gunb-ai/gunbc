@@ -7362,6 +7362,88 @@ mod entry_admission_tests {
         }
     }
 
+    /// THE ALL-OR-NOTHING PROPERTY, WITH A RED THAT IS ACTUALLY AUTHORABLE.
+    ///
+    /// The CLI writes a tree only after the AGGREGATE disposition is `Completed`, so one
+    /// target's refusal must withhold another target's finished files. That claim is only
+    /// worth asserting if a clean-target/refusing-target pair can be built at all -- a check
+    /// whose red cannot be produced is a decoration, permanently green and worse than absent
+    /// because it gets cited as coverage (DESIGN §4b).
+    ///
+    /// IT CAN BE BUILT, AND THE MECHANISM IS THE TARGET GATE RATHER THAN A BROKEN FIXTURE.
+    /// `file_emission_refusal` applies `target_renders_file_transport` FIRST and separately
+    /// from `file_binding_refusal`, and that gate answers `Rust => true` with Python, Go and
+    /// Dag all false. So a WELL-FORMED file-transport operation -- renderable path, product
+    /// output shape, only modeled channels -- emits clean on Rust and refuses
+    /// `FileTargetNotModeled` on Go. The fixture is deliberately well-formed: if it had any
+    /// real defect, both targets would refuse and this test would pass for the wrong reason.
+    ///
+    /// MEASURED before this test was written, on the fixture root alone: `--target rust`
+    /// emits 7 files with 0 diagnostics, `--target go` refuses naming target `go` and the
+    /// missing file realization handler. The single-target control below re-establishes the
+    /// clean half in-process, so a future change that breaks the fixture outright cannot
+    /// leave this test quietly asserting nothing.
+    #[test]
+    fn a_refusing_second_target_withholds_the_first_target_s_finished_tree() {
+        let request = |targets: Vec<crate::v1_compiler_artifact::RenderTarget>| CompileRequest {
+            subject: CompileSubject::Entry(
+                "fixtures/atomic_materialization/subject.dag".to_string(),
+            ),
+            source_roots: vec!["fixtures/atomic_materialization".to_string()],
+            primary_precedence: true,
+            render_targets: targets,
+        };
+
+        // THE CONTROL. Rust alone completes with a non-empty tree. Without this, a fixture
+        // that had stopped emitting would make the refusal below unremarkable.
+        let rust_only = compile_emission(&request(vec![
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        ]));
+        assert!(
+            matches!(rust_only.disposition, CompileDisposition::Completed { .. }),
+            "control: rust alone must complete, else the pair proves nothing: {:?}",
+            rust_only.disposition.tag()
+        );
+        let clean_file_count = rust_only.emissions[0].result.files.len();
+        assert!(
+            clean_file_count > 0,
+            "control: rust alone must emit a non-empty tree"
+        );
+
+        // THE PAIR. Adding a target that cannot render this transport refuses the WHOLE run.
+        let both = compile_emission(&request(vec![
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+            crate::v1_compiler_artifact::RenderTarget::Go,
+        ]));
+        let (phase, cause) = cause_of(&both);
+        assert_eq!(
+            phase, "emit",
+            "the refusal must come from emission, not an earlier phase: {cause}"
+        );
+        // The refusal must be the TARGET-GATE one. A refusal for an unrelated reason would
+        // keep this control green while the class it stands for went unobserved.
+        assert!(
+            cause.contains("transport emission is not modeled") && cause.contains("'go'"),
+            "the refusal must name the go target gate, not an unrelated defect: {cause}"
+        );
+
+        // AND THE WITHHELD TREE MUST STILL BE IN HAND. This is the whole content: the run
+        // refuses while holding a COMPLETE rust emission, so what stops the write is the
+        // aggregate arm rather than an absence of files. If `emissions` were empty here the
+        // property would be vacuous -- nothing would have been withheld.
+        let rust_emission = both
+            .emissions
+            .iter()
+            .find(|emission| emission.target_name == "rust")
+            .expect("the rust emission must be present on the refused run");
+        assert_eq!(
+            rust_emission.result.files.len(),
+            clean_file_count,
+            "the refused run must hold the SAME finished rust tree the control emitted, \
+             unwritten -- a shrunken tree would mean the refusal also discarded work"
+        );
+    }
+
     /// The paired RED for the arm above: a request naming NO target refuses, and refuses at
     /// its own phase. Without this, "resolves a closure and emits nothing" would report
     /// `Completed { emitted_count: 0 }` -- a run that never reached emission rendered as a
@@ -42016,17 +42098,10 @@ mod peel_alias_fixpoint_termination {
                 type_head_exposures: crate::v1_rt::rc_empty_map(),
             });
             let env = std::rc::Rc::new(crate::v1_compiler_infer_env::TypeEnv {
-                authored_import_names: crate::v1_rt::rc_empty_map::<String, bool>(),
                 module_path: "".to_string(),
                 bindings: crate::v1_rt::rc_empty_map(),
                 str_bindings: crate::v1_rt::rc_empty_map(),
                 ancestry_str_bindings: crate::v1_rt::rc_empty_map(),
-                // Pre-existing on main and unrelated to this change: the field landed on the
-                // GENERATED `TypeEnv` and this hand-written `#[cfg(test)]` constructor was never
-                // updated, so the whole lib-test target failed to compile. No gate could see it
-                // — CI builds the binary, and the Rust suite left CI on 2026-07-11 — which is
-                // why it stood. Repaired here because this PR's evidence cannot execute otherwise.
-                authored_import_names: crate::v1_rt::rc_empty_map(),
                 parents: std::rc::Rc::new(im::vector![]),
                 recursive_types: std::rc::Rc::new(im::vector![]),
                 recursive_type_set: crate::v1_rt::rc_empty_map(),
