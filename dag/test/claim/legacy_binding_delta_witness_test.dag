@@ -215,14 +215,20 @@ test fn a_projected_occurrence_with_no_provenance_entry_refuses() -> Bool {
 }
 
 // THE ARM THAT READS AS SUCCESS IF IT IS NOT CHECKED: a provenance about some other pair of
-// compiles. It has the right entry count, every base occurrence has a source, every target has an
-// entry -- and it names an occurrence neither observation contains. This is the count-equality trap
-// in its own habitat, and it is why the foreign check exists on both sides of the relation.
+// compiles. Every base occurrence is carried, every target is accounted for exactly once, nothing is
+// out of scope -- and one entry names an occurrence neither observation contains. This is the
+// count-equality trap in its own habitat, and it is why the foreign check exists on both sides.
+//
+// THE FOREIGN REF IS A CAUSE RATHER THAN A CARRIED SOURCE, and the reason is worth recording: the
+// first version of this fixture added a third PAIR claiming an already-claimed target, so once the
+// target-multiplicity law landed it refused as ProvenanceTargetRepeated instead -- a fixture whose
+// intended arm was shadowed by a stronger law firing first. The laws are ordered, so a fixture must
+// violate exactly one of them or it is testing the ordering rather than the law it names.
 test fn a_provenance_naming_an_occurrence_outside_either_denominator_refuses() -> Bool {
   match lbd_totality(
     base: [10, 20],
-    projected: [11, 21],
-    entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21), lbd_pair(source: 99, target: 11)]
+    projected: [11, 21, 31],
+    entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21), lbd_insertion(target: 31, caused_by: 99)]
   ) {
     ProvenanceForeignOccurrence { occurrences: foreign } => (foreign |> count) == 1
     ProvenanceTotal => false
