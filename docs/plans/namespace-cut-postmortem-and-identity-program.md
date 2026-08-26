@@ -3114,9 +3114,8 @@ is rewarded for the modules it starves**. Holding the census fixed does not
 address this (it was fixed at 3941 in both arms); a comparison must hold
 *progress* constant. The only form of that visible today measures demand under a
 closure that is neither candidate's — a deliberately over-broad one — which is
-the run the budget check refuses at any partition size. **This is carried as a §9
-open item with the refusal named, and is put to the operator as a blocker rather
-than absorbed as an instrument caveat.**
+the run that was reported as refused by a budget check — **that claim is
+RETRACTED and unsubstantiated (see §9); the circularity stands without it.**
 
 ### 11.3 The dispatch protocol
 
