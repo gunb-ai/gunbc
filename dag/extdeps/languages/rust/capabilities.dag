@@ -21,15 +21,34 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-// THE SUBJECT IS THE `#[derive]` ATTRIBUTE MECHANISM, whose one governing upstream is the Rust
-// language reference — so this scope carries ONE citation and not two. An earlier revision of this
-// declaration listed serde.rs beside it, on the reasoning that the alphabet names Serialize and
-// Deserialize; that reads a citation list as "every upstream this module mentions", which it is not
-// (DESIGN §3: further_citations attests ONE subject, and an independently governed upstream gets its
-// own module authority). The serde spellings are attested where they are actually modeled —
-// extdeps.languages.rust.derive_contracts carries versioned serde trait authorities — and
-// rust_capabilities_note below already records that they were cited in the emit path before this
-// alphabet was re-homed here.
+// WHAT THIS SCOPE NAMES, AND WHAT IT DOES NOT COVER. The citation is the Rust language reference,
+// which governs the `#[derive]` attribute mechanism. The alphabet the subject points at is NOT
+// wholly Rust-governed: RustSerialize and RustDeserialize are serde names, and serde is an
+// independently versioned upstream. So this scope names one subject while the declaration it covers
+// carries members two upstreams govern, and it should be read that way rather than as a coherent
+// single-subject attestation.
+//
+// WHY THE MIXTURE STANDS is not this declaration's decision and is recorded below:
+// rust_capabilities_note carries the operator ruling of 2026-08-19 (option b) that re-homed the
+// closed alphabet here, and rust_capability_alphabet_note carries its reason — an open
+// TargetCapabilityKey brand cannot be matched exhaustively, so rust_trait_derive_spelling stays
+// TOTAL only while the alphabet is closed. The serde spellings are separately attested where they
+// are modeled: extdeps.languages.rust.derive_contracts carries versioned serde trait authorities.
+//
+// HOW THIS WAS FOUND, because the pair is what establishes the claim: reviews 56339 and 56347 on
+// gunbc#9276 rejected OPPOSITE citation shapes here — two citations fuse two governed upstreams into
+// one scope, one citation leaves the serde members unattested by the subject that claims them. Both
+// are correct, so no citation shape over this declaration is coherent; the §3 remedy is separate
+// module authorities, which is a remodel of the carrier and not an edit to any scope.
+//
+// WHAT IS MECHANICALLY ENFORCED, so the rung is not read higher than it is: gunbc.extdeps_scope_frontier
+// enforces scope PRESENCE at the storage grain. Subject-content coherence — that a module's
+// declarations attribute to exactly its declared subject — is the named unenforced frontier
+// feature:extdeps-subject-content-derived (extdeps.external_authority
+// external_model_scope_decision_kernel_note). BOUNDED POPULATION: one declaration, two of its
+// sixteen variants. This annotation deletes when the alphabet is split into Rust-governed and
+// serde-governed authorities, or when the subject-content projection derives DeclaredScopeFacts from
+// the module tree and refuses this scope — whichever lands first.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
