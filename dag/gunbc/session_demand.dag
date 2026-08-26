@@ -62,6 +62,14 @@ type SessionPlacement
   | LegacyFlatSession { identity: NonEmptyStr, cgroup: NonEmptyStr }
   | SessionPlacementUnclassifiable { identity: NonEmptyStr, cause: String }
 
+fn placement_identity(p: SessionPlacement) -> NonEmptyStr {
+  match p {
+    ManagedSession { identity: i, cgroup: _ } => i
+    LegacyFlatSession { identity: i, cgroup: _ } => i
+    SessionPlacementUnclassifiable { identity: i, cause: _ } => i
+  }
+}
+
 // THE CENSUS REFUSES RATHER THAN ROUNDING. Only a census in which EVERY observed identity is
 // classified may project counts; one unclassifiable identity makes the whole census incomplete and
 // carries the offenders with it, so the remedy names the containers rather than a number.
@@ -83,6 +91,7 @@ type SessionPopulation
   = SessionPopulationEstablished { placements: List<SessionPlacement> }
   | SessionPopulationUnavailable { cause: String }
   | SessionPopulationNoSessionSlice { cgroup_path: NonEmptyStr }
+  | SessionPopulationHostMismatch { managed_host: HostIdentity, legacy_host: HostIdentity }
 
 fn placement_is_unclassifiable(p: SessionPlacement) -> Bool {
   match p {
@@ -226,8 +235,69 @@ type SessionDemandReceipt {
 // EVIDENCE. Folding them would let "nobody is using this host" and "we could not look" answer the
 // same capacity question with the same attractive small number, and the second one grants capacity
 // on no evidence at all.
+// A METRIC THAT WAS NOT READ IS A DEFICIT WITH A NAME AND A PLACE, NOT A MISSING NUMBER. The
+// deficit carries the exact cgroup and the exact interface file, because the consumer of a refusal
+// needs to know WHICH read to repair -- a count of failures tells nobody where to look, and the
+// aggregate this cut feeds is denominated over specific cgroups rather than over a total.
+//
+// MemoryLimitUnlimited is deliberately NOT a deficit. `max` is a real, parsed kernel answer meaning
+// no limit is set; folding it in with unread would make an honestly-answered question look like an
+// unanswered one, which is the same conflation this carrier exists to refuse.
+type MetricStanding
+  = MetricUnread { cause: String }
+  | MetricMalformed { body: String }
+
+type MetricDeficit {
+  cgroup: NonEmptyStr
+  metric: NonEmptyStr
+  standing: MetricStanding
+}
+
+fn count_metric_deficits(cgroup: NonEmptyStr, metric: NonEmptyStr, v: ObservedMemoryCount) -> List<MetricDeficit> {
+  match v {
+    MemoryCountRead { bytes: _ } => []
+    MemoryCountMalformed { body: b } =>
+      [MetricDeficit { cgroup: cgroup, metric: metric, standing: MetricMalformed { body: b } }]
+    MemoryCountUnread { cause: c } =>
+      [MetricDeficit { cgroup: cgroup, metric: metric, standing: MetricUnread { cause: c } }]
+  }
+}
+
+fn limit_metric_deficits(cgroup: NonEmptyStr, metric: NonEmptyStr, v: ObservedMemoryLimit) -> List<MetricDeficit> {
+  match v {
+    MemoryLimitRead { bytes: _ } => []
+    MemoryLimitUnlimited => []
+    MemoryLimitMalformed { body: b } =>
+      [MetricDeficit { cgroup: cgroup, metric: metric, standing: MetricMalformed { body: b } }]
+    MemoryLimitUnread { cause: c } =>
+      [MetricDeficit { cgroup: cgroup, metric: metric, standing: MetricUnread { cause: c } }]
+  }
+}
+
+// THE VERDICT USED TO BE A FUNCTION OF IDENTITIES ALONE, AND THE METRICS RODE ALONGSIDE IT WITHOUT
+// EVER REACHING IT. So a host whose every memory.current was UNREAD still printed AllSessionsManaged
+// and "an aggregate may be established", and exited success: the DENOMINATOR narrow was repaired and
+// the NUMERATOR narrow left standing, in the one arm that GRANTS the aggregate. Found in review, not
+// by any witness here, because every witness asserted about population and none about metrics.
+//
+// SessionDemandObserved is now constructible ONLY with a complete population AND zero metric
+// deficits, so the granting arm cannot be reached while any required read is missing.
 type SessionDemandObservation
   = SessionDemandObservationUnavailable { host: HostIdentity, cause: String }
+  | SessionDemandNotASessionHost { host: HostIdentity, cgroup_path: NonEmptyStr }
+  | SessionDemandHostMismatch { managed_host: HostIdentity, legacy_host: HostIdentity }
+  | SessionDemandCensusIncomplete {
+      host: HostIdentity
+      unclassifiable: List<SessionPlacement>
+      parent_slice: ParentSliceDemand
+      per_session: List<SessionMemoryDemand>
+    }
+  | SessionDemandMetricsIncomplete {
+      host: HostIdentity
+      deficits: List<MetricDeficit>
+      parent_slice: ParentSliceDemand
+      per_session: List<SessionMemoryDemand>
+    }
   | SessionDemandPopulationIncomplete {
       host: HostIdentity
       membership: SessionMembershipStanding
