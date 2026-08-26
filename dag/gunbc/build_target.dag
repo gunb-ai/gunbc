@@ -14,6 +14,7 @@ import v2.workflow.floor_terminal_ledger {
   Passed, Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict,
   PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict,
   RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, ObservationUnreadableBeforeVerdict,
+  PanickedBeforeVerdict, NotAttemptedAfterAbort,
 }
 import gunbc.target_binding {
   TargetProducer,
@@ -183,6 +184,18 @@ type StandingVerdict
 //   its own reporting line. Folding cost into the correctness verdict here would give the cost
 //   axis a second home and make a slow green witness indistinguishable from a wrong one.
 //
+// THE TWO ARMS ADDED BY `v2.workflow.floor_terminal_ledger` AFTER THIS FOLD WAS WRITTEN ARE
+// CLASSIFIED HERE RATHER THAN INHERITED, which is the whole reason this match carries no wildcard.
+// Both are UNSATISFIED and neither is a failure of the code under test:
+//
+//   `PanickedBeforeVerdict` is a claim whose evaluation panicked, so no verdict exists to admit.
+//   Reading it as satisfied would admit a claim that never answered.
+//
+//   `NotAttemptedAfterAbort` is a claim the run never reached because it was halted. This is the
+//   arm that would be most damaging to absorb: a required set that treated "never attempted" as
+//   satisfied would report itself green over a run that stopped early, which is the
+//   empty-observation narrow -- ⊥-as-answer conflated with ⊥-as-ignorance -- arriving as a green.
+//
 // `KnownRedNowPassing` does NOT satisfy, and it is the arm most likely to be argued about: the
 // witness passed, so nothing is broken in the tree — what is broken is the ROSTER, which still
 // enrols it as expected-red. Admitting it would let a stale enrolment survive indefinitely,
@@ -205,6 +218,10 @@ fn claim_disposition_verdict(d: ClaimDisposition) -> StandingVerdict {
       StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: RouteGapBeforeVerdict {} } }
     RuntimeErroredBeforeVerdict =>
       StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: RuntimeErroredBeforeVerdict {} } }
+    PanickedBeforeVerdict =>
+      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: PanickedBeforeVerdict {} } }
+    NotAttemptedAfterAbort =>
+      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: NotAttemptedAfterAbort {} } }
     ObservationUnreadableBeforeVerdict =>
       StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: ObservationUnreadableBeforeVerdict {} } }
   }
@@ -399,6 +416,14 @@ fn required_gate_decision(a: AggregateStanding) -> RequiredGateDecision {
 //   status therefore sees a failing test, which is honest about the observation and silent about
 //   the policy. Exporting it as `PASSED` was rejected: that would fabricate an observation.
 //
+//   `NotAttemptedAfterAbort` HAS AN EXACT UPSTREAM MEMBER and takes it: `HALTED_BEFORE_TESTING`
+//   means the test did not run because the build was halted, which is the same fact. It is the one
+//   arm in this export that loses nothing, and it is worth noting because the temptation was
+//   `INCOMPLETE` -- which would have collapsed it into the pile below when upstream already
+//   distinguishes it. `PanickedBeforeVerdict` has no such member and joins `FAILED` beside
+//   `RuntimeErroredBeforeVerdict`: both are the evaluation dying, and the distinction between
+//   them stays on the `TestStanding` this was computed from.
+//
 //   `HostToolUnresolvedBeforeVerdict` and `RouteGapBeforeVerdict` BOTH become `INCOMPLETE`. Their
 //   remedies differ, so this collapse would be a defect in a carrier; it is admissible in an
 //   export because the distinguishing fact stays on the `TestStanding` the export was computed
@@ -415,6 +440,8 @@ fn blaze_test_status_of_claim_disposition(d: ClaimDisposition) -> BlazeTestStatu
     HostToolUnresolvedBeforeVerdict => TestStatusIncomplete {}
     RouteGapBeforeVerdict => TestStatusIncomplete {}
     RuntimeErroredBeforeVerdict => TestStatusFailed {}
+    PanickedBeforeVerdict => TestStatusFailed {}
+    NotAttemptedAfterAbort => TestStatusHaltedBeforeTesting {}
     ObservationUnreadableBeforeVerdict => TestStatusIncomplete {}
   }
 }
