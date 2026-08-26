@@ -3650,6 +3650,31 @@ mechanism that was disambiguating by hand. The repair is one arm per cause at
 the three emission points, reusing `AmbiguousReference` rather than minting a
 fifth spelling.
 
+**AND THE REPAIR HAS AN ORDERING CONSTRAINT THAT MUST BE STATED WITH IT, OR THE
+REPAIR WILL BE MEASURED AS A FAILURE** (warm-hawk-909, 2026-08-26). The
+resolver's collapse is not the only one in this chain. Its consumer is
+`compile_dag_rust_emit_check`, a compile harness that returns **`Bool`** — so a
+newly-typed cause is flattened again one layer down, *before any consumer can
+observe it*. **Repairing §11.2o alone buys nothing measurable while the
+instrument reading it collapses to a boolean.**
+
+Two collapses in series, and the second makes the first invisible **even after it
+is fixed**. The failure mode is concrete and likely: someone lands one arm per
+cause, measures through the Bool harness, sees no change, and concludes the
+repair did not work. **The instrument must be able to carry the distinction
+before the distinction is worth minting** — `census_blocking_count_for_class`,
+which names the class, not a harness that answers *did it refuse*.
+
+**This governs the delta wall too, and that is the larger stake.** All four of
+the wall's acceptance conditions (§11.2n) are **why** questions — did this
+occurrence keep its target, become unresolved, become ambiguous, or silently
+rebind — and a `Bool` oracle answers *refused* identically for a preserved
+binding and a stranded one. A wall built on it would report the execution-
+provenance collapse one layer up, inside the instrument the wall depends on. So
+the sequence is: **typed compile oracle → typed resolver causes → delta wall**,
+and any other order measures its own repairs through something that cannot see
+them.
+
 ### 11.3 The dispatch protocol
 
 Every dispatch across a lane boundary carries five lines, and a dispatch without them is refused rather than interpreted:
