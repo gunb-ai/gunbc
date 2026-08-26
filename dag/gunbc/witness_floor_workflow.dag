@@ -33,7 +33,7 @@ import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   upload_artifact_action,
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch,
-  PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview,
+  PullRequestActivity, Opened, Synchronize, Reopened,
   DispatchInput, InputString,
   WorkflowPermissions, PermRead,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressExpression,
@@ -1273,7 +1273,7 @@ data witness_floor_workflow: Workflow = {
     Push { branches: [gunbc_default_branch_name], paths: [] },
     PullRequest {
       branches: [gunbc_default_branch_name],
-      types: [Opened, Synchronize, Reopened, ReadyForReview]
+      types: [Opened, Synchronize, Reopened]
     }
   ],
   concurrency: Present {
