@@ -12012,7 +12012,7 @@ fn emit_file_channel_expr(channel: FileResultChannel, is_optional: Bool) -> Stri
 // one-tuple. The `from` key was read off the FIELD at binding time WITHOUT
 // unwrapping the product -- unwrapping collapses a one-field product to the
 // field's own type and loses the key, which would answer a declared
-// `success: Bool from "write_success"` with the content channel and emit a String
+// `success: Bool from "read_success"` with the content channel and emit a String
 // against a bool.
 fn emit_file_return(result_fields: List<FileResultField>) -> String {
   let field_exprs = result_fields |> map(f => emit_file_channel_expr(channel: f.channel, is_optional: f.optional))
