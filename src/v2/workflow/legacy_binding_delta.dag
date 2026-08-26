@@ -4,7 +4,7 @@ import std.types { String, Bool, Int, List }
 import std.content_hash { Fnv1a64Structural }
 import std.occurrence_identity { OccurrenceId }
 import v2.workflow.legacy_binding_observation {
-  LegacyBindingObservation,
+  CompleteLegacyObservation,
   LegacyBindingObservationSubject,
   SubjectOccurrenceRef,
   observed_occurrence_ids,
@@ -167,18 +167,27 @@ fn occurrence_multiplicity(ids: List<Int>, id: Int) -> Int {
   ids |> filter(other => other == id) |> count
 }
 
-// THE DENOMINATORS ARE THE OBSERVATIONS' OWN ROW KEYS, AND THAT IS A DEPENDENCY ON COMPLETENESS
-// RATHER THAN AN ASSUMPTION ABOUT IT. legacy_observation_completeness is what ties a set of row
-// keys to the expected reference-occurrence population of its subject; this function then relates
-// two such populations. Taking the transports again here would re-derive a fact the observation
-// already carries and let the two derivations disagree -- so the ordering obligation is stated
-// instead: a delta over observations whose completeness has not been established is a comparison
-// between two unvalidated populations, and it is the caller's to sequence.
+// THE DENOMINATORS ARE THE OBSERVATIONS' OWN ROW KEYS, AND COMPLETENESS IS CARRIED IN THE
+// PARAMETER TYPE RATHER THAN REQUESTED OF THE CALLER. An earlier revision took raw observations
+// and stated the ordering obligation in this annotation. Review 56328 was right that the comment
+// could not enforce it, and right about the specimen: two row-less observations against row-less
+// provenance satisfy every law below VACUOUSLY, so the delta admitted a correspondence over a
+// population it never examined -- an unmade comparison rendered as agreement, which is the exact
+// failure the verdict vocabulary further down exists to prevent. CompleteLegacyObservation is
+// `sole_constructor` and admit_complete_observation is its only mint, so a caller that skipped the
+// completeness join now fails to typecheck instead of being asked not to.
+//
+// Taking the transports again HERE would still be wrong, and that half of the old note survives:
+// it would re-derive a fact the admitted carrier already establishes and let two derivations of one
+// fact disagree. The repair is to make the established fact reach this function, not to establish
+// it twice.
 fn provenance_totality<O, P>(
-  base_observation: LegacyBindingObservation<O>,
-  projected_observation: LegacyBindingObservation<P>,
+  base_admitted: CompleteLegacyObservation<O>,
+  projected_admitted: CompleteLegacyObservation<P>,
   provenance: ProjectionProvenance
 ) -> ProvenanceTotality {
+  let base_observation = base_admitted.observation
+  let projected_observation = projected_admitted.observation
   let base_identity = legacy_subject_identity(subject: base_observation.subject)
   let projected_identity = legacy_subject_identity(subject: projected_observation.subject)
   let base_ids = observed_occurrence_ids(observation: base_observation)
@@ -225,13 +234,13 @@ type LegacyBindingDelta
   | CorrespondenceAdmitted { pairs: List<ProjectionProvenanceEntry> }
 
 fn legacy_binding_delta<O, P>(
-  base_observation: LegacyBindingObservation<O>,
-  projected_observation: LegacyBindingObservation<P>,
+  base_admitted: CompleteLegacyObservation<O>,
+  projected_admitted: CompleteLegacyObservation<P>,
   provenance: ProjectionProvenance
 ) -> LegacyBindingDelta {
   match provenance_totality(
-    base_observation: base_observation,
-    projected_observation: projected_observation,
+    base_admitted: base_admitted,
+    projected_admitted: projected_admitted,
     provenance: provenance
   ) {
     ProvenanceTotal => CorrespondenceAdmitted { pairs: provenance.entries }

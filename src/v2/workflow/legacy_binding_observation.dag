@@ -156,6 +156,53 @@ fn legacy_observation_completeness<O>(
   else { LegacyObservationComplete }
 }
 
+// THE ADMITTED CARRIER, AND WHY THE PROSE OBLIGATION IT REPLACES WAS NOT ENOUGH.
+//
+// legacy_observation_completeness ANSWERS a question; nothing downstream could previously be made
+// to depend on the answer. The delta consumed raw observations and stated its ordering obligation
+// in an annotation -- callers must establish completeness first -- which is validation asked for in
+// prose, the weakest form there is: no `Accepted` program can read a comment, so the obligation was
+// unenforceable by construction. The failure it admitted is not hypothetical and it is the worst
+// available shape: two observations carrying no rows, with provenance carrying no rows, satisfy
+// every totality law VACUOUSLY, so the delta returned an admitted correspondence over a population
+// it never looked at. An unmade comparison rendered as agreement -- exactly the execution-provenance
+// loss the delta's own verdict vocabulary exists to prevent, sitting one level above the vocabulary.
+//
+// So the fact flows forward in a carrier instead. CompleteLegacyObservation is `sole_constructor`,
+// which makes admit_complete_observation the only route to one, and the delta's parameter type is
+// then the evidence rather than a request that someone check. The refusal keeps its cause: this is
+// a typed admission answering WHY, never an Option that would collapse every completeness arm into
+// one absent.
+//
+// RUNG, HONESTLY. This is `mechanically preventable`, not structural impossibility, and two
+// separate facts bound it. `sole_constructor`'s record-literal refusal executes on the v1 seed
+// infer path only (v2.compiler.04_infer carries no sole_constructor handling), so the wall is a
+// property of the compiling PATH and not of the type. And confinement establishes WHO may
+// construct, never WHAT was proven -- here the mint's predicate is fixed and module-owned rather
+// than caller-supplied, which is the stronger of the two shapes, but it is still a mint and not an
+// unrepresentable state. NEXT-RUNG TRIGGER: v2's own infer path carrying the construction wall.
+type CompleteLegacyObservation<O> sole_constructor {
+  observation: LegacyBindingObservation<O>
+}
+
+type LegacyObservationAdmission<O>
+  = ObservationAdmitted { admitted: CompleteLegacyObservation<O> }
+  | ObservationRefused { completeness: LegacyObservationCompleteness }
+
+fn admit_complete_observation<O>(
+  observation: LegacyBindingObservation<O>,
+  expected: List<Int>
+) -> LegacyObservationAdmission<O> {
+  match legacy_observation_completeness(observation: observation, expected: expected) {
+    LegacyObservationComplete => ObservationAdmitted {
+      admitted: CompleteLegacyObservation { observation: observation }
+    }
+    LegacyObservationMissingExpected { occurrences: o } => ObservationRefused { completeness: LegacyObservationMissingExpected { occurrences: o } }
+    LegacyObservationForeignObserved { occurrences: o } => ObservationRefused { completeness: LegacyObservationForeignObserved { occurrences: o } }
+    LegacyObservationRepeatedObserved { occurrences: o } => ObservationRefused { completeness: LegacyObservationRepeatedObserved { occurrences: o } }
+  }
+}
+
 // APPLICABILITY IS A REFUSAL, NOT A COMPARISON RESULT.
 //
 // An observation is evidence about the base it was taken on and about no other. Comparing two
