@@ -131,8 +131,8 @@ fn fixture_subcommands_with_an_operand() -> List<CliSubcommandRow> {
         CliOperandRow {
           field: "subject",
           placeholder: "LABEL",
-          value: CliAbsoluteLabelOperand,
-          arity: CliExactlyOneOperand,
+          value: CliAbsoluteLabelOperand {},
+          arity: CliExactlyOneOperand {},
           doc: [],
           emission: AbsentFromEmitMainRs
         }

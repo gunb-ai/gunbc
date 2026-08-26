@@ -132,7 +132,7 @@ type CliArmRealization
 // target; a second pattern test written at this layer would be a second authority for a question
 // that authority already answers.
 type CliOperandValue
-  = CliAbsoluteLabelOperand
+  = CliAbsoluteLabelOperand {}
 
 // EXACTLY ONE, AND THE ARITY IS ITS OWN COPRODUCT RATHER THAN `CliOptionArity` REUSED.
 //
@@ -142,7 +142,7 @@ type CliOperandValue
 // refuses. A single arm is what is honestly admitted today; a verb taking a variadic operand list
 // adds an arm here and must then decide what it means, rather than inheriting an option's answer.
 type CliOperandArity
-  = CliExactlyOneOperand
+  = CliExactlyOneOperand {}
 
 type CliOperandRow {
   field: String
@@ -436,8 +436,8 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
         CliOperandRow {
           field: "target",
           placeholder: "LABEL",
-          value: CliAbsoluteLabelOperand,
-          arity: CliExactlyOneOperand,
+          value: CliAbsoluteLabelOperand {},
+          arity: CliExactlyOneOperand {},
           doc: [
             "Absolute label of exactly one target, e.g.",
             "`//gunbc/instruments:heads-reading-differential`."
