@@ -1544,17 +1544,42 @@ So the split is clean, and it falls exactly along the line that clause draws:
   abandoned before item checking render identically to every consumer** — 8
   `.items` reads in `04_infer` alone, 89 across `src/v1/*.dag`.
 
-  **The executed arm has NOT been exhibited, and the fixture that tried did not
-  reach it.** A three-module fixture compiled an unresolvable *import* and refused
-  at `exit=1` with a located diagnostic — but `UnresolvedImport` is minted at
+  **THE ARM IS REACHED — established by call graph, and the two fixtures that
+  tried to show it by execution could not.** The first authored an unresolvable
+  *import* and refused at `exit=1`; but `UnresolvedImport` is minted at
   `v1.03_resolve`, upstream of `typecheck_module`, and none of `build_type_env`'s
-  three diagnostic sources (`import_diags`, an `InternalError` about a missing
-  parent environment; `namespace_alias_diags`; `resolved_diags` from
-  `resolve_env_bindings`) is that diagnostic. **A fixture that stops before the
-  stage says nothing about the stage** — the finding's own class, arriving as the
-  method error of the lane reporting it. The fixture that would reach the arm
-  authors an unresolvable *type name* in a signature, with no import problem;
-  **not yet run.**
+  three diagnostic sources is it. The second authored an unresolvable *type name*
+  at four positions — parameter type, return type, `data` declaration, record
+  field — each refusing with `unresolved type`, against a positive control
+  (module line only) at `exit=0` with zero diagnostics. **That is still not an
+  observation of the arm**: a located refusal at `exit=1` renders identically
+  whether `typecheck_module` took its early return or an earlier stage refused,
+  so changing *which* stage the fixture stops at gains no ability to *see* which
+  stage stopped it.
+
+  What settles it is the call graph, not the exit code:
+
+  ```
+  build_type_env            → resolve_env_bindings
+  resolve_env_bindings      → topo_resolve_types
+  topo_resolve_types        → resolve_node          (both fold arms)
+  resolve_node              → resolve_node_bounded  (the only body)
+  resolve_node_bounded      → bare_name_miss_diagnostic
+  bare_name_miss_diagnostic → UnresolvedType
+  ```
+
+  with those diagnostics returning through `EnvResolveResult` into
+  `build_type_env`'s `resolved_diags`. So an unresolvable type name in a module's
+  own bindings yields `env_errors > 0` and the early return is taken. (The other
+  `UnresolvedType` mint, in `build_type_env`'s namespace-alias arm, is eliminated
+  because the fixtures author no aliases.)
+
+  **What is NOT claimed: `typecheck_module`'s return was never observed
+  directly** — the arm's selection rests on source and call graph, not execution.
+  And the reason it stayed unobserved is worth stating rather than leaving to be
+  deduced: **the cheapest direct witness is a probe on the very function the
+  ruling would authorize modifying.** Mildly circular, and smaller than it was,
+  since the call graph now carries what the probe would have shown.
 
   **This is the same defect §11.2l measured, not an analogous one.** The oracle
   could not distinguish `total_arm1=1` from a genuine single-ask module *because
