@@ -44,7 +44,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // provenance whose entry count is the same as the passing one's wherever the law permits, so no arm
 // is reachable by comparing sizes. That is the operator's oracle rule applied to the fixtures
 // rather than only to the laws they exercise.
-type LbdTestOutcome = LbdObserved
+type LbdTestOutcome
+  = LbdObserved
+  | LbdUnobserved
 
 fn lbd_subject() -> LegacyBindingObservationSubject {
   LegacyBindingObservationSubject {
