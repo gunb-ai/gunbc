@@ -119,6 +119,18 @@ type AncestryWalkAcc {
   outcome: AncestryWalk
 }
 
+// THE CHAIN ACCUMULATES BY PREPEND AND IS REVERSED ONCE AT COMPLETION. concat-at-end copies the
+// whole accumulator per step, which makes an n-step walk O(n^2) -- the cost shape DESIGN section 6
+// rules is ALWAYS fixed regardless of the realized n, because "n is small here" is not a time-stable
+// fact: this walk's n is the length of a repository's history, which is exactly the quantity that
+// grows without bound in use.
+//
+// It is worth recording that gunbc.scm.repository_envelope carries an annotation about having
+// committed this same defect and had it caught by review, and this module reintroduced it anyway in
+// a diff that imports that module. The lesson there was that fixing a cost shape at the sites a
+// review names is not the same as not having the defect; the lesson here is that reading the note is
+// not either. The reversal is at the single completion point rather than at each consumer, so the
+// exported chain order -- descendant first -- is unchanged and no caller can observe the fix.
 fn ancestry_walk_step(
   acc: AncestryWalkAcc,
   lookup: fn(ObjectId) -> CommitAncestryLookup,
@@ -141,7 +153,7 @@ fn ancestry_walk_step(
               chain: acc.chain,
               cursor: acc.cursor,
               done: true,
-              outcome: AncestryTraced { chain: acc.chain },
+              outcome: AncestryTraced { chain: reverse(acc.chain) },
             }
           DescendsFrom { parent: parent } =>
             match lookup(parent) {
@@ -154,7 +166,7 @@ fn ancestry_walk_step(
                 }
               AncestryKnown { ancestry: _ } =>
                 AncestryWalkAcc {
-                  chain: concat(acc.chain, [parent]),
+                  chain: concat([parent], acc.chain),
                   cursor: parent,
                   done: false,
                   outcome: acc.outcome,
