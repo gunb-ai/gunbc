@@ -10144,11 +10144,13 @@ fn map_file_outputs(
         let from_key = extract_from_key(child, ctx);
         let key = from_key.as_deref().unwrap_or(field_name.as_str());
         let value = match key {
-            "write_success" | "success" => Value::Bool(result.success),
+            "write_success" | "read_success" | "delete_success" | "list_success" | "success" => {
+                Value::Bool(result.success)
+            }
             "bytes_written" | "bytes" | "byte_count" => Value::Int(result.byte_count),
             "path" => str_value(result.path.clone()),
             "error" => str_value(result.error.clone()),
-            "content" => str_value(result.content.clone()),
+            "content" | "entries" => str_value(result.content.clone()),
             _ => Value::Null,
         };
         fields.push((ctx.sym(&field_name), value));
