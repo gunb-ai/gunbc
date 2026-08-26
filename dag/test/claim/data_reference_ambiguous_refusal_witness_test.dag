@@ -134,3 +134,30 @@ test fn an_inadmissible_default_form_is_reported_as_such() -> Bool {
 test fn an_inadmissible_default_form_is_no_longer_a_compiler_bug() -> Bool {
   dra_blocking_count(source: dra_inadmissible_default_entry_source, wanted: "InternalError") == 0
 }
+
+// THE THIRD RECLASSIFIED ARM, MEASURED AFTER ALL (codex reviews 56224 and 56229). I first declared
+// this one as a gap with its price named, on the grounds that its RED costs seventeen corpus files
+// and the arm has zero live exposure. The review held, twice, and it was right: DESIGN 4b asks
+// whether a RED is AUTHORABLE before excusing its absence, and this one is -- expensively, not
+// impossibly -- so declining it was specification-without-execution with a cost estimate attached.
+//
+// WHY SEVENTEEN AND NOT FEWER, derived from the mechanism rather than guessed.
+// data_reference_visibility_depth_limit is 16, and data_decl_reexporting_modules increments once
+// per RE-EXPORT hop, so hop_k is visited at depth k and hop_17 is refused by the bound before its
+// declaration is ever read. The chain length IS the bound; acyclicity rules out anything shorter,
+// and the declaration sits at the far end precisely so that a walk which somehow completed would
+// resolve rather than refuse -- the fixture cannot pass by having nothing to find.
+//
+// AN ALL-IMPORT WOULD NOT WORK AND THAT IS WHY EVERY HOP NAMES THE NAME. data_import_reexports_name
+// answers false for an all-import: visibility into a module is not re-export onward, so a chain of
+// bare imports would stop at hop_01 and the walk would complete with zero modules -- Absent, not
+// budget-exhausted, and this arm would never be reached.
+data dra_budget_chain_entry_source: String = "module dra_probe_budget\n\nimport test.fixture.data_reference_visibility_chain.hop_01 \{ dvb_endpoint }\n\ntype DraBudgetNet \{\n  id: Int\n}\n\nfunc dra_budget_run(endpoint: String = dvb_endpoint) -> String\n  uses net: DraBudgetNet\n\{\n  endpoint\n}\n"
+
+test fn an_exhausted_visibility_walk_is_reported_as_such() -> Bool {
+  dra_blocking_count(source: dra_budget_chain_entry_source, wanted: "DataReferenceVisibilityBudgetExceeded") == 1
+}
+
+test fn an_exhausted_visibility_walk_is_no_longer_a_compiler_bug() -> Bool {
+  dra_blocking_count(source: dra_budget_chain_entry_source, wanted: "InternalError") == 0
+}
