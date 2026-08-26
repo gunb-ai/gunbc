@@ -39,20 +39,6 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
 }
 
-pub fn rust_serde_derive_external_authority_anchor() -> Rc<ExternalAuthority> {
-    thread_local! {
-            static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
-        scheme: UriScheme::Https,
-        locator: "serde.rs/derive.html".to_string(),
-    }),
-    })
-            };
-        }
-    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
-}
-
 pub fn extdeps_model_scope() -> Rc<ExternalModelScope> {
     thread_local! {
             static CACHED: Rc<ExternalModelScope> = {
@@ -65,7 +51,7 @@ pub fn extdeps_model_scope() -> Rc<ExternalModelScope> {
     }),
     }),
         first_citation: extdeps_external_authority_anchor(),
-        further_citations: Rc::new(vec![rust_serde_derive_external_authority_anchor()]),
+        further_citations: Rc::new(vec![]),
     })
             };
         }

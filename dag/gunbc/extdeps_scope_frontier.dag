@@ -367,7 +367,9 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/tools/mkdir.dag",
   "dag/extdeps/tools/stat.dag",
   "dag/extdeps/tools/tar.dag",
-  "dag/extdeps/vendor/cisco.dag"
+  "dag/extdeps/vendor/cisco.dag",
+  "dag/extdeps/linux/cgroup_v2.dag",
+  "dag/extdeps/linux/cgroup_v2_memory.dag"
 ]
 
 data scope_machinery_exempt_paths: List<String> = [
