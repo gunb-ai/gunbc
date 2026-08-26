@@ -405,6 +405,11 @@ test fn scm_env_a_checkout_naming_a_non_commit_object_refuses() -> Bool {
 
 // CONTROL: a valid commit reference must still load, or the claim above would hold for a decoder
 // that refused every checkout. "1" is the second commit.
+//
+// ASSERTED AS THE REFERENCE THE DOCUMENT STATED, not as a resolved root. Resolving and comparing
+// roots is exactly the comparison that could not distinguish two commits sharing one -- the defect
+// review 56230 found -- so a root-level assertion here would pass on a decoder that had lost which
+// row was selected.
 test fn scm_env_a_valid_commit_reference_checks_out() -> Bool {
   match decode_repository(
     v: scm_env_with(
@@ -417,10 +422,6 @@ test fn scm_env_a_valid_commit_reference_checks_out() -> Bool {
     RepositoryDecoded { envelope: e } =>
       match e.checked_out {
         Absent => false
-        // ASSERTED AS THE REFERENCE THE DOCUMENT STATED, not as a resolved root. Resolving and
-        // comparing roots is exactly the comparison that could not distinguish two commits sharing
-        // one -- the defect review 56230 found -- so a root-level assertion here would pass on a
-        // decoder that had lost which row was selected.
         Present { value: reference } => reference == "1"
       }
   }
