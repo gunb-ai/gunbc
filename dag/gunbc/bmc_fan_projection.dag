@@ -25,6 +25,8 @@ import product.placement_supply { HostIdentity }
 import gunbc.bmc_fan_alignment_standing {
   AlignmentAdmitsApplyEvaluation,
   AlignmentRefused,
+  RefusedObservedProgramNotAdopted,
+  RefusedObservedProgramNotRepresentableByIntent,
   AlignmentStandingAbsent,
   AlignmentStandingDuplicate,
   HostBmcFanAlignmentStanding,
@@ -301,16 +303,14 @@ fn bmc_fan_policy_projection_apply_suitability(
       BmcFanProjectionApplyRefused { cause: BmcFanProjectionAlignmentStandingAbsent }
     AlignmentStandingDuplicate =>
       BmcFanProjectionApplyRefused { cause: BmcFanProjectionAlignmentStandingDuplicate }
-    AlignmentRefused { alignment } =>
-      match alignment {
-        ObservedProgramNotAdopted =>
+    AlignmentRefused { cause: refusal } =>
+      match refusal {
+        RefusedObservedProgramNotAdopted =>
           BmcFanProjectionApplyRefused { cause: BmcFanProjectionObservedProgramNotAdopted }
-        ObservedProgramNotRepresentableByIntent { missing } =>
+        RefusedObservedProgramNotRepresentableByIntent { missing } =>
           BmcFanProjectionApplyRefused {
             cause: BmcFanProjectionObservedProgramNotRepresentable,
           }
-        IntentMatchesObservedProgram =>
-          BmcFanProjectionApplyRefused { cause: BmcFanProjectionObservedProgramNotAdopted }
       }
     AlignmentAdmitsApplyEvaluation =>
       if capability.board != board {
@@ -327,6 +327,29 @@ fn bmc_fan_policy_projection_apply_suitability(
         BmcFanProjectionApplySuitable
       }
   }
+}
+
+// THE PRODUCTION ENTRY CLOSES THE ROSTER. The kernel above takes a standings list so fixtures can
+// author one, which means a caller could also hand it a roster asserting its own target is
+// aligned -- the caller-supplied authority the old Boolean parameter had, moved rather than
+// removed. Actuating routes call this wrapper and cannot name a roster at all. This is a
+// repository rule, not a type wall, and it is written down as one: nothing stops a new caller
+// reaching past it to the kernel.
+fn fleet_bmc_fan_policy_projection_apply_suitability(
+  capability: BmcFanPolicyProjectionCapability,
+  board: BaseboardModel,
+  desired_curve: BmcFanCurve,
+  observation: BmcFanPolicyObservation,
+  host: HostIdentity,
+) -> BmcFanProjectionApplySuitability {
+  bmc_fan_policy_projection_apply_suitability(
+    capability: capability,
+    board: board,
+    desired_curve: desired_curve,
+    observation: observation,
+    host: host,
+    standings: fleet_bmc_fan_alignment_standings,
+  )
 }
 
 fn bmc_fan_policy_projection_live_digest_suitability(

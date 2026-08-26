@@ -13,13 +13,20 @@ import gunbc.fleet_intent_network {
 //
 // This is a SEPARATE AXIS from whether the deployed program is any good, and separating them is
 // the whole reason this module exists. srv3 and srv4 currently run a thermal/acoustic program
-// that is measurably better than the projected one - about 21 dB below the old peak with every
-// DIMM back inside its guard - and the intent still cannot express it. Those two facts are not
-// in tension and must not be collapsed into one "converged" flag:
+// that measured quieter and cooler than the projected one, and the intent still cannot express
+// it. Those two facts are not in tension and must not be collapsed into one "converged" flag:
 //
-//   qualification  is the running program good?          -> qualified by measured receipt
+//   qualification  is the running program good?          -> NOT ANSWERED BY THIS CARRIER
 //   alignment      can the intent describe it?           -> NO, not representable
 //   actuation      may we write the intent to the host?  -> REFUSED
+//
+// The qualification row is deliberately blank rather than filled in. This module binds no
+// receipt, no active control-program digest, no observation window and no workload identity, so
+// it has nothing with which to answer that question, and an earlier revision of this block
+// answered it anyway ("qualified by measured receipt") over exactly those absent bindings. It
+// also quoted a delta computed against the wrong end of the range - the old PEAK against the new
+// MINIMUM - which is not a comparison of two states. Both are removed rather than restated with
+// better numbers: the alignment owner states alignment.
 //
 // WHY REFUSAL IS THE ONLY SAFE ANSWER WHILE ALIGNMENT IS ABSENT, and it is worse than a
 // no-op: the apply path rewrites only the PIDs it recognises. It would restore the projected
@@ -73,11 +80,23 @@ fn standings_for_host_count(
 // answer is to refuse the whole question. This is the same defect the tach-health join already
 // refuses, reintroduced here by habit and caught in review; the roster is small and hand-authored,
 // which is exactly the condition under which a duplicate is easy to add and invisible.
+// REFUSAL CARRIES ONLY REFUSAL CAUSES. `AlignmentRefused { alignment: BmcFanIntentAlignment }`
+// admitted `AlignmentRefused { alignment: IntentMatchesObservedProgram }` - a state meaning
+// "refused because it is aligned", which no producer can reach and which two consumers had
+// already read two different ways, one calling it unreachable and the other silently folding it
+// into not-adopted. That divergence is the tell: an impossible state does not stay unread, it
+// gets an arbitrary reading per consumer. Splitting the vocabulary makes it unwritable, which is
+// stronger than either reading, and it deletes both fallback branches rather than reconciling
+// them.
+type AlignmentRefusalCause
+  = RefusedObservedProgramNotAdopted
+  | RefusedObservedProgramNotRepresentableByIntent { missing: NonEmptyStr }
+
 type AlignmentAdmission
   = AlignmentAdmitsApplyEvaluation
   | AlignmentStandingAbsent
   | AlignmentStandingDuplicate
-  | AlignmentRefused { alignment: BmcFanIntentAlignment }
+  | AlignmentRefused { cause: AlignmentRefusalCause }
 
 fn standing_for(
   standings: List<HostBmcFanAlignmentStanding>,
@@ -107,10 +126,14 @@ fn host_alignment_admission(
     match standing_for(standings: standings, host: host) {
       none => AlignmentStandingAbsent
       Present { value: standing } =>
-        if alignment_admits_apply_evaluation(standing: standing) {
-          AlignmentAdmitsApplyEvaluation
-        } else {
-          AlignmentRefused { alignment: standing.alignment }
+        match standing.alignment {
+          IntentMatchesObservedProgram => AlignmentAdmitsApplyEvaluation
+          ObservedProgramNotAdopted =>
+            AlignmentRefused { cause: RefusedObservedProgramNotAdopted }
+          ObservedProgramNotRepresentableByIntent { missing } =>
+            AlignmentRefused {
+              cause: RefusedObservedProgramNotRepresentableByIntent { missing: missing },
+            }
         }
     }
   }
@@ -124,8 +147,26 @@ fn host_alignment_admits_apply_evaluation(
     AlignmentAdmitsApplyEvaluation => true
     AlignmentStandingAbsent => false
     AlignmentStandingDuplicate => false
-    AlignmentRefused { alignment } => false
+    AlignmentRefused { cause } => false
   }
+}
+
+// THE PRODUCTION ROSTER IS NOT A PARAMETER. `host_alignment_admission` takes a standings list so
+// that fixtures can author one, which also means a caller could hand it a roster asserting its
+// own target is aligned - the caller-supplied authority the Boolean parameter had, moved rather
+// than removed. Actuating routes call THIS wrapper, which closes the roster over the fleet's own
+// standings and takes only a host. That is a repository rule rather than a type wall, and saying
+// so is the point: it stops the parameterized function being described as a confinement it is
+// not.
+fn fleet_host_alignment_admission(host: HostIdentity) -> AlignmentAdmission {
+  host_alignment_admission(standings: fleet_bmc_fan_alignment_standings, host: host)
+}
+
+fn fleet_host_alignment_admits_apply_evaluation(host: HostIdentity) -> Bool {
+  host_alignment_admits_apply_evaluation(
+    standings: fleet_bmc_fan_alignment_standings,
+    host: host,
+  )
 }
 
 // THE FLEET'S STANDING, 2026-08-26.
@@ -140,6 +181,10 @@ fn host_alignment_admits_apply_evaluation(
 // control sensor, one step series and one duty floor, so a second actuator group with its own
 // transfer function has nowhere to live. Adding steps to the curve does not close this; the
 // carrier needs the actuator-program split first.
+// The two hosts are missing the SAME modelling shape, so the sentence naming it is one fact and
+// lives in one place rather than being typed twice and drifting.
+data srv3_srv4_expected_missing: NonEmptyStr = "per-actuator-group duty offsets and slew limits: the host runs two fan controller entries and BmcFanCurve models one"
+
 data fleet_bmc_fan_alignment_standings: List<HostBmcFanAlignmentStanding> = [
   HostBmcFanAlignmentStanding {
     host: operator_host_srv1,
@@ -152,13 +197,13 @@ data fleet_bmc_fan_alignment_standings: List<HostBmcFanAlignmentStanding> = [
   HostBmcFanAlignmentStanding {
     host: operator_host_srv3,
     alignment: ObservedProgramNotRepresentableByIntent {
-      missing: "per-actuator-group duty offsets and slew limits: the host runs two fan controller entries and BmcFanCurve models one",
+      missing: srv3_srv4_expected_missing,
     },
   },
   HostBmcFanAlignmentStanding {
     host: operator_host_srv4,
     alignment: ObservedProgramNotRepresentableByIntent {
-      missing: "per-actuator-group duty offsets and slew limits: the host runs two fan controller entries and BmcFanCurve models one",
+      missing: srv3_srv4_expected_missing,
     },
   },
 ]

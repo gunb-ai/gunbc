@@ -26,7 +26,6 @@ import extdeps.filesystem.linux {
   linux_overlay_observation_is_flash_backed,
 }
 import extdeps.uri { Uri }
-import gunbc.bmc_fan_alignment_standing { fleet_bmc_fan_alignment_standings }
 import gunbc.bmc_intent {
   BmcControlPlaneIntent,
 }
@@ -48,7 +47,7 @@ import gunbc.bmc_fan_projection {
   BmcFanProjectionLiveDigestMatches,
   BmcFanProjectionLiveDigestRefused,
   bmc_fan_policy_drift_assessment,
-  bmc_fan_policy_projection_apply_suitability,
+  fleet_bmc_fan_policy_projection_apply_suitability,
   bmc_fan_policy_projection_durability_admission,
   bmc_fan_policy_projection_durability_capability,
   bmc_fan_policy_projection_live_digest_suitability,
@@ -405,13 +404,12 @@ fn bmc_fan_policy_apply_suitability(
         cause: FanPolicyInstalledTachTopologyDiffersFromIntent,
       }
     } else {
-      match bmc_fan_policy_projection_apply_suitability(
+      match fleet_bmc_fan_policy_projection_apply_suitability(
         capability: projection,
         board: board,
         desired_curve: intent.fan_policy.curve,
         observation: observation,
         host: host,
-        standings: fleet_bmc_fan_alignment_standings,
       ) {
         BmcFanProjectionApplyRefused { cause: cause } =>
           FanPolicySuitabilityRefused {
