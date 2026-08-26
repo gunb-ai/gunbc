@@ -148,7 +148,7 @@ pub fn occurrence_binding_inputs_from_transport(
                 .cloned()
                 .fold(
                     Rc::new(vec![]),
-                    |acc: _, entry: Rc<OccurrenceIndexEntry>| {
+                    |acc: Rc<Vec<Rc<OccurrenceModulePathRow>>>, entry: Rc<OccurrenceIndexEntry>| {
                         v1_rt::concat(
                             Rc::new(vec![Rc::new(OccurrenceModulePathRow {
                                 occurrence: entry.projection.clone().occurrence.clone(),
@@ -161,7 +161,7 @@ pub fn occurrence_binding_inputs_from_transport(
         ),
         exposure_rows: v1_rt::reverse(transport.declarations.clone().iter().cloned().fold(
             Rc::new(vec![]),
-            |acc: _, declaration: Rc<DeclarationOccurrence>| {
+            |acc: Rc<Vec<Rc<DeclarationExposureRow>>>, declaration: Rc<DeclarationOccurrence>| {
                 v1_rt::concat(
                     Rc::new(vec![Rc::new(DeclarationExposureRow {
                         occurrence: declaration.occurrence.clone(),
@@ -185,7 +185,7 @@ pub fn occurrence_binding_inputs_from_transport(
                 .cloned()
                 .fold(
                     Rc::new(vec![]),
-                    |acc: _, entry: Rc<OccurrenceIndexEntry>| {
+                    |acc: Rc<Vec<Rc<AuthoredOrderRow>>>, entry: Rc<OccurrenceIndexEntry>| {
                         v1_rt::concat(
                             Rc::new(vec![authored_order_row_from_entry(entry.clone())]),
                             acc,
