@@ -149,6 +149,28 @@ nothing is given up by descending.
 failure, and the run-level *timestamp* masks the earlier attempt. A reader who learns to descend
 to jobs should learn to descend to attempts in the same breath.
 
+#### A re-run of *failed jobs only* carries the passing jobs forward, with new ids
+
+`gh run rerun <id> --failed` re-executes only what failed. The jobs that passed still appear in
+the new attempt's job list, as `success` — with a **new job id** but the **original attempt's
+timestamps**. Measured:
+
+```
+attempt 1  floor id=98007396821  started 23:40:44  completed 00:25:27
+attempt 2  floor id=98018370339  started 23:40:44  completed 00:25:27   <- carried, not re-run
+attempt 2  build id=98018369122  started 00:34:10  completed 00:53:50   <- actually re-run
+```
+
+The build in attempt 2 *started nine minutes after* the floor's recorded completion, which is
+the tell. **The id says re-run; the timestamps say carried.** Two consequences, and the second
+is the dangerous one: a reader auditing runner spend concludes a 45-minute lane was re-executed
+when it was not, and — worse — a reader treating "attempt 2, all green" as one measurement is
+reading a result partly measured *before* the re-run. Attempts share a commit so nothing can
+have changed here, but the composite reading is still not what it appears to be.
+
+**Check:** compare each job's `started_at` against the attempt's own start. A job that predates
+its attempt was carried forward.
+
 ### The classification ladder
 
 Four rungs, each learned by getting it wrong. Only after all four are excluded is a red yours:
