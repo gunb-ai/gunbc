@@ -184,7 +184,7 @@ fn checkout_repository_at(repo: RepositoryEnvelope, reference: String) -> Reposi
             repository: RepositoryEnvelope {
               store: repo.store,
               commits: repo.commits,
-              checked_out: Present { value: selected.root },
+              checked_out: Present { value: reference },
             },
             program: program,
           }

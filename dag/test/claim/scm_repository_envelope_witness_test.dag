@@ -100,7 +100,7 @@ fn scm_env_two_commit_repository() -> RepositoryEnvelope {
         ancestry: DescendsFrom { parent: first.identity },
       },
     ],
-    checked_out: Present { value: second.identity },
+    checked_out: Present { value: "1" },
   }
 }
 
@@ -417,15 +417,13 @@ test fn scm_env_a_valid_commit_reference_checks_out() -> Bool {
     RepositoryDecoded { envelope: e } =>
       match e.checked_out {
         Absent => false
-        Present { value: identity } => scm_env_second_root_is(identity: identity)
+        // ASSERTED AS THE REFERENCE THE DOCUMENT STATED, not as a resolved root. Resolving and
+        // comparing roots is exactly the comparison that could not distinguish two commits sharing
+        // one -- the defect review 56230 found -- so a root-level assertion here would pass on a
+        // decoder that had lost which row was selected.
+        Present { value: reference } => reference == "1"
       }
   }
-}
-
-fn scm_env_second_root_is(identity: ObjectId) -> Bool {
-  let first = scm_env_put(store: empty_store(), n: scm_env_program_one())
-  let second = scm_env_put(store: first.store, n: scm_env_program_two())
-  object_id_eq(left: identity, right: second.identity)
 }
 
 
@@ -443,7 +441,7 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
       match cause {
         RepositoryEncodeUncontainedTarget { target: _ } => "uncontained_target"
         RepositoryCommitRootNotInStore { root: _ } => "commit_root"
-        RepositoryCheckoutNotInCommits { selected: _ } => "checked_out"
+        RepositoryCheckoutNotInCommits { reference: _ } => "checked_out"
         RepositoryCommitParentNotInCommits { parent: _ } => "commit_parent"
         RepositoryCommitAncestryCyclic { detected_from: _ } => "ancestry_cycle"
       }
@@ -467,7 +465,7 @@ fn scm_env_non_commit_checkout_repository() -> RepositoryEnvelope {
   RepositoryEnvelope {
     store: second.store,
     commits: [RepositoryCommit { root: first.identity, message: "first", ancestry: RootCommit }],
-    checked_out: Present { value: second.identity },
+    checked_out: Present { value: "1" },
   }
 }
 
@@ -509,7 +507,7 @@ fn scm_env_named_target_is_uncontained(outcome: RepositoryEncodeOutcome, store: 
             acc || object_id_eq(left: id, right: t)
           })
         RepositoryCommitRootNotInStore { root: _ } => false
-        RepositoryCheckoutNotInCommits { selected: _ } => false
+        RepositoryCheckoutNotInCommits { reference: _ } => false
         RepositoryCommitParentNotInCommits { parent: _ } => false
         RepositoryCommitAncestryCyclic { detected_from: _ } => false
       }

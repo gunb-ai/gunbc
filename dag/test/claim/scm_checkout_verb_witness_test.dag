@@ -21,6 +21,15 @@ import gunbc.scm.object_store {
   object_id_eq,
 }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit, commit_at_reference }
+import gunbc.scm.merge { Proposal }
+import gunbc.scm.status {
+  StatusCheckout,
+  NothingCheckedOut,
+  CheckedOutCommit,
+  CheckedOutCommitMissing,
+  RepositoryStatus,
+  repository_status,
+}
 import gunbc.scm.ancestry {
   CommitAncestry,
   RootCommit,
@@ -92,11 +101,7 @@ test fn scm_ck_checking_out_a_commit_positions_the_repository_at_it() -> Bool {
     RepositoryCheckedOut { repository: r, program: _ } =>
       match r.checked_out {
         Absent => false
-        Present { value: selected } =>
-          match commit_at_reference(commits: repo.commits, reference: "1") {
-            Absent => false
-            Present { value: c } => object_id_eq(left: selected, right: c.root)
-          }
+        Present { value: selected } => selected == "1"
       }
     CheckoutReferenceUnresolved { reference: _ } => false
     CheckoutProgramUnreconstructable { reference: _, cause: _ } => false
@@ -230,4 +235,71 @@ fn scm_ck_lookup_in(commits: List<RepositoryCommit>, wanted: ObjectId) -> Commit
         }
     }
   })
+}
+
+// ------------------------------------------------------------------------------------------------
+// A selection names a ROW, not a root (review 56230)
+// ------------------------------------------------------------------------------------------------
+
+// TWO COMMITS, ONE ROOT, DIFFERENT MESSAGES. This is legal and gunbc.scm.log has its own witness for
+// it -- two_commits_sharing_a_root_still_get_distinct_references -- so a root is NOT a unique key
+// into the commit list.
+fn scm_ck_shared_root_repository() -> RepositoryEnvelope {
+  let only = scm_ck_put(store: empty_store(), n: scm_ck_atom(name: ^shared))
+  RepositoryEnvelope {
+    store: only.store,
+    commits: [
+      RepositoryCommit { root: only.identity, message: "FIRST", ancestry: RootCommit },
+      RepositoryCommit { root: only.identity, message: "SECOND", ancestry: RootCommit },
+    ],
+    checked_out: none,
+  }
+}
+
+// THE DEFECT REVIEW 56230 FOUND, ASSERTED END TO END. Measured before the repair, this returned
+// FALSE: the selection stored the commit's ROOT, every reader resolved a root to the FIRST matching
+// row, and a user who checked out the second commit was told by `status` that they were on the
+// first. Nothing refused -- the wrong answer was reported as an ordinary success.
+//
+// It asserts through STATUS rather than through the envelope field, because the field being right is
+// not the claim; the claim is that the user is told which commit they are on.
+test fn scm_ck_checking_out_the_second_of_two_shared_root_commits_reports_its_own_message() -> Bool {
+  match checkout_repository_at(repo: scm_ck_shared_root_repository(), reference: "1") {
+    RepositoryCheckedOut { repository: r, program: _ } =>
+      match repository_status(
+        envelope: r,
+        pending: Proposal { requirements: [], dependencies: [] },
+      ) {
+        RepositoryStatus { checkout: co, commit_count: _, staged: _ } =>
+          match co {
+            CheckedOutCommit { root: _, message: m } => m == "SECOND"
+            NothingCheckedOut => false
+            CheckedOutCommitMissing { reference: _ } => false
+          }
+      }
+    CheckoutReferenceUnresolved { reference: _ } => false
+    CheckoutProgramUnreconstructable { reference: _, cause: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL, and it is what stops the claim above from being satisfied by a reader that
+// always returns the LAST row instead of always the first. Checking out position 0 must report
+// FIRST -- so the two together pin the selection to the row named, not to an end of the list.
+test fn scm_ck_checking_out_the_first_of_two_shared_root_commits_reports_its_own_message() -> Bool {
+  match checkout_repository_at(repo: scm_ck_shared_root_repository(), reference: "0") {
+    RepositoryCheckedOut { repository: r, program: _ } =>
+      match repository_status(
+        envelope: r,
+        pending: Proposal { requirements: [], dependencies: [] },
+      ) {
+        RepositoryStatus { checkout: co, commit_count: _, staged: _ } =>
+          match co {
+            CheckedOutCommit { root: _, message: m } => m == "FIRST"
+            NothingCheckedOut => false
+            CheckedOutCommitMissing { reference: _ } => false
+          }
+      }
+    CheckoutReferenceUnresolved { reference: _ } => false
+    CheckoutProgramUnreconstructable { reference: _, cause: _ } => false
+  }
 }

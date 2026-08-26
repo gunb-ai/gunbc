@@ -146,10 +146,33 @@ type RepositoryCommit {
   ancestry: CommitAncestry
 }
 
+// THE SELECTION IS A COMMIT REFERENCE, NOT A ROOT IDENTITY, and this carrier was LOSSY until
+// review 56230 named it. `commits` may legitimately hold two rows with the same root and different
+// messages -- gunbc.scm.log's own witness two_commits_sharing_a_root_still_get_distinct_references
+// exists because it can -- so a root is NOT a unique key into this list. Storing one meant the
+// selection could not express WHICH ROW was chosen, and every reader resolved it to the FIRST match.
+//
+// Measured before the repair: checking out the second of two shared-root commits and asking `status`
+// reported the FIRST one's message. A user was told they were on a commit they had not selected.
+//
+// THE WIRE WAS ALREADY RIGHT AND THE CONVERSION WAS THE DEFECT. This module's own annotation on
+// `checked_out` says the encoded reference "means the commit at this position in this document and
+// nothing outside it". Decode then threw that away by resolving the position to a root, and encode
+// recovered a position by searching for the first row with that root -- so a repository selected at
+// position 1 with a shared root ROUND-TRIPPED TO POSITION 0. Carrying the reference end to end
+// deletes both conversions rather than adding a check, and the wire format is unchanged.
+//
+// This does NOT redefine commit identity. The header above still holds: a commit's identity is its
+// root, and two rows with one root name one program. A SELECTION is a different question from an
+// IDENTITY -- it names a row in this document's list, exactly as the wire always said.
+//
+// The reference is a bare String because that is this layer's existing spelling for image-local
+// positions, which RepositoryDecodeRefusal's own note already records as declared, un-dissolved
+// conflation. Typing it is that note's repair, not this one's.
 type RepositoryEnvelope {
   store: ObjectStore
   commits: List<RepositoryCommit>
-  checked_out: ObjectId?
+  checked_out: String?
 }
 
 // ENCODE AND DECODE HAVE DIFFERENT FAILURE POPULATIONS, SO THEY ARE DIFFERENT TYPES.
@@ -184,7 +207,7 @@ type RepositoryEnvelope {
 type RepositoryEncodeRefusal
   = RepositoryEncodeUncontainedTarget { target: ObjectId }
   | RepositoryCommitRootNotInStore { root: ObjectId }
-  | RepositoryCheckoutNotInCommits { selected: ObjectId }
+  | RepositoryCheckoutNotInCommits { reference: String }
   | RepositoryCommitParentNotInCommits { parent: ObjectId }
   | RepositoryCommitAncestryCyclic { detected_from: ObjectId }
 
@@ -322,11 +345,12 @@ fn commit_search_step(acc: CommitSearch, c: RepositoryCommit, wanted: ObjectId) 
   }
 }
 
-fn encode_optional_reference(commits: List<RepositoryCommit>, selected: ObjectId?) -> JsonValue {
+// The stored reference IS the wire reference, so this emits it rather than deriving one. The
+// derivation it replaced was the lossy half of the round trip described on RepositoryEnvelope.
+fn encode_optional_reference(commits: List<RepositoryCommit>, selected: String?) -> JsonValue {
   match selected {
     Absent => JsonNull
-    Present { value: identity } =>
-      json_string(s: commit_reference_of(commits: commits, selected: identity))
+    Present { value: reference } => json_string(s: reference)
   }
 }
 
@@ -437,8 +461,8 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
           RepositoryEncodeRefused { cause: RepositoryCommitRootNotInStore { root: root } }
         Absent =>
           match unresolved_checkout_selection(commits: repo.commits, selected: repo.checked_out) {
-            Present { value: selected } =>
-              RepositoryEncodeRefused { cause: RepositoryCheckoutNotInCommits { selected: selected } }
+            Present { value: reference } =>
+              RepositoryEncodeRefused { cause: RepositoryCheckoutNotInCommits { reference: reference } }
             Absent =>
               match unresolved_commit_parent(commits: repo.commits) {
                 Present { value: parent } =>
@@ -564,14 +588,13 @@ fn a_cyclic_commit(commits: List<RepositoryCommit>) -> ObjectId? {
   })
 }
 
-fn unresolved_checkout_selection(commits: List<RepositoryCommit>, selected: ObjectId?) -> ObjectId? {
+fn unresolved_checkout_selection(commits: List<RepositoryCommit>, selected: String?) -> String? {
   match selected {
     Absent => none
-    Present { value: identity } =>
-      if commit_reference_of(commits: commits, selected: identity) == "" {
-        Present { value: identity }
-      } else {
-        none
+    Present { value: reference } =>
+      match commit_at_reference(commits: commits, reference: reference) {
+        Absent => Present { value: reference }
+        Present { value: _ } => none
       }
   }
 }
@@ -955,10 +978,10 @@ fn decode_repository_checkout(
           match commit_at_reference(commits: commits, reference: reference) {
             Absent =>
               RepositoryDecodeRefused { cause: RepositoryCheckoutReferenceUnresolved { reference: reference } }
-            Present { value: selected } =>
+            Present { value: _ } =>
               RepositoryDecoded {
                 envelope: RepositoryEnvelope {
-                  store: store, commits: commits, checked_out: Present { value: selected.root }
+                  store: store, commits: commits, checked_out: Present { value: reference }
                 }
               }
           }
