@@ -1,6 +1,6 @@
 module extdeps.shell
 
-import std.types { Bool, FilePath, NonEmptyStr, Secret, String, List }
+import std.types { FilePath, NonEmptyStr, Secret, String, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -140,12 +140,6 @@ fn posix_command_v_check_argv(command: NonEmptyStr) -> List<String> {
   ["sh", "-c", "command -v \"$1\"", "sh", command as String]
 }
 
-// `Exists` AND `IsSymlink` ANSWER "IS SOMETHING THERE", WHICH `-f` AND `-d` TOGETHER DO NOT. A path
-// can be occupied by a socket, a FIFO, a device node or a symbolic link and satisfy neither test,
-// so a caller composing those two to decide presence concludes ABSENT for a path that cannot be
-// created. `-e` closes every case except one: it FOLLOWS symbolic links, so a link whose target is
-// gone answers false while the link itself still occupies the name and still defeats mkdir. `-L`
-// is the one test that sees the link rather than through it, which is why both are declared.
 service shell.Test {
   operation IsExecutable {
     input { path: FilePath }
@@ -188,28 +182,6 @@ service shell.Test {
     exit {
       0 => Unit "Path is a directory"
       1 => Unit "Path is missing or not a directory"
-    }
-  }
-
-  operation Exists {
-    input { path: FilePath }
-    output { exists: Bool from "exit_success" }
-    readonly
-    transport shell { argv: ["test", "-e", "{path}"] }
-    exit {
-      0 => Unit "Path exists, following symbolic links"
-      1 => Unit "Path does not exist, or is a symbolic link whose target does not exist"
-    }
-  }
-
-  operation IsSymlink {
-    input { path: FilePath }
-    output { is_symlink: Bool from "exit_success" }
-    readonly
-    transport shell { argv: ["test", "-L", "{path}"] }
-    exit {
-      0 => Unit "Path is a symbolic link, whether or not its target exists"
-      1 => Unit "Path is not a symbolic link"
     }
   }
 

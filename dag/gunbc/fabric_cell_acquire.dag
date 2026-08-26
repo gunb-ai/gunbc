@@ -1,12 +1,11 @@
 module gunbc.fabric_cell_acquire
 
-import std.types { String, List, Bool, NonEmptyStr, FilePath }
+import std.types { String, List, Bool, NonEmptyStr }
 import std.algebra { trim }
 import std.disposition { Disposition, SingleAuthority }
 import v2.std.optional { Present, Absent }
 import product.placement_supply { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.shell
 import extdeps.tools.stat
 import extdeps.systemd.systemctl
 import extdeps.systemd {
@@ -63,11 +62,14 @@ data fabric_cell_slice_unit_pattern: NonEmptyStr = "fabric-cell-*.slice" as NonE
 // keeping the decision out of the acquisition is what makes every law about them authorable as a
 // fixture (DESIGN section 3 -- transport is one of N handlers, never a fact about the interface).
 //
-// EVERY OPERATION IT REACHES IS ALREADY DECLARED. `Filesystem.List`, `shell.Test.IsDirectory` and
-// `systemd.Systemctl.ShowProperty` exist with cited upstream authorities, so this module adds no
-// new host vocabulary; it composes three declared readonly reads. That is deliberate -- an
-// acquisition layer that needed a new operation would be a signal that the observation model wants
-// a fact the substrate cannot yet establish, which is a modeling question and not a transport one.
+// IT REACHES FOUR DECLARED READONLY OPERATIONS AND ADDED EXACTLY ONE OF THEM. `Filesystem.List`,
+// `systemd.Systemctl.ListUnits` and `systemd.Systemctl.ShowProperty` already existed with cited
+// upstream authorities. `extdeps.tools.stat` `stat.File.FileType` is new, and the reason it is new
+// is the reason worth writing down: this module was first built out of boolean path tests, twice,
+// and neither composition could distinguish a path that is not there from a path that could not be
+// looked at -- because every boolean test reports its own failure to observe as a negative answer.
+// That is not a transport gap, it is the observation model wanting a fact the declared vocabulary
+// could not express, so it was answered where modeling lives rather than approximated here.
 
 // A DIRECTORY HAS FOUR HONEST STATES AND NOT TWO, and collapsing them is what makes the difference
 // between planning a fresh host and refusing to touch a broken one. `Filesystem.List` answers

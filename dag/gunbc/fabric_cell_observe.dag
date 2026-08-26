@@ -496,19 +496,56 @@ fn fabric_cell_discovered_subject_wire(s: FabricCellDiscoveredSubject) -> String
   }
 }
 
-fn fabric_cell_committed_slot_named_on(host: HostIdentity, name: String) -> List<RunnerSlotIdentity> {
+// WHICH FAMILY-OWNED NAMESPACE AN ENTRY CAME FROM, BECAUSE A SLOT SPELLS ITSELF DIFFERENTLY IN
+// EACH. A cell root is named `srv3-06`; its resource boundary is named `fabric-cell-srv3-06.slice`.
+// Matching a discovered entry means rendering every committed identity FORWARD in the namespace's
+// own spelling and comparing -- never parsing an identity back out of an observed name, which
+// would be a second, uncited naming scheme that silently disagrees with the first the moment
+// either spelling changes.
+type FabricCellNamespaceRendering
+  = CellRootRendering
+  | SliceRendering
+
+fn fabric_cell_rendered_slot_name(rendering: FabricCellNamespaceRendering, slot: RunnerSlotIdentity) -> String {
+  match rendering {
+    CellRootRendering => runner_slot_instance_name(slot: slot)
+    SliceRendering => fabric_cell_slice_name(slot: slot)
+  }
+}
+
+fn fabric_cell_rendering_location(rendering: FabricCellNamespaceRendering) -> String {
+  match rendering {
+    CellRootRendering => fabric_cell_base_dir_name()
+    SliceRendering => fabric_cell_slice_namespace_name()
+  }
+}
+
+fn fabric_cell_slice_namespace_name() -> String {
+  "fabric-slices"
+}
+
+fn fabric_cell_committed_slot_named_on(
+  host: HostIdentity,
+  name: String,
+  rendering: FabricCellNamespaceRendering,
+) -> List<RunnerSlotIdentity> {
   fold(
     committed_slot_identities(host: host),
     init: [],
-    f: (acc, s) => if runner_slot_instance_name(slot: s) == name { concat(acc, [s]) } else { acc }
+    f: (acc, s) =>
+      if fabric_cell_rendered_slot_name(rendering: rendering, slot: s) == name { concat(acc, [s]) } else { acc }
   )
 }
 
-fn fabric_cell_committed_slot_named_anywhere(name: String) -> List<RunnerSlotIdentity> {
+fn fabric_cell_committed_slot_named_anywhere(
+  name: String,
+  rendering: FabricCellNamespaceRendering,
+) -> List<RunnerSlotIdentity> {
   fold(
     fold(fleet_hosts(), init: [], f: (acc, h) => concat(acc, committed_slot_identities(host: h))),
     init: [],
-    f: (acc, s) => if runner_slot_instance_name(slot: s) == name { concat(acc, [s]) } else { acc }
+    f: (acc, s) =>
+      if fabric_cell_rendered_slot_name(rendering: rendering, slot: s) == name { concat(acc, [s]) } else { acc }
   )
 }
 
@@ -529,10 +566,14 @@ fn fabric_cell_slot_is_fabric_expected(slot: RunnerSlotIdentity) -> Bool {
 // class gunbc.fabric_cell_converge just repaired one layer later, and it is the reason the fourth
 // arm exists rather than folding into ForeignArtifact: a name that IS a committed slot elsewhere is
 // a different remedy from a name nothing committed anywhere.
-fn fabric_cell_classify_discovered_name(host: HostIdentity, name: String) -> FabricCellDiscoveredSubject {
+fn fabric_cell_classify_discovered_name(
+  host: HostIdentity,
+  name: String,
+  rendering: FabricCellNamespaceRendering,
+) -> FabricCellDiscoveredSubject {
   fold(
-    fabric_cell_committed_slot_named_on(host: host, name: name),
-    init: fabric_cell_classify_uncommitted_here(host: host, name: name),
+    fabric_cell_committed_slot_named_on(host: host, name: name, rendering: rendering),
+    init: fabric_cell_classify_uncommitted_here(host: host, name: name, rendering: rendering),
     f: (acc, s) =>
       if fabric_cell_slot_is_fabric_expected(slot: s) {
         DiscoveredExpectedCell { slot: s }
@@ -542,10 +583,17 @@ fn fabric_cell_classify_discovered_name(host: HostIdentity, name: String) -> Fab
   )
 }
 
-fn fabric_cell_classify_uncommitted_here(host: HostIdentity, name: String) -> FabricCellDiscoveredSubject {
+fn fabric_cell_classify_uncommitted_here(
+  host: HostIdentity,
+  name: String,
+  rendering: FabricCellNamespaceRendering,
+) -> FabricCellDiscoveredSubject {
   fold(
-    fabric_cell_committed_slot_named_anywhere(name: name),
-    init: DiscoveredForeignArtifact { observed_name: name, location: fabric_cell_base_dir_name() },
+    fabric_cell_committed_slot_named_anywhere(name: name, rendering: rendering),
+    init: DiscoveredForeignArtifact {
+      observed_name: name,
+      location: fabric_cell_rendering_location(rendering: rendering),
+    },
     f: (acc, s) =>
       DiscoveredCrossHostNamedArtifact { observed_name: name, named_slot: s, observed_on: host }
   )
@@ -563,23 +611,68 @@ type FabricCellDiscovery
   = DiscoveryEnumerated { host: HostIdentity, subjects: List<FabricCellDiscoveredSubject> }
   | DiscoveryRefused { host: HostIdentity, cause: String }
 
+// DISCOVERY SPANS EVERY FAMILY-OWNED NAMESPACE, NOT JUST THE FILESYSTEM ONE, AND THE SLICE HALF WAS
+// MISSING. The acquisition layer was changed to ENUMERATE `fabric-cell-*.slice` rather than probe
+// one expected unit by name -- for the right reason, that probing desired names can never discover
+// an undesired unit -- and then this fold read the slice namespace only to answer whether each
+// EXPECTED boundary was present. So `fabric-cell-srv3-07.slice` on a host that does not declare
+// srv3-07 was enumerated, matched against nothing, and dropped: no output position, no refusal, no
+// baseline row. The new enumeration produced the evidence and the observer threw it away, which
+// left the old blindness intact one layer downstream.
+//
+// THE LAW IS THAT EVERY ENTRY IN EVERY FAMILY-OWNED NAMESPACE REACHES A MODELED SUBJECT OR A TYPED
+// REFUSAL. Both namespaces now fold into the same subject population through the same classifier,
+// distinguished only by how a slot spells itself there, so an unexpected slice becomes exactly the
+// unexpected-committed or foreign-artifact subject an unexpected cell directory already became.
+//
+// EITHER ENUMERATION FAILING REFUSES THE WHOLE DISCOVERY, because a population that was only half
+// enumerated is not a population: an out-of-band slice would be invisible while the cells root read
+// clean, and reporting the clean half as the answer is the empty-observation narrow.
 fn fabric_cell_discovered_subjects(probe: FabricCellHostProbe) -> FabricCellDiscovery {
-  match fabric_cell_namespace_standing(entries: probe.namespaces, namespace: FabricCellsRootNamespace) {
-    NamespaceProbeAbsent =>
-      DiscoveryRefused { host: probe.host, cause: "the fabric cells root was never enumerated" }
-    NamespaceProbeSupplied { probe: np } =>
-      match np {
-        NamespaceEnumerationRefused { cause: c } => DiscoveryRefused { host: probe.host, cause: c }
-        NamespaceObservedAbsent => DiscoveryEnumerated { host: probe.host, subjects: [] }
-        NamespaceEnumerated { entries: es } =>
+  match fabric_cell_discovered_entries(probe: probe, namespace: FabricCellsRootNamespace, rendering: CellRootRendering) {
+    NamespaceEntriesRefused { cause: c } => DiscoveryRefused { host: probe.host, cause: c }
+    NamespaceEntriesRead { subjects: root_subjects } =>
+      match fabric_cell_discovered_entries(probe: probe, namespace: FabricCellSliceNamespace, rendering: SliceRendering) {
+        NamespaceEntriesRefused { cause: c } => DiscoveryRefused { host: probe.host, cause: c }
+        NamespaceEntriesRead { subjects: slice_subjects } =>
           DiscoveryEnumerated {
             host: probe.host,
+            subjects: fold(
+              slice_subjects,
+              init: root_subjects,
+              f: (acc, sub) => fabric_cell_discovery_insert(acc: acc, s: sub),
+            ),
+          }
+      }
+  }
+}
+
+type FabricCellNamespaceEntries
+  = NamespaceEntriesRead { subjects: List<FabricCellDiscoveredSubject> }
+  | NamespaceEntriesRefused { cause: String }
+
+fn fabric_cell_discovered_entries(
+  probe: FabricCellHostProbe,
+  namespace: FabricCellNamespace,
+  rendering: FabricCellNamespaceRendering,
+) -> FabricCellNamespaceEntries {
+  match fabric_cell_namespace_standing(entries: probe.namespaces, namespace: namespace) {
+    NamespaceProbeAbsent =>
+      NamespaceEntriesRefused {
+        cause: join([fabric_cell_namespace_wire(n: namespace), " was never enumerated"], ""),
+      }
+    NamespaceProbeSupplied { probe: np } =>
+      match np {
+        NamespaceEnumerationRefused { cause: c } => NamespaceEntriesRefused { cause: c }
+        NamespaceObservedAbsent => NamespaceEntriesRead { subjects: [] }
+        NamespaceEnumerated { entries: es } =>
+          NamespaceEntriesRead {
             subjects: fold(
               es,
               init: [],
               f: (acc, e) => fabric_cell_discovery_insert(
                 acc: acc,
-                s: fabric_cell_classify_discovered_name(host: probe.host, name: e),
+                s: fabric_cell_classify_discovered_name(host: probe.host, name: e, rendering: rendering),
               )
             ),
           }
