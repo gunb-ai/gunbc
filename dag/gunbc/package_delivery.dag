@@ -72,7 +72,11 @@ import extdeps.languages.json.emit {
   JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
   JsonKeyValue, serialize_json,
 }
-import extdeps.languages.json.parse { parse_json }
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+}
 import extdeps.ollama.binary_release {
   OllamaBinaryRelease,
   ollama_required_release,
@@ -1398,9 +1402,9 @@ fn protocol_schema_process_file_for_bundle(
   if raw.success == false {
     BundleFileUnreadable { path: abs_s }
   } else {
-    match parse_json(s: raw.content) {
-      Absent => BundleFileNotDecodable { path: abs_s }
-      Present { value: parsed } =>
+    match parse_json_document(s: raw.content) {
+      JsonDocumentUnreadable { gap: _ } => BundleFileNotDecodable { path: abs_s }
+      JsonDocumentParsed { value: parsed } =>
         match canonicalize_json_value(v: parsed) {
           Absent => BundleFileNotCanonicalizable { path: abs_s }
           Present { value: canon } => {
@@ -2649,9 +2653,9 @@ fn finish_bisect_parse_protocol_schema_file(path: FilePath) -> ProtocolSchemaFil
   if raw.success == false {
     SchemaFileUnreadable
   } else {
-    match parse_json(s: raw.content) {
-      Absent => SchemaFileNotDecodable
-      Present { value: _ } => SchemaFileConforms
+    match parse_json_document(s: raw.content) {
+      JsonDocumentUnreadable { gap: _ } => SchemaFileNotDecodable
+      JsonDocumentParsed { value: _ } => SchemaFileConforms
     }
   }
 }
@@ -2663,9 +2667,9 @@ fn finish_bisect_parse_canonicalize_protocol_schema_file(
   if raw.success == false {
     SchemaFileUnreadable
   } else {
-    match parse_json(s: raw.content) {
-      Absent => SchemaFileNotDecodable
-      Present { value: parsed } =>
+    match parse_json_document(s: raw.content) {
+      JsonDocumentUnreadable { gap: _ } => SchemaFileNotDecodable
+      JsonDocumentParsed { value: parsed } =>
         match canonicalize_json_value(v: parsed) {
           Absent => SchemaFileNotCanonicalizable
           Present { value: _ } => SchemaFileConforms

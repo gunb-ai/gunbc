@@ -18,7 +18,9 @@ import extdeps.languages.json.emit {
   JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
 }
 import extdeps.languages.json.parse {
-  parse_json,
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
   json_object_unique_member,
   JsonMemberFound,
   JsonMemberAbsent,
@@ -152,14 +154,14 @@ type TailscaleServeStatusProjection
   | ServeStatusUnreadable
 
 fn tailscale_serve_status_proxy_targets(status_json: String, mount: TailscaleServeMount) -> TailscaleServeStatusProjection {
-  match parse_json(s: status_json) {
-    Present { value: doc } =>
+  match parse_json_document(s: status_json) {
+    JsonDocumentParsed { value: doc } =>
       match json_unique_member_value(v: doc, key: "Web") {
         Present { value: web } =>
           ServeStatusProxies { targets: tailscale_status_web_proxies(web: web, mount: mount) }
         Absent => ServeStatusProxies { targets: [] }
       }
-    Absent => ServeStatusUnreadable
+    JsonDocumentUnreadable { gap: _ } => ServeStatusUnreadable
   }
 }
 

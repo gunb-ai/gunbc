@@ -27,7 +27,10 @@ import extdeps.languages.json.emit {
   json_kv,
 }
 import extdeps.languages.json.parse {
-  parse_json,
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_document_gap_text,
   json_object_unique_member,
   JsonMemberFound,
   JsonMemberAbsent,
@@ -281,9 +284,9 @@ fn legacy_exact_head_decode_gap_text(gap: LegacyExactHeadDecodeGap) -> String {
 }
 
 fn verification_receipt_v1_decode(receipt: String) -> LegacyExactHeadReceiptDecode {
-  match parse_json(s: receipt) {
-    Absent => LegacyExactHeadNotReadable { gap: LegacyReceiptBytesUnreadable }
-    Present { value: doc } =>
+  match parse_json_document(s: receipt) {
+    JsonDocumentUnreadable { gap: _ } => LegacyExactHeadNotReadable { gap: LegacyReceiptBytesUnreadable }
+    JsonDocumentParsed { value: doc } =>
       match verification_receipt_object_member(doc: doc, key: "subject") {
         Absent => LegacyExactHeadNotReadable { gap: LegacyReceiptSubjectMemberMissing }
         Present { value: subject_doc } =>
@@ -334,8 +337,8 @@ fn current_verification_selection_decode_document(
   expected_head_sha: String,
   content: String,
 ) -> CurrentVerificationSelectionObservation {
-  match parse_json(s: content) {
-    Absent =>
+  match parse_json_document(s: content) {
+    JsonDocumentUnreadable { gap: _ } =>
       SelectionMalformed {
         cause: join([
           "the current verification selection at ",
@@ -343,7 +346,7 @@ fn current_verification_selection_decode_document(
           " is not one complete JSON value",
         ], ""),
       }
-    Present { value: doc } =>
+    JsonDocumentParsed { value: doc } =>
       match verification_receipt_string_member(doc: doc, key: "schema") {
         VerificationReceiptMemberUnreadable { reason: r } =>
           SelectionMalformed { cause: r }
@@ -544,12 +547,12 @@ fn verification_receipt_text_classify(receipt: String) -> VerificationReceiptTex
       reason: "the receipt file exists and is empty, so its content was lost or its write was interrupted; an empty file is not an absent one",
     }
   } else {
-    match parse_json(s: receipt) {
-      Absent =>
+    match parse_json_document(s: receipt) {
+      JsonDocumentUnreadable { gap: gap } =>
         VerificationReceiptTextUndecodable {
-          reason: "verification receipt is not one complete JSON value",
+          reason: concat("the verification receipt is ", json_document_gap_text(gap: gap)),
         }
-      Present { value: doc } =>
+      JsonDocumentParsed { value: doc } =>
         match verification_receipt_string_member(doc: doc, key: "schema") {
           VerificationReceiptMemberUnreadable { reason: r } =>
             VerificationReceiptTextUndecodable { reason: r }
@@ -1425,12 +1428,12 @@ fn verification_receipt_decode_document(doc: JsonValue) -> VerificationReceiptDe
 }
 
 fn verification_receipt_decode(receipt: String) -> VerificationReceiptDecode {
-  match parse_json(s: receipt) {
-    Absent =>
+  match parse_json_document(s: receipt) {
+    JsonDocumentUnreadable { gap: gap } =>
       VerificationReceiptUndecodable {
-        reason: "verification receipt is not one complete JSON value",
+        reason: concat("the verification receipt is ", json_document_gap_text(gap: gap)),
       }
-    Present { value: doc } => verification_receipt_decode_document(doc: doc)
+    JsonDocumentParsed { value: doc } => verification_receipt_decode_document(doc: doc)
   }
 }
 

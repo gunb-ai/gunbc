@@ -5,7 +5,10 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.languages.json.parse {
-  parse_json,
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_document_gap_text,
   json_object_unique_member,
   json_string_value_or_empty,
   JsonMemberFound,
@@ -164,8 +167,8 @@ fn cursor_sdk_stream_reconcile_run_result(raw: String) -> CursorSdkStreamTermina
       raw: raw,
     }
   } else {
-    match parse_json(s: raw) {
-      Present { value: v } =>
+    match parse_json_document(s: raw) {
+      JsonDocumentParsed { value: v } =>
         match json_object_unique_member(v: v, key: "status") {
           JsonMemberFound { value: status_v } =>
             match cursor_sdk_terminal_status_from_wire(
@@ -226,9 +229,9 @@ fn cursor_sdk_stream_reconcile_run_result(raw: String) -> CursorSdkStreamTermina
               raw: raw,
             }
         }
-      Absent =>
+      JsonDocumentUnreadable { gap: gap } =>
         CursorSdkStreamTerminalsUnclassified {
-          reason: "Cursor SDK run result is not parseable JSON" as NonEmptyStr,
+          reason: concat("the Cursor SDK run result is ", json_document_gap_text(gap: gap)) as NonEmptyStr,
           raw: raw,
         }
     }
@@ -259,8 +262,8 @@ type CursorSdkLineReading<Kind>
   | CursorSdkLineNotAnObject
 
 fn cursor_sdk_stream_classify_message_line(raw: String) -> CursorSdkLineReading<CursorSdkMessageKind> {
-  match parse_json(s: raw) {
-    Present { value: v } =>
+  match parse_json_document(s: raw) {
+    JsonDocumentParsed { value: v } =>
       match json_object_unique_member(v: v, key: "type") {
         JsonMemberFound { value: type_v } =>
           CursorSdkLineClassified {
@@ -273,15 +276,15 @@ fn cursor_sdk_stream_classify_message_line(raw: String) -> CursorSdkLineReading<
           CursorSdkLineTypeMemberDuplicated { count: count }
         JsonMemberNotAnObject => CursorSdkLineNotAnObject
       }
-    Absent => CursorSdkLineUnreadable
+    JsonDocumentUnreadable { gap: _ } => CursorSdkLineUnreadable
   }
 }
 
 fn cursor_sdk_stream_classify_local_run_event(
   raw: String,
 ) -> CursorSdkLineReading<CursorSdkLocalRunStreamKind> {
-  match parse_json(s: raw) {
-    Present { value: v } =>
+  match parse_json_document(s: raw) {
+    JsonDocumentParsed { value: v } =>
       match json_object_unique_member(v: v, key: "type") {
         JsonMemberFound { value: type_v } =>
           CursorSdkLineClassified {
@@ -294,6 +297,6 @@ fn cursor_sdk_stream_classify_local_run_event(
           CursorSdkLineTypeMemberDuplicated { count: count }
         JsonMemberNotAnObject => CursorSdkLineNotAnObject
       }
-    Absent => CursorSdkLineUnreadable
+    JsonDocumentUnreadable { gap: _ } => CursorSdkLineUnreadable
   }
 }

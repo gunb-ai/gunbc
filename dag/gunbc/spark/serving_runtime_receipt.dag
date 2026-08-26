@@ -5,7 +5,10 @@ import std.algebra { trim }
 import extdeps.ssh.session { SshSessionExecResult }
 import extdeps.languages.json.parse {
   json_object_unique_member,
-  parse_json,
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_document_gap_text,
 }
 import extdeps.languages.json.emit {
   JsonString,
@@ -54,12 +57,12 @@ fn spark_serving_runtime_receipt_probe_words() -> List<String> {
 }
 
 fn spark_serving_parse_runtime_receipt_json(stdout: String) -> SparkServingReadbackField {
-  match parse_json(s: stdout) {
-    Absent =>
+  match parse_json_document(s: stdout) {
+    JsonDocumentUnreadable { gap: gap } =>
       SparkServingReadbackRefused {
-        cause: "ollama runtime archive admission receipt is not parseable JSON" as NonEmptyStr,
+        cause: concat("the ollama runtime archive admission receipt is ", json_document_gap_text(gap: gap)) as NonEmptyStr,
       }
-    Present { value: doc } =>
+    JsonDocumentParsed { value: doc } =>
       spark_serving_readback_field_from_member_lookup(
         lookup: json_object_unique_member(
           v: doc,

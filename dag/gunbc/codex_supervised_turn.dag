@@ -71,7 +71,9 @@ import extdeps.languages.json.emit {
   JsonNull,
 }
 import extdeps.languages.json.parse {
-  parse_json,
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
   json_object_unique_member,
   JsonMemberFound,
   JsonMemberAbsent,
@@ -471,9 +473,9 @@ fn supervised_thread_id_from_line(line: String) -> SupervisedThreadIdReading {
   if trimmed == "" {
     ThreadIdLineBlank
   } else {
-    match parse_json(s: trimmed) {
-      Absent => ThreadIdLineUnreadable
-      Present { value: parsed } =>
+    match parse_json_document(s: trimmed) {
+      JsonDocumentUnreadable { gap: _ } => ThreadIdLineUnreadable
+      JsonDocumentParsed { value: parsed } =>
         match supervised_rpc_from_id_response(
           id: codex_supervised_thread_start_id,
           obj: parsed,
@@ -613,15 +615,15 @@ fn absorb_supervised_turn_line(
   if trimmed == "" {
     acc
   } else {
-    match parse_json(s: trimmed) {
-      Absent =>
+    match parse_json_document(s: trimmed) {
+      JsonDocumentUnreadable { gap: _ } =>
         SupervisedTurnParseAcc {
           thread_start: acc.thread_start,
           turn_start: acc.turn_start,
           turn_terminal: acc.turn_terminal,
           unreadable_lines: acc.unreadable_lines + 1,
         }
-      Present { value: parsed } =>
+      JsonDocumentParsed { value: parsed } =>
         match json_object_unique_member(v: parsed, key: "id") {
           JsonMemberFound { value: idv } =>
             match json_rpc_id_as_int(v: idv) {

@@ -5,7 +5,9 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.json.parse {
-  parse_json,
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
   json_object_unique_member,
   JsonMemberFound,
   JsonMemberAbsent,
@@ -130,9 +132,9 @@ type ParserDropReceiptStanding
   | ParserDropNotEstablished { cause: ParserDropEvidenceGap }
 
 fn claude_sdk_parser_drop_receipt_standing(text: String) -> ParserDropReceiptStanding {
-  match parse_json(s: text) {
-    Absent => ParserDropNotEstablished { cause: ReceiptBytesUnreadable }
-    Present { value: root } =>
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: _ } => ParserDropNotEstablished { cause: ReceiptBytesUnreadable }
+    JsonDocumentParsed { value: root } =>
       match parser_drop_receipt_required_member(v: root, key: "comparison") {
         JsonMemberRequiredRefuse =>
           ParserDropNotEstablished {

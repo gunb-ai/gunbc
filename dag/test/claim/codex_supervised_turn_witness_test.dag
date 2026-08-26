@@ -42,7 +42,11 @@ import gunbc.codex_supervised_turn {
   ThreadIdLineNotThreadStart,
 }
 
-import extdeps.languages.json.parse { parse_json }
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+}
 
 import std.temporal_effect {
   HeldSessionLease,
@@ -284,9 +288,9 @@ test fn a_mis_addressed_rpc_response_is_still_accepted_as_the_thread_id() -> Boo
 test fn witness_turn_start_line_escapes_json_unsafe_user_input() -> Bool {
   let user_input = "say \"hello\"\nline2\\backslash"
   let line = codex_supervised_turn_start_line_template(user_input: user_input)
-  match parse_json(s: line) {
-    Present { value: _ } => true
-    Absent => false
+  match parse_json_document(s: line) {
+    JsonDocumentParsed { value: _ } => true
+    JsonDocumentUnreadable { gap: _ } => false
   }
 }
 
