@@ -26,11 +26,23 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+      - name: Isolate toolchain homes
+        run: |
+          rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
+          echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
         with:
           components: rustfmt
           cache: false
+      - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
+        run: |
+          rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+          if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
+          if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
+          echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
       - name: Build the witness fold
         id: build_witness_fold
         run: |
@@ -41,7 +53,11 @@ jobs:
           echo "PATH=$PATH"
           which -a rustfmt || echo "which rustfmt: absent from PATH"
           which -a cargo rustc rustup || echo "which cargo/rustc/rustup: absent from PATH"
-          ls -l "${CARGO_HOME:-$HOME/.cargo}/bin" || echo "cargo bin dir: absent"
+          if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then
+            echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2
+            exit 1
+          fi
+          ls -l "$CARGO_HOME/bin" || echo "cargo bin dir: absent"
           rustup which rustfmt || echo "rustup which rustfmt: no answer"
           rustup toolchain list || echo "rustup toolchain list: no answer"
           rustup default || echo "rustup default: no answer"
@@ -60,11 +76,23 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+      - name: Isolate toolchain homes
+        run: |
+          rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
+          echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
         with:
           components: rustfmt
           cache: false
+      - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
+        run: |
+          rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+          if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
+          if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
+          echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
       - name: Build the witness fold
         id: build_witness_fold
         run: |
@@ -75,7 +103,11 @@ jobs:
           echo "PATH=$PATH"
           which -a rustfmt || echo "which rustfmt: absent from PATH"
           which -a cargo rustc rustup || echo "which cargo/rustc/rustup: absent from PATH"
-          ls -l "${CARGO_HOME:-$HOME/.cargo}/bin" || echo "cargo bin dir: absent"
+          if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then
+            echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2
+            exit 1
+          fi
+          ls -l "$CARGO_HOME/bin" || echo "cargo bin dir: absent"
           rustup which rustfmt || echo "rustup which rustfmt: no answer"
           rustup toolchain list || echo "rustup toolchain list: no answer"
           rustup default || echo "rustup default: no answer"
