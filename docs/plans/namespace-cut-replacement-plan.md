@@ -20,6 +20,22 @@ Standing census on the branch (2026-08-15): **5,531 hard diagnostics · 280 dist
 - `src/v2/extdeps/languages/dag.dag`: `dag_grammar_import_decl_expr`, `dag_grammar_import_block_expr`, `emit_import_decl_emitted_node`, `emit_row_import_decl`, `parse_import_block_idents`, the `dag_token_kw_import` lex rule, the import grammar formal rows, the production registrations, and the top-level-item alternative for import (retires the `dag_production_import_decl`/`_block` and `dag_surface_import_decl`/`_block`/`_qualified_name` identities). The v2 parser is production-table-driven, so deleting these rows is the cut.
 - `dag/extdeps/languages/dag/syntax.dag`: the `import` entry in `dag_keyword_set` — plus its generated twin `src/v1/stage0/src/extdeps_languages_dag_syntax.rs`.
 - v1 parse: `src/v1/02_parse.dag` `parse_imports`, `parse_imports_acc`, `parse_import`, `parse_import_names`, `parse_import_names_acc`, types `ImportResult`/`ImportsResult`, the call site in `parse_module` (+ twin `v1_compiler_parse.rs`). `src/v1/00_core.dag` `import_node`, `import_is_all`, `import_specific_names_at`, `module_imports`, the `imports` param on `module_node`, diagnostics `UnresolvedImport`/`MissingExport`/`UnlistedImportUse` (+ twin `v1_std_core.rs`). `src/v1/dag_collect.dag` `is_import_slot_node`. `src/v1/compile.dag` `serialize_import_node`, `is_import_statement_node`, `serialize_module_imports_json`.
+- **The arity-zero import refusal dies here too, and it is listed rather than
+  noted (operator ruling, warm-hawk-909, 2026-08-26).** `src/v1/02_parse.dag`'s
+  arity-zero member-list refusal inside `parse_import` (+ twin
+  `v1_compiler_parse.rs`) is a wall on **import syntax**, so by DESIGN §6's
+  survival test — *will this artifact survive the terminal architecture
+  substantially unchanged, and be consumed by it?* — the answer is **no: it dies
+  with the grammar it parses**, which makes it presumed scaffold. It was landed
+  anyway as an explicit operator override on **cost, not principle**: it was
+  already built, approved, regenerated and executing, and swapping it for an
+  equal-strength fixture over a population of one is the churn §6 warns about as
+  loudly as it warns about scaffolds. **The condition of that override is this
+  entry.** It is in the deletion list rather than carrying a "temporary" note so
+  that Step 5 removes it *by the census* — a row someone must execute — instead
+  of leaving residue that survives because nobody remembers to look for it. A
+  dissolution trigger that depends on memory is the self-authorized dissolution
+  DESIGN names as a failure mode.
 
 **Trap (typed refusal):** removing the keyword alone makes `import` lex as a bare identifier that fails much later with a confusing message. Keep a token class and add a refusing production so the refusal is typed, located, and names the cut.
 
