@@ -84,7 +84,7 @@ data falsifier_self_host_wet_template_entries: List<ScheduleWitnessEntry> = [
   )
 ]
 
-data dispatch_bijection_enrolled_predicate_scope_note: String = "ANSWERS ROSTER MEMBERSHIP ONLY, WHICH IS WHAT ITS NAME SAYS. Until the cadence flag was cut it conjoined `falsifier_self_host_wet_cadence_is_active()` onto the fold below, so one predicate answered two questions -- is this identity enrolled, AND does the lane run -- and a reader could not tell which half a false came from. The second question has a single authority (std.witness_admission witness_cadence_has_scheduled_route) and is not this predicate\'s to answer. The flag stood at true, so dropping the conjunct changes no result today; it separates the state-space, per the state-space-conflation entry in DESIGN\'s recurring failure modes."
+data dispatch_bijection_enrolled_predicate_scope_note: String = "ANSWERS ROSTER MEMBERSHIP ONLY, WHICH IS WHAT ITS NAME SAYS. Until the cadence flag was cut it conjoined `falsifier_self_host_wet_cadence_is_active()` onto the fold below, so one predicate answered two questions -- is this identity enrolled, AND does the lane run -- and a reader could not tell which half a false came from. The second question has a single authority (std.witness_admission witness_cadence_has_scheduled_route) and is not this predicate's to answer. The flag stood at true, so dropping the conjunct changes no result today; it separates the state-space, per the state-space-conflation entry in DESIGN's recurring failure modes."
 
 fn dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet() -> Bool {
   fold(
