@@ -1392,7 +1392,7 @@ WAVE 1   0.1 pipe lowering   0.2 arg ordering   0.4 coercion parse
          0.3 build_data_body_index: bare-name index over 3927 modules
 
 WAVE 2   B.3 parser-owned reference facts        [needs B.1]
-         C.1 delete ambient + proximity fallback [needs B.1]
+         C.1 delete ambient + proximity fallback [MOVED — see 11.2p: needs M2, not B.1]
          C.2 build_emit_graph_info collision arm [needs A.1]
          D.2 impostor separation, two arms       [needs A.1]
 
@@ -3674,6 +3674,57 @@ provenance collapse one layer up, inside the instrument the wall depends on. So
 the sequence is: **typed compile oracle → typed resolver causes → delta wall**,
 and any other order measures its own repairs through something that cannot see
 them.
+
+### 11.2p MEASURED — C.1 alone is a BREAK, not a cut: the whole-pool-unique arm is currently carrying the entire shared-vocabulary case
+
+`cool-swift-307`, instrumented arm over `src/v2/compiler/00_compile.dag` — the widest single
+entry, the one CI's own build lane compiles.
+
+**The mechanism, confirmed here by reading `origin/main`.** The whole-pool-unique arm is
+`v1.compiler.infer_env` `global_bare_lookup`'s `GlobalBareUniqueBinding` case: it matches
+**first** and returns the binding **before any policy call and before the chain filter**, in
+*either* policy branch. So C.1's blast radius is exactly the references whose sole corpus-wide
+declaration is **not** on the referencing module's ancestor chain. That is a pure function of the
+symbol-index census and the referencing module's path — it does not read what resolved, so the
+demand oracle's circularity (§11.2l) does not reach it.
+
+| | |
+|---|---|
+| arm denominator | 1181 (every call reaching the arm emits exactly one of ON/OFF) |
+| ON — declarer on the ref's chain | 588 |
+| **OFF — declarer off the chain** | **593** — these refuse if the arm is deleted with no replacement |
+| OFF distinct names | 193 |
+
+Reproduced exactly on a second independent run, with the predicate audited in **both**
+directions before being believed — ON rows where decl is not a leading-segment prefix of ref: 0;
+OFF rows where decl *is* a prefix: 0. An inverted prefix test would have reported precisely the
+opposite conclusion, which is why the two-way audit is the load-bearing part.
+
+**THE SHAPE IS THE FINDING, NOT THE COUNT.** The ON half is overwhelmingly **self**-reference — a
+module naming its own declaration, trivially on its own chain — so the chain walk already
+resolves it and deleting the arm costs those nothing. The OFF half is the **shared vocabulary**,
+and its declaring modules say so: `v2.std.diagnostic` 149, `v2.std.node` 83, `std.algebra` 48,
+`std.measure` 45, `v2.std.witness` 34, `std.types` 32; by name `Unavailable` 51, `Rejected` 36,
+`TypeNode` 30, `Atom` 26, `Accepted` 26, `Cons` 25, `Holds` 18, `FreeMonoid` 13.
+
+So this arm is **not a stray fallback that accumulated.** It is carrying the entire *std
+vocabulary referenced from anywhere* case, and nothing else carries it: `global_bare` is consulted
+only after `str_bindings`, `ancestry_str_bindings` and intern+bindings all miss, so a row reaching
+this arm has **no other binder today**.
+
+**SO C.1 MOVES BEHIND M2, AND THIS IS DESIGN'S OWN CARVE-OUT RATHER THAN AN EXCEPTION TO
+DELETE-FIRST.** §3 already says the minimum Y *"is not the smallest thing that executes the happy
+path: it must preserve every required refusal"* — and here there is no Y at all for those 593
+sites until exact provider edges exist, which **is** M2. §3's gap-intolerant boundary is stated
+for exactly this: Y built in shadow, then one transition that switches the root. Deleting C.1
+first would produce 593 loud refusals over 193 names with nothing to fix forward *into*, which is
+a break wearing the census's clothes. **C.1 and M2 are one migration; M2 lands first or with it.**
+
+**Three grains, kept apart because conflating them is the denominator error this document keeps
+recording:** 193 is the **defect** grain (distinct names needing a provider edge), 593 is distinct
+`(name, decl_module, ref_module)` **triples**, and textual occurrence sites are **≥ 593** because
+the set was deduped. And all three are **lower bounds on the corpus** — this is one entry's
+closure, not the whole tree.
 
 ### 11.3 The dispatch protocol
 
