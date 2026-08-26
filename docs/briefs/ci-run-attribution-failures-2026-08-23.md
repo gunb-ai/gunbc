@@ -61,6 +61,19 @@ non-empty, the comparison is not attributing to your diff alone. (Here the inter
 for bisection turned out to be one commit changing one markdown file — measured by the lane
 rather than obeyed, which is why it cost nothing.)
 
+**Second receipt, different tool: the baseline moved between two commands (2026-08-26).** Adding
+*this file* to a branch, a tree was built with `git read-tree origin/main` in one step and a
+commit created with `git commit-tree -p origin/main` in the next. `origin/main` advanced in
+between. Each command was individually correct and each read a *live* ref; the pair silently
+disagreed, producing a commit whose tree was based on one main and whose parent was another — so
+it reverted two commits' work while claiming to add one file. Both the local `git diff --stat`
+against the base *and* `gh pr create` succeeded without complaint; the tell was the PR reporting
+**19 changed files** where one was expected.
+
+The repair is the general one for this class: **pin the ref once and use the pinned value
+everywhere**, rather than re-reading a moving name at each step. A symbolic ref is not a
+baseline; the SHA it happened to point at is.
+
 ## Instance 3 — the built head was a commit authored to be broken
 
 A defect was attributed to a PR on the strength of run `32615991755`: receiver types lost to
