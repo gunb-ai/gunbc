@@ -40,6 +40,14 @@ data wdms_colliding_entry_source: String = "module wdms_probe_collide\n\nimport 
 
 data wdms_control_entry_source: String = "module wdms_probe_control\n\nimport v2.test.fixture.workflow_default_module_scope.subject\n\ndata wdms_probe_use: String = wdms_probe_marker\n"
 
+// AMBIGUOUS: two imports supply `wdms_shared_model` with different values, so this module's own
+// text cannot decide which declaration the default names. The emitted CLI must carry NEITHER.
+data wdms_ambiguous_entry_source: String = "module wdms_probe_ambiguous\n\nimport v2.test.fixture.workflow_default_module_scope.supplier_a\nimport v2.test.fixture.workflow_default_module_scope.supplier_b\n\ntype WdmsAmbNet \{\n  id: Int\n}\n\nfunc wdms_amb_run(model: String = wdms_shared_model) -> String\n  uses net: WdmsAmbNet\n\{\n  model\n}\n"
+
+// UNAMBIGUOUS: exactly ONE import supplies the name, so the default binds to that declaration and
+// folds. This is the arm that keeps the refusal above honest.
+data wdms_sole_import_entry_source: String = "module wdms_probe_sole\n\nimport v2.test.fixture.workflow_default_module_scope.sole_supplier\n\ntype WdmsSoleNet \{\n  id: Int\n}\n\nfunc wdms_sole_run(model: String = wdms_sole_model) -> String\n  uses net: WdmsSoleNet\n\{\n  model\n}\n"
+
 // THE DISCRIMINATING ARM. Red before the repair: the entry's `wdms_default_model` was folded into
 // the subject module's workflow default, so the emitted clap default carried "wdms-intruder".
 test fn a_param_default_resolves_its_own_module_declaration_over_a_foreign_one() -> Bool {
@@ -60,5 +68,37 @@ test fn a_param_default_with_no_collision_still_folds_into_the_cli_default() -> 
     "src/main.rs",
     ["default_value = \"wdms-subject-owned\""],
     ["wdms-intruder"]
+  )
+}
+
+// THE REFUSAL, which is what review 56022 required and prose could not supply. Two imports offer
+// the name, the fold answers with neither, and the unfolded default then reaches
+// validate_workflow_param_defaults -- so the COMPILE REFUSES rather than emitting a plausible
+// literal from whichever module the old bare index reached last. That is why this arm reads
+// `== false`: the refusing path produces no emitted file at all, which is the fail-closed
+// outcome (DESIGN section 5), not a missing substring.
+//
+// AN EXCLUDES-ONLY ASSERTION WOULD HAVE BEEN WEAKER AND IS DELIBERATELY NOT WHAT THIS IS. Its
+// discriminating power comes from its sibling below: the two sources differ only in HOW MANY
+// imports supply the name, so a false here beside a true there localizes the refusal to the
+// ambiguity rather than to anything else about the fixture.
+test fn an_ambiguously_imported_default_refuses_rather_than_picking_one() -> Bool {
+  compile_dag_rust_emit_check(
+    wdms_ambiguous_entry_source,
+    "src/main.rs",
+    [],
+    []
+  ) == false
+}
+
+// THE CONTROL FOR THAT REFUSAL. One import, one declaration, and it folds. Without this arm the
+// refusal above is satisfied by an emitter that stopped resolving imported defaults entirely --
+// which would be a narrowing dressed as a wall, not the exact resolution the review asked for.
+test fn a_solely_imported_default_binds_to_that_declaration_and_folds() -> Bool {
+  compile_dag_rust_emit_check(
+    wdms_sole_import_entry_source,
+    "src/main.rs",
+    ["default_value = \"wdms-sole-supplier\""],
+    []
   )
 }

@@ -33005,12 +33005,76 @@ pub fn workflow_default_fold_depth_limit() -> i64 {
     8
 }
 
+pub fn import_supplies_name(
+    imp: Rc<Node>,
+    name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if import_is_all(imp.clone()) {
+        true
+    } else {
+        {
+            let mut __found = false;
+            for x in import_specific_names_at(imp.clone(), source_indices.clone())
+                .iter()
+                .cloned()
+            {
+                if (x.clone() == name.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    }
+}
+
+pub fn imported_data_body_owners(
+    imports: Rc<Vec<Rc<Node>>>,
+    name: String,
+    data_body_index: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<Node>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for imp in Rc::new({
+            let mut __result = Vec::new();
+            for imp in imports.iter().cloned() {
+                if import_supplies_name(imp.clone(), name.clone(), source_indices.clone()) {
+                    __result.push(imp);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.extend(
+                (*match v1_rt::map_get(
+                    &data_body_index,
+                    v1_rt::concat(
+                        v1_rt::concat(imp.name.clone(), ".".to_string()),
+                        name.clone(),
+                    ),
+                ) {
+                    Some(b) => Rc::new(vec![b.clone()]),
+                    None => Rc::new(vec![]),
+                })
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
+}
+
 pub fn fold_constant_default_expr(
     expr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     data_body_index: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_name: String,
+    imports: Rc<Vec<Rc<Node>>>,
     depth: i64,
 ) -> Option<Rc<Node>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -33035,19 +33099,33 @@ pub fn fold_constant_default_expr(
                             data_body_index.clone(),
                             source_indices.clone(),
                             module_name.clone(),
+                            imports.clone(),
                             (depth.clone() + 1),
                         ),
-                        None => match v1_rt::map_get(&data_body_index, var_name.clone()) {
-                            Some(body) => fold_constant_default_expr(
-                                body.clone(),
-                                registry.clone(),
+                        None => {
+                            let supplied = imported_data_body_owners(
+                                imports.clone(),
+                                var_name.clone(),
                                 data_body_index.clone(),
                                 source_indices.clone(),
-                                module_name.clone(),
-                                (depth.clone() + 1),
-                            ),
-                            None => None,
-                        },
+                            );
+                            if ((supplied.clone().len() as i64) != 1) {
+                                None
+                            } else {
+                                match supplied.clone().first().cloned() {
+                                    Some(body) => fold_constant_default_expr(
+                                        body.clone(),
+                                        registry.clone(),
+                                        data_body_index.clone(),
+                                        source_indices.clone(),
+                                        module_name.clone(),
+                                        Rc::new(vec![]),
+                                        (depth.clone() + 1),
+                                    ),
+                                    None => None,
+                                }
+                            }
+                        }
                     }
                 }
                 ExprData::ExprFieldAccess { summary: _, .. } => match fold_constant_default_expr(
@@ -33056,6 +33134,7 @@ pub fn fold_constant_default_expr(
                     data_body_index.clone(),
                     source_indices.clone(),
                     module_name.clone(),
+                    imports.clone(),
                     (depth.clone() + 1),
                 ) {
                     Some(base) => match record_lit_named_field_value_optional(
@@ -33069,6 +33148,7 @@ pub fn fold_constant_default_expr(
                             data_body_index.clone(),
                             source_indices.clone(),
                             module_name.clone(),
+                            imports.clone(),
                             (depth.clone() + 1),
                         ),
                         None => None,
@@ -33087,6 +33167,7 @@ pub fn resolve_param_default(
     data_body_index: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_name: String,
+    imports: Rc<Vec<Rc<Node>>>,
 ) -> Option<String> {
     match param_node_default_value(param.clone()) {
         Some(dv) => match fold_constant_default_expr(
@@ -33095,6 +33176,7 @@ pub fn resolve_param_default(
             data_body_index.clone(),
             source_indices.clone(),
             module_name.clone(),
+            imports.clone(),
             0,
         ) {
             Some(folded) => extract_literal_string(folded.clone()),
@@ -33107,6 +33189,7 @@ pub fn resolve_param_default(
 pub fn to_workflow_func(
     item: Rc<Node>,
     module_name: String,
+    imports: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     data_body_index: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -33126,6 +33209,7 @@ pub fn to_workflow_func(
                 data_body_index.clone(),
                 source_indices.clone(),
                 module_name.clone(),
+                imports.clone(),
             ) {
                 Some(lit) => v1_rt::rc_map_insert(
                     acc.clone(),
@@ -33217,6 +33301,7 @@ pub fn collect_workflow_funcs(
                                     tm.type_env.clone().source_indices.clone(),
                                     tm.module.clone(),
                                 ),
+                                module_imports(tm.module.clone()),
                                 registry.clone(),
                                 data_body_index.clone(),
                                 tm.type_env.clone().source_indices.clone(),

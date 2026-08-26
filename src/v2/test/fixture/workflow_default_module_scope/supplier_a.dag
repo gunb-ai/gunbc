@@ -1,0 +1,7 @@
+module v2.test.fixture.workflow_default_module_scope.supplier_a
+
+// One of two modules declaring `wdms_shared_model` with DIFFERENT values. A consumer importing
+// BOTH cannot decide between them from its own text, which is the case the emitter now refuses
+// rather than answering with whichever module the fold reached last.
+
+data wdms_shared_model: String = "wdms-supplier-a"

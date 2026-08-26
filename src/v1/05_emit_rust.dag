@@ -12409,15 +12409,19 @@ fn extract_literal_string(expr: Node) -> String? {
 // which is the fabricated-plausible-output failure DESIGN section 5 forbids outright, below the
 // guarantee ladder rather than a rung on it.
 //
-// WHAT THIS DOES NOT FIX, declared rather than left to be rediscovered: a param default naming a
-// declaration in ANOTHER module still resolves through the bare key, so two foreign modules
-// sharing a spelling still resolve by last-wins there. That residue is unreachable from any
-// module that declares the name itself, which is every site the defect above was measured at.
-// NEXT-RUNG TRIGGER: the fold consulting the referring module's import list, so a foreign
-// reference binds to the one imported declaration and an ambiguous one refuses -- at which point
-// the bare key stops existing. A blanket collision refusal is still not the repair: one spelling
-// is authored over a thousand times corpus-wide, and refusing on collision alone would refuse
-// every one of them rather than the ones a default actually reads.
+// THE BARE KEY IS GONE. An earlier revision of this repair kept a bare-name fallback for a default
+// naming ANOTHER module's declaration, and deferred import-aware resolution to prose. Review 56022
+// refused that correctly: a deferred wall is not a wall, and the fallback preserved the very
+// misbinding the qualified key exists to close. Resolution is now exact in both directions --
+// the referring module's own declaration, else the ONE declaration its imports supply -- and an
+// ambiguous or unsupplied name FOLDS TO NOTHING, which reaches validate_workflow_param_defaults as
+// a typed located refusal rather than a plausible literal from an unrelated module.
+//
+// A blanket collision refusal is still not the repair, and this is not one: one spelling is
+// authored over a thousand times corpus-wide, so refusing on collision alone would refuse every
+// one of them. What refuses here is a name TWO OF THE REFERRING MODULE'S OWN IMPORTS supply --
+// genuinely undecidable from this module's text, and the only case where emitting anything at all
+// would be a guess.
 fn build_data_body_index(modules: List<TypedModule>) -> Map<String, Node> {
   modules |> fold(init: empty_map(), f: (acc, tm) =>
     tm.items |> fold(init: acc, f: (inner, i) =>
@@ -12446,11 +12450,29 @@ fn build_data_body_index(modules: List<TypedModule>) -> Map<String, Node> {
 
 data workflow_default_fold_depth_limit: Int = 8
 
+// WHICH IMPORTS SUPPLY A NAME. `import P` supplies every name P declares; `import P { a, b }`
+// supplies only the names it lists. Asking the import rather than the corpus is what makes a
+// foreign reference bind to a DECLARATION rather than to a spelling.
+fn import_supplies_name(imp: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if import_is_all(n: imp) { true }
+  else { import_specific_names_at(n: imp, source_indices: source_indices) |> any(x => x == name) }
+}
+
+// THE MODULES A REFERRING MODULE'S IMPORTS OFFER FOR ONE NAME. Length is the whole answer: one is
+// a binding, more than one is undecidable from this module's text, zero is not in scope here.
+fn imported_data_body_owners(imports: List<Node>, name: String, data_body_index: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> List<Node> {
+  imports
+    |> filter(imp => import_supplies_name(imp: imp, name: name, source_indices: source_indices))
+    |> flat_map(imp => match map_get(data_body_index, concat(imp.name, ".", name)) {
+         Present { value: b } => [b]
+         Absent => []
+       })
+}
+
 // A DATA REFERENCE IS RESOLVED FROM THE REFERRING MODULE, NOT FROM THE CORPUS. `module_name` is
-// the module whose param default is being folded, and the referring module's own declaration is
-// consulted first: that is ordinary lexical scope, not a preference among candidates. Only when
-// the referring module declares nothing by that name does the bare corpus-wide key answer, which
-// is how a default naming another module's declaration still folds.
+// the module whose param default is being folded and `imports` are that module's imports. Its own
+// declaration is consulted first -- ordinary lexical scope, not a preference among candidates --
+// and otherwise the one declaration its imports supply. Nothing else answers.
 //
 // ONE AUTHORITY FOR A DATA REFERENCE. The ExprVar arm used to ask the registry whether a name is
 // a data item and then ask the body index for its body -- two corpus-wide maps keyed by
@@ -12459,31 +12481,35 @@ data workflow_default_fold_depth_limit: Int = 8
 // now admits data bodies only, which makes presence in it the evidence the registry gate was
 // being asked for, and the arm consults it alone.
 //
-// THE RECURSION KEEPS THE REFERRING MODULE rather than moving to the declaring one, and that is
-// deliberate on the local hit: a body found under `module_name` was authored in `module_name`, so
-// its own nested references are that module's too. On the bare fallback the declaring module is
-// not recoverable from this index at all, and carrying the referring module forward reproduces
-// exactly today's behaviour for that path -- a widening would need the import graph the
-// next-rung trigger on build_data_body_index names.
-fn fold_constant_default_expr(expr: Node, registry: Map<String, ItemInfo>, data_body_index: Map<String, Node>, source_indices: Map<String, NewlineIndex>, module_name: String, depth: Int) -> Node? {
+// THE RECURSION KEEPS THE REFERRING MODULE on the local hit and that is deliberate: a body found
+// under `module_name` was authored in `module_name`, so its own nested references are that
+// module's too. On an IMPORTED hit the body was authored elsewhere, and this index does not carry
+// that module's imports, so the recursion continues with EMPTY imports -- its own declarations
+// still resolve by their qualified key, and a further foreign hop folds to nothing rather than
+// guessing. Fail-closed at the edge of what the index can answer, never a widen.
+fn fold_constant_default_expr(expr: Node, registry: Map<String, ItemInfo>, data_body_index: Map<String, Node>, source_indices: Map<String, NewlineIndex>, module_name: String, imports: List<Node>, depth: Int) -> Node? {
   if depth > workflow_default_fold_depth_limit { none }
   else {
     match expr.expr_data {
       ExprVar { binding_kind: _ } =>
         let var_name = authored_name_at(source_indices: source_indices, node: expr)
         match map_get(data_body_index, concat(module_name, ".", var_name)) {
-          Present { value: own_body } => fold_constant_default_expr(expr: own_body, registry: registry, data_body_index: data_body_index, source_indices: source_indices, module_name: module_name, depth: depth + 1)
+          Present { value: own_body } => fold_constant_default_expr(expr: own_body, registry: registry, data_body_index: data_body_index, source_indices: source_indices, module_name: module_name, imports: imports, depth: depth + 1)
           Absent =>
-            match map_get(data_body_index, var_name) {
-              Present { value: body } => fold_constant_default_expr(expr: body, registry: registry, data_body_index: data_body_index, source_indices: source_indices, module_name: module_name, depth: depth + 1)
-              Absent => none
+            let supplied = imported_data_body_owners(imports: imports, name: var_name, data_body_index: data_body_index, source_indices: source_indices)
+            if (supplied |> count) != 1 { none }
+            else {
+              match supplied |> first {
+                Present { value: body } => fold_constant_default_expr(expr: body, registry: registry, data_body_index: data_body_index, source_indices: source_indices, module_name: module_name, imports: [], depth: depth + 1)
+                Absent => none
+              }
             }
         }
       ExprFieldAccess { summary: _ } =>
-        match fold_constant_default_expr(expr: field_access_base(texpr: expr), registry: registry, data_body_index: data_body_index, source_indices: source_indices, module_name: module_name, depth: depth + 1) {
+        match fold_constant_default_expr(expr: field_access_base(texpr: expr), registry: registry, data_body_index: data_body_index, source_indices: source_indices, module_name: module_name, imports: imports, depth: depth + 1) {
           Present { value: base } =>
             match record_lit_named_field_value_optional(record_expr: base, field: field_access_field_at(texpr: expr, source_indices: source_indices), source_indices: source_indices) {
-              Present { value: field_value } => fold_constant_default_expr(expr: field_value, registry: registry, data_body_index: data_body_index, source_indices: source_indices, module_name: module_name, depth: depth + 1)
+              Present { value: field_value } => fold_constant_default_expr(expr: field_value, registry: registry, data_body_index: data_body_index, source_indices: source_indices, module_name: module_name, imports: imports, depth: depth + 1)
               Absent => none
             }
           Absent => none
@@ -12493,10 +12519,10 @@ fn fold_constant_default_expr(expr: Node, registry: Map<String, ItemInfo>, data_
   }
 }
 
-fn resolve_param_default(param: Node, registry: Map<String, ItemInfo>, data_body_index: Map<String, Node>, source_indices: Map<String, NewlineIndex>, module_name: String) -> String? {
+fn resolve_param_default(param: Node, registry: Map<String, ItemInfo>, data_body_index: Map<String, Node>, source_indices: Map<String, NewlineIndex>, module_name: String, imports: List<Node>) -> String? {
   match param_node_default_value(n: param) {
     Present { value: dv } =>
-      match fold_constant_default_expr(expr: dv, registry: registry, data_body_index: data_body_index, source_indices: source_indices, module_name: module_name, depth: 0) {
+      match fold_constant_default_expr(expr: dv, registry: registry, data_body_index: data_body_index, source_indices: source_indices, module_name: module_name, imports: imports, depth: 0) {
         Present { value: folded } => extract_literal_string(expr: folded)
         Absent => none
       }
@@ -12504,14 +12530,14 @@ fn resolve_param_default(param: Node, registry: Map<String, ItemInfo>, data_body
   }
 }
 
-fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemInfo>, data_body_index: Map<String, Node>, source_indices: Map<String, NewlineIndex>, read_only_params_index: Map<String, Set<String>>) -> WorkflowFunc {
+fn to_workflow_func(item: Node, module_name: String, imports: List<Node>, registry: Map<String, ItemInfo>, data_body_index: Map<String, Node>, source_indices: Map<String, NewlineIndex>, read_only_params_index: Map<String, Set<String>>) -> WorkflowFunc {
   let item_name = authored_name_at(source_indices: source_indices, node: item)
   let svc_names = match lookup_item(registry: registry, name: item_name) {
     Present { value: info } => info.service_names
     Absent => []
   }
   let defaults = item.params |> fold(init: empty_map(), f: (acc, p) =>
-    match resolve_param_default(param: p, registry: registry, data_body_index: data_body_index, source_indices: source_indices, module_name: module_name) {
+    match resolve_param_default(param: p, registry: registry, data_body_index: data_body_index, source_indices: source_indices, module_name: module_name, imports: imports) {
       Present { value: lit } => map_insert(acc, param_node_name_at(n: p, source_indices: source_indices), lit)
       Absent => acc
     }
@@ -12551,7 +12577,7 @@ fn collect_workflow_funcs(modules: List<TypedModule>, registry: Map<String, Item
   modules |> flat_map(tm =>
     tm.items
       |> filter(item => is_workflow_item(item: item, registry: registry, source_indices: tm.type_env.source_indices))
-      |> map(item => to_workflow_func(item: item, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module), registry: registry, data_body_index: data_body_index, source_indices: tm.type_env.source_indices, read_only_params_index: read_only_params_index))
+      |> map(item => to_workflow_func(item: item, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module), imports: module_imports(n: tm.module), registry: registry, data_body_index: data_body_index, source_indices: tm.type_env.source_indices, read_only_params_index: read_only_params_index))
   )
 }
 
