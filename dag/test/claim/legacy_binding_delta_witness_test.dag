@@ -26,10 +26,11 @@ import v2.workflow.legacy_binding_delta {
   ProvenanceSourceRepeated,
   ProvenanceTargetMissing,
   ProvenanceForeignOccurrence,
+  ProvenanceTargetRepeated,
   ProvenanceRefOutOfSubjectScope,
   LegacyBindingDelta,
   DeltaProvenanceRefused,
-  DeltaComputed,
+  CorrespondenceAdmitted,
   provenance_totality,
   legacy_binding_delta
 }
@@ -132,6 +133,7 @@ test fn a_provenance_accounting_for_both_denominators_is_total() -> Bool {
     ProvenanceSourceRepeated { occurrences: _ } => false
     ProvenanceTargetMissing { occurrences: _ } => false
     ProvenanceForeignOccurrence { occurrences: _ } => false
+    ProvenanceTargetRepeated { occurrences: _ } => false
     ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
   }
 }
@@ -150,6 +152,7 @@ test fn a_projection_with_no_insertions_is_also_total() -> Bool {
     ProvenanceSourceRepeated { occurrences: _ } => false
     ProvenanceTargetMissing { occurrences: _ } => false
     ProvenanceForeignOccurrence { occurrences: _ } => false
+    ProvenanceTargetRepeated { occurrences: _ } => false
     ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
   }
 }
@@ -168,6 +171,7 @@ test fn a_base_occurrence_with_no_provenance_source_refuses() -> Bool {
     ProvenanceSourceRepeated { occurrences: _ } => false
     ProvenanceTargetMissing { occurrences: _ } => false
     ProvenanceForeignOccurrence { occurrences: _ } => false
+    ProvenanceTargetRepeated { occurrences: _ } => false
     ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
   }
 }
@@ -187,6 +191,7 @@ test fn a_base_occurrence_projected_twice_refuses() -> Bool {
     ProvenanceSourceMissing { occurrences: _ } => false
     ProvenanceTargetMissing { occurrences: _ } => false
     ProvenanceForeignOccurrence { occurrences: _ } => false
+    ProvenanceTargetRepeated { occurrences: _ } => false
     ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
   }
 }
@@ -204,6 +209,7 @@ test fn a_projected_occurrence_with_no_provenance_entry_refuses() -> Bool {
     ProvenanceSourceMissing { occurrences: _ } => false
     ProvenanceSourceRepeated { occurrences: _ } => false
     ProvenanceForeignOccurrence { occurrences: _ } => false
+    ProvenanceTargetRepeated { occurrences: _ } => false
     ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
   }
 }
@@ -223,6 +229,7 @@ test fn a_provenance_naming_an_occurrence_outside_either_denominator_refuses() -
     ProvenanceSourceMissing { occurrences: _ } => false
     ProvenanceSourceRepeated { occurrences: _ } => false
     ProvenanceTargetMissing { occurrences: _ } => false
+    ProvenanceTargetRepeated { occurrences: _ } => false
     ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
   }
 }
@@ -236,7 +243,7 @@ test fn the_delta_refuses_rather_than_comparing_over_an_incomplete_provenance() 
     provenance: ProjectionProvenance { entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21)] }
   ) {
     DeltaProvenanceRefused { totality: _ } => true
-    DeltaComputed { pairs: _ } => false
+    CorrespondenceAdmitted { pairs: _ } => false
   }
 }
 
@@ -246,7 +253,7 @@ test fn the_delta_computes_over_a_total_provenance() -> Bool {
     projected_observation: lbd_observation_of(subject: lbd_projected_subject(), ids: [11, 21, 41]),
     provenance: ProjectionProvenance { entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21), lbd_insertion(target: 41, caused_by: 10)] }
   ) {
-    DeltaComputed { pairs: pairs } => (pairs |> count) == 3
+    CorrespondenceAdmitted { pairs: pairs } => (pairs |> count) == 3
     DeltaProvenanceRefused { totality: _ } => false
   }
 }
@@ -275,6 +282,7 @@ test fn a_ref_bearing_the_wrong_subject_address_refuses() -> Bool {
     ProvenanceSourceRepeated { occurrences: _ } => false
     ProvenanceTargetMissing { occurrences: _ } => false
     ProvenanceForeignOccurrence { occurrences: _ } => false
+    ProvenanceTargetRepeated { occurrences: _ } => false
   }
 }
 
@@ -290,6 +298,56 @@ test fn a_reference_that_is_carried_forward_and_also_causes_an_insertion_is_not_
     entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21), lbd_insertion(target: 41, caused_by: 10)]
   ) {
     ProvenanceTotal => true
+    ProvenanceSourceMissing { occurrences: _ } => false
+    ProvenanceSourceRepeated { occurrences: _ } => false
+    ProvenanceTargetMissing { occurrences: _ } => false
+    ProvenanceForeignOccurrence { occurrences: _ } => false
+    ProvenanceTargetRepeated { occurrences: _ } => false
+    ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
+  }
+}
+
+// A CAUSE IS NOT COVERAGE, AND NO EXISTING ARM COULD SEE IT.
+//
+// Every insertion in the arms above names a cause that is ALSO carried forward, so none of them
+// separates the two populations. This one drops occurrence 30 entirely and has the insertion name
+// 30 as its cause: under a source law reading every base-side ref, 30 is present, nothing else
+// fires, and a DROPPED OCCURRENCE READS AS A COMPLETE CORRESPONDENCE -- the exact lie the
+// source-missing law exists to catch, defeated by the arm added to carry more information.
+//
+// A caused_by is evidence that an insertion acts ON BEHALF OF a reference. It is not evidence that
+// the reference survived. It still counts for SCOPE, because a cause is a base-side ref and must
+// have been minted in the base's allocator domain -- which is why this fixture reaches the source
+// law at all rather than being refused earlier.
+test fn an_insertion_naming_a_dropped_occurrence_does_not_cover_it() -> Bool {
+  match lbd_totality(
+    base: [10, 20, 30],
+    projected: [11, 21, 41],
+    entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21), lbd_insertion(target: 41, caused_by: 30)]
+  ) {
+    ProvenanceSourceMissing { occurrences: missing } => (missing |> count) == 1
+    ProvenanceTotal => false
+    ProvenanceSourceRepeated { occurrences: _ } => false
+    ProvenanceTargetMissing { occurrences: _ } => false
+    ProvenanceTargetRepeated { occurrences: _ } => false
+    ProvenanceForeignOccurrence { occurrences: _ } => false
+    ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
+  }
+}
+
+// TWO SOURCES CLAIMING ONE TARGET IS AMBIGUOUS PROVENANCE, and membership alone admits it: every
+// source occurs exactly once, every target appears, nothing is foreign, nothing is out of scope.
+// Only target multiplicity separates it -- the mirror of the fork law, and it was missing while its
+// twin was present, which is why the pair is stated as one law per direction per property rather
+// than as "totality".
+test fn two_sources_claiming_one_target_refuses() -> Bool {
+  match lbd_totality(
+    base: [10, 20],
+    projected: [11, 21],
+    entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 11), lbd_insertion(target: 21, caused_by: 10)]
+  ) {
+    ProvenanceTargetRepeated { occurrences: repeated } => (repeated |> count) == 1
+    ProvenanceTotal => false
     ProvenanceSourceMissing { occurrences: _ } => false
     ProvenanceSourceRepeated { occurrences: _ } => false
     ProvenanceTargetMissing { occurrences: _ } => false

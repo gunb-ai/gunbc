@@ -97,7 +97,28 @@ fn refs_out_of_scope(refs: List<SubjectOccurrenceRef>, identity: Fnv1a64Structur
   refs |> filter(r => r.subject_identity.digest != identity.digest) |> map(r => r.occurrence.value)
 }
 
-// PROVENANCE TOTALITY IS FIVE LAWS, AND EACH ONE FAILS A DIFFERENT LIE.
+// PROVENANCE TOTALITY IS SIX LAWS, AND EACH ONE FAILS A DIFFERENT LIE.
+//
+// EVERY LAW NAMES ITS DENOMINATOR BESIDE IT, AND THAT DISCIPLINE IS THE RESIDUE OF THREE REVIEW
+// FINDINGS RATHER THAN A PREFERENCE. Three defects in two modules had one shape: the prose stated
+// the law correctly and the filter ran it over the wrong set. Membership checked without
+// cardinality (a repeated observed occurrence read as complete); presence checked over a population
+// wider than its subject (an insertion's caused_by discharging a dropped occurrence's obligation);
+// and totality checked without target cardinality. Each passed every arm that existed. So the laws
+// below state WHICH SET and WHICH MULTIPLICITY explicitly:
+//
+//   scope          -- every ref, both sides, against its own subject's address
+//   source missing -- base denominator against CARRIED sources only
+//   source repeat  -- base denominator against CARRIED sources, multiplicity
+//   target missing -- projected denominator against ALL targets
+//   target repeat  -- projected denominator against ALL targets, multiplicity
+//   foreign        -- in-scope refs, both sides, against their denominators
+//
+// THE CARRIED-VERSUS-ALL SPLIT IS THE ONE THAT BIT. A caused_by is evidence that an insertion acts
+// ON BEHALF OF a reference; it is NOT evidence that the reference survived the projection. Reading
+// it as coverage lets a dropped base occurrence read as a complete correspondence, which is the
+// exact lie the source-missing law exists to catch. It still counts for SCOPE, because a cause is a
+// base-side ref and must have been minted in the base's allocator domain.
 //
 // A source left out means the projection dropped an occurrence the base carried -- a site the
 // migration silently declined to consider. A carried source appearing twice means one base
@@ -123,6 +144,7 @@ type ProvenanceTotality
   | ProvenanceSourceRepeated { occurrences: List<Int> }
   | ProvenanceTargetMissing { occurrences: List<Int> }
   | ProvenanceForeignOccurrence { occurrences: List<Int> }
+  | ProvenanceTargetRepeated { occurrences: List<Int> }
   | ProvenanceRefOutOfSubjectScope { occurrences: List<Int> }
 
 fn occurrence_multiplicity(ids: List<Int>, id: Int) -> Int {
@@ -154,9 +176,10 @@ fn provenance_totality<O, P>(
   let sources = refs_in_scope(refs: source_refs, identity: base_identity)
   let targets = refs_in_scope(refs: target_refs, identity: projected_identity)
   let carried = provenance_carried_source_ids(provenance: provenance)
-  let source_missing = base_ids |> filter(id => !(sources |> any(s => s == id)))
+  let source_missing = base_ids |> filter(id => !(carried |> any(s => s == id)))
   let source_repeated = base_ids |> filter(id => occurrence_multiplicity(ids: carried, id: id) > 1)
   let target_missing = projected_ids |> filter(id => !(targets |> any(t => t == id)))
+  let target_repeated = projected_ids |> filter(id => occurrence_multiplicity(ids: targets, id: id) > 1)
   let foreign_sources = sources |> filter(id => !(base_ids |> any(b => b == id)))
   let foreign_targets = targets |> filter(id => !(projected_ids |> any(p => p == id)))
   let foreign = concat(foreign_sources, foreign_targets)
@@ -164,6 +187,7 @@ fn provenance_totality<O, P>(
   else if (source_missing |> count) > 0 { ProvenanceSourceMissing { occurrences: source_missing } }
   else if (source_repeated |> count) > 0 { ProvenanceSourceRepeated { occurrences: source_repeated } }
   else if (target_missing |> count) > 0 { ProvenanceTargetMissing { occurrences: target_missing } }
+  else if (target_repeated |> count) > 0 { ProvenanceTargetRepeated { occurrences: target_repeated } }
   else if (foreign |> count) > 0 { ProvenanceForeignOccurrence { occurrences: foreign } }
   else { ProvenanceTotal }
 }
@@ -175,9 +199,14 @@ fn provenance_totality<O, P>(
 // and what Y selects. The first says the comparison could not be made; the second says it was made
 // and diverged. Rendering them alike would let an unmade comparison read as agreement, which is
 // the execution-provenance failure at this artifact's own surface.
+// THE ADMITTING ARM IS NAMED FOR WHAT IT HOLDS, NOT FOR WHAT A READER WILL WANT IT TO HOLD. It was
+// DeltaComputed, and it returns its input verbatim -- nothing here compares X's outcomes against
+// Y's, and nothing in this slice can. The name promised a comparison the module deliberately does
+// not make, which is a name covering a superset of its own population. CorrespondenceAdmitted says
+// the correspondence is total and admissible, which is exactly the fact established.
 type LegacyBindingDelta
   = DeltaProvenanceRefused { totality: ProvenanceTotality }
-  | DeltaComputed { pairs: List<ProjectionProvenanceEntry> }
+  | CorrespondenceAdmitted { pairs: List<ProjectionProvenanceEntry> }
 
 fn legacy_binding_delta<O, P>(
   base_observation: LegacyBindingObservation<O>,
@@ -189,11 +218,12 @@ fn legacy_binding_delta<O, P>(
     projected_observation: projected_observation,
     provenance: provenance
   ) {
-    ProvenanceTotal => DeltaComputed { pairs: provenance.entries }
+    ProvenanceTotal => CorrespondenceAdmitted { pairs: provenance.entries }
     ProvenanceSourceMissing { occurrences: o } => DeltaProvenanceRefused { totality: ProvenanceSourceMissing { occurrences: o } }
     ProvenanceSourceRepeated { occurrences: o } => DeltaProvenanceRefused { totality: ProvenanceSourceRepeated { occurrences: o } }
     ProvenanceTargetMissing { occurrences: o } => DeltaProvenanceRefused { totality: ProvenanceTargetMissing { occurrences: o } }
     ProvenanceForeignOccurrence { occurrences: o } => DeltaProvenanceRefused { totality: ProvenanceForeignOccurrence { occurrences: o } }
+    ProvenanceTargetRepeated { occurrences: o } => DeltaProvenanceRefused { totality: ProvenanceTargetRepeated { occurrences: o } }
     ProvenanceRefOutOfSubjectScope { occurrences: o } => DeltaProvenanceRefused { totality: ProvenanceRefOutOfSubjectScope { occurrences: o } }
   }
 }

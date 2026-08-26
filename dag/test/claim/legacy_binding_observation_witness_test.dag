@@ -443,3 +443,14 @@ test fn every_identity_input_moves_the_content_address() -> Bool {
     && lbo_address_moves(other: lbo_with_resolver(reference: decl_field_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name", field_name: "resolved")))
     && lbo_address_moves(other: lbo_with_policy(policy: NamespaceOnlyPolicy))
 }
+
+// THE COLLISION THE OTHER NINE ARMS CANNOT SEE, because it needs two subjects differing only in the
+// DeclField ARM with the payload chosen to impersonate the nullary arm's label. Everything else
+// about these two subjects is identical, and decl_field_eq reports them different, so an address
+// that collided here would be the comparison and the address disagreeing -- the same defect the
+// field fold was added to fix, one level down inside the fix.
+test fn a_field_name_cannot_impersonate_the_whole_declaration_arm() -> Bool {
+  let whole = lbo_with_resolver(reference: decl_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name"))
+  let named = lbo_with_resolver(reference: decl_field_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name", field_name: "whole_declaration"))
+  legacy_subject_identity(subject: whole).digest != legacy_subject_identity(subject: named).digest
+}
