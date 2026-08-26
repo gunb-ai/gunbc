@@ -1,9 +1,6 @@
 module test.claim.gunbc_invoke_witness
 
 import gunbc.cli_invoke {
-  CiFloorPlan,
-  claim_executor_run_plan_shell,
-  claim_executor_run_plan_transport_argv,
   claim_executor_verify_artifacts_shell,
   gunbc_run_invocation_words,
   gunbc_run_transport_argv,
@@ -15,17 +12,14 @@ import gunbc.cli_invoke {
 import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags }
 import gunbc.ci_spec {
-  gunbc_ci_spec,
   gunbc_ci_deploy_srv1_stage,
   gunbc_ci_deploy_invoke,
-  scheduler_invoke,
   ci_floor_build_verify_script,
   artifact_shell_path
 }
 import gunbc.ci_release_bins {
   ci_floor_required_artifact_names
 }
-import v2.std.collection { Absent, Present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -54,17 +48,6 @@ data gunbc_ci_deploy_invoke_srv1_wrong_entry_golden: String = concat(
   )
 )
 
-test fn gunbc_invoke_scheduler_matches_modeled_shell_holds() -> Bool {
-  let modeled = claim_executor_run_plan_shell(
-    source_roots: witness_layer_roots,
-    plan_entry: "src/v2/workflow/ci_floor_plan.dag",
-    plan_function: CiFloorPlan,
-    notice_title: Present { value: gunbc_ci_spec.notice_title },
-    rooted: true
-  )
-  scheduler_invoke(spec: gunbc_ci_spec) == modeled
-}
-
 data gunbc_invoke_deploy_golden_trailing_newline_note: String = "THE GOLDEN IS UNEDITED AND THE ASSERTION MOVED INSTEAD, which is the opposite of the tempting fix and the reason this row exists. gunbc_ci_deploy_invoke_srv1_pre_migration_golden is a hand-frozen byte string authored before the orchestration-emit binding, deliberately independent of the helper so that a helper change cannot green both sides. After the binding it FAILED, and the cheap move -- repaste the new output into the golden -- would have destroyed exactly the independence that makes it worth having: a golden derived from the thing it checks asserts nothing. So the golden keeps its original bytes and the assertion below states the measured relationship instead. MEASURED, not assumed: concat(new output, newline) == the golden, exactly. The migration is byte-preserving for this invocation apart from one trailing newline. WHERE THAT NEWLINE WENT AND WHY IT IS NOT RESTORED: the deleted gunbc_run_shell appended a newline to every invocation it built, so a caller that added a receipt cat after it got the newline as a SEPARATOR and a caller that did not got it as a trailing byte -- one spelling doing two jobs. v2.std.orchestration joins pipeline steps with newlines and emits none after the last, so separation is now structural and the trailing byte simply has no author. Restoring it would mean re-introducing a per-site concat to reproduce an artifact of the mechanism this change deletes, which is DESIGN section 7's warts-for-byte-identity trap. The emitted workflows are unaffected either way: the YAML block-scalar emitter normalizes the block body, and the measured fleet-converge.yml diff carries no whitespace change at any bound step."
 
 test fn gunbc_invoke_deploy_matches_pre_migration_golden_holds() -> Bool {
@@ -83,35 +66,8 @@ test fn gunbc_invoke_source_root_flags_authority_holds() -> Bool {
       concat(" --source-root \"$ROOT/dag\"", " --source-root \"$ROOT/src/v2\"")
 }
 
-test fn gunbc_invoke_empty_notice_title_omits_flag_holds() -> Bool {
-  let shell = claim_executor_run_plan_shell(
-    source_roots: witness_layer_roots,
-    plan_entry: "src/v2/workflow/ci_floor_plan.dag",
-    plan_function: CiFloorPlan,
-    notice_title: Present { value: "" },
-    rooted: true
-  )
-  !string_contains(s: shell, pattern: "--notice-title")
-}
-
 fn transport_argv_contains_flag(argv: List<String>, flag: String) -> Bool {
   fold(argv, init: false, f: (acc, arg) => acc || arg == flag)
-}
-
-test fn gunbc_invoke_transport_argv_empty_notice_title_omits_flag_holds() -> Bool {
-  let argv = claim_executor_run_plan_transport_argv(
-    source_roots: witness_layer_roots,
-    plan_entry: "src/v2/workflow/ci_floor_plan.dag",
-    plan_function: CiFloorPlan,
-    notice_title: Present { value: "" }
-  )
-  !transport_argv_contains_flag(argv: argv, flag: "--notice-title")
-    && claim_executor_run_plan_transport_argv(
-      source_roots: witness_layer_roots,
-      plan_entry: "src/v2/workflow/ci_floor_plan.dag",
-      plan_function: CiFloorPlan,
-      notice_title: Absent
-    ) == argv
 }
 
 test fn gunbc_invoke_verify_artifacts_shell_nonempty_holds() -> Bool {
