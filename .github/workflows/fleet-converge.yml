@@ -158,10 +158,12 @@ jobs:
           set -euo pipefail
           umask 077
           KEY_FILE="$RUNNER_TEMP/fleet-automation-key"
+          HDR_FILE="$RUNNER_TEMP/fleet-automation-auth-header"
           AGENT_STARTED=0
-          cleanup() { rm -f "$KEY_FILE"; if [ "$AGENT_STARTED" = 1 ] && [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k >/dev/null 2>&1 || true; fi; }
+          cleanup() { rm -f "$KEY_FILE" "$HDR_FILE"; if [ "$AGENT_STARTED" = 1 ] && [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k >/dev/null 2>&1 || true; fi; }
           trap cleanup EXIT
-          curl -sSf -H "Authorization: Bearer $WIF_ACCESS_TOKEN" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/fleet-automation-ssh-key/versions/1:access" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)["payload"]["data"]))' > "$KEY_FILE"
+          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          curl -sSf -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/fleet-automation-ssh-key/versions/1:access" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)["payload"]["data"]))' > "$KEY_FILE"
           chmod 600 "$KEY_FILE"
           EXPECTED_FP="SHA256:mGT7qJsh36VsVb8OPh3m8br3oHedQHxRukRkW5P0CoQ"
           OBSERVED_FP="$(ssh-keygen -y -f "$KEY_FILE" | ssh-keygen -lf - | awk '{print $2}')"
@@ -235,8 +237,10 @@ jobs:
           umask 077
           CRED_FILE="$RUNNER_TEMP/spark-administrator-credential"
           RESP_FILE="$RUNNER_TEMP/spark-administrator-response.json"
-          trap 'rm -f "$CRED_FILE" "$RESP_FILE"' EXIT
-          HTTP_CODE="$(curl -sS -o "$RESP_FILE" -w '%{http_code}' -H "Authorization: Bearer $WIF_ACCESS_TOKEN" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access" || echo 000)"
+          HDR_FILE="$RUNNER_TEMP/spark-administrator-auth-header"
+          trap 'rm -f "$CRED_FILE" "$RESP_FILE" "$HDR_FILE"' EXIT
+          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          HTTP_CODE="$(curl -sS -o "$RESP_FILE" -w '%{http_code}' -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access" || echo 000)"
           if [ "$HTTP_CODE" = 403 ]; then echo "SparkAdministratorCredentialUnreadable: projects/gunbai-secrets/secrets/spark-administrator-password/versions/1 answered 403 to serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com. Secret Manager returns 403 both when a version exists and is not readable AND when it does not exist, so this run cannot tell those apart -- REMEDY EITHER WAY: confirm the version exists and grant that principal roles/secretmanager.secretAccessor on it. Contacting NO host." >&2; exit 1; fi
           if [ "$HTTP_CODE" = 404 ]; then echo "SparkAdministratorCredentialAbsent: projects/gunbai-secrets/secrets/spark-administrator-password/versions/1 answered 404; the modeled reference names a version Secret Manager does not hold. Contacting NO host." >&2; exit 1; fi
           if [ "$HTTP_CODE" != 200 ]; then echo "SparkAdministratorCredentialFetchFailed: HTTP $HTTP_CODE from projects/gunbai-secrets/secrets/spark-administrator-password/versions/1; contacting NO host." >&2; exit 1; fi

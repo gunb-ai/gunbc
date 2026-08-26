@@ -46,7 +46,11 @@ import extdeps.llm.codex_app_server {
   CodexPlanUnknown,
   CodexPlanEnterprise,
 }
-import extdeps.languages.json.parse { parse_json }
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+}
 import gunbc.provider_standing {
   ProviderLimitObservation,
   LimitDispatchDrawUnspecified,
@@ -436,9 +440,9 @@ test fn witness_credential_identity_tracks_the_observed_codex_home() -> Bool {
 data entitlement_realm_witness_note: String = "THE TWO NEGATIVES ARE DIFFERENT NEGATIVES. A Bedrock account is REJECTED — read successfully, wrong realization, the answer is no. An unrecognized plan string is UNOBSERVED — upstream moved and our pin is stale, the answer is not yet. Both refuse dispatch today, which is exactly why a witness that only checked `not available` would pass while the model conflated them: the first is permanent until the credential changes, the second is repaired by updating a roster."
 
 fn chatgpt_realm_on(plan_wire: String) -> CodexAccountRealm {
-  match parse_json(s: plan_wire) {
-    Absent => CodexAccountRealmUnobserved { reason: "fixture did not parse" as NonEmptyStr }
-    Present { value: v } => codex_account_realm_from_result(result: v)
+  match parse_json_document(s: plan_wire) {
+    JsonDocumentUnreadable { gap: _ } => CodexAccountRealmUnobserved { reason: "fixture did not parse" as NonEmptyStr }
+    JsonDocumentParsed { value: v } => codex_account_realm_from_result(result: v)
   }
 }
 

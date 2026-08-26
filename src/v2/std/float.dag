@@ -1,7 +1,7 @@
 module v2.std.float
 
 import v2.std.algebra { Ordering, Less, Equal, Greater }
-import v2.std.diagnostic { Diagnostic, Outcome, port_locus, Unavailable, UserInputBoundary, Accepted, None, diagnostics_singleton }
+import v2.std.diagnostic { Diagnostic, Outcome, invariant_port_locus, Unavailable, UserInputBoundary, Accepted, None, diagnostics_singleton }
 import v2.std.logic { Bool }
 import v2.std.machine { Bit, Word32, Word64 }
 import v2.std.nat { Nat, nat_compare, is_zero }
@@ -148,7 +148,7 @@ fn float_body_compare_ieee_ordered_outcome(a: FloatBody, b: FloatBody) -> Outcom
 fn float_ordered_compare_nan_rejected() -> Outcome<Ordering> {
   Rejected { diagnostics: diagnostics_singleton(d: Diagnostic {
       reason: ^float_totalizer_reason_ieee754_nan_unordered,
-      at: port_locus(port: ^float_totalizer_port_ieee754_nan_totalizer),
+      at: invariant_port_locus(port: ^float_totalizer_port_ieee754_nan_totalizer, invariant: ^float_totalizer_reason_ieee754_nan_unordered),
       correction: Unavailable { reason: UserInputBoundary },
     }) }
 }

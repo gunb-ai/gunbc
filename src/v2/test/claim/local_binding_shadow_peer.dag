@@ -1,0 +1,36 @@
+module v2.test.claim.local_binding_shadow_peer
+
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+
+// THE SHADOWING SYMBOL, AUTHORED HERE RATHER THAN BORROWED. The defect reproduces on any
+// module-level free function whose name a local binding reuses, and the first fixtures for it
+// borrowed live corpus symbols (std.layout render, gunbc.plans.md_helpers p). Borrowing makes the
+// fixture hostage to an unrelated module's shape: rename or delete that symbol and the probe goes
+// green while the defect is untouched, which is the decoration DESIGN 4b warns is worse than
+// absent. This one is owned by the fixture.
+//
+// IT RETURNS A CONSTANT true, WHICH IS THE POINT. Same arity as the local it displaces, and a
+// Bool rather than a foreign type, so displacing the local produces a PLAUSIBLE ANSWER and no
+// diagnostic -- the silent face. A shadow of a different arity refuses loudly instead, and that
+// face is recorded in the witness annotation because a throw cannot be a witness verdict.
+fn shadow_pred(n: Int) -> Bool {
+  true
+}
+
+// THE SENTINEL PAIR, and it is a SEPARATE symbol from shadow_pred above rather than a rewrite of
+// it. A Bool has two inhabitants, so a Bool-valued displacement can only ever say WHICH of two
+// answers came back; an Int sentinel says WHICH FUNCTION ANSWERED. This one returns 900 for every
+// input and ignores its argument, so it is total, same-arity, and same param-and-result types as
+// the local that displaces it -- every axis held equal except the value returned. A witness
+// asserting 2 and receiving 900 has located the producer, not merely disagreed with it.
+fn shadow_sentinel(n: Int) -> Int {
+  900
+}
+
+// NOT SHADOWED BY ANYTHING, and named so nothing is tempted to. It exists for the arm that asserts
+// the module free function is still reachable when NO local binding competes for its spelling --
+// the direction a repair that simply stopped consulting the free-function table would break.
+fn unshadowed_sentinel(n: Int) -> Int {
+  700
+}

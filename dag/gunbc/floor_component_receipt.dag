@@ -39,8 +39,6 @@ import std.measure {
   nanosecond,
   nanosecond_count,
 }
-import std.realization_schedule {
-}
 import extdeps.languages.json.emit {
   JsonValue,
   JsonKeyValue,

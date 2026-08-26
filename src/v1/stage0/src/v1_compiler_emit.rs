@@ -118,9 +118,10 @@ pub use crate::v1_std_core::{
     is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at, let_binding_name_at,
     let_body, let_value, local_transport_node, make_error_node, match_arm_nodes, match_scrutinee,
     method_arg_nodes, method_receiver, module_imports, module_items, operation_modifier_name,
-    param_node_default_value, param_node_name_at, param_node_type_expr, record_lit_type_name_at,
-    return_value, slice_base, slice_end, slice_start, transport_base_path, transport_has_auth,
-    transport_verb, tuple_type_name, unaryop_operand, with_required_cardinality,
+    param_node_default_value, param_node_name_at, param_node_type_expr, qualified_last_segment,
+    record_lit_type_name_at, return_value, slice_base, slice_end, slice_start, transport_base_path,
+    transport_has_auth, transport_verb, tuple_type_name, unaryop_operand,
+    with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, DeclaredFuncSig, ErrorNode, ExprData,
@@ -1594,7 +1595,7 @@ pub fn render_node_type(
         }
         let is_conj = (n.connective.clone() == Connective::Conj);
         let is_disj = (n.connective.clone() == Connective::Disj);
-        let shared = v1_rt::set_contains(&shared_types, tn.clone());
+        let shared = v1_rt::set_contains(&shared_types, qualified_last_segment(tn.clone()));
         if is_disj.clone() {
             {
                 let base = if (n.ident_span.clone() != None) {
@@ -2293,7 +2294,12 @@ pub fn transport_binding_refusal_fact(cause: Rc<TransportBindingRefusal>) -> Str
 }
 
 pub fn file_result_channel_of_key(key: String) -> Option<FileResultChannel> {
-    if ((key.clone() == "write_success".to_string()) || (key.clone() == "success".to_string())) {
+    if (((((key.clone() == "write_success".to_string())
+        || (key.clone() == "read_success".to_string()))
+        || (key.clone() == "delete_success".to_string()))
+        || (key.clone() == "list_success".to_string()))
+        || (key.clone() == "success".to_string()))
+    {
         Some(FileResultChannel::FileChanSuccess)
     } else {
         if (((key.clone() == "bytes_written".to_string()) || (key.clone() == "bytes".to_string()))
@@ -2307,7 +2313,9 @@ pub fn file_result_channel_of_key(key: String) -> Option<FileResultChannel> {
                 if (key.clone() == "error".to_string()) {
                     Some(FileResultChannel::FileChanError)
                 } else {
-                    if (key.clone() == "content".to_string()) {
+                    if ((key.clone() == "content".to_string())
+                        || (key.clone() == "entries".to_string()))
+                    {
                         Some(FileResultChannel::FileChanContent)
                     } else {
                         None
@@ -4520,7 +4528,7 @@ pub fn file_emission_refusal_fact(refusal: Rc<FileEmissionRefusal>) -> String {
     FileEmissionRefusal::FileVerbNotModeled { verb: v, .. } => v1_rt::concat(v1_rt::concat("file transport verb '".to_string(), v.clone()), "' is not a modeled action -- the modeled verbs are delete, list and write_owner_only, and an absent verb means write when the operation declares a `content` input and read otherwise".to_string()),
     FileEmissionRefusal::FilePathNotStaticallyRenderable => "the file transport `path:` must be a string literal or a string interpolation over the operation inputs; no other expression shape has a rendering".to_string(),
     FileEmissionRefusal::FileWriteMissingContentInput { verb: v, .. } => v1_rt::concat(v1_rt::concat("file transport verb '".to_string(), v.clone()), "' writes a payload, and the operation declares no `content` input to write -- the payload is an input to the operation, never a value the emitter may invent".to_string()),
-    FileEmissionRefusal::FileOutputKeyNotModeled { key: k, .. } => v1_rt::concat(v1_rt::concat("file transport output key '".to_string(), k.clone()), "' has no modeled channel -- the modeled channels are write_success, success, bytes_written, bytes, byte_count, path, error and content".to_string()),
+    FileEmissionRefusal::FileOutputKeyNotModeled { key: k, .. } => v1_rt::concat(v1_rt::concat("file transport output key '".to_string(), k.clone()), "' has no modeled channel -- the modeled channels are write_success, read_success, delete_success, list_success, success, bytes_written, bytes, byte_count, path, error, content and entries".to_string()),
     FileEmissionRefusal::FileOutputShapeNotModeled => "the file transport operation's declared output must be a product of named fields; the emitted realization answers per FIELD, so a return shape with no fields to answer for has no rendering".to_string(),
 }
 }

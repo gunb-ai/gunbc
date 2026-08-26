@@ -1,0 +1,21 @@
+module test.fixture.data_reference_identity_alpha
+
+import test.fixture.data_reference_identity_shared { dri_shared_endpoint }
+
+// One HALF of the collision. `dri_model` is declared here AND in the beta sibling
+// with a different value, and both are referenced as a workflow CLI default, so one
+// corpus-wide map keyed on the bare spelling cannot answer both. The parameter names
+// differ between the halves on purpose: the witness asserts the emitted
+// `default_value` ADJACENT to its field name, so a repair that resolves both
+// references but crosses them still goes red.
+type DriAlphaNet {
+  id: Int
+}
+
+data dri_model: String = "dri-alpha-model"
+
+func dri_alpha_run(alpha_model: String = dri_model, alpha_endpoint: String = dri_shared_endpoint) -> String
+  uses net: DriAlphaNet
+{
+  concat(alpha_model, alpha_endpoint)
+}

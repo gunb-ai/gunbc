@@ -235,8 +235,10 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "cited_symbol_resolution_lens_is_green_on_live_corpus", "doc_graph_works_refs_all_resolve",
       "cited_symbol_post7688_production_census_is_zero_violations",
       "cited_symbol_refusal_count_red_on_dangling_fixture",
-      "cited_symbol_planted_doc_graph_controls_all_refuse",
-      "cited_symbol_enrolled_population_refusal_proves_gate_not_vacuous",
+      "cited_symbol_planted_controls_all_refuse",
+      "cited_symbol_planted_controls_are_the_three_declared_identities",
+      "cited_symbol_planted_controls_refuse_in_the_arm_they_name",
+      "cited_symbol_enrolled_population_refusal_is_exactly_the_declared_exemption",
       "cited_symbol_planted_ambiguous_control_refuses_via_resolver",
       "cited_symbol_production_census_ambiguous_count_is_zero",
       "cited_symbol_resolves_node_kind_authority", "cited_symbol_resolves_decl_ref_constructor",
@@ -709,12 +711,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "roster_body_lowering_fold_zero_suspects_within_ratchet",
       "roster_ingest_stage_zero_suspects_within_ratchet",
       "roster_parse_stage_zero_suspects_within_ratchet",
-      "roster_accumulator_copy_analyze_zero_suspects_within_ratchet",
-      "red_control_planted_identity_escape_still_alarms",
-      "red_control_planted_identity_escape_finding_count_is_one",
-      "green_control_sanctioned_reader_body_not_flagged",
-      "green_control_sanctioned_reader_body_has_no_findings_at_all",
-      "unrelated_caret_literal_call_not_flagged"
+      "roster_accumulator_copy_analyze_zero_suspects_within_ratchet"
     ]
   },
   FrozenPathDeferral {
@@ -859,13 +856,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "gap4_malformed_match_arm_missing_arrow_rejects_holds",
       "gap4_unrecognized_char_rejects_not_tokens_remain_holds",
       "gap5_string_escape_quote_in_literal_parses_holds"
-    ]
-  },
-  FrozenPathDeferral {
-    entry: "src/v2/test/claim/long/identity_captured_navigation_fidelity_test.dag",
-    functions: [
-      "suspect_finding_projects_to_exactly_one_under_claimed_edge",
-      "sanctioned_reader_projects_to_zero_discrepancies"
     ]
   },
   FrozenPathDeferral {

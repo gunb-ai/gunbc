@@ -127,7 +127,7 @@ type RunnerSlotAddSequence
 // WHAT IS STILL NOT TRUE, SAID PLAINLY: srv3-06 is not yet convergeable. Its substrate membership
 // is modeled and can be planned; nothing observes it on a real host and nothing applies it.
 // NEXT-RUNG TRIGGER, and it is two things rather than one: a real observer producing a
-// FabricCellPopulation from the host, and a fabric host-effect realization for the membership
+// an admitted fabric-cell population from the host, and a fabric host-effect realization for the membership
 // actions that population implies. Until both land, a nonempty fabric plan is a counted
 // realization refusal by construction, never an applied change. An earlier revision named a
 // desired population in gunbc.runner_capacity_plan as the trigger; that is already satisfied by
@@ -192,9 +192,19 @@ fn runner_slot_caps_precede_start() -> Bool {
   runner_slot_add_step_index(step: AddStepMemoryCaps) < runner_slot_add_step_index(step: AddStepStartUnit)
 }
 
-fn runner_slot_unit_name(slot: RunnerSlotIdentity) -> NonEmptyStr {
-  join(["actions-runner@", runner_slot_instance_name(slot: slot), ".service"], "") as NonEmptyStr
-}
+// THE UNIT NAME FUNCTIONS THAT USED TO LIVE HERE ARE DELETED, NOT DELEGATED.
+//
+// Two arrived independently. This module concatenated the prefix, the instance name and the suffix
+// for an identity; a later change on main split out runner_unit_name_for_instance for callers that
+// hold an instance NAME and no identity to rebuild one from -- gunbc.runner_slot_provision's member
+// rows and gunbc.runner_host_deploy's instance names. That split identified a real second caller
+// shape and is preserved, but it kept the literal in this module.
+//
+// gunbc.runner_unit is the single authority for both shapes: runner_slot_unit_name for an identity
+// and runner_unit_name_of_registration for a bare instance name, derived from one prefix and one
+// suffix rather than re-spelled per caller shape. Consumers import from there. Leaving one-line
+// forwarders here would keep a second name for each function, which is the nicknaming the
+// consolidation exists to remove.
 
 fn runner_slot_dir_path(slot: RunnerSlotIdentity) -> NonEmptyStr {
   join([actions_runner_base_dir, "/", runner_slot_instance_name(slot: slot)], "") as NonEmptyStr

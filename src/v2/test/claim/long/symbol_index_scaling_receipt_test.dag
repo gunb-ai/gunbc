@@ -3,7 +3,9 @@ module v2.test.long.symbol_index_scaling_receipt
 import v2.lens.complexity_accumulator_copy.roster_gate {
   file_gate,
   file_standing,
-  finding_standing_holds
+  NoSuspect,
+  SuspectObserved,
+  FindingNotEstablished
 }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -20,15 +22,19 @@ data loyal_heron_empirical_receipt_note: String = "EMPIRICAL (v1 import-chain pr
 data complexity_lens_receipt_note: String = "COMPLEXITY LENS (2026-07-13): Poly2Suspect standing is the discriminating gate (copied-accumulator / quadratic-fold). file_standing reports NoSuspect on symbol_index_fill.dag and 03_name_resolve.dag. Honest Unclassifiable refusals may remain (combiner_unregistered_carrier_reaches on fold_list/cons threading) — carried independently by the analysis standing rather than collapsed into the finding axis."
 
 test fn symbol_index_fill_zero_poly2_suspects_holds() -> Bool {
-  finding_standing_holds(
-    standing: file_standing(path: "src/v2/compiler/symbol_index_fill.dag", refusal_ceiling: 6).finding
-  )
+  match file_standing(path: "src/v2/compiler/symbol_index_fill.dag", refusal_ceiling: 6).finding {
+    NoSuspect => true
+    SuspectObserved { suspects: _ } => false
+    FindingNotEstablished { cause: _ } => false
+  }
 }
 
 test fn name_resolve_fill_path_zero_poly2_suspects_holds() -> Bool {
-  finding_standing_holds(
-    standing: file_standing(path: "src/v2/compiler/03_name_resolve.dag", refusal_ceiling: 8).finding
-  )
+  match file_standing(path: "src/v2/compiler/03_name_resolve.dag", refusal_ceiling: 8).finding {
+    NoSuspect => true
+    SuspectObserved { suspects: _ } => false
+    FindingNotEstablished { cause: _ } => false
+  }
 }
 
 test fn symbol_index_fill_refusal_count_within_ratchet_holds() -> Bool {
