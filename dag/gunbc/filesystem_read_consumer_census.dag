@@ -1,0 +1,141 @@
+module gunbc.filesystem_read_consumer_census
+
+import std.types { List, NonEmptyStr, String }
+
+data filesystem_read_direct_consumer_census_instrument: String = "Snapshot revision 045ab627854f336ffb7bc6d0e918bb47b560d587. Re-derive the direct-site population with: rg -n --glob '*.dag' 'Filesystem\\.Read\\(' dag src/v2 fixtures/class_b_trim. Re-derive symbolic enclosing declarations with the same roster passed to: perl -ne 'if(/^\\s*(?:test\\s+)?(?:fn|func)\\s+([A-Za-z0-9_]+)/)\{$f=$1\} if(/Filesystem\\.Read\\(/)\{print qq($ARGV\\t$f\\t$_)\}'. Service-operation bodies require naming the service and operation directly because they are not fn declarations. Compare the derived symbolic identities against filesystem_read_direct_consumer_census; a count alone is not completeness."
+
+// Pre-cut disposition census for replacing extdeps.filesystem.filesystem_io
+// Filesystem.Read's flat content/success/error product with
+// std.error_primitives.Result<String, ReadError>. Identities are symbolic:
+// module + declaration + local binding where one declaration contains multiple
+// reads. No source positions are carried.
+//
+// The old operation maps Read and Delete success through the wire key
+// "write_success". That shared nickname is the observable fork; the product also
+// permits content + false + empty error, false + non-empty content, and every
+// other contradictory combination. These rows decide the terminal meaning at
+// each direct service-operation consumer before the root changes. The five
+// dispositions mean, respectively: every ReadError terminates with the existing
+// refusal/false result; ENOENT alone is expected absence and all other arms
+// refuse; the existing typed refusal preserves the ReadError value; an
+// unguarded content read gains an explicit all-errors refusal; or any error in a
+// multi-read observation refuses the whole observation rather than admitting a
+// partial tuple.
+type ReadConsumerDisposition
+  = EveryReadErrorRefuses
+  | EnoentIsAbsenceOtherErrorsRefuse
+  | PreserveTypedReadError
+  | UnguardedReadMustRefuse
+  | AnyReadErrorRefusesWholeObservation
+
+type ReadConsumerRow {
+  site: NonEmptyStr
+  disposition: ReadConsumerDisposition
+}
+
+fn read_consumer(site: NonEmptyStr, disposition: ReadConsumerDisposition) -> ReadConsumerRow {
+  ReadConsumerRow { site: site, disposition: disposition }
+}
+
+fn filesystem_read_direct_consumer_census() -> List<ReadConsumerRow> {
+  [
+    read_consumer(site: "test.claim.class_b_trim_wire_projection_specimen.wire_field_method_form/read", disposition: UnguardedReadMustRefuse),
+    read_consumer(site: "test.claim.class_b_trim_wire_projection_specimen.wire_field_free_call/read", disposition: UnguardedReadMustRefuse),
+    read_consumer(site: "gunbc.tools.card_intake.recognize_binder_photo/photo", disposition: UnguardedReadMustRefuse),
+
+    read_consumer(site: "extdeps.realization.artifact_store_fs.artifact_fs_get/read_out", disposition: EnoentIsAbsenceOtherErrorsRefuse),
+    read_consumer(site: "gunbc.fleet_known_hosts_anchor.materialize_fleet_known_hosts_anchor/existing", disposition: EnoentIsAbsenceOtherErrorsRefuse),
+    read_consumer(site: "gunbc.fleet_ssh_credential_verify.materialize_agent_public_selector/existing", disposition: EnoentIsAbsenceOtherErrorsRefuse),
+    read_consumer(site: "gunbc.package_delivery.read_codex_runtime_receipt_sidecar/read", disposition: EnoentIsAbsenceOtherErrorsRefuse),
+    read_consumer(site: "gunbc.roadmap_belt_actuate.belt_read_or_empty/read", disposition: EnoentIsAbsenceOtherErrorsRefuse),
+    read_consumer(site: "gunbc.roadmap_belt_actuate.belt_workflow_progress_for_attempt_ref/admission", disposition: EnoentIsAbsenceOtherErrorsRefuse),
+    read_consumer(site: "gunbc.roadmap_belt_actuate.belt_workflow_progress_for_attempt_ref/spawn_failure", disposition: EnoentIsAbsenceOtherErrorsRefuse),
+
+    read_consumer(site: "v2.compiler.source_authority.source_ref_for_observed_storage_path/read", disposition: PreserveTypedReadError),
+    read_consumer(site: "v2.compiler.source_authority.dag_source_read_result_from_ref/read", disposition: PreserveTypedReadError),
+    read_consumer(site: "v2.workflow.realization_attempt.attempt_entry/read_out", disposition: PreserveTypedReadError),
+    read_consumer(site: "extdeps.github.push_event.push_before_from_event_path/read", disposition: PreserveTypedReadError),
+    read_consumer(site: "extdeps.github.workflow_run_event.workflow_run_event_from_event_path/read", disposition: PreserveTypedReadError),
+    read_consumer(site: "gunbc.spark.grant_privileged_operation.read_bootstrap_credential/read", disposition: PreserveTypedReadError),
+    read_consumer(site: "gunbc.spark.secret_access_ensure.read_supplied_access_token/read", disposition: PreserveTypedReadError),
+    read_consumer(site: "gunbc.auth.credentials.Credentials.GcpAdcToken/read", disposition: PreserveTypedReadError),
+    read_consumer(site: "gunbc.roadmap_acceptance_history_carrier.load_roadmap_acceptance_event_history/read", disposition: PreserveTypedReadError),
+    read_consumer(site: "gunbc.fleet_ssh_credential_verify.materialize_agent_public_selector/back", disposition: PreserveTypedReadError),
+
+    read_consumer(site: "v2.workflow.product_receipt_transport.run_seven_boundary_product_receipt_ready/manifest_read", disposition: AnyReadErrorRefusesWholeObservation),
+    read_consumer(site: "v2.workflow.product_receipt_transport.run_seven_boundary_product_receipt_ready/receipt", disposition: AnyReadErrorRefusesWholeObservation),
+    read_consumer(site: "v2.workflow.product_receipt_stage.product_receipt_tail/assembled_read", disposition: AnyReadErrorRefusesWholeObservation),
+    read_consumer(site: "v2.workflow.product_receipt_stage.run_product_receipt_stage/manifest_read", disposition: AnyReadErrorRefusesWholeObservation),
+    read_consumer(site: "gunbc.fleet_converge_plan_cli.fleet_converge_apply_wet/read_plan", disposition: AnyReadErrorRefusesWholeObservation),
+    read_consumer(site: "gunbc.fleet_converge_plan_cli.fleet_converge_apply_wet/read_base", disposition: AnyReadErrorRefusesWholeObservation),
+    read_consumer(site: "gunbc.fleet_converge_plan_cli.fleet_converge_apply_wet/read_host", disposition: AnyReadErrorRefusesWholeObservation),
+    read_consumer(site: "gunbc.fleet_converge_plan_cli.fleet_converge_apply_wet/read_prior", disposition: AnyReadErrorRefusesWholeObservation),
+    read_consumer(site: "gunbc.fleet_converge_plan_cli.fleet_converge_apply_wet/read_gen", disposition: AnyReadErrorRefusesWholeObservation),
+    read_consumer(site: "gunbc.fleet_converge_plan_cli.fleet_converge_apply_wet/read_member_fp", disposition: AnyReadErrorRefusesWholeObservation),
+    read_consumer(site: "gunbc.fleet_converge_plan_cli.fleet_converge_apply_wet/read_apply", disposition: AnyReadErrorRefusesWholeObservation),
+    read_consumer(site: "gunbc.fleet_converge_plan_cli.fleet_converge_apply_wet/read_hash", disposition: AnyReadErrorRefusesWholeObservation),
+    read_consumer(site: "gunbc.fleet_converge_plan_cli.fleet_converge_apply_wet/read_spark_wire", disposition: AnyReadErrorRefusesWholeObservation),
+    read_consumer(site: "tools.self_host_curated_seed_linked_harness.cssl_seed_linked_behavioral_receipt/module_read", disposition: AnyReadErrorRefusesWholeObservation),
+    read_consumer(site: "tools.self_host_curated_seed_linked_harness.cssl_seed_linked_behavioral_receipt/driver_read", disposition: AnyReadErrorRefusesWholeObservation),
+    read_consumer(site: "tools.merge_admission_current_context.main/subject_read", disposition: AnyReadErrorRefusesWholeObservation),
+    read_consumer(site: "tools.merge_admission_current_context.main/receipt_read", disposition: AnyReadErrorRefusesWholeObservation),
+    read_consumer(site: "test.manual.git_upstream_model_execution.git_r0_typed_execution_read_back/readme_read_back", disposition: AnyReadErrorRefusesWholeObservation),
+    read_consumer(site: "test.manual.git_upstream_model_execution.git_r0_typed_execution_read_back/run_read_back", disposition: AnyReadErrorRefusesWholeObservation),
+    read_consumer(site: "test.manual.git_upstream_model_execution.git_r0_typed_execution_read_back/raw_read_back", disposition: AnyReadErrorRefusesWholeObservation),
+    read_consumer(site: "test.manual.git_upstream_model_execution.git_r0_typed_execution_read_back/src_keep_read_back", disposition: AnyReadErrorRefusesWholeObservation),
+    read_consumer(site: "gunbc.roadmap_belt_actuate.belt_workflow_progress_for_attempt_ref/key_read", disposition: AnyReadErrorRefusesWholeObservation),
+
+    read_consumer(site: "extdeps.provisioning.ubuntu_seeded_install_media_remaster.install_media_remaster_sidecar_matches/read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "v2.workflow.floor_discovery_producer.floor_discovery_process_dag_file/read_out", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "v2.workflow.floor_discovery_producer.floor_discovery_merge_owned_data_record/read_out", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "v2.test.fixture.walk_plan_stage.barrier_witness_test.walk_plan_stage_barrier_witness_holds/receipt", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "gunbc.class_b_import_closure_overlay.class_b_materialize_stripped_entry_overlay/read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "tools.merge_admission_walk.read_tested_subject/read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "tools.merge_admission_walk.read_floor_receipt/read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "gunbc.fleet_converge_plan_cli.observe_generation_store_wet/read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "gunbc.fleet_converge_plan_cli.observe_cap_members_wet/read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "gunbc.generated_artifact_observation.observe_generated_artifact/committed", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "tools.dag_compile_clean_seam_transport.cross_shard_seam_break_module/original", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "gunbc.spark.serving_runtime_receipt.read_spark_serving_runtime_archive_admission_receipt_bytes_at_path/read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "tools.self_host_curated_seed_linked_harness.cssl_write_shim_from_repo/read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "tools.self_host_curated_seed_linked_harness.cssl_write_shim_lib_from_repo/read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "tools.self_host_logic_behavioral_transport.slb_comparison_observation/logic_read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "test.manual.pijul_upstream_model_execution.pijul_r0_typed_execution_read_back/rendered_conflict", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "test.manual.mercurial_upstream_model_execution.mercurial_r0_typed_execution_read_back/requires_read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "gunbc.devboot.build.read_text_file/read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "gunbc.roadmap_verification_receipt.current_verification_selection_observe/read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "gunbc.roadmap_verification_receipt.exact_verification_receipt_source_read/read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "gunbc.codex_supervised_turn.read_codex_supervised_turn_prior_generation/read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "gunbc.git_diff_change_window.git_diff_window_from_path/read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "gunbc.host_effect_realize.realize_codex_supervised_worker_turn_on_host/cmd_id_read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "gunbc.bmc_fan_converge.bmc_fan_observe_live_identity/admitted_machine_id", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "test.claim.filesystem_write_closure_scale_witness.witness_filesystem_write_survives_name_collision/r", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "test.claim.filesystem_write_witness.witness_write_then_read_roundtrip/r", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "test.claim.filesystem_write_witness.witness_write_truncates/r", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "test.claim.filesystem_write_witness.witness_read_absent_fails_closed/r", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "gunbc.package_delivery.append_text_to_file/existing", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "gunbc.package_delivery.protocol_schema_process_file_for_bundle/raw", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "gunbc.package_delivery.finish_bisect_parse_protocol_schema_file/raw", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "gunbc.package_delivery.finish_bisect_parse_canonicalize_protocol_schema_file/raw", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "gunbc.ci_yaml_validate.ci_yml_parses/read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "gunbc.roadmap_belt_actuate.belt_oracle_observe_in_worktree/read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "gunbc.roadmap_belt_actuate.belt_claude_preflight_for_instance/r", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "gunbc.roadmap_belt_actuate.belt_tick_receipt_read_for_instance/read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "gunbc.roadmap_belt_actuate.belt_publication_receipt_source/read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "gunbc.roadmap_belt_actuate.belt_publish_node_for_instance/key_read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "gunbc.host_effect_nbd_proxy_serve.host_effect_nbd_proxy_serve_read_session_token/read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "test.claim.witness_execution_class_live_census.plan_entry_disposition/read_out", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "test.claim.generated_artifact_merge_driver_real_execution.observe_witness_merge/after", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "test.claim.gitattributes_emit_witness.witness_committed_matches_emit_holds/committed", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "test.claim.gitattributes_emit_witness.witness_red_perturbed_emit_drifts/committed", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "test.claim.srv3_seeded_install_media_real_execution.install_media_remaster_ensure_grub_cmdline_inserts_by_real_execution/after", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "test.claim.tailscale_acl_witness.witness_emit_matches_reference_fixture/read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "test.claim.js_site_emit.artifact_matches_emit/r", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "test.claim.codex_device_prompt_witness.tmux_captured_prompt_parses_to_a_pasteable_code/read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "test.claim.codex_device_prompt_witness.escape_retaining_capture_refuses_to_render/read", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "test.claim.codex_device_prompt_witness.escape_carrying_rendering_would_yield_an_unpasteable_code/escaped", disposition: EveryReadErrorRefuses),
+    read_consumer(site: "test.claim.codex_device_prompt_witness.escape_carrying_rendering_would_yield_an_unpasteable_code/plain", disposition: EveryReadErrorRefuses),
+  ]
+}
+
+data filesystem_read_builtin_consumer_cut_note: String = "The filesystem_read builtin has a separate 93-call population across 61 modules. Those sites consume only .content because v1.compiler.infer_method filesystem_read_result_type and v1.runtime_rust rt_filesystem expose a one-field FilesystemReadResult and abort on read failure. They do not branch on the flat service triple. The cut therefore happens at the builtin root: eval_filesystem_read_builtin consumes Filesystem.Read's Result and propagates Err instead of destructuring content/success/error and re-wrapping a new record; builtin callers retain the established abort-on-failure contract unless a caller separately elects typed recovery. Re-listing all 93 call sites here would be a parallel census of an unchanged contract, so this carrier names the root and the mechanically derived population instead."
