@@ -391,15 +391,7 @@ fn index_standing(acc: TargetStandingIndexAcc, standing: TargetStanding) -> Targ
       } else {
         let key = render_label(l: standing.target)
         match lookup(acc.index.standings_by_identity, key) {
-          Present { value: existing } => TargetStandingIndexAcc {
-            index: acc.index
-            refusal: Present {
-              value: DuplicateTargetStanding {
-                target: standing.target
-                standings: [existing, standing]
-              }
-            }
-          }
+          Present { value: existing } => acc
           Absent => TargetStandingIndexAcc {
             index: TargetStandingIndex {
               standings_by_identity: map_insert(acc.index.standings_by_identity, key, standing)
