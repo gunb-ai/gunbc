@@ -6,7 +6,7 @@ import gunbc.build_cache_ensure {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data ensure_acceptance_doc: String = "THE ACCEPTANCE SET FOR UNIT GENERATION AND THE ENSURE ADMISSION. Two of these are grounded on a live sudo capture of srv1 taken 2026-08-01 rather than on invented fixtures: the rendered unit is asserted against the environment the running CI server actually carries, and the two hosts' real observed states are asserted to reach opposite admissions. The capture also independently confirmed the model: BuildCacheInstance already declared intended_principal ghrunner for CI and briansrls for the session instance, and the live servers run as exactly those users."
+data ensure_acceptance_doc: String = "THE ACCEPTANCE SET FOR UNIT GENERATION AND THE ENSURE ADMISSION. Two of these are grounded on a live sudo capture of srv1 taken 2026-08-01 rather than on invented fixtures: the rendered unit is asserted against the environment the CI server running THAT DAY actually carried, and the two hosts' observed states as of that capture are asserted to reach opposite admissions. The capture also independently confirmed the model: BuildCacheInstance already declared intended_principal ghrunner for CI and briansrls for the session instance, and the servers running then ran as exactly those users.\n\nEVERY SENTENCE ABOVE IS PAST TENSE ON PURPOSE, AND THAT IS A REPAIR RATHER THAN A STYLE CHOICE. Measured 2026-08-25T18:43Z, no sccache process runs on any of the four hosts and the CI socket on each is present with zero listeners, so a row asserting what `the running CI server carries` would have no subject at all. The fixtures stay exactly as captured: they are a dated specimen of a real host state, which is what makes them a stronger acceptance set than invented ones, and re-capturing them against today's empty hosts would delete the discriminating input rather than refresh it."
 
 fn ci() -> BuildCacheInstance { ci_cache_instance(host: "srv1") }
 fn session() -> BuildCacheInstance { session_cache_instance(host: "srv1") }
@@ -25,7 +25,7 @@ fn srv1_stranded_owner() -> ProcessIdentity {
   }
 }
 
-data captured_base_doc: String = "Asserted against the live capture, line for line. srv1's running CI server carries SCCACHE_DIR=/var/lib/ctrl/sccache-ci, SCCACHE_ERROR_LOG under the same directory, SCCACHE_IDLE_TIMEOUT=0, SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache-ci/server.sock and SCCACHE_START_SERVER=1, running as ghrunner. The generated unit must reproduce that environment, because the cutover replaces a server that is currently working -- wrongly parented, but working -- and a unit that changed the cache directory or the socket path would cold-start every consumer on the host rather than re-parenting the one they already use."
+data captured_base_doc: String = "Asserted against the 2026-08-01 live capture, line for line. srv1's CI server carried SCCACHE_DIR=/var/lib/ctrl/sccache-ci, SCCACHE_ERROR_LOG under the same directory, SCCACHE_IDLE_TIMEOUT=0, SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache-ci/server.sock and SCCACHE_START_SERVER=1, and ran as ghrunner. The generated unit must reproduce that environment, and the REASON given here has changed even though the requirement has not. It was: the cutover replaces a server that is currently working -- wrongly parented, but working -- so changing the cache directory or the socket path would cold-start every consumer rather than re-parenting the one they already use. Measured 2026-08-25T18:43Z there is no server left to re-parent on any host, so what the paths now protect is the CACHE TREE and the endpoint every client is already configured against, not a live process. The pinned values are unchanged because the reason weakened rather than reversed: a unit that invents a new directory strands whatever the old one holds either way."
 
 test fn witness_the_generated_unit_reproduces_the_captured_environment() -> Bool {
   let u = ci_unit()
@@ -77,7 +77,7 @@ fn instance_with_pool(base: BuildCacheInstance, placement: CompilePoolPlacement)
   }
 }
 
-data absent_capacity_doc: String = "THE LOAD-BEARING PAIR. CI's intended_capacity is Absent and the live capture confirms why: srv1's running CI server carries NO SCCACHE_CACHE_SIZE at all, so its 10 GiB is sccache's built-in default rather than a decision. Rendering a default here would fabricate a decision nobody made AND freeze it -- once written into a generated unit it is indistinguishable from an intended value, and the tracked gap closes silently. Both halves are asserted: Absent must omit the line, Present must emit it, because a render that omitted it unconditionally would pass the first assertion while silently dropping the session instance's real 50G cap."
+data absent_capacity_doc: String = "THE LOAD-BEARING PAIR. CI's intended_capacity is Absent and the 2026-08-01 live capture is why: srv1's CI server carried NO SCCACHE_CACHE_SIZE at all, so the 10 GiB it ran under was sccache's built-in default rather than a decision. Rendering a default here would fabricate a decision nobody made AND freeze it -- once written into a generated unit it is indistinguishable from an intended value, and the tracked gap closes silently. Both halves are asserted: Absent must omit the line, Present must emit it, because a render that omitted it unconditionally would pass the first assertion while silently dropping the session instance's real 50G cap."
 
 test fn witness_an_absent_capacity_omits_the_line_and_a_present_one_emits_it() -> Bool {
   let ci_lines = ci_unit()
@@ -195,7 +195,7 @@ test fn witness_a_managed_unit_that_is_not_ours_is_not_converged() -> Bool {
   build_cache_ensure_is_converged(admission: a) == false
 }
 
-data wrong_managed_unit_doc: String = "ctrl-sccache.service is the real specimen and not a hypothetical: it exists on srv1 and srv2 today, managing the SESSION instance. A convergence check that accepted any managed unit as satisfying the CI instance would report srv1 converged on the strength of a unit serving a different cache directory, a different uid and a different socket."
+data wrong_managed_unit_doc: String = "ctrl-sccache.service was a real specimen and not a hypothetical: it existed on srv1 and srv2 at the 2026-08-01 capture, managing the SESSION instance. IT NO LONGER EXISTS ANYWHERE -- measured 2026-08-25T18:43Z, is-enabled returns not-found on all four hosts and no unit file matches -- and the fixture is kept because a red control does not need its subject to be currently installed, only to be the shape a wrong acceptance would admit. gunbc.build_cache_instance build_cache_desired_instances_note carries what that disappearance costs elsewhere: the session rows' 50G capacity was set from this unit. A convergence check that accepted any managed unit as satisfying the CI instance would report srv1 converged on the strength of a unit serving a different cache directory, a different uid and a different socket."
 
 test fn witness_unknown_placement_refuses_before_reading_the_path() -> Bool {
   let a = ensure_for(

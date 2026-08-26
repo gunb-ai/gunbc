@@ -46,9 +46,9 @@ import std.types { NonEmptyStr }
 // consumer in the tree, they had no executing consumer at all — discovered every run, never
 // run, for as long as the arm existed.
 //
-// WHY THE PREMISE WAS STALE: hermetic mode carries the checkout-read carve-out
-// (`v1_interpreter` `hermetic_checkout_read_disposition_under`), under which a
-// `Filesystem.Read` of a path proven under the checkout root is INPUT access — the commit is
+// WHY THE PREMISE WAS STALE: hermetic mode carries the checkout-input carve-out
+// (`v1_interpreter` `hermetic_checkout_input_disposition_under`), under which a readonly
+// `Filesystem.Read` or `Filesystem.List` of a path proven under the checkout root is INPUT access — the commit is
 // the run's deterministic input — and not a host effect. That carve-out landed AFTER
 // `live_tree_disposition` was authored. From that day "reads the live tree" no longer implied
 // "cannot run hermetically", and the decline was a prediction standing where the interpreter

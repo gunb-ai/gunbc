@@ -1,5 +1,13 @@
 module gunbc.tools.bmc_first_contact
 
+// THE NETRC AUTHORITY IS IMPORTED RATHER THAN RE-SPELLED. This module previously declared no imports
+// at all and resolved every name through corpus scope, which is survivable for a diagnostic tool and
+// is NOT survivable for the one function that decides the mode of a file holding a credential: a
+// second local netrc_content would be a fork of an authority whose whole point is that there is one
+// of it, and bare resolution over a whole-corpus pool is not a stable binding to reason about when
+// the question is "which write verb ran".
+import gunbc.tools.bmc_onboard { bmc_onboard_netrc_path, write_netrc }
+
 
 // `shell.Env.Get` answers `value: String?`, and this func reached it with `as NonEmptyStr`, which
 // does not eliminate the absence: with BMC_HOST unset the Redfish call was dialled at a host whose
@@ -13,14 +21,24 @@ fn bmc_first_contact_host(value: String?) -> NonEmptyStr {
   }
 }
 
+// THE FACTORY PASSWORD IS PUBLISHED, AND IT STILL DOES NOT GO IN ARGV. It is tempting to treat a
+// vendor-published default as harmless in a command line, but the exception would be the wrong shape
+// to teach: this func calls the same operation bmc_onboard uses to authenticate with a ROTATED
+// secret, and an operation that accepts a credential by argv accepts every credential by argv.
+// Keeping one authentication path means the leaky one has nowhere to survive, so first-contact
+// writes the same 0600 netrc as every other Redfish caller and refuses loudly if it cannot.
 func bmc_first_contact() -> ProcessExit
   uses net: std.resources.Network
 {
   host = shell.Env.Get(name: "BMC_HOST")
+  let bmc = bmc_first_contact_host(value: host.value)
+
+  if write_netrc(host: bmc as String, account: openbmc_factory_login.username as String, password: openbmc_factory_login.published_password) == false {
+    return exit_failure(reason: "first-contact: netrc write failed")
+  }
   resp = redfish.Http.GetSystem(
-    bmc_host: bmc_first_contact_host(value: host.value),
-    username: openbmc_factory_login.username,
-    password: openbmc_factory_login.published_password as Secret
+    bmc_host: bmc,
+    netrc_file: bmc_onboard_netrc_path as NonEmptyStr
   )
 
   return if resp.success { ExitSuccess } else { exit_failure(reason: resp.body) }
