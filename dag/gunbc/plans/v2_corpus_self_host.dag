@@ -15,7 +15,7 @@ import gunbc.plans.md_helpers { h2, h3, p, li, ul, quote, cell, row }
 
 fn status_block() -> MarkdownBlock {
   quote(blocks: [
-    p(text: "**Status: ACTIVE anchor**, opened 2026-08-26 by operator ruling — v2 self-hosts the ENTIRE v2 corpus, started from scratch. Supersedes the 2026-08-16 root-partition document, whose evidence base was bankrupted (section 7). Every claim names how and when it was measured, or says it is unmeasured. No transcribed instrument output: a measurement is cited by naming the producer that re-derives it."),
+    p(text: "**Status: ACTIVE anchor**, opened 2026-08-26 by operator ruling — v2 self-hosts the ENTIRE v2 corpus, started from scratch. Supersedes the 2026-08-16 root-partition document, whose evidence base was bankrupted (section 7). Every claim names how and when it was measured, or says it is unmeasured. **No transcribed current-state board is treated as authority**, and where this plan does carry transcription it says so: the seed-sizing table in section 1 is disclosed historical transcription and names the missing producer required to replace it. The rule is that a measurement is cited by naming the producer that re-derives it; a figure with no producer is carried only with that absence stated."),
   ])
 }
 
@@ -88,7 +88,7 @@ fn section_4() -> List<MarkdownBlock> {
 fn section_5() -> List<MarkdownBlock> {
   [
     h2(text: "5. The ratchet — and why a count must not be the gate"),
-    p(text: "The mechanism EXISTS and is correctly designed: `gunbc.emit_subject_clean_frontier` with its runner `tools.emit_subject_clean_ratchet`. Its own header already argues against the naive form, and that argument is preserved here because it is the thing most likely to be re-proposed: counts appear in that module as DISPLAY ONLY and decide nothing; admission is per-identity, the debt carried as ROWS."),
+    p(text: "The mechanism EXISTS and is correctly designed: `gunbc.emit_subject_clean_frontier` with its runner `tools.emit_subject_clean_ratchet`. Its own header already argues against the naive form, and that argument is preserved here because it is the thing most likely to be re-proposed: **no cardinality is a gate oracle**, but emptiness is not nothing — it decides whether a population is inhabited or evaluated, including the essential distinction between an empty roster and an identified roster with no failures. Roster membership is admitted PER IDENTITY, and the roster DIGEST, not its count, is its identity. An earlier revision of this clause said counts are display-only and decide nothing; the ratchet owner measured that as literally false, and the corrected form is theirs."),
     p(text: "**Why a count must not gate.** DESIGN section 5 forbids a merge-blocking literal grounded in a measurement copied from the current tree. Worse here, the incentive INVERTS: the cheapest way to make a count fall is to LOSE SUBJECTS — narrow the entry set, drop a module — and a count-gate rewards exactly that. A discovery that loses subjects makes it fall furthest of all. Identity-grain rows cannot be gamed that way."),
     p(text: "**The working template**, landed 2026-08-26 in the declaration index: an enumerated debt roster whose rows REFUSE once their subject stops failing, plus the inverse arm for planted controls that stop discriminating. The roster can only shrink, and both directions are wired."),
     p(text: "**Enrolment status: nothing runs it.** The ratchet runner's cadence is `NoConsumer`; no workflow, phase or required lane reaches it. That was stated as independent of the enrolment question and of the operator agreement gating it. **The operator gave that agreement 2026-08-26.**"),
@@ -152,6 +152,10 @@ data v2_corpus_self_host_ratchet_bindings: List<DeclarationRef> = [
   decl_ref(module_path: "tools.emission_entry_instrument", decl_name: "measure_entry_emission"),
   // The hosting decision in section 3.
   decl_ref(module_path: "gunbc.whole_corpus_compile_admission", decl_name: "whole_corpus_compile_admission_at_budget"),
+  // The cross-program precedence relation (operator ruling 2026-08-26). Carried
+  // ONCE in its own carrier and cited here; this plan does not restate the ruling.
+  decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "milestone_prerequisites"),
+  decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "ProgramMilestone"),
   // The gap section 2 names: the phase that emits and stops before cargo.
   decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "required_v2_emission_entries"),
   decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "required_v2_emission_dissolution"),

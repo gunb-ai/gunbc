@@ -1,0 +1,119 @@
+module gunbc.compiler_frontend_program_interlock
+
+import std.types { NonEmptyStr, Bool, List }
+
+// WHY THIS CARRIER EXISTS, and why the ruling it holds is NOT written into the
+// two plan bodies that consume it. Operator ruling 2026-08-26 answered a
+// sequencing question both plans had open, and closed with an explicit
+// instruction: carry the precedence edges ONCE in a typed cross-program
+// interlock cited by both plans, and do not duplicate the ruling as prose in
+// both carriers. That instruction is DESIGN section 3 applied to a fact with two
+// natural homes -- a ruling copied into two plan bodies is one fact with two
+// authorities, and the two copies diverge on the first amendment. So both plans
+// cite this module and neither owns the relation; their prose RENDERS it.
+
+// THE RULING'S SHAPE, stated because the obvious reading of the question is the
+// wrong one. The question asked was "does the namespace cut block v2 self-host,
+// or the reverse" -- a total order over two programs. The ruling is that the
+// program grain is TOO COARSE and neither blocks the other whole. The relation
+// is a braid between MILESTONES: self-host's proof envelope blocks the first
+// namespace semantic wave, and namespace completion blocks self-host's
+// irreversible retirement step. A reader who collapses this back to a program
+// order gets a different plan whichever direction they collapse it in.
+type ProgramMilestone
+  = SelfHostCargoRatchetEnrolled
+  | NamespaceWaveAdmissionEnrolled
+  | NamespaceFirstSemanticWave
+  | NamespaceTerminalEndState
+  | SelfHostSeedRetirement
+
+fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
+  match m {
+    SelfHostCargoRatchetEnrolled => "self-host: required cargo-executing phase and identity-grain debt ratchet enrolled" as NonEmptyStr
+    NamespaceWaveAdmissionEnrolled => "namespace: required wave-admission wall over closure, subject-membership and occurrence-binding deltas" as NonEmptyStr
+    NamespaceFirstSemanticWave => "namespace: first semantic wave (Step 1, deletion of the import-name universe)" as NonEmptyStr
+    NamespaceTerminalEndState => "namespace: terminal end state (Steps 1-5 complete, import grammar retired)" as NonEmptyStr
+    SelfHostSeedRetirement => "self-host: S6 retirement of the v1 seed" as NonEmptyStr
+  }
+}
+
+// THE PRECEDENCE RELATION AS A TOTAL FUNCTION, not a list of edges. A list is
+// satisfied by omission -- a milestone nobody wrote an edge for silently has no
+// prerequisites, and the failure is invisible. An exhaustive match over a closed
+// variant means a newly declared milestone FAILS TO COMPILE until its
+// prerequisites are stated. That is DESIGN section 5's construction-over-
+// validation: the unstated-prerequisite state is unwritable rather than checked.
+fn milestone_prerequisites(m: ProgramMilestone) -> List<ProgramMilestone> {
+  match m {
+    SelfHostCargoRatchetEnrolled => []
+    NamespaceWaveAdmissionEnrolled => []
+    NamespaceFirstSemanticWave => [SelfHostCargoRatchetEnrolled, NamespaceWaveAdmissionEnrolled]
+    NamespaceTerminalEndState => [NamespaceFirstSemanticWave]
+    SelfHostSeedRetirement => [NamespaceTerminalEndState]
+  }
+}
+
+// THE EXECUTABLE CONSEQUENCE THE RULING ATTACHED TO THE NAMESPACE PLAN'S
+// DISCLOSED GAP. That plan recorded "no CI mechanism exists" as a named gap. The
+// ruling converts it from a disclosure into a BLOCKER: no namespace change that
+// can alter which modules enter a subject, or what an occurrence denotes, may
+// merge before the wave-admission wall exists. Preparatory work is explicitly
+// unaffected -- measurement, port-locus, instruments, lexical de-forking that
+// preserves the exact set, typed carriers, dry-run projections. Step 1 is not.
+type NamespaceChangeClass
+  = PreparatoryNoSemanticMotion
+  | AltersSubjectMembershipOrBinding
+
+fn namespace_change_admitted_before_wall(c: NamespaceChangeClass) -> Bool {
+  match c {
+    PreparatoryNoSemanticMotion => true
+    AltersSubjectMembershipOrBinding => false
+  }
+}
+
+// THE ADMISSION PREDICATE, recorded because the two spellings differ by one word
+// and the weaker one is the intuitive one. The wall admits when
+// UNADJUDICATED delta is empty, NOT when delta is empty: expected cut motion may
+// occur, unevaluated or unexplained motion may not. A wall demanding zero delta
+// would refuse the cut itself and would be repaired by weakening it.
+type NamespaceDeltaDisposition
+  = SameDeclarationIdentityRebind
+  | UnusedSubjectMembershipRemoved
+  | ExplicitlyEvaluatedZeroDelta
+  | TargetChanged
+  | NewAmbiguity
+  | NewUnresolvedness
+  | NewPoolCoincidenceResolution
+  | UnexplainedSubjectMotion
+  | NotEvaluated
+
+fn delta_disposition_auto_admitted(d: NamespaceDeltaDisposition) -> Bool {
+  match d {
+    SameDeclarationIdentityRebind => true
+    UnusedSubjectMembershipRemoved => true
+    ExplicitlyEvaluatedZeroDelta => true
+    TargetChanged => false
+    NewAmbiguity => false
+    NewUnresolvedness => false
+    NewPoolCoincidenceResolution => false
+    UnexplainedSubjectMotion => false
+    NotEvaluated => false
+  }
+}
+
+// EPOCH BINDING. A measured population is bound to the exact compiler, corpus,
+// namespace authority and instrument that produced it. When a namespace wave
+// changes the subject constructor or the name authority, the prior census
+// becomes HISTORICAL rather than FALSE -- it is not erased, and the ratchet
+// baseline is not silently reset. Intentional namespace-induced debt is carried
+// by exact typed transition admissions, never absorbed by taking a fresh
+// baseline after the fact, which would be DESIGN section 5's absorbing fallback
+// applied to the debt contract itself.
+type CompilerPopulationEpoch {
+  exact_head: NonEmptyStr,
+  corpus_digest: NonEmptyStr,
+  namespace_authority_identity: NonEmptyStr,
+  instrument_identity: NonEmptyStr,
+}
+
+data interlock_ruling_date: NonEmptyStr = "2026-08-26" as NonEmptyStr
