@@ -57,6 +57,7 @@ fn fixture_fold_of(
   fold_emit_subject_clean_ratchet_over_readings(
     universe: IndexOnlyUniverse { policy: fixture_policy(), entries: roster },
     admissions: admissions,
+    selection: SelectionWholeRoster,
     readings: readings
   )
 }
@@ -105,6 +106,7 @@ fn fixture_dual_fold(
       inventory: inventory
     },
     admissions: [],
+    selection: SelectionWholeRoster,
     readings: readings
   )
 }
@@ -269,7 +271,7 @@ test fn a_partial_run_refuses_and_names_the_subjects_it_did_not_measure() -> Boo
   let readings = [fixture_reading(entry: fixture_alpha, outcome: EmitSubjectClean)]
   !fixture_standing_holds(roster: fixture_roster, admissions: [], readings: readings)
     && fixture_failing_rows(roster: fixture_roster, admissions: [], readings: readings)
-      == ["UNMEASURED\tdag/fixture/beta.dag\ton_frontier\tfalse\tthe fold was handed no measurement for this roster subject — a partial run cannot answer a closed-universe claim"]
+      == ["UNMEASURED\tdag/fixture/beta.dag\ton_frontier\tfalse\tthe instrument was asked about this subject and produced no reading for it — a deficit in the run, not its scope"]
 }
 
 // RED: an admission row naming a subject the discovered roster does not contain is a row to delete,
@@ -451,6 +453,7 @@ test fn a_measurement_cannot_overwrite_an_unclassified_files_classification() ->
       inventory: [fixture_alpha, fixture_beta, hidden]
     },
     admissions: [],
+    selection: SelectionWholeRoster,
     readings: concat(fixture_both_clean(), [fixture_reading(entry: hidden, outcome: EmitSubjectClean)])
   )
   count(
@@ -475,36 +478,219 @@ test fn an_upstream_mask_refuses_rather_than_reading_as_improvement() -> Bool {
     && fixture_standing_holds(roster: fixture_roster, admissions: [], readings: fixture_both_clean())
 }
 
-// THE ENROLMENT WALL, BOTH ARMS. The refusing arm is the live one: a single-denominator carrier
-// cannot be gated on, and the refusal names the missing denominator rather than answering a bare
-// false. The permitting arm is authored here to prove this is a WALL and not a decoration that
-// could only ever refuse — if the permitting arm were unreachable, the refusal would carry no
-// information and would be worse than absent for being counted as coverage.
-test fn a_single_denominator_carrier_refuses_enrolment_and_names_what_is_missing() -> Bool {
-  match emit_ratchet_gating_admission_of(denominators: DeclarationIndexOnly) {
-    GatingPermitted => false
-    GatingRefusedDenominator { missing: m } => string_contains(s: m, pattern: "file inventory")
+// ---------------------------------------------------------------------------------------------
+// THE ENROLMENT WALL, PER MODE.
+//
+// The wall used to answer one question from one fact, and the witness beneath it proved both arms of
+// that one fact reachable. That is no longer enough, and the reason is a change in the tree rather
+// than a change of mind: while the denominator was the only disqualifier, permitting on it was
+// permitting on everything. Hole 2 closed, dual-denominator folds became producible, and the same
+// wall then said PERMITTED about a carrier whose subjects have no verdicts at all.
+//
+// So these claims are written against the fact that DISCRIMINATES the two modes, not against the
+// mode label. Each pairs a refusing input with a control differing in exactly one field, so a green
+// cannot be an accident of the fixture, and each names WHICH mode it refuses -- an observation that
+// refuses for a gate's reasons would be the empty-observation narrow, and a gate that permits for an
+// observation's reasons is the merge-blocking baseline this lane exists to prevent.
+// ---------------------------------------------------------------------------------------------
+
+fn fixture_empty_dual_fold() -> EmitSubjectCleanRatchet {
+  fold_emit_subject_clean_ratchet_over_readings(
+    universe: DualUniverse { policy: fixture_policy(), entries: [], inventory: [] },
+    admissions: [],
+    selection: SelectionWholeRoster,
+    readings: []
+  )
+}
+
+fn fixture_one_unevaluated() -> List<EmitSubjectReading> {
+  [
+    fixture_reading(entry: fixture_alpha, outcome: EmitSubjectClean),
+    fixture_reading(entry: fixture_beta, outcome: EmitSubjectNotEvaluated { cause: ExtentUnestablished })
+  ]
+}
+
+fn fixture_one_regressed() -> List<EmitSubjectReading> {
+  [
+    fixture_reading(entry: fixture_alpha, outcome: EmitSubjectClean),
+    fixture_reading(entry: fixture_beta, outcome: EmitSubjectBlocked { cause: BlockingDiagnostics { blocking: 1 } })
+  ]
+}
+
+fn fixture_gate_admission(r: EmitSubjectCleanRatchet) -> EmitRatchetEnrolmentAdmission {
+  emit_ratchet_enrolment_admission(enrolment: EnrolledAsGate, r: r)
+}
+
+fn fixture_observation_admission(r: EmitSubjectCleanRatchet) -> EmitRatchetEnrolmentAdmission {
+  emit_ratchet_enrolment_admission(enrolment: EnrolledAsObservation, r: r)
+}
+
+fn fixture_admission_permits(admission: EmitRatchetEnrolmentAdmission) -> Bool {
+  match admission {
+    EnrolmentPermitted { enrolment: _ } => true
+    EnrolmentRefusedNoUniverse { enrolment: _ } => false
+    EnrolmentRefusedDenominator { enrolment: _, missing: _ } => false
+    EnrolmentRefusedUnevaluated { enrolment: _, subjects: _ } => false
   }
-    && match emit_ratchet_gating_admission_of(denominators: DeclarationIndexAndModuleInventory) {
-      GatingPermitted => true
-      GatingRefusedDenominator { missing: _ } => false
+}
+
+// RED: a single-denominator carrier still cannot be gated on, and WHICH refusal it receives is
+// asserted as a VARIANT rather than as a substring of the refusal's prose. The refusal does still
+// name the missing denominator -- that is what `missing` carries -- but the naming is REPORT
+// RENDERING and this row's declared subject is the semantic admission, so pinning the wording here
+// would red this claim on an edit to a different authority. The control is the SAME readings under a
+// dual denominator, so the refusal is about the universe's provenance and not about the fixture.
+test fn a_single_denominator_carrier_refuses_a_gate_and_permits_none() -> Bool {
+  match fixture_gate_admission(r: fixture_fold_of(roster: fixture_roster, admissions: [], readings: fixture_both_clean())) {
+    EnrolmentRefusedDenominator { enrolment: e, missing: _ } => e == EnrolledAsGate
+    EnrolmentPermitted { enrolment: _ } => false
+    EnrolmentRefusedNoUniverse { enrolment: _ } => false
+    EnrolmentRefusedUnevaluated { enrolment: _, subjects: _ } => false
+  }
+    && fixture_admission_permits(
+      admission: fixture_gate_admission(r: fixture_dual_fold(inventory: fixture_roster, readings: fixture_both_clean()))
+    )
+}
+
+// AND THE SAME CARRIER IS AN ADMISSIBLE OBSERVATION. This is the claim that makes the two modes
+// different questions rather than one question with a label: refusing to LOOK because the universe
+// was discovered under one denominator is the narrow, committed at the point where the reading is
+// taken. What a single denominator disqualifies is DECIDING, and the report prints its denominators
+// so the reading cannot be quoted wider than it was taken.
+test fn a_single_denominator_carrier_is_still_an_admissible_observation() -> Bool {
+  fixture_admission_permits(
+    admission: fixture_observation_admission(r: fixture_fold_of(roster: fixture_roster, admissions: [], readings: fixture_both_clean()))
+  )
+    && !fixture_admission_permits(
+      admission: fixture_gate_admission(r: fixture_fold_of(roster: fixture_roster, admissions: [], readings: fixture_both_clean()))
+    )
+}
+
+// RED, AND IT IS THE ONE THE OLD WALL COULD NOT PRODUCE: a DUAL-denominator fold — everything the
+// previous wall consulted, answered in the permitting direction — whose roster contains a subject
+// with no verdict at all. Gating on it would decide a closed-universe question over an open one, so
+// it refuses and NAMES the subjects that have no verdict, because that list is the work that closes
+// the gap. The control differs in exactly one field: the same fold with that one reading clean
+// permits, which is what makes this a wall over the verdicts rather than a second denominator check.
+test fn a_gate_refuses_a_dual_denominator_fold_whose_subjects_were_never_evaluated() -> Bool {
+  match fixture_gate_admission(r: fixture_dual_fold(inventory: fixture_roster, readings: fixture_one_unevaluated())) {
+    EnrolmentRefusedUnevaluated { enrolment: _, subjects: ss } => ss == [fixture_beta]
+    EnrolmentPermitted { enrolment: _ } => false
+    EnrolmentRefusedNoUniverse { enrolment: _ } => false
+    EnrolmentRefusedDenominator { enrolment: _, missing: _ } => false
+  }
+    && fixture_admission_permits(
+      admission: fixture_gate_admission(r: fixture_dual_fold(inventory: fixture_roster, readings: fixture_both_clean()))
+    )
+}
+
+// AND AN UNEVALUATED SUBJECT DOES NOT STOP THE OBSERVATION. It is the observation's CONTENT: hole 3
+// says a realistic universe folds to a wall of not-evaluated rows today, and a reading that refuses
+// to be taken because its subjects are unmeasured reports nothing about the very population it was
+// built to expose. The standing still refuses inside it — this claim is about who may be told, not
+// about the news being good.
+test fn an_unevaluated_subject_is_observed_rather_than_suppressed() -> Bool {
+  fixture_admission_permits(
+    admission: fixture_observation_admission(r: fixture_dual_fold(inventory: fixture_roster, readings: fixture_one_unevaluated()))
+  )
+    && !fixture_admission_permits(
+      admission: fixture_gate_admission(r: fixture_dual_fold(inventory: fixture_roster, readings: fixture_one_unevaluated()))
+    )
+}
+
+// ---------------------------------------------------------------------------------------------
+// EXECUTION PROVENANCE: the observation that was not taken, and the observation whose news is bad.
+//
+// DESIGN's test is stated as an equality between renderings: if a count of zero and an unreached
+// stage produce the same output, the number is not an observation. These two claims are that test
+// run in both directions, and the pair is the point — either alone is satisfiable by a carrier that
+// simply always refuses or always permits.
+// ---------------------------------------------------------------------------------------------
+
+// RED: a fold that discovered nothing DISPATCHES TO THE NOT-TAKEN ARM, and it names the refusal
+// STRUCTURALLY rather than by matching prose.
+//
+// WHAT THIS ROW DELIBERATELY DOES NOT ASSERT, because the first shape of it did and the assertion
+// could not fail: that the not-taken arm holds no standing. That is true, and it is true BY
+// CONSTRUCTION -- the variant has no such field, so the violating state is unauthorable in the
+// corpus AND in a fixture, which §4b names as exactly the case where the right answer is no check
+// at all. Three of that row's four conjuncts were substring matches over rendered text, so the one
+// artifact a reader would have cited as proof of execution provenance was a change detector: red on
+// any wording edit, green on any cause carrying the phrase. The property survives in the type; only
+// its fake evidence is gone.
+//
+// WHAT REMAINS IS THE PART THAT CAN FAIL FOR THE RIGHT REASON: which arm an unobservable fold routes
+// to, and which refusal it carries. Both halves are now variant matches, so a prose edit moves
+// nothing here and a dispatch change reds it.
+test fn an_empty_dual_fold_yields_no_observation() -> Bool {
+  match emit_ratchet_observation(r: fixture_empty_dual_fold()) {
+    ObservationNotTaken { admission: a } =>
+      match a {
+        EnrolmentRefusedNoUniverse { enrolment: e } => e == EnrolledAsObservation
+        EnrolmentPermitted { enrolment: _ } => false
+        EnrolmentRefusedDenominator { enrolment: _, missing: _ } => false
+        EnrolmentRefusedUnevaluated { enrolment: _, subjects: _ } => false
+      }
+    ObservationTaken { roster: _, standing: _ } => false
+  }
+    && match emit_ratchet_observation(r: fixture_dual_fold(inventory: fixture_roster, readings: fixture_both_clean())) {
+      ObservationTaken { roster: _, standing: s } => s == EmitRatchetHeld { subject_count: 2 }
+      ObservationNotTaken { admission: _ } => false
     }
 }
 
-// AND THE WALL READS THE CARRIER, not just a bare argument: a fold that produced a standing carries
-// the denominators it was folded over, so the enrolment question is answered from the artifact
-// rather than from whatever the caller says about it.
-test fn the_enrolment_wall_reads_the_denominators_the_carrier_was_folded_over() -> Bool {
-  match emit_ratchet_gating_admission(
-    r: fixture_fold_of(roster: fixture_roster, admissions: [], readings: fixture_both_clean())
-  ) {
-    GatingPermitted => false
-    GatingRefusedDenominator { missing: _ } => true
+// AND THE OTHER DIRECTION, which is the half a carrier that always refuses would fail: an entry that
+// STOPPED being clean is a TAKEN observation carrying a REFUSING standing. The observation succeeded;
+// the corpus is what is wrong. Collapsing this into the not-taken arm would be the mirror defect —
+// bad news rendered as no news — and it is what would make an observation-first enrolment worthless.
+test fn a_refusing_standing_is_a_taken_observation_and_not_a_missing_one() -> Bool {
+  match emit_ratchet_observation(r: fixture_dual_fold(inventory: fixture_roster, readings: fixture_one_regressed())) {
+    ObservationTaken { roster: _, standing: s } =>
+      match s {
+        EmitRatchetRefused { failing_rows: rows } =>
+          count(
+            filter(
+              rows,
+              row =>
+                row == emit_ratchet_verdict_row(
+                  v: RatchetRegressed {
+                    entry: fixture_beta,
+                    cause: BlockingDiagnostics { blocking: 1 }
+                  }
+                )
+            )
+          ) == 1
+        EmitRatchetHeld { subject_count: _ } => false
+      }
+    ObservationNotTaken { admission: _ } => false
   }
-    && match emit_ratchet_gating_admission(r: fixture_dual_fold(inventory: fixture_roster, readings: fixture_both_clean())) {
-      GatingPermitted => true
-      GatingRefusedDenominator { missing: _ } => false
-    }
+}
+
+// AND THE REPORT INHERITS THE SPLIT RATHER THAN RE-DERIVING IT. A reader of the artifact — which is
+// the only thing that survives the run — must be able to tell the two apart on the bytes, and must
+// be able to see that what they are holding is not a gate verdict.
+//
+// THE EXPECTED ROWS ARE COMPOSED FROM THE RENDERER, never hand-written. A literal fragment here
+// would pin the renderer's current wording into an unrelated claim, so an edit to one authority
+// would red the other — the fork §3 forbids, arriving as a test fixture. What is asserted is that
+// the report CARRIES the observation's own rendering and that the two renderings DIFFER, which is
+// the distinction the row is named for and the only one it should own.
+fn fixture_observation_row(r: EmitSubjectCleanRatchet) -> String {
+  concat("observation\t", emit_ratchet_observation_text(observation: emit_ratchet_observation(r: r)))
+}
+
+test fn the_report_distinguishes_an_untaken_observation_from_a_clean_one() -> Bool {
+  let clean = fixture_dual_fold(inventory: fixture_roster, readings: fixture_both_clean())
+  let empty = fixture_empty_dual_fold()
+  count(filter(emit_ratchet_report_rows(r: clean), row => row == fixture_observation_row(r: clean))) == 1
+    && count(filter(emit_ratchet_report_rows(r: empty), row => row == fixture_observation_row(r: empty))) == 1
+    && !(fixture_observation_row(r: clean) == fixture_observation_row(r: empty))
+    && count(
+      filter(
+        emit_ratchet_report_rows(r: clean),
+        row => row == concat("enrolment_gate\t", emit_ratchet_enrolment_admission_text(admission: fixture_gate_admission(r: clean)))
+      )
+    ) == 1
 }
 
 // A ZERO-FILE TREE IS NOT A CLEAN ENTRY.
@@ -540,6 +726,141 @@ test fn the_three_not_evaluated_causes_are_not_collapsed() -> Bool {
       emit_outcome_of_population(ds: [], files: FilesEmitted { count: 0 })
         == EmitSubjectNotEvaluated { cause: ExtentUnestablished }
     )
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// WHO RUNS THE RUNNER: the third state, which is neither a good fold nor a bad one.
+//
+// "The ratchet has not run yet" and "the ratchet will never run here" render identically as an
+// absent report, and only the second is terminal. The first is a fold that was attempted; the
+// second is a carrier with no scheduled route at all, and it is the state this ratchet is in today.
+// The claim asserts today's answer and its control in one breath, so the derivation cannot be a
+// constant wearing a standing's name.
+// ---------------------------------------------------------------------------------------------
+
+// RED-ON-ENROLMENT BY CONSTRUCTION: this claim is green because the runner has NO consumer, and it
+// goes red on the day one is agreed and the cadence row changes. That inversion is deliberate and it
+// is the only mechanism that forces this claim and the block it mirrors to be rewritten together —
+// a declaration that survives its own falsification is the rung inflation DESIGN calls worse than
+// sitting low.
+test fn the_ratchet_runner_has_no_executing_consumer_today() -> Bool {
+  match emit_ratchet_runner_execution_standing(cadence: emit_ratchet_runner_cadence) {
+    UnexecutedDeferredWitness { entry: e, function: f } =>
+      e == "dag/tools/emit_subject_clean_ratchet.dag" && f == "observe"
+    WitnessHasExecutingConsumer { cadence: _ } => false
+    LegacyFrozenPathDeferral { entry: _, function: _ } => false
+    UnclassifiedPathDeferral { entry: _, function: _ } => false
+    DeclaredCadenceUnrealized { cadence: _, entry: _, function: _ } => false
+  }
+    && match emit_ratchet_runner_execution_standing(cadence: DiscoverySelection) {
+      WitnessHasExecutingConsumer { cadence: c } => c == DiscoverySelection
+      UnexecutedDeferredWitness { entry: _, function: _ } => false
+      LegacyFrozenPathDeferral { entry: _, function: _ } => false
+      UnclassifiedPathDeferral { entry: _, function: _ } => false
+      DeclaredCadenceUnrealized { cadence: _, entry: _, function: _ } => false
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE TWO VERDICT QUESTIONS ARE PROJECTIONS OF ONE CLASSIFICATION, and the relation between them is
+// asserted rather than left to be rediscovered by comparing two functions arm by arm.
+//
+// WHY THIS ROW EXISTS AT ALL: the divergence between `holds` and `evaluated` was previously an
+// EMERGENT fact -- two independent matches that happened to disagree on two arms, discoverable only
+// by measuring them against each other, which is exactly how it came up in review. Routing both
+// through `emit_ratchet_verdict_standing` makes the divergence a named class, and this claim pins
+// the two properties that make the split load-bearing rather than decorative.
+
+// ---------------------------------------------------------------------------------------------
+// THE SELECTION SPLIT: ONE SILENCE, TWO OWNERS.
+//
+// A roster subject with no reading used to render as UNMEASURED whether the run had asked about it
+// or not. The two facts have opposite remedies -- fix the instrument, or widen the run -- so a
+// reader handed one count could not tell which they were looking at. The pair below is the whole
+// evidence for the split, and it is a ONE-FIELD control: the roster, the admissions and the
+// readings are IDENTICAL across both claims and only the selection differs. A green that survived
+// collapsing the two arms would therefore have to be an accident of the selection alone.
+// ---------------------------------------------------------------------------------------------
+
+fn fixture_beta_verdict_under(selection: SubjectSelection) -> List<EmitRatchetVerdict> {
+  filter(
+    fold_emit_subject_clean_ratchet_over_readings(
+      universe: IndexOnlyUniverse { policy: fixture_policy(), entries: fixture_roster },
+      admissions: [],
+      selection: selection,
+      readings: [fixture_reading(entry: fixture_alpha, outcome: EmitSubjectClean)]
+    ).verdicts,
+    v => emit_ratchet_verdict_entry(v: v) == fixture_beta
+  )
+}
+
+// RED: a subject the run never asked about must not be reported as one the instrument failed on.
+// If the classifier stops consulting the selection, this arm collapses into the one below.
+test fn a_subject_the_run_never_selected_is_scope_rather_than_a_deficit() -> Bool {
+  fixture_beta_verdict_under(selection: SelectionSubset { entries: [fixture_alpha] })
+    == [RatchetSubjectNotSelected { entry: fixture_beta, on_frontier: false }]
+}
+
+// RED: the same silence, from a run that DID ask, is a deficit and keeps its old name. This is the
+// control that makes the claim above discriminating rather than a rename.
+test fn a_subject_the_run_selected_and_could_not_measure_is_still_a_deficit() -> Bool {
+  fixture_beta_verdict_under(selection: SelectionWholeRoster)
+    == [RatchetSubjectUnmeasured { entry: fixture_beta, on_frontier: false }]
+}
+
+// NEITHER IS A VERDICT. The split names two owners; it does not promote scope into evidence, and a
+// gate must still refuse over both. If the new arm were ever classified as established, a subset
+// run would start answering a closed-universe question it never asked.
+test fn neither_silence_establishes_a_verdict() -> Bool {
+  count(
+    filter(
+      [
+        RatchetSubjectNotSelected { entry: fixture_beta, on_frontier: false },
+        RatchetSubjectUnmeasured { entry: fixture_beta, on_frontier: false }
+      ],
+      v => emit_ratchet_verdict_evaluated(v: v) || emit_ratchet_verdict_holds(v: v)
+    )
+  ) == 0
+}
+
+data every_verdict_shape: List<EmitRatchetVerdict> = [
+  RatchetCleanHeld { entry: fixture_alpha },
+  RatchetDebtHeld { entry: fixture_alpha, cause: BlockingDiagnostics { blocking: 1 } },
+  RatchetRegressed { entry: fixture_alpha, cause: BlockingDiagnostics { blocking: 1 } },
+  RatchetFrontierStale { entry: fixture_alpha },
+  RatchetNotEvaluated { entry: fixture_alpha, on_frontier: false, cause: ExtentUnestablished },
+  RatchetSubjectUnmeasured { entry: fixture_alpha, on_frontier: false },
+  RatchetSubjectNotSelected { entry: fixture_alpha, on_frontier: false }
+]
+
+// A HELD VERDICT IS ALWAYS AN EVALUATED ONE -- the ratchet cannot hold over a subject nobody
+// measured. If this ever fails, some arm is reporting a verdict it never established.
+test fn holding_a_verdict_entails_having_established_it() -> Bool {
+  count(
+    filter(
+      every_verdict_shape,
+      v => emit_ratchet_verdict_holds(v: v) && !emit_ratchet_verdict_evaluated(v: v)
+    )
+  ) == 0
+}
+
+// AND THE CONVERSE MUST NOT HOLD, which is the half that makes the two questions distinct rather
+// than one question spelled twice. An ESTABLISHED-AND-REFUSED verdict is evaluated and does not
+// hold; if this set were empty the split would be a decoration and `evaluated` could be deleted.
+test fn an_established_verdict_that_refuses_is_what_separates_the_two_questions() -> Bool {
+  count(
+    filter(
+      every_verdict_shape,
+      v => emit_ratchet_verdict_evaluated(v: v) && !emit_ratchet_verdict_holds(v: v)
+    )
+  ) == 2
+    && count(
+      filter(
+        every_verdict_shape,
+        v => emit_ratchet_verdict_standing(v: v) == VerdictEstablishedAndRefused
+      )
+    ) == 2
 }
 
 fn membership_with_candidates(candidates: List<String>, closure: List<String>) -> SubjectMembership {

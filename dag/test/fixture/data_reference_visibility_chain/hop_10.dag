@@ -1,0 +1,3 @@
+module test.fixture.data_reference_visibility_chain.hop_10
+
+import test.fixture.data_reference_visibility_chain.hop_11 { dvb_endpoint }
