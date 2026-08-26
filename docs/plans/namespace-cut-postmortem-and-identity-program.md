@@ -3375,7 +3375,9 @@ the *semantic* arms it is load-bearing and only execution settles it. **Holding
 for evidence that cannot exist in the form requested looks like rigor and is a
 stall.**
 
-### 11.2n MEASURED — the cut's headline consequence has a number: ~6187 dead import members across 40% of files, and every one carries a closure edge
+### 11.2n MEASURED — the cut's headline consequence has a number: 512 fully-dead provider edges, 2.5%, across 362 files, and every one is a closure edge
+
+*(This heading read "~6187 dead import members across 40% of files" for two hours. That is the MEMBER grain and this section's own grain correction below retires it; a heading is the sentence most readers take away, so leaving it stating the superseded figure while the body corrects it would have been the two-accounts-of-one-fact failure at the loudest position in the row.)*
 
 The program has asserted architecturally that reference-derived closure differs
 from import-derived closure. **On 2026-08-26 that difference acquired a
@@ -3510,7 +3512,8 @@ measured population of **one** (`gunbc.floor_component_receipt`, multiline
 spelling, deleted in the wall's own diff — and confirmed inert *for that file* by
 two byte-identical compile logs in which `std.realization_schedule` is
 typechecked either way, so it is reachable through another of that file's six
-imports). One against at least 6187, with identical effect on the subject. The
+imports). One against 512 fully-dead provider edges — at least, and at the
+grain that shapes the closure — with identical effect on the subject. The
 wall is still worth building — cheap, operator-steered, an unwritable degenerate
 case — but **it closes *arity-zero imports*, not "vacuous imports"**, and the
 ratio between what it closes and what it leaves is roughly one to six thousand.
