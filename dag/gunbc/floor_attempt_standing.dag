@@ -559,6 +559,18 @@ fn floor_rendered_verdict_name(verdict: FloorRenderedVerdict) -> String {
 // missing is a step inside the required run that calls it, and the permission grant that would
 // let it.
 //
+// AND NOT BEFORE IT LANDS, WHICH IS THE HALF A READER WILL OTHERWISE GET WRONG IN THE HELPFUL
+// DIRECTION. Splitting the variant TODAY yields two arms NO PRODUCER CAN DISTINGUISH: nothing but
+// a fixture inhabits either, both render `unobserved`, both fall through to the lane axis, and no
+// run can ever take one rather than the other. That is a distinction with no mechanism behind it
+// -- the decoration this module argues against everywhere else -- and it is worse than the
+// placeholder because anyone reading the type would conclude the repository can already tell a
+// credential failure from a malformed payload. It cannot. The bare `String` is doing the right
+// job in the meantime PRECISELY BECAUSE ITS SHAPE IS THE TELL: it announces unfinished modelling
+// instead of asserting a capability. (Argued by cool-hawk-324, declining to split ahead of the
+// acquisition; the asymmetry is that waiting costs one small edit later, while not waiting costs
+// a type that overstates what the system knows.)
+//
 // WHEN IT LANDS, `CurrentHeadNotAcquired { detail: String }` MUST BE SPLIT RATHER THAN POPULATED,
 // and the bare `String` is the tell. Today nothing but a fixture inhabits it, so the field is a
 // placeholder and not a decision; the moment a real acquisition fails there are TWO states with
