@@ -13,7 +13,9 @@ import extdeps.languages.json.emit {
   JsonObject
 }
 import extdeps.languages.json.parse {
-  parse_json,
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
   json_object_unique_member,
   JsonMemberFound,
   JsonMemberAbsent,
@@ -137,8 +139,8 @@ fn adc_document_from_json(doc: JsonValue) -> AdcDocumentDecodeOutcome {
 // here would drop the distinction one layer above the place this module exists
 // to preserve it. The unwrap is confined to this function.
 fn decode_adc_document(document: Secret) -> AdcDocumentDecodeOutcome {
-  match parse_json(s: document as String) {
-    Absent => AdcDocumentDecodeRefused { cause: AdcDocumentNotJson }
-    Present { value: doc } => adc_document_from_json(doc: doc)
+  match parse_json_document(s: document as String) {
+    JsonDocumentUnreadable { gap: _ } => AdcDocumentDecodeRefused { cause: AdcDocumentNotJson }
+    JsonDocumentParsed { value: doc } => adc_document_from_json(doc: doc)
   }
 }

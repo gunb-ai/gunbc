@@ -17,11 +17,7 @@ data gunbc_ci_width_constants_retired_note: String = "WITHIN-run width constants
 
 data gunbc_ci_runner_cgroup_memory_cap: ByteSize = gunbc_runner_slot_desired().memory_max
 
-data gunbc_ci_dashboard_session_container_cap: ByteSize = byte_size(33578549248)
 
-data gunbc_ci_cap_split_disposition: Disposition = Terminal {
-  reason: "DESIGN §3 de-conflation (PR-A): gunbc_ci_runner_cgroup_memory_cap (declared per-slot MemoryMax from gunbc.runner_slot_allocation) vs gunbc_ci_dashboard_session_container_cap (31.27GiB, dashboard session pool, inter-run). Retired gunbc_ci_host_container_memory_cap nickname that fused both."
-}
 
 data gunbc_ci_runner_slot_memory_max_live: ByteSize = gunbc_runner_slot_desired().memory_max
 
@@ -117,9 +113,6 @@ fn witness_floor_run_peak_receipts_at_throttle_line() -> Bool {
     && all(gunbc_ci_floor_run_peak_receipts, r => floor_run_peak_receipt_at_throttle_line(receipt: r))
 }
 
-fn witness_runner_cgroup_cap_lt_dashboard_session_cap() -> Bool {
-  byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap) < byte_size_count(b: gunbc_ci_dashboard_session_container_cap)
-}
 
 type JobCgroupPeakMeasurement
   = JobCgroupPeakMeasured { cgroup_peak: ByteSize }

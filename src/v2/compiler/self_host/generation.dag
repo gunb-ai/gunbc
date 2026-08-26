@@ -7,7 +7,7 @@ import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
   Unavailable,
-  port_locus
+  invariant_port_locus
 }
 import v2.std.node { combine_hash, Hash, Symbol, symbol_identity_digest }
 import v2.std.text { String, string_is_empty }
@@ -337,7 +337,7 @@ fn generation_axis_symbol(axis: GenerationAxis) -> Symbol {
 fn generation_axis_stale_diagnostic(axis: GenerationAxis) -> Diagnostic {
   Diagnostic {
     reason: generation_axis_symbol(axis: axis),
-    at: port_locus(port: ^generation_identity_axis_port),
+    at: invariant_port_locus(port: ^generation_identity_axis_port, invariant: generation_axis_symbol(axis: axis)),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

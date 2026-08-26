@@ -127,7 +127,7 @@ type RunnerSlotAddSequence
 // WHAT IS STILL NOT TRUE, SAID PLAINLY: srv3-06 is not yet convergeable. Its substrate membership
 // is modeled and can be planned; nothing observes it on a real host and nothing applies it.
 // NEXT-RUNG TRIGGER, and it is two things rather than one: a real observer producing a
-// FabricCellPopulation from the host, and a fabric host-effect realization for the membership
+// an admitted fabric-cell population from the host, and a fabric host-effect realization for the membership
 // actions that population implies. Until both land, a nonempty fabric plan is a counted
 // realization refusal by construction, never an applied change. An earlier revision named a
 // desired population in gunbc.runner_capacity_plan as the trigger; that is already satisfied by

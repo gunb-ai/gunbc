@@ -1,0 +1,163 @@
+module gunbc.namespace_cut_landing_order
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.guarantee_rung_drop { GuaranteeRung, Mitigatable }
+
+// WHY THIS CARRIER EXISTS AT ALL, since a reader will otherwise look for the
+// ruling in the plan documents where its neighbours live. DESIGN section 4c
+// names RULING in the list of facts that belong in a typed carrier, so a
+// landing-order ruling with executable consequences was never supposed to live
+// in prose. It did anyway: the 2026-08-25 reordering was recorded only in an
+// unmerged postmortem, and the ratified replacement plan cited that document by
+// path for the reversal. The 2026-08-26 markdown rule did not create that
+// problem, it exposed it -- a document that has become load-bearing has become
+// a carrier without being typed as one. This module is that carrier.
+type CutStepPosition = GrammarDeletedFirst | GrammarDeletedLast
+
+// The supersession is modeled rather than narrated because the two rulings come
+// from the SAME authority and the later one moves ONE axis. A reader who takes
+// either as freestanding gets a different landing order, which is exactly the
+// contradiction that put two opposite instructions in two ratified documents.
+// THE RULING'S IDENTITY IS A CLOSED VARIANT, NOT A DATE STRING. It was a
+// NonEmptyStr until 2026-08-26, resolved by string equality, which left two
+// malformed edges representable: a supersession naming a ruling that does not
+// exist, and two rows claiming one identity. Both are now unwritable rather than
+// validated -- there is no spelling for a reference to a ruling nobody declared
+// (review 56029). The date is DERIVED from the identity below, so it cannot
+// disagree with it either.
+type RulingIdentity
+  = GrammarDeletedFirstRuling
+  | GrammarDeletedLastRuling
+
+fn ruling_identity_date(i: RulingIdentity) -> NonEmptyStr {
+  match i {
+    GrammarDeletedFirstRuling => "2026-08-15" as NonEmptyStr
+    GrammarDeletedLastRuling => "2026-08-25" as NonEmptyStr
+  }
+}
+
+fn ruling_identity_is(a: RulingIdentity, b: RulingIdentity) -> Bool {
+  match a {
+    GrammarDeletedFirstRuling => match b { GrammarDeletedFirstRuling => true  GrammarDeletedLastRuling => false }
+    GrammarDeletedLastRuling => match b { GrammarDeletedFirstRuling => false  GrammarDeletedLastRuling => true }
+  }
+}
+
+type RulingSupersession
+  = SupersedesOnOrderOnly { superseded: RulingIdentity, axis_unchanged: NonEmptyStr }
+  | NoPriorRuling
+
+type LandingOrderRuling {
+  identity: RulingIdentity
+  position: CutStepPosition
+  verbatim: NonEmptyStr
+  supersession: RulingSupersession
+  atomicity_qualified: Bool
+}
+
+data namespace_cut_grammar_first_ruling: LandingOrderRuling = LandingOrderRuling {
+  identity: GrammarDeletedFirstRuling,
+  position: GrammarDeletedFirst,
+  verbatim: "delete all the grammar/import up front, then solve each problem as it is revealed" as NonEmptyStr,
+  supersession: NoPriorRuling,
+  atomicity_qualified: false
+}
+
+data namespace_cut_grammar_last_ruling: LandingOrderRuling = LandingOrderRuling {
+  identity: GrammarDeletedLastRuling,
+  position: GrammarDeletedLast,
+  verbatim: "work backward from the goal, and the grammar deletion is the last step, not the first" as NonEmptyStr,
+  supersession: SupersedesOnOrderOnly {
+    superseded: GrammarDeletedFirstRuling,
+    axis_unchanged: "the ROOT is unchanged: the grammar production, the parse surface and the import-name universe are all still inside it, and delete-first as doctrine is untouched. Only the ORDER in which that root is cut moved." as NonEmptyStr
+  },
+  atomicity_qualified: true
+}
+
+// THE ROSTER IS THE DENOMINATOR THE DERIVATION BELOW FOLDS OVER. A ruling that
+// is not a member is not considered, so adding a ruling means adding a row here
+// and nothing else.
+data namespace_cut_landing_order_rulings: List<LandingOrderRuling> = [
+  namespace_cut_grammar_first_ruling,
+  namespace_cut_grammar_last_ruling
+]
+
+// The supersession edge read in the direction the derivation needs it. A ruling
+// carries the identity it supersedes; this returns it as a list so the empty
+// case has no sentinel spelling -- NoPriorRuling contributes nothing rather than
+// contributing a value a comparison could accidentally match.
+fn ruling_superseded_identities(r: LandingOrderRuling) -> List<RulingIdentity> {
+  match r.supersession {
+    SupersedesOnOrderOnly { superseded: i, axis_unchanged: _ } => [i]
+    NoPriorRuling => []
+  }
+}
+
+// The three states the relation can be in, kept apart because they have
+// opposite remedies: an answer, nothing left standing (a cycle, or an empty
+// roster), and more than one ruling nobody superseded. Collapsing the last two
+// into Absent, or taking `first` of the survivors, would answer a question the
+// rows do not decide -- the fabricated plausible output DESIGN section 5
+// forbids, in the one place a reader is most likely to trust it.
+type CurrentLandingOrder
+  = CurrentPosition { position: CutStepPosition, ruling: RulingIdentity }
+  | NoUnsupersededRuling
+  | AmbiguousUnsupersededRulings { survivor_count: Int }
+
+// The current ruling is DERIVED from the supersession relation: the ruling no
+// other ruling names as superseded. It is not a stored pointer and not a row
+// naming one of the others -- either would be a second answer to a question the
+// relation already decides, and it is the copy that goes stale when a later
+// ruling lands.
+fn current_landing_order() -> CurrentLandingOrder {
+  let superseded = namespace_cut_landing_order_rulings |> flat_map(r => ruling_superseded_identities(r: r))
+  let survivors = namespace_cut_landing_order_rulings
+    |> filter(r => !(superseded |> any(i => ruling_identity_is(a: i, b: r.identity))))
+  match survivors |> first {
+    Present { value: winner } =>
+      if (survivors |> count) == 1 {
+        CurrentPosition { position: winner.position, ruling: winner.identity }
+      } else {
+        AmbiguousUnsupersededRulings { survivor_count: survivors |> count }
+      }
+    Absent => NoUnsupersededRuling
+  }
+}
+
+// THE DERIVATION'S EXECUTING CONSUMER. Green by execution says the fold over
+// the supersession relation really answers GrammarDeletedLast; the discriminating
+// RED is to set the 2026-08-25 row's supersession to NoPriorRuling, at which
+// point nothing is superseded, two rulings survive, and this refuses with
+// AmbiguousUnsupersededRulings rather than quietly picking one.
+fn landing_order_derivation_witness() -> ProcessExit {
+  match current_landing_order() {
+    CurrentPosition { position: p, ruling: winner } =>
+      match p {
+        GrammarDeletedLast =>
+          if ruling_identity_is(a: winner, b: GrammarDeletedLastRuling) { ExitSuccess }
+          else { exit_failure(reason: concat("derived GrammarDeletedLast from the ruling dated ", ruling_identity_date(i: winner) as String)) }
+        GrammarDeletedFirst => exit_failure(reason: concat("derived GrammarDeletedFirst from the ruling dated ", concat(ruling_identity_date(i: winner) as String, "; that ruling is superseded on order")))
+      }
+    NoUnsupersededRuling => exit_failure(reason: "no unsuperseded ruling: the supersession relation names every row")
+    AmbiguousUnsupersededRulings { survivor_count: _ } => exit_failure(reason: "more than one unsuperseded ruling; the relation does not decide a current order")
+  }
+}
+
+// RUNG HONESTY (DESIGN 4b), declared rather than left to be rediscovered.
+// This carrier is at MITIGATABLE and nothing here is enforced. No lens reads
+// it, no gate joins it to a document, and a planning document may still state
+// an order contradicting current_landing_order with nothing refusing. What the
+// carrier buys is that the ruling is now CITABLE BY SYMBOL from a document that
+// merges, instead of by path into one that must not -- which is the specific
+// failure it was minted to close, not a general enforcement claim.
+// NEXT-RUNG TRIGGER: a lens joining authored landing-order prose to this
+// carrier, which is the same module-authorship-at-ingestion trigger DESIGN
+// section 6 already names for the deleted inert-lens census; the two should
+// land together rather than each rebuilding a corpus walk.
+// The rung is the closed GuaranteeRung variant, not a string spelling it. It was
+// `String = "mitigatable"` until 2026-08-26 (review 56044) -- the one field in
+// this module still carrying as text what everything around it carries as a
+// coproduct, which made a typo representable in the one place the module claims
+// to be honest about.
+data namespace_cut_landing_order_rung: GuaranteeRung = Mitigatable
