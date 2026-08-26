@@ -53,14 +53,31 @@ fn lbo_digest(label: String) -> Fnv1a64Structural {
 }
 
 // THE FIXTURE'S RESOLVER REFERENCE NAMES A RECORD TYPE RATHER THAN THE RESOLVER FUNCTION, and that
-// is a deliberate choice about the arms below rather than a claim about what X actually is. Each
-// divergence arm must move EXACTLY ONE axis of the reference, or it passes on whichever axis the
-// comparison happens to check first -- one law implemented over the wrong set. A single-axis module
-// move needs one declared name living in two modules; a single-axis field move needs that same
-// declaration to carry a field. `OccurrenceId` is the only pair in the corpus satisfying both:
-// `std.occurrence_identity` and `std.observation` each declare it, and the former carries `value`.
+// is a deliberate choice about the arms below rather than a claim about what X actually is. Every
+// divergence arm must perturb EXACTLY ONE axis of the compared identity, and the reason is stronger
+// than picking the wrong population: a two-axis perturbation cannot discriminate WHICH axis the
+// comparison reads, so its green is the same green whether the second axis is folded into the
+// identity or not. It is permanently green by construction -- the decoration DESIGN section 4b calls
+// worse than absent, reached from the multiplicity direction rather than the unauthorable-RED one.
+// The general rule, which outlives this fixture: ANY divergence arm perturbing more than one axis of
+// a compared identity is uninformative by construction.
+//
+// So a single-axis module move needs one declared name living in two modules, and a single-axis
+// field move needs one of those declarations to carry a field. `OccurrenceId` satisfies both:
+// `std.occurrence_identity` and `std.observation` each declare it and the former carries `value`.
+// NO UNIQUENESS IS CLAIMED FOR IT, and an earlier revision of this annotation claimed exactly that
+// -- "the only pair in the corpus" -- which was false when written: a census over `dag`, `src/v1`
+// and `src/v2` at `90bfcfad293` found 47 names declared in two or more modules with at least one
+// declaration carrying a field. The first measurement that produced the claim searched two roots
+// and compared only adjacent rows of a sort, so it was a property of the search, not of the corpus.
+// The claim is not repaired by bounding it to a SHA, because the fixture never needed it: what the
+// arms need is that THIS pair holds, and that is self-checking rather than censused -- the citation
+// wall refuses this module if either declaration or the field stops existing, so the arms cannot go
+// quietly green over a reference that has rotted. A second qualifying pair appearing changes
+// nothing here.
+//
 // The resolver identity the production subject carries is a decision surface such as
-// `v1.compiler.infer_env` `lookup_binding_by_name`; nothing here depends on which.
+// `v1.compiler.infer_env` `lookup_binding_by_name`; nothing in the envelope depends on which.
 fn lbo_resolver() -> DeclarationRef {
   decl_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceId")
 }
