@@ -251,6 +251,24 @@ fn ancestry_walk_step(
 // The walk is bounded by the population it walks: `history` supplies both the membership test and
 // the step budget, so the fold is total and terminates by construction rather than by a guard this
 // module has to keep correct.
+// THERE IS DELIBERATELY NO BOOLEAN ANCESTOR PREDICATE HERE, and its absence is the point.
+//
+// A `commit_is_ancestor_of` returning Bool answered `false` for FOUR different facts: a completed
+// trace proving the candidate is not an ancestor, a broken parent chain, a start outside the
+// history, and a cycle. Only the first is a negative ANSWER; the other three are failures to
+// establish one. Collapsing them is the not-established-versus-negative conflation DESIGN names,
+// and it is the same shape repaired across the JSON and source-analysis lanes.
+//
+// It is DELETED rather than typed, on consumer count. There is no production consumer -- the walk
+// itself is the surface, and `AncestryWalk` already carries all four states distinctly. Publishing
+// a typed `AncestorJudgment` today would mint an arm with no producer, which DESIGN section 4b
+// rules worse than absent because it gets cited as a capability the model does not have. The same
+// reasoning deleted `ancestry_is_root` from this module.
+//
+// WHEN A REAL CONSUMER ARRIVES -- merge-base, ahead/behind, a publication decision -- it derives its
+// answer from `ancestry_walk` and decides for itself what a broken chain means to IT, which is a
+// judgment this module cannot make on its behalf.
+
 fn ancestry_walk(
   start: RepositoryCommitRef,
   history: List<RepositoryCommitRef>,
@@ -275,20 +293,3 @@ fn ancestry_walk(
   }
 }
 
-// THERE IS DELIBERATELY NO BOOLEAN ANCESTOR PREDICATE HERE, and its absence is the point.
-//
-// A `commit_is_ancestor_of` returning Bool answered `false` for FOUR different facts: a completed
-// trace proving the candidate is not an ancestor, a broken parent chain, a start outside the
-// history, and a cycle. Only the first is a negative ANSWER; the other three are failures to
-// establish one. Collapsing them is the not-established-versus-negative conflation DESIGN names,
-// and it is the same shape repaired across the JSON and source-analysis lanes.
-//
-// It is DELETED rather than typed, on consumer count. There is no production consumer -- the walk
-// itself is the surface, and `AncestryWalk` already carries all four states distinctly. Publishing
-// a typed `AncestorJudgment` today would mint an arm with no producer, which DESIGN section 4b
-// rules worse than absent because it gets cited as a capability the model does not have. The same
-// reasoning deleted `ancestry_is_root` from this module.
-//
-// WHEN A REAL CONSUMER ARRIVES -- merge-base, ahead/behind, a publication decision -- it derives its
-// answer from `ancestry_walk` and decides for itself what a broken chain means to IT, which is a
-// judgment this module cannot make on its behalf.
