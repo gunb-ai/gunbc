@@ -3430,6 +3430,36 @@ rounding error and 1576 files is not a long tail: **this is a first estimate of
 how much the cut changes what compiles**, and §11.2c's finding that the cut
 *expands* eligibility now has a counterweight to be measured against.
 
+**GRAIN CORRECTION, 2026-08-26, AND IT IS A 3.2x OVERSTATEMENT OF THE NUMBER
+THIS CUT IS SIZED AGAINST.** The 8.1% above is **of members**, and the sentence
+that mattered — *8.1% of import edges is not a rounding error* — labelled it as
+an edge figure. It is not. **The closure-shaping unit is `(importing module,
+provider module)`, not `(imported member)`:** `import provider { a, b, c, d }`
+creates **one** provider edge, and if `a` is used while `b`, `c`, `d` are not,
+three dead members coexist with one entirely justified module edge.
+
+Re-measured on the same scan, both grains:
+
+| grain | dead | total | share | files |
+|---|---|---|---|---|
+| member | 6187 | 76702 | 8.1% | 1576 |
+| **edge** — no listed member appears outside the import blocks | **512** | **20726** | **2.5%** | **362** |
+
+**So the figure to size the cut against is 2.5% and 362 files**, not 8.1% and
+1576 — the consequential number overstated ~3.2x and the affected-file count
+~4.3x. The member figure survives as a real measurement of *member-surface
+redundancy*, which is a genuine cleanup subject and not the closure one. Both
+remain lower bounds for the same reason: prose strings were not stripped.
+
+**One further direction, flagged rather than asserted** (unverified by either
+lane): if the compiler admits **unlisted** names once a provider is in the
+closure, an import whose listed members are all unused can still be load-bearing
+through names it never listed — which would make 512 itself an overcount of
+genuinely removable edges. That is the `ImportClosureCarrier` class arriving from
+a second direction, and it pushes the same way: **the removable population is
+smaller than any lexical figure, and the refusal set is what the delta wall must
+measure.**
+
 **METHOD CORRECTION, 2026-08-26, AND IT CHANGES WHAT 6187 IS A COUNT OF.** The
 figure above is a **lexical** measurement, and a lexical check cannot establish
 that an import is dead. Arm D is the reason: an import with no used member still
