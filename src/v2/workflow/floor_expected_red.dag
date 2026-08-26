@@ -363,7 +363,7 @@ fn floor_expected_red_chunk_02() -> List<String> {
 }
 
 fn floor_expected_red_chunk_03() -> List<String> {
-  Cons { head: "test.claim.host_effect_apply_witness.witness_ssh_shell_unreachable_fails_closed", tail: Cons { head: "test.claim.host_phase_status.witness_reconcile_covers_upsert_teardown_and_noop", tail: Cons { head: "test.claim.host_phase_status.witness_remaining_work_counts_every_unfinished_cell", tail: Cons { head: "test.claim.interpreter_replacement_cut_witness_test.interpreter_cut_plan_refuses_with_open_decisions", tail: Cons { head: "test.claim.interpreter_replacement_cut_witness_test.retiring_with_x_needs_no_coverage_authority", tail: Empty {} } } } } }
+  Cons { head: "test.claim.host_effect_apply_witness.witness_ssh_shell_unreachable_fails_closed", tail: Empty {} }
 }
 
 fn floor_expected_red_chunk_04() -> List<String> {
@@ -375,7 +375,7 @@ fn floor_expected_red_chunk_05() -> List<String> {
 }
 
 fn floor_expected_red_chunk_06() -> List<String> {
-              Cons { head: "test.claim.source_integration_proof_kernel_acceptance.witness_p1_proof_kernel_acceptance_contract_holds", tail:     Cons { head: "test.claim.srv3_subsumption.comment_only_drift_is_one_change_not_remove_add", tail: Cons { head: "test.claim.srv3_subsumption.reconcile_would_teardown_only_if_ownership_claimed_it", tail: Cons { head: "test.claim.srv3_subsumption.srv3_and_srv4_disagree_on_convergence", tail: Cons { head: "test.claim.srv3_subsumption.srv3_reconcile_adds_exactly_the_missing_fleet_key", tail: Cons { head: "test.claim.srv3_subsumption.srv3_reconcile_refuses_both_unowned_keys_never_teardown", tail: Cons { head: "test.claim.srv3_subsumption.srv4_reconcile_is_converged_empty_plan", tail:               Empty {} } } } } } } }
+              Cons { head: "test.claim.source_integration_proof_kernel_acceptance.witness_p1_proof_kernel_acceptance_contract_holds", tail:                   Empty {} }
 }
 
 // SEVENTEEN generated_conformance_floor ROWS LEFT THIS ROSTER BECAUSE THE FIX THIS BRANCH CARRIES
@@ -429,7 +429,7 @@ fn floor_expected_red_chunk_07() -> List<String> {
 }
 
 fn floor_expected_red_chunk_08() -> List<String> {
-   Cons { head: "v2.test.claim.staging.cached_stage_hit_skips_stage", tail: Cons { head: "v2.test.claim.staging.cached_stage_miss_runs_stage", tail: Cons { head: "v2.test.emit.produced_decl_support_preserved.produced_decl_support_survives_augmentation", tail: Cons { head: "v2.test.execution.dag_add_emit_round_trip.dag_add_domain_coerce_accepts_holds", tail: Cons { head: "v2.test.execution.dag_add_emit_round_trip.dag_add_domain_translate_accepts_holds", tail: Empty {} } } } } }
+   Cons { head: "v2.test.execution.dag_add_emit_round_trip.dag_add_domain_coerce_accepts_holds", tail: Cons { head: "v2.test.execution.dag_add_emit_round_trip.dag_add_domain_translate_accepts_holds", tail: Empty {} } }
 }
 
 fn floor_expected_red_chunk_09() -> List<String> {
@@ -643,8 +643,20 @@ fn floor_expected_red_chunk_20() -> List<String> {
 //
 // The partition of the 164 and the measurements behind this family are
 // docs/plans/receipts/floor-runtime-error-partition-2026-08-23/.
+// ONE IDENTITY ENROLLED 2026-08-26 with a per-row reason, because a row without one is how a
+// thrown claim gets filed as a semantic red. THE CLASS: a lexical binding holding a NON-CALLABLE
+// value, called at its own spelling, still falls through to the module free function sharing that
+// spelling and returns ITS answer -- a plausible wrong value with no diagnostic. It is the
+// unrepaired half of the local-binding-shadow class whose callable half landed the same day; the
+// witness's own annotation carries the two-tier disagreement that makes it legible (the compile
+// sibling already refuses a labeled call through this exact binding, naming the callee a function
+// value, while dispatch walks past it). THE ROW ASSERTS THE DESIRED LAW, so it reds now and greens
+// on repair, and its single conjunct returns a Bool and never throws -- an OBSERVED semantic red,
+// never no-verdict debt. NEXT-RUNG TRIGGER: the census of non-callable lexical bindings whose
+// spelling collides with a builtin or module free function; the gate is widened against a measured
+// population, never speculatively.
 fn floor_expected_red_chunk_21() -> List<String> {
-  Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_extra_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_missing_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_wrong_argument_type_must_refuse_at_compile", tail: Cons { head: "test.claim.fabric_cell_evidence_algebra_witness.evidence_full_value_is_order_independent", tail: Empty {} } } } }
+  Cons { head: "v2.test.claim.local_binding_shadow.a_noncallable_local_binding_does_not_fall_through_to_the_module_function", tail:Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_extra_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_missing_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_wrong_argument_type_must_refuse_at_compile", tail: Cons { head: "test.claim.fabric_cell_evidence_algebra_witness.evidence_full_value_is_order_independent", tail: Empty {} } } } } }
 }
 
 // Sixteen moved-subject rows from required-floor run 32721781133 still answer Bool(false) after
@@ -677,51 +689,38 @@ fn floor_expected_red_chunk_24() -> List<String> {
   Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f10_direct_selected_sealed_type_refuses", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f10_direct_selected_open_type_is_clean", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f10_neither_direct_ab_at_least_one_violation", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f10_neither_direct_order_independent", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f13_variant_construction_refuses", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f19_record_lit_default_value_position_refuses", tail: Empty {} } } } } } }
 }
 
-// ONE IDENTITY ENROLLED 2026-08-25, and it carries a per-row reason because the nine rows this
-// lane just examined do not, and that absence is what let a thrown claim be filed as a semantic
-// red for weeks.
+// THIRTEEN FURTHER IDENTITIES RETIRED 2026-08-26 BY ONE REPAIR, and the number is the finding
+// rather than the bookkeeping. The local-binding-shadow repair -- a call site spelling a name held
+// by both a local binding and a module-level free function now reaches the LOCAL -- was enrolled
+// with ONE row of its own. On the first required run after it landed, thirteen OTHER enrolled reds
+// across five unrelated modules passed: test.claim.host_phase_status (2),
+// test.claim.interpreter_replacement_cut_witness_test (2), test.claim.srv3_subsumption (6),
+// v2.test.claim.staging (2) and v2.test.emit.produced_decl_support_preserved (1). None of them was
+// authored as a shadow probe and none names the class; they were filed as ordinary reds against
+// their own subjects, which is exactly what a SILENT wrong value looks like from the consumer's
+// side -- the fold returns a plausible answer, the assertion disagrees with it, and the row gets
+// written against the assertion. So this list was carrying thirteen symptoms of one cause, and the
+// cause was legible from none of them.
 //
-// THE CLASS: a call site spelling a name held by BOTH a local binding and a module-level free
-// function reaches the FREE FUNCTION when the local's value is a reference to a named top-level
-// function. Measured on a complete grid by two lanes independently -- let, parameter and pattern
-// bindings all behave the same, and a local bound to a LAMBDA reaches the local -- so the binding
-// form is not the axis and the value is. The collision is decided at the CALL SITE by the spelling
-// used there: the same value handed to a differently-named parameter reaches the local, which is
-// why a rename repairs it.
-//
-// WHY BELOW FLOOR RATHER THAN A NAMING HAZARD: where the shadowing symbol's arity DIFFERS the call
-// refuses loudly, and where it AGREES a plausible wrong value is returned with no diagnostic.
-// Reproduced twice on live corpus symbols before the fixture existed -- a displaced predicate
-// returning a ParagraphBlock, and a fold over three elements answering 3 where the direct fold
-// counts 2.
-//
-// THE ROW ASSERTS THE DESIRED LAW, not today's behaviour, so it reds now and greens on repair. Its
-// three conjuncts return Bools and never throw, so this is an OBSERVED semantic red and never
-// no-verdict debt.
-//
-// DISSOLUTION: it FLIPS TO A PERMANENT REGRESSION CONTROL when local bindings win, and is not
-// deleted then. DESIGN 4b(4) -- a climb dissolves the lower-rung production machinery and KEEPS
-// the discriminating evidence; deleting the probe on repair would recreate
-// specification-without-execution one rung up. Its two green controls (the lambda column and the
-// call-site rename) are already permanent for the same reason.
-fn floor_expected_red_chunk_25() -> List<String> {
-  Cons { head: "v2.test.claim.local_binding_shadow.local_named_function_binding_is_what_the_call_reaches", tail: Empty {} }
-}
+// THE ROWS ARE REMOVED AND THE WITNESSES ARE NOT (DESIGN 4b(4)). Every repaired claim stays
+// enrolled and now passes, which keeps the resolver repair's reach measured rather than asserted.
 
-// FOURTEEN IDENTITIES REMAIN ENROLLED from the fifteen observed Bool(false) in required-floor run
+// THIRTEEN IDENTITIES REMAIN ENROLLED from the fifteen observed Bool(false) in required-floor run
 // 32882641450 after DeclinedLiveTree stopped declining their carriers. An identity join against
 // this change's file set found no carrier overlap: the deletion changed reachability, never any
-// subject or assertion. The fourteen project NINE underlying facts -- the remaining doc-graph
+// subject or assertion. The thirteen project EIGHT underlying facts -- the remaining doc-graph
 // five project two populations, and the enforcement three project one closure/gate fact -- so identity
-// enrollment must not be read as fourteen independently-authored defects. The registered/admitted
+// enrollment must not be read as thirteen independently-authored defects. The registered/admitted
 // root fact left both this roster and its GuaranteeStall after run 32926887613 observed it passing.
+// The realization-attempt row left after #9259 made its pattern-bound render resolve lexically;
+// the witness remains an ordinary permanent regression control.
 //
 // They remain executing. A held row is temporary agreement about an observed negative answer;
 // any repair makes the row NowPassing and the stale-row wall requires its removal. Semantic
 // triggers live in gunbc.guarantee_rung_drop; assignment remains a dashboard routing fact rather
 // than entering this roster's deliberately identity-only carrier.
-fn floor_expected_red_chunk_26() -> List<String> {
-  Cons { head: "gunbc.test.claim.realization_attempt_keystone_test.witness_planted_minimal_module_emits", tail: Cons { head: "test.claim.doc_reachability_witness.doc_graph_has_no_dangling_links", tail: Cons { head: "test.claim.doc_reachability_witness.doc_graph_has_no_orphan_docs", tail: Cons { head: "v2.lens.mandatory_tag.corpus_scan_witness_test.corpus_live_clean_tree_wall_holds", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.lens_closure_question_zero_holds_live", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.lens_module_gate_holds_live", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.question_zero_verdict_live_holds", tail: Cons { head: "v2.test.execution.emit_ingest_grammar_relation_round_trip.same_grammar_parse_ingest_bridge_holds", tail: Cons { head: "v2.test.execution.self_host_candidate_generation.candidate_generation_translate_self_emit_dag_add_slice_holds", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_has_no_dangling_links", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_has_no_orphan_docs", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_is_clean", tail: Cons { head: "v2.test.lens_non_fold_residue.non_fold_residue_test.non_fold_residue_no_unrostered_or_stale", tail: Cons { head: "v2.test.lens_test_migration_debt.test_migration_debt_test.retained_rust_kernel_wall_holds_against_live_tree", tail: Empty {} } } } } } } } } } } } } } }
+fn floor_expected_red_chunk_25() -> List<String> {
+  Cons { head: "test.claim.doc_reachability_witness.doc_graph_has_no_dangling_links", tail: Cons { head: "test.claim.doc_reachability_witness.doc_graph_has_no_orphan_docs", tail: Cons { head: "v2.lens.mandatory_tag.corpus_scan_witness_test.corpus_live_clean_tree_wall_holds", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.lens_closure_question_zero_holds_live", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.lens_module_gate_holds_live", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.question_zero_verdict_live_holds", tail: Cons { head: "v2.test.execution.emit_ingest_grammar_relation_round_trip.same_grammar_parse_ingest_bridge_holds", tail: Cons { head: "v2.test.execution.self_host_candidate_generation.candidate_generation_translate_self_emit_dag_add_slice_holds", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_has_no_dangling_links", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_has_no_orphan_docs", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_is_clean", tail: Cons { head: "v2.test.lens_non_fold_residue.non_fold_residue_test.non_fold_residue_no_unrostered_or_stale", tail: Cons { head: "v2.test.lens_test_migration_debt.test_migration_debt_test.retained_rust_kernel_wall_holds_against_live_tree", tail: Empty {} } } } } } } } } } } } } }
 }
 
 // OBSERVED RED, 2026-08-25 at parked/twin-source-standing-blocked 62d6de284c1 after restoring
@@ -731,12 +730,12 @@ fn floor_expected_red_chunk_26() -> List<String> {
 // admission row in gunbc.explicit_witness_admission; this polarity row is deliberately the same
 // exact function identity. When the analyzer repair makes it pass, stale quarantine names the row
 // and both enrollments delete while the witness remains as an ordinary regression control.
-fn floor_expected_red_chunk_27() -> List<String> {
+fn floor_expected_red_chunk_26() -> List<String> {
   Cons { head: "v2.test.claim.identity_captured_navigation_roster_gate.green_control_sanctioned_reader_body_not_flagged", tail: Empty {} }
 }
 
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_22(), tail: Cons { head: floor_expected_red_chunk_23(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_25(), tail: Cons { head: floor_expected_red_chunk_26(), tail: Cons { head: floor_expected_red_chunk_27(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_22(), tail: Cons { head: floor_expected_red_chunk_23(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_25(), tail: Cons { head: floor_expected_red_chunk_26(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}}}}
 }
 
 // Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import
