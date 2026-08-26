@@ -130,12 +130,6 @@ type CommitAncestry
 // plausible-output failure at the exact boundary a commit is supposed to be trustworthy. They are
 // blocked on a ruling; parent was not. Recording that difference is the point of this note.
 
-fn ancestry_is_root(ancestry: CommitAncestry) -> Bool {
-  match ancestry {
-    RootCommit => true
-    DescendsFrom { parent: _ } => false
-  }
-}
 
 // The history this walk may traverse, supplied as the commit identities the repository holds. It is
 // a PROJECTION of the envelope's own commit list rather than a second authority: nothing here stores

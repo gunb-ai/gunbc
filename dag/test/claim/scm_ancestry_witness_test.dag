@@ -8,7 +8,6 @@ import gunbc.scm.ancestry {
   DescendsFrom,
   RepositoryCommitRef,
   repository_commit_ref_eq,
-  ancestry_is_root,
   AncestryStep,
   RepositoryHistory,
   history_step_at,
@@ -64,6 +63,17 @@ fn ancestry_witness_traces_through(
   }
 }
 
+// THE MODULE NO LONGER OFFERS A ROOT READER, so this witness derives one -- which is what any real
+// consumer would do. The deletion rests on consumer count, the same criterion that removed the
+// Boolean ancestor predicate from this module: zero production consumers, and an arm with no
+// producer is worse than absent because it gets cited as a capability.
+fn ancestry_witness_reads_as_root(ancestry: CommitAncestry) -> Bool {
+  match ancestry {
+    RootCommit => true
+    DescendsFrom { parent: _ } => false
+  }
+}
+
 // A linear history: c0 is the root, c1 descends from c0, c2 from c1.
 fn ancestry_witness_linear() -> RepositoryHistory {
   RepositoryHistory { steps: [
@@ -85,8 +95,8 @@ fn ancestry_witness_linear() -> RepositoryHistory {
 // parent is missing" the same value. Those are opposite facts: the first is every repository's
 // ordinary first commit, the second is damage.
 test fn the_root_commit_is_structurally_a_root_not_a_missing_parent() -> Bool {
-  ancestry_is_root(ancestry: RootCommit)
-    && !ancestry_is_root(ancestry: DescendsFrom { parent: ancestry_witness_ref(name: "c0") })
+  ancestry_witness_reads_as_root(ancestry: RootCommit)
+    && !ancestry_witness_reads_as_root(ancestry: DescendsFrom { parent: ancestry_witness_ref(name: "c0") })
 }
 
 test fn a_linear_history_traces_from_the_start_back_to_the_root() -> Bool {
