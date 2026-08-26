@@ -5585,7 +5585,7 @@ fn target_value_expression_record_construct_to_concrete_tokens(
 fn target_import_empty_names_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^target_import_names_empty,
-    at: invariant_port_locus(port: ^target_import_names_empty, invariant: ^target_import_names_empty),
+    at: invariant_port_locus(port: ^target_import_render_port, invariant: ^target_import_names_empty),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -5593,7 +5593,7 @@ fn target_import_empty_names_diagnostic() -> Diagnostic {
 fn target_import_empty_path_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^target_import_path_empty,
-    at: invariant_port_locus(port: ^target_import_path_empty, invariant: ^target_import_path_empty),
+    at: invariant_port_locus(port: ^target_import_render_port, invariant: ^target_import_path_empty),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

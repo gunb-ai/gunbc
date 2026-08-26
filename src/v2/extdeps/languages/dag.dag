@@ -4261,7 +4261,10 @@ fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurrenc
       outcome_rejected(
         d: Diagnostic {
           reason: ^dag_int_literal_lexeme_invalid,
-          at: invariant_port_locus(port: ^dag_int_literal_lexeme_invalid, invariant: ^dag_int_literal_lexeme_invalid),
+          at: invariant_port_locus(
+            port: ^dag_int_literal_decode_port,
+            invariant: ^dag_int_literal_lexeme_invalid
+          ),
           correction: Unavailable { reason: CorrectionNotModeled }
         }
       )

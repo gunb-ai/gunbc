@@ -152,7 +152,10 @@ type FrontierProbeIngestSubject
 fn frontier_probe_subject_digest_mismatch_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: frontier_probe_subject_digest_mismatch_reason,
-    at: invariant_port_locus(port: frontier_probe_subject_digest_mismatch_reason, invariant: frontier_probe_subject_digest_mismatch_reason),
+    at: invariant_port_locus(
+      port: ^frontier_probe_subject_digest_validation_port,
+      invariant: frontier_probe_subject_digest_mismatch_reason
+    ),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

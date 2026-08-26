@@ -126,7 +126,7 @@ type ModuleRootNameFindState
 fn resolve_diagnostic(reason: Symbol) -> Diagnostic {
   Diagnostic {
     reason: reason,
-    at: invariant_port_locus(port: reason, invariant: reason),
+    at: invariant_port_locus(port: ^resolve_diagnostic_port, invariant: reason),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

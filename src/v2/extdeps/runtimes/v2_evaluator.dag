@@ -165,7 +165,7 @@ fn v2_eval_binding_lookup_miss(_key: EnvironmentBindingKey) -> Witness<RuntimeVa
   Violates {
     diagnostic: Diagnostic {
       reason: ^v2_eval_binding_miss,
-      at: invariant_port_locus(port: ^v2_eval_binding_miss, invariant: ^v2_eval_binding_miss),
+      at: invariant_port_locus(port: ^v2_eval_binding_lookup_port, invariant: ^v2_eval_binding_miss),
       correction: Unavailable { reason: AmbiguousIntent }
     }
   }
