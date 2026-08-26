@@ -1,0 +1,553 @@
+module gunbc.floor_attempt_standing
+
+import std.types { String }
+import v2.std.logic { Bool }
+
+// HEAD-STANDING AND LANE-TERMINALITY ARE TWO INDEPENDENT AXES, AND EVERY SHAPE THIS GATE HAS
+// WORN SO FAR COLLAPSED THEM INTO ONE.
+//
+// The required `witnesses` aggregator answers one question -- may this head merge -- and it has
+// been answering it from one input, the two lane results. That input cannot distinguish an
+// attempt whose head is still the pull request's head from an attempt whose head was replaced
+// while it ran, so the two previous shapes each picked a side and each is fail-open somewhere:
+//
+//   `always()`      -- the job runs after a workflow cancellation, `cancelled != success` fires,
+//                      and a lawfully superseded push-over-push publishes a FAILED aggregate over
+//                      a head whose work has intentionally moved on. Fail-open on the READER: it
+//                      spends investigation on abandoned heads, which it did, repeatedly.
+//   `!cancelled()`  -- the job does not run at all when the workflow was cancelled, so the modal
+//                      supersession is quiet. But cancellation does not prove supersession: a
+//                      manual cancel, a runner eviction, a workflow timeout or an operator
+//                      stopping a queue create no replacement head, and the LIVE head is then
+//                      left with no verdict. Fail-open on the MERGE CANDIDATE, which is worse.
+//
+// Neither is a wrong answer to its own question. They are answers to two different questions,
+// and the defect is that one condition was being asked to carry both. This module separates
+// them: `FloorHeadStanding` is what the head axis observes, `FloorLaneTerminal` is what the lane
+// axis observes, and `floor_rendered_verdict` is the one total composition over the pair. The
+// composed rule the operator ruling fixes, and which neither previous shape can express:
+//
+//   cancelled (or skipped, or abandoned) AND measured != current  -> superseded, do not investigate
+//   cancelled (or skipped, or abandoned) AND measured == current  -> evidence UNESTABLISHED, BLOCK
+//
+// `cancelled -> benign` and `cancelled -> failed` are both forbidden as universal readings.
+//
+// WHAT THIS MODULE IS NOT. It is not a merge-admission receipt and it is not the stable-head
+// lease that would let the expensive floor fold run only for the exact head it was admitted for.
+// Those are separate concepts the same ruling names and tells us to keep separate; fusing the
+// names here is how a lease becomes an admission by accident.
+
+// THE ATTEMPT'S OWN IDENTITY, carried as the wire strings the workflow context renders.
+//
+// EVERY FIELD IS A STRING AND NONE IS OPTIONAL, and that is deliberate rather than lazy. These
+// are values GitHub interpolates into a shell step; an absent context renders as the EMPTY
+// STRING and never as a missing key, so `String` with an empty inhabitant is what the boundary
+// actually produces. Modelling them as `String?` would invent a distinction the transport cannot
+// carry and would let a reader believe an absence had been observed as such.
+//
+// `pull_request` is empty for push, merge_group and workflow_dispatch runs. That emptiness is
+// the whole content of `NoPullRequestSubject` below -- an attempt with no pull request cannot be
+// superseded by a newer push to one.
+//
+// THERE IS NO `run_attempt` FIELD, AND ITS ABSENCE IS A DECISION RATHER THAN AN OVERSIGHT.
+// `run_attempt` has no shape anywhere in `extdeps/` -- it exists in this repository only as the
+// raw env-var name `GITHUB_RUN_ATTEMPT` read by `tools.merge_admission_current_context`. The head
+// axis does not need it: head-standing is decided by measured head against current head, and
+// nothing yet needs to distinguish two attempts of the SAME run. Adding the field now would be a
+// carrier with no consumer, which is the thing this module is otherwise arguing against.
+type FloorAttemptSubject {
+  pull_request: String
+  measured_head: String
+  run_id: String
+}
+
+// THE RECEIPT LABELS, DECLARED ONCE AND CONSUMED TWICE.
+//
+// `gunbc.required_lanes_gate` renders this line in shell, interpolating workflow contexts it
+// cannot evaluate here; this module renders it from a value. Two realizations of one line, so
+// the labels are one authority rather than two spellings, and a witness joins the emitted yaml
+// to `floor_attempt_subject_receipt` over a fixture subject.
+data floor_attempt_receipt_prefix: String = "required floor attempt: pull_request="
+data floor_attempt_receipt_measured_head_label: String = " measured_head="
+data floor_attempt_receipt_run_id_label: String = " run_id="
+data floor_attempt_receipt_standing_label: String = " head_standing="
+
+fn floor_attempt_subject_receipt(subject: FloorAttemptSubject, standing: FloorHeadStanding) -> String {
+  join(
+    [
+      floor_attempt_receipt_prefix,
+      subject.pull_request,
+      floor_attempt_receipt_measured_head_label,
+      subject.measured_head,
+      floor_attempt_receipt_run_id_label,
+      subject.run_id,
+      floor_attempt_receipt_standing_label,
+      floor_head_standing_name(standing: standing)
+    ],
+    ""
+  )
+}
+
+// WHY THE HEAD AXIS CAN FAIL TO ANSWER, split by who owns the repair.
+//
+// NoPullRequestSubject is NOT a deficit. The attempt has no pull request, so no newer push can
+// replace its head and the head axis is inapplicable rather than unmeasured. It composes exactly
+// as `FloorHeadCurrent` does, and the two are kept distinct only so the receipt can say which
+// one it was.
+//
+// CurrentHeadNotAcquired IS a deficit, and it is the one arm that must never be read as benign:
+// not knowing whether this attempt was superseded is not evidence that it was.
+type FloorHeadUnobservableCause =
+    NoPullRequestSubject
+  | CurrentHeadNotAcquired { detail: String }
+
+// THE HEAD AXIS. `FloorHeadSuperseded` is the only state that can excuse a stopped lane, and it
+// is reachable only from TWO POSITIVE OBSERVATIONS that disagree -- never from one observation
+// plus an assumption about the other.
+type FloorHeadStanding =
+    FloorHeadCurrent { measured: String }
+  | FloorHeadSuperseded { measured: String, current: String }
+  | FloorHeadUnobservable { measured: String, cause: FloorHeadUnobservableCause }
+
+// THE LANE AXIS, decoded from `needs.<job>.result`.
+//
+// `LaneAbandoned` is on this list because a production run put it there. Run 32883390033 read
+// `BUILD="cancelled" FLOOR="abandoned"`; `abandoned` is a `needs.*.result` value nobody here knew
+// was reachable. THE RESIDUAL ARM IS THEREFORE LOAD-BEARING AND MUST STAY NON-SUCCESS: this
+// decode is a rendering vocabulary, never a permission list. `floor_lane_succeeded` admits
+// exactly `LaneSucceeded`, so a result spelling that arrives tomorrow lands in
+// `LaneTerminalUnobservable`, carries its own spelling into the receipt, and blocks -- which is
+// the same closed-vocabulary law the shell gate enforces with `!= success` rather than with an
+// enumeration of bad states.
+type FloorLaneTerminal =
+    LaneSucceeded
+  | LaneFailed
+  | LaneCancelled
+  | LaneSkipped
+  | LaneAbandoned
+  | LaneTerminalUnobservable { observed: String }
+
+// WHY EVALUATION STOPPED, AND IT IS TWO AXES RATHER THAN ONE CAUSE FIELD.
+//
+// THE MEASUREMENT THAT FORCES THIS, and it is a correction to what this module said one revision
+// ago rather than an addition to it. A lane's GitHub conclusion does not establish whether the
+// SUBJECT was evaluated, and the map is one-to-many in the direction that matters:
+//
+//   gunbc#9298 build   conclusion FAILURE    subject NOT evaluated -- rustfmt resolved and ran at
+//                      admission, then vanished mid-run, so regen never judged the tree. The diff
+//                      was one markdown file. Rerun unchanged: PASS.
+//   arity-zero import  conclusion FAILURE    subject EVALUATED and refuted -- the parser did its
+//                      job and the author has a real defect.
+//   gunbc#9269 floor   conclusion CANCELLED  subject NOT evaluated.
+//
+// `LaneFailed` therefore maps to BOTH subject standings, so no decoding of the conclusion word,
+// however careful, can recover it. That is why these are two questions and not two spellings of
+// one -- a nickname would be a bijection, and this is not one. Receipts measured by
+// warm-hawk-909; the three-layer construction is theirs.
+//
+// THE DECIDING FACT IS THE PRESENCE OF A TERMINAL SUBJECT RECEIPT, NEVER THE CONCLUSION WORD. A
+// typed refusal is NOT automatically a non-evaluation: a parser rejecting a malformed import IS
+// the subject being evaluated. Keying on the word `refused` would be wrong in the expensive
+// direction.
+//
+// MECHANISM AND ATTRIBUTION DO NOT COLLAPSE INTO ONE FIELD, and the reason is load-bearing: even
+// a CONFIRMED memory kill establishes MECHANISM and still leaves ATTRIBUTION open, because
+// intrinsic demand, a mis-sized slot and co-resident host pressure are three different owners
+// with three different fixes. Evidence travels in the receipt and must never silently upgrade the
+// attribution.
+type EvaluationInterruptionKind =
+    ToolchainIdentityLost
+  | WorkflowCancelled
+  | RunnerLost
+  | MemoryTermination { detail: String }
+  | ProcessSignal { detail: String }
+
+type EvaluationMechanism =
+    MechanismEstablished { kind: EvaluationInterruptionKind }
+  | MechanismUnestablished
+
+type EvaluationAttribution =
+    SubjectIntrinsic
+  | EvaluationSubstrate
+  | SharedHostCoTenancy
+  | SupersededByNewerRun
+  | ManuallyCancelled
+  | AttributionUnestablished
+
+type EvaluationInterruption {
+  mechanism: EvaluationMechanism
+  attribution: EvaluationAttribution
+  evidence: String
+}
+
+// THE RENDERED VERDICT. Exactly one arm does not block, and it is not the green one.
+//
+// AttemptSuperseded does not block because the head it describes is not a merge candidate: the
+// push that superseded this attempt created the head that will be merged, and that head has its
+// own run. It is also the only arm that instructs a reader NOT to investigate.
+//
+// AttemptStandsRed and AttemptStandsUnestablished both block, and the split between them is the
+// point of the ruling rather than cosmetic -- BUT IT IS A SPLIT BY CERTAINTY, NOT BY OWNER, and
+// an earlier revision of this comment got that wrong in a way worth recording.
+//
+// It read: "Red means a lane reached a verdict and the verdict was failure -- a subject defect,
+// and the author's to fix." THAT IS NOT ESTABLISHED, and gunbc#9298 above is the counterexample:
+// a build lane concluded FAILURE over a one-markdown-file diff because rustfmt vanished mid-run,
+// and the subject was never judged at all. So the three states are:
+//
+//   Unestablished -- no lane produced a conclusion of its own, so the subject verdict is
+//                    UNOBSERVABLE from here. Rerun it; it is not a defect in the diff.
+//   Red           -- a lane concluded failure. The subject MAY have been evaluated, and this
+//                    aggregator cannot tell which, because it holds only the conclusion word.
+//                    Go and read the log; do not assume a defect and do not assume infra.
+//   Green         -- both lanes succeeded.
+//
+// THE FIRST ARM SAYS UNOBSERVABLE AND NOT "CERTAINLY NOT EVALUATED", and the one-word difference
+// is the same error this comment corrects one arm over. AN ABSENT CONCLUSION IS EVIDENCE ABOUT
+// OBSERVABILITY, NEVER ABOUT THE WORLD. The reachable counterexample is ordinary rather than
+// exotic: the fold COMPLETES, the verdict is computed, and the job is cancelled during reporting
+// or upload -- conclusion `cancelled`, no receipt published, subject evaluated. Measured on two
+// of the same night's own cancellations (warm-hawk-909): a floor lane cut at 1m19s inside "Build
+// the witness fold" evaluated nothing, and one cut at 2520s with 9000 of 11036 folded had
+// evaluated most of its subject. The aggregator cannot distinguish those two, which is the point.
+// The remedy is `rerun` either way, so this changes no behaviour -- it is corrected because
+// SENTENCES PROPAGATE, and this one will be read by every lane that lands in this arm.
+//
+// IT ALSO STRENGTHENS THE RECEIPT'S OWN CASE. If an absent conclusion already meant "certainly not
+// evaluated", a terminal subject receipt would be buying very little. What it actually buys is the
+// CONVERSION OF AN UNOBSERVABLE INTO AN OBSERVATION, which is why
+// `floor_subject_receipt_acquisition_trigger` is worth its agreement.
+//
+// Red is therefore the UNCERTAIN middle and not the certain author-owned end. Both blocking arms
+// carry an `EvaluationInterruption` saying exactly how much is known, and on the red arm that is
+// honestly `MechanismUnestablished` today. What would make red certain is a TERMINAL SUBJECT
+// RECEIPT published by the lane and read here -- that is this pair's next-rung trigger, recorded
+// on `floor_subject_receipt_acquisition_trigger`, and it is a different acquisition from the head
+// one.
+type FloorRenderedVerdict =
+    AttemptSuperseded { measured: String, current: String }
+  | AttemptStandsGreen { standing: FloorHeadStanding }
+  | AttemptStandsRed {
+      standing: FloorHeadStanding,
+      build: FloorLaneTerminal,
+      floor: FloorLaneTerminal,
+      interruption: EvaluationInterruption
+    }
+  | AttemptStandsUnestablished {
+      standing: FloorHeadStanding,
+      build: FloorLaneTerminal,
+      floor: FloorLaneTerminal,
+      interruption: EvaluationInterruption
+    }
+
+// THE WIRE SPELLINGS, DECLARED ONCE HERE AND CONSUMED BY BOTH REALIZATIONS.
+//
+// The shell gate branches on these literals and this module decodes them, so they are one
+// authority rather than two spellings that happen to agree today. `gunbc.required_lanes_gate`
+// imports them; a witness over the emitted yaml asserts the rendered text carries exactly these.
+data floor_lane_result_success: String = "success"
+data floor_lane_result_failure: String = "failure"
+data floor_lane_result_cancelled: String = "cancelled"
+data floor_lane_result_skipped: String = "skipped"
+data floor_lane_result_abandoned: String = "abandoned"
+
+fn floor_lane_terminal_from_result(result: String) -> FloorLaneTerminal {
+  if result == floor_lane_result_success {
+    LaneSucceeded
+  } else {
+    if result == floor_lane_result_failure {
+      LaneFailed
+    } else {
+      if result == floor_lane_result_cancelled {
+        LaneCancelled
+      } else {
+        if result == floor_lane_result_skipped {
+          LaneSkipped
+        } else {
+          if result == floor_lane_result_abandoned {
+            LaneAbandoned
+          } else {
+            LaneTerminalUnobservable { observed: result }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn floor_lane_terminal_name(terminal: FloorLaneTerminal) -> String {
+  match terminal {
+    LaneSucceeded => floor_lane_result_success
+    LaneFailed => floor_lane_result_failure
+    LaneCancelled => floor_lane_result_cancelled
+    LaneSkipped => floor_lane_result_skipped
+    LaneAbandoned => floor_lane_result_abandoned
+    LaneTerminalUnobservable { observed: observed } => observed
+  }
+}
+
+fn floor_lane_succeeded(terminal: FloorLaneTerminal) -> Bool {
+  match terminal {
+    LaneSucceeded => true
+    LaneFailed => false
+    LaneCancelled => false
+    LaneSkipped => false
+    LaneAbandoned => false
+    LaneTerminalUnobservable { observed: _ } => false
+  }
+}
+
+fn floor_lane_failed(terminal: FloorLaneTerminal) -> Bool {
+  match terminal {
+    LaneSucceeded => false
+    LaneFailed => true
+    LaneCancelled => false
+    LaneSkipped => false
+    LaneAbandoned => false
+    LaneTerminalUnobservable { observed: _ } => false
+  }
+}
+
+// THE HEAD-STANDING WIRE SPELLINGS. `not-applicable` and `unobserved` are two states and not one:
+// collapsing them would put "this attempt has no pull request" and "we could not reach the pull
+// request" under one word, and only the second is a deficit anyone should act on.
+data floor_head_standing_current: String = "current"
+data floor_head_standing_superseded: String = "superseded"
+data floor_head_standing_not_applicable: String = "not-applicable"
+data floor_head_standing_unobserved: String = "unobserved"
+
+fn floor_head_standing_name(standing: FloorHeadStanding) -> String {
+  match standing {
+    FloorHeadCurrent { measured: _ } => floor_head_standing_current
+    FloorHeadSuperseded { measured: _, current: _ } => floor_head_standing_superseded
+    FloorHeadUnobservable { measured: _, cause: cause } => match cause {
+      NoPullRequestSubject => floor_head_standing_not_applicable
+      CurrentHeadNotAcquired { detail: _ } => floor_head_standing_unobserved
+    }
+  }
+}
+
+// THE COMPOSITION, AND ITS ONE ASYMMETRY.
+//
+// Supersession short-circuits the lane axis entirely -- an abandoned head's lane results are not
+// evidence about anything, whatever they say. Every other head state falls through to the lane
+// axis unchanged, INCLUDING `CurrentHeadNotAcquired`: an unacquired head axis is treated exactly
+// as a current one, which is the fail-closed arm and is byte-for-byte the behaviour the gate had
+// before this module existed. That is the property that makes the head axis safe to add before
+// its acquisition is built: with the acquisition absent, every run takes the unobserved arm and
+// nothing about the verdict changes.
+fn floor_rendered_verdict(
+  standing: FloorHeadStanding,
+  build: FloorLaneTerminal,
+  floor: FloorLaneTerminal
+) -> FloorRenderedVerdict {
+  match standing {
+    FloorHeadSuperseded { measured: measured, current: current } =>
+      AttemptSuperseded { measured: measured, current: current }
+    FloorHeadCurrent { measured: _ } =>
+      floor_standing_attempt_verdict(standing: standing, build: build, floor: floor)
+    FloorHeadUnobservable { measured: _, cause: _ } =>
+      floor_standing_attempt_verdict(standing: standing, build: build, floor: floor)
+  }
+}
+
+fn floor_standing_attempt_verdict(
+  standing: FloorHeadStanding,
+  build: FloorLaneTerminal,
+  floor: FloorLaneTerminal
+) -> FloorRenderedVerdict {
+  if floor_lane_succeeded(terminal: build) && floor_lane_succeeded(terminal: floor) {
+    AttemptStandsGreen { standing: standing }
+  } else {
+    if floor_lane_failed(terminal: build) || floor_lane_failed(terminal: floor) {
+      AttemptStandsRed {
+        standing: standing,
+        build: build,
+        floor: floor,
+        interruption: floor_attempt_interruption(build: build, floor: floor)
+      }
+    } else {
+      AttemptStandsUnestablished {
+        standing: standing,
+        build: build,
+        floor: floor,
+        interruption: floor_attempt_interruption(build: build, floor: floor)
+      }
+    }
+  }
+}
+
+// WHAT THE AGGREGATOR CAN DERIVE FROM WHAT IT HOLDS, AND NOTHING MORE.
+//
+// The aggregator reads two `needs.*.result` words. That is enough to establish the MECHANISM in
+// exactly one case -- a lane the workflow cancelled -- and enough to establish the ATTRIBUTION in
+// none, because a cancellation says only that this attempt stopped and never why. Every other
+// spelling leaves both axes open, and this function says so rather than guessing.
+//
+// THE CHEAP ARM IS DELIBERATE AND THE EXPENSIVE ONE IS DELIBERATELY ABSENT. Populating mechanism
+// after a silent death needs an observer OUTSIDE the child's kill domain plus a job to slot to
+// cgroup join, which reaches the runner allocation authority. If that landed as one unit with
+// this, the correct cheap half would wait on it and nobody would get either.
+//
+// THE HAZARD THIS FUNCTION CREATES, NAMED SO IT IS NOT DISCOVERED LATER: `MechanismUnestablished`
+// is honest the day it is written and indistinguishable from an untyped infra bucket a week
+// later. It is rendered into the aggregator's annotation on every blocking run precisely so its
+// population stays countable from the runs that produce it -- a state nobody measures is a state
+// that never gets promoted. The instrument is the required run's own log line, named rather than
+// transcribed.
+fn floor_lane_interruption(terminal: FloorLaneTerminal) -> EvaluationInterruption {
+  match terminal {
+    LaneCancelled => EvaluationInterruption {
+      mechanism: MechanismEstablished { kind: WorkflowCancelled },
+      attribution: AttributionUnestablished,
+      evidence: floor_lane_terminal_name(terminal: terminal)
+    }
+    LaneSucceeded => floor_unestablished_interruption(terminal: terminal)
+    LaneFailed => floor_unestablished_interruption(terminal: terminal)
+    LaneSkipped => floor_unestablished_interruption(terminal: terminal)
+    LaneAbandoned => floor_unestablished_interruption(terminal: terminal)
+    LaneTerminalUnobservable { observed: _ } => floor_unestablished_interruption(terminal: terminal)
+  }
+}
+
+fn floor_unestablished_interruption(terminal: FloorLaneTerminal) -> EvaluationInterruption {
+  EvaluationInterruption {
+    mechanism: MechanismUnestablished,
+    attribution: AttributionUnestablished,
+    evidence: floor_lane_terminal_name(terminal: terminal)
+  }
+}
+
+// THE INTERRUPTION IS THE NON-SUCCEEDING LANE'S, and the build lane is read first only because
+// something must be. When both lanes are non-success the receipt carries both spellings anyway,
+// on the verdict's own `build` and `floor` fields, so nothing is lost by the choice.
+fn floor_attempt_interruption(
+  build: FloorLaneTerminal,
+  floor: FloorLaneTerminal
+) -> EvaluationInterruption {
+  if floor_lane_succeeded(terminal: build) {
+    floor_lane_interruption(terminal: floor)
+  } else {
+    floor_lane_interruption(terminal: build)
+  }
+}
+
+data floor_mechanism_unestablished_name: String = "unestablished"
+data floor_mechanism_workflow_cancelled_name: String = "workflow-cancelled"
+data floor_mechanism_toolchain_identity_lost_name: String = "toolchain-identity-lost"
+data floor_mechanism_runner_lost_name: String = "runner-lost"
+data floor_mechanism_memory_termination_name: String = "memory-termination"
+data floor_mechanism_process_signal_name: String = "process-signal"
+
+fn floor_evaluation_mechanism_name(mechanism: EvaluationMechanism) -> String {
+  match mechanism {
+    MechanismUnestablished => floor_mechanism_unestablished_name
+    MechanismEstablished { kind: kind } => match kind {
+      WorkflowCancelled => floor_mechanism_workflow_cancelled_name
+      ToolchainIdentityLost => floor_mechanism_toolchain_identity_lost_name
+      RunnerLost => floor_mechanism_runner_lost_name
+      MemoryTermination { detail: _ } => floor_mechanism_memory_termination_name
+      ProcessSignal { detail: _ } => floor_mechanism_process_signal_name
+    }
+  }
+}
+
+data floor_attribution_unestablished_name: String = "unestablished"
+data floor_attribution_subject_intrinsic_name: String = "subject-intrinsic"
+data floor_attribution_evaluation_substrate_name: String = "evaluation-substrate"
+data floor_attribution_shared_host_co_tenancy_name: String = "shared-host-co-tenancy"
+data floor_attribution_superseded_by_newer_run_name: String = "superseded-by-newer-run"
+data floor_attribution_manually_cancelled_name: String = "manually-cancelled"
+
+fn floor_evaluation_attribution_name(attribution: EvaluationAttribution) -> String {
+  match attribution {
+    AttributionUnestablished => floor_attribution_unestablished_name
+    SubjectIntrinsic => floor_attribution_subject_intrinsic_name
+    EvaluationSubstrate => floor_attribution_evaluation_substrate_name
+    SharedHostCoTenancy => floor_attribution_shared_host_co_tenancy_name
+    SupersededByNewerRun => floor_attribution_superseded_by_newer_run_name
+    ManuallyCancelled => floor_attribution_manually_cancelled_name
+  }
+}
+
+// WHAT THE REQUIRED CONTEXT DOES WITH THE VERDICT. Three of four arms block, and the one that
+// does not is the one whose head will never be merged.
+fn floor_rendered_verdict_blocks(verdict: FloorRenderedVerdict) -> Bool {
+  match verdict {
+    AttemptSuperseded { measured: _, current: _ } => false
+    AttemptStandsGreen { standing: _ } => false
+    AttemptStandsRed { standing: _, build: _, floor: _, interruption: _ } => true
+    AttemptStandsUnestablished { standing: _, build: _, floor: _, interruption: _ } => true
+  }
+}
+
+data floor_rendered_verdict_superseded_name: String = "superseded-attempt"
+data floor_rendered_verdict_green_name: String = "stands-green"
+data floor_rendered_verdict_red_name: String = "stands-red"
+data floor_rendered_verdict_unestablished_name: String = "stands-unestablished"
+
+fn floor_rendered_verdict_name(verdict: FloorRenderedVerdict) -> String {
+  match verdict {
+    AttemptSuperseded { measured: _, current: _ } => floor_rendered_verdict_superseded_name
+    AttemptStandsGreen { standing: _ } => floor_rendered_verdict_green_name
+    AttemptStandsRed { standing: _, build: _, floor: _, interruption: _ } =>
+      floor_rendered_verdict_red_name
+    AttemptStandsUnestablished { standing: _, build: _, floor: _, interruption: _ } =>
+      floor_rendered_verdict_unestablished_name
+  }
+}
+
+// WHAT THE HEAD AXIS IS WAITING ON, NAMED SO THE STALL IS TRACKED RATHER THAN SILENT (DESIGN
+// 4b(2)).
+//
+// `FloorHeadSuperseded` is unreachable from production input today, and that is a property of the
+// ACQUISITION rather than of this composition: nothing in the required run reads the pull
+// request's current head, so no two observations can disagree. The census behind that statement:
+// no step in any emitted workflow shells to `gh api`, `gh run` or `gh pr` or curls the API; the
+// only run-metadata expression anywhere is `github.run_id` inside the witnesses concurrency key,
+// which is a key string and not an observation; and `witnesses.yml` grants `contents: read` with
+// no token in any job's env, so no such step could authenticate if it existed.
+//
+// THE SHAPE IS NOT NET-NEW, ONLY ITS ACQUISITION HERE IS. `extdeps.github.pulls` declares
+// `github.Pulls.Get` over a rest transport returning `PullRequest`, whose `head` carries `sha`,
+// and it has executing consumers in `gunbc.tools.review` and `gunbc.tools.review_codex`. What is
+// missing is a step inside the required run that calls it, and the permission grant that would
+// let it.
+//
+// NEXT-RUNG TRIGGER: an operator agreement enrolling one authenticated read of the pull request's
+// current head in the aggregator, with `pull-requests: read` on that job. When it lands,
+// `FloorHeadSuperseded` becomes reachable from production, `required_lanes_gate` emits the
+// superseded arm, and `w_RED_no_emitted_gate_arm_reaches_superseded` goes red -- deliberately, so
+// the day the acquisition arrives is the day someone is forced back to this paragraph.
+data floor_attempt_standing_acquisition_trigger: String = "Head-standing acquisition is not enrolled in the required run. FloorHeadSuperseded is reachable from a fixture and not from production. Retire this row when an operator-agreed authenticated read of the pull request current head, with pull-requests read on the aggregator job, lands in gunbc.required_lanes_gate."
+
+// THE SECOND ACQUISITION, AND IT IS A DIFFERENT ONE FROM THE HEAD (DESIGN 4b(2)).
+//
+// BOTH BLOCKING ARMS ARE WAITING ON ONE THING, and it is the same thing. `AttemptStandsRed` is
+// the uncertain middle: a lane concluded failure, and whether the SUBJECT was evaluated is not
+// recoverable from that word. `AttemptStandsUnestablished` is the unobservable end: no conclusion
+// was produced, and whether the subject was evaluated before the job stopped is not recoverable
+// either. What would decide BOTH is a TERMINAL SUBJECT RECEIPT -- the lane publishing, as a job
+// output the aggregator can read, whether its own evaluation reached a verdict.
+//
+// THAT IS WHAT THE RECEIPT BUYS, STATED AT ITS REAL WEIGHT: it converts an UNOBSERVABLE into an
+// OBSERVATION. With it present, red splits into "subject evaluated and refuted" (the author's) and
+// "subject never evaluated" (a rerun); unestablished stops being a single word covering both a
+// lane cut before it began and a lane cut after it had folded 9000 of 11036 claims; and
+// `MechanismUnestablished` stops being the destination for every failure whose cause was the
+// substrate.
+//
+// THIS IS NOT THE HEAD ACQUISITION AND MUST NOT BE BUNDLED WITH IT. The head acquisition is one
+// authenticated read of a pull request; this is a lane publishing a receipt about its own run.
+// They need different agreements, they fail differently, and pairing them would make each wait
+// on the other.
+//
+// AND IT IS NOT THE SUPERVISOR EITHER. Establishing MECHANISM after a silent death -- a memory
+// kill, a lost runner -- needs an observer outside the child's kill domain and a job to slot to
+// cgroup join, which reaches the runner allocation authority. That is a third, larger trigger,
+// and the cheap correct half above must not wait on it.
+//
+// NEXT-RUNG TRIGGER: a terminal subject receipt published by each required lane and read by the
+// aggregator. When it lands, `w_RED_a_failed_lane_carries_no_established_mechanism` goes red --
+// deliberately, so nobody can land the receipt without being routed back here.
+data floor_subject_receipt_acquisition_trigger: String = "A lane's GitHub conclusion does not establish whether its subject was evaluated; gunbc#9298 concluded FAILURE over a one-file markdown diff with the subject never judged. Retire this row when each required lane publishes a terminal subject receipt the aggregator reads, at which point AttemptStandsRed splits into subject-refuted and subject-not-evaluated."

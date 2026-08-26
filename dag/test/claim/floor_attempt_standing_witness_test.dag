@@ -1,0 +1,312 @@
+module test.claim.floor_attempt_standing_witness_test
+
+import std.types { Bool, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.floor_attempt_standing {
+  FloorAttemptSubject,
+  FloorHeadCurrent,
+  FloorHeadSuperseded,
+  FloorHeadUnobservable,
+  NoPullRequestSubject,
+  CurrentHeadNotAcquired,
+  LaneSucceeded,
+  LaneFailed,
+  LaneCancelled,
+  LaneSkipped,
+  LaneAbandoned,
+  LaneTerminalUnobservable,
+  AttemptSuperseded,
+  AttemptStandsGreen,
+  floor_lane_terminal_from_result,
+  floor_lane_terminal_name,
+  floor_rendered_verdict,
+  floor_rendered_verdict_blocks,
+  floor_rendered_verdict_name,
+  floor_rendered_verdict_superseded_name,
+  floor_rendered_verdict_green_name,
+  floor_rendered_verdict_red_name,
+  floor_rendered_verdict_unestablished_name,
+  floor_attempt_subject_receipt,
+  floor_head_standing_unobserved,
+  AttemptStandsRed,
+  AttemptStandsUnestablished,
+  floor_evaluation_mechanism_name,
+  floor_evaluation_attribution_name,
+  floor_mechanism_unestablished_name,
+  floor_mechanism_workflow_cancelled_name,
+  floor_attribution_unestablished_name
+}
+import gunbc.witness_floor_workflow {
+  expected_witness_floor_yml,
+  WitnessFloorGenerated,
+  WitnessFloorGenerationRefused
+}
+
+// THE COMPOSITION IS EXERCISED HERE, NOT DESCRIBED IN A HEADER.
+//
+// `gunbc.floor_attempt_standing` makes two claims a reader would otherwise have to take on
+// trust: that head-standing and lane-terminality compose independently, and that the superseded
+// arm is a healthy quiet guard rather than a decoration. The second is the one that needs care.
+//
+// REACHABILITY IS JUDGED AGAINST WHAT A FIXTURE MAY AUTHOR, NEVER AGAINST WHAT PRODUCTION
+// CURRENTLY PRODUCES. Those are different questions and only the first decides whether an arm
+// should exist. The superseded arm is unreachable in PRODUCTION -- nothing in the required run
+// acquires the pull request's current head, so no two observations can disagree -- and trivially
+// reachable from a FIXTURE: hand it two disagreeing heads and it fires. That is the difference
+// between an arm whose red cannot be produced anywhere, which is a decoration and worse than
+// absent, and an arm that is simply unoccupied today, which is a guard being quiet. Ours is the
+// second, and these rows are the proof rather than the assertion.
+
+data witness_live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE TWO AXES ARE INDEPENDENT, MEASURED ON THE ONE CELL THAT DECIDES IT.
+//
+// The lane input is held FIXED at cancelled/cancelled and only the head axis moves. If the axes
+// were entangled -- if cancellation itself carried a verdict, which is what both previous shapes
+// assumed -- these two calls could not disagree. They do: superseded does not block, current
+// blocks. That is the whole ruling in one comparison, and neither `always()` nor `!cancelled()`
+// can express it, because each answers with one condition what this answers with two inputs.
+test fn w_RED_cancellation_alone_does_not_decide_the_verdict() -> Bool {
+  let superseded = floor_rendered_verdict(
+    standing: FloorHeadSuperseded { measured: "aaaaaaa", current: "bbbbbbb" },
+    build: LaneCancelled,
+    floor: LaneCancelled
+  )
+  let live = floor_rendered_verdict(
+    standing: FloorHeadCurrent { measured: "aaaaaaa" },
+    build: LaneCancelled,
+    floor: LaneCancelled
+  )
+  floor_rendered_verdict_name(verdict: superseded) == floor_rendered_verdict_superseded_name
+    && floor_rendered_verdict_blocks(verdict: superseded) == false
+    && floor_rendered_verdict_name(verdict: live) == floor_rendered_verdict_unestablished_name
+    && floor_rendered_verdict_blocks(verdict: live) == true
+}
+
+// THE THREE NON-VERDICT LANE STATES ALL BLOCK ON A LIVE HEAD, AND NONE OF THEM IS RED.
+//
+// This is the cell the interim `!cancelled()` shape reads as benign: a lane killed with no
+// replacement head coming. Skipped and abandoned are here beside cancelled because they arrive
+// by different routes and must not be allowed to diverge -- `abandoned` in particular is a
+// `needs.*.result` value a production run surfaced that no author here knew was reachable.
+test fn w_RED_a_live_head_with_no_lane_verdict_blocks_as_unestablished() -> Bool {
+  let cancelled = floor_rendered_verdict(
+    standing: FloorHeadCurrent { measured: "aaaaaaa" },
+    build: LaneSucceeded,
+    floor: LaneCancelled
+  )
+  let skipped = floor_rendered_verdict(
+    standing: FloorHeadCurrent { measured: "aaaaaaa" },
+    build: LaneSkipped,
+    floor: LaneSucceeded
+  )
+  let abandoned = floor_rendered_verdict(
+    standing: FloorHeadCurrent { measured: "aaaaaaa" },
+    build: LaneSucceeded,
+    floor: LaneAbandoned
+  )
+  floor_rendered_verdict_name(verdict: cancelled) == floor_rendered_verdict_unestablished_name
+    && floor_rendered_verdict_name(verdict: skipped) == floor_rendered_verdict_unestablished_name
+    && floor_rendered_verdict_name(verdict: abandoned) == floor_rendered_verdict_unestablished_name
+    && floor_rendered_verdict_blocks(verdict: cancelled) == true
+    && floor_rendered_verdict_blocks(verdict: skipped) == true
+    && floor_rendered_verdict_blocks(verdict: abandoned) == true
+}
+
+// RED IS RESERVED FOR A LANE THAT REACHED A VERDICT, and the control beside it is what makes the
+// claim discriminating rather than a restatement. A failed lane is red even when the OTHER lane
+// produced no verdict at all, so failure dominates -- otherwise a run with one failure and one
+// cancellation would route a real subject defect to "rerun it".
+test fn w_RED_a_failed_lane_is_red_and_dominates_a_non_verdict_sibling() -> Bool {
+  let failed = floor_rendered_verdict(
+    standing: FloorHeadCurrent { measured: "aaaaaaa" },
+    build: LaneFailed,
+    floor: LaneCancelled
+  )
+  let non_verdict = floor_rendered_verdict(
+    standing: FloorHeadCurrent { measured: "aaaaaaa" },
+    build: LaneCancelled,
+    floor: LaneCancelled
+  )
+  floor_rendered_verdict_name(verdict: failed) == floor_rendered_verdict_red_name
+    && floor_rendered_verdict_name(verdict: non_verdict) == floor_rendered_verdict_unestablished_name
+}
+
+// AN UNKNOWN LANE SPELLING BLOCKS, WHICH IS THE CLOSED-VOCABULARY LAW.
+//
+// The decode is a rendering vocabulary and never a permission list: a result spelling that
+// arrives tomorrow lands in `LaneTerminalUnobservable`, carries its own text into the receipt so
+// the deficit is diagnosable, and refuses. The green control beside it is what proves the check
+// is not simply always-true.
+test fn w_RED_an_unknown_lane_result_blocks_and_keeps_its_spelling() -> Bool {
+  let unknown = floor_lane_terminal_from_result(result: "a-state-nobody-here-has-heard-of")
+  let verdict = floor_rendered_verdict(
+    standing: FloorHeadCurrent { measured: "aaaaaaa" },
+    build: LaneSucceeded,
+    floor: unknown
+  )
+  let green = floor_rendered_verdict(
+    standing: FloorHeadCurrent { measured: "aaaaaaa" },
+    build: LaneSucceeded,
+    floor: floor_lane_terminal_from_result(result: "success")
+  )
+  floor_lane_terminal_name(terminal: unknown) == "a-state-nobody-here-has-heard-of"
+    && floor_rendered_verdict_blocks(verdict: verdict) == true
+    && floor_rendered_verdict_name(verdict: green) == floor_rendered_verdict_green_name
+    && floor_rendered_verdict_blocks(verdict: green) == false
+}
+
+// AN UNACQUIRED HEAD AXIS COMPOSES EXACTLY AS A CURRENT ONE, AND THAT IS THE PROPERTY THAT MAKES
+// THE CARRIER SAFE TO LAND AHEAD OF ITS ACQUISITION.
+//
+// It is a WITNESS rather than a sentence in a header on purpose: "composes identically" is one
+// refactor away from "is the same variant", at which point nothing would force a reader to
+// revisit when acquisition lands. The distinct variant survives because the composition matches
+// on it totally -- a new head state fails to compile rather than inheriting a default -- and
+// because this row would go red if the two ever diverged silently.
+//
+// `NoPullRequestSubject` is in the same comparison for a different reason: a push or merge_group
+// run has no pull request to be superseded by, so its head axis is inapplicable rather than
+// unmeasured, and it must not accidentally acquire a deficit's treatment.
+test fn w_RED_an_unacquired_or_inapplicable_head_composes_as_a_current_one() -> Bool {
+  let current = floor_rendered_verdict(
+    standing: FloorHeadCurrent { measured: "aaaaaaa" },
+    build: LaneCancelled,
+    floor: LaneSucceeded
+  )
+  let not_acquired = floor_rendered_verdict(
+    standing: FloorHeadUnobservable {
+      measured: "aaaaaaa",
+      cause: CurrentHeadNotAcquired { detail: "no authenticated read is enrolled in the required run" }
+    },
+    build: LaneCancelled,
+    floor: LaneSucceeded
+  )
+  let no_pull_request = floor_rendered_verdict(
+    standing: FloorHeadUnobservable { measured: "", cause: NoPullRequestSubject },
+    build: LaneCancelled,
+    floor: LaneSucceeded
+  )
+  floor_rendered_verdict_name(verdict: not_acquired) == floor_rendered_verdict_name(verdict: current)
+    && floor_rendered_verdict_name(verdict: no_pull_request) == floor_rendered_verdict_name(verdict: current)
+    && floor_rendered_verdict_blocks(verdict: not_acquired) == true
+}
+
+// THE EMITTED GATE REACHES NO SUPERSEDED ARM, AND THIS ROW IS BUILT TO GO RED WHEN IT DOES.
+//
+// It asserts the production claim the carrier's acquisition trigger makes: today the emitted
+// shell can render head-standing only as `not-applicable` or `unobserved`, so the superseded
+// spelling appears nowhere in the workflow. The day an operator-agreed authenticated read of the
+// pull request's current head lands, `gunbc.required_lanes_gate` emits the superseded arm and
+// this row FAILS -- deliberately, so the acquisition cannot arrive without someone being routed
+// back to `floor_attempt_standing_acquisition_trigger` to retire it. A claim that re-derives
+// itself beats a note asking someone to remember.
+//
+// THE `unobserved` CONJUNCT IS WHAT MAKES IT DISCRIMINATING. Without it the row would stay green
+// over a workflow that had dropped the head axis entirely, which is the same absence it is
+// supposed to be distinguishing from.
+test fn w_RED_no_emitted_gate_arm_reaches_superseded() -> Bool {
+  match expected_witness_floor_yml() {
+    WitnessFloorGenerated { content: yml } =>
+      string_contains(s: yml, pattern: floor_head_standing_unobserved)
+        && string_contains(s: yml, pattern: floor_rendered_verdict_unestablished_name)
+        && string_contains(s: yml, pattern: floor_rendered_verdict_red_name)
+        && string_contains(s: yml, pattern: floor_rendered_verdict_superseded_name) == false
+    WitnessFloorGenerationRefused => false
+  }
+}
+
+// THE RECEIPT'S LABELS ARE ONE AUTHORITY, JOINED HERE ACROSS ITS TWO REALIZATIONS.
+//
+// This module renders the attempt subject from a value; `gunbc.required_lanes_gate` renders it in
+// shell from workflow contexts it cannot evaluate. The labels are the same data rows, and this
+// row measures that by rendering a fixture subject and finding its label sequence in the emitted
+// yaml. If either side re-spelled a label, the emitted text would stop carrying the rendered
+// prefix and this goes red.
+test fn w_RED_the_attempt_receipt_labels_are_one_authority() -> Bool {
+  let rendered = floor_attempt_subject_receipt(
+    subject: FloorAttemptSubject { pull_request: "", measured_head: "", run_id: "" },
+    standing: FloorHeadUnobservable {
+      measured: "",
+      cause: CurrentHeadNotAcquired { detail: "fixture" }
+    }
+  )
+  match expected_witness_floor_yml() {
+    WitnessFloorGenerated { content: yml } =>
+      string_contains(s: yml, pattern: "required floor attempt: pull_request=")
+        && string_contains(s: yml, pattern: " measured_head=")
+        && string_contains(s: yml, pattern: " run_id=")
+        && rendered == "required floor attempt: pull_request= measured_head= run_id= head_standing=unobserved"
+    WitnessFloorGenerationRefused => false
+  }
+}
+
+
+// THE MECHANISM AXIS IS ESTABLISHED IN EXACTLY ONE CASE, AND THE PAIR IS WHAT MAKES THAT A CLAIM.
+//
+// A cancelled lane establishes MECHANISM and still leaves ATTRIBUTION open, because cancellation
+// says only that this attempt stopped and never why -- a newer push, an operator, a lost runner
+// and a workflow timeout all produce it. Asserting the mechanism without asserting that the
+// attribution stayed open would let a later change silently upgrade the second axis off the
+// first, which is exactly the collapse the two axes exist to prevent.
+test fn w_RED_a_cancelled_lane_establishes_mechanism_but_never_attribution() -> Bool {
+  match floor_rendered_verdict(
+    standing: FloorHeadCurrent { measured: "aaaaaaa" },
+    build: LaneSucceeded,
+    floor: LaneCancelled
+  ) {
+    AttemptStandsUnestablished { standing: _, build: _, floor: _, interruption: i } =>
+      floor_evaluation_mechanism_name(mechanism: i.mechanism)
+        == floor_mechanism_workflow_cancelled_name
+        && floor_evaluation_attribution_name(attribution: i.attribution)
+          == floor_attribution_unestablished_name
+    AttemptStandsRed { standing: _, build: _, floor: _, interruption: _ } => false
+    AttemptStandsGreen { standing: _ } => false
+    AttemptSuperseded { measured: _, current: _ } => false
+  }
+}
+
+// A FAILED LANE ESTABLISHES NEITHER AXIS, AND THIS ROW IS BUILT TO GO RED WHEN THAT CHANGES.
+//
+// It asserts the honest limit of what the aggregator holds: a conclusion word cannot say whether
+// the subject was evaluated, so a `stands-red` verdict carries `MechanismUnestablished` today.
+// gunbc#9298 is the measured counterexample to the tempting alternative -- a build lane concluded
+// FAILURE over a one-markdown-file diff because rustfmt vanished mid-run, and the subject was
+// never judged.
+//
+// THE DAY A TERMINAL SUBJECT RECEIPT IS PUBLISHED AND READ HERE, this row FAILS, deliberately, so
+// the receipt cannot land without someone being routed back to
+// `floor_subject_receipt_acquisition_trigger` to split red into subject-refuted and
+// subject-not-evaluated. That is the same construction as the head axis's flip witness, applied
+// to the second acquisition: a claim that re-derives itself beats a note asking someone to
+// remember.
+test fn w_RED_a_failed_lane_carries_no_established_mechanism() -> Bool {
+  match floor_rendered_verdict(
+    standing: FloorHeadCurrent { measured: "aaaaaaa" },
+    build: LaneFailed,
+    floor: LaneSucceeded
+  ) {
+    AttemptStandsRed { standing: _, build: _, floor: _, interruption: i } =>
+      floor_evaluation_mechanism_name(mechanism: i.mechanism)
+        == floor_mechanism_unestablished_name
+        && floor_evaluation_attribution_name(attribution: i.attribution)
+          == floor_attribution_unestablished_name
+        && i.evidence == "failure"
+    AttemptStandsUnestablished { standing: _, build: _, floor: _, interruption: _ } => false
+    AttemptStandsGreen { standing: _ } => false
+    AttemptSuperseded { measured: _, current: _ } => false
+  }
+}
+
+// BOTH AXES REACH THE EMITTED GATE, so the population of unestablished mechanisms is countable
+// from the runs that produce it rather than only from this model. Without this row the axes could
+// be modelled perfectly and rendered nowhere, which is the inert half DESIGN 6 names.
+test fn w_RED_the_emitted_gate_renders_both_interruption_axes() -> Bool {
+  match expected_witness_floor_yml() {
+    WitnessFloorGenerated { content: yml } =>
+      string_contains(s: yml, pattern: "mechanism=")
+        && string_contains(s: yml, pattern: "attribution=")
+        && string_contains(s: yml, pattern: floor_mechanism_workflow_cancelled_name)
+    WitnessFloorGenerationRefused => false
+  }
+}

@@ -33,6 +33,7 @@ import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.fabric_witness_run { witnesses_lane_run_command, build_lane_run_command, required_ci_lane_build }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import gunbc.required_lanes_gate { required_lanes_gate_stmts }
+import extdeps.github.expressions { ContextAccess, Github, Needs, interpolate }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
 import v2.std.diagnostic { Outcome }
 import std.types { List, String, Int }
@@ -1047,61 +1048,52 @@ fn build_lane_job() -> Job {
 //
 // IT IS `always()` AND NOT `!cancelled()`, WHICH IS THE ONE PLACE IN THIS FILE THAT DEPARTS
 // FROM THE HOUSE GUARD -- stated explicitly, because a reader who knows the convention will
-// otherwise correct it back and reopen the hole. Every other guard here is about whether a STEP
-// should run inside a job that is already running, and there `!cancelled()` is right: a
-// cancelled run should stop. This condition decides something else -- whether the REQUIRED
-// CONTEXT EXISTS AT ALL -- and under `!cancelled()` a cancelled run leaves the aggregator
-// skipped, so the context is reported as skipped rather than as a verdict.
+// otherwise correct it back. Every other guard here decides whether a STEP should run inside a
+// job that is already running, and there `!cancelled()` is right. This condition decides
+// something else -- whether the REQUIRED CONTEXT EXISTS AT ALL -- and under `!cancelled()` a
+// cancelled run leaves the aggregator skipped, so the context reports as skipped rather than as
+// a verdict.
 //
-// That is the same question one layer out, and it is a question about GITHUB rather than about
-// this repository: does a skipped or cancelled required check block a merge? NOBODY HERE HAS
-// EXECUTED THAT, and the right response is not to go and measure it -- it is to make the
-// outcome not depend on it. Under `always()` the job runs unconditionally, always reads both
-// results, and always reports success or failure ON ITS OWN TERMS, so SKIPPED disappears from
-// the required context entirely. That is construction over validation (§5): the ambiguous state
-// becomes unrepresentable rather than tested, and a third-party behaviour becomes a property of
-// our own file.
+// THE REASON IT IS `always()` IS NOT THE REASON IT USED TO BE, AND THE CHANGE IS THE WHOLE POINT
+// OF `gunbc.floor_attempt_standing`. The argument this paragraph used to carry was a choice
+// between two bad readings of cancellation -- `always()` treats every cancelled lane as a lane
+// that failed, `!cancelled()` treats every cancelled workflow as a lawful supersession -- and it
+// picked `always()` on the ground that noise on an abandoned head beats silence on a live one.
+// That trade was real, and it was forced only because ONE CONDITION WAS BEING ASKED TO CARRY TWO
+// QUESTIONS.
 //
-// WHAT IT COSTS, named rather than glossed: a lawfully superseded run now reports this context
-// RED instead of cancelled, because a cancelled lane is not `success`. Measured on run
-// 32883390033, where a fleet event ended both lanes and this job duly published `failure`.
+// It is not forced any more. Head-standing and lane-terminality are two independent axes, and
+// the job condition owns NEITHER of them: it owns only whether this job runs. `always()` is the
+// right answer to THAT question for a reason that has nothing to do with cancellation semantics
+// -- a required context that can be SKIPPED turns mergeability on an unmeasured third-party
+// behaviour, and under `always()` skipped disappears from the context entirely. Construction
+// over validation (DESIGN 5): the ambiguous state becomes unrepresentable rather than tested.
 //
-// THE STRONGEST ARGUMENT AGAINST THIS CHOICE IS RECORDED HERE RATHER THAN ANSWERED AWAY, so
-// that the next person who wants `!cancelled()` finds the case already made instead of
-// rediscovering it (raised by a peer session, 2026-08-25, from GitHub's own documented
-// semantics rather than from a measurement). The objection: `always()` is the one condition that
-// survives workflow cancellation, `cancel-in-progress` is armed on every pull_request, so this
-// fires on the MODAL event in the repository -- and it destroys the cancelled/failed distinction
-// at the RECORD level rather than at the reader's, where nothing can recover it afterwards. That
-// ambiguity cost a peer session hours in one day, diagnosing 38 lawful supersessions as a
-// false-red epidemic.
+// WHAT ANSWERS THE CANCELLATION QUESTION IS NOW THE GATE'S OWN BODY, where both axes are visible
+// at once. `cancelled` with a measured head that is no longer the pull request's head is a
+// SUPERSEDED ATTEMPT and does not block; `cancelled` with a measured head that IS still the
+// pull request's head is `stands-unestablished` -- the evidence is missing on a live merge
+// candidate -- and blocks, with an annotation saying it is an infrastructure event rather than a
+// subject defect. Neither `cancelled -> benign` nor `cancelled -> failed` is asserted as a
+// universal reading, which is exactly what both previous shapes did.
 //
-// THAT OBJECTION IS RECORDED WITH ITS ANSWER ATTACHED, because half of it standing alone is what
-// would send a future reader back to `!cancelled()` -- and the answer is in this job's own step.
-// THE CONCLUSION LOSES THE DISTINCTION; THE ANNOTATION PRESERVES IT. The step echoes
-// `required lanes: build=$BUILD floor=$FLOOR` and repeats both values inside its `::error::`, so
-// on every single occurrence, permanently and machine-readably, the log says WHICH state each
-// lane was in. A red whose cause is printed in its own error annotation is not the ambiguity the
-// objection warns about: the hours lost that day were lost because `cancelled` and `failure` were
-// indistinguishable at the reader with NOTHING UNDERNEATH to recover, and here there is always
-// something underneath, one line away. The loss is real at conclusion grain and repaired at the
-// grain anyone actually diagnoses from. (Withdrawn to this weight by the session that raised it,
-// after reading the step body.)
+// WHAT IS NOT YET TRUE OF THAT, AND IT IS THE HALF A READER MUST NOT ASSUME: the first arm is
+// not reachable in production today, because nothing in this workflow acquires the pull request's
+// CURRENT head. The gate therefore renders head-standing as `unobserved` on every pull-request
+// run and takes the fail-closed arm, which is byte-for-byte the behaviour this job had before.
+// What changed today is the SPLIT BETWEEN RED AND UNESTABLISHED, which needs no acquisition, and
+// the attempt subject printed on every run, which makes the head join computable offline by
+// anyone who can already read the API. `gunbc.floor_attempt_standing`
+// `floor_attempt_standing_acquisition_trigger` carries what closes the rest and what goes red
+// when it does.
 //
-// The house-style half does not survive either, and it is worth saying why rather than just
-// noting the departure: counting `!cancelled()` occurrences infers a rule from shapes, while
-// what each guard DECIDES is the fact. Every other one decides whether a step runs inside a job
-// that is already running; this one decides whether the required context exists at all.
-//
-// WHY IT IS NOT TAKEN: THE ASYMMETRY IS ABOUT WHICH HEAD PAYS. Checks are tracked per head SHA,
-// so a superseded run's red lands on a head that by construction will never be merged -- the
-// push that superseded it created the head that will. `always()` is therefore NOISY ON ABANDONED
-// HEADS. `!cancelled()` moves the cost onto the LIVE one: a lane killed with no replacement run
-// coming -- observed twice on 2026-08-25, once with `runner_name` empty and zero steps, once with
-// both lanes ended at 18:43 and no push involved -- leaves this context SKIPPED on the head that
-// is still the merge candidate, and whether a skipped required check blocks a merge is exactly
-// the unmeasured GitHub behaviour the paragraph above exists to stop depending on. Quiet-and-
-// unknown on a live head is worse than loud-and-definite on a dead one.
+// THE COST OF `always()` IS UNCHANGED AND IS STILL PAID: a lawfully superseded run reports this
+// context red, because a cancelled lane is not `success`. Measured on run 32883390033, where a
+// fleet event ended both lanes and this job duly published `failure`. That red now says
+// `verdict=stands-unestablished` and names the measured head it belongs to, which is strictly
+// more than it said before -- but it is still a red on an abandoned head, and only the
+// acquisition removes it.
+
 fn required_lanes_aggregate_job_condition() -> String {
   "always()"
 }
@@ -1110,8 +1102,33 @@ fn required_lanes_aggregate_job_condition() -> String {
 // one. It is about EARLIER STEPS IN THIS JOB: there are none today, so the implicit `success()`
 // would be true anyway, but a step added ahead of it later would silently acquire the power to
 // skip the refusal. Two conditions, two failure modes, neither a second spelling of the other.
+// THE EXPRESSIONS ARE BUILT FROM THE MODELED ACTIONS EXPRESSION GRAMMAR, NOT SPELLED AS TEXT.
+//
+// This function nested `concat` over `"${{ needs."` and `".result }}"`, which is a second
+// spelling of a language `extdeps.github.expressions` already models -- the same medium-as-string
+// violation that moved the gate's shell into `gunbc.required_lanes_gate`, surviving one layer up
+// in the expressions the shell interpolates. `interpolate` over a `ContextAccess` renders the
+// identical text through the authority that owns the spelling, so the interpolation delimiters,
+// the path separator and the context names have one home.
 fn required_lane_result_expression(job_id: String) -> String {
-  concat("${{ needs.", concat(job_id, ".result }}"))
+  interpolate(expression: ContextAccess { context: Needs, path: [job_id, "result"] })
+}
+
+// THE ATTEMPT SUBJECT'S EXPRESSIONS. `github.event.pull_request.*` renders as the empty string on
+// push, merge_group and workflow_dispatch runs, and that emptiness is what the gate reads to
+// decide the head axis is inapplicable rather than unmeasured.
+fn required_lanes_pull_request_expression() -> String {
+  interpolate(expression: ContextAccess { context: Github, path: ["event", "pull_request", "number"] })
+}
+
+fn required_lanes_measured_head_expression() -> String {
+  interpolate(
+    expression: ContextAccess { context: Github, path: ["event", "pull_request", "head", "sha"] }
+  )
+}
+
+fn required_lanes_run_id_expression() -> String {
+  interpolate(expression: ContextAccess { context: Github, path: ["run_id"] })
 }
 
 // THE COMPARISON IS `!= "success"` AND NOT A LIST OF BAD STATES, and that is now a measured
@@ -1149,6 +1166,13 @@ fn required_lane_result_expression(job_id: String) -> String {
 // to emit any yaml at all. A `Rejected` fold can therefore never reach a published step.
 data required_lanes_gate_build_var: String = "BUILD"
 data required_lanes_gate_floor_var: String = "FLOOR"
+data required_lanes_gate_pull_request_var: String = "PULL_REQUEST"
+data required_lanes_gate_measured_head_var: String = "MEASURED_HEAD"
+data required_lanes_gate_run_id_var: String = "RUN_ID"
+data required_lanes_gate_standing_var: String = "HEAD_STANDING"
+data required_lanes_gate_verdict_var: String = "VERDICT"
+data required_lanes_gate_mechanism_var: String = "MECHANISM"
+data required_lanes_gate_attribution_var: String = "ATTRIBUTION"
 
 fn required_lanes_aggregate_script_outcome() -> String? {
   match bash_fold_serialize_program(
@@ -1156,7 +1180,17 @@ fn required_lanes_aggregate_script_outcome() -> String? {
       build_var: required_lanes_gate_build_var,
       build_result_expression: required_lane_result_expression(job_id: build_lane_job_id),
       floor_var: required_lanes_gate_floor_var,
-      floor_result_expression: required_lane_result_expression(job_id: floor_lane_job_id)
+      floor_result_expression: required_lane_result_expression(job_id: floor_lane_job_id),
+      pull_request_var: required_lanes_gate_pull_request_var,
+      pull_request_expression: required_lanes_pull_request_expression(),
+      measured_head_var: required_lanes_gate_measured_head_var,
+      measured_head_expression: required_lanes_measured_head_expression(),
+      run_id_var: required_lanes_gate_run_id_var,
+      run_id_expression: required_lanes_run_id_expression(),
+      standing_var: required_lanes_gate_standing_var,
+      verdict_var: required_lanes_gate_verdict_var,
+      mechanism_var: required_lanes_gate_mechanism_var,
+      attribution_var: required_lanes_gate_attribution_var
     ),
     set_e: false
   ) {
