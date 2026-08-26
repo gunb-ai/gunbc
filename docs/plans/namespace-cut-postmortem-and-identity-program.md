@@ -4974,3 +4974,103 @@ artifact openable at any time, and a ruling is a decision about what the reposit
 review of a message. Nothing about the framing prevented reading the law before saying BUILD. **The
 remedy is therefore not more care but a different target: the frame is checked against the authority,
 not against itself** — which is exactly what the table's last row makes routine.
+
+### 11.2ab MEASURED — the nearest minted identity is **inside `stamp_parsed_node`**; and `OccurrenceId` is **not stable across compiles**, which invalidates it as the key for anything E.0/E.1 persists
+
+Step 1(B) answered (cool-swift-307, 2026-08-26), both claims verified at source here. The located
+answer is one thing; the constraint it dragged in is larger than the question that found it.
+
+**WHERE THE NEAREST MINTED IDENTITY IS, AND WHY `typecheck_module` WAS THE WRONG GUESS.**
+`stamp_parsed_node` allocates the `OccurrenceId`, writes containment and projection into the
+`ParseContext` sidecar, and returns `ParsedNodeStampResult { node: node, ctx: … }` — **the node
+unchanged**. So the pairing *this node is that occurrence* **exists only inside that one stack frame
+and is never written to any carrier.** The sidecar knows the occurrence and remembers a name and a
+span for it; the node knows neither.
+
+This lane guessed the boundary sat at `typecheck_module`, because `ResolvedModule` carries the
+transport there. **That guess confuses a population with a handle:**
+
+> **A transport is the POPULATION of occurrences, not a handle on WHICH occurrence a given X call
+> concerns.** Recovering the second from the first requires matching on name or span — the forbidden
+> reconstruction. **Having every occurrence is not having this one.**
+
+So the answer to *what stands between* is **nothing, and that is the bad answer**: there is no
+existing association to thread. **Step 2 is not routing a fact from A to B — it is minting the
+association at the stamp and making it survive every rebuild between there and X.**
+
+**THE SURFACE, MEASURED.** If the identity rides on the `Node` — and no cheaper carrier is apparent,
+since the node is what actually flows to X — a **required** field (§11.2aa constraint 2) must be
+named at:
+
+```
+375   bare `Node {` record literals across src/v1
+~305  Node-returning builder call sites
+        make_expr_node 89 · make_named_expr_node 57 · make_field_init_node 52 · make_arg_node 25 · …
+        19 builder fns in 00_core mediate them
+```
+
+**These are components, not a sum** — the 19 builders are themselves among the 375 literals, and if
+they take the identity as a parameter their callers supply it instead. How it is mediated decides
+which sites are touched, and that is a design choice deliberately not made here. *(Precision note
+from the measurer: a first count of 395 was wrong — a bare `Node {` grep also matches `ErrorNode`,
+`AccessCheckResultNode`, `TypeNode`, `InferredNode`. 375 is the word-boundary count.)*
+
+**AND THE GOOD NEWS IS THE EXACT INVERSE OF THE NAIVE (a).** A **new** field does not disturb
+`Node.ident`, so §11.2y's three load-bearing `Absent`-arm readers — `lookup_type_for`,
+`is_recursive_type_for`, and `dag_node_key`'s content-addressed key — are **unaffected**. The thing
+that made the naive (a) dangerous does not apply. Better: the carrier shape **already exists in the
+shared authority with exactly the closed-state shape §11.2aa demands** —
+`std.occurrence_identity` `NodeOccurrenceIdentity = OccurrenceSynthetic | OccurrenceMinted { id }` —
+used by `v2.std.node`'s mirror and by **zero v1 modules**. The minted-versus-synthetic split is
+therefore **something to adopt, not to design**, which also avoids minting a parallel v1 concept
+beside it.
+
+**THE CONSTRAINT NOBODY IN THIS PROGRAM HAD, FOUND IN ANOTHER LANE'S NOTE AND VERIFIED VERBATIM.**
+`src/v1/04_infer.dag` `frontier_occurrence_budget_note`, written by whoever built the method-frontier
+ratchet, hit this wall and recorded it:
+
+> *"…its own scope law forbids filename, SourceSpan, authored name, structural Node equality and
+> content hash as identity inputs, allocating `OccurrenceId` inside one graph-scoped allocator
+> instead. **An allocator-assigned integer cannot appear as a literal in a declared row, because it
+> is not stable across compiles** — so a per-occurrence key is not merely unimplemented here, it is
+> unavailable from the authority that owns the concept."*
+
+Two things follow, and the second is new to this program.
+
+*First* — **independent confirmation of the law both parties missed, from a lane that read it before
+ruling.** That note exists because someone else wanted a per-occurrence key, checked, and was refused
+by the same authority.
+
+*Second, and it reaches past the producer into E.0/E.1:* **a minted `OccurrenceId` is valid within
+one compile and not across compiles.** That is fine for §11.2aa's in-process steps 4 and 5. It is
+**not** fine for anything the projection **persists or compares across runs** — and that is precisely
+what E.0/E.1 do:
+
+```
+O_X(B_final)        X's decisions over the held base
+O_Y(P(B_final))     Y's decisions over the PROJECTED source — a DIFFERENT source, therefore a
+                    DIFFERENT graph scope, therefore a DIFFERENT allocator
+```
+
+**The "total occurrence correspondence" E.1 owes cannot be keyed on `OccurrenceId`**, because the two
+sides are separate compiles and the integers do not denote across them. That is a hard constraint on
+E.1's central artifact which no section of this document had stated, and it was found by asking a
+producer question.
+
+**AND THE DISSOLVE-ON THAT NOTE NAMES POINTS AT THIS LANE — AT SOMETHING THAT MAY NOT EXIST.** Its
+stated dissolution is *"a content-addressed occurrence identity stable across edits (**the namespace
+lane's containment addressing**)"*. Verified here:
+
+```dag
+type OccurrenceContainmentPath {
+  ancestors: FreeMonoid<OccurrenceId>
+  terminal:  OccurrenceId
+}
+```
+
+**Containment addressing as it exists today is built entirely from the same allocator integers**, so
+it is not obviously stable across edits either. Either *containment addressing* means something other
+than this type, or **the dissolve-on names a thing that does not yet exist** — and another lane's
+ratchet is registered against this program to deliver it. Flagged as a tension, **not resolved**: the
+measurer declined to guess and so does this section. It is now an obligation this lane knows it
+carries, which it did not an hour ago.
