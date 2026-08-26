@@ -1,11 +1,13 @@
-# The run did not measure what you think: six attribution failures (2026-08-23, extended 2026-08-25)
+# The run did not measure what you think: seven attribution failures (2026-08-23, extended 2026-08-26)
 
-**Subject:** attributing a CI result to a change. **Deliverable:** one class, six measured
+**Subject:** attributing a CI result to a change. **Deliverable:** one class, seven measured
 instances, and the check that closes each. **No repair is proposed here.**
 
 Instances 1–4 were measured 2026-08-23. Instances 5–6 were measured 2026-08-25 and one of them
 **falsified instance 4's own check**, which is why they are folded in here rather than filed
-beside: two accounts of one fact is the failure this document exists to describe.
+beside: two accounts of one fact is the failure this document exists to describe. Instance 7 was
+measured 2026-08-26 and is the sharpest of the set, because it was produced *by* this class
+rather than merely observed: a defect report that three people amplified and nobody verified.
 
 Every instance below cost real time on 2026-08-23, in four different lanes, and three of the
 four produced a *confident wrong attribution* rather than an ambiguous one. That is what makes
@@ -159,6 +161,70 @@ as *complete* sends the next person with an unsuperseded cancellation hunting fo
 never made. **Mechanism confirmed, residue open.**
 
 **Check:** query by **branch**, never by `head_sha`, and state which key the index uses.
+
+
+## Instance 7 — the diagnostic span is BYTES and renders exactly like a line range (2026-08-26)
+
+This one was found by the failure it describes, three hops deep, and it is the reason the other
+six are worth writing down.
+
+A lane reported a seed-parser defect: `expected expression, found Newline` pointing at the *next
+declaration* rather than at the offending construct. It was relayed upward, sharpened at each
+hop — *typed, located, and located wrong*; *worse than a missing feature*; then an admissibility
+ruling under the v1 freeze saying someone should fix it. **The defect does not exist.** Two
+independent probes, on different trees and different binaries, put the offset on the exact
+character:
+
+```
+line 8 starts at byte 113, "  callee(xs:" = 12 chars
+  -> newline terminating line 8 is byte 125
+probe.dag:125-126: expected expression, found Newline
+```
+
+The locator is correct at character grain. What is *real* is why two people misread the same
+number:
+
+> **The diagnostic prints `file:START-END`, which is a BYTE SPAN and is indistinguishable from a
+> line range.** Every neighbouring toolchain prints `file:line:col` in that position.
+
+In an eleven-line probe, `125-126` is obviously not lines. **In a large file it is perfectly
+plausible as one** — and the original report's `162-163` landed, read as lines, inside a
+different declaration. That is precisely the innocent code the reader was sent to.
+
+So the false report was never only a bad `awk` accumulator. The accumulator produced a wrong
+attribution *and the raw output already looked like a line pointer agreeing with it*. Two
+independent readings landed in the same wrong place, which is a property of the **rendering**,
+not of either reader.
+
+**The corrected finding is much smaller than the one that was endorsed, and it is true:** the
+diagnostic is typed, correctly located, and renders its location in a format ambiguous with the
+near-universal convention. An ergonomic defect, not a correctness one. It has now cost two regen
+cycles and three hops of amplification.
+
+**Check:** treat `file:N-M` from this compiler as **bytes** until proven otherwise. Convert with
+a control — a probe whose answer you know — never with an accumulator you wrote in the same
+sitting as the question.
+
+### The escalation corollary
+
+Three people amplified this, each adding confidence and none adding evidence. The rule the chain
+forces:
+
+> **A report from a lane is evidence, not a measurement.** Relaying it upward converts it into a
+> claim in the relayer's name, and *that conversion is where verification belongs* — escalation
+> strips the reporter's hedging, and the receiver cannot distinguish what was measured from what
+> was inferred.
+
+And its sharper half, which the third hop demonstrated by attaching a *ruling* to an unverified
+report:
+
+> **Each escalation hop raises confidence while lowering verifiability.** The receiver is
+> progressively further from the instrument and progressively more likely to be the one people
+> act on. So the duty to verify *increases with height*, exactly where the means to verify
+> decrease — and exactly where a manager most wants to add value by ruling.
+
+Every hop here had the means to check: one eleven-line file and one addition. Each did the
+arithmetic *after* the retraction rather than before their own contribution.
 
 ## The shared shape
 
