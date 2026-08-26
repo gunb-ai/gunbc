@@ -168,16 +168,26 @@ type TargetBindingLookup
   = TargetProducerBound { binding: TargetBinding }
   | KnownTargetBindingMissing { target: Label }
   | TargetUnknown { target: Label }
+  | TargetLookupLabelNotCanonical { target: Label }
 
+// Query admission repeats the canonicality decision deliberately. A typed key with a sole mint
+// would be preferable only if the substrate made that mint unforgeable; records and variants are
+// freely constructible here, so such a key would rename this validation while leaving callers able
+// to forge it. Until unforgeable construction exists, every boundary that turns a Label into the
+// rendered map key must refuse noncanonical input explicitly.
 fn target_binding_lookup(index: TargetBindingIndex, target: Label) -> TargetBindingLookup {
-  let key = render_label(l: target)
-  match map_get(index.targets_by_identity, key) {
-    Absent => TargetUnknown { target: target }
-    Present { value: _ } =>
-      match map_get(index.bindings_by_identity, key) {
-        Present { value: binding } => TargetProducerBound { binding: binding }
-        Absent => KnownTargetBindingMissing { target: target }
-      }
+  if !target_label_is_canonical(target: target) {
+    TargetLookupLabelNotCanonical { target: target }
+  } else {
+    let key = render_label(l: target)
+    match map_get(index.targets_by_identity, key) {
+      Absent => TargetUnknown { target: target }
+      Present { value: _ } =>
+        match map_get(index.bindings_by_identity, key) {
+          Present { value: binding } => TargetProducerBound { binding: binding }
+          Absent => KnownTargetBindingMissing { target: target }
+        }
+    }
   }
 }
 

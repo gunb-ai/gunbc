@@ -5,6 +5,7 @@ import gunbc.target_binding {
   TargetBinding,
   TargetBindingIndexBuild, TargetBindingIndexReady, TargetBindingIndexRefused,
   TargetBindingLookup, TargetProducerBound, KnownTargetBindingMissing, TargetUnknown,
+  TargetLookupLabelNotCanonical,
   TargetBindingIndexRefusal, TargetLabelNotCanonical, DuplicateTargetBinding,
   build_target_binding_index, target_binding_lookup,
   BehavioralReceiptPlanProducer, HeadsReadingDifferentialProducer,
@@ -72,6 +73,7 @@ test fn keyed_lookup_distinguishes_bound_missing_and_unknown() -> Bool {
       TargetProducerBound { binding: b } => b == binding
       KnownTargetBindingMissing { target: _ } => false
       TargetUnknown { target: _ } => false
+      TargetLookupLabelNotCanonical { target: _ } => false
     }
   }
   let missing = match one_target_index(bindings: []) {
@@ -80,6 +82,7 @@ test fn keyed_lookup_distinguishes_bound_missing_and_unknown() -> Bool {
       KnownTargetBindingMissing { target: t } => t == instrument_label()
       TargetProducerBound { binding: _ } => false
       TargetUnknown { target: _ } => false
+      TargetLookupLabelNotCanonical { target: _ } => false
     }
   }
   let other = Label {
@@ -92,6 +95,7 @@ test fn keyed_lookup_distinguishes_bound_missing_and_unknown() -> Bool {
       TargetUnknown { target: t } => t == other
       TargetProducerBound { binding: _ } => false
       KnownTargetBindingMissing { target: _ } => false
+      TargetLookupLabelNotCanonical { target: _ } => false
     }
   }
   bound && missing && unknown
@@ -113,6 +117,8 @@ test fn duplicate_target_binding_refuses_before_lookup() -> Bool {
 // says they are equal because its package comparison renders before comparing. Structural
 // round-trip admission must therefore refuse the BINDING target specifically; otherwise
 // BindingNamesUnknownTarget is defeated and the unknown label is admitted as the known target.
+// The same forged label used as a QUERY must refuse too, rather than resolving the canonical
+// target's producer through their shared rendered key.
 test fn rendered_key_collision_refuses_as_noncanonical_before_indexing() -> Bool {
   let known = Label {
     package: PackagePath { segments: ["a", "b"] }
@@ -121,6 +127,10 @@ test fn rendered_key_collision_refuses_as_noncanonical_before_indexing() -> Bool
   let forged_binding_target = Label {
     package: PackagePath { segments: ["a/b"] }
     target: TargetName { name: "c" }
+  }
+  let canonical_binding = TargetBinding {
+    target: known
+    producer: HeadsReadingDifferentialProducer {}
   }
   (render_label(l: known) == render_label(l: forged_binding_target))
     && label_eq(a: known, b: forged_binding_target)
@@ -134,6 +144,18 @@ test fn rendered_key_collision_refuses_as_noncanonical_before_indexing() -> Bool
          TargetBindingIndexReady { index: _ } => false
          TargetBindingIndexRefused { cause: c } => c == TargetLabelNotCanonical {
            target: forged_binding_target
+         }
+       }
+    && match build_target_binding_index(targets: [known], bindings: [canonical_binding]) {
+         TargetBindingIndexRefused { cause: _ } => false
+         TargetBindingIndexReady { index: i } => match target_binding_lookup(
+           index: i,
+           target: forged_binding_target
+         ) {
+           TargetLookupLabelNotCanonical { target: t } => t == forged_binding_target
+           TargetProducerBound { binding: _ } => false
+           KnownTargetBindingMissing { target: _ } => false
+           TargetUnknown { target: _ } => false
          }
        }
 }
