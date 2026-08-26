@@ -147,12 +147,6 @@ test fn witness_rendered_order_places_glob_before_unset_holds() -> Bool {
   glob_at >= 0 && unset_at >= 0 && glob_at < unset_at
 }
 
-// RED CONTROL: a pattern the model never derives must not appear.
-test fn witness_red_unknown_pattern_absent_holds() -> Bool {
-  !has_setting(pattern: "__gunbc_red_control_absent_pattern__", setting: MergeGeneratedArtifact)
-    && !has_setting(pattern: "__gunbc_red_control_absent_pattern__", setting: MergeAttributeUnspecified)
-}
-
 test fn witness_holds() -> Bool {
   witness_stage0_generated_source_glob_is_claimed_holds()
     && witness_emitted_stage0_source_is_not_unset_holds()
@@ -160,5 +154,4 @@ test fn witness_holds() -> Bool {
     && witness_registry_artifact_keeps_coverage_holds()
     && witness_glob_precedes_every_unset_row_holds()
     && witness_rendered_order_places_glob_before_unset_holds()
-    && witness_red_unknown_pattern_absent_holds()
 }

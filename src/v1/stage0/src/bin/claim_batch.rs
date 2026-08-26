@@ -316,6 +316,25 @@ fn report_outcome(function: &str, outcome: ClaimOutcome, any_failed: &mut bool) 
             );
             *any_failed = true;
         }
+        // AN UNWIND IS ITS OWN LINE, NOT A FAIL. `FAIL` asserts the witness answered false;
+        // the host unwound here, so the claim answered nothing. Reported as a failed run
+        // (`any_failed`) because the line must still stop — what changes is what the line says.
+        ClaimOutcome::Panicked { payload } => {
+            println!(
+                "PANICKED {} (the host unwound during evaluation: {})",
+                function, payload
+            );
+            *any_failed = true;
+        }
+        // Never minted on this path — only the required floor publishes not-attempted rows —
+        // and named rather than wildcarded so a future producer cannot arrive silently.
+        ClaimOutcome::NotAttempted { halted_by } => {
+            println!(
+                "FAIL {} (reported as not-attempted behind {}, which this path never mints)",
+                function, halted_by
+            );
+            *any_failed = true;
+        }
         ClaimOutcome::RuntimeError { cause, message } => {
             println!(
                 "FAIL {} (runtime error [{}]: {})",

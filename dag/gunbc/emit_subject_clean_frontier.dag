@@ -10,6 +10,14 @@ import std.roster_frontier {
   frontier_row_well_formed,
   frontier_subject_key
 }
+import gunbc.emit_subject_identity {
+  SubjectMembership,
+  MembershipInvariantStanding,
+  MembershipInvariantHolds,
+  MembershipInvariantViolated,
+  MembershipInvariantNotEvaluated,
+  candidates_within_closure
+}
 import gunbc.emit_diagnostic_observation {
   GunbcDiagnostic,
   EmittedFileCount,
@@ -101,10 +109,10 @@ import tools.emission_entry_instrument {
 // later because a carrier that does not name its own gaps is the rung inflation DESIGN §4b(1) calls
 // worse than sitting low: a class whose carrier already claims the rung never ranks for climbing.
 //
-// HOLE 2 IS CLOSED BY THIS CHANGE AND ITS BLOCK IS KEPT RATHER THAN DELETED, because the closing is
-// the evidence -- a hole that vanishes on the commit that fixes it leaves a reader unable to tell a
-// gap that was closed from one that was never found. The numbering does not renumber for the same
-// reason: hole 3 is hole 3 wherever it is cited.
+// HOLE 2 IS CLOSED (gunbc#9231, the dual denominator) AND ITS BLOCK IS KEPT RATHER THAN DELETED,
+// because the closing is the evidence -- a hole that vanishes on the commit that fixes it leaves a
+// reader unable to tell a gap that was closed from one that was never found. The numbering does not
+// renumber for the same reason: hole 3 is hole 3 wherever it is cited.
 //
 // HOLE 1 -- A BLOCKED SUBJECT GAINING ANOTHER BLOCKER IS HELD, NOT REFUSED.
 //
@@ -143,7 +151,7 @@ import tools.emission_entry_instrument {
 // `blocked_subject_gaining_a_blocker_is_held_not_refused` in the witness. It is GREEN while the
 // hole is open and goes RED the moment the wall lands, which is what forces its own deletion.
 //
-// HOLE 2 -- CLOSED BY THIS CHANGE, AND RECORDED BECAUSE THE CLOSING IS THE POINT.
+// HOLE 2 -- CLOSED BY gunbc#9231, AND RECORDED BECAUSE THE CLOSING IS THE POINT.
 //
 // WHAT IT WAS: the universe was discovered from the PARSED DECLARATION INDEX alone, so a `.dag`
 // file the index could not CLASSIFY was not a subject at all. The fold was never asked about it,
@@ -222,7 +230,7 @@ import tools.emission_entry_instrument {
 // by this carrier's own rule, stops the line. THAT IS THE CORRECT BEHAVIOUR AND NOT THE HOLE --
 // measuring only the quiet subjects and reporting the population as complete is the failure this
 // carrier exists to refuse. The hole is that THIS IS NOW THE LAST HARD PREREQUISITE ON ENROLMENT:
-// hole 2's dual denominator landed in this same change, so the reader's reach is what remains --
+// hole 2's dual denominator has landed, so the reader's reach is what remains --
 // until the instrument can recover a talkative subject's scope, a realistic universe folds to a
 // wall of not-evaluated rows rather than to a standing. Nothing about that is unsafe, and it is
 // precisely why the enrolment wall must not be read as satisfied merely because the denominator
@@ -536,6 +544,7 @@ type EmitNotEvaluatedCause
   | PopulationUnreadable { stage: EmissionStage, cause: String }
   | ExtentUnestablished
   | EmittedNothing
+  | ResolutionPopulationExceedsClosure { outside: List<String> }
 
 fn emit_not_evaluated_cause_text(cause: EmitNotEvaluatedCause) -> String {
   match cause {
@@ -562,6 +571,11 @@ fn emit_not_evaluated_cause_text(cause: EmitNotEvaluatedCause) -> String {
       )
     EmittedNothing =>
       "emit reported a tree of ZERO files and printed no blocking diagnostic — an entry that produced no output and no complaint has not been shown to emit, and reading it as clean would be the strongest possible verdict drawn from the weakest possible observation"
+    ResolutionPopulationExceedsClosure { outside: os } =>
+      concat(
+        "the subject resolved names from OUTSIDE its own closure, so what was measured is not the subject the roster names: ",
+        join(os, ", ")
+      )
   }
 }
 
@@ -1100,3 +1114,30 @@ fn emit_ratchet_report_text(r: EmitSubjectCleanRatchet) -> String {
 // empty roster that greened would be the absorbing fallback; one that refuses is a debt roster with
 // nothing yet admitted to it.
 data emit_subject_clean_admissions: List<EmitDebtAdmission> = []
+
+
+// ---------------------------------------------------------------------------------------------
+// A MEASUREMENT OVER A SUBJECT WHOSE BOUNDARY DID NOT HOLD IS NOT A MEASUREMENT OF THAT SUBJECT.
+//
+// If a subject resolved names from outside its own closure, then the population the instrument read
+// belongs to a larger thing than the roster names, and its verdict -- clean OR blocked -- is about
+// something else. The outcome is therefore replaced with NotEvaluated, which refuses, rather than
+// being kept and annotated, which would let a boundary failure pass as a clean subject.
+//
+// THE UNOBSERVED ARM DELIBERATELY DOES NOT MASK. The candidate population is unobservable today
+// (`gunbc.emit_subject_identity` `resolution_candidate_membership_unobservable`), so this relation
+// reports NOT-EVALUATED for every real subject right now. Turning that into a NotEvaluated OUTCOME
+// would refuse the entire roster on the strength of a measurement nobody took -- the absorbing
+// fallback wearing the fail-closed name. An unobserved invariant leaves the measured outcome
+// exactly as it was, and the gap is carried by the declared row rather than by a blanket refusal.
+fn emit_outcome_under_membership(
+  membership: SubjectMembership,
+  outcome: EmitSubjectOutcome
+) -> EmitSubjectOutcome {
+  match candidates_within_closure(membership: membership) {
+    MembershipInvariantHolds => outcome
+    MembershipInvariantNotEvaluated { relation: _, cause: _ } => outcome
+    MembershipInvariantViolated { relation: _, outside: os } =>
+      EmitSubjectNotEvaluated { cause: ResolutionPopulationExceedsClosure { outside: os } }
+  }
+}
