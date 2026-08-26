@@ -44723,6 +44723,85 @@ enum PreExistingFloorDebtDisposition {
     Throws,
 }
 
+fn decode_pre_existing_floor_debt_disposition(
+    ctx: &v1_interpreter::InterpContext,
+    value: Option<&v1_interpreter::Value>,
+) -> Result<PreExistingFloorDebtDisposition, String> {
+    let authored_name = match value {
+        Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
+            Some(ctx.resolve(*variant_name))
+        }
+        // Retain the record realization because values crossing older generated seams can still
+        // arrive in that form. The authored coproduct name, not its host representation, decides
+        // the disposition.
+        Some(v1_interpreter::Value::Record { type_name, .. }) => Some(ctx.resolve(*type_name)),
+        _ => None,
+    };
+    match authored_name.as_deref() {
+        Some("Fails") => Ok(PreExistingFloorDebtDisposition::Fails),
+        Some("Throws") => Ok(PreExistingFloorDebtDisposition::Throws),
+        _ => Err(format!(
+            "pre_existing_floor_debt_roster: expected Fails or Throws disposition, got {}",
+            floor_value_shape(value)
+        )),
+    }
+}
+
+#[cfg(test)]
+mod pre_existing_floor_debt_decode_tests {
+    use super::{decode_pre_existing_floor_debt_disposition, PreExistingFloorDebtDisposition};
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_interpreter::{ExecutionMode, InterpContext, Value};
+    use im::HashMap;
+    use std::rc::Rc;
+
+    fn empty_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im::Vector::new()),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im::Vector::new()),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    fn unit_variant(ctx: &InterpContext, name: &str) -> Value {
+        Value::Variant {
+            type_name: ctx.sym("PreExistingFloorDebtDisposition"),
+            variant_name: ctx.sym(name),
+            fields: Rc::new(Vec::new()),
+        }
+    }
+
+    #[test]
+    fn decodes_both_authored_unit_variants() {
+        let ctx = empty_ctx();
+        assert_eq!(
+            decode_pre_existing_floor_debt_disposition(&ctx, Some(&unit_variant(&ctx, "Fails")))
+                .expect("Fails variant"),
+            PreExistingFloorDebtDisposition::Fails
+        );
+        assert_eq!(
+            decode_pre_existing_floor_debt_disposition(&ctx, Some(&unit_variant(&ctx, "Throws")))
+                .expect("Throws variant"),
+            PreExistingFloorDebtDisposition::Throws
+        );
+    }
+
+    #[test]
+    fn refuses_an_unrelated_variant() {
+        let ctx = empty_ctx();
+        let error = decode_pre_existing_floor_debt_disposition(
+            &ctx,
+            Some(&unit_variant(&ctx, "Unrelated")),
+        )
+        .expect_err("unrelated variant must refuse");
+        assert!(error.contains("expected Fails or Throws"));
+        assert!(error.contains("Variant("));
+    }
+}
+
 pub struct RequiredFloorOutcome {
     pub subject_digest: String,
     pub modules_resolved: usize,
@@ -46313,24 +46392,10 @@ pub fn run_required_floor(
                     ))
                 }
             };
-            let disposition = match hermetic.field(&fields, "disposition") {
-                Some(v1_interpreter::Value::Record { type_name, .. })
-                    if hermetic.sym_eq(*type_name, "Fails") =>
-                {
-                    PreExistingFloorDebtDisposition::Fails
-                }
-                Some(v1_interpreter::Value::Record { type_name, .. })
-                    if hermetic.sym_eq(*type_name, "Throws") =>
-                {
-                    PreExistingFloorDebtDisposition::Throws
-                }
-                other => {
-                    return Err(format!(
-                    "pre_existing_floor_debt_roster: expected Fails or Throws disposition, got {}",
-                    floor_value_shape(other)
-                ))
-                }
-            };
+            let disposition = decode_pre_existing_floor_debt_disposition(
+                &hermetic,
+                hermetic.field(&fields, "disposition"),
+            )?;
             if out.insert(identity.clone(), disposition).is_some() {
                 return Err(format!(
                     "pre_existing_floor_debt_roster: duplicate identity: {identity}"
