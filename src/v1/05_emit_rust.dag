@@ -12393,17 +12393,50 @@ fn extract_literal_string(expr: Node) -> String? {
 // won. Measured on main: that collision was the ENTIRE blocking population of a whole-corpus emit,
 // while the byte-identical `repo` default folded cleanly because no other item is spelled `repo`.
 //
-// WHAT THIS DOES NOT FIX: the key is still a bare name, so two DATA declarations sharing a
-// spelling still resolve by last-wins. A collision refusal is not attempted -- one spelling is
-// authored over a thousand times -- and the real repair is an exact declaration identity rather
-// than a name. Tracked as the next rung on this row rather than left as prose.
+// EVERY DATA BODY IS NOW KEYED TWICE: once under its declaring module (`module.name`) and once
+// under the bare authored name. The qualified key is what makes a param default resolve to the
+// declaration its own module authored, and a bare authored name can never contain a dot, so the
+// two key spaces cannot alias. The bare key survives because a param default may legitimately
+// name a declaration another module authored, and this index carries no import graph to resolve
+// that with.
+//
+// THE DEFECT THE QUALIFIED KEY CLOSES, measured on main: gunbc.tools.review declares
+// `data default_model` as a Claude model id and gunbc.tools.review_codex declares the same
+// spelling as an OpenAI one, and both are consumed as the `model` param default of a workflow
+// func. Under bare last-wins the fold order over sorted paths puts review_codex second, so BOTH
+// review tools emitted the OpenAI id -- the Claude reviewer's CLI default was silently the other
+// backend's model. Nothing refused: a valid-looking literal reached the emitted clap default,
+// which is the fabricated-plausible-output failure DESIGN section 5 forbids outright, below the
+// guarantee ladder rather than a rung on it.
+//
+// WHAT THIS DOES NOT FIX, declared rather than left to be rediscovered: a param default naming a
+// declaration in ANOTHER module still resolves through the bare key, so two foreign modules
+// sharing a spelling still resolve by last-wins there. That residue is unreachable from any
+// module that declares the name itself, which is every site the defect above was measured at.
+// NEXT-RUNG TRIGGER: the fold consulting the referring module's import list, so a foreign
+// reference binds to the one imported declaration and an ambiguous one refuses -- at which point
+// the bare key stops existing. A blanket collision refusal is still not the repair: one spelling
+// is authored over a thousand times corpus-wide, and refusing on collision alone would refuse
+// every one of them rather than the ones a default actually reads.
 fn build_data_body_index(modules: List<TypedModule>) -> Map<String, Node> {
   modules |> fold(init: empty_map(), f: (acc, tm) =>
     tm.items |> fold(init: acc, f: (inner, i) =>
       if item_kind(item: i) != DataItem { inner }
       else {
         match i.body {
-          Present { value: b } => map_insert(inner, authored_name_at(source_indices: tm.type_env.source_indices, node: i), b)
+          Present { value: b } => map_insert(
+            map_insert(
+              inner,
+              concat(
+                authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module),
+                ".",
+                authored_name_at(source_indices: tm.type_env.source_indices, node: i)
+              ),
+              b
+            ),
+            authored_name_at(source_indices: tm.type_env.source_indices, node: i),
+            b
+          )
           Absent => inner
         }
       }
@@ -12413,27 +12446,44 @@ fn build_data_body_index(modules: List<TypedModule>) -> Map<String, Node> {
 
 data workflow_default_fold_depth_limit: Int = 8
 
+// A DATA REFERENCE IS RESOLVED FROM THE REFERRING MODULE, NOT FROM THE CORPUS. `module_name` is
+// the module whose param default is being folded, and the referring module's own declaration is
+// consulted first: that is ordinary lexical scope, not a preference among candidates. Only when
+// the referring module declares nothing by that name does the bare corpus-wide key answer, which
+// is how a default naming another module's declaration still folds.
+//
 // ONE AUTHORITY FOR A DATA REFERENCE. The ExprVar arm used to ask the registry whether a name is
 // a data item and then ask the body index for its body -- two corpus-wide maps keyed by
 // UNQUALIFIED name, either of which a same-named item in an unrelated module could win -- so the
 // kind gate and the body could be answered by DIFFERENT declarations. build_data_body_index above
 // now admits data bodies only, which makes presence in it the evidence the registry gate was
 // being asked for, and the arm consults it alone.
-fn fold_constant_default_expr(expr: Node, registry: Map<String, ItemInfo>, data_body_index: Map<String, Node>, source_indices: Map<String, NewlineIndex>, depth: Int) -> Node? {
+//
+// THE RECURSION KEEPS THE REFERRING MODULE rather than moving to the declaring one, and that is
+// deliberate on the local hit: a body found under `module_name` was authored in `module_name`, so
+// its own nested references are that module's too. On the bare fallback the declaring module is
+// not recoverable from this index at all, and carrying the referring module forward reproduces
+// exactly today's behaviour for that path -- a widening would need the import graph the
+// next-rung trigger on build_data_body_index names.
+fn fold_constant_default_expr(expr: Node, registry: Map<String, ItemInfo>, data_body_index: Map<String, Node>, source_indices: Map<String, NewlineIndex>, module_name: String, depth: Int) -> Node? {
   if depth > workflow_default_fold_depth_limit { none }
   else {
     match expr.expr_data {
       ExprVar { binding_kind: _ } =>
         let var_name = authored_name_at(source_indices: source_indices, node: expr)
-        match map_get(data_body_index, var_name) {
-          Present { value: body } => fold_constant_default_expr(expr: body, registry: registry, data_body_index: data_body_index, source_indices: source_indices, depth: depth + 1)
-          Absent => none
+        match map_get(data_body_index, concat(module_name, ".", var_name)) {
+          Present { value: own_body } => fold_constant_default_expr(expr: own_body, registry: registry, data_body_index: data_body_index, source_indices: source_indices, module_name: module_name, depth: depth + 1)
+          Absent =>
+            match map_get(data_body_index, var_name) {
+              Present { value: body } => fold_constant_default_expr(expr: body, registry: registry, data_body_index: data_body_index, source_indices: source_indices, module_name: module_name, depth: depth + 1)
+              Absent => none
+            }
         }
       ExprFieldAccess { summary: _ } =>
-        match fold_constant_default_expr(expr: field_access_base(texpr: expr), registry: registry, data_body_index: data_body_index, source_indices: source_indices, depth: depth + 1) {
+        match fold_constant_default_expr(expr: field_access_base(texpr: expr), registry: registry, data_body_index: data_body_index, source_indices: source_indices, module_name: module_name, depth: depth + 1) {
           Present { value: base } =>
             match record_lit_named_field_value_optional(record_expr: base, field: field_access_field_at(texpr: expr, source_indices: source_indices), source_indices: source_indices) {
-              Present { value: field_value } => fold_constant_default_expr(expr: field_value, registry: registry, data_body_index: data_body_index, source_indices: source_indices, depth: depth + 1)
+              Present { value: field_value } => fold_constant_default_expr(expr: field_value, registry: registry, data_body_index: data_body_index, source_indices: source_indices, module_name: module_name, depth: depth + 1)
               Absent => none
             }
           Absent => none
@@ -12443,10 +12493,10 @@ fn fold_constant_default_expr(expr: Node, registry: Map<String, ItemInfo>, data_
   }
 }
 
-fn resolve_param_default(param: Node, registry: Map<String, ItemInfo>, data_body_index: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> String? {
+fn resolve_param_default(param: Node, registry: Map<String, ItemInfo>, data_body_index: Map<String, Node>, source_indices: Map<String, NewlineIndex>, module_name: String) -> String? {
   match param_node_default_value(n: param) {
     Present { value: dv } =>
-      match fold_constant_default_expr(expr: dv, registry: registry, data_body_index: data_body_index, source_indices: source_indices, depth: 0) {
+      match fold_constant_default_expr(expr: dv, registry: registry, data_body_index: data_body_index, source_indices: source_indices, module_name: module_name, depth: 0) {
         Present { value: folded } => extract_literal_string(expr: folded)
         Absent => none
       }
@@ -12461,7 +12511,7 @@ fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemI
     Absent => []
   }
   let defaults = item.params |> fold(init: empty_map(), f: (acc, p) =>
-    match resolve_param_default(param: p, registry: registry, data_body_index: data_body_index, source_indices: source_indices) {
+    match resolve_param_default(param: p, registry: registry, data_body_index: data_body_index, source_indices: source_indices, module_name: module_name) {
       Present { value: lit } => map_insert(acc, param_node_name_at(n: p, source_indices: source_indices), lit)
       Absent => acc
     }

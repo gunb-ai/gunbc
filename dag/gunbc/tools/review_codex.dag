@@ -3,7 +3,9 @@ module gunbc.tools.review_codex
 import gunbc.repository { gunbc_repository }
 import extdeps.shell
 
-data default_model: String = "gpt-5.4"
+// SPELLED WITH ITS BACKEND IN THE NAME -- see gunbc.tools.review `default_review_model` for the
+// collision this pair used to form and the emitter repair that closed it.
+data default_codex_model: String = "gpt-5.4"
 data default_reasoning_effort: String = "xhigh"
 data cron_schedule: CronSchedule = CronSchedule {
   minute: extdeps.cron.schedule_model.Step { start: 0, step: 20 },
@@ -112,7 +114,7 @@ func review_pr(
   pr_owner: String = owner,
   pr_repo: String = repo,
   pr_number: Int,
-  model: String = default_model,
+  model: String = default_codex_model,
   reasoning_effort: String = default_reasoning_effort
 ) -> { reviewed: Bool } {
 

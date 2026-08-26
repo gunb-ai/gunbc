@@ -32969,7 +32969,23 @@ pub fn build_data_body_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<St
                     } else {
                         match i.body.clone() {
                             Some(b) => v1_rt::rc_map_insert(
-                                inner.clone(),
+                                v1_rt::rc_map_insert(
+                                    inner.clone(),
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            authored_name_at(
+                                                tm.type_env.clone().source_indices.clone(),
+                                                tm.module.clone(),
+                                            ),
+                                            ".".to_string(),
+                                        ),
+                                        authored_name_at(
+                                            tm.type_env.clone().source_indices.clone(),
+                                            i.clone(),
+                                        ),
+                                    ),
+                                    b.clone(),
+                                ),
                                 authored_name_at(
                                     tm.type_env.clone().source_indices.clone(),
                                     i.clone(),
@@ -32994,6 +33010,7 @@ pub fn fold_constant_default_expr(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     data_body_index: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
     depth: i64,
 ) -> Option<Rc<Node>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -33005,15 +33022,32 @@ pub fn fold_constant_default_expr(
                     binding_kind: _, ..
                 } => {
                     let var_name = authored_name_at(source_indices.clone(), expr.clone());
-                    match v1_rt::map_get(&data_body_index, var_name.clone()) {
-                        Some(body) => fold_constant_default_expr(
-                            body.clone(),
+                    match v1_rt::map_get(
+                        &data_body_index,
+                        v1_rt::concat(
+                            v1_rt::concat(module_name.clone(), ".".to_string()),
+                            var_name.clone(),
+                        ),
+                    ) {
+                        Some(own_body) => fold_constant_default_expr(
+                            own_body.clone(),
                             registry.clone(),
                             data_body_index.clone(),
                             source_indices.clone(),
+                            module_name.clone(),
                             (depth.clone() + 1),
                         ),
-                        None => None,
+                        None => match v1_rt::map_get(&data_body_index, var_name.clone()) {
+                            Some(body) => fold_constant_default_expr(
+                                body.clone(),
+                                registry.clone(),
+                                data_body_index.clone(),
+                                source_indices.clone(),
+                                module_name.clone(),
+                                (depth.clone() + 1),
+                            ),
+                            None => None,
+                        },
                     }
                 }
                 ExprData::ExprFieldAccess { summary: _, .. } => match fold_constant_default_expr(
@@ -33021,6 +33055,7 @@ pub fn fold_constant_default_expr(
                     registry.clone(),
                     data_body_index.clone(),
                     source_indices.clone(),
+                    module_name.clone(),
                     (depth.clone() + 1),
                 ) {
                     Some(base) => match record_lit_named_field_value_optional(
@@ -33033,6 +33068,7 @@ pub fn fold_constant_default_expr(
                             registry.clone(),
                             data_body_index.clone(),
                             source_indices.clone(),
+                            module_name.clone(),
                             (depth.clone() + 1),
                         ),
                         None => None,
@@ -33050,6 +33086,7 @@ pub fn resolve_param_default(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     data_body_index: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
 ) -> Option<String> {
     match param_node_default_value(param.clone()) {
         Some(dv) => match fold_constant_default_expr(
@@ -33057,6 +33094,7 @@ pub fn resolve_param_default(
             registry.clone(),
             data_body_index.clone(),
             source_indices.clone(),
+            module_name.clone(),
             0,
         ) {
             Some(folded) => extract_literal_string(folded.clone()),
@@ -33087,6 +33125,7 @@ pub fn to_workflow_func(
                 registry.clone(),
                 data_body_index.clone(),
                 source_indices.clone(),
+                module_name.clone(),
             ) {
                 Some(lit) => v1_rt::rc_map_insert(
                     acc.clone(),
