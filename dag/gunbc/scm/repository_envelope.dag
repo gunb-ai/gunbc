@@ -1065,6 +1065,21 @@ fn decode_repository_checkout(
 // good and unreadable ONLY HERE -- the same shape as an unrecognized format tag. Calling it malformed
 // would let an older reader destroy a newer writer's repository over a rule it simply lacks, which is
 // the one outcome the standing vocabulary exists to prevent.
+//
+// THE TWO ANCESTRY ARMS WERE ADDED BY INTEGRATION, NOT BY EITHER SIDE, and they are classified here
+// rather than left to the merge because a textually clean merge is what produced the gap. This
+// classifier landed on main total over the refusal population as it stood; the ancestry decode landed
+// on a branch that widened that population by two. Neither change is wrong and neither touched the
+// other's lines, so git merged both and the exhaustive match silently stopped being exhaustive --
+// the obligation is created by the integration itself. It surfaces loudly because the match descends,
+// which is the property the paragraph above was written to defend, now with a receipt.
+//
+// BOTH ARE MALFORMED RATHER THAN UNSUPPORTED, and the cyclic one is the arm worth stating a reason
+// for. An unresolved parent reference is a document naming a commit it does not contain, which is the
+// same damage the root and checkout arms above already carry. A cycle is NOT a rule a newer writer
+// might legitimately implement and this build might lack: acyclicity is a substrate law, so no
+// conforming writer emits one at any version. Classifying it as unsupported would tell a reader to
+// stand aside for a document that is damaged, which inverts the remedy.
 fn repository_envelope_load_standing(cause: RepositoryDecodeRefusal) -> LoadStanding {
   match cause {
     RepositoryFormatUnrecognized { found: _ } => LoadUnsupportedProtocol
@@ -1086,6 +1101,8 @@ fn repository_envelope_load_standing(cause: RepositoryDecodeRefusal) -> LoadStan
       }
     RepositoryCommitRootReferenceUnresolved { reference: _ } => LoadDocumentMalformed
     RepositoryCheckoutReferenceUnresolved { reference: _ } => LoadDocumentMalformed
+    RepositoryCommitParentReferenceUnresolved { reference: _ } => LoadDocumentMalformed
+    RepositoryDecodedAncestryCyclic { detected_from: _ } => LoadDocumentMalformed
     RepositoryUnexpectedMember { context: _, key: _ } => LoadDocumentMalformed
   }
 }
