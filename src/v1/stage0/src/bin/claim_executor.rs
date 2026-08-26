@@ -4,6 +4,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::rc::Rc;
+#[cfg(test)]
+use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::PhaseProfile;
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
@@ -357,7 +359,53 @@ fn run() -> Result<ExitCode, ExitCode> {
                 &v1_compiler::cli_run::workspace_root(),
                 &v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS,
             ) {
-                Ok(count) => eprintln!("required-ci: parse OK {count} file(s) parse-clean"),
+                Ok(sweep) => {
+                    eprintln!(
+                        "required-ci: parse OK {} file(s) parse-clean",
+                        sweep.parse_clean
+                    );
+                    // THE DECLARATION INTEGRITY CHECKS RIDE THE PARSE THAT JUST RAN.
+                    //
+                    // They are reported inside this phase rather than as a phase of their own
+                    // because they are not a second pass over anything: the index was built by
+                    // insertion from the sweep above, so there is no walk to order, nothing to
+                    // schedule, and no second acquisition of the corpus. DESIGN §6 and §3's
+                    // cited-symbol row both name exactly this — one module's facts from one
+                    // module's source, at ingestion, instead of a corpus-wide job per question.
+                    let population =
+                        v1_compiler::cli_run::declaration_index::index_population(&sweep.index);
+                    let findings =
+                        v1_compiler::cli_run::declaration_index::corpus_findings(&sweep.index);
+                    // A GREEN NAMES ITS DENOMINATORS. `checked=0` and `all clean` are different
+                    // states with different remedies, and an instrument that renders them
+                    // identically is the failure DESIGN §5 names, not a tidy report.
+                    eprintln!(
+                        "required-ci: declarations modules={} declared={} import_members={} \
+                         citations={} debt={} in_fixtures={} outside_index={} kernel_named={} lens_modules={}",
+                        population.modules,
+                        population.declarations,
+                        population.import_members,
+                        population.citations,
+                        population.citations_pre_existing_debt,
+                        population.citations_in_fixtures,
+                        population.citations_outside_index,
+                        population.import_members_kernel_named,
+                        population.lens_modules,
+                    );
+                    for finding in &findings {
+                        eprintln!(
+                            "required-ci: declarations FAIL {}",
+                            v1_compiler::cli_run::declaration_index::render_finding(
+                                &v1_compiler::cli_run::workspace_root(),
+                                finding
+                            )
+                        );
+                    }
+                    if !findings.is_empty() {
+                        phase_failures
+                            .push(format!("declarations ({} finding(s))", findings.len()));
+                    }
+                }
                 Err(errors) => {
                     for e in &errors {
                         eprintln!("required-ci: parse FAIL {e}");
@@ -647,27 +695,23 @@ fn run() -> Result<ExitCode, ExitCode> {
         };
     }
 
-    // THE CITED-SYMBOL CENSUS IS ITS OWN REQUIRED CHECK, NOT A PHASE OF `--required-ci`.
+    // THE CITED-SYMBOL CENSUS IS GONE FROM HERE, AND ITS SUBJECT MOVED RATHER THAN LAPSING.
     //
-    // WHY IT IS NOT A PHASE. The operator narrowed `--required-ci` from eight phases to three on
-    // 2026-08-21 (#8791), and that ruling is about what one composed entry point is responsible
-    // for. A census with a different subject gets its own named check instead: `--required-ci`
-    // stays at exactly three phases, so nothing about the narrowing is weakened, contradicted or
-    // quietly reinterpreted. Routing the same phase in under a different name would be the
-    // workaround this repository refuses; a distinct concern with its own check is the shape the
-    // ruling points at.
+    // `--required-cited-symbol` ran `v2.lens.cited_symbol_resolution` over the corpus-wide
+    // `decl_facts` + `module_declaration_facts` walks, answering each authored reference by a
+    // LINEAR SCAN of a flat list of every declaration in the repository. DESIGN §3's rung-drop
+    // row names exactly that shape as the thing to stop doing: the wall belongs "checked at
+    // ingestion, on the module whose source carries the citation, from that module's own text,
+    // rather than reconstructed corpus-wide by a second job".
     //
-    // WHY IT IS NOT A FLOOR CLAIM EITHER, and this one is structural rather than a preference.
-    // `run_required_floor` declines any entry that reads the live tree (`DeclinedLiveTree`), and
-    // reading the live corpus IS this census's subject -- relocating the witness moves it from
-    // `DeclinedLongModule` to `DeclinedLiveTree` and never to `Planned`. No amount of making it
-    // cheaper opens that door.
-    //
-    // WHAT IT REPORTS. Every unresolved reference with the typed arm that refused it, and -- on a
-    // green -- the population it checked. An empty refusal list means both "every authored
-    // reference resolved" and "there were no references to check"; those are different states and
-    // only the first is coverage, so a population it cannot read FAILS rather than greening over
-    // an unknown denominator.
+    // It is now the `parse` phase above, over the per-module declaration index the sweep builds
+    // from the parse it was already performing. The mode is deleted rather than left standing as
+    // a second route to one question (§3, single authority), and the replacement is STRICTLY
+    // WIDER, which is the test §3's replacement doctrine sets: it enrolls every authored
+    // `DeclarationRef` in the corpus rather than the five carriers the lens's population named,
+    // and it indexes test modules, which `decl_facts` deliberately did not — so the
+    // outside-index disposition those exclusions forced is not needed at all.
+
     // The heads reading's own instrument. It is not enrolled in the required run and this
     // clause does not pretend otherwise: reading 3875 modules TWICE is precisely the cost
     // the heads reading exists to remove, so paying it on every push would spend more than
