@@ -4570,3 +4570,81 @@ that B.3's blocker is a *producer* gap wearing a resolver gap's clothes. This is
 layer in: the X tap looked like a placement problem, and reading the producer showed the identity was
 never there to place a tap on. **Twice in one day, from the same lane, the answer was upstream of
 where the question was posed.**
+
+### 11.2y RULED — (b) is not optional, and the blocker is **shadowing**; and (a) must be built so that a rebuild losing the stamp is *unwritable*
+
+The consumer's answer to §11.2x's open question (crisp-crab-430, 2026-08-26), ruled and filed. Two
+results: one closes the question, and one is a **construction constraint on the repair that has not
+been built yet** — which is the more valuable half, because it is the kind of thing that is only
+sayable before the work starts.
+
+**(a)-ONLY IS NOT PROJECTABLE, AND THE BLOCKER IS NOT THE DECLARATION SIDE.** With (a) and not (b),
+the finest key available is X's own interface, `(env, name)` — and `env` identifies the referencing
+module, so the artifact is `(referencing module, name) → declaration identity`.
+
+For the **off-chain global-bare subset** that key is plausibly a genuine function: `global_bare_lookup`
+runs only after local scope fails, and its answer is decided by the module's import closure, which is
+a **per-module** fact rather than a per-site one. So an (a)-only artifact *can* answer *what would X
+spell for a global-bare `N` in module `M`*.
+
+**It cannot answer the question the projector actually asks — which occurrences of `N` in `M` were
+global-bare.** Within one module the same spelling reaches `lookup_binding_by_name` at one site and
+falls through to `global_bare_lookup` at another: **that is what a local binding is.** A
+`(module, name)` key cannot separate them, so an (a)-only projector must either rewrite every
+occurrence of the spelling — **silently re-binding locally-shadowed sites to a global declaration** —
+or rewrite none. The first is a semantic change of exactly the class this program exists to
+eliminate; the second is not a projection.
+
+**And it is not hypothetical — it is the #9240 residue one key wider.** `type_decl_items` is keyed on
+the bare declared name across the whole closure, last-write-wins, and a nonsense qualifier binds
+whichever declaration won (measured, both spellings green). `(module, name)` is a wider key hiding a
+smaller distinction, but **it hides one, and shadowing is precisely the distinction it hides.**
+
+**The consumer also checked whether they could close the gap from their own side, and cannot.** They
+own the denominator, derived from validated occurrence transports, so they hold every reference
+occurrence with exact identity and containing module. What they do *not* hold is **which of them went
+global-bare** — that is X's judgment, and deriving it structurally would be reconstructing X from the
+Y side: **authority substitution wearing a completeness claim.** So the projection genuinely requires
+per-occurrence correspondence, and **(b) is not optional.**
+
+**(a) IS STILL FIRST, FOR A BETTER REASON THAN CHEAPNESS.** Without it, (b) produces a relation with
+one side missing — *"occurrence `o` resolved"*, today, *"to a stamp-stripped `Node`"*. That is an
+observation of the reference side against nothing. **(a) is not the cheaper half of the relation; it
+is the precondition for (b) being an observation at all rather than a liveness log.** And (a) carries
+a payoff independent of the projection, which justifies it alone if (b) slips: an (a)-only artifact is
+a per-`(module, name)` **declaration oracle** — checkable, comparable across bases, and a delta over
+it detects drift in *what* X selects without knowing *where*.
+
+**THE ENVELOPE IS UNAFFECTED, CONFIRMED FROM THE CONSUMER SIDE.** The completeness law is
+`keys(outcomes) == expected_reference_occurrence_ids(B)`, and **both sides come from the denominator,
+not from the producer**. So a subject on today's X yields one row per expected reference occurrence,
+every one `LegacyBindingIdentityAbsentAtDecision`, and the observation is **complete, applicable and
+true**. The refusal population is a fact about the producer; the totality is a fact about the
+denominator; **they do not interact**, so a 100% refusal population is a valid observation whose join
+still closes — and nobody is pushed toward calling the producer broken to make the artifact valid.
+One guard carried: the artifact must not be *readable* as mostly-bound-with-gaps when it is
+wholly-absent. **A row saying "no identity at decision" and a row saying "the tap never ran" must not
+render identically** — execution provenance, at the artifact's own surface.
+
+**THE CONSTRUCTION RULING, WHICH IS THE PART THAT HAD TO BE SAID BEFORE THE WORK STARTED.** (a) was
+described as *one field, two builders*, and the obvious implementation is to add an `ident` field to
+`make_expr_node` and `make_named_expr_node`.
+
+> **If that field defaults to `none`, (a) reproduces the defect it exists to fix — with a field to
+> blame instead of an absence.**
+
+The mechanism says why. The stamp is authored once and every other site *copies* `n.ident`; the sites
+that drop it are **rebuilds**, and a rebuild has the original node in hand, so **the ident is
+available at the call site**. A builder that genuinely *mints* a node — a synthesised expression with
+no authored source — has no ident to carry, and **that is a different state from a rebuild that
+forgot**. If both spell as `none`, the corpus-wide drop returns the moment one rebuild site is
+missed, silently, and the next census reads a **small nonzero number instead of a clean zero** —
+strictly harder to diagnose, because today's zero is loud and unambiguous.
+
+**So the construction-correct shape is that the rebuild path cannot be written without carrying the
+ident forward:** the ident is a parameter **with no default**, and minting gets its own explicit
+spelling. That makes *a rebuild that lost the stamp* **unwritable** rather than merely uncommon —
+§4b's structural rung rather than a validator, and §5's construction-over-validation applied to a
+repair before it exists. It is the same argument the CI section records for the formatter fixed
+point: **if the cheap arm and the correct arm spell the same, the cheap arm wins by default,
+forever.**
