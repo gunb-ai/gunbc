@@ -26,6 +26,13 @@ data cgroup_v2_mount_point: NonEmptyStr = "/sys/fs/cgroup"
 // -mindepth 1 excludes the directory itself; -maxdepth 1 keeps it to immediate children, because a
 // session's own descendants are that session's internal business and counting them would inflate
 // the population. -printf %f yields the bare child name rather than a full path.
+//
+// PathIsDirectory: A CGROUP THAT DOES NOT EXIST IS NOT A CGROUP THAT COULD NOT BE READ. Both make `find` and
+// `cat` exit nonzero, so exit status alone cannot separate "this host has no such slice" from
+// "the slice is there and the read failed" -- and those have opposite meanings for a capacity
+// question: the first says the host hosts nothing of this kind, the second says we are blind.
+// `test -d` is the discriminator the kernel's filesystem representation already affords, and it
+// is total: 0 for a directory, 1 for anything else, with no output to parse.
 service linux.CgroupV2 {
   operation ListChildCgroups {
     input { cgroup_path: NonEmptyStr }
@@ -54,6 +61,20 @@ service linux.CgroupV2 {
     exit {
       0 => Unit
       nonzero => String "cgroup interface file read failed"
+    }
+  }
+  operation PathIsDirectory {
+    input { path: NonEmptyStr }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    transport shell {
+      argv: ["test", "-d", "{path}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "path is not a directory"
     }
   }
 }

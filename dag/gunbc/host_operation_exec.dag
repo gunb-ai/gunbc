@@ -111,6 +111,7 @@ type HostOperation =
   | HostnameReadShort
   | CgroupListChildren { cgroup_path: NonEmptyStr }
   | CgroupReadInterfaceFile { file_path: NonEmptyStr }
+  | CgroupPathIsDirectory { path: NonEmptyStr }
 
 // THE OUTCOME IS DELIBERATELY NOT SshSessionExecResult. Three of the four legs produce one, but
 // naming a local process observation after ssh would be a nickname in the return position, and the
@@ -181,6 +182,14 @@ fn host_operation_invocation(operation: HostOperation) -> BoundOperationInvocati
         operation: "ReadInterfaceFile",
       },
       bindings: [operation_argv_bind_text(name: "file_path", text: p as String)],
+    )
+    CgroupPathIsDirectory { path: p } => bind_operation_invocation(
+      at: OperationRef {
+        path: cgroup_v2_operation_path,
+        service: cgroup_v2_operation_service,
+        operation: "PathIsDirectory",
+      },
+      bindings: [operation_argv_bind_text(name: "path", text: p as String)],
     )
   }
 }
@@ -262,6 +271,10 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
     }
     CgroupReadInterfaceFile { file_path: p } => {
       let result = linux.CgroupV2.ReadInterfaceFile(file_path: p)
+      HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
+    }
+    CgroupPathIsDirectory { path: p } => {
+      let result = linux.CgroupV2.PathIsDirectory(path: p)
       HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
     }
   }

@@ -27,10 +27,11 @@ import gunbc.oomd_install { gunbc_oomd_sessions_slice }
 import gunbc.session_demand {
   SessionContainerInventory,
   SessionContainerInventoryObserved,
-  SessionContainerInventoryUnavailable,
+  SessionContainerInventoryUnavailable, SessionContainerInventoryAbsent,
   SessionPlacement, ManagedSession, SessionPlacementUnclassifiable,
   SessionMemoryDemand, ParentSliceDemand,
   SessionPopulation, SessionPopulationEstablished, SessionPopulationUnavailable,
+  SessionPopulationNoSessionSlice,
   ObservedMemoryCount, MemoryCountRead, MemoryCountMalformed, MemoryCountUnread,
   ObservedMemoryLimit, MemoryLimitRead, MemoryLimitUnlimited, MemoryLimitMalformed, MemoryLimitUnread,
   SessionDemandMembershipGate, MembershipAdmitsAggregate, MembershipRefusesAggregate,
@@ -82,11 +83,51 @@ fn cgroup_child_names(stdout: String) -> List<NonEmptyStr> {
   )
 }
 
+// EXISTENCE IS PROBED BEFORE ENUMERATION, because the enumeration cannot report it. `find` on a
+// missing path and `find` on an unreadable one both exit nonzero, so an arm keyed on exit status
+// alone must render one of them as the other -- and this producer rendered "not a session host" as
+// "we could not look", which is the strictly more dangerous direction.
+//
+// The probe is not a second check standing beside the enumeration; it answers a question the
+// enumeration is structurally unable to answer, and its result selects WHICH inventory arm exists
+// rather than validating one that was already built.
+// THE PROBE ITSELF HAS THREE OUTCOMES, NOT TWO, and collapsing it to Bool would rebuild the very
+// defect it exists to remove one level further down: a probe the transport REFUSED would answer
+// `false` and be read as "the slice is absent", which is a blindness spent as a structural fact.
+type CgroupPathProbe
+  = CgroupPathIsDir
+  | CgroupPathIsNotDir
+  | CgroupPathProbeRefused { reason: String }
+
+fn probe_cgroup_path(
+  transport: HostEffectTransport,
+  cgroup_path: NonEmptyStr,
+) -> CgroupPathProbe {
+  match host_operation_exec(
+    transport: transport,
+    operation: CgroupPathIsDirectory { path: cgroup_path },
+  ) {
+    HostOperationObserved { stdout: _, success: ok, stderr: _ } =>
+      if ok { CgroupPathIsDir } else { CgroupPathIsNotDir }
+    HostOperationRefused { operation: _, reason: why } =>
+      CgroupPathProbeRefused { reason: why }
+  }
+}
+
 fn observe_cgroup_children(
   transport: HostEffectTransport,
   host: HostIdentity,
   cgroup_path: NonEmptyStr,
 ) -> SessionContainerInventory {
+  match probe_cgroup_path(transport: transport, cgroup_path: cgroup_path) {
+    CgroupPathIsNotDir =>
+      SessionContainerInventoryAbsent { host: host, cgroup_path: cgroup_path }
+    CgroupPathProbeRefused { reason: why } =>
+      SessionContainerInventoryUnavailable {
+        host: host,
+        cause: concat("cgroup path probe refused, so whether the slice exists is unknown: ", why),
+      }
+    CgroupPathIsDir =>
   match host_operation_exec(
     transport: transport,
     operation: CgroupListChildren { cgroup_path: cgroup_path },
@@ -105,6 +146,7 @@ fn observe_cgroup_children(
         host: host,
         cause: concat("cgroup child enumeration refused: ", why),
       }
+  }
   }
 }
 
@@ -231,11 +273,17 @@ fn session_population(
       SessionPopulationUnavailable {
         cause: concat("the managed slice could not be enumerated: ", why),
       }
+    SessionContainerInventoryAbsent { host: _, cgroup_path: p } =>
+      SessionPopulationNoSessionSlice { cgroup_path: p }
     SessionContainerInventoryObserved { host: _, identities: managed_ids } =>
       match legacy {
         SessionContainerInventoryUnavailable { host: _, cause: why } =>
           SessionPopulationUnavailable {
             cause: concat("system.slice could not be enumerated, so whether any session runs FLAT outside the managed slice is unknown; the managed count alone cannot establish the population: ", why),
+          }
+        SessionContainerInventoryAbsent { host: _, cgroup_path: p } =>
+          SessionPopulationUnavailable {
+            cause: concat("the managed slice exists but system.slice does not, which no Linux host should report; whether any session runs FLAT outside the managed slice is therefore unknown: ", p as String),
           }
         SessionContainerInventoryObserved { host: _, identities: legacy_ids } =>
           SessionPopulationEstablished {
@@ -368,6 +416,8 @@ func session_demand_observe_ci_wet() -> ProcessExit {
           ], "")
         SessionContainerInventoryUnavailable { host: _, cause: why } =>
           join(["managed_population\tUNAVAILABLE\t", why, "\n"], "")
+        SessionContainerInventoryAbsent { host: _, cgroup_path: p } =>
+          join(["managed_population\tNO_SUCH_SLICE\t", p as String, "\n"], "")
       }
       let legacy_body = match legacy {
         SessionContainerInventoryObserved { host: _, identities: ids } =>
@@ -377,11 +427,15 @@ func session_demand_observe_ci_wet() -> ProcessExit {
           ], "")
         SessionContainerInventoryUnavailable { host: _, cause: why } =>
           join(["system_slice_children\tUNAVAILABLE\t", why, "\n"], "")
+        SessionContainerInventoryAbsent { host: _, cgroup_path: p } =>
+          join(["system_slice_children\tNO_SUCH_SLICE\t", p as String, "\n"], "")
       }
       let population = session_population(managed: managed, legacy: legacy)
       let verdict = match population {
         SessionPopulationUnavailable { cause: why } =>
           join(["census\tUNAVAILABLE\t", why, "\n"], "")
+        SessionPopulationNoSessionSlice { cgroup_path: p } =>
+          join(["census\tNOT_A_SESSION_HOST\t", p as String, " does not exist; this host runs no sessions, so it contributes no session demand and no aggregate is owed over it\n"], "")
         SessionPopulationEstablished { placements: placements } =>
           match session_placement_census(placements: placements) {
             SessionPlacementCensusIncomplete { unclassifiable: us } =>
@@ -420,6 +474,7 @@ func session_demand_observe_ci_wet() -> ProcessExit {
         match population {
           SessionPopulationUnavailable { cause: why } =>
             exit_failure(reason: join(["session_demand_observe_ci_wet: no population was established, so nothing here may be read as an observation of this host: ", why, "\n", body], ""))
+          SessionPopulationNoSessionSlice { cgroup_path: _ } => ExitSuccess
           SessionPopulationEstablished { placements: _ } => ExitSuccess
         }
       }

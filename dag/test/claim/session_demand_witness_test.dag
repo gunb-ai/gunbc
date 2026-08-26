@@ -19,7 +19,9 @@ import gunbc.session_demand {
   ManagedSession, LegacyFlatSession, SessionPlacementUnclassifiable,
   SessionPlacementCensusComplete, SessionPlacementCensusIncomplete,
   SessionContainerInventoryObserved, SessionContainerInventoryUnavailable,
+  SessionContainerInventoryAbsent,
   SessionPopulationEstablished, SessionPopulationUnavailable,
+  SessionPopulationNoSessionSlice,
   session_placement_census, census_membership_signal,
   placement_is_managed, placement_is_unclassifiable,
   session_demand_membership_gate,
@@ -255,17 +257,61 @@ fn unreadable_inventory_never_establishes_a_population() -> Bool {
   }
   let legacy_unreadable_refuses = match session_population(managed: observed_managed, legacy: unreadable) {
     SessionPopulationUnavailable { cause: _ } => true
+    SessionPopulationNoSessionSlice { cgroup_path: _ } => false
     SessionPopulationEstablished { placements: _ } => false
   }
   let managed_unreadable_refuses = match session_population(managed: unreadable, legacy: observed_empty) {
     SessionPopulationUnavailable { cause: _ } => true
+    SessionPopulationNoSessionSlice { cgroup_path: _ } => false
     SessionPopulationEstablished { placements: _ } => false
   }
   let both_readable_establishes = match session_population(managed: observed_managed, legacy: observed_empty) {
     SessionPopulationEstablished { placements: ps } => count(ps) == 1
+    SessionPopulationNoSessionSlice { cgroup_path: _ } => false
     SessionPopulationUnavailable { cause: _ } => false
   }
   legacy_unreadable_refuses && managed_unreadable_refuses && both_readable_establishes
+}
+
+// THE DISCRIMINATING PAIR FOR THE ARM THE LIVE FLEET FOUND. srv3 and srv4 have no sessions.slice
+// at all, and the first cut called that UNAVAILABLE -- "could not be enumerated" -- which is the
+// not-applicable-rendered-as-malformed class. Absence and unreadability are asserted here against
+// the SAME managed input, so the claim cannot pass by keying on anything but the arm: if the two
+// were folded back together, the second half of this witness would go red rather than the first.
+//
+// The third assertion is the one that keeps this honest in the other direction. An ABSENT
+// system.slice on a host that HAS a managed slice is not "not a session host" -- every Linux host
+// has system.slice, so its absence means the probe is lying to us and the flat side is unknown.
+// That must refuse, and refusing it is what stops NO_SUCH_SLICE from becoming a second absorbing
+// answer that quietly admits anything it is given.
+fn an_absent_slice_is_not_an_unreadable_one() -> Bool {
+  let observed_empty = SessionContainerInventoryObserved { host: operator_host_srv1, identities: [] }
+  let absent = SessionContainerInventoryAbsent {
+    host: operator_host_srv1,
+    cgroup_path: "/sys/fs/cgroup/sessions.slice",
+  }
+  let unreadable = SessionContainerInventoryUnavailable {
+    host: operator_host_srv1,
+    cause: "find exited unsuccessfully",
+  }
+  let absent_managed_is_not_a_session_host = match session_population(managed: absent, legacy: observed_empty) {
+    SessionPopulationNoSessionSlice { cgroup_path: p } => p == "/sys/fs/cgroup/sessions.slice"
+    SessionPopulationUnavailable { cause: _ } => false
+    SessionPopulationEstablished { placements: _ } => false
+  }
+  let unreadable_managed_is_still_blind = match session_population(managed: unreadable, legacy: observed_empty) {
+    SessionPopulationUnavailable { cause: _ } => true
+    SessionPopulationNoSessionSlice { cgroup_path: _ } => false
+    SessionPopulationEstablished { placements: _ } => false
+  }
+  let absent_system_slice_refuses = match session_population(managed: observed_empty, legacy: absent) {
+    SessionPopulationUnavailable { cause: _ } => true
+    SessionPopulationNoSessionSlice { cgroup_path: _ } => false
+    SessionPopulationEstablished { placements: _ } => false
+  }
+  absent_managed_is_not_a_session_host
+    && unreadable_managed_is_still_blind
+    && absent_system_slice_refuses
 }
 
 fn session_demand_producer_pure_half_holds() -> Bool {
@@ -273,4 +319,5 @@ fn session_demand_producer_pure_half_holds() -> Bool {
     && placement_classification_needs_no_naming_authority()
     && systemd_units_are_not_session_candidates()
     && unreadable_inventory_never_establishes_a_population()
+    && an_absent_slice_is_not_an_unreadable_one()
 }

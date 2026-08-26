@@ -28,6 +28,17 @@ import gunbc.oomd_install {
 // counts or out of the population entirely. Both of those are fabrications. Starting from
 // identities makes the unclassifiable case REPRESENTABLE, which is the whole reason this layer
 // exists above the signal rather than beside it.
+// A SLICE THAT IS NOT ON THIS HOST IS NOT A SLICE WE FAILED TO READ. Found by the live fleet
+// rather than by review: srv3 and srv4 carry no sessions.slice at all -- they run CI runners and
+// host no sessions -- and the first cut reported them UNAVAILABLE, "the managed slice could not
+// be enumerated". Nothing was wrong with those hosts, and nothing was wrong with the read.
+// This is the not-applicable-rendered-as-malformed class DESIGN names, and the recognition rule
+// fires exactly: the arm sat downstream of an enumeration that found nothing to enumerate.
+//
+// The two have OPPOSITE consequences for the capacity question this cut feeds. Absent means the
+// host contributes no session demand and never will, which is a positive finding an aggregate
+// may rely on. Unavailable means we are blind, and blindness must never be spent as though it
+// were a zero.
 type SessionContainerInventory
   = SessionContainerInventoryObserved {
       host: HostIdentity
@@ -36,6 +47,10 @@ type SessionContainerInventory
   | SessionContainerInventoryUnavailable {
       host: HostIdentity
       cause: String
+    }
+  | SessionContainerInventoryAbsent {
+      host: HostIdentity
+      cgroup_path: NonEmptyStr
     }
 
 // AN UNCLASSIFIABLE CONTAINER IS ITS OWN ARM AND MUST SURVIVE INTO THE CENSUS. Guessing it into
@@ -58,9 +73,16 @@ type SessionPlacementCensus
 // that fact cannot be lost between the two reads. The population is a join over BOTH the managed
 // slice and the flat candidates; if either read failed, no census over the join means anything,
 // because the missing side is exactly the side that would have refused it.
+// THE HOST HOSTS NO SESSIONS, WHICH IS AN ANSWER RATHER THAN A FAILURE TO ANSWER. Kept distinct
+// from Established-with-an-empty-list as well as from Unavailable: an empty managed slice means
+// sessions COULD run here and none is running now, which is a demand reading that can change by
+// the next observation; no slice at all means this host is not a session host, which is a
+// structural fact about the fleet. A capacity policy keyed on the first would be re-derived every
+// run; one keyed on the second would not.
 type SessionPopulation
   = SessionPopulationEstablished { placements: List<SessionPlacement> }
   | SessionPopulationUnavailable { cause: String }
+  | SessionPopulationNoSessionSlice { cgroup_path: NonEmptyStr }
 
 fn placement_is_unclassifiable(p: SessionPlacement) -> Bool {
   match p {
