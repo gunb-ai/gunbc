@@ -53,6 +53,10 @@ import gunbc.scm.ancestry {
 
 import gunbc.scm.target_reference {
   TargetReferenceRefusal,
+  TargetReferenceMemberReadRefused,
+  TargetReferenceUnexpectedMember,
+  TargetReferenceNotOneArm,
+  TargetReferenceUncontainedDigestInvalid,
   TargetContainedAt,
   TargetUncontained,
   TargetReferenceRefused,
@@ -60,6 +64,9 @@ import gunbc.scm.target_reference {
 }
 import gunbc.scm.json_member {
   MemberReadRefusal,
+  MemberReadSubjectNotObject,
+  MemberReadMissing,
+  MemberReadDuplicated,
   MemberReadWrongShape,
   MemberValue,
   MemberLookupFailed,
@@ -85,6 +92,12 @@ import gunbc.scm.commit_closure_json_v2 {
   position_reference,
   unexpected_member_key,
   resolve_reference,
+  closure_document_load_standing,
+}
+import gunbc.scm.load_standing {
+  LoadStanding,
+  LoadUnsupportedProtocol,
+  LoadDocumentMalformed,
 }
 
 // THE ENCODING IS NOT CANONICAL WITH RESPECT TO INSERTION HISTORY, and that is declared here rather
@@ -1061,5 +1074,72 @@ fn decode_repository_checkout(
         _ =>
           RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "checked_out" } } }
       }
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// Publication standing
+// ------------------------------------------------------------------------------------------------
+
+// THE SECOND FORMAT'S CLASSIFIER, AND IT WAS MISSING RATHER THAN UNNECESSARY.
+//
+// gunbc.scm.commit_closure_json_v2 and gunbc.scm.object_table_json each classify their own refusals
+// into the format-agnostic vocabulary; this document format did not, so any consumer deciding what to
+// do with a refused repository load had to reach into RepositoryDecodeRefusal and assign a standing
+// itself -- one format's error enum answering a format-agnostic question, which is the placement
+// defect that closed gunbc#8940 and the reason gunbc.scm.load_standing exists at all. Found by
+// auditing every route into the supersession decision rather than by a failure, because a missing
+// classifier fails silently: nothing refuses, the consumer simply invents the answer.
+//
+// EVERY ARM DESCENDS TO THE AUTHORITY THAT OWNS ITS CAUSE. The closure-document arm delegates to that
+// format's own classifier; the member-read and target-reference arms descend per cause in place,
+// because gunbc.scm.json_member and gunbc.scm.target_reference carry no classifier of their own. A
+// bare binding in a payload-carrying arm is the tell DESIGN names for "total at the level examined,
+// blind one level down", so a new cause in either population fails to compile HERE.
+//
+// THE IDENTITY RULE IS A PROTOCOL FACT, NOT DAMAGE, and this is the arm most likely to be got wrong.
+// A document naming an identity rule this build does not implement is bytes that may be perfectly
+// good and unreadable ONLY HERE -- the same shape as an unrecognized format tag. Calling it malformed
+// would let an older reader destroy a newer writer's repository over a rule it simply lacks, which is
+// the one outcome the standing vocabulary exists to prevent.
+//
+// THE TWO ANCESTRY ARMS WERE ADDED BY INTEGRATION, NOT BY EITHER SIDE, and they are classified here
+// rather than left to the merge because a textually clean merge is what produced the gap. This
+// classifier landed on main total over the refusal population as it stood; the ancestry decode landed
+// on a branch that widened that population by two. Neither change is wrong and neither touched the
+// other's lines, so git merged both and the exhaustive match silently stopped being exhaustive --
+// the obligation is created by the integration itself. It surfaces loudly because the match descends,
+// which is the property the paragraph above was written to defend, now with a receipt.
+//
+// BOTH ARE MALFORMED RATHER THAN UNSUPPORTED, and the cyclic one is the arm worth stating a reason
+// for. An unresolved parent reference is a document naming a commit it does not contain, which is the
+// same damage the root and checkout arms above already carry. A cycle is NOT a rule a newer writer
+// might legitimately implement and this build might lack: acyclicity is a substrate law, so no
+// conforming writer emits one at any version. Classifying it as unsupported would tell a reader to
+// stand aside for a document that is damaged, which inverts the remedy.
+fn repository_envelope_load_standing(cause: RepositoryDecodeRefusal) -> LoadStanding {
+  match cause {
+    RepositoryFormatUnrecognized { found: _ } => LoadUnsupportedProtocol
+    RepositoryIdentityRuleUnrecognized { found: _ } => LoadUnsupportedProtocol
+    RepositoryDecodeClosureDocRefusal { cause: c } => closure_document_load_standing(cause: c)
+    RepositoryMemberReadRefused { cause: c } =>
+      match c {
+        MemberReadSubjectNotObject => LoadDocumentMalformed
+        MemberReadMissing { key: _ } => LoadDocumentMalformed
+        MemberReadDuplicated { key: _ } => LoadDocumentMalformed
+        MemberReadWrongShape { key: _ } => LoadDocumentMalformed
+      }
+    RepositoryTargetReferenceRefused { cause: c } =>
+      match c {
+        TargetReferenceMemberReadRefused { cause: _ } => LoadDocumentMalformed
+        TargetReferenceUnexpectedMember { key: _ } => LoadDocumentMalformed
+        TargetReferenceNotOneArm { found: _ } => LoadDocumentMalformed
+        TargetReferenceUncontainedDigestInvalid { found: _ } => LoadDocumentMalformed
+      }
+    RepositoryCommitRootReferenceUnresolved { reference: _ } => LoadDocumentMalformed
+    RepositoryCheckoutReferenceUnresolved { reference: _ } => LoadDocumentMalformed
+    RepositoryCommitParentReferenceUnresolved { reference: _ } => LoadDocumentMalformed
+    RepositoryDecodedAncestryCyclic { detected_from: _ } => LoadDocumentMalformed
+    RepositoryUnexpectedMember { context: _, key: _ } => LoadDocumentMalformed
   }
 }

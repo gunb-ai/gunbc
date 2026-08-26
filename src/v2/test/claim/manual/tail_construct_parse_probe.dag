@@ -167,7 +167,6 @@ fn tcp_corpus_sample_established_count() -> Int {
     tcp_established_at(path: "src/v2/lens/affected_set_examples.dag") +
     tcp_established_at(path: "src/v2/lens/application.dag") +
     tcp_established_at(path: "src/v2/lens/application_serializer.dag") +
-    tcp_established_at(path: "src/v2/lens/cited_symbol_resolution.dag") +
     tcp_established_at(path: "src/v2/lens/complexity.dag") +
     tcp_established_at(path: "src/v2/lens/complexity_accumulator_copy.dag") +
     tcp_established_at(path: "src/v2/lens/complexity_accumulator_copy_test.dag") +

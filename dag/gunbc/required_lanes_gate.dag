@@ -66,8 +66,9 @@ fn required_lanes_echo(words: List<Node>) -> Node {
   bash_build_command_with_words(words: words)
 }
 
-// The receipt line, printed on every run: it is what preserves the cancelled-versus-failed
-// distinction that the job's own conclusion loses under `always()`.
+// The receipt line, printed on every non-cancelled run: it locates which live required lane
+// failed or skipped. Workflow-level cancellation is preserved before this script by the
+// aggregate job condition and never collapsed into a lane failure here.
 fn required_lanes_receipt_stmt(build_var: String, floor_var: String) -> Node {
   required_lanes_echo(
     words: [
