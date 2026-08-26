@@ -1397,18 +1397,42 @@ WAVE 2   B.3 parser-owned reference facts        [needs B.1]
          D.2 impostor separation, two arms       [needs A.1]
 
 WAVE 3   C.3 remaining emitter sites   [needs C.2]
-         C.4a LegacyBindingObservation O_X(B) — minted WHILE X's fallback still lives [see 11.2r]
-         C.4b CandidateBindingObservation O_Y(P(B)) — after C.1Y and after projection
+         E.0 the O_X PRODUCER — subject identity, derived occurrence denominator,
+             the X-decision tap, content-addressed complete-or-refused artifact.
+             BUILT here. NOTHING IS MINTED HERE.            [see 11.2t]
          D.3 KeyedRoster wall          [needs D.2]
 
-WAVE 4   E.1 derived projection  [needs C.4]
+WAVE 4   E.1 the PROJECTOR — deterministic full qualification from an exact old
+             binding, plus total occurrence correspondence. BUILT, not run on a
+             base anyone keeps.                             [needs E.0]
          E.2 acceptance gates    [needs E.1, and BLOCKED ON ANOTHER TREE — below]
          E.3 perturbation falsifier — the control for ambient binding
 
 WAVE 5   F   one semantic motion             ← single owner
+             ── observational and abortable, on the EXACT held base ──
+             hold B_final · mint O_X(B_final) · derive P(B_final) + correspondence
+             · mint O_Y(P(B_final)) · compare  →  abort here changes nothing
+             ── only then, authority-changing ──
              rewrite · switch the producer · move EVERY live consumer
-             · delete old producers and ambient fallbacks
+             · delete old producers and ambient fallbacks (C.1X)
              · retire import-semantic diagnostics and witnesses · regenerate
+```
+
+**THE MINTING IS NOT IN THE WAVES, AND THIS TABLE SAID OTHERWISE UNTIL 2026-08-26**
+(`review 56231`). It placed `C.4a` (mint `O_X(B)`) and `C.4b` (mint `O_Y(P(B))`) in Wave 3, with the
+projection they consume in Wave 4 — **impossible on the table's own terms**, before §11.2t's ruling
+is even brought to bear. §11.2t then supersedes the whole shape: **only the producer is built
+early; every observation is minted together on the held final base, inside F, immediately before the
+authority transition.** Leaving the old rows standing left two executable answers for the landing
+order, and the one a reader reaches first would have produced exactly the **development provenance**
+§11.2q forbids — a green over yesterday's `B` presented as the cut's old side.
+
+That this document, whose subject *is* single authority, carried a superseded operative table
+beside its own terminal ruling is the §3 failure in its purest form: **the ruling was filed and the
+instruction was not updated**, so the prose was right and the thing people execute from was wrong.
+Recorded rather than quietly fixed, because a plan's wave table is the artifact lanes actually read.
+
+```
 
 WAVE 6   G   bounded corpse deletion — grammar, token, AST, production
 ```
@@ -1421,9 +1445,18 @@ F**, never in a preparation wave.
 binding is live records a heuristic's guess as truth" is REVERSED for the legacy
 observation and kept only for the standing ledger (§11.2r).*** `O_X(B)` must be
 minted **while X's fallback still exists**, because capturing exactly those
-selections is what produces the qualifiers for the 593 off-chain triples (§11.2p: a
-lower bound on sites, and on one closure). It does
+selections is what produces the qualifiers for the off-chain population (§11.2p's 593
+is a lower bound on sites, and on one closure). It does
 not call them truth; its whole proposition is past-tense.
+
+**AND THAT CONSTRAINT IS SATISFIED INSIDE F, NOT BY MINTING EARLY — the distinction the wave table
+got wrong** (§11.2t; `review 56231`). C.1X is *itself* inside F, so X's fallback is still live when
+F opens: minting `O_X(B_final)` on the held final base meets the "while X still exists" requirement
+exactly, and it is the **only** placement that also meets §11.2q's subject requirement. Minting in a
+preparation wave satisfies the first and fails the second — the observation would be bound to a
+subject that is not the one being cut, which is **development provenance**, not enrollment. The
+requirement is about *what still exists when the mint happens*, never about *how early it happens*,
+and reading it as the latter is what put two answers in this document.
 
 ### Three lanes, divided by question rather than by file
 
