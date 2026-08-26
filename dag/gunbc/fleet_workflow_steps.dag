@@ -35,10 +35,10 @@ import gunbc.ci_compile_jobs { compile_jobs_count_or_serial }
 import gunbc.ci_runner_target { ci_runner_target_ram_speed_budget, selected_ci_runner_target }
 import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
+import gunbc.toolchain_workflow_steps { toolchain_pin_rustup_default_step }
 import v2.workflow.ci_workflow_run_emit {
   ci_isolate_toolchain_script,
   ci_native_cache_root_script,
-  ci_pin_rustup_default_script,
 }
 import v2.workflow.ci_release_build_emit { ci_release_build_script }
 import gunbc.ci_spec {
@@ -138,7 +138,7 @@ fn ci_prelude_bound_steps_with_checkout(
           step_name: "Derive native-cache root",
         },
         FleetPreludeBoundStep {
-          step: ci_pin_rustup_default_step(),
+          step: toolchain_pin_rustup_default_step(),
           role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
           step_name: "Pin rustup default",
         },
@@ -190,19 +190,6 @@ fn ci_setup_rust_step() -> Step {
   }
 }
 
-fn ci_pin_rustup_default_step() -> Step {
-  RunStep {
-    name: Present { value: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)" },
-    id: none,
-    run: ci_pin_rustup_default_script(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
 
 fn ci_cache_cargo_step() -> Step {
   UsesStep {
@@ -485,7 +472,7 @@ data gunbc_ci_fleet_job_worst_case_mode_aux_step_count: Int = 1
 
 data gunbc_ci_fleet_job_worst_case_mode_spark_step_count: Int = 1
 
-data gunbc_ci_fleet_job_backstop_timeout_note: String = "SUPERSEDES the 2026-08-21 first correction (prelude + 7*aux + 3*transfer + 5*spark = 370m), which fixed the tier miscount in the prior 11*aux+2*spark formula but kept its structural error: summing every tier-step COUNT as though every step in fleet_converge_job() executes in one run. It does not. The job's steps are gated by the single-select `mode` DispatchInput (InputChoice, exactly one value per dispatch — fleet_converge_workflow.dag DispatchInput \"mode\"), so plan/apply/spark_linger/spark_grants/spark_observe/spark_reboot/spark_durability are MUTUALLY EXCLUSIVE per run, not concurrent tiers to sum. Recounted from fleet_converge_job()'s actual step list (fleet_converge_workflow.dag:280-303) by what a single dispatch can actually execute: ALWAYS-RUN, no if_condition or if_condition: always() — ci_release_bins_download_step (transfer), ci_release_bins_unpack_verify_step, ci_fleet_wif_auth_step, ci_fleet_key_agent_step, ci_spark_admin_credential_cleanup_step, ci_fleet_key_agent_cleanup_step (5 aux + 1 transfer, always). MODE-GATED, at most one bundle applies per dispatch: mode=plan adds fleet_converge_plan_step(aux)+fleet_converge_plan_upload_step(transfer)=15m; mode=apply adds fleet_converge_plan_download_step(transfer)+fleet_converge_apply_step(aux)=15m; mode=spark_linger/spark_observe/spark_reboot/spark_durability each add exactly one spark step=60m; mode=spark_grants adds ci_spark_admin_credential_step(aux)+fleet_converge_spark_grants_step(spark)=65m, the WORST CASE because it is the only mode combining an aux-tier step with a spark-tier step. Worst-case single-run total: 5 + (5+1)*5 + 1*10 + 1*60 = 105m, comfortably inside extdeps.github.actions max_job_timeout_minutes (360m) — the >360 conflict raised on review of the first correction (bright-ferret-335, gunbc#8782) dissolves under the corrected model rather than needing a rounded-down number or a job split; checked_job_timeout_minutes below still guards the class for any future per-tier raise. These counts remain hand-authored cardinals against fleet_converge_job()'s step list (fleet_workflow_steps cannot import fleet_converge_workflow without a cycle), so this note is the single authority to update alongside any change to that job's step composition, if_condition gating, or mode set."
+data gunbc_ci_fleet_job_backstop_timeout_note: String = "SUPERSEDES the 2026-08-21 first correction (prelude + 7*aux + 3*transfer + 5*spark = 370m), which fixed the tier miscount in the prior 11*aux+2*spark formula but kept its structural error: summing every tier-step COUNT as though every step in fleet_converge_job() executes in one run. It does not. The job's steps are gated by the single-select `mode` DispatchInput (InputChoice, exactly one value per dispatch — fleet_converge_workflow.dag DispatchInput \"mode\"), so plan/apply/spark_linger/spark_grants/spark_observe/spark_reboot/spark_durability are MUTUALLY EXCLUSIVE per run, not concurrent tiers to sum. Recounted from fleet_converge_job()'s actual step list (fleet_converge_workflow.dag:280-303) by what a single dispatch can actually execute: ALWAYS-RUN, no if_condition or if_condition: always() — ci_release_bins_download_step (transfer), ci_release_bins_unpack_verify_step, ci_fleet_wif_auth_step, ci_fleet_key_agent_step, ci_spark_admin_credential_cleanup_step, ci_fleet_key_agent_cleanup_step (5 aux + 1 transfer, always). MODE-GATED, at most one bundle applies per dispatch: mode=plan adds fleet_converge_plan_step(aux)+fleet_converge_plan_upload_step(transfer)=15m; mode=apply adds fleet_converge_plan_download_step(transfer)+fleet_converge_apply_step(aux)=15m; mode=spark_linger/spark_observe/spark_reboot/spark_durability each add exactly one spark step=60m; mode=session_demand_observe adds exactly one read-only observation step, budgeted at the same spark-tier 60m because it reuses gunbc_ci_spark_serving_step_timeout_minutes, and it is NOT additive with any other mode; mode=spark_grants adds ci_spark_admin_credential_step(aux)+fleet_converge_spark_grants_step(spark)=65m, the WORST CASE because it is the only mode combining an aux-tier step with a spark-tier step. Worst-case single-run total: 5 + (5+1)*5 + 1*10 + 1*60 = 105m, comfortably inside extdeps.github.actions max_job_timeout_minutes (360m) — the >360 conflict raised on review of the first correction (bright-ferret-335, gunbc#8782) dissolves under the corrected model rather than needing a rounded-down number or a job split; checked_job_timeout_minutes below still guards the class for any future per-tier raise. Adding session_demand_observe does NOT move the worst case: it is one aux-tier-shaped step under a spark-tier budget, strictly below the spark_grants worst case (aux + spark = 65m) that sets the bound, so the 105m single-run total stands unchanged. These counts remain hand-authored cardinals against fleet_converge_job()'s step list (fleet_workflow_steps cannot import fleet_converge_workflow without a cycle), so this note is the single authority to update alongside any change to that job's step composition, if_condition gating, or mode set."
 
 type JobTimeoutBudget
   = JobTimeoutWithinCeiling { minutes: Int }
