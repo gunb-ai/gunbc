@@ -1,0 +1,150 @@
+module gunbc.fleet_fan_wiring_witness
+
+import std.types { Bool, List, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.fleet_fan_population {
+  srv1_fan_population,
+  srv3_fan_population,
+  srv4_fan_population,
+}
+import gunbc.fleet_fan_wiring {
+  FanHeaderIdentity,
+  FanHeaderWiring,
+  FanModelUnobserved,
+  HostFanWiring,
+  TachNotCarried,
+  WiringCoversPopulation,
+  WiringCoversUnpopulatedHeader,
+  WiringMissesPopulatedHeader,
+  control_endpoints,
+  fan_wiring_coverage,
+  installed_fan_count,
+  srv1_fan_wiring,
+  srv3_fan_wiring,
+  srv4_fan_wiring,
+  tach_readback_endpoints,
+}
+
+fn endpoint_headers(endpoints: List<FanHeaderIdentity>) -> List<NonEmptyStr> {
+  map(endpoints, endpoint => endpoint.header)
+}
+
+// THE DISCRIMINATION THAT A COUNT CANNOT MAKE. srv3 and srv4 both carry four populated headers
+// and they are NOT the same four - srv3 skips FAN2, srv4 skips FAN5. Any check that compares
+// cardinality passes on both while the configuration is wrong for one of them, which is how a
+// fleet-wide four-string literal survived on two hosts it fits only by coincidence of length.
+fn srv3_srv4_differ_by_identity_not_count() -> Bool {
+  let srv3 = endpoint_headers(endpoints: control_endpoints(wiring: srv3_fan_wiring))
+  let srv4 = endpoint_headers(endpoints: control_endpoints(wiring: srv4_fan_wiring))
+  srv3.length() == srv4.length() && srv3 != srv4
+}
+
+// A SPLITTER HEADER IS ACTUATED BUT NOT OBSERVED, and both halves of that are the point. Two
+// physical fans behind one header derive ONE control endpoint and, when the splitter suppresses
+// the return signal, ZERO tach endpoints - while the fan count is still 2. Three numbers that a
+// single header list would have collapsed into one.
+data srv1_splitter_variant: HostFanWiring = HostFanWiring {
+  host: srv1_fan_wiring.host,
+  headers: map(
+    srv1_fan_wiring.headers,
+    binding =>
+      if binding.header == "FAN1" {
+        FanHeaderWiring {
+          header: binding.header,
+          driven_fan_count: binding.driven_fan_count,
+          model: binding.model,
+          tach_source: TachNotCarried,
+        }
+      } else {
+        binding
+      },
+  ),
+}
+
+fn splitter_actuated_but_unobserved() -> Bool {
+  let control = control_endpoints(wiring: srv1_splitter_variant)
+  let tach = tach_readback_endpoints(wiring: srv1_splitter_variant)
+  control.length() == 5
+    && tach.length() == 4
+    && installed_fan_count(wiring: srv1_splitter_variant) == 6
+}
+
+// AN UNKNOWN MODEL MUST NOT COST A CONTROL ENDPOINT. Every chassis fan on srv3 stands at
+// FanModelUnobserved and all four headers still derive. If this ever goes red it means a model
+// lookup crept into a derivation that has no business consulting one, and the visible symptom
+// would be a machine losing fan control because nobody read a label.
+fn unknown_model_still_derives_control() -> Bool {
+  control_endpoints(wiring: srv3_fan_wiring).length() == 4
+}
+
+data srv3_wiring_missing_a_populated_header: HostFanWiring = HostFanWiring {
+  host: srv3_fan_wiring.host,
+  headers: filter(srv3_fan_wiring.headers, binding => binding.header != "FAN4"),
+}
+
+data srv3_wiring_over_an_unpopulated_header: HostFanWiring = HostFanWiring {
+  host: srv3_fan_wiring.host,
+  headers: flat_map(
+    [
+      [
+        FanHeaderWiring {
+          header: "FAN2",
+          driven_fan_count: 1,
+          model: FanModelUnobserved,
+          tach_source: TachNotCarried,
+        },
+      ],
+      srv3_fan_wiring.headers,
+    ],
+    group => group,
+  ),
+}
+
+// THE JOIN REFUSES IN BOTH DIRECTIONS. Population and wiring are separate authorities, so both
+// disagreements are constructible and both must be caught - a header the chassis declares and
+// nothing wires, and a header wired into a bay the chassis says does not exist.
+fn coverage_refuses_both_directions() -> Bool {
+  let clean = match fan_wiring_coverage(population: srv3_fan_population, wiring: srv3_fan_wiring) {
+    WiringCoversPopulation => true
+    other => false
+  }
+  let missing = match fan_wiring_coverage(
+    population: srv3_fan_population,
+    wiring: srv3_wiring_missing_a_populated_header,
+  ) {
+    WiringMissesPopulatedHeader { header } => header == "FAN4"
+    other => false
+  }
+  let extra = match fan_wiring_coverage(
+    population: srv3_fan_population,
+    wiring: srv3_wiring_over_an_unpopulated_header,
+  ) {
+    WiringCoversUnpopulatedHeader { header } => header == "FAN2"
+    other => false
+  }
+  clean && missing && extra
+}
+
+fn all_hosts_cover() -> Bool {
+  let a = match fan_wiring_coverage(population: srv1_fan_population, wiring: srv1_fan_wiring) {
+    WiringCoversPopulation => true
+    other => false
+  }
+  let b = match fan_wiring_coverage(population: srv4_fan_population, wiring: srv4_fan_wiring) {
+    WiringCoversPopulation => true
+    other => false
+  }
+  a && b
+}
+
+fn fan_wiring_witness() -> ProcessExit {
+  if srv3_srv4_differ_by_identity_not_count()
+    && splitter_actuated_but_unobserved()
+    && unknown_model_still_derives_control()
+    && coverage_refuses_both_directions()
+    && all_hosts_cover() {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "fan wiring witness: endpoint derivation, splitter actuation/observation split, or population-wiring coverage changed")
+  }
+}

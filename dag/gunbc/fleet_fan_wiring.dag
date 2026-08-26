@@ -1,0 +1,290 @@
+module gunbc.fleet_fan_wiring
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_fan_population {
+  ChassisBayHeader,
+  FanHeaderBinding,
+  HeaderPopulated,
+  HeaderUnpopulatedByDesign,
+  HostFanPopulation,
+  ProcessorCoolerHeader,
+  controlled_fan_headers,
+  srv1_fan_population,
+  srv2_fan_population,
+  srv3_fan_population,
+  srv4_fan_population,
+}
+import gunbc.fleet_intent_network {
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+  operator_host_srv4,
+}
+
+// THREE POPULATIONS, NOT ONE, AND THIS MODULE IS THE MIDDLE ONE.
+//
+// gunbc.fleet_fan_population answers WHAT THE MACHINE WAS BUILT TO CARRY - a chassis-and-cooler
+// fact, one entry per board header. It is deliberately silent about everything below that, and
+// the silence was load-bearing enough to be worth its own module rather than more fields on
+// that one:
+//
+//   physical fan count  !=  PWM channel count  !=  tach channel count
+//
+// is NORMAL wiring, not an exception. A cooler that ships two fans on one splitter presents ONE
+// header to the board, receives ONE PWM signal, and returns ONE tach signal for two spinning
+// parts - so a header count can never establish a fan count in either direction. Reading five
+// headers as five fans is the error this module exists to make unwritable.
+//
+// The three layers and their DISJOINT remedies, which is the test that they are really three:
+//
+//   population   header declared but nothing wired    -> inspect the chassis build
+//   wiring       fan model unobserved                 -> read the label on the part
+//   wiring       tach not carried                     -> inspect the signal path
+//   endpoint     header maps to no BMC channel        -> read the board/firmware mapping
+//
+// Four different people fix those four things. Collapsing any pair of them sends a ticket to
+// the wrong one.
+
+// WHETHER WE KNOW WHAT PART IS ON THE HEADER. FanModelUnobserved is not a defect and must not
+// block anything downstream: an unknown chassis fan still occupies a position, still receives
+// PWM, and still contributes its control endpoint. Requiring a catalog row to enter the
+// population would have forced a fabricated row for the 2U chassis fans, whose model nobody has
+// read off the part - the fabricated-plausible-output failure, paid in inventory.
+type InstalledFanModelStanding
+  = FanModelExact { catalog: DeclarationRef }
+  | FanModelUnobserved
+
+// WHETHER A TACH SIGNAL REACHES THE BOARD FROM THIS HEADER, which is a WIRING fact and not a
+// health fact. TachNotCarried is the splitter case: fans are turning and the board sees no
+// signal, by design. TachSourceUnobserved is ignorance about the wiring itself.
+//
+// THIS IS THE ARM THAT MUST NEVER BE CONSTRUCTED FROM A READING. A header that reads absent
+// forever still has whatever tach carriage it was built with; concluding TachNotCarried from
+// repeated absence would convert a dead fan into a nominal design fact and close the ticket.
+// The remedy for absence is fan_header_verdict in the population module, judged against the
+// declared population - never a rewrite of this field.
+type FanTachSourceStanding
+  = TachCarriedByDrivenFan
+  | TachNotCarried
+  | TachSourceUnobserved
+
+// ONE HEADER'S REALIZATION. driven_fan_count is how many physical fans hang off this one
+// header - 1 for a direct connection, 2 for a splitter - and is the number that makes
+// "how many fans does this machine have" answerable at all.
+type FanHeaderWiring {
+  header: NonEmptyStr
+  driven_fan_count: Int
+  model: InstalledFanModelStanding
+  tach_source: FanTachSourceStanding
+}
+
+type HostFanWiring {
+  host: HostIdentity
+  headers: List<FanHeaderWiring>
+}
+
+// A DERIVED ENDPOINT CARRIES ITS HOST. The bare string "FAN1" is not an identity: srv3's FAN1
+// and srv4's FAN1 are different headers on different machines with different neighbours, and a
+// derivation that returned bare strings would let one host's list travel to another host's
+// configuration with nothing refusing. That is not hypothetical - it is exactly the pairing the
+// projected-config digest currently admits.
+type FanHeaderIdentity {
+  host: HostIdentity
+  header: NonEmptyStr
+}
+
+// WHY THESE ARE TWO FUNCTIONS AND NOT ONE LIST.
+//
+// The OpenBMC fan PID's `inputs` array is not a tach list. The controller READS each entry as an
+// RPM input and WRITES the commanded PWM percentage to every one of them. So a single field
+// named required_tach_inputs conflates two coverage questions that come apart in the wiring:
+//
+//   actuation coverage      does every populated header receive a commanded duty?
+//   observability coverage  does every populated header report a speed back?
+//
+// A splitter header answers YES to the first and NO to the second, and that is correct rather
+// than a fault. Under the fleet's current pure-feed-forward configuration the tach readback does
+// not affect commanded duty at all, so the two lists are not merely differently derived - they
+// govern different things, and a gap in each has a different consequence.
+
+// EVERY WIRED HEADER IS ACTUATED, whatever we know about the part on it. Model standing is
+// deliberately not consulted: an unknown fan is still driven.
+fn control_endpoints(wiring: HostFanWiring) -> List<FanHeaderIdentity> {
+  map(
+    wiring.headers,
+    binding => FanHeaderIdentity { host: wiring.host, header: binding.header },
+  )
+}
+
+fn tach_carries_readback(standing: FanTachSourceStanding) -> Bool {
+  match standing {
+    TachCarriedByDrivenFan => true
+    TachNotCarried => false
+    TachSourceUnobserved => false
+  }
+}
+
+// ONLY HEADERS THAT ACTUALLY RETURN A SIGNAL. TachSourceUnobserved is excluded and that is the
+// fail-closed direction: an unobserved signal path must not be enrolled as an expected readback,
+// because a header enrolled on a guess reports a permanent false failure and trains its reader
+// to ignore the whole list.
+fn tach_readback_endpoints(wiring: HostFanWiring) -> List<FanHeaderIdentity> {
+  map(
+    filter(wiring.headers, binding => tach_carries_readback(standing: binding.tach_source)),
+    binding => FanHeaderIdentity { host: wiring.host, header: binding.header },
+  )
+}
+
+fn installed_fan_count(wiring: HostFanWiring) -> Int {
+  fold(wiring.headers, init: 0, f: (acc, binding) => acc + binding.driven_fan_count)
+}
+
+fn wired_headers(wiring: HostFanWiring) -> List<NonEmptyStr> {
+  map(wiring.headers, binding => binding.header)
+}
+
+// THE SEAM BETWEEN THE TWO LAYERS, CHECKED RATHER THAN ASSUMED.
+//
+// Population and wiring are separate authorities answering separate questions, which means they
+// can disagree - and a disagreement is exactly the interesting state. Wiring that covers a
+// header the chassis says is empty means someone plugged in a fan nobody recorded; wiring that
+// misses a populated header means a header was built to carry a fan and nothing was wired to it.
+// Both are real conditions and neither is representable if one layer is derived from the other,
+// which is the reason this is a JOIN and not a projection.
+type FanWiringCoverage
+  = WiringCoversPopulation
+  | WiringMissesPopulatedHeader { header: NonEmptyStr }
+  | WiringCoversUnpopulatedHeader { header: NonEmptyStr }
+
+fn list_contains_header(headers: List<NonEmptyStr>, header: NonEmptyStr) -> Bool {
+  fold(headers, init: false, f: (acc, candidate) => if acc { true } else { candidate == header })
+}
+
+fn fan_wiring_coverage(
+  population: HostFanPopulation,
+  wiring: HostFanWiring,
+) -> FanWiringCoverage {
+  let populated = controlled_fan_headers(population: population)
+  let wired = wired_headers(wiring: wiring)
+  let missing = fold(
+    populated,
+    init: none,
+    f: (acc, header) =>
+      match acc {
+        Present { value } => Present { value: value }
+        none => if list_contains_header(headers: wired, header: header) { none } else { Present { value: header } }
+      },
+  )
+  match missing {
+    Present { value: header } => WiringMissesPopulatedHeader { header: header }
+    none =>
+      match fold(
+        wired,
+        init: none,
+        f: (acc, header) =>
+          match acc {
+            Present { value } => Present { value: value }
+            none => if list_contains_header(headers: populated, header: header) { none } else { Present { value: header } }
+          },
+      ) {
+        Present { value: header } => WiringCoversUnpopulatedHeader { header: header }
+        none => WiringCoversPopulation
+      }
+  }
+}
+
+data noctua_nf_a9_hs_pwm_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.fans.noctua",
+  decl_name: "noctua_nf_a9_hs_pwm_catalog",
+  field: WholeDeclaration,
+}
+
+data dynatron_df126025bu_pwmh_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.fans.dynatron",
+  decl_name: "dynatron_df126025bu_pwmh_catalog",
+  field: WholeDeclaration,
+}
+
+fn chassis_bay_wiring(header: NonEmptyStr) -> FanHeaderWiring {
+  FanHeaderWiring {
+    header: header,
+    driven_fan_count: 1,
+    model: FanModelUnobserved,
+    tach_source: TachCarriedByDrivenFan,
+  }
+}
+
+// srv1/srv2: the NH-D9 AMP-4926 4U carries TWO NF-A9 HS-PWM fans and ships with an NA-YC1
+// splitter, so ONE header drives two parts. Whether the splitter is actually in use on these
+// two machines is a WIRING question the tach evidence answers in the negative: srv2 reports all
+// five channels at 962-998 rpm, and a splitter suppresses one tach entirely rather than
+// reporting a plausible speed. So the readback is declared carried, and driven_fan_count stays 2
+// because the cooler ships two fans either way - the count is a property of the part, not of
+// whether both signals reach the board.
+data srv1_fan_wiring: HostFanWiring = HostFanWiring {
+  host: operator_host_srv1,
+  headers: [
+    FanHeaderWiring {
+      header: "FAN1",
+      driven_fan_count: 2,
+      model: FanModelExact { catalog: noctua_nf_a9_hs_pwm_ref },
+      tach_source: TachCarriedByDrivenFan,
+    },
+    chassis_bay_wiring(header: "FAN2"),
+    chassis_bay_wiring(header: "FAN3"),
+    chassis_bay_wiring(header: "FAN4"),
+    chassis_bay_wiring(header: "FAN5"),
+  ],
+}
+
+data srv2_fan_wiring: HostFanWiring = HostFanWiring {
+  host: operator_host_srv2,
+  headers: [
+    FanHeaderWiring {
+      header: "FAN1",
+      driven_fan_count: 2,
+      model: FanModelExact { catalog: noctua_nf_a9_hs_pwm_ref },
+      tach_source: TachCarriedByDrivenFan,
+    },
+    chassis_bay_wiring(header: "FAN2"),
+    chassis_bay_wiring(header: "FAN3"),
+    chassis_bay_wiring(header: "FAN4"),
+    chassis_bay_wiring(header: "FAN5"),
+  ],
+}
+
+// srv3/srv4: the Dynatron W1 carries ONE DF126025BU-PWMH. The three chassis fans are the ones
+// Rosewill preinstalls in the RSV-Z2600U and nobody has read a part number off them, so they
+// stand at FanModelUnobserved - which costs nothing downstream, because both derivations below
+// ignore model standing entirely.
+data srv3_fan_wiring: HostFanWiring = HostFanWiring {
+  host: operator_host_srv3,
+  headers: [
+    FanHeaderWiring {
+      header: "FAN1",
+      driven_fan_count: 1,
+      model: FanModelExact { catalog: dynatron_df126025bu_pwmh_ref },
+      tach_source: TachCarriedByDrivenFan,
+    },
+    chassis_bay_wiring(header: "FAN3"),
+    chassis_bay_wiring(header: "FAN4"),
+    chassis_bay_wiring(header: "FAN5"),
+  ],
+}
+
+data srv4_fan_wiring: HostFanWiring = HostFanWiring {
+  host: operator_host_srv4,
+  headers: [
+    FanHeaderWiring {
+      header: "FAN1",
+      driven_fan_count: 1,
+      model: FanModelExact { catalog: dynatron_df126025bu_pwmh_ref },
+      tach_source: TachCarriedByDrivenFan,
+    },
+    chassis_bay_wiring(header: "FAN2"),
+    chassis_bay_wiring(header: "FAN3"),
+    chassis_bay_wiring(header: "FAN4"),
+  ],
+}
