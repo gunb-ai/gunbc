@@ -43,13 +43,13 @@ service linux.CgroupV2 {
   }
 
   operation ReadInterfaceFile {
-    input { cgroup_path: NonEmptyStr, interface_file: NonEmptyStr }
+    input { file_path: NonEmptyStr }
     output {
       value: String from "stdout"
       success: Bool from "exit_success"
     }
     transport shell {
-      argv: ["cat", "{cgroup_path}/{interface_file}"]
+      argv: ["cat", "{file_path}"]
     }
     exit {
       0 => Unit
@@ -58,6 +58,13 @@ service linux.CgroupV2 {
   }
 }
 
+// THE PATH IS COMPOSED IN .dag AND INTERPOLATED AS ONE VALUE, NOT ASSEMBLED INSIDE THE ARGV.
+// An argv of ["cat", "{cgroup_path}/{interface_file}"] does not concatenate two interpolations
+// around a literal slash -- the interpolation grammar reads across it and the `/` becomes a
+// DIVISION operator, which fails at evaluation with "unsupported operator Div on String".
+// Measured on srv1-07: ListChildCgroups, whose argv interpolates a single value, executed fine;
+// this operation was the only one carrying two interpolations separated by an operator character.
+// One input, one interpolation, and the composition stays where the type system can see it.
 fn cgroup_v2_child_path(parent: NonEmptyStr, child: NonEmptyStr) -> NonEmptyStr {
   concat(parent as String, "/", child as String) as NonEmptyStr
 }

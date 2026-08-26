@@ -100,7 +100,9 @@ fn read_memory_count(
 ) -> String {
   match host_operation_exec(
     transport: transport,
-    operation: CgroupReadInterfaceFile { cgroup_path: cgroup_path, interface_file: file },
+    operation: CgroupReadInterfaceFile {
+      file_path: cgroup_v2_child_path(parent: cgroup_path, child: file),
+    },
   ) {
     HostOperationObserved { stdout: out, success: ok, stderr: _ } =>
       if ok { out } else { concat("<read failed: ", concat(file as String, ">")) }

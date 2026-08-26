@@ -110,7 +110,7 @@ type HostOperation =
   | SystemctlShowLoadState { unit: NonEmptyStr }
   | HostnameReadShort
   | CgroupListChildren { cgroup_path: NonEmptyStr }
-  | CgroupReadInterfaceFile { cgroup_path: NonEmptyStr, interface_file: NonEmptyStr }
+  | CgroupReadInterfaceFile { file_path: NonEmptyStr }
 
 // THE OUTCOME IS DELIBERATELY NOT SshSessionExecResult. Three of the four legs produce one, but
 // naming a local process observation after ssh would be a nickname in the return position, and the
@@ -174,16 +174,13 @@ fn host_operation_invocation(operation: HostOperation) -> BoundOperationInvocati
       },
       bindings: [operation_argv_bind_text(name: "cgroup_path", text: p as String)],
     )
-    CgroupReadInterfaceFile { cgroup_path: p, interface_file: f } => bind_operation_invocation(
+    CgroupReadInterfaceFile { file_path: p } => bind_operation_invocation(
       at: OperationRef {
         path: cgroup_v2_operation_path,
         service: cgroup_v2_operation_service,
         operation: "ReadInterfaceFile",
       },
-      bindings: [
-        operation_argv_bind_text(name: "cgroup_path", text: p as String),
-        operation_argv_bind_text(name: "interface_file", text: f as String),
-      ],
+      bindings: [operation_argv_bind_text(name: "file_path", text: p as String)],
     )
   }
 }
@@ -263,8 +260,8 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
       let result = linux.CgroupV2.ListChildCgroups(cgroup_path: p)
       HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
     }
-    CgroupReadInterfaceFile { cgroup_path: p, interface_file: f } => {
-      let result = linux.CgroupV2.ReadInterfaceFile(cgroup_path: p, interface_file: f)
+    CgroupReadInterfaceFile { file_path: p } => {
+      let result = linux.CgroupV2.ReadInterfaceFile(file_path: p)
       HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
     }
   }
