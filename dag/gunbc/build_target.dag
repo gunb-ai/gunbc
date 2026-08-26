@@ -424,11 +424,24 @@ fn required_gate_decision(a: AggregateStanding) -> RequiredGateDecision {
 //   status therefore sees a failing test, which is honest about the observation and silent about
 //   the policy. Exporting it as `PASSED` was rejected: that would fabricate an observation.
 //
-//   `NotAttemptedAfterAbort` HAS AN EXACT UPSTREAM MEMBER and takes it: `HALTED_BEFORE_TESTING`
-//   means the test did not run because the build was halted, which is the same fact. It is the one
-//   arm in this export that loses nothing, and it is worth noting because the temptation was
-//   `INCOMPLETE` -- which would have collapsed it into the pile below when upstream already
-//   distinguishes it. `PanickedBeforeVerdict` has no such member and joins `FAILED` beside
+//   `NotAttemptedAfterAbort` HAS AN EXACT UPSTREAM MEMBER AND TAKES IT, AND THIS ARM IS WRITTEN
+//   DOWN BECAUSE IT HAS ALREADY BEEN DECIDED TWICE, THE OTHER WAY.
+//
+//   The disposition is constructed from `NotAttempted { halted_by }` -- a claim the run never
+//   reached because it was halted, with the halt named. `extdeps.bazel.test_status` carries
+//   `TestStatusHaltedBeforeTesting` as wire number 8, `BLAZE_HALTED_BEFORE_TESTING`, meaning a
+//   test that did not run because the build was halted. That is the same fact, so this is the one
+//   arm in this export that loses NOTHING.
+//
+//   `INCOMPLETE` is the reading to resist, and it is not hypothetical: gunbc#9343 classified this
+//   arm that way on main while gunbc#9336 classified it this way, and the two met in a merge. It
+//   is the anemic choice by DESIGN section 3 -- `extdeps` models what the upstream spec says and
+//   keeps its real names, so mapping an EXACTLY representable state onto a vaguer one is a lossy
+//   projection where a faithful one exists, and it lands the value in the very pile the paragraph
+//   below flags as lossy. A reader diffing this file against that history will find an
+//   unexplained divergence and be tempted to "fix" it back; this paragraph is what stops that.
+//
+//   `PanickedBeforeVerdict` has no such member and joins `FAILED` beside
 //   `RuntimeErroredBeforeVerdict`: both are the evaluation dying, and the distinction between
 //   them stays on the `TestStanding` this was computed from.
 //
