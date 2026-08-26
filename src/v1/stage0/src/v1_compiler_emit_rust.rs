@@ -5,6 +5,7 @@ use self::AliasDeclArityVerdict::*;
 use self::ClosedAliasPeelVerdict::*;
 use self::ConstantFold::*;
 use self::DataRefResolution::*;
+use self::DataReferenceUnresolvableCause::*;
 use self::IterOwnedReceiverCloneDisposition::*;
 use self::ParamDefaultResolution::*;
 pub use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
@@ -32711,7 +32712,7 @@ pub struct WorkflowFunc {
     pub uses: Rc<Vec<Rc<Node>>>,
     pub service_names: Rc<Vec<String>>,
     pub resolved_defaults: Rc<HashMap<String, String>>,
-    pub ambiguous_default_data_references: Rc<HashMap<String, Rc<AmbiguousDataReference>>>,
+    pub unresolvable_default_data_references: Rc<HashMap<String, Rc<UnresolvableDataReference>>>,
     pub read_only_params: Rc<BTreeSet<String>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 }
@@ -32752,6 +32753,7 @@ pub struct DataDeclIndex {
 pub enum DataRefResolution {
     DataRefResolved { module_path: String, body: Rc<Node> },
     DataRefAmbiguous { modules: Rc<Vec<String>> },
+    DataRefVisibilityBudgetExhausted,
     DataRefAbsent,
 }
 
@@ -32893,48 +32895,75 @@ pub fn data_reference_visibility_depth_limit() -> i64 {
     16
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DataDeclReach {
+    pub modules: Rc<Vec<String>>,
+    pub budget_exhausted: bool,
+}
+
+pub fn empty_data_decl_reach() -> Rc<DataDeclReach> {
+    Rc::new(DataDeclReach {
+        modules: Rc::new(vec![]),
+        budget_exhausted: false,
+    })
+}
+
+pub fn merge_data_decl_reach(
+    left: Rc<DataDeclReach>,
+    right: Rc<DataDeclReach>,
+) -> Rc<DataDeclReach> {
+    Rc::new(DataDeclReach {
+        modules: v1_rt::concat(left.modules.clone(), right.modules.clone()),
+        budget_exhausted: (left.budget_exhausted.clone() || right.budget_exhausted.clone()),
+    })
+}
+
 pub fn data_decl_reexporting_modules(
     index: Rc<DataDeclIndex>,
     module_path: String,
     name: String,
     depth: i64,
-) -> Rc<Vec<String>> {
+) -> Rc<DataDeclReach> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (depth.clone() > data_reference_visibility_depth_limit()) {
-            Rc::new(vec![])
+            Rc::new(DataDeclReach {
+                modules: Rc::new(vec![]),
+                budget_exhausted: true,
+            })
         } else {
             match data_decl_in_module(index.clone(), module_path.clone(), name.clone()) {
-                Some(_) => Rc::new(vec![module_path.clone()]),
+                Some(_) => Rc::new(DataDeclReach {
+                    modules: Rc::new(vec![module_path.clone()]),
+                    budget_exhausted: false,
+                }),
                 None => Rc::new({
                     let mut __result = Vec::new();
-                    for e in Rc::new({
-                        let mut __result = Vec::new();
-                        for e in data_decl_module_edges(index.clone(), module_path.clone())
-                            .iter()
-                            .cloned()
-                        {
-                            if data_import_reexports_name(e.clone(), name.clone()) {
-                                __result.push(e);
-                            }
-                        }
-                        __result
-                    })
-                    .iter()
-                    .cloned()
+                    for e in data_decl_module_edges(index.clone(), module_path.clone())
+                        .iter()
+                        .cloned()
                     {
-                        __result.extend(
-                            (*data_decl_reexporting_modules(
+                        if data_import_reexports_name(e.clone(), name.clone()) {
+                            __result.push(e);
+                        }
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                .fold(
+                    empty_data_decl_reach(),
+                    |acc: Rc<DataDeclReach>, e: Rc<DataImportEdge>| {
+                        merge_data_decl_reach(
+                            acc,
+                            data_decl_reexporting_modules(
                                 index.clone(),
                                 e.module_path.clone(),
                                 name.clone(),
                                 (depth.clone() + 1),
-                            ))
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                }),
+                            ),
+                        )
+                    },
+                ),
             }
         }
     })
@@ -32944,41 +32973,45 @@ pub fn data_decl_visible_modules(
     index: Rc<DataDeclIndex>,
     module_path: String,
     name: String,
-) -> Rc<Vec<String>> {
+) -> Rc<DataDeclReach> {
     match data_decl_in_module(index.clone(), module_path.clone(), name.clone()) {
-        Some(_) => Rc::new(vec![module_path.clone()]),
+        Some(_) => Rc::new(DataDeclReach {
+            modules: Rc::new(vec![module_path.clone()]),
+            budget_exhausted: false,
+        }),
         None => {
-            let reachable = Rc::new({
+            let reached = Rc::new({
                 let mut __result = Vec::new();
-                for e in Rc::new({
-                    let mut __result = Vec::new();
-                    for e in data_decl_module_edges(index.clone(), module_path.clone())
-                        .iter()
-                        .cloned()
-                    {
-                        if data_import_admits_name(e.clone(), name.clone()) {
-                            __result.push(e);
-                        }
-                    }
-                    __result
-                })
-                .iter()
-                .cloned()
+                for e in data_decl_module_edges(index.clone(), module_path.clone())
+                    .iter()
+                    .cloned()
                 {
-                    __result.extend(
-                        (*data_decl_reexporting_modules(
+                    if data_import_admits_name(e.clone(), name.clone()) {
+                        __result.push(e);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            .fold(
+                empty_data_decl_reach(),
+                |acc: Rc<DataDeclReach>, e: Rc<DataImportEdge>| {
+                    merge_data_decl_reach(
+                        acc,
+                        data_decl_reexporting_modules(
                             index.clone(),
                             e.module_path.clone(),
                             name.clone(),
                             1,
-                        ))
-                        .iter()
-                        .cloned(),
-                    );
-                }
-                __result
-            });
-            unique_strings(reachable.clone())
+                        ),
+                    )
+                },
+            );
+            Rc::new(DataDeclReach {
+                modules: unique_strings(reached.modules.clone()),
+                budget_exhausted: reached.budget_exhausted.clone(),
+            })
         }
     }
 }
@@ -32989,21 +33022,27 @@ pub fn resolve_data_reference(
     name: String,
 ) -> Rc<DataRefResolution> {
     {
-        let visible = data_decl_visible_modules(index.clone(), module_path.clone(), name.clone());
-        if ((visible.clone().len() as i64) > 1) {
-            Rc::new(DataRefResolution::DataRefAmbiguous {
-                modules: visible.clone(),
-            })
+        let reach = data_decl_visible_modules(index.clone(), module_path.clone(), name.clone());
+        if reach.budget_exhausted.clone() {
+            Rc::new(DataRefResolution::DataRefVisibilityBudgetExhausted)
         } else {
-            match visible.clone().first().cloned() {
-                Some(mp) => match data_decl_in_module(index.clone(), mp.clone(), name.clone()) {
-                    Some(b) => Rc::new(DataRefResolution::DataRefResolved {
-                        module_path: mp.clone(),
-                        body: b.clone(),
-                    }),
+            if ((reach.modules.clone().len() as i64) > 1) {
+                Rc::new(DataRefResolution::DataRefAmbiguous {
+                    modules: reach.modules.clone(),
+                })
+            } else {
+                match reach.modules.clone().first().cloned() {
+                    Some(mp) => {
+                        match data_decl_in_module(index.clone(), mp.clone(), name.clone()) {
+                            Some(b) => Rc::new(DataRefResolution::DataRefResolved {
+                                module_path: mp.clone(),
+                                body: b.clone(),
+                            }),
+                            None => Rc::new(DataRefResolution::DataRefAbsent),
+                        }
+                    }
                     None => Rc::new(DataRefResolution::DataRefAbsent),
-                },
-                None => Rc::new(DataRefResolution::DataRefAbsent),
+                }
             }
         }
     }
@@ -33034,6 +33073,9 @@ pub enum ConstantFold {
     ConstantFoldAmbiguousDataReference {
         name: String,
         modules: Rc<Vec<String>>,
+    },
+    ConstantFoldVisibilityBudgetExhausted {
+        name: String,
     },
     ConstantFoldUnresolved,
 }
@@ -33080,6 +33122,11 @@ pub fn fold_constant_default_expr(
                             Rc::new(ConstantFold::ConstantFoldAmbiguousDataReference {
                                 name: var_name.clone(),
                                 modules: mods.clone(),
+                            })
+                        }
+                        DataRefResolution::DataRefVisibilityBudgetExhausted => {
+                            Rc::new(ConstantFold::ConstantFoldVisibilityBudgetExhausted {
+                                name: var_name.clone(),
                             })
                         }
                         DataRefResolution::DataRefAbsent => {
@@ -33129,6 +33176,11 @@ pub fn fold_constant_default_expr(
                         name: n.clone(),
                         modules: mods.clone(),
                     }),
+                    ConstantFold::ConstantFoldVisibilityBudgetExhausted { name: n, .. } => {
+                        Rc::new(ConstantFold::ConstantFoldVisibilityBudgetExhausted {
+                            name: n.clone(),
+                        })
+                    }
                     ConstantFold::ConstantFoldUnresolved => {
                         Rc::new(ConstantFold::ConstantFoldUnresolved)
                     }
@@ -33143,15 +33195,34 @@ pub fn fold_constant_default_expr(
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct AmbiguousDataReference {
+#[serde(tag = "_variant")]
+pub enum DataReferenceUnresolvableCause {
+    DataReferenceAmbiguous { modules: Rc<Vec<String>> },
+    DataReferenceVisibilityBudgetExhausted,
+}
+impl DataReferenceUnresolvableCause {
+    pub fn modules(&self) -> Rc<Vec<String>> {
+        match self {
+            DataReferenceUnresolvableCause::DataReferenceAmbiguous { modules: __val, .. } => {
+                __val.clone()
+            }
+            DataReferenceUnresolvableCause::DataReferenceVisibilityBudgetExhausted => {
+                panic!("no modules on unit variant")
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct UnresolvableDataReference {
     pub name: String,
-    pub modules: Rc<Vec<String>>,
+    pub cause: Rc<DataReferenceUnresolvableCause>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WorkflowParamDefaults {
     pub resolved: Rc<HashMap<String, String>>,
-    pub ambiguous: Rc<HashMap<String, Rc<AmbiguousDataReference>>>,
+    pub ambiguous: Rc<HashMap<String, Rc<UnresolvableDataReference>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -33163,6 +33234,9 @@ pub enum ParamDefaultResolution {
     ParamDefaultAmbiguousDataReference {
         name: String,
         modules: Rc<Vec<String>>,
+    },
+    ParamDefaultVisibilityBudgetExhausted {
+        name: String,
     },
     ParamDefaultUnresolved,
 }
@@ -33199,6 +33273,9 @@ pub fn resolve_param_default(
                 name: n.clone(),
                 modules: mods.clone(),
             }),
+            ConstantFold::ConstantFoldVisibilityBudgetExhausted { name: n, .. } => Rc::new(
+                ParamDefaultResolution::ParamDefaultVisibilityBudgetExhausted { name: n.clone() },
+            ),
             ConstantFold::ConstantFoldUnresolved => {
                 Rc::new(ParamDefaultResolution::ParamDefaultUnresolved)
             }
@@ -33221,50 +33298,35 @@ pub fn to_workflow_func(
             Some(info) => info.service_names.clone(),
             None => Rc::new(vec![]),
         };
-        let param_defaults = item.params.clone().iter().cloned().fold(
-            Rc::new(WorkflowParamDefaults {
-                resolved: v1_rt::rc_empty_map::<String, String>(),
-                ambiguous: v1_rt::rc_empty_map::<String, Rc<AmbiguousDataReference>>(),
-            }),
-            |acc: Rc<WorkflowParamDefaults>, p: Rc<Node>| {
-                let param_name = param_node_name_at(p.clone(), source_indices.clone());
-                match (*resolve_param_default(
-                    p.clone(),
-                    index.clone(),
-                    module_name.clone(),
-                    source_indices.clone(),
-                ))
-                .clone()
-                {
-                    ParamDefaultResolution::ParamDefaultLiteral { value: lit, .. } => {
-                        Rc::new(WorkflowParamDefaults {
-                            resolved: v1_rt::rc_map_insert(
-                                acc.resolved.clone(),
-                                param_name.clone(),
-                                lit.clone(),
-                            ),
-                            ambiguous: acc.ambiguous.clone(),
-                        })
-                    }
-                    ParamDefaultResolution::ParamDefaultAmbiguousDataReference {
-                        name: n,
-                        modules: mods,
-                        ..
-                    } => Rc::new(WorkflowParamDefaults {
-                        resolved: acc.resolved.clone(),
-                        ambiguous: v1_rt::rc_map_insert(
-                            acc.ambiguous.clone(),
-                            param_name.clone(),
-                            Rc::new(AmbiguousDataReference {
-                                name: n.clone(),
-                                modules: mods.clone(),
-                            }),
-                        ),
-                    }),
-                    ParamDefaultResolution::ParamDefaultUnresolved => acc.clone(),
-                }
-            },
-        );
+        let param_defaults = item.params.clone().iter().cloned().fold(Rc::new(WorkflowParamDefaults {
+    resolved: v1_rt::rc_empty_map::<String, String>(),
+    ambiguous: v1_rt::rc_empty_map::<String, Rc<UnresolvableDataReference>>(),
+}), |acc: Rc<WorkflowParamDefaults>, p: Rc<Node>| {
+            let param_name = param_node_name_at(p.clone(), source_indices.clone());
+match (*resolve_param_default(p.clone(), index.clone(), module_name.clone(), source_indices.clone())).clone() {
+    ParamDefaultResolution::ParamDefaultLiteral { value: lit, .. } => Rc::new(WorkflowParamDefaults {
+    resolved: v1_rt::rc_map_insert(acc.resolved.clone(), param_name.clone(), lit.clone()),
+    ambiguous: acc.ambiguous.clone(),
+}),
+    ParamDefaultResolution::ParamDefaultAmbiguousDataReference { name: n, modules: mods, .. } => Rc::new(WorkflowParamDefaults {
+    resolved: acc.resolved.clone(),
+    ambiguous: v1_rt::rc_map_insert(acc.ambiguous.clone(), param_name.clone(), Rc::new(UnresolvableDataReference {
+    name: n.clone(),
+    cause: Rc::new(DataReferenceUnresolvableCause::DataReferenceAmbiguous {
+    modules: mods.clone(),
+}),
+})),
+}),
+    ParamDefaultResolution::ParamDefaultVisibilityBudgetExhausted { name: n, .. } => Rc::new(WorkflowParamDefaults {
+    resolved: acc.resolved.clone(),
+    ambiguous: v1_rt::rc_map_insert(acc.ambiguous.clone(), param_name.clone(), Rc::new(UnresolvableDataReference {
+    name: n.clone(),
+    cause: Rc::new(DataReferenceUnresolvableCause::DataReferenceVisibilityBudgetExhausted),
+})),
+}),
+    ParamDefaultResolution::ParamDefaultUnresolved => acc.clone(),
+}
+});
         let defaults = param_defaults.resolved.clone();
         let ambiguous = param_defaults.ambiguous.clone();
         let qualified = v1_rt::concat(
@@ -33283,7 +33345,7 @@ pub fn to_workflow_func(
             uses: item.uses.clone(),
             service_names: svc_names.clone(),
             resolved_defaults: defaults.clone(),
-            ambiguous_default_data_references: ambiguous.clone(),
+            unresolvable_default_data_references: ambiguous.clone(),
             read_only_params: ro_params.clone(),
             source_indices: source_indices.clone(),
         })
@@ -33404,11 +33466,17 @@ let resolved = match v1_rt::map_get(&wf.resolved_defaults.clone(), param_name.cl
 if resolved.clone() {
             Rc::new(vec![])
         } else {
-            match v1_rt::map_get(&wf.ambiguous_default_data_references.clone(), param_name.clone()) {
-    Some(collision) => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError {
-    message: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("workflow CLI default for parameter `".to_string(), param_name.clone()), "` names `".to_string()), collision.name.clone()), "`, which more than one visible data declaration answers to (".to_string()), collision.modules.clone().join(&", ".to_string())), "); qualify the reference or narrow the import".to_string()),
+            match v1_rt::map_get(&wf.unresolvable_default_data_references.clone(), param_name.clone()) {
+    Some(unresolvable) => match (*unresolvable.cause.clone()).clone() {
+    DataReferenceUnresolvableCause::DataReferenceAmbiguous { modules: mods, .. } => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError {
+    message: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("workflow CLI default for parameter `".to_string(), param_name.clone()), "` names `".to_string()), unresolvable.name.clone()), "`, which more than one visible data declaration answers to (".to_string()), mods.clone().join(&", ".to_string())), "); qualify the reference or narrow the import".to_string()),
     span: param.span.clone(),
 }), wf.module_name.clone())]),
+    DataReferenceUnresolvableCause::DataReferenceVisibilityBudgetExhausted => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError {
+    message: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("workflow CLI default for parameter `".to_string(), param_name.clone()), "` names `".to_string()), unresolvable.name.clone()), "`, whose visible declarations could not be enumerated: the import re-export walk exceeded its depth bound, so this is a compiler limit and not an authoring error".to_string()),
+    span: param.span.clone(),
+}), wf.module_name.clone())]),
+},
     None => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError {
     message: v1_rt::concat(v1_rt::concat("workflow CLI default for parameter `".to_string(), param_name.clone()), "` must be a string, int, float, bool literal, or data reference".to_string()),
     span: param.span.clone(),
