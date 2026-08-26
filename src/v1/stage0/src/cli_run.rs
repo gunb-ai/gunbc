@@ -5341,6 +5341,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         }
         CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
         CompilerDiagnostic::AmbiguousReference { .. } => "AmbiguousReference",
+        CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { .. } => {
+            "DataReferenceVisibilityBudgetExceeded"
+        }
+        CompilerDiagnostic::ParameterDefaultFormNotAdmitted { .. } => {
+            "ParameterDefaultFormNotAdmitted"
+        }
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { .. } => {
             "AmbiguousAnonymousRecordLiteral"
         }
@@ -5399,6 +5405,8 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position, .. } => position.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
+        CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { name, .. } => name.clone(),
+        CompilerDiagnostic::ParameterDefaultFormNotAdmitted { parameter, .. } => parameter.clone(),
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { candidates, .. } => {
             candidates.iter().cloned().collect::<Vec<_>>().join("|")
         }
@@ -44571,18 +44579,6 @@ pub enum RequiredFloorDisposition {
     /// matches a `long_home_prefixes()` entry. Carries the exact prefix that matched, which the
     /// former bare `long_declined` counter discarded.
     DeclinedLongModule { matched_prefix: String },
-    /// Declined because the module's AUTHORED name matches a `fixture_home_prefixes()` entry:
-    /// a `test fn` that is a plan-driven FIXTURE MEMBER rather than a witness.
-    ///
-    /// Not a cost decline and not a capability decline. These sites are the SPECIMENS that
-    /// `claim_executor --plan-entry .../walk_plan_stage/plan.dag --plan-function <recipe>`
-    /// drives; the recipe is the witness and it already executes them. Two of them are red by
-    /// construction (a body of literal `false`, and a self-call whose depth refusal IS the
-    /// observed subject) and can never green, and one of the rest writes the very marker path
-    /// another recipe asserts must stay absent — so the fold running them is not merely useless
-    /// but corrupting. See `v2.workflow.required_floor` `fixture_home_prefixes` for the full
-    /// argument and the dissolution condition.
-    DeclinedFixtureMember { matched_prefix: String },
 }
 
 /// ONE EXECUTED CLAIM'S MEASURED OCCURRENCE, minted the instant `run_claim_measured`
@@ -44744,10 +44740,6 @@ pub struct RequiredFloorOutcome {
     /// A cost quarantine on a different axis from execution, and it is REPORTED rather than
     /// silently subtracted: these identities have no executing consumer anywhere in the tree.
     pub declined_long_module: usize,
-    /// Discovered sites declined because the module's AUTHORED name matches a fixture-home
-    /// prefix. Unlike the two neighbours, these identities DO have an executing consumer —
-    /// the plan recipes that drive them — so this count is not a coverage gap.
-    pub declined_fixture_member: usize,
     pub claims_planned: usize,
     pub claims_executed: usize,
     pub receipt_identities: usize,
@@ -45987,18 +45979,9 @@ pub fn run_required_floor(
         &hermetic,
         "v2.workflow.required_floor.long_home_prefixes",
     )?;
-    // ONE DECODE, TWO ROSTERS. The fixture-home prefixes are read through the same helper as
-    // the long-home prefixes because they are the same kind of fact — an authored module-name
-    // prefix the floor declines on — and a second hand-rolled decode beside it would be a
-    // second authority for how such a roster is read.
-    let fixture_home_prefixes = floor_decode_module_prefix_roster(
-        &hermetic,
-        "v2.workflow.required_floor.fixture_home_prefixes",
-    )?;
     let mut claims: Vec<RequiredFloorClaim> = Vec::new();
     let mut planned_identities: HashSet<String> = HashSet::new();
     let mut long_declined = 0usize;
-    let mut fixture_declined = 0usize;
     let mut sites_offered = 0usize;
     let mut disposition_rows: Vec<RequiredFloorDispositionRow> = Vec::new();
     let mut storage_agreement_rows: Vec<LongHomeStorageAgreementRow> = Vec::new();
@@ -46009,9 +45992,6 @@ pub fn run_required_floor(
         let long_home = matched_prefix.is_some();
         // Diagnostic only -- computed once per file and never consulted by the admission
         // branching below. See `LongHomeStorageAgreement`'s doc comment.
-        let fixture_prefix = fixture_home_prefixes
-            .iter()
-            .find(|prefix| file.module_path.starts_with(prefix.as_str()));
         let path_is_long = is_long_home_path(&file.path);
         let storage_agreement = long_home_storage_agreement(path_is_long, long_home);
         for function in &file.functions {
@@ -46029,20 +46009,6 @@ pub fn run_required_floor(
                         matched_prefix: matched_prefix
                             .expect("long_home is true only when matched_prefix is Some")
                             .clone(),
-                    },
-                });
-                continue;
-            }
-            // FIXTURE HOME BEFORE LIVE TREE, and the order is load-bearing rather than
-            // arbitrary: a fixture member that also reads the live tree must report the reason
-            // it will never be a floor claim, not the reason it could not run today. The first
-            // is permanent and owned; the second is a staged prediction.
-            if let Some(prefix) = fixture_prefix {
-                fixture_declined += 1;
-                disposition_rows.push(RequiredFloorDispositionRow {
-                    identity,
-                    disposition: RequiredFloorDisposition::DeclinedFixtureMember {
-                        matched_prefix: prefix.clone(),
                     },
                 });
                 continue;
@@ -46094,11 +46060,10 @@ pub fn run_required_floor(
     // it is the construction's own statement of what it guarantees, and it fails loudly the
     // first time an edit adds a third arm that quietly swallows rows, which is precisely how
     // the live-tree decline arrived and stayed invisible.
-    if sites_offered != claims.len() + long_declined + fixture_declined {
+    if sites_offered != claims.len() + long_declined {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=SitePartitionInexact offered={sites_offered} \
-             routed={} declined_long={long_declined} declined_fixture={fixture_declined} \
-             — every \
+             routed={} declined_long={long_declined} — every \
              discovered site must be either routed to a claim or declined with a stated \
              disposition; a gap here is a roster that narrowed without saying so",
             claims.len()
@@ -46106,13 +46071,12 @@ pub fn run_required_floor(
     }
     eprintln!(
         "[floor-phase] phase=site-projection state=completed wall_ms={} sites={} files={} \
-         claims={} declined_long={} declined_fixture={}",
+         claims={} declined_long={}",
         projection_started.elapsed().as_millis(),
         sites_offered,
         files.len(),
         claims.len(),
-        long_declined,
-        fixture_declined
+        long_declined
     );
 
     // THE EXPECTED-RED ROSTER, read from its .dag authority in the policy module's frame — it
@@ -46631,7 +46595,6 @@ pub fn run_required_floor(
         modules_excluded: prepared.modules_excluded,
         sites_offered,
         declined_long_module: long_declined,
-        declined_fixture_member: fixture_declined,
         claims_planned,
         claims_executed: 0,
         receipt_identities: 0,
@@ -48027,14 +47990,12 @@ fn required_floor_disposition_label(disposition: &RequiredFloorDisposition) -> &
     match disposition {
         RequiredFloorDisposition::Planned => "planned",
         RequiredFloorDisposition::DeclinedLongModule { .. } => "declined_long_module",
-        RequiredFloorDisposition::DeclinedFixtureMember { .. } => "declined_fixture_member",
     }
 }
 
 fn required_floor_disposition_matched_prefix(disposition: &RequiredFloorDisposition) -> &str {
     match disposition {
-        RequiredFloorDisposition::DeclinedLongModule { matched_prefix }
-        | RequiredFloorDisposition::DeclinedFixtureMember { matched_prefix } => matched_prefix,
+        RequiredFloorDisposition::DeclinedLongModule { matched_prefix } => matched_prefix,
         RequiredFloorDisposition::Planned => "",
     }
 }
@@ -48111,21 +48072,18 @@ fn write_required_floor_disposition_tsv(
         .map_err(|e| format!("write_required_floor_disposition_tsv: create {path}: {e}"))?;
     let mut planned = 0usize;
     let mut declined_long = 0usize;
-    let mut declined_fixture = 0usize;
     for row in rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
             RequiredFloorDisposition::DeclinedLongModule { .. } => declined_long += 1,
-            RequiredFloorDisposition::DeclinedFixtureMember { .. } => declined_fixture += 1,
         }
     }
     writeln!(
         file,
-        "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_fixture_member={}",
+        "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}",
         rows.len(),
         planned,
-        declined_long,
-        declined_fixture
+        declined_long
     )
     .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
     writeln!(file, "identity\tdisposition\tmatched_prefix")
@@ -48328,12 +48286,6 @@ mod required_floor_disposition_and_storage_agreement_law {
                     matched_prefix: "test.claim.long.".to_string(),
                 },
             },
-            RequiredFloorDispositionRow {
-                identity: "v2.test.fixture.walk_plan_stage.x.d".to_string(),
-                disposition: RequiredFloorDisposition::DeclinedFixtureMember {
-                    matched_prefix: "v2.test.fixture.walk_plan_stage.".to_string(),
-                },
-            },
         ];
 
         write_required_floor_disposition_tsv(&path_str, &rows).expect("write tsv");
@@ -48341,23 +48293,16 @@ mod required_floor_disposition_and_storage_agreement_law {
         let _ = std::fs::remove_dir_all(&dir);
 
         let lines: Vec<&str> = content.lines().collect();
-        assert_eq!(lines.len(), 5, "summary + header + 3 rows: {lines:?}");
+        assert_eq!(lines.len(), 4, "summary + header + 2 rows: {lines:?}");
         assert!(lines[0].starts_with("# summary"));
-        assert!(lines[0].contains("total=3"));
+        assert!(lines[0].contains("total=2"));
         assert!(lines[0].contains("planned=1"));
         assert!(lines[0].contains("declined_long_module=1"));
-        assert!(lines[0].contains("declined_fixture_member=1"));
         assert_eq!(lines[1], "identity\tdisposition\tmatched_prefix");
         assert_eq!(lines[2], "m.one.a\tplanned\t");
         assert_eq!(
             lines[3],
             "test.claim.long.two.b\tdeclined_long_module\ttest.claim.long."
-        );
-        // THE FIXTURE ARM CARRIES ITS MATCHED PREFIX, exactly as the long arm does. A decline
-        // that cannot say WHICH prefix admitted it is a count, not a receipt.
-        assert_eq!(
-            lines[4],
-            "v2.test.fixture.walk_plan_stage.x.d\tdeclined_fixture_member\tv2.test.fixture.walk_plan_stage."
         );
     }
 

@@ -12,7 +12,7 @@ import gunbc.build_target {
 }
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
-  Planned, DeclinedLongModule, DeclinedFixtureMember,
+  Planned, DeclinedLongModule,
   required_floor_site_disposition,
 }
 import v2.std.live_tree { LiveTreeDisposition }
@@ -243,8 +243,6 @@ fn census_partition_step(acc: CensusPartition, row: CensusRow) -> CensusPartitio
     Planned => CensusPartition { planned: concat([row], acc.planned), declined: acc.declined }
     DeclinedLongModule { matched_prefix: _ } =>
       CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
-    DeclinedFixtureMember { matched_prefix: _ } =>
-      CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
   }
 }
 
@@ -308,15 +306,13 @@ type CensusCounts {
   offered: Int
   planned: Int
   declined_long_module: Int
-  declined_fixture_member: Int
 }
 
 fn census_counts_zero() -> CensusCounts {
   CensusCounts {
     offered: 0,
     planned: 0,
-    declined_long_module: 0,
-    declined_fixture_member: 0
+    declined_long_module: 0
   }
 }
 
@@ -326,22 +322,13 @@ fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> Censu
       CensusCounts {
         offered: counts.offered + 1,
         planned: counts.planned + 1,
-        declined_long_module: counts.declined_long_module,
-        declined_fixture_member: counts.declined_fixture_member
+        declined_long_module: counts.declined_long_module
       }
     DeclinedLongModule { matched_prefix: _ } =>
       CensusCounts {
         offered: counts.offered + 1,
         planned: counts.planned,
-        declined_long_module: counts.declined_long_module + 1,
-        declined_fixture_member: counts.declined_fixture_member
-      }
-    DeclinedFixtureMember { matched_prefix: _ } =>
-      CensusCounts {
-        offered: counts.offered + 1,
-        planned: counts.planned,
-        declined_long_module: counts.declined_long_module,
-        declined_fixture_member: counts.declined_fixture_member + 1
+        declined_long_module: counts.declined_long_module + 1
       }
   }
 }

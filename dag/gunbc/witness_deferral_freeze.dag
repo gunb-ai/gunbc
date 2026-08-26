@@ -227,22 +227,31 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "dag/test/claim/long/cited_symbol_resolution_witness_test.dag",
+    entry: "dag/test/claim/long/carrier_reference_integrity_witness_test.dag",
     functions: [
-      "cited_symbol_hand_authored_binds_all_resolve",
-      "cited_symbol_hand_authored_census_is_zero_refusals",
-      "cited_symbol_resolution_lens_is_green_on_live_corpus", "doc_graph_works_refs_all_resolve",
-      "cited_symbol_post7688_production_census_is_zero_violations",
-      "cited_symbol_refusal_count_red_on_dangling_fixture",
-      "cited_symbol_planted_controls_all_refuse",
-      "cited_symbol_planted_controls_are_the_three_declared_identities",
-      "cited_symbol_planted_controls_refuse_in_the_arm_they_name",
-      "cited_symbol_enrolled_population_refusal_is_exactly_the_declared_exemption",
-      "cited_symbol_planted_ambiguous_control_refuses_via_resolver",
-      "cited_symbol_production_census_ambiguous_count_is_zero",
-      "cited_symbol_resolves_node_kind_authority", "cited_symbol_resolves_decl_ref_constructor",
-      "cited_symbol_refuses_module_absent", "cited_symbol_refuses_declaration_absent",
-      "cited_symbol_refuses_ambiguous_binding", "cited_symbol_refuses_named_field_absent"
+      "carrier_ref_hand_authored_binds_all_resolve",
+      "carrier_ref_hand_authored_census_is_zero_refusals",
+      "doc_graph_works_refs_all_resolve",
+      "carrier_ref_post7688_production_census_is_zero_violations",
+      "carrier_ref_refusal_count_red_on_dangling_fixture",
+      "carrier_ref_production_census_ambiguous_count_is_zero",
+      "roster_registry_declaration_refs_all_resolve",
+      "roster_registry_ref_population_is_not_empty",
+      "roster_registry_dangling_predicate_red_control_refuses",
+      "instance_gap_carrier_declaration_refs_all_resolve",
+      "instance_gap_carrier_ref_population_is_not_empty",
+      "instance_gap_outside_index_population_is_counted",
+      "instance_gap_outside_index_refs_really_do_refuse",
+      "instance_gap_carrier_dangling_caller_red_control_refuses",
+      "instance_gap_membership_dangling_producer_red_control_refuses"
+    ]
+  },
+  FrozenPathDeferral {
+    entry: "dag/test/claim/long/decl_ref_resolution_witness_test.dag",
+    functions: [
+      "decl_ref_resolves_node_kind_authority", "decl_ref_resolves_decl_ref_constructor",
+      "decl_ref_refuses_module_absent", "decl_ref_refuses_declaration_absent",
+      "decl_ref_refuses_ambiguous_binding", "decl_ref_refuses_named_field_absent"
     ]
   },
   FrozenPathDeferral { entry: "dag/test/claim/long/commit_witness_claim_roster_witness_test.dag", functions: ["commit_witness_claim_roster_holds"] },

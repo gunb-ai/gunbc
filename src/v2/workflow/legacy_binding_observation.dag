@@ -1,0 +1,332 @@
+module v2.workflow.legacy_binding_observation
+
+import std.types { String, Bool, Int, List, Map, NonEmptyStr }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_field_eq }
+import std.occurrence_identity {
+  OccurrenceId,
+  ReferenceOccurrence,
+  ValidatedOccurrenceTransport
+}
+
+// WHAT THIS OBSERVES, AND WHY IT IS AN OBSERVATION RATHER THAN A RESOLVER.
+//
+// The legacy resolver X decides, today, what a bare name binds to. A migration that changes how
+// names are spelled has to know what X ACTUALLY SELECTED before it changes anything, and it has to
+// know it about ONE EXACT BASE -- not about "the tree", which moves under any measurement long
+// enough to be useful. O_X(B) is that record: a complete, content-addressed, past-tense statement
+// of X's selections over one exact subject B.
+//
+// THE ENVELOPE IS NOT THE PRODUCER, AND THE SEPARATION IS THE POINT. Everything here is about
+// WHICH occurrences must be answered for, WHETHER the answer set is complete, and WHETHER an
+// observation may be compared to a later one. NOTHING here decides what X would choose -- that
+// judgment arrives through the outcome type parameter, from the tap that sits inside X's own
+// decision functions. If this module ever needed to know what X would have selected, it would be
+// reconstructing X from the outside, which is authority substitution wearing a completeness claim.
+
+// WHY THE OUTCOME IS A TYPE PARAMETER RATHER THAN A COPRODUCT DECLARED HERE.
+//
+// X's decision vocabulary belongs to the tap that observes X, not to the envelope that counts
+// rows. Declaring it here would fork it: the tap would either import a vocabulary written by
+// someone who cannot see X's decision sites, or mint its own beside it, and DESIGN section 3 says
+// what happens next. Parameterising leaves exactly one authority for what X answered and exactly
+// one for whether the answering is complete, which are genuinely two facts.
+//
+// It also means this module is buildable and testable BEFORE the tap exists, without a stub
+// standing in for a producer -- a stub would be a second, lying authority for the same fact, and
+// the fixtures below instantiate the parameter with an ordinary test vocabulary instead.
+// THE ROW GRAIN IS ONE OUTCOME PER REFERENCE OCCURRENCE, AND THE SEAM HAS TO AGREE ON IT.
+//
+// X is queried more than once per authored reference -- the same occurrence is asked about across
+// inference stages, and some of those calls are the compiler's internal questions rather than
+// decisions about an authored reference at all. So a producer's natural unit is an ATTEMPT, and
+// this envelope's unit is an OCCURRENCE. Those are different denominators.
+//
+// THE CONSEQUENCE IS NOT ABSTRACT: attempt-grain rows handed to the completeness join fail it, and
+// they fail it looking like a defect in the join. Repeated attempts must be reconciled BEFORE they
+// reach here -- one outcome per occurrence, emitted only when the attempts agree, and disagreement
+// surfaced as a typed conflict rather than as a last-writer-wins pick. That reconciliation is the
+// producer's, because only the producer can see the attempts; the refusal to guess is this
+// module's, because a row it cannot check is a row it must not accept.
+type LegacyBindingObservationRow<O> {
+  occurrence: OccurrenceId
+  outcome: O
+}
+
+// THE SUBJECT IS THE WHOLE OF WHAT MAKES TWO OBSERVATIONS COMPARABLE, and every field is here
+// because changing it alone changes what X answers.
+//
+// Semantic source and source set are two facts, not one: the same semantic content can be reached
+// through a different source-root set, and the reachable declarations differ even though every
+// byte the compiler read is identical. Compiler artifact and resolver identity are likewise two:
+// the artifact fixes the whole binary, the resolver identity fixes WHICH decision surface inside
+// it was tapped, and an observation of one resolver is not evidence about another. Occurrence
+// transport and declaration index are the two populations the answer ranges over -- the questions
+// asked and the answers available.
+//
+// RESOLVER POLICY IS CARRIED, NOT OBSERVED, AND THAT IS DELIBERATE. The policy gate is a host
+// thread-local; dag/test/retirement/model.dag records that a substrate program has no handle to
+// read or flip it. So this envelope cannot derive the field and must not invent it: it is required
+// with no default, and the producer -- which runs where the gate is readable -- states it. A field
+// this module could not check is the one field it must refuse to guess.
+type LegacyResolutionPolicy
+  = ImportScopedPolicy
+  | NamespaceOnlyPolicy
+
+// WHY NOTHING HERE TYPES THE ANSWER AS A DeclarationRef, stated because it is the schema mistake
+// this envelope is one edit away from at all times.
+//
+// Not every binding X selects is an authored declaration. A LEXICAL BINDER may have no declaration
+// reference to project to at all, and kernel and synthetic bindings differ again -- which is the
+// same fact that makes occurrence grain mandatory, seen from the answer side rather than the
+// question side. An answer schema that stored a DeclarationRef would therefore be wrong for three
+// of its four cases, and wrong in the direction that looks complete.
+//
+// The outcome type parameter is what keeps that decision out of this module: the closed target
+// domain belongs beside the producer that can tell the cases apart, and a DeclarationRef is
+// DERIVED from the authored case rather than stored beside it, so the two cannot disagree.
+type LegacyBindingObservationSubject {
+  semantic_source_digest: Fnv1a64Structural
+  source_set_digest: Fnv1a64Structural
+  compiler_artifact_digest: Fnv1a64Structural
+  resolver_identity: DeclarationRef
+  resolver_policy: LegacyResolutionPolicy
+  occurrence_transport_digest: Fnv1a64Structural
+  declaration_index_digest: Fnv1a64Structural
+}
+
+type LegacyBindingObservation<O> {
+  subject: LegacyBindingObservationSubject
+  rows: List<LegacyBindingObservationRow<O>>
+}
+
+// THE DENOMINATOR IS DERIVED FROM THE SUBJECT'S OWN TRANSPORTS AND FROM NOTHING ELSE.
+//
+// Every reference occurrence the validated transport carries is a question this observation owes
+// an answer for. NOT the names a grep finds, NOT the modules in the widest entry, NOT a hand-kept
+// roster, and above all NOT the occurrences for which the producer happened to return a convenient
+// answer -- that last one is the failure this whole envelope exists to prevent, because an
+// observation that defines its denominator as "whatever I could answer" is complete by
+// construction and says nothing.
+fn expected_reference_occurrence_ids(transport: ValidatedOccurrenceTransport) -> List<Int> {
+  map_keys(transport.references_by_id)
+}
+
+fn observed_occurrence_ids<O>(observation: LegacyBindingObservation<O>) -> List<Int> {
+  observation.rows |> map(row => row.occurrence.value)
+}
+
+// COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT EQUALITY, and the two refusals below are why.
+//
+// A count equality passes when an observation answers for N occurrences that are not the subject's
+// -- the exact oracle failure DESIGN section 5 forbids, and it fails in the direction that reads
+// as success. So the law is stated twice, once in each direction: nothing expected may be missing,
+// and nothing observed may be foreign. Either alone is satisfiable by a wrong answer set of the
+// right size.
+// AND ONE OCCURRENCE MAY BE ANSWERED FOR ONCE, which membership alone does not say.
+//
+// Rows [11, 11, 22, 33] against expected [11, 22, 33] have every expected occurrence present and no
+// foreign one, so a two-direction MEMBERSHIP check calls them complete -- while the artifact carries
+// two, possibly conflicting, outcomes for occurrence 11. That is the one-outcome-per-occurrence
+// grain this module declares, admitted as a writable state by the very law that was supposed to
+// enforce it. It is also precisely the attempt-versus-occurrence grain confusion the row type warns
+// about: an unreconciled producer hands over attempt rows, and without this arm they pass.
+type LegacyObservationCompleteness
+  = LegacyObservationComplete
+  | LegacyObservationMissingExpected { occurrences: List<Int> }
+  | LegacyObservationForeignObserved { occurrences: List<Int> }
+  | LegacyObservationRepeatedObserved { occurrences: List<Int> }
+
+// THE JOIN TAKES THE DERIVED LIST, NOT THE TRANSPORT, AND THE SPLIT IS DELIBERATE. Two facts sit
+// here: WHAT the subject's questions are (a derivation, above) and WHETHER an answer set matches
+// them exactly (a join). Folding the derivation into the join would leave the join untestable
+// except through a hand-built transport -- which is the named-scenario fixture this program
+// already refuses -- and would let a change to either half hide behind the other.
+fn legacy_observation_completeness<O>(
+  observation: LegacyBindingObservation<O>,
+  expected: List<Int>
+) -> LegacyObservationCompleteness {
+  let observed = observed_occurrence_ids(observation: observation)
+  let missing = expected |> filter(id => !(observed |> any(o => o == id)))
+  let foreign = observed |> filter(id => !(expected |> any(e => e == id)))
+  let repeated = expected |> filter(id => (observed |> filter(o => o == id) |> count) > 1)
+  if (missing |> count) > 0 { LegacyObservationMissingExpected { occurrences: missing } }
+  else if (foreign |> count) > 0 { LegacyObservationForeignObserved { occurrences: foreign } }
+  else if (repeated |> count) > 0 { LegacyObservationRepeatedObserved { occurrences: repeated } }
+  else { LegacyObservationComplete }
+}
+
+// THE ADMITTED CARRIER, AND WHY THE PROSE OBLIGATION IT REPLACES WAS NOT ENOUGH.
+//
+// legacy_observation_completeness ANSWERS a question; nothing downstream could previously be made
+// to depend on the answer. The delta consumed raw observations and stated its ordering obligation
+// in an annotation -- callers must establish completeness first -- which is validation asked for in
+// prose, the weakest form there is: no `Accepted` program can read a comment, so the obligation was
+// unenforceable by construction. The failure it admitted is not hypothetical and it is the worst
+// available shape: two observations carrying no rows, with provenance carrying no rows, satisfy
+// every totality law VACUOUSLY, so the delta returned an admitted correspondence over a population
+// it never looked at. An unmade comparison rendered as agreement -- exactly the execution-provenance
+// loss the delta's own verdict vocabulary exists to prevent, sitting one level above the vocabulary.
+//
+// So the fact flows forward in a carrier instead. CompleteLegacyObservation is `sole_constructor`,
+// which makes admit_complete_observation the only route to one, and the delta's parameter type is
+// then the evidence rather than a request that someone check. The refusal keeps its cause: this is
+// a typed admission answering WHY, never an Option that would collapse every completeness arm into
+// one absent.
+//
+// RUNG, HONESTLY. This is `mechanically preventable`, not structural impossibility, and two
+// separate facts bound it. `sole_constructor`'s record-literal refusal executes on the v1 seed
+// infer path only (v2.compiler.04_infer carries no sole_constructor handling), so the wall is a
+// property of the compiling PATH and not of the type. And confinement establishes WHO may
+// construct, never WHAT was proven -- here the mint's predicate is fixed and module-owned rather
+// than caller-supplied, which is the stronger of the two shapes, but it is still a mint and not an
+// unrepresentable state. NEXT-RUNG TRIGGER: v2's own infer path carrying the construction wall.
+type CompleteLegacyObservation<O> sole_constructor {
+  observation: LegacyBindingObservation<O>
+}
+
+type LegacyObservationAdmission<O>
+  = ObservationAdmitted { admitted: CompleteLegacyObservation<O> }
+  | ObservationRefused { completeness: LegacyObservationCompleteness }
+
+fn admit_complete_observation<O>(
+  observation: LegacyBindingObservation<O>,
+  expected: List<Int>
+) -> LegacyObservationAdmission<O> {
+  match legacy_observation_completeness(observation: observation, expected: expected) {
+    LegacyObservationComplete => ObservationAdmitted {
+      admitted: CompleteLegacyObservation { observation: observation }
+    }
+    LegacyObservationMissingExpected { occurrences: o } => ObservationRefused { completeness: LegacyObservationMissingExpected { occurrences: o } }
+    LegacyObservationForeignObserved { occurrences: o } => ObservationRefused { completeness: LegacyObservationForeignObserved { occurrences: o } }
+    LegacyObservationRepeatedObserved { occurrences: o } => ObservationRefused { completeness: LegacyObservationRepeatedObserved { occurrences: o } }
+  }
+}
+
+// APPLICABILITY IS A REFUSAL, NOT A COMPARISON RESULT.
+//
+// An observation is evidence about the base it was taken on and about no other. Comparing two
+// observations whose subjects differ in ANY field is not a weaker comparison, it is a category
+// error, so it answers with the field that diverged rather than with a verdict. Naming the field
+// is what makes the refusal actionable: "these are different bases" sends a reader looking, while
+// "the source-set digest differs" tells them what moved.
+type LegacySubjectApplicability
+  = LegacySubjectApplicable
+  | LegacySubjectDiverged { field: String }
+
+// THE FIELD ARM CONSUMES std.decl_ref's OWN EQUALITY RATHER THAN A BARE `!=`, and the reason is a
+// question a reviewer asked rather than a preference. DeclField's authority module ships
+// decl_field_eq; if a bare coproduct `!=` were structurally correct here then that helper would be
+// redundant and its own module would have the problem, and if it is not then this arm would have
+// been wrong. Either way, two answers to one question existed and only one of them lives beside the
+// type. LegacyResolutionPolicy is different and stays a bare comparison: this module declares it,
+// so there is no second authority to consume.
+fn legacy_subject_applicability(
+  left: LegacyBindingObservationSubject,
+  right: LegacyBindingObservationSubject
+) -> LegacySubjectApplicability {
+  if left.semantic_source_digest.digest != right.semantic_source_digest.digest {
+    LegacySubjectDiverged { field: "semantic_source_digest" }
+  } else if left.source_set_digest.digest != right.source_set_digest.digest {
+    LegacySubjectDiverged { field: "source_set_digest" }
+  } else if left.compiler_artifact_digest.digest != right.compiler_artifact_digest.digest {
+    LegacySubjectDiverged { field: "compiler_artifact_digest" }
+  } else if left.resolver_identity.module_path != right.resolver_identity.module_path {
+    LegacySubjectDiverged { field: "resolver_identity.module_path" }
+  } else if left.resolver_identity.decl_name != right.resolver_identity.decl_name {
+    LegacySubjectDiverged { field: "resolver_identity.decl_name" }
+  } else if !decl_field_eq(a: left.resolver_identity.field, b: right.resolver_identity.field) {
+    LegacySubjectDiverged { field: "resolver_identity.field" }
+  } else if left.resolver_policy != right.resolver_policy {
+    LegacySubjectDiverged { field: "resolver_policy" }
+  } else if left.occurrence_transport_digest.digest != right.occurrence_transport_digest.digest {
+    LegacySubjectDiverged { field: "occurrence_transport_digest" }
+  } else if left.declaration_index_digest.digest != right.declaration_index_digest.digest {
+    LegacySubjectDiverged { field: "declaration_index_digest" }
+  } else {
+    LegacySubjectApplicable
+  }
+}
+
+// THE SUBJECT'S CONTENT ADDRESS, AND WHY IT IS DERIVED RATHER THAN STORED.
+//
+// A stored digest beside the seven fields would be a second representation of the same fact, free
+// to disagree with them -- and the disagreement would be undetectable, because nothing would
+// recompute it. So the identity is a fold over the fields themselves: change any field and the
+// address changes, by construction rather than by anyone remembering to update it.
+//
+// THE TWO NON-DIGEST FIELDS ARE FOLDED THROUGH THEIR RENDERINGS, which is a projection and not a
+// second authority: the policy coproduct and the resolver reference are named by their own
+// declarations, and this function reads those names rather than re-deciding what they mean. The
+// renderings are total matches, so a new policy arm or a changed reference shape fails to compile
+// here rather than silently hashing to the same address as before.
+fn legacy_resolution_policy_label(policy: LegacyResolutionPolicy) -> String {
+  match policy {
+    ImportScopedPolicy => "import_scoped"
+    NamespaceOnlyPolicy => "namespace_only"
+  }
+}
+
+// THE FIELD IS FOLDED BECAUSE APPLICABILITY DIVERGES ON IT, and the two must not be able to
+// disagree. A pair of subjects that applicability refuses and the content address cannot tell apart
+// would be exactly the stored-versus-derived split this function exists to avoid -- one authority
+// saying "different bases" and another saying "same base", with nothing to adjudicate. So the rule
+// is mechanical rather than a matter of taste: every field the comparison reads, the address folds.
+// Caught by review on the first cut of this module, where the address folded six of the eight
+// fields the comparison reads.
+// AND THE LABELLING MUST BE INJECTIVE, WHICH TOTALITY DOES NOT GIVE. A total match guarantees
+// every arm is considered; a hash fold needs the arms to map to DISTINCT values, which is a
+// property of the codomain rather than of the match. The first cut of this function returned the
+// field name bare, so NamedField { field_name: "whole_declaration" } and WholeDeclaration folded to
+// the same address while decl_field_eq correctly reported them different -- the comparison and the
+// address disagreeing about what a subject is, reproduced INSIDE the repair for that exact defect.
+// The arm tag makes a payload unable to impersonate the nullary arm, because ":" cannot appear
+// before it in a bare field name.
+//
+// legacy_resolution_policy_label needs no such tag and it is worth saying why rather than leaving
+// the asymmetry unexplained: both of its arms are nullary with distinct literals, so nothing can
+// collide. DeclField is the only labelled type here carrying a payload, which is why it is the only
+// one exposed to this class.
+fn decl_field_label(field: DeclField) -> String {
+  match field {
+    WholeDeclaration => "whole_declaration"
+    NamedField { field_name: n } => concat("named_field:", n)
+  }
+}
+
+fn legacy_subject_identity(subject: LegacyBindingObservationSubject) -> Fnv1a64Structural {
+  let resolver = content_hash_combine_structural(
+    left: content_hash_combine_structural(
+      left: content_hash_atom(value: subject.resolver_identity.module_path),
+      right: content_hash_atom(value: subject.resolver_identity.decl_name)
+    ),
+    right: content_hash_atom(value: decl_field_label(field: subject.resolver_identity.field) as NonEmptyStr)
+  )
+  let policy = content_hash_atom(value: legacy_resolution_policy_label(policy: subject.resolver_policy) as NonEmptyStr)
+  let sources = content_hash_combine_structural(
+    left: subject.semantic_source_digest,
+    right: subject.source_set_digest
+  )
+  let build = content_hash_combine_structural(left: subject.compiler_artifact_digest, right: resolver)
+  let populations = content_hash_combine_structural(
+    left: subject.occurrence_transport_digest,
+    right: subject.declaration_index_digest
+  )
+  content_hash_combine_structural(
+    left: content_hash_combine_structural(left: sources, right: build),
+    right: content_hash_combine_structural(left: policy, right: populations)
+  )
+}
+
+// AN OCCURRENCE ID IS LAWFUL AS AN IDENTITY INSIDE ONE SUBJECT AND UNLAWFUL ACROSS TWO, so a
+// reference that travels between subjects carries the scope it was minted in.
+//
+// The allocator is a monotone counter consumed in traversal order, so an ordinal names an
+// occurrence exactly within the compile that allocated it. Pairing it with the subject's content
+// address does not derive the occurrence's identity -- the parser minted that -- it SCOPES THE
+// ALLOCATOR DOMAIN, which is applicability rather than identity. That distinction is what makes an
+// indexable relation admissible where a cross-compile key is not.
+type SubjectOccurrenceRef {
+  subject_identity: Fnv1a64Structural
+  occurrence: OccurrenceId
+}

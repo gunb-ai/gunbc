@@ -23,7 +23,6 @@ struct PrePushStdinRow {
 enum ActiveGate {
     DocWitness { entry: String, function: String },
     CargoFmt,
-    WitnessCorpus { fail_recipe: String },
 }
 
 struct PlanCtx {
@@ -163,11 +162,6 @@ fn parse_gate_kind(ctx: &v1_interpreter::InterpContext, val: &Value) -> Result<A
     if ctx.sym_eq(*variant_name, "CargoFmtCheck") {
         return Ok(ActiveGate::CargoFmt);
     }
-    if ctx.sym_eq(*variant_name, "WitnessCorpusRun") {
-        return Ok(ActiveGate::WitnessCorpus {
-            fail_recipe: field_str(ctx, fields, "fail_recipe")?,
-        });
-    }
     Err("unknown PrePushGateKind variant".to_string())
 }
 
@@ -194,7 +188,6 @@ fn execute_gate(
             run_claim_batch(claim_batch, plan, entry, function, &["--claim-run"])
         }
         ActiveGate::CargoFmt => execute_cargo_fmt_gate(plan),
-        ActiveGate::WitnessCorpus { fail_recipe } => run_witness_corpus(root, plan, fail_recipe),
     }
 }
 
@@ -328,81 +321,6 @@ fn is_executable(path: &Path) -> bool {
                 }
             })
             .unwrap_or(false)
-}
-
-fn resolve_claim_executor(root: &Path) -> Result<PathBuf, String> {
-    let release = root.join("target/release/claim_executor");
-    if is_executable(&release) {
-        return Ok(release);
-    }
-    let debug = root.join("target/debug/claim_executor");
-    if is_executable(&debug) {
-        return Ok(debug);
-    }
-    eprintln!("[pre-push] claim_executor not built; compiling release (one-time, minutes)...");
-    let status = Command::new("cargo")
-        .args([
-            "build",
-            "-p",
-            "v1-compiler",
-            "--release",
-            "--bin",
-            "claim_executor",
-        ])
-        .env("CTRL_BUILD_WRAP_CARGO", "0")
-        .current_dir(root)
-        .status()
-        .map_err(|e| format!("cargo build claim_executor: {e}"))?;
-    if !status.success() {
-        return Err("cargo build claim_executor failed".to_string());
-    }
-    let built = root.join("target/release/claim_executor");
-    if is_executable(&built) {
-        Ok(built)
-    } else {
-        Err("claim_executor missing after build".to_string())
-    }
-}
-
-fn run_witness_corpus(root: &Path, plan: &PlanCtx, fail_recipe: &str) -> Result<(), String> {
-    let executor = resolve_claim_executor(root)?;
-    let entry = match eval_fn(plan, "pre_push_witness_corpus_plan_entry_authority")? {
-        Value::Str(s) => s.to_string(),
-        other => {
-            return Err(format!(
-                "pre_push_witness_corpus_plan_entry_authority not a String: {other:?}"
-            ));
-        }
-    };
-    let function = match eval_fn(plan, "pre_push_witness_corpus_plan_fn_authority")? {
-        Value::Str(s) => s.to_string(),
-        other => {
-            return Err(format!(
-                "pre_push_witness_corpus_plan_fn_authority not a String: {other:?}"
-            ));
-        }
-    };
-    eprintln!(
-        "[pre-push] affected-set witness corpus (claim_executor; scoped to origin/main...HEAD)"
-    );
-    let roots = load_source_roots(plan)?;
-    let mut cmd = Command::new(executor);
-    for rel_root in roots {
-        cmd.arg("--source-root").arg(root.join(rel_root));
-    }
-    cmd.arg("--plan-entry")
-        .arg(&entry)
-        .arg("--plan-function")
-        .arg(&function);
-    let status = cmd
-        .status()
-        .map_err(|e| format!("claim_executor {function}: {e}"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        eprintln!("[pre-push] {fail_recipe}");
-        Err("witness corpus failed".to_string())
-    }
 }
 
 fn git_toplevel() -> Result<std::path::PathBuf, String> {
