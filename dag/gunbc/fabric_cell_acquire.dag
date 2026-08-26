@@ -7,6 +7,7 @@ import v2.std.optional { Present, Absent }
 import product.placement_supply { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
+import extdeps.tools.stat
 import extdeps.systemd.systemctl
 import extdeps.systemd {
   SystemdUnitProperty,
@@ -24,6 +25,8 @@ import gunbc.fabric_cell_converge {
   FabricCellResourceBoundaryAddress,
   fabric_cell_resource_addresses,
   fabric_cell_base_dir,
+  fabric_cell_base_dir_parent,
+  fabric_cell_base_dir_entry_name,
   fabric_cell_root_path,
   fabric_cell_attempt_root_path,
   fabric_cell_slice_name,
@@ -81,19 +84,69 @@ data fabric_cell_slice_unit_pattern: NonEmptyStr = "fabric-cell-*.slice" as NonE
 // observation. It is not a listing either. It is a host in a state nobody intended, which is
 // exactly what an observer exists to report.
 //
-// "NOT A DIRECTORY" IS NOT "IS A REGULAR FILE", AND THE FIRST CUT OF THIS MODULE CONFLATED THEM.
-// It asked `test -f` after `test -d` and called everything else absent, so a socket, a FIFO, a
-// device node or a symbolic link -- none of which satisfy either test -- reported a path that
-// cannot be created as one that is free to create. `test -e` answers the question those two were
-// being asked to approximate. It closes every case but one, because it FOLLOWS symbolic links: a
-// link whose target is gone answers false while the link itself still holds the name and still
-// defeats mkdir, so `test -L` is asked as well. The composition is the presence question stated
-// exactly, rather than two proxies for it.
+// "NOT A DIRECTORY" IS NOT "IS A REGULAR FILE" AND NEITHER PAIR OF BOOLEANS PROVES ABSENCE. Two
+// successive cuts of this module got this wrong in two different ways, and the second is the
+// instructive one. The first asked `test -f` after `test -d` and called everything else absent, so
+// a socket, a FIFO, a device node or a symlink reported a path that CANNOT BE CREATED as one free
+// to create. The second replaced that with `test -e` and `test -L`, which fixes the occupancy half
+// -- and still cannot answer the question, because `test -e` returns false BOTH for a path that is
+// not there AND for one whose parent directory cannot be searched. Absence and "I could not look"
+// are the pair whose remedies differ most, and no composition of booleans separates them: each one
+// reports its own failure to observe as a negative answer.
+//
+// SO THE KIND IS OBSERVED ONCE, AS A KIND. `stat -c %F` reports the type on success and reports
+// FAILURE otherwise -- it never reports absence, because a metadata read that failed establishes
+// nothing. GNU stat uses lstat by default, so a symbolic link reads as a link rather than as its
+// target, which is what an observer deciding whether a name is occupied needs.
+//
+// AND ABSENCE COMES FROM WHERE IT ALWAYS DID: THE PARENT ENUMERATION. That is the observe module's
+// own parent-observation law, applied here rather than approximated by a probe of the path itself.
+// A successful listing that does not hold the entry establishes absence; a stat that failed
+// establishes only that the read failed.
 type FabricCellDirectoryObservation
   = DirectoryListed { entries: List<String> }
   | DirectoryNotPresent
   | DirectoryUnreadable { path: String, cause: String }
-  | PathOccupiedByNonDirectory { path: String }
+  | PathOccupiedByNonDirectory { path: String, kind: FabricCellPathKind }
+
+// THE GNU FILE-TYPE WORDS, DECODED INTO A CLOSED VOCABULARY. Every token coreutils can print for
+// `%F` gets an arm, and anything else is UnknownKind carrying the word -- not a silent default,
+// because a type this repository has not seen is a fact about the host worth reporting verbatim.
+type FabricCellPathKind
+  = DirectoryKind
+  | RegularFileKind
+  | SymbolicLinkKind
+  | SocketKind
+  | FifoKind
+  | CharacterDeviceKind
+  | BlockDeviceKind
+  | UnknownKind { word: String }
+
+fn fabric_cell_path_kind_of(word: String) -> FabricCellPathKind {
+  let w = trim(word)
+  if w == "directory" { DirectoryKind }
+  else if w == "regular file" { RegularFileKind }
+  else if w == "regular empty file" { RegularFileKind }
+  else if w == "symbolic link" { SymbolicLinkKind }
+  else if w == "socket" { SocketKind }
+  else if w == "fifo" { FifoKind }
+  else if w == "character special file" { CharacterDeviceKind }
+  else if w == "block special file" { BlockDeviceKind }
+  else { UnknownKind { word: w } }
+}
+
+fn fabric_cell_path_kind_word(kind: FabricCellPathKind) -> String {
+  match kind {
+    DirectoryKind => "directory"
+    RegularFileKind => "regular file"
+    SymbolicLinkKind => "symbolic link"
+    SocketKind => "socket"
+    FifoKind => "fifo"
+    CharacterDeviceKind => "character special file"
+    BlockDeviceKind => "block special file"
+    UnknownKind { word: w } => w
+  }
+}
 
 // THE PROJECTION IS PURE AND TOTAL, WHICH IS WHERE EVERY LAW ABOUT THIS MODULE LIVES. The host
 // effects below are unreachable in a hermetic fixture; this function is not, so the mapping from
@@ -109,10 +162,10 @@ fn fabric_cell_namespace_probe_of(observation: FabricCellDirectoryObservation) -
           " -- a listing that failed asserts nothing about what is there, so this is not an empty directory",
         ], ""),
       }
-    PathOccupiedByNonDirectory { path: p } =>
+    PathOccupiedByNonDirectory { path: p, kind: k } =>
       NamespaceEnumerationRefused {
         cause: join([
-          p, " exists and is not a directory",
+          p, " is a ", fabric_cell_path_kind_word(kind: k), " and not a directory",
           " -- it holds no entries to enumerate and it is not absent either, so no membership may be planned against it",
         ], ""),
       }
@@ -186,8 +239,10 @@ fn fabric_cell_directory_address_probe(
       }
     DirectoryUnreadable { path: p, cause: c } =>
       AddressStateReadRefused { cause: join(["reading ", p, " refused: ", c], "") }
-    PathOccupiedByNonDirectory { path: p } =>
-      AddressStateReadRefused { cause: join([p, " exists and is not a directory"], "") }
+    PathOccupiedByNonDirectory { path: p, kind: k } =>
+      AddressStateReadRefused {
+        cause: join([p, " is a ", fabric_cell_path_kind_word(kind: k), " and not a directory"], ""),
+      }
   }
 }
 
@@ -196,24 +251,91 @@ fn fabric_cell_directory_address_probe(
 // ORDERED SO THAT ABSENCE IS ESTABLISHED BEFORE A LISTING IS ATTEMPTED, not inferred from one that
 // failed. `test -d` false is not yet absence -- a regular file at the path is also false -- so the
 // two are separated by a second declared read rather than by assuming which one it was.
-func fabric_cell_observe_directory(path: String) -> FabricCellDirectoryObservation {
-  let dir = shell.Test.IsDirectory(path: path as FilePath)
-  if !dir.is_directory {
-    let present = shell.Test.Exists(path: path as FilePath)
-    if present.exists {
-      return PathOccupiedByNonDirectory { path: path }
-    }
-    let link = shell.Test.IsSymlink(path: path as FilePath)
-    if link.is_symlink {
-      return PathOccupiedByNonDirectory { path: path }
-    }
-    return DirectoryNotPresent
+// WHAT THE CONTAINING DIRECTORY SAID ABOUT THIS ENTRY, WHICH IS THE ONLY THING THAT CAN ESTABLISH
+// ABSENCE. A probe of the path itself cannot: every failure it can report is its own failure to
+// observe, and reading that as "nothing is there" is the empty-observation narrow at the smallest
+// possible scale.
+type FabricCellParentStanding
+  = ParentHoldsEntry
+  | ParentLacksEntry
+  | ParentUnobserved { cause: String }
+
+fn fabric_cell_parent_standing_of(
+  parent: FabricCellDirectoryObservation,
+  entry: String,
+) -> FabricCellParentStanding {
+  match parent {
+    DirectoryListed { entries: es } =>
+      if fabric_cell_entries_hold_name(entries: es, name: entry) { ParentHoldsEntry } else { ParentLacksEntry }
+    DirectoryNotPresent => ParentLacksEntry
+    DirectoryUnreadable { path: p, cause: c } =>
+      ParentUnobserved { cause: join(["the containing directory ", p, " could not be listed: ", c], "") }
+    PathOccupiedByNonDirectory { path: p, kind: k } =>
+      ParentUnobserved {
+        cause: join(["the containing directory ", p, " is a ", fabric_cell_path_kind_word(kind: k)], ""),
+      }
   }
+}
+
+type FabricCellPathObservation
+  = PathKindObserved { kind: FabricCellPathKind }
+  | PathMetadataUnread { path: String }
+
+func fabric_cell_observe_path_kind(path: String) -> FabricCellPathObservation {
+  let t = stat.File.FileType(path: path)
+  if t.success {
+    PathKindObserved { kind: fabric_cell_path_kind_of(word: t.file_type) }
+  } else {
+    PathMetadataUnread { path: path }
+  }
+}
+
+// THE KIND DECIDES OCCUPANCY; THE PARENT DECIDES ABSENCE. A metadata read that failed is routed by
+// what the containing directory already established -- absent if the parent listed and did not hold
+// this entry, unreadable in every other case, including the case where the parent itself was never
+// observed. Nothing here turns a failed read into an absence on its own authority.
+func fabric_cell_observe_directory(
+  path: String,
+  parent: FabricCellParentStanding,
+) -> FabricCellDirectoryObservation {
+  match fabric_cell_observe_path_kind(path: path) {
+    PathMetadataUnread { path: p } => fabric_cell_unread_path_observation(path: p, parent: parent)
+    PathKindObserved { kind: k } =>
+      match k {
+        DirectoryKind => fabric_cell_list_directory(path: path)
+        RegularFileKind => PathOccupiedByNonDirectory { path: path, kind: k }
+        SymbolicLinkKind => PathOccupiedByNonDirectory { path: path, kind: k }
+        SocketKind => PathOccupiedByNonDirectory { path: path, kind: k }
+        FifoKind => PathOccupiedByNonDirectory { path: path, kind: k }
+        CharacterDeviceKind => PathOccupiedByNonDirectory { path: path, kind: k }
+        BlockDeviceKind => PathOccupiedByNonDirectory { path: path, kind: k }
+        UnknownKind { word: _ } => PathOccupiedByNonDirectory { path: path, kind: k }
+      }
+  }
+}
+
+fn fabric_cell_unread_path_observation(
+  path: String,
+  parent: FabricCellParentStanding,
+) -> FabricCellDirectoryObservation {
+  match parent {
+    ParentLacksEntry => DirectoryNotPresent
+    ParentHoldsEntry =>
+      DirectoryUnreadable {
+        path: path,
+        cause: "the containing directory holds this entry and its metadata could not be read",
+      }
+    ParentUnobserved { cause: c } => DirectoryUnreadable { path: path, cause: c }
+  }
+}
+
+func fabric_cell_list_directory(path: String) -> FabricCellDirectoryObservation {
   let listed = Filesystem.List(path: path)
   if listed.success {
-    return DirectoryListed { entries: fabric_cell_listing_entries(text: listed.entries) }
+    DirectoryListed { entries: fabric_cell_listing_entries(text: listed.entries) }
+  } else {
+    DirectoryUnreadable { path: path, cause: listed.error }
   }
-  return DirectoryUnreadable { path: path, cause: listed.error }
 }
 
 func fabric_cell_read_boundary_property(unit: NonEmptyStr, property: SystemdUnitProperty) -> String? {
@@ -299,7 +421,7 @@ fn fabric_cell_unit_name_field(line: String) -> String {
 // expectation means. Supplying the roster from this side would be the observer reporting on what
 // it happened to probe, which is the blindness the observe module's own header rules out.
 func fabric_cell_probe_wet(host: HostIdentity) -> FabricCellHostProbe {
-  let root = fabric_cell_observe_directory(path: fabric_cell_base_dir)
+  let root = fabric_cell_observe_cells_root()
   let slices = fabric_cell_observe_slice_namespace()
   let slots = fabric_cell_expected_slots(host: host)
   FabricCellHostProbe {
@@ -320,12 +442,12 @@ func fabric_cell_probe_wet(host: HostIdentity) -> FabricCellHostProbe {
         s => FabricCellNamespaceProbeEntry {
           namespace: FabricCellChildNamespace { slot: s },
           probe: fabric_cell_namespace_probe_of(
-            observation: fabric_cell_observe_directory(path: fabric_cell_root_path(slot: s)),
+            observation: fabric_cell_observe_cell_root(slot: s, cells_root: root),
           ),
         },
       ),
     ),
-    addresses: flat_map(slots, s => fabric_cell_slot_address_probes(slot: s, slices: slices)),
+    addresses: flat_map(slots, s => fabric_cell_slot_address_probes(slot: s, cells_root: root, slices: slices)),
   }
 }
 
@@ -345,23 +467,59 @@ func fabric_cell_probe_wet(host: HostIdentity) -> FabricCellHostProbe {
 // exists, so the enumeration decides whether to ask at all.
 func fabric_cell_slot_address_probes(
   slot: RunnerSlotIdentity,
+  cells_root: FabricCellDirectoryObservation,
   slices: FabricCellNamespaceProbe,
 ) -> List<FabricCellAddressProbeEntry> {
+  let cell_root = fabric_cell_observe_cell_root(slot: slot, cells_root: cells_root)
   concat(
     fabric_cell_directory_address_entries(
       slot: slot,
       address: FabricCellRootAddress,
       path: fabric_cell_root_path(slot: slot),
-      observation: fabric_cell_observe_directory(path: fabric_cell_root_path(slot: slot)),
+      observation: cell_root,
     ),
     concat(
       fabric_cell_directory_address_entries(
         slot: slot,
         address: FabricCellAttemptRootAddress,
         path: fabric_cell_attempt_root_path(slot: slot),
-        observation: fabric_cell_observe_directory(path: fabric_cell_attempt_root_path(slot: slot)),
+        observation: fabric_cell_observe_directory(
+          path: fabric_cell_attempt_root_path(slot: slot),
+          parent: fabric_cell_parent_standing_of(parent: cell_root, entry: fabric_cell_attempt_root_entry_name),
+        ),
       ),
       fabric_cell_boundary_address_entries(slot: slot, slices: slices),
+    ),
+  )
+}
+
+data fabric_cell_attempt_root_entry_name: String = "attempts"
+
+// THE CELLS ROOT'S OWN ABSENCE IS ESTABLISHED BY LISTING ITS PARENT, WHICH IS THE SAME LAW ONE
+// LEVEL UP RATHER THAN AN EXEMPTION FROM IT. Every other path in this family has a modeled
+// containing namespace to ask; this one is the top of the family, so without asking `/opt` there is
+// nothing that can distinguish a host where fabric has never been provisioned from one where the
+// directory cannot be read -- and those are the two states whose remedies are furthest apart. The
+// parent of the parent is not asked in turn: `/opt` on a Linux host is part of the filesystem
+// hierarchy standard rather than something this family provisions, so an unobservable `/opt` is a
+// refusal and not a recursion.
+func fabric_cell_observe_cells_root() -> FabricCellDirectoryObservation {
+  let parent = fabric_cell_list_directory(path: fabric_cell_base_dir_parent)
+  fabric_cell_observe_directory(
+    path: fabric_cell_base_dir,
+    parent: fabric_cell_parent_standing_of(parent: parent, entry: fabric_cell_base_dir_entry_name),
+  )
+}
+
+func fabric_cell_observe_cell_root(
+  slot: RunnerSlotIdentity,
+  cells_root: FabricCellDirectoryObservation,
+) -> FabricCellDirectoryObservation {
+  fabric_cell_observe_directory(
+    path: fabric_cell_root_path(slot: slot),
+    parent: fabric_cell_parent_standing_of(
+      parent: cells_root,
+      entry: runner_slot_instance_name(slot: slot),
     ),
   )
 }
@@ -461,7 +619,7 @@ fn fabric_cell_directory_address_entries(
         address: address,
         probe: fabric_cell_directory_address_probe(path: path, observation: observation),
       }]
-    PathOccupiedByNonDirectory { path: _ } =>
+    PathOccupiedByNonDirectory { path: _, kind: _ } =>
       [FabricCellAddressProbeEntry {
         slot: slot,
         address: address,

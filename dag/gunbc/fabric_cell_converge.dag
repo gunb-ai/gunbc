@@ -51,7 +51,18 @@ fn fabric_cell_id_for_slot(slot: RunnerSlotIdentity) -> CellId {
   runner_slot_instance_name(slot: slot) as CellId
 }
 
-data fabric_cell_base_dir: String = "/opt/fabric-cells"
+// THE CELLS ROOT IS SPELLED AS A PARENT AND A NAME, BECAUSE ITS OWN ABSENCE HAS TO BE OBSERVABLE.
+// Absence is established by a successful enumeration of the containing directory that does not hold
+// the entry -- that is the parent-observation law every address in this family obeys -- and the
+// cells root is the one path with no modeled parent to ask. Splitting the spelling gives it one:
+// an observer can list `/opt`, look for `fabric-cells`, and reach the same kind of answer it
+// reaches for every cell beneath it. The joined form stays the single authority for the path
+// itself, so nothing downstream re-spells it.
+data fabric_cell_base_dir_parent: String = "/opt"
+
+data fabric_cell_base_dir_entry_name: String = "fabric-cells"
+
+data fabric_cell_base_dir: String = join([fabric_cell_base_dir_parent, "/", fabric_cell_base_dir_entry_name], "")
 
 fn fabric_cell_root_path(slot: RunnerSlotIdentity) -> String {
   join([fabric_cell_base_dir, "/", runner_slot_instance_name(slot: slot)], "")

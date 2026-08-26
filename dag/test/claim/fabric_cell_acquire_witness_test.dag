@@ -26,10 +26,26 @@ import gunbc.fabric_cell_observe {
 }
 import gunbc.fabric_cell_acquire {
   FabricCellDirectoryObservation,
+  FifoKind,
+  CharacterDeviceKind,
+  BlockDeviceKind,
   DirectoryListed,
   DirectoryNotPresent,
   DirectoryUnreadable,
   PathOccupiedByNonDirectory,
+  FabricCellPathKind,
+  SocketKind,
+  SymbolicLinkKind,
+  DirectoryKind,
+  RegularFileKind,
+  UnknownKind,
+  fabric_cell_path_kind_of,
+  FabricCellParentStanding,
+  ParentHoldsEntry,
+  ParentLacksEntry,
+  ParentUnobserved,
+  fabric_cell_parent_standing_of,
+  fabric_cell_unread_path_observation,
   fabric_cell_namespace_probe_of,
   fabric_cell_listing_entries,
   fabric_cell_unit_name_field,
@@ -114,7 +130,7 @@ test fn witness_acquire_absent_and_unreadable_are_opposite_probes() -> Bool {
 // then surface at apply time as a mkdir refusal rather than here as an observation.
 test fn witness_acquire_non_directory_refuses_rather_than_reading_as_absent() -> Bool {
   let p = fabric_cell_namespace_probe_of(
-    observation: PathOccupiedByNonDirectory { path: "/opt/fabric-cells/srv3-06" },
+    observation: PathOccupiedByNonDirectory { path: "/opt/fabric-cells/srv3-06", kind: SocketKind },
   )
   probe_is_refused(p: p) && !probe_is_observed_absent(p: p)
 }
@@ -283,6 +299,154 @@ fn standing_is_refuse(st: FabricCellBoundaryStanding) -> Bool {
     BoundaryUnknownRefuse { cause: _ } => true
     BoundaryAsk => false
     BoundaryAbsentNoAsk => false
+  }
+}
+
+// LAW 12 -- A METADATA READ THAT FAILED IS NOT AN ABSENCE, AND ONLY THE PARENT SAYS WHICH IT WAS.
+// This is the defect two cuts of this module carried in two different spellings: `test -d` plus
+// `test -f`, then `test -e` plus `test -L`. Both compose booleans that report their OWN failure to
+// observe as a negative answer, so a path whose parent directory cannot be searched reads exactly
+// like a path that is not there -- and those license opposite actions. The kind probe now reports
+// only what it read, and absence comes from the containing enumeration.
+test fn witness_acquire_unread_metadata_is_absence_only_when_the_parent_said_so() -> Bool {
+  observation_is_absent_dir(o: fabric_cell_unread_path_observation(
+    path: "/opt/fabric-cells/srv3-06",
+    parent: ParentLacksEntry,
+  ))
+    && observation_is_unreadable(o: fabric_cell_unread_path_observation(
+        path: "/opt/fabric-cells/srv3-06",
+        parent: ParentHoldsEntry,
+      ))
+    && observation_is_unreadable(o: fabric_cell_unread_path_observation(
+        path: "/opt/fabric-cells/srv3-06",
+        parent: ParentUnobserved { cause: "the containing directory /opt could not be listed" },
+      ))
+}
+
+// LAW 13 -- THE PARENT STANDING IS DERIVED FROM A SUCCESSFUL ENUMERATION AND FROM NOTHING ELSE. A
+// parent that could not be listed, or that is not a directory at all, establishes nothing about
+// what it contains -- so it must not read as "lacks the entry", which is the arm that licenses an
+// ADD.
+test fn witness_acquire_parent_standing_needs_a_successful_enumeration() -> Bool {
+  standing_holds(st: fabric_cell_parent_standing_of(
+    parent: DirectoryListed { entries: ["srv3-06"] },
+    entry: "srv3-06",
+  ))
+    && standing_lacks(st: fabric_cell_parent_standing_of(
+        parent: DirectoryListed { entries: [] },
+        entry: "srv3-06",
+      ))
+    && standing_unobserved(st: fabric_cell_parent_standing_of(
+        parent: DirectoryUnreadable { path: "/opt/fabric-cells", cause: "permission denied" },
+        entry: "srv3-06",
+      ))
+    && standing_unobserved(st: fabric_cell_parent_standing_of(
+        parent: PathOccupiedByNonDirectory { path: "/opt/fabric-cells", kind: SymbolicLinkKind },
+        entry: "srv3-06",
+      ))
+}
+
+// LAW 14 -- THE GNU TYPE WORDS DECODE INTO THE CLOSED VOCABULARY, AND AN UNSEEN WORD IS CARRIED
+// VERBATIM RATHER THAN DEFAULTED. A type this repository has not met is a fact about the host, and
+// silently folding it into one of the known arms would report a device node as a regular file.
+test fn witness_acquire_file_type_words_decode_without_a_silent_default() -> Bool {
+  kind_is_directory(k: fabric_cell_path_kind_of(word: "directory"))
+    && kind_is_regular_file(k: fabric_cell_path_kind_of(word: "regular empty file"))
+    && kind_is_symlink(k: fabric_cell_path_kind_of(word: "symbolic link"))
+    && kind_is_unknown_word(k: fabric_cell_path_kind_of(word: "weird new thing"), word: "weird new thing")
+}
+
+fn observation_is_absent_dir(o: FabricCellDirectoryObservation) -> Bool {
+  match o {
+    DirectoryNotPresent => true
+    DirectoryListed { entries: _ } => false
+    DirectoryUnreadable { path: _, cause: _ } => false
+    PathOccupiedByNonDirectory { path: _, kind: _ } => false
+  }
+}
+
+fn observation_is_unreadable(o: FabricCellDirectoryObservation) -> Bool {
+  match o {
+    DirectoryUnreadable { path: _, cause: _ } => true
+    DirectoryNotPresent => false
+    DirectoryListed { entries: _ } => false
+    PathOccupiedByNonDirectory { path: _, kind: _ } => false
+  }
+}
+
+fn standing_holds(st: FabricCellParentStanding) -> Bool {
+  match st {
+    ParentHoldsEntry => true
+    ParentLacksEntry => false
+    ParentUnobserved { cause: _ } => false
+  }
+}
+
+fn standing_lacks(st: FabricCellParentStanding) -> Bool {
+  match st {
+    ParentLacksEntry => true
+    ParentHoldsEntry => false
+    ParentUnobserved { cause: _ } => false
+  }
+}
+
+fn standing_unobserved(st: FabricCellParentStanding) -> Bool {
+  match st {
+    ParentUnobserved { cause: _ } => true
+    ParentHoldsEntry => false
+    ParentLacksEntry => false
+  }
+}
+
+fn kind_is_directory(k: FabricCellPathKind) -> Bool {
+  match k {
+    DirectoryKind => true
+    RegularFileKind => false
+    SymbolicLinkKind => false
+    SocketKind => false
+    FifoKind => false
+    CharacterDeviceKind => false
+    BlockDeviceKind => false
+    UnknownKind { word: _ } => false
+  }
+}
+
+fn kind_is_regular_file(k: FabricCellPathKind) -> Bool {
+  match k {
+    RegularFileKind => true
+    DirectoryKind => false
+    SymbolicLinkKind => false
+    SocketKind => false
+    FifoKind => false
+    CharacterDeviceKind => false
+    BlockDeviceKind => false
+    UnknownKind { word: _ } => false
+  }
+}
+
+fn kind_is_symlink(k: FabricCellPathKind) -> Bool {
+  match k {
+    SymbolicLinkKind => true
+    DirectoryKind => false
+    RegularFileKind => false
+    SocketKind => false
+    FifoKind => false
+    CharacterDeviceKind => false
+    BlockDeviceKind => false
+    UnknownKind { word: _ } => false
+  }
+}
+
+fn kind_is_unknown_word(k: FabricCellPathKind, word: String) -> Bool {
+  match k {
+    UnknownKind { word: w } => w == word
+    DirectoryKind => false
+    RegularFileKind => false
+    SymbolicLinkKind => false
+    SocketKind => false
+    FifoKind => false
+    CharacterDeviceKind => false
+    BlockDeviceKind => false
   }
 }
 

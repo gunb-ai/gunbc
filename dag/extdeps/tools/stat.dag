@@ -1,6 +1,6 @@
 module extdeps.tools.stat
 
-import std.types { String, NonEmptyStr, List }
+import std.types { Bool, String, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
@@ -58,4 +58,41 @@ fn stat_file_type_command(path: String) -> ArgvCommand {
 
 fn stat_inode_command(path: String) -> ArgvCommand {
   argv_command(program: stat_binary_path, arguments: ["-c", "%i", "--", path])
+}
+
+// THE TYPED OBSERVATION, BESIDE THE ARGV BUILDER THAT ALREADY SPELLS IT. `stat_file_type_command`
+// above builds the same words for a caller that needs an ArgvCommand; this operation is the
+// declared, transport-bound form a `.dag` caller can invoke directly. The corpus already carries
+// that pair shape -- `extdeps.shell` declares `operation IsExecutable` and
+// `shell_test_is_executable_argv` side by side -- so this follows an existing precedent rather than
+// inventing a second mechanism. The words are identical, `--` included.
+//
+// A NONZERO EXIT IS NOT AN ABSENCE, AND THAT IS THE WHOLE REASON THIS OPERATION EXISTS. `test -e`
+// answers false both for a path that is not there and for one whose parent directory cannot be
+// searched, so a caller composing boolean tests cannot tell "nothing is here" from "I could not
+// look" -- and those license opposite actions. This operation reports the type token on success and
+// says only that the metadata read FAILED otherwise; deciding absence is the caller's parent
+// enumeration, never this probe's silence.
+//
+// GNU stat USES lstat BY DEFAULT, so `%F` on a symbolic link reports "symbolic link" rather than
+// the type of its target. That is the behaviour the observer wants: a link occupying a name defeats
+// mkdir whether or not its target exists, and a caller that needed the target's type would ask with
+// -L. The default is relied on here deliberately and is part of the cited GNU authority.
+service stat.File {
+  operation FileType {
+    input { path: String }
+    output {
+      file_type: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["/usr/bin/stat", "-c", "%F", "--", "{path}"] }
+    exit {
+      0 => Unit "Metadata read; stdout carries the GNU file-type word"
+      nonzero => String "stat could not read the path's metadata"
+    }
+    mock_response {
+      0 => { file_type: "directory", success: true } "hermetic coreutils stat -c %F"
+    }
+  }
 }
