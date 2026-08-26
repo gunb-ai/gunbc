@@ -4040,10 +4040,31 @@ appends a `ReferenceOccurrence` on the `ParsedOccurrenceReference` arm; `parse_w
 constructs `reference_occurrences: Present { value: [] }` unconditionally, no flag and no branch,
 so the field's `?` type does not make the feature opt-in on that path.
 
-*Not established — that the arm appends during a real parse.* A constructed-empty list and a
-populated one are indistinguishable to a type reader, and a zero from a parse that never ran renders
-identically to a zero from a parse that found nothing. Execution-provenance class; source read until
-a run yields a nonzero count.
+*ESTABLISHED BY EXECUTION, 2026-08-26 (cool-swift-307)* — **the arm appends during real parses.**
+`occurrence_transport_from_parse_context` instrumented over an ordinary compile of
+`dag/std/logic.dag`, with builder **calls counted separately from totals** so that *the builder
+never ran* could not render as *it ran and found nothing*:
+
+```
+transport_builds        16000
+builds_with_refs > 0    15964      99.8%
+```
+
+**AND THE CAVEAT IS THE PART TO CARRY, NOT THE HEADLINE.** The same probe reports
+`total_references=2647872`, and **that is not a reference population.** It is a *sum across ~16000
+builds over 4065 modules* — roughly four builds per module, by re-parse or nested context, mechanism
+unestablished — so it is heavily double-counted. The only sound reading is **the ratio**: the
+mechanism runs and produces non-empty output. The population is unmeasured and needs identity-grain
+dedup, which is E.0's job and not this probe's. Flagged by its own author before anyone quoted it,
+which is why it is filed here in the same breath as the result rather than as a later correction —
+a figure of that shape is otherwise lifted into a document as *"the corpus has 2.6M references"*
+within a day.
+
+*The subsidiary fact, which is the load-bearing one for E.0* — the probe ran on the **smallest entry
+in the tree** and still built 16000 transports. That is the whole-tree name census doing its work,
+and it is the concrete evidence that **parse really is whole-tree and within budget on any entry**,
+while typecheck is not. Without it, the parse-derived route to E.0's denominator (§11.2t) is an
+assumption rather than a measured possibility.
 
 *Not established — that the recorded set is **complete** for closure derivation.* Nothing measures
 this, and completeness is precisely the property any consolidation needs.
@@ -4173,6 +4194,36 @@ diagnostics, emitted text, final node shape, or the structural Y resolver; where
 retains enough identity to yield a `DeclarationRef`, that row is a typed production refusal, and
 **that refusal population is itself a finding**.
 
+**THE X TAP NEEDS TWO REFUSAL VARIANTS, NOT ONE — THIS LANE'S SPEC WALKED INTO A STATE-SPACE
+CONFLATION AND THE TAP'S OWNER CAUGHT IT BEFORE BUILDING** (cool-swift-307, 2026-08-26). The spec
+above says that where an X path no longer retains enough identity to yield a `DeclarationRef`, the
+row is a typed production refusal. That collapses two states with **opposite owners and opposite
+repairs**:
+
+```
+X reached a judgment and it carries no exact identity
+    → a fact about X. A real finding. Repair: that occurrence needs a qualifier before F.
+
+the tap cannot see the identity X had
+    → a fact about the instrument. Not a finding. Repair: move the tap upstream.
+```
+
+One symbol over both is the *not-applicable rendered as malformed* shape, and it fails in the
+dangerous direction: **a tap deficiency counted as an X deficiency inflates the projection's work
+queue with sites that need nothing**, invisibly, because both render as "refused". So: two
+variants — `LegacyBindingIdentityAbsentAtDecision` and `LegacyBindingUnobservableAtTap { tap }` —
+and the second is a **deficit of the probe**, never folded into the first's population; non-empty is
+a line-stop on the tap, not a result about X.
+
+**And the placement goes in the SUBJECT, not beside the report.** Tap identity joins the seven
+identities alongside `resolver_identity` and `resolver_policy`, so two observations taken at
+different seams cannot be compared as though they measured the same thing — applicability refuses.
+That is the difference between a caveat someone must remember and a wall. The placement rule itself:
+**the tap sits at the earliest seam where X's judgment exists, not the most convenient one**, and if
+the earliest available seam still discards identity, *that* is a finding about X in its own right —
+"the production resolver does not retain exact identity at the point of decision" is a different and
+much larger sentence than "some rows refused".
+
 **AND B.3 GETS A READINESS RECEIPT, NOT A COMPETING LANE** — identity-grain over one exact ordinary
 compile subject, exact occurrence identities or typed refusals rather than counts: does parsing
 produce every reference and binder occurrence; do independently parsed files assemble without
@@ -4182,3 +4233,8 @@ provider; can those edges reach a closure fixed point; which reference categorie
 unsupported. The known **match-arm gap** belongs in it: the parser walk itself notes that match-arm
 bodies are siblings of pattern binders today, unlike lets, so lexical containment is wrong for that
 shape. **Until that receipt exists, B.3 and E are not ranked.**
+
+**The receipt is ordered BEFORE the tap, and not out of politeness to the larger measurement.** Its
+last line — *which reference categories remain unsupported*, at exact occurrence identities — **is
+the map of where identity survives**, which is exactly the input tap placement requires. Building
+the receipt first tells the tap's author where they may legitimately stand before they build it.
