@@ -54,19 +54,6 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_content_hash_path,
   fleet_converge_spark_serving_typed_actions_wire,
 }
-import gunbc.bmc_fan_alignment_standing {
-  AlignmentAdmission,
-  AlignmentAdmitsApplyEvaluation,
-  AlignmentStandingAbsent,
-  AlignmentStandingDuplicate,
-  AlignmentRefused,
-  BmcFanIntentAlignment,
-  IntentMatchesObservedProgram,
-  ObservedProgramNotAdopted,
-  ObservedProgramNotRepresentableByIntent,
-  host_alignment_admission,
-  fleet_bmc_fan_alignment_standings,
-}
 import gunbc.spark.serving_execution_schedule {
   scheduled_rows_list,
 }
@@ -342,71 +329,18 @@ func fleet_converge_apply_wet() -> ProcessExit
                   reason: "fleet_converge_apply: PlanArtifactHashMismatch — the plan.txt + apply.sh + spark_serving_typed_actions.wire bundle does not match plan_content.hex (a plan artifact minted before the typed-actions wire joined the bundle will not match)",
                 )
               } else {
-                match host_alignment_admission(
-                  standings: fleet_bmc_fan_alignment_standings,
-                  host: observed_host as HostIdentity,
-                ) {
-                  AlignmentStandingAbsent =>
-                    exit_failure(
-                      reason: concat(
-                        "fleet_converge_apply: BmcFanAlignmentStandingAbsent — no fan alignment standing is declared for ",
-                        concat(
-                          observed_host as String,
-                          ", so nothing establishes that the modelled intent describes this host's fan control program; refuse rather than write",
-                        ),
+                run_shell_commands(
+                  commands: [
+                    bash_program_command(
+                      script: fleet_converge_locked_apply_script(
+                        prior_generation: prior_generation,
+                        planned_generation: planned_generation,
+                        apply_shell_path: fleet_converge_plan_apply_shell_path,
                       ),
-                    )
-                  AlignmentStandingDuplicate =>
-                    exit_failure(
-                      reason: concat(
-                        "fleet_converge_apply: BmcFanAlignmentStandingDuplicate — more than one fan alignment standing is declared for ",
-                        concat(observed_host as String, "; the standing is ambiguous, refuse rather than let authoring order decide"),
-                      ),
-                    )
-                  AlignmentRefused { alignment } =>
-                    match alignment {
-                      IntentMatchesObservedProgram =>
-                        exit_failure(
-                          reason: "fleet_converge_apply: BmcFanAlignmentRefused — unreachable arm reached; an aligned standing must admit",
-                        )
-                      ObservedProgramNotAdopted =>
-                        exit_failure(
-                          reason: concat(
-                            "fleet_converge_apply: BmcFanObservedProgramNotAdopted — ",
-                            concat(
-                              observed_host as String,
-                              " runs a fan control program nobody has adopted into the modelled intent; applying would overwrite an unmodelled program",
-                            ),
-                          ),
-                        )
-                      ObservedProgramNotRepresentableByIntent { missing } =>
-                        exit_failure(
-                          reason: concat(
-                            "fleet_converge_apply: BmcFanObservedProgramNotRepresentable — ",
-                            concat(
-                              observed_host as String,
-                              concat(
-                                " runs a fan control program the intent cannot represent; missing: ",
-                                missing as String,
-                              ),
-                            ),
-                          ),
-                        )
-                    }
-                  AlignmentAdmitsApplyEvaluation =>
-                    run_shell_commands(
-                      commands: [
-                        bash_program_command(
-                          script: fleet_converge_locked_apply_script(
-                            prior_generation: prior_generation,
-                            planned_generation: planned_generation,
-                            apply_shell_path: fleet_converge_plan_apply_shell_path,
-                          ),
-                        ),
-                      ],
-                      transport: LocalExec,
-                    )
-                }
+                    ),
+                  ],
+                  transport: LocalExec,
+                )
               }
             }
           }

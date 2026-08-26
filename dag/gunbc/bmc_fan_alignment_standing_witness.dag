@@ -17,6 +17,14 @@ import gunbc.bmc_fan_alignment_standing {
   fleet_bmc_fan_alignment_standings,
   host_alignment_admits_apply_evaluation,
 }
+import gunbc.bmc_fan_projection {
+  BmcFanProjectionApplyRefused,
+  BmcFanProjectionApplySuitable,
+  BmcFanProjectionObservedProgramNotRepresentable,
+  bmc_fan_policy_projection_apply_suitability,
+}
+import gunbc.fleet_bmc_state { srv4_bmc_fan_projection_capability }
+import gunbc.fleet_bmc_observation { srv4_bmc_fan_converged_policy_observation }
 import gunbc.fleet_intent_network {
   operator_host_srv1,
   operator_host_srv3,
@@ -134,8 +142,47 @@ fn admission_reasons_stay_separate() -> Bool {
   no_standing && by_alignment && admitted
 }
 
+// THE GATE IS ON THE PATH THAT ACTUALLY WRITES FANS, AND IT DECIDES BEFORE THE COMPARISONS.
+// Both halves are asserted on ONE call with matching inputs: the capability and the observation
+// agree on board, firmware, curve, config path and controller service, so every downstream
+// comparison in bmc_fan_policy_projection_apply_suitability would return Suitable. The refusal
+// therefore cannot be a mismatch wearing the standing's name. The control flips only the
+// standings list, so the two arms differ in exactly one fact.
+fn projection_gate_refuses_before_comparisons() -> Bool {
+  let refused_under_fleet_standing = match bmc_fan_policy_projection_apply_suitability(
+    capability: srv4_bmc_fan_projection_capability,
+    board: srv4_bmc_fan_projection_capability.board,
+    desired_curve: srv4_bmc_fan_projection_capability.projected_curve,
+    observation: srv4_bmc_fan_converged_policy_observation,
+    host: operator_host_srv4,
+    standings: fleet_bmc_fan_alignment_standings,
+  ) {
+    BmcFanProjectionApplyRefused { cause } =>
+      cause == BmcFanProjectionObservedProgramNotRepresentable
+    BmcFanProjectionApplySuitable => false
+  }
+  let suitable_under_adopted_standing = match bmc_fan_policy_projection_apply_suitability(
+    capability: srv4_bmc_fan_projection_capability,
+    board: srv4_bmc_fan_projection_capability.board,
+    desired_curve: srv4_bmc_fan_projection_capability.projected_curve,
+    observation: srv4_bmc_fan_converged_policy_observation,
+    host: operator_host_srv4,
+    standings: [
+      HostBmcFanAlignmentStanding {
+        host: operator_host_srv4,
+        alignment: IntentMatchesObservedProgram,
+      },
+    ],
+  ) {
+    BmcFanProjectionApplySuitable => true
+    BmcFanProjectionApplyRefused { cause } => false
+  }
+  refused_under_fleet_standing && suitable_under_adopted_standing
+}
+
 fn bmc_fan_alignment_standing_witness() -> ProcessExit {
   if hand_configured_hosts_refuse()
+    && projection_gate_refuses_before_comparisons()
     && duplicate_standing_refuses()
     && admission_reasons_stay_separate()
     && unexamined_host_refuses()
