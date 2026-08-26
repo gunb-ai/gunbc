@@ -1,10 +1,25 @@
 module test.claim.legacy_binding_delta_witness
 
-import std.types { String, Bool, Int, List }
+import std.types { String, Bool, Int, List, SourceSpan }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { Fnv1a64Structural, structural_content_hash }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.occurrence_identity { OccurrenceId }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceIndex,
+  OccurrenceIndexEntry,
+  OccurrenceProjection,
+  OccurrenceContainmentPath,
+  LexicalValueOccurrence,
+  DeclarationOccurrence,
+  ReferenceOccurrence,
+  OccurrenceTransport,
+  ValidatedOccurrenceTransport,
+  OccurrenceTransportValidation,
+  OccurrenceTransportValidated,
+  OccurrenceTransportRefused,
+  occurrence_transport_validate
+}
 import std.content_hash { Fnv1a64Structural, structural_content_hash }
 import v2.workflow.legacy_binding_observation {
   LegacyBindingObservation,
@@ -126,14 +141,67 @@ fn lbd_insertion(target: Int, caused_by: Int) -> ProjectionProvenanceEntry {
 // The consequence is that every arm must now carry an admission-refused branch, and that branch is
 // not decoration: rendering an admission refusal as a totality verdict would be the unmade
 // comparison reading as a made one, one level above where the delta's own vocabulary prevents it.
+// A THIRD ARM, BECAUSE THE FIXTURE'S OWN TRANSPORT CONSTRUCTION CAN REFUSE. Collapsing a refused
+// transport into either of the other two arms would make a fixture that never reached the admission
+// read exactly like one that reached it and got an answer -- the execution-provenance loss inside
+// the test harness, which is the one place it is easiest to leave uncaught.
 type LbdTotalityOutcome
   = TotalityComputed { totality: ProvenanceTotality }
   | AdmissionRefusedBeforeTotality { completeness: LegacyObservationCompleteness }
+  | FixtureTransportRefused
 
-fn lbd_admit(subject: LegacyBindingObservationSubject, ids: List<Int>, expected: List<Int>) -> LegacyObservationAdmission<LbdTestOutcome> {
+// THE FIXTURE AUTHORS A TRANSPORT BECAUSE THE ADMISSION NOW DERIVES ITS OWN DENOMINATOR, and the
+// list this file used to pass is no longer expressible there. Each expected id becomes one
+// ReferenceOccurrence, so `expected` is the transport's reference population by construction rather
+// than by the fixture's promise -- which is the whole point of the parameter change: the shortened
+// list had a spelling here, and now it does not.
+fn lbd_span() -> SourceSpan {
+  SourceSpan { file: "legacy-binding-delta-fixture.dag", start: 1, end: 2 }
+}
+
+fn lbd_path(id: Int) -> OccurrenceContainmentPath {
+  OccurrenceContainmentPath { ancestors: [OccurrenceId { value: 900 }], terminal: OccurrenceId { value: id } }
+}
+
+fn lbd_transport_of(expected: List<Int>) -> OccurrenceTransportValidation {
+  occurrence_transport_validate(transport: OccurrenceTransport {
+    index: OccurrenceIndex { entries: concat(
+      [OccurrenceIndexEntry {
+        projection: OccurrenceProjection {
+          occurrence: OccurrenceId { value: 900 },
+          authored_name: "root",
+          diagnostic_span: lbd_span()
+        },
+        containment: OccurrenceContainmentPath { ancestors: [], terminal: OccurrenceId { value: 900 } }
+      }],
+      expected |> map(id => OccurrenceIndexEntry {
+        projection: OccurrenceProjection {
+          occurrence: OccurrenceId { value: id },
+          authored_name: "r",
+          diagnostic_span: lbd_span()
+        },
+        containment: lbd_path(id: id)
+      })
+    ) },
+    declarations: [DeclarationOccurrence {
+      occurrence: OccurrenceId { value: 900 },
+      containment: OccurrenceContainmentPath { ancestors: [], terminal: OccurrenceId { value: 900 } },
+      category: LexicalValueOccurrence,
+      diagnostic_span: lbd_span()
+    }],
+    references: expected |> map(id => ReferenceOccurrence {
+      occurrence: OccurrenceId { value: id },
+      containment: lbd_path(id: id),
+      category: LexicalValueOccurrence,
+      diagnostic_span: lbd_span()
+    })
+  })
+}
+
+fn lbd_admit_over(subject: LegacyBindingObservationSubject, ids: List<Int>, transport: ValidatedOccurrenceTransport) -> LegacyObservationAdmission<LbdTestOutcome> {
   admit_complete_observation(
     observation: lbd_observation_of(subject: subject, ids: ids),
-    expected: expected
+    transport: transport
   )
 }
 
@@ -144,16 +212,22 @@ fn lbd_totality_expecting(
   projected_expected: List<Int>,
   entries: List<ProjectionProvenanceEntry>
 ) -> LbdTotalityOutcome {
-  match lbd_admit(subject: lbd_subject(), ids: base, expected: base_expected) {
-    ObservationRefused { completeness: c } => AdmissionRefusedBeforeTotality { completeness: c }
-    ObservationAdmitted { admitted: b } => match lbd_admit(subject: lbd_projected_subject(), ids: projected, expected: projected_expected) {
-      ObservationRefused { completeness: c } => AdmissionRefusedBeforeTotality { completeness: c }
-      ObservationAdmitted { admitted: pr } => TotalityComputed {
-        totality: provenance_totality(
-          base_admitted: b,
-          projected_admitted: pr,
-          provenance: ProjectionProvenance { entries: entries }
-        )
+  match lbd_transport_of(expected: base_expected) {
+    OccurrenceTransportRefused { refusal: _ } => FixtureTransportRefused
+    OccurrenceTransportValidated { transport: bt } => match lbd_transport_of(expected: projected_expected) {
+      OccurrenceTransportRefused { refusal: _ } => FixtureTransportRefused
+      OccurrenceTransportValidated { transport: pt } => match lbd_admit_over(subject: lbd_subject(), ids: base, transport: bt) {
+        ObservationRefused { completeness: c } => AdmissionRefusedBeforeTotality { completeness: c }
+        ObservationAdmitted { admitted: b } => match lbd_admit_over(subject: lbd_projected_subject(), ids: projected, transport: pt) {
+          ObservationRefused { completeness: c } => AdmissionRefusedBeforeTotality { completeness: c }
+          ObservationAdmitted { admitted: pr } => TotalityComputed {
+            totality: provenance_totality(
+              base_admitted: b,
+              projected_admitted: pr,
+              provenance: ProjectionProvenance { entries: entries }
+            )
+          }
+        }
       }
     }
   }
@@ -163,16 +237,22 @@ fn lbd_totality_expecting(
 // and each arm exercises the totality law it names rather than the admission boundary. The two arms
 // that exercise the boundary itself pass a DIFFERENT expected population deliberately.
 fn lbd_delta(base: List<Int>, projected: List<Int>, entries: List<ProjectionProvenanceEntry>) -> LbdDeltaOutcome {
-  match lbd_admit(subject: lbd_subject(), ids: base, expected: base) {
-    ObservationRefused { completeness: c } => DeltaAdmissionRefused { completeness: c }
-    ObservationAdmitted { admitted: b } => match lbd_admit(subject: lbd_projected_subject(), ids: projected, expected: projected) {
-      ObservationRefused { completeness: c } => DeltaAdmissionRefused { completeness: c }
-      ObservationAdmitted { admitted: pr } => DeltaComputedOutcome {
-        delta: legacy_binding_delta(
-          base_admitted: b,
-          projected_admitted: pr,
-          provenance: ProjectionProvenance { entries: entries }
-        )
+  match lbd_transport_of(expected: base) {
+    OccurrenceTransportRefused { refusal: _ } => DeltaFixtureTransportRefused
+    OccurrenceTransportValidated { transport: bt } => match lbd_transport_of(expected: projected) {
+      OccurrenceTransportRefused { refusal: _ } => DeltaFixtureTransportRefused
+      OccurrenceTransportValidated { transport: pt } => match lbd_admit_over(subject: lbd_subject(), ids: base, transport: bt) {
+        ObservationRefused { completeness: c } => DeltaAdmissionRefused { completeness: c }
+        ObservationAdmitted { admitted: b } => match lbd_admit_over(subject: lbd_projected_subject(), ids: projected, transport: pt) {
+          ObservationRefused { completeness: c } => DeltaAdmissionRefused { completeness: c }
+          ObservationAdmitted { admitted: pr } => DeltaComputedOutcome {
+            delta: legacy_binding_delta(
+              base_admitted: b,
+              projected_admitted: pr,
+              provenance: ProjectionProvenance { entries: entries }
+            )
+          }
+        }
       }
     }
   }
@@ -181,6 +261,7 @@ fn lbd_delta(base: List<Int>, projected: List<Int>, entries: List<ProjectionProv
 type LbdDeltaOutcome
   = DeltaComputedOutcome { delta: LegacyBindingDelta }
   | DeltaAdmissionRefused { completeness: LegacyObservationCompleteness }
+  | DeltaFixtureTransportRefused
 
 fn lbd_totality(base: List<Int>, projected: List<Int>, entries: List<ProjectionProvenanceEntry>) -> LbdTotalityOutcome {
   lbd_totality_expecting(
@@ -203,6 +284,7 @@ test fn a_provenance_accounting_for_both_denominators_is_total() -> Bool {
     entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21), lbd_pair(source: 30, target: 31), lbd_insertion(target: 41, caused_by: 10)]
   ) {
     AdmissionRefusedBeforeTotality { completeness: _ } => false
+    FixtureTransportRefused => false
     TotalityComputed { totality: t } => match t {
       ProvenanceTotal => true
       ProvenanceSourceMissing { occurrences: _ } => false
@@ -225,6 +307,7 @@ test fn a_projection_with_no_insertions_is_also_total() -> Bool {
     entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21)]
   ) {
     AdmissionRefusedBeforeTotality { completeness: _ } => false
+    FixtureTransportRefused => false
     TotalityComputed { totality: t } => match t {
       ProvenanceTotal => true
       ProvenanceSourceMissing { occurrences: _ } => false
@@ -247,6 +330,7 @@ test fn a_base_occurrence_with_no_provenance_source_refuses() -> Bool {
     entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21), lbd_insertion(target: 41, caused_by: 10)]
   ) {
     AdmissionRefusedBeforeTotality { completeness: _ } => false
+    FixtureTransportRefused => false
     TotalityComputed { totality: t } => match t {
       ProvenanceSourceMissing { occurrences: missing } => (missing |> count) == 1
       ProvenanceTotal => false
@@ -270,6 +354,7 @@ test fn a_base_occurrence_projected_twice_refuses() -> Bool {
     entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 10, target: 21), lbd_pair(source: 20, target: 11)]
   ) {
     AdmissionRefusedBeforeTotality { completeness: _ } => false
+    FixtureTransportRefused => false
     TotalityComputed { totality: t } => match t {
       ProvenanceSourceRepeated { occurrences: repeated } => (repeated |> count) == 1
       ProvenanceTotal => false
@@ -291,6 +376,7 @@ test fn a_projected_occurrence_with_no_provenance_entry_refuses() -> Bool {
     entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21)]
   ) {
     AdmissionRefusedBeforeTotality { completeness: _ } => false
+    FixtureTransportRefused => false
     TotalityComputed { totality: t } => match t {
       ProvenanceTargetMissing { occurrences: missing } => (missing |> count) == 1
       ProvenanceTotal => false
@@ -320,6 +406,7 @@ test fn a_provenance_naming_an_occurrence_outside_either_denominator_refuses() -
     entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21), lbd_insertion(target: 31, caused_by: 99)]
   ) {
     AdmissionRefusedBeforeTotality { completeness: _ } => false
+    FixtureTransportRefused => false
     TotalityComputed { totality: t } => match t {
       ProvenanceForeignOccurrence { occurrences: foreign } => (foreign |> count) == 1
       ProvenanceTotal => false
@@ -341,6 +428,7 @@ test fn the_delta_refuses_rather_than_comparing_over_an_incomplete_provenance() 
     entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21)]
   ) {
     DeltaAdmissionRefused { completeness: _ } => false
+    DeltaFixtureTransportRefused => false
     DeltaComputedOutcome { delta: d } => match d {
       DeltaProvenanceRefused { totality: _ } => true
       CorrespondenceAdmitted { pairs: _ } => false
@@ -355,6 +443,7 @@ test fn the_delta_computes_over_a_total_provenance() -> Bool {
     entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21), lbd_insertion(target: 41, caused_by: 10)]
   ) {
     DeltaAdmissionRefused { completeness: _ } => false
+    DeltaFixtureTransportRefused => false
     DeltaComputedOutcome { delta: d } => match d {
       CorrespondenceAdmitted { pairs: pairs } => (pairs |> count) == 3
       DeltaProvenanceRefused { totality: _ } => false
@@ -381,6 +470,7 @@ test fn a_ref_bearing_the_wrong_subject_address_refuses() -> Bool {
     ]
   ) {
     AdmissionRefusedBeforeTotality { completeness: _ } => false
+    FixtureTransportRefused => false
     TotalityComputed { totality: t } => match t {
       ProvenanceRefOutOfSubjectScope { occurrences: out } => (out |> count) == 1
       ProvenanceTotal => false
@@ -405,6 +495,7 @@ test fn a_reference_that_is_carried_forward_and_also_causes_an_insertion_is_not_
     entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21), lbd_insertion(target: 41, caused_by: 10)]
   ) {
     AdmissionRefusedBeforeTotality { completeness: _ } => false
+    FixtureTransportRefused => false
     TotalityComputed { totality: t } => match t {
       ProvenanceTotal => true
       ProvenanceSourceMissing { occurrences: _ } => false
@@ -436,6 +527,7 @@ test fn an_insertion_naming_a_dropped_occurrence_does_not_cover_it() -> Bool {
     entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21), lbd_insertion(target: 41, caused_by: 30)]
   ) {
     AdmissionRefusedBeforeTotality { completeness: _ } => false
+    FixtureTransportRefused => false
     TotalityComputed { totality: t } => match t {
       ProvenanceSourceMissing { occurrences: missing } => (missing |> count) == 1
       ProvenanceTotal => false
@@ -460,6 +552,7 @@ test fn two_sources_claiming_one_target_refuses() -> Bool {
     entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 11), lbd_insertion(target: 21, caused_by: 10)]
   ) {
     AdmissionRefusedBeforeTotality { completeness: _ } => false
+    FixtureTransportRefused => false
     TotalityComputed { totality: t } => match t {
       ProvenanceTargetRepeated { occurrences: repeated } => (repeated |> count) == 1
       ProvenanceTotal => false
@@ -497,6 +590,7 @@ test fn two_row_less_observations_over_nonempty_expected_populations_refuse_befo
       LegacyObservationComplete => false
     }
     TotalityComputed { totality: _ } => false
+    FixtureTransportRefused => false
   }
 }
 
@@ -523,5 +617,6 @@ test fn a_row_less_observation_over_a_genuinely_empty_expected_population_is_adm
       ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
     }
     AdmissionRefusedBeforeTotality { completeness: _ } => false
+    FixtureTransportRefused => false
   }
 }
