@@ -1,0 +1,215 @@
+module test.claim.multi_module_compile_fixture_witness
+
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  FixtureSource,
+  fixture_source,
+  compile_fixture,
+  fixture_blocking_rows,
+  fixture_has_class
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SubstrateInputsOnly IS AN HONEST DECLARATION HERE, and the divergence from every other
+// census-compiling witness in the corpus is the whole point of the instrument under test. The
+// single-module census declares ReadsLiveTree TRUTHFULLY, because it resolves its synthetic
+// source's imports against build_module_path_index_from_witness_roots, which walks the checkout.
+// This instrument consults no module index and reads no source file: its subject is the manifest
+// its caller authored, and control 4 below is the executing evidence for that rather than a
+// claim about it. The compiler binary's own bytes ARE read, to stamp compiler_digest; that is a
+// read of the running transform, not of the source tree, and it is not what live_tree_disposition
+// asks about -- the question that field owns is affected-set selection eligibility, which is a
+// property of which SOURCES a witness's verdict depends on.
+
+data multi_module_compile_fixture_witness_note: String = "WHAT THESE SEVEN CONTROLS PROVE, and what they do not. They prove the instrument compiles a caller-authored MANIFEST in genuine isolation from the corpus, keeps harness-refused separate from subject-refused, reports a module count derived from the RESOLVE stage rather than from the input list, and stamps both digests on every arm that measured something. They prove NOTHING about any wall a consumer then builds on it: a wall's own regression control is its own probe pair, not this file. CONTROL 6 IS THE LOAD-BEARING ONE AND IS WRITTEN FIRST DELIBERATELY -- without it every other control can pass vacuously, because an instrument that silently answers 'compiled clean, zero diagnostics' whenever it fails to run satisfies control 1 by construction and control 2 only by accident. Its executable face is that a manifest the instrument cannot form at all lands in FixtureInstrumentRefused, which is a different variant from every arm carrying a diagnostic list, so a caller matching for a clean compile cannot receive one. CONTROLS 4 AND 5 ARE ONE QUESTION FROM TWO SIDES and neither alone decides it: 4 shows a corpus module NOT supplied is unreachable (an entry importing std.types refuses UnresolvedImport, so no default root was loaded), and 5 shows a corpus SPELLING that IS supplied binds the fixture's own declaration (a fixture module spelled std.logic exports a symbol the real std.logic does not have, and the entry importing it compiles clean). Together they establish that the pool is exactly the manifest -- neither wider nor narrower. THE OPEN QUESTION UPSTREAM COULD NOT ANSWER, recorded because it was asked as a real design question rather than rhetorically: whether a fixture can be corpus-isolated at all under whole-corpus floor preparation, where the required floor folds every witness through ONE prepared subject so that a witness and the corpus share a name pool unconditionally. It can. That preparation governs how the WITNESS is compiled and is consulted by unrelated censuses; the nested compile this instrument performs never reads it. Controls 4 and 5 measure that rather than assuming it, and they run on the floor -- which is what makes the answer evidence instead of an argument."
+
+// ---------------------------------------------------------------------------
+// The authored manifests. Every byte here is fixture-owned: nothing is borrowed from a corpus
+// module, so no unrelated rename can turn a control green while the instrument is broken.
+
+data peer_source: String = "module mmfx.peer\nfn peer_answer() -> Int { 7 }\n"
+data entry_source: String = "module mmfx.entry\nimport mmfx.peer { peer_answer }\nfn main_answer() -> Int { peer_answer() }\n"
+data entry_missing_export: String = "module mmfx.entry\nimport mmfx.peer { no_such_symbol }\nfn main_answer() -> Int { no_such_symbol() }\n"
+data entry_imports_unsupplied_corpus_module: String = "module mmfx.entry\nimport std.types { Int }\nfn main_answer() -> Int { 1 }\n"
+data corpus_spelled_peer: String = "module std.logic\nfn mmfx_only_sentinel() -> Int { 11 }\n"
+data entry_on_corpus_spelling: String = "module mmfx.entry\nimport std.logic { mmfx_only_sentinel }\nfn main_answer() -> Int { mmfx_only_sentinel() }\n"
+data third_source: String = "module mmfx.third\nfn third_answer() -> Int { 3 }\n"
+data entry_source_perturbed: String = "module mmfx.entry\nimport mmfx.peer { peer_answer }\nfn main_answer() -> Int { peer_answer() + 0 }\n"
+
+fn two_module_run(peer: String, entry: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("mmfx/peer.dag", peer), fixture_source("mmfx/entry.dag", entry)],
+    entry: "mmfx/entry.dag"
+  })
+}
+
+fn three_module_run() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("mmfx/peer.dag", peer_source),
+      fixture_source("mmfx/third.dag", third_source),
+      fixture_source("mmfx/entry.dag", entry_source)
+    ],
+    entry: "mmfx/entry.dag"
+  })
+}
+
+fn entry_names_no_supplied_source_run() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("mmfx/peer.dag", peer_source)],
+    entry: "mmfx/absent.dag"
+  })
+}
+
+fn empty_manifest_run() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture { sources: [], entry: "mmfx/entry.dag" })
+}
+
+fn duplicate_path_run() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("mmfx/entry.dag", entry_source),
+      fixture_source("mmfx/entry.dag", entry_source_perturbed)
+    ],
+    entry: "mmfx/entry.dag"
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Readers. Each MATCHES the coproduct, so no reader can hand a caller a diagnostic list the
+// instrument never produced.
+
+fn completed_with_no_diagnostics(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(rows) == 0 && count(files) > 0 && n > 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+fn refused_with_class(o: MultiModuleCompileFixtureOutcome, wanted: String) -> Bool {
+  match o {
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      fixture_has_class(rows, wanted) && count(fixture_blocking_rows(rows)) > 0,
+    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+fn is_instrument_refused(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureInstrumentRefused { cause: c } => count(c as String) > 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false
+  }
+}
+
+fn module_count_is(o: MultiModuleCompileFixtureOutcome, expected: Int) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } => n == expected,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => n == expected,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+fn source_digest_of(o: MultiModuleCompileFixtureOutcome) -> String {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } => sd as String,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => sd as String,
+    FixtureInstrumentRefused { cause: c } => ""
+  }
+}
+
+fn compiler_digest_of(o: MultiModuleCompileFixtureOutcome) -> String {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } => cd as String,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => cd as String,
+    FixtureInstrumentRefused { cause: c } => ""
+  }
+}
+
+// ---------------------------------------------------------------------------
+// CONTROL 6, FIRST. Without it every control below can pass vacuously.
+//
+// Three manifests the instrument cannot form a subject from -- an entry naming no supplied
+// source, an empty manifest, and one path carrying two different sets of bytes -- each land in
+// FixtureInstrumentRefused with a cause. That variant carries no diagnostic list at all, so
+// "could not run" is not merely distinguishable from "ran and found nothing": the second has no
+// spelling on this arm. The empty manifest is refused rather than compiled BECAUSE an empty
+// subject compiles clean vacuously, which is could-not-measure wearing the subject's verdict.
+test fn unreached_compile_cannot_render_as_a_clean_one() -> Bool {
+  is_instrument_refused(entry_names_no_supplied_source_run())
+    && is_instrument_refused(empty_manifest_run())
+    && is_instrument_refused(duplicate_path_run())
+    && !completed_with_no_diagnostics(entry_names_no_supplied_source_run())
+    && !completed_with_no_diagnostics(empty_manifest_run())
+}
+
+// CONTROL 1. A valid two-module program compiles: no diagnostics of ANY severity, and emitted
+// files exist. The zero-of-any-severity form is deliberate -- a blocking-only assertion would go
+// green if a landed wall were demoted to advisory.
+test fn valid_two_module_program_compiles() -> Bool {
+  completed_with_no_diagnostics(two_module_run(peer_source, entry_source))
+}
+
+// CONTROL 2. A deliberately invalid CROSS-MODULE program refuses with the INTENDED diagnostic --
+// the entry imports a symbol its peer does not export, and the compile answers MissingExport.
+// Naming the class is what makes this a control rather than a change detector: a probe asserting
+// only "something refused" passes on a typo in the fixture source itself.
+test fn invalid_cross_module_program_refuses_with_the_intended_diagnostic() -> Bool {
+  refused_with_class(two_module_run(peer_source, entry_missing_export), "MissingExport")
+}
+
+// CONTROL 3. The module count the instrument reports comes from the RESOLVE stage, not from the
+// length of the supplied list, so this is a join between two producers. Both directions are
+// asserted: two supplied modules report two, three report three. One row alone would be
+// satisfied by a constant.
+test fn discovered_module_count_equals_the_supplied_manifest() -> Bool {
+  module_count_is(two_module_run(peer_source, entry_source), 2)
+    && module_count_is(three_module_run(), 3)
+    && !module_count_is(three_module_run(), 2)
+}
+
+// CONTROL 4. No default corpus roots are loaded. The entry imports std.types -- a real corpus
+// module, present in every ordinary compile of this repository -- and does not supply it. If any
+// module index were consulted the import would bind; it refuses UnresolvedImport instead.
+test fn no_default_corpus_roots_are_loaded() -> Bool {
+  refused_with_class(
+    two_module_run(peer_source, entry_imports_unsupplied_corpus_module),
+    "UnresolvedImport"
+  )
+}
+
+// CONTROL 5. The other side of control 4: reusing a corpus module SPELLING inside the fixture
+// binds the FIXTURE's declaration. The supplied module is spelled std.logic and exports
+// mmfx_only_sentinel, which the real std.logic does not have, so this compile can only succeed
+// against the authored bytes.
+test fn corpus_module_spelling_does_not_bind_the_corpus_declaration() -> Bool {
+  completed_with_no_diagnostics(two_module_run(corpus_spelled_peer, entry_on_corpus_spelling))
+}
+
+// CONTROL 7. Both digests travel with every arm that measured something, and the source digest
+// DISCRIMINATES: the same manifest twice digests identically, and a one-token edit to a single
+// module digests differently. Asserting only that a digest is present would pass over a constant.
+// The compiler digest is asserted equal across the two runs and non-empty -- one running binary,
+// one identity -- which is what lets a receipt quoting this instrument name the transform that
+// produced it.
+test fn the_fixtures_source_and_compiler_digests_travel_with_the_result() -> Bool {
+  let a = two_module_run(peer_source, entry_source)
+  let b = two_module_run(peer_source, entry_source)
+  let c = two_module_run(peer_source, entry_source_perturbed)
+  count(source_digest_of(a)) > 0
+    && source_digest_of(a) == source_digest_of(b)
+    && source_digest_of(a) != source_digest_of(c)
+    && count(compiler_digest_of(a)) > 0
+    && compiler_digest_of(a) == compiler_digest_of(c)
+}
