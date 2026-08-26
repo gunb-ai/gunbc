@@ -1208,8 +1208,26 @@ fn infer_binop_type_node(op: BinOp, left_type: Node, source_indices: Map<String,
   }
 }
 
+// MAP BINDS THE ELEMENT OF ITS CARRIER, AND THE ? CARRIER WAS OMITTED FROM THAT RULE.
+//
+// The many-carrier holds its element as a single CHILD, so the extraction below finds it. The
+// optional carrier does not: `T?` marks optionality as the kernel CardOptional CARDINALITY ON THE
+// NODE ITSELF, with no child to descend into. So an optional carrier fell past the extraction and
+// landed in the Absent arm, which returns `normed` -- the CARRIER -- and the caller recorded the
+// carrier where the element was meant.
+//
+// That silently-wrong fact was invisible for as long as the Rust route emitted lambda parameters
+// untyped; once the route annotates them, it renders as `|m: Option<Rc<SpanMapping>>|` against a
+// body that names the element's fields, and rustc refuses. The defect was never in the emitter.
+//
+// Stripping the cardinality is the whole fix, and it is a RESTORATION of uniformity rather than a
+// new rule: `mappings` (many) and `mappings |> last` (?) are two carriers of one concept, and map
+// already bound the element of the first. Stripping runs BEFORE the child extraction so a `List<T>?`
+// yields `List<T>` rather than skipping a level -- one cardinality is removed, never two.
 fn for_each_element_type_node(n: Node, source_indices: Map<String, NewlineIndex>) -> Node {
-  let normed = normalize_access_type_node(n: n)
+  let carrier = normalize_access_type_node(n: n)
+  let carrier_is_optional = carrier.return_cardinality == CardOptional
+  let normed = if carrier_is_optional { with_required_cardinality(n: carrier) } else { carrier }
   let is_single_child = normed.connective == NoConnective && normed.children |> count == 1
   let extracted = if is_single_child {
     match normed.children |> first {

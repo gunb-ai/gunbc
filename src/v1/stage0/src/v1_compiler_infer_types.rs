@@ -3046,7 +3046,13 @@ pub fn for_each_element_type_node(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     {
-        let normed = normalize_access_type_node(n.clone());
+        let carrier = normalize_access_type_node(n.clone());
+        let carrier_is_optional = (carrier.return_cardinality.clone() == Cardinality::CardOptional);
+        let normed = if carrier_is_optional.clone() {
+            with_required_cardinality(carrier.clone())
+        } else {
+            carrier.clone()
+        };
         let is_single_child = ((normed.connective.clone() == Connective::NoConnective)
             && ((normed.children.clone().len() as i64) == 1));
         let extracted = if is_single_child.clone() {
