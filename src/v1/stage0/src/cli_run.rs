@@ -44915,6 +44915,16 @@ fn floor_resource_sample(cpu_baseline_ms: u64) -> String {
     //                                     fold, and no amount of retention work here fixes it.
     //   pgmajfault rises, pswpin flat  -> file-backed mapping churn. That IS local to the fold
     //                                     and is a defect this lane owns.
+    //   BOTH FLAT                      -> QUIET. Nothing is happening. This is a THIRD state
+    //                                     and it is NOT the churn arm above.
+    //
+    // The third arm is written down because the two-arm form above was implemented faithfully
+    // by two independent readers and both classified zero-and-zero as mapping churn -- 26
+    // intervals in one reading, 6 in the other -- which inverts the conclusion, since churn is
+    // a defect this lane owns and quiet is the absence of one. A rule stated as a dichotomy
+    // over a domain with three states hands every faithful implementer the same misreading.
+    // `pgmajfault rises` and `pswpin flat` are two conditions, and only their CONJUNCTION is
+    // churn; the arm was being selected on the second condition alone.
     //
     // Deliberately host-wide rather than cgroup-scoped: /proc/vmstat is not namespaced, and
     // host-level swap is precisely the thing a cgroup-scoped counter cannot see. That is also
