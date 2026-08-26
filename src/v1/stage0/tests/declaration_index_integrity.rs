@@ -400,6 +400,50 @@ fn stale_citation_is_refused() {
     assert!(found[0].1.contains("deleted_declaration"), "{}", found[0].1);
 }
 
+// ARM 2's THIRD RED, AND IT HAD NO FIXTURE UNTIL 2026-08-26. `CitedFieldAbsent` was the one
+// refusal arm of the cited-symbol wall with no controlled fixture anywhere: its only evidence
+// was a PLANTED_CONTROL_CITATIONS row whose citation was authored inside
+// `v2.lens.cited_symbol_resolution`. Deleting that lens deleted the citation, the row stopped
+// reproducing, and the arm would have been left with nothing executing against it — the
+// §4b(4) failure of deleting evidence along with the machinery it outlived. Measured, not
+// assumed: before this test the string `CitedFieldAbsent` did not occur in this file at all.
+//
+// A controlled fixture is also the STRONGER replacement, not merely an equal one. The planted
+// row asserted that one hand-authored citation in the live corpus still refuses; this authors
+// both the input and the expected population, which is the oracle DESIGN §5 actually asks for.
+//
+// THE PAIR IS THE POINT: `absent_field` must refuse and `present_field` must NOT, in one
+// fixture. A wall that refused every `NamedField` citation would satisfy the red alone.
+#[test]
+fn citation_to_an_absent_field_is_refused_and_a_present_field_is_not() {
+    let dir = scratch_root("citation_field");
+    author(
+        &dir,
+        "authority.dag",
+        "module probe.authority\n\ndata real_declaration: Bool = true\n\n\
+         type Carrier {\n  present_field: Bool\n}\n",
+    );
+    author(
+        &dir,
+        "citer.dag",
+        "module probe.citer\n\nimport std.decl_ref { DeclarationRef, NamedField }\n\n\
+         data absent_field_citation: DeclarationRef = DeclarationRef {\n  \
+         module_path: \"probe.authority\",\n  decl_name: \"Carrier\",\n  \
+         field: NamedField { field_name: \"no_such_field\" }\n}\n\n\
+         data present_field_citation: DeclarationRef = DeclarationRef {\n  \
+         module_path: \"probe.authority\",\n  decl_name: \"Carrier\",\n  \
+         field: NamedField { field_name: \"present_field\" }\n}\n",
+    );
+    let found = findings_over(&dir);
+    assert_eq!(
+        found.len(),
+        1,
+        "the absent field refuses; the present one does not, got {found:?}"
+    );
+    assert_eq!(found[0].0, DeclarationIntegrityKind::CitedFieldAbsent);
+    assert!(found[0].1.contains("no_such_field"), "{}", found[0].1);
+}
+
 // ARM 2's second red: a citation whose MODULE is gone. It refuses because some swept
 // module declares the `probe` namespace root — the decidable line that separates a deleted
 // `.dag` module from a citation naming hand-Rust, which no `.dag` namespace covers.
