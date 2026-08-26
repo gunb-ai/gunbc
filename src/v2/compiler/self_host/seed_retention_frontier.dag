@@ -181,7 +181,6 @@ data seed_retention_frontier_roster: List<SeedRetentionFrontierRow> = [
   retained_test_harness(path: "tests/namespace_occurrence_serde.rs"),
   retained_test_harness(path: "tests/scoped_run_observation.rs"),
   retained_test_harness(path: "tests/tokenize_escape_receipt.rs"),
-  retained_test_harness(path: "tests/walk_plan_stage_fixture.rs"),
   retained_build_script(path: "build.rs")
 ]
 

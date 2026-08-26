@@ -5,10 +5,8 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.ci_spec {
-  CiSpec,
   ci_floor_build_verify_script,
-  ci_release_build_line,
-  gunbc_ci_floor_only_script
+  ci_release_build_line
 }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import v2.workflow.ci_retry_emit { ci_cargo_eagain_retry_script }
@@ -41,6 +39,15 @@ fn ci_release_build_script() -> String {
   )
 }
 
-fn gunbc_ci_run_script(spec: CiSpec) -> String {
-  concat(concat(ci_release_build_script(), "\n"), gunbc_ci_floor_only_script(spec: spec))
+// NARROWED 2026-08-26 with the plan/walk residue cut. This concatenated the release
+// build with gunbc_ci_floor_only_script, which rendered a `claim_executor --plan-entry
+// … --plan-function …` line naming src/v2/workflow/ci_floor_plan.dag. The floor cut
+// deleted that entry on 2026-08-15 and claim_executor stopped parsing those flags on
+// 2026-08-25, so the second half emitted an invocation that could only exit 2. It is
+// deleted rather than repointed at --required-ci: witnesses.yml already invokes that,
+// and emitting a second route to it here would be the parallel authority the floor cut
+// removed. What remains is the release build and its --verify-build-artifacts check,
+// both of which still parse and still run.
+fn gunbc_ci_run_script() -> String {
+  ci_release_build_script()
 }
