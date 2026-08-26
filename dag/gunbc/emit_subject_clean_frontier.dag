@@ -302,7 +302,6 @@ fn emit_ratchet_roster_identity_rows(identity: RosterIdentity) -> List<String> {
 // designing around an input that does not exist: closing it needs the compiler to report WHICH
 // identities it resolved, and it reports a COUNT (`resolved {} sources`). Recording identities is a
 // next-rung trigger on the compiler's side of that seam, not work this module can do.
-data emit_subject_path_keyed_identity_limitation: String = "The frontier is keyed by entry PATH because the compiler's entry surface is a path and there is no identity-keyed alternative. A renamed entry therefore reads as an orphaned frontier row plus a new subject rather than as one moved subject. Both refuse, so nothing goes silent; closing the join properly requires the emitter to report resolved IDENTITIES rather than a count of resolved sources, which is a next-rung trigger owned by the compiler, not by this consumer."
 
 // ---------------------------------------------------------------------------------------------
 // THE PER-SUBJECT STANDING, derived from a measurement rather than stored beside one.
