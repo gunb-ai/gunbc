@@ -82,7 +82,7 @@ import v2.std.runtime {
   TransformInterpreter,
   ValueInterpreter
 }
-import v2.std.verdict { BuildFailed, Deferred, Pass, RunFailed, SemanticMismatch, Verdict }
+import v2.std.verdict { verdict_establishes_divergence, verdict_establishes_equivalence, verdict_produced_a_comparison }
 import v2.std.verification {
   EqualsClaim,
   Integration,
@@ -330,23 +330,11 @@ fn emit_match_eval_run(tree: InferredTree) -> TestClaimRun<Node, RuntimeValue> {
 }
 
 fn emit_match_eval_verdict_is_pass(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
-  match run.verdict {
-    Pass => true
-    SemanticMismatch { actual: _, falsification: _ } => false
-    BuildFailed { actual: _, diagnostic: _ } => false
-    RunFailed { actual: _, diagnostic: _ } => false
-    Deferred { actual: _, diagnostic: _ } => false
-  }
+  verdict_establishes_equivalence(v: run.verdict)
 }
 
 fn emit_match_eval_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
-  match run.verdict {
-    SemanticMismatch { actual: _, falsification: _ } => true
-    Pass => false
-    BuildFailed { actual: _, diagnostic: _ } => false
-    RunFailed { actual: _, diagnostic: _ } => false
-    Deferred { actual: _, diagnostic: _ } => false
-  }
+  verdict_establishes_divergence(v: run.verdict)
 }
 
 // WHAT THIS PAIR ESTABLISHES, AND THE STRONGER THING IT DOES NOT. Each `test fn` is its own
@@ -393,14 +381,13 @@ fn emit_match_eval_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeV
 // undo: routing through it would classify "the compiler disagreed with itself" and "rustc was
 // killed" into one bucket again, one layer further from the assertion. A tally is the right
 // surface for counting outcomes and the wrong one for distinguishing two of them.
+// THIS FOLD WAS ALREADY CORRECT, and it is dissolved into the shared authority rather than repaired.
+// It hand-wrote exactly the question `verdict_produced_a_comparison` now answers -- did the subject
+// reach the comparison at all -- which is why the comment above it argued against routing through a
+// tally. That argument stands; what changed is that the reading now has one home instead of being
+// re-derived here, so the two cannot drift.
 fn emit_match_eval_verdict_reached_semantics(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
-  match run.verdict {
-    Pass => true
-    SemanticMismatch { actual: _, falsification: _ } => true
-    BuildFailed { actual: _, diagnostic: _ } => false
-    RunFailed { actual: _, diagnostic: _ } => false
-    Deferred { actual: _, diagnostic: _ } => false
-  }
+  verdict_produced_a_comparison(v: run.verdict)
 }
 
 data emit_match_eval_unbuildable_source_text: String = "fn main() { this is not rust"

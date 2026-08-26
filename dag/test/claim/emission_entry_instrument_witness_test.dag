@@ -159,8 +159,97 @@ data emit_scope_line: String = "resolved 27 sources (reference-derived closure),
 
 data emit_whole_tree_scope_line: String = "resolved 3892 sources (transitive import closure)"
 
+fn complete_capture_of(s: String) -> CaptureExtent {
+  CaptureExtent {
+    truncated: false,
+    total: byte_size(count: s.length()),
+    retained: byte_size(count: s.length())
+  }
+}
+
+fn truncated_capture_of(s: String, retained: Int) -> CaptureExtent {
+  CaptureExtent {
+    truncated: true,
+    total: byte_size(count: s.length()),
+    retained: byte_size(count: retained)
+  }
+}
+
 fn emit_read_of(lines: List<String>) -> EmitDiagnosticRead {
-  read_emit_diagnostics(stderr: stream_of(lines: lines))
+  let s = stream_of(lines: lines)
+  read_emit_diagnostics(stderr: s, capture: complete_capture_of(s: s))
+}
+
+fn emit_read_of_truncated(lines: List<String>) -> EmitDiagnosticRead {
+  let s = stream_of(lines: lines)
+  read_emit_diagnostics(stderr: s, capture: truncated_capture_of(s: s, retained: 16384))
+}
+
+// THE DISCRIMINATING CONTROL FOR THE TRUNCATION ARM, and it is the one the reds alone cannot give.
+//
+// The two truncation claims below establish that a truncated capture REFUSES. They do not establish
+// that truncation is what fires the arm rather than SIZE -- and a refusal that fired on large
+// outputs would refuse every talkative subject whether or not anything was lost, which is the same
+// unmeasurable corpus for a different reason. The arm keys on the host's own `truncated` flag and
+// reads no length anywhere, so the control asserts exactly that: a stream LARGER THAN THE WINDOW,
+// reported COMPLETE, reads its population normally.
+//
+// THE SIZE IS ASSERTED, NOT ASSUMED. `a_large_complete_capture_fixture_exceeds_the_window` pins the
+// fixture above 16 KiB, so a later edit that shrinks the corpus cannot quietly turn the control
+// into a small-input test that passes for the wrong reason -- the guard goes red instead.
+// THE WINDOW IS A MAGNITUDE, NOT A NUMBER. `std.measure` already owns the byte quantity
+// (`ByteSize = Measure<Memory, One, Nat>`), so a bare `Int` here would be a second representation
+// of a concept the corpus has one authority for -- the anemic-leaf modeling DESIGN rules out, and
+// the same move `extdeps.memory` and `extdeps.git.object_store` already make by constructing with
+// `byte_size` and projecting with `byte_size_count` only where arithmetic needs a scalar.
+//
+// THE PROJECTION IS SOUND HERE FOR A STATED REASON RATHER THAN BY ASSUMPTION: `String.length()` is
+// a CHARACTER count, which equals the byte count only for ASCII, and every line composing this
+// fixture is ASCII. That is why the comparison below is a byte comparison at all; a fixture that
+// grew a non-ASCII line would make the two quantities diverge and this claim would be measuring
+// something other than what it says.
+data emit_capture_window: ByteSize = byte_size(count: 16384)
+
+data emit_large_population_count: Int = 400
+
+fn emit_large_complete_stream() -> String {
+  concat(
+    concat(emit_scope_line, "\n"),
+    concat(
+      repeat_string(s: concat(emit_advisory_line, "\n"), n: emit_large_population_count),
+      concat(
+        concat("compiled: 177 files emitted, ", to_string(emit_large_population_count)),
+        concat(
+          concat("\n0 blocking error(s), ", to_string(emit_large_population_count)),
+          " advisory diagnostic(s) (policy: gunbc.compile_clean_diagnostic_policy)\n"
+        )
+      )
+    )
+  )
+}
+
+test fn a_large_complete_capture_fixture_exceeds_the_window() -> Bool {
+  emit_large_complete_stream().length() > byte_size_count(emit_capture_window)
+}
+
+// THE CONTROL ITSELF: over the window, reported complete, read in full. If the arm keyed on size
+// this would refuse; it reports all 400 members instead.
+test fn a_large_but_complete_capture_is_read_and_not_refused_for_its_size() -> Bool {
+  match read_emit_diagnostics(stderr: emit_large_complete_stream(), capture: complete_capture_of(s: emit_large_complete_stream())) {
+    EmitDiagnosticsRead { diagnostics: ds, emitted_files: _, declared_total: n } =>
+      count(ds) == emit_large_population_count && n == emit_large_population_count
+    read => false
+  }
+}
+
+// AND THE SAME BYTES WITH THE FLAG SET STILL REFUSE, which is what makes the pair a discriminator
+// rather than two unrelated readings: identical input, one bit different, opposite verdicts. Only
+// the host's truncation report can account for the difference, because nothing else changed.
+test fn the_same_large_stream_refuses_when_the_host_reports_it_truncated() -> Bool {
+  match read_emit_diagnostics(stderr: emit_large_complete_stream(), capture: truncated_capture_of(s: emit_large_complete_stream(), retained: 16384)) {
+    EmitOutputTruncated { extent: _ } => true
+    read => false
+  }
 }
 
 fn emit_rows(lines: List<String>) -> List<String> {
@@ -255,6 +344,68 @@ test fn a_second_severity_summary_line_refuses_rather_than_overwriting_the_first
 test fn a_whole_tree_compile_is_not_read_as_an_entry_population() -> Bool {
   match emit_read_of(lines: [emit_whole_tree_scope_line, emit_error_line, emit_severity_summary_one_error]) {
     EmitScopeUnconfirmed => true
+    read => false
+  }
+}
+
+// RED: A TRUNCATED STREAM IS NOT A COMPILER THAT FAILED TO SCOPE. The input below is a WELL-FORMED,
+// entry-scoped, readable population -- the very lines the control beneath it reads normally -- and
+// the ONLY difference is the host's report that it kept a bounded tail. Without the pair, an arm
+// that simply refused everything would pass this and mean nothing.
+test fn a_truncated_capture_refuses_under_its_own_name() -> Bool {
+  match emit_read_of_truncated(lines: [emit_scope_line, emit_error_line, emit_severity_summary_one_error]) {
+    EmitOutputTruncated { extent: _ } => true
+    read => false
+  }
+}
+
+// THE OTHER HALF OF THE DISCRIMINATION, and the one that keeps the arm from swallowing a real
+// finding: a stream that WAS truncated and ALSO lost its scope marker still refuses for truncation,
+// because truncation is the fact that explains the missing marker. Its opposite -- an untruncated
+// stream with no marker -- is the whole-tree substitution, and it must keep landing on
+// EmitScopeUnconfirmed. That claim is a_whole_tree_compile_is_not_read_as_an_entry_population above,
+// which is now this arm's control rather than merely its neighbour.
+test fn truncation_is_reported_ahead_of_a_missing_marker_it_explains() -> Bool {
+  match emit_read_of_truncated(lines: [emit_error_line, emit_severity_summary_one_error]) {
+    EmitOutputTruncated { extent: _ } => true
+    read => false
+  }
+}
+
+// THE REFUSAL REPORTS AN OVERAGE, NOT A VERDICT, and this claim is what stops the two new capture
+// keys being decoration. A refusal that merely said "truncated" would leave the reader knowing a
+// wall exists and not what it would take to move it; the numbers below are the difference. The
+// fixture pins an exact discarded count, so a decode that reported the total, the retained, or a
+// sign-flipped difference in that position would fail rather than merely read oddly.
+test fn the_truncation_refusal_carries_how_far_over_the_window_the_stream_ran() -> Bool {
+  let stream = emit_large_complete_stream()
+  let expected_discarded = stream.length() - 16384
+  match read_emit_diagnostics(stderr: stream, capture: truncated_capture_of(s: stream, retained: 16384)) {
+    EmitOutputTruncated { extent: e } =>
+      capture_overage_bytes(extent: e) == expected_discarded
+        && string_contains(
+             s: emit_diagnostic_read_refusal_reason(read: EmitOutputTruncated { extent: e }),
+             pattern: concat(to_string(expected_discarded), " byte(s) from the HEAD")
+           )
+    read => false
+  }
+}
+
+// THE CONTROL: the flag is the host's judgment and is CARRIED, never re-derived from the sizes.
+// A capture whose total equals its retained is not truncated, and a decode that inferred truncation
+// from `total > retained` would agree with this one by accident -- so the discriminating case is a
+// capture the host calls truncated whose sizes are EQUAL. It must still refuse.
+test fn truncation_follows_the_hosts_flag_and_not_a_size_comparison() -> Bool {
+  let stream = stream_of(lines: [emit_scope_line, emit_error_line, emit_severity_summary_one_error])
+  match read_emit_diagnostics(
+    stderr: stream,
+    capture: CaptureExtent {
+      truncated: true,
+      total: byte_size(count: stream.length()),
+      retained: byte_size(count: stream.length())
+    }
+  ) {
+    EmitOutputTruncated { extent: e } => capture_overage_bytes(extent: e) == 0
     read => false
   }
 }
