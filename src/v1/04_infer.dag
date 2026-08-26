@@ -6135,6 +6135,7 @@ type DescentContext {
   scope_locals: Map<String, TypeBinding>
   func_env: ResolvedFuncEnv
   per_field_vars: Map<String, Map<String, SubValueRelation>>
+  body_locals: Map<String, Bool>
 }
 
 fn classify_size_expr(val: Node, ctx: DescentContext) -> DescentSizeExpr? {
@@ -6337,7 +6338,7 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
   match val.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+      match func_sig_for_derivation(lookup: descent_callee_sig(ctx: ctx, name: callee)) {
         DerivedFromSig { sig: sig } =>
           if sig.output_provenance |> count > 1 {
             let return_type = sig.inferred
@@ -6355,7 +6356,7 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
       }
     ExprMethodCall { method_semantics: _ } =>
       let callee = expr_method_name_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+      match func_sig_for_derivation(lookup: descent_callee_sig(ctx: ctx, name: callee)) {
         DerivedFromSig { sig: sig } =>
           if sig.output_provenance |> count > 1 {
             let return_type = sig.inferred
@@ -6505,7 +6506,7 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      let from_provenance = match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+      let from_provenance = match func_sig_for_derivation(lookup: descent_callee_sig(ctx: ctx, name: callee)) {
         DerivedFromSig { sig: sig } =>
           match sig.output_provenance |> first {
             Present { value: param_map } =>
@@ -6772,7 +6773,7 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
             ArithmeticDescent { param: _, factor: _ } => inner_rel
             PreservedValue =>
               let callee = expr_call_func_at(texpr: arg_expr, source_indices: ctx.type_env.source_indices)
-              let from_provenance = match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+              let from_provenance = match func_sig_for_derivation(lookup: descent_callee_sig(ctx: ctx, name: callee)) {
                 DerivedFromSig { sig: sig } =>
                   match sig.output_provenance |> first {
                     Present { value: param_map } =>
@@ -6992,6 +6993,98 @@ fn descent_source_type(found: String, arg_node: Node, ctx: DescentContext) -> St
   }
 }
 
+// A DESCENT- OR PROVENANCE-GRAIN CALLEE LOOKUP MUST SEE THE VALUE BINDINGS IN SCOPE BEFORE IT
+// CONSULTS THE CORPUS. `lookup_func_sig` reads module fn envs and the whole-pool census only;
+// it has no notion of a body-scope binding. So a callee name bound to a FUNCTION VALUE in the
+// body -- a fn parameter, a `let`, a lambda or match binder, a for-each variable -- was
+// answered by whatever corpus-global homonym carried that name, and that declaration's
+// `output_provenance` / `variant_provenance` were then read as facts about the local value.
+// Nothing refuses and nothing is located: the derivation is attributed to a declaration the
+// call site never named. The only thing that ever exposed it was an ARITY or label mismatch
+// making the argument join come up empty -- an accident of the homonym's shape, never a check,
+// and a same-shape homonym is silently believed. That is silent wrongness -- DESIGN section 5 --
+// which is outside the guarantee ladder rather than low on it: no arm refuses, no arm counts,
+// and the fact published is about a declaration nobody wrote at the call site.
+// THE BLAST RADIUS IS STATED AS MEASURED AND NOT AS THE OBVIOUS ONE, because the obvious one
+// would be inflation (DESIGN section 4b(1)). The product of this derivation is the
+// `descent_evidence` annotation on `ExprCall`, and TODAY NOTHING IN THE COMPILER READS IT:
+// `expr_call_descent_evidence` has zero callers, and complexity.dag discards the field in every
+// `ExprCall` arm it matches, computing its own progress from its own state lattice. The one
+// live consumer is `serialize_descent_evidence` in compile.dag, the serialized typed program.
+// So the class today is A WRONG PUBLISHED FACT, not a fabricated termination proof, and this
+// repair must not be read as closing one.
+// IT IS FIXED ANYWAY, AND THAT IS THE RULE RATHER THAN A PREFERENCE: DESIGN section 6's bare
+// minimum cost says a proven wrong-attribution defect is always repaired regardless of the
+// realized n, because "n is small here" is not a time-stable fact. The annotation exists to be
+// read; the first consumer that reads it inherits a homonym's `StrictSubValue` attributed to a
+// local identity function, and at that moment the wrong published fact becomes a fabricated
+// descent proof with no diff to point at.
+// THE SHADOW SET IS `body_locals`, THE CORPUS'S EXISTING SHADOWING AUTHORITY (see
+// call_locals_shadow_note), NOT `scope_locals`. `locals` is pre-seeded with module variant and
+// service census bindings that must not eclipse fn sigs -- shadowing on it would strip sigs
+// from ordinary calls and degrade descent proofs corpus-wide. One authority for "what is a body
+// binding", read at both seams, rather than a second rule minted per seam (DESIGN section 3).
+// THE PROVENANCE CHAIN CARRIES THE SAME SET UNDER TWO NAMES IT ALREADY THREADS: `param_types`
+// keys are the fn's parameters and `let_prov` keys are its `let` binders, inserted
+// unconditionally by classify_body_provenance. No new threading is introduced there.
+// KNOWN RESIDUE, stated rather than left to be rediscovered: the provenance chain does not
+// thread lambda or match binders, so a function-valued binder of those two forms is still
+// looked up corpus-wide at that seam. The descent chain covers all four forms. Next-rung
+// trigger for the provenance half: carrying one shadow set through classify_body_provenance in
+// place of the two it reconstructs.
+// EVIDENCE, AND WHAT IT DOES NOT INCLUDE. The executed evidence is the v1 self-host regen:
+// the authority compiles clean under this change and the rebuilt seed reproduces its own
+// mirror, 135 of 135, first_generation_equal=true. That is a positive control -- the repair
+// changes no answer the whole corpus depended on -- and it is NOT a discriminating red.
+// NO DISCRIMINATING RED IS AUTHORED, and the reason is a missing harness rather than a saving
+// (DESIGN section 4b(1), the fixture-boundary test). The forbidden input IS authorable: a
+// single-module source whose `let` binds a function value under the name of a corpus fn is
+// ordinary .dag text. What no boundary can express is the OBSERVATION -- `descent_evidence` has
+// no substrate-visible surface at all, so gunbc.compile_diagnostic_census (the one .dag-callable
+// v1 compile) reports the same zero blocking rows whichever declaration the derivation
+// attributed. A probe written against it would be permanently green by construction and would
+// then be cited as coverage, which is the decoration that clause calls worse than absent.
+// NEXT-RUNG TRIGGER FOR THE EVIDENCE: a substrate-visible descent-evidence observation surface,
+// the same one the first real consumer of the annotation will need. It is can-climb-now-but-
+// unbuilt, not a ceiling.
+fn descent_callee_sig(ctx: DescentContext, name: String) -> FuncSigLookup {
+  if map_has(ctx.body_locals, name) {
+    FuncSigUnresolved
+  } else {
+    lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: name)
+  }
+}
+
+fn provenance_callee_sig(callee: String, param_types: Map<String, String>, let_prov: Map<String, Map<String, SubValueRelation>>, func_env: ResolvedFuncEnv, type_env: TypeEnv) -> FuncSigLookup {
+  if map_has(param_types, callee) || map_has(let_prov, callee) {
+    FuncSigUnresolved
+  } else {
+    lookup_func_sig(func_env: func_env, type_env: type_env, name: callee)
+  }
+}
+
+// Pattern binders are shadowed for the WHOLE arm, independent of whether the arm's
+// sub-value derivation produced a relation for them: the arms above extend the context only
+// when a relation is derivable, and a binder with no derivable relation still shadows a
+// corpus homonym.
+fn descent_pattern_bound_names(pattern: MatchPattern) -> List<String> {
+  match pattern {
+    Bind { declaration: declaration } => [declaration.name]
+    VariantPattern { name: _, parent_enum: _, field_bindings: bindings } =>
+      bindings |> flat_map(fb => descent_pattern_bound_names(pattern: field_binding_pattern(n: fb)))
+    _ => []
+  }
+}
+
+fn descent_ctx_shadowing_names(ctx: DescentContext, names: List<String>) -> DescentContext {
+  DescentContext {
+    fn_name: ctx.fn_name, param_names: ctx.param_names, param_order: ctx.param_order,
+    type_env: ctx.type_env, sub_value_vars: ctx.sub_value_vars, size_aliases: ctx.size_aliases,
+    scope_locals: ctx.scope_locals, func_env: ctx.func_env, per_field_vars: ctx.per_field_vars,
+    body_locals: fold(names, init: ctx.body_locals, f: (acc, n) => if n == "" { acc } else { map_insert(acc, n, true) })
+  }
+}
+
 fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
   match body.expr_data {
     ExprCall { call_semantics: cs, descent_evidence: _ } =>
@@ -7023,7 +7116,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                 } else { ctx.sub_value_vars },
                 size_aliases: ctx.size_aliases,
                 scope_locals: ctx.scope_locals, func_env: ctx.func_env,
-                per_field_vars: ctx.per_field_vars
+                per_field_vars: ctx.per_field_vars,
+                body_locals: ctx.body_locals
               }
               make_arg_node(name: arg_name_at(n: child, source_indices: ctx.type_env.source_indices), value: annotate_descent(body: arg_val, ctx: lambda_ctx), span: child.span, name_span: child.span)
             } else {
@@ -7095,7 +7189,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       let scrut_variant_sig = match scrut.expr_data {
         ExprCall { call_semantics: _, descent_evidence: _ } =>
           let callee = expr_call_func_at(texpr: scrut, source_indices: ctx.type_env.source_indices)
-          match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+          match func_sig_for_derivation(lookup: descent_callee_sig(ctx: ctx, name: callee)) {
             DerivedFromSig { sig: sig } =>
               if map_keys(sig.variant_provenance) |> count > 0 { Present { value: sig } }
               else { none }
@@ -7129,7 +7223,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                             sub_value_vars: map_insert(c.sub_value_vars, declaration.name, StrictSubValue { field: ind_field, factor: UnitShrink }),
                             size_aliases: c.size_aliases,
                             scope_locals: c.scope_locals, func_env: c.func_env,
-                            per_field_vars: c.per_field_vars
+                            per_field_vars: c.per_field_vars,
+                            body_locals: c.body_locals
                           }
                         VariantPattern { name: inner_vname, parent_enum: _, field_bindings: inner_bindings } =>
                           let inner_ind_fields = inductive_fields_for(env: c.type_env, type_name: ind_field.element_type)
@@ -7150,7 +7245,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                                     sub_value_vars: map_insert(ic.sub_value_vars, inner_bind_name, StrictSubValue { field: inner_ind_field, factor: UnitShrink }),
                                     size_aliases: ic.size_aliases,
                                     scope_locals: ic.scope_locals, func_env: ic.func_env,
-                                    per_field_vars: ic.per_field_vars
+                                    per_field_vars: ic.per_field_vars,
+                                    body_locals: ic.body_locals
                                   }
                                 } else { ic }
                               Absent => ic
@@ -7177,7 +7273,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                             sub_value_vars: map_insert(c.sub_value_vars, bind_name, StrictSubValue { field: ind_field, factor: UnitShrink }),
                             size_aliases: c.size_aliases,
                             scope_locals: c.scope_locals, func_env: c.func_env,
-                            per_field_vars: c.per_field_vars
+                            per_field_vars: c.per_field_vars,
+                            body_locals: c.body_locals
                           }
                         } else { c }
                       Absent => c
@@ -7193,7 +7290,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   sub_value_vars: map_insert(ctx.sub_value_vars, declaration.name, PreservedValue),
                   size_aliases: ctx.size_aliases,
                   scope_locals: ctx.scope_locals, func_env: ctx.func_env,
-                  per_field_vars: ctx.per_field_vars
+                  per_field_vars: ctx.per_field_vars,
+                  body_locals: ctx.body_locals
                 }
               } else {
                 match scrut_inducing_field {
@@ -7205,7 +7303,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                       sub_value_vars: map_insert(ctx.sub_value_vars, declaration.name, StrictSubValue { field: ind_field, factor: UnitShrink }),
                       size_aliases: ctx.size_aliases,
                       scope_locals: ctx.scope_locals, func_env: ctx.func_env,
-                      per_field_vars: ctx.per_field_vars
+                      per_field_vars: ctx.per_field_vars,
+                      body_locals: ctx.body_locals
                     }
                   Absent => ctx
                 }
@@ -7214,7 +7313,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
           }
         } else { ctx }
         }
-        let annotated_body = annotate_descent(body: arm_body(n: arm_node), ctx: arm_ctx)
+        let annotated_body = annotate_descent(body: arm_body(n: arm_node), ctx: descent_ctx_shadowing_names(ctx: arm_ctx, names: descent_pattern_bound_names(pattern: arm_pattern(n: arm_node))))
         make_arm_node(pattern: arm_pattern(n: arm_node), guard: arm_guard(n: arm_node), body: annotated_body, span: arm_node.span)
       )
       Node {
@@ -7253,7 +7352,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             size_aliases: inner_size_aliases,
             scope_locals: map_insert(ctx.scope_locals, binding_name, TypeBinding { name: binding_name, resolved: resolved_type(n: val), provenance: rel }),
             func_env: ctx.func_env,
-            per_field_vars: inner_per_field
+            per_field_vars: inner_per_field,
+            body_locals: map_insert(ctx.body_locals, binding_name, true)
           }
         Absent =>
           DescentContext {
@@ -7262,7 +7362,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             size_aliases: inner_size_aliases,
             scope_locals: map_insert(ctx.scope_locals, binding_name, TypeBinding { name: binding_name, resolved: resolved_type(n: val), provenance: SubValueUnknown }),
             func_env: ctx.func_env,
-            per_field_vars: inner_per_field
+            per_field_vars: inner_per_field,
+            body_locals: map_insert(ctx.body_locals, binding_name, true)
           }
       }
       let annotated_value = annotate_descent(body: val, ctx: ctx)
@@ -7308,7 +7409,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   size_aliases: new_sa,
                   scope_locals: map_insert(acc.ctx.scope_locals, bname, TypeBinding { name: bname, resolved: resolved_type(n: val), provenance: rel }),
                   func_env: acc.ctx.func_env,
-                  per_field_vars: acc.ctx.per_field_vars
+                  per_field_vars: acc.ctx.per_field_vars,
+                  body_locals: map_insert(acc.ctx.body_locals, bname, true)
                 }
               Absent =>
                 DescentContext {
@@ -7317,7 +7419,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   size_aliases: new_sa,
                   scope_locals: map_insert(acc.ctx.scope_locals, bname, TypeBinding { name: bname, resolved: resolved_type(n: val), provenance: SubValueUnknown }),
                   func_env: acc.ctx.func_env,
-                  per_field_vars: acc.ctx.per_field_vars
+                  per_field_vars: acc.ctx.per_field_vars,
+                  body_locals: map_insert(acc.ctx.body_locals, bname, true)
                 }
             }
           _ => acc.ctx
@@ -7410,7 +7513,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                     else { map_insert(ctx.sub_value_vars, elem_name, IteratedSubValue { field: ind_field }) },
                   size_aliases: ctx.size_aliases,
                   scope_locals: ctx.scope_locals, func_env: ctx.func_env,
-                  per_field_vars: ctx.per_field_vars
+                  per_field_vars: ctx.per_field_vars,
+                  body_locals: ctx.body_locals
                 }
               Absent =>
                 DescentContext {
@@ -7419,7 +7523,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   sub_value_vars: if is_fold { empty_map() } else { ctx.sub_value_vars },
                   size_aliases: ctx.size_aliases,
                   scope_locals: ctx.scope_locals, func_env: ctx.func_env,
-                  per_field_vars: ctx.per_field_vars
+                  per_field_vars: ctx.per_field_vars,
+                  body_locals: ctx.body_locals
                 }
             }
           Absent => ctx
@@ -7448,6 +7553,9 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       } else {
         map_children(node: body, transform: child => annotate_descent(body: child, ctx: ctx))
       }
+    ExprLambda =>
+      let lam_ctx = descent_ctx_shadowing_names(ctx: ctx, names: lambda_param_names_at(texpr: body, source_indices: ctx.type_env.source_indices))
+      map_children(node: body, transform: child => annotate_descent(body: child, ctx: lam_ctx))
     ExprForEach =>
       let coll = foreach_collection(texpr: body)
       let fe_body = foreach_body(texpr: body)
@@ -7462,7 +7570,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             sub_value_vars: map_insert(empty_map(), fe_var, IteratedSubValue { field: ind_field }),
             size_aliases: ctx.size_aliases,
             scope_locals: ctx.scope_locals, func_env: ctx.func_env,
-            per_field_vars: ctx.per_field_vars
+            per_field_vars: ctx.per_field_vars,
+            body_locals: map_insert(ctx.body_locals, fe_var, true)
           }
         Absent =>
           DescentContext {
@@ -7471,7 +7580,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             sub_value_vars: empty_map(),
             size_aliases: ctx.size_aliases,
             scope_locals: ctx.scope_locals, func_env: ctx.func_env,
-            per_field_vars: ctx.per_field_vars
+            per_field_vars: ctx.per_field_vars,
+            body_locals: map_insert(ctx.body_locals, fe_var, true)
           }
       }
       let annotated_coll = annotate_descent(body: coll, ctx: ctx)
@@ -7571,7 +7681,7 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
 
     ExprMethodCall { method_semantics: ms } =>
       let mname = expr_method_name_at(texpr: expr, source_indices: type_env.source_indices)
-      let callee_result = compose_callee_provenance(callee: mname, arg_by_name: method_call_args_by_name(call: expr, func_env: func_env, type_env: type_env, source_indices: type_env.source_indices), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
+      let callee_result = compose_callee_provenance(callee: mname, arg_by_name: method_call_args_by_name(call: expr, func_env: func_env, type_env: type_env, param_types: param_types, let_prov: let_prov, source_indices: type_env.source_indices), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
       if map_keys(callee_result) |> count > 0 { callee_result }
       else {
         let is_shrink = match ms {
@@ -7699,11 +7809,11 @@ fn call_args_by_name(call: Node, source_indices: Map<String, NewlineIndex>) -> M
   )
 }
 
-fn method_call_args_by_name(call: Node, func_env: ResolvedFuncEnv, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Map<String, Node> {
+fn method_call_args_by_name(call: Node, func_env: ResolvedFuncEnv, type_env: TypeEnv, param_types: Map<String, String>, let_prov: Map<String, Map<String, SubValueRelation>>, source_indices: Map<String, NewlineIndex>) -> Map<String, Node> {
   let mname = expr_method_name_at(texpr: call, source_indices: source_indices)
   let recv = method_receiver(texpr: call)
   let mc_args = method_arg_nodes(texpr: call)
-  let base = match func_sig_for_derivation(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: mname)) {
+  let base = match func_sig_for_derivation(lookup: provenance_callee_sig(callee: mname, param_types: param_types, let_prov: let_prov, func_env: func_env, type_env: type_env)) {
     DerivedFromSig { sig: sig } =>
       match sig.params |> first {
         Present { value: first_p } =>
@@ -7722,7 +7832,7 @@ fn method_call_args_by_name(call: Node, func_env: ResolvedFuncEnv, type_env: Typ
 }
 
 fn compose_callee_provenance(callee: String, arg_by_name: Map<String, Node>, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_env: ResolvedFuncEnv, let_prov: Map<String, Map<String, SubValueRelation>>) -> Map<String, SubValueRelation> {
-  match func_sig_for_derivation(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: callee)) {
+  match func_sig_for_derivation(lookup: provenance_callee_sig(callee: callee, param_types: param_types, let_prov: let_prov, func_env: func_env, type_env: type_env)) {
     DerivedFromSig { sig: sig } =>
       match sig.output_provenance |> first {
         Present { value: callee_prov } =>
@@ -7891,7 +8001,7 @@ fn arm_ctx_from_variant_provenance(arm_node: Node, sig: ResolvedFuncSig, scrut: 
                   let best = merge_argument_relations(rels: all_rels)
                   match best {
                     SubValueUnknown => c
-                    _ => DescentContext { fn_name: c.fn_name, param_names: c.param_names, param_order: c.param_order, type_env: c.type_env, sub_value_vars: map_insert(c.sub_value_vars, bind_name, best), size_aliases: c.size_aliases, scope_locals: c.scope_locals, func_env: c.func_env, per_field_vars: c.per_field_vars }
+                    _ => DescentContext { fn_name: c.fn_name, param_names: c.param_names, param_order: c.param_order, type_env: c.type_env, sub_value_vars: map_insert(c.sub_value_vars, bind_name, best), size_aliases: c.size_aliases, scope_locals: c.scope_locals, func_env: c.func_env, per_field_vars: c.per_field_vars, body_locals: c.body_locals }
                   }
                 Absent => c
               }
@@ -7973,7 +8083,7 @@ fn collect_variant_constructors(body: Node, parent_enum: String, param_names: Li
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: body, source_indices: type_env.source_indices)
-      match func_sig_for_derivation(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: callee)) {
+      match func_sig_for_derivation(lookup: provenance_callee_sig(callee: callee, param_types: param_types, let_prov: let_prov, func_env: func_env, type_env: type_env)) {
         DerivedFromSig { sig: sig } =>
           if authored_name_at(source_indices: type_env.source_indices, node: sig.inferred) == parent_enum
             && (map_keys(sig.variant_provenance) |> count > 0) {
@@ -8170,7 +8280,8 @@ fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, ty
     size_aliases: empty_map(),
     scope_locals: scope_locals,
     func_env: func_env,
-    per_field_vars: empty_map()
+    per_field_vars: empty_map(),
+    body_locals: fold(params, init: empty_map(), f: (acc, p) => map_insert(acc, param_node_name_at(n: p, source_indices: type_env.source_indices), true))
   }
   annotate_descent(body: body, ctx: ctx)
 }
