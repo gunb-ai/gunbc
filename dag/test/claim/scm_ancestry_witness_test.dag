@@ -249,3 +249,45 @@ test fn a_start_outside_the_history_is_the_callers_fact_not_a_broken_chain() -> 
     AncestryRevisitsACommit { detected_from: _ } => false
   }
 }
+
+// AN EMPTY HISTORY CANNOT CONTAIN A CYCLE (review 56225). Before the membership gate, the fold ran
+// zero steps, `done` stayed false, and the fallthrough reported AncestryRevisitsACommit -- a cycle,
+// concluded from having looked at nothing. The pigeonhole argument needs at least one step taken;
+// with none, it is vacuous.
+//
+// It asserts the START IDENTITY on the start-not-in-history arm rather than merely that the answer
+// is not a cycle: an implementation answering that arm for every input would satisfy the weaker
+// claim, and the traced and cyclic witnesses above are what stop that reading.
+test fn an_empty_history_is_not_a_cycle() -> Bool {
+  match ancestry_walk(
+    start: ancestry_witness_id(name: ^c0),
+    history: [],
+    lookup: fn(id) { AncestryKnown { ancestry: RootCommit } },
+  ) {
+    AncestryStartNotInHistory { start: s } =>
+      object_id_eq(left: s, right: ancestry_witness_id(name: ^c0))
+    AncestryRevisitsACommit { detected_from: _ } => false
+    AncestryTraced { chain: _ } => false
+    AncestryBrokenAt { commit: _, missing_parent: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE GATE, and it is the one that matters: the lookup above answers KNOWN
+// for every identity, so a gate that merely trusted `lookup` would have walked happily. The claim is
+// that membership in the stated HISTORY decides it, and this asserts the gate did not break the
+// ordinary case where the start IS a member.
+test fn a_start_inside_the_history_still_walks() -> Bool {
+  let entries = [
+    AncestryWitnessEntry { commit: ancestry_witness_id(name: ^c0), ancestry: RootCommit },
+  ]
+  match ancestry_walk(
+    start: ancestry_witness_id(name: ^c0),
+    history: [ancestry_witness_id(name: ^c0)],
+    lookup: fn(id) { ancestry_witness_lookup_in(entries: entries, wanted: id) },
+  ) {
+    AncestryTraced { chain: chain } => chain == [ancestry_witness_id(name: ^c0)]
+    AncestryStartNotInHistory { start: _ } => false
+    AncestryRevisitsACommit { detected_from: _ } => false
+    AncestryBrokenAt { commit: _, missing_parent: _ } => false
+  }
+}
