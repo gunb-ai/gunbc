@@ -15,7 +15,7 @@ import extdeps.bazel.test_status {
   TestStatusFailedToBuild, TestStatusHaltedBeforeTesting,
   BlazeTestStatusDecode, BlazeTestStatusDecoded, BlazeTestStatusUnknownWireNumber,
   blaze_test_status_wire_number, blaze_test_status_proto_name,
-  blaze_test_status_of_wire_number, blaze_test_status_roster, blaze_test_status_is_pass,
+  blaze_test_status_of_wire_number, blaze_test_status_roster,
 }
 import extdeps.bazel.build_event_stream {
   AbortReason, AbortAnalysisFailure, AbortSkipped, AbortNoAnalyze, AbortNoBuild,
@@ -37,10 +37,11 @@ import gunbc.build_target {
   StandingCause, BuildDidNotSucceed, BuildWasAborted,
   FloorDispositionUnsatisfied, BazelTestStatusUnsatisfied,
   StandingVerdict, StandingSatisfied, StandingUnsatisfied,
-  claim_disposition_satisfies, target_standing_verdict,
+  claim_disposition_verdict, blaze_test_status_verdict, target_standing_verdict,
+  RequiredGateDecision, RequiredGateProceeds, RequiredGateStops, required_gate_decision,
   AggregateFinding, DependencyUnsatisfied, DependencyStandingAbsent,
   AggregateStanding, AggregateSatisfied, AggregateNoDependencies, AggregateRefused,
-  required_aggregate_standing, aggregate_standing_blocks,
+  required_aggregate_standing,
   blaze_test_status_of_claim_disposition, blaze_test_status_of_test_standing,
 }
 import std.types { String, Bool }
@@ -174,12 +175,15 @@ test fn w_unknown_wire_number_is_not_no_status() -> Bool {
 // a consumer that wants to tolerate it must say so at its own layer, and this asserts the
 // vocabulary does not decide that policy for it.
 test fn w_only_passed_is_an_upstream_pass() -> Bool {
-  blaze_test_status_is_pass(s: TestStatusPassed {})
-    && !blaze_test_status_is_pass(s: TestStatusFlaky {})
-    && !blaze_test_status_is_pass(s: TestStatusNoStatus {})
-    && !blaze_test_status_is_pass(s: TestStatusFailedToBuild {})
-    && !blaze_test_status_is_pass(s: TestStatusHaltedBeforeTesting {})
-    && !blaze_test_status_is_pass(s: TestStatusRemoteFailure {})
+  verdict_holds(v: blaze_test_status_verdict(s: TestStatusPassed {}))
+    && verdict_cause_is(
+         v: blaze_test_status_verdict(s: TestStatusFlaky {}),
+         expected: BazelTestStatusUnsatisfied { status: TestStatusFlaky {} }
+       )
+    && !verdict_holds(v: blaze_test_status_verdict(s: TestStatusNoStatus {}))
+    && !verdict_holds(v: blaze_test_status_verdict(s: TestStatusFailedToBuild {}))
+    && !verdict_holds(v: blaze_test_status_verdict(s: TestStatusHaltedBeforeTesting {}))
+    && !verdict_holds(v: blaze_test_status_verdict(s: TestStatusRemoteFailure {}))
 }
 
 // THE NON-CONTIGUOUS NUMBERING IS THE ASSERTION. `NO_ANALYZE = 8` and `NO_BUILD = 9` sit after
@@ -192,6 +196,24 @@ test fn w_abort_reason_preserves_upstream_numbering() -> Bool {
     && (abort_reason_wire_number(r: AbortNoBuild {}) == 9)
     && (abort_reason_proto_name(r: AbortNoAnalyze {}) == "NO_ANALYZE")
     && ((abort_reason_roster() |> count) == 12)
+}
+
+// THE WITNESSES MATCH THE COPRODUCTS DIRECTLY RATHER THAN THROUGH A `Bool` HELPER. These two
+// read one verdict and say which side it fell on; they are not predicates over a coproduct
+// standing in for the vocabulary, and every assertion that cares about the CAUSE matches the
+// unsatisfied arm itself rather than going through them.
+fn verdict_holds(v: StandingVerdict) -> Bool {
+  match v {
+    StandingSatisfied => true
+    StandingUnsatisfied { cause: _ } => false
+  }
+}
+
+fn verdict_cause_is(v: StandingVerdict, expected: StandingCause) -> Bool {
+  match v {
+    StandingSatisfied => false
+    StandingUnsatisfied { cause: c } => c == expected
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -251,17 +273,30 @@ test fn w_required_aggregate_is_the_root_package_target() -> Bool {
 // argued the other way are all named here, so changing the policy requires editing a witness that
 // says what the old policy was — rather than a silent flip in a `match`.
 test fn w_claim_disposition_policy_is_stated_arm_by_arm() -> Bool {
-  claim_disposition_satisfies(d: Passed {})
-    && claim_disposition_satisfies(d: PassedOverBudget {})
-    && claim_disposition_satisfies(d: KnownRedHeld {})
-    && !claim_disposition_satisfies(d: KnownRedNowPassing {})
-    && !claim_disposition_satisfies(d: Failed {})
-    && !claim_disposition_satisfies(d: BudgetRefusedBeforeVerdict {})
-    && !claim_disposition_satisfies(d: BudgetTerminalWithoutSafetyCause {})
-    && !claim_disposition_satisfies(d: HostToolUnresolvedBeforeVerdict {})
-    && !claim_disposition_satisfies(d: RouteGapBeforeVerdict {})
-    && !claim_disposition_satisfies(d: RuntimeErroredBeforeVerdict {})
-    && !claim_disposition_satisfies(d: ObservationUnreadableBeforeVerdict {})
+  verdict_holds(v: claim_disposition_verdict(d: Passed {}))
+    && verdict_holds(v: claim_disposition_verdict(d: PassedOverBudget {}))
+    && verdict_holds(v: claim_disposition_verdict(d: KnownRedHeld {}))
+    && !verdict_holds(v: claim_disposition_verdict(d: KnownRedNowPassing {}))
+    && !verdict_holds(v: claim_disposition_verdict(d: Failed {}))
+    && !verdict_holds(v: claim_disposition_verdict(d: BudgetRefusedBeforeVerdict {}))
+    && !verdict_holds(v: claim_disposition_verdict(d: BudgetTerminalWithoutSafetyCause {}))
+    && !verdict_holds(v: claim_disposition_verdict(d: HostToolUnresolvedBeforeVerdict {}))
+    && !verdict_holds(v: claim_disposition_verdict(d: RouteGapBeforeVerdict {}))
+    && !verdict_holds(v: claim_disposition_verdict(d: RuntimeErroredBeforeVerdict {}))
+    && !verdict_holds(v: claim_disposition_verdict(d: ObservationUnreadableBeforeVerdict {}))
+}
+
+// THE REFUSED ARM CARRIES THE DISPOSITION IT REFUSED, which is exactly what the deleted `Bool`
+// discarded. A caller handed `RouteGapBeforeVerdict` learns that the claim never reached its
+// subject; under the old predicate it learned `false`.
+test fn w_refused_verdict_names_the_disposition_it_refused() -> Bool {
+  verdict_cause_is(
+    v: claim_disposition_verdict(d: RouteGapBeforeVerdict {}),
+    expected: FloorDispositionUnsatisfied { disposition: RouteGapBeforeVerdict {} }
+  ) && verdict_cause_is(
+    v: claim_disposition_verdict(d: KnownRedNowPassing {}),
+    expected: FloorDispositionUnsatisfied { disposition: KnownRedNowPassing {} }
+  )
 }
 
 fn target_standing_of(l: Label, build: BuildStanding, test: TestStanding) -> TargetStanding {
@@ -330,9 +365,11 @@ test fn w_required_aggregate_holds_when_every_dependency_holds() -> Bool {
     built_target_standing(l: bazel_dep_c(), test: NotATestTarget {})
   ]
   match required_aggregate_standing(aggregate: three_dep_aggregate(), standings: standings) {
-    AggregateSatisfied { dependency_count: n } => (n == 3) && !aggregate_standing_blocks(
-      a: AggregateSatisfied { dependency_count: n }
-    )
+    AggregateSatisfied { dependency_count: n } =>
+      (n == 3) && match required_gate_decision(a: AggregateSatisfied { dependency_count: n }) {
+        RequiredGateProceeds { dependency_count: m } => m == 3
+        RequiredGateStops { standing: _ } => false
+      }
     AggregateRefused { finding_count: _, findings: _ } => false
     AggregateNoDependencies => false
   }
@@ -358,7 +395,10 @@ test fn w_required_aggregate_reports_every_unsatisfied_dependency() -> Bool {
              },
              DependencyUnsatisfied { target: bazel_dep_b(), cause: BuildDidNotSucceed {} }
            ])
-        && aggregate_standing_blocks(a: AggregateRefused { finding_count: n, findings: fs })
+        && match required_gate_decision(a: AggregateRefused { finding_count: n, findings: fs }) {
+             RequiredGateStops { standing: st } => st == AggregateRefused { finding_count: n, findings: fs }
+             RequiredGateProceeds { dependency_count: _ } => false
+           }
     AggregateSatisfied { dependency_count: _ } => false
     AggregateNoDependencies => false
   }
@@ -392,7 +432,11 @@ test fn w_aggregate_over_zero_dependencies_refuses() -> Bool {
     aggregate: required_aggregate_target(dependencies: []),
     standings: []
   ) {
-    AggregateNoDependencies => aggregate_standing_blocks(a: AggregateNoDependencies {})
+    AggregateNoDependencies =>
+      match required_gate_decision(a: AggregateNoDependencies {}) {
+        RequiredGateStops { standing: st } => st == AggregateNoDependencies {}
+        RequiredGateProceeds { dependency_count: _ } => false
+      }
     AggregateSatisfied { dependency_count: _ } => false
     AggregateRefused { finding_count: _, findings: _ } => false
   }
@@ -417,9 +461,9 @@ test fn w_aggregate_over_zero_dependencies_refuses() -> Bool {
 // plausible-looking output for an observation nobody made; asserting both halves here is what
 // keeps the policy and the observation from being merged in either direction.
 test fn w_export_reports_the_observation_not_the_policy() -> Bool {
-  claim_disposition_satisfies(d: KnownRedHeld {})
+  verdict_holds(v: claim_disposition_verdict(d: KnownRedHeld {}))
     && (blaze_test_status_of_claim_disposition(d: KnownRedHeld {}) == TestStatusFailed {})
-    && !claim_disposition_satisfies(d: KnownRedNowPassing {})
+    && !verdict_holds(v: claim_disposition_verdict(d: KnownRedNowPassing {}))
     && (blaze_test_status_of_claim_disposition(d: KnownRedNowPassing {}) == TestStatusPassed {})
 }
 

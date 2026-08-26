@@ -36,6 +36,23 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // diagnostic — it would have been a projection quietly reading the wrong enum. The upstream
 // spelling is not lost: `blaze_test_status_proto_name` carries it verbatim and is what a wire
 // comparison joins on.
+// NO `blaze_test_status_is_pass` LIVES HERE, AND ITS ABSENCE IS THE POINT.
+//
+// An earlier revision of this module carried one: a nine-arm `Bool` answering "is this status
+// green". It was deleted for two reasons that reinforce each other.
+//
+// The layer reason came from this module's own comment, which said that a consumer treating
+// `FLAKY` as a pass has decided a policy question this vocabulary does not own — and then decided
+// it here anyway, in the upstream interface module, on the consumer's behalf. Whether flaky is
+// tolerable is a downstream fact (DESIGN §3: interface, realization and policy are three facts),
+// so the arm-by-arm judgment belongs at the layer that holds the policy, and that is where it now
+// is: `gunbc.build_target` `test_standing_verdict` descends over these arms itself.
+//
+// The substrate reason is the repository's predicate-dissolution rule: a `Bool` that classifies
+// coproduct arms is a parallel surface over a vocabulary that already answers, and it destroys
+// exhaustiveness at every call site — a tenth upstream status would have been absorbed into
+// `false` here and no consumer would have been asked. Matching in place recovers what the `Bool`
+// discarded, which is WHICH status it was.
 type BlazeTestStatus
   = TestStatusNoStatus
   | TestStatusPassed
@@ -107,22 +124,4 @@ fn blaze_test_status_of_wire_number(n: Int) -> BlazeTestStatusDecode {
       }
     }
   )
-}
-
-// THE ONLY UPSTREAM ARM THAT MEANS "THIS TARGET IS FINE". `FLAKY` is deliberately NOT green here:
-// upstream reports it for a test that failed at least one attempt and passed another, and a
-// consumer that treats it as a pass has decided a policy question this vocabulary does not own.
-// Where a consumer wants flaky to be tolerable, it says so at ITS layer, over this fact.
-fn blaze_test_status_is_pass(s: BlazeTestStatus) -> Bool {
-  match s {
-    TestStatusPassed => true
-    TestStatusNoStatus => false
-    TestStatusFlaky => false
-    TestStatusTimeout => false
-    TestStatusFailed => false
-    TestStatusIncomplete => false
-    TestStatusRemoteFailure => false
-    TestStatusFailedToBuild => false
-    TestStatusHaltedBeforeTesting => false
-  }
 }

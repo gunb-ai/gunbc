@@ -5,7 +5,8 @@ import extdeps.bazel.test_status {
   BlazeTestStatus,
   TestStatusNoStatus, TestStatusPassed, TestStatusTimeout,
   TestStatusFailed, TestStatusIncomplete,
-  blaze_test_status_is_pass,
+  TestStatusFlaky, TestStatusRemoteFailure,
+  TestStatusFailedToBuild, TestStatusHaltedBeforeTesting,
 }
 import extdeps.bazel.build_event_stream { AbortReason }
 import v2.workflow.floor_terminal_ledger {
@@ -31,7 +32,7 @@ import std.integer { Int }
 // fork gets consolidated later at someone else's cost. What this module adds is the POLICY over
 // that vocabulary, which is a downstream fact by the same section: whether an enrolled expected
 // red satisfies `//:required` is not something the floor's vocabulary may decide for its
-// consumers, and it is stated once, here, in `claim_disposition_satisfies`.
+// consumers, and it is stated once, here, in `claim_disposition_verdict`.
 
 // ---------------------------------------------------------------------------------------------
 // TARGET IDENTITY
@@ -172,19 +173,55 @@ type StandingVerdict
 // witness passed, so nothing is broken in the tree — what is broken is the ROSTER, which still
 // enrols it as expected-red. Admitting it would let a stale enrolment survive indefinitely,
 // because the only signal it ever produces is this one.
-fn claim_disposition_satisfies(d: ClaimDisposition) -> Bool {
+fn claim_disposition_verdict(d: ClaimDisposition) -> StandingVerdict {
   match d {
-    Passed => true
-    PassedOverBudget => true
-    KnownRedHeld => true
-    Failed => false
-    KnownRedNowPassing => false
-    BudgetRefusedBeforeVerdict => false
-    BudgetTerminalWithoutSafetyCause => false
-    HostToolUnresolvedBeforeVerdict => false
-    RouteGapBeforeVerdict => false
-    RuntimeErroredBeforeVerdict => false
-    ObservationUnreadableBeforeVerdict => false
+    Passed => StandingSatisfied {}
+    PassedOverBudget => StandingSatisfied {}
+    KnownRedHeld => StandingSatisfied {}
+    Failed => StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: Failed {} } }
+    KnownRedNowPassing =>
+      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: KnownRedNowPassing {} } }
+    BudgetRefusedBeforeVerdict =>
+      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: BudgetRefusedBeforeVerdict {} } }
+    BudgetTerminalWithoutSafetyCause =>
+      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: BudgetTerminalWithoutSafetyCause {} } }
+    HostToolUnresolvedBeforeVerdict =>
+      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: HostToolUnresolvedBeforeVerdict {} } }
+    RouteGapBeforeVerdict =>
+      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: RouteGapBeforeVerdict {} } }
+    RuntimeErroredBeforeVerdict =>
+      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: RuntimeErroredBeforeVerdict {} } }
+    ObservationUnreadableBeforeVerdict =>
+      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: ObservationUnreadableBeforeVerdict {} } }
+  }
+}
+
+// THE BAZEL-REPORTED HALF OF THE SAME POLICY, DECIDED HERE RATHER THAN UPSTREAM.
+//
+// `extdeps.bazel.test_status` deliberately carries no green/not-green predicate — see the note at
+// the foot of that module. Whether `FLAKY` is tolerable is a consumer decision, so it is made at
+// this layer, arm by arm and wildcard-free, exactly as the floor policy above is. FLAKY is NOT
+// satisfied: upstream reports it for a test that failed an attempt and passed another, and a
+// required set that accepts it has accepted a test that fails sometimes.
+fn blaze_test_status_verdict(s: BlazeTestStatus) -> StandingVerdict {
+  match s {
+    TestStatusPassed => StandingSatisfied {}
+    TestStatusNoStatus =>
+      StandingUnsatisfied { cause: BazelTestStatusUnsatisfied { status: TestStatusNoStatus {} } }
+    TestStatusFlaky =>
+      StandingUnsatisfied { cause: BazelTestStatusUnsatisfied { status: TestStatusFlaky {} } }
+    TestStatusTimeout =>
+      StandingUnsatisfied { cause: BazelTestStatusUnsatisfied { status: TestStatusTimeout {} } }
+    TestStatusFailed =>
+      StandingUnsatisfied { cause: BazelTestStatusUnsatisfied { status: TestStatusFailed {} } }
+    TestStatusIncomplete =>
+      StandingUnsatisfied { cause: BazelTestStatusUnsatisfied { status: TestStatusIncomplete {} } }
+    TestStatusRemoteFailure =>
+      StandingUnsatisfied { cause: BazelTestStatusUnsatisfied { status: TestStatusRemoteFailure {} } }
+    TestStatusFailedToBuild =>
+      StandingUnsatisfied { cause: BazelTestStatusUnsatisfied { status: TestStatusFailedToBuild {} } }
+    TestStatusHaltedBeforeTesting =>
+      StandingUnsatisfied { cause: BazelTestStatusUnsatisfied { status: TestStatusHaltedBeforeTesting {} } }
   }
 }
 
@@ -199,18 +236,8 @@ fn build_standing_verdict(b: BuildStanding) -> StandingVerdict {
 fn test_standing_verdict(t: TestStanding) -> StandingVerdict {
   match t {
     NotATestTarget => StandingSatisfied {}
-    TestRunByFloor { disposition: d } =>
-      if claim_disposition_satisfies(d: d) {
-        StandingSatisfied {}
-      } else {
-        StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: d } }
-      }
-    TestReportedByBazel { status: s } =>
-      if blaze_test_status_is_pass(s: s) {
-        StandingSatisfied {}
-      } else {
-        StandingUnsatisfied { cause: BazelTestStatusUnsatisfied { status: s } }
-      }
+    TestRunByFloor { disposition: d } => claim_disposition_verdict(d: d)
+    TestReportedByBazel { status: s } => blaze_test_status_verdict(s: s)
   }
 }
 
@@ -300,13 +327,29 @@ fn required_aggregate_standing(
   }
 }
 
-// THE ONE PREDICATE A GATE READS, AND IT DESCENDS. `AggregateNoDependencies` blocks: an aggregate
-// that requires nothing has proven nothing.
-fn aggregate_standing_blocks(a: AggregateStanding) -> Bool {
+// THE ONE DECISION A GATE READS, AND IT IS TYPED RATHER THAN A `Bool`.
+//
+// An earlier revision returned `Bool` from here. That is the predicate-dissolution violation this
+// repository already ruled on: a `Bool` over a coproduct is a parallel surface beside a vocabulary
+// that already answers, and it discards the fact the caller most needs — a gate that learns only
+// `true` has to go back to the standing to say ANYTHING about why the line stopped, and a fourth
+// `AggregateStanding` arm would have been silently absorbed into one of the two boolean answers
+// with no call site asked to decide.
+//
+// It is not deleted outright, because the grouping it expresses is a real single authority: that
+// `AggregateNoDependencies` STOPS THE LINE — an aggregate requiring nothing has proven nothing —
+// is a policy every gate must agree on, and pushing the match to each gate would let them drift.
+// So the authority stays and the return type carries the reason.
+type RequiredGateDecision
+  = RequiredGateProceeds { dependency_count: Int }
+  | RequiredGateStops { standing: AggregateStanding }
+
+fn required_gate_decision(a: AggregateStanding) -> RequiredGateDecision {
   match a {
-    AggregateSatisfied { dependency_count: _ } => false
-    AggregateNoDependencies => true
-    AggregateRefused { finding_count: _, findings: _ } => true
+    AggregateSatisfied { dependency_count: n } => RequiredGateProceeds { dependency_count: n }
+    AggregateNoDependencies => RequiredGateStops { standing: AggregateNoDependencies {} }
+    AggregateRefused { finding_count: n, findings: fs } =>
+      RequiredGateStops { standing: AggregateRefused { finding_count: n, findings: fs } }
   }
 }
 
