@@ -167,6 +167,7 @@ import v1.compiler.infer_emit_info {
 import v1.compiler.infer_items {
   ItemKind, FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem,
   ItemInfo, TypedModule, TypedGraph, ResolvedGraph, ModuleInterface,
+  ModuleTypecheckProgress, ItemsChecked, AbandonedBeforeItems,
   inferred_to_outputs, item_kind
 }
 import v1.compiler.infer_service {
@@ -10852,6 +10853,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   if env_errors |> count > 0 {
     return TypecheckModuleResult {
       typed: TypedModule {
+        progress: AbandonedBeforeItems,
         module: resolved.module,
         items: [],
         type_env: env,
@@ -10943,6 +10945,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
 
   TypecheckModuleResult {
     typed: TypedModule {
+      progress: ItemsChecked,
       module: typed_module,
       items: reannotated_items,
       type_env: env,
@@ -11476,6 +11479,7 @@ fn rewire_type_env_import_str_binding_identity(modules: List<TypedModule>, sourc
       ancestry_str_bindings: map_merge(m.type_env.ancestry_str_bindings, rewrites)
     }
     TypedModule {
+      progress: m.progress,
       module: m.module,
       items: m.items,
       type_env: TypeEnv { module_path: m.type_env.module_path,
@@ -11553,6 +11557,7 @@ fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<
       }
     )
     TypedModule {
+      progress: m.progress,
       module: m.module,
       items: m.items,
       type_env: TypeEnv { module_path: m.type_env.module_path,
@@ -11590,6 +11595,7 @@ fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<
       }
     )
     TypedModule {
+      progress: m.progress,
       module: m.module,
       items: m.items,
       type_env: m.type_env,
