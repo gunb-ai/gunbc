@@ -1,9 +1,9 @@
 module test.claim.legacy_binding_observation_witness
 
-import std.types { String, Bool, Int, List }
+import std.types { String, Bool, Int, List, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { Fnv1a64Structural, structural_content_hash }
-import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, decl_field_ref }
 import std.occurrence_identity { OccurrenceId }
 import v2.workflow.legacy_binding_observation {
   LegacyResolutionPolicy,
@@ -23,7 +23,8 @@ import v2.workflow.legacy_binding_observation {
   LegacySubjectDiverged,
   legacy_subject_applicability,
   legacy_observation_completeness,
-  legacy_subject_identity
+  legacy_subject_identity,
+  decl_field_label
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -51,8 +52,17 @@ fn lbo_digest(label: String) -> Fnv1a64Structural {
   structural_content_hash(digest: label)
 }
 
+// THE FIXTURE'S RESOLVER REFERENCE NAMES A RECORD TYPE RATHER THAN THE RESOLVER FUNCTION, and that
+// is a deliberate choice about the arms below rather than a claim about what X actually is. Each
+// divergence arm must move EXACTLY ONE axis of the reference, or it passes on whichever axis the
+// comparison happens to check first -- one law implemented over the wrong set. A single-axis module
+// move needs one declared name living in two modules; a single-axis field move needs that same
+// declaration to carry a field. `OccurrenceId` is the only pair in the corpus satisfying both:
+// `std.occurrence_identity` and `std.observation` each declare it, and the former carries `value`.
+// The resolver identity the production subject carries is a decision surface such as
+// `v1.compiler.infer_env` `lookup_binding_by_name`; nothing here depends on which.
 fn lbo_resolver() -> DeclarationRef {
-  decl_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name")
+  decl_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceId")
 }
 
 fn lbo_base_subject() -> LegacyBindingObservationSubject {
@@ -124,16 +134,16 @@ test fn a_moved_compiler_artifact_digest_refuses() -> Bool {
 }
 
 // THE RESOLVER IDENTITY IS THE FIELD MOST LIKELY TO BE THOUGHT REDUNDANT WITH THE ARTIFACT DIGEST,
-// and it is not: one binary contains several decision surfaces, so an observation of
-// lookup_binding_by_name is not evidence about global_bare_lookup even though both were compiled
-// from the same bytes. Both halves of the reference move it, which is why there are two arms.
+// and it is not: one binary contains several decision surfaces, so an observation of one of them is
+// not evidence about another even though both were compiled from the same bytes. All three axes of
+// the reference move it, which is why there are three arms.
 test fn a_moved_resolver_module_refuses() -> Bool {
   let base = lbo_base_subject()
   lbo_diverged_field(other: LegacyBindingObservationSubject {
     semantic_source_digest: base.semantic_source_digest,
     source_set_digest: base.source_set_digest,
     compiler_artifact_digest: base.compiler_artifact_digest,
-    resolver_identity: decl_ref(module_path: "v1.compiler.infer_lookup", decl_name: "lookup_func_sig"),
+    resolver_identity: decl_ref(module_path: "std.observation", decl_name: "OccurrenceId"),
     resolver_policy: base.resolver_policy,
     occurrence_transport_digest: base.occurrence_transport_digest,
     declaration_index_digest: base.declaration_index_digest
@@ -146,7 +156,7 @@ test fn a_moved_resolver_declaration_refuses() -> Bool {
     semantic_source_digest: base.semantic_source_digest,
     source_set_digest: base.source_set_digest,
     compiler_artifact_digest: base.compiler_artifact_digest,
-    resolver_identity: decl_ref(module_path: "v1.compiler.infer_env", decl_name: "global_bare_lookup"),
+    resolver_identity: decl_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceIdAllocator"),
     resolver_policy: base.resolver_policy,
     occurrence_transport_digest: base.occurrence_transport_digest,
     declaration_index_digest: base.declaration_index_digest
@@ -298,7 +308,7 @@ test fn a_moved_resolver_field_refuses() -> Bool {
     semantic_source_digest: base.semantic_source_digest,
     source_set_digest: base.source_set_digest,
     compiler_artifact_digest: base.compiler_artifact_digest,
-    resolver_identity: decl_field_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name", field_name: "resolved"),
+    resolver_identity: decl_field_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceId", field_name: "value"),
     resolver_policy: base.resolver_policy,
     occurrence_transport_digest: base.occurrence_transport_digest,
     declaration_index_digest: base.declaration_index_digest
@@ -314,7 +324,7 @@ test fn a_moved_resolver_field_also_moves_the_content_address() -> Bool {
     semantic_source_digest: base.semantic_source_digest,
     source_set_digest: base.source_set_digest,
     compiler_artifact_digest: base.compiler_artifact_digest,
-    resolver_identity: decl_field_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name", field_name: "resolved"),
+    resolver_identity: decl_field_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceId", field_name: "value"),
     resolver_policy: base.resolver_policy,
     occurrence_transport_digest: base.occurrence_transport_digest,
     declaration_index_digest: base.declaration_index_digest
@@ -438,9 +448,9 @@ test fn every_identity_input_moves_the_content_address() -> Bool {
     && lbo_address_moves(other: lbo_with_artifact(d: lbo_digest(label: "cccccccccccccccc")))
     && lbo_address_moves(other: lbo_with_transport(d: lbo_digest(label: "dddddddddddddddd")))
     && lbo_address_moves(other: lbo_with_decl_index(d: lbo_digest(label: "eeeeeeeeeeeeeeee")))
-    && lbo_address_moves(other: lbo_with_resolver(reference: decl_ref(module_path: "v1.compiler.infer_lookup", decl_name: "lookup_binding_by_name")))
-    && lbo_address_moves(other: lbo_with_resolver(reference: decl_ref(module_path: "v1.compiler.infer_env", decl_name: "global_bare_lookup")))
-    && lbo_address_moves(other: lbo_with_resolver(reference: decl_field_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name", field_name: "resolved")))
+    && lbo_address_moves(other: lbo_with_resolver(reference: decl_ref(module_path: "std.observation", decl_name: "OccurrenceId")))
+    && lbo_address_moves(other: lbo_with_resolver(reference: decl_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceIdAllocator")))
+    && lbo_address_moves(other: lbo_with_resolver(reference: decl_field_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceId", field_name: "value")))
     && lbo_address_moves(other: lbo_with_policy(policy: NamespaceOnlyPolicy))
 }
 
@@ -450,7 +460,5 @@ test fn every_identity_input_moves_the_content_address() -> Bool {
 // that collided here would be the comparison and the address disagreeing -- the same defect the
 // field fold was added to fix, one level down inside the fix.
 test fn a_field_name_cannot_impersonate_the_whole_declaration_arm() -> Bool {
-  let whole = lbo_with_resolver(reference: decl_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name"))
-  let named = lbo_with_resolver(reference: decl_field_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name", field_name: "whole_declaration"))
-  legacy_subject_identity(subject: whole).digest != legacy_subject_identity(subject: named).digest
+  decl_field_label(field: WholeDeclaration) != decl_field_label(field: NamedField { field_name: "whole_declaration" as NonEmptyStr })
 }
