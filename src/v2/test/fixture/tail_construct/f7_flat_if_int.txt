@@ -1,0 +1,15 @@
+module v2.test.fixture.tail_construct.f7_flat_if_int
+
+
+type PortReading
+  = PortPureLiteral
+  | PortBareName { name: Symbol }
+  | PortComputedExpression { mentions: List<Symbol> }
+
+fn port_reading(idents: Int) -> Int {
+  if idents == 0 {
+    0
+  } else {
+    1
+  }
+}
