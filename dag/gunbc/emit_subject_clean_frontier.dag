@@ -854,10 +854,33 @@ fn emit_ratchet_verdict_entry(v: EmitRatchetVerdict) -> String {
 // That middle class IS the population where the two questions diverge: holds=false, evaluated=true.
 // It previously had to be discovered by comparing two functions arm by arm; now it has a name, and
 // a new verdict variant fails to compile in exactly one place instead of two.
+// WHY A SUBJECT HAS NO VERDICT, carried rather than flattened away. Three unevaluated verdicts have
+// three different owners and three different repairs, and a refusal that names the subjects without
+// naming the reasons tells a reader WHICH subjects blocked enrolment and not WHY ANY OF THEM DID.
+//
+// The reason rides on the classification's own Unestablished arm rather than in a second total match
+// beside it. Review 56204 dissolved exactly that duplication once already; adding the reason HERE
+// keeps one authority over the verdict vocabulary and gives the arm the payload it was missing.
+type UnevaluatedReason
+  = UnevaluatedNoPopulation { cause: EmitNotEvaluatedCause }
+  | UnevaluatedInstrumentSilent
+  | UnevaluatedNeverSelected
+
+fn unevaluated_reason_text(reason: UnevaluatedReason) -> String {
+  match reason {
+    UnevaluatedNoPopulation { cause: c } =>
+      concat("the reading established no population — ", emit_not_evaluated_cause_text(cause: c))
+    UnevaluatedInstrumentSilent =>
+      "the run asked about this subject and the instrument produced no reading — fix the instrument"
+    UnevaluatedNeverSelected =>
+      "this run never asked about this subject — widen the run"
+  }
+}
+
 type VerdictStanding
   = VerdictHeld
   | VerdictEstablishedAndRefused
-  | VerdictUnestablished
+  | VerdictUnestablished { reason: UnevaluatedReason }
 
 fn emit_ratchet_verdict_standing(v: EmitRatchetVerdict) -> VerdictStanding {
   match v {
@@ -865,9 +888,12 @@ fn emit_ratchet_verdict_standing(v: EmitRatchetVerdict) -> VerdictStanding {
     RatchetDebtHeld { entry: _, cause: _ } => VerdictHeld
     RatchetRegressed { entry: _, cause: _ } => VerdictEstablishedAndRefused
     RatchetFrontierStale { entry: _ } => VerdictEstablishedAndRefused
-    RatchetNotEvaluated { entry: _, on_frontier: _, cause: _ } => VerdictUnestablished
-    RatchetSubjectUnmeasured { entry: _, on_frontier: _ } => VerdictUnestablished
-    RatchetSubjectNotSelected { entry: _, on_frontier: _ } => VerdictUnestablished
+    RatchetNotEvaluated { entry: _, on_frontier: _, cause: c } =>
+      VerdictUnestablished { reason: UnevaluatedNoPopulation { cause: c } }
+    RatchetSubjectUnmeasured { entry: _, on_frontier: _ } =>
+      VerdictUnestablished { reason: UnevaluatedInstrumentSilent }
+    RatchetSubjectNotSelected { entry: _, on_frontier: _ } =>
+      VerdictUnestablished { reason: UnevaluatedNeverSelected }
   }
 }
 
@@ -879,7 +905,7 @@ fn emit_ratchet_verdict_holds(v: EmitRatchetVerdict) -> Bool {
   match emit_ratchet_verdict_standing(v: v) {
     VerdictHeld => true
     VerdictEstablishedAndRefused => false
-    VerdictUnestablished => false
+    VerdictUnestablished { reason: _ } => false
   }
 }
 
@@ -1245,7 +1271,7 @@ type EmitRatchetEnrolmentAdmission
   = EnrolmentPermitted { enrolment: EmitRatchetEnrolment }
   | EnrolmentRefusedNoUniverse { enrolment: EmitRatchetEnrolment }
   | EnrolmentRefusedDenominator { enrolment: EmitRatchetEnrolment, missing: String }
-  | EnrolmentRefusedUnevaluated { enrolment: EmitRatchetEnrolment, subjects: List<String> }
+  | EnrolmentRefusedUnevaluated { enrolment: EmitRatchetEnrolment, subjects: List<UnevaluatedSubject> }
 
 fn ratchet_denominators(r: EmitSubjectCleanRatchet) -> RosterDenominators {
   match r.roster {
@@ -1263,7 +1289,7 @@ fn emit_ratchet_verdict_evaluated(v: EmitRatchetVerdict) -> Bool {
   match emit_ratchet_verdict_standing(v: v) {
     VerdictHeld => true
     VerdictEstablishedAndRefused => true
-    VerdictUnestablished => false
+    VerdictUnestablished { reason: _ } => false
   }
 }
 
@@ -1278,10 +1304,37 @@ fn emit_ratchet_verdict_evaluated(v: EmitRatchetVerdict) -> Bool {
 // small. filter-then-map says the same thing in the shape that does not copy. (This module's peer
 // accumulators predate this change and are not touched by it; pricing an unrelated cut against them
 // would be the wrong denominator.)
-fn ratchet_unevaluated_subjects(r: EmitSubjectCleanRatchet) -> List<String> {
-  map(
-    filter(r.verdicts, v => !emit_ratchet_verdict_evaluated(v: v)),
-    v => emit_ratchet_verdict_entry(v: v)
+// AN UNEVALUATED SUBJECT IS AN ENTRY AND A REASON, never an entry alone. The earlier form mapped
+// the filtered verdicts to their entries and dropped the variant, which was total over
+// evaluated-versus-not and blind to the distinction that decides who repairs it -- the corpus's
+// "total at the level examined, blind one level down", with its named tell present exactly as
+// described: the payload-carrying position kept the entry and discarded the variant.
+//
+// It mattered more than a projection, because this list IS the gate refusal's payload: the refusal
+// could name which subjects blocked enrolment and could not say why any of them did.
+type UnevaluatedSubject {
+  entry: String
+  reason: UnevaluatedReason
+}
+
+fn unevaluated_subject_text(subject: UnevaluatedSubject) -> String {
+  concat(concat(subject.entry, " — "), unevaluated_reason_text(reason: subject.reason))
+}
+
+fn ratchet_unevaluated_subjects(r: EmitSubjectCleanRatchet) -> List<UnevaluatedSubject> {
+  fold(
+    r.verdicts,
+    init: [],
+    f: (acc, v) =>
+      match emit_ratchet_verdict_standing(v: v) {
+        VerdictHeld => acc
+        VerdictEstablishedAndRefused => acc
+        VerdictUnestablished { reason: reason } =>
+          concat(
+            acc,
+            [UnevaluatedSubject { entry: emit_ratchet_verdict_entry(v: v), reason: reason }]
+          )
+      }
   )
 }
 
@@ -1343,7 +1396,7 @@ fn emit_ratchet_enrolment_admission_text(admission: EmitRatchetEnrolmentAdmissio
           concat("refused as ", emit_ratchet_enrolment_text(enrolment: e)),
           " — no verdict was established for: "
         ),
-        join(ss, ", ")
+        join(map(ss, sub => unevaluated_subject_text(subject: sub)), "; ")
       )
   }
 }
@@ -1441,28 +1494,45 @@ fn subject_component_value(subject: EmissionMeasurementSubject, component: Obser
 // values rather than the number of subjects -- a handful at most, and one in the case that matters.
 // This is not the copied-accumulator cost shape: there is no filter-shaped alternative to a
 // deduplication, and the growth term is the answer's own size.
+fn distinct_strings(xs: List<String>) -> List<String> {
+  fold(
+    xs,
+    init: [],
+    f: (acc, x) => if string_list_contains(xs: acc, wanted: x) { acc } else { concat(acc, [x]) }
+  )
+}
+
+// PROJECT ONCE, THEN DEDUPLICATE. The earlier form called `subject_component_value` twice per
+// subject -- once to test membership and once to append -- which is the copied-work shape DESIGN's
+// bare-minimum-cost ruling says is always fixed regardless of the realized n, because "n is small
+// here" is not a time-stable fact. Mapping first evaluates each subject's component exactly once.
 fn distinct_component_values(
   subjects: List<EmissionMeasurementSubject>,
   component: ObservationComponent
 ) -> List<String> {
-  fold(
-    subjects,
-    init: [],
-    f: (acc, subject) =>
-      if string_list_contains(
-        xs: acc,
-        wanted: subject_component_value(subject: subject, component: component)
-      ) {
-        acc
-      } else {
-        concat(acc, [subject_component_value(subject: subject, component: component)])
-      }
+  distinct_strings(
+    xs: map(subjects, subject => subject_component_value(subject: subject, component: component))
   )
 }
 
 type ComponentAgreement
   = ComponentsAgree
   | ComponentDiverges { component: ObservationComponent, values: List<String> }
+
+// One component, one derivation of its distinct values. The fold below asked for them twice -- once
+// to count and once to carry -- so the values were built, discarded and built again on exactly the
+// path that reports a divergence.
+fn component_divergence(
+  subjects: List<EmissionMeasurementSubject>,
+  component: ObservationComponent
+) -> ComponentAgreement {
+  let values = distinct_component_values(subjects: subjects, component: component)
+  if count(values) > 1 {
+    ComponentDiverges { component: component, values: values }
+  } else {
+    ComponentsAgree
+  }
+}
 
 // FIRST DIVERGENCE WINS, in the declared component order, so the reported component is stable
 // across runs rather than a function of which subject happened to be measured first.
@@ -1473,15 +1543,7 @@ fn component_agreement(subjects: List<EmissionMeasurementSubject>) -> ComponentA
     f: (acc, component) =>
       match acc {
         ComponentDiverges { component: _, values: _ } => acc
-        ComponentsAgree =>
-          if count(distinct_component_values(subjects: subjects, component: component)) > 1 {
-            ComponentDiverges {
-              component: component,
-              values: distinct_component_values(subjects: subjects, component: component)
-            }
-          } else {
-            acc
-          }
+        ComponentsAgree => component_divergence(subjects: subjects, component: component)
       }
   )
 }
@@ -1578,7 +1640,7 @@ type EmitRatchetObservation
       binding: ObservationBinding
       selection: SubjectSelection
       roster: RosterIdentity
-      unevaluated_subjects: List<String>
+      unevaluated_subjects: List<UnevaluatedSubject>
       standing: EmitRatchetStanding
     }
   | ObservationNotTaken {

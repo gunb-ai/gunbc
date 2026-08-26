@@ -574,7 +574,13 @@ test fn a_single_denominator_carrier_is_still_an_admissible_observation() -> Boo
 // permits, which is what makes this a wall over the verdicts rather than a second denominator check.
 test fn a_gate_refuses_a_dual_denominator_fold_whose_subjects_were_never_evaluated() -> Bool {
   match fixture_gate_admission(r: fixture_dual_fold(inventory: fixture_roster, readings: fixture_one_unevaluated())) {
-    EnrolmentRefusedUnevaluated { enrolment: _, subjects: ss } => ss == [fixture_beta]
+    EnrolmentRefusedUnevaluated { enrolment: _, subjects: ss } =>
+      ss == [
+        UnevaluatedSubject {
+          entry: fixture_beta,
+          reason: UnevaluatedNoPopulation { cause: ExtentUnestablished }
+        }
+      ]
     EnrolmentPermitted { enrolment: _ } => false
     EnrolmentRefusedNoUniverse { enrolment: _ } => false
     EnrolmentRefusedDenominator { enrolment: _, missing: _ } => false
@@ -1172,4 +1178,44 @@ test fn a_refused_receipt_renders_no_dimensions_at_all() -> Bool {
     && string_contains(s: rendered, pattern: "cannot be checked out again")
     && !string_contains(s: rendered, pattern: "wall_ns")
     && !string_contains(s: rendered, pattern: "unevaluated_subjects")
+}
+
+// RED: THE REFUSAL MUST SAY WHY, NOT ONLY WHICH. The gate's payload used to be a list of entries,
+// so a reader learned which subjects blocked enrolment and could not learn why any of them did --
+// and the three reasons have three different owners. This pins that the reason survives INTO the
+// refusal, which is the position that matters: a projection nobody reads losing information is a
+// note, a refusal losing it is a defect.
+//
+// The two arms below differ in exactly one thing -- which reason the subject carries -- so a fold
+// that flattened them back to entries would fail both, and one that reported a single reason for
+// every unevaluated subject would fail one.
+test fn the_gate_refusal_names_why_each_subject_blocked_it() -> Bool {
+  let silent = fixture_gate_admission(
+    r: fixture_dual_fold(
+      inventory: fixture_roster,
+      readings: [fixture_reading(entry: fixture_alpha, outcome: EmitSubjectClean)]
+    )
+  )
+  match silent {
+    EnrolmentRefusedUnevaluated { enrolment: _, subjects: ss } =>
+      ss == [UnevaluatedSubject { entry: fixture_beta, reason: UnevaluatedInstrumentSilent }]
+    EnrolmentPermitted { enrolment: _ } => false
+    EnrolmentRefusedNoUniverse { enrolment: _ } => false
+    EnrolmentRefusedDenominator { enrolment: _, missing: _ } => false
+  }
+}
+
+// The rendered refusal carries the reason text too, since the admission text is what a human
+// actually reads when enrolment is refused.
+test fn the_rendered_gate_refusal_carries_the_reason_text() -> Bool {
+  let rendered = emit_ratchet_enrolment_admission_text(
+    admission: fixture_gate_admission(
+      r: fixture_dual_fold(
+        inventory: fixture_roster,
+        readings: [fixture_reading(entry: fixture_alpha, outcome: EmitSubjectClean)]
+      )
+    )
+  )
+  string_contains(s: rendered, pattern: fixture_beta)
+    && string_contains(s: rendered, pattern: "the instrument produced no reading")
 }
