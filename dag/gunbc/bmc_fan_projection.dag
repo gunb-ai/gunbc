@@ -22,6 +22,10 @@ import extdeps.filesystem.linux {
   LinuxSynchronizedRenameReplacePublication,
 }
 import product.placement_supply { HostIdentity }
+import gunbc.bmc_fan_actuation_standing {
+  HostBmcFanActuationStanding,
+  host_actuation_admitted,
+}
 import std.state_durability {
   NoDurabilityCommitBarrier,
   StateDurabilityAdmission,
@@ -256,6 +260,16 @@ fn bmc_fan_policy_projection_capability(
   }
 }
 
+// THE GATE RESOLVES THE STANDING ITSELF RATHER THAN BEING TOLD, and that is a correctness
+// property rather than an interface preference. An earlier revision took `actuation_admitted:
+// Bool` from its caller, which confined nothing: a caller passing `true` was believed, and
+// nothing tied the answer to the HOST this projection targets, so a standing looked up for one
+// host could authorise a write to another. Taking the roster and the host instead means a caller
+// cannot supply a lie without fabricating a whole roster, and the host mismatch is unwritable
+// because the lookup keys on the host it was handed. DESIGN's caller-supplied-validator finding
+// in the other direction: a mint whose predicate comes from its caller proves nothing about what
+// the caller checked.
+//
 // THE ADOPTION GATE RUNS FIRST, and the ordering is the point rather than tidiness. Every check
 // below compares the projection against the OBSERVATION - board, firmware, curve, path, service.
 // All of them can agree while the host runs an actuator topology the projection has no
@@ -269,9 +283,10 @@ fn bmc_fan_policy_projection_apply_suitability(
   board: BaseboardModel,
   desired_curve: BmcFanCurve,
   observation: BmcFanPolicyObservation,
-  actuation_admitted: Bool,
+  host: HostIdentity,
+  standings: List<HostBmcFanActuationStanding>,
 ) -> BmcFanProjectionApplySuitability {
-  if !actuation_admitted {
+  if !host_actuation_admitted(standings: standings, host: host) {
     BmcFanProjectionApplyRefused { cause: BmcFanProjectionObservedProgramNotAdopted }
   } else if capability.board != board {
     BmcFanProjectionApplyRefused { cause: BmcFanProjectionBoardMismatch }

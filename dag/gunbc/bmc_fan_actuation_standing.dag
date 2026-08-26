@@ -60,6 +60,25 @@ fn actuation_admitted(standing: HostBmcFanActuationStanding) -> Bool {
   }
 }
 
+fn standings_for_host_count(
+  standings: List<HostBmcFanActuationStanding>,
+  host: HostIdentity,
+) -> Int {
+  fold(standings, init: 0, f: (acc, s) => if s.host == host { acc + 1 } else { acc })
+}
+
+// A FIRST-MATCH LOOKUP OVER A ROSTER THAT MAY CONTAIN DUPLICATES IS NOT A LOOKUP, it is a
+// coin toss decided by authoring order. Two rows for one host disagreeing about alignment is a
+// broken roster, and the arm that wins would be whichever was typed first -- so the only safe
+// answer is to refuse the whole question. This is the same defect the tach-health join already
+// refuses, reintroduced here by habit and caught in review; the roster is small and hand-authored,
+// which is exactly the condition under which a duplicate is easy to add and invisible.
+type ActuationAdmission
+  = ActuationAdmitted
+  | ActuationRefusedNoStanding
+  | ActuationRefusedDuplicateStanding
+  | ActuationRefusedAlignment { alignment: BmcFanIntentAlignment }
+
 fn standing_for(
   standings: List<HostBmcFanActuationStanding>,
   host: HostIdentity,
@@ -78,13 +97,34 @@ fn standing_for(
 // A HOST WITH NO ROW IS REFUSED, not admitted. An absent standing means nobody has established
 // that the intent describes that host, which is exactly the state where writing the intent is
 // least safe - so the lookup's failure arm refuses rather than falling through to permitted.
+fn host_actuation_admission(
+  standings: List<HostBmcFanActuationStanding>,
+  host: HostIdentity,
+) -> ActuationAdmission {
+  if standings_for_host_count(standings: standings, host: host) > 1 {
+    ActuationRefusedDuplicateStanding
+  } else {
+    match standing_for(standings: standings, host: host) {
+      none => ActuationRefusedNoStanding
+      Present { value: standing } =>
+        if actuation_admitted(standing: standing) {
+          ActuationAdmitted
+        } else {
+          ActuationRefusedAlignment { alignment: standing.alignment }
+        }
+    }
+  }
+}
+
 fn host_actuation_admitted(
   standings: List<HostBmcFanActuationStanding>,
   host: HostIdentity,
 ) -> Bool {
-  match standing_for(standings: standings, host: host) {
-    none => false
-    Present { value: standing } => actuation_admitted(standing: standing)
+  match host_actuation_admission(standings: standings, host: host) {
+    ActuationAdmitted => true
+    ActuationRefusedNoStanding => false
+    ActuationRefusedDuplicateStanding => false
+    ActuationRefusedAlignment { alignment } => false
   }
 }
 

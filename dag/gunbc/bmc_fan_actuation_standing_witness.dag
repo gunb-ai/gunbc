@@ -3,7 +3,12 @@ module gunbc.bmc_fan_actuation_standing_witness
 import std.types { Bool, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.bmc_fan_actuation_standing {
+  ActuationAdmitted,
+  ActuationRefusedAlignment,
+  ActuationRefusedDuplicateStanding,
+  ActuationRefusedNoStanding,
   BmcFanIntentAlignment,
+  host_actuation_admission,
   HostBmcFanActuationStanding,
   IntentMatchesObservedProgram,
   ObservedProgramNotAdopted,
@@ -70,8 +75,69 @@ fn refusal_arms_stay_separate() -> Bool {
   a && b
 }
 
+// A DUPLICATE ROW REFUSES RATHER THAN LETTING AUTHORING ORDER DECIDE. Two rows for one host
+// that disagree is a broken roster, and a first-match fold answers with whichever was typed
+// first. The adversarial case is the one that matters: the duplicate says ADMITTED and is placed
+// FIRST, so a first-match lookup returns admitted and the interlock opens.
+data srv3_duplicated_as_admitted: List<HostBmcFanActuationStanding> = flat_map(
+  [
+    [
+      HostBmcFanActuationStanding {
+        host: operator_host_srv3,
+        alignment: IntentMatchesObservedProgram,
+      },
+    ],
+    fleet_bmc_fan_actuation_standings,
+  ],
+  g => g,
+)
+
+fn duplicate_standing_refuses() -> Bool {
+  let admission = match host_actuation_admission(
+    standings: srv3_duplicated_as_admitted,
+    host: operator_host_srv3,
+  ) {
+    ActuationRefusedDuplicateStanding => true
+    other => false
+  }
+  admission
+    && !host_actuation_admitted(standings: srv3_duplicated_as_admitted, host: operator_host_srv3)
+}
+
+// THE REFUSAL REASONS STAY DISTINGUISHABLE. All four collapse to false at the Bool surface, so
+// nothing about the OUTCOME would notice them merging -- and their remedies are entirely
+// different: extend a type, go read a host, or fix a roster someone broke.
+fn admission_reasons_stay_separate() -> Bool {
+  let no_standing = match host_actuation_admission(standings: [], host: operator_host_srv3) {
+    ActuationRefusedNoStanding => true
+    other => false
+  }
+  let by_alignment = match host_actuation_admission(
+    standings: fleet_bmc_fan_actuation_standings,
+    host: operator_host_srv3,
+  ) {
+    ActuationRefusedAlignment { alignment } => true
+    other => false
+  }
+  let admitted = match host_actuation_admission(
+    standings: [
+      HostBmcFanActuationStanding {
+        host: operator_host_srv3,
+        alignment: IntentMatchesObservedProgram,
+      },
+    ],
+    host: operator_host_srv3,
+  ) {
+    ActuationAdmitted => true
+    other => false
+  }
+  no_standing && by_alignment && admitted
+}
+
 fn bmc_fan_actuation_standing_witness() -> ProcessExit {
   if hand_configured_hosts_refuse()
+    && duplicate_standing_refuses()
+    && admission_reasons_stay_separate()
     && unexamined_host_refuses()
     && absent_standing_refuses()
     && represented_program_is_admitted()

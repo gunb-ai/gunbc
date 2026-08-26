@@ -26,10 +26,7 @@ import extdeps.filesystem.linux {
   linux_overlay_observation_is_flash_backed,
 }
 import extdeps.uri { Uri }
-import gunbc.bmc_fan_actuation_standing {
-  fleet_bmc_fan_actuation_standings,
-  host_actuation_admitted,
-}
+import gunbc.bmc_fan_actuation_standing { fleet_bmc_fan_actuation_standings }
 import gunbc.bmc_intent {
   BmcControlPlaneIntent,
 }
@@ -407,10 +404,8 @@ fn bmc_fan_policy_apply_suitability(
         board: board,
         desired_curve: intent.fan_policy.curve,
         observation: observation,
-        actuation_admitted: host_actuation_admitted(
-          standings: fleet_bmc_fan_actuation_standings,
-          host: host,
-        ),
+        host: host,
+        standings: fleet_bmc_fan_actuation_standings,
       ) {
         BmcFanProjectionApplyRefused { cause: cause } =>
           FanPolicySuitabilityRefused {
