@@ -1,8 +1,8 @@
 module test.claim.session_demand_witness_test
 
 import std.types { Bool }
-import std.measure { byte_size_count }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import std.measure { byte_size_count, byte_size }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
 import extdeps.linux.cgroup_v2_memory {
   CgroupMemoryLimited, CgroupMemoryUnlimited, CgroupMemoryLimitUnparseable,
   CgroupMemoryCount, CgroupMemoryCountUnparseable,
@@ -14,7 +14,8 @@ import extdeps.linux.cgroup_v2_memory {
 import gunbc.session_demand_observe {
   cgroup_child_names, managed_placements, legacy_placements,
   cgroup_name_is_docker_scope, flat_session_candidates, session_population,
-  parent_slice_lines,
+  parent_slice_lines, observation_metric_deficits, admit_complete_census,
+  render_session_demand_observation, process_exit_for_session_demand_observation,
 }
 import gunbc.session_demand {
   ManagedSession, LegacyFlatSession, SessionPlacementUnclassifiable,
@@ -24,7 +25,10 @@ import gunbc.session_demand {
   SessionPopulationEstablished, SessionPopulationUnavailable,
   SessionPopulationNoSessionSlice,
   ParentSliceObserved, ParentSliceAbsent, ParentSliceDemand,
-  MemoryCountUnread, MemoryLimitUnread,
+  MemoryCountUnread, MemoryLimitUnread, MemoryCountRead, MemoryLimitRead, MemoryLimitUnlimited,
+  SessionPopulationHostMismatch, SessionMemoryDemand,
+  SessionDemandMetricsIncomplete, SessionDemandCensusIncomplete,
+  SessionDemandNotASessionHost, SessionDemandHostMismatch,
   session_placement_census, census_membership_signal,
   placement_is_managed, placement_is_unclassifiable,
   session_demand_membership_gate,
@@ -146,6 +150,10 @@ fn counted_zero_is_not_unavailable() -> Bool {
       SessionDemandObservationUnavailable { host: _, cause: _ } => false
       SessionDemandPopulationIncomplete { host: _, membership: _, cause: _ } => false
       SessionDemandObserved { receipt: _ } => false
+    SessionDemandNotASessionHost { host: _, cgroup_path: _ } => false
+    SessionDemandHostMismatch { managed_host: _, legacy_host: _ } => false
+    SessionDemandCensusIncomplete { host: _, unclassifiable: _, parent_slice: _, per_session: _ } => false
+    SessionDemandMetricsIncomplete { host: _, deficits: _, parent_slice: _, per_session: _ } => false
     }
   }
   zero
@@ -172,6 +180,10 @@ fn only_all_managed_opens_the_gate() -> Bool {
       NoConcurrentSessionDemandObserved { host: _ } => false
       SessionDemandObservationUnavailable { host: _, cause: _ } => false
       SessionDemandObserved { receipt: _ } => false
+    SessionDemandNotASessionHost { host: _, cgroup_path: _ } => false
+    SessionDemandHostMismatch { managed_host: _, legacy_host: _ } => false
+    SessionDemandCensusIncomplete { host: _, unclassifiable: _, parent_slice: _, per_session: _ } => false
+    SessionDemandMetricsIncomplete { host: _, deficits: _, parent_slice: _, per_session: _ } => false
     }
   }
   let legacy_refuses = match session_demand_membership_gate(
@@ -184,6 +196,10 @@ fn only_all_managed_opens_the_gate() -> Bool {
       NoConcurrentSessionDemandObserved { host: _ } => false
       SessionDemandObservationUnavailable { host: _, cause: _ } => false
       SessionDemandObserved { receipt: _ } => false
+    SessionDemandNotASessionHost { host: _, cgroup_path: _ } => false
+    SessionDemandHostMismatch { managed_host: _, legacy_host: _ } => false
+    SessionDemandCensusIncomplete { host: _, unclassifiable: _, parent_slice: _, per_session: _ } => false
+    SessionDemandMetricsIncomplete { host: _, deficits: _, parent_slice: _, per_session: _ } => false
     }
   }
   opens && mixed_refuses && legacy_refuses
@@ -261,16 +277,19 @@ fn unreadable_inventory_never_establishes_a_population() -> Bool {
   let legacy_unreadable_refuses = match session_population(managed: observed_managed, legacy: unreadable) {
     SessionPopulationUnavailable { cause: _ } => true
     SessionPopulationNoSessionSlice { cgroup_path: _ } => false
+    SessionPopulationHostMismatch { managed_host: _, legacy_host: _ } => false
     SessionPopulationEstablished { placements: _ } => false
   }
   let managed_unreadable_refuses = match session_population(managed: unreadable, legacy: observed_empty) {
     SessionPopulationUnavailable { cause: _ } => true
     SessionPopulationNoSessionSlice { cgroup_path: _ } => false
+    SessionPopulationHostMismatch { managed_host: _, legacy_host: _ } => false
     SessionPopulationEstablished { placements: _ } => false
   }
   let both_readable_establishes = match session_population(managed: observed_managed, legacy: observed_empty) {
     SessionPopulationEstablished { placements: ps } => count(ps) == 1
     SessionPopulationNoSessionSlice { cgroup_path: _ } => false
+    SessionPopulationHostMismatch { managed_host: _, legacy_host: _ } => false
     SessionPopulationUnavailable { cause: _ } => false
   }
   legacy_unreadable_refuses && managed_unreadable_refuses && both_readable_establishes
@@ -300,16 +319,19 @@ fn an_absent_slice_is_not_an_unreadable_one() -> Bool {
   let absent_managed_is_not_a_session_host = match session_population(managed: absent, legacy: observed_empty) {
     SessionPopulationNoSessionSlice { cgroup_path: p } => p == "/sys/fs/cgroup/sessions.slice"
     SessionPopulationUnavailable { cause: _ } => false
+    SessionPopulationHostMismatch { managed_host: _, legacy_host: _ } => false
     SessionPopulationEstablished { placements: _ } => false
   }
   let unreadable_managed_is_still_blind = match session_population(managed: unreadable, legacy: observed_empty) {
     SessionPopulationUnavailable { cause: _ } => true
     SessionPopulationNoSessionSlice { cgroup_path: _ } => false
+    SessionPopulationHostMismatch { managed_host: _, legacy_host: _ } => false
     SessionPopulationEstablished { placements: _ } => false
   }
   let absent_system_slice_refuses = match session_population(managed: observed_empty, legacy: absent) {
     SessionPopulationUnavailable { cause: _ } => true
     SessionPopulationNoSessionSlice { cgroup_path: _ } => false
+    SessionPopulationHostMismatch { managed_host: _, legacy_host: _ } => false
     SessionPopulationEstablished { placements: _ } => false
   }
   absent_managed_is_not_a_session_host
@@ -343,6 +365,70 @@ fn an_absent_parent_slice_reports_no_read_at_all() -> Bool {
     && string_contains(s: unread, pattern: "NO_SUCH_SLICE") == false
 }
 
+// THE NUMERATOR NARROW, WHICH IS THE DEFECT THIS WHOLE CUT EXISTS TO CLOSE AND WHICH SHIPPED
+// ANYWAY. The verdict used to be a function of identities alone, so a host whose every
+// memory.current was UNREAD still printed AllSessionsManaged and "an aggregate may be established"
+// and exited success. The denominator narrow had been repaired and this one left standing, in the
+// one arm that GRANTS the aggregate. Found in review; no witness here could see it because every
+// witness asserted about population and none about metrics -- which is why this one asserts that a
+// COMPLETE population with an unread metric still refuses.
+//
+// The pair discriminates: identical placements and identical parent slice, differing only in
+// whether one session's memory.current parsed. If deficits stopped gating, the first half goes red.
+fn an_unread_metric_refuses_a_complete_population() -> Bool {
+  let cg = "/sys/fs/cgroup/sessions.slice"
+  let good_slice = ParentSliceDemand {
+    cgroup: cg,
+    memory_current: MemoryCountRead { bytes: byte_size(1024) },
+    memory_peak: MemoryCountRead { bytes: byte_size(2048) },
+    memory_peak_epoch: "epoch",
+    memory_max: MemoryLimitUnlimited,
+  }
+  let sid = "docker-0000000000000000000000000000000000000000000000000000000000000000.scope"
+  let scg = "/sys/fs/cgroup/sessions.slice/docker-0000000000000000000000000000000000000000000000000000000000000000.scope"
+  let read_session = SessionMemoryDemand { identity: sid, cgroup: scg, memory_current: MemoryCountRead { bytes: byte_size(512) } }
+  let unread_session = SessionMemoryDemand { identity: sid, cgroup: scg, memory_current: MemoryCountUnread { cause: "cat exited unsuccessfully" } }
+  let places = [ManagedSession { identity: sid, cgroup: scg }]
+  let unread_refuses = match admit_complete_census(
+    host: operator_host_srv1, started: "t0", slice: good_slice,
+    per_session: [unread_session], placements: places,
+  ) {
+    SessionDemandMetricsIncomplete { host: _, deficits: ds, parent_slice: _, per_session: _ } => count(ds) == 1
+    SessionDemandObserved { receipt: _ } => false
+    SessionDemandNotASessionHost { host: _, cgroup_path: _ } => false
+    SessionDemandHostMismatch { managed_host: _, legacy_host: _ } => false
+    SessionDemandCensusIncomplete { host: _, unclassifiable: _, parent_slice: _, per_session: _ } => false
+    SessionDemandObservationUnavailable { host: _, cause: _ } => false
+    SessionDemandPopulationIncomplete { host: _, membership: _, cause: _ } => false
+    NoConcurrentSessionDemandObserved { host: _ } => false
+  }
+  let unlimited_is_not_a_deficit = count(observation_metric_deficits(slice: good_slice, per_session: [read_session])) == 0
+  let unread_counts_once = count(observation_metric_deficits(slice: good_slice, per_session: [unread_session])) == 1
+  unread_refuses && unlimited_is_not_a_deficit && unread_counts_once
+}
+
+// TWO HOSTS' EVIDENCE MAY NOT BE JOINED INTO ONE POPULATION. Production reads both inventories
+// locally under one observed host, so this never fired in the field -- but the classifier's TYPE
+// permitted it, and a type that permits cross-subject evidence will eventually be handed it.
+fn two_hosts_evidence_never_mints_one_population() -> Bool {
+  let srv1_managed = SessionContainerInventoryObserved { host: operator_host_srv1, identities: [] }
+  let srv2_legacy = SessionContainerInventoryObserved { host: operator_host_srv2, identities: [] }
+  let srv1_legacy = SessionContainerInventoryObserved { host: operator_host_srv1, identities: [] }
+  let mismatch_refuses = match session_population(managed: srv1_managed, legacy: srv2_legacy) {
+    SessionPopulationHostMismatch { managed_host: _, legacy_host: _ } => true
+    SessionPopulationEstablished { placements: _ } => false
+    SessionPopulationUnavailable { cause: _ } => false
+    SessionPopulationNoSessionSlice { cgroup_path: _ } => false
+  }
+  let same_host_establishes = match session_population(managed: srv1_managed, legacy: srv1_legacy) {
+    SessionPopulationEstablished { placements: ps } => count(ps) == 0
+    SessionPopulationHostMismatch { managed_host: _, legacy_host: _ } => false
+    SessionPopulationUnavailable { cause: _ } => false
+    SessionPopulationNoSessionSlice { cgroup_path: _ } => false
+  }
+  mismatch_refuses && same_host_establishes
+}
+
 fn session_demand_producer_pure_half_holds() -> Bool {
   child_name_parsing_holds()
     && placement_classification_needs_no_naming_authority()
@@ -350,4 +436,6 @@ fn session_demand_producer_pure_half_holds() -> Bool {
     && unreadable_inventory_never_establishes_a_population()
     && an_absent_slice_is_not_an_unreadable_one()
     && an_absent_parent_slice_reports_no_read_at_all()
+    && an_unread_metric_refuses_a_complete_population()
+    && two_hosts_evidence_never_mints_one_population()
 }
