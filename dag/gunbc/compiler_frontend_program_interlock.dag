@@ -64,12 +64,6 @@ type NamespaceChangeClass
   = PreparatoryNoSemanticMotion
   | AltersSubjectMembershipOrBinding
 
-fn namespace_change_admitted_before_wall(c: NamespaceChangeClass) -> Bool {
-  match c {
-    PreparatoryNoSemanticMotion => true
-    AltersSubjectMembershipOrBinding => false
-  }
-}
 
 // THE ADMISSION PREDICATE, recorded because the two spellings differ by one word
 // and the weaker one is the intuitive one. The wall admits when
@@ -87,6 +81,19 @@ type NamespaceDeltaDisposition
   | UnexplainedSubjectMotion
   | NotEvaluated
 
+// WHY THIS PREDICATE SURVIVES THE PREDICATE-DISSOLUTION RULE, and its sibling
+// did not. The 2026-07-12 dissolution deleted SINGLE-VARIANT NICKNAMES -- an
+// is_hermetic/is_record that renames one variant as a Bool. It did not delete
+// predicates that decide a SEMANTIC PARTITION, and std.execution_mode records
+// the surviving case by name: execution_mode_is_wet_dispatch groups three
+// variants into two because Wet and Record share dispatch semantics, and
+// deciding that once keeps ONE authority instead of an inline match at every
+// consumer. This is that shape -- nine dispositions partitioned three-to-six on
+// whether the wall auto-admits them -- so the partition is the fact, not a
+// rename of any single variant. namespace_change_admitted_before_wall was NOT
+// that shape: two variants mapped one-to-one onto true/false is a nickname for
+// a variant test, so it was deleted (review 56363) and its consumers match on
+// NamespaceChangeClass, which is where the distinction already lives.
 fn delta_disposition_auto_admitted(d: NamespaceDeltaDisposition) -> Bool {
   match d {
     SameDeclarationIdentityRebind => true

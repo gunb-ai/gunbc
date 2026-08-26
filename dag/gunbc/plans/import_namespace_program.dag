@@ -104,11 +104,11 @@ fn section_6() -> List<MarkdownBlock> {
 fn section_7() -> List<MarkdownBlock> {
   [
     h2(text: "7. The sequencing relation — RULED, and carried elsewhere"),
-    p(text: "This section was an open question for the operator. It was answered on 2026-08-26, and the answer is that **the question was posed at the wrong grain**: neither program blocks the other whole. Self-host's proof envelope blocks the FIRST NAMESPACE SEMANTIC WAVE; namespace completion blocks self-host's IRREVERSIBLE RETIREMENT STEP. That is a braid, not a total ordering, and a reader who collapses it back to a program order gets a different plan whichever direction they collapse it in."),
-    p(text: "**The ruling is not restated here.** It is carried once in `gunbc.compiler_frontend_program_interlock`, whose `milestone_prerequisites` is a total function over a closed milestone variant — so a newly declared milestone fails to compile until its prerequisites are stated, rather than silently having none. Both this plan and the self-host plan cite that carrier; neither owns the relation. Copying the ruling into two plan bodies would be one fact with two authorities, and the copies diverge on the first amendment."),
+    p(text: "This section was an open question for the operator. It was answered on 2026-08-26, and the answer is that **the question was posed at the wrong grain**: neither program blocks the other whole, and the relation is a braid between MILESTONES rather than an order over PROGRAMS. A reader who collapses it back to a program order gets a different plan whichever direction they collapse it in."),
+    p(text: "**THE EDGES ARE NOT ENUMERATED HERE, DELIBERATELY, AND THIS TEXT IS NOT AUTHORITY FOR THEM.** Read them from `gunbc.compiler_frontend_program_interlock` `milestone_prerequisites`, which is a total function over a closed milestone variant — so a newly declared milestone fails to compile until its prerequisites are stated, rather than silently having none. This section RENDERS the relation for a human reader; it does not own it, and where the two disagree the carrier is correct and this prose is a defect. An earlier revision of this section restated both edges in full while claiming the carrier was their only home (review 56363): a symbol citation verifies that a declaration EXISTS, never that prose about it still AGREES with it, so enumerated edges beside a citation are exactly the drift a single authority is supposed to prevent."),
     h3(text: "What this changes for THIS plan, concretely"),
     ul(items: [
-      li(text: "**Step 1 may not land until two things exist**: the self-host cargo-executing required phase with its identity-grain ratchet, AND this program's own wave-admission wall."),
+      li(text: "**Step 1 is gated**, and on what is stated by `milestone_prerequisites` at `NamespaceFirstSemanticWave` rather than here. Read it there; it is one call."),
       li(text: "**Section 9's disclosed CI gap is now a BLOCKER, not a disclosure.** No namespace change that can alter which modules enter a subject, or what an occurrence denotes, may merge before that wall exists."),
       li(text: "**Preparatory work is explicitly unaffected** — measurement, port-locus, instruments, lexical de-forking that preserves the exact set, typed carriers, dry-run projections. Step 1 is not preparatory."),
       li(text: "**The wall admits on UNADJUDICATED delta being empty, never on delta being empty.** Expected cut motion may occur; unevaluated or unexplained motion may not. A wall demanding zero delta would refuse the cut itself and would then be repaired by weakening it."),
@@ -148,7 +148,7 @@ data import_namespace_program_bindings: List<DeclarationRef> = [
   // The cross-program precedence ruling (operator, 2026-08-26), carried once and
   // cited by both plans rather than restated in either.
   decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "milestone_prerequisites"),
-  decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "namespace_change_admitted_before_wall"),
+  decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "NamespaceChangeClass"),
   decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "delta_disposition_auto_admitted"),
   decl_ref(module_path: "gunbc.namespace_cut_landing_order", decl_name: "namespace_cut_grammar_last_ruling"),
 ]
