@@ -874,12 +874,22 @@ these first because they cost nothing to sequence and the pipe class alone is ~1
 of the branch's 410.
 
 **Phase A — realization (v1 emitter, `src/v1/05_emit_rust.dag`).**
-Land T4. Turn `rust_nominal_identity_carrier_type_eligible` into a real
-predicate; emit branded scalars as newtypes. Green on main today, no dependency
-on anything else here, and it is the only phase whose absence silently
-invalidates the others. Its discriminating RED already exists as §4b's
-`UriValidatedScalar` receipt. Sequenced first *because* it is invisible to every
-model-side check.
+Land T4 **at its corrected subject** — the seal, not the brand. Emit a
+`sole_constructor` declaration as an unforgeable Rust carrier: private field, no
+derived `Deserialize`, construction only through the mint. **Delete**
+`rust_nominal_identity_carrier_type_eligible`; do not repair it. *This row read
+the other way until 2026-08-26 — repair the predicate, emit branded scalars as
+newtypes — which is the superseded plan §7a's A0 correction overturned, and it
+survived here after the terminal row was fixed (`review 56014`).* The reason it
+cannot be repaired is a **model** fact, not a scheduling one: `type Brand =
+String` admits `take_string(s: b)` with zero diagnostics on unpatched main, so
+the alias is transparent and the emitter follows its RHS because there is nothing
+else to follow. Brand rendering is blocked upstream on a fact that does not
+exist; the seal is already authored on 79 production declarations and read by the
+emitter zero times. No dependency on anything else here, and it is the only phase
+whose absence silently invalidates the others. Its discriminating RED already
+exists as §4b's `UriValidatedScalar` receipt. Sequenced first *because* it is
+invisible to every model-side check.
 
 **Phase B — substrate (`dag/std/`).**
 T1, then T2, then T3, in that order — each is the next-rung trigger of the one
@@ -1362,7 +1372,7 @@ step 6 names, reached from the direction that looks most conservative.
 | | milestone | the check that closes it |
 |---|---|---|
 | **M0** | **Measurable.** No gate can report a prefix of the truth as the truth | every acceptance count names its producing stage; a gate reachable only past an earlier early-return declares that |
-| **M1** | **Emission preserves identity.** A branded scalar is a distinct Rust type | a `Secret` cannot be passed where a `String` is expected in emitted Rust; `UriValidatedScalar` forgery refused |
+| **M1** | **Emission preserves the seal.** A `sole_constructor` declaration emits a carrier that cannot be forged | `UriValidatedScalar` forgery refused: private field, no derived `Deserialize`, mint the only route. *Not* "a branded scalar is a distinct Rust type" — that spelling stood here until 2026-08-26 and names the superseded A0 subject, unreachable while `type Brand = String` is transparent in the model |
 | **M2** | **One closure authority.** Every subject is built the same way | no second `extract_imports`; every closure edge names its occurrence and provider |
 | **M3** | **Identity survives the pipeline.** Resolution's answer reaches emission intact | the 12 censused emitter sites key on declaration identity; `build_emit_graph_info` has a collision arm |
 | **M4** | **Keys are typed.** A spelling is unspellable in key position | `key_eq` is not a parameter anywhere; a content-derived `key_of` does not compile |
@@ -1376,7 +1386,7 @@ M0–M4 are independently valuable on main *with imports*. M5 onward is the cut.
 
 ```
 WAVE 1   0.1 pipe lowering   0.2 arg ordering   0.4 coercion parse
-         A.1 nominal identity switch    A.2 forgery control
+         A.1 seal reaches emission (delete the brand predicate)   A.2 forgery control
          B.1 closure authority          B.2 edge provenance
          D.1 key algebra authoring
          0.3 build_data_body_index: bare-name index over 3927 modules
