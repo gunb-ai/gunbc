@@ -3,18 +3,18 @@ module gunbc.fleet_fan_wiring
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
-import gunbc.fleet_fan_population {
+import gunbc.fleet_fan_tach_expectation {
   ChassisBayHeader,
-  FanHeaderBinding,
-  HeaderPopulated,
-  HeaderUnpopulatedByDesign,
-  HostFanPopulation,
+  FanHeaderExpectationRow,
+  HostFanTachExpectation,
   ProcessorCoolerHeader,
-  controlled_fan_headers,
-  srv1_fan_population,
-  srv2_fan_population,
-  srv3_fan_population,
-  srv4_fan_population,
+  TachExpected,
+  TachNotExpected,
+  expected_tach_headers,
+  srv1_fan_tach_expectation,
+  srv2_fan_tach_expectation,
+  srv3_fan_tach_expectation,
+  srv4_fan_tach_expectation,
 }
 import gunbc.fleet_intent_network {
   operator_host_srv1,
@@ -25,10 +25,10 @@ import gunbc.fleet_intent_network {
 
 // THREE POPULATIONS, NOT ONE, AND THIS MODULE IS THE MIDDLE ONE.
 //
-// gunbc.fleet_fan_population answers WHAT THE MACHINE WAS BUILT TO CARRY - a chassis-and-cooler
-// fact, one entry per board header. It is deliberately silent about everything below that, and
-// the silence was load-bearing enough to be worth its own module rather than more fields on
-// that one:
+// gunbc.fleet_fan_tach_expectation answers WHERE ROTATION IS EXPECTED - one entry per board
+// header, operator-declared and corroborated by observation. It is deliberately silent about
+// everything below that, and the silence was load-bearing enough to be worth its own module
+// rather than more fields on that one:
 //
 //   physical fan count  !=  PWM channel count  !=  tach channel count
 //
@@ -39,7 +39,7 @@ import gunbc.fleet_intent_network {
 //
 // The three layers and their DISJOINT remedies, which is the test that they are really three:
 //
-//   population   header declared but nothing wired    -> inspect the chassis build
+//   expectation  rotation expected, nothing wired      -> inspect the chassis build
 //   wiring       fan model unobserved                 -> read the label on the part
 //   wiring       tach not carried                     -> inspect the signal path
 //   endpoint     header maps to no BMC channel        -> read the board/firmware mapping
@@ -147,26 +147,26 @@ fn wired_headers(wiring: HostFanWiring) -> List<NonEmptyStr> {
 
 // THE SEAM BETWEEN THE TWO LAYERS, CHECKED RATHER THAN ASSUMED.
 //
-// Population and wiring are separate authorities answering separate questions, which means they
+// Expectation and wiring are separate authorities answering separate questions, which means they
 // can disagree - and a disagreement is exactly the interesting state. Wiring that covers a
-// header the chassis says is empty means someone plugged in a fan nobody recorded; wiring that
-// misses a populated header means a header was built to carry a fan and nothing was wired to it.
-// Both are real conditions and neither is representable if one layer is derived from the other,
-// which is the reason this is a JOIN and not a projection.
+// header where no rotation is expected means someone plugged in a fan nobody recorded; wiring
+// that misses an expected header means rotation is expected somewhere nothing was wired. Both
+// are real conditions and neither is representable if one layer is derived from the other, which
+// is the reason this is a JOIN and not a projection.
 type FanWiringCoverage
-  = WiringCoversPopulation
-  | WiringMissesPopulatedHeader { header: NonEmptyStr }
-  | WiringCoversUnpopulatedHeader { header: NonEmptyStr }
+  = WiringCoversExpectation
+  | WiringMissesExpectedHeader { header: NonEmptyStr }
+  | WiringCoversUnexpectedHeader { header: NonEmptyStr }
 
 fn list_contains_header(headers: List<NonEmptyStr>, header: NonEmptyStr) -> Bool {
   fold(headers, init: false, f: (acc, candidate) => if acc { true } else { candidate == header })
 }
 
 fn fan_wiring_coverage(
-  population: HostFanPopulation,
+  expectation: HostFanTachExpectation,
   wiring: HostFanWiring,
 ) -> FanWiringCoverage {
-  let populated = controlled_fan_headers(population: population)
+  let populated = expected_tach_headers(expectation: expectation)
   let wired = wired_headers(wiring: wiring)
   let missing = fold(
     populated,
@@ -178,7 +178,7 @@ fn fan_wiring_coverage(
       },
   )
   match missing {
-    Present { value: header } => WiringMissesPopulatedHeader { header: header }
+    Present { value: header } => WiringMissesExpectedHeader { header: header }
     none =>
       match fold(
         wired,
@@ -189,8 +189,8 @@ fn fan_wiring_coverage(
             none => if list_contains_header(headers: populated, header: header) { none } else { Present { value: header } }
           },
       ) {
-        Present { value: header } => WiringCoversUnpopulatedHeader { header: header }
-        none => WiringCoversPopulation
+        Present { value: header } => WiringCoversUnexpectedHeader { header: header }
+        none => WiringCoversExpectation
       }
   }
 }
