@@ -23,7 +23,8 @@ import std.types { NonEmptyStr, List }
 type ProgramMilestone
   = SelfHostWholeCorpusPopulationDerived
   | SelfHostCargoPhaseEnrolled
-  | SelfHostRatchetEnrolled
+  | SelfHostRatchetObservationEnrolled
+  | SelfHostRatchetGateEnrolled
   | NamespaceWaveAdmissionEnrolled
   | NamespaceFirstSemanticWave
   | NamespaceTerminalEndState
@@ -33,7 +34,8 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
   match m {
     SelfHostWholeCorpusPopulationDerived => "self-host S2: the exact whole-corpus population re-derived" as NonEmptyStr
     SelfHostCargoPhaseEnrolled => "self-host S3: required cargo-executing CI phase, enrolled with a discriminating red" as NonEmptyStr
-    SelfHostRatchetEnrolled => "self-host S4: the identity-grain debt ratchet, enrolled against S2's population" as NonEmptyStr
+    SelfHostRatchetObservationEnrolled => "self-host S4a: the ratchet enrolled as an OBSERVATION -- taken and persisted, never merge-blocking" as NonEmptyStr
+    SelfHostRatchetGateEnrolled => "self-host S4b: the ratchet enrolled as a GATE, merge-blocking, against S2's identity-grain population" as NonEmptyStr
     NamespaceWaveAdmissionEnrolled => "namespace: required wave-admission wall over closure, subject-membership and occurrence-binding deltas" as NonEmptyStr
     NamespaceFirstSemanticWave => "namespace: first semantic wave (Step 1, deletion of the import-name universe)" as NonEmptyStr
     NamespaceTerminalEndState => "namespace: terminal end state (Steps 1-5 complete, import grammar retired)" as NonEmptyStr
@@ -74,6 +76,30 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
 // prerequisites could leave a stale duplicate standing here, which is the
 // second-representation failure this document names.
 //
+// AND A THIRD INSTANCE, FOUND BY THE SESSION THE SECOND ONE WAS SENT TO
+// (loyal-lark-254, 2026-08-26). SelfHostRatchetEnrolled was ITSELF composite:
+// it fused enrolling the ratchet as an OBSERVATION -- taken, persisted, never
+// able to fail a merge -- with enrolling it as a GATE. Their prerequisites
+// differ for the same reason S3's and S4's did. An observation needs no
+// population to be about, because what it refuses is the inability to TAKE or
+// PERSIST it; a gate is meaningless without the identity-grain population it
+// gates against. Fused, the variant read as a prerequisite over both, which
+// would have blocked observation work an operator ruling had already
+// authorised -- a carrier landing AFTER a ruling and silently superseding it.
+// That is the authority collision this file exists to prevent, committed by
+// this file.
+//
+// THREE INSTANCES OF ONE SHAPE IN ONE FILE IS THE FINDING, not three repairs.
+// Every one was a variant fusing two facts whose prerequisites differ, and
+// every one was invisible to the exhaustiveness check that is this
+// construction's entire reason for existing, because a composite element
+// satisfies the match while hiding the distinction the match is meant to
+// force. Exhaustiveness protects the ENUMERATION, never the contents of an
+// element. The standing obligation on anyone adding a milestone here is
+// therefore not to state its prerequisites -- the match already forces that --
+// but to ask whether the variant carries TWO facts that would state DIFFERENT
+// prerequisites if separated. If it does, it is two variants.
+//
 // THE PRECEDENCE RELATION AS A TOTAL FUNCTION, not a list of edges. A list is
 // satisfied by omission -- a milestone nobody wrote an edge for silently has no
 // prerequisites, and the failure is invisible. An exhaustive match over a closed
@@ -84,9 +110,10 @@ fn milestone_prerequisites(m: ProgramMilestone) -> List<ProgramMilestone> {
   match m {
     SelfHostWholeCorpusPopulationDerived => []
     SelfHostCargoPhaseEnrolled => []
-    SelfHostRatchetEnrolled => [SelfHostWholeCorpusPopulationDerived, SelfHostCargoPhaseEnrolled]
+    SelfHostRatchetObservationEnrolled => []
+    SelfHostRatchetGateEnrolled => [SelfHostWholeCorpusPopulationDerived, SelfHostCargoPhaseEnrolled, SelfHostRatchetObservationEnrolled]
     NamespaceWaveAdmissionEnrolled => []
-    NamespaceFirstSemanticWave => [SelfHostRatchetEnrolled, NamespaceWaveAdmissionEnrolled]
+    NamespaceFirstSemanticWave => [SelfHostRatchetGateEnrolled, NamespaceWaveAdmissionEnrolled]
     NamespaceTerminalEndState => [NamespaceFirstSemanticWave]
     SelfHostSeedRetirement => [NamespaceTerminalEndState]
   }
