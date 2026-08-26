@@ -324,12 +324,12 @@ data enforcement_live_closure_gate_stall: GuaranteeStall = GuaranteeStall {
 }
 
 data realization_attempt_render_contract_stall: GuaranteeStall = GuaranteeStall {
-  subject: "the realization-attempt keystone reaches render without the complete proto call contract",
+  subject: "the floor union shadows emit_produced's pattern-bound render with std.layout.render",
   current: OutsideTheLadder,
   ceiling: StructurallyGuaranteed,
   blocker: ClimbableButUnbuilt,
   population: BoundedPopulation { members: Cons { head: "gunbc.test.claim.realization_attempt_keystone_test.witness_planted_minimal_module_emits", tail: Empty {} } },
-  next_rung_trigger: "the planted minimal module reaches render with the complete proto contract and emits"
+  next_rung_trigger: "node://adhoc-8a369cf2-4ca lands per-module environments so union composition cannot replace a module's pattern-bound render; the planted minimal module then emits and this non-verdict row is removed"
 }
 
 data mandatory_tag_live_corpus_stall: GuaranteeStall = GuaranteeStall {

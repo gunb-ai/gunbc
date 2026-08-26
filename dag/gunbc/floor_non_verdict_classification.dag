@@ -7,7 +7,7 @@ import v2.std.logic { Bool }
 import v2.std.algebra { any, count_where, fold_list, length, list_snoc_item }
 import v2.workflow.floor_non_verdict { floor_non_verdict_roster }
 
-// WHY THIS CARRIER EXISTS. v2.workflow.floor_non_verdict carries fifteen identities that the
+// WHY THIS CARRIER EXISTS. v2.workflow.floor_non_verdict carries twelve identities that the
 // required floor EXECUTES and that produce no verdict -- they throw before reaching their
 // assertion. That roster's job is to GATE (observed == roster, at identity grain); it does not
 // say what is wrong with any row, and until this pass nobody had measured it. A cause and a
@@ -18,11 +18,13 @@ import v2.workflow.floor_non_verdict { floor_non_verdict_roster }
 // This module joins to that population by identity and adds a classification; if the two ever
 // disagree, the roster is right and this is stale.
 //
-// THE GROUPING THAT ARRIVED WITH THE WORK WAS BY ERROR TEXT -- twelve saying
+// THE GROUPING THAT ARRIVED WITH THE original fifteen-row work was BY ERROR TEXT -- twelve saying
 // `atom_identity_hash requires exactly one string argument` and three saying something else --
 // and IT IS NOT THE CAUSAL SPLIT. Measured, the split is 4 / 9 / 2 and it cuts across the error
 // text: two of the three "separate" rows share a cause with seven of the twelve, and the four
 // that share the twelve's error message are the ones that do NOT share its cause.
+// After the four closure-independent rows repaid and the realization row joined, the live split
+// is 0 / 10 / 2; the identity join below, rather than either historical count, is authoritative.
 
 type NonVerdictIdentity {
   module_path: String
@@ -71,7 +73,7 @@ data unjoined_inference_note: String = "WHAT IS NOT CLAIMED, and it is the join 
 
 data host_phase_unmeasured_note: String = "THE TWO host_phase_status ROWS ARE UNMEASURED AND STAY THAT WAY IN THIS CARRIER. Their witness file carries ONE import and resolves everything else from the pool, so a narrow closure cannot even resolve them -- claim_batch refuses with `no declaration named host_phase_reconcile in this execution's loaded index`. There is therefore no small-closure arm to compare, and assigning them the neighbouring cause because they share an error message would be exactly the by-error-text grouping this carrier exists to replace."
 
-data gating_answer_note: String = "DOES known_red_runtime_errored GATE, AND SHOULD IT? It does not, and that is a DELIBERATE BOUNDARY rather than an omission. claim_executor required_floor_outcome_is_clean excludes both non-verdict arms, and v2.workflow.floor_non_verdict's header argues why: the arms are honest observations, and gating on them directly would red every lane holding a row of an unrepaired population. What gates instead is GROWTH at identity grain (non_verdict_unenrolled: an observed non-verdict identity the roster does not carry) and STALENESS (stale_non_verdict: a rostered identity the run did not observe), which together pin observed == roster. So a green main alongside fifteen unanswered enrolments is the debt being enrolled at identity grain, not something overlooked. THE ONE LIVE AXIS is already declared on that carrier and is not a finding of this pass: nothing compares the roster at HEAD against the roster at the BASE, so an author whose change makes a NEW identity stop producing a verdict may add its row in the SAME change -- the row becomes the permission. The carrier rates itself mitigatable there and names its next-rung trigger."
+data gating_answer_note: String = "DOES known_red_runtime_errored GATE, AND SHOULD IT? It does not, and that is a DELIBERATE BOUNDARY rather than an omission. claim_executor required_floor_outcome_is_clean excludes both non-verdict arms, and v2.workflow.floor_non_verdict's header argues why: the arms are honest observations, and gating on them directly would red every lane holding a row of an unrepaired population. What gates instead is GROWTH at identity grain (non_verdict_unenrolled: an observed non-verdict identity the roster does not carry) and STALENESS (stale_non_verdict: a rostered identity the run did not observe), which together pin observed == roster. So a green main alongside twelve unanswered enrolments is the debt being enrolled at identity grain, not something overlooked. THE ONE LIVE AXIS is already declared on that carrier and is not a finding of this pass: nothing compares the roster at HEAD against the roster at the BASE, so an author whose change makes a NEW identity stop producing a verdict may add its row in the SAME change -- the row becomes the permission. The carrier rates itself mitigatable there and names its next-rung trigger."
 
 data closure_dependent_evidence: String = "PASSES under a narrow claim_batch --hermetic closure; produces no verdict on the floor's whole-corpus subject"
 
@@ -129,6 +131,12 @@ data closure_dependent_rows: List<ClassifiedNonVerdictRow> = [
     cause: ClosureDependentResolution,
     standing: AssertsARedThatDoesNotExist,
     measured_evidence: "PASSES narrow; on the floor throws `call contract mismatch calling 'render': missing required argument 'proto'`. Its `render` is PATTERN-BOUND out of ProducedDeclWired and std.layout declares a free `fn render(doc, proto)`, so this row is the shadowing class in its loud, different-arity face"
+  },
+  ClassifiedNonVerdictRow {
+    identity: non_verdict_row_identity(module_path: "gunbc.test.claim.realization_attempt_keystone_test", function: "witness_planted_minimal_module_emits"),
+    cause: ClosureDependentResolution,
+    standing: AssertsARedThatDoesNotExist,
+    measured_evidence: "PASSES in its 179-module entry closure in 1907ms; required-floor run 32926887613 throws `call contract mismatch calling 'render': missing required argument 'proto'`. The flat union scope shadows emit_produced's ProducedDeclWired pattern-bound render with std.layout.render(doc, proto). Second measured specimen of the class above; owned by node://adhoc-8a369cf2-4ca, whose terminal is per-module environments rather than an instance rename"
   }
 ]
 
