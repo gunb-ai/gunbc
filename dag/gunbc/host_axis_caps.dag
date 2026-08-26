@@ -24,7 +24,7 @@ import gunbc.host_converge {
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired, gunbc_runner_slots_per_host }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_lifecycle { runner_slot_unit_name }
+import gunbc.runner_unit { runner_slot_unit_name }
 import product.placement_supply { HostIdentity }
 import extdeps.systemd {
   MemoryMax,

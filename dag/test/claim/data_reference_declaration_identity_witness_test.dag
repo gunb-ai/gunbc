@@ -1,0 +1,129 @@
+module test.claim.data_reference_declaration_identity_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// EXECUTING evidence that the v1 emitter resolves a workflow parameter's data-reference
+// default AT A DECLARATION, not at a spelling.
+//
+// THE DEFECT THIS CLOSES. v1.compiler.emit_rust folded every module's data items into ONE
+// corpus-wide `Map<String, Node>` keyed on the BARE authored name, and `map_insert` is
+// last-write-wins, so when two modules each declared a `data` item of the same name exactly
+// one body survived and the survivor was decided by module visit order. The ExprVar arm of
+// `fold_constant_default_expr` consulted that map by bare name, so a parameter default
+// referencing `default_model` was answered by whichever module the fold happened to visit
+// last -- never by what the author wrote. Live in the corpus at the time of this witness:
+// `gunbc.tools.review` declares `data default_model = "claude-sonnet-4-6-20250929"` and
+// `gunbc.tools.review_codex` declares `data default_model = "gpt-5.4"`, each referenced as a
+// workflow CLI default, so on the first successful whole-corpus emission exactly one review
+// tool would have emitted the OTHER tool's model. Not a diagnostic, not a crash -- a wrong
+// literal in a shipped artifact, which is DESIGN's fabricated-plausible-output class.
+//
+// WHY THE KEY IS THE REPAIR AND NOT A COLLISION CHECK. Detecting the collision and refusing
+// would be validation over a state that stays writable. The index now buckets bodies BY
+// DECLARING MODULE, so two same-named data items cannot share a key at all, and a reference
+// resolves the way the author's imports name it: own module first, then the direct imports
+// that actually admit the name.
+//
+// WHY THIS IS NOT THE OPPOSITE OF #9199. That commit PEELED a qualified name to its bare leaf
+// at `render_node_type`, because `shared_types` is built as a set of bare declared names and
+// the leaf genuinely is that domain's key. The rule both changes obey is that EACH LOOKUP MUST
+// CONSUME THE IDENTITY DOMAIN IT WAS BUILT FOR. Here the consumer needs to know WHICH MODULE'S
+// declaration answers, and the domain was bare -- so the domain is what moves, not the
+// consumer. Peeling at this site would collapse two declarations that share a leaf, which is
+// precisely the defect above.
+//
+// WHAT IS NOT ENROLLED HERE, and why, so the absence is a declared boundary rather than a gap
+// someone finds later. The repair also gives the AMBIGUOUS case its own located refusal: a
+// module importing both halves sees two different declarations answering to `dri_model`, and
+// neither is correct, so it refuses by name instead of silently taking one. That refusal was
+// measured by execution --
+//
+//   workflow CLI default for parameter `gamma_model` names `dri_model`, which more than one
+//   visible data declaration answers to (test.fixture.data_reference_identity_alpha,
+//   test.fixture.data_reference_identity_beta); qualify the reference or narrow the import
+//
+// located at the parameter, one hard diagnostic, emission refused -- but its fixture is an
+// INVALID program, and the only harness that can hold one here is a real corpus module, which
+// would make whole-corpus emission refuse forever over a test. So the fixture was measured and
+// removed rather than committed. NEXT-RUNG TRIGGER: a multi-module compile fixture that is not
+// a corpus member (the harness DESIGN already names as missing), at which point that arm
+// enrolls beside these four.
+//
+// THE FIXTURES. Three real modules under dag/test/fixture: alpha and beta each declare
+// `data dri_model` with DIFFERENT values and each reference it as a workflow CLI default;
+// shared declares one data item that alpha imports. The probe sources below are virtual
+// modules whose only content is imports, so the compiled closure is three (or two) tiny
+// modules and nothing from std -- the cost of a witness is a property of its import closure,
+// and this one has essentially none.
+//
+// THE ASSERTIONS BIND VALUE TO FIELD. Each include is the emitted clap attribute IMMEDIATELY
+// followed by the field name it decorates. A repair that resolved both references but crossed
+// them -- alpha getting beta's body -- emits both literals and would satisfy a bare
+// substring check; it cannot satisfy these.
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data dri_collision_probe_source: String = "module dri_collision_probe\n\nimport test.fixture.data_reference_identity_alpha\nimport test.fixture.data_reference_identity_beta\n\ndata dri_collision_probe_note: String = \"collision probe\"\n"
+
+data dri_alpha_only_probe_source: String = "module dri_alpha_only_probe\n\nimport test.fixture.data_reference_identity_alpha\n\ndata dri_alpha_only_probe_note: String = \"alpha-only probe\"\n"
+
+// THE DISCRIMINATING RED. Red on the bare-name index (one of the two literals is missing --
+// which one depends on fold order, which is why neither is named as the expected loser),
+// green once the key carries the declaring module. It does not retire when it greens: it is
+// the permanent regression control for the key's grain.
+test fn colliding_data_declarations_each_answer_their_own_workflow_default() -> Bool {
+  compile_dag_rust_emit_check(
+    dri_collision_probe_source,
+    "src/main.rs",
+    [
+      "default_value = \"dri-alpha-model\")]\nalpha_model",
+      "default_value = \"dri-beta-model\")]\nbeta_model"
+    ],
+    []
+  )
+}
+
+// THE POSITIVE CONTROL, and it holds in BOTH arms -- it passed before the repair and passes
+// after. A repair that made data references module-local would fix the collision and break
+// this, so the pair discriminates the repair rather than tracking it.
+test fn a_cross_module_data_reference_still_resolves_to_its_declaration() -> Bool {
+  compile_dag_rust_emit_check(
+    dri_collision_probe_source,
+    "src/main.rs",
+    ["default_value = \"dri-shared-endpoint\")]\nalpha_endpoint"],
+    []
+  )
+}
+
+// NO LEAK FROM OUTSIDE THE CLOSURE. Beta is not imported here, so its body must not reach
+// alpha's default. This is the arm that catches a repair keeping a corpus-wide fallback beside
+// the module-keyed index -- one that admits a body because the spelling happens to be unique
+// rather than because the referrer's imports name it.
+test fn a_declaration_outside_the_closure_never_answers_a_reference() -> Bool {
+  compile_dag_rust_emit_check(
+    dri_alpha_only_probe_source,
+    "src/main.rs",
+    ["default_value = \"dri-alpha-model\")]\nalpha_model"],
+    ["dri-beta-model"]
+  )
+}
+
+// FOLD-ORDER PERTURBATION. Identical to the collision probe except that the two imports are
+// AUTHORED IN THE OPPOSITE ORDER, which changes the order the emitter's fold visits the two
+// modules in. Under the bare-name key the surviving body was decided by exactly that order, so
+// this arm and the first one could not both be green; under a module-keyed index the resolved
+// defaults are a function of the declarations and not of the walk, and both are.
+data dri_swapped_probe_source: String = "module dri_swapped_probe\n\nimport test.fixture.data_reference_identity_beta\nimport test.fixture.data_reference_identity_alpha\n\ndata dri_swapped_probe_note: String = \"swapped probe\"\n"
+
+test fn module_order_perturbation_does_not_move_a_resolved_default() -> Bool {
+  compile_dag_rust_emit_check(
+    dri_swapped_probe_source,
+    "src/main.rs",
+    [
+      "default_value = \"dri-alpha-model\")]\nalpha_model",
+      "default_value = \"dri-beta-model\")]\nbeta_model",
+      "default_value = \"dri-shared-endpoint\")]\nalpha_endpoint"
+    ],
+    []
+  )
+}
