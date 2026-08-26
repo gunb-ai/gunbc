@@ -110,9 +110,9 @@ import tools.emission_entry_instrument {
 // worse than sitting low: a class whose carrier already claims the rung never ranks for climbing.
 //
 // HOLE 2 IS CLOSED (gunbc#9231, the dual denominator) AND ITS BLOCK IS KEPT RATHER THAN DELETED,
-// because the closing is the evidence -- a hole that vanishes on the commit that fixes it leaves a reader unable to tell a
-// gap that was closed from one that was never found. The numbering does not renumber for the same
-// reason: hole 3 is hole 3 wherever it is cited.
+// because the closing is the evidence -- a hole that vanishes on the commit that fixes it leaves a
+// reader unable to tell a gap that was closed from one that was never found. The numbering does not
+// renumber for the same reason: hole 3 is hole 3 wherever it is cited.
 //
 // HOLE 1 -- A BLOCKED SUBJECT GAINING ANOTHER BLOCKER IS HELD, NOT REFUSED.
 //
