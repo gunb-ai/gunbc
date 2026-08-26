@@ -2,9 +2,11 @@ module gunbc.fleet_fan_acoustic_evidence
 
 import std.types { Bool }
 import std.measure { rpm }
+import std.acoustic { dba_tenths }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.fans.types {
-  FanAcousticAnchored,
+  FanAcousticLawFittable,
+  FanAcousticTwoPointLawAssumed,
   FanAcousticUnderdetermined,
   FanSoundPressureNotPublishedAtSpeed,
   FanSoundPressurePublished,
@@ -29,20 +31,26 @@ import extdeps.fans.noctua { noctua_nf_a9_hs_pwm_catalog }
 // at, and it is NOT a published Dynatron point. Asking for a level there must refuse even though
 // this fan is otherwise well anchored. If someone later adds interpolation without adding a
 // published-versus-derived distinction, this conjunct goes red.
+//
+// The anchor conjunct asserts the LEVEL, not merely that some level came back: 44.4 dBA is
+// carried as 444 tenths, so a carrier change that silently rescaled the published figures fails
+// here rather than passing on the shape alone.
 fn fan_acoustic_evidence_witness() -> ProcessExit {
   let dynatron_anchored = match fan_acoustic_evidence(row: dynatron_df126025bu_pwmh_catalog) {
-    FanAcousticAnchored { published_level_count } => published_level_count == 3
+    FanAcousticLawFittable { published_level_count } => published_level_count == 3
+    FanAcousticTwoPointLawAssumed { published_level_count } => false
     FanAcousticUnderdetermined { published_level_count } => false
   }
   let noctua_refuses = match fan_acoustic_evidence(row: noctua_nf_a9_hs_pwm_catalog) {
-    FanAcousticAnchored { published_level_count } => false
+    FanAcousticLawFittable { published_level_count } => false
+    FanAcousticTwoPointLawAssumed { published_level_count } => false
     FanAcousticUnderdetermined { published_level_count } => published_level_count == 1
   }
   let dynatron_at_anchor = match fan_sound_pressure_at(
     row: dynatron_df126025bu_pwmh_catalog,
     speed: rpm(5400),
   ) {
-    FanSoundPressurePublished { level } => true
+    FanSoundPressurePublished { level } => dba_tenths(level: level) == 444
     other => false
   }
   let dynatron_off_anchor_refuses = match fan_sound_pressure_at(

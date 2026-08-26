@@ -1,7 +1,8 @@
 module extdeps.fans.types
 
 import std.types { Bool, Int, List, NonEmptyStr }
-import std.measure { MilliDecibelA, Millimeter, Percent, RevolutionsPerMinute, milli_dba_count, percent_count, rpm, rpm_count }
+import std.measure { Millimeter, Percent, RevolutionsPerMinute, percent_count, rpm, rpm_count }
+import std.acoustic { AWeightedSoundPressureLevel, dba_tenths }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
@@ -43,7 +44,7 @@ type FanBearing = SleeveBearing | DoubleBallBearing | SelfStabilisingOilPressure
 type FanPublishedOperatingPoint {
   duty: Percent
   speed: RevolutionsPerMinute
-  sound_pressure: MilliDecibelA?
+  sound_pressure: AWeightedSoundPressureLevel?
 }
 
 // HOW STRONGLY A LEVEL IS KNOWN AT A GIVEN SPEED. The distinction this type exists to keep is
@@ -59,17 +60,32 @@ type FanPublishedOperatingPoint {
 //   be read as "what you would hear". That claim requires a measurement at the listening
 //   position and has no representation in this module by design.
 type FanSoundPressureResult
-  = FanSoundPressurePublished { level: MilliDecibelA }
+  = FanSoundPressurePublished { level: AWeightedSoundPressureLevel }
   | FanSoundPressureNotPublishedAtSpeed { speed: RevolutionsPerMinute }
   | FanSoundPressureUnderdetermined { published_level_count: Int }
 
-// THE FAIL-CLOSED GATE. Interpolating between anchors needs at least two of them; one point
-// fixes no slope at all. The Dynatron publishes three levels and the Noctua exactly one, so this
-// is not a hypothetical arm - it is the live state of half the fleet's fans, and it is why the
-// W1's fitted noise law must never be reused for the Noctua. Whoever adds a log builtin later
-// inherits this gate rather than having to remember the rule.
+// THE FAIL-CLOSED GATE, AT THREE ARMS RATHER THAN TWO. Anchor count decides not just whether a
+// law can be APPLIED but whether it can be TESTED, and those are different states with different
+// owners:
+//
+//   <= 1 anchor  fixes no slope at all               -> Underdetermined
+//   == 2 anchors fix a two-parameter law EXACTLY,    -> TwoPointLawAssumed
+//                leaving zero residual, so the law
+//                is ASSUMED and never validated
+//   >= 3 anchors leave residual to test the law      -> LawFittable
+//                against
+//
+// Collapsing the middle two would be the state-space conflation DESIGN names: a level derived
+// under an assumed law and one derived under a law the evidence could have refuted are not the
+// same claim, and the remedy differs - the first needs a second independent source, the second
+// needs only a residual bound. The Dynatron publishes three levels and the Noctua exactly one,
+// so both outer arms are live fleet states today and the middle one is not yet inhabited.
+//
+// This is why the W1's fitted noise law must never be reused for the Noctua. Whoever adds a log
+// builtin later inherits this gate rather than having to remember the rule.
 type FanAcousticEvidence
-  = FanAcousticAnchored { published_level_count: Int }
+  = FanAcousticLawFittable { published_level_count: Int }
+  | FanAcousticTwoPointLawAssumed { published_level_count: Int }
   | FanAcousticUnderdetermined { published_level_count: Int }
 
 type FanCatalogRow {
@@ -98,10 +114,14 @@ fn fan_published_level_count(row: FanCatalogRow) -> Int {
 
 fn fan_acoustic_evidence(row: FanCatalogRow) -> FanAcousticEvidence {
   let n = fan_published_level_count(row: row)
-  if n >= 2 {
-    FanAcousticAnchored { published_level_count: n }
+  if n >= 3 {
+    FanAcousticLawFittable { published_level_count: n }
   } else {
-    FanAcousticUnderdetermined { published_level_count: n }
+    if n == 2 {
+      FanAcousticTwoPointLawAssumed { published_level_count: n }
+    } else {
+      FanAcousticUnderdetermined { published_level_count: n }
+    }
   }
 }
 
@@ -117,7 +137,7 @@ fn fan_max_speed(row: FanCatalogRow) -> RevolutionsPerMinute {
 fn fan_level_at_published_speed_rec(
   points: List<FanPublishedOperatingPoint>,
   speed: RevolutionsPerMinute,
-) -> MilliDecibelA? {
+) -> AWeightedSoundPressureLevel? {
   fold(
     points,
     init: none,
@@ -145,7 +165,12 @@ fn fan_sound_pressure_at(
   match fan_acoustic_evidence(row: row) {
     FanAcousticUnderdetermined { published_level_count } =>
       FanSoundPressureUnderdetermined { published_level_count: published_level_count }
-    FanAcousticAnchored { published_level_count } =>
+    FanAcousticTwoPointLawAssumed { published_level_count } =>
+      match fan_level_at_published_speed_rec(points: row.published_points, speed: speed) {
+        Present { value } => FanSoundPressurePublished { level: value }
+        none => FanSoundPressureNotPublishedAtSpeed { speed: speed }
+      }
+    FanAcousticLawFittable { published_level_count } =>
       match fan_level_at_published_speed_rec(points: row.published_points, speed: speed) {
         Present { value } => FanSoundPressurePublished { level: value }
         none => FanSoundPressureNotPublishedAtSpeed { speed: speed }
@@ -155,7 +180,8 @@ fn fan_sound_pressure_at(
 
 fn fan_evidence_is_anchored(evidence: FanAcousticEvidence) -> Bool {
   match evidence {
-    FanAcousticAnchored { published_level_count } => true
+    FanAcousticLawFittable { published_level_count } => true
+    FanAcousticTwoPointLawAssumed { published_level_count } => true
     FanAcousticUnderdetermined { published_level_count } => false
   }
 }

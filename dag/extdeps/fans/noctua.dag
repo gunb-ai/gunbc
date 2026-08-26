@@ -1,7 +1,8 @@
 module extdeps.fans.noctua
 
 import std.types { List }
-import std.measure { millimeter, percent, rpm, milli_dba }
+import std.measure { millimeter, percent, rpm }
+import std.acoustic { tenths_dba }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.fans.types {
   FanCatalogRow,
@@ -46,7 +47,7 @@ data noctua_nf_a9_hs_pwm_published_points: List<FanPublishedOperatingPoint> = [
   FanPublishedOperatingPoint {
     duty: percent(100),
     speed: rpm(2500),
-    sound_pressure: Present { value: milli_dba(30600) },
+    sound_pressure: Present { value: tenths_dba(306) },
   },
 ]
 

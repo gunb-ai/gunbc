@@ -40,7 +40,6 @@ type Quantity =
   | TemperatureDifference
 
   | RotationalSpeed
-  | SoundPressureLevel
 
   | ElectricPotential
   | ElectricPotentialDifference
@@ -546,26 +545,6 @@ type PositiveCelsiusDelta
   = PositiveCelsiusDeltaValue { count: PositiveMeasureCount }
 
 type RevolutionsPerMinute = Measure<RotationalSpeed, One, Nat>
-
-// A-weighted sound pressure level, carried at milli-dBA so a published figure like 44.4 dBA is
-// an exact Int (44400) rather than a rounded one. Int rather than Nat because a level below the
-// 0 dB reference is representable and negative dBA readings are ordinary in quiet rooms.
-//
-// SoundPressureLevel is its own Quantity rather than Dimensionless, and that is load-bearing
-// rather than tidiness: dBA is a LOGARITHMIC RATIO against a fixed reference pressure, so two of
-// them do not add. Filing it beside Percent under Dimensionless would make `a + b` typecheck and
-// mean nothing - two 44.4 dBA fans are 47.4 dBA, not 88.8. No addition is offered here for that
-// reason; combining levels needs a power-domain fold this module cannot express while no log
-// builtin exists, and offering a wrong one would be worse than offering none.
-type MilliDecibelA = Measure<SoundPressureLevel, Milli, Int>
-
-fn milli_dba(count: Int) -> MilliDecibelA {
-  Measure { count: count }
-}
-
-fn milli_dba_count(m: MilliDecibelA) -> Int {
-  measure_count(m)
-}
 
 fn watt(count: Nat) -> Watt {
   Measure { count: count }

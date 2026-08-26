@@ -83,15 +83,6 @@ data rosewill_rsv_z2600u_catalog: ChassisCatalogRow = ChassisCatalogRow {
   max_cooler_height: Present { value: millimeter(70) },
 }
 
-// included_fan_count WAS 0 AND THAT WAS WRONG. Rosewill's title row and every retailer listing
-// state "3 x 80mm PWM Fans", and the product page's feature bullet reads "3 pre-installed
-// cooling fans". Corrected 2026-08-26. The zero was load-bearing in the wrong direction: it made
-// the installed fan population underivable, so the fan-controller tach list was hand-authored
-// against no authority and drifted from the hardware on both 2U hosts without anything
-// refusing. With the true count the population falls out - three chassis fans plus one processor
-// cooler header is four headers, which is exactly what srv3 and srv4 report.
-//
-// TWO THINGS THIS ROW STILL DOES NOT SETTLE, recorded rat
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
