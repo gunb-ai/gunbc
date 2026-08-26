@@ -83,6 +83,7 @@ data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistrati
   SeedRetainedIntrinsicRegistration { basename: "census_exclude_derive", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "derived_realization_schedule", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "memory_governor", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "namespace_wave_admission", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "std_lens_verdict", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "module_path_index", has_pub_mod: true, is_dir: true },
   SeedRetainedIntrinsicRegistration { basename: "v2_compiler_body_producer", has_pub_mod: true, is_dir: false },
