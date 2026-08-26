@@ -393,15 +393,6 @@ data external_model_scope_live_cover_stall: GuaranteeStall = GuaranteeStall {
   next_rung_trigger: "node://adhoc-89fcf94a-bdd lands: the live extdeps-tree cover is exact and its routed witness returns true"
 }
 
-data observation_emit_migration_census_stall: GuaranteeStall = GuaranteeStall {
-  subject: "the observation-emitter migration census disagrees with the live seed",
-  current: OutsideTheLadder,
-  ceiling: MechanicallyPreventable,
-  blocker: ClimbableButUnbuilt,
-  population: BoundedPopulation { members: Cons { head: "test.claim.observation_emit_census_witness_test.w_every_rostered_marker_still_exists_in_the_seed", tail: Cons { head: "test.claim.observation_emit_census_witness_test.w_the_named_negative_example_has_migrated", tail: Cons { head: "test.claim.observation_emit_census_witness_test.w_post_snapshot_live_tags_are_rostered_bidirectional", tail: Cons { head: "test.claim.observation_emit_census_witness_test.w_the_raw_byte_dump_shape_is_gone_from_the_seed", tail: Cons { head: "test.claim.observation_emit_census_witness_test.w_the_raw_gantt_shape_is_gone_from_the_seed", tail: Empty {} } } } } } },
-  next_rung_trigger: "node://adhoc-d6c03c1c-951 lands: the live observation emit population and its migration census agree in both directions"
-}
-
 data observation_heartbeat_lockstep_stall: GuaranteeStall = GuaranteeStall {
   subject: "the observation heartbeat implementation and its declared cadence are out of lockstep",
   current: OutsideTheLadder,

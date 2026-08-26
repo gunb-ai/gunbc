@@ -238,14 +238,15 @@ fn fixture_home_prefixes() -> List<String> {
 
 // THE ADMISSION ORDER, HELD HERE RATHER THAN IN WHOEVER WALKS THE CORPUS.
 //
-// `RequiredFloorDisposition` above names the four arms; until now nothing in this module said
-// WHICH arm a given site gets, so the ordering — long home, then fixture home, then live tree,
-// then planned — lived only in the host loop that walks the discovered files
+// `RequiredFloorDisposition` above names the three arms. The ordering is long home, then fixture
+// home, then planned; `reads_live_tree` remains an input for source compatibility with callers
+// that also model affected-set eligibility, but it no longer changes floor admission. This decision
+// previously lived only in the host loop that walks the discovered files
 // (`v1_compiler.cli_run` `run_required_floor`). That made the type an authority over the
 // vocabulary and not over the decision, and a second walker (the .dag census this function was
 // added for) would have had to re-author the order and could have re-authored it differently.
 //
-// THE ORDER IS THE ONE THE HOST ALREADY REALIZES AND IT IS LOAD-BEARING, not alphabetical: a
+// THE ORDER IS THE ONE THE HOST REALIZES AND IT IS LOAD-BEARING, not alphabetical: a
 // fixture member that ALSO reads the live tree must report the reason it will never be a floor
 // claim, not the reason it could not run today. The first is permanent and owned by the fixture's
 // own recipes; the second is a staged prediction with a declared deletion trigger. Reporting the
@@ -281,11 +282,7 @@ fn required_floor_site_disposition(
     ModulePrefixUnmatched =>
       match first_module_prefix_match(module_path: module_path, prefixes: fixture_home_prefixes()) {
         ModulePrefixMatched { prefix: p } => DeclinedFixtureMember { matched_prefix: p }
-        ModulePrefixUnmatched =>
-          match reads_live_tree {
-            ReadsLiveTree => DeclinedLiveTree {}
-            SubstrateInputsOnly => Planned {}
-          }
+        ModulePrefixUnmatched => Planned {}
       }
   }
 }
