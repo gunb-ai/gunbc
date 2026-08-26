@@ -258,8 +258,13 @@ fn observe(entries: String, report: String) -> ProcessExit {
         } else {
           match emit_ratchet_observation(r: r) {
             ObservationTaken { roster: _, standing: _ } => ExitSuccess
-            ObservationNotTaken { cause: c } =>
-              exit_failure(reason: concat("observe: the observation was not taken — ", c))
+            ObservationNotTaken { admission: a } =>
+              exit_failure(
+                reason: concat(
+                  "observe: the observation was not taken — ",
+                  emit_ratchet_enrolment_admission_text(admission: a)
+                )
+              )
           }
         }
     }

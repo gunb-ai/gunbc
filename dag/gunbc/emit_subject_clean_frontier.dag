@@ -1108,22 +1108,35 @@ fn ratchet_denominators(r: EmitSubjectCleanRatchet) -> RosterDenominators {
   }
 }
 
+// WHETHER A VERDICT ESTABLISHED ANYTHING, asked as its own total question rather than inline. The
+// two arms that answer NO are the two the whole not-evaluated wall exists for, and stating the
+// predicate separately is what lets the selection below be a filter instead of an accumulator.
+fn emit_ratchet_verdict_evaluated(v: EmitRatchetVerdict) -> Bool {
+  match v {
+    RatchetCleanHeld { entry: _ } => true
+    RatchetDebtHeld { entry: _, cause: _ } => true
+    RatchetRegressed { entry: _, cause: _ } => true
+    RatchetFrontierStale { entry: _ } => true
+    RatchetNotEvaluated { entry: _, on_frontier: _, cause: _ } => false
+    RatchetSubjectUnmeasured { entry: _, on_frontier: _ } => false
+  }
+}
+
 // THE UNEVALUATED SUBJECTS, BY NAME. A count would be the wrong shape for the same reason every
 // other count in this module is display only: the refusal has to tell an operator WHICH subjects
 // have no verdict, because that list is the work that closes the gap.
+//
+// SELECTED, NOT ACCUMULATED. The obvious spelling is a fold appending `concat(acc, [e])` per hit,
+// which copies the accumulator on every append and is quadratic in the roster. DESIGN's bare-minimum-
+// cost rule is explicit that a proven cost shape is fixed regardless of the realized n, because "n is
+// small here" is not a time-stable fact -- and the roster here is the whole corpus, so it is not even
+// small. filter-then-map says the same thing in the shape that does not copy. (This module's peer
+// accumulators predate this change and are not touched by it; pricing an unrelated cut against them
+// would be the wrong denominator.)
 fn ratchet_unevaluated_subjects(r: EmitSubjectCleanRatchet) -> List<String> {
-  fold(
-    r.verdicts,
-    init: [],
-    f: (acc, v) =>
-      match v {
-        RatchetCleanHeld { entry: _ } => acc
-        RatchetDebtHeld { entry: _, cause: _ } => acc
-        RatchetRegressed { entry: _, cause: _ } => acc
-        RatchetFrontierStale { entry: _ } => acc
-        RatchetNotEvaluated { entry: e, on_frontier: _, cause: _ } => concat(acc, [e])
-        RatchetSubjectUnmeasured { entry: e, on_frontier: _ } => concat(acc, [e])
-      }
+  map(
+    filter(r.verdicts, v => !emit_ratchet_verdict_evaluated(v: v)),
+    v => emit_ratchet_verdict_entry(v: v)
   )
 }
 
@@ -1194,25 +1207,39 @@ fn emit_ratchet_enrolment_admission_text(admission: EmitRatchetEnrolmentAdmissio
 // standing at all, so there is no spelling in which a fold that never happened reads as a fold that
 // found nothing wrong.
 //
+// AND NO WITNESS ASSERTS THAT LAST SENTENCE, DELIBERATELY. The absent field is unauthorable at BOTH
+// §4b boundaries -- not in the corpus, and not in a fixture either, since no fixture can construct a
+// variant field that does not exist -- so a check over it would be permanently green BY CONSTRUCTION
+// and worse than absent for being cited as coverage. What the witness asserts instead is the thing
+// that CAN fail: that an unobservable fold DISPATCHES to this arm rather than to the taken one.
+//
 // AND A REFUSING STANDING IS A TAKEN OBSERVATION. That is the whole distinction this carrier exists
 // to hold: the observation succeeded and the news is bad. Its consumer reports it and does not stop
 // the line on it; what stops the line is being unable to observe at all.
 // ---------------------------------------------------------------------------------------------
+// THE NOT-TAKEN ARM CARRIES THE ADMISSION, NOT ITS RENDERING, and that is a correction rather than a
+// preference. It held a `cause: String` -- the typed refusal flattened into prose at the moment it
+// was stored -- which is DESIGN §2's anemic leaf: a String hiding named parts that already exist one
+// function away. The cost was immediate and was caught in review: every claim about WHY an
+// observation was not taken had to be a substring match over rendered text, so the evidence for this
+// carrier's strongest property was a change detector that reds on a wording edit and greens on any
+// prose containing the phrase. Storing the admission makes the same question structural, and the
+// rendering becomes what it should have been -- a projection, derived at the edge, never the record.
 type EmitRatchetObservation
   = ObservationTaken { roster: RosterIdentity, standing: EmitRatchetStanding }
-  | ObservationNotTaken { cause: String }
+  | ObservationNotTaken { admission: EmitRatchetEnrolmentAdmission }
 
 fn emit_ratchet_observation(r: EmitSubjectCleanRatchet) -> EmitRatchetObservation {
   let admission = emit_ratchet_enrolment_admission(enrolment: EnrolledAsObservation, r: r)
   match admission {
     EnrolmentPermitted { enrolment: _ } =>
       ObservationTaken { roster: r.roster, standing: emit_ratchet_standing(r: r) }
-    EnrolmentRefusedNoUniverse { enrolment: _ } =>
-      ObservationNotTaken { cause: emit_ratchet_enrolment_admission_text(admission: admission) }
-    EnrolmentRefusedDenominator { enrolment: _, missing: _ } =>
-      ObservationNotTaken { cause: emit_ratchet_enrolment_admission_text(admission: admission) }
-    EnrolmentRefusedUnevaluated { enrolment: _, subjects: _ } =>
-      ObservationNotTaken { cause: emit_ratchet_enrolment_admission_text(admission: admission) }
+    EnrolmentRefusedNoUniverse { enrolment: e } =>
+      ObservationNotTaken { admission: EnrolmentRefusedNoUniverse { enrolment: e } }
+    EnrolmentRefusedDenominator { enrolment: e, missing: m } =>
+      ObservationNotTaken { admission: EnrolmentRefusedDenominator { enrolment: e, missing: m } }
+    EnrolmentRefusedUnevaluated { enrolment: e, subjects: ss } =>
+      ObservationNotTaken { admission: EnrolmentRefusedUnevaluated { enrolment: e, subjects: ss } }
   }
 }
 
@@ -1220,7 +1247,8 @@ fn emit_ratchet_observation_text(observation: EmitRatchetObservation) -> String 
   match observation {
     ObservationTaken { roster: _, standing: s } =>
       concat("taken — ", emit_ratchet_standing_text(standing: s))
-    ObservationNotTaken { cause: c } => concat("NOT TAKEN — ", c)
+    ObservationNotTaken { admission: a } =>
+      concat("NOT TAKEN — ", emit_ratchet_enrolment_admission_text(admission: a))
   }
 }
 
