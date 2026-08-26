@@ -179,7 +179,18 @@ fn emit_read_of_truncated(lines: List<String>) -> EmitDiagnosticRead {
 // THE SIZE IS ASSERTED, NOT ASSUMED. `a_large_complete_capture_fixture_exceeds_the_window` pins the
 // fixture above 16 KiB, so a later edit that shrinks the corpus cannot quietly turn the control
 // into a small-input test that passes for the wrong reason -- the guard goes red instead.
-data emit_capture_window_bytes: Int = 16384
+// THE WINDOW IS A MAGNITUDE, NOT A NUMBER. `std.measure` already owns the byte quantity
+// (`ByteSize = Measure<Memory, One, Nat>`), so a bare `Int` here would be a second representation
+// of a concept the corpus has one authority for -- the anemic-leaf modeling DESIGN rules out, and
+// the same move `extdeps.memory` and `extdeps.git.object_store` already make by constructing with
+// `byte_size` and projecting with `byte_size_count` only where arithmetic needs a scalar.
+//
+// THE PROJECTION IS SOUND HERE FOR A STATED REASON RATHER THAN BY ASSUMPTION: `String.length()` is
+// a CHARACTER count, which equals the byte count only for ASCII, and every line composing this
+// fixture is ASCII. That is why the comparison below is a byte comparison at all; a fixture that
+// grew a non-ASCII line would make the two quantities diverge and this claim would be measuring
+// something other than what it says.
+data emit_capture_window: ByteSize = byte_size(count: 16384)
 
 data emit_large_population_count: Int = 400
 
@@ -200,7 +211,7 @@ fn emit_large_complete_stream() -> String {
 }
 
 test fn a_large_complete_capture_fixture_exceeds_the_window() -> Bool {
-  emit_large_complete_stream().length() > emit_capture_window_bytes
+  emit_large_complete_stream().length() > byte_size_count(emit_capture_window)
 }
 
 // THE CONTROL ITSELF: over the window, reported complete, read in full. If the arm keyed on size
