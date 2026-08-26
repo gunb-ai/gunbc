@@ -8,7 +8,7 @@ import extdeps.systemd {
   SystemdUnitProperty,
   MemoryMax, MemorySwapMax, MemoryHigh, CPUWeight, TasksMax,
   MemoryCurrent, TasksCurrent, ControlGroup,
-  ActiveEnterTimestampMonotonic, ActiveState,
+  ActiveEnterTimestampMonotonic, ActiveState, MainPID,
   systemd_unit_property_wire,
 }
 
@@ -48,6 +48,30 @@ type SystemdPropertyWritability
   = SettableDirective
   | ObservationOnly
 
+// THE PREDICTION ABOVE FIRED, AND BOTH HALVES OF IT BEHAVED AS WRITTEN. Recorded here rather than
+// left in a PR thread, because a wall that is claimed to work and a wall observed working are
+// different evidence, and this row is where a reader comes to find out which one this is.
+//
+// MainPID was added to SystemdUnitProperty on 2026-08-25 (gunbc#9235, for a runner-slot observer
+// that must compare the manager's nominated pid against a cgroup's actual occupants). The classifier
+// below went NON-EXHAUSTIVE and refused: `non-exhaustive match: missing variant(s) MainPID`. So the
+// walled half is walled by execution, not by assertion.
+//
+// WHERE IT SURFACED IS THE PART WORTH KNOWING, and it is later than a reader would assume. Not at
+// the author's local compile of either edited module -- neither extdeps.systemd nor the consumer
+// that added the variant imports this one, so nothing on that path reaches this match. It surfaced
+// in CI, at the required floor's STRICT PREPARATION, twenty-seven minutes into a run, as a refusal
+// to prepare the subject at all rather than as a failing witness. The author's first two attempts to
+// read that refusal found the job log already garbage-collected. So the wall holds, and the distance
+// between breaking it and learning you broke it is a whole CI run.
+//
+// AND THE SILENT HALF WAS SILENT, EXACTLY AS THE ROW BELOW PREDICTS. Adding the variant to this
+// classifier is what the compiler demanded; adding it to systemd_unit_property_members is what
+// nothing demanded, and the author did it only because that annotation says to. Had it been
+// skipped, both wire projections would have omitted MainPID and every count derived from them would
+// have under-reported, with a clean compile and a green floor. That is the mitigatable rung stated
+// as measured rather than as expected, and it is the strongest available argument for the
+// next-rung trigger the row below names.
 fn systemd_property_writability(property: SystemdUnitProperty) -> SystemdPropertyWritability {
   match property {
     MemoryMax => SettableDirective
@@ -60,6 +84,7 @@ fn systemd_property_writability(property: SystemdUnitProperty) -> SystemdPropert
     ControlGroup => ObservationOnly
     ActiveEnterTimestampMonotonic => ObservationOnly
     ActiveState => ObservationOnly
+    MainPID => ObservationOnly
   }
 }
 
@@ -92,7 +117,7 @@ fn systemd_property_is_settable(property: SystemdUnitProperty) -> Bool {
 // corpus rather than computed from this list.
 data systemd_unit_property_members: List<SystemdUnitProperty> = [
   MemoryMax, MemorySwapMax, MemoryHigh, CPUWeight, TasksMax,
-  MemoryCurrent, TasksCurrent, ControlGroup, ActiveEnterTimestampMonotonic, ActiveState,
+  MemoryCurrent, TasksCurrent, ControlGroup, ActiveEnterTimestampMonotonic, ActiveState, MainPID,
 ]
 
 fn settable_property_wires() -> List<String> {

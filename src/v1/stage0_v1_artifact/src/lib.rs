@@ -22,7 +22,6 @@ pub use v1_stage0_extdeps_languages::*;
 pub use v1_stage0_runtime::*;
 pub use v1_stage0_std_core::*;
 pub use v1_stage0_std_surface::*;
-pub use v1_stage0_v1_infer::*;
 
 #[rustfmt::skip]
 #[path = "../../stage0/src/v1_compiler_artifact.rs"]
