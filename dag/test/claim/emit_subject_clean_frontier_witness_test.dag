@@ -1057,7 +1057,7 @@ fn fixture_taken_observation(subjects: List<EmissionMeasurementSubject>) -> Emit
 
 data fixture_persisted: EmitObservationPersistence = ObservationPersisted {
   report_artifact: "/tmp/ratchet.tsv",
-  report_digest: Digest { algorithm: Sha256, hex: "dddd" },
+  report_digest: sha256_digest(hex: "dddd" as NonEmptyStr),
   report_bytes: 4096
 }
 
