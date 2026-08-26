@@ -156,9 +156,21 @@ type AncestryStep {
 //   a parent ABSENT from history but known to lookup was traversed instead of reaching `BrokenAt`.
 //
 // A membership check before the fold would have closed the first of those and left the third
-// constructible -- it concedes the bad state is writable and guards one instance. The carrier makes
-// the disagreement UNREPRESENTABLE instead: membership, relation and step bound all derive from
-// these rows, because there is no second place to look.
+// constructible -- it concedes the bad state is writable and guards one instance. The carrier removes
+// those three outright instead: membership, relation and step bound all derive from these rows,
+// because there is no second place to look. That is the whole of what this shape buys, and an earlier
+// revision of this annotation claimed more -- that it made the disagreement UNREPRESENTABLE.
+//
+// IT DOES NOT, AND THE RESIDUAL STATE IS NAMED HERE BECAUSE THIS IS THE CARRIER THE FACT IS ABOUT.
+// Two steps may carry the same `at`, and `history_step_at` resolves by first match, so one carrier
+// can disagree WITH ITSELF under a duplicated key -- the same first-match class this change removed,
+// one level down. Uniqueness is an invariant of whatever BUILDS the carrier, not of the type: it has
+// no producer in production code today, and it stays authorable in a fixture, which is the honest
+// rung (DESIGN section 4b) -- mechanically prevented at each builder rather than structurally
+// impossible. A uniqueness CHECK would be the wrong repair, for exactly the reason this paragraph
+// already gives about membership checks: it would concede the duplicate is writable and guard one
+// instance of it. NEXT-RUNG TRIGGER: an unforgeable-construction wall making one admitted builder the
+// sole constructor of RepositoryHistory, at which point a fixture cannot express the collision.
 type RepositoryHistory {
   steps: List<AncestryStep>
 }

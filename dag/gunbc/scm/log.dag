@@ -15,10 +15,14 @@ module gunbc.scm.log
 //
 //   AUTHOR      -- no commit in this layer records who made it.
 //   TIMESTAMP   -- no commit records when.
-//   PARENT      -- there is NO ancestry relation at all. RepositoryCommit has no parent field and
-//                  nothing else in gunbc.scm names one, so a repository's history is a SEQUENCE and
-//                  not a graph. Every operation git states in terms of ancestry -- merge-base,
-//                  ahead/behind, "the commits since X" -- has no referent here.
+//   PARENT      -- RepositoryCommit has no parent field, so no log row can name one. What changed is
+//                  the REASON, and only half of the original claim survived: gunbc.scm.ancestry now
+//                  names an ancestry relation, so "nothing else in gunbc.scm names one" is false as
+//                  of that module. The envelope does not bind the relation to a commit, so this
+//                  module still has no fact to read and still reports the absence rather than
+//                  synthesising it. The operations git states in terms of ancestry -- merge-base,
+//                  ahead/behind, "the commits since X" -- still have no referent, now because none
+//                  of them is modelled rather than because no relation exists to state them over.
 //
 // Each would have to be invented to appear in a row, and inventing them is the fabricated-plausible-
 // output failure DESIGN section 5 forbids at a user-facing boundary.
