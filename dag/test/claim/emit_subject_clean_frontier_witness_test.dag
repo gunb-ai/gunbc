@@ -530,12 +530,15 @@ fn fixture_admission_permits(admission: EmitRatchetEnrolmentAdmission) -> Bool {
   }
 }
 
-// RED: a single-denominator carrier still cannot be gated on, and the refusal still names the
-// missing denominator rather than answering a bare false. The control is the SAME readings under a
+// RED: a single-denominator carrier still cannot be gated on, and WHICH refusal it receives is
+// asserted as a VARIANT rather than as a substring of the refusal's prose. The refusal does still
+// name the missing denominator -- that is what `missing` carries -- but the naming is REPORT
+// RENDERING and this row's declared subject is the semantic admission, so pinning the wording here
+// would red this claim on an edit to a different authority. The control is the SAME readings under a
 // dual denominator, so the refusal is about the universe's provenance and not about the fixture.
-test fn a_single_denominator_carrier_refuses_a_gate_and_names_what_is_missing() -> Bool {
+test fn a_single_denominator_carrier_refuses_a_gate_and_permits_none() -> Bool {
   match fixture_gate_admission(r: fixture_fold_of(roster: fixture_roster, admissions: [], readings: fixture_both_clean())) {
-    EnrolmentRefusedDenominator { enrolment: _, missing: m } => string_contains(s: m, pattern: "file inventory")
+    EnrolmentRefusedDenominator { enrolment: e, missing: _ } => e == EnrolledAsGate
     EnrolmentPermitted { enrolment: _ } => false
     EnrolmentRefusedNoUniverse { enrolment: _ } => false
     EnrolmentRefusedUnevaluated { enrolment: _, subjects: _ } => false
@@ -641,7 +644,18 @@ test fn a_refusing_standing_is_a_taken_observation_and_not_a_missing_one() -> Bo
     ObservationTaken { roster: _, standing: s } =>
       match s {
         EmitRatchetRefused { failing_rows: rows } =>
-          count(filter(rows, row => string_contains(s: row, pattern: "REGRESSED\tdag/fixture/beta.dag"))) == 1
+          count(
+            filter(
+              rows,
+              row =>
+                row == emit_ratchet_verdict_row(
+                  v: RatchetRegressed {
+                    entry: fixture_beta,
+                    cause: BlockingDiagnostics { blocking: 1 }
+                  }
+                )
+            )
+          ) == 1
         EmitRatchetHeld { subject_count: _ } => false
       }
     ObservationNotTaken { admission: _ } => false

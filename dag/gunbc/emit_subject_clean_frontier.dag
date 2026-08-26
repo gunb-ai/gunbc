@@ -313,10 +313,14 @@ type RosterDiscoveryPolicy
 // them. That is exactly the failure this carrier exists to remove, committed by the carrier itself.
 //
 // So the rule "nothing may gate on a single-denominator universe" is carried by
-// `emit_ratchet_gating_admission` below, which REFUSES on this field. Enrolling a single-denominator
-// carrier is then a typed refusal naming the missing denominator, not a missed paragraph — and when
-// the file inventory lands, the field changes and enrolment becomes possible with no note for
-// anyone to remember.
+// `emit_ratchet_gate_admission` below, which REFUSES on this field. Enrolling a single-denominator
+// carrier as a GATE is then a typed refusal naming the missing denominator, not a missed paragraph.
+//
+// AND THE FIELD NO LONGER DECIDES ENROLMENT BY ITSELF, which is the correction this sentence needed
+// rather than a widening of it. It used to end "when the file inventory lands, the field changes and
+// enrolment becomes possible" -- true of the wall as it then stood, and false the moment that landed:
+// a dual denominator makes a gate ELIGIBLE, not admissible, because a gate additionally requires that
+// every roster subject was evaluated. Enrolment as an OBSERVATION does not consult this field at all.
 type RosterDenominators
   = DeclarationIndexOnly
   | DeclarationIndexAndModuleInventory
@@ -1076,6 +1080,27 @@ fn emit_ratchet_standing_text(standing: EmitRatchetStanding) -> String {
 //
 // BOTH ARMS OF EVERY REFUSAL ARE AUTHORABLE, which is what makes this a wall rather than a
 // decoration: the witness beside this module produces each refusing input and its one-field control.
+//
+// AND THE GATE'S PERMITTING ARM IS UNOCCUPIED ON THE LIVE CORPUS TODAY, WHICH IS A DIFFERENT FACT
+// FROM BEING UNREACHABLE -- the distinction decides whether this arm is a quiet wall or a decoration,
+// and only one of those readings licenses deleting it. Hole 3 above: the instrument reads compiler
+// stderr through a bounded TAIL while the entry-scope marker prints near the HEAD, so a talkative
+// subject loses its marker and arrives NOT-EVALUATED. Over a realistic roster under `dag` that means
+// the any-unevaluated condition refuses essentially always, so nothing currently RECEIVES the permit
+// (relayed from gentle-bee-495, 2026-08-26, on the measuring lane's nine sized specimens -- a SHAPE
+// and not a rate, since nine chosen entries are not a census, and no proportion is stated here or in
+// hole 3).
+//
+// THAT IS OCCUPANCY, NOT REACHABILITY. DESIGN's reachability-read-as-occupancy row puts the test at
+// the FIXTURE boundary rather than the corpus one, and the permit is authorable there -- the witness
+// authors it, as the one-field control beside the unevaluated refusal, and it goes red if the arm
+// stops permitting. Yes / yes / zero is a healthy guard being quiet. So this arm is not relaxed to
+// tolerate unevaluated subjects, which would convert the instrument's blindness into a green: the
+// absorbing fallback exactly, arriving as a kindness to a roster that is not ready.
+//
+// WHAT THE PERMIT ACTUALLY WAITS ON is therefore not this module and not the admission roster: it is
+// a typed entry-scope output the reader does not reconstruct from prose. No tail size closes it --
+// the marker is bounded from the head and the window from the tail, so the two never meet by tuning.
 // ---------------------------------------------------------------------------------------------
 type EmitRatchetEnrolment
   = EnrolledAsObservation
@@ -1094,13 +1119,6 @@ type EmitRatchetEnrolmentAdmission
   | EnrolmentRefusedDenominator { enrolment: EmitRatchetEnrolment, missing: String }
   | EnrolmentRefusedUnevaluated { enrolment: EmitRatchetEnrolment, subjects: List<String> }
 
-fn ratchet_roster_is_empty(r: EmitSubjectCleanRatchet) -> Bool {
-  match r.roster {
-    RosterEmpty { policy: _, denominators: _ } => true
-    RosterIdentified { policy: _, denominators: _, subject_count: _, digest: _ } => false
-  }
-}
-
 fn ratchet_denominators(r: EmitSubjectCleanRatchet) -> RosterDenominators {
   match r.roster {
     RosterEmpty { policy: _, denominators: dn } => dn
@@ -1111,6 +1129,15 @@ fn ratchet_denominators(r: EmitSubjectCleanRatchet) -> RosterDenominators {
 // WHETHER A VERDICT ESTABLISHED ANYTHING, asked as its own total question rather than inline. The
 // two arms that answer NO are the two the whole not-evaluated wall exists for, and stating the
 // predicate separately is what lets the selection below be a filter instead of an accumulator.
+//
+// THIS ONE IS A PREDICATE AND STAYS ONE, for two reasons that do not apply to the roster above.
+// `filter` takes a `Bool` by construction, so dissolving this into a direct match means going back
+// to a fold that appends -- the quadratic accumulator this very change removed. And it is NOT a
+// second accessor for an existing answer: `emit_ratchet_verdict_holds` beside it answers a DIFFERENT
+// question over the same coproduct, and `RatchetRegressed` is the row that proves it -- holds=false,
+// evaluated=TRUE. A regression is a verdict the fold established and then refused; collapsing the two
+// questions would make an evaluated failure indistinguishable from a subject nobody could measure,
+// which is the distinction this entire carrier exists to hold.
 fn emit_ratchet_verdict_evaluated(v: EmitRatchetVerdict) -> Bool {
   match v {
     RatchetCleanHeld { entry: _ } => true
@@ -1158,17 +1185,23 @@ fn emit_ratchet_gate_admission(r: EmitSubjectCleanRatchet) -> EmitRatchetEnrolme
   }
 }
 
+// THE ROSTER COPRODUCT IS MATCHED DIRECTLY, not through a Bool. A `roster_is_empty` predicate would
+// be a second place holding the same shape knowledge, and the repository has already dissolved that
+// exact pattern twice -- `std.witness_admission` `witness_admission_predicate_dissolution_note`
+// (review 39760) and `v2.std.witness_execution_routing` -- in both cases by making the CONSUMER match
+// the coproduct instead. `RosterEmpty` carries the discovery failure, so reading it here is reading
+// the authority rather than a derived answer about it.
 fn emit_ratchet_enrolment_admission(
   enrolment: EmitRatchetEnrolment,
   r: EmitSubjectCleanRatchet
 ) -> EmitRatchetEnrolmentAdmission {
-  if ratchet_roster_is_empty(r: r) {
-    EnrolmentRefusedNoUniverse { enrolment: enrolment }
-  } else {
-    match enrolment {
-      EnrolledAsObservation => EnrolmentPermitted { enrolment: enrolment }
-      EnrolledAsGate => emit_ratchet_gate_admission(r: r)
-    }
+  match r.roster {
+    RosterEmpty { policy: _, denominators: _ } => EnrolmentRefusedNoUniverse { enrolment: enrolment }
+    RosterIdentified { policy: _, denominators: _, subject_count: _, digest: _ } =>
+      match enrolment {
+        EnrolledAsObservation => EnrolmentPermitted { enrolment: enrolment }
+        EnrolledAsGate => emit_ratchet_gate_admission(r: r)
+      }
   }
 }
 
@@ -1325,6 +1358,14 @@ data emit_subject_clean_admissions: List<EmitDebtAdmission> = []
 // authority states as naming a cadence or deleting the witness. Neither is available from inside a
 // PR: enrolment is a floor-cut re-add and DESIGN requires each of those to be re-derived under its
 // own operator agreement, which is not a thing a diff can author.
+//
+// WHEN A CADENCE IS AGREED, THE ROW AND ITS WITNESS MOVE IN ONE DIFF. Changing
+// `emit_ratchet_runner_cadence` without replacing or inverting
+// `the_ratchet_runner_has_no_executing_consumer_today` in the SAME change leaves a known-false
+// declaration standing green -- which is this carrier's own third-state defect arriving from the
+// other side: there, an absent report could not say whether it would ever be produced; here, a
+// declaration would keep asserting nobody runs the runner after somebody does. The claim is written
+// to red on that change rather than to survive it, and the enrolment diff is expected to carry both.
 //
 // AND THIS FUNCTION IS NOT CONSTANT, which is what keeps the declaration from being a decoration:
 // handed a cadence that HAS a scheduled route it returns the covered arm, and the witness beside
