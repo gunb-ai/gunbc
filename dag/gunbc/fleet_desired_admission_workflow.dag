@@ -17,6 +17,7 @@ import gunbc.repo_self_build { repo_self_build_command }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.witness_floor_workflow { witness_floor_workflow_name, witness_floor_toolchain_step }
 import gunbc.toolchain_workflow_steps {
+  hostile_legacy_writer_discriminator_step,
   toolchain_home_isolation_step,
   toolchain_pin_rustup_default_step,
 }
@@ -200,6 +201,7 @@ fn fleet_desired_admission_job() -> Job {
       toolchain_home_isolation_step(),
       witness_floor_toolchain_step(),
       toolchain_pin_rustup_default_step(),
+      hostile_legacy_writer_discriminator_step(),
       fleet_desired_admission_build_step(),
       fleet_desired_admission_stage_payload_step(),
       fleet_desired_admission_decide_step(),

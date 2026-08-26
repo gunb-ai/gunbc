@@ -45,6 +45,21 @@ jobs:
           if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
           if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
           echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
+      - name: Hostile legacy shared-home writer discriminator
+        run: |
+          set -eu
+          LEGACY_HOME="$RUNNER_TEMP/legacy-shared-toolchain"
+          PRIVATE_A="$RUNNER_TEMP/private-toolchain-a"
+          PRIVATE_B="$RUNNER_TEMP/private-toolchain-b"
+          mkdir -p "$LEGACY_HOME/bin" "$PRIVATE_A/bin" "$PRIVATE_B/bin"
+          cp "$CARGO_HOME/bin/rustup" "$PRIVATE_A/bin/rustup"
+          cp "$CARGO_HOME/bin/rustup" "$PRIVATE_B/bin/rustup"
+          ( i=0; while [ "$i" -lt 64 ]; do "$PRIVATE_A/bin/rustup" --version >/dev/null; i=$((i + 1)); done ) & A_PID=$!
+          ( i=0; while [ "$i" -lt 64 ]; do "$PRIVATE_B/bin/rustup" --version >/dev/null; i=$((i + 1)); done ) & B_PID=$!
+          ( i=0; while [ "$i" -lt 64 ]; do rm -f "$LEGACY_HOME/bin/rustup"; cp "$CARGO_HOME/bin/rustup" "$LEGACY_HOME/bin/rustup"; i=$((i + 1)); done ) & C_PID=$!
+          wait "$A_PID"
+          wait "$B_PID"
+          wait "$C_PID"
       - name: Build the witness fold
         id: build_witness_fold
         run: |
@@ -94,6 +109,21 @@ jobs:
           if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
           if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
           echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
+      - name: Hostile legacy shared-home writer discriminator
+        run: |
+          set -eu
+          LEGACY_HOME="$RUNNER_TEMP/legacy-shared-toolchain"
+          PRIVATE_A="$RUNNER_TEMP/private-toolchain-a"
+          PRIVATE_B="$RUNNER_TEMP/private-toolchain-b"
+          mkdir -p "$LEGACY_HOME/bin" "$PRIVATE_A/bin" "$PRIVATE_B/bin"
+          cp "$CARGO_HOME/bin/rustup" "$PRIVATE_A/bin/rustup"
+          cp "$CARGO_HOME/bin/rustup" "$PRIVATE_B/bin/rustup"
+          ( i=0; while [ "$i" -lt 64 ]; do "$PRIVATE_A/bin/rustup" --version >/dev/null; i=$((i + 1)); done ) & A_PID=$!
+          ( i=0; while [ "$i" -lt 64 ]; do "$PRIVATE_B/bin/rustup" --version >/dev/null; i=$((i + 1)); done ) & B_PID=$!
+          ( i=0; while [ "$i" -lt 64 ]; do rm -f "$LEGACY_HOME/bin/rustup"; cp "$CARGO_HOME/bin/rustup" "$LEGACY_HOME/bin/rustup"; i=$((i + 1)); done ) & C_PID=$!
+          wait "$A_PID"
+          wait "$B_PID"
+          wait "$C_PID"
       - name: Build the witness fold
         id: build_witness_fold
         run: |
