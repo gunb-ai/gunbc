@@ -1,6 +1,6 @@
-# The run did not measure what you think: seven attribution failures (2026-08-23, extended 2026-08-26)
+# The run did not measure what you think: nine failures in reading CI (2026-08-23, extended 2026-08-26)
 
-**Subject:** attributing a CI result to a change. **Deliverable:** one class, seven measured
+**Subject:** attributing a CI result to a change. **Deliverable:** one class, nine measured
 instances, and the check that closes each. **No repair is proposed here.**
 
 > **Every run id cited below is attempt 1**, verified 2026-08-26. This matters and is not
@@ -257,11 +257,63 @@ report:
 Every hop here had the means to check: one eleven-line file and one addition. Each did the
 arithmetic *after* the retraction rather than before their own contribution.
 
+
+## Instance 8 — a bounded query cannot report its own boundary (2026-08-26)
+
+Two PRs were about to be reported as having **no run on their current head** — which reads as
+*their greens are stale, the heads moved*, and would have sent two lanes to re-verify work that
+was already green.
+
+The runs existed. The query searched the **40 most recent** workflow runs and theirs had aged
+out. Querying by **branch** found both, green, on their exact heads.
+
+> **An absence produced by a bounded query is not an absence in the world.**
+
+This is the empty-observation narrow — ⊥-as-ignorance rendered as ⊥-as-answer — arriving in the
+tooling used to read CI rather than in CI itself.
+
+**The repair generalises, and it is the reusable part.** A bounded query *cannot report its own
+boundary*, so no amount of scrutinising its output finds the defect. Re-reading the same result
+more carefully is guaranteed to fail. What works is **re-querying through a different index** —
+by branch instead of by recency — because the second index has a different bound.
+
+That is the same move as descending run → job → attempt: **change the projection; do not squint
+at the current one.** Every masking failure in this document yields to a different projection and
+none of them yield to closer reading of the same one.
+
+**Check:** before reporting an absence, re-derive it through a second index whose bound differs.
+If you cannot name the first query's bound, you have not established the absence.
+
+## Instance 9 — a failed job's log is unreadable while a sibling lane still runs (2026-08-26)
+
+Observed directly while diagnosing a build-lane failure: the `build` job was
+`completed/failure`, and fetching its log returned
+
+```
+run <id> is still in progress; logs will be available when it is complete
+```
+
+because the `floor` lane in the same run was still executing — and the floor runs ~50 minutes.
+
+**So a terminal failure on one lane is undiagnosable for as long as an unrelated sibling keeps
+running.** The two-lane split buys parallelism and pays for it in *diagnosis latency on the
+failing half*, which is the half that matters. The verdict is available immediately at job grain;
+only the evidence is withheld.
+
+This is not an attribution failure — the subject is established and the field is honest. It is
+listed here because it sets the floor on how fast any of the checks above can actually be
+applied, and because the tempting response is to diagnose from the step name instead of waiting.
+Ruling out one cause (steps 1–5 succeeded, so not the runner-setup class) **is not establishing
+another**.
+
+**Check:** read `status`/`conclusion` per job immediately; wait for the run to terminate before
+reading the log; do not substitute the step name for the log.
+
 ## The shared shape
 
 Instances 1–3 are *the subject was substituted*; instance 4 is *there was no subject*; instances
-5–6 are *the subject was fine and the field you read was not the one holding the verdict*. All
-three are the same underlying error — **treating a run as a measurement of a change without
+5–8 are *the subject was fine and the field or query you read was not the one holding the
+answer*; instance 9 is *the answer exists and is withheld*. All are the same underlying error — **treating a run as a measurement of a change without
 establishing that it measured that change** — and all are cheap to close:
 
 | establish | command |
