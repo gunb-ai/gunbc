@@ -439,6 +439,15 @@ fn declarer_of(index: &DeclarationIndex, module: &str, name: &str) -> String {
 /// between a rebind (route moved, identity held) and a target change (identity moved), read
 /// off the structure rather than asserted by an author.
 ///
+/// AND IT IS AN INVARIANT OF THE OPERATION THE CUT PERFORMS, not merely a key that happens to
+/// survive it. A requalification wave prepends the declarer's path and leaves the declarer
+/// fixed, so it changes the spelling and leaves the last segment unchanged BY CONSTRUCTION.
+/// The reduction is not coined here: `v1.05_emit_rust` `rust_fn_sig_leaf_name_dotted_note`
+/// names `qualified_last_segment` as the single authority for taking an authored spelling to
+/// its last segment. The converse is the wall working and is not to be softened: if a cut
+/// repoints a reference to a DIFFERENT declaration whose leaf differs, the key moves and the
+/// wall refuses.
+///
 /// THE UNION IS THE CEILING, STATED WHERE IT IS TAKEN: two references to one leaf inside one
 /// declaration share a row, so one of them being requalified while the other is not is not
 /// observable here. That is the same ceiling the module header names, arriving through the key
