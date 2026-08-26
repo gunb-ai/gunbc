@@ -209,10 +209,13 @@ import tools.emission_entry_instrument {
 // blocking / 90 advisory, 51,029 bytes, marker on line 8 of 371, zero occurrences in the retained
 // tail, and it returned unreached at emit-decode through the instrument twice.
 //
-// SO THE UNREADABLE SET IS NOT A TAIL OF AWKWARD SUBJECTS: eight of nine are three to five times
-// over the window, which makes the READABLE subject the exception over a universe discovered under
-// `dag`. That inverts how this hole should be priced -- not "some subjects will not measure" but
-// "most will not, until the reader changes". The instrument's reach is a function of how TALKATIVE
+// SO THE UNREADABLE SET IS NOT A TAIL OF AWKWARD SUBJECTS: eight of those nine are three to five
+// times over the window. THAT IS A SHAPE AND NOT A PROPORTION, and the distinction is the measuring
+// lane's own correction rather than a hedge added here: nine entries were CHOSEN and sized, so the
+// denominator is a sample of nine and not the universe. What it establishes is that being over the
+// window is ORDINARY rather than exceptional -- enough to price the hole, not enough to state a rate.
+// This carrier therefore states no proportion anywhere, and a later reader who wants one has to
+// measure the universe rather than scale this sample. The instrument's reach is a function of how TALKATIVE
 // a subject is, which is not a property anyone chose.
 //
 // AND `dag/std/abi.dag` IS IN THIS MODULE'S UNIVERSE: the discovery policy is a declaration index
@@ -230,12 +233,36 @@ import tools.emission_entry_instrument {
 // DESIGN's not-applicable-rendered-as-malformed row propagating into the verdict text a human acts
 // on. `PopulationUnreadable` now carries the reader-side stages, decided once in
 // `not_evaluated_cause_for_stage`, which is total over the stage vocabulary so a new instrument
-// stage cannot silently inherit the emitter as its owner.
+// stage cannot silently inherit the emitter as its owner. That totality binds the instrument too,
+// by agreement rather than by hope: a new `EmissionStage` variant stops THIS fold compiling, so the
+// measuring lane treats adding one as a change that has to reach this consumer.
 //
 // AND THE RENAME IS NOT THE REPAIR. gunbc#9273 (the instrument lane) makes that decode refuse as
 // `EmitOutputTruncated` with a cause naming the CAPTURE rather than the compiler, which is the same
 // owner correction this module just made on its own side -- and it does NOT make those subjects
-// readable. No value of the tail constant closes the gap either: the marker's position is bounded
+// readable.
+//
+// THE SEAM IS ASYMMETRIC, AND THE ASYMMETRY IS A FACT THIS CARRIER HAS TO HOLD (instrument lane,
+// 2026-08-26). That decode checks TRUNCATION FIRST, so only an untruncated stream ever reaches the
+// marker check. Two consequences, and they run in opposite directions:
+//
+//   `EmitScopeUnconfirmed` is now UNAMBIGUOUS -- the host reported no truncation AND the marker is
+//   absent. No truncation hides inside it any more, which is exactly what made it useless before, so
+//   this carrier names it as the COMPILER's problem with no hedging.
+//
+//   `EmitOutputTruncated` does NOT entail that the compile was correctly scoped. Truncation
+//   DOMINATES, so a stream that was truncated AND whole-tree lands on truncation and the marker
+//   question is UNANSWERED for it -- unanswered, not answered no. Reading truncation as "scoped
+//   fine, just clipped" would be an inference the decode never made, and it is the one this
+//   carrier's whole not-evaluated wall exists to refuse.
+//
+// THE COST, STATED BECAUSE THE MEASURING LANE STATED IT RATHER THAN LETTING IT BE DISCOVERED: this
+// ordering removes the ability to detect a WHOLE-TREE SUBSTITUTION on a talkative subject, because
+// truncation answers first and the scope question is never asked. That is the right trade and this
+// carrier does not ask for it to be reversed -- a scope verdict computed over a known-partial stream
+// is a verdict about the TAIL, not about the compile, and acting on it would be the fabricated
+// plausible output one level down. But it means `EmitOutputTruncated` grants this carrier NOTHING
+// about scope, and the durable repair below is what restores it rather than a constant somewhere. No value of the tail constant closes the gap either: the marker's position is bounded
 // from the HEAD and the retained window from the TAIL, so the two never meet by tuning.
 //
 // NEXT-RUNG TRIGGER, and it is not this module's to build: the instrument recovering entry scope
