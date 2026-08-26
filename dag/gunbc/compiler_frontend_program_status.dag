@@ -80,10 +80,66 @@ fn observe_outstanding(subject: NonEmptyStr, outstanding: List<String>) -> Miles
   MilestoneEvidence { subject: subject, outstanding: outstanding }
 }
 
+// THE MISSING INSTRUMENTS ARE A CLOSED VOCABULARY, NOT A SENTENCE PER MILESTONE, and the reason is
+// the question this carrier could not answer in its first cut. Reporting twelve NotDerivable rows
+// each carrying its own prose tells a reader that twelve things are unanswerable; it cannot tell
+// them whether that is TWELVE problems or THREE. Those are different programs: if one missing
+// measurement unblocks five milestones it is the highest-leverage item here and nothing named it,
+// and if the twelve need twelve instruments that is a much worse world someone has to know about.
+// A shared fact gets a shared carrier (DESIGN section 3), and the grouping is then DERIVED rather
+// than counted by hand.
+//
+// THIS IS ALSO WHAT MAKES THE REPORT ACTIONABLE RATHER THAN MERELY HONEST. A program whose
+// milestones are mostly waiting on measurements nobody can take is not labour-constrained, it is
+// OBSERVABILITY-constrained, and the right next dispatch is an instrument rather than a milestone.
+// That distinction is invisible on a ledger, which renders every such row as "pending" and invites
+// a reader to hear "in progress".
+type MissingInstrument
+  = WholeCorpusEmissionBoard
+  | RequiredCiPhaseRoster
+  | RatchetGateEnrolmentFact
+  | NamespaceWaveAdmissionWall
+  | PersistedLegacyBaselineObservation
+  | NamespaceStepSubjectRoster
+  | PersistedBehavioralReceipt
+  | PersistedPromotionOutcome
+
+fn missing_instrument_label(i: MissingInstrument) -> String {
+  match i {
+    WholeCorpusEmissionBoard => "a persisted whole-corpus emission measurement at identity grain"
+    RequiredCiPhaseRoster => "the --required-ci phase roster as a substrate carrier"
+    RatchetGateEnrolmentFact => "the ratchet's merge-blocking enrolment as a fact distinct from its cadence"
+    NamespaceWaveAdmissionWall => "the wave-admission wall, classifying deltas"
+    PersistedLegacyBaselineObservation => "an admitted CompleteLegacyObservation persisted against a named base"
+    NamespaceStepSubjectRoster => "the namespace cut's remaining per-step subjects as rows"
+    PersistedBehavioralReceipt => "a persisted behavioral receipt over a discriminating corpus"
+    PersistedPromotionOutcome => "a persisted PromotionOutcome over a named candidate"
+  }
+}
+
+// AN EMPTY INSTRUMENT LIST WOULD BE TWO STATES IN ONE SPELLING -- "needs nothing" and "we did not
+// work out what it needs" -- so the two are separate arms and the first carries a non-empty list by
+// construction. DerivableOnlyViaPrerequisites is a REAL and different answer: the milestone has no
+// measurement of its own, and building an instrument for it would be building the wrong thing.
+type Underivability
+  = MissingInstruments { first: MissingInstrument, rest: List<MissingInstrument> }
+  | DerivableOnlyViaPrerequisites
+
+fn underivability_instruments(u: Underivability) -> List<MissingInstrument> {
+  match u {
+    MissingInstruments { first, rest } => concat([first], rest)
+    DerivableOnlyViaPrerequisites => []
+  }
+}
+
+fn needs(i: MissingInstrument) -> Underivability {
+  MissingInstruments { first: i, rest: [] }
+}
+
 type MilestoneStanding
   = Clear { evidence: MilestoneEvidence }
   | Outstanding { evidence: MilestoneEvidence }
-  | NotDerivable { missing_instrument: NonEmptyStr }
+  | NotDerivable { why: NonEmptyStr, cause: Underivability }
 
 // THE ONLY ROUTE TO Clear. It is a fold over an observed population and takes no other input, so
 // "clear" cannot be said about a milestone without naming the population it is clear OF.
@@ -99,7 +155,7 @@ fn standing_class(s: MilestoneStanding) -> MilestoneStandingClass {
   match s {
     Clear { evidence: _ } => ClassClear
     Outstanding { evidence: _ } => ClassOutstanding
-    NotDerivable { missing_instrument: _ } => ClassNotDerivable
+    NotDerivable { why: _, cause: _ } => ClassNotDerivable
   }
 }
 
@@ -158,11 +214,13 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
   match m {
     SelfHostWholeCorpusPopulationDerived =>
       NotDerivable {
-        missing_instrument: "no persisted whole-corpus emission board exists. tools.emission_entry_instrument measure_entry_emission answers PER ENTRY, and the union of per-entry closures is not the corpus. Derivable once a whole-corpus run's typed measurement is persisted in a carrier this module can read." as NonEmptyStr
+        why: "no persisted whole-corpus emission board exists. tools.emission_entry_instrument measure_entry_emission answers PER ENTRY, and the union of per-entry closures is not the corpus. Derivable once a whole-corpus run's typed measurement is persisted in a carrier this module can read." as NonEmptyStr,
+        cause: needs(i: WholeCorpusEmissionBoard)
       }
     SelfHostCargoPhaseEnrolled =>
       NotDerivable {
-        missing_instrument: "the --required-ci phase roster lives in host Rust (RequiredCiPhase) and gunbc.witness_floor_workflow models LANES, not phases, so no .dag authority states which phases a lane owns. Derivable once the phase roster is a substrate carrier the workflow emission reads." as NonEmptyStr
+        why: "the --required-ci phase roster lives in host Rust (RequiredCiPhase) and gunbc.witness_floor_workflow models LANES, not phases, so no .dag authority states which phases a lane owns. Derivable once the phase roster is a substrate carrier the workflow emission reads." as NonEmptyStr,
+        cause: needs(i: RequiredCiPhaseRoster)
       }
     SelfHostRatchetObservationEnrolled =>
       standing_from_evidence(
@@ -173,35 +231,43 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
       )
     SelfHostRatchetGateEnrolled =>
       NotDerivable {
-        missing_instrument: "a gate is meaningless without the identity-grain population it gates against, and S2's population has no producer. The cadence row that answers S4a cannot answer this one: it cannot distinguish an observation from a merge-blocking gate. Derivable once S2's population is persisted AND the ratchet's merge-blocking enrolment is a fact distinct from its cadence." as NonEmptyStr
+        why: "a gate is meaningless without the identity-grain population it gates against, and S2's population has no producer. The cadence row that answers S4a cannot answer this one: it cannot distinguish an observation from a merge-blocking gate. Derivable once S2's population is persisted AND the ratchet's merge-blocking enrolment is a fact distinct from its cadence." as NonEmptyStr,
+        cause: MissingInstruments { first: WholeCorpusEmissionBoard, rest: [RatchetGateEnrolmentFact] }
       }
     NamespaceWaveAdmissionEnrolled =>
       NotDerivable {
-        missing_instrument: "the wave-admission wall does not exist yet, so there is nothing to cite. gunbc.compiler_frontend_program_interlock records the admission partition as prose precisely because a partition with no consumer is a guess. Derivable once the wall exists and classifies deltas, at which point its unadjudicated-delta population is this milestone's own." as NonEmptyStr
+        why: "the wave-admission wall does not exist yet, so there is nothing to cite. gunbc.compiler_frontend_program_interlock records the admission partition as prose precisely because a partition with no consumer is a guess. Derivable once the wall exists and classifies deltas, at which point its unadjudicated-delta population is this milestone's own." as NonEmptyStr,
+        cause: needs(i: NamespaceWaveAdmissionWall)
       }
     NamespaceBaselineObservationComplete =>
       NotDerivable {
-        missing_instrument: "v2.workflow.legacy_binding_observation can ADMIT a complete legacy observation, but whether one has been TAKEN over an exact base is a run fact and no carrier holds it. Derivable once an admitted CompleteLegacyObservation is persisted against a named base commit." as NonEmptyStr
+        why: "v2.workflow.legacy_binding_observation can ADMIT a complete legacy observation, but whether one has been TAKEN over an exact base is a run fact and no carrier holds it. Derivable once an admitted CompleteLegacyObservation is persisted against a named base commit." as NonEmptyStr,
+        cause: needs(i: PersistedLegacyBaselineObservation)
       }
     NamespaceFirstSemanticWave =>
       NotDerivable {
-        missing_instrument: "the milestone is the DELETION of the import-name universe, and absence of a symbol is not a population this module can read -- a citation to a deleted declaration refuses at ingestion rather than answering false. Derivable once gunbc.namespace_cut_landing_order carries the remaining per-step subject population as rows." as NonEmptyStr
+        why: "the milestone is the DELETION of the import-name universe, and absence of a symbol is not a population this module can read -- a citation to a deleted declaration refuses at ingestion rather than answering false. Derivable once gunbc.namespace_cut_landing_order carries the remaining per-step subject population as rows." as NonEmptyStr,
+        cause: needs(i: NamespaceStepSubjectRoster)
       }
     NamespaceFixForwardComplete =>
       NotDerivable {
-        missing_instrument: "same shape as the first wave: Steps 2-4 are fix-forward over a class-grain population that no carrier enumerates. Derivable once the unrepaired classes are rows rather than a description." as NonEmptyStr
+        why: "same shape as the first wave: Steps 2-4 are fix-forward over a class-grain population that no carrier enumerates. Derivable once the unrepaired classes are rows rather than a description." as NonEmptyStr,
+        cause: needs(i: NamespaceStepSubjectRoster)
       }
     NamespaceGrammarRetired =>
       NotDerivable {
-        missing_instrument: "the milestone is a grammar and parse deletion, and the same absence-is-not-a-population limit applies. Derivable once the grammar productions scheduled for deletion are an enumerated roster whose members refuse when they stop being reachable." as NonEmptyStr
+        why: "the milestone is a grammar and parse deletion, and the same absence-is-not-a-population limit applies. Derivable once the grammar productions scheduled for deletion are an enumerated roster whose members refuse when they stop being reachable." as NonEmptyStr,
+        cause: needs(i: NamespaceStepSubjectRoster)
       }
     SelfHostCorpusEmitsCleanly =>
       NotDerivable {
-        missing_instrument: "this is S2's population driven to zero, and S2 has no producer. Any figure quoted for the current rustc population today is unsourced -- the 2026-08-24 measurement bankruptcy deleted the boards and the instrument was restored without one. Derivable exactly when S2 is." as NonEmptyStr
+        why: "this is S2's population driven to zero, and S2 has no producer. Any figure quoted for the current rustc population today is unsourced -- the 2026-08-24 measurement bankruptcy deleted the boards and the instrument was restored without one. Derivable exactly when S2 is." as NonEmptyStr,
+        cause: needs(i: WholeCorpusEmissionBoard)
       }
     SelfHostBehavioralEquivalenceReestablished =>
       NotDerivable {
-        missing_instrument: "the behavioral-receipt phases were among the five deleted from the required run on 2026-08-21, so the measurement is not currently taken. The capability survives at --behavioral-receipt-census, which no workflow invokes. Derivable once a behavioral receipt over a discriminating corpus is persisted." as NonEmptyStr
+        why: "the behavioral-receipt phases were among the five deleted from the required run on 2026-08-21, so the measurement is not currently taken. The capability survives at --behavioral-receipt-census, which no workflow invokes. Derivable once a behavioral receipt over a discriminating corpus is persisted." as NonEmptyStr,
+        cause: needs(i: PersistedBehavioralReceipt)
       }
     SelfHostEmitterProducesEveryRetainedArtifact =>
       standing_from_evidence(
@@ -212,11 +278,13 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
       )
     SelfHostSuccessorPromotionAdmitted =>
       NotDerivable {
-        missing_instrument: "v2.compiler.self_host.promotion_admission admit_promotion is a decision procedure over a SelfHostCandidate; whether it has ever returned a promotion for a real candidate is a run fact and no carrier holds one. Derivable once an admitted PromotionOutcome over a named candidate is persisted -- which is also the point at which the procedure stops being an inert mechanism." as NonEmptyStr
+        why: "v2.compiler.self_host.promotion_admission admit_promotion is a decision procedure over a SelfHostCandidate; whether it has ever returned a promotion for a real candidate is a run fact and no carrier holds one. Derivable once an admitted PromotionOutcome over a named candidate is persisted -- which is also the point at which the procedure stops being an inert mechanism." as NonEmptyStr,
+        cause: needs(i: PersistedPromotionOutcome)
       }
     SelfHostSeedRetirement =>
       NotDerivable {
-        missing_instrument: "the irreversible step. Its own population -- the hand-written seed families -- is readable, but that population is NECESSARY AND NOT SUFFICIENT: emptying it would read Clear while the three conditions the interlock places in front of it stayed unmeasured. Derivable only when its prerequisites are, which is why no arm here reads the seed rosters." as NonEmptyStr
+        why: "the irreversible step. Its own population -- the hand-written seed families -- is readable, but that population is NECESSARY AND NOT SUFFICIENT: emptying it would read Clear while the three conditions the interlock places in front of it stayed unmeasured. Derivable only when its prerequisites are, which is why no arm here reads the seed rosters." as NonEmptyStr,
+        cause: DerivableOnlyViaPrerequisites
       }
   }
 }
@@ -301,6 +369,53 @@ fn join_names(names: List<String>) -> String {
 // "the program is not done", which is a fact nobody needs a gate for, while hiding the one thing a
 // gate can usefully catch -- that the instrument itself stopped working.
 // ---------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------------
+// THE LEVERAGE QUESTION, DERIVED. "Which milestones does this one missing instrument unblock" is
+// the question a planner actually has, and it is a join over the arms above rather than a fact
+// anyone should author. Building it means the answer moves when the arms move.
+// ---------------------------------------------------------------------------------------------
+data all_missing_instruments: List<MissingInstrument> = [
+  WholeCorpusEmissionBoard,
+  RequiredCiPhaseRoster,
+  RatchetGateEnrolmentFact,
+  NamespaceWaveAdmissionWall,
+  PersistedLegacyBaselineObservation,
+  NamespaceStepSubjectRoster,
+  PersistedBehavioralReceipt,
+  PersistedPromotionOutcome,
+]
+
+fn missing_instrument_eq(a: MissingInstrument, b: MissingInstrument) -> Bool {
+  missing_instrument_label(i: a) == missing_instrument_label(i: b)
+}
+
+fn milestone_missing_instruments(m: ProgramMilestone) -> List<MissingInstrument> {
+  match milestone_status(m: m) {
+    Clear { evidence: _ } => []
+    Outstanding { evidence: _ } => []
+    NotDerivable { why: _, cause } => underivability_instruments(u: cause)
+  }
+}
+
+fn milestones_awaiting(i: MissingInstrument) -> List<String> {
+  fold(program_milestones, init: [], f: fn(acc, m) {
+    if any(milestone_missing_instruments(m: m), other => missing_instrument_eq(a: other, b: i)) {
+      concat(acc, [milestone_label(m: m)])
+    } else {
+      acc
+    }
+  })
+}
+
+fn render_instruments(u: Underivability) -> String {
+  match u {
+    DerivableOnlyViaPrerequisites =>
+      "none of its own -- derivable exactly when its prerequisites are"
+    MissingInstruments { first: _, rest: _ } =>
+      join_names(names: underivability_instruments(u: u) |> map(i => missing_instrument_label(i: i)))
+  }
+}
+
 data program_milestones: List<ProgramMilestone> = [
   SelfHostWholeCorpusPopulationDerived,
   SelfHostCargoPhaseEnrolled,
@@ -324,8 +439,8 @@ fn standing_detail(s: MilestoneStanding) -> String {
       concat("no outstanding member of: ", evidence.subject)
     Outstanding { evidence } =>
       concat("outstanding: ", join_names(names: evidence.outstanding))
-    NotDerivable { missing_instrument } =>
-      concat("missing instrument: ", missing_instrument)
+    NotDerivable { why, cause } =>
+      concat("missing instrument: ", concat(render_instruments(u: cause), concat(" -- ", why)))
   }
 }
 
@@ -339,12 +454,26 @@ fn milestone_report_line(m: ProgramMilestone) -> String {
   concat("\n    ", startability_label(s: milestone_startability(m: m)))))))))
 }
 
+fn instrument_report_line(i: MissingInstrument) -> String {
+  let waiting = milestones_awaiting(i: i)
+  concat("- (",
+  concat(to_string(n: count(waiting)),
+  concat(") ",
+  concat(missing_instrument_label(i: i),
+  concat("\n    unblocks: ", join_names(names: waiting))))))
+}
+
 fn report() -> String {
   concat("compiler frontend program -- milestone standing, derived\n\n",
+  concat(
     fold(program_milestones, init: "", f: fn(acc, m) {
       concat(acc, concat(milestone_report_line(m: m), "\n"))
+    }),
+  concat("\nmissing instruments, by how many milestones each would answer\n\n",
+    fold(all_missing_instruments, init: "", f: fn(acc, i) {
+      concat(acc, concat(instrument_report_line(i: i), "\n"))
     })
-  )
+  )))
 }
 
 fn where_are_we(out: String) -> ProcessExit {

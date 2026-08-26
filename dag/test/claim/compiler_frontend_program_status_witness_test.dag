@@ -15,6 +15,13 @@ import gunbc.compiler_frontend_program_status {
   Clear,
   Outstanding,
   NotDerivable,
+  MissingInstrument,
+  WholeCorpusEmissionBoard,
+  NamespaceStepSubjectRoster,
+  RequiredCiPhaseRoster,
+  all_missing_instruments,
+  milestones_awaiting,
+  missing_instrument_label,
   Startability,
   StartablePrerequisitesClear,
   BlockedOnPrerequisites,
@@ -41,7 +48,7 @@ fn standing_is_clear(s: MilestoneStanding) -> Bool {
   match s {
     Clear { evidence: _ } => true
     Outstanding { evidence: _ } => false
-    NotDerivable { missing_instrument: _ } => false
+    NotDerivable { why: _, cause: _ } => false
   }
 }
 
@@ -49,7 +56,7 @@ fn standing_is_outstanding(s: MilestoneStanding) -> Bool {
   match s {
     Clear { evidence: _ } => false
     Outstanding { evidence: _ } => true
-    NotDerivable { missing_instrument: _ } => false
+    NotDerivable { why: _, cause: _ } => false
   }
 }
 
@@ -57,7 +64,7 @@ fn standing_outstanding_members(s: MilestoneStanding) -> List<String> {
   match s {
     Clear { evidence: _ } => []
     Outstanding { evidence } => evidence.outstanding
-    NotDerivable { missing_instrument: _ } => []
+    NotDerivable { why: _, cause: _ } => []
   }
 }
 
@@ -150,4 +157,33 @@ test fn the_milestone_roster_entries_are_distinct() -> Bool {
 // same non-answer as a missing instrument, wearing a better name.
 test fn the_report_renders() -> Bool {
   report() != ""
+}
+
+// THE LEVERAGE JOIN IS DERIVED, AND THESE TWO ARMS ARE WHAT KEEP IT FROM BEING A HAND COUNT.
+// Today two instruments answer three milestones each and six answer one each -- so the twelve
+// unanswerable milestones are EIGHT problems, not one and not twelve. Asserting the exact
+// membership rather than the totals is the identity join DESIGN's oracle rule demands: a count
+// equality would go green the moment two milestones moved in opposite directions.
+test fn the_whole_corpus_board_unblocks_exactly_its_three_milestones() -> Bool {
+  let waiting = milestones_awaiting(i: WholeCorpusEmissionBoard)
+  count(waiting) == 3
+    && any(waiting, l => l == milestone_label(m: SelfHostWholeCorpusPopulationDerived))
+}
+
+// THE DISCRIMINATING ARM FOR THE SAME JOIN: an instrument that answers ONE milestone must not
+// report three, which is what a fold accidentally ignoring its predicate would produce.
+test fn a_single_milestone_instrument_reports_one() -> Bool {
+  count(milestones_awaiting(i: RequiredCiPhaseRoster)) == 1
+    && count(milestones_awaiting(i: NamespaceStepSubjectRoster)) == 3
+}
+
+// THE INSTRUMENT ROSTER IS THE SAME COUNTED SECOND REPRESENTATION THE MILESTONE ROSTER IS, for the
+// same reason -- `.dag` cannot enumerate a coproduct. What this holds is that every declared
+// instrument is DISTINCT and that none is dead: an instrument no milestone waits on is either a
+// stale row or an arm that stopped citing it, and both should be seen rather than carried.
+test fn every_declared_instrument_is_distinct_and_awaited() -> Bool {
+  let labels = all_missing_instruments |> map(i => missing_instrument_label(i: i))
+  count(labels) == 8
+    && all(labels, l => count(labels |> filter(other => other == l)) == 1)
+    && all(all_missing_instruments, i => count(milestones_awaiting(i: i)) > 0)
 }
