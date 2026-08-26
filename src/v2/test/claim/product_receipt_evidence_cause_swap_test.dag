@@ -1,0 +1,83 @@
+module v2.test.claim.product_receipt_evidence_cause_swap_test
+
+// CAUSE-SWAP CONTROL FOR THE PRODUCT-RECEIPT EVIDENCE.
+//
+// The subject is not varied here and could not usefully be: what was wrong was the EVIDENCE, and an
+// evidence defect is invisible to a probe that varies the subject. Before the migration, a receipt
+// that was produced and was NOT green, and a staging run that never happened at all, both arrived at
+// the consumer as one `false`. One refutes the proposition; the other says nothing about it.
+//
+// These construct the standings directly, so no host effect is required and the control routes on the
+// required floor even though the transport it guards does not.
+
+import v2.std.logic { Bool }
+import v2.std.subject_evidence {
+  EvidenceInstrumentRefused,
+  EvidenceSubjectCompleted,
+  EvidenceSubjectUnreached,
+  subject_evidence_establishes,
+  subject_evidence_produced_a_verdict
+}
+import v2.workflow.product_receipt_transport {
+  ProductReceiptOutcome,
+  ReceiptFileUnreadable,
+  ReceiptGreen,
+  ReceiptNotGreen,
+  ReceiptTxnNotCleared,
+  product_receipt_outcome_licenses
+}
+
+fn licenses_receipt(outcome: ProductReceiptOutcome) -> Bool {
+  product_receipt_outcome_licenses(outcome: outcome)
+}
+
+// THE OLD PREDICATE, RESTATED EXECUTABLY. A refuted receipt and an unreached subject agree here, and
+// that agreement is the aliasing. Green because the collapse is real at this projection, not because
+// it is acceptable -- the next witness is what makes it survivable.
+test fn establishes_cannot_separate_refutation_from_absence() -> Bool {
+  let refuted = subject_evidence_establishes(
+    evidence: EvidenceSubjectCompleted { outcome: ReceiptNotGreen { body: "RECEIPT: RED" } },
+    licenses: licenses_receipt
+  )
+  let absent = subject_evidence_establishes(
+    evidence: EvidenceSubjectUnreached { cause: ReceiptFileUnreadable },
+    licenses: licenses_receipt
+  )
+  refuted == absent
+}
+
+// THE SEPARATION THE MIGRATION BUYS, and the reason the carrier's second reading is not the negation
+// of the first. A verdict WAS produced for the refuted receipt and was NOT produced for the unreached
+// subject, so a consumer can now tell a statement about the subject from the absence of one. Collapse
+// the transport back to a conjunction and there is no standing to ask, so this stops compiling.
+test fn produced_a_verdict_separates_refutation_from_absence() -> Bool {
+  let refuted = subject_evidence_produced_a_verdict(
+    evidence: EvidenceSubjectCompleted { outcome: ReceiptNotGreen { body: "RECEIPT: RED" } }
+  )
+  let absent = subject_evidence_produced_a_verdict(
+    evidence: EvidenceSubjectUnreached { cause: ReceiptFileUnreadable }
+  )
+  refuted && !absent
+}
+
+// THE TWO NO-VERDICT ARMS ARE NOT ONE ARM. Owner-shaped, per the carrier: a bench this harness failed
+// to set up and a subject that failed to arrive have different repairers. Both answer false to
+// establishes, which is why the distinction has to live in the standing rather than in the Bool.
+test fn instrument_refusal_is_distinguishable_from_subject_absence() -> Bool {
+  let instrument = EvidenceInstrumentRefused { cause: ReceiptTxnNotCleared }
+  let unreached = EvidenceSubjectUnreached { cause: ReceiptFileUnreadable }
+  let both_fail_to_establish =
+    !subject_evidence_establishes(evidence: instrument, licenses: licenses_receipt)
+      && !subject_evidence_establishes(evidence: unreached, licenses: licenses_receipt)
+  let neither_produced_a_verdict =
+    !subject_evidence_produced_a_verdict(evidence: instrument)
+      && !subject_evidence_produced_a_verdict(evidence: unreached)
+  both_fail_to_establish && neither_produced_a_verdict
+}
+
+// A GREEN RECEIPT IS THE ONLY THING THAT LICENSES THE CLAIM. Widen product_receipt_outcome_licenses
+// to admit a non-green body and this goes red.
+test fn only_a_green_receipt_licenses_the_claim() -> Bool {
+  product_receipt_outcome_licenses(outcome: ReceiptGreen)
+    && !product_receipt_outcome_licenses(outcome: ReceiptNotGreen { body: "RECEIPT: RED" })
+}

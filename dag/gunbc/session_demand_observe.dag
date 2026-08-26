@@ -29,7 +29,12 @@ import gunbc.session_demand {
   SessionContainerInventoryObserved,
   SessionContainerInventoryUnavailable, SessionContainerInventoryAbsent,
   SessionPlacement, ManagedSession, SessionPlacementUnclassifiable,
-  SessionMemoryDemand, ParentSliceDemand,
+  SessionMemoryDemand, ParentSliceDemand, SessionDemandSample, SessionDemandReceipt,
+  MetricDeficit, MetricUnread, MetricMalformed,
+  count_metric_deficits, limit_metric_deficits, placement_identity,
+  SessionDemandNotASessionHost, SessionDemandHostMismatch,
+  SessionDemandCensusIncomplete, SessionDemandMetricsIncomplete,
+  SessionPopulationHostMismatch,
   ParentSliceObservation, ParentSliceObserved, ParentSliceAbsent,
   SessionPopulation, SessionPopulationEstablished, SessionPopulationUnavailable,
   SessionPopulationNoSessionSlice,
@@ -296,7 +301,7 @@ fn session_population(
       }
     SessionContainerInventoryAbsent { host: _, cgroup_path: p } =>
       SessionPopulationNoSessionSlice { cgroup_path: p }
-    SessionContainerInventoryObserved { host: _, identities: managed_ids } =>
+    SessionContainerInventoryObserved { host: managed_host, identities: managed_ids } =>
       match legacy {
         SessionContainerInventoryUnavailable { host: _, cause: why } =>
           SessionPopulationUnavailable {
@@ -306,12 +311,16 @@ fn session_population(
           SessionPopulationUnavailable {
             cause: concat("the managed slice exists but system.slice does not, which no Linux host should report; whether any session runs FLAT outside the managed slice is therefore unknown: ", p as String),
           }
-        SessionContainerInventoryObserved { host: _, identities: legacy_ids } =>
+        SessionContainerInventoryObserved { host: legacy_host, identities: legacy_ids } =>
+          if managed_host != legacy_host {
+            SessionPopulationHostMismatch { managed_host: managed_host, legacy_host: legacy_host }
+          } else {
           SessionPopulationEstablished {
             placements: concat(
               managed_placements(identities: managed_ids),
               legacy_placements(identities: legacy_ids)
             )
+          }
           }
       }
   }
@@ -424,6 +433,233 @@ fn parent_slice_demand_lines(p: ParentSliceDemand) -> String {
 // emits a receipt with zero session rows and says so, which is a counted zero; a host whose
 // enumeration refused emits the refusal cause instead. The two are different lines, never the same
 // absence.
+// THE PRODUCER RETURNS THE TYPED OBSERVATION, AND EVERYTHING ELSE IS A PROJECTION OF IT. Before
+// this, session_demand_observe_ci_wet assembled a tab-separated String directly and derived the
+// exit status from SessionPopulation, while SessionDemandReceipt and SessionDemandSample had NO
+// production constructor at all -- they existed only as pattern arms and fixture values. That is a
+// typed model standing beside an operational serializer: two representations of one fact, which is
+// exactly what DESIGN 2 and 3 forbid, in the cut whose entire subject is modeling an observation.
+// Found in review; no witness here could have caught it, because every witness consumed the typed
+// vocabulary and nothing asserted that production produced it.
+fn observe_session_demand(
+  transport: HostEffectTransport,
+  host: HostIdentity,
+  started: Timestamp,
+) -> SessionDemandObservation {
+  let managed_parent = managed_slice_path()
+  let managed = observe_cgroup_children(transport: transport, host: host, cgroup_path: managed_parent)
+  let legacy = observe_cgroup_children(transport: transport, host: host, cgroup_path: system_slice_path())
+  match session_population(managed: managed, legacy: legacy) {
+    SessionPopulationUnavailable { cause: why } =>
+      SessionDemandObservationUnavailable { host: host, cause: why }
+    SessionPopulationNoSessionSlice { cgroup_path: p } =>
+      SessionDemandNotASessionHost { host: host, cgroup_path: p }
+    SessionPopulationHostMismatch { managed_host: mh, legacy_host: lh } =>
+      SessionDemandHostMismatch { managed_host: mh, legacy_host: lh }
+    SessionPopulationEstablished { placements: placements } =>
+      match observe_parent_slice_demand(transport: transport, parent: managed_parent) {
+        ParentSliceAbsent { cgroup: c } =>
+          SessionDemandNotASessionHost { host: host, cgroup_path: c }
+        ParentSliceObserved { demand: slice } => {
+          let per_session = map(
+            managed_identities(i: managed),
+            id => observe_session_memory_demand(transport: transport, parent: managed_parent, identity: id)
+          )
+          match session_placement_census(placements: placements) {
+            SessionPlacementCensusIncomplete { unclassifiable: us } =>
+              SessionDemandCensusIncomplete {
+                host: host,
+                unclassifiable: us,
+                parent_slice: slice,
+                per_session: per_session,
+              }
+            SessionPlacementCensusComplete { placements: ps } =>
+              admit_complete_census(
+                host: host,
+                started: started,
+                slice: slice,
+                per_session: per_session,
+                placements: ps,
+              )
+          }
+        }
+      }
+  }
+}
+
+fn managed_identities(i: SessionContainerInventory) -> List<NonEmptyStr> {
+  match i {
+    SessionContainerInventoryObserved { host: _, identities: ids } => ids
+    SessionContainerInventoryUnavailable { host: _, cause: _ } => []
+    SessionContainerInventoryAbsent { host: _, cgroup_path: _ } => []
+  }
+}
+
+// EVERY REQUIRED READ IS COLLECTED BEFORE THE GRANTING ARM IS REACHABLE. The deficit list is built
+// from the parent slice's three counters and every session's memory.current; a non-empty list makes
+// SessionDemandObserved unreachable, so "an aggregate may be established" cannot be printed over a
+// metric nobody read. MemoryLimitUnlimited contributes nothing, because it is a real kernel answer.
+fn observation_metric_deficits(
+  slice: ParentSliceDemand,
+  per_session: List<SessionMemoryDemand>,
+) -> List<MetricDeficit> {
+  concat(
+    concat(
+      count_metric_deficits(cgroup: slice.cgroup, metric: "memory.current", v: slice.memory_current),
+      concat(
+        count_metric_deficits(cgroup: slice.cgroup, metric: "memory.peak", v: slice.memory_peak),
+        limit_metric_deficits(cgroup: slice.cgroup, metric: "memory.max", v: slice.memory_max)
+      )
+    ),
+    fold(per_session, init: [], f: (acc, d) => concat(acc, count_metric_deficits(cgroup: d.cgroup, metric: "memory.current", v: d.memory_current)))
+  )
+}
+
+fn admit_complete_census(
+  host: HostIdentity,
+  started: Timestamp,
+  slice: ParentSliceDemand,
+  per_session: List<SessionMemoryDemand>,
+  placements: List<SessionPlacement>,
+) -> SessionDemandObservation {
+  let deficits = observation_metric_deficits(slice: slice, per_session: per_session)
+  if count(deficits) > 0 {
+    SessionDemandMetricsIncomplete {
+      host: host,
+      deficits: deficits,
+      parent_slice: slice,
+      per_session: per_session,
+    }
+  } else if count(placements) == 0 {
+    NoConcurrentSessionDemandObserved { host: host }
+  } else {
+    match census_membership_signal(c: session_placement_census(placements: placements)) {
+      Absent =>
+        SessionDemandObservationUnavailable {
+          host: host,
+          cause: "the census completed but no membership signal could be projected from it, so the aggregate has no grounded standing",
+        }
+      Present { value: sig } => {
+        let standing = session_membership_standing(m: sig)
+        match session_demand_membership_gate(host: host, m: standing) {
+          MembershipRefusesAggregate { observation: o } => o
+          MembershipAdmitsAggregate { managed_count: _ } =>
+            SessionDemandObserved {
+              receipt: SessionDemandReceipt {
+                host: host,
+                observation_started: started,
+                observation_completed: clock_now_probed_at_or_unknown(),
+                collector_revision: session_demand_collector_revision,
+                parent_cgroup_identity: slice.cgroup,
+                samples: [SessionDemandSample {
+                  observed_at: clock_now_probed_at_or_unknown(),
+                  membership: standing,
+                  parent_slice: slice,
+                  per_session: per_session,
+                }],
+              }
+            }
+        }
+      }
+    }
+  }
+}
+
+fn metric_deficit_line(d: MetricDeficit) -> String {
+  join([
+    "metric_deficit\t", d.cgroup as String, "\t", d.metric as String, "\t",
+    match d.standing {
+      MetricUnread { cause: c } => join(["UNREAD(", c, ")"], "")
+      MetricMalformed { body: b } => join(["MALFORMED(", b, ")"], "")
+    },
+    "\n",
+  ], "")
+}
+
+fn session_read_lines(slice: ParentSliceDemand, per_session: List<SessionMemoryDemand>) -> String {
+  join([
+    parent_slice_demand_lines(p: slice),
+    join(["managed_population\t", to_string(count(per_session)), "\n"], ""),
+    join(map(per_session, session_demand_line), ""),
+  ], "")
+}
+
+// THE TEXT IS A PROJECTION, NOT A SECOND AUTHORING. Every line below is derived from the
+// observation it is handed; there is no path by which the receipt can describe a state the typed
+// value does not hold, because there is no other input.
+fn render_session_demand_observation(o: SessionDemandObservation) -> String {
+  match o {
+    SessionDemandObservationUnavailable { host: h, cause: why } =>
+      join(["host\t", h as String, "\ncensus\tUNAVAILABLE\t", why, "\n"], "")
+    SessionDemandNotASessionHost { host: h, cgroup_path: p } =>
+      join([
+        "host\t", h as String, "\n",
+        "parent_slice\t", p as String, "\tNO_SUCH_SLICE\n",
+        "census\tNOT_A_SESSION_HOST\t", p as String,
+        " does not exist; this host runs no sessions, so it contributes no session demand and no aggregate is owed over it\n",
+      ], "")
+    SessionDemandHostMismatch { managed_host: mh, legacy_host: lh } =>
+      join([
+        "census\tHOST_MISMATCH\tthe managed slice was read on ", mh as String,
+        " and system.slice on ", lh as String,
+        "; one population may not be joined from two hosts' evidence\n",
+      ], "")
+    SessionDemandCensusIncomplete { host: h, unclassifiable: us, parent_slice: slice, per_session: ps } =>
+      join([
+        "host\t", h as String, "\n",
+        session_read_lines(slice: slice, per_session: ps),
+        join(map(us, u => join(["unattributed\t", placement_identity(p: u) as String, "\n"], "")), ""),
+        "census\tINCOMPLETE\t", to_string(count(us)),
+        " unattributed docker scope(s) under system.slice, not established to be agent sessions; until each is joined to a session-runtime identity or ruled unrelated, the complete session denominator is unestablished and no aggregate may be minted\n",
+      ], "")
+    SessionDemandMetricsIncomplete { host: h, deficits: ds, parent_slice: slice, per_session: ps } =>
+      join([
+        "host\t", h as String, "\n",
+        session_read_lines(slice: slice, per_session: ps),
+        join(map(ds, metric_deficit_line), ""),
+        "census\tMETRICS_INCOMPLETE\t", to_string(count(ds)),
+        " required metric(s) were not read; the population is complete but the demand it would carry is not, so no aggregate may be established\n",
+      ], "")
+    SessionDemandPopulationIncomplete { host: h, membership: _, cause: why } =>
+      join(["host\t", h as String, "\ncensus\tPOPULATION_INCOMPLETE\t", why, "\n"], "")
+    NoConcurrentSessionDemandObserved { host: h } =>
+      join([
+        "host\t", h as String,
+        "\ncensus\tNO_CONCURRENT_DEMAND\tthe read ran and counted zero sessions; this is an observed zero, not an absent observation\n",
+      ], "")
+    SessionDemandObserved { receipt: r } =>
+      join([
+        "collector_schema\t", r.collector_revision as String, "\n",
+        "host\t", r.host as String, "\n",
+        "observation_started\t", r.observation_started as String, "\n",
+        "observation_completed\t", r.observation_completed as String, "\n",
+        join(map(r.samples, sample => session_read_lines(slice: sample.parent_slice, per_session: sample.per_session)), ""),
+        join(["census\tCOMPLETE\tAllSessionsManaged with every required metric read; an aggregate may be established\n"], ""),
+      ], "")
+  }
+}
+
+// AN OBSERVED ZERO AND A STRUCTURAL NON-SESSION-HOST ARE SUCCESSES; EVERY OTHER ARM STOPS THE LINE.
+// The exit status is derived from the same value the receipt renders, so the two cannot disagree --
+// previously the text said one thing and the exit was computed from SessionPopulation separately.
+fn process_exit_for_session_demand_observation(o: SessionDemandObservation, body: String) -> ProcessExit {
+  match o {
+    SessionDemandObserved { receipt: _ } => ExitSuccess
+    NoConcurrentSessionDemandObserved { host: _ } => ExitSuccess
+    SessionDemandNotASessionHost { host: _, cgroup_path: _ } => ExitSuccess
+    SessionDemandObservationUnavailable { host: _, cause: why } =>
+      exit_failure(reason: join(["session demand observation unavailable: ", why, "\n", body], ""))
+    SessionDemandHostMismatch { managed_host: mh, legacy_host: lh } =>
+      exit_failure(reason: join(["session demand host mismatch: managed slice read on ", mh as String, ", system.slice on ", lh as String, "\n", body], ""))
+    SessionDemandCensusIncomplete { host: _, unclassifiable: us, parent_slice: _, per_session: _ } =>
+      exit_failure(reason: join([to_string(count(us)), " unattributed docker scope(s) under system.slice: the session denominator is unestablished\n", body], ""))
+    SessionDemandMetricsIncomplete { host: _, deficits: ds, parent_slice: _, per_session: _ } =>
+      exit_failure(reason: join([to_string(count(ds)), " required metric(s) unread or malformed: the demand is unestablished\n", body], ""))
+    SessionDemandPopulationIncomplete { host: _, membership: _, cause: why } =>
+      exit_failure(reason: join(["session population incomplete: ", why, "\n", body], ""))
+  }
+}
+
 func session_demand_observe_ci_wet() -> ProcessExit {
   let transport = LocalShell
   let started = clock_now_probed_at_or_unknown()
@@ -431,81 +667,13 @@ func session_demand_observe_ci_wet() -> ProcessExit {
     Absent =>
       exit_failure(reason: "session_demand_observe_ci_wet: could not read the host's own name, so no receipt can be bound to a host")
     Present { value: host } => {
-      let managed_parent = managed_slice_path()
-      let managed = observe_cgroup_children(transport: transport, host: host, cgroup_path: managed_parent)
-      let legacy = observe_cgroup_children(transport: transport, host: host, cgroup_path: system_slice_path())
-      let slice = observe_parent_slice_demand(transport: transport, parent: managed_parent)
-      let managed_body = match managed {
-        SessionContainerInventoryObserved { host: _, identities: ids } =>
-          join([
-            join(["managed_population\t", to_string(count(ids)), "\n"], ""),
-            join(map(ids, i => session_demand_line(
-              d: observe_session_memory_demand(transport: transport, parent: managed_parent, identity: i)
-            )), ""),
-          ], "")
-        SessionContainerInventoryUnavailable { host: _, cause: why } =>
-          join(["managed_population\tUNAVAILABLE\t", why, "\n"], "")
-        SessionContainerInventoryAbsent { host: _, cgroup_path: p } =>
-          join(["managed_population\tNO_SUCH_SLICE\t", p as String, "\n"], "")
-      }
-      let legacy_body = match legacy {
-        SessionContainerInventoryObserved { host: _, identities: ids } =>
-          join([
-            join(["system_slice_children\t", to_string(count(ids)), "\n"], ""),
-            join(map(ids, i => join(["system_slice_child\t", i as String, "\n"], "")), ""),
-          ], "")
-        SessionContainerInventoryUnavailable { host: _, cause: why } =>
-          join(["system_slice_children\tUNAVAILABLE\t", why, "\n"], "")
-        SessionContainerInventoryAbsent { host: _, cgroup_path: p } =>
-          join(["system_slice_children\tNO_SUCH_SLICE\t", p as String, "\n"], "")
-      }
-      let population = session_population(managed: managed, legacy: legacy)
-      let verdict = match population {
-        SessionPopulationUnavailable { cause: why } =>
-          join(["census\tUNAVAILABLE\t", why, "\n"], "")
-        SessionPopulationNoSessionSlice { cgroup_path: p } =>
-          join(["census\tNOT_A_SESSION_HOST\t", p as String, " does not exist; this host runs no sessions, so it contributes no session demand and no aggregate is owed over it\n"], "")
-        SessionPopulationEstablished { placements: placements } =>
-          match session_placement_census(placements: placements) {
-            SessionPlacementCensusIncomplete { unclassifiable: us } =>
-              join(["census\tINCOMPLETE\t", to_string(count(us)), " unattributable flat docker scope(s); no aggregate may be established over this host\n"], "")
-            SessionPlacementCensusComplete { placements: ps } =>
-              match census_membership_signal(c: session_placement_census(placements: placements)) {
-                Absent => "census\tCOMPLETE\tbut no membership signal could be projected\n"
-                Present { value: sig } =>
-                  match session_demand_membership_gate(host: host, m: session_membership_standing(m: sig)) {
-                    MembershipAdmitsAggregate { managed_count: _ } =>
-                      join(["census\tCOMPLETE\tAllSessionsManaged over ", to_string(count(ps)), " session(s); an aggregate may be established\n"], "")
-                    MembershipRefusesAggregate { observation: o } => match o {
-                      SessionDemandPopulationIncomplete { host: _, membership: _, cause: why } =>
-                        join(["census\tCOMPLETE\tbut membership refuses the aggregate: ", why, "\n"], "")
-                      NoConcurrentSessionDemandObserved { host: _ } =>
-                        "census\tCOMPLETE\tNoConcurrentSessionDemandObserved: the read ran and counted zero sessions\n"
-                      SessionDemandObservationUnavailable { host: _, cause: why } =>
-                        join(["census\tUNAVAILABLE\t", why, "\n"], "")
-                      SessionDemandObserved { receipt: _ } => "census\tOBSERVED\n"
-                    }
-                  }
-              }
-          }
-      }
-      let header = join([
-        "collector\t", session_demand_collector_revision as String, "\n",
-        "host\t", host as String, "\n",
-        "observation_started\t", started as String, "\n",
-        "observation_completed\t", clock_now_probed_at_or_unknown() as String, "\n",
-      ], "")
-      let body = join([header, parent_slice_lines(o: slice), managed_body, legacy_body, verdict], "")
+      let observation = observe_session_demand(transport: transport, host: host, started: started)
+      let body = render_session_demand_observation(o: observation)
       let w = Filesystem.Write(path: session_demand_observe_receipt_path, content: body)
       if w.success == false {
         exit_failure(reason: join(["session-demand receipt write failed: ", w.error], ""))
       } else {
-        match population {
-          SessionPopulationUnavailable { cause: why } =>
-            exit_failure(reason: join(["session_demand_observe_ci_wet: no population was established, so nothing here may be read as an observation of this host: ", why, "\n", body], ""))
-          SessionPopulationNoSessionSlice { cgroup_path: _ } => ExitSuccess
-          SessionPopulationEstablished { placements: _ } => ExitSuccess
-        }
+        process_exit_for_session_demand_observation(o: observation, body: body)
       }
     }
   }
