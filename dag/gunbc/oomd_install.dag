@@ -107,6 +107,43 @@ type SliceMembershipSignal {
   sessions_legacy_flat: Nat
 }
 
+// ONE PARENTED CONTAINER USED TO LAUNDER EVERY UNPARENTED ONE. membership_grounding_check asked
+// sessions_in_slice > 0 and passed, so a host running one managed session beside fifty flat
+// docker-*.scope sessions under system.slice reported OomdEnforced -- and the fifty are exactly the
+// ones oomd cannot evict. The predicate was total over the signal and blind to the distinction that
+// decides the outcome, which is the failure mode DESIGN names as total at the level examined.
+//
+// THE FOUR STANDINGS ARE NOT COLLAPSIBLE TO A BOOL, and Mixed and AllLegacy stay apart because
+// their remedies differ: Mixed is a PARTIAL placement or convergence defect on a host that is
+// otherwise working, AllLegacy is a managed slice that is completely hollow. NoSessionsObserved is
+// neither -- nothing is running, so nothing is wrong and nothing is proven either. Only
+// AllSessionsManaged grounds the backstop, because only then is every running session inside the
+// cgroup oomd evicts within.
+type SessionMembershipStanding
+  = AllSessionsManaged { managed_count: Nat }
+  | MixedSessionMembership { managed_count: Nat, legacy_count: Nat }
+  | AllSessionsLegacy { legacy_count: Nat }
+  | NoSessionsObserved
+
+fn session_membership_standing(m: SliceMembershipSignal) -> SessionMembershipStanding {
+  if m.sessions_legacy_flat > 0 {
+    if m.sessions_in_slice > 0 {
+      MixedSessionMembership {
+        managed_count: m.sessions_in_slice,
+        legacy_count: m.sessions_legacy_flat
+      }
+    } else {
+      AllSessionsLegacy { legacy_count: m.sessions_legacy_flat }
+    }
+  } else {
+    if m.sessions_in_slice > 0 {
+      AllSessionsManaged { managed_count: m.sessions_in_slice }
+    } else {
+      NoSessionsObserved
+    }
+  }
+}
+
 type OomdEffectiveRead {
   slice_present: Bool
   unit_active: SystemdUnitActiveState
@@ -181,14 +218,14 @@ fn parent_slice_cap_ok(eff: RunnerSliceCapEffectiveness, agg: SessionAggregateRe
 }
 
 fn membership_grounding_check(m: SliceMembershipSignal) -> OomdGroundingCheck {
-  if m.sessions_in_slice > 0 {
-    GroundingPass
-  } else {
-    if m.sessions_legacy_flat > 0 {
-      GroundingFail { reason: "100%-legacy migration state: all running session containers (sessions_legacy_flat > 0) are flat docker-*.scope under system.slice and none are parented under sessions.slice (sessions_in_slice == 0) — oomd's managed cgroup has no members; the eviction backstop is hollow (sessions.slice exists, systemd-oomd is active, but the managed set is empty because all session traffic bypasses it)" }
-    } else {
-      GroundingFail { reason: "empty managed cgroup: sessions.slice has no session-container children and no legacy sessions are running (sessions_in_slice == 0, sessions_legacy_flat == 0) — nothing for oomd to evict; the unit is active and the slice is configured but the managed set is empty because no sessions are currently running" }
-    }
+  match session_membership_standing(m: m) {
+    AllSessionsManaged { managed_count: _ } => GroundingPass
+    MixedSessionMembership { managed_count: _, legacy_count: _ } =>
+      GroundingFail { reason: "mixed session membership: some session containers are parented under sessions.slice and some are still flat docker-*.scope under system.slice — the backstop covers only the parented ones, and the unparented ones are precisely those oomd cannot evict. This previously reported PASS, because the check asked only whether ANY session was in the slice: one correctly-placed container laundered every misplaced one. REMEDY: a partial placement or convergence defect on an otherwise-working host — converge the remaining sessions into the slice; do NOT read this as a hollow slice" }
+    AllSessionsLegacy { legacy_count: _ } =>
+      GroundingFail { reason: "100%-legacy migration state: all running session containers are flat docker-*.scope under system.slice and none are parented under sessions.slice — oomd's managed cgroup has no members; the eviction backstop is hollow (sessions.slice exists, systemd-oomd is active, but the managed set is empty because all session traffic bypasses it). REMEDY: the managed slice is completely hollow, which is a different problem from a partial one" }
+    NoSessionsObserved =>
+      GroundingFail { reason: "empty managed cgroup: sessions.slice has no session-container children and no legacy sessions are running — nothing for oomd to evict; the unit is active and the slice is configured but the managed set is empty because no sessions are currently running. This is not a defect on the host; it is an absence of evidence, and it must not read as enforcement" }
   }
 }
 
