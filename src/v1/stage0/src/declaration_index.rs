@@ -56,12 +56,20 @@
 //! class was rot admitted by the mechanism built to refuse rot.
 //!
 //! IT WAS OCCUPIED, NOT MERELY REACHABLE, which is what settled the grain rather than the
-//! argument. Measured over the live corpus, the 70 enrolled rows covered 75 refusing sites, and
-//! six targets were already cited from more than one module: `gunbc.host_effect`
-//! `host_effect_apply` from three (`extdeps.github.actions_runner`,
+//! argument. Measured over the live corpus through `DAG_PARSE_SWEEP_ROOTS`, the 70 target-keyed
+//! rows covered 81 refusing sites, and seven targets were already cited from more than one
+//! module: `gunbc.host_effect` `host_effect_apply` from three (`extdeps.github.actions_runner`,
 //! `gunbc.executor_privileged_operation`, `gunbc.runner_slot_provision`), `std.bytes`
-//! `builtin_function_registry` from three, and four more from two apiece. Every one of those
-//! extra sites was being suppressed by a row authored about a different module.
+//! `builtin_function_registry` from three, `extdeps.network.mac` `parse_mac_address` from two
+//! (`extdeps.dhcp.v4` and a witness), and four more from two apiece. Every one of those extra
+//! sites was being suppressed by a row authored about a different module.
+//!
+//! THE ROSTERS ARE RE-DERIVED FROM THAT MEASUREMENT, AND THE FIRST DERIVATION WAS TAKEN OVER THE
+//! WRONG DENOMINATOR — recorded because it is the same class this module keeps catching. The
+//! sweep's roots are `src/v1`, `dag` and `src/v2`; the first measurement used only the last two,
+//! so five sites authored in modules the narrow walk never read were absent from the rosters and
+//! the required run refused them. A roster derived from a subset of the subject it governs is
+//! not a smaller roster, it is a wrong one.
 //!
 //! So a row is `(citing_module, module, decl, field)` and it exempts THE SITE THAT AUTHORED IT.
 //! Both inverse arms read that same identity, because a suppression arm and a staleness arm
@@ -69,8 +77,9 @@
 //!
 //! WHAT THIS STILL DOES NOT REACH, stated rather than left to be found: the citing module is the
 //! finest identity available from an ingestion record that copies spans out of a discarded parse
-//! tree, so TWO IDENTICAL CITATIONS IN ONE MODULE share one row — measured, one such pair exists
-//! (`citations_pre_existing_debt` counts 39 occurrences over 38 rows). A byte offset would
+//! tree, so TWO IDENTICAL CITATIONS IN ONE MODULE share one row — measured, such pairs exist
+//! (`citations_pre_existing_debt` counts occurrences, not rows, and reports more of the first
+//! than the roster carries of the second). A byte offset would
 //! separate them and would be exactly the positional citation DESIGN §3 forbids: it rots on any
 //! edit above the line. The residue is one module authoring a second dangling citation of a
 //! target it already cites; the next rung is a declaration-grained site, which needs the
@@ -744,7 +753,7 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// future exposure as unbounded). This wall's first execution therefore lands on a corpus
 /// that has been accumulating the exact class §3's rule names, and every row below is a REAL
 /// DEFECT: a citation naming a declaration that does not exist. Measured on the live tree,
-/// they are 38 sites, each named by the module that authored it.
+/// they are 41 sites, each named by the module that authored it.
 ///
 /// WHY THEY ARE NOT REPAIRED HERE. The repair for a citation is a judgement about what its
 /// author MEANT, and guessing it is how a stale citation becomes a confidently wrong one.
@@ -968,6 +977,24 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str)] = &[
         "",
     ),
     (
+        "test.claim.long.v1_complexity_capability_census_resolution_test",
+        "v1.compiler.complexity",
+        "Derived",
+        "",
+    ),
+    (
+        "test.claim.long.v1_complexity_capability_census_resolution_test",
+        "v1.compiler.complexity",
+        "this_declaration_does_not_exist_in_the_seed",
+        "",
+    ),
+    (
+        "test.claim.long.v1_complexity_capability_census_resolution_test",
+        "v1.compiler.this_module_does_not_exist",
+        "classify_complexity",
+        "",
+    ),
+    (
         "test.claim.primitive_identity_join_witness_test",
         "std.primitive_identity",
         "missing_handler",
@@ -1042,6 +1069,24 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str)] = &[
 ];
 
 const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str)] = &[
+    (
+        "extdeps.dhcp.v4",
+        "extdeps.network.mac",
+        "parse_mac_address",
+        "",
+    ),
+    (
+        "gunbc.emit_summary_map_consumer_partition",
+        "v1.compiler.infer_emit_info",
+        "type_summary_reaches_fn",
+        "",
+    ),
+    (
+        "gunbc.empty_decl_file_checkpoint_bypass",
+        "v1.compiler.05_emit",
+        "emit_literal",
+        "",
+    ),
     (
         "extdeps.docker.container_inspect",
         "extdeps.docker.container_inspect",
@@ -1413,7 +1458,7 @@ pub fn planted_control_findings_against(
 ///
 /// The roster is a parameter rather than a constant read from inside, and that is what makes
 /// this arm's red authorable at the fixture boundary at all. A fixture tree contains a
-/// handful of `probe.*` modules; joined against the 38-row production roster, every row is
+/// handful of `probe.*` modules; joined against the 41-row production roster, every row is
 /// trivially absent and the arm reports 38 stale rows that say nothing about the fixture.
 /// Passing the roster lets a fixture author a ONE-ROW roster and plant both directions of the
 /// contract — a row whose citation still refuses (live, no finding) and a row whose citation
@@ -1612,12 +1657,12 @@ pub fn duplicate_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegrityF
 /// one is answered by the modules in front of it, so the answer is meaningful over any tree.
 /// `PRE_EXISTING_CITATION_DEBT` is a fact about ONE SPECIFIC CORPUS — the repository's own —
 /// and joining it against some other tree does not produce a weaker answer, it produces an
-/// answer to a question nobody asked: a fixture tree of `probe.*` modules makes all 38 rows
+/// answer to a question nobody asked: a fixture tree of `probe.*` modules makes all 41 rows
 /// trivially absent, so the arm reports 38 spent rows that say nothing about the fixture and
 /// drown every real finding beside them.
 ///
 /// That is the failure `review 55817` found, and it was a real one: with the debt arm folded
-/// in here, every fixture in `tests/declaration_index_integrity.rs` received 38 findings it
+/// in here, every fixture in `tests/declaration_index_integrity.rs` received 41 findings it
 /// did not plant, so the planted-red and positive-control assertions could not pass and the
 /// §4b fixture-boundary evidence this change rests on did not execute. The repair is not to
 /// gate the arm on a corpus-shape signal — that would be a smuggled heuristic (§4: a

@@ -478,8 +478,8 @@ fn lens_with_construction_justification_stays_clean() {
 // THE DEBT CONTRACT'S OWN DISCRIMINATING PAIR, AND WHY IT LIVES BEHIND A ROSTER PARAMETER.
 //
 // `review 55817` found that folding the debt arm into `index_findings` made every fixture in
-// this file receive 38 findings it did not plant — the production roster joined against a
-// tree of `probe.*` modules, where all 38 rows are trivially absent. That falsified the
+// this file receive 41 findings it did not plant — the production roster joined against a
+// tree of `probe.*` modules, where all 41 rows are trivially absent. That falsified the
 // §4b evidence in place: the planted-red and positive-control assertions could not pass.
 //
 // The repair splits the arm out into `corpus_findings`, whose denominator is this repository,
