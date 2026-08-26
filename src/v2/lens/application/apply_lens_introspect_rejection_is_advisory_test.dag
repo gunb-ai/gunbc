@@ -8,7 +8,7 @@ import v2.compiler.compile {
   compile_lens_gate_rejected_diagnostic
 }
 import v2.compiler.infer { InferredTree }
-import v2.std.diagnostic { Accepted, Diagnostics, None, Outcome, Rejected, Some, outcome_rejected, port_locus }
+import v2.std.diagnostic { Accepted, Diagnostics, None, Outcome, Rejected, Some, outcome_rejected, invariant_port_locus }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol }
 import v2.std.witness { Holds, Violates, Witness }
@@ -33,7 +33,7 @@ fn apply_lens_mode_tree() -> InferredTree {
 
 fn apply_lens_mode_rejecting_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
   outcome_rejected(
-    compile_lens_gate_rejected_diagnostic(at: port_locus(port: ^apply_lens_mode_gate_at))
+    compile_lens_gate_rejected_diagnostic(at: invariant_port_locus(port: ^apply_lens_mode_gate_at, invariant: ^apply_lens_mode_gate_at))
   )
 }
 
