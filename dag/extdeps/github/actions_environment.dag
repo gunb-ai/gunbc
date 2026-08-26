@@ -21,6 +21,33 @@ type ActionsShaObservation
 
 data github_sha_variable_name: String = "GITHUB_SHA"
 
+// THE RUN COORDINATES, carried here for the same reason GITHUB_SHA is: they are facts the RUNNER
+// supplies, defined by the cited reference, and a consumer that reads them ad hoc is reading an
+// upstream contract through a second, uncited naming scheme.
+//
+// THREE VARIABLES AND NOT ONE COMPOSED KEY. `gunbc.merge_admission_subject` composes run id,
+// attempt and job into a single `WalkAttemptId` string, which is right for a path segment and
+// wrong here: fusing them answers "are these the same attempt" while destroying "are these two
+// attempts OF THE SAME RUN". A consumer needing to distinguish a re-run from a different run
+// cannot recover the parts from the composite, so the parts are what this module carries and
+// composition stays the caller's business.
+//
+// RUNNER_NAME IS NOT A RUN COORDINATE and is modeled separately below for that reason: the same
+// run attempt can be dispatched to a different runner, and a runner is a machine rather than an
+// identity of the work. It is carried because an observation's cost figures are only comparable
+// across runs executed on comparable hardware.
+data github_run_id_variable_name: String = "GITHUB_RUN_ID"
+data github_run_attempt_variable_name: String = "GITHUB_RUN_ATTEMPT"
+data github_runner_name_variable_name: String = "RUNNER_NAME"
+
+// Missing and present-but-empty stay separate arms, exactly as they do for the sha above. Outside
+// Actions every one of these is legitimately absent, which is a different fact from a runner that
+// set the variable to nothing, and only the second is a defect in the environment.
+type ActionsRunCoordinate
+  = ActionsRunCoordinateObserved { value: String }
+  | ActionsRunCoordinateMissing { variable: String }
+  | ActionsRunCoordinateEmpty { variable: String }
+
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
