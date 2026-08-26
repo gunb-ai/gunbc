@@ -98,12 +98,12 @@ fn emit_produced_decl(decl: Node, target: TargetModel) -> Outcome<Medium<String>
         d: emit_produced_decl_diagnostic(reason: ^produced_decl_target_unwired, node: decl)
       )
     ProducedDeclWired {
-      render: render,
+      render: produced_decl_render,
       scaffold_relation_rule_name: rule_name,
       scaffold_base_row: base_row
     } =>
       bind_outcome(
-        o: render(decl),
+        o: produced_decl_render(decl),
         f: fn(scaffold) {
           emit_produced_decl_with_target(
             decl: decl,

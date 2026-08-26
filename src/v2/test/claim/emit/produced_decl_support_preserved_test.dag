@@ -66,11 +66,11 @@ fn pdp_renderer_executes(target: TargetModel) -> Bool {
   match target.produced_decl_support {
     ProducedDeclUnwired => false
     ProducedDeclWired {
-      render: render,
+      render: produced_decl_render,
       scaffold_relation_rule_name: _,
       scaffold_base_row: _
     } =>
-      match render(target_model_type_atom_node(identity: ^pdp_decl)) {
+      match produced_decl_render(target_model_type_atom_node(identity: ^pdp_decl)) {
         Accepted { value: scaffold, diagnostics: _ } =>
           match list_at_optional(xs: scaffold.prefix, index: 0) {
             Present { value: token } =>

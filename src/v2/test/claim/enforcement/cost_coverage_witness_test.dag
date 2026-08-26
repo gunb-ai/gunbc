@@ -79,7 +79,11 @@ test fn cost_coverage_v2_tree_receipt_by_execution() -> Bool {
 
 test fn cost_coverage_unknown_fraction_is_derived() -> Bool {
   let receipt = cc_witness_smoke_receipt_live()
-  cost_coverage_unknown_fraction_bps(receipt: receipt) == ((receipt.fn_unknown * 10000) / receipt.fn_attempted)
+  match receipt.fn_attempted == 0 {
+    true => cost_coverage_unknown_fraction_bps(receipt: receipt) == 0
+    false => cost_coverage_unknown_fraction_bps(receipt: receipt)
+      == ((receipt.fn_unknown * 10000) / receipt.fn_attempted)
+  }
 }
 
 test fn cost_coverage_corpus_roster_nonempty() -> Bool {

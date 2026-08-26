@@ -34,20 +34,21 @@ import v2.std.text { String }
 // the entailment being invented. The question is not WHICH ROSTER holds the row; it is WHETHER
 // EXACTLY ONE DECLARED MECHANISM DOES.
 //
-// THE MEASURED PARTITION at 967b5bc1b92 (origin/main), 19 rows, exactly one holder each:
+// THE HISTORICAL PARTITION at 967b5bc1b92 (origin/main), 19 rows, exactly one holder each:
 // 5 FloorExpectedRedHeld, 6 RouteGapHeldNoVerdict, 7 NeverRunDeclinedByHomePolicy, 1 NeverRunDeclinedByLiveTreeRead,
 // 0 NeverRunPathExcluded, 0 held by nothing, 0 held by more than one.
 //
 // AND THE LIVE INSTANCE ABOVE IS NOT WHAT IT LOOKED LIKE, which is the finding this module was
-// actually built on. The lane's acceptance target was that the legacy row is PASSING and
-// therefore stale. It is not: its entry declares ReadsLiveTree, so the floor DECLINES it -- it
-// is never planned, never executed, and never in `passed`. Run directly
+// actually built on. The lane's acceptance target was that the legacy row was PASSING and
+// therefore stale. At that ref it was not: its entry declared ReadsLiveTree, so the floor
+// declined it. Run directly
 // (`claim_batch --entry dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag
 // --function legacy_test_behavior_unclassified_frontier_is_zero`) it returns FAIL, exactly as
 // its admission row says. The deduction that made it look stale was sound in every step except
 // an unstated premise -- that a discovered identity is either planned or long-declined -- and
 // the floor's own receipt line names three arms. Deleting the row on that reading would have
-// discarded a live red control.
+// discarded a live red control. Run 32617105370 at 9eaa418ebd removed that observation barrier,
+// executed the row, and confirmed the false verdict; it is now enrolled in floor_expected_red.
 data quarantine_probe_disposition_authority_note: String = "The total disposition join over gunbc.explicit_witness_admission rows whose cadence is QuarantineProbeExpectRed. It answers WHICH DECLARED MECHANISM HOLDS THIS PROBE'S RED OBLIGATION, and refuses both of the ways that question can fail to have one answer: no mechanism holds it (the probe is not gated anywhere, so a green run says nothing about it) and more than one does (two authorities for one fact). Every fact it reads is supplied by the caller -- the rosters, the home prefixes and the path exclusions are all parameters -- so this module owns the DERIVATION and none of the populations, and a caller that can only supply three of the four axes says so by what it passes rather than by the fold quietly assuming the fourth."
 
 // THE FOUR DECLARED HOLDERS, and the fold is total over them by construction.
@@ -66,16 +67,6 @@ data quarantine_probe_disposition_authority_note: String = "The total dispositio
 // floor's long-home prefixes, so the floor never plans it. The probe is not gated; it is not
 // run.
 //
-// NeverRunDeclinedByLiveTreeRead -- the identity's ENTRY FILE declares
-// `data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree`, and the floor declines
-// every site in such a file. This arm was NOT in the specification this lane was given, and it
-// was found by reading the floor's own receipt rather than its model: main run 32553487573
-// reports `offered=11812 routed=10439 declined_long=543 declined_live=830 — every discovered
-// site is exactly one of these`, so the floor's decline vocabulary has three arms and not two.
-// `v2.workflow.required_floor` describes this arm as staged for deletion and its own header
-// records that an earlier revision asserted the deletion as DONE while the host still returned
-// it -- which is exactly why it must be read from the producer.
-//
 // HELD IS NOT CHECKED, AND THE ARM NAMES CARRY THAT RATHER THAN A COMMENT. Every arm prefixed
 // NeverRun holds a probe's obligation only in the sense that NOTHING RUNS THE WITNESS, so a
 // green floor says nothing whatsoever about the claim. RouteGapHeldNoVerdict is the middle
@@ -85,12 +76,10 @@ data quarantine_probe_disposition_authority_note: String = "The total dispositio
 // the holder, so a consumer asking "is this claim checked" never has to read prose to find out.
 //
 // THE HEADLINE MEASUREMENT OF THIS LANE, and it is a coverage finding about the quarantine
-// system rather than a caveat about this fold: EIGHT OF THE NINETEEN live quarantine probes are
-// held by a mechanism that means the witness never runs -- 7 NeverRunDeclinedByHomePolicy,
-// 1 NeverRunDeclinedByLiveTreeRead -- and a further 6 execute without ever reaching a verdict
-// (RouteGapHeldNoVerdict). FIVE of nineteen are checked in the sense the admission rows imply:
-// the witness runs and its red is asserted every floor run. That is the number a reader should
-// carry away from this module.
+// system rather than a caveat about this fold. Run 32617105370 at 9eaa418ebd deleted the
+// live-tree executability veto and exposed the formerly declined probe's real false verdict.
+// That identity is now held by FloorExpectedRedHeld; ReadsLiveTree remains only an affected-set
+// selection fact and is no longer a holder on this execution-disposition join.
 //
 // NeverRunPathExcluded -- the identity's entry path is excluded from the floor's prepared subject.
 // ZERO ROWS INHABIT THIS ARM TODAY, measured at 967b5bc1b92; and, separately, the .dag side has
@@ -122,7 +111,6 @@ type QuarantineProbeHolder =
     FloorExpectedRedHeld
   | RouteGapHeldNoVerdict
   | NeverRunDeclinedByHomePolicy { matched_prefix: String }
-  | NeverRunDeclinedByLiveTreeRead { entry: String }
   | NeverRunPathExcluded { matched_substring: String }
 
 // THE SUBJECT: one probe, named the way the floor names it.
@@ -142,7 +130,6 @@ type QuarantineProbeHoldingFacts {
   expected_red_roster: List<String>
   route_gap_roster: List<String>
   home_prefixes: List<String>
-  live_tree_declined_entries: List<String>
   path_exclusion_substrings: List<String>
 }
 
@@ -180,7 +167,6 @@ fn quarantine_probe_verification_standing(holder: QuarantineProbeHolder) -> Quar
     FloorExpectedRedHeld => RedAssertedByExecution {}
     RouteGapHeldNoVerdict => ExecutedWithoutVerdict {}
     NeverRunDeclinedByHomePolicy { matched_prefix: p } => WitnessNeverRuns {}
-    NeverRunDeclinedByLiveTreeRead { entry: e } => WitnessNeverRuns {}
     NeverRunPathExcluded { matched_substring: sub } => WitnessNeverRuns {}
   }
 }
@@ -269,12 +255,6 @@ fn quarantine_probe_holders(
     empty: Empty {},
     cons: fn(acc, prefix) { Cons { head: NeverRunDeclinedByHomePolicy { matched_prefix: prefix }, tail: acc } }
   )
-  let live_declined =
-    if exact_member(needle: subject.entry, population: facts.live_tree_declined_entries) {
-      Cons { head: NeverRunDeclinedByLiveTreeRead { entry: subject.entry }, tail: Empty {} }
-    } else {
-      Empty {}
-    }
   let path_excluded = fold_list(
     xs: first_matching_substring(entry: subject.entry, substrings: facts.path_exclusion_substrings),
     empty: Empty {},
@@ -284,10 +264,7 @@ fn quarantine_probe_holders(
     a: floor_held,
     b: concat_holders(
       a: route_held,
-      b: concat_holders(
-        a: home_declined,
-        b: concat_holders(a: live_declined, b: path_excluded)
-      )
+      b: concat_holders(a: home_declined, b: path_excluded)
     )
   )
 }

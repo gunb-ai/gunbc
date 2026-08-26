@@ -408,6 +408,103 @@ fn floor_route_gap_chunk_03() -> List<String> {
     }
 }
 
+// COVERAGE RESTORATION RECEIPT, run 32617105370 at 9eaa418ebd: these identities were
+// previously hidden behind RequiredFloorDisposition.DeclinedLiveTree. Execution reached the
+// typed hermetic effect boundary and produced no verdict. Enrollment records that route debt
+// at identity grain; supplying the route makes each row stale and forces its removal.
+fn floor_route_gap_chunk_05() -> List<String> {
+  [
+    "gunbc.test.claim.witness_execution_class_live_census_test.witness_live_roster_census_holds",
+    "test.claim.artifact_store_fs_witness.artifact_fs_delete_then_misses_holds",
+    "test.claim.artifact_store_fs_witness.artifact_fs_eviction_removes_only_the_evicted_key",
+    "test.claim.artifact_store_fs_witness.artifact_fs_mutated_input_misses_holds",
+    "test.claim.artifact_store_fs_witness.artifact_fs_roundtrip_holds",
+    "test.claim.codex_app_server_press_wet_witness_test.press_account_trip_yields_standing_or_typed_refusal_never_turn_started_holds",
+    "test.claim.codex_package_delivery_wet_witness_test.acquire_exact_target_pair_admits_wrapper_and_platform",
+    "test.claim.codex_package_delivery_wet_witness_test.acquire_required_codex_tarball_sha512_matches_lock",
+    "test.claim.codex_package_delivery_wet_witness_test.materialize_codex_runtime_bundle_produces_native_executable_holds",
+    "test.claim.codex_package_delivery_wet_witness_test.materialize_identical_input_twice_reuses_same_release_identity_holds",
+    "test.claim.codex_supervised_turn_wet_witness_test.supervised_turn_materialized_bundle_writes_terminal_receipt",
+    "test.claim.codex_supervised_turn_wet_witness_test.wet_acquire_platform_artifact_only",
+    "test.claim.codex_supervised_turn_wet_witness_test.wet_acquire_selected_pair_only",
+    "test.claim.codex_supervised_turn_wet_witness_test.wet_acquire_wrapper_artifact_only",
+    "test.claim.codex_supervised_turn_wet_witness_test.wet_codex_runtime_prepare_closure_only",
+    "test.claim.codex_supervised_turn_wet_witness_test.wet_finish_observe_lock_digest_only",
+    "test.claim.codex_supervised_turn_wet_witness_test.wet_finish_observe_manifest_digest_only",
+    "test.claim.codex_supervised_turn_wet_witness_test.wet_finish_observe_native_digest_only",
+    "test.claim.codex_supervised_turn_wet_witness_test.wet_finish_observe_package_tree_only",
+    "test.claim.codex_supervised_turn_wet_witness_test.wet_finish_observe_package_tree_tiny_fixture",
+    "test.claim.codex_supervised_turn_wet_witness_test.wet_finish_observe_protocol_schema_only",
+    "test.claim.codex_supervised_turn_wet_witness_test.wet_finish_observe_receipt_identity_only",
+    "test.claim.codex_supervised_turn_wet_witness_test.wet_finish_observe_set_identity_only",
+    "test.claim.codex_supervised_turn_wet_witness_test.wet_finish_observe_toolchain_only",
+    "test.claim.codex_supervised_turn_wet_witness_test.wet_finish_parse_canonicalize_largest_protocol_schema_only",
+    "test.claim.codex_supervised_turn_wet_witness_test.wet_finish_parse_largest_protocol_schema_only",
+    "test.claim.codex_supervised_turn_wet_witness_test.wet_materialize_codex_runtime_bundle_only",
+    "test.claim.codex_supervised_turn_wet_witness_test.wet_materialize_finish_after_install_only",
+    "test.claim.codex_supervised_turn_wet_witness_test.wet_materialize_npm_ci_offline_only",
+    "test.claim.codex_supervised_turn_wet_witness_test.wet_materialize_through_prepare_only",
+    "test.claim.codex_supervised_turn_wet_witness_test.wet_select_codex_exact_target_closure_only",
+    "test.claim.dag_compile_clean_shard_totality_witness.compile_clean_shard_totality_holds_on_live_tree",
+    "test.claim.direct_rust_door_write_compile_witness_test.direct_rust_door_emit_write_compile_holds",
+    "test.claim.expectation_frontier_witness.fully_declared_effects_emit_no_frontier_receipt_holds",
+    "test.claim.expectation_frontier_witness.undeclared_effects_emit_the_frontier_receipt_holds",
+    "test.claim.external_model_scope_live_cover_witness.frontier_cover_of_live_extdeps_tree_holds",
+    "test.claim.external_model_scope_live_cover_witness.manifest_rows_all_predate_freeze_sha",
+    "test.claim.external_model_scope_live_cover_witness.red_cover_walker_refuses_missing_root",
+    "test.claim.fleet_revision_relation_wet_matrix.a_non_repository_path_is_unverifiable_rather_than_answering",
+    "test.claim.fleet_revision_relation_wet_matrix.an_absent_object_is_unverifiable_not_unrelated",
+    "test.claim.fleet_revision_relation_wet_matrix.an_ancestor_accepted_is_superseded",
+    "test.claim.fleet_revision_relation_wet_matrix.an_ancestor_current_is_a_forward_advance",
+    "test.claim.fleet_revision_relation_wet_matrix.an_orphan_root_has_no_common_ancestor",
+    "test.claim.fleet_revision_relation_wet_matrix.no_merge_base_and_could_not_look_stay_distinguishable",
+    "test.claim.fleet_revision_relation_wet_matrix.siblings_sharing_an_ancestor_are_neither_ancestor_of_the_other",
+    "test.claim.host_cli_dependency_wet_witness_test.observe_echo_wet_posix_command_v_check_does_not_crash",
+    "test.claim.host_cli_dependency_wet_witness_test.observe_npm_wet_posix_command_v_check_does_not_crash",
+    "test.claim.interpreter_dispatch_bijection_real_roster_witness_test.interpreter_dispatch_bijection_real_roster_red_holds",
+    "test.claim.json_protocol_schema_memory_split_wet_witness_test.wet_finish_parse_canonicalize_largest_protocol_schema_only",
+    "test.claim.json_protocol_schema_memory_split_wet_witness_test.wet_finish_parse_largest_protocol_schema_only",
+    "test.claim.namespace_structural_root_exposure_generated_witness_test.namespace_structural_root_exposure_generated_witness_holds",
+    "test.claim.no_fake_anomalies_witness.passing_run_shows_no_fake_anomaly_holds",
+    "test.claim.no_fake_anomalies_witness.red_control_entry_with_real_anomaly_still_shows_glyph_holds",
+    "test.claim.push_event_witness_wet.witness_push_before_payload_read_refused_on_missing_path",
+    "test.claim.roadmap_receipt_continuity_live_witness.live_roadmap_acceptance_history_integrity_holds",
+    "test.claim.self_host_artifact_materialization_real_execution_witness.a_real_cargo_build_materializes_through_the_real_digest",
+    "test.claim.self_host_artifact_materialization_real_execution_witness.a_target_the_build_never_produced_refuses_and_does_not_materialize",
+    "test.claim.self_host_artifact_materialization_real_execution_witness.changing_only_the_source_bytes_names_exactly_the_artifact_axis",
+    "test.claim.self_host_artifact_materialization_real_execution_witness.rebuilding_identical_source_in_place_moves_no_axis",
+    "test.claim.self_host_artifact_materialization_real_execution_witness.the_digest_is_of_the_file_cargo_named_not_of_some_other_real_file",
+    "test.claim.self_host_artifact_materialization_real_execution_witness.the_materialized_path_is_the_one_the_real_cargo_stream_named",
+    "test.claim.served_surface_browser_artifact_integrity_witness.witness_checked_in_screenshots_match_receipts",
+    "test.claim.stage0_regen_convergence_real_execution_witness.a_real_regen_stage0_verify_run_reports_zero_divergence",
+    "test.claim.stage0_regen_convergence_real_execution_witness.w_RED_an_unrecognized_flag_does_not_report_the_success_marker",
+    "test.claim.stage0_rust_host_observation_live_witness.live_rust_observation_matches_actions_subject",
+    "test.claim.stage0_rust_host_observation_live_witness.scaffold_host_observation_is_live_and_observed",
+    "test.claim.stage0_rust_host_observation_live_witness.scaffold_host_observation_reaches_path_derived_verdict",
+    "test.claim.stage0_rust_host_observation_live_witness.scaffold_mechanical_checks_reflect_live_classification",
+    "test.claim.stage0_rust_maintenance_census_report_live_witness.maintenance_census_report_positive_control_derives_from_current_head",
+    "test.claim.v1_source_audit_witness_test.regen_stage0_write_and_verify_share_compile_refusal",
+    "test.manual.git_upstream_model_execution.witness_git_cli_fixture_hashes_projects_and_independently_reads_back",
+    "test.manual.mercurial_upstream_model_execution.witness_mercurial_cli_fixture_projects_and_independently_reads_back",
+    "test.manual.pijul_upstream_model_execution.witness_pijul_cli_fixture_reads_channel_sets_and_retained_conflict",
+    "v2.test.claim.dag_acceptance_rustc_wet.rustc_accepts_valid_target_source",
+    "v2.test.claim.dag_acceptance_rustc_wet.rustc_diagnoses_invalid_target_source",
+    "v2.test.execution.emit_on_demand_classical_not_ingested_family_witness.emit_on_demand_classical_not_native_one_build_holds",
+    "v2.test.execution.emit_on_demand_family_crate_witness.family_crate_dispatch_change_cold_rebuild_holds",
+    "v2.test.execution.emit_on_demand_family_crate_witness.family_crate_member_change_cold_rebuild_holds",
+    "v2.test.execution.emit_on_demand_family_crate_witness.family_crate_one_build_members_warm_holds",
+    "v2.test.execution.emit_on_demand_field_access_family_witness.emit_on_demand_field_access_native_one_build_holds",
+    "v2.test.execution.emit_on_demand_kernel_witness.emit_on_demand_kernel_native_one_build_holds",
+    "v2.test.execution.emit_on_demand_match_loop_fold_family_witness.emit_on_demand_match_loop_fold_family_one_build_holds",
+    "v2.test.execution.emit_on_demand_variant_construct_family_witness.emit_on_demand_variant_construct_native_one_build_holds",
+    "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_cold_warm_equivalence_holds",
+    "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_discriminating_red_holds",
+    "v2.test.manual.emit_source_store.emit_source_store_cold_then_warm_holds",
+    "v2.test.manual.emit_source_store.emit_source_store_mutated_emitter_misses_holds",
+    "v2.test.workflow.frontier_probe_closure_readthrough.frontier_probe_read_failure_detail_refused_holds",
+  ]
+}
+
 // CHUNK 04 -- THE SIXTEEN IDENTITIES SURFACED BY DELETING THE shell.Exec MOCK ARMS, measured on
 // this branch's own floor run 32670248426 (route_gap_unenrolled=16), not enumerated from call
 // sites. Every one reaches shell.Exec.Run hermetically and now receives
@@ -466,8 +563,31 @@ fn floor_route_gap_chunk_04() -> List<String> {
       tail: Empty {} } } } } } } } } } } } } } } } }
 }
 
+// COVERAGE RESTORATION FOLLOW-UP, run 32769868938 at ea35b3533a. These identities were
+// previously enrolled as expected-red, but execution proved they never reached their assertions:
+// the hermetic Run operation has no mock_response. A route gap is not a failing verdict, so the
+// five rows move here at identity grain and leave floor_expected_red in the same change.
+fn floor_route_gap_chunk_06() -> List<String> {
+  [
+    "test.claim.effect_plan_bash_materialize_real_execution_witness.effect_plan_bash_fail_fast_prevents_later_operation_execution",
+    "test.claim.effect_plan_bash_materialize_real_execution_witness.effect_plan_bash_metachar_and_newline_cannot_open_a_statement",
+    "test.claim.effect_plan_bash_materialize_real_execution_witness.effect_plan_bash_two_declared_operations_execute",
+    "test.claim.transport_script_stdin_byte_fidelity_witness.transport_script_stdin_delivers_exact_bytes",
+    "test.claim.transport_script_stdin_byte_fidelity_witness.transport_script_stdin_fidelity_is_independent_of_terminal_newline",
+  ]
+}
+
+// LIVE-TREE EXECUTION CLOSURE FOLLOW-UP, run 32828306017 at da9812737d. This identity became
+// executable after DeclinedLiveTree was deleted but the hermetic Read operation has no
+// mock_response, so it never reached its subject. It is route debt, not a failing verdict.
+fn floor_route_gap_chunk_07() -> List<String> {
+  [
+    "test.claim.claude_sdk_parser_drop_live_witness.witness_wet_receipt_control_response_parser_drop_holds",
+  ]
+}
+
 fn floor_route_gap_chunks() -> List<List<String>> {
-  Cons { head: floor_route_gap_chunk_00(), tail: Cons { head: floor_route_gap_chunk_01(), tail: Cons { head: floor_route_gap_chunk_02(), tail: Cons { head: floor_route_gap_chunk_03(), tail: Cons { head: floor_route_gap_chunk_04(), tail: Empty {} } } } } }
+  Cons { head: floor_route_gap_chunk_00(), tail: Cons { head: floor_route_gap_chunk_01(), tail: Cons { head: floor_route_gap_chunk_02(), tail: Cons { head: floor_route_gap_chunk_03(), tail: Cons { head: floor_route_gap_chunk_04(), tail: Cons { head: floor_route_gap_chunk_05(), tail: Cons { head: floor_route_gap_chunk_06(), tail: Cons { head: floor_route_gap_chunk_07(), tail: Empty {} } } } } } } } }
 }
 
 fn floor_route_gap_roster() -> List<String> {

@@ -13,11 +13,10 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // itself on exactly that finding, and guarantee_floor_class_probe_witness_test states the rule in
 // the direction that binds here -- do not dissolve the cost by relabelling the file.
 //
-// WHAT THAT COSTS, stated rather than left for a reader to discover: v2.workflow.required_floor
-// retains the DeclinedLiveTree arm, so this module is DISCOVERED and DECLINED by the required
-// floor and does not execute there today. It dissolves with that arm's staged deletion, at which
-// point these three become executing evidence with no further authorship. Until then the evidence
-// below is executed rather than enrolled: run it directly with
+// WHAT THAT COSTS, stated rather than left for a reader to discover: ReadsLiveTree remains the
+// affected-set selection fact, but it no longer vetoes required-floor execution. This module is
+// therefore discovered and its identities proceed to execution; hermetic executability is decided
+// at each identity's effect boundary. To reproduce the individual evidence directly, run
 // `gunbc run --source-root dag --source-root src/v2 --entry <this file> --function <test fn>`,
 // which is how both directions of its discriminating pair were taken.
 //

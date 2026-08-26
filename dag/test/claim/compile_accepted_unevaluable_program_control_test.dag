@@ -34,7 +34,7 @@ data compile_accepted_unevaluable_program_note: String = "The subject is the v1 
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data live_tree_note: String = "ReadsLiveTree, for the same reason the two sibling files on this surface declare it: compile_dag_rust_emit_check resolves its virtual source against build_module_path_index_from_witness_roots, which walks the live tree. The declaration is honest rather than convenient — it costs floor admission under the DeclinedLiveTree arm rather than buying it, and that arm's deletion (gunbc#8977, gunbc#8982) is what admits this file to execution."
+data live_tree_note: String = "ReadsLiveTree, for the same reason the two sibling files on this surface declare it: compile_dag_rust_emit_check resolves its virtual source against build_module_path_index_from_witness_roots, which walks the live tree. The declaration remains the honest affected-set selection fact. gunbc#8982 deleted the former DeclinedLiveTree execution veto, so these identities now execute without relabelling; their three authored-red assertions are enrolled in v2.workflow.floor_expected_red floor_expected_red_chunk_23."
 
 // Positive control 1 of 2. A trivial well-formed source compiles: the surface is not always-false,
 // so a false below is a refusal rather than a harness that cannot say yes.

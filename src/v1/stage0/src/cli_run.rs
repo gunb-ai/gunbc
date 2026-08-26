@@ -44143,7 +44143,7 @@ pub struct RequiredFloorClaim {
 ///
 /// Modeled authority: `v2.workflow.required_floor` `RequiredFloorDisposition`
 /// (`src/v2/workflow/required_floor.dag`). This Rust type is the realization of that `.dag`
-/// declaration, not its origin — the three arms and their meaning are declared there first; this
+/// declaration, not its origin — the two arms and their meaning are declared there first; this
 /// enum's shape must track it rather than the reverse.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RequiredFloorDisposition {
@@ -44168,18 +44168,6 @@ pub enum RequiredFloorDisposition {
     /// but corrupting. See `v2.workflow.required_floor` `fixture_home_prefixes` for the full
     /// argument and the dissolution condition.
     DeclinedFixtureMember { matched_prefix: String },
-    /// Declined because the module declares `LiveTreeDisposition = ReadsLiveTree`.
-    ///
-    /// STAGED FOR DELETION, and the reason is measured rather than intended — see
-    /// `docs/plans/witness-execution-closure.md`. The premise this arm rests on (reaching the
-    /// live tree implies "cannot run in the hermetic frame") is FALSE: hermetic mode's
-    /// checkout-read carve-out reads committed sources for real. Floor run 32345970386 deleted
-    /// this arm and executed the population: of ~783 identities, **626 pass** and only 157
-    /// genuinely lack a hermetic arm. The deletion is not in this change only because it also
-    /// surfaces 55 blockers — 6 witnesses that do not resolve and 49 in a cost tail — that need
-    /// their own owners, and every one of those 55 is newly-admitted, so this change is exactly
-    /// the part that carries none of them.
-    DeclinedLiveTree,
 }
 
 /// ONE EXECUTED CLAIM'S MEASURED OCCURRENCE, minted the instant `run_claim_measured`
@@ -44337,14 +44325,6 @@ pub struct RequiredFloorOutcome {
     /// prefix. Unlike the two neighbours, these identities DO have an executing consumer —
     /// the plan recipes that drive them — so this count is not a coverage gap.
     pub declined_fixture_member: usize,
-    /// Discovered sites declined because the module declares `ReadsLiveTree`.
-    ///
-    /// REPORTED IN THE HEADLINE, which is the change this carries: the population was
-    /// previously visible only as an integer in a `[floor-phase]` line, and the run's own
-    /// honesty check (`planned == executed == receipted`) was computed entirely downstream of
-    /// it. A receipt that cannot state what it dropped cannot be read as a statement about
-    /// coverage. Measured at 778 on main; staged for deletion, see `RequiredFloorDisposition`.
-    pub declined_live_tree: usize,
     pub claims_planned: usize,
     pub claims_executed: usize,
     pub receipt_identities: usize,
@@ -44479,12 +44459,6 @@ pub struct InventoryWitnessFile {
     pub path: String,
     pub module_path: String,
     pub functions: Vec<String>,
-    /// Whether the module declares `LiveTreeDisposition = ReadsLiveTree`.
-    ///
-    /// A SECOND, SYNTACTIC COMPUTATION OF A FACT `reads_live_tree_effective` DERIVES
-    /// SEMANTICALLY, and that is a §3 defect this change does not yet remove. See the comment
-    /// at its scan site below.
-    pub reads_live_tree: bool,
 }
 
 /// Decide whether ONE admitted file is a witness site, from the bytes preparation is holding
@@ -44520,43 +44494,10 @@ fn witness_file_from_source(
     if functions.is_empty() {
         return None;
     }
-    // ONE FACT, TWO COMPUTATIONS, IN ONE BINARY — a §3 defect, recorded here rather than
-    // silently carried, and deliberately NOT fixed in this change.
-    //
-    // This column-zero TEXT SCAN and `reads_live_tree_effective` answer the same question by
-    // methods that cannot agree except by coincidence: the second reads the same declaration
-    // and then falls through to `effect_reach_derived_reads_live_tree_for_entry`, a SEMANTIC
-    // reachability derivation over the entry's import closure. A syntactic scan and an
-    // effect-reach derivation disagree as a function of the import graph.
-    //
-    // THE FIX IS NOT TO UNIFY THEM. The two consumers ask DIFFERENT QUESTIONS. Affected-set
-    // selection asks "does this entry's result depend on live tree state", which
-    // `reads_live_tree_effective` answers and keeps. The floor asks "can this identity
-    // execute", which no authored file-level boolean can answer — the interpreter decides it
-    // exactly, per identity, at the effect boundary, and now says so in a typed outcome
-    // (`ClaimOutcome::HostEffectRefused`). So the floor's copy is deleted rather than
-    // reconciled, and the population it was excluding is executed.
-    //
-    // MEASURED, so the deletion is not a hope: floor run 32345970386 removed this scan and ran
-    // the population. Of ~783 identities admitted, 626 PASS and 157 route-gap on real host
-    // operations (Mktemp.Dir 54, IsExecutable 26, Run 17, Write 8, git.Inspect 5, …) — not one
-    // a committed-source read. The premise was stale for the large majority of what it
-    // excluded.
-    //
-    // WHY IT IS STILL HERE: that same run surfaced 55 blockers — 6 witnesses that do not
-    // RESOLVE (`undefined variable`, `no such function`; never caught because nothing ever
-    // evaluated them) and 49 in a cost tail — and all 55 are newly-admitted. This change is the
-    // part that carries none of them. → `docs/plans/witness-execution-closure.md`.
-    let reads_live_tree = content.lines().any(|line| {
-        line.starts_with("data ")
-            && line.contains("LiveTreeDisposition")
-            && line.contains("ReadsLiveTree")
-    });
     Some(InventoryWitnessFile {
         path: path.replace('\\', "/"),
         module_path: module_path.to_string(),
         functions,
-        reads_live_tree,
     })
 }
 
@@ -45609,7 +45550,6 @@ pub fn run_required_floor(
     let mut planned_identities: HashSet<String> = HashSet::new();
     let mut long_declined = 0usize;
     let mut fixture_declined = 0usize;
-    let mut live_declined = 0usize;
     let mut sites_offered = 0usize;
     let mut disposition_rows: Vec<RequiredFloorDispositionRow> = Vec::new();
     let mut storage_agreement_rows: Vec<LongHomeStorageAgreementRow> = Vec::new();
@@ -45655,14 +45595,6 @@ pub fn run_required_floor(
                     disposition: RequiredFloorDisposition::DeclinedFixtureMember {
                         matched_prefix: prefix.clone(),
                     },
-                });
-                continue;
-            }
-            if file.reads_live_tree {
-                live_declined += 1;
-                disposition_rows.push(RequiredFloorDispositionRow {
-                    identity,
-                    disposition: RequiredFloorDisposition::DeclinedLiveTree,
                 });
                 continue;
             }
@@ -45713,11 +45645,11 @@ pub fn run_required_floor(
     // it is the construction's own statement of what it guarantees, and it fails loudly the
     // first time an edit adds a third arm that quietly swallows rows, which is precisely how
     // the live-tree decline arrived and stayed invisible.
-    if sites_offered != claims.len() + long_declined + fixture_declined + live_declined {
+    if sites_offered != claims.len() + long_declined + fixture_declined {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=SitePartitionInexact offered={sites_offered} \
              routed={} declined_long={long_declined} declined_fixture={fixture_declined} \
-             declined_live={live_declined} — every \
+             — every \
              discovered site must be either routed to a claim or declined with a stated \
              disposition; a gap here is a roster that narrowed without saying so",
             claims.len()
@@ -45725,14 +45657,13 @@ pub fn run_required_floor(
     }
     eprintln!(
         "[floor-phase] phase=site-projection state=completed wall_ms={} sites={} files={} \
-         claims={} declined_long={} declined_fixture={} declined_live={}",
+         claims={} declined_long={} declined_fixture={}",
         projection_started.elapsed().as_millis(),
         sites_offered,
         files.len(),
         claims.len(),
         long_declined,
-        fixture_declined,
-        live_declined
+        fixture_declined
     );
 
     // THE EXPECTED-RED ROSTER, read from its .dag authority in the policy module's frame — it
@@ -46097,7 +46028,6 @@ pub fn run_required_floor(
         sites_offered,
         declined_long_module: long_declined,
         declined_fixture_member: fixture_declined,
-        declined_live_tree: live_declined,
         claims_planned,
         claims_executed: 0,
         receipt_identities: 0,
@@ -47259,7 +47189,6 @@ fn required_floor_disposition_label(disposition: &RequiredFloorDisposition) -> &
         RequiredFloorDisposition::Planned => "planned",
         RequiredFloorDisposition::DeclinedLongModule { .. } => "declined_long_module",
         RequiredFloorDisposition::DeclinedFixtureMember { .. } => "declined_fixture_member",
-        RequiredFloorDisposition::DeclinedLiveTree => "declined_live_tree",
     }
 }
 
@@ -47267,7 +47196,7 @@ fn required_floor_disposition_matched_prefix(disposition: &RequiredFloorDisposit
     match disposition {
         RequiredFloorDisposition::DeclinedLongModule { matched_prefix }
         | RequiredFloorDisposition::DeclinedFixtureMember { matched_prefix } => matched_prefix,
-        RequiredFloorDisposition::Planned | RequiredFloorDisposition::DeclinedLiveTree => "",
+        RequiredFloorDisposition::Planned => "",
     }
 }
 
@@ -47344,23 +47273,20 @@ fn write_required_floor_disposition_tsv(
     let mut planned = 0usize;
     let mut declined_long = 0usize;
     let mut declined_fixture = 0usize;
-    let mut declined_live = 0usize;
     for row in rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
             RequiredFloorDisposition::DeclinedLongModule { .. } => declined_long += 1,
             RequiredFloorDisposition::DeclinedFixtureMember { .. } => declined_fixture += 1,
-            RequiredFloorDisposition::DeclinedLiveTree => declined_live += 1,
         }
     }
     writeln!(
         file,
-        "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_fixture_member={}\tdeclined_live_tree={}",
+        "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_fixture_member={}",
         rows.len(),
         planned,
         declined_long,
-        declined_fixture,
-        declined_live
+        declined_fixture
     )
     .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
     writeln!(file, "identity\tdisposition\tmatched_prefix")
@@ -47569,10 +47495,6 @@ mod required_floor_disposition_and_storage_agreement_law {
                     matched_prefix: "v2.test.fixture.walk_plan_stage.".to_string(),
                 },
             },
-            RequiredFloorDispositionRow {
-                identity: "m.three.c".to_string(),
-                disposition: RequiredFloorDisposition::DeclinedLiveTree,
-            },
         ];
 
         write_required_floor_disposition_tsv(&path_str, &rows).expect("write tsv");
@@ -47580,13 +47502,12 @@ mod required_floor_disposition_and_storage_agreement_law {
         let _ = std::fs::remove_dir_all(&dir);
 
         let lines: Vec<&str> = content.lines().collect();
-        assert_eq!(lines.len(), 6, "summary + header + 4 rows: {lines:?}");
+        assert_eq!(lines.len(), 5, "summary + header + 3 rows: {lines:?}");
         assert!(lines[0].starts_with("# summary"));
-        assert!(lines[0].contains("total=4"));
+        assert!(lines[0].contains("total=3"));
         assert!(lines[0].contains("planned=1"));
         assert!(lines[0].contains("declined_long_module=1"));
         assert!(lines[0].contains("declined_fixture_member=1"));
-        assert!(lines[0].contains("declined_live_tree=1"));
         assert_eq!(lines[1], "identity\tdisposition\tmatched_prefix");
         assert_eq!(lines[2], "m.one.a\tplanned\t");
         assert_eq!(
@@ -47599,7 +47520,6 @@ mod required_floor_disposition_and_storage_agreement_law {
             lines[4],
             "v2.test.fixture.walk_plan_stage.x.d\tdeclined_fixture_member\tv2.test.fixture.walk_plan_stage."
         );
-        assert_eq!(lines[5], "m.three.c\tdeclined_live_tree\t");
     }
 
     #[test]

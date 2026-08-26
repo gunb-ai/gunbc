@@ -2,14 +2,13 @@ module test.claim.rt_bridge_registry_witness_test
 
 import extdeps.languages.rust.emit { rt_function_registry, rt_bridge_name }
 
-// This witness lives in its own module rather than beside the other
-// registry-derivation checks in test.claim.v1_source_audit_witness_test because
-// that module declares ReadsLiveTree, and the required floor DECLINES the whole
-// live-tree arm: measured on run 32778297671, every one of its identities is
-// declined_live_tree -- discovered, counted, folded never. This fold reads no
-// live tree at all (rt_function_registry is an in-corpus declaration), so
-// declining it would have enrolled evidence that cannot execute, which is worse
-// than no evidence because it is cited as coverage.
+// This witness was split from the registry-derivation checks in
+// test.claim.v1_source_audit_witness_test when the required floor still declined that module's
+// ReadsLiveTree arm. gunbc#8982 deleted that execution veto, so the historical placement reason
+// no longer governs executability. The separate module remains accurate for affected-set
+// selection: this fold reads no live tree at all (`rt_function_registry` is an in-corpus
+// declaration), and co-locating it would inherit a broader selection disposition than its own
+// dependencies require.
 //
 // What it holds: rt_bridge_name's Absent arm returns its input UNCHANGED, and
 // that is the IDENTITY case rather than a fallback for an unknown name --

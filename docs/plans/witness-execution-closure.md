@@ -180,21 +180,24 @@ own admission question, and this change deliberately does not open it.
 
 ---
 
-## What landed here, and what is staged
+## What landed here, and what remains
 
-This change carries the **mechanism** and the **101 reclassification**. It does **not** delete
-the decline arm.
+This change carries the **mechanism**, the **101 reclassification**, and the root cut:
+`RequiredFloorDisposition.DeclinedLiveTree` and its parallel syntactic `reads_live_tree` scan are
+deleted together. Every non-long, non-fixture identity now routes to execution; ReadsLiveTree
+remains only the affected-set selection fact.
 
-The seam is exact rather than chosen: the full-closure run surfaced **55 blockers — 6 witnesses
-that do not RESOLVE** (`undefined variable`, `no such function`; never caught because nothing
-ever evaluated them) **and 49 in the cost tail — and all 55 are newly-admitted, none previously
-routed.** So the part that carries no blocker is a complete change that happens to be smaller,
-not a partial one. The 101 route-gap on main today and need nothing deleted to be reclassified.
+The latest completed full run, 32769868938 at ea35b3533a, reached all 11,745 planned identities.
+It measured 49 `interrupted_before_verdict` rows and two
+`completed_over_cost_requirement` rows, plus seven ordinary failures. This PR dispositioned the
+two newly observed `Bool(false)` failures at identity grain and reclassified five expected-red
+rows that instead reached typed route gaps; the five pre-existing runtime failures remain
+separate from the cost population.
 
-Staged behind their owners: the 6 broken artifacts (route to author or delete — enrolling a
-non-resolving witness as expected-red would assert it runs and fails, re-minting the very
-conflation this change removes), and the cost-tail policy call, which the histogram above says
-is two questions rather than one.
+What remains is not another part of the decline-arm deletion. Exact-cost measurement and repair
+of the 49 + 2 cost outcomes stays sequenced behind the separately modeled #9029 carrier; raising
+the fail-stop or re-declining the newly admitted identities would reverse this cut rather than
+complete it.
 
 ## What is NOT claimed
 
@@ -218,3 +221,55 @@ whereas a route-gapped identity stays in the subject, executes, and reports.
 Converting those entries into `floor_route_gap` rows is the obvious next step and is deliberately
 **not** in this change: it should follow the measurement that proves the route-gap mechanism
 behaves as designed on the population it was built for, not precede it.
+
+## Merge-blocking cost population and the measurement-first dependency
+
+Run `32671707662` at `eff23875aa` reached every one of its 11,682 routed identities. It
+reported `interrupted_before_verdict=49` and `completed_over_cost_requirement=2`.
+These 51 rows are a **merge blocker**, not a remainder: `required_floor_outcome_is_clean`
+requires both populations to be empty. An interrupted row produced no verdict, so neither an
+expected-red enrollment nor a restored decline can honestly make it green.
+
+The 49 censored identities group structurally into seven shared mechanisms:
+
+| identities | shared mechanism |
+|---:|---|
+| 10 | accumulator-copy roster gates reaching `accumulator_copy_findings` / live-tree analysis |
+| 13 | enforcement inventory/live rows reaching `enforcement_corpus_facts` → `decl_facts(whole_corpus_scope)` |
+| 17 | grammar/cost coverage rows reaching the corpus-roster and file/tree census paths |
+| 4 | realization-vocabulary rows reaching the live import-fact scan |
+| 3 | no-dual-representation and wiring rows reaching module/function declaration-fact scans |
+| 1 | lifecycle census reaching the full `data_decl_type_facts` population |
+| 1 | realization-attempt running one real corpus entry through the compiler |
+
+This is a mechanism partition, not a cost partition: an interrupt point is a lower bound and
+cannot rank or size repairs. Six families independently repeat a corpus-wide scan; 40 of 49 rows
+are in the first four families. Exact completion costs must be measured before changing these
+load-bearing producers.
+
+That prerequisite is gunbc#9029, the finite off-required cost-observation carrier. It derives
+the censored population from one complete terminal ledger, binds observations to the exact
+commit/prepared subject/execution policy, and cannot certify the required floor. Per operator
+ruling, it lands before any optimization here. The required 5,000ms CPU fail-stop is unchanged;
+raising it or declining these identities is not an available exit.
+
+The aggregate-wall measurement answers a different question. The latest like-for-like run took
+about 15 minutes in preparation and 41 minutes in the fold, about 57 minutes total. That measures
+the cost of restoring coverage at run scale; it does not show that each routed identity can reach
+a verdict inside the per-claim fail-stop. Both facts hold: the whole run remains below its
+180-minute envelope, and the 51 per-claim cost outcomes prevent this PR from merging until the
+measurement-and-repair sequence closes them.
+
+Two repeated exact identities also show why one observation cannot size that repair. In run
+`32626789562` at `fc9118ac00`, `wall_red_string_join_into_retained_record_refuses` and
+`wall_red_deleted_free_minter_refuses` completed at 53,591ms and 5,678ms. Run `32678091252`
+at `4c667bf98a` measured the same identities at 10,390ms and 10,025ms: roughly 5× down for one
+and 2× up for the other. The pair does **not** decide host contention versus binding. Both the
+prepared subject/head and the runner/job changed (`srv1-01-1787471322-1499269` versus
+`srv2-03-1787534638-1455010`), so attributing the variance to either would exceed the evidence.
+
+This independently closes “raise the deadline” as a remedy: a literal inside a 5× observed
+spread makes the refusal intermittent rather than repairing the subject, and retry-until-green
+would erase the deficit's observed frequency. The cost carrier must therefore retain every
+binding coordinate and measure a repeated, binding-stratified distribution, not publish one
+number per identity as though it were stable.
