@@ -9,16 +9,25 @@ instances, and the check that closes each. **No repair is proposed here.**
 > projection* under instance 5. If a citation here ever fails to reproduce, check
 > `run_attempt` before concluding the claim was wrong.
 
-Instances 1–4 were measured 2026-08-23. Instances 5–6 were measured 2026-08-25 and one of them
-**falsified instance 4's own check**, which is why they are folded in here rather than filed
-beside: two accounts of one fact is the failure this document exists to describe. Instance 7 was
-measured 2026-08-26 and is the sharpest of the set, because it was produced *by* this class
-rather than merely observed: a defect report that three people amplified and nobody verified.
+**Provenance.** Instances 1–4 were measured 2026-08-23, in four different lanes. Instances 5–6
+were measured 2026-08-25, and one of them **falsified instance 4's own check** — which is why
+they are folded in here rather than filed beside: two accounts of one fact is the failure this
+document exists to describe. Instances 7–10 were measured 2026-08-26, across three further lanes.
+Ten instances, six lanes, four days.
 
-Every instance below cost real time on 2026-08-23, in four different lanes, and three of the
-four produced a *confident wrong attribution* rather than an ambiguous one. That is what makes
-them one class rather than four mistakes: in each case the run was read as evidence about a
-change, and the run's subject was not that change.
+Every instance below cost real time, and most produced a *confident wrong attribution* rather
+than an ambiguous one. That is what makes them one class rather than ten mistakes: in each case a
+run was read as evidence about a change, and it was not evidence about that change.
+
+> **This paragraph was itself a specimen, caught in review (`review 55981`, 2026-08-26).** It read
+> *"Every instance below cost real time on 2026-08-23, in four different lanes … one class rather
+> than four mistakes"* — true when the file held four instances, and left standing while six more
+> were added beneath it across three later days. Nothing in the additions touched it, so nothing
+> flagged it, and the headline provenance claim quietly became false while every instance under it
+> stayed accurate. That is the stale-authority shape this file documents, occurring in the file
+> that documents it: **an edit above or below a claim does not re-check the claim.** It is left
+> recorded rather than silently corrected, because a document arguing that provenance decays is
+> more credible carrying a receipt of its own decay than asserting it cleanly.
 
 ## The class
 
