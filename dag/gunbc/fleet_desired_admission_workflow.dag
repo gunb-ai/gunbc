@@ -16,6 +16,11 @@ import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.repo_self_build { repo_self_build_command }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.witness_floor_workflow { witness_floor_workflow_name, witness_floor_toolchain_step }
+import gunbc.toolchain_workflow_steps {
+  toolchain_home_isolation_step,
+  toolchain_pin_rustup_default_step,
+}
+import gunbc.toolchain_home_standing { workflow_toolchain_homes_classified }
 import gunbc.fleet_desired_admission {
   fleet_desired_admission_event_payload_path,
   fleet_desired_admission_authorized_action_path,
@@ -167,6 +172,17 @@ fn fleet_desired_admission_action_step() -> Step {
   }
 }
 
+// THIS JOB INSTALLED A TOOLCHAIN INTO THE SHARED HOST HOME UNTIL NOW, AND THAT IS THE SAME DEFECT
+// witnesses.yml CARRIED. srv1 runs many runner slots under one /home/ghrunner; this job's install
+// wrote rustup and cargo into it while other slots were executing binaries out of the same
+// directory. The remedy already existed in gunbc.toolchain_workflow_steps and was reachable only by
+// whoever remembered to reach for it -- which is precisely why gunbc.toolchain_home_standing now
+// derives the obligation from the emitted job rather than leaving it to authorship.
+//
+// PINNING TRAVELS WITH ISOLATING. An isolated RUSTUP_HOME starts with no default toolchain, so a
+// consumer that isolates without pinning has traded a race for a missing default -- the step's own
+// name has said so since fleet-converge first hit it.
+//
 // contents: WRITE for the same reason the deploy workflow needs it -- this job pushes
 // refs/fleet/desired. No other grant is taken.
 fn fleet_desired_admission_job() -> Job {
@@ -176,7 +192,9 @@ fn fleet_desired_admission_job() -> Job {
     runner: gunbc_ci_deploy_srv1_runner_spec(),
     steps: [
       fleet_desired_admission_checkout_step(),
+      toolchain_home_isolation_step(),
       witness_floor_toolchain_step(),
+      toolchain_pin_rustup_default_step(),
       fleet_desired_admission_build_step(),
       fleet_desired_admission_stage_payload_step(),
       fleet_desired_admission_decide_step(),
@@ -380,6 +398,20 @@ data fleet_desired_admission_workflow: Workflow = Workflow {
 // least-wrong representation available until the real carrier lands, at which point these two
 // classes move straight into GuaranteeRequirement rows with no interim registry to dissolve first.
 // The SEARCH KEYS above exist so that migration can find them by name rather than by memory.
-fn expected_fleet_desired_yml() -> String {
-  serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_desired_admission_workflow))
+// EMISSION REFUSES RATHER THAN REPORTS. The classification is conjoined into the emitter, not
+// asserted beside it, so a job added to this workflow without a toolchain-home standing produces no
+// yaml at all -- the construction gunbc.witness_floor_workflow already uses for its capability
+// closure, applied to the fact that closure cannot see.
+type FleetDesiredGenerationOutcome
+  = FleetDesiredGenerated { content: String }
+  | FleetDesiredGenerationRefused
+
+fn expected_fleet_desired_yml() -> FleetDesiredGenerationOutcome {
+  if workflow_toolchain_homes_classified(workflow: fleet_desired_admission_workflow) {
+    FleetDesiredGenerated {
+      content: serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_desired_admission_workflow))
+    }
+  } else {
+    FleetDesiredGenerationRefused
+  }
 }

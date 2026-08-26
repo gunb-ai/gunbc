@@ -18,6 +18,7 @@ import v2.std.algebra { list_map }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import v2.workflow.ci_workflow_run_emit { ci_toolchain_homes_isolated_or_refuse_command }
+import gunbc.toolchain_home_standing { workflow_toolchain_homes_classified }
 import gunbc.toolchain_workflow_steps {
   toolchain_home_isolation_step,
   toolchain_pin_rustup_default_step,
@@ -1319,7 +1320,7 @@ type WitnessFloorGenerationOutcome
   | WitnessFloorGenerationRefused
 
 fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
-  if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && required_lanes_gate_is_renderable() {
+  if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && required_lanes_gate_is_renderable() && workflow_toolchain_homes_classified(workflow: witness_floor_workflow) {
     WitnessFloorGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow)) }
   } else {
     WitnessFloorGenerationRefused

@@ -951,7 +951,6 @@ dependencies = [
  "v1-stage0-runtime",
  "v1-stage0-std-core",
  "v1-stage0-std-surface",
- "v1-stage0-v1-infer",
 ]
 
 [[package]]
@@ -968,6 +967,7 @@ dependencies = [
  "v1-stage0-runtime",
  "v1-stage0-std-core",
  "v1-stage0-std-surface",
+ "v1-stage0-v1-artifact",
 ]
 
 [[package]]

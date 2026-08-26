@@ -20,11 +20,24 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+      - name: Isolate toolchain homes
+        run: |
+          # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2), at which point this carrier and its unmarked siblings ci_isolate_toolchain_script and ci_pin_rustup_default_script dissolve together
+          rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
+          echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
         with:
           components: rustfmt
           cache: false
+      - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
+        run: |
+          rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+          if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
+          if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
+          echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
       - name: Build the admission binary
         run: |
           cargo build --release -p v1-compiler --bin gunbc

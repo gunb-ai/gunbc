@@ -1,0 +1,200 @@
+module gunbc.toolchain_home_standing
+
+import std.types { String, Bool, List }
+import extdeps.github.actions {
+  Workflow, Job, Step, RunStep, UsesStep,
+  RunnerSpec, HostedRunner, SelfHosted, RunsOnExpression,
+  setup_rust_action, action_ref_eq
+}
+import v2.workflow.ci_workflow_run_emit {
+  ci_isolate_rm_rustup_cargo_command,
+  ci_isolate_echo_home_command,
+  ci_isolate_echo_cargo_home_command,
+  ci_isolate_echo_rustup_home_command
+}
+
+// EVERY GENERATED JOB THAT INSTALLS A RUST TOOLCHAIN GETS A STANDING, AND A JOB THAT GETS NONE IS
+// NOT EMITTED.
+//
+// The outage this closes: each self-hosted host runs many runner slots under one /home/ghrunner,
+// and a job that installs rustup into that shared home rewrites a toolchain another slot is
+// executing. Measured as `spawn rustfmt: Text file busy` on srv4-11 and srv3-11 seven minutes
+// apart, and as `cargo: command not found` on srv1-15 while `rustc --version` still resolved.
+//
+// gunbc.toolchain_workflow_steps carries the REMEDY -- per-job HOME/CARGO_HOME/RUSTUP_HOME under
+// RUNNER_TEMP. This module carries the OBLIGATION, and the two are different facts: a remedy that
+// exists is reachable by whoever remembers it, which is how fleet-desired.yml came to install a
+// toolchain into the shared home for as long as it has existed while the fix sat one import away.
+//
+// WHY THE DENOMINATOR IS THE EMITTED WORKFLOW AND NOT A ROSTER OF JOBS. gunbc.witness_floor_workflow
+// witness_floor_capability_closure_per_job_note states the defect this avoids in its own words: the
+// capability closure is conjoined PER JOB into the emission, so "adding a third job without adding
+// its conjunct would emit that job unchecked". A hand-maintained roster of jobs to check is a second
+// authority for the question "what jobs does this workflow have", and the emitted Workflow already
+// answers it. So the fold below walks Workflow.jobs -- a job cannot be added to a workflow without
+// entering this classification, because the list it is added to IS the list this reads.
+//
+// WHY THE STANDING IS DERIVED AND NOT DECLARED. A stored `standing:` field on a job would be a
+// transcription: an author could write PrivateMutableHome beside a job that isolates nothing, and
+// nothing would disagree. Every fact below is read off the emitted steps, against the authority's
+// own command rows and the cited action reference -- never against a hand-authored text pattern,
+// for the reason gunbc.workflow_capability_closure records (the same consumption is spelled several
+// ways, and a pattern that misses one spelling is not a weaker check but a meaningless one).
+
+// TWO STANDINGS, AND THE PARTITION IS THE WHOLE CONTENT: either the job may mutate a toolchain and
+// the home it mutates is its own, or the job mutates no toolchain at all and inherits whatever the
+// host has. There is no third safe arm -- a job that mutates a SHARED home is the outage, and it is
+// a refusal below rather than a standing.
+type ToolchainHomeStanding
+  = PrivateMutableHome
+  | ImmutableToolchain
+
+// THE REFUSAL CAUSES ARE SEPARATE VARIANTS BECAUSE THEIR REMEDIES ARE SEPARATE. Installing into a
+// shared home is fixed by composing gunbc.toolchain_workflow_steps toolchain_home_isolation_step
+// ahead of the install; isolating without installing is fixed by deleting a step that does nothing;
+// and an undecidable runner is fixed by naming the runner, not by adding a step. Collapsing them
+// into one cause would send two of the three readers to the wrong repair -- the total-at-the-level-
+// examined failure DESIGN records.
+type ToolchainHomeRefusal
+  = ToolchainInstalledIntoSharedHome
+  | ToolchainHomeIsolatedWithoutInstall
+  | ToolchainHomeRunnerKindUndecidable
+
+type ToolchainHomeClassification
+  = ToolchainHomeClassified {
+      job_id: String,
+      standing: ToolchainHomeStanding,
+    }
+  | ToolchainHomeUnclassified {
+      job_id: String,
+      refusal: ToolchainHomeRefusal,
+    }
+
+// THE FOUR COMMAND ROWS ARE THE AUTHORITY, not a description of them. Both isolation scripts in the
+// tree -- ci_toolchain_home_isolation_script and the fleet's wider ci_isolate_toolchain_script --
+// are composed from ci_toolchain_home_isolation_steps, so this predicate answers for both without
+// knowing either exists, and it cannot drift from the rows because it IS the rows. Checking the
+// composed script string instead would bind this to one of the two compositions and silently answer
+// false for the other.
+//
+// ALL FOUR ARE REQUIRED. A step that rebinds CARGO_HOME but not RUSTUP_HOME has isolated half a
+// toolchain, which is not a milder version of the outage: rustup's own metadata is what
+// `rustup default` writes, and it is where a concurrent install lands.
+fn script_isolates_toolchain_homes(run: String) -> Bool {
+  string_contains(s: run, pattern: ci_isolate_rm_rustup_cargo_command) &&
+    string_contains(s: run, pattern: ci_isolate_echo_home_command) &&
+    string_contains(s: run, pattern: ci_isolate_echo_cargo_home_command) &&
+    string_contains(s: run, pattern: ci_isolate_echo_rustup_home_command)
+}
+
+fn step_isolates_toolchain_homes(step: Step) -> Bool {
+  match step {
+    RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      script_isolates_toolchain_homes(run: r)
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  }
+}
+
+// INSTALLATION IS IDENTIFIED BY THE CITED ACTION, which is the one thing about it that cannot be
+// respelled: extdeps.github.actions setup_rust_action is the upstream reference this repository
+// declares, and a job installs a toolchain exactly when it runs it.
+fn step_installs_toolchain(step: Step) -> Bool {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+    UsesStep { name: _, id: _, uses: u, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      action_ref_eq(a: u, b: setup_rust_action)
+  }
+}
+
+// THE SCAN IS ORDERED, AND ORDER IS THE CLAIM. An isolation step AFTER the install has isolated
+// nothing: the install already wrote into the shared home, which is the exact defect
+// gunbc.workflow_capability_closure's own ordering witness exists for one layer up. So
+// `installed_unisolated` is set at the moment an install is seen with no isolation behind it, and
+// no later step can clear it.
+type ToolchainHomeScan {
+  isolated: Bool
+  installed: Bool
+  installed_unisolated: Bool
+}
+
+data toolchain_home_scan_empty: ToolchainHomeScan = ToolchainHomeScan {
+  isolated: false, installed: false, installed_unisolated: false
+}
+
+fn scan_job_steps(steps: List<Step>) -> ToolchainHomeScan {
+  fold(steps, init: toolchain_home_scan_empty, f: fn(acc, step) {
+    ToolchainHomeScan {
+      isolated: acc.isolated || step_isolates_toolchain_homes(step: step),
+      installed: acc.installed || step_installs_toolchain(step: step),
+      installed_unisolated: acc.installed_unisolated ||
+        (step_installs_toolchain(step: step) && !acc.isolated),
+    }
+  })
+}
+
+// A HOSTED RUNNER'S HOME IS PRIVATE BY CONSTRUCTION OF THE RUNNER, not by a step, because GitHub
+// hands each run a fresh machine that is destroyed after it. So a hosted job needs no isolation
+// step to hold the standing, and demanding one would be a check whose only effect is ceremony.
+// A SELF-HOSTED RUNNER IS THE OPPOSITE by construction: the home persists and is shared with every
+// other slot on the host, which is what made this an outage rather than a nuisance.
+// AN EXPRESSION RUNNER IS NEITHER, AND THAT IS A REFUSAL RATHER THAN A GUESS. The labels are a
+// GitHub expression resolved at dispatch, so this layer cannot decide whether the home persists.
+// Where an expression job installs nothing the question does not arise and it classifies normally;
+// where it installs, the answer is unknown and unknown fails closed.
+fn classify_runner_install(runner: RunnerSpec, job_id: String, isolated: Bool) -> ToolchainHomeClassification {
+  match runner {
+    HostedRunner { label: _ } =>
+      ToolchainHomeClassified { job_id: job_id, standing: PrivateMutableHome }
+    SelfHosted { labels: _ } =>
+      if isolated {
+        ToolchainHomeClassified { job_id: job_id, standing: PrivateMutableHome }
+      } else {
+        ToolchainHomeUnclassified { job_id: job_id, refusal: ToolchainInstalledIntoSharedHome }
+      }
+    RunsOnExpression { expression: _ } =>
+      if isolated {
+        ToolchainHomeClassified { job_id: job_id, standing: PrivateMutableHome }
+      } else {
+        ToolchainHomeUnclassified { job_id: job_id, refusal: ToolchainHomeRunnerKindUndecidable }
+      }
+  }
+}
+
+fn classify_job_toolchain_home(job: Job) -> ToolchainHomeClassification {
+  let scan = scan_job_steps(steps: job.steps)
+  if scan.installed {
+    if scan.installed_unisolated {
+      classify_runner_install(runner: job.runner, job_id: job.id, isolated: false)
+    } else {
+      classify_runner_install(runner: job.runner, job_id: job.id, isolated: true)
+    }
+  } else {
+    if scan.isolated {
+      ToolchainHomeUnclassified { job_id: job.id, refusal: ToolchainHomeIsolatedWithoutInstall }
+    } else {
+      ToolchainHomeClassified { job_id: job.id, standing: ImmutableToolchain }
+    }
+  }
+}
+
+fn toolchain_home_classification_is_classified(c: ToolchainHomeClassification) -> Bool {
+  match c {
+    ToolchainHomeClassified { job_id: _, standing: _ } => true
+    ToolchainHomeUnclassified { job_id: _, refusal: _ } => false
+  }
+}
+
+fn workflow_toolchain_home_classifications(workflow: Workflow) -> List<ToolchainHomeClassification> {
+  map(workflow.jobs, job => classify_job_toolchain_home(job: job))
+}
+
+// THE ADMISSION. Every job in the emitted workflow classifies, or the workflow does not emit.
+fn workflow_toolchain_homes_classified(workflow: Workflow) -> Bool {
+  fold(
+    workflow_toolchain_home_classifications(workflow: workflow),
+    init: true,
+    f: fn(acc, c) { acc && toolchain_home_classification_is_classified(c: c) }
+  )
+}
+
+data toolchain_home_standing_refusal: String = "REFUSED: a generated job neither installs a toolchain into a home it owns nor leaves the host toolchain alone (gunbc.toolchain_home_standing). No workflow yaml was emitted. Compose gunbc.toolchain_workflow_steps toolchain_home_isolation_step and toolchain_pin_rustup_default_step ahead of the Install Rust toolchain step, or remove the install."

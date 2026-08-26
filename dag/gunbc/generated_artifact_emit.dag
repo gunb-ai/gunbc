@@ -13,7 +13,8 @@ import gunbc.generated_artifact {
   committed_generated_artifacts
 }
 import gunbc.fleet_converge_workflow { expected_fleet_converge_yml, FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused }
-import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml }
+import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml, FleetDesiredGenerationOutcome, FleetDesiredGenerated, FleetDesiredGenerationRefused }
+import gunbc.toolchain_home_standing { toolchain_home_standing_refusal }
 import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused }
 import gunbc.ci_yaml_validate { ci_yml_parses }
 import gunbc.gitignore_emit { expected_gitignore }
@@ -59,7 +60,10 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
       FleetConvergeYamlGenerated { content } => artifact_generated(content: content)
       FleetConvergeYamlGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
     }
-    FleetDesiredAdmissionYamlArtifact => artifact_generated(content: expected_fleet_desired_yml())
+    FleetDesiredAdmissionYamlArtifact => match expected_fleet_desired_yml() {
+      FleetDesiredGenerated { content } => artifact_generated(content: content)
+      FleetDesiredGenerationRefused => ArtifactGenerationRefused { reason: toolchain_home_standing_refusal }
+    }
     GitignoreArtifact => artifact_generated(content: expected_gitignore())
     GitattributesArtifact => match expected_gitattributes() {
       GitattributesGenerated { content } => artifact_generated(content: content)
