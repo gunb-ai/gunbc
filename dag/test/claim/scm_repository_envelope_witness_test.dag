@@ -644,7 +644,7 @@ test fn scm_env_an_unrecognized_repository_format_is_the_repositorys_own_refusal
 // A COMMIT ROOT NAMING NO POSITION IS THE REPOSITORY'S OWN REFUSAL, and this is the third of the
 // three claims that hold the owners apart. The same target-reference syntax is decoded by an edge
 // inside an object record, by a closure document's root, and by a commit root here -- and until the
-// resolution moved out of the shared decoder, all three reported ClosureDocEdgeTargetUnresolved. The
+// resolution moved out of the shared decoder, all three reported ObjectTableEdgeTargetUnresolved. The
 // repository hid that by translating it back with an adapter, which worked only because it happened
 // to make exactly one such call and would have answered "this repository does not hold that commit
 // root" for any genuine edge failure that ever reached it.

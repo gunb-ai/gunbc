@@ -27,7 +27,7 @@ import gunbc.guarantee_rung_drop {
   BoundedPopulation,
   stall_report_message,
 }
-import gunbc.runner_lifecycle { runner_unit_name_for_instance }
+import gunbc.runner_unit { runner_unit_name_of_registration }
 
 data runner_service_activation_scope_disposition: Disposition = SingleAuthority
 
@@ -129,7 +129,7 @@ fn runner_transition_operation(
 fn runner_host_activation_units(deploy: RunnerHostDeploy) -> List<NonEmptyStr> {
   map(
     desired_runner_slot_members(deploy: deploy),
-    m => runner_unit_name_for_instance(instance_name: m.instance_name as String),
+    m => runner_unit_name_of_registration(registration_name: m.instance_name),
   )
 }
 

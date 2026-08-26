@@ -385,3 +385,46 @@ data retained_rust_live_tree_migration_stall: GuaranteeStall = GuaranteeStall {
   population: BoundedPopulation { members: Cons { head: "v2.test.lens_test_migration_debt.test_migration_debt_test.retained_rust_kernel_wall_holds_against_live_tree", tail: Empty {} } },
   next_rung_trigger: "live Rust-test discovery and the retained-kernel authority join exactly"
 }
+
+// REQUIRED-FLOOR RUN 32918791246 exposed these four pre-existing facts after the
+// DeclinedLiveTree arm stopped withholding their nine witness identities. None of their carriers
+// is changed by that deletion. They are declared rung drops rather than expected-red enrolments:
+// the witnesses remain ordinary, executing failures until the separately routed repair lands.
+// Assignment stays in the dashboard work-item system; this semantic carrier records the bounded
+// population and the condition that ends each drop.
+
+data external_model_scope_live_cover_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the live external-model scope cover does not cover the extdeps tree",
+  current: OutsideTheLadder,
+  ceiling: MechanicallyPreventable,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "test.claim.external_model_scope_live_cover_witness.frontier_cover_of_live_extdeps_tree_holds", tail: Empty {} } },
+  next_rung_trigger: "the live extdeps-tree cover is exact and its routed witness returns true"
+}
+
+data observation_emit_migration_census_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the observation-emitter migration census disagrees with the live seed",
+  current: OutsideTheLadder,
+  ceiling: MechanicallyPreventable,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "test.claim.observation_emit_census_witness_test.w_every_rostered_marker_still_exists_in_the_seed", tail: Cons { head: "test.claim.observation_emit_census_witness_test.w_the_named_negative_example_has_migrated", tail: Cons { head: "test.claim.observation_emit_census_witness_test.w_post_snapshot_live_tags_are_rostered_bidirectional", tail: Cons { head: "test.claim.observation_emit_census_witness_test.w_the_raw_byte_dump_shape_is_gone_from_the_seed", tail: Cons { head: "test.claim.observation_emit_census_witness_test.w_the_raw_gantt_shape_is_gone_from_the_seed", tail: Empty {} } } } } } },
+  next_rung_trigger: "the live observation emit population and its migration census agree in both directions"
+}
+
+data observation_heartbeat_lockstep_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the observation heartbeat implementation and its declared cadence are out of lockstep",
+  current: OutsideTheLadder,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "test.claim.observation_lockstep_witness_test.w_heartbeat_period_matches_the_seed_cadence", tail: Cons { head: "test.claim.observation_lockstep_witness_test.w_heartbeat_source_still_refuses_to_fabricate", tail: Empty {} } } },
+  next_rung_trigger: "the heartbeat period is derived from one declared cadence and the source refuses fabricated heartbeat observations"
+}
+
+data operation_argv_binding_wall_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the operation-argv binding wall does not materialize the previously unbindable operation",
+  current: OutsideTheLadder,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "test.claim.operation_argv_binding_wall_witness.operation_argv_previously_unbindable_operation_now_materializes", tail: Empty {} } },
+  next_rung_trigger: "the operation-argv binding wall materializes the controlled previously-unbindable operation"
+}
