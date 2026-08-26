@@ -2,6 +2,7 @@
 // Source module: v1.compiler.infer_items
 
 use self::ItemKind::*;
+use self::ModuleTypecheckProgress::*;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{dissolution_description, unbound_dissolution};
@@ -82,10 +83,29 @@ pub fn typed_module_interface_body_dual_field_dissolution_trigger() -> Rc<Dissol
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum ModuleTypecheckProgress {
+    ItemsChecked,
+    AbandonedBeforeItems,
+}
+
+pub fn module_typecheck_progress_sibling_field_dissolution_trigger() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            unbound_dissolution("🟡 dissolve-on: this field STATES the truth and leaves every reader structurally free not to hear it. A consumer may go on reading TypedModule.items and ignore progress forever, which is the conflation preserved beside its own repair -- validation where DESIGN 5 wants construction. THE TERMINAL SHAPE puts the item population INSIDE the completed arm, so that reading items structurally requires handling whether any items were measured: TypecheckItemAnalysis = ItemAnalysisCompleted { items, receipt } | ItemAnalysisUnreached { stopped_at, cause }, with the abandoned arm carrying NO empty list for a careless consumer to read as a completed empty module. It is not built here on the evidence recorded in the annotation above: the arm shape forces every TypedModule.items reader to change, which reopens exactly the sweep the reader partition retired, and the ruling that admitted this change was on the narrow repair rather than on a reader migration. DISSOLVES WHEN the item population moves inside the completed arm and this field has no separate existence.".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypedModule {
     pub module: Rc<Node>,
     pub items: Rc<Vec<Rc<Node>>>,
+    pub progress: ModuleTypecheckProgress,
     pub type_env: Rc<TypeEnv>,
     pub type_env_cache: Rc<TypeEnvCache>,
     pub interface: Rc<ModuleInterface>,
@@ -238,3 +258,7 @@ pub struct DataItem;
 pub struct ServiceItem;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OtherItem;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ItemsChecked;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AbandonedBeforeItems;

@@ -12,7 +12,7 @@ import v2.std.diagnostic {
   ExternalContractUnknown,
   NonEmptyDiagnostics,
   Unavailable,
-  port_locus
+  invariant_port_locus
 }
 import v2.std.grammar_choice_ambiguity {
   GrammarChoiceAmbiguityRow,
@@ -51,7 +51,7 @@ fn sample_overlap_row() -> GrammarChoiceAmbiguityRow {
 
 fn overlap_residue_stage_diagnostic(row: GrammarChoiceAmbiguityRow) -> ParseStageDiagnostic {
   parse_overlap_residue_stage_diagnostic_at(
-    at: port_locus(port: ^parse_stage_locus_port),
+    at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^frontier_probe_overlap_detail_test_grammar_contract),
     row: row
   )
 }
@@ -89,7 +89,7 @@ test fn masked_overlap_tail_preserves_overlap_evidence_and_remaining_chain() -> 
         ParseStageDiagnostic {
           diagnostic: Diagnostic {
             reason: ^normalize_rejected,
-            at: port_locus(port: ^parse_stage_locus_port),
+            at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^normalize_rejected),
             correction: Unavailable { reason: ExternalContractUnknown }
           },
           evidence: NoParseDiagnosticEvidence
@@ -183,13 +183,13 @@ test fn masked_overlap_located_reason_unmasks_terminal_refusal() -> Bool {
   let masked = NonEmptyDiagnostics {
     head: Diagnostic {
       reason: ^parse_grammar_choice_overlap_residue,
-      at: port_locus(port: ^parse_stage_locus_port),
+      at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^parse_grammar_choice_overlap_residue),
       correction: Unavailable { reason: ExternalContractUnknown }
     },
     tail: [
       Diagnostic {
         reason: ^body_lowering_reason_wrapper_retained_emitted,
-        at: port_locus(port: ^parse_stage_locus_port),
+        at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^body_lowering_reason_wrapper_retained_emitted),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
     ]
@@ -202,7 +202,7 @@ test fn overlap_only_chain_keeps_overlap_located_reason() -> Bool {
   let overlap_only = NonEmptyDiagnostics {
     head: Diagnostic {
       reason: ^parse_grammar_choice_overlap_residue,
-      at: port_locus(port: ^parse_stage_locus_port),
+      at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^parse_grammar_choice_overlap_residue),
       correction: Unavailable { reason: ExternalContractUnknown }
     },
     tail: Empty
@@ -215,13 +215,13 @@ test fn masked_resolve_not_found_unmasks_located_reason() -> Bool {
   let masked = NonEmptyDiagnostics {
     head: Diagnostic {
       reason: ^parse_grammar_choice_overlap_residue,
-      at: port_locus(port: ^parse_stage_locus_port),
+      at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^parse_grammar_choice_overlap_residue),
       correction: Unavailable { reason: ExternalContractUnknown }
     },
     tail: [
       Diagnostic {
         reason: ^resolve_module_not_found,
-        at: port_locus(port: ^parse_stage_locus_port),
+        at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^resolve_module_not_found),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
     ]

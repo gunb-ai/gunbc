@@ -41,7 +41,7 @@ import v2.std.compilers.target_model {
   TargetModel, target_model_emit_transforms_empty
 }
 import v2.std.coercion { Identity }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected, port_locus }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, invariant_port_locus }
 import v2.std.logic { Bool }
 import v2.std.node {
   Conj,
@@ -95,7 +95,7 @@ fn ingest_fixture_root() -> GrammarRoot {
 }
 
 fn ingest_parse() -> Outcome<Node> {
-  let at = port_locus(port: ^parse_stage_locus_port)
+  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^ingest_bridge_test_grammar_contract)
   match grammar_validate_for_parse(root: ingest_fixture_root(), at: at) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: validated, diagnostics: _ } =>
