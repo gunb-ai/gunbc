@@ -1,6 +1,7 @@
 module gunbc.namespace_cut_landing_order
 
-import std.types { String, NonEmptyStr, Bool }
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 
 // WHY THIS CARRIER EXISTS AT ALL, since a reader will otherwise look for the
 // ruling in the plan documents where its neighbours live. DESIGN section 4c
@@ -48,18 +49,72 @@ data namespace_cut_grammar_last_ruling: LandingOrderRuling = LandingOrderRuling 
   atomicity_qualified: true
 }
 
-// The current ruling is a derivation over the rows above rather than a third
-// row naming one of them. A stored "current" pointer is a second answer to a
-// question the supersession relation already decides, and it is the copy that
-// goes stale when a later ruling lands.
-fn current_landing_order() -> CutStepPosition {
-  namespace_cut_grammar_last_ruling.position
+// THE ROSTER IS THE DENOMINATOR THE DERIVATION BELOW FOLDS OVER. A ruling that
+// is not a member is not considered, so adding a ruling means adding a row here
+// and nothing else.
+data namespace_cut_landing_order_rulings: List<LandingOrderRuling> = [
+  namespace_cut_grammar_first_ruling,
+  namespace_cut_grammar_last_ruling
+]
+
+// The supersession edge read in the direction the derivation needs it. A ruling
+// carries the date it supersedes; this returns that date as a list so the empty
+// case has no sentinel spelling -- NoPriorRuling contributes nothing rather than
+// contributing an empty string that a comparison could accidentally match.
+fn ruling_superseded_dates(r: LandingOrderRuling) -> List<NonEmptyStr> {
+  match r.supersession {
+    SupersedesOnOrderOnly { superseded_ruling_date: d, axis_unchanged: _ } => [d]
+    NoPriorRuling => []
+  }
 }
 
-fn ruling_supersedes_on_order_only(r: LandingOrderRuling) -> Bool {
-  match r.supersession {
-    SupersedesOnOrderOnly { superseded_ruling_date: _, axis_unchanged: _ } => true
-    NoPriorRuling => false
+// The three states the relation can be in, kept apart because they have
+// opposite remedies: an answer, nothing left standing (a cycle, or an empty
+// roster), and more than one ruling nobody superseded. Collapsing the last two
+// into Absent, or taking `first` of the survivors, would answer a question the
+// rows do not decide -- the fabricated plausible output DESIGN section 5
+// forbids, in the one place a reader is most likely to trust it.
+type CurrentLandingOrder
+  = CurrentPosition { position: CutStepPosition, ruling_date: NonEmptyStr }
+  | NoUnsupersededRuling
+  | AmbiguousUnsupersededRulings { survivor_count: Int }
+
+// The current ruling is DERIVED from the supersession relation: the ruling no
+// other ruling names as superseded. It is not a stored pointer and not a row
+// naming one of the others -- either would be a second answer to a question the
+// relation already decides, and it is the copy that goes stale when a later
+// ruling lands.
+fn current_landing_order() -> CurrentLandingOrder {
+  let superseded = namespace_cut_landing_order_rulings |> flat_map(r => ruling_superseded_dates(r: r))
+  let survivors = namespace_cut_landing_order_rulings
+    |> filter(r => !(superseded |> any(d => d == r.ruling_date)))
+  match survivors |> first {
+    Present { value: winner } =>
+      if (survivors |> count) == 1 {
+        CurrentPosition { position: winner.position, ruling_date: winner.ruling_date }
+      } else {
+        AmbiguousUnsupersededRulings { survivor_count: survivors |> count }
+      }
+    Absent => NoUnsupersededRuling
+  }
+}
+
+// THE DERIVATION'S EXECUTING CONSUMER. Green by execution says the fold over
+// the supersession relation really answers GrammarDeletedLast; the discriminating
+// RED is to set the 2026-08-25 row's supersession to NoPriorRuling, at which
+// point nothing is superseded, two rulings survive, and this refuses with
+// AmbiguousUnsupersededRulings rather than quietly picking one.
+fn landing_order_derivation_witness() -> ProcessExit {
+  match current_landing_order() {
+    CurrentPosition { position: p, ruling_date: d } =>
+      match p {
+        GrammarDeletedLast =>
+          if d == ("2026-08-25" as NonEmptyStr) { ExitSuccess }
+          else { exit_failure(reason: "derived the right position from the wrong ruling row") }
+        GrammarDeletedFirst => exit_failure(reason: "derived GrammarDeletedFirst; the 2026-08-15 ruling is superseded on order")
+      }
+    NoUnsupersededRuling => exit_failure(reason: "no unsuperseded ruling: the supersession relation names every row")
+    AmbiguousUnsupersededRulings { survivor_count: _ } => exit_failure(reason: "more than one unsuperseded ruling; the relation does not decide a current order")
   }
 }
 
