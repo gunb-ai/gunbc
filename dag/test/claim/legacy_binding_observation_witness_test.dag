@@ -3,7 +3,7 @@ module test.claim.legacy_binding_observation_witness
 import std.types { String, Bool, Int, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { Fnv1a64Structural, structural_content_hash }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
 import std.occurrence_identity { OccurrenceId }
 import v2.workflow.legacy_binding_observation {
   LegacyBindingObservation,
@@ -16,11 +16,13 @@ import v2.workflow.legacy_binding_observation {
   LegacyObservationComplete,
   LegacyObservationMissingExpected,
   LegacyObservationForeignObserved,
+  LegacyObservationRepeatedObserved,
   LegacySubjectApplicability,
   LegacySubjectApplicable,
   LegacySubjectDiverged,
   legacy_subject_applicability,
-  legacy_observation_completeness
+  legacy_observation_completeness,
+  legacy_subject_identity
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -228,6 +230,7 @@ test fn an_observation_answering_exactly_the_expected_occurrences_is_complete() 
     LegacyObservationComplete => true
     LegacyObservationMissingExpected { occurrences: _ } => false
     LegacyObservationForeignObserved { occurrences: _ } => false
+    LegacyObservationRepeatedObserved { occurrences: _ } => false
   }
 }
 
@@ -238,6 +241,7 @@ test fn an_observation_missing_one_expected_occurrence_refuses() -> Bool {
     LegacyObservationMissingExpected { occurrences: missing } => (missing |> count) == 1
     LegacyObservationComplete => false
     LegacyObservationForeignObserved { occurrences: _ } => false
+    LegacyObservationRepeatedObserved { occurrences: _ } => false
   }
 }
 
@@ -246,6 +250,7 @@ test fn an_observation_answering_for_a_non_subject_occurrence_refuses() -> Bool 
     LegacyObservationForeignObserved { occurrences: foreign } => (foreign |> count) == 1
     LegacyObservationComplete => false
     LegacyObservationMissingExpected { occurrences: _ } => false
+    LegacyObservationRepeatedObserved { occurrences: _ } => false
   }
 }
 
@@ -262,5 +267,56 @@ test fn an_observation_whose_every_row_is_refused_is_still_complete() -> Bool {
     LegacyObservationComplete => true
     LegacyObservationMissingExpected { occurrences: _ } => false
     LegacyObservationForeignObserved { occurrences: _ } => false
+    LegacyObservationRepeatedObserved { occurrences: _ } => false
   }
+}
+
+// ONE OCCURRENCE, ONE OUTCOME -- AND MEMBERSHIP ALONE DOES NOT SAY SO.
+//
+// This fixture has every expected occurrence present and no foreign one, so a two-direction
+// membership check calls it complete while the artifact carries two outcomes for occurrence 11.
+// That is the grain confusion the row type warns about arriving through the completeness law: an
+// unreconciled producer hands over attempt-grain rows and, without this arm, they pass. Found by
+// review 56288 on the first cut of this module.
+test fn an_observation_answering_twice_for_one_occurrence_refuses() -> Bool {
+  match legacy_observation_completeness(observation: lbo_observation(ids: [11, 11, 22, 33]), expected: lbo_expected()) {
+    LegacyObservationRepeatedObserved { occurrences: repeated } => (repeated |> count) == 1
+    LegacyObservationComplete => false
+    LegacyObservationMissingExpected { occurrences: _ } => false
+    LegacyObservationForeignObserved { occurrences: _ } => false
+  }
+}
+
+// THE FIELD HALF OF THE RESOLVER REFERENCE MOVES THE COMPARISON, and it must also move the content
+// address -- review 56288 and review 56285 both found the asymmetry, from opposite ends. The arm
+// below is the comparison half; legacy_subject_identity now folds the field, so the two cannot
+// disagree about whether these are the same base.
+test fn a_moved_resolver_field_refuses() -> Bool {
+  let base = lbo_base_subject()
+  lbo_diverged_field(other: LegacyBindingObservationSubject {
+    semantic_source_digest: base.semantic_source_digest,
+    source_set_digest: base.source_set_digest,
+    compiler_artifact_digest: base.compiler_artifact_digest,
+    resolver_identity: decl_field_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name", field_name: "resolved"),
+    resolver_policy: base.resolver_policy,
+    occurrence_transport_digest: base.occurrence_transport_digest,
+    declaration_index_digest: base.declaration_index_digest
+  }) == "resolver_identity.field"
+}
+
+// AND THE ADDRESS MOVES WITH IT. This is the arm that would have caught the original defect: two
+// subjects differing only in the resolver reference's field are refused by the comparison AND carry
+// different content addresses. Either alone is satisfiable by the asymmetry the reviews found.
+test fn a_moved_resolver_field_also_moves_the_content_address() -> Bool {
+  let base = lbo_base_subject()
+  let other = LegacyBindingObservationSubject {
+    semantic_source_digest: base.semantic_source_digest,
+    source_set_digest: base.source_set_digest,
+    compiler_artifact_digest: base.compiler_artifact_digest,
+    resolver_identity: decl_field_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name", field_name: "resolved"),
+    resolver_policy: base.resolver_policy,
+    occurrence_transport_digest: base.occurrence_transport_digest,
+    declaration_index_digest: base.declaration_index_digest
+  }
+  legacy_subject_identity(subject: base).digest != legacy_subject_identity(subject: other).digest
 }
