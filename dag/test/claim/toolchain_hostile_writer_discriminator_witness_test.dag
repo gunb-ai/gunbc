@@ -10,7 +10,7 @@ import v2.workflow.ci_workflow_run_emit { ci_hostile_legacy_writer_discriminator
 test fn w_shared_arm_requires_observed_interference() -> Bool {
   string_contains(
     s: ci_hostile_legacy_writer_discriminator_script(),
-    pattern: "if run_arm \"$ROOT/shared-arm\" \"$SHARED\" \"$SHARED\"; then"
+    pattern: "if [ \"$SHARED_STATUS\" -ne 1 ]; then"
   ) && string_contains(
     s: ci_hostile_legacy_writer_discriminator_script(),
     pattern: "shared-arm control unexpectedly passed"
@@ -20,11 +20,17 @@ test fn w_shared_arm_requires_observed_interference() -> Bool {
 test fn w_private_arm_requires_unaffected_readers() -> Bool {
   string_contains(
     s: ci_hostile_legacy_writer_discriminator_script(),
-    pattern: "if ! run_arm \"$ROOT/private-arm\" \"$PRIVATE_READER\" \"$LEGACY\"; then"
+    pattern: "if [ \"$PRIVATE_STATUS\" -ne 0 ]; then"
   ) && string_contains(
     s: ci_hostile_legacy_writer_discriminator_script(),
     pattern: "hostile legacy writer affected private-home readers"
   )
+}
+
+test fn w_barrier_failure_is_bounded_and_distinct_from_interference() -> Bool {
+  string_contains(s: ci_hostile_legacy_writer_discriminator_script(), pattern: "if [ \"$I\" -gt 3000 ]; then") &&
+    string_contains(s: ci_hostile_legacy_writer_discriminator_script(), pattern: "return 2") &&
+    string_contains(s: ci_hostile_legacy_writer_discriminator_script(), pattern: "control failed before reader comparison")
 }
 
 // The GREEN arm must depend on the isolation binding itself. Hard-wiring a third directory here
