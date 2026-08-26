@@ -22,7 +22,7 @@ fn pmp_tokenize_parse_path(path: String) -> Bool {
 
 fn pmp_memo_stats_text(source_text: String) -> ParseMemoStats {
   let lm = dag_language_model()
-  let at = port_locus(port: ^parse_stage_locus_port)
+  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^parse_mechanism_probe_grammar_contract)
   match tokenize(text: source_text, file: pmp_anchor, rules: lm.lex) {
     Rejected { diagnostics: _ } =>
       ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }

@@ -28,7 +28,11 @@ import extdeps.languages.json.emit {
   json_string,
   serialize_json,
 }
-import extdeps.languages.json.parse { parse_json }
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+}
 
 import v2.std.node {
   Cardinality,
@@ -240,9 +244,9 @@ test fn scm_image_round_trip_comparison_can_say_no() -> Bool {
 // parse_json, so the durable artifact -- the bytes that actually reach a file -- would be untested.
 test fn scm_image_survives_serialization_to_text_and_back() -> Bool {
   let text = serialize_json(v: scm_image_encoded(n: closure_doc_program()))
-  match parse_json(s: text) {
-    Absent => false
-    Present { value: reparsed } =>
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: _ } => false
+    JsonDocumentParsed { value: reparsed } =>
       scm_image_loads_as(loaded: decode_closure_document(v: reparsed), expected: closure_doc_program())
   }
 }
