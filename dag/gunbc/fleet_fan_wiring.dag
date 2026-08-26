@@ -142,19 +142,41 @@ fn installed_fan_catalog(standing: InstalledFanModelStanding) -> DeclarationRef?
 // The remedy for absence is fan_header_verdict in the population module, judged against the
 // declared population - never a rewrite of this field.
 type FanTachSourceStanding
-  = TachCarriedByDrivenFan { represented_fan_count: Int }
+  = TachCarriedByDrivenFan { representation: TachRepresentationStanding }
   | TachNotCarried
   | TachSourceUnobserved
 
-// ONE HEADER'S REALIZATION. driven_fan_count is how many physical fans hang off this one
-// header - 1 for a direct connection, 2 for a splitter - and is the number that makes
-// "how many fans does this machine have" answerable at all.
+// HOW MANY FANS HANG OFF THIS HEADER IS OBSERVED, DERIVED, OR UNKNOWN -- three states, and an
+// earlier revision of this module wrote all three as one Int. That let an ASSEMBLY EXPECTATION
+// occupy a field whose name claims an installed fact: "the cooler ships two fans and a splitter"
+// supports `expected 2`, never `this header drives 2`, and nobody has opened srv1 or srv2. The
+// parent authority says so in as many words, so the child was contradicting it while looking
+// like a refinement.
+//
+// DrivenFanCountDerivedFromAssembly carries the specification it came from, which is what makes
+// it a claim someone can check rather than a number someone typed.
+type DrivenFanCountStanding
+  = DrivenFanCountObserved { count: Int }
+  | DrivenFanCountDerivedFromAssembly {
+      expected_count: Int
+      specification: AssemblyBundledFanSpecification
+    }
+  | DrivenFanCountUnobserved
+
+// ONE HEADER'S REALIZATION.
 type FanHeaderWiring {
   header: NonEmptyStr
-  driven_fan_count: Int
+  driven_fan_count: DrivenFanCountStanding
   model: InstalledFanModelStanding
   tach_source: FanTachSourceStanding
 }
+
+// AND HOW MANY ROTORS THE TACH SPEAKS FOR IS ITS OWN QUESTION, with its own unknown. Observing a
+// live rpm value establishes that the header CARRIES a signal; it establishes nothing about how
+// many spinning parts that one signal covers, which is precisely the fact a splitter changes.
+type TachRepresentationStanding
+  = TachRepresentationObserved { represented_fan_count: Int }
+  | TachRepresentationUnobserved
 
 // THE EVIDENCE ARM DECIDES SOMETHING, or it is vocabulary. A physical-inventory claim - what is
 // actually bolted into this machine - is admitted ONLY by a label somebody read. A derivation
@@ -191,12 +213,20 @@ fn physical_inventory_confirmation(
 // rather than a blanket. Selecting a curve or a spare needs the PART, not the inspection, so
 // every bound model answers here regardless of how it came to be known. If both consumers moved
 // together the evidence axis would be deciding nothing.
-fn catalog_selection_admits(standing: InstalledFanModelStanding) -> Bool {
-  match standing {
-    FanModelUnobserved => false
-    FanModelLabelObserved { catalog } => true
-    FanModelOperatorDeclaredPart { catalog } => true
-    FanModelDerivedFromAssembly { specification } => true
+// AN ADMISSION THAT DOES NOT RETURN ITS SUBJECT CONFINES NOTHING. The previous form answered
+// Bool, so a caller could admit the Dynatron-derived standing and then select the Noctua catalog
+// -- the admission and the thing admitted travelled separately, which is the same shape as the
+// catalog/evidence pairing this module already closed one level up. The selection now CARRIES the
+// catalog, so a downstream curve or spare takes it from here and has no second argument to
+// disagree with.
+type FanCatalogSelection
+  = FanCatalogSelectionAdmitted { catalog: DeclarationRef }
+  | FanCatalogSelectionRefusedModelUnobserved
+
+fn catalog_selection(standing: InstalledFanModelStanding) -> FanCatalogSelection {
+  match installed_fan_catalog(standing: standing) {
+    Present { value: catalog } => FanCatalogSelectionAdmitted { catalog: catalog }
+    none => FanCatalogSelectionRefusedModelUnobserved
   }
 }
 
@@ -240,7 +270,7 @@ fn control_endpoints(wiring: HostFanWiring) -> List<FanHeaderIdentity> {
 
 fn tach_carries_readback(standing: FanTachSourceStanding) -> Bool {
   match standing {
-    TachCarriedByDrivenFan { represented_fan_count } => true
+    TachCarriedByDrivenFan { representation } => true
     TachNotCarried => false
     TachSourceUnobserved => false
   }
@@ -249,7 +279,7 @@ fn tach_carries_readback(standing: FanTachSourceStanding) -> Bool {
 fn tach_source_unobserved(standing: FanTachSourceStanding) -> Bool {
   match standing {
     TachSourceUnobserved => true
-    TachCarriedByDrivenFan { represented_fan_count } => false
+    TachCarriedByDrivenFan { representation } => false
     TachNotCarried => false
   }
 }
@@ -287,25 +317,98 @@ fn tach_readback_endpoint_derivation(wiring: HostFanWiring) -> TachReadbackEndpo
   }
 }
 
-// HOW MANY ROTORS THIS HEADER'S TACH ACTUALLY SPEAKS FOR, which is not how many it drives. A
-// splitter reports one signal for two fans, so a reader comparing a tach against a fan count
-// needs this number or it will conclude that one stopped rotor is fine because its sibling is
-// still turning.
-fn represented_fan_count_for_header(wiring: HostFanWiring, header: NonEmptyStr) -> Int {
-  fold(
-    filter(wiring.headers, binding => binding.header == header),
-    init: 0,
-    f: (acc, binding) =>
-      match binding.tach_source {
-        TachCarriedByDrivenFan { represented_fan_count } => acc + represented_fan_count
-        TachNotCarried => acc
-        TachSourceUnobserved => acc
-      },
-  )
+// HOW MANY ROTORS THIS HEADER'S TACH SPEAKS FOR, and the previous form of this function returned
+// an Int -- so a header that is absent from the roster, a header whose tach is known not carried,
+// a header whose signal path nobody inspected, and a duplicated header all answered 0. Five
+// states, five different owners, one number: the same narrow the readback population had just
+// been repaired for, reintroduced one layer down in the repair itself, by me, in the same commit.
+//
+// Duplicates get their own arm rather than being summed. Two rows for one header is a broken
+// roster, and adding their counts produces a plausible total that is nobody's fact.
+type RepresentedFanCountStanding
+  = RepresentedFanCountObserved { header: NonEmptyStr, count: Int }
+  | RepresentedFanCountUnobserved { header: NonEmptyStr }
+  | HeaderTachNotCarried { header: NonEmptyStr }
+  | HeaderAbsentFromWiring { header: NonEmptyStr }
+  | HeaderDuplicatedInWiring { header: NonEmptyStr, row_count: Int }
+
+fn represented_fan_count_for_header(
+  wiring: HostFanWiring,
+  header: NonEmptyStr,
+) -> RepresentedFanCountStanding {
+  let rows = filter(wiring.headers, binding => binding.header == header)
+  if rows.length() == 0 {
+    HeaderAbsentFromWiring { header: header }
+  } else if rows.length() > 1 {
+    HeaderDuplicatedInWiring { header: header, row_count: rows.length() }
+  } else {
+    fold(
+      rows,
+      init: HeaderAbsentFromWiring { header: header },
+      f: (acc, binding) =>
+        match binding.tach_source {
+          TachNotCarried => HeaderTachNotCarried { header: header }
+          TachSourceUnobserved => RepresentedFanCountUnobserved { header: header }
+          TachCarriedByDrivenFan { representation } =>
+            match representation {
+              TachRepresentationUnobserved =>
+                RepresentedFanCountUnobserved { header: header }
+              TachRepresentationObserved { represented_fan_count } =>
+                RepresentedFanCountObserved {
+                  header: header,
+                  count: represented_fan_count,
+                }
+            }
+        },
+    )
+  }
 }
 
-fn installed_fan_count(wiring: HostFanWiring) -> Int {
-  fold(wiring.headers, init: 0, f: (acc, binding) => acc + binding.driven_fan_count)
+// THE COUNT IS A LOWER BOUND WHEN ANY HEADER IS UNOBSERVED, and the caller is told which. An
+// unobserved header contributing 0 to a plain Int would report a machine as having fewer fans
+// than it does, with nothing distinguishing that from a machine that really has fewer.
+type InstalledFanCountStanding
+  = InstalledFanCountExact { count: Int }
+  | InstalledFanCountPartial { observed_lower_bound: Int, unobserved_headers: List<NonEmptyStr> }
+
+fn driven_fan_count_value(standing: DrivenFanCountStanding) -> Int? {
+  match standing {
+    DrivenFanCountObserved { count } => Present { value: count }
+    DrivenFanCountDerivedFromAssembly { expected_count, specification } =>
+      Present { value: expected_count }
+    DrivenFanCountUnobserved => none
+  }
+}
+
+fn installed_fan_count_standing(wiring: HostFanWiring) -> InstalledFanCountStanding {
+  let unobserved = map(
+    filter(
+      wiring.headers,
+      binding =>
+        match binding.driven_fan_count {
+          DrivenFanCountUnobserved => true
+          other => false
+        },
+    ),
+    binding => binding.header,
+  )
+  let total = fold(
+    wiring.headers,
+    init: 0,
+    f: (acc, binding) =>
+      match driven_fan_count_value(standing: binding.driven_fan_count) {
+        Present { value } => acc + value
+        none => acc
+      },
+  )
+  if unobserved.length() > 0 {
+    InstalledFanCountPartial {
+      observed_lower_bound: total,
+      unobserved_headers: unobserved,
+    }
+  } else {
+    InstalledFanCountExact { count: total }
+  }
 }
 
 fn wired_headers(wiring: HostFanWiring) -> List<NonEmptyStr> {
@@ -396,27 +499,37 @@ data dynatron_df126025bu_pwmh_ref: DeclarationRef = DeclarationRef {
 fn chassis_bay_wiring(header: NonEmptyStr) -> FanHeaderWiring {
   FanHeaderWiring {
     header: header,
-    driven_fan_count: 1,
+    driven_fan_count: DrivenFanCountObserved { count: 1 },
     model: FanModelUnobserved,
-    tach_source: TachCarriedByDrivenFan { represented_fan_count: 1 },
+    tach_source: TachCarriedByDrivenFan {
+      representation: TachRepresentationObserved { represented_fan_count: 1 },
+    },
   }
 }
 
-// srv1/srv2: the NH-D9 AMP-4926 4U carries TWO NF-A9 HS-PWM fans and ships with an NA-YC1
-// splitter, so ONE header drives two parts. Whether the splitter is actually in use on these
-// two machines is a WIRING question the tach evidence answers in the negative: srv2 reports all
-// five channels at 962-998 rpm, and a splitter suppresses one tach entirely rather than
-// reporting a plausible speed. So the readback is declared carried, and driven_fan_count stays 2
-// because the cooler ships two fans either way - the count is a property of the part, not of
-// whether both signals reach the board.
+// srv1/srv2 FAN1 IS AN ASSEMBLY EXPECTATION, NOT AN OBSERVATION, and this block previously said
+// the opposite on an argument that its own module now refutes. It read: five live tach channels
+// prove the splitter is not in use, "because a splitter suppresses one tach entirely". The NA-YC1
+// omits the RPM conductor on ONE branch precisely so the other still reports, so four chassis
+// headers plus one cooler header behind a splitter produce five channels too. The evidence was
+// consistent with both realizations and was read as deciding between them.
+//
+// What is actually known: the NH-D9 AMP-4926 4U ships two NF-A9 HS-PWM fans and an NA-YC1
+// splitter, and FAN1 publishes a live rpm value. What is NOT known, because nobody has opened
+// these two machines: how many fans hang off FAN1, and how many rotors its one signal speaks for.
+// The parent authority already says exactly this, so asserting 2 and 1 here made the child
+// contradict the module it builds on while looking like a refinement of it.
 data srv1_fan_wiring: HostFanWiring = HostFanWiring {
   host: operator_host_srv1,
   headers: [
     FanHeaderWiring {
       header: "FAN1",
-      driven_fan_count: 2,
+      driven_fan_count: DrivenFanCountDerivedFromAssembly {
+        expected_count: 2,
+        specification: noctua_nh_d9_amp_4926_bundled_fan,
+      },
       model: FanModelDerivedFromAssembly { specification: noctua_nh_d9_amp_4926_bundled_fan },
-      tach_source: TachCarriedByDrivenFan { represented_fan_count: 1 },
+      tach_source: TachCarriedByDrivenFan { representation: TachRepresentationUnobserved },
     },
     chassis_bay_wiring(header: "FAN2"),
     chassis_bay_wiring(header: "FAN3"),
@@ -430,9 +543,12 @@ data srv2_fan_wiring: HostFanWiring = HostFanWiring {
   headers: [
     FanHeaderWiring {
       header: "FAN1",
-      driven_fan_count: 2,
+      driven_fan_count: DrivenFanCountDerivedFromAssembly {
+        expected_count: 2,
+        specification: noctua_nh_d9_amp_4926_bundled_fan,
+      },
       model: FanModelDerivedFromAssembly { specification: noctua_nh_d9_amp_4926_bundled_fan },
-      tach_source: TachCarriedByDrivenFan { represented_fan_count: 1 },
+      tach_source: TachCarriedByDrivenFan { representation: TachRepresentationUnobserved },
     },
     chassis_bay_wiring(header: "FAN2"),
     chassis_bay_wiring(header: "FAN3"),
@@ -450,9 +566,14 @@ data srv3_fan_wiring: HostFanWiring = HostFanWiring {
   headers: [
     FanHeaderWiring {
       header: "FAN1",
-      driven_fan_count: 1,
+      driven_fan_count: DrivenFanCountDerivedFromAssembly {
+        expected_count: 1,
+        specification: dynatron_w1_bundled_fan,
+      },
       model: FanModelDerivedFromAssembly { specification: dynatron_w1_bundled_fan },
-      tach_source: TachCarriedByDrivenFan { represented_fan_count: 1 },
+      tach_source: TachCarriedByDrivenFan {
+        representation: TachRepresentationObserved { represented_fan_count: 1 },
+      },
     },
     chassis_bay_wiring(header: "FAN3"),
     chassis_bay_wiring(header: "FAN4"),
@@ -465,9 +586,14 @@ data srv4_fan_wiring: HostFanWiring = HostFanWiring {
   headers: [
     FanHeaderWiring {
       header: "FAN1",
-      driven_fan_count: 1,
+      driven_fan_count: DrivenFanCountDerivedFromAssembly {
+        expected_count: 1,
+        specification: dynatron_w1_bundled_fan,
+      },
       model: FanModelDerivedFromAssembly { specification: dynatron_w1_bundled_fan },
-      tach_source: TachCarriedByDrivenFan { represented_fan_count: 1 },
+      tach_source: TachCarriedByDrivenFan {
+        representation: TachRepresentationObserved { represented_fan_count: 1 },
+      },
     },
     chassis_bay_wiring(header: "FAN2"),
     chassis_bay_wiring(header: "FAN3"),

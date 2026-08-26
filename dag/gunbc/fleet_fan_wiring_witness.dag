@@ -26,7 +26,22 @@ import gunbc.fleet_fan_wiring {
   TachCarriedByDrivenFan,
   TachReadbackEndpointsEstablished,
   TachReadbackEndpointsRefused,
-  catalog_selection_admits,
+  DrivenFanCountDerivedFromAssembly,
+  DrivenFanCountObserved,
+  DrivenFanCountUnobserved,
+  FanCatalogSelectionAdmitted,
+  FanCatalogSelectionRefusedModelUnobserved,
+  InstalledFanCountExact,
+  InstalledFanCountPartial,
+  RepresentedFanCountObserved,
+  RepresentedFanCountUnobserved,
+  HeaderAbsentFromWiring,
+  HeaderDuplicatedInWiring,
+  HeaderTachNotCarried,
+  TachRepresentationObserved,
+  TachRepresentationUnobserved,
+  catalog_selection,
+  installed_fan_count_standing,
   dynatron_df126025bu_pwmh_ref,
   dynatron_w1_bundled_fan,
   physical_inventory_confirmation,
@@ -39,7 +54,6 @@ import gunbc.fleet_fan_wiring {
   WiringMissesExpectedHeader,
   control_endpoints,
   fan_wiring_coverage,
-  installed_fan_count,
   srv1_fan_wiring,
   srv3_fan_wiring,
   srv4_fan_wiring,
@@ -93,7 +107,10 @@ fn tach_suppressed_header_is_actuated_but_unobserved() -> Bool {
   }
   control.length() == 5
     && tach == 4
-    && installed_fan_count(wiring: srv1_splitter_variant) == 6
+    && match installed_fan_count_standing(wiring: srv1_splitter_variant) {
+      InstalledFanCountExact { count } => count == 6
+      InstalledFanCountPartial { observed_lower_bound, unobserved_headers } => false
+    }
 }
 
 // A SPLITTER COSTS TACH COVERAGE, NOT THE TACH ENDPOINT. srv1's FAN1 drives two rotors and
@@ -102,16 +119,83 @@ fn tach_suppressed_header_is_actuated_but_unobserved() -> Bool {
 // is how a stopped rotor behind a splitter goes unnoticed while its sibling keeps the signal
 // alive; the two counts are what make that difference sayable at all.
 fn splitter_reports_fewer_rotors_than_it_drives() -> Bool {
-  let driven = fold(
+  let driven_is_derived = fold(
     filter(srv1_fan_wiring.headers, binding => binding.header == "FAN1"),
-    init: 0,
-    f: (acc, binding) => acc + binding.driven_fan_count,
+    init: false,
+    f: (acc, binding) =>
+      match binding.driven_fan_count {
+        DrivenFanCountDerivedFromAssembly { expected_count, specification } =>
+          expected_count == 2
+        other => false
+      },
   )
-  let represented = represented_fan_count_for_header(
+  let representation_unobserved = match represented_fan_count_for_header(
     wiring: srv1_fan_wiring,
     header: "FAN1",
-  )
-  driven == 2 && represented == 1
+  ) {
+    RepresentedFanCountUnobserved { header } => true
+    other => false
+  }
+  let chassis_observed = match represented_fan_count_for_header(
+    wiring: srv1_fan_wiring,
+    header: "FAN3",
+  ) {
+    RepresentedFanCountObserved { header, count } => count == 1
+    other => false
+  }
+  driven_is_derived && representation_unobserved && chassis_observed
+}
+
+// FIVE STATES, FIVE ARMS. The per-header coverage query used to return an Int, so an absent
+// header, a duplicated header, an uncarried tach, an unobserved signal path and an unobserved
+// representation all answered 0 -- five owners, one number. Each is now distinguishable, and
+// this conjunct is what stops any pair of them being folded back together.
+fn per_header_coverage_states_stay_separate() -> Bool {
+  let absent = match represented_fan_count_for_header(
+    wiring: srv3_fan_wiring,
+    header: "FAN9",
+  ) {
+    HeaderAbsentFromWiring { header } => true
+    other => false
+  }
+  let not_carried = match represented_fan_count_for_header(
+    wiring: srv3_wiring_with_uncarried_tach,
+    header: "FAN3",
+  ) {
+    HeaderTachNotCarried { header } => true
+    other => false
+  }
+  let unobserved_path = match represented_fan_count_for_header(
+    wiring: srv3_wiring_with_unobserved_tach,
+    header: "FAN3",
+  ) {
+    RepresentedFanCountUnobserved { header } => true
+    other => false
+  }
+  let duplicated = match represented_fan_count_for_header(
+    wiring: srv3_wiring_with_a_duplicated_header,
+    header: "FAN3",
+  ) {
+    HeaderDuplicatedInWiring { header, row_count } => row_count == 2
+    other => false
+  }
+  absent && not_carried && unobserved_path && duplicated
+}
+
+// AN UNOBSERVED DRIVEN COUNT MAKES THE MACHINE TOTAL A LOWER BOUND THAT SAYS SO. Contributing 0
+// silently would report a machine as having fewer fans than it does, with nothing separating that
+// from a machine that really has fewer.
+fn unobserved_driven_count_makes_the_total_partial() -> Bool {
+  let srv1_exact = match installed_fan_count_standing(wiring: srv1_fan_wiring) {
+    InstalledFanCountExact { count } => count == 6
+    InstalledFanCountPartial { observed_lower_bound, unobserved_headers } => false
+  }
+  let partial = match installed_fan_count_standing(wiring: srv1_wiring_with_unobserved_driven_count) {
+    InstalledFanCountPartial { observed_lower_bound, unobserved_headers } =>
+      observed_lower_bound == 4 && unobserved_headers.length() == 1
+    InstalledFanCountExact { count } => false
+  }
+  srv1_exact && partial
 }
 
 // AN UNKNOWN MODEL MUST NOT COST A CONTROL ENDPOINT. Every chassis fan on srv3 stands at
@@ -134,7 +218,7 @@ data srv3_wiring_over_an_unexpected_header: HostFanWiring = HostFanWiring {
       [
         FanHeaderWiring {
           header: "FAN2",
-          driven_fan_count: 1,
+          driven_fan_count: DrivenFanCountObserved { count: 1 },
           model: FanModelUnobserved,
           tach_source: TachNotCarried,
         },
@@ -286,13 +370,23 @@ fn label_evidence_gates_physical_inventory() -> Bool {
 // Without this half the conjunct above is satisfied by a mechanism that refuses everything weaker
 // across the board, which is a blanket rather than a boundary.
 fn weaker_evidence_still_selects_a_catalog() -> Bool {
-  catalog_selection_admits(
+  let derived = match catalog_selection(
     standing: FanModelDerivedFromAssembly { specification: dynatron_w1_bundled_fan },
-  )
-    && catalog_selection_admits(
-      standing: FanModelLabelObserved { catalog: dynatron_df126025bu_pwmh_ref },
-    )
-    && !catalog_selection_admits(standing: FanModelUnobserved)
+  ) {
+    FanCatalogSelectionAdmitted { catalog } => catalog == dynatron_df126025bu_pwmh_ref
+    FanCatalogSelectionRefusedModelUnobserved => false
+  }
+  let observed = match catalog_selection(
+    standing: FanModelLabelObserved { catalog: dynatron_df126025bu_pwmh_ref },
+  ) {
+    FanCatalogSelectionAdmitted { catalog } => catalog == dynatron_df126025bu_pwmh_ref
+    FanCatalogSelectionRefusedModelUnobserved => false
+  }
+  let unobserved = match catalog_selection(standing: FanModelUnobserved) {
+    FanCatalogSelectionRefusedModelUnobserved => true
+    FanCatalogSelectionAdmitted { catalog } => false
+  }
+  derived && observed && unobserved
 }
 
 // AN UNOBSERVED SIGNAL PATH REFUSES THE READBACK POPULATION RATHER THAN SHRINKING IT, and this
@@ -359,6 +453,36 @@ fn unmodelled_host_has_no_tach_expectation() -> Bool {
   }
 }
 
+// A ROSTER WITH ONE HEADER AUTHORED TWICE. srv3 has no FAN2 row at all, so prepending one there
+// makes an UNEXPECTED header rather than a duplicated one -- a distinction the coverage query
+// reports correctly and which a first draft of this control got wrong.
+data srv3_wiring_with_a_duplicated_header: HostFanWiring = HostFanWiring {
+  host: srv3_fan_wiring.host,
+  headers: flat_map(
+    [srv3_fan_wiring.headers, filter(srv3_fan_wiring.headers, b => b.header == "FAN3")],
+    group => group,
+  ),
+}
+
+// A HEADER WHOSE DRIVEN COUNT NOBODY OBSERVED, for the partial-total control.
+data srv1_wiring_with_unobserved_driven_count: HostFanWiring = HostFanWiring {
+  host: srv1_fan_wiring.host,
+  headers: map(
+    srv1_fan_wiring.headers,
+    binding =>
+      if binding.header == "FAN1" {
+        FanHeaderWiring {
+          header: binding.header,
+          driven_fan_count: DrivenFanCountUnobserved,
+          model: binding.model,
+          tach_source: binding.tach_source,
+        }
+      } else {
+        binding
+      },
+  ),
+}
+
 fn fan_wiring_witness() -> ProcessExit {
   if srv3_srv4_differ_by_identity_not_count()
     && unobserved_tach_is_not_an_expected_readback()
@@ -367,6 +491,8 @@ fn fan_wiring_witness() -> ProcessExit {
     && unknown_model_still_derives_control()
     && coverage_refuses_both_directions()
     && all_hosts_cover()
+    && per_header_coverage_states_stay_separate()
+    && unobserved_driven_count_makes_the_total_partial()
     && required_tach_is_per_host_not_fleet_wide()
     && unmodelled_host_has_no_tach_expectation()
     && label_evidence_gates_physical_inventory()
