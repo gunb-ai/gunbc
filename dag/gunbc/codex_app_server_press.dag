@@ -80,7 +80,9 @@ import extdeps.languages.json.emit {
   JsonKeyValue,
 }
 import extdeps.languages.json.parse {
-  parse_json,
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
   json_object_unique_member,
   JsonMemberFound,
   JsonMemberAbsent,
@@ -1101,15 +1103,15 @@ fn absorb_account_trip_line(
   if trimmed == "" {
     acc
   } else {
-    match parse_json(s: trimmed) {
-      Absent =>
+    match parse_json_document(s: trimmed) {
+      JsonDocumentUnreadable { gap: _ } =>
         push_unknown_digest(
           acc: acc,
           line: trimmed,
           evidence_root: evidence_root,
           mode: mode,
         )
-      Present { value: parsed } =>
+      JsonDocumentParsed { value: parsed } =>
         match json_object_unique_member(v: parsed, key: "id") {
           JsonMemberFound { value: idv } =>
             match json_rpc_id_as_int(v: idv) {
