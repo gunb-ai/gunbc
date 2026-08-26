@@ -1,0 +1,58 @@
+module gunbc.claim_unwind_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust added by the claim-unwind terminal repair.
+// Authored because gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note makes
+// unenumerated hand growth in src/v1 a stop-line, and this change adds two hand items to
+// v1_compiler.cli_run. That row also records, measured, that zero of the four PRs adding hand
+// src/v1 Rust in the 48 hours to 2026-08-24 were caught by an unassisted reviewer -- so a row
+// authored only when a review asks for it is a row the roster cannot rely on.
+//
+// WHAT THE CHANGE IS. ClaimOutcome carries a typed arm for every non-verdict a claim can reach
+// -- runtime error, not-Bool, budget interruption, unresolved host tool, route gap -- and had
+// none for an UNWIND. Measured on this branch's baseline: a panic raised in witness evaluation
+// outside compile_dag_diagnostic_census's catch_unwind ABORTED the process with exit 101, and
+// the identity produced no PASS/FAIL line at all. The terminal ledger, the expected-red roster
+// join and the disposition TSV are all written after the fold, so none of the three existed;
+// every remaining planned claim went unmeasured and the artifact that would have said so was
+// never written.
+//
+// WHY IT IS RUST AND NOT .dag, which is the question this receipt exists to answer honestly.
+// The VOCABULARY is not modeled here: ClaimAttemptTerminal, ClaimDisposition and their wire
+// tags are v2.workflow.floor_terminal_ledger and floor_terminal_ledger_wire, and the seed's
+// arms are a MIRROR of that coproduct -- the same relation floor_terminal_ledger.dag's own
+// header already declares for this file, under a production per-row comparator that requires
+// the two mappings to agree. What cannot move is CATCHING THE UNWIND: std::panic::catch_unwind
+// is a property of the host that runs the evaluator, and the substrate has no representation of
+// a Rust stack unwinding through an interpreter frame. Modeling it would require the .dag side
+// to name the seed's own unwind mechanism, which is a layer inversion and not a migration --
+// the same boundary gunbc.witness_runtime_cause_seed_growth records one seam over.
+//
+// WHAT IS NOT NETTED. Several existing items were MODIFIED rather than added and are
+// ExistingSeedItemModified per gunbc.seed_growth_admission SeedGrowthChangeDisposition, so they
+// are not counted as additions and no deletions are netted against the two below: ClaimOutcome
+// (two arms), ClaimDisposition (two arms), ClaimTerminality (one arm, and its wildcard DELETED),
+// RequiredFloorOutcome (one field), run_claim, run_required_floor's fold, the wire readback, and
+// the two bin reporters.
+//
+// HAND-ITEM DELTA: +2 citable declarations, both in v1_compiler.cli_run.
+// HAND-LOC DELTA: +394 / -19 in src/v1/stage0/src/cli_run.rs, +19 / -0 in
+// src/v1/stage0/src/bin/claim_batch.rs, +2 / -1 in src/v1/stage0/src/bin/claim_executor.rs,
+// measured by `git diff --numstat` against the merge base. The two bin files add no
+// declarations -- their deltas are one arm each on an existing report match, plus one counter
+// added to the floor's summary line. The cli_run figure is majority COMMENT: the two new items
+// are 41 lines of code between them, and the rest is the fold's stop-the-line argument, the
+// not-attempted publication, and the reverse-join suspension the halt makes necessary.
+data claim_unwind_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "run_claim_evaluation", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "panic_payload_text", field: WholeDeclaration }
+  ],
+  reason: "Catching an unwind is a host capability, not a modeled one. run_claim_evaluation is the seam that wraps evaluation in std::panic::catch_unwind so the fold receives a value instead of losing the process; panic_payload_text projects the resulting Box<dyn Any> into the String the terminal row carries, because Any downcasting is a Rust reflection primitive with no substrate counterpart. Neither decides anything: the terminal vocabulary they feed is v2.workflow.floor_terminal_ledger ClaimAttemptTerminal and ClaimDisposition, and the seed mirrors those arms under the per-row comparator floor_terminal_ledger.dag already requires to agree.\n\nENUMERATED RATHER THAN COUNTED. Both are free functions, so the citable count and the real count are both two; no impl method or Display impl is involved and nothing lands in seed_growth_uncitable_item_keys.\n\nDeclared even though nothing would have caught it: gunbc.seed_growth_admission's G1 join is not enrolled (diff populations absent until rust_item_host_observation), so this roster is honest only if authors add rows they were not asked for.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete both when the claim evaluator itself runs in the substrate rather than in the seed -- i.e. when the required floor's fold is a .dag fold over a .dag evaluator, at which point an evaluation that cannot complete is a typed refusal the evaluator RETURNS and there is no host stack to unwind. No partial migration is admissible: a .dag-side terminal classifier reading a seed-side catch would be two authorities for one decision, which is the fork the deleted ClaimTerminality wildcard already demonstrated the cost of.",
+  current_boundary: "Confined to one call site. run_claim_evaluation wraps exactly the evaluation of one claim and returns the same value the unwrapped call returned on the ordinary path, so no behaviour changes for a claim that does not panic; panic_payload_text reads only the payload it is handed. Neither is reachable from any other path, neither classifies, and the arm they produce is minted ahead of the expected-red join so an unwind can never be held as the enrolled failure."
+}
