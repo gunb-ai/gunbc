@@ -27,10 +27,8 @@ import gunbc.session_demand {
   ParentSliceObserved, ParentSliceAbsent, ParentSliceDemand,
   MemoryCountUnread, MemoryLimitUnread, MemoryCountRead, MemoryLimitRead, MemoryLimitUnlimited,
   SessionPopulationHostMismatch, SessionMemoryDemand,
-  SessionDemandObserved, SessionDemandMetricsIncomplete, SessionDemandCensusIncomplete,
-  SessionDemandNotASessionHost, SessionDemandHostMismatch, SessionDemandObservationUnavailable,
-  SessionDemandPopulationIncomplete, NoConcurrentSessionDemandObserved,
-  ManagedSession,
+  SessionDemandMetricsIncomplete, SessionDemandCensusIncomplete,
+  SessionDemandNotASessionHost, SessionDemandHostMismatch,
   session_placement_census, census_membership_signal,
   placement_is_managed, placement_is_unclassifiable,
   session_demand_membership_gate,
@@ -400,7 +398,6 @@ fn an_unread_metric_refuses_a_complete_population() -> Bool {
     SessionDemandNotASessionHost { host: _, cgroup_path: _ } => false
     SessionDemandHostMismatch { managed_host: _, legacy_host: _ } => false
     SessionDemandCensusIncomplete { host: _, unclassifiable: _, parent_slice: _, per_session: _ } => false
-    SessionDemandMetricsIncomplete { host: _, deficits: _, parent_slice: _, per_session: _ } => false
     SessionDemandObservationUnavailable { host: _, cause: _ } => false
     SessionDemandPopulationIncomplete { host: _, membership: _, cause: _ } => false
     NoConcurrentSessionDemandObserved { host: _ } => false
