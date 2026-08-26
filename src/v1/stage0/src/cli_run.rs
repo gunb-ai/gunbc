@@ -7234,6 +7234,16 @@ impl CompileRun {
 mod entry_admission_tests {
     use super::*;
 
+    /// ABSOLUTE, NOT cwd-RELATIVE, AND NOT A chdir. A test binary's cwd is the PACKAGE
+    /// root while these fixtures live at the repo root, so the paths must be rebased. The
+    /// obvious fix -- `set_current_dir(workspace_root())` -- is WRONG here and was measured
+    /// wrong: cwd is process-global and cargo runs these tests in parallel, so two tests
+    /// racing on it made a DIFFERENT pair fail on each run (4/1 then 3/2, same code). An
+    /// absolute path has no shared mutable state to race on.
+    fn ws(rel: &str) -> String {
+        workspace_root().join(rel).to_string_lossy().to_string()
+    }
+
     fn cause_of(run: &CompileRun) -> (String, String) {
         match &run.disposition {
             CompileDisposition::NotExecuted {
@@ -7328,10 +7338,8 @@ mod entry_admission_tests {
     #[test]
     fn two_render_targets_emit_twice_from_one_resolution() {
         let run = compile_emission(&CompileRequest {
-            subject: CompileSubject::Entry(
-                "fixtures/v2_emission_gate/green/subject.dag".to_string(),
-            ),
-            source_roots: vec!["fixtures/v2_emission_gate/green".to_string()],
+            subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            source_roots: vec![ws("fixtures/v2_emission_gate/green")],
             primary_precedence: true,
             render_targets: vec![
                 crate::v1_compiler_artifact::RenderTarget::Rust,
@@ -7386,10 +7394,8 @@ mod entry_admission_tests {
     #[test]
     fn a_refusing_second_target_withholds_the_first_target_s_finished_tree() {
         let request = |targets: Vec<crate::v1_compiler_artifact::RenderTarget>| CompileRequest {
-            subject: CompileSubject::Entry(
-                "fixtures/atomic_materialization/subject.dag".to_string(),
-            ),
-            source_roots: vec!["fixtures/atomic_materialization".to_string()],
+            subject: CompileSubject::Entry(ws("fixtures/atomic_materialization/subject.dag")),
+            source_roots: vec![ws("fixtures/atomic_materialization")],
             primary_precedence: true,
             render_targets: targets,
         };
@@ -7415,7 +7421,13 @@ mod entry_admission_tests {
             crate::v1_compiler_artifact::RenderTarget::Rust,
             crate::v1_compiler_artifact::RenderTarget::Go,
         ]));
-        let (phase, cause) = cause_of(&both);
+        // `cause_of` destructures NotExecuted only; this run must be REFUSED, which is a
+        // different disposition and the one under test -- reading it through the wrong helper
+        // is how the first draft of this test panicked on its own success.
+        let (phase, cause) = match &both.disposition {
+            CompileDisposition::Refused { phase, cause } => (phase.clone(), cause.clone()),
+            other => panic!("expected Refused, got {other:?}"),
+        };
         assert_eq!(
             phase, "emit",
             "the refusal must come from emission, not an earlier phase: {cause}"
@@ -7451,10 +7463,8 @@ mod entry_admission_tests {
     #[test]
     fn a_request_naming_no_target_refuses_before_it_resolves() {
         let run = compile_emission(&CompileRequest {
-            subject: CompileSubject::Entry(
-                "fixtures/v2_emission_gate/green/subject.dag".to_string(),
-            ),
-            source_roots: vec!["fixtures/v2_emission_gate/green".to_string()],
+            subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            source_roots: vec![ws("fixtures/v2_emission_gate/green")],
             primary_precedence: true,
             render_targets: Vec::new(),
         });
