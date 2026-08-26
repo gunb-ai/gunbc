@@ -1,4 +1,4 @@
-module gunbc.bmc_fan_actuation_standing
+module gunbc.bmc_fan_alignment_standing
 
 import std.types { Bool, List, NonEmptyStr }
 import product.placement_supply { HostIdentity }
@@ -47,12 +47,12 @@ type BmcFanIntentAlignment
   | ObservedProgramNotRepresentableByIntent { missing: NonEmptyStr }
   | ObservedProgramNotAdopted
 
-type HostBmcFanActuationStanding {
+type HostBmcFanAlignmentStanding {
   host: HostIdentity
   alignment: BmcFanIntentAlignment
 }
 
-fn actuation_admitted(standing: HostBmcFanActuationStanding) -> Bool {
+fn alignment_admits_apply_evaluation(standing: HostBmcFanAlignmentStanding) -> Bool {
   match standing.alignment {
     IntentMatchesObservedProgram => true
     ObservedProgramNotRepresentableByIntent { missing } => false
@@ -61,7 +61,7 @@ fn actuation_admitted(standing: HostBmcFanActuationStanding) -> Bool {
 }
 
 fn standings_for_host_count(
-  standings: List<HostBmcFanActuationStanding>,
+  standings: List<HostBmcFanAlignmentStanding>,
   host: HostIdentity,
 ) -> Int {
   fold(standings, init: 0, f: (acc, s) => if s.host == host { acc + 1 } else { acc })
@@ -73,16 +73,16 @@ fn standings_for_host_count(
 // answer is to refuse the whole question. This is the same defect the tach-health join already
 // refuses, reintroduced here by habit and caught in review; the roster is small and hand-authored,
 // which is exactly the condition under which a duplicate is easy to add and invisible.
-type ActuationAdmission
-  = ActuationAdmitted
-  | ActuationRefusedNoStanding
-  | ActuationRefusedDuplicateStanding
-  | ActuationRefusedAlignment { alignment: BmcFanIntentAlignment }
+type AlignmentAdmission
+  = AlignmentAdmitsApplyEvaluation
+  | AlignmentStandingAbsent
+  | AlignmentStandingDuplicate
+  | AlignmentRefused { alignment: BmcFanIntentAlignment }
 
 fn standing_for(
-  standings: List<HostBmcFanActuationStanding>,
+  standings: List<HostBmcFanAlignmentStanding>,
   host: HostIdentity,
-) -> HostBmcFanActuationStanding? {
+) -> HostBmcFanAlignmentStanding? {
   fold(
     standings,
     init: none,
@@ -97,34 +97,34 @@ fn standing_for(
 // A HOST WITH NO ROW IS REFUSED, not admitted. An absent standing means nobody has established
 // that the intent describes that host, which is exactly the state where writing the intent is
 // least safe - so the lookup's failure arm refuses rather than falling through to permitted.
-fn host_actuation_admission(
-  standings: List<HostBmcFanActuationStanding>,
+fn host_alignment_admission(
+  standings: List<HostBmcFanAlignmentStanding>,
   host: HostIdentity,
-) -> ActuationAdmission {
+) -> AlignmentAdmission {
   if standings_for_host_count(standings: standings, host: host) > 1 {
-    ActuationRefusedDuplicateStanding
+    AlignmentStandingDuplicate
   } else {
     match standing_for(standings: standings, host: host) {
-      none => ActuationRefusedNoStanding
+      none => AlignmentStandingAbsent
       Present { value: standing } =>
-        if actuation_admitted(standing: standing) {
-          ActuationAdmitted
+        if alignment_admits_apply_evaluation(standing: standing) {
+          AlignmentAdmitsApplyEvaluation
         } else {
-          ActuationRefusedAlignment { alignment: standing.alignment }
+          AlignmentRefused { alignment: standing.alignment }
         }
     }
   }
 }
 
-fn host_actuation_admitted(
-  standings: List<HostBmcFanActuationStanding>,
+fn host_alignment_admits_apply_evaluation(
+  standings: List<HostBmcFanAlignmentStanding>,
   host: HostIdentity,
 ) -> Bool {
-  match host_actuation_admission(standings: standings, host: host) {
-    ActuationAdmitted => true
-    ActuationRefusedNoStanding => false
-    ActuationRefusedDuplicateStanding => false
-    ActuationRefusedAlignment { alignment } => false
+  match host_alignment_admission(standings: standings, host: host) {
+    AlignmentAdmitsApplyEvaluation => true
+    AlignmentStandingAbsent => false
+    AlignmentStandingDuplicate => false
+    AlignmentRefused { alignment } => false
   }
 }
 
@@ -140,22 +140,22 @@ fn host_actuation_admitted(
 // control sensor, one step series and one duty floor, so a second actuator group with its own
 // transfer function has nowhere to live. Adding steps to the curve does not close this; the
 // carrier needs the actuator-program split first.
-data fleet_bmc_fan_actuation_standings: List<HostBmcFanActuationStanding> = [
-  HostBmcFanActuationStanding {
+data fleet_bmc_fan_alignment_standings: List<HostBmcFanAlignmentStanding> = [
+  HostBmcFanAlignmentStanding {
     host: operator_host_srv1,
     alignment: ObservedProgramNotAdopted,
   },
-  HostBmcFanActuationStanding {
+  HostBmcFanAlignmentStanding {
     host: operator_host_srv2,
     alignment: ObservedProgramNotAdopted,
   },
-  HostBmcFanActuationStanding {
+  HostBmcFanAlignmentStanding {
     host: operator_host_srv3,
     alignment: ObservedProgramNotRepresentableByIntent {
       missing: "per-actuator-group duty offsets and slew limits: the host runs two fan controller entries and BmcFanCurve models one",
     },
   },
-  HostBmcFanActuationStanding {
+  HostBmcFanAlignmentStanding {
     host: operator_host_srv4,
     alignment: ObservedProgramNotRepresentableByIntent {
       missing: "per-actuator-group duty offsets and slew limits: the host runs two fan controller entries and BmcFanCurve models one",

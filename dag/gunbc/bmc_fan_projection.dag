@@ -22,9 +22,16 @@ import extdeps.filesystem.linux {
   LinuxSynchronizedRenameReplacePublication,
 }
 import product.placement_supply { HostIdentity }
-import gunbc.bmc_fan_actuation_standing {
-  HostBmcFanActuationStanding,
-  host_actuation_admitted,
+import gunbc.bmc_fan_alignment_standing {
+  AlignmentAdmitsApplyEvaluation,
+  AlignmentRefused,
+  AlignmentStandingAbsent,
+  AlignmentStandingDuplicate,
+  HostBmcFanAlignmentStanding,
+  IntentMatchesObservedProgram,
+  ObservedProgramNotAdopted,
+  ObservedProgramNotRepresentableByIntent,
+  host_alignment_admission,
 }
 import std.state_durability {
   NoDurabilityCommitBarrier,
@@ -40,7 +47,10 @@ import std.state_durability {
 import std.types { Bool, List, NonEmptyStr }
 
 type BmcFanProjectionApplyRefusalCause
-  = BmcFanProjectionObservedProgramNotAdopted
+  = BmcFanProjectionAlignmentStandingAbsent
+  | BmcFanProjectionAlignmentStandingDuplicate
+  | BmcFanProjectionObservedProgramNotAdopted
+  | BmcFanProjectionObservedProgramNotRepresentable
   | BmcFanProjectionBoardMismatch
   | BmcFanProjectionFirmwareMismatch
   | BmcFanProjectionCurveMismatch
@@ -284,22 +294,38 @@ fn bmc_fan_policy_projection_apply_suitability(
   desired_curve: BmcFanCurve,
   observation: BmcFanPolicyObservation,
   host: HostIdentity,
-  standings: List<HostBmcFanActuationStanding>,
+  standings: List<HostBmcFanAlignmentStanding>,
 ) -> BmcFanProjectionApplySuitability {
-  if !host_actuation_admitted(standings: standings, host: host) {
-    BmcFanProjectionApplyRefused { cause: BmcFanProjectionObservedProgramNotAdopted }
-  } else if capability.board != board {
-    BmcFanProjectionApplyRefused { cause: BmcFanProjectionBoardMismatch }
-  } else if capability.firmware != observation.firmware {
-    BmcFanProjectionApplyRefused { cause: BmcFanProjectionFirmwareMismatch }
-  } else if capability.projected_curve != desired_curve {
-    BmcFanProjectionApplyRefused { cause: BmcFanProjectionCurveMismatch }
-  } else if capability.config_path != observation.board_config_path {
-    BmcFanProjectionApplyRefused { cause: BmcFanProjectionConfigPathMismatch }
-  } else if capability.controller_service != observation.controller_service {
-    BmcFanProjectionApplyRefused { cause: BmcFanProjectionControllerServiceMismatch }
-  } else {
-    BmcFanProjectionApplySuitable
+  match host_alignment_admission(standings: standings, host: host) {
+    AlignmentStandingAbsent =>
+      BmcFanProjectionApplyRefused { cause: BmcFanProjectionAlignmentStandingAbsent }
+    AlignmentStandingDuplicate =>
+      BmcFanProjectionApplyRefused { cause: BmcFanProjectionAlignmentStandingDuplicate }
+    AlignmentRefused { alignment } =>
+      match alignment {
+        ObservedProgramNotAdopted =>
+          BmcFanProjectionApplyRefused { cause: BmcFanProjectionObservedProgramNotAdopted }
+        ObservedProgramNotRepresentableByIntent { missing } =>
+          BmcFanProjectionApplyRefused {
+            cause: BmcFanProjectionObservedProgramNotRepresentable,
+          }
+        IntentMatchesObservedProgram =>
+          BmcFanProjectionApplyRefused { cause: BmcFanProjectionObservedProgramNotAdopted }
+      }
+    AlignmentAdmitsApplyEvaluation =>
+      if capability.board != board {
+        BmcFanProjectionApplyRefused { cause: BmcFanProjectionBoardMismatch }
+      } else if capability.firmware != observation.firmware {
+        BmcFanProjectionApplyRefused { cause: BmcFanProjectionFirmwareMismatch }
+      } else if capability.projected_curve != desired_curve {
+        BmcFanProjectionApplyRefused { cause: BmcFanProjectionCurveMismatch }
+      } else if capability.config_path != observation.board_config_path {
+        BmcFanProjectionApplyRefused { cause: BmcFanProjectionConfigPathMismatch }
+      } else if capability.controller_service != observation.controller_service {
+        BmcFanProjectionApplyRefused { cause: BmcFanProjectionControllerServiceMismatch }
+      } else {
+        BmcFanProjectionApplySuitable
+      }
   }
 }
 

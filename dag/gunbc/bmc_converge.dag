@@ -26,7 +26,7 @@ import extdeps.filesystem.linux {
   linux_overlay_observation_is_flash_backed,
 }
 import extdeps.uri { Uri }
-import gunbc.bmc_fan_actuation_standing { fleet_bmc_fan_actuation_standings }
+import gunbc.bmc_fan_alignment_standing { fleet_bmc_fan_alignment_standings }
 import gunbc.bmc_intent {
   BmcControlPlaneIntent,
 }
@@ -173,8 +173,14 @@ fn bmc_fan_policy_suitability_refusal_reason(
       "bmc fan projection installed-tach topology differs from fleet intent"
     FanPolicyProjectionCapabilityRefused { cause: cause } =>
       match cause {
+        BmcFanProjectionAlignmentStandingAbsent =>
+          "bmc fan apply refused: no alignment standing is declared for this host, so nothing establishes that the intent describes what it runs"
+        BmcFanProjectionAlignmentStandingDuplicate =>
+          "bmc fan apply refused: this host carries more than one alignment standing, so which one governs is decided by authoring order"
         BmcFanProjectionObservedProgramNotAdopted =>
-          "bmc fan actuation refused: the host runs a fan control program the intent cannot represent, so applying would partially revert it"
+          "bmc fan apply refused: nobody has adopted this host's observed fan control program, so agreement with the intent is unestablished rather than confirmed"
+        BmcFanProjectionObservedProgramNotRepresentable =>
+          "bmc fan apply refused: the host runs a fan control program the intent cannot represent, so applying would partially revert it"
         BmcFanProjectionBoardMismatch =>
           "bmc fan projection capability board does not match the observed board"
         BmcFanProjectionFirmwareMismatch =>
@@ -405,7 +411,7 @@ fn bmc_fan_policy_apply_suitability(
         desired_curve: intent.fan_policy.curve,
         observation: observation,
         host: host,
-        standings: fleet_bmc_fan_actuation_standings,
+        standings: fleet_bmc_fan_alignment_standings,
       ) {
         BmcFanProjectionApplyRefused { cause: cause } =>
           FanPolicySuitabilityRefused {
