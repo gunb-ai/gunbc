@@ -110,6 +110,68 @@ fn occurrence_transport_round_trips_with_node_identity_and_paths() {
     assert!(!parsed.occurrence_transport.index.entries.is_empty());
     assert!(!parsed.occurrence_transport.declarations.is_empty());
     assert!(!parsed.occurrence_transport.references.is_empty());
+    assert_eq!(
+        occurrence_identity_view(&parsed.occurrence_transport),
+        (
+            vec![
+                (0, (vec![], 0)),
+                (1, (vec![0], 1)),
+                (2, (vec![0, 1], 2)),
+                (3, (vec![0, 1, 2], 3)),
+                (4, (vec![0, 1], 4)),
+                (5, (vec![0, 1], 5)),
+                (6, (vec![0], 6)),
+                (7, (vec![0, 6], 7)),
+                (8, (vec![0, 6, 7], 8)),
+                (9, (vec![0, 6], 9)),
+                (10, (vec![0, 6, 9], 10)),
+                (11, (vec![0, 6, 9, 10], 11)),
+                (12, (vec![0, 6], 12)),
+            ],
+            vec![
+                (
+                    0,
+                    OccurrenceCategory::NamespaceSegmentOccurrence,
+                    (vec![], 0)
+                ),
+                (1, OccurrenceCategory::CallableOccurrence, (vec![0], 1)),
+                (
+                    2,
+                    OccurrenceCategory::LexicalValueOccurrence,
+                    (vec![0, 1], 2)
+                ),
+                (6, OccurrenceCategory::CallableOccurrence, (vec![0], 6)),
+                (
+                    7,
+                    OccurrenceCategory::LexicalValueOccurrence,
+                    (vec![0, 6], 7)
+                ),
+            ],
+            vec![
+                (3, OccurrenceCategory::TypeOccurrence, (vec![0, 1, 2], 3)),
+                (
+                    4,
+                    OccurrenceCategory::LexicalValueOccurrence,
+                    (vec![0, 1], 4)
+                ),
+                (5, OccurrenceCategory::TypeOccurrence, (vec![0, 1], 5)),
+                (8, OccurrenceCategory::TypeOccurrence, (vec![0, 6, 7], 8)),
+                (9, OccurrenceCategory::CallableOccurrence, (vec![0, 6], 9)),
+                (
+                    10,
+                    OccurrenceCategory::CallableOccurrence,
+                    (vec![0, 6, 9], 10)
+                ),
+                (
+                    11,
+                    OccurrenceCategory::LexicalValueOccurrence,
+                    (vec![0, 6, 9, 10], 11)
+                ),
+                (12, OccurrenceCategory::TypeOccurrence, (vec![0, 6], 12)),
+            ],
+        ),
+        "successful-tree stamp population, ids, roles, containment and traversal order changed"
+    );
 
     let encoded = serde_json::to_vec(&parsed).expect("serialize occurrence parse result");
     let decoded: Rc<ParseWithTableResult> =
