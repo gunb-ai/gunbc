@@ -18,7 +18,12 @@ import v2.std.algebra { list_map }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import v2.workflow.ci_workflow_run_emit { ci_toolchain_homes_isolated_or_refuse_command }
-import gunbc.toolchain_home_standing { workflow_toolchain_homes_classified }
+import gunbc.toolchain_home_standing {
+  admit_workflow_toolchain_homes,
+  WorkflowToolchainHomesAdmitted,
+  WorkflowToolchainHomeRefused,
+  toolchain_home_refusal_reason,
+}
 import gunbc.toolchain_workflow_steps {
   toolchain_home_isolation_step,
   toolchain_pin_rustup_default_step,
@@ -1317,13 +1322,23 @@ data witness_floor_capability_closure_per_job_note: String = "expected_witness_f
 
 type WitnessFloorGenerationOutcome
   = WitnessFloorGenerated { content: String }
-  | WitnessFloorGenerationRefused
+  | WitnessFloorGenerationRefused { reason: String }
+
+// THE REFUSAL NOW CARRIES ITS CAUSE. It did not before: gunbc.generated_artifact_emit named one
+// static string for every arm, so a toolchain-home refusal and a capability-closure refusal reached
+// the operator as the same sentence. The two have nothing in common but the file they suppress.
+data witness_floor_capability_closure_refusal_reason: String = "REFUSED gunbc.witness_floor_workflow: a lane's capability closure does not hold, or the required-lanes gate is not renderable. No workflow yaml was emitted. Fix the step roles in the lane's annotations, or the order of the steps themselves."
 
 fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
-  if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && required_lanes_gate_is_renderable() && workflow_toolchain_homes_classified(workflow: witness_floor_workflow) {
-    WitnessFloorGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow)) }
-  } else {
-    WitnessFloorGenerationRefused
+  match admit_workflow_toolchain_homes(workflow: witness_floor_workflow) {
+    WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+      WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
+    WorkflowToolchainHomesAdmitted =>
+      if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && required_lanes_gate_is_renderable() {
+        WitnessFloorGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow)) }
+      } else {
+        WitnessFloorGenerationRefused { reason: witness_floor_capability_closure_refusal_reason }
+      }
   }
 }
 

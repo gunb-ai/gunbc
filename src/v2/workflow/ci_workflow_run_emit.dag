@@ -146,10 +146,10 @@ fn ci_toolchain_home_isolation_script() -> String {
 // ci_isolate_toolchain_script already emitted. What is new is the COMPOSITION, not the medium.
 //
 // The marker is still correct, because the carrier really is orch-emitted foreign-executor shell
-// pending the same shell-to-intent migration ci_native_cache_root_script names. WORTH RECORDING:
-// its unmarked siblings ci_isolate_toolchain_script and ci_pin_rustup_default_script are the same
-// class and carried no marker before this PR either, so marking only the extracted subset leaves an
-// inconsistency this change does not create and does not close.
+// pending the same shell-to-intent migration ci_native_cache_root_script names. ci_pin_rustup_default_script
+// now carries its own marker below (review 56168) rather than being named in this one's trigger
+// text -- being named in another declaration's prose binds nothing removable. ci_isolate_toolchain_script
+// remains the one unmarked member of the class; closing it is its own change, not this one.
 data ci_toolchain_home_isolation_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -159,7 +159,7 @@ data ci_toolchain_home_isolation_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
-data ci_toolchain_home_isolation_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2), at which point this carrier and its unmarked siblings ci_isolate_toolchain_script and ci_pin_rustup_default_script dissolve together")
+data ci_toolchain_home_isolation_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2), at which point this carrier dissolves together with ci_pin_rustup_default_script (marked on its own declaration) and ci_isolate_toolchain_script (still unmarked)")
 
 fn ci_isolate_toolchain_intent(build_jobs_count: Int) -> Pipeline {
   Pipeline {
@@ -235,6 +235,33 @@ fn ci_pin_rustup_default_intent() -> Pipeline {
   }
 }
 
+// MARKED ON REQUEST (review 56168), and the honest scope is again narrower than "a new carrier".
+// This function is not new and this PR authors none of its four command rows -- fleet-converge.yml
+// has emitted them unchanged since before the branch. What the PR changes is REACH: the step now
+// composes into witnesses.yml and fleet-desired.yml as well, because gunbc.toolchain_workflow_steps
+// makes pinning travel with isolating. A carrier whose blast radius triples is the wrong moment to
+// leave it relying on a sibling's marker to name it, which is what the isolation carrier's trigger
+// did -- being NAMED in another declaration's dissolution text is not carrying an obligation, since
+// nothing removable is bound to it.
+//
+// The class is the same one ci_native_cache_root_script names: orch-emitted foreign-executor shell
+// pending shell-to-intent Phase 2. The third sibling, ci_isolate_toolchain_script, is deliberately
+// left for its own change -- it composes these same rows for fleet-converge only, this PR does not
+// touch it, and marking it here would put a comment line into an emitted script no finding is about.
+data ci_pin_rustup_default_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.ci_workflow_run_emit",
+    decl_name: "ci_pin_rustup_default_script",
+    field: WholeDeclaration
+  }
+}
+
+data ci_pin_rustup_default_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting the isolated RUSTUP_HOME's active toolchain as its default and resolving CARGO_BIN, required because an isolated RUSTUP_HOME starts with no default; leaf rustup/awk/command -v strings remain until a typed toolchain-selection effect lands on host_effect_apply (shell-to-intent Phase 2), at which point this carrier dissolves together with ci_toolchain_home_isolation_script and ci_isolate_toolchain_script")
+
 fn ci_pin_rustup_default_script() -> String {
-  ci_workflow_run_emit_pipeline(p: ci_pin_rustup_default_intent())
+  concat(
+    concat("# ", concat(dissolution_description(condition: ci_pin_rustup_default_shell_emit_dissolution_trigger), "\n")),
+    ci_workflow_run_emit_pipeline(p: ci_pin_rustup_default_intent())
+  )
 }

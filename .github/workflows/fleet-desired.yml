@@ -22,7 +22,7 @@ jobs:
           fetch-depth: 0
       - name: Isolate toolchain homes
         run: |
-          # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2), at which point this carrier and its unmarked siblings ci_isolate_toolchain_script and ci_pin_rustup_default_script dissolve together
+          # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2), at which point this carrier dissolves together with ci_pin_rustup_default_script (marked on its own declaration) and ci_isolate_toolchain_script (still unmarked)
           rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
           echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
           echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
@@ -34,6 +34,7 @@ jobs:
           cache: false
       - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
         run: |
+          # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting the isolated RUSTUP_HOME's active toolchain as its default and resolving CARGO_BIN, required because an isolated RUSTUP_HOME starts with no default; leaf rustup/awk/command -v strings remain until a typed toolchain-selection effect lands on host_effect_apply (shell-to-intent Phase 2), at which point this carrier dissolves together with ci_toolchain_home_isolation_script and ci_isolate_toolchain_script
           rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
           if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
           if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi

@@ -424,14 +424,14 @@ test fn a_no_op_action_renders_no_ref_mutation() -> Bool {
 fn admission_yml() -> String {
   match expected_fleet_desired_yml() {
     FleetDesiredGenerated { content: c } => c
-    FleetDesiredGenerationRefused => ""
+    FleetDesiredGenerationRefused { reason: _ } => ""
   }
 }
 
 fn admission_yml_is_generated() -> Bool {
   match expected_fleet_desired_yml() {
     FleetDesiredGenerated { content: _ } => true
-    FleetDesiredGenerationRefused => false
+    FleetDesiredGenerationRefused { reason: _ } => false
   }
 }
 

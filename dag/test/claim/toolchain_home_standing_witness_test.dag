@@ -15,7 +15,9 @@ import gunbc.toolchain_home_standing {
   ToolchainHomeIsolatedWithoutInstall,
   ToolchainHomeRunnerKindUndecidable,
   classify_job_toolchain_home,
-  workflow_toolchain_homes_classified,
+  admit_workflow_toolchain_homes,
+  WorkflowToolchainHomesAdmitted,
+  WorkflowToolchainHomeRefused,
 }
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step }
 import gunbc.witness_floor_workflow { witness_floor_workflow }
@@ -219,14 +221,27 @@ test fn a_hosted_runner_install_is_private_by_construction() -> Bool {
 // holds exactly witnesses.yml, fleet-converge.yml and fleet-desired.yml -- and each is joined here
 // by its own emitted Workflow value rather than by a roster naming its jobs, so a job added to any
 // of them enters this check by construction rather than by someone remembering to enrol it.
+//
+// THE ASSERTION MATCHES THE TYPED VERDICT rather than a Bool the production module hands over. A
+// `*_holds` predicate on the production side would have been a second representation of the
+// coproduct existing only so a witness could read it (review 56168); a witness necessarily returns
+// Bool, so the collapse belongs HERE, at the assertion, where the discarded job_id and refusal have
+// no remaining consumer.
+fn workflow_is_admitted(workflow: Workflow) -> Bool {
+  match admit_workflow_toolchain_homes(workflow: workflow) {
+    WorkflowToolchainHomesAdmitted => true
+    WorkflowToolchainHomeRefused { job_id: _, refusal: _ } => false
+  }
+}
+
 test fn every_witnesses_yml_job_carries_a_toolchain_home_standing() -> Bool {
-  workflow_toolchain_homes_classified(workflow: witness_floor_workflow)
+  workflow_is_admitted(workflow: witness_floor_workflow)
 }
 
 test fn every_fleet_converge_yml_job_carries_a_toolchain_home_standing() -> Bool {
-  workflow_toolchain_homes_classified(workflow: fleet_converge_workflow)
+  workflow_is_admitted(workflow: fleet_converge_workflow)
 }
 
 test fn every_fleet_desired_yml_job_carries_a_toolchain_home_standing() -> Bool {
-  workflow_toolchain_homes_classified(workflow: fleet_desired_admission_workflow)
+  workflow_is_admitted(workflow: fleet_desired_admission_workflow)
 }

@@ -20,7 +20,12 @@ import gunbc.toolchain_workflow_steps {
   toolchain_home_isolation_step,
   toolchain_pin_rustup_default_step,
 }
-import gunbc.toolchain_home_standing { workflow_toolchain_homes_classified }
+import gunbc.toolchain_home_standing {
+  admit_workflow_toolchain_homes,
+  WorkflowToolchainHomesAdmitted,
+  WorkflowToolchainHomeRefused,
+  toolchain_home_refusal_reason,
+}
 import gunbc.fleet_desired_admission {
   fleet_desired_admission_event_payload_path,
   fleet_desired_admission_authorized_action_path,
@@ -404,14 +409,15 @@ data fleet_desired_admission_workflow: Workflow = Workflow {
 // closure, applied to the fact that closure cannot see.
 type FleetDesiredGenerationOutcome
   = FleetDesiredGenerated { content: String }
-  | FleetDesiredGenerationRefused
+  | FleetDesiredGenerationRefused { reason: String }
 
 fn expected_fleet_desired_yml() -> FleetDesiredGenerationOutcome {
-  if workflow_toolchain_homes_classified(workflow: fleet_desired_admission_workflow) {
-    FleetDesiredGenerated {
-      content: serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_desired_admission_workflow))
-    }
-  } else {
-    FleetDesiredGenerationRefused
+  match admit_workflow_toolchain_homes(workflow: fleet_desired_admission_workflow) {
+    WorkflowToolchainHomesAdmitted =>
+      FleetDesiredGenerated {
+        content: serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_desired_admission_workflow))
+      }
+    WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+      FleetDesiredGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
   }
 }

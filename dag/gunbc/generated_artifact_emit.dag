@@ -14,7 +14,6 @@ import gunbc.generated_artifact {
 }
 import gunbc.fleet_converge_workflow { expected_fleet_converge_yml, FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused }
 import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml, FleetDesiredGenerationOutcome, FleetDesiredGenerated, FleetDesiredGenerationRefused }
-import gunbc.toolchain_home_standing { toolchain_home_standing_refusal }
 import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused }
 import gunbc.ci_yaml_validate { ci_yml_parses }
 import gunbc.gitignore_emit { expected_gitignore }
@@ -54,7 +53,7 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
   match a {
     WitnessFloorYamlArtifact => match expected_witness_floor_yml() {
       WitnessFloorGenerated { content } => artifact_generated(content: content)
-      WitnessFloorGenerationRefused => ArtifactGenerationRefused { reason: "witness floor workflow capability closure refused" }
+      WitnessFloorGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
     }
     FleetConvergeYamlArtifact => match expected_fleet_converge_yml() {
       FleetConvergeYamlGenerated { content } => artifact_generated(content: content)
@@ -62,7 +61,7 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
     }
     FleetDesiredAdmissionYamlArtifact => match expected_fleet_desired_yml() {
       FleetDesiredGenerated { content } => artifact_generated(content: content)
-      FleetDesiredGenerationRefused => ArtifactGenerationRefused { reason: toolchain_home_standing_refusal }
+      FleetDesiredGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
     }
     GitignoreArtifact => artifact_generated(content: expected_gitignore())
     GitattributesArtifact => match expected_gitattributes() {

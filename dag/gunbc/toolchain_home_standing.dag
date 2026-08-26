@@ -177,24 +177,78 @@ fn classify_job_toolchain_home(job: Job) -> ToolchainHomeClassification {
   }
 }
 
-fn toolchain_home_classification_is_classified(c: ToolchainHomeClassification) -> Bool {
-  match c {
-    ToolchainHomeClassified { job_id: _, standing: _ } => true
-    ToolchainHomeUnclassified { job_id: _, refusal: _ } => false
-  }
-}
-
 fn workflow_toolchain_home_classifications(workflow: Workflow) -> List<ToolchainHomeClassification> {
   map(workflow.jobs, job => classify_job_toolchain_home(job: job))
 }
 
-// THE ADMISSION. Every job in the emitted workflow classifies, or the workflow does not emit.
-fn workflow_toolchain_homes_classified(workflow: Workflow) -> Bool {
+// THE ADMISSION IS A TYPED VERDICT, NOT A Bool, and that is a correction rather than a flourish
+// (review 56168). An earlier revision folded the classifications through a
+// `classification_is_classified(c) -> Bool` predicate whose whole body was `Classified => true,
+// Unclassified => false`. That is the parallel `*_holds` predicate the corpus already rules
+// against in one sentence -- std.keyed_roster's own carrier states it: consumers inspect the
+// canonical typed verdict directly, with no parallel Bool that collapses the coproduct. The
+// collapse was not free: it discarded the job_id and the ToolchainHomeRefusal at the exact seam
+// where the emitter needed them, which is why all three emitters then had to name one static
+// refusal string. The refusal below is derived from the failing job instead, so the three remedies
+// this module's own ToolchainHomeRefusal note promises are three distinct messages rather than a
+// promise the emission does not keep.
+//
+// FIRST UNCLASSIFIED WINS AND NO LATER JOB CLEARS IT -- the accumulator's refusing arm reproduces
+// itself, so this is the same fail-closed shape as installed_unisolated one layer down.
+type WorkflowToolchainHomeAdmission
+  = WorkflowToolchainHomesAdmitted
+  | WorkflowToolchainHomeRefused {
+      job_id: String,
+      refusal: ToolchainHomeRefusal,
+    }
+
+fn admit_workflow_toolchain_homes(workflow: Workflow) -> WorkflowToolchainHomeAdmission {
   fold(
     workflow_toolchain_home_classifications(workflow: workflow),
-    init: true,
-    f: fn(acc, c) { acc && toolchain_home_classification_is_classified(c: c) }
+    init: WorkflowToolchainHomesAdmitted,
+    f: fn(acc, c) {
+      match acc {
+        WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+          WorkflowToolchainHomeRefused { job_id: j, refusal: r }
+        WorkflowToolchainHomesAdmitted => match c {
+          ToolchainHomeClassified { job_id: _, standing: _ } => WorkflowToolchainHomesAdmitted
+          ToolchainHomeUnclassified { job_id: j, refusal: r } =>
+            WorkflowToolchainHomeRefused { job_id: j, refusal: r }
+        }
+      }
+    }
   )
 }
 
-data toolchain_home_standing_refusal: String = "REFUSED: a generated job neither installs a toolchain into a home it owns nor leaves the host toolchain alone (gunbc.toolchain_home_standing). No workflow yaml was emitted. Compose gunbc.toolchain_workflow_steps toolchain_home_isolation_step and toolchain_pin_rustup_default_step ahead of the Install Rust toolchain step, or remove the install."
+// ONE REMEDY PER CAUSE. Collapsing these into a single sentence would send two of the three readers
+// to the wrong repair, which is the whole reason ToolchainHomeRefusal has three variants rather
+// than one.
+fn toolchain_home_refusal_remedy(refusal: ToolchainHomeRefusal) -> String {
+  match refusal {
+    ToolchainInstalledIntoSharedHome =>
+      "it installs a Rust toolchain with no preceding home isolation, so the install writes into the runner host's shared home. REMEDY: compose gunbc.toolchain_workflow_steps toolchain_home_isolation_step ahead of the install step, and toolchain_pin_rustup_default_step behind it."
+    ToolchainHomeIsolatedWithoutInstall =>
+      "it rebinds HOME/CARGO_HOME/RUSTUP_HOME but installs no toolchain, so the isolation protects nothing and the job runs against a home the host did not prepare. REMEDY: delete the isolation step, or add the install it was rebinding for."
+    ToolchainHomeRunnerKindUndecidable =>
+      "its runs-on is a GitHub expression resolved at dispatch, so this layer cannot decide whether the home persists between runs, and it installs a toolchain unisolated. REMEDY: name the runner (HostedRunner or SelfHosted) so the standing is decidable, or isolate unconditionally."
+  }
+}
+
+fn toolchain_home_refusal_reason(job_id: String, refusal: ToolchainHomeRefusal) -> String {
+  join([
+    "REFUSED gunbc.toolchain_home_standing: job '",
+    job_id,
+    "' carries no toolchain-home standing -- ",
+    toolchain_home_refusal_remedy(refusal: refusal),
+    " No workflow yaml was emitted."
+  ], "")
+}
+
+fn workflow_toolchain_home_refusal_reason(workflow: Workflow) -> String {
+  match admit_workflow_toolchain_homes(workflow: workflow) {
+    WorkflowToolchainHomesAdmitted =>
+      "gunbc.toolchain_home_standing admitted every job; this reason was read from an admitted workflow and names no defect."
+    WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+      toolchain_home_refusal_reason(job_id: j, refusal: r)
+  }
+}
