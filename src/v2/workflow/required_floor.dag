@@ -19,6 +19,7 @@ import std.measure {
   byte_size_count,
 }
 import std.types { NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
 
 // IDENTITY-GRAINED FLOOR DISPOSITION RECEIPT (operator ruling 2026-08-19).
 //
@@ -241,6 +242,73 @@ fn fixture_home_prefixes() -> List<String> {
   Cons {
     head: "v2.test.fixture.walk_plan_stage.",
     tail: Empty {}
+  }
+}
+
+// THE ADMISSION ORDER, HELD HERE RATHER THAN IN WHOEVER WALKS THE CORPUS.
+//
+// `RequiredFloorDisposition` above names the four arms; until now nothing in this module said
+// WHICH arm a given site gets, so the ordering — long home, then fixture home, then live tree,
+// then planned — lived only in the host loop that walks the discovered files
+// (`v1_compiler.cli_run` `run_required_floor`). That made the type an authority over the
+// vocabulary and not over the decision, and a second walker (the .dag census this function was
+// added for) would have had to re-author the order and could have re-authored it differently.
+//
+// THE ORDER IS THE ONE THE HOST ALREADY REALIZES AND IT IS LOAD-BEARING, not alphabetical: a
+// fixture member that ALSO reads the live tree must report the reason it will never be a floor
+// claim, not the reason it could not run today. The first is permanent and owned by the fixture's
+// own recipes; the second is a staged prediction with a declared deletion trigger. Reporting the
+// prediction over the ownership fact would make the site look like it rejoins the floor when the
+// live-tree arm is deleted, and it does not.
+//
+// THE LIVE-TREE INPUT IS THE DECLARED `LiveTreeDisposition`, NOT A `Bool`. The host currently
+// hands this decision a `reads_live_tree` boolean it computed one level up; taking the declared
+// coproduct here means a third live-tree state added upstream fails to compile in this match
+// rather than being silently folded into whichever side of a boolean it was coerced to.
+type ModulePrefixMatch =
+    ModulePrefixUnmatched
+  | ModulePrefixMatched { prefix: String }
+
+fn first_module_prefix_match(module_path: String, prefixes: List<String>) -> ModulePrefixMatch {
+  match prefixes {
+    Empty {} => ModulePrefixUnmatched {}
+    Cons { head: h, tail: t } =>
+      if starts_with(s: module_path, prefix: h) {
+        ModulePrefixMatched { prefix: h }
+      } else {
+        first_module_prefix_match(module_path: module_path, prefixes: t)
+      }
+  }
+}
+
+fn required_floor_site_disposition(
+  module_path: String,
+  reads_live_tree: LiveTreeDisposition,
+) -> RequiredFloorDisposition {
+  match first_module_prefix_match(module_path: module_path, prefixes: long_home_prefixes()) {
+    ModulePrefixMatched { prefix: p } => DeclinedLongModule { matched_prefix: p }
+    ModulePrefixUnmatched =>
+      match first_module_prefix_match(module_path: module_path, prefixes: fixture_home_prefixes()) {
+        ModulePrefixMatched { prefix: p } => DeclinedFixtureMember { matched_prefix: p }
+        ModulePrefixUnmatched =>
+          match reads_live_tree {
+            ReadsLiveTree => DeclinedLiveTree {}
+            SubstrateInputsOnly => Planned {}
+          }
+      }
+  }
+}
+
+// THE ONE PREDICATE A CONSUMER READS TO ASK "DOES THIS SITE JOIN THE EXECUTED ROSTER", and it
+// descends rather than testing a rendered name. There is no wildcard: a fifth disposition arm
+// must make this function fail to compile, so whoever adds it decides whether it is planned
+// rather than inheriting whichever verdict a `_` happened to name.
+fn required_floor_disposition_is_planned(d: RequiredFloorDisposition) -> Bool {
+  match d {
+    Planned => true
+    DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+    DeclinedLiveTree => false
   }
 }
 
