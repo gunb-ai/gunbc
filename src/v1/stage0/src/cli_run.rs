@@ -46226,7 +46226,8 @@ pub fn run_required_floor(
             outcome.not_attempted_after_abort += 1;
         }
         eprintln!(
-            "[floor-abort] {} halted the fold; {} planned identity(ies) were never attempted and              are published as not-attempted rows naming it",
+            "[floor-abort] {} halted the fold; {} planned identity(ies) were never attempted \
+             and are published as not-attempted rows naming it",
             halted, outcome.not_attempted_after_abort
         );
     }
