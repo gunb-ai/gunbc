@@ -4480,7 +4480,7 @@ deleted, but **a path that could never have resolved**. They share only the shap
 one DESIGN already names and none of the three is covered by: **check citations where the module is
 ingested, from its own source.** Three independent mechanisms producing one indistinguishable symptom
 is the argument for a mechanism rather than more diligence.
-### 11.2x MEASURED — X retains **no** exact declaration identity at the point of decision: 0 of ~11,400 selections, and the mechanism is two shared node builders
+### 11.2x MEASURED — X cannot carry occurrence identity, because the carrier it returns has no field for it (mechanism half RETRACTED, see below)
 
 Taken by execution (cool-swift-307, 2026-08-26), mechanism independently verified here. **This is the
 largest finding in the program to date**, and it lands on the E.0 assignment §11.2t dispatched hours
@@ -4517,6 +4517,16 @@ It read: `ident: Present` occurs once in all of `src/v1/*.dag`, at `02_parse.dag
 `make_named_expr_node` omit the field; therefore the stamp is applied at parse and **dropped at the
 first rebuild**, corpus-wide. Every clause of that is checkable and the conclusion is wrong, because
 the second clause of the first sentence is false.
+
+**AND THE HEADING OF THIS SECTION ASSERTED THE RETRACTED MECHANISM FOR AN HOUR AFTER THE BODY
+RETRACTED IT** — it read *"…and the mechanism is two shared node builders"*. Corrected on a sweep
+prompted by an approving, scope-only review. This is the §11.2p failure repeating inside the section
+that documents a retraction: **a correction applied to the sentence the author remembered writing,
+while the frame around it kept asserting the false version** — and a heading is the worst place for
+it, because it is what a reader indexes on and what a search returns. The standing rule this lane
+already carries is *grep the figure, not the sentence*; the generalisation earned here is **grep the
+claim, and check the heading last, because headings survive every edit you make to the prose beneath
+them.**
 
 **What is actually true, verified at source here after the retraction:**
 
