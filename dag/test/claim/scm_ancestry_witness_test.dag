@@ -16,7 +16,6 @@ import gunbc.scm.ancestry {
   CommitAncestry,
   RootCommit,
   DescendsFrom,
-  ancestry_is_root,
   CommitAncestryLookup,
   AncestryKnown,
   AncestryUnknownCommit,
@@ -88,9 +87,24 @@ fn ancestry_witness_linear_history() -> List<ObjectId> {
 // holding a "nothing" value, which would make "this commit begins the history" and "this commit's
 // parent is missing" the same value. Those are opposite facts: the first is every repository's
 // ordinary first commit, the second is damage.
+// The root/descends discrimination is asserted with a WITNESS-LOCAL reader rather than a predicate
+// exported from gunbc.scm.ancestry. review 56207 objected to that export, and the decisive fact is
+// that it had NO production consumer -- its only caller was this claim. A helper whose sole consumer
+// is the test asserting it works belongs in the test (DESIGN section 6: an artifact with no final
+// consumer). The production module keeps the coproduct and no predicate over it, so every real
+// consumer matches the arms and stays exhaustive when a variant is added.
+fn ancestry_witness_reads_as_root(ancestry: CommitAncestry) -> Bool {
+  match ancestry {
+    RootCommit => true
+    DescendsFrom { parent: _ } => false
+  }
+}
+
 test fn the_root_commit_is_structurally_a_root_not_a_missing_parent() -> Bool {
-  ancestry_is_root(ancestry: RootCommit)
-    && !ancestry_is_root(ancestry: DescendsFrom { parent: ancestry_witness_id(name: ^c0) })
+  ancestry_witness_reads_as_root(ancestry: RootCommit)
+    && !ancestry_witness_reads_as_root(
+         ancestry: DescendsFrom { parent: ancestry_witness_id(name: ^c0) }
+       )
 }
 
 test fn a_linear_history_traces_from_the_start_back_to_the_root() -> Bool {

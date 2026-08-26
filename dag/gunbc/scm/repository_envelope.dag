@@ -39,6 +39,15 @@ import gunbc.scm.ancestry {
   CommitAncestry,
   RootCommit,
   DescendsFrom,
+  CommitAncestryLookup,
+  AncestryKnown,
+  AncestryUnknownCommit,
+  AncestryWalk,
+  AncestryTraced,
+  AncestryBrokenAt,
+  AncestryStartNotInHistory,
+  AncestryRevisitsACommit,
+  ancestry_walk,
 }
 
 import gunbc.scm.target_reference {
@@ -177,6 +186,7 @@ type RepositoryEncodeRefusal
   | RepositoryCommitRootNotInStore { root: ObjectId }
   | RepositoryCheckoutNotInCommits { selected: ObjectId }
   | RepositoryCommitParentNotInCommits { parent: ObjectId }
+  | RepositoryCommitAncestryCyclic { detected_from: ObjectId }
 
 // The decode side keeps `String` references for now, and that is a REMAINING conflation rather than
 // a resolved one: an image-local position is still spelled as bare text here, and commit_closure_json_v2's whole
@@ -190,6 +200,7 @@ type RepositoryDecodeRefusal
   | RepositoryCommitRootReferenceUnresolved { reference: String }
   | RepositoryCheckoutReferenceUnresolved { reference: String }
   | RepositoryCommitParentReferenceUnresolved { reference: String }
+  | RepositoryDecodedAncestryCyclic { detected_from: ObjectId }
   | RepositoryUnexpectedMember { context: RepositoryMemberContext, key: String }
   | RepositoryTargetReferenceRefused { cause: TargetReferenceRefusal }
 
@@ -432,7 +443,12 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
               match unresolved_commit_parent(commits: repo.commits) {
                 Present { value: parent } =>
                   RepositoryEncodeRefused { cause: RepositoryCommitParentNotInCommits { parent: parent } }
-                Absent => RepositoryEncoded { value: encode_repository(repo: repo) }
+                Absent =>
+                  match a_cyclic_commit(commits: repo.commits) {
+                    Present { value: from } =>
+                      RepositoryEncodeRefused { cause: RepositoryCommitAncestryCyclic { detected_from: from } }
+                    Absent => RepositoryEncoded { value: encode_repository(repo: repo) }
+                  }
               }
           }
       }
@@ -486,6 +502,63 @@ fn unresolved_commit_parent(commits: List<RepositoryCommit>) -> ObjectId? {
             } else {
               none
             }
+        }
+    }
+  })
+}
+
+// A CYCLE IS REFUSED AT BOTH ENDS OF THE PERSISTENCE BOUNDARY, and this is the hole that binding
+// ancestry to the wire OPENED. Before the member existed a cyclic history had no spelling here at
+// all; with it, every-parent-is-in-commits is satisfiable by a two-commit cycle, so the checked
+// encoder would have serialized a state gunbc.scm.ancestry classifies as a REFUSAL. Membership and
+// acyclicity are different properties and the first does not imply the second (review 56207).
+//
+// THE DETECTION IS BORROWED, NOT REBUILT. ancestry_walk already decides this, by exhausting the
+// population rather than by keeping a visited set, so calling it is what keeps one authority for
+// "is this history cyclic". Re-deriving the test here would be a second answer to one question --
+// and the two would drift the first time the walk's bound changed.
+//
+// COST, STATED RATHER THAN HIDDEN: one walk per commit is O(n^2) over a repository's history. A
+// linear alternative needs a keyed visited set, which this layer's list representation does not
+// give, and the walk itself is the only acyclicity authority. It is on a persistence boundary
+// crossed once per write rather than in a fold, so the shape is declared here instead of being
+// silently accepted; it dissolves when the commit list is keyed rather than positional.
+fn repository_ancestry_lookup(commits: List<RepositoryCommit>, wanted: ObjectId) -> CommitAncestryLookup {
+  fold(commits, init: AncestryUnknownCommit, f: fn(acc, c) {
+    match acc {
+      AncestryKnown { ancestry: _ } => acc
+      AncestryUnknownCommit =>
+        if object_id_eq(left: c.root, right: wanted) {
+          AncestryKnown { ancestry: c.ancestry }
+        } else {
+          AncestryUnknownCommit
+        }
+    }
+  })
+}
+
+fn commit_roots(commits: List<RepositoryCommit>) -> List<ObjectId> {
+  map(commits, c => c.root)
+}
+
+// Answers A commit a cycle was detected from, not THE first one, matching an_uncontained_target: the
+// refusal needs one actionable example and nothing downstream depends on which, so naming an order
+// would freeze an incidental traversal into the interface.
+fn a_cyclic_commit(commits: List<RepositoryCommit>) -> ObjectId? {
+  let history = commit_roots(commits: commits)
+  fold(commits, init: none, f: fn(acc, c) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match ancestry_walk(
+          start: c.root,
+          history: history,
+          lookup: fn(id) { repository_ancestry_lookup(commits: commits, wanted: id) },
+        ) {
+          AncestryRevisitsACommit { detected_from: from } => Present { value: from }
+          AncestryTraced { chain: _ } => none
+          AncestryBrokenAt { commit: _, missing_parent: _ } => none
+          AncestryStartNotInHistory { start: _ } => none
         }
     }
   })
@@ -828,9 +901,16 @@ fn decode_repository_body(v: JsonValue) -> RepositoryDecodeOutcome {
                               match resolve_refusal {
                                 Present { value: c } => RepositoryDecodeRefused { cause: c }
                                 Absent =>
-                                  decode_repository_checkout(
-                                    v: v, store: store, positions: positions, commits: commits
-                                  )
+                                  match a_cyclic_commit(commits: commits) {
+                                    Present { value: from } =>
+                                      RepositoryDecodeRefused {
+                                        cause: RepositoryDecodedAncestryCyclic { detected_from: from }
+                                      }
+                                    Absent =>
+                                      decode_repository_checkout(
+                                        v: v, store: store, positions: positions, commits: commits
+                                      )
+                                  }
                               }
                           }
                       }
@@ -843,6 +923,16 @@ fn decode_repository_body(v: JsonValue) -> RepositoryDecodeOutcome {
   }
 }
 
+// THE DECODE SIDE REFUSES A CYCLE TOO, AND THIS IS THE HALF THAT MATTERS MORE. The encoder's
+// argument is a value some caller in this process built; a DOCUMENT is bytes from anywhere, and a
+// hand-authored one can state a cycle whether or not any encoder here would produce it. Refusing on
+// the write path alone would guard the direction we control and leave the untrusted direction open,
+// which is the shape of a wall that only ever fires on its own author.
+//
+// It is checked AFTER parents resolve and BEFORE the checkout, because a cycle is only decidable
+// once every reference denotes a commit, and reporting a checkout on a repository whose history is
+// illegal would be answering a question about a state that should not have loaded.
+//
 // A DANGLING CHECKOUT REFERENCE REFUSES RATHER THAN DEGRADING TO "nothing checked out". Those are
 // different states: one is an ordinary empty repository, the other is a document whose workspace
 // selection names an object the table does not contain. Answering the first for the second would

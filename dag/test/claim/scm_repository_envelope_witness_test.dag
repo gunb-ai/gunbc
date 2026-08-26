@@ -40,6 +40,7 @@ import gunbc.scm.repository_envelope {
   RepositoryEncodeRefusal, RepositoryEncodeUncontainedTarget,
   RepositoryCommitRootNotInStore, RepositoryCheckoutNotInCommits,
   RepositoryCommitParentNotInCommits, RepositoryCommitParentReferenceUnresolved,
+  RepositoryCommitAncestryCyclic, RepositoryDecodedAncestryCyclic,
   RepositoryDecodeRefusal, RepositoryDecodeClosureDocRefusal, RepositoryMemberReadRefused, RepositoryFormatUnrecognized,
   RepositoryIdentityRuleUnrecognized,
   RepositoryTargetReferenceRefused,
@@ -47,6 +48,7 @@ import gunbc.scm.repository_envelope {
   RepositoryUnexpectedMember, RepositoryMemberContext,
   RepositoryEnvelopeMembers, RepositoryCommitMembers,
   encode_repository_checked,
+  unresolved_commit_parent,
   commit_at_reference,
 }
 
@@ -443,6 +445,7 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
         RepositoryCommitRootNotInStore { root: _ } => "commit_root"
         RepositoryCheckoutNotInCommits { selected: _ } => "checked_out"
         RepositoryCommitParentNotInCommits { parent: _ } => "commit_parent"
+        RepositoryCommitAncestryCyclic { detected_from: _ } => "ancestry_cycle"
       }
   }
 }
@@ -508,6 +511,7 @@ fn scm_env_named_target_is_uncontained(outcome: RepositoryEncodeOutcome, store: 
         RepositoryCommitRootNotInStore { root: _ } => false
         RepositoryCheckoutNotInCommits { selected: _ } => false
         RepositoryCommitParentNotInCommits { parent: _ } => false
+        RepositoryCommitAncestryCyclic { detected_from: _ } => false
       }
   }
 }
@@ -557,6 +561,7 @@ fn scm_env_decode_cause_tag(outcome: RepositoryDecodeOutcome) -> String {
         RepositoryCommitRootReferenceUnresolved { reference: _ } => "commit_root"
         RepositoryCheckoutReferenceUnresolved { reference: _ } => "checked_out"
         RepositoryCommitParentReferenceUnresolved { reference: _ } => "commit_parent"
+        RepositoryDecodedAncestryCyclic { detected_from: _ } => "ancestry_cycle"
         RepositoryUnexpectedMember { context: _, key: _ } => "unexpected_member"
         RepositoryTargetReferenceRefused { cause: _ } => "target_reference"
       }
@@ -931,4 +936,61 @@ fn scm_env_orphan_parent_repository() -> RepositoryEnvelope {
     ],
     checked_out: none,
   }
+}
+
+// ------------------------------------------------------------------------------------------------
+// A cyclic history is refused at BOTH ends of the persistence boundary (review 56207)
+// ------------------------------------------------------------------------------------------------
+
+// Two commits naming each other as parent. Every parent IS in the commit list, so the membership
+// check the encoder already had is fully satisfied -- which is exactly the point: membership does
+// not imply acyclicity, and before this the checked encoder would have serialized it.
+fn scm_env_cyclic_repository() -> RepositoryEnvelope {
+  let first = scm_env_put(store: empty_store(), n: scm_env_program_one())
+  let second = scm_env_put(store: first.store, n: scm_env_program_two())
+  RepositoryEnvelope {
+    store: second.store,
+    commits: [
+      RepositoryCommit {
+        root: first.identity,
+        message: "first",
+        ancestry: DescendsFrom { parent: second.identity },
+      },
+      RepositoryCommit {
+        root: second.identity,
+        message: "second",
+        ancestry: DescendsFrom { parent: first.identity },
+      },
+    ],
+    checked_out: none,
+  }
+}
+
+// THE POSITIVE CONTROL FOR BOTH CLAIMS BELOW, and without it they prove nothing: it establishes that
+// the membership check this fixture satisfies really is satisfied, so the refusals are about the
+// CYCLE and not about some unrelated defect the fixture happens to carry.
+test fn scm_env_the_cyclic_fixture_has_every_parent_in_the_commit_list() -> Bool {
+  match unresolved_commit_parent(commits: scm_env_cyclic_repository().commits) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE WRITE SIDE. gunbc.scm.ancestry classifies a cycle as a REFUSAL, so a persistence boundary that
+// serialized one would put an illegal substrate state on disk under a successful operation.
+test fn scm_env_a_cyclic_history_refuses_to_encode() -> Bool {
+  scm_env_encode_cause_tag(outcome: encode_repository_checked(repo: scm_env_cyclic_repository()))
+    == "ancestry_cycle"
+}
+
+// THE READ SIDE, AND THE HALF THAT MATTERS MORE. A document is bytes from anywhere, and a
+// hand-authored one can state a cycle whether or not any encoder here would produce it. Guarding
+// only the write path would be a wall that fires solely on its own author.
+//
+// The document is built by ENCODING the cyclic repository with the UNCHECKED encoder -- the one that
+// cannot refuse -- so the bytes are exactly what a writer without this wall would have produced.
+test fn scm_env_a_cyclic_document_refuses_to_decode() -> Bool {
+  scm_env_decode_cause_tag(
+    outcome: decode_repository(v: encode_repository(repo: scm_env_cyclic_repository()))
+  ) == "ancestry_cycle"
 }
