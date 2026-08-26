@@ -1134,10 +1134,25 @@ fn ratchet_denominators(r: EmitSubjectCleanRatchet) -> RosterDenominators {
 // `filter` takes a `Bool` by construction, so dissolving this into a direct match means going back
 // to a fold that appends -- the quadratic accumulator this very change removed. And it is NOT a
 // second accessor for an existing answer: `emit_ratchet_verdict_holds` beside it answers a DIFFERENT
-// question over the same coproduct, and `RatchetRegressed` is the row that proves it -- holds=false,
-// evaluated=TRUE. A regression is a verdict the fold established and then refused; collapsing the two
-// questions would make an evaluated failure indistinguishable from a subject nobody could measure,
-// which is the distinction this entire carrier exists to hold.
+// question over the same coproduct, and the disagreement is measurable rather than argued --
+//
+//   variant                    holds    evaluated
+//   RatchetCleanHeld           true     true
+//   RatchetDebtHeld            true     true
+//   RatchetRegressed           FALSE    TRUE       <-- disagree
+//   RatchetFrontierStale       FALSE    TRUE       <-- disagree
+//   RatchetNotEvaluated        false    false
+//   RatchetSubjectUnmeasured   false    false
+//
+// TWO ARMS DISAGREE, AND THAT IS STRONGER THAN ONE. A single disagreeing variant could be dismissed
+// as an accident of how that one case is treated; two disagreeing in the SAME DIRECTION show the
+// functions are answering different questions by construction. Both are cases where the fold DID
+// establish a verdict and then refused it -- a regression is a subject measured and found dirty, a
+// stale frontier row is a subject measured and found CLEAN while its admission row says otherwise.
+// Neither is a subject nobody could measure. Collapsing the two questions would make an evaluated
+// failure indistinguishable from an unevaluated subject, which is the state-space conflation this
+// entire carrier exists to refuse -- committed inside the machinery that refuses it.
+// (Two-arm measurement: smart-ram-730, 2026-08-26, independently re-derived against this branch.)
 fn emit_ratchet_verdict_evaluated(v: EmitRatchetVerdict) -> Bool {
   match v {
     RatchetCleanHeld { entry: _ } => true
