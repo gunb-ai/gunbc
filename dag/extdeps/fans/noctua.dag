@@ -1,0 +1,72 @@
+module extdeps.fans.noctua
+
+import std.types { List }
+import std.measure { percent, rpm, milli_dba }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.fans.types {
+  FanCatalogRow,
+  FanPublishedOperatingPoint,
+  SelfStabilisingOilPressure,
+}
+import extdeps.vendor.noctua { noctua }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.noctua.at/en/products/nh-d9-amp-4926-4u/specifications"
+  }
+}
+
+// THE ASYMMETRY THAT MAKES THE FAIL-CLOSED GATE REAL. Noctua publishes exactly ONE noise figure
+// for this fan - 30.6 dBA at its 2500 rpm maximum - plus two speed points carrying no level at
+// all. One level fixes no slope, so fan_acoustic_evidence returns FanAcousticUnderdetermined and
+// every level query against this fan refuses.
+//
+// That refusal is the point. The Dynatron's three points fit a fifth-power law to within about
+// 0.1 dB, and it is tempting to reuse that exponent here. It must not be reused: the exponent is
+// a property of one fan measured under one vendor's conditions, and a 92mm SSO2 fan at 2500 rpm
+// shares neither. Nothing in this module offers a way to do it.
+//
+// The NF-A9 HS-PWM is OEM-only and has no standalone Noctua product page; the figures below come
+// from the cooler's own specification page. No L.N.A. is supplied with this cooler, so the
+// retail NF-A9 PWM's low-noise-adaptor rows - a different 2000 rpm fan - do not apply.
+data noctua_nf_a9_hs_pwm_published_points: List<FanPublishedOperatingPoint> = [
+  FanPublishedOperatingPoint {
+    duty: percent(0),
+    speed: rpm(0),
+    sound_pressure: none,
+  },
+  FanPublishedOperatingPoint {
+    duty: percent(20),
+    speed: rpm(600),
+    sound_pressure: none,
+  },
+  FanPublishedOperatingPoint {
+    duty: percent(100),
+    speed: rpm(2500),
+    sound_pressure: Present { value: milli_dba(30600) },
+  },
+]
+
+data noctua_nf_a9_hs_pwm_catalog: FanCatalogRow = FanCatalogRow {
+  model: "NF-A9 HS-PWM",
+  manufacturer: noctua,
+  frame_size_mm: 92,
+  bearing: SelfStabilisingOilPressure,
+  pwm_controlled: true,
+  published_points: noctua_nf_a9_hs_pwm_published_points,
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.fans.noctua",
+      decl_name: "noctua_nf_a9_hs_pwm_catalog",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

@@ -44,8 +44,15 @@ data rosewill_rsv_r4000u_catalog: ChassisCatalogRow = ChassisCatalogRow {
   expansion_slot_count: 7,
   included_fan_count: 4,
   max_gpu_length: Present { value: millimeter(270) },
-  max_cooler_height: none,
+  max_cooler_height: Present { value: millimeter(117) },
 }
+
+// The R4000U publishes its cooling row explicitly - "Front - 2 x 120mm fans (2 x 120mm fan
+// included)" and "Rear - 2 x 80mm fans (2 x 80mm fan included)" - so bays and included are the
+// same number and the chassis ships fully populated. max_cooler_height was `none` until
+// 2026-08-26; the page states 117mm with the GPU holder fitted and 152mm without, and the
+// smaller figure is taken because it is the one that holds in the shipped configuration.
+data rosewill_rsv_r4000u_cooling_note: String = "Front 2x120mm + rear 2x80mm, four positions, four included. Cooler clearance 117mm with GPU holder / 152mm without; the 117mm figure is modeled because it is the constraint that binds as shipped."
 
 data rosewill_rsv_z2600u_catalog: ChassisCatalogRow = ChassisCatalogRow {
   model: "RSV-Z2600U",
@@ -55,10 +62,30 @@ data rosewill_rsv_z2600u_catalog: ChassisCatalogRow = ChassisCatalogRow {
   internal_35_bay_count: 4,
   internal_525_bay_count: 0,
   expansion_slot_count: 4,
-  included_fan_count: 0,
+  included_fan_count: 3,
   max_gpu_length: Present { value: millimeter(150) },
   max_cooler_height: Present { value: millimeter(70) },
 }
+
+// included_fan_count WAS 0 AND THAT WAS WRONG. Rosewill's title row and every retailer listing
+// state "3 x 80mm PWM Fans", and the product page's feature bullet reads "3 pre-installed
+// cooling fans". Corrected 2026-08-26. The zero was load-bearing in the wrong direction: it made
+// the installed fan population underivable, so the fan-controller tach list was hand-authored
+// against no authority and drifted from the hardware on both 2U hosts without anything
+// refusing. With the true count the population falls out - three chassis fans plus one processor
+// cooler header is four headers, which is exactly what srv3 and srv4 report.
+//
+// TWO THINGS THIS ROW STILL DOES NOT SETTLE, recorded rather than smoothed over:
+// FAN BAY COUNT IS NOT PUBLISHED for this model. Unlike its 4U sibling the Z2600U spec table
+// carries no Cooling System row at all, on Rosewill's own page or any retailer, so "three
+// mounting positions" is an inference from the included count and not a published fact - there
+// may be further empty positions. included_fan_count is therefore the honest field to carry and
+// a bay count is deliberately NOT authored here.
+// AND ROSEWILL CONTRADICTS ITSELF: the same product page also carries a bullet reading "2
+// pre-installed 80mm front cooling fans". The 3 figure is taken because it is echoed by the
+// product title and by every retailer listing, and because it is what the fleet measures; the 2
+// appears in one bullet only and reads as copy inherited from the older non-U RSV-Z2600.
+data rosewill_rsv_z2600u_fan_count_note: String = "3 x 80mm front PWM fans included, per product title and retailer listings. Bay count unpublished - no Cooling System spec row exists for this model. Rosewill's own page self-contradicts with a stale '2 pre-installed' bullet; 3 is taken on title, retailer and measurement agreement."
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {

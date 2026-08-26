@@ -1,0 +1,161 @@
+module extdeps.fans.types
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.measure { MilliDecibelA, Percent, RevolutionsPerMinute, milli_dba_count, percent_count, rpm, rpm_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Computer_fan"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.fans.types",
+      decl_name: "FanCatalogRow",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// A FAN IS ITS OWN UPSTREAM SUBJECT, not a field on the cooler that ships it. The Dynatron W1
+// and the Noctua NH-D9 AMP-4926 4U are separately governed products, and so are the fans inside
+// them - DF126025BU-PWMH and NF-A9 HS-PWM are separately specified parts with their own
+// published tables. Modelling the fan as a cooler attribute would fuse two independently
+// versioned authorities and leave nowhere to put a chassis fan, which belongs to no cooler at
+// all.
+
+type FanBearing = SleeveBearing | DoubleBallBearing | SelfStabilisingOilPressure | FanBearingUnpublished
+
+// ONE ROW OF A VENDOR'S PUBLISHED TABLE. Vendors publish a handful of duty points, not a curve,
+// and every field here is something a datasheet actually prints. sound_pressure is optional
+// because publishing speed without noise is common - the Noctua states 600 rpm at 20% PWM and
+// no dBA figure to go with it.
+type FanPublishedOperatingPoint {
+  duty: Percent
+  speed: RevolutionsPerMinute
+  sound_pressure: MilliDecibelA?
+}
+
+// HOW STRONGLY A LEVEL IS KNOWN AT A GIVEN SPEED. The distinction this type exists to keep is
+// between a number the manufacturer printed and a number someone computed - and, separately,
+// between either of those and what a person would actually hear in another room.
+//
+// PublishedAnchor is the vendor's own figure at the vendor's own test point.
+// InterpolatedFromAnchors would be a value derived between two anchors - NOT offered here,
+//   because deriving it needs a logarithm and no log builtin exists in this substrate. A fan
+//   whose level someone wants at an unpublished speed gets a refusal, not an estimate.
+// NEITHER is a receiver-position observation. Ducting, grilles, panels, the wall and the room
+//   all sit between a fan's rated level and what is audible elsewhere, so no arm here may ever
+//   be read as "what you would hear". That claim requires a measurement at the listening
+//   position and has no representation in this module by design.
+type FanSoundPressureResult
+  = FanSoundPressurePublished { level: MilliDecibelA }
+  | FanSoundPressureNotPublishedAtSpeed { speed: RevolutionsPerMinute }
+  | FanSoundPressureUnderdetermined { published_level_count: Int }
+
+// THE FAIL-CLOSED GATE. Interpolating between anchors needs at least two of them; one point
+// fixes no slope at all. The Dynatron publishes three levels and the Noctua exactly one, so this
+// is not a hypothetical arm - it is the live state of half the fleet's fans, and it is why the
+// W1's fitted noise law must never be reused for the Noctua. Whoever adds a log builtin later
+// inherits this gate rather than having to remember the rule.
+type FanAcousticEvidence
+  = FanAcousticAnchored { published_level_count: Int }
+  | FanAcousticUnderdetermined { published_level_count: Int }
+
+type FanCatalogRow {
+  model: NonEmptyStr
+  manufacturer: Vendor<Hardware>
+  frame_size_mm: Int
+  bearing: FanBearing
+  pwm_controlled: Bool
+  published_points: List<FanPublishedOperatingPoint>
+}
+
+fn fan_point_has_level(point: FanPublishedOperatingPoint) -> Bool {
+  match point.sound_pressure {
+    none => false
+    Present { value } => true
+  }
+}
+
+fn fan_published_level_count(row: FanCatalogRow) -> Int {
+  fold(
+    row.published_points,
+    init: 0,
+    f: (acc, point) => if fan_point_has_level(point: point) { acc + 1 } else { acc },
+  )
+}
+
+fn fan_acoustic_evidence(row: FanCatalogRow) -> FanAcousticEvidence {
+  let n = fan_published_level_count(row: row)
+  if n >= 2 {
+    FanAcousticAnchored { published_level_count: n }
+  } else {
+    FanAcousticUnderdetermined { published_level_count: n }
+  }
+}
+
+fn fan_max_speed(row: FanCatalogRow) -> RevolutionsPerMinute {
+  fold(
+    row.published_points,
+    init: rpm(0),
+    f: (acc, point) =>
+      if rpm_count(point.speed) > rpm_count(acc) { point.speed } else { acc },
+  )
+}
+
+fn fan_level_at_published_speed_rec(
+  points: List<FanPublishedOperatingPoint>,
+  speed: RevolutionsPerMinute,
+) -> MilliDecibelA? {
+  fold(
+    points,
+    init: none,
+    f: (acc, point) =>
+      match acc {
+        Present { value } => Present { value: value }
+        none =>
+          if rpm_count(point.speed) == rpm_count(speed) {
+            point.sound_pressure
+          } else {
+            none
+          }
+      },
+  )
+}
+
+// THE ONLY WAY TO GET A LEVEL OUT OF THIS MODULE. It answers at a published anchor and refuses
+// everywhere else. FanSoundPressureNotPublishedAtSpeed is the arm that fires for every real
+// operating speed the fleet actually runs at, which is the honest result: the fleet's fans sit
+// between the vendor's test points almost all of the time.
+fn fan_sound_pressure_at(
+  row: FanCatalogRow,
+  speed: RevolutionsPerMinute,
+) -> FanSoundPressureResult {
+  match fan_acoustic_evidence(row: row) {
+    FanAcousticUnderdetermined { published_level_count } =>
+      FanSoundPressureUnderdetermined { published_level_count: published_level_count }
+    FanAcousticAnchored { published_level_count } =>
+      match fan_level_at_published_speed_rec(points: row.published_points, speed: speed) {
+        Present { value } => FanSoundPressurePublished { level: value }
+        none => FanSoundPressureNotPublishedAtSpeed { speed: speed }
+      }
+  }
+}
+
+fn fan_evidence_is_anchored(evidence: FanAcousticEvidence) -> Bool {
+  match evidence {
+    FanAcousticAnchored { published_level_count } => true
+    FanAcousticUnderdetermined { published_level_count } => false
+  }
+}
