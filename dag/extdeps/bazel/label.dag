@@ -226,6 +226,33 @@ fn render_label(l: Label) -> String {
   )
 }
 
+// Label is presently a freely constructible record, so an authored value can sit outside the
+// cited grammar. Structural equality and canonicality live here with that grammar: consumers
+// using render_label as a key need its documented parse(render(label)) round trip to hold.
+fn target_label_structural_eq(a: Label, b: Label) -> Bool {
+  let packages_equal = match a.package {
+    RootPackage => match b.package {
+      RootPackage => true
+      PackagePath { segments: _ } => false
+    }
+    PackagePath { segments: a_segments } => match b.package {
+      RootPackage => false
+      PackagePath { segments: b_segments } => a_segments == b_segments
+    }
+  }
+  packages_equal && (a.target.name == b.target.name)
+}
+
+fn target_label_is_canonical(target: Label) -> Bool {
+  match parse_label(text: render_label(l: target)) {
+    // label_eq is deliberately NOT used here: package_eq renders both packages, so
+    // PackagePath(["a", "b"]) and PackagePath(["a/b"]) compare equal. Canonicality instead
+    // compares the segment structure that parse_label constructs.
+    LabelParsed { label: parsed } => target_label_structural_eq(a: target, b: parsed)
+    LabelRefused { cause: _ } => false
+  }
+}
+
 fn package_eq(a: PackageName, b: PackageName) -> Bool {
   render_package(p: a) == render_package(p: b)
 }
