@@ -34,6 +34,7 @@ import gunbc.emit_diagnostic_observation {
   emit_blocking_count,
   emit_population_extent_text
 }
+import std.measure { Nanosecond, nanosecond_count, ByteSize, byte_size_count }
 import extdeps.crypto.hash { Digest }
 import extdeps.github.actions_environment {
   ActionsRunCoordinate,
@@ -1736,7 +1737,7 @@ data emit_subject_clean_admissions: List<EmitDebtAdmission> = []
 // =============================================================================================
 
 type EmitObservationPersistence
-  = ObservationPersisted { report_artifact: String, report_digest: Digest, report_bytes: Int }
+  = ObservationPersisted { report_artifact: String, report_digest: Digest, report_bytes: ByteSize }
   | ObservationPersistenceRefused { cause: String }
 
 fn observation_persistence_text(persistence: EmitObservationPersistence) -> String {
@@ -1744,19 +1745,36 @@ fn observation_persistence_text(persistence: EmitObservationPersistence) -> Stri
     ObservationPersisted { report_artifact: a, report_digest: d, report_bytes: b } =>
       concat(
         concat(concat("persisted\t", a), concat("\tsha256\t", d.hex as String)),
-        concat("\tbytes\t", to_string(b))
+        concat("\tbytes\t", to_string(byte_size_count(b: b)))
       )
     ObservationPersistenceRefused { cause: c } => concat("NOT PERSISTED\t", c)
   }
 }
 
+// THE UNITS ARE CARRIERS AND NOT BARE Int, and the reason is this change's own thesis rather than a
+// style rule: grounding the provenance coordinates meticulously and then re-minting the pricing
+// scalars would be a second representation of quantities `std.measure` already owns. Review 56351
+// caught that inconsistency, and `gunbc.emit_diagnostic_observation` had recorded the same finding
+// one module over -- "THE SIZES ARE ByteSize AND NOT Int" -- from its own review.
+//
+// NANOSECOND RATHER THAN A MILLISECOND SCALE, which is the measure module's ruling rather than a
+// preference: it states Nanosecond is the canonical exact elapsed-time carrier while Millisecond
+// "remains a policy and presentation scale", and that measurement, ordering, joining and
+// attribution must retain Nanosecond. A pricing receipt is measurement that later runs are joined
+// against, so a millisecond field would have recorded a floor-rounded reading as though exact. The
+// `_ms` field names went with it: a unit spelled in the name beside a unit spelled in the type is
+// the same fact twice, and the two disagree the day the scale changes.
+//
+// THE TWO COUNTS STAY Int DELIBERATELY. Roster size and unevaluated-subject count are CARDINALS,
+// not quantities in a unit system -- no scale to convert, no dimension to check -- so wrapping them
+// in a measure would assert a structure they do not have.
 type EmitPricingDimensions {
-  wall_ms: Int
-  cpu_ms: Int
-  peak_rss_bytes: Int
+  wall: Nanosecond
+  cpu: Nanosecond
+  peak_rss: ByteSize
   roster_size: Int
   unevaluated_subject_count: Int
-  report_bytes: Int
+  report: ByteSize
 }
 
 // Every refusal names WHICH precondition failed rather than answering "not priceable". The causes
@@ -1807,9 +1825,9 @@ fn pricing_context_refusal(context: EmitObservationContext) -> PricingContextSta
 fn emit_pricing_receipt(
   observation: EmitRatchetObservation,
   persistence: EmitObservationPersistence,
-  wall_ms: Int,
-  cpu_ms: Int,
-  peak_rss_bytes: Int
+  wall: Nanosecond,
+  cpu: Nanosecond,
+  peak_rss: ByteSize
 ) -> EmitPricingReceipt {
   match observation {
     ObservationNotTaken { binding: _, admission: _ } =>
@@ -1830,12 +1848,12 @@ fn emit_pricing_receipt(
                   PricingReceiptBound {
                     context: ctx,
                     dimensions: EmitPricingDimensions {
-                      wall_ms: wall_ms,
-                      cpu_ms: cpu_ms,
-                      peak_rss_bytes: peak_rss_bytes,
+                      wall: wall,
+                      cpu: cpu,
+                      peak_rss: peak_rss,
                       roster_size: roster_subject_count(roster: roster),
                       unevaluated_subject_count: count(un),
-                      report_bytes: bytes
+                      report: bytes
                     }
                   }
               }
@@ -1887,12 +1905,12 @@ fn emit_pricing_receipt_text(receipt: EmitPricingReceipt) -> String {
               concat("\tunevaluated_subjects\t", to_string(d.unevaluated_subject_count))
             ),
             concat(
-              concat("\twall_ms\t", to_string(d.wall_ms)),
+              concat("\twall_ns\t", to_string(nanosecond_count(n: d.wall))),
               concat(
-                concat("\tcpu_ms\t", to_string(d.cpu_ms)),
+                concat("\tcpu_ns\t", to_string(nanosecond_count(n: d.cpu))),
                 concat(
-                  concat("\tpeak_rss_bytes\t", to_string(d.peak_rss_bytes)),
-                  concat("\treport_bytes\t", to_string(d.report_bytes))
+                  concat("\tpeak_rss_bytes\t", to_string(byte_size_count(b: d.peak_rss))),
+                  concat("\treport_bytes\t", to_string(byte_size_count(b: d.report)))
                 )
               )
             )

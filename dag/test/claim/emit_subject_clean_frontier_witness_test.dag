@@ -1058,7 +1058,7 @@ fn fixture_taken_observation(subjects: List<EmissionMeasurementSubject>) -> Emit
 data fixture_persisted: EmitObservationPersistence = ObservationPersisted {
   report_artifact: "/tmp/ratchet.tsv",
   report_digest: sha256_digest(hex: "dddd" as NonEmptyStr),
-  report_bytes: 4096
+  report_bytes: byte_size(count: 4096)
 }
 
 fn fixture_receipt(
@@ -1068,9 +1068,9 @@ fn fixture_receipt(
   emit_pricing_receipt(
     observation: fixture_taken_observation(subjects: subjects),
     persistence: persistence,
-    wall_ms: 1000,
-    cpu_ms: 900,
-    peak_rss_bytes: 12345
+    wall: nanosecond(count: 1000),
+    cpu: nanosecond(count: 900),
+    peak_rss: byte_size(count: 12345)
   )
 }
 
@@ -1079,7 +1079,7 @@ fn fixture_receipt(
 test fn a_bound_receipt_takes_its_report_size_from_the_persisted_artifact() -> Bool {
   match fixture_receipt(subjects: [fixture_clean_subject()], persistence: fixture_persisted) {
     PricingReceiptBound { context: ctx, dimensions: d } =>
-      (d.report_bytes == 4096)
+      (byte_size_count(b: d.report) == 4096)
         && (d.roster_size == 2)
         && (d.unevaluated_subject_count == 0)
         && ((ctx.source_revision as String) == fixture_revision_a)
@@ -1122,9 +1122,9 @@ test fn an_unbound_run_coordinate_refuses_and_names_the_variable() -> Bool {
       r: fixture_dual_fold(inventory: fixture_roster, readings: fixture_both_clean())
     ),
     persistence: fixture_persisted,
-    wall_ms: 1000,
-    cpu_ms: 900,
-    peak_rss_bytes: 12345
+    wall: nanosecond(count: 1000),
+    cpu: nanosecond(count: 900),
+    peak_rss: byte_size(count: 12345)
   ) == PricingReceiptRefused { cause: PricingRunCoordinateUnbound { coordinate: "GITHUB_RUN_ID" } }
 }
 
@@ -1170,6 +1170,6 @@ test fn a_refused_receipt_renders_no_dimensions_at_all() -> Bool {
   )
   string_contains(s: rendered, pattern: "pricing NOT TAKEN")
     && string_contains(s: rendered, pattern: "cannot be checked out again")
-    && !string_contains(s: rendered, pattern: "wall_ms")
+    && !string_contains(s: rendered, pattern: "wall_ns")
     && !string_contains(s: rendered, pattern: "unevaluated_subjects")
 }
