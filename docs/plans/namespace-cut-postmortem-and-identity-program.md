@@ -1421,7 +1421,8 @@ F**, never in a preparation wave.
 binding is live records a heuristic's guess as truth" is REVERSED for the legacy
 observation and kept only for the standing ledger (§11.2r).*** `O_X(B)` must be
 minted **while X's fallback still exists**, because capturing exactly those
-selections is what produces the qualifiers for the 593 off-chain sites. It does
+selections is what produces the qualifiers for the 593 off-chain triples (§11.2p: a
+lower bound on sites, and on one closure). It does
 not call them truth; its whole proposition is past-tense.
 
 ### Three lanes, divided by question rather than by file
@@ -3783,16 +3784,45 @@ this arm has **no other binder today**.
 **SO C.1 MOVES BEHIND M2, AND THIS IS DESIGN'S OWN CARVE-OUT RATHER THAN AN EXCEPTION TO
 DELETE-FIRST.** §3 already says the minimum Y *"is not the smallest thing that executes the happy
 path: it must preserve every required refusal"* — and here there is no Y at all for those 593
-sites until exact provider edges exist, which **is** M2. §3's gap-intolerant boundary is stated
+triples until exact provider edges exist, which **is** M2. §3's gap-intolerant boundary is stated
 for exactly this: Y built in shadow, then one transition that switches the root. Deleting C.1
-first would produce 593 loud refusals over 193 names with nothing to fix forward *into*, which is
-a break wearing the census's clothes. **C.1 and M2 are one migration; M2 lands first or with it.**
+first would produce **at least** 593 loud refusals over 193 names with nothing to fix forward
+*into*, which is a break wearing the census's clothes. **C.1 and M2 are one migration; M2 lands first or with it.**
 
 **Three grains, kept apart because conflating them is the denominator error this document keeps
 recording:** 193 is the **defect** grain (distinct names needing a provider edge), 593 is distinct
 `(name, decl_module, ref_module)` **triples**, and textual occurrence sites are **≥ 593** because
 the set was deduped. And all three are **lower bounds on the corpus** — this is one entry's
 closure, not the whole tree.
+
+**THE TWO BOUNDS COMPOUND, AND THE PROSE ABOVE THIS NOTE USED TO UNDO IT** (cool-swift-307,
+2026-08-26). The grain note was correct when first filed and the paragraphs around it said "593
+**sites**" anyway — so a reader taking the nearest sentence got the wrong grain from a section
+whose own footnote had it right. That is not a typo: **P(B) — the projection every off-chain
+occurrence must receive — is denominated in SITES**, so the figure being quoted as the size of the
+cut's central work item is a lower bound on a lower bound of the quantity actually needed:
+
+```
+593 distinct (name, decl_module, ref_module) triples
+  ├─ dedup   → lower bound on off-chain SITES
+  └─ subject → over ONE entry's closure, not the corpus
+                and P(B) is denominated in SITES
+```
+
+Neither bound is an error in the measurement; both were unstated **bindings** on a number that
+checks out, which is why the figure survived filing, a side-chat ruling, and a dispatch message
+before anyone caught it. Every count in this section carries both bounds until the corpus-grain
+instrument lands.
+
+**AND THE CORPUS-GRAIN FIGURE IS NOT REACHABLE BY THE METHOD THAT PRODUCED THESE** (cool-swift-307,
+2026-08-26). The obvious route — compile entries whose closures union to the corpus, union the
+probe sets, measure coverage rather than assume it — fails structurally, not budgetarily. The
+corpus is a **wide shallow forest**: 4065 modules declare a module, 1985 are imported by anyone, so
+**2080 are roots**, and 548 of those import nothing at all. Greedy set-cover over root import
+closures takes 813 modules (20.0%) on the first entry and then collapses — +90, +68, +38, +37, +25
+— reaching **1555 modules (38.3%) after 60 entries**. Full coverage needs thousands of compiles.
+**The runtime method cannot be scaled to the corpus by anyone**, and the curve is filed rather than
+the conclusion alone so the next lane does not re-attempt it.
 
 ### 11.2q RULED — the old side is a past-tense, subject-bound observation; the X→Y wall is a migration instrument that dissolves at cutover
 
@@ -3870,7 +3900,7 @@ better than the gap-intolerance argument I gave.
 ### 11.2r RULED — an index makes an already-selected declaration addressable; it does not select one. So M2 is X-backed, and C.1/C.4 both split by authority
 
 I asked whether M2 (*one closure authority*) is reachable before M5 (*the
-projection is green*), given §11.2p's 593 off-chain sites, and offered three
+projection is green*), given §11.2p's 593 off-chain triples, and offered three
 resolutions. **The answer is a fourth, and my preferred option is refused
 outright.**
 
@@ -3886,7 +3916,7 @@ some other relation already authorises a candidate (lexical/ancestor containment
 an authored qualified path, a declared prelude vocabulary, or the old import
 visibility). **Choosing the sole corpus-wide declaration because the index finds
 exactly one IS the ambient whole-pool-unique fallback being deleted.** So for the
-593 sites the full qualifier is not a readability improvement — **it is the
+593 triples the full qualifier is not a readability improvement — **it is the
 authored relation that makes the binding decidable.** The projection is therefore
 unavoidably on the **cutover** critical path, while remaining off the critical
 path for M2's infrastructure work.
@@ -3941,7 +3971,7 @@ ledger**. Three distinct things exist:
 The first is **allowed** to contain X's heuristic results because it does not call
 them truth — its whole proposition is past-tense. And more than allowed:
 **capturing exactly those selections is what produces the qualifiers for the 593
-sites.** The rule that would have forbidden it would have deleted the input the
+triples.** The rule that would have forbidden it would have deleted the input the
 projection is derived from.
 
 ### 11.3 The dispatch protocol
@@ -3960,3 +3990,78 @@ RETIRES WHEN: the condition under which this dispatch is complete
 
 The protocol is not ceremony, and it is not derived from taste. Every field is present because its absence has already cost something in this program: a dispatch went out with a title and no brief and was correctly blocked; a target spelling stated in three places drifted between them and blocked a peer lane; a measurement was taken on a stale head and nearly reported as a live defect. `EXACT HEAD` in particular is what makes the third one detectable by the recipient rather than by luck.
 
+
+### 11.2s OPEN QUESTION — two tree-walking derivations of "what does this module reference" coexist, and the older one over-approximates ON PURPOSE with a receipt behind it
+
+**This section was first filed as a finding and is retracted to an open question within the hour**
+(cool-swift-307, 2026-08-26). The retraction is kept in place rather than overwritten, because
+*what the filing did* is the most reusable part: a claim that had circulated in messages was lifted
+into a document, and **being written down is what caused its author to check it.** Both of its load-
+bearing halves failed. Messages are not authorities, and this is the mechanism by which that rule
+pays rather than merely being asserted.
+
+**WHAT WAS FILED AND IS FALSE.** That Track B.3's parser-owned reference fact was already standing
+in the seed; that a **raw-text scanner** had been built for it in ignorance of that; and that the
+scanner was therefore **avoidable** — a correct requirement solved at the wrong layer, stated in the
+vocabulary of text where the substrate speaks in occurrences.
+
+**ERROR 1 — there is no lexical scan.** `v1_compiler::cli_run` `collect_node_refs` walks a **parsed
+tree**, and all three of its call sites pass a parsed item. The structural-versus-lexical framing —
+which was the entire force of the original filing, and the source of its tidy general lesson about
+requirements phrased in the wrong layer's vocabulary — describes nothing that exists. The lesson was
+the most quotable thing in the section and it was an artifact of a mischaracterisation, which is the
+ordinary way a wrong claim earns its place: **it explained too well.**
+
+**ERROR 2, and it is the one that kills *avoidable*.** `collect_node_refs` over-approximates
+deliberately, and its own header states the asymmetry as the design with a measurement cited for it:
+
+> over-binding **drops an edge** and silently reproduces the defect it names — floor run
+> `32621117917`, **170 enrolled claims** that threw `no such function: <a data row in another
+> module>` instead of reaching a verdict. Under-binding admits a local name and **merely widens**
+> the scope — observable as `PreparedClaimScope::module_count` and `ambiguous_bare_names`.
+>
+> *"The design whose failure mode is measurable is the correct trade."*
+
+The parser's `ReferenceOccurrence` set is **precise**, and precise is the **under**-approximating
+direction at this seam. So substituting it is not a free §3 consolidation: it moves the seam toward
+the failure mode that already cost 170 claims, and it fails **silently** in that direction. It would
+need a completeness proof that nobody has done and nobody had asked for.
+
+**AND THAT IS THE BEST AVAILABLE EXPLANATION OF THE REGRESSION.** The lane's swap measured as a
+regression and was read at the time as their own bug. On this evidence it may have been **the seam's
+design refusing the substitution** — a deliberate over-approximation replaced by a narrower set,
+producing exactly the narrower closure the header predicts. Recorded as the better hypothesis, not
+as a result: nothing has re-run it.
+
+**WHAT IS ACTUALLY ESTABLISHED, AT THE GRAIN IT IS ESTABLISHED.**
+
+*Source read, construction site, independently confirmed by two lanes* — `parse_context_record_occurrence`
+appends a `ReferenceOccurrence` on the `ParsedOccurrenceReference` arm; `parse_with_table`
+constructs `reference_occurrences: Present { value: [] }` unconditionally, no flag and no branch,
+so the field's `?` type does not make the feature opt-in on that path.
+
+*Not established — that the arm appends during a real parse.* A constructed-empty list and a
+populated one are indistinguishable to a type reader, and a zero from a parse that never ran renders
+identically to a zero from a parse that found nothing. Execution-provenance class; source read until
+a run yields a nonzero count.
+
+*Not established — that the recorded set is **complete** for closure derivation.* Nothing measures
+this, and completeness is precisely the property any consolidation needs.
+
+*Not established — that the scanner was avoidable.* On the evidence it was a reasoned trade with a
+receipt.
+
+**THE OPEN QUESTION, WHICH IS WHAT M2 INHERITS.** Two derivations of module references coexist — the
+parser's recorded occurrences and `cli_run` `collect_node_refs`. **Whether they agree is unmeasured.**
+That is a genuine §3 single-authority question and it is still worth M2's attention; it is simply
+weaker and differently shaped than a repair. Consolidating onto the parser's set requires a
+completeness proof **first**, because the direction of the error matters more than its size here.
+This still stops the next lane from rebuilding a scanner blind — it stops them for the right reason.
+
+**AND THE PROCESS NOTE, WHICH IS WHY THIS SECTION IS WORTH ITS LENGTH.** The original filing was
+solicited with an explicit invitation to be corrected — *"correct me, because I am going to write it
+as 'the substrate existed and the scanner was avoidable', and that is a stronger claim than 'a
+similar-looking thing existed'"* — and the correction arrived because the strong version was stated
+plainly enough to be checkable. A hedged filing would have been unfalsifiable and would have
+survived. **Stating the strong version of a claim you intend to file, and naming it as the strong
+version, is what makes it refutable in time.**
