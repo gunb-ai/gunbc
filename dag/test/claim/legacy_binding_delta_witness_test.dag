@@ -5,11 +5,15 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { Fnv1a64Structural, structural_content_hash }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.occurrence_identity { OccurrenceId }
+import std.content_hash { Fnv1a64Structural, structural_content_hash }
 import v2.workflow.legacy_binding_observation {
   LegacyBindingObservation,
   LegacyBindingObservationRow,
   LegacyBindingObservationSubject,
-  ImportScopedPolicy
+  SubjectOccurrenceRef,
+  ImportScopedPolicy,
+  NamespaceOnlyPolicy,
+  legacy_subject_identity
 }
 import v2.workflow.legacy_binding_delta {
   ProjectionProvenance,
@@ -22,6 +26,7 @@ import v2.workflow.legacy_binding_delta {
   ProvenanceSourceRepeated,
   ProvenanceTargetMissing,
   ProvenanceForeignOccurrence,
+  ProvenanceRefOutOfSubjectScope,
   LegacyBindingDelta,
   DeltaProvenanceRefused,
   DeltaComputed,
@@ -60,6 +65,28 @@ fn lbd_subject() -> LegacyBindingObservationSubject {
   }
 }
 
+fn lbd_projected_subject() -> LegacyBindingObservationSubject {
+  LegacyBindingObservationSubject {
+    semantic_source_digest: structural_content_hash(digest: "9999999999999999"),
+    source_set_digest: structural_content_hash(digest: "2222222222222222"),
+    compiler_artifact_digest: structural_content_hash(digest: "3333333333333333"),
+    resolver_identity: decl_ref(module_path: "v1.compiler.lookup", decl_name: "lookup_binding_by_name"),
+    resolver_policy: NamespaceOnlyPolicy,
+    occurrence_transport_digest: structural_content_hash(digest: "4444444444444444"),
+    declaration_index_digest: structural_content_hash(digest: "5555555555555555")
+  }
+}
+
+fn lbd_observation_of(subject: LegacyBindingObservationSubject, ids: List<Int>) -> LegacyBindingObservation<LbdTestOutcome> {
+  LegacyBindingObservation {
+    subject: subject,
+    rows: ids |> map(id => LegacyBindingObservationRow {
+      occurrence: OccurrenceId { value: id },
+      outcome: LbdObserved
+    })
+  }
+}
+
 fn lbd_observation(ids: List<Int>) -> LegacyBindingObservation<LbdTestOutcome> {
   LegacyBindingObservation {
     subject: lbd_subject(),
@@ -70,18 +97,32 @@ fn lbd_observation(ids: List<Int>) -> LegacyBindingObservation<LbdTestOutcome> {
   }
 }
 
-fn lbd_pair(source: Int, target: Int) -> ProjectionProvenanceEntry {
-  ProjectedFromSource { source: OccurrenceId { value: source }, target: OccurrenceId { value: target } }
+fn lbd_base_ref(id: Int) -> SubjectOccurrenceRef {
+  SubjectOccurrenceRef {
+    subject_identity: legacy_subject_identity(subject: lbd_subject()),
+    occurrence: OccurrenceId { value: id }
+  }
 }
 
-fn lbd_insertion(target: Int) -> ProjectionProvenanceEntry {
-  ProjectedAsInsertion { target: OccurrenceId { value: target } }
+fn lbd_projected_ref(id: Int) -> SubjectOccurrenceRef {
+  SubjectOccurrenceRef {
+    subject_identity: legacy_subject_identity(subject: lbd_projected_subject()),
+    occurrence: OccurrenceId { value: id }
+  }
+}
+
+fn lbd_pair(source: Int, target: Int) -> ProjectionProvenanceEntry {
+  ProjectedFromSource { source: lbd_base_ref(id: source), target: lbd_projected_ref(id: target) }
+}
+
+fn lbd_insertion(target: Int, caused_by: Int) -> ProjectionProvenanceEntry {
+  ProjectedAsInsertion { target: lbd_projected_ref(id: target), caused_by: lbd_base_ref(id: caused_by) }
 }
 
 fn lbd_totality(base: List<Int>, projected: List<Int>, entries: List<ProjectionProvenanceEntry>) -> ProvenanceTotality {
   provenance_totality(
-    base_observation: lbd_observation(ids: base),
-    projected_observation: lbd_observation(ids: projected),
+    base_observation: lbd_observation_of(subject: lbd_subject(), ids: base),
+    projected_observation: lbd_observation_of(subject: lbd_projected_subject(), ids: projected),
     provenance: ProjectionProvenance { entries: entries }
   )
 }
@@ -94,13 +135,14 @@ test fn a_provenance_accounting_for_both_denominators_is_total() -> Bool {
   match lbd_totality(
     base: [10, 20, 30],
     projected: [11, 21, 31, 41],
-    entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21), lbd_pair(source: 30, target: 31), lbd_insertion(target: 41)]
+    entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21), lbd_pair(source: 30, target: 31), lbd_insertion(target: 41, caused_by: 10)]
   ) {
     ProvenanceTotal => true
     ProvenanceSourceMissing { occurrences: _ } => false
     ProvenanceSourceRepeated { occurrences: _ } => false
     ProvenanceTargetMissing { occurrences: _ } => false
     ProvenanceForeignOccurrence { occurrences: _ } => false
+    ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
   }
 }
 
@@ -118,6 +160,7 @@ test fn a_projection_with_no_insertions_is_also_total() -> Bool {
     ProvenanceSourceRepeated { occurrences: _ } => false
     ProvenanceTargetMissing { occurrences: _ } => false
     ProvenanceForeignOccurrence { occurrences: _ } => false
+    ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
   }
 }
 
@@ -128,13 +171,14 @@ test fn a_base_occurrence_with_no_provenance_source_refuses() -> Bool {
   match lbd_totality(
     base: [10, 20, 30],
     projected: [11, 21, 41],
-    entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21), lbd_insertion(target: 41)]
+    entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21), lbd_insertion(target: 41, caused_by: 10)]
   ) {
     ProvenanceSourceMissing { occurrences: missing } => (missing |> count) == 1
     ProvenanceTotal => false
     ProvenanceSourceRepeated { occurrences: _ } => false
     ProvenanceTargetMissing { occurrences: _ } => false
     ProvenanceForeignOccurrence { occurrences: _ } => false
+    ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
   }
 }
 
@@ -153,6 +197,7 @@ test fn a_base_occurrence_projected_twice_refuses() -> Bool {
     ProvenanceSourceMissing { occurrences: _ } => false
     ProvenanceTargetMissing { occurrences: _ } => false
     ProvenanceForeignOccurrence { occurrences: _ } => false
+    ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
   }
 }
 
@@ -169,6 +214,7 @@ test fn a_projected_occurrence_with_no_provenance_entry_refuses() -> Bool {
     ProvenanceSourceMissing { occurrences: _ } => false
     ProvenanceSourceRepeated { occurrences: _ } => false
     ProvenanceForeignOccurrence { occurrences: _ } => false
+    ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
   }
 }
 
@@ -187,6 +233,7 @@ test fn a_provenance_naming_an_occurrence_outside_either_denominator_refuses() -
     ProvenanceSourceMissing { occurrences: _ } => false
     ProvenanceSourceRepeated { occurrences: _ } => false
     ProvenanceTargetMissing { occurrences: _ } => false
+    ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
   }
 }
 
@@ -207,9 +254,56 @@ test fn the_delta_computes_over_a_total_provenance() -> Bool {
   match legacy_binding_delta(
     base_observation: lbd_observation(ids: [10, 20]),
     projected_observation: lbd_observation(ids: [11, 21, 41]),
-    provenance: ProjectionProvenance { entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21), lbd_insertion(target: 41)] }
+    provenance: ProjectionProvenance { entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21), lbd_insertion(target: 41, caused_by: 10)] }
   ) {
     DeltaComputed { pairs: pairs } => (pairs |> count) == 3
     DeltaProvenanceRefused { totality: _ } => false
+  }
+}
+
+// THE SCOPE LAW, WHICH IS WHAT MAKES THE RELATION INDEXABLE RATHER THAN MERELY LISTED.
+//
+// The two subjects here differ (different semantic-source digest, different resolution policy), so
+// their content addresses differ, and a ref minted in one allocator domain cannot be silently
+// looked up in the other. This fixture hands the base side a ref carrying the PROJECTED subject's
+// address at an ordinal the base observation genuinely contains -- so every other law is satisfied
+// and only the scope check separates it. Without that check the accidental equality of two
+// independently-allocated ordinals is indistinguishable from a real correspondence, which is the
+// shared-allocator trap arriving through the index instead of through the key.
+test fn a_ref_bearing_the_wrong_subject_address_refuses() -> Bool {
+  match provenance_totality(
+    base_observation: lbd_observation_of(subject: lbd_subject(), ids: [10, 20]),
+    projected_observation: lbd_observation_of(subject: lbd_projected_subject(), ids: [11, 21]),
+    provenance: ProjectionProvenance { entries: [
+      ProjectedFromSource { source: lbd_projected_ref(id: 10), target: lbd_projected_ref(id: 11) },
+      lbd_pair(source: 20, target: 21)
+    ] }
+  ) {
+    ProvenanceRefOutOfSubjectScope { occurrences: out } => (out |> count) == 1
+    ProvenanceTotal => false
+    ProvenanceSourceMissing { occurrences: _ } => false
+    ProvenanceSourceRepeated { occurrences: _ } => false
+    ProvenanceTargetMissing { occurrences: _ } => false
+    ProvenanceForeignOccurrence { occurrences: _ } => false
+  }
+}
+
+// QUALIFYING A REFERENCE IS NOT A FORK. An insertion names the reference it acts for, and that
+// cause is a base-side ref -- so a law that counted every base-side ref toward the
+// one-source-per-occurrence rule would report a fork every time the projector did its job. This
+// arm holds an occurrence that is both carried forward AND named as the cause of an insertion, and
+// requires that it pass.
+test fn a_reference_that_is_carried_forward_and_also_causes_an_insertion_is_not_a_fork() -> Bool {
+  match lbd_totality(
+    base: [10, 20],
+    projected: [11, 21, 41],
+    entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21), lbd_insertion(target: 41, caused_by: 10)]
+  ) {
+    ProvenanceTotal => true
+    ProvenanceSourceMissing { occurrences: _ } => false
+    ProvenanceSourceRepeated { occurrences: _ } => false
+    ProvenanceTargetMissing { occurrences: _ } => false
+    ProvenanceForeignOccurrence { occurrences: _ } => false
+    ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
   }
 }

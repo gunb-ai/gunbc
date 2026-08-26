@@ -1,11 +1,14 @@
 module v2.workflow.legacy_binding_delta
 
 import std.types { String, Bool, Int, List }
+import std.content_hash { Fnv1a64Structural }
 import std.occurrence_identity { OccurrenceId }
 import v2.workflow.legacy_binding_observation {
   LegacyBindingObservation,
   LegacyBindingObservationSubject,
-  observed_occurrence_ids
+  SubjectOccurrenceRef,
+  observed_occurrence_ids,
+  legacy_subject_identity
 }
 
 // THE CORRESPONDENCE IS THE PROJECTOR'S OUTPUT, NOT A JOIN KEY. THIS MODULE CONSUMES IT AND
@@ -47,26 +50,51 @@ import v2.workflow.legacy_binding_observation {
 // carry a source would refuse P(B) for succeeding -- the not-applicable-rendered-as-malformed
 // shape. So insertion is its own constructor, and a reader can tell "this target came from
 // nowhere, by design" from "this target's source is missing", which have opposite owners.
+// AN INSERTED SEGMENT CARRIES ITS CAUSE RATHER THAN BEING SOURCELESS, and the difference is not
+// cosmetic. "No source" and "caused by the reference being qualified" have the same first-class
+// status but not the same information: the first leaves a reader concluding that inserted syntax is
+// unattributable, and the second names the occurrence on whose behalf the segment exists. A
+// projection that inserts a qualifier is acting FOR some reference, and it knows which.
 type ProjectionProvenanceEntry
-  = ProjectedFromSource { source: OccurrenceId, target: OccurrenceId }
-  | ProjectedAsInsertion { target: OccurrenceId }
+  = ProjectedFromSource { source: SubjectOccurrenceRef, target: SubjectOccurrenceRef }
+  | ProjectedAsInsertion { target: SubjectOccurrenceRef, caused_by: SubjectOccurrenceRef }
 
 type ProjectionProvenance {
   entries: List<ProjectionProvenanceEntry>
 }
 
-fn provenance_source_ids(provenance: ProjectionProvenance) -> List<Int> {
+fn provenance_source_refs(provenance: ProjectionProvenance) -> List<SubjectOccurrenceRef> {
   provenance.entries |> flat_map(entry => match entry {
-    ProjectedFromSource { source: s, target: _ } => [s.value]
-    ProjectedAsInsertion { target: _ } => []
+    ProjectedFromSource { source: s, target: _ } => [s]
+    ProjectedAsInsertion { target: _, caused_by: c } => [c]
   })
 }
 
-fn provenance_target_ids(provenance: ProjectionProvenance) -> List<Int> {
+fn provenance_target_refs(provenance: ProjectionProvenance) -> List<SubjectOccurrenceRef> {
   provenance.entries |> map(entry => match entry {
-    ProjectedFromSource { source: _, target: t } => t.value
-    ProjectedAsInsertion { target: t } => t.value
+    ProjectedFromSource { source: _, target: t } => t
+    ProjectedAsInsertion { target: t, caused_by: _ } => t
   })
+}
+
+// AN INSERTION'S CAUSE IS A BASE-SIDE REFERENCE AND IS THEREFORE A SOURCE FOR SCOPE PURPOSES, which
+// is why provenance_source_refs collects it -- but it is NOT a carried-forward source, so counting
+// it toward the one-source-per-base-occurrence law would make qualifying a reference look like a
+// fork. The two questions are separated: scope membership reads every base-side ref, multiplicity
+// reads only the carried-forward ones.
+fn provenance_carried_source_ids(provenance: ProjectionProvenance) -> List<Int> {
+  provenance.entries |> flat_map(entry => match entry {
+    ProjectedFromSource { source: s, target: _ } => [s.occurrence.value]
+    ProjectedAsInsertion { target: _, caused_by: _ } => []
+  })
+}
+
+fn refs_in_scope(refs: List<SubjectOccurrenceRef>, identity: Fnv1a64Structural) -> List<Int> {
+  refs |> filter(r => r.subject_identity.digest == identity.digest) |> map(r => r.occurrence.value)
+}
+
+fn refs_out_of_scope(refs: List<SubjectOccurrenceRef>, identity: Fnv1a64Structural) -> List<Int> {
+  refs |> filter(r => r.subject_identity.digest != identity.digest) |> map(r => r.occurrence.value)
 }
 
 // PROVENANCE TOTALITY IS THREE LAWS, AND EACH ONE FAILS A DIFFERENT LIE.
@@ -82,12 +110,33 @@ fn provenance_target_ids(provenance: ProjectionProvenance) -> List<Int> {
 // NOTE WHAT IS NOT A LAW: a target with no source is admitted, because insertion is the point. The
 // asymmetry between the source and target laws is therefore deliberate and is the one place a
 // reader should expect the two directions NOT to mirror each other.
+// PROVENANCE TOTALITY IS FIVE LAWS, AND EACH ONE FAILS A DIFFERENT LIE.
+//
+// A source left out means the projection dropped an occurrence the base carried -- a site the
+// migration silently declined to consider. A carried source appearing twice means one base
+// occurrence was projected to two targets, which is a fork the delta cannot interpret. A target
+// left out means the projection produced something it will not account for. A ref scoped to
+// NEITHER subject means the provenance is about some other pair of compiles entirely, and that is
+// the failure that reads as success -- exactly the count-equality trap, since such a provenance can
+// have the right size.
+//
+// THE SCOPE LAW IS WHAT MAKES AN INDEXABLE RELATION SOUND. An ordinal names an occurrence only
+// inside the allocator that minted it, so a ref carries the subject whose allocator that was, and
+// a ref bearing the wrong subject address is refused rather than silently looked up in the wrong
+// domain. Without it the accidental equality of two independently-allocated ordinals would be
+// indistinguishable from a real correspondence -- the shared-allocator trap arriving through the
+// index instead of through the key.
+//
+// NOTE WHAT IS NOT A LAW: a target that is an insertion is admitted, because insertion is the
+// point. The asymmetry between the source and target laws is deliberate and is the one place a
+// reader should expect the two directions NOT to mirror each other.
 type ProvenanceTotality
   = ProvenanceTotal
   | ProvenanceSourceMissing { occurrences: List<Int> }
   | ProvenanceSourceRepeated { occurrences: List<Int> }
   | ProvenanceTargetMissing { occurrences: List<Int> }
   | ProvenanceForeignOccurrence { occurrences: List<Int> }
+  | ProvenanceRefOutOfSubjectScope { occurrences: List<Int> }
 
 fn occurrence_multiplicity(ids: List<Int>, id: Int) -> Int {
   ids |> filter(other => other == id) |> count
@@ -105,17 +154,27 @@ fn provenance_totality<O, P>(
   projected_observation: LegacyBindingObservation<P>,
   provenance: ProjectionProvenance
 ) -> ProvenanceTotality {
+  let base_identity = legacy_subject_identity(subject: base_observation.subject)
+  let projected_identity = legacy_subject_identity(subject: projected_observation.subject)
   let base_ids = observed_occurrence_ids(observation: base_observation)
   let projected_ids = observed_occurrence_ids(observation: projected_observation)
-  let sources = provenance_source_ids(provenance: provenance)
-  let targets = provenance_target_ids(provenance: provenance)
+  let source_refs = provenance_source_refs(provenance: provenance)
+  let target_refs = provenance_target_refs(provenance: provenance)
+  let out_of_scope = concat(
+    refs_out_of_scope(refs: source_refs, identity: base_identity),
+    refs_out_of_scope(refs: target_refs, identity: projected_identity)
+  )
+  let sources = refs_in_scope(refs: source_refs, identity: base_identity)
+  let targets = refs_in_scope(refs: target_refs, identity: projected_identity)
+  let carried = provenance_carried_source_ids(provenance: provenance)
   let source_missing = base_ids |> filter(id => !(sources |> any(s => s == id)))
-  let source_repeated = base_ids |> filter(id => occurrence_multiplicity(ids: sources, id: id) > 1)
+  let source_repeated = base_ids |> filter(id => occurrence_multiplicity(ids: carried, id: id) > 1)
   let target_missing = projected_ids |> filter(id => !(targets |> any(t => t == id)))
   let foreign_sources = sources |> filter(id => !(base_ids |> any(b => b == id)))
   let foreign_targets = targets |> filter(id => !(projected_ids |> any(p => p == id)))
   let foreign = concat(foreign_sources, foreign_targets)
-  if (source_missing |> count) > 0 { ProvenanceSourceMissing { occurrences: source_missing } }
+  if (out_of_scope |> count) > 0 { ProvenanceRefOutOfSubjectScope { occurrences: out_of_scope } }
+  else if (source_missing |> count) > 0 { ProvenanceSourceMissing { occurrences: source_missing } }
   else if (source_repeated |> count) > 0 { ProvenanceSourceRepeated { occurrences: source_repeated } }
   else if (target_missing |> count) > 0 { ProvenanceTargetMissing { occurrences: target_missing } }
   else if (foreign |> count) > 0 { ProvenanceForeignOccurrence { occurrences: foreign } }
@@ -148,5 +207,6 @@ fn legacy_binding_delta<O, P>(
     ProvenanceSourceRepeated { occurrences: o } => DeltaProvenanceRefused { totality: ProvenanceSourceRepeated { occurrences: o } }
     ProvenanceTargetMissing { occurrences: o } => DeltaProvenanceRefused { totality: ProvenanceTargetMissing { occurrences: o } }
     ProvenanceForeignOccurrence { occurrences: o } => DeltaProvenanceRefused { totality: ProvenanceForeignOccurrence { occurrences: o } }
+    ProvenanceRefOutOfSubjectScope { occurrences: o } => DeltaProvenanceRefused { totality: ProvenanceRefOutOfSubjectScope { occurrences: o } }
   }
 }
