@@ -284,6 +284,13 @@ none of them yield to closer reading of the same one.
 **Check:** before reporting an absence, re-derive it through a second index whose bound differs.
 If you cannot name the first query's bound, you have not established the absence.
 
+**A grep pattern is a bounded query too**, and the same night produced the receipt. A lane was
+about to report that a gate did not print cargo's diagnostics, on the strength of grepping its
+log and getting zero hits. The gate prints them — prefixed `cargo|`, which their pattern did not
+match. In their words: *that zero is a claim about my instrument, not about the program.* The
+bound need not be a `per_page` limit; a filter expression is a bound, and an empty result from
+one establishes nothing until the filter itself is checked against a known-present line.
+
 ## Instance 9 — a failed job's log is unreadable while a sibling lane still runs (2026-08-26)
 
 Observed directly while diagnosing a build-lane failure: the `build` job was
