@@ -1,9 +1,9 @@
 module test.claim.legacy_binding_observation_witness
 
-import std.types { String, Bool, Int, List }
+import std.types { String, Bool, Int, List, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { Fnv1a64Structural, structural_content_hash }
-import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_ref, decl_field_ref }
 import std.occurrence_identity { OccurrenceId }
 import v2.workflow.legacy_binding_observation {
   LegacyResolutionPolicy,
@@ -23,7 +23,8 @@ import v2.workflow.legacy_binding_observation {
   LegacySubjectDiverged,
   legacy_subject_applicability,
   legacy_observation_completeness,
-  legacy_subject_identity
+  legacy_subject_identity,
+  decl_field_label
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -289,37 +290,38 @@ test fn an_observation_answering_twice_for_one_occurrence_refuses() -> Bool {
 }
 
 // THE FIELD HALF OF THE RESOLVER REFERENCE MOVES THE COMPARISON, and it must also move the content
-// address -- review 56288 and review 56285 both found the asymmetry, from opposite ends. The arm
-// below is the comparison half; legacy_subject_identity now folds the field, so the two cannot
-// disagree about whether these are the same base.
+// address -- review 56288 and review 56285 both found that asymmetry, from opposite ends.
+//
+// BOTH SIDES NAME TypeBinding RATHER THAN THE RESOLVER FUNCTION, and the reason is the citation wall
+// rather than a modelling preference: a field arm needs two references differing ONLY in the field,
+// which means the declaration must actually have a field. lookup_binding_by_name is a function and
+// has none, so citing `resolved` on it is a false citation and required CI refuses it -- which it
+// did. TypeBinding.resolved is the real thing the resolver returns, so the pair is authored against
+// a declaration whose field exists.
+fn lbo_diverged_field_between(left: LegacyBindingObservationSubject, right: LegacyBindingObservationSubject) -> String {
+  match legacy_subject_applicability(left: left, right: right) {
+    LegacySubjectDiverged { field: f } => f
+    LegacySubjectApplicable => ""
+  }
+}
+
+fn lbo_binding_whole() -> LegacyBindingObservationSubject {
+  lbo_with_resolver(reference: decl_ref(module_path: "v1.compiler.infer_env", decl_name: "TypeBinding"))
+}
+
+fn lbo_binding_resolved_field() -> LegacyBindingObservationSubject {
+  lbo_with_resolver(reference: decl_field_ref(module_path: "v1.compiler.infer_env", decl_name: "TypeBinding", field_name: "resolved"))
+}
+
 test fn a_moved_resolver_field_refuses() -> Bool {
-  let base = lbo_base_subject()
-  lbo_diverged_field(other: LegacyBindingObservationSubject {
-    semantic_source_digest: base.semantic_source_digest,
-    source_set_digest: base.source_set_digest,
-    compiler_artifact_digest: base.compiler_artifact_digest,
-    resolver_identity: decl_field_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name", field_name: "resolved"),
-    resolver_policy: base.resolver_policy,
-    occurrence_transport_digest: base.occurrence_transport_digest,
-    declaration_index_digest: base.declaration_index_digest
-  }) == "resolver_identity.field"
+  lbo_diverged_field_between(left: lbo_binding_whole(), right: lbo_binding_resolved_field()) == "resolver_identity.field"
 }
 
 // AND THE ADDRESS MOVES WITH IT. This is the arm that would have caught the original defect: two
 // subjects differing only in the resolver reference's field are refused by the comparison AND carry
 // different content addresses. Either alone is satisfiable by the asymmetry the reviews found.
 test fn a_moved_resolver_field_also_moves_the_content_address() -> Bool {
-  let base = lbo_base_subject()
-  let other = LegacyBindingObservationSubject {
-    semantic_source_digest: base.semantic_source_digest,
-    source_set_digest: base.source_set_digest,
-    compiler_artifact_digest: base.compiler_artifact_digest,
-    resolver_identity: decl_field_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name", field_name: "resolved"),
-    resolver_policy: base.resolver_policy,
-    occurrence_transport_digest: base.occurrence_transport_digest,
-    declaration_index_digest: base.declaration_index_digest
-  }
-  legacy_subject_identity(subject: base).digest != legacy_subject_identity(subject: other).digest
+  legacy_subject_identity(subject: lbo_binding_whole()).digest != legacy_subject_identity(subject: lbo_binding_resolved_field()).digest
 }
 
 // THE INJECTIVITY WITNESS, PER FIELD OVER ALL NINE INPUTS.
@@ -438,19 +440,26 @@ test fn every_identity_input_moves_the_content_address() -> Bool {
     && lbo_address_moves(other: lbo_with_artifact(d: lbo_digest(label: "cccccccccccccccc")))
     && lbo_address_moves(other: lbo_with_transport(d: lbo_digest(label: "dddddddddddddddd")))
     && lbo_address_moves(other: lbo_with_decl_index(d: lbo_digest(label: "eeeeeeeeeeeeeeee")))
-    && lbo_address_moves(other: lbo_with_resolver(reference: decl_ref(module_path: "v1.compiler.infer_lookup", decl_name: "lookup_binding_by_name")))
+    && lbo_address_moves(other: lbo_with_resolver(reference: decl_ref(module_path: "v1.compiler.infer_lookup", decl_name: "lookup_func_sig")))
     && lbo_address_moves(other: lbo_with_resolver(reference: decl_ref(module_path: "v1.compiler.infer_env", decl_name: "global_bare_lookup")))
-    && lbo_address_moves(other: lbo_with_resolver(reference: decl_field_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name", field_name: "resolved")))
+    && legacy_subject_identity(subject: lbo_binding_whole()).digest != legacy_subject_identity(subject: lbo_binding_resolved_field()).digest
     && lbo_address_moves(other: lbo_with_policy(policy: NamespaceOnlyPolicy))
 }
 
-// THE COLLISION THE OTHER NINE ARMS CANNOT SEE, because it needs two subjects differing only in the
-// DeclField ARM with the payload chosen to impersonate the nullary arm's label. Everything else
-// about these two subjects is identical, and decl_field_eq reports them different, so an address
-// that collided here would be the comparison and the address disagreeing -- the same defect the
-// field fold was added to fix, one level down inside the fix.
+// THE COLLISION THE OTHER NINE ARMS CANNOT SEE, tested at the LABEL rather than through a subject.
+//
+// The property is that no payload can impersonate the nullary arm's label, and the collision needs a
+// field literally named "whole_declaration". NO REAL DECLARATION HAS SUCH A FIELD, and the citation
+// wall in required CI refuses a DeclarationRef naming a field that does not exist -- correctly, and
+// it refused this fixture's first form. That refusal is not an obstacle to route around: it says the
+// collision is unauthorable AS A CITATION, which leaves the label function itself as the honest
+// subject. DeclField is an ordinary coproduct value, so the two arms can be constructed and compared
+// directly without asserting anything false about the corpus.
+//
+// WHAT THIS COSTS, STATED RATHER THAN GLOSSED: the arm now proves the label is injective and no
+// longer walks the whole address fold to prove it. The fold's use of the label is covered by
+// a_moved_resolver_field_also_moves_the_content_address on a REAL field triple, so the two together
+// still cover both halves -- the label distinguishes the arms, and the address reads the label.
 test fn a_field_name_cannot_impersonate_the_whole_declaration_arm() -> Bool {
-  let whole = lbo_with_resolver(reference: decl_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name"))
-  let named = lbo_with_resolver(reference: decl_field_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name", field_name: "whole_declaration"))
-  legacy_subject_identity(subject: whole).digest != legacy_subject_identity(subject: named).digest
+  decl_field_label(field: WholeDeclaration) != decl_field_label(field: NamedField { field_name: "whole_declaration" as NonEmptyStr })
 }
