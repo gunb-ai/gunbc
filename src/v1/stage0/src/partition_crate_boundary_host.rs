@@ -173,3 +173,110 @@ pub fn run_partition_crate_boundary(write: bool) -> PartitionCrateBoundaryOutcom
         written,
     }
 }
+
+/// THE SECOND CONJUNCT: the produced crates COMPILE.
+///
+/// A drift comparison answers "does the projection match its authority" and is STRUCTURALLY
+/// SILENT on "is the authority complete". Only compiling what the authority produces answers
+/// the second, and the two failures are independent in both directions -- measured, not argued:
+///
+///   - The defect that produced this module had drift ZERO across four projection links
+///     (authority, generated `.dag`, emitted Rust mirror, hand `lib.rs`), every link agreeing
+///     byte-perfectly with the one above it, and the crate did not compile.
+///   - The emit-shell manifest found later in the same branch is the mirror image: real drift,
+///     and a build that passes, because dependency ORDER is cosmetic to cargo.
+///
+/// So neither check subsumes the other and the phase carries both.
+///
+/// PACKAGE NAMES COME FROM THE AUTHORITY, never a hand roster beside it: the same rows the
+/// renderer walks. A crate added to the partition is compiled here without anyone remembering
+/// to add it.
+#[derive(Debug)]
+pub enum PartitionCompileOutcome {
+    /// The toolchain was never invoked. Carries why, because "not attempted" and "attempted and
+    /// found nothing" must not share a spelling.
+    NotAttempted { reason: String },
+    /// The process was launched and did not reach an exit status of its own -- killed, or the
+    /// spawn itself failed. THIS IS NOT A ZERO-FINDING RUN. An OOM kill exits 137 with an empty
+    /// diagnostic population, which renders identically to a clean build unless the disposition
+    /// says otherwise.
+    DidNotComplete { detail: String },
+    /// The compiler ran to completion and reported. `status` is its own exit status.
+    Completed {
+        status: i32,
+        packages: Vec<String>,
+        stderr_tail: String,
+    },
+}
+
+impl PartitionCompileOutcome {
+    /// Only a completed, zero-status compile is a pass. Every other arm -- including the one
+    /// that never launched -- refuses.
+    pub fn passed(&self) -> bool {
+        matches!(self, PartitionCompileOutcome::Completed { status: 0, .. })
+    }
+
+    pub fn summary(&self) -> String {
+        match self {
+            PartitionCompileOutcome::NotAttempted { reason } => {
+                format!("NotAttempted reason={reason}")
+            }
+            PartitionCompileOutcome::DidNotComplete { detail } => {
+                format!("DidNotComplete detail={detail}")
+            }
+            PartitionCompileOutcome::Completed {
+                status, packages, ..
+            } => format!("Completed status={status} packages={}", packages.len()),
+        }
+    }
+}
+
+/// Compile every package the partition authority declares.
+///
+/// `-p <pkg>` per row rather than `--workspace`, so this phase's subject is exactly the
+/// partition and a failure elsewhere in the workspace cannot be attributed to it. Note that the
+/// inverse selector is what let this class hide: `-p v1-compiler --bins` builds every bin target
+/// OF THAT ONE PACKAGE and never reaches these sibling packages at all.
+pub fn compile_partition_crates(packages: &[String]) -> PartitionCompileOutcome {
+    if packages.is_empty() {
+        return PartitionCompileOutcome::NotAttempted {
+            reason: "the authority declared no partition packages".to_string(),
+        };
+    }
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let mut command = std::process::Command::new(&cargo);
+    command.arg("build").arg("--release");
+    for package in packages {
+        command.arg("-p").arg(package);
+    }
+    command.current_dir(workspace_root());
+    match command.output() {
+        Err(e) => PartitionCompileOutcome::DidNotComplete {
+            detail: format!("spawning {cargo} failed: {e}"),
+        },
+        Ok(output) => match output.status.code() {
+            // No exit code means a signal ended it -- an OOM kill is the case that matters, and
+            // it must never be readable as a clean build.
+            None => PartitionCompileOutcome::DidNotComplete {
+                detail: format!("{cargo} terminated by signal without an exit status"),
+            },
+            Some(status) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let tail: Vec<&str> = stderr.lines().rev().take(12).collect();
+                PartitionCompileOutcome::Completed {
+                    status,
+                    packages: packages.to_vec(),
+                    stderr_tail: tail.into_iter().rev().collect::<Vec<_>>().join("\n"),
+                }
+            }
+        },
+    }
+}
+
+/// The package names the partition authority declares, read from the rendered rows.
+pub fn partition_package_names() -> Vec<String> {
+    crate::gunbc_stage0_crate_partition_generated::generated_partition_crate_rows()
+        .iter()
+        .map(|row| row.package_name.clone())
+        .collect()
+}

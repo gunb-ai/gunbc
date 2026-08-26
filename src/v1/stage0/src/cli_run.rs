@@ -46695,7 +46695,8 @@ pub use required_regen_host::emitted_generated_sources;
 /// Re-exported here rather than reached directly so every required phase addresses the
 /// producer through one surface, the way the regen path does.
 pub use partition_crate_boundary_host::{
-    run_partition_crate_boundary, BoundaryFileDisposition, PartitionCrateBoundaryOutcome,
+    compile_partition_crates, partition_package_names, run_partition_crate_boundary,
+    BoundaryFileDisposition, PartitionCompileOutcome, PartitionCrateBoundaryOutcome,
     RenderedBoundaryFile, PARTITION_CRATE_PRODUCING_COMMAND,
 };
 

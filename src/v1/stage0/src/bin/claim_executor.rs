@@ -827,6 +827,34 @@ fn run() -> Result<ExitCode, ExitCode> {
                     }
                 }
             }
+
+            // THE SECOND CONJUNCT, AND IT RUNS WHATEVER THE FIRST ANSWERED. Drift being clean
+            // says the projection matches its authority; it says NOTHING about the authority
+            // being complete. The defect this phase exists for had drift ZERO across four
+            // projection links and did not compile, so a drift-only phase reports green on it.
+            //
+            // PLACEMENT IS LOAD-BEARING, and this sat inside the `Rendered` arm first: a
+            // `CarrierRefused` returned before the compile, so the one state where the authority
+            // is most suspect was the one state that skipped the completeness check. The two
+            // conjuncts are independent in both directions, so neither may gate the other.
+            let packages = v1_compiler::cli_run::partition_package_names();
+            let compile = v1_compiler::cli_run::compile_partition_crates(&packages);
+            eprintln!(
+                "required-ci: partition-crates compile {}",
+                compile.summary()
+            );
+            if !compile.passed() {
+                if let v1_compiler::cli_run::PartitionCompileOutcome::Completed {
+                    stderr_tail,
+                    ..
+                } = &compile
+                {
+                    for line in stderr_tail.lines() {
+                        eprintln!("required-ci: partition-crates cargo| {line}");
+                    }
+                }
+                phase_failures.push(format!("partition-crates compile: {}", compile.summary()));
+            }
             ran.push("partition-crates");
         }
 
