@@ -28,6 +28,7 @@ import gunbc.fabric_cell_observe {
   FabricCellChildNamespace,
   FabricCellSliceNamespace,
   NamespaceEnumerated,
+  NamespaceObservedAbsent,
   AddressStateRead,
   AddressStateReadRefused,
 }
@@ -880,8 +881,33 @@ fn fabric_cells_observed_converged() -> FabricCellObservationDecision {
 // the only route to an admitted empty population. The cells root enumerates and does not hold this
 // cell, so every address is absent by the parent observation and by ancestry -- read-and-empty
 // plans every member, where unread plans nothing and says so.
+//
+// IT CANNOT BUILD ON `fabric_probe_of`, AND THE REASON IS THE POINT OF THE FIXTURE. That builder
+// enumerates the child namespace with `["attempts"]`, which says the cell root's OWN DIRECTORY
+// listed and held an entry -- on a host whose cells root does not hold the cell at all. Nothing can
+// list the inside of a directory that is not there, so the ancestry join refuses it as a
+// contradiction rather than reporting absence. An unprovisioned host observes its child namespace
+// as EXPLICITLY NOT FOUND, which is a successful observation whose content is absence, and the
+// slice namespace enumerates empty. Read-and-empty then reaches all three addresses honestly.
 fn fabric_cells_observed_empty() -> FabricCellObservationDecision {
-  admit_fabric_cell_probe(probe: fabric_probe_of(entries: [], addresses: []))
+  admit_fabric_cell_probe(probe: FabricCellHostProbe {
+    host: operator_host_srv3,
+    namespaces: [
+      FabricCellNamespaceProbeEntry {
+        namespace: FabricCellsRootNamespace,
+        probe: NamespaceEnumerated { entries: [] },
+      },
+      FabricCellNamespaceProbeEntry {
+        namespace: FabricCellChildNamespace { slot: fabric_witness_slot() },
+        probe: NamespaceObservedAbsent,
+      },
+      FabricCellNamespaceProbeEntry {
+        namespace: FabricCellSliceNamespace,
+        probe: NamespaceEnumerated { entries: [] },
+      },
+    ],
+    addresses: [],
+  })
 }
 
 fn fabric_fingerprint_with(population: FabricCellObservationDecision) -> String {
@@ -1000,12 +1026,12 @@ test fn witness_fabric_cell_refusal_is_rendered_and_counted_not_silent() -> Bool
     host: "srv3" as NonEmptyStr,
     observed_fabric_cells: fabric_cells_observed_empty(),
   )
-  list_length(items: refused_lines) == 3
+  list_length(items: refused_lines) == 1
     && list_length(items: empty_lines) == 3
     && fleet_converge_fabric_cell_refusal_count(
         host: "srv3" as NonEmptyStr,
         observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
-      ) == 3
+      ) == 1
     && fleet_converge_fabric_cell_refusal_count(
         host: "srv3" as NonEmptyStr,
         observed_fabric_cells: fabric_cells_observed_converged(),
@@ -1081,14 +1107,30 @@ test fn witness_fabric_cell_population_from_another_host_is_refused_not_reconcil
 // addresses refusing must still differ.
 // A REFUSED STATE READ AT ONE ADDRESS, WORDED TWO WAYS. The probe reports the entry present and its
 // read refused, which is the only shape that produces a refusal carrying transport wording.
+// EXACTLY ONE ADDRESS REFUSES ITS STATE READ AND THE OTHER TWO SUCCEED, WHICH IS WHAT MAKES THE
+// SECOND HALF OF THE ROW DISCRIMINATING. Supplying a probe for ONLY the named address left the
+// other two present-in-their-namespace and never read -- which is itself a refusal -- so all three
+// addresses refused whichever one the caller named, and the two fingerprints this row asserts
+// DIFFER were computed over the same three blocked subjects. The row could not have failed on its
+// first clause and could not have passed on its second: a fixture that varies an argument the
+// output does not depend on.
 fn refused_read_probe(address: FabricCellResourceAddress, cause: String) -> FabricCellObservationDecision {
   admit_fabric_cell_probe(probe: fabric_probe_of(
     entries: [runner_slot_instance_name(slot: fabric_witness_slot())],
-    addresses: [FabricCellAddressProbeEntry {
-      slot: fabric_witness_slot(),
-      address: address,
-      probe: AddressStateReadRefused { cause: cause },
-    }],
+    addresses: map(
+      fabric_cell_resource_addresses(),
+      a => FabricCellAddressProbeEntry {
+        slot: fabric_witness_slot(),
+        address: a,
+        probe: if fabric_cell_resource_address_equal(a: a, b: address) {
+          AddressStateReadRefused { cause: cause }
+        } else {
+          AddressStateRead {
+            state_digest: fabric_cell_desired_state_digest(slot: fabric_witness_slot(), address: a),
+          }
+        },
+      },
+    ),
   ))
 }
 

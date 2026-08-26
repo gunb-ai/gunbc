@@ -216,13 +216,32 @@ test fn witness_observer_unprobed_namespace_never_reports_absence() -> Bool {
 // reason the row needed it was that the carrier had no way to say a child of an absent parent is
 // absent. Once absence descends (law 19), the shape below is the realizable one: the cell root IS
 // present, and its child namespace is enumerated WITHOUT `attempts`.
+// THE ABSENT ADDRESS CARRIES NO STATE READ, AND SUPPLYING ONE IS WHAT THIS ROW USED TO DO. The
+// fixture inherited `converged_probe().addresses` -- a successful state read for ALL THREE
+// addresses -- while asserting that the attempt root is ABSENT. That is a host whose attempt root
+// is missing from its own namespace listing and simultaneously read a digest, which no filesystem
+// can be in, and the contradiction join now refuses it rather than letting the listing win by
+// reaching the answer first. The row was green before that join existed and is stale, not wrong
+// about its law: an absence is established by a successful enumeration that does not hold the
+// entry AND by nothing contradicting it, so the probe supplies reads for the two addresses that
+// ARE present and none for the one that is not.
 test fn witness_observer_successful_enumeration_without_the_entry_is_absence() -> Bool {
   let readback = fabric_cell_observe_slot(
-    probe: probe_with_namespaces(ns: [
-      enumerated(ns: FabricCellsRootNamespace, entries: observe_root_entries()),
-      enumerated(ns: FabricCellChildNamespace { slot: observe_slot() }, entries: []),
-      enumerated(ns: FabricCellSliceNamespace, entries: [fabric_cell_slice_name(slot: observe_slot())]),
-    ]),
+    probe: FabricCellHostProbe {
+      host: operator_host_srv3,
+      namespaces: [
+        enumerated(ns: FabricCellsRootNamespace, entries: observe_root_entries()),
+        enumerated(ns: FabricCellChildNamespace { slot: observe_slot() }, entries: []),
+        enumerated(ns: FabricCellSliceNamespace, entries: [fabric_cell_slice_name(slot: observe_slot())]),
+      ],
+      addresses: [
+        state_read(address: FabricCellRootAddress, digest: desired_digest_at(address: FabricCellRootAddress)),
+        state_read(
+          address: FabricCellResourceBoundaryAddress,
+          digest: desired_digest_at(address: FabricCellResourceBoundaryAddress),
+        ),
+      ],
+    },
     slot: observe_slot(),
   )
   count_absent(os: readback.observations) == 1
