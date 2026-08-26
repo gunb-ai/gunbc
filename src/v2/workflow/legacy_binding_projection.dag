@@ -1,7 +1,8 @@
 module v2.workflow.legacy_binding_projection
 
-import std.types { String, Bool, Int, List }
+import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.content_hash { Fnv1a64Structural }
+import std.dissolution { DissolutionCondition, UnboundDissolution }
 import std.occurrence_identity { OccurrenceId }
 import v2.workflow.legacy_binding_observation {
   LegacyBindingObservationSubject,
@@ -45,7 +46,26 @@ import v2.workflow.legacy_binding_delta {
 // lands. No placeholder cause, no optional field, no convention -- each of those is the fabricated
 // cause wearing a different hat, and a fabricated cause is worse than an omitted insertion because
 // the omission is countable and the fabrication is not.
-data legacy_binding_projection_insertion_blocked_note: String = "ProjectedAsInsertion is unemittable until std.occurrence_identity NodeOccurrenceIdentity can carry a projector-created node's cause. Measured on origin/main 757db61b395: the shared authority has exactly two arms (OccurrenceSynthetic, OccurrenceMinted) and caused_by appears 0 times in dag/std and src/v2/std. Blocked on node://adhoc-e1692c72-f81, owned by snappy-dove-250; crisp-lynx-780 declined it as out of the preservation lane's scope because a third arm changes the shared authority's algebra and every consumer's exhaustiveness obligation. Dissolution: this note and ProjectionInsertionUnrepresentable are deleted together when the arm lands and carry_decision gains its insertion form."
+// THE RETIREMENT IS A TYPED CONDITION, NOT A SENTENCE. An earlier revision of this module carried
+// the whole thing as `data ...: String`, which is the shape §4c names as modeling debt and which
+// #6262/#6424 already swept once: a dissolution condition is machine-consumed, so it belongs in
+// `std.dissolution` where `dissolution_status` can read it, and prose that no `Accepted` program can
+// read belongs in an annotation like this one. A review read the String as admitted BECAUSE it named
+// a bounded trigger; that is backwards -- naming a trigger is precisely what makes it a fact rather
+// than commentary, and therefore precisely what disqualifies the String carrier.
+//
+// It is UNBOUND rather than bound, and that is forced rather than lazy. The bound form would be
+// `DeclarationAppears` over `std.occurrence_identity` `OccurrenceProjected`, and that declaration
+// does not exist on this base -- so authoring the citation here would be refused by the citation
+// wall as a name that does not resolve, which is the §3 fabricated-citation class the dissolution
+// module's own annotation warns about by name. The condition binds in the same change that rebases
+// onto the arm, at which point the ref is verifiable at the moment it is written.
+//
+// The instrument for the claim, rather than a transcription of it: grep `caused_by` across `dag/std`
+// and `src/v2/std`, and read `NodeOccurrenceIdentity`'s arms in `std.occurrence_identity`.
+data legacy_binding_projection_insertion_dissolution: DissolutionCondition = UnboundDissolution {
+  description: "ProjectedAsInsertion is unemittable while std.occurrence_identity NodeOccurrenceIdentity carries no arm for a projector-created node's cause. Binds to DeclarationAppears over OccurrenceProjected once that arm lands (gunbc#9359); ProjectionInsertionUnrepresentable then flips to a regression control over the InsertionCauseLost population rather than retiring, because deleting an executed refusal recreates specification-without-execution one rung up." as NonEmptyStr
+}
 
 // A CARRY DECISION IS PER BASE OCCURRENCE, AND ITS DENOMINATOR IS THE BASE OBSERVATION'S OWN
 // EXPECTED POPULATION -- not the projected side, and not the set of decisions this module happened
