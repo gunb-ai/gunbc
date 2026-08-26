@@ -153,6 +153,10 @@ fn section_9() -> List<MarkdownBlock> {
 //     this plan does not restate the ruling.
 //   ci_layer_roots -- the gap section 2 names: the phase that emits and stops
 //     before cargo.
+//   compiler_frontend_program_status -- where each milestone's standing is DERIVED from a
+//     population the corpus carries, or returned as NotDerivable naming the missing
+//     instrument. No milestone in this plan is ticked anywhere; `report` is the runnable
+//     answer to "where are we".
 data v2_corpus_self_host_ratchet_bindings: List<DeclarationRef> = [
   decl_ref(module_path: "gunbc.emit_subject_clean_frontier", decl_name: "RatchetUniverse"),
   decl_ref(module_path: "gunbc.emit_subject_clean_frontier", decl_name: "roster_identity_derived"),
@@ -162,6 +166,8 @@ data v2_corpus_self_host_ratchet_bindings: List<DeclarationRef> = [
   decl_ref(module_path: "gunbc.whole_corpus_compile_admission", decl_name: "whole_corpus_compile_admission_at_budget"),
   decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "milestone_prerequisites"),
   decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "ProgramMilestone"),
+  decl_ref(module_path: "gunbc.compiler_frontend_program_status", decl_name: "milestone_status"),
+  decl_ref(module_path: "gunbc.compiler_frontend_program_status", decl_name: "report"),
   decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "required_v2_emission_entries"),
   decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "required_v2_emission_dissolution"),
 ]

@@ -1,0 +1,153 @@
+module test.claim.compiler_frontend_program_status_witness
+
+import std.types { NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.witness_admission { DiscoverySelection, NoConsumer }
+import gunbc.compiler_frontend_program_interlock {
+  SelfHostWholeCorpusPopulationDerived,
+  SelfHostRatchetObservationEnrolled,
+  SelfHostEmitterProducesEveryRetainedArtifact,
+  NamespaceFirstSemanticWave,
+  milestone_label,
+}
+import gunbc.compiler_frontend_program_status {
+  MilestoneStanding,
+  Clear,
+  Outstanding,
+  NotDerivable,
+  Startability,
+  StartablePrerequisitesClear,
+  BlockedOnPrerequisites,
+  StartabilityNotDerivable,
+  observe_outstanding,
+  standing_from_evidence,
+  ratchet_observation_outstanding,
+  milestone_status,
+  milestone_startability,
+  program_milestones,
+  report,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHY THESE ARMS EXIST IN PAIRS. DESIGN section 4b(1) requires a discriminating RED beside an
+// accepted positive control, and DESIGN section 4b's decoration rule requires asking whether the
+// forbidden state is AUTHORABLE before writing a check. Both arms of every fold below are
+// authorable here, and several are executed against a fixture population this file authors
+// independently of the live one -- so a claim cannot be satisfied by the tree happening to be in
+// one state.
+
+fn standing_is_clear(s: MilestoneStanding) -> Bool {
+  match s {
+    Clear { evidence: _ } => true
+    Outstanding { evidence: _ } => false
+    NotDerivable { missing_instrument: _ } => false
+  }
+}
+
+fn standing_is_outstanding(s: MilestoneStanding) -> Bool {
+  match s {
+    Clear { evidence: _ } => false
+    Outstanding { evidence: _ } => true
+    NotDerivable { missing_instrument: _ } => false
+  }
+}
+
+fn standing_outstanding_members(s: MilestoneStanding) -> List<String> {
+  match s {
+    Clear { evidence: _ } => []
+    Outstanding { evidence } => evidence.outstanding
+    NotDerivable { missing_instrument: _ } => []
+  }
+}
+
+// THE POSITIVE CONTROL FOR Clear. Without it, every live arm below could be green because the fold
+// is incapable of returning Clear at all -- the permanently-red twin of a decoration.
+test fn an_empty_observed_population_is_clear() -> Bool {
+  standing_is_clear(
+    s: standing_from_evidence(
+      e: observe_outstanding(subject: "fixture" as NonEmptyStr, outstanding: [])
+    )
+  )
+}
+
+// THE DISCRIMINATING RED for the same fold, over a population this file authors.
+test fn a_populated_observation_is_outstanding_not_clear() -> Bool {
+  let s = standing_from_evidence(
+    e: observe_outstanding(subject: "fixture" as NonEmptyStr, outstanding: ["planted-member"])
+  )
+  standing_is_outstanding(s: s)
+    && count(standing_outstanding_members(s: s)) == 1
+}
+
+// THE LIVE CLAIM, at identity grain rather than by count. It reds if the arm stops reading the
+// stage0 divergence roster, if it fabricates Clear, and -- this is the half a count would miss --
+// if the arm is narrowed to read only ONE of the two rosters the divergent row's own restoration
+// trigger names. It reds the day the emitter closes the gap, which is deliberate: that is a
+// change this file must be re-read on, not one it should survive.
+test fn the_emitter_artifact_milestone_reports_both_halves_of_its_population() -> Bool {
+  let s = milestone_status(m: SelfHostEmitterProducesEveryRetainedArtifact)
+  let members = standing_outstanding_members(s: s)
+  standing_is_outstanding(s: s)
+    && any(members, n => n == "stage0-divergent:main")
+    && any(members, n => starts_with(s: n, prefix: "cli-emitter-gap:"))
+}
+
+// S4a, live. Today the ratchet runner declares NoConsumer, so the milestone is OUTSTANDING.
+test fn the_ratchet_observation_milestone_is_outstanding_today() -> Bool {
+  standing_is_outstanding(s: milestone_status(m: SelfHostRatchetObservationEnrolled))
+}
+
+// AND THE FUNCTION BEHIND IT IS NOT CONSTANT, which is what keeps the arm above from being a
+// decoration: handed a cadence that HAS a scheduled route it returns the empty population.
+test fn the_ratchet_observation_fold_answers_both_ways() -> Bool {
+  count(ratchet_observation_outstanding(cadence: DiscoverySelection)) == 0
+    && count(ratchet_observation_outstanding(cadence: NoConsumer)) == 1
+}
+
+// STARTABILITY IS FAIL-CLOSED. NamespaceFirstSemanticWave depends on SelfHostRatchetGateEnrolled,
+// which is NotDerivable, so its startability must be NotDerivable -- never BlockedOnPrerequisites,
+// which would report a missing instrument as ordinary pending work, and never Startable.
+test fn an_unanswerable_prerequisite_makes_startability_unanswerable() -> Bool {
+  match milestone_startability(m: NamespaceFirstSemanticWave) {
+    StartablePrerequisitesClear => false
+    BlockedOnPrerequisites { blocking: _ } => false
+    StartabilityNotDerivable { unanswerable } => count(unanswerable) > 0
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE SAME FOLD: a milestone with no prerequisites is startable, so the
+// arm above is not green merely because the fold always answers NotDerivable.
+test fn a_milestone_with_no_prerequisites_is_startable() -> Bool {
+  match milestone_startability(m: SelfHostWholeCorpusPopulationDerived) {
+    StartablePrerequisitesClear => true
+    BlockedOnPrerequisites { blocking: _ } => false
+    StartabilityNotDerivable { unanswerable: _ } => false
+  }
+}
+
+// THE ANTI-INFLATION CLAIM, and it is written to RED on a genuine climb rather than to survive one.
+// No milestone in this program is CLEAR today. The day one is, this claim fails and whoever made it
+// true must re-read this file rather than inherit a status carrier that quietly started saying DONE.
+test fn no_milestone_reads_clear_today() -> Bool {
+  all(program_milestones, m => !standing_is_clear(s: milestone_status(m: m)))
+}
+
+// THE ROSTER IS A COUNTED SECOND REPRESENTATION, and this claim is stated at exactly the strength
+// it has rather than one step above it. `program_milestones` is authored beside the interlock's
+// closed variant because `.dag` offers no way to enumerate a coproduct's inhabitants, so it can
+// drift: adding a fourteenth variant to the interlock does NOT red here. What this arm does hold is
+// that the roster carries thirteen DISTINCT milestones -- a duplicated entry, which would silently
+// double a row in the report and inflate any population read off it, reds. The missing wall is a
+// derived enumeration, and it is this module's own next-rung trigger for the roster.
+test fn the_milestone_roster_is_thirteen_distinct_entries() -> Bool {
+  let labels = program_milestones |> map(m => milestone_label(m: m))
+  count(labels) == 13
+    && all(labels, l => count(labels |> filter(other => other == l)) == 1)
+}
+
+// The report renders. It is the operator-facing surface and a report that returns nothing is the
+// same non-answer as a missing instrument, wearing a better name.
+test fn the_report_renders() -> Bool {
+  report() != ""
+}

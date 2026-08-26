@@ -41,7 +41,7 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
     SelfHostCargoPhaseEnrolled => "self-host S3: required cargo-executing CI phase, enrolled with a discriminating red" as NonEmptyStr
     SelfHostRatchetObservationEnrolled => "self-host S4a: the ratchet enrolled as an OBSERVATION -- taken and persisted, never merge-blocking" as NonEmptyStr
     SelfHostRatchetGateEnrolled => "self-host S4b: the ratchet enrolled as a GATE, merge-blocking, against S2's identity-grain population" as NonEmptyStr
-    NamespaceWaveAdmissionEnrolled => "namespace: required wave-admission wall over closure, subject-membership and occurrence-binding deltas" as NonEmptyStr
+    NamespaceWaveAdmissionEnrolled => "namespace: required wave-admission wall over subject-membership and occurrence-binding deltas, with closure delta carried as blast radius rather than as a third wall" as NonEmptyStr
     NamespaceBaselineObservationComplete => "namespace Step 0.5: the pre-deletion baseline -- a content-addressed, past-tense record of what the legacy resolver ACTUALLY SELECTED over one exact base" as NonEmptyStr
     NamespaceFirstSemanticWave => "namespace: first semantic wave (Step 1, deletion of the import-name universe)" as NonEmptyStr
     NamespaceFixForwardComplete => "namespace: Steps 2-4 complete (host and emit machinery, repoints, fix-forward at class grain)" as NonEmptyStr
@@ -52,6 +52,23 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
     SelfHostSeedRetirement => "self-host: S6 retirement of the v1 seed, the irreversible step" as NonEmptyStr
   }
 }
+
+// AN EIGHTH FINDING, AND IT IS NEITHER A FUSION NOR AN OMISSION -- IT IS A LABEL ASSERTING A
+// GUARANTEE THE MECHANISM CANNOT PROVIDE (nimble-moth-416, 2026-08-26, relayed through
+// warm-hawk-909). NamespaceWaveAdmissionEnrolled read as a wall over THREE deltas: closure,
+// subject membership, and occurrence binding. Closure cannot be one. Closure is a pure function of
+// membership, so "the closure moved and no membership moved" is UNAUTHORABLE -- there is no input
+// that produces it -- and an arm for it would be permanently green by construction. DESIGN section
+// 4b names that state a decoration and calls it worse than absent, because it is cited as coverage.
+// So the label now names TWO walls and carries closure delta as BLAST RADIUS: a real and useful
+// quantity, reported to size what a change reaches, and never a refusal.
+//
+// THE LABEL IS PART OF THE CONSTRUCTION, WHICH IS WHY THIS IS RECORDED WITH THE SEVEN ABOVE. The
+// exhaustive match makes an unstated prerequisite unwritable; it says nothing about whether the
+// label describes a mechanism that can exist. A milestone whose label overclaims is satisfiable
+// only by something weaker than it reads, which is the trigger-sufficiency failure -- a condition
+// naming less than the capability it stands for -- arriving through the name rather than through
+// the edge.
 
 // WHY THE S2 CENSUS IS ITS OWN VARIANT RATHER THAN A WORD INSIDE ANOTHER ONE.
 // The ruling gates the first namespace wave on S2 + S3 + S4. An earlier revision
