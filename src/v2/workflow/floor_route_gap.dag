@@ -559,7 +559,6 @@ fn floor_route_gap_expectation_chunk_01() -> List<FloorRouteGapExpectation> {
   }
   }
   }
-  }
 }
 
 fn floor_route_gap_expectation_chunk_02() -> List<FloorRouteGapExpectation> {
@@ -676,7 +675,6 @@ fn floor_route_gap_expectation_chunk_03() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "v2.test.workflow.frontier_probe_closure_readthrough.frontier_probe_read_failure_detail_refused_holds", operation: "Read", ground: NoMockResponse {} },
     tail: Empty {}
-  }
   }
   }
   }
