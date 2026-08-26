@@ -142,21 +142,26 @@ fn section_9() -> List<MarkdownBlock> {
 // prose. Each row resolves through the ingestion-time citation wall on every required run, so a
 // rename or deletion of the mechanism REFUSES here instead of leaving a stale plan section that
 // still reads as current.
+// WHAT THE ROWS BELOW BIND, IN ORDER, since section 4c admits annotations only at
+// module-item grain and this list cannot carry them inline:
+//   emit_subject_clean_frontier + emit_subject_clean_ratchet -- the ratchet the plan
+//     enrols at S4: the identity-grain frontier and its runner.
+//   emission_entry_instrument -- the measurement S2 and S3 run.
+//   whole_corpus_compile_admission -- the hosting decision in section 3.
+//   compiler_frontend_program_interlock -- the cross-program precedence relation
+//     (operator ruling 2026-08-26), carried ONCE in its own carrier and cited here;
+//     this plan does not restate the ruling.
+//   ci_layer_roots -- the gap section 2 names: the phase that emits and stops
+//     before cargo.
 data v2_corpus_self_host_ratchet_bindings: List<DeclarationRef> = [
-  // The ratchet the plan enrols (S4) — the identity-grain frontier and its runner.
   decl_ref(module_path: "gunbc.emit_subject_clean_frontier", decl_name: "RatchetUniverse"),
   decl_ref(module_path: "gunbc.emit_subject_clean_frontier", decl_name: "roster_identity_derived"),
   decl_ref(module_path: "tools.emit_subject_clean_ratchet", decl_name: "emit_ratchet_roster"),
   decl_ref(module_path: "tools.emit_subject_clean_ratchet", decl_name: "emit_subject_clean_roster_policy"),
-  // The measurement S2 and S3 run.
   decl_ref(module_path: "tools.emission_entry_instrument", decl_name: "measure_entry_emission"),
-  // The hosting decision in section 3.
   decl_ref(module_path: "gunbc.whole_corpus_compile_admission", decl_name: "whole_corpus_compile_admission_at_budget"),
-  // The cross-program precedence relation (operator ruling 2026-08-26). Carried
-  // ONCE in its own carrier and cited here; this plan does not restate the ruling.
   decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "milestone_prerequisites"),
   decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "ProgramMilestone"),
-  // The gap section 2 names: the phase that emits and stops before cargo.
   decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "required_v2_emission_entries"),
   decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "required_v2_emission_dissolution"),
 ]
