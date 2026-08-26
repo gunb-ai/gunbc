@@ -5366,3 +5366,47 @@ Field spelling: `occurrence_identity: NodeOccurrenceIdentity` — **not optional
 it by re-reading the purpose rule until it yields the answer it wants — which is exactly what
 `v1_maintenance_standing` warns of when it names the danger of an active-maintenance arm becoming an
 absorbing one if every proposal classifies as admissible.
+
+**THE CRITERION BLOCKING THIS IS VACUOUS AS WRITTEN, AND TWO LANES SIT ON OPPOSITE SIDES OF THE LINE
+NOBODY HAS DRAWN** (warm-hawk-909, 2026-08-26; the vacuity independently re-measured here).
+
+`PublicSurfaceGrowth` is **defined nowhere**. Its only stated test is a future-tense sketch inside a
+next-rung trigger — *"a diff over the emitted seed's exported declarations"* — and against the actual
+mirror that test selects everything:
+
+```
+emitted mirrors (src/v1/stage0/src/v1_compiler_*.rs)
+    pub fn      2863
+    non-pub fn     0
+```
+
+**Because `.dag` has no visibility concept**, every emitted declaration is `pub`. So *"new exported
+declaration"* means *"new declaration"*, and the class catches every mirror-touching change — measured
+by warm-hawk at **57 of 102 commits in five days**.
+
+**A NEAR-MISS WORTH RECORDING, BECAUSE IT WAS THIS LANE'S OWN DENOMINATOR ERROR.** Re-measuring the
+claim, a first pass over the *whole* `stage0/src` directory returned **2029 non-pub fn** — which reads
+as a flat refutation. It is not: those live in **hand-authored host files** (`cli_run.rs` 1169,
+`v1_interpreter.rs` 398, …), not in the emitted mirror. **The claim is about emitted output and the
+count was taken over emitted plus hand-written.** One directory too wide and a true finding renders as
+false — the same denominator failure this document keeps recording, committed while checking someone
+else's denominator.
+
+**AND THE VACUITY MUST NOT BE READ AS *THEREFORE ADMIT EVERYTHING*.** The two blocked cases are the
+proof, and they separate:
+
+| case | shape | under a repaired criterion |
+|---|---|---|
+| gunbc#9182 | 6 new exported **helper functions** in one emitter stage, plus a signature change | a module-private function boundary — already named as another class's next-rung trigger — makes them private and they never touch public surface. **Likely CLEARS.** |
+| this one | a **required field** on the exported `Node` type | function privacy does not reach it: a type's fields are its *shape*, `Node` crosses modules by construction, and 375 literals + ~305 builder sites is the blast radius that makes it a shape change. **May still be REFUSED** — and deserves arguing on its merits. |
+
+> **Two independent lanes, different subsystems, same undrawn line, same day — and repaired, the line
+> would rule DIFFERENTLY on them.** That is the strongest available argument that the boundary is not
+> academic: a criterion that cannot separate these two is not merely imprecise, it is failing on the
+> one pair that most needs separating.
+
+This converts a PR-specific admission question into a **governance question currently blocking work in
+two places**. Four sessions have now recused from drawing the boundary — including the lane that took
+the vacuity measurement, on the ground that whoever measures a criterion vacuous should not be the one
+choosing its replacement. **This lane recuses for the same reason and a stronger one: it is an
+interested party, and a criterion redrawn by the author of a change it would admit is not a criterion.**
