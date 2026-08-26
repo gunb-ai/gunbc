@@ -33,6 +33,7 @@ type ProgramMilestone
   | SelfHostCorpusEmitsCleanly
   | SelfHostBehavioralEquivalenceReestablished
   | SelfHostEmitterProducesEveryRetainedArtifact
+  | SelfHostSuccessorPromotionAdmitted
   | SelfHostSeedRetirement
 
 fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
@@ -49,9 +50,38 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
     SelfHostCorpusEmitsCleanly => "self-host S5 terminal: the whole v2 corpus emits Rust that cargo builds with zero blocking diagnostics" as NonEmptyStr
     SelfHostBehavioralEquivalenceReestablished => "self-host: behavioral equivalence to the seed re-established on a discriminating corpus -- a clean corpus PERMITS S6 to be planned, this AUTHORIZES it" as NonEmptyStr
     SelfHostEmitterProducesEveryRetainedArtifact => "self-host: no EmitterProducedDivergentRegistration remains -- the emitter can produce every artifact the seed retains, the CLI entry point included" as NonEmptyStr
+    SelfHostSuccessorPromotionAdmitted => "self-host: a v2-built compiler has been admitted as a valid SUCCESSOR -- admit_promotion returns promoted for a real candidate, not merely that the procedure exists" as NonEmptyStr
     SelfHostSeedRetirement => "self-host: S6 retirement of the v1 seed, the irreversible step" as NonEmptyStr
   }
 }
+
+// A NINTH, AND IT IS THE FOURTH OMISSION -- WHICH IS THE PATTERN, NOT THE ROW (identified by an
+// outside review and relayed through warm-hawk-909, 2026-08-26; the mechanism was independently
+// confirmed to exist at src/v2/compiler/self_host/promotion_admission.dag `admit_promotion`).
+// Nothing in this graph required that a v2-BUILT COMPILER EVER BE ADMITTED AS A VALID SUCCESSOR
+// before the seed is retired. The three conditions in front of S6 were about the emitted TEXT --
+// that it compiles, that it behaves like the seed, that the emitter can produce every artifact.
+// None of them asks whether the thing that text becomes can itself go on producing compilers.
+//
+// WHY THAT IS NOT COVERED BY EQUIVALENCE. Behavioral equivalence is measured on a discriminating
+// corpus; promotion admission consumes a candidate carrying a build receipt, a generation
+// provenance receipt and a discriminating fault receipt, and it can REFUSE on grounds equivalence
+// never examines. Deleting the seed on equivalence alone authorises an irreversible step on
+// strictly weaker conditions than the mechanism this repository already built to guard it -- and
+// an unused admission procedure is exactly the inert mechanism DESIGN section 6 calls coverage by
+// illusion.
+//
+// ITS PREREQUISITES ARE THE TWO THINGS A CANDIDATE CANNOT BE BUILT WITHOUT: the corpus must emit
+// Rust that compiles, and the emitter must produce every retained artifact -- a candidate missing
+// the CLI entry point is not a successor compiler. Behavioral equivalence is deliberately NOT
+// repeated here, because it is already carried on S6 and this file's own rule is that prerequisites
+// are direct edges and the closure is derived.
+//
+// AND THE MILESTONE IS THE ADMISSION, NOT THE PROCEDURE. A milestone reading "the promotion
+// mechanism exists" would be satisfied today, by a function nothing has ever called on a real
+// candidate -- the trigger-sufficiency failure this file's eighth finding describes, arriving
+// through a milestone's own definition. It is written so that only a returned verdict over a real
+// candidate can discharge it.
 
 // AN EIGHTH FINDING, AND IT IS NEITHER A FUSION NOR AN OMISSION -- IT IS A LABEL ASSERTING A
 // GUARANTEE THE MECHANISM CANNOT PROVIDE (nimble-moth-416, 2026-08-26, relayed through
@@ -227,7 +257,8 @@ fn milestone_prerequisites(m: ProgramMilestone) -> List<ProgramMilestone> {
     SelfHostCorpusEmitsCleanly => [SelfHostRatchetGateEnrolled]
     SelfHostBehavioralEquivalenceReestablished => [SelfHostCorpusEmitsCleanly]
     SelfHostEmitterProducesEveryRetainedArtifact => []
-    SelfHostSeedRetirement => [NamespaceGrammarRetired, SelfHostBehavioralEquivalenceReestablished, SelfHostEmitterProducesEveryRetainedArtifact]
+    SelfHostSuccessorPromotionAdmitted => [SelfHostCorpusEmitsCleanly, SelfHostEmitterProducesEveryRetainedArtifact]
+    SelfHostSeedRetirement => [NamespaceGrammarRetired, SelfHostBehavioralEquivalenceReestablished, SelfHostEmitterProducesEveryRetainedArtifact, SelfHostSuccessorPromotionAdmitted]
   }
 }
 

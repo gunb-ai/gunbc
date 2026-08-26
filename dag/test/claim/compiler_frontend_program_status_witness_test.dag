@@ -137,12 +137,12 @@ test fn no_milestone_reads_clear_today() -> Bool {
 // it has rather than one step above it. `program_milestones` is authored beside the interlock's
 // closed variant because `.dag` offers no way to enumerate a coproduct's inhabitants, so it can
 // drift: adding a fourteenth variant to the interlock does NOT red here. What this arm does hold is
-// that the roster carries thirteen DISTINCT milestones -- a duplicated entry, which would silently
+// that the roster carries fourteen DISTINCT milestones -- a duplicated entry, which would silently
 // double a row in the report and inflate any population read off it, reds. The missing wall is a
 // derived enumeration, and it is this module's own next-rung trigger for the roster.
-test fn the_milestone_roster_is_thirteen_distinct_entries() -> Bool {
+test fn the_milestone_roster_entries_are_distinct() -> Bool {
   let labels = program_milestones |> map(m => milestone_label(m: m))
-  count(labels) == 13
+  count(labels) == 14
     && all(labels, l => count(labels |> filter(other => other == l)) == 1)
 }
 

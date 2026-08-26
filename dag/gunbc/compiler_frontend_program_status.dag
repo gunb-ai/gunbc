@@ -19,6 +19,7 @@ import gunbc.compiler_frontend_program_interlock {
   SelfHostCorpusEmitsCleanly,
   SelfHostBehavioralEquivalenceReestablished,
   SelfHostEmitterProducesEveryRetainedArtifact,
+  SelfHostSuccessorPromotionAdmitted,
   SelfHostSeedRetirement,
   milestone_label,
   milestone_prerequisites,
@@ -207,6 +208,10 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
           outstanding: emitter_retained_artifact_outstanding()
         )
       )
+    SelfHostSuccessorPromotionAdmitted =>
+      NotDerivable {
+        missing_instrument: "v2.compiler.self_host.promotion_admission admit_promotion is a decision procedure over a SelfHostCandidate; whether it has ever returned a promotion for a real candidate is a run fact and no carrier holds one. Derivable once an admitted PromotionOutcome over a named candidate is persisted -- which is also the point at which the procedure stops being an inert mechanism." as NonEmptyStr
+      }
     SelfHostSeedRetirement =>
       NotDerivable {
         missing_instrument: "the irreversible step. Its own population -- the hand-written seed families -- is readable, but that population is NECESSARY AND NOT SUFFICIENT: emptying it would read Clear while the three conditions the interlock places in front of it stayed unmeasured. Derivable only when its prerequisites are, which is why no arm here reads the seed rosters." as NonEmptyStr
@@ -295,6 +300,7 @@ data program_milestones: List<ProgramMilestone> = [
   SelfHostCorpusEmitsCleanly,
   SelfHostBehavioralEquivalenceReestablished,
   SelfHostEmitterProducesEveryRetainedArtifact,
+  SelfHostSuccessorPromotionAdmitted,
   SelfHostSeedRetirement,
 ]
 
