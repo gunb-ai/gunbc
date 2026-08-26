@@ -173,13 +173,49 @@ fn fabric_cell_member_ownership(member: FabricCellMember) -> Optional<Ownership>
 // address instead of drifting silently. The digest is over the values the boundary will carry.
 fn fabric_cell_resource_boundary_state_digest() -> NonEmptyStr {
   let desired = gunbc_runner_slot_desired()
+  fabric_cell_boundary_state_digest_of(
+    memory_max: to_string(byte_size_count(b: desired.memory_max)),
+    memory_high: to_string(byte_size_count(b: desired.memory_high)),
+    memory_swap_max: to_string(byte_size_count(b: desired.memory_swap_max)),
+    tasks_max: to_string(desired.tasks_max),
+    cpu_weight: to_string(desired.cpu_weight),
+  )
+}
+
+// THE SPELLING IS A FUNCTION, BECAUSE THE OBSERVED SIDE HAS TO PRODUCE THE SAME ONE. The desired
+// digest above is compared against a digest an OBSERVER builds out of what a host reported, and if
+// each side spells the record itself then the two spellings are a fork: a reordered key or a
+// changed separator makes every cell on every host read as drifted, and the drift would be in the
+// renderer rather than on the host. One function, two callers, so a change to the shape moves both
+// sides at once or neither (DESIGN section 3).
+//
+// IT TAKES STRINGS AND NOT THE TYPED MAGNITUDES, and that is a deliberate boundary rather than
+// anemia. The desired side holds `ByteSize` and `Int` because it is authored here; the observed
+// side holds whatever `systemctl show` printed, which is a decimal string or the literal word
+// `infinity`. Parsing that back into a magnitude in order to re-render it would invent a
+// round-trip the comparison does not need and would have to decide what `infinity` means as a
+// number -- so the digest compares the RENDERED values, and the desired side renders its
+// magnitudes through the same authority it always did.
+fn fabric_cell_boundary_state_digest_of(
+  memory_max: String,
+  memory_high: String,
+  memory_swap_max: String,
+  tasks_max: String,
+  cpu_weight: String,
+) -> NonEmptyStr {
   join([
-    "memory_max=", to_string(byte_size_count(b: desired.memory_max)),
-    ";memory_high=", to_string(byte_size_count(b: desired.memory_high)),
-    ";memory_swap_max=", to_string(byte_size_count(b: desired.memory_swap_max)),
-    ";tasks_max=", to_string(desired.tasks_max),
-    ";cpu_weight=", to_string(desired.cpu_weight),
+    "memory_max=", memory_max,
+    ";memory_high=", memory_high,
+    ";memory_swap_max=", memory_swap_max,
+    ";tasks_max=", tasks_max,
+    ";cpu_weight=", cpu_weight,
   ], "") as NonEmptyStr
+}
+
+// AND THE FULL BOUNDARY DIGEST, WHICH IS THE SLICE NAME JOINED TO THE STATE. Same reason: the
+// observed side must produce a byte-identical string or every boundary reads as drifted.
+fn fabric_cell_boundary_address_digest_of(slice_name: String, state: NonEmptyStr) -> NonEmptyStr {
+  join([slice_name, ";", state as String], "") as NonEmptyStr
 }
 
 fn fabric_cell_desired_state_digest(slot: RunnerSlotIdentity, address: FabricCellResourceAddress) -> NonEmptyStr {
@@ -187,11 +223,10 @@ fn fabric_cell_desired_state_digest(slot: RunnerSlotIdentity, address: FabricCel
     FabricCellRootAddress => fabric_cell_root_path(slot: slot) as NonEmptyStr
     FabricCellAttemptRootAddress => fabric_cell_attempt_root_path(slot: slot) as NonEmptyStr
     FabricCellResourceBoundaryAddress =>
-      join([
-        fabric_cell_slice_name(slot: slot),
-        ";",
-        fabric_cell_resource_boundary_state_digest() as String,
-      ], "") as NonEmptyStr
+      fabric_cell_boundary_address_digest_of(
+        slice_name: fabric_cell_slice_name(slot: slot),
+        state: fabric_cell_resource_boundary_state_digest(),
+      )
   }
 }
 
