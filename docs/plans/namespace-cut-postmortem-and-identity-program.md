@@ -3365,6 +3365,69 @@ the *semantic* arms it is load-bearing and only execution settles it. **Holding
 for evidence that cannot exist in the form requested looks like rigor and is a
 stall.**
 
+### 11.2n MEASURED — the cut's headline consequence has a number: ~6187 dead import members across 40% of files, and every one carries a closure edge
+
+The program has asserted architecturally that reference-derived closure differs
+from import-derived closure. **On 2026-08-26 that difference acquired a
+mechanism and a first-order magnitude, from two lanes measuring different
+things.**
+
+**THE MECHANISM (`deep-ant-102`, controlled fixture, four arms).** Provider
+deliberately broken, consumer body referencing nothing, so the provider's
+diagnostic can surface only if the provider was loaded *and* typechecked:
+
+| arm | consumer's import | result |
+|---|---|---|
+| **D** | `import P {\n}` — arity-zero | provider's `type mismatch` surfaces |
+| **E** | no import line | clean; broken provider on disk is never loaded |
+| **F** | `import P { no_such_symbol }` | **refused** — `name … not found in module …`, typed and located |
+| **G** | `import P { real_member }`, never used | provider's `type mismatch` surfaces |
+
+**D vs E:** naming a module pulls it into the subject — an edge from the *name*,
+not from any use. **G:** a member that exists and is never referenced creates the
+**same** edge, is authorable today with no diagnostic, and looks like an ordinary
+import. **F is the corrective:** a member naming nothing is *already walled*, so
+the "textually non-empty, semantically binding nothing" form some of us proposed
+as a gap describes a state the compiler already makes unwritable — asserting it
+would have been §4b's decoration, a declared limitation no input can produce.
+
+**THE MAGNITUDE (first-order, explicitly a LOWER bound).** Over 3944 `.dag`
+files under `dag` and `src/v2`: **76702 imported members**, of which **6187
+(8.1%) never appear anywhere in the importing file outside its import blocks**,
+across **1576 files — 40% of the corpus.** Method: strip import blocks, then ask
+whether each member's identifier occurs in what remains. **It is a lower bound
+because prose strings were not stripped** — a member mentioned only inside a
+`data … : String` note counts as used, and the specimen that started this thread
+is exactly that shape.
+
+Two specimens confirmed independently here, each occurring exactly once in its
+file — on the import line itself: `product.placement_supply` importing `String`
+from `std.types`, and `product.rack_power` importing `ChassisMount` from
+`product.rack_mount`.
+
+**Not yet checked, so the count may be inflated:** whether any are load-bearing
+through a route that never spells the name — a re-export, an instantiation, an
+effect the import carries. **That is exactly what a per-module index answers and
+a text scan cannot**, and the index is `#9211`'s, not a second corpus walk.
+
+**WHY THIS IS THE CUT'S HEADLINE RATHER THAN A SIDE EFFECT.** If an edge exists
+because a module is *named* rather than *used*, then import-derived and
+reference-derived closure differ by **exactly the dead-import population** — and
+reference-derived closure is the cut's new root. 8.1% of import edges is not a
+rounding error and 1576 files is not a long tail: **this is a first estimate of
+how much the cut changes what compiles**, and §11.2c's finding that the cut
+*expands* eligibility now has a counterweight to be measured against.
+
+**AND IT BOUNDS WHAT THE ARITY WALL MAY CLAIM.** The arity-zero form has a
+measured population of **one** (`gunbc.floor_component_receipt`, multiline
+spelling, deleted in the wall's own diff — and confirmed inert *for that file* by
+two byte-identical compile logs in which `std.realization_schedule` is
+typechecked either way, so it is reachable through another of that file's six
+imports). One against at least 6187, with identical effect on the subject. The
+wall is still worth building — cheap, operator-steered, an unwritable degenerate
+case — but **it closes *arity-zero imports*, not "vacuous imports"**, and the
+ratio between what it closes and what it leaves is roughly one to six thousand.
+
 ### 11.3 The dispatch protocol
 
 Every dispatch across a lane boundary carries five lines, and a dispatch without them is refused rather than interpreted:
