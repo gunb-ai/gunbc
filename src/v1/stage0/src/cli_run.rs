@@ -7897,6 +7897,43 @@ mod entry_admission_tests {
     }
 }
 
+// ARMING A THREAD-LOCAL ACROSS A FALLIBLE TRANSACTION IS A LEAK WAITING FOR THE NEXT AUTHOR.
+// `resolution_silent_pick_enable` sets a thread-local that stays set until someone calls
+// `disable`, and the compile transaction it wraps has SIX early returns between the two.
+// Keeping them paired by hand is a discipline, and the discipline had ALREADY FAILED before
+// this guard existed: the `subject-read` arm returns without disabling on `origin/main`, and
+// review 56292 caught two more that this PR added. Three leaks, two authors, one pattern.
+//
+// So the pairing is made structural rather than remembered (DESIGN §5, construction over
+// validation): arming returns a guard, every exit path drops it, and `take` is the one way to
+// consume the telemetry on the success path. An arm that forgets to disable is now unwritable
+// -- there is nothing to forget.
+struct SilentPickSession {
+    armed: bool,
+}
+
+impl SilentPickSession {
+    fn enable() -> Self {
+        crate::v1_rt::resolution_silent_pick_enable();
+        Self { armed: true }
+    }
+
+    // Consumes the session AND the telemetry together, so the success path cannot both read
+    // the counters and leave the flag set.
+    fn take(mut self) -> crate::v1_rt::SilentPickTelemetry {
+        self.armed = false;
+        crate::v1_rt::resolution_silent_pick_disable()
+    }
+}
+
+impl Drop for SilentPickSession {
+    fn drop(&mut self) {
+        if self.armed {
+            let _ = crate::v1_rt::resolution_silent_pick_disable();
+        }
+    }
+}
+
 fn compile_not_executed(
     subject: &CompileSubject,
     started: std::time::Instant,
@@ -8351,7 +8388,7 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
         }
     }
 
-    crate::v1_rt::resolution_silent_pick_enable();
+    let silent_pick_session = SilentPickSession::enable();
     // ONE INDEX BUILD, NOT TWO. The closure loader and the census fill both need the
     // module index, and calling `load_sources_for_entry_with_pool_index` and then building
     // a second index for the census parsed ~3,800 modules twice per invocation (review
@@ -8392,7 +8429,6 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
         CompileSubject::Entry(path) => match load_sources_for_entry_with_pool(&index, path) {
             Ok(closure) => closure,
             Err(e) => {
-                let _ = crate::v1_rt::resolution_silent_pick_disable();
                 return compile_not_executed(
                     &request.subject,
                     started,
@@ -8465,7 +8501,6 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
             report_moduleless_dag_entry_skips(&moduleless);
 
             if entry_sources.is_empty() {
-                let _ = crate::v1_rt::resolution_silent_pick_disable();
                 return compile_not_executed(
                     &request.subject,
                     started,
@@ -8508,7 +8543,6 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
             match extend_sources_to_both_closure_fixpoint(import_closure, &index) {
                 Ok(closure) => closure,
                 Err(e) => {
-                    let _ = crate::v1_rt::resolution_silent_pick_disable();
                     return compile_not_executed(
                         &request.subject,
                         started,
@@ -8563,7 +8597,7 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
             result: v1_compiler_compile::emit_resolved_for_target(resolved.clone(), target.clone()),
         })
         .collect();
-    let silent_pick = crate::v1_rt::resolution_silent_pick_disable();
+    let silent_pick = silent_pick_session.take();
 
     // THE REFUSAL IS OVER EVERY TARGET, NOT THE FIRST. Emission is per target, so a target
     // that emits nothing or emits a blocking diagnostic must stop the line even when an
