@@ -40,7 +40,14 @@ import gunbc.build_target {
   claim_disposition_verdict, blaze_test_status_verdict, target_standing_verdict,
   RequiredGateDecision, RequiredGateProceeds, RequiredGateStops, required_gate_decision,
   AggregateFinding, DependencyUnsatisfied, DependencyStandingAbsent,
+  DependencyLabelNotCanonical,
   AggregateStanding, AggregateSatisfied, AggregateNoDependencies, AggregateRefused,
+  AggregateStandingsUnindexable,
+  TargetStandingIndexRefusal, StandingLabelNotCanonical, DuplicateTargetStanding,
+  TargetStandingIndexBuild, TargetStandingIndexReady, TargetStandingIndexRefused,
+  TargetStandingLookup, TargetStandingFound, StandingNotObserved,
+  StandingLookupLabelNotCanonical,
+  build_target_standing_index, target_standing_lookup,
   required_aggregate_standing,
   BlazeTestStatusExport, BlazeTestStatusExported,
   blaze_test_status_of_claim_disposition, blaze_test_status_of_test_standing,
@@ -373,6 +380,7 @@ test fn w_required_aggregate_holds_when_every_dependency_holds() -> Bool {
       }
     AggregateRefused { finding_count: _, findings: _ } => false
     AggregateNoDependencies => false
+    AggregateStandingsUnindexable { cause: _ } => false
   }
 }
 
@@ -402,6 +410,7 @@ test fn w_required_aggregate_reports_every_unsatisfied_dependency() -> Bool {
            }
     AggregateSatisfied { dependency_count: _ } => false
     AggregateNoDependencies => false
+    AggregateStandingsUnindexable { cause: _ } => false
   }
 }
 
@@ -419,6 +428,7 @@ test fn w_unobserved_dependency_refuses_in_its_own_arm() -> Bool {
       (n == 1) && (fs == [DependencyStandingAbsent { target: bazel_dep_c() }])
     AggregateSatisfied { dependency_count: _ } => false
     AggregateNoDependencies => false
+    AggregateStandingsUnindexable { cause: _ } => false
   }
 }
 
@@ -440,6 +450,7 @@ test fn w_aggregate_over_zero_dependencies_refuses() -> Bool {
       }
     AggregateSatisfied { dependency_count: _ } => false
     AggregateRefused { finding_count: _, findings: _ } => false
+    AggregateStandingsUnindexable { cause: _ } => false
   }
   let one_dependency_can_still_hold = match required_aggregate_standing(
     aggregate: required_aggregate_target(dependencies: [bazel_dep_a()]),
@@ -448,8 +459,166 @@ test fn w_aggregate_over_zero_dependencies_refuses() -> Bool {
     AggregateSatisfied { dependency_count: n } => n == 1
     AggregateNoDependencies => false
     AggregateRefused { finding_count: _, findings: _ } => false
+    AggregateStandingsUnindexable { cause: _ } => false
   }
   empty_blocks && one_dependency_can_still_hold
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE STANDING JOIN
+// ---------------------------------------------------------------------------------------------
+
+fn forged_dep_a() -> Label {
+  Label {
+    package: PackagePath { segments: ["src/v2"] }
+    target: TargetName { name: "alpha" }
+  }
+}
+
+fn aggregate_standing_is_unindexable(a: AggregateStanding, cause: TargetStandingIndexRefusal) -> Bool {
+  match a {
+    AggregateStandingsUnindexable { cause: c } =>
+      (c == cause) && match required_gate_decision(a: AggregateStandingsUnindexable { cause: c }) {
+        RequiredGateStops { standing: st } => st == AggregateStandingsUnindexable { cause: c }
+        RequiredGateProceeds { dependency_count: _ } => false
+      }
+    AggregateSatisfied { dependency_count: _ } => false
+    AggregateNoDependencies => false
+    AggregateRefused { finding_count: _, findings: _ } => false
+  }
+}
+
+// TWO STANDINGS FOR ONE TARGET STOP THE LINE, AND ORDER DOES NOT DECIDE WHICH ONE IS BELIEVED.
+//
+// This is the discriminating red for the whole change. Under the first-match join it replaced,
+// [green, red] reported the aggregate SATISFIED and [red, green] reported it REFUSED — the same
+// two observations, two opposite verdicts, chosen by concatenation order and with no diagnostic
+// either way. The witness runs both orders and requires the SAME refusal from both, so a join that
+// resolves the contradiction at all fails it whichever row it prefers. The duplicate arm carries
+// both standings in collision order, which is the fact a reader needs to see that the observers
+// disagreed rather than merely repeated themselves.
+test fn w_duplicate_standings_refuse_rather_than_resolving_by_list_order() -> Bool {
+  let green = built_target_standing(l: bazel_dep_a(), test: TestRunByFloor { disposition: Passed {} })
+  let red = built_target_standing(l: bazel_dep_a(), test: TestRunByFloor { disposition: Failed {} })
+  let b_ok = built_target_standing(l: bazel_dep_b(), test: NotATestTarget {})
+  let c_ok = built_target_standing(l: bazel_dep_c(), test: NotATestTarget {})
+
+  let green_first = aggregate_standing_is_unindexable(
+    a: required_aggregate_standing(
+      aggregate: three_dep_aggregate(),
+      standings: [green, b_ok, c_ok, red]
+    ),
+    cause: DuplicateTargetStanding { target: bazel_dep_a(), standings: [green, red] }
+  )
+  let red_first = aggregate_standing_is_unindexable(
+    a: required_aggregate_standing(
+      aggregate: three_dep_aggregate(),
+      standings: [red, b_ok, c_ok, green]
+    ),
+    cause: DuplicateTargetStanding { target: bazel_dep_a(), standings: [red, green] }
+  )
+
+  // POSITIVE CONTROL. The same population with the duplicate removed holds, so the refusal above
+  // is the duplicate and not a join that has stopped answering.
+  let without_the_duplicate = match required_aggregate_standing(
+    aggregate: three_dep_aggregate(),
+    standings: [green, b_ok, c_ok]
+  ) {
+    AggregateSatisfied { dependency_count: n } => n == 3
+    AggregateNoDependencies => false
+    AggregateRefused { finding_count: _, findings: _ } => false
+    AggregateStandingsUnindexable { cause: _ } => false
+  }
+  green_first && red_first && without_the_duplicate
+}
+
+// AN UNINDEXABLE POPULATION IS REFUSED BEFORE THE AGGREGATE IS CONSULTED, INCLUDING THE VACUOUS
+// ONE. A zero-dependency aggregate over a corrupt standing set must not report
+// `AggregateNoDependencies`: that is a specific diagnosis about the aggregate, derived from an
+// input the join has already refused to read, and it would send the repair to the wrong owner.
+test fn w_unindexable_standings_dominate_the_zero_dependency_arm() -> Bool {
+  let green = built_target_standing(l: bazel_dep_a(), test: TestRunByFloor { disposition: Passed {} })
+  let red = built_target_standing(l: bazel_dep_a(), test: TestRunByFloor { disposition: Failed {} })
+  aggregate_standing_is_unindexable(
+    a: required_aggregate_standing(
+      aggregate: required_aggregate_target(dependencies: []),
+      standings: [green, red]
+    ),
+    cause: DuplicateTargetStanding { target: bazel_dep_a(), standings: [green, red] }
+  )
+}
+
+// THE RENDERED KEY IS ADMITTED, NOT ASSUMED, ON BOTH SIDES OF THE JOIN.
+//
+// `Label` is a freely constructible record whose package segments are only `NonEmptyStr`, so a
+// segment may contain `/`. `PackagePath(["src", "v2"]) + "alpha"` and `PackagePath(["src/v2"]) +
+// "alpha"` render the same String — and `label_eq` calls them EQUAL, because its package
+// comparison renders before it compares, so `label_eq` cannot be the wall here either. The witness
+// asserts that collision at the fixture boundary first, so the two arms below are known to be
+// discriminating rather than vacuously green.
+//
+// POPULATION SIDE: a forged standing label refuses at index construction, before it can become a
+// key that aliases a canonical target's row.
+//
+// QUERY SIDE: a forged DEPENDENCY label refuses at lookup. This is the arm a construction-only
+// gate leaves open — the standings are all canonical and index cleanly, and the forged edge would
+// then resolve through the shared rendered key to the canonical target's standing and report the
+// aggregate satisfied on an observation of a different target.
+test fn w_rendered_key_collision_refuses_on_both_sides_of_the_join() -> Bool {
+  let collision_is_real =
+    (render_label(l: bazel_dep_a()) == render_label(l: forged_dep_a()))
+      && label_eq(a: bazel_dep_a(), b: forged_dep_a())
+
+  let population_side = aggregate_standing_is_unindexable(
+    a: required_aggregate_standing(
+      aggregate: required_aggregate_target(dependencies: [bazel_dep_a()]),
+      standings: [built_target_standing(l: forged_dep_a(), test: NotATestTarget {})]
+    ),
+    cause: StandingLabelNotCanonical { target: forged_dep_a() }
+  )
+
+  let query_side = match required_aggregate_standing(
+    aggregate: required_aggregate_target(dependencies: [forged_dep_a()]),
+    standings: [built_target_standing(l: bazel_dep_a(), test: NotATestTarget {})]
+  ) {
+    AggregateRefused { finding_count: n, findings: fs } =>
+      (n == 1) && (fs == [DependencyLabelNotCanonical { target: forged_dep_a() }])
+    AggregateSatisfied { dependency_count: _ } => false
+    AggregateNoDependencies => false
+    AggregateStandingsUnindexable { cause: _ } => false
+  }
+
+  collision_is_real && population_side && query_side
+}
+
+// THE INDEX SURFACE ANSWERS ITS THREE OUTCOMES APART. `StandingNotObserved` is not `Absent` and
+// not a noncanonical key: nobody looked, the label cannot be a key, and here is the standing are
+// three states with three owners, and the aggregate above depends on being able to tell them
+// apart. A lookup that returned one optional could not.
+test fn w_standing_lookup_keeps_its_three_outcomes_apart() -> Bool {
+  match build_target_standing_index(
+    standings: [built_target_standing(l: bazel_dep_a(), test: NotATestTarget {})]
+  ) {
+    TargetStandingIndexRefused { cause: _ } => false
+    TargetStandingIndexReady { index: i } => {
+      let found = match target_standing_lookup(index: i, target: bazel_dep_a()) {
+        TargetStandingFound { standing: s } => label_eq(a: s.target, b: bazel_dep_a())
+        StandingNotObserved { target: _ } => false
+        StandingLookupLabelNotCanonical { target: _ } => false
+      }
+      let not_observed = match target_standing_lookup(index: i, target: bazel_dep_b()) {
+        StandingNotObserved { target: t } => label_eq(a: t, b: bazel_dep_b())
+        TargetStandingFound { standing: _ } => false
+        StandingLookupLabelNotCanonical { target: _ } => false
+      }
+      let not_canonical = match target_standing_lookup(index: i, target: forged_dep_a()) {
+        StandingLookupLabelNotCanonical { target: t } => t == forged_dep_a()
+        TargetStandingFound { standing: _ } => false
+        StandingNotObserved { target: _ } => false
+      }
+      found && not_observed && not_canonical
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------------------------

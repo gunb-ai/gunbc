@@ -23,7 +23,9 @@ import gunbc.target_binding {
   BehavioralReceiptCensusStanding,
   BehavioralReceiptSelftestStanding,
   HeadsReadingDifferentialStanding,
+  target_label_is_canonical,
 }
+import v2.std.optional { Optional, Present, Absent }
 import std.types { String, Bool, NonEmptyStr }
 import std.integer { Int }
 
@@ -292,9 +294,16 @@ fn target_standing_verdict(s: TargetStanding) -> StandingVerdict {
 // empty-observation narrow: an aggregate over a standing list that lost half its rows would
 // report the surviving half as the whole answer and go green on a run that observed almost
 // nothing.
+//
+// `DependencyLabelNotCanonical` is the third arm and it is a fact about the AGGREGATE'S OWN edge
+// rather than about any observation: a dependency label that does not survive the label grammar's
+// round trip cannot be a lookup key, so no standing can be joined to it and none is missing
+// either. Collapsing it into `DependencyStandingAbsent` would report a malformed edge as an
+// unobserved target and send a repair to the observer instead of to whoever authored the edge.
 type AggregateFinding
   = DependencyUnsatisfied { target: Label, cause: StandingCause }
   | DependencyStandingAbsent { target: Label }
+  | DependencyLabelNotCanonical { target: Label }
 
 // AN AGGREGATE OVER ZERO DEPENDENCIES REFUSES, IN ITS OWN ARM.
 //
@@ -303,20 +312,145 @@ type AggregateFinding
 // That is the strongest possible green produced by the weakest possible evidence, and it is the
 // exact reading a mis-wired discovery pass would produce. `AggregateNoDependencies` makes the
 // vacuous case unrepresentable as a satisfied one rather than caught downstream by a count.
+//
+// `AggregateStandingsUnindexable` is a REFUSAL TO READ THE INPUT, kept apart from
+// `AggregateRefused`, which is a verdict reached by reading it. One says the observation set could
+// not be joined at all; the other says it was joined and these dependencies did not hold. A
+// consumer that saw them as one arm would report a corrupt standing population as a set of failing
+// targets, and every named target in that report would be a fabrication.
 type AggregateStanding
   = AggregateSatisfied { dependency_count: Int }
   | AggregateNoDependencies
   | AggregateRefused { finding_count: Int, findings: List<AggregateFinding> }
+  | AggregateStandingsUnindexable { cause: TargetStandingIndexRefusal }
 
-fn standing_for_label(standings: List<TargetStanding>, wanted: Label) -> List<TargetStanding> {
-  filter(standings, s => label_eq(a: s.target, b: wanted))
+// ---------------------------------------------------------------------------------------------
+// THE STANDING INDEX
+// ---------------------------------------------------------------------------------------------
+
+// THE JOIN IS AN INDEX BECAUSE FIRST-MATCH IS A SILENT PICK, AND BECAUSE THE SCAN IS QUADRATIC.
+//
+// The earlier form filtered the whole standing population once per dependency and read the first
+// survivor. Both halves were defects and they are independent:
+//
+//   CORRECTNESS. Two standings for one label were resolved by LIST ORDER. Whichever row the scan
+//   reached first became the answer and the other was discarded without a diagnostic — so a run
+//   in which one observer reported a target green and another reported it red went green or red
+//   according to concatenation order. That is a question with no honest answer at this layer:
+//   this module is the join, not a second observer (see the header), so it has no authority to
+//   prefer one observation over another and must stop the line instead.
+//
+//   COST. The join was dependency-count × standing-count over the largest population in the
+//   repository. DESIGN §6's bare-minimum-cost rule fixes a proven cost shape regardless of the
+//   realized n; here n is not small either.
+//
+// THE KEY IS THE CANONICAL RENDERING, AND CANONICALITY IS ADMITTED RATHER THAN ASSUMED.
+// `render_label` is injective only over labels that survive its documented parse(render(l)) round
+// trip, and `Label` is a freely constructible record whose segments are only `NonEmptyStr` — so
+// `PackagePath(["a", "b"]) + "c"` and `PackagePath(["a/b"]) + "c"` render the same String, and
+// `label_eq` calls them equal too because its package comparison renders before it compares.
+// `target_label_is_canonical` is the one authority for that precondition and is REUSED from
+// `gunbc.target_binding` rather than copied: a second canonicality predicate would be a §3
+// nickname for the first, and the two would drift the moment either was refined.
+type TargetStandingIndex {
+  standings_by_identity: Map<String, TargetStanding>
 }
 
-fn dependency_finding(standings: List<TargetStanding>, dep: Label) -> List<AggregateFinding> {
-  let matched = standing_for_label(standings: standings, wanted: dep)
-  match matched |> first {
-    Absent => [DependencyStandingAbsent { target: dep }]
-    Present { value: s } =>
+// THE DUPLICATE ARM CARRIES BOTH STANDINGS, NOT JUST THE LABEL. The reader's next question after
+// "this target was observed twice" is always "did the two observers disagree, and how" — a
+// duplicate of one identical row and a green/red contradiction have different owners, and naming
+// only the label sends both to the same place. The list is the two rows in collision order: the
+// one already indexed, then the one that could not be admitted beside it.
+type TargetStandingIndexRefusal
+  = StandingLabelNotCanonical { target: Label }
+  | DuplicateTargetStanding { target: Label, standings: List<TargetStanding> }
+
+type TargetStandingIndexBuild
+  = TargetStandingIndexReady { index: TargetStandingIndex }
+  | TargetStandingIndexRefused { cause: TargetStandingIndexRefusal }
+
+type TargetStandingIndexAcc {
+  index: TargetStandingIndex
+  refusal: Optional<TargetStandingIndexRefusal>
+}
+
+fn index_standing(acc: TargetStandingIndexAcc, standing: TargetStanding) -> TargetStandingIndexAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      if !target_label_is_canonical(target: standing.target) {
+        TargetStandingIndexAcc {
+          index: acc.index
+          refusal: Present { value: StandingLabelNotCanonical { target: standing.target } }
+        }
+      } else {
+        let key = render_label(l: standing.target)
+        match map_get(acc.index.standings_by_identity, key) {
+          Present { value: existing } => TargetStandingIndexAcc {
+            index: acc.index
+            refusal: Present {
+              value: DuplicateTargetStanding {
+                target: standing.target
+                standings: [existing, standing]
+              }
+            }
+          }
+          Absent => TargetStandingIndexAcc {
+            index: TargetStandingIndex {
+              standings_by_identity: map_insert(acc.index.standings_by_identity, key, standing)
+            }
+            refusal: Absent {}
+          }
+        }
+      }
+  }
+}
+
+fn build_target_standing_index(standings: List<TargetStanding>) -> TargetStandingIndexBuild {
+  let empty = TargetStandingIndexAcc {
+    index: TargetStandingIndex { standings_by_identity: empty_map() }
+    refusal: Absent {}
+  }
+  let indexed = fold(standings, init: empty, f: fn(acc, standing) {
+    index_standing(acc: acc, standing: standing)
+  })
+  match indexed.refusal {
+    Present { value: cause } => TargetStandingIndexRefused { cause: cause }
+    Absent => TargetStandingIndexReady { index: indexed.index }
+  }
+}
+
+// `StandingNotObserved` IS NOT `Absent`, AND THE QUERY SIDE IS GATED TOO.
+//
+// A lookup has three outcomes and only one of them is a standing. Rendering the other two as one
+// absent value would put "nobody observed this target" and "this label cannot be a key at all" in
+// one symbol with opposite remedies. The canonicality check is repeated HERE rather than assumed
+// from construction: a forged dependency label that collides with a canonical standing's rendered
+// key would otherwise resolve to that standing's row, which is the same silent pick the index was
+// built to remove, arriving from the query side instead of the population side. A typed key with
+// a sole mint would be the construction-grade fix; while records stay freely constructible, every
+// boundary that turns a `Label` into the rendered key admits it explicitly.
+type TargetStandingLookup
+  = TargetStandingFound { standing: TargetStanding }
+  | StandingNotObserved { target: Label }
+  | StandingLookupLabelNotCanonical { target: Label }
+
+fn target_standing_lookup(index: TargetStandingIndex, target: Label) -> TargetStandingLookup {
+  if !target_label_is_canonical(target: target) {
+    StandingLookupLabelNotCanonical { target: target }
+  } else {
+    match map_get(index.standings_by_identity, render_label(l: target)) {
+      Present { value: s } => TargetStandingFound { standing: s }
+      Absent => StandingNotObserved { target: target }
+    }
+  }
+}
+
+fn dependency_finding(index: TargetStandingIndex, dep: Label) -> List<AggregateFinding> {
+  match target_standing_lookup(index: index, target: dep) {
+    StandingLookupLabelNotCanonical { target: t } => [DependencyLabelNotCanonical { target: t }]
+    StandingNotObserved { target: t } => [DependencyStandingAbsent { target: t }]
+    TargetStandingFound { standing: s } =>
       match target_standing_verdict(s: s) {
         StandingSatisfied => []
         StandingUnsatisfied { cause: c } => [DependencyUnsatisfied { target: dep, cause: c }]
@@ -331,27 +465,39 @@ fn dependency_finding(standings: List<TargetStanding>, dep: Label) -> List<Aggre
 // beside its executed one — a list a reader may truncate is not a number a reader may compare.
 fn aggregate_findings(
   aggregate: BuildTarget,
-  standings: List<TargetStanding>,
+  index: TargetStandingIndex,
 ) -> List<AggregateFinding> {
   fold(aggregate.dependencies, init: [], f: fn(acc, dep) {
-    concat(acc, dependency_finding(standings: standings, dep: dep))
+    concat(acc, dependency_finding(index: index, dep: dep))
   })
 }
 
+// INDEXING PRECEDES EVERY QUESTION ABOUT THE AGGREGATE, INCLUDING THE ZERO-DEPENDENCY ONE.
+//
+// An unindexable standing population is a fact about the INPUT, decided before the aggregate is
+// consulted at all, and ordering it after the dependency count would let a zero-dependency
+// aggregate return `AggregateNoDependencies` — a specific diagnosis — over an observation set the
+// join has already refused to read. Two refusals with different owners must not be answered by
+// whichever check the control flow reached first; that is the shape this whole change removes.
 fn required_aggregate_standing(
   aggregate: BuildTarget,
   standings: List<TargetStanding>,
 ) -> AggregateStanding {
-  let dependency_count = aggregate.dependencies |> count
-  if dependency_count == 0 {
-    AggregateNoDependencies {}
-  } else {
-    let findings = aggregate_findings(aggregate: aggregate, standings: standings)
-    let finding_count = findings |> count
-    if finding_count == 0 {
-      AggregateSatisfied { dependency_count: dependency_count }
-    } else {
-      AggregateRefused { finding_count: finding_count, findings: findings }
+  match build_target_standing_index(standings: standings) {
+    TargetStandingIndexRefused { cause: c } => AggregateStandingsUnindexable { cause: c }
+    TargetStandingIndexReady { index: index } => {
+      let dependency_count = aggregate.dependencies |> count
+      if dependency_count == 0 {
+        AggregateNoDependencies {}
+      } else {
+        let findings = aggregate_findings(aggregate: aggregate, index: index)
+        let finding_count = findings |> count
+        if finding_count == 0 {
+          AggregateSatisfied { dependency_count: dependency_count }
+        } else {
+          AggregateRefused { finding_count: finding_count, findings: findings }
+        }
+      }
     }
   }
 }
@@ -379,6 +525,8 @@ fn required_gate_decision(a: AggregateStanding) -> RequiredGateDecision {
     AggregateNoDependencies => RequiredGateStops { standing: AggregateNoDependencies {} }
     AggregateRefused { finding_count: n, findings: fs } =>
       RequiredGateStops { standing: AggregateRefused { finding_count: n, findings: fs } }
+    AggregateStandingsUnindexable { cause: c } =>
+      RequiredGateStops { standing: AggregateStandingsUnindexable { cause: c } }
   }
 }
 
