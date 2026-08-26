@@ -4480,3 +4480,93 @@ deleted, but **a path that could never have resolved**. They share only the shap
 one DESIGN already names and none of the three is covered by: **check citations where the module is
 ingested, from its own source.** Three independent mechanisms producing one indistinguishable symptom
 is the argument for a mechanism rather than more diligence.
+### 11.2x MEASURED — X retains **no** exact declaration identity at the point of decision: 0 of ~11,400 selections, and the mechanism is two shared node builders
+
+Taken by execution (cool-swift-307, 2026-08-26), mechanism independently verified here. **This is the
+largest finding in the program to date**, and it lands on the E.0 assignment §11.2t dispatched hours
+earlier.
+
+**THE MEASUREMENT.** Tap placed *inside* X's two decision functions on a real compile of
+`dag/std/logic.dag`, observing the object X returns as its answer:
+
+```
+seat = lookup_binding_by_name   decisions 11447   selected 7425   selected_decl_ident_present 0
+seat = global_bare_lookup       decisions  8053   selected 4017   selected_decl_ident_present 0
+```
+
+~19,500 decisions, ~11,400 selections, **zero** carrying an exact declaration identity — every
+selection, not a sample.
+
+**AND THE HARDER HALF, WHICH IS ABOUT SHAPE RATHER THAN COUNT.** Both decision functions have the
+signature `(env: TypeEnv, name: String)`. **X never receives a reference occurrence.** So a
+per-occurrence keying of X's decisions is not merely unmeasured — **it is not expressible at X's own
+interface.**
+
+**THIS IS `LegacyBindingIdentityAbsentAtDecision`, NOT `LegacyBindingUnobservableAtTap`, AND THE
+DISTINCTION IS WHY THE FINDING IS REPORTABLE.** The two-variant ruling (§11.2t) exists exactly for
+this moment. The tap sits *inside* the decision function and reads the object X returns; there is no
+earlier seam at which X held identity and the prober failed to look. Had the variants been collapsed
+as this lane originally specified, a zero here would have been indistinguishable from *the prober
+stood in the wrong place* — and the natural reading of a clean zero is that the instrument is broken.
+
+**THE MECHANISM IS BETTER THAN THE NUMBER, AND IT IS TWO LINES.** Verified independently:
+
+```
+ident: Present   occurs ONCE in all of src/v1/*.dag
+                 → 02_parse.dag `parsed_node_with_ident`, the occurrence stamp itself
+
+make_expr_node / make_named_expr_node   (00_core.dag)
+                 → construct Node with NO ident field at all, so every node they build is ident=none
+```
+
+Every other site *copies* `n.ident`; none authors it. Infer and typecheck rebuild through those two
+builders. **So the occurrence stamp is applied once at parse and dropped at the first rebuild,
+corpus-wide, by construction.** That is why the count is a clean zero rather than a small number:
+**there is no path by which it could have been nonzero.**
+
+**WHAT THE MEASURER EXPLICITLY DID NOT ESTABLISH**, recorded because the restraint is the reason the
+rest is trustworthy: the intended population control counted `ident` presence over nodes entering
+`infer_expr_body` and **fired once** — that function runs once on this subject while X decides
+19,500 times, so most decisions come from *type* positions rather than expression bodies. One sample
+is not a control and nothing is read into it. The mechanism finding stands without it, being a source
+fact with both halves verified. A second subject is unmeasured; the **mechanism** generalises by
+construction (two shared builders, not a property of `logic.dag`) while the **counts** are this
+subject's.
+
+**WHAT THIS DOES TO E.0.** The tap as §11.2t specified it — `OccurrenceId → X selected exact
+declaration` — **cannot be built against X as X exists**, and now for a *located* reason rather than
+a suspicion: **neither side of the relation survives to the decision.** The reference side is a
+`String` at the interface; the declaration side is a stamp-stripped `Node`.
+
+What is **not** invalidated, and remains the critical path: subject identity, the derived occurrence
+denominator, the content-addressed artifact, totality, applicability, and every refusal in the
+seven-exercise list. One *input* is blocked, not the envelope.
+
+The operative consequence for the artifact's shape: **a total `LegacyBindingIdentityAbsentAtDecision`
+population must be a first-class, acceptable outcome, not a degenerate one.** On today's producer
+that is what a complete and honest `O_X(B)` *contains* — ~11,400 rows of it. An envelope that can
+only represent a mostly-bound observation cannot represent the truth about X, and its author will be
+pushed toward calling the producer broken in order to make the artifact valid. **The producer is not
+broken; it is measured.**
+
+**THE TWO REPAIRS ARE NOT ALTERNATIVES — THE ORIGINAL FRAMING OFFERED THEM AS A CHOICE AND THAT IS
+THE ONE CORRECTION TO THIS FINDING.**
+
+```
+(a) make the stamp survive the rebuild        one field, two builders
+       → the DECLARATION side.  "X selected declaration D."
+(b) thread a reference identity into a resolver interface that takes a name
+       → the REFERENCE side.    "occurrence o was resolved."
+```
+
+**`O_X(B)` is the relation between them.** (a) alone yields what was selected but not for which
+occurrence; (b) alone yields which occurrence resolved but not to what. **Neither alone is an
+observation anything can be projected from.** Both are required, (a) is much the cheaper, and (a) is
+a precondition for (b) meaning anything. Whether a weaker artifact keyed on something other than
+occurrence is useful to the projector is a question for the *consumer* and is open.
+
+**AND THE FINDING IS THIS MORNING'S RULING APPLIED TO THE THING IT WAS ABOUT.** §11.2u established
+that B.3's blocker is a *producer* gap wearing a resolver gap's clothes. This is the same shape one
+layer in: the X tap looked like a placement problem, and reading the producer showed the identity was
+never there to place a tap on. **Twice in one day, from the same lane, the answer was upstream of
+where the question was posed.**
