@@ -32,6 +32,7 @@ type ProgramMilestone
   | NamespaceGrammarRetired
   | SelfHostCorpusEmitsCleanly
   | SelfHostBehavioralEquivalenceReestablished
+  | SelfHostEmitterProducesEveryRetainedArtifact
   | SelfHostSeedRetirement
 
 fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
@@ -47,6 +48,7 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
     NamespaceGrammarRetired => "namespace: Step 5, the LAST step -- grammar and parse deletion, a no-op over a corpus that already spells nothing that way" as NonEmptyStr
     SelfHostCorpusEmitsCleanly => "self-host S5 terminal: the whole v2 corpus emits Rust that cargo builds with zero blocking diagnostics" as NonEmptyStr
     SelfHostBehavioralEquivalenceReestablished => "self-host: behavioral equivalence to the seed re-established on a discriminating corpus -- a clean corpus PERMITS S6 to be planned, this AUTHORIZES it" as NonEmptyStr
+    SelfHostEmitterProducesEveryRetainedArtifact => "self-host: no EmitterProducedDivergentRegistration remains -- the emitter can produce every artifact the seed retains, the CLI entry point included" as NonEmptyStr
     SelfHostSeedRetirement => "self-host: S6 retirement of the v1 seed, the irreversible step" as NonEmptyStr
   }
 }
@@ -164,6 +166,30 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
 // omissions, no census of this file can, and the join currently happens only
 // when a human or a reviewer happens to perform it.
 //
+// A SEVENTH, AND THE ONE THAT MOST INDICTS THE METHOD: emitter CAPABILITY was
+// not a milestone at all. Measured by execution 2026-08-21 and accepted then as
+// a program-level correction: emit_main_rs produces 552 lines against the
+// committed 1318, and what is missing is the whole Ci subcommand, Converge,
+// Serve, and --entry on compile. INSTALLING THE EMITTER'S OUTPUT TODAY WOULD
+// DELETE THE CLI. No number of regenerations closes it.
+//
+// It is a distinct milestone because it is invisible to the two beside it. It
+// never appears in a rustc error count, so SelfHostCorpusEmitsCleanly can be
+// fully satisfied while it stands -- errors-to-zero is NECESSARY AND NOT
+// SUFFICIENT -- and it is not a behavioral difference between two producers,
+// so equivalence does not reach it either. It is the absence of a producer.
+// Its executable home already exists: EmitterProducedDivergentRegistration in
+// v2.compiler.self_host.stage0_crate_layout, enforced in three directions so a
+// row cannot outlive its producer. The milestone is that no such row remains.
+//
+// WHY THIS ONE INDICTS THE METHOD RATHER THAN JUST EXTENDING THE LIST: it was
+// not discovered. It was ALREADY KNOWN, recorded, and accepted as a correction
+// to this very program a week before this carrier was authored -- and the
+// carrier was still written without it. So the join that finds omissions is not
+// only unmechanized, it is not reliably performed even by someone holding the
+// fact. Three of seven defects here are omissions; none was found by reading
+// this file.
+//
 // THE PRECEDENCE RELATION AS A TOTAL FUNCTION, not a list of edges. A list is
 // satisfied by omission -- a milestone nobody wrote an edge for silently has no
 // prerequisites, and the failure is invisible. An exhaustive match over a closed
@@ -183,7 +209,8 @@ fn milestone_prerequisites(m: ProgramMilestone) -> List<ProgramMilestone> {
     NamespaceGrammarRetired => [NamespaceFixForwardComplete]
     SelfHostCorpusEmitsCleanly => [SelfHostRatchetGateEnrolled]
     SelfHostBehavioralEquivalenceReestablished => [SelfHostCorpusEmitsCleanly]
-    SelfHostSeedRetirement => [NamespaceGrammarRetired, SelfHostBehavioralEquivalenceReestablished]
+    SelfHostEmitterProducesEveryRetainedArtifact => []
+    SelfHostSeedRetirement => [NamespaceGrammarRetired, SelfHostBehavioralEquivalenceReestablished, SelfHostEmitterProducesEveryRetainedArtifact]
   }
 }
 
