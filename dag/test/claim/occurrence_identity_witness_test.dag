@@ -1,6 +1,7 @@
 module test.claim.occurrence_identity_witness_test
 
 import std.types { Bool }
+import std.content_hash { Fnv1a64Structural, structural_content_hash }
 import std.occurrence_identity {
   OccurrenceId,
   OccurrenceIdAllocator,
@@ -14,6 +15,11 @@ import std.occurrence_identity {
   occurrence_id_eq,
   occurrence_id_allocator_advance_to,
   node_occurrence_identity_minted,
+  node_occurrence_identity_projected,
+  OccurrenceProjected,
+  ScopedOccurrenceRef,
+  scoped_occurrence_ref_same_scope,
+  scoped_occurrence_ref_in_scope,
   occurrence_identity_acceptance_law_rebuilt_reference,
   occurrence_identity_acceptance_law_collector_dedupe,
   occurrence_identity_acceptance_law_distinct_occurrences,
@@ -27,6 +33,9 @@ import v2.std.node {
   MintedOccurrence,
   node_occurrence_id_to_shared,
   node_occurrence_id_from_shared,
+  NodeOccurrenceFacadeNarrowing,
+  FacadeRepresentable,
+  FacadeCannotRepresentProjected,
 }
 
 test fn occurrence_identity_initial_allocator_starts_at_zero_holds() -> Bool {
@@ -103,7 +112,11 @@ test fn occurrence_identity_v2_synthetic_facade_round_trip_holds() -> Bool {
   match node_occurrence_id_from_shared(
     occurrence: node_occurrence_id_to_shared(occurrence: facade)
   ) {
-    SyntheticOccurrence => true
+    FacadeRepresentable { occurrence: narrowed } =>
+      match narrowed {
+        SyntheticOccurrence => true
+        _ => false
+      }
     _ => false
   }
 }
@@ -115,7 +128,11 @@ test fn occurrence_identity_v2_minted_facade_round_trip_holds() -> Bool {
   match node_occurrence_id_from_shared(
     occurrence: node_occurrence_id_to_shared(occurrence: facade)
   ) {
-    MintedOccurrence { id: id } => id.value == 11
+    FacadeRepresentable { occurrence: narrowed } =>
+      match narrowed {
+        MintedOccurrence { id: id } => id.value == 11
+        _ => false
+      }
     _ => false
   }
 }
@@ -124,10 +141,12 @@ test fn occurrence_identity_v2_shared_constructor_equivalence_holds() -> Bool {
   let shared: std.occurrence_identity.NodeOccurrenceIdentity = std.occurrence_identity.OccurrenceMinted {
     id: std.occurrence_identity.OccurrenceId { value: 12 },
   }
-  match node_occurrence_id_to_shared(
-    occurrence: node_occurrence_id_from_shared(occurrence: shared)
-  ) {
-    std.occurrence_identity.OccurrenceMinted { id: id } => id.value == 12
+  match node_occurrence_id_from_shared(occurrence: shared) {
+    FacadeRepresentable { occurrence: facade } =>
+      match node_occurrence_id_to_shared(occurrence: facade) {
+        std.occurrence_identity.OccurrenceMinted { id: id } => id.value == 12
+        _ => false
+      }
     _ => false
   }
 }
@@ -140,4 +159,70 @@ test fn occurrence_identity_acceptance_law_denominator_is_exact_holds() -> Bool 
     occurrence_identity_acceptance_law_pattern_reachability,
     occurrence_identity_acceptance_law_parser_isolation,
   ]
+}
+
+fn oi_scope_a() -> Fnv1a64Structural {
+  structural_content_hash(digest: "aaaaaaaaaaaaaaaa")
+}
+
+fn oi_scope_b() -> Fnv1a64Structural {
+  structural_content_hash(digest: "bbbbbbbbbbbbbbbb")
+}
+
+// THE THIRD ARM CARRIES A CAUSE THAT SURVIVES CONSTRUCTION, which is the whole content of the
+// change: before it, a projector-created occurrence could only be spelled OccurrenceSynthetic and
+// the causing reference was gone the moment the node was built.
+test fn occurrence_identity_projected_arm_carries_its_scoped_cause_holds() -> Bool {
+  let cause = ScopedOccurrenceRef {
+    scope: oi_scope_a(),
+    occurrence: OccurrenceId { value: 7 },
+  }
+  match node_occurrence_identity_projected(
+    id: OccurrenceId { value: 41 },
+    caused_by: cause,
+  ) {
+    OccurrenceProjected { id: id, caused_by: caused_by } =>
+      id.value == 41
+        && caused_by.occurrence.value == 7
+        && scoped_occurrence_ref_in_scope(occurrence_ref: caused_by, scope: oi_scope_a())
+    _ => false
+  }
+}
+
+// AND THE CAUSE IS SCOPED RATHER THAN A BARE ORDINAL, so a cause minted in another allocator domain
+// is distinguishable from one minted in this graph's. Without this the accidental equality of two
+// independently allocated ordinals would read as a real cause.
+test fn occurrence_identity_projected_cause_is_not_in_a_foreign_scope_holds() -> Bool {
+  let cause = ScopedOccurrenceRef {
+    scope: oi_scope_a(),
+    occurrence: OccurrenceId { value: 7 },
+  }
+  let foreign = ScopedOccurrenceRef {
+    scope: oi_scope_b(),
+    occurrence: OccurrenceId { value: 7 },
+  }
+  !scoped_occurrence_ref_in_scope(occurrence_ref: cause, scope: oi_scope_b())
+    && !scoped_occurrence_ref_same_scope(left: cause, right: foreign)
+    && scoped_occurrence_ref_same_scope(left: cause, right: cause)
+}
+
+// THE V2 FACADE REFUSES THE PROJECTED ARM RATHER THAN FLATTENING IT TO SyntheticOccurrence. This is
+// the discriminating RED for the narrowing: were the conversion to collapse the arm, this witness
+// would go green on the FacadeRepresentable branch and the cause would be silently discarded at the
+// one seam built to preserve it.
+test fn occurrence_identity_v2_facade_refuses_projected_holds() -> Bool {
+  let cause = ScopedOccurrenceRef {
+    scope: oi_scope_a(),
+    occurrence: OccurrenceId { value: 7 },
+  }
+  match node_occurrence_id_from_shared(
+    occurrence: node_occurrence_identity_projected(
+      id: OccurrenceId { value: 41 },
+      caused_by: cause,
+    )
+  ) {
+    FacadeCannotRepresentProjected { id: id, caused_by: caused_by } =>
+      id.value == 41 && caused_by.occurrence.value == 7
+    _ => false
+  }
 }

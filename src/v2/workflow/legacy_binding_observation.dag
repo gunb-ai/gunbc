@@ -318,15 +318,12 @@ fn legacy_subject_identity(subject: LegacyBindingObservationSubject) -> Fnv1a64S
   )
 }
 
-// AN OCCURRENCE ID IS LAWFUL AS AN IDENTITY INSIDE ONE SUBJECT AND UNLAWFUL ACROSS TWO, so a
-// reference that travels between subjects carries the scope it was minted in.
+// THE SCOPED REFERENCE THIS MODULE ONCE DECLARED NOW LIVES BESIDE THE LAW IT DISCHARGES.
 //
-// The allocator is a monotone counter consumed in traversal order, so an ordinal names an
-// occurrence exactly within the compile that allocated it. Pairing it with the subject's content
-// address does not derive the occurrence's identity -- the parser minted that -- it SCOPES THE
-// ALLOCATOR DOMAIN, which is applicability rather than identity. That distinction is what makes an
-// indexable relation admissible where a cross-compile key is not.
-type SubjectOccurrenceRef {
-  subject_identity: Fnv1a64Structural
-  occurrence: OccurrenceId
-}
+// SubjectOccurrenceRef was declared here: an OccurrenceId paired with the content address of the
+// subject whose allocator minted it. The fact it carries is std.occurrence_identity's -- that
+// module states the scope law and owns the allocator -- and the name stated this module's
+// vocabulary rather than the fact. It is now std.occurrence_identity.ScopedOccurrenceRef, with the
+// same shape and the `subject_identity` field renamed `scope` to say what it is. Consumers import
+// it from the authority; nothing is re-exported from here, because a second import surface for one
+// type is the fork this move exists to close.

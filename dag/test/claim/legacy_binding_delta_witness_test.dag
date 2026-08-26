@@ -4,13 +4,18 @@ import std.types { String, Bool, Int, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { Fnv1a64Structural, structural_content_hash }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.occurrence_identity { OccurrenceId }
+import std.occurrence_identity {
+  OccurrenceId,
+  ScopedOccurrenceRef,
+  OccurrenceSynthetic,
+  node_occurrence_identity_minted,
+  node_occurrence_identity_projected
+}
 import std.content_hash { Fnv1a64Structural, structural_content_hash }
 import v2.workflow.legacy_binding_observation {
   LegacyBindingObservation,
   LegacyBindingObservationRow,
   LegacyBindingObservationSubject,
-  SubjectOccurrenceRef,
   ImportScopedPolicy,
   NamespaceOnlyPolicy,
   CompleteLegacyObservation,
@@ -37,6 +42,11 @@ import v2.workflow.legacy_binding_delta {
   ProvenanceForeignOccurrence,
   ProvenanceTargetRepeated,
   ProvenanceRefOutOfSubjectScope,
+  InsertionProvenanceDerivation,
+  InsertionEntryDerived,
+  NotAnInsertion,
+  InsertionCauseLost,
+  insertion_provenance_entry,
   LegacyBindingDelta,
   DeltaProvenanceRefused,
   CorrespondenceAdmitted,
@@ -97,16 +107,16 @@ fn lbd_observation_of(subject: LegacyBindingObservationSubject, ids: List<Int>) 
   }
 }
 
-fn lbd_base_ref(id: Int) -> SubjectOccurrenceRef {
-  SubjectOccurrenceRef {
-    subject_identity: legacy_subject_identity(subject: lbd_subject()),
+fn lbd_base_ref(id: Int) -> ScopedOccurrenceRef {
+  ScopedOccurrenceRef {
+    scope: legacy_subject_identity(subject: lbd_subject()),
     occurrence: OccurrenceId { value: id }
   }
 }
 
-fn lbd_projected_ref(id: Int) -> SubjectOccurrenceRef {
-  SubjectOccurrenceRef {
-    subject_identity: legacy_subject_identity(subject: lbd_projected_subject()),
+fn lbd_projected_ref(id: Int) -> ScopedOccurrenceRef {
+  ScopedOccurrenceRef {
+    scope: legacy_subject_identity(subject: lbd_projected_subject()),
     occurrence: OccurrenceId { value: id }
   }
 }
@@ -523,5 +533,57 @@ test fn a_row_less_observation_over_a_genuinely_empty_expected_population_is_adm
       ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
     }
     AdmissionRefusedBeforeTotality { completeness: _ } => false
+  }
+}
+
+// ProjectedAsInsertion IS NOW REACHABLE FROM A NODE THE PROJECTOR BUILT, which is the claim the
+// third arm of std.occurrence_identity.NodeOccurrenceIdentity exists to make true. Before it, this
+// constructor had no producer: the projector's only spelling for a node it created was
+// OccurrenceSynthetic, so the cause was lost at construction and no key could recover it.
+test fn lbd_insertion_row_is_derived_from_the_projected_node_holds() -> Bool {
+  match insertion_provenance_entry(
+    target_scope: legacy_subject_identity(subject: lbd_projected_subject()),
+    identity: node_occurrence_identity_projected(
+      id: OccurrenceId { value: 91 },
+      caused_by: lbd_base_ref(id: 3),
+    ),
+  ) {
+    InsertionEntryDerived { entry: entry } =>
+      match entry {
+        ProjectedAsInsertion { target: target, caused_by: caused_by } =>
+          target.occurrence.value == 91
+            && target.scope.digest == legacy_subject_identity(subject: lbd_projected_subject()).digest
+            && caused_by.occurrence.value == 3
+            && caused_by.scope.digest == legacy_subject_identity(subject: lbd_subject()).digest
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// A CARRIED-FORWARD NODE IS NOT-APPLICABLE RATHER THAN A DEFECT, and it gets its own arm so that a
+// reader can tell it from a projector-created node whose cause went missing. Collapsing the two
+// would be the not-applicable-rendered-as-malformed shape at this seam.
+test fn lbd_minted_node_is_not_an_insertion_holds() -> Bool {
+  match insertion_provenance_entry(
+    target_scope: legacy_subject_identity(subject: lbd_projected_subject()),
+    identity: node_occurrence_identity_minted(id: OccurrenceId { value: 91 }),
+  ) {
+    NotAnInsertion { target: target } => target.occurrence.value == 91
+    _ => false
+  }
+}
+
+// AND THE LOST CAUSE IS A TYPED REFUSAL RATHER THAN A SILENT SUCCESS. This is the discriminating
+// RED: a projector that still emits OccurrenceSynthetic for a node it created is refused here
+// instead of contributing a row that reads as a complete correspondence.
+test fn lbd_synthetic_node_refuses_with_its_cause_lost_holds() -> Bool {
+  match insertion_provenance_entry(
+    target_scope: legacy_subject_identity(subject: lbd_projected_subject()),
+    identity: OccurrenceSynthetic,
+  ) {
+    InsertionCauseLost { target_scope: scope } =>
+      scope.digest == legacy_subject_identity(subject: lbd_projected_subject()).digest
+    _ => false
   }
 }
