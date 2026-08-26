@@ -3819,7 +3819,24 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
     ObserveGitHubRunnerRegistrationOnHost { node: _, slot: _, organization: _ } =>
       runner_lifecycle_realize_observe_github_runner_registration(intent: intent)
     ToolchainHomeInterferenceProbeOnHost =>
-      realize_toolchain_home_interference_probe(intent: intent)
+      match transport {
+        LocalShell => realize_toolchain_home_interference_probe(intent: intent)
+        SshShell { ssh_host: _ } =>
+          NotConverged {
+            reason: "host_effect_apply: ProbeToolchainHomeInterference requires LocalShell on RunnerLocalHost; SshShell would record a remote transport while executing the probe locally.",
+            applied: intent,
+          }
+        FleetSsh { target: _, context: _ } =>
+          NotConverged {
+            reason: "host_effect_apply: ProbeToolchainHomeInterference requires LocalShell on RunnerLocalHost; FleetSsh would record a remote transport while executing the probe locally.",
+            applied: intent,
+          }
+        EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+          NotConverged {
+            reason: "host_effect_apply: ProbeToolchainHomeInterference requires LocalShell on RunnerLocalHost; deferred artifact execution cannot observe this job-scoped probe.",
+            applied: intent,
+          }
+      }
     RedfishOnBmc { node: _, action: _ } =>
       NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
     IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
