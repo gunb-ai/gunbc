@@ -191,8 +191,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
 /// populations separately, the arm comes back with the state that makes it reachable.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InvocationRefusal {
-    OperandNotALabel { operand: String, cause: LabelRefusal },
-    TargetIsUnknown { target: String },
+    OperandNotALabel {
+        operand: String,
+        cause: LabelRefusal,
+    },
+    TargetIsUnknown {
+        target: String,
+    },
 }
 
 fn invocation_refusal_rendered(refusal: &InvocationRefusal) -> String {

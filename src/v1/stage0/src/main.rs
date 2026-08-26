@@ -662,7 +662,9 @@ fn main() {
         Commands::Test { target } => {
             let outcome = cli_run::target_invocation_host::test_verb(&target);
             Verdict {
-                status: cli_run::target_invocation_host::invocation_exit_status(outcome.termination),
+                status: cli_run::target_invocation_host::invocation_exit_status(
+                    outcome.termination,
+                ),
                 message: Some(outcome.message),
             }
             .apply()
