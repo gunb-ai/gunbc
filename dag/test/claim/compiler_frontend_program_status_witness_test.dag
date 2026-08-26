@@ -20,6 +20,10 @@ import gunbc.compiler_frontend_program_status {
   NamespaceStepSubjectRoster,
   RequiredCiPhaseRoster,
   all_missing_instruments,
+  InstrumentObstacle,
+  NotBuilt,
+  RefusedByAuthority,
+  missing_instrument_obstacle,
   milestones_awaiting,
   missing_instrument_label,
   Startability,
@@ -186,4 +190,31 @@ test fn every_declared_instrument_is_distinct_and_awaited() -> Bool {
   count(labels) == 8
     && all(labels, l => count(labels |> filter(other => other == l)) == 1)
     && all(all_missing_instruments, i => count(milestones_awaiting(i: i)) > 0)
+}
+
+// UNBUILT AND REFUSED ARE DIFFERENT STATES WITH DIFFERENT REMEDIES, and both arms are live today --
+// which is what stops this axis from being a variant nothing ever inhabits. The whole-corpus board
+// is refused by a named authority on host memory; the phase roster is genuinely absent. If the axis
+// ever collapses to one arm across every instrument, this reds and someone re-reads it rather than
+// carrying a distinction the data no longer makes.
+test fn the_obstacle_axis_has_both_arms_inhabited_today() -> Bool {
+  match missing_instrument_obstacle(i: WholeCorpusEmissionBoard) {
+    NotBuilt => false
+    RefusedByAuthority { authority: _, why: _ } =>
+      match missing_instrument_obstacle(i: RequiredCiPhaseRoster) {
+        NotBuilt => true
+        RefusedByAuthority { authority: _, why: _ } => false
+      }
+  }
+}
+
+// A REFUSAL NAMES ITS AUTHORITY AS A CITATION, NEVER AS PROSE. This asserts the refusing row cites
+// the module that actually decides -- so a rename or deletion of that authority is caught by the
+// ingestion-time citation wall rather than leaving this row reading as current.
+test fn the_refused_instrument_cites_the_authority_that_refuses_it() -> Bool {
+  match missing_instrument_obstacle(i: WholeCorpusEmissionBoard) {
+    NotBuilt => false
+    RefusedByAuthority { authority, why: _ } =>
+      authority.module_path == "gunbc.whole_corpus_compile_admission"
+  }
 }

@@ -1,6 +1,7 @@
 module gunbc.compiler_frontend_program_status
 
 import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.witness_admission {
@@ -114,6 +115,72 @@ fn missing_instrument_label(i: MissingInstrument) -> String {
     NamespaceStepSubjectRoster => "the namespace cut's remaining per-step subjects as rows"
     PersistedBehavioralReceipt => "a persisted behavioral receipt over a discriminating corpus"
     PersistedPromotionOutcome => "a persisted PromotionOutcome over a named candidate"
+  }
+}
+
+// AN INSTRUMENT THAT IS MISSING AND ONE THAT IS REFUSED ARE DIFFERENT STATES WITH DIFFERENT
+// REMEDIES, and collapsing them was this carrier's own state-space conflation (warm-hawk-909,
+// 2026-08-26, joining this carrier against a measurement another lane took the same evening).
+// "Missing instrument" reads as ABSENCE -- go and build it. The highest-leverage row on this list
+// is not absent: a whole-corpus compile is REFUSED, on budget, by a named authority whose refusal
+// is CORRECT. The remedy for the first is to write the tool; the remedy for the second is to make
+// the thing affordable, and no amount of the first produces the second.
+//
+// SO THE OBSTACLE IS A SEPARATE AXIS FROM THE INSTRUMENT. A refusal names its authority as a
+// DeclarationRef rather than prose, so the ingestion-time citation wall resolves it on every
+// required run and a renamed or deleted authority REFUSES here instead of leaving this row reading
+// as current.
+//
+// WHAT IS DELIBERATELY NOT CARRIED HERE: the measurement behind the refusal. The authority is
+// named; the numbers are read from whatever re-derives them. A figure copied into this carrier
+// would be a measurement with no producer, which is the debt this repository bankrupted a directory
+// over two days ago.
+//
+// AND THE RESOURCE IS NAMED EXPLICITLY, because getting it wrong is what nearly landed in this arm.
+// A first cut of this row attributed the refusal to a per-entry WALL-CLOCK cost shape another lane
+// had measured the same evening. That was authority substitution: the timing fact lives in one
+// carrier, the admission is governed by another, and NEITHER CLAIMS ANY RELATION BETWEEN THEM. The
+// admission compares HOST MEMORY against a measured peak demand; its receipts are SIGKILLs, and the
+// authority says in its own words that the build succeeded and the compile died. The arrow may even
+// run the other way -- sharing a closure across entries holds MORE resident at once -- so repairing
+// the timing could make the memory worse. The word "budget" carried two resources and the arm was
+// being written by someone who had not checked which (retracted and corrected 2026-08-26, the
+// correction found by the lane that took the timing measurement).
+type InstrumentObstacle
+  = NotBuilt
+  | RefusedByAuthority { authority: DeclarationRef, why: NonEmptyStr }
+
+fn missing_instrument_obstacle(i: MissingInstrument) -> InstrumentObstacle {
+  match i {
+    WholeCorpusEmissionBoard =>
+      RefusedByAuthority {
+        authority: decl_ref(
+          module_path: "gunbc.whole_corpus_compile_admission",
+          decl_name: "whole_corpus_compile_admission_at_budget"
+        ),
+        why: "a whole-corpus compile is refused on HOST MEMORY -- the authority compares available memory against a measured peak demand and its receipts are SIGKILLs, not timeouts. So this instrument is not unbuilt and the remedy is not to write a tool. THE HONEST STATE IS NARROWER THAN 'unaffordable': it is refused on a small runner and never attempted on a large one, and remote is the DEFAULT route, so a memory-bound job is sent automatically to the smallest available machine. Nobody is claiming a large host would succeed -- the authority's own admission means NOT PROVABLY DOOMED, never WILL FIT, since the demand figure is a lower bound taken by a different route at an older tree. It is cheap to falsify: run it on a large host and record exit status and peak. Three milestones wait on the answer." as NonEmptyStr
+      }
+    RequiredCiPhaseRoster => NotBuilt
+    RatchetGateEnrolmentFact => NotBuilt
+    NamespaceWaveAdmissionWall => NotBuilt
+    PersistedLegacyBaselineObservation => NotBuilt
+    NamespaceStepSubjectRoster => NotBuilt
+    PersistedBehavioralReceipt => NotBuilt
+    PersistedPromotionOutcome => NotBuilt
+  }
+}
+
+fn instrument_obstacle_label(o: InstrumentObstacle) -> String {
+  match o {
+    NotBuilt => "UNBUILT"
+    RefusedByAuthority { authority: _, why: _ } => "REFUSED"
+  }
+}
+
+fn instrument_obstacle_detail(o: InstrumentObstacle) -> String {
+  match o {
+    NotBuilt => "no such measurement is taken or persisted; the remedy is to build it"
+    RefusedByAuthority { authority: _, why } => why
   }
 }
 
@@ -456,11 +523,15 @@ fn milestone_report_line(m: ProgramMilestone) -> String {
 
 fn instrument_report_line(i: MissingInstrument) -> String {
   let waiting = milestones_awaiting(i: i)
+  let obstacle = missing_instrument_obstacle(i: i)
   concat("- (",
   concat(to_string(n: count(waiting)),
-  concat(") ",
+  concat(") [",
+  concat(instrument_obstacle_label(o: obstacle),
+  concat("] ",
   concat(missing_instrument_label(i: i),
-  concat("\n    unblocks: ", join_names(names: waiting))))))
+  concat("\n    ", concat(instrument_obstacle_detail(o: obstacle),
+  concat("\n    unblocks: ", join_names(names: waiting))))))))))
 }
 
 fn report() -> String {
