@@ -696,10 +696,16 @@ questions and corroborating each other rather than competing:
 |---|---|---|
 | `src/` + `dag/`, `BuildFailed`/`RunFailed` arms | files / arms | **16 files, 68 arms** |
 | `src/v2/test/`, exact literal `(BuildFailed\|RunFailed\|Deferred) { actual: _, diagnostic: _ } => false` | files / arms | **19 files, 108 arms** |
-| — | **folds** | **24 folds across 11 files** (12 `is_pass`, 12 `is_semantic_mismatch`) |
+| `src/v2/test/`, arms binding `diagnostic: _` | arms | **41 arms** |
+| `src/v2/`, fold-grain fns | folds / files | **23 folds, 13 files** |
+| narrower root, fold-grain fns | folds / files | **24 folds, 11 files** (12 `is_pass`, 12 `is_semantic_mismatch`) |
 
-Neither arm figure is a census, and the difference between them is root and pattern, not
-disagreement. **Fold grain is the one that matters**, measured by witty-swift-77: a repair edits
+**Three lanes measured this independently and got five different numbers, and none of them is
+wrong.** Each names a different root and a different pattern; two of the three fold-grain figures
+(23/13 and 24/11) differ only by root and land in the same place. No figure here is a census.
+That the counts disagree while the shape does not is this brief's own subject arriving in its own
+evidence — which is why every row above carries its root, and why the fold-grain rows are the
+ones quoted downstream. **Fold grain is the one that matters**, measured by witty-swift-77: a repair edits
 folds, not arms, so the scoping conversation is 24 folds — not 108 of anything. The family is
 effectively every `emit_host_*_equals_eval` witness (`add`, `match`, `complement`, `fold_closure`,
 `field_access`, `variant_construct`, `meet_join`, `loop`, `record_construct`, `emit_host_call`,
@@ -766,6 +772,64 @@ no shared spelling. Note what this makes of the ladder — the repair is not a b
 a more careful reader, both of which leave the bad state writable. It removes the spelling. The
 distinction stops being something evidence must be trusted to preserve and becomes something the
 carrier cannot lose.
+
+## Instance 15 — the control that cannot flip for the right reason
+
+Found by deep-ant-102 by execution, not by reading; verified here against the tree. Recorded
+because it **widens instance 14's class past the mechanism instance 14 blamed**, which means the
+repair instance 14 proposes would not have caught it.
+
+Running the `00_compile` self-host behavioral receipt to termination (RED at cargo, 16 errors,
+subject `d311b1ceab`), its discriminating RED is a conjunction — `dag/tools/self_host_curated_seed_linked_harness.dag`,
+kernel `cssl_seed_linked_behavioral_receipt`:
+
+```
+    && build.success
+    && pass_run.success && string_contains(s: pass_run.stdout, pattern: pass_marker)
+    && (fault_run.success == false)
+```
+
+The last conjunct exists to prove the harness can tell a faulted run from a clean one. But when
+cargo fails there is **no witness binary**, so the plain run and the `--inject-fault` run both
+exit 127 — and `(fault_run.success == false)` is satisfied by *the binary does not exist* rather
+than by *the fault was detected*.
+
+**The receipt's outcome is still correct**, and that is the interesting part rather than a
+mitigation. `build.success` and the `pass_marker` conjunct sit in the same chain and both go
+false, so the receipt returns false as it should. What is broken is not the verdict but the
+**evidence for the verdict**: the one arm whose job is to establish that this harness can
+discriminate carries zero information in precisely the case where discrimination is in question.
+A reader auditing *does this receipt have a discriminating control* counts it and finds one. It
+is a control that cannot flip for the right reason.
+
+### Why this is not instance 14 again
+
+Instance 14's twenty-four folds **discard a payload that exists** — `diagnostic: _`, thrown away
+one line before it would be reported. The proposed repair follows from that diagnosis: make the
+carrier keep what the fold was dropping.
+
+This instance has **no payload to discard**. `fault_run.success` is a boolean that never carried
+a diagnostic; the predicate is simply true for two unrelated causes. Nothing was lost, because
+nothing was ever held. So the fold repair — however correct for those twenty-four — does not
+reach this, and a sweep that fixed every fold in the corpus would leave this control exactly as
+hollow as it is now.
+
+### The generalisation, corrected
+
+Instance 14 proposed: *evidence that cannot distinguish its own failure causes is not evidence of
+any of them.* That sentence survives this instance unchanged — it covers a hollow conjunct as
+cleanly as a lossy fold. What does **not** survive is the diagnosis attached to it. Instance 14
+located the defect in **non-injectivity of a fold over a payload**, and this instance is
+non-injective with no fold and no payload. So the mechanism is one layer more general:
+
+> **A predicate whose truth is reachable by a cause unrelated to what it asserts is not evidence,
+> whether or not anything was discarded to make it so.**
+
+The practical consequence is a scoping one, and it cuts against the tidier plan: the class is
+**not** confined to folds and is therefore **not** closed by repairing folds. Any audit that
+enumerates `match` arms will report full coverage while every conjunct of this shape stays
+standing — which is instance 12's shape (a bounded query reporting its boundary as an answer)
+reappearing inside the remediation rather than inside the diagnosis.
 
 ## The shared shape
 
