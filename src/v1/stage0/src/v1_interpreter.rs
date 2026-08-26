@@ -5281,42 +5281,60 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         .collect::<InterpResult<_>>()?;
 
     // A LEXICAL BINDING SHADOWS EVERY NAME-KEYED TIER (nearest-first precedence, the same law
-    // 04_infer states at call_locals_shadow_note and now applies to the builtin tiers too). A
-    // parameter or let named `lookup`, `count`, `filter`, ... is a function VALUE, and answering
-    // its call from the builtin table by spelling calls a different function than the program
-    // names -- silently, wherever the two arities happen to agree. `ctx.lookup_fn` (module-level
-    // declarations) deliberately stays BELOW the builtins as before: this moves the lexical tier
-    // only.
-    if let Some(closure @ Value::Closure { .. }) = env.lookup(ctx.sym(&func_name)) {
-        let closure = closure.clone();
-        let arg_vals: Vec<Value> = args.iter().map(|(_, v)| v.clone()).collect();
-        return apply_closure(&closure, &arg_vals, env, ctx);
+    // 04_infer states at call_locals_shadow_note). A parameter or let named `lookup`, `count`,
+    // `filter`, ... is a function VALUE, and answering its call from the builtin table -- or from
+    // the module free-function table -- by spelling calls a different function than the program
+    // names, silently, wherever the two arities happen to agree.
+    //
+    // THE GATE IS THE BINDING, NOT THE VALUE'S REPRESENTATION. It formerly matched `Value::Closure`
+    // only, so the law held for a local bound to a LAMBDA and failed for a local bound to a NAMED
+    // top-level function -- which evaluates to `Value::Fn` (see the `ItemKind::FuncItem | FnItem`
+    // arm of `eval_expr`'s identifier path), falls past every tier here, and is answered by
+    // `ctx.lookup_fn` below at the FREE FUNCTION sharing its spelling. Measured on a complete
+    // 3x2 grid (let / parameter / pattern x named-fn / lambda) in
+    // `v2.test.claim.local_binding_shadow`: the three named-fn cells reached the free function,
+    // the three lambda cells reached the local. The axis was the VALUE VARIANT this gate matched
+    // on, and the two variants are one concept -- a lexical binding holding something callable --
+    // so the gate now names that concept instead of one of its representations.
+    //
+    // `ctx.lookup_fn` (module-level declarations) stays BELOW the builtins as before: this widens
+    // the lexical tier only, and does not reorder anything under it.
+    let lexically_bound_fn: Option<Rc<Node>> = match env.lookup(ctx.sym(&func_name)) {
+        Some(closure @ Value::Closure { .. }) => {
+            let closure = closure.clone();
+            let arg_vals: Vec<Value> = args.iter().map(|(_, v)| v.clone()).collect();
+            return apply_closure(&closure, &arg_vals, env, ctx);
+        }
+        Some(Value::Fn { node: bound_fn }) => Some(bound_fn.clone()),
+        _ => None,
+    };
+
+    if lexically_bound_fn.is_none() {
+        v1_bridge_family_arms!(v1_bridge_dispatch, func_name, args, node, ctx);
+
+        v1_native_intercept_arms!(v1_native_intercept_dispatch, func_name, args, env, ctx);
+
+        if let Some(result) = eval_builtin(&func_name, &args, ctx)? {
+            return Ok(result);
+        }
     }
 
-    v1_bridge_family_arms!(v1_bridge_dispatch, func_name, args, node, ctx);
-
-    v1_native_intercept_arms!(v1_native_intercept_dispatch, func_name, args, env, ctx);
-
-    if let Some(result) = eval_builtin(&func_name, &args, ctx)? {
-        return Ok(result);
-    }
-
-    let fn_node = if let Some(node) = ctx.lookup_fn(&func_name) {
-        node.clone()
-    } else {
-        match env.lookup(ctx.sym(&func_name)) {
-            Some(Value::Fn { node }) => node.clone(),
-            Some(closure @ Value::Closure { .. }) => {
-                let closure = closure.clone();
-                let arg_vals: Vec<Value> = args.iter().map(|(_, v)| v.clone()).collect();
-                return apply_closure(&closure, &arg_vals, env, ctx);
-            }
-            _ => {
+    // Every callable lexical binding was served by the gate above, so this tier reads the module
+    // free-function table and nothing else. The env re-lookup that used to sit in the `else` arm
+    // here -- serving `Value::Fn` and `Value::Closure` AFTER `ctx.lookup_fn` had already been
+    // asked -- is deleted rather than kept beside the gate: it is the lower-rung duplicate of the
+    // same decision (DESIGN §2/§3), and it is precisely where the shadowing defect landed,
+    // because reaching it at all required the free-function table to have answered first.
+    let fn_node = match lexically_bound_fn {
+        Some(node) => node,
+        None => match ctx.lookup_fn(&func_name) {
+            Some(node) => node.clone(),
+            None => {
                 return Err(InterpError::NoSuchFunction {
                     name: func_name.clone(),
                 });
             }
-        }
+        },
     };
 
     if let Some(result) = try_witness_evaluation_dispatch(ctx, node, &fn_node, &args, env) {
@@ -8798,6 +8816,76 @@ fn compile_diagnostic_census_value(
             variant_name: ctx.sym("CensusNotRunnable"),
             fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
         },
+    }
+}
+
+/// Projects a host multi-module fixture outcome into the
+/// `tools.multi_module_compile_fixture` coproduct. The three arms stay distinct all the way to
+/// the substrate: a broken harness must never arrive wearing the compiler's verdict, and a
+/// compile that never ran must never arrive as `FixtureCompileCompleted` with an empty diagnostic
+/// list (DESIGN §5 — could-not-measure conflated with the subject passing).
+fn multi_module_compile_fixture_value(
+    outcome: crate::cli_run::MultiModuleCompileFixtureOutcome,
+    ctx: &InterpContext,
+) -> Value {
+    let rows = |rows: Vec<crate::cli_run::CompileDiagnosticCensusRow>| {
+        list_value(
+            rows.into_iter()
+                .map(|r| Value::Record {
+                    type_name: ctx.sym("CompileDiagnosticCensusRow"),
+                    fields: Rc::new(sorted_fields(vec![
+                        (ctx.sym("diagnostic_class"), str_value(r.diagnostic_class)),
+                        (ctx.sym("subject_name"), str_value(r.subject_name)),
+                        (ctx.sym("blocking"), Value::Bool(r.blocking)),
+                        (ctx.sym("count"), Value::Int(r.count)),
+                    ])),
+                })
+                .collect::<Vec<_>>(),
+        )
+    };
+    let variant = |name: &str, fields: Vec<(Symbol, Value)>| Value::Variant {
+        type_name: ctx.sym("MultiModuleCompileFixtureOutcome"),
+        variant_name: ctx.sym(name),
+        fields: Rc::new(sorted_fields(fields)),
+    };
+    match outcome {
+        crate::cli_run::MultiModuleCompileFixtureOutcome::InstrumentRefused { cause } => variant(
+            "FixtureInstrumentRefused",
+            vec![(ctx.sym("cause"), str_value(cause))],
+        ),
+        crate::cli_run::MultiModuleCompileFixtureOutcome::CompileRefused {
+            module_count,
+            diagnostics,
+            source_digest,
+            compiler_digest,
+        } => variant(
+            "FixtureCompileRefused",
+            vec![
+                (ctx.sym("module_count"), Value::Int(module_count)),
+                (ctx.sym("diagnostics"), rows(diagnostics)),
+                (ctx.sym("source_digest"), str_value(source_digest)),
+                (ctx.sym("compiler_digest"), str_value(compiler_digest)),
+            ],
+        ),
+        crate::cli_run::MultiModuleCompileFixtureOutcome::CompileCompleted {
+            module_count,
+            emitted_files,
+            diagnostics,
+            source_digest,
+            compiler_digest,
+        } => variant(
+            "FixtureCompileCompleted",
+            vec![
+                (ctx.sym("module_count"), Value::Int(module_count)),
+                (
+                    ctx.sym("emitted_files"),
+                    list_value(emitted_files.into_iter().map(str_value).collect::<Vec<_>>()),
+                ),
+                (ctx.sym("diagnostics"), rows(diagnostics)),
+                (ctx.sym("source_digest"), str_value(source_digest)),
+                (ctx.sym("compiler_digest"), str_value(compiler_digest)),
+            ],
+        ),
     }
 }
 
@@ -13867,6 +13955,16 @@ macro_rules! v1_builtin_arms {
                 let source = expect_str($positional.first().copied(), $name)?;
                 Ok(Some(compile_diagnostic_census_value(
                     crate::cli_run::compile_dag_diagnostic_census(&source),
+                    $ctx,
+                )))
+            },
+
+            arm "free_call.compile_dag_multi_module_fixture" { "compile_dag_multi_module_fixture" } => {
+                let paths = expect_str_list($positional.first().copied(), $name)?;
+                let contents = expect_str_list($positional.get(1).copied(), $name)?;
+                let entry = expect_str($positional.get(2).copied(), $name)?;
+                Ok(Some(multi_module_compile_fixture_value(
+                    crate::cli_run::compile_dag_multi_module_fixture(&paths, &contents, &entry),
                     $ctx,
                 )))
             },
