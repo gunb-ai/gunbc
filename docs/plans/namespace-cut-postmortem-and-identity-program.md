@@ -2955,7 +2955,7 @@ cut; it is the argument for the wave-delta discipline §11.2c now carries, and f
 expecting refusals that are correct-in-mechanism and wrong-in-scope to be the
 normal failure mode rather than the surprising one.
 
-### 11.2l A counter sited at ONE ARM of a match, read as total demand — three hypotheses, one measurement, residue UNEXPLAINED
+### 11.2l RESOLVED by pre-registered discriminator — demand is a function of how far typecheck progressed, and a per-file demand row can be a non-observation
 
 `cool-swift-307` built a per-file demand oracle to score candidate closures: for
 each module, the set of bare names it asks for. Run under two arms — a 20-module
@@ -2979,40 +2979,79 @@ arm-traffic as though it were the total. At that site a *route* change and a
 *demand* change are indistinguishable; only the outer `lookup_binding_by_name`
 sees both routes.
 
-**THE RESIDUE IS RECORDED AS UNEXPLAINED, NOT AS EXPLAINED BY (3).** What is
-measured is: seven modules differ, the differences are one-directional, and the
-extra names are variants declared in the asking module. Everything else is
-hypothesis. Two mechanisms have already been argued into and back out of
-existence in a single exchange between two lanes, and a mechanism recorded here
-on the strength of an argument rather than a run would be unfalsifiable by anyone
-who was not part of that exchange — the fabricated-plausible-output failure
-applied to a postmortem.
+**RESOLVED — hypothesis 3 refuted 0 to 7; hypothesis 2 stands.** The separating
+run was specified before it was taken: the oracle already recorded `DEMAND_TOTAL`
+at the outer `lookup_binding_by_name`, which sees both routes, and only the
+per-file dump came from the inner arm. `cool-swift-307` wrote both outcomes and
+their consequences into the harness ahead of the run — *identical per-file TOTAL
+across arms → route change, instrument artifact; different TOTAL → demand grew* —
+so the verdict line is the harness's, not a reading of it. The result:
 
-**The separating measurement is one run.** The oracle already records
-`DEMAND_TOTAL` at the outer function; only the per-file dump is taken from the
-inner one. Dump per-file rows for TOTAL and compare the seven:
+```
+arm1  total_files=223  total_asks=1326   global_files=198  global_asks=646    terminal-stage-reached
+arm2  total_files=286  total_asks=3573   global_files=250  global_asks=1195   terminal-stage-reached
 
-- per-file TOTAL **identical** across arms while GLOBAL differs → route change;
-  the rows are an instrument artifact, and the repair is to record at the outer
-  function only.
-- per-file TOTAL **also differs** → demand genuinely grew; hypothesis 2 is live.
+module                     global_extra   total_arm1   total_arm2   total_identical
+extdeps.git                        19            6           97          False
+std.cache_interface                14            4           87          False
+std.keyed_roster                    8            7           23          False
+std.keyed_row                       1            3            9          False
+std.measure                        40            8          164          False
+std.realization_schedule            8            4           73          False
+v2.std.integer                     17            1           95          False
 
-**The two outcomes carry opposite consequences for whether the oracle is usable
-at all**, which is what makes the run worth taking before anything is written
-down. If demand genuinely grew, the bias is not merely in a known direction — it
-is *correlated with the thing being measured*: a module whose dependencies were
-not pulled stops early and never issues the asks it would have issued, so demand
-is under-reported **exactly at the files where the closure under test is worst**,
-and the oracle flatters each candidate precisely where that candidate fails. If
-instead the route reading holds, the boundary is not a limitation but a repair:
-demand was never measured — one route was.
+differing-global modules with IDENTICAL total demand = 0; with DIFFERENT = 7
+```
 
-**Consequence for the cut's scoring step.** Under either live hypothesis,
-scoring candidate closure A against demand measured *under A* is circular. The
-non-circular form measures demand under a closure that is neither candidate's — a
-deliberately over-broad one — which is the run the budget check currently refuses
-at any partition size. So the scoring measurement may be blocked on that refusal
-rather than on instrument design, and that is a §9 open item, not a solved step.
+Hypothesis 3 was advanced by the lane that owned the instrument, against a
+mechanism of theirs that had just been confirmed, and was refuted by their own
+pre-registered discriminator. All three mechanisms in this row died by evidence
+rather than by argument; that is why the row is worth keeping at all.
+
+**The argument that backed hypothesis 3 was compatible with both, and the wrong
+inference is the part worth recording.** I backed it on `arm1_only_names=0`:
+one-directional growth is what a route change predicts *by construction*. True,
+and not evidence — **progression also produces one-directional growth whenever
+every module in the set progressed further in the same arm**, which is exactly
+what the totals show. A signature consistent with one mechanism was scored as
+discriminating against the other.
+
+**THE TOTALS ARE THE FINDING, AND THEY ARE SHARPER THAN THE VERDICT LINE.**
+`v2.std.integer` issues **1** lookup under the narrow arm and **95** under the
+wide one; `std.measure` 8 → 164; `extdeps.git` 6 → 97. A module issuing one
+lookup has not been typechecked — it was entered and abandoned. So those arm-1
+rows are **not low-demand measurements; they are non-measurements wearing the
+shape of measurements**, and nothing in the row distinguishes `total=1` from a
+module that genuinely asks for one name. This is execution-provenance loss at
+row grain.
+
+That is a stronger claim than the closure-correlated bias stated above, and it
+supersedes it as the operative limit. A bias in a known direction can be
+corrected. **A row that is silently a non-observation cannot, because you cannot
+tell which rows to correct** — and at the extreme the measurement does not exist
+for exactly the files where the closure under test is worst, while still emitting
+a row that averages in as though it did.
+
+**The requirement this puts on the oracle is structural, not a caveat.** A
+per-file demand row is admissible only if the module *reached the stage that
+issues its asks*, so every count carries a per-module progress receipt and a row
+without one is **dropped, never averaged**. The harness already establishes this
+per run — both arms printed `terminal-stage-reached` — and must establish it per
+module. This is the same construction the repo applies to masked stages:
+`refused before stage N` may not inhabit the same carrier as `stage N ran and
+found 1`.
+
+**Consequence for the cut's scoring step, now blocked on something sharper than
+circularity.** Scoring candidate closure A against demand measured *under A* was
+already circular. With progression confirmed, the sharper form is that under a
+deficient closure the low-scoring modules may not run at all — **so a candidate
+is rewarded for the modules it starves**. Holding the census fixed does not
+address this (it was fixed at 3941 in both arms); a comparison must hold
+*progress* constant. The only form of that visible today measures demand under a
+closure that is neither candidate's — a deliberately over-broad one — which is
+the run the budget check refuses at any partition size. **This is carried as a §9
+open item with the refusal named, and is put to the operator as a blocker rather
+than absorbed as an instrument caveat.**
 
 ### 11.3 The dispatch protocol
 
