@@ -430,13 +430,232 @@ occurs. That is a second mechanism sharing one symptom, and reading the recurren
 of the recorded cost argument would be the same wrong join one layer up: same observable,
 different subject.
 
+### Receipt added 2026-08-26 01:45 UTC — the same check, run against a docs-only diff
+
+The instance above was written from three specimens whose diffs all touched code, so "the change
+is not the cause" rested on the configuration read rather than on the diff. A fourth specimen
+removes even that dependency.
+
+PR #9260 — **one markdown file, no Rust, no `.dag`, no yml** — failed its build. Run
+`32919310791`, job `98029597779`, runner `srv3-19`. `cache: false` echoed at 01:32:39. At
+01:45:00.538:
+
+```
+required-ci: regen refused: normalize emitted src/extdeps_languages_rust_derive_contracts.rs:
+spawn rustfmt: Text file busy (os error 26) -- program /home/ghrunner/.cargo/bin/rustfmt was
+resolved at admission from PATH, and ran there: `--version` was executed successfully before
+this phase began. So it has been removed, replaced or made unusable while this run was executing;
+this is not a missing or broken installation
+```
+
+Two other jobs on the **same host** ran `Install Rust toolchain`:
+
+| job | slot | install window |
+|---|---|---|
+| `98031944651` | `srv3-14` | 01:44:59 → 01:45:00 |
+| `98031944764` | `srv3-21` | 01:44:59 → 01:45:01 |
+
+The failure instant falls inside both. Three slots on one host share `/home/ghrunner`.
+
+Two things this receipt establishes that the date comparison could not. The diff is markdown, so
+attributing the red to the change is not merely unproven but impossible — which is the instance's
+point reached from the opposite direction: the first three specimens needed the job's own config to
+exonerate the change, and this one needs nothing. And the binary replaced is **rustfmt**, under
+**regen normalize** — so the class reaches the normalizer that the emitted stage0 artifact's fixed
+point is computed against. `ETXTBSY` is the loud case, where the exec was caught in the act; the
+quiet case differs only in whether the replacement lands *between* two reads rather than during
+one, and requires no additional mechanism.
+
+The generalisation for this brief: **a red on a diff that cannot produce it is a measurement of the
+environment, not of the branch** — and it is only available to a reader who checked what the diff
+contained before reading the failure as a verdict on it.
+
+
+## Instance 12 — the aggregator renders a CANCELLED run as a FAILED one (2026-08-26)
+
+The rollup on #9244 showed `witnesses: FAILURE`. The job's log:
+
+```
+##[error]a required lane did not succeed (build=cancelled floor=cancelled)
+```
+
+Neither lane executed a step. The run had been lawfully superseded by a push.
+
+This one is **ours**, not GitHub's. The aggregator declares `always()` so that the required check
+context is never reported as SKIPPED — a sound intent, since a skipped required check cannot gate.
+The consequence is that it also runs when its lanes were *cancelled*, and reports that as a
+failure. **"The run was cancelled" and "the run found a defect" are different states with opposite
+owners and opposite repairs** — push again or ignore, versus fix your code — collapsed onto one
+conclusion. It is the conflation this repository's own failure list names, in our own workflow.
+
+It is also the mirror of instances 5–6: those resolve toward *nothing is wrong* and go
+uninvestigated. This resolves toward *something is broken* and costs investigation instead. Two
+sessions ran the same investigation on this PR within one hour before establishing it was noise.
+
+**It compounds with a second reading error.** A check rollup lists *every* check run for a SHA, not
+the latest per name. On #9244 at head `347bc88d795`:
+
+| name | earlier | later |
+|---|---|---|
+| build | cancelled 01:03:33 | **success 01:16:24** |
+| floor | cancelled 01:03:32 | **success 01:16:24** |
+| witnesses | failure 01:16:19 | **success 02:06:33** |
+
+Every latest attempt is green. Read without grouping by name and sorting by time, the rollup hands
+you a red that a later run already replaced — and `dashboard-ops` reported `checks_state=failing`
+for exactly that reason while the PR was in fact CLEAN.
+
+The check that closes it:
+
+```
+gh api "repos/OWNER/REPO/commits/<sha>/check-runs?per_page=100" \
+  -q '.check_runs[]|"\(.name) \(.status)/\(.conclusion) \(.started_at)"' | sort
+```
+
+Generalisation: **a check conclusion answers "what did this run report", never "did this run
+execute"** — and a rollup answers "what has ever been reported for this SHA", never "what is the
+current state". Both gaps are invisible at the summary level, and both were being read as verdicts.
+
+
+### Instance 12, continued — the readiness endpoint reads the stale row, indefinitely
+
+The half that makes instance 12 expensive is not the aggregator's conflation. A superseded failure
+that *disappeared* would cost one confused glance. This one persists, and the dashboard's own
+readiness endpoint reads it:
+
+```
+{"key":"checks","label":"Checks are not failing or pending","ok":false,"actual":"failing"}
+```
+
+`merge_criteria` is not taking latest-per-name, so on #9244 it reported `checks_state: "failing"`
+while the PR was in fact `CLEAN` with every latest check green. **That field is what the working
+agreement names as the source of truth for merge readiness** — so on any PR whose run was
+superseded, the designated authority reports not-ready indefinitely, and no amount of waiting or
+re-running clears it.
+
+Two readers reached the same wrong conclusion from it inside one hour, and the failure mode is
+self-reinforcing: a reviewer who checks readiness, sees `failing`, and stops has no reason to
+suspect the field rather than the PR.
+
+The generalisation this forces is sharper than instance 12's own: **an aggregate readiness verdict
+inherits every conflation of the fields it reads, and reports them with more authority than any of
+them carried.** The rollup at least shows both rows and lets a careful reader sort them; the
+readiness field shows one boolean and hides that a choice was made.
+
+
+### Instance 12, third reading — two fields of ONE response disagreeing about one fact
+
+On #9251, the same `dashboard-ops reviews` payload reports both:
+
+```
+readiness.has_request_changes : True
+merge_criteria.request_changes_count : 0
+merge_criteria.requirements[request_changes] : ok=True  "none (stale, re-review pending: claude)"
+```
+
+`merge_criteria` is *correct* here — a `request_changes` posted on superseded SHA `50cbf333b`,
+followed by an `approve` on the current head `f53e351b3`, is properly marked stale and does not
+block. The top-level `readiness` block reports the same underlying review as a live blocker.
+
+So the earlier lesson needs qualifying rather than repeating: the dashboard is not uniformly
+staleness-blind. **One block of the response applies recency and another does not**, and they
+disagree in the same payload. Reading the first field nearly produced a false blocker report on a
+PR that is in fact clean — the opposite direction from #9244, where the readiness field was the one
+that was wrong.
+
+That is the more useful generalisation, and it is not "distrust the dashboard": **when one response
+answers the same question twice, the answers are not redundant — one of them is derived under
+different rules, and which is authoritative has to be established rather than assumed.**
+
+A separate lag, distinguished rather than merged into the above: `merge_criteria.checks_state` read
+`pending` on #9251 while GitHub reported three completed/success and **zero** non-completed check
+runs on the head. The last of those finished ~1 minute earlier, so this is most likely snapshot lag
+rather than the latest-per-name defect of #9244. Recording it as *undistinguished* — it would take a
+second reading after the cache turns over to tell the two apart, and calling it either one now would
+be exactly the unmeasured attribution this brief is about.
+
+
+### The discriminator (deep-ant, measured 2026-08-26)
+
+The `checks_state` question above resolved: it was **lag**, ~5 minutes, cleared unaided
+(`pending` at 02:26:16 / 02:26:47 / 02:27:18, `passing` at 02:27:48; last check run completed
+02:22:50). #9251 then read `ready=True` with no failing requirements.
+
+What makes that interpretable is the check done *before* the wait: #9251's head carried exactly
+three check runs, all SUCCESS, no cancelled generation and nothing non-completed — so there was no
+stale artifact for the endpoint to be reading, and lag was the only remaining candidate. The poll
+confirmed rather than discovered it.
+
+So `checks_state` is wrong in **both** directions, with opposite handling:
+
+| | cause | lifetime | action |
+|---|---|---|---|
+| stale-failing (#9244) | superseded generation in the rollup | **persists indefinitely** | take latest-per-name yourself |
+| lag-pending (#9251) | snapshot not caught up | transient, ~5 min | wait; needs nothing |
+
+They look alike at a glance and either produces a false blocker. **The discriminator is the
+rollup, not the field: count the non-completed and non-latest runs.** A clean rollup means any
+disagreement is lag. A rollup carrying a superseded generation means it is the defect, and it will
+never clear.
+
+
+---
+
+## Instance 13 — attributing an outage to the wrong scope (2026-08-26)
+
+Having found a review that crashed with `MODULE_NOT_FOUND` on the review host, I escalated it as
+possibly affecting *every scheduled review in the fleet* — worth checking, I said, before it was
+diagnosed one PR at a time.
+
+That was an overclaim, and the check that refutes it is the same shape as every other entry here:
+query the population rather than reasoning from the one specimen.
+
+| PR | started | status | sha |
+|---|---|---|---|
+| #9244 | 01:17:43 | failed `MODULE_NOT_FOUND` | `347bc88d7` |
+| #9260 | 01:19:48 | failed `MODULE_NOT_FOUND` | `fdb5c250f` |
+| #9260 | 01:20:47 | **posted** `request_changes` | `fdb5c250f` |
+| #9260 | 01:41:14 | **posted** `approve` | `777fe2d0e` |
+
+A three-minute outage, not a fleet-wide breakage. #9260 is decisive because it carries a crash and
+a success on either side of the boundary — same reviewer, same host, **same SHA**, 59 seconds
+apart. That single pair rules out the systemic reading in a way that no amount of staring at
+#9244's failure could.
+
+The error is the mirror of instance 4: there, a missing observation was read as "nothing is
+affected"; here, one observed failure was read as "everything is affected". Both substitute the
+convenient scope for the measured one. And the practical cost was concrete — it produced advice to
+another session ("do not push, the reviewer is broken") whose premise was false, on a PR that
+repairs main's build.
+
+**A failure's scope is a separate measurement from the failure.** One specimen establishes that a
+thing can fail; only the population establishes how much is failing.
+
+
+### A live confirmation of instance 5, on this brief's own PR
+
+#9260 at head `777fe2d0e`, latest per name:
+
+```
+build      completed/failure     <- the rustup ETXTBSY
+floor      completed/SUCCESS
+witnesses  completed/failure     <- the always() arm, over the failed build
+```
+
+The **floor passed**. The run's conclusion is `failure`, and one of this session's two monitors
+reported the run's conclusion while the other reported the floor check's — the same event rendering
+as success and as failure depending on which level was queried. That is instance 5 exactly, observed
+live rather than reconstructed, on the branch documenting it.
+
 ## The shared shape
 
 Instances 1–3 are *the subject was substituted*; instance 4 is *there was no subject*; instances
 5–8 are *the subject was fine and the field or query you read was not the one holding the
 answer*; instance 9 is *the answer exists and is withheld*; instance 10 is *the answer existed
 and was thrown away*; instance 11 is *the answer was inferred from repository state instead of
-read off the job*. All are the same underlying error — **treating a run as a measurement of a change without
+read off the job*; instance 12 is *the answer conflated two states with opposite repairs, and the
+readiness field that aggregated it inherited the conflation*; instance 13 is *one observed failure
+was read as the scope of the failure*. All are the same underlying error — **treating a run as a measurement of a change without
 establishing that it measured that change** — and all are cheap to close:
 
 | establish | command |
@@ -446,6 +665,8 @@ establishing that it measured that change** — and all are cheap to close:
 | what that ref was for | `git log -1 --format='%s' <sha>` |
 | whether it reached a verdict | `gh api …/runs/<id>/attempts/<n>/jobs -q '.jobs[]\|"\(.name) \(.status)/\(.conclusion)"'` |
 | what config the job actually ran under | `gh api …/jobs/<job_id>/logs --allow-escape-sequences \| sed 's/\x1b\[[0-9;]*m//g'` |
+| the CURRENT state, not every state ever | `gh api …/commits/<sha>/check-runs -q '.check_runs[]\|"\(.name) \(.status)/\(.conclusion) \(.started_at)"' \| sort` |
+| whether a failure is broad or local | query the whole review/run population, not the one specimen |
 
 Tonight, each of the first four was skipped exactly once, by four different lanes, and each skip
 produced a confident conclusion that was wrong. The fifth row was added 2026-08-26 (instance 11):
@@ -470,3 +691,15 @@ Instances 5–6 extend it in a direction the 2026-08-23 draft did not anticipate
 on the wrong key renders as "nothing superseded it." Neither produces an alarming wrong answer.
 Both produce a reassuring one. That asymmetry is the reason this class keeps costing time —
 an error that resolves toward *nothing is wrong* is not investigated.
+
+Instances 12–13 close the symmetry, and are the reason the list is not simply "beware flattering
+answers". Instance 12 resolves toward *something is broken* — it costs investigation rather than
+concealing risk, which is the less dangerous direction and still expensive: two sessions ran the
+same dead end on one PR inside an hour. Instance 13 is the author of this brief making the
+mirror of instance 4's error in the same session it was written up — reading one observed failure
+as the scope of the failure.
+
+That last one is the honest summary of the whole document. Every entry here was written by someone
+who already knew the class and made an instance of it anyway. The commands in the table are not a
+reminder to be careful; they exist precisely because care does not survive contact with a plausible
+answer.
