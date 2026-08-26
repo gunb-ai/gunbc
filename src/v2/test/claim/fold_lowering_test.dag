@@ -318,11 +318,36 @@ test fn paramless_step_fold_is_step_shape_invalid() -> Bool {
 
 // (a) NO LOOP IS FABRICATED ON ANY OF THEM -- the substantive safety property,
 // unchanged by the split and asserted across every subject it touches.
-test fn split_dispositions_fabricate_no_loop() -> Bool {
+//
+// ONE WITNESS PER SUBJECT, WHERE THERE USED TO BE ONE CONJUNCTION OVER FOUR.
+//
+// WHY, AND IT IS COST BEFORE IT IS STYLE: every neighbouring witness in this file lowers ONE
+// snippet; this one lowered FOUR, so it cost roughly four times its siblings by construction
+// and was the only witness in the corpus sitting at the executor's 5000ms fail-stop. Measured
+// on one witness across four runs inside one hour, on essentially one tree: 3320ms pass,
+// 3799ms pass, 5002ms BUDGET-REFUSED, 5011ms BUDGET-REFUSED. Its own line budget is 1552ms,
+// so the overshoot is the four subjects, not the assertion.
+//
+// AND THE SPLIT IS STRICTLY STRONGER THAN THE CONJUNCTION IT REPLACES, which is why this is a
+// repair rather than a cost dodge. `a && b && c && d` reports ONE verdict for four subjects:
+// when it goes red, nothing says which subject fabricated a loop, and the three that held are
+// indistinguishable from the one that did not. Four witnesses name the failing subject in the
+// failure itself. Nothing is weakened: the same four properties are asserted over the same
+// four snippets with the same predicate.
+test fn named_step_fold_fabricates_no_loop() -> Bool {
   fabricates_no_loop(source_text: named_step_fold_snippet, file: ^named_step_probe_file)
-    && fabricates_no_loop(source_text: algebra_fold_snippet, file: ^algebra_probe_file)
-    && fabricates_no_loop(source_text: bodyless_fold_snippet, file: ^bodyless_probe_file)
-    && fabricates_no_loop(source_text: paramless_step_fold_snippet, file: ^paramless_step_probe_file)
+}
+
+test fn algebra_fold_fabricates_no_loop() -> Bool {
+  fabricates_no_loop(source_text: algebra_fold_snippet, file: ^algebra_probe_file)
+}
+
+test fn bodyless_fold_fabricates_no_loop() -> Bool {
+  fabricates_no_loop(source_text: bodyless_fold_snippet, file: ^bodyless_probe_file)
+}
+
+test fn paramless_step_fold_fabricates_no_loop() -> Bool {
+  fabricates_no_loop(source_text: paramless_step_fold_snippet, file: ^paramless_step_probe_file)
 }
 
 // THE POSITIVE CONTROL FOR THE SPLIT ITSELF. A well-formed fold still lowers,
