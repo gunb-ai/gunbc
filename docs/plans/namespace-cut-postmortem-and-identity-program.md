@@ -4271,3 +4271,128 @@ shape. **Until that receipt exists, B.3 and E are not ranked.**
 last line — *which reference categories remain unsupported*, at exact occurrence identities — **is
 the map of where identity survives**, which is exactly the input tap placement requires. Building
 the receipt first tells the tap's author where they may legitimately stand before they build it.
+
+### 11.2u MEASURED — the B.3 readiness receipt: the resolver lane is clean, and 43.6% of references are unbindable **by construction** because the parser stamps no `Type` declarations
+
+Taken by execution (cool-swift-307, 2026-08-26) over a real subject —
+`dag/std/{occurrence_binding, occurrence_identity, algebra, types}.dag`, four ordinary source files,
+**no fixture** — through the real bridge (`v1.gunbc.occurrence_binding_parser_walk`), real assembly
+(`std.occurrence_binding_candidates` `assemble_cross_file_binding_closure`) and real resolution
+(`resolve_all_references_via_structural_candidates`). Three arms, identity grain. **Every stage that
+could prevent a downstream observation prints its own line**, so an unreached stage cannot render as
+a zero — §11.2t's execution-provenance variant, which earned its keep in the first arm of the first
+run.
+
+This is the receipt §11.2t named as the precondition for ranking B.3 against E. **It does not
+complete that ranking, and the reason is the finding itself.**
+
+**THE HEADLINE IS A PRODUCER GAP, NOT A RESOLVER GAP.** Over 385 declarations and 1681 references
+on this subject:
+
+```
+declarations stamped   LexicalValue 283 · Callable 66 · Field 32 · NamespaceSegment 4
+                       Type 0 · Constructor 0 · Method 0
+
+references emitted     Type 710 · LexicalValue 583 · Callable 217 · Field 148 · Method 23
+                       Constructor 0 · NamespaceSegment 0
+```
+
+**The parser produces 710 `Type` references and not one `Type` declaration.** `Type → Type` is
+admissible in `occurrence_category_binding_verdict`, so this is *not* a category exclusion — there
+is simply nothing on the declaration side to bind to, and all 710 answer `Unbound`. `Method` is the
+same shape at smaller scale: 23 references, 0 declarations, 23 `Unbound`.
+
+> **733 of 1681 references — 43.6% — are unbindable by construction on this subject, and no amount
+> of resolver work moves them.** The work is in the parser's declaration stamping.
+
+That answers B.3's last question — *which reference categories remain unsupported* — and answers it
+more sharply than a list: **the unsupported categories are unsupported on the PRODUCER side**, which
+is a different order of work than a resolver gap.
+
+**WHAT WORKS, STATED AS PLAINLY AS THE GAP.** Parsing produces occurrences on every file with no
+refusals; assembly is ready; **exposure derivation runs over real parse output without a single
+refusal** — the question expected to be the risk, and it is not; all 1681 references receive a typed
+outcome with no transport, module-path, exposure, authored-order or bucket refusals anywhere; and
+provider projection works, every `Bound` row carrying reference occurrence, declaration occurrence,
+consumer module and provider module. **The lane's refusal vocabulary is real and none of it fired.**
+
+**SECOND FINDING — CROSS-FILE BINDING IS GATED ON ONE HARDCODED ARGUMENT.** Arms A and B bind 288
+references and produce four module edges, **every one a self-edge**: zero cross-module binding.
+`occurrence_binding_inputs_from_transport` hardcodes `grounding: ModuleLocalMemberExposure`, which
+yields module-scoped `ModuleExposure`; `CrossFileProviderExportedExposure` is the variant that
+promotes a module-root declaration to `RootExposure`, and **the bridge never passes it**, so no
+declaration is ever visible outside its own file. Arm C changes that one argument for provider files
+and nothing else:
+
+```
+Callable Bound   56 → 66          total Bound   288 → 298
+module edges      4 → 5           the new edge: std.types → std.algebra
+```
+
+The first cross-module edge in the receipt. **Cross-file binding works and is gated on one
+argument** — and its volume is small *only because* `Type` is the dominant cross-file category and
+`Type` is unproduced. **The two findings compound; they are not independent.** Beside it:
+`cross_file_binding_assembly_witness_test.dag` imports and exercises
+`CrossFileProviderExportedExposure`, while the only real producer hardcodes the other variant — the
+witness proves the substrate on hand-built identities, and **nothing proves the producer**.
+
+**ALLOCATOR SCOPING IS ABSORBED BY DESIGN, AND WAS NEARLY REPORTED AS A BLOCKER.** The bridge parses
+each file with `empty_intern_table()`, so per-file ids collide massively — 2128 of 3062 shared,
+every file restarting at 0 — where production `front_end_sources` threads one allocator. It does not
+matter: `assemble_cross_file_binding_closure` **rekeys** every file into a fresh shared space, and
+post-assembly the receipt measures `distinct_ids=5190 repeated_ids=0`. Arms A and B — isolated
+versus threaded — produce **byte-identical** downstream results on every measured line.
+
+**THE NEAR-MISS, WHICH IS THE MOST REUSABLE PART.** The first run hand-concatenated the four
+transports instead of calling `assemble_cross_file_binding_closure`. It refused — typed, located,
+`DuplicateAuthoredOccurrenceIdentity` at occurrence 0 — and the sentence *"cross-file assembly
+refuses on real parse output; B.3 is blocked at step one"* was already written.
+
+**It was false, and false in a way no reader of the refusal could have detected.** The substrate has
+a designed remap step that had not been used, so the probe was measuring **its own assembly**, not
+the subject. The refusal was *correct*; it was answering a question about the prober's code.
+
+> **A wrong instrument produces a clean, typed, located refusal that reads exactly like a real
+> finding.** This is the tap-placement conflation (§11.2t) one layer out, and it generalises past
+> both: fail-closed design guarantees that a refusal is *true*, and guarantees nothing about *what
+> it is true of*. The discriminator is not the refusal's quality — it is asking why a witness
+> exists for the operation you just hand-rolled.
+
+**TWO SIDE FINDINGS, SOURCE READ, NEITHER GATING.**
+
+*(a) A dangling citation on the match-arm gap.* `occurrence_binding_parser_walk.dag` cites
+`parser_sibling_match_arm_pattern_binder_holds_note` as the authority for match-arm bodies not
+nesting under their binder. **That symbol does not exist** — its witness file was deleted 2026-08-18
+in #8486 as never having executed. So the only documentation of the match-arm containment gap is a
+pointer to a deleted symbol. **And it is not fallout from the cited-symbol census drop:** the
+citation is prose inside a `data …: String`, and the file carries zero `DeclarationRef` rows, so it
+was never in that census's denominator. It is the **uncovered half** of the cite-the-symbol rule,
+not a regression from dropping the covered half — a distinction worth preserving, because attributing
+it to the drop would manufacture a consequence that decision did not have.
+
+*(b) The Y-lane witness family does not execute.* Six occurrence-binding witnesses; one declares
+`ReadsLiveTree`, five declare **no disposition at all**. `floor_discovery_producer.dag` resolves an
+absent row to `ReadsLiveTree` (fail-closed), `required_floor.dag` maps that to `DeclinedLiveTree`,
+and the modules are `test.claim.*` so neither the long nor fixture prefix catches them first. All six
+land in `DeclinedLiveTree` and never run. Source read — the floor's own `declined_live` counter is
+the instrument that would confirm it, and no floor was run.
+
+**WHAT THIS SAYS ABOUT CALENDAR RISK — AND WHY IT STILL DOES NOT COMPLETE THE RANKING.** The risk is
+not the resolver, the assembly substrate, the exposure derivation or the refusal vocabulary; those
+ran clean on real input on the first honest attempt. It concentrates in two places:
+
+```
+SMALL AND KNOWN     one hardcoded grounding argument gates all cross-file binding; arm C measures the fix
+LARGE AND UNSCOPED  the parser stamps no Type, Constructor or Method declarations
+```
+
+**The receipt converts B.3 from *unmeasured* to *located but unscoped*, which is a real advance and
+is not the same as rankable.** Nothing here sizes what stamping `Type` declarations costs, so B.3
+still cannot be placed against E in calendar terms — but the question has moved from *where is the
+risk* to *how large is one named producer gap*, and that is a bounded next measurement rather than
+an open one.
+
+**SCOPE LIMIT, STATED BY THE MEASURER BEFORE ANYONE QUOTED IT:** one subject, four `std` files, one
+closure. The category **shape** is likely to generalise — `Type` references dominating while `Type`
+declarations are absent is a *producer* property, not a property of these four files — but **every
+count here is this subject's**, and none may be quoted as a corpus figure.
