@@ -23,7 +23,10 @@ import extdeps.languages.json.emit {
 }
 import extdeps.github.github { Repository, github_https_clone_url }
 import extdeps.languages.json.parse {
-  parse_json,
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_document_gap_text,
   json_object_unique_member,
   JsonMemberFound,
   JsonMemberAbsent,
@@ -948,10 +951,10 @@ fn publication_receipt_decode_document(doc: JsonValue) -> PublicationReceiptDeco
 }
 
 fn publication_receipt_decode(receipt: String) -> PublicationReceiptDecode {
-  match parse_json(s: receipt) {
-    Absent =>
-      ReceiptUndecodable { reason: "publication receipt is not one complete JSON value" }
-    Present { value: doc } => publication_receipt_decode_document(doc: doc)
+  match parse_json_document(s: receipt) {
+    JsonDocumentUnreadable { gap: gap } =>
+      ReceiptUndecodable { reason: concat("the publication receipt is ", json_document_gap_text(gap: gap)) }
+    JsonDocumentParsed { value: doc } => publication_receipt_decode_document(doc: doc)
   }
 }
 

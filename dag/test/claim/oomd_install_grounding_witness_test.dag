@@ -287,8 +287,51 @@ test fn witness_membership_check_contract_passes_with_sessions_in_slice() -> Boo
   membership_check_passes(m: good_membership())
 }
 
-test fn witness_membership_check_contract_passes_partial_migration() -> Bool {
-  membership_check_passes(m: partial_migration_membership())
+// THIS WITNESS ASSERTED THE OPPOSITE UNTIL 2026-08-26, AND THE INVERSION IS THE CHANGE, NOT A
+// BROKEN TEST. It held that a host with 3 sessions inside sessions.slice and 2 still flat under
+// system.slice GROUNDS the eviction backstop. It does not. The 2 unparented sessions are precisely
+// the ones systemd-oomd cannot evict, so the backstop covers 3 of 5 and reported enforcement for
+// all 5 -- one correctly-placed container laundering every misplaced one.
+//
+// The old predicate asked sessions_in_slice > 0, which is total over the signal and blind to the
+// distinction that decides the outcome. That it had a PASSING witness is why it survived: the
+// degradation was not merely unnoticed, it was written down as the contract, which is the shape
+// DESIGN section 5 names when a fallback's own tests assert the fallback.
+test fn witness_membership_check_contract_refuses_partial_migration() -> Bool {
+  !membership_check_passes(m: partial_migration_membership())
+}
+
+// THE THREE REFUSING STANDINGS MUST STAY DISTINGUISHABLE, because their remedies differ: Mixed is a
+// partial placement/convergence defect on an otherwise-working host, AllLegacy is a hollow managed
+// slice, and NoSessionsObserved is an absence of evidence rather than a defect at all. A witness
+// that only checked "refuses" would pass if all three collapsed into one arm, which is the same
+// class of blindness this PR removes -- so the standing itself is asserted, not just the verdict.
+test fn witness_membership_standings_are_distinct() -> Bool {
+  let mixed = match session_membership_standing(m: partial_migration_membership()) {
+    MixedSessionMembership { managed_count: mc, legacy_count: lc } => mc == 3 && lc == 2
+    AllSessionsManaged { managed_count: _ } => false
+    AllSessionsLegacy { legacy_count: _ } => false
+    NoSessionsObserved => false
+  }
+  let legacy = match session_membership_standing(m: all_legacy_membership()) {
+    AllSessionsLegacy { legacy_count: lc } => lc == 5
+    MixedSessionMembership { managed_count: _, legacy_count: _ } => false
+    AllSessionsManaged { managed_count: _ } => false
+    NoSessionsObserved => false
+  }
+  let empty = match session_membership_standing(m: empty_host_membership()) {
+    NoSessionsObserved => true
+    MixedSessionMembership { managed_count: _, legacy_count: _ } => false
+    AllSessionsManaged { managed_count: _ } => false
+    AllSessionsLegacy { legacy_count: _ } => false
+  }
+  let managed = match session_membership_standing(m: good_membership()) {
+    AllSessionsManaged { managed_count: mc } => mc == 5
+    MixedSessionMembership { managed_count: _, legacy_count: _ } => false
+    AllSessionsLegacy { legacy_count: _ } => false
+    NoSessionsObserved => false
+  }
+  mixed && legacy && empty && managed
 }
 
 test fn witness_membership_check_contract_fails_all_legacy() -> Bool {
@@ -301,5 +344,8 @@ test fn witness_membership_check_contract_fails_empty_host() -> Bool {
 
 test fn witness_all_legacy_read_fails_closed() -> Bool { !grounds(read: all_legacy_read()) }
 test fn witness_empty_host_read_fails_closed() -> Bool { !grounds(read: empty_host_read()) }
-test fn witness_partial_migration_grounds() -> Bool { grounds(read: partial_migration_read()) }
+// INVERTED WITH ITS CONTRACT TWIN ABOVE, for the same reason and on the same evidence: a read whose
+// only defect is 2 unparented sessions must NOT ground OomdEnforced. This is the end-to-end arm --
+// the one above pins the predicate, this one pins that the predicate actually reaches the verdict.
+test fn witness_partial_migration_fails_closed() -> Bool { !grounds(read: partial_migration_read()) }
 

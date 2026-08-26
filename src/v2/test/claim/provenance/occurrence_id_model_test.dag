@@ -1,6 +1,6 @@
 module v2.test.provenance.occurrence_id_model
 
-import v2.std.diagnostic { ByteRange, NodeLocus, PortLocus, Textual, WholeFile }
+import v2.std.diagnostic { ByteRange, InvariantPortLocus, NodeLocus, SourcePortLocus, Textual, WholeFile }
 import v2.std.exact_structural_equality_zip_fold_predicate {
   exact_structural_equality_zip_fold
 }
@@ -79,7 +79,8 @@ test fn span_index_from_source_round_trip_holds() -> Bool {
                   WholeFile => false
                 }
             NodeLocus { anchor: _ } => false
-            PortLocus { anchor: _ } => false
+            SourcePortLocus { anchor: _, file: _, extent: _ } => false
+            InvariantPortLocus { anchor: _, invariant: _ } => false
           }
         DerivedBy { producer: _, from: _ } => false
         GeneratedBy { generator: _, from: _ } => false
@@ -210,4 +211,3 @@ test fn occurrence_id_nested_mint_excluded_from_structural_equality() -> Bool {
     && exact_structural_equality_zip_fold(source_facts: left, candidate: right)
     && !(node_for_structural_equality(n: left) == node_for_structural_equality(n: right))
 }
-

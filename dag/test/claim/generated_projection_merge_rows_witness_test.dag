@@ -1,0 +1,164 @@
+module test.claim.generated_projection_merge_rows_witness
+
+import gunbc.generated_projection_paths {
+  GeneratedProjectionMergeRow,
+  GeneratedProjectionMergeSetting,
+  GeneratedProjectionMergeRowsAccepted,
+  GeneratedProjectionMergeRowsRefused,
+  MergeAttributeUnspecified,
+  MergeGeneratedArtifact,
+  deterministic_generated_projection_merge_rows,
+  stage0_generated_source_pattern
+}
+import gunbc.gitattributes_emit {
+  GitattributesGenerated,
+  GitattributesGenerationRefused,
+  expected_gitattributes,
+  merge_attribute_token,
+  generated_projection_merge_attribute,
+  generated_projection_merge_attribute_unset
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// SUBSTRATE INPUTS ONLY, AND THAT IS THE POINT RATHER THAN A CONVENIENCE. The sibling witness
+// test.claim.gitattributes_emit_witness reads the committed .gitattributes, so it is
+// ReadsLiveTree and the required floor DECLINES it — it is discovered, counted, and never run.
+// Every claim below is a function of the model alone, so this module executes where that one
+// cannot, which is what makes it evidence rather than specification.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_note: String = "The executing evidence for the stage0 arm of the generated-projection merge-attribute population. THE POPULATION IS THE CANONICAL THING THAT GOES GREEN BY BEING EMPTY, so no claim here is a count: each names an identity and asserts its setting and its POSITION. Two of them are discriminating REDs with different subjects — one goes red if the stage0 arm is absent (the defect this module was authored against, where every emitted stage0 source carried merge: unspecified), one goes red if the glob and the unset rows are transposed (a silent failure with no diagnostic anywhere, since the last matching attributes line wins and an unset row above the glob is inert). EACH WITNESS CARRIES ITS OWN NON-VACUITY PRECONDITION rather than relying on a sibling: an absence claim is TRUE over an empty population, so a witness whose guard lived in another test would go permanently, silently green the day that sibling was renamed — the decoration DESIGN calls worse than absent. The registry-coverage control covers BOTH known members of its class (bootstrap_stage0_crate_layout_generated.rs and v1_interpreter_dispatch_generated.rs), because half a population asserted by prose is not evidence for the other half. Per DESIGN 4b(4) these stay enrolled after they green: they become the regression controls that the arm and its order remain real."
+
+fn merge_rows() -> List<GeneratedProjectionMergeRow> {
+  match deterministic_generated_projection_merge_rows() {
+    GeneratedProjectionMergeRowsRefused { cause: _ } => []
+    GeneratedProjectionMergeRowsAccepted { rows } => rows
+  }
+}
+
+type MergeRowIndexScan {
+  found: Bool
+  idx: Int
+}
+
+fn scan_index(patterns: List<String>, wanted: String) -> Int {
+  let scan = fold(patterns, init: MergeRowIndexScan { found: false, idx: 0 }, f: fn(acc, candidate) {
+    if acc.found {
+      acc
+    } else {
+      if candidate == wanted {
+        MergeRowIndexScan { found: true, idx: acc.idx }
+      } else {
+        MergeRowIndexScan { found: false, idx: acc.idx + 1 }
+      }
+    }
+  })
+  if scan.found { scan.idx } else { 0 - 1 }
+}
+
+fn row_index_of(pattern: String) -> Int {
+  scan_index(patterns: merge_rows() |> map(row => row.pattern), wanted: pattern)
+}
+
+fn emitted_line_index_of(line: String) -> Int {
+  match expected_gitattributes() {
+    GitattributesGenerationRefused => 0 - 1
+    GitattributesGenerated { content } =>
+      scan_index(patterns: split(s: content, delimiter: "\n"), wanted: line)
+  }
+}
+
+// Settings are compared through their rendered attribute token rather than by variant equality.
+// The token is what Git actually receives, so a claim stated in tokens cannot pass while the
+// emitted byte says something else — and it is the same projection the emitter uses, not a second
+// spelling of the mapping.
+fn setting_token(setting: GeneratedProjectionMergeSetting) -> String {
+  merge_attribute_token(setting: setting)
+}
+
+fn has_setting(pattern: String, setting: GeneratedProjectionMergeSetting) -> Bool {
+  merge_rows() |> any(row =>
+    row.pattern == pattern && setting_token(setting: row.setting) == setting_token(setting: setting)
+  )
+}
+
+// THE ARM ITSELF. Red before the stage0 arm existed: the emitted population was exactly the
+// committed generated-artifact registry, which names no stage0 source glob at all.
+test fn witness_stage0_generated_source_glob_is_claimed_holds() -> Bool {
+  has_setting(pattern: stage0_generated_source_pattern, setting: MergeGeneratedArtifact)
+    && stage0_generated_source_pattern == "src/v1/stage0/src/*.rs"
+}
+
+// A NAMED EMITTED SOURCE RESOLVES THROUGH THE GLOB AND CARRIES NO UNSET ROW. cli_run.rs would
+// resolve to unspecified if it were hand-maintained; v1_compiler_emit_rust.rs is emitted, so no
+// unset row may claim it. Naming an identity rather than counting is what keeps this from
+// passing vacuously on an empty population.
+test fn witness_emitted_stage0_source_is_not_unset_holds() -> Bool {
+  row_index_of(pattern: stage0_generated_source_pattern) >= 0
+    && !has_setting(
+      pattern: "src/v1/stage0/src/v1_compiler_emit_rust.rs",
+      setting: MergeAttributeUnspecified
+    )
+}
+
+// A HAND-MAINTAINED DIRECT CHILD IS TAKEN BACK OUT. cli_run.rs is on the crate layout's claim
+// and is not a registry artifact, so the complement must unset it.
+test fn witness_hand_maintained_stage0_source_is_unset_holds() -> Bool {
+  row_index_of(pattern: stage0_generated_source_pattern) >= 0
+    && has_setting(pattern: "src/v1/stage0/src/cli_run.rs", setting: MergeAttributeUnspecified)
+}
+
+// THE SUBTRACTION THAT PROTECTS EXISTING COVERAGE. bootstrap_stage0_crate_layout_generated.rs is
+// BOTH a crate-layout member and a registry artifact carrying the attribute today; an unset row
+// for it would REMOVE working coverage rather than add any.
+fn registry_stage0_artifact_keeps_coverage(path: String) -> Bool {
+  has_setting(pattern: path, setting: MergeGeneratedArtifact)
+    && !has_setting(pattern: path, setting: MergeAttributeUnspecified)
+}
+
+test fn witness_registry_artifact_keeps_coverage_holds() -> Bool {
+  registry_stage0_artifact_keeps_coverage(
+    path: "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs"
+  )
+    && registry_stage0_artifact_keeps_coverage(
+      path: "src/v1/stage0/src/v1_interpreter_dispatch_generated.rs"
+    )
+}
+
+// ORDER IS A CORRECTNESS PROPERTY AND FAILS SILENTLY. The last matching attributes line wins, so
+// the glob must precede every unset row. Transposed, the unset rows are inert and every
+// hand-maintained stage0 source silently acquires the driver, with no diagnostic anywhere.
+test fn witness_glob_precedes_every_unset_row_holds() -> Bool {
+  let glob_index = row_index_of(pattern: stage0_generated_source_pattern)
+  glob_index >= 0
+    && merge_rows() |> all(row => match row.setting {
+      MergeGeneratedArtifact => true
+      MergeAttributeUnspecified => row_index_of(pattern: row.pattern) > glob_index
+    })
+}
+
+// AND THE ORDER SURVIVES INTO THE BYTES, not only into the row list. The rendered glob line must
+// appear before the rendered unset line for a named hand-maintained path.
+test fn witness_rendered_order_places_glob_before_unset_holds() -> Bool {
+  let glob_line = concat(concat(stage0_generated_source_pattern, " "), generated_projection_merge_attribute)
+  let unset_line = concat(concat("src/v1/stage0/src/cli_run.rs", " "), generated_projection_merge_attribute_unset)
+  let glob_at = emitted_line_index_of(line: glob_line)
+  let unset_at = emitted_line_index_of(line: unset_line)
+  glob_at >= 0 && unset_at >= 0 && glob_at < unset_at
+}
+
+// RED CONTROL: a pattern the model never derives must not appear.
+test fn witness_red_unknown_pattern_absent_holds() -> Bool {
+  !has_setting(pattern: "__gunbc_red_control_absent_pattern__", setting: MergeGeneratedArtifact)
+    && !has_setting(pattern: "__gunbc_red_control_absent_pattern__", setting: MergeAttributeUnspecified)
+}
+
+test fn witness_holds() -> Bool {
+  witness_stage0_generated_source_glob_is_claimed_holds()
+    && witness_emitted_stage0_source_is_not_unset_holds()
+    && witness_hand_maintained_stage0_source_is_unset_holds()
+    && witness_registry_artifact_keeps_coverage_holds()
+    && witness_glob_precedes_every_unset_row_holds()
+    && witness_rendered_order_places_glob_before_unset_holds()
+    && witness_red_unknown_pattern_absent_holds()
+}
