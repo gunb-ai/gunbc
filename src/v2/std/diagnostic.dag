@@ -67,9 +67,11 @@ fn invariant_port_locus(port: Symbol, invariant: Symbol) -> Locus {
 }
 
 // A generic operation may receive its locus before it knows which refusal will fire. The
-// operation owns that classification: textual evidence becomes a source-bearing port locus,
-// while a source-independent seed is replaced by the exact invariant that actually failed.
-// Callers therefore cannot use a broad stage label as an escape from naming the invariant.
+// operation owns that classification: textual evidence becomes a source-bearing port locus;
+// every source-independent seed, including a structural node, becomes the exact invariant that
+// actually failed. A port refusal never silently sheds its port identity merely because an
+// upstream stage supplied a node. Callers therefore cannot use another locus arm as an escape
+// from naming the invariant.
 fn port_refusal_locus(at: Locus, port: Symbol, invariant: Symbol) -> Locus {
   match at {
     Textual { file: file, extent: extent } =>
@@ -78,7 +80,7 @@ fn port_refusal_locus(at: Locus, port: Symbol, invariant: Symbol) -> Locus {
       source_port_locus(port: port, file: file, extent: extent)
     InvariantPortLocus { anchor: _, invariant: _ } =>
       invariant_port_locus(port: port, invariant: invariant)
-    NodeLocus { anchor: anchor } => NodeLocus { anchor: anchor }
+    NodeLocus { anchor: _ } => invariant_port_locus(port: port, invariant: invariant)
   }
 }
 
