@@ -1,7 +1,7 @@
 module extdeps.fans.noctua
 
 import std.types { List }
-import std.measure { percent, rpm, milli_dba }
+import std.measure { millimeter, percent, rpm, milli_dba }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.fans.types {
   FanCatalogRow,
@@ -53,7 +53,7 @@ data noctua_nf_a9_hs_pwm_published_points: List<FanPublishedOperatingPoint> = [
 data noctua_nf_a9_hs_pwm_catalog: FanCatalogRow = FanCatalogRow {
   model: "NF-A9 HS-PWM",
   manufacturer: noctua,
-  frame_size_mm: 92,
+  frame_size: millimeter(92),
   bearing: SelfStabilisingOilPressure,
   pwm_controlled: true,
   published_points: noctua_nf_a9_hs_pwm_published_points,

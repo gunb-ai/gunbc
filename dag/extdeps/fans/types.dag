@@ -1,7 +1,7 @@
 module extdeps.fans.types
 
 import std.types { Bool, Int, List, NonEmptyStr }
-import std.measure { MilliDecibelA, Percent, RevolutionsPerMinute, milli_dba_count, percent_count, rpm, rpm_count }
+import std.measure { MilliDecibelA, Millimeter, Percent, RevolutionsPerMinute, milli_dba_count, percent_count, rpm, rpm_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
@@ -75,7 +75,7 @@ type FanAcousticEvidence
 type FanCatalogRow {
   model: NonEmptyStr
   manufacturer: Vendor<Hardware>
-  frame_size_mm: Int
+  frame_size: Millimeter
   bearing: FanBearing
   pwm_controlled: Bool
   published_points: List<FanPublishedOperatingPoint>
