@@ -27,6 +27,7 @@ import gunbc.toolchain_home_standing {
 import gunbc.toolchain_workflow_steps {
   toolchain_home_isolation_step,
   toolchain_pin_rustup_default_step,
+  hostile_legacy_writer_discriminator_step,
 }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
@@ -772,6 +773,11 @@ fn prepared_bound_steps(build_script: String) -> List<WitnessFloorBoundStep> {
       step: toolchain_pin_rustup_default_step(),
       role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
       step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
+    },
+    WitnessFloorBoundStep {
+      step: hostile_legacy_writer_discriminator_step(),
+      role: capability_neutral,
+      step_name: "Discriminate private homes from a hostile legacy writer",
     },
     WitnessFloorBoundStep {
       step: witness_floor_build_step(build_script: build_script),

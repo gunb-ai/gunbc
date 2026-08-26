@@ -45,6 +45,29 @@ jobs:
           if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
           if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
           echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
+      - name: Discriminate private homes from a hostile legacy writer
+        run: |
+          # dissolve-on: ci_hostile_legacy_writer_discriminator_script -- foreign-executor concurrency control proving readers sharing a mutable toolchain path are disrupted by a hostile reinstall while readers bound to the job-private CARGO_HOME are unaffected. Its process synchronization, executable replacement, and observations remain shell until a typed concurrent filesystem/tool-execution interference probe effect lands on host_effect_apply (shell-to-intent Phase 2); neither the environment-binding effect nor the toolchain-selection effect can replace this observation
+          set -u
+          ROOT="$RUNNER_TEMP/gunbc-hostile-toolchain-writer"
+          rm -rf "$ROOT"
+          mkdir -p "$ROOT"
+          run_arm() {
+            ARM=$1; READER_HOME=$2; LEGACY_HOME=$3
+            mkdir -p "$READER_HOME/bin" "$LEGACY_HOME/bin" "$ARM"
+            printf '#!/bin/sh\nprintf safe\n' > "$READER_HOME/bin/toolchain-probe"
+            chmod +x "$READER_HOME/bin/toolchain-probe"
+            ( while [ ! -e "$ARM/writer-ready" ]; do sleep 0.01; done; [ "$("$READER_HOME/bin/toolchain-probe")" = safe ] ) & A=$!
+            ( while [ ! -e "$ARM/writer-ready" ]; do sleep 0.01; done; [ "$("$READER_HOME/bin/toolchain-probe")" = safe ] ) & B=$!
+            ( printf '#!/bin/sh\nprintf hostile\n' > "$ARM/reinstall"; chmod +x "$ARM/reinstall"; mv -f "$ARM/reinstall" "$LEGACY_HOME/bin/toolchain-probe"; touch "$ARM/writer-ready"; while [ ! -e "$ARM/readers-done" ]; do sleep 0.01; done ) & C=$!
+            if wait "$A"; then AS=0; else AS=$?; fi; if wait "$B"; then BS=0; else BS=$?; fi; touch "$ARM/readers-done"; wait "$C"
+            [ "$AS" -eq 0 ] && [ "$BS" -eq 0 ]
+          }
+          SHARED="$ROOT/shared"
+          if run_arm "$ROOT/shared-arm" "$SHARED" "$SHARED"; then echo '::error::hostile writer shared-arm control unexpectedly passed' >&2; exit 1; fi
+          LEGACY="$ROOT/legacy"
+          case "${CARGO_HOME:-}" in "$RUNNER_TEMP/cargo") PRIVATE_READER="$CARGO_HOME" ;; *) PRIVATE_READER="$LEGACY" ;; esac
+          if ! run_arm "$ROOT/private-arm" "$PRIVATE_READER" "$LEGACY"; then echo '::error::hostile legacy writer affected private-home readers' >&2; exit 1; fi
       - name: Build the witness fold
         id: build_witness_fold
         run: |
@@ -94,6 +117,29 @@ jobs:
           if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
           if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
           echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
+      - name: Discriminate private homes from a hostile legacy writer
+        run: |
+          # dissolve-on: ci_hostile_legacy_writer_discriminator_script -- foreign-executor concurrency control proving readers sharing a mutable toolchain path are disrupted by a hostile reinstall while readers bound to the job-private CARGO_HOME are unaffected. Its process synchronization, executable replacement, and observations remain shell until a typed concurrent filesystem/tool-execution interference probe effect lands on host_effect_apply (shell-to-intent Phase 2); neither the environment-binding effect nor the toolchain-selection effect can replace this observation
+          set -u
+          ROOT="$RUNNER_TEMP/gunbc-hostile-toolchain-writer"
+          rm -rf "$ROOT"
+          mkdir -p "$ROOT"
+          run_arm() {
+            ARM=$1; READER_HOME=$2; LEGACY_HOME=$3
+            mkdir -p "$READER_HOME/bin" "$LEGACY_HOME/bin" "$ARM"
+            printf '#!/bin/sh\nprintf safe\n' > "$READER_HOME/bin/toolchain-probe"
+            chmod +x "$READER_HOME/bin/toolchain-probe"
+            ( while [ ! -e "$ARM/writer-ready" ]; do sleep 0.01; done; [ "$("$READER_HOME/bin/toolchain-probe")" = safe ] ) & A=$!
+            ( while [ ! -e "$ARM/writer-ready" ]; do sleep 0.01; done; [ "$("$READER_HOME/bin/toolchain-probe")" = safe ] ) & B=$!
+            ( printf '#!/bin/sh\nprintf hostile\n' > "$ARM/reinstall"; chmod +x "$ARM/reinstall"; mv -f "$ARM/reinstall" "$LEGACY_HOME/bin/toolchain-probe"; touch "$ARM/writer-ready"; while [ ! -e "$ARM/readers-done" ]; do sleep 0.01; done ) & C=$!
+            if wait "$A"; then AS=0; else AS=$?; fi; if wait "$B"; then BS=0; else BS=$?; fi; touch "$ARM/readers-done"; wait "$C"
+            [ "$AS" -eq 0 ] && [ "$BS" -eq 0 ]
+          }
+          SHARED="$ROOT/shared"
+          if run_arm "$ROOT/shared-arm" "$SHARED" "$SHARED"; then echo '::error::hostile writer shared-arm control unexpectedly passed' >&2; exit 1; fi
+          LEGACY="$ROOT/legacy"
+          case "${CARGO_HOME:-}" in "$RUNNER_TEMP/cargo") PRIVATE_READER="$CARGO_HOME" ;; *) PRIVATE_READER="$LEGACY" ;; esac
+          if ! run_arm "$ROOT/private-arm" "$PRIVATE_READER" "$LEGACY"; then echo '::error::hostile legacy writer affected private-home readers' >&2; exit 1; fi
       - name: Build the witness fold
         id: build_witness_fold
         run: |

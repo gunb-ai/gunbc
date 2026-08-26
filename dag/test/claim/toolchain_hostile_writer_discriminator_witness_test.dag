@@ -1,0 +1,39 @@
+module test.claim.toolchain_hostile_writer_discriminator_witness_test
+
+import v2.workflow.ci_workflow_run_emit { ci_hostile_legacy_writer_discriminator_script }
+
+// BOTH OUTCOMES ARE PERMANENT WITNESSES. The shared arm is the RED control: the readers and
+// antagonist name one executable, so a mechanism that merely asks every job to cooperate cannot
+// pass. The private arm changes only reader ownership and must remain green while that same
+// antagonist replaces the legacy path. Keeping both assertions prevents a permanently-green
+// decoration or a script that simply refuses every run from masquerading as discrimination.
+test fn w_shared_arm_requires_observed_interference() -> Bool {
+  string_contains(
+    s: ci_hostile_legacy_writer_discriminator_script(),
+    pattern: "if run_arm \"$ROOT/shared-arm\" \"$SHARED\" \"$SHARED\"; then"
+  ) && string_contains(
+    s: ci_hostile_legacy_writer_discriminator_script(),
+    pattern: "shared-arm control unexpectedly passed"
+  )
+}
+
+test fn w_private_arm_requires_unaffected_readers() -> Bool {
+  string_contains(
+    s: ci_hostile_legacy_writer_discriminator_script(),
+    pattern: "if ! run_arm \"$ROOT/private-arm\" \"$PRIVATE_READER\" \"$LEGACY\"; then"
+  ) && string_contains(
+    s: ci_hostile_legacy_writer_discriminator_script(),
+    pattern: "hostile legacy writer affected private-home readers"
+  )
+}
+
+// The GREEN arm must depend on the isolation binding itself. Hard-wiring a third directory here
+// was the withdrawn defect: it passed even with the isolation step deleted because nobody ever
+// read the path C mutated. The fallback deliberately aliases the controlled legacy fixture, making
+// deletion of the isolation binding turn the private arm red.
+test fn red_control_missing_isolation_collapses_private_onto_legacy() -> Bool {
+  string_contains(
+    s: ci_hostile_legacy_writer_discriminator_script(),
+    pattern: "\"$RUNNER_TEMP/cargo\") PRIVATE_READER=\"$CARGO_HOME\" ;; *) PRIVATE_READER=\"$LEGACY\""
+  )
+}
