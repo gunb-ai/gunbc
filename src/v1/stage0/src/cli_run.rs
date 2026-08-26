@@ -7684,28 +7684,74 @@ mod entry_admission_tests {
         );
     }
 
-    /// NESTING IS REFUSED LOUDLY, AND THIS IS THE ARM THAT SAYS SO.
+    /// NESTING IS REFUSED BEFORE THE DESTRUCTIVE RESET, AND THIS TEST IS ABOUT THE *BEFORE*.
     ///
-    /// The review condition this answers asked that `Drop` restore the value found on entry
-    /// rather than a blind `false`. It cannot: `resolution_silent_pick_enable` resets the
-    /// counters as its first act, so an inner session destroys the outer session's telemetry
-    /// before any restore could run, and a restored flag over emptied counters would report
-    /// "nothing observed" for a transaction whose observations were thrown away. The refusal is
-    /// therefore the honest arm, and this test is what keeps it from being an assertion nobody
-    /// executes.
+    /// A fixture asserting only that a second arm panics is not enough, and that is what the
+    /// first version of this test was. The assertion could sit AFTER
+    /// `resolution_silent_pick_enable`'s reset and such a test would still pass -- loudly
+    /// refusing re-entry while having already destroyed the enclosing transaction's counters.
+    /// Panicking and preserving are two different claims and only the second is the one worth
+    /// having.
     ///
-    /// It is a fixture-authorable state and not a production-reachable one; that is the
-    /// distinction that makes it a wall rather than a decoration.
+    /// So this asserts the enclosing session SURVIVES the rejected attempt: observations taken
+    /// before and after the refusal must BOTH still be in the telemetry that `take` returns.
+    /// It goes red if the wall is moved after the reset, which the panic-only form does not.
+    ///
+    /// WHAT THIS DOES NOT COVER, stated because the wall's placement is a real limit and not an
+    /// oversight: `v1_rt::resolution_silent_pick_enable` is `pub`, so a direct caller of the raw
+    /// primitive still bypasses this and destroys an outer population. Closing that means putting
+    /// the assertion in the primitive itself, ahead of its reset -- and the primitive is
+    /// generated, so its authority is `src/v1/runtime_rust.dag` and the change carries the regen
+    /// chain with it. That is this class's next-rung trigger, not something this test hides.
     #[test]
-    #[should_panic(expected = "already armed")]
-    fn arming_the_transaction_inside_an_armed_one_refuses_instead_of_discarding_telemetry() {
-        crate::v1_rt::resolution_silent_pick_enable();
-        let _ = compile_emission(&CompileRequest {
-            subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
-            source_roots: vec![ws("fixtures/v2_emission_gate/green")],
-            primary_precedence: true,
-            render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
-        });
+    fn a_rejected_nested_session_leaves_the_enclosing_transaction_intact() {
+        fn observe(name: &str) {
+            crate::v1_rt::resolution_silent_pick_record_global_bare_lcp_pick(
+                "fixture.env".to_string(),
+                name.to_string(),
+                2,
+                "fixture.chosen".to_string(),
+            );
+        }
+
+        let outer = SilentPickSession::enable();
+        observe("before_the_rejected_attempt");
+
+        let nested = std::panic::catch_unwind(SilentPickSession::enable);
+        assert!(
+            nested.is_err(),
+            "arming a second session inside an armed one must refuse; it silently reset the \
+             enclosing transaction's telemetry instead"
+        );
+
+        assert!(
+            crate::v1_rt::resolution_silent_pick_is_enabled(),
+            "the rejected attempt disarmed the enclosing session"
+        );
+        observe("after_the_rejected_attempt");
+
+        let telemetry = outer.take();
+        let seen: std::vec::Vec<&str> = telemetry
+            .global_bare_lcp_picks
+            .iter()
+            .map(|site| site.name.as_str())
+            .collect();
+        assert_eq!(
+            seen,
+            vec!["before_the_rejected_attempt", "after_the_rejected_attempt"],
+            "the enclosing transaction's observations did not survive the rejected nested \
+             attempt; the refusal happened AFTER the destructive reset, not before it"
+        );
+
+        assert!(
+            !crate::v1_rt::resolution_silent_pick_is_enabled(),
+            "`take` must return the session to inactive"
+        );
+        let fresh = SilentPickSession::enable().take();
+        assert!(
+            fresh.global_bare_lcp_picks.is_empty(),
+            "a fresh session inherited the previous transaction's observations"
+        );
     }
 
     /// A FILE WHERE A DIRECTORY BELONGS IS ITS OWN STATE, not "missing". Collapsing the two
