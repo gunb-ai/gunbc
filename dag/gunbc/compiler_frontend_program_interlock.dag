@@ -1,6 +1,6 @@
 module gunbc.compiler_frontend_program_interlock
 
-import std.types { NonEmptyStr, Bool, List }
+import std.types { NonEmptyStr, List }
 
 // WHY THIS CARRIER EXISTS, and why the ruling it holds is NOT written into the
 // two plan bodies that consume it. Operator ruling 2026-08-26 answered a
@@ -98,46 +98,25 @@ type NamespaceDeltaDisposition
   | UnexplainedSubjectMotion
   | NotEvaluated
 
-// WHY THIS PREDICATE SURVIVES THE PREDICATE-DISSOLUTION RULE, and its sibling
-// did not. The 2026-07-12 dissolution deleted SINGLE-VARIANT NICKNAMES -- an
-// is_hermetic/is_record that renames one variant as a Bool. It did not delete
-// predicates that decide a SEMANTIC PARTITION, and std.execution_mode records
-// the surviving case by name: execution_mode_is_wet_dispatch groups three
-// variants into two because Wet and Record share dispatch semantics, and
-// deciding that once keeps ONE authority instead of an inline match at every
-// consumer. This is that shape -- nine dispositions partitioned three-to-six on
-// whether the wall auto-admits them -- so the partition is the fact, not a
-// rename of any single variant. namespace_change_admitted_before_wall was NOT
-// that shape: two variants mapped one-to-one onto true/false is a nickname for
-// a variant test, so it was deleted (review 56363) and its consumers match on
-// NamespaceChangeClass, which is where the distinction already lives.
-fn delta_disposition_auto_admitted(d: NamespaceDeltaDisposition) -> Bool {
-  match d {
-    SameDeclarationIdentityRebind => true
-    UnusedSubjectMembershipRemoved => true
-    ExplicitlyEvaluatedZeroDelta => true
-    TargetChanged => false
-    NewAmbiguity => false
-    NewUnresolvedness => false
-    NewPoolCoincidenceResolution => false
-    UnexplainedSubjectMotion => false
-    NotEvaluated => false
-  }
-}
-
-// EPOCH BINDING. A measured population is bound to the exact compiler, corpus,
-// namespace authority and instrument that produced it. When a namespace wave
-// changes the subject constructor or the name authority, the prior census
-// becomes HISTORICAL rather than FALSE -- it is not erased, and the ratchet
-// baseline is not silently reset. Intentional namespace-induced debt is carried
-// by exact typed transition admissions, never absorbed by taking a fresh
-// baseline after the fact, which would be DESIGN section 5's absorbing fallback
-// applied to the debt contract itself.
-type CompilerPopulationEpoch {
-  exact_head: NonEmptyStr,
-  corpus_digest: NonEmptyStr,
-  namespace_authority_identity: NonEmptyStr,
-  instrument_identity: NonEmptyStr,
-}
+// NO BOOL PROJECTION OVER THIS COPRODUCT, DELIBERATELY. An earlier revision
+// carried delta_disposition_auto_admitted, a nine-into-two partition deciding
+// which dispositions the wall auto-admits. It is deleted for a reason that does
+// not depend on the predicate-dissolution question it was reviewed under
+// (review 56367): IT HAD NO CONSUMER. The wave-admission wall that will classify
+// deltas does not exist yet, and DESIGN section 6 names a new artifact with no
+// final consumer as experimental residue. A partition nobody computes over is a
+// guess about what the consumer will want.
+//
+// The partition the operator ruled is therefore recorded HERE, where it cannot
+// be mistaken for an executing mechanism: the wall AUTO-ADMITS a same-declaration
+// -identity rebind, a removal of genuinely unused subject membership, and an
+// explicitly evaluated zero delta. Every other disposition -- a changed target,
+// new ambiguity, new unresolvedness, new pool-coincidence resolution,
+// unexplained subject motion, and NotEvaluated -- REFUSES unless an exact
+// operator-authored transition admission names it.
+//
+// When the wall is built it matches on NamespaceDeltaDisposition directly. If a
+// shared projection is wanted at that point, it belongs beside the wall that
+// computes it, with the consumer that makes it load-bearing.
 
 data interlock_ruling_date: NonEmptyStr = "2026-08-26" as NonEmptyStr

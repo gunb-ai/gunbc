@@ -149,7 +149,7 @@ data import_namespace_program_bindings: List<DeclarationRef> = [
   // cited by both plans rather than restated in either.
   decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "milestone_prerequisites"),
   decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "NamespaceChangeClass"),
-  decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "delta_disposition_auto_admitted"),
+  decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "NamespaceDeltaDisposition"),
   decl_ref(module_path: "gunbc.namespace_cut_landing_order", decl_name: "namespace_cut_grammar_last_ruling"),
 ]
 
