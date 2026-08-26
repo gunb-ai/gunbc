@@ -296,7 +296,7 @@ fn ci_hostile_legacy_writer_discriminator_script() -> String {
       "if run_arm \"$ROOT/shared-arm\" \"$SHARED\" \"$SHARED\"; then SHARED_STATUS=0; else SHARED_STATUS=$?; fi\n",
       "if [ \"$SHARED_STATUS\" -ne 1 ]; then echo \"::error::hostile writer shared-arm expected reader interference, status=$SHARED_STATUS\" >&2; exit 1; fi\n",
       "LEGACY=\"$ROOT/legacy\"\n",
-      "case \"${CARGO_HOME:-}\" in \"$RUNNER_TEMP/cargo\") PRIVATE_READER=\"$CARGO_HOME\" ;; *) PRIVATE_READER=\"$LEGACY\" ;; esac\n",
+      "case \"$\{CARGO_HOME:-}\" in \"$RUNNER_TEMP/cargo\") PRIVATE_READER=\"$CARGO_HOME\" ;; *) PRIVATE_READER=\"$LEGACY\" ;; esac\n",
       "if run_arm \"$ROOT/private-arm\" \"$PRIVATE_READER\" \"$LEGACY\"; then PRIVATE_STATUS=0; else PRIVATE_STATUS=$?; fi\n",
       "if [ \"$PRIVATE_STATUS\" -ne 0 ]; then echo \"::error::hostile legacy writer affected private-home readers, status=$PRIVATE_STATUS\" >&2; exit 1; fi\n",
     ], "")
