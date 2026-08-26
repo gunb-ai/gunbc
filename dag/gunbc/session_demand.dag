@@ -54,6 +54,14 @@ type SessionPlacementCensus
   = SessionPlacementCensusComplete { placements: List<SessionPlacement> }
   | SessionPlacementCensusIncomplete { unclassifiable: List<SessionPlacement> }
 
+// EITHER INVENTORY BEING UNREADABLE MAKES THE POPULATION UNESTABLISHED, and this type exists so
+// that fact cannot be lost between the two reads. The population is a join over BOTH the managed
+// slice and the flat candidates; if either read failed, no census over the join means anything,
+// because the missing side is exactly the side that would have refused it.
+type SessionPopulation
+  = SessionPopulationEstablished { placements: List<SessionPlacement> }
+  | SessionPopulationUnavailable { cause: String }
+
 fn placement_is_unclassifiable(p: SessionPlacement) -> Bool {
   match p {
     SessionPlacementUnclassifiable { identity: _, cause: _ } => true

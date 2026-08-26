@@ -30,6 +30,7 @@ import gunbc.session_demand {
   SessionContainerInventoryUnavailable,
   SessionPlacement, ManagedSession, SessionPlacementUnclassifiable,
   SessionMemoryDemand, ParentSliceDemand,
+  SessionPopulation, SessionPopulationEstablished, SessionPopulationUnavailable,
   session_placement_census, census_membership_signal, session_demand_membership_gate,
   SessionPlacementCensusComplete, SessionPlacementCensusIncomplete,
   SessionDemandObservationUnavailable, SessionDemandPopulationIncomplete,
@@ -153,13 +154,45 @@ fn observe_parent_slice_demand(
   }
 }
 
-// The identities an inventory established, or none when it could not be read. An unavailable
-// inventory contributes NO identities rather than an empty population, and the entry refuses on it
-// separately -- the two must not both render as "nothing found".
-fn inventory_identities(i: SessionContainerInventory) -> List<NonEmptyStr> {
-  match i {
-    SessionContainerInventoryObserved { host: _, identities: ids } => ids
-    SessionContainerInventoryUnavailable { host: _, cause: _ } => []
+// THE FABRICATING PROJECTION IS DELETED RATHER THAN GUARDED (review 56217, and the reviewer is
+// right). It answered `[]` for an inventory that COULD NOT BE READ, which is indistinguishable
+// from an inventory that was read and found empty -- so a failed system.slice enumeration
+// contributed no flat candidates, the census completed, and the entry reported AllSessionsManaged
+// and exited SUCCESS while claiming an aggregate may be established over a host whose flat
+// population was never observed. That is the empty-observation narrow in the one arm that GRANTS
+// the aggregate, and it is strictly worse than the widen DESIGN already forbids.
+//
+// It is worth recording HOW it survived: the deleted function carried an annotation asserting that
+// "the entry refuses on it separately". That was true of the managed arm and false of the legacy
+// one, and the sentence bought exactly the reviewer confidence it had not earned. An annotation
+// claiming a protection is worse than no annotation when the protection is partial.
+//
+// The repair is construction rather than a second check: there is now no expression that turns an
+// unavailable inventory into a population at all, so the verdict and the exit status are derived
+// from ONE value and cannot disagree about whether the population was established.
+fn session_population(
+  managed: SessionContainerInventory,
+  legacy: SessionContainerInventory,
+) -> SessionPopulation {
+  match managed {
+    SessionContainerInventoryUnavailable { host: _, cause: why } =>
+      SessionPopulationUnavailable {
+        cause: concat("the managed slice could not be enumerated: ", why),
+      }
+    SessionContainerInventoryObserved { host: _, identities: managed_ids } =>
+      match legacy {
+        SessionContainerInventoryUnavailable { host: _, cause: why } =>
+          SessionPopulationUnavailable {
+            cause: concat("system.slice could not be enumerated, so whether any session runs FLAT outside the managed slice is unknown; the managed count alone cannot establish the population: ", why),
+          }
+        SessionContainerInventoryObserved { host: _, identities: legacy_ids } =>
+          SessionPopulationEstablished {
+            placements: concat(
+              managed_placements(identities: managed_ids),
+              legacy_placements(identities: legacy_ids)
+            )
+          }
+      }
   }
 }
 
@@ -259,12 +292,6 @@ func session_demand_observe_ci_wet() -> ProcessExit {
       let managed = observe_cgroup_children(transport: transport, host: host, cgroup_path: managed_parent)
       let legacy = observe_cgroup_children(transport: transport, host: host, cgroup_path: system_slice_path())
       let slice = observe_parent_slice_demand(transport: transport, parent: managed_parent)
-      let header = join([
-        "collector\t", session_demand_collector_revision as String, "\n",
-        "host\t", host as String, "\n",
-        "observation_started\t", started as String, "\n",
-        "observation_completed\t", clock_now_probed_at_or_unknown() as String, "\n",
-      ], "")
       let managed_body = match managed {
         SessionContainerInventoryObserved { host: _, identities: ids } =>
           join([
@@ -285,46 +312,57 @@ func session_demand_observe_ci_wet() -> ProcessExit {
         SessionContainerInventoryUnavailable { host: _, cause: why } =>
           join(["system_slice_children\tUNAVAILABLE\t", why, "\n"], "")
       }
-      // THE CLASSIFICATION IS EXERCISED, NOT JUST THE ENUMERATION. A receipt that printed rows and
-      // stopped would leave the census and the membership gate unexecuted on real hosts, so the
-      // one thing the cut claims -- that a COMPLETE observation can be established -- would rest on
-      // fixtures. Running it here makes a converged host and a mixed host produce visibly different
-      // verdicts from the same code path.
-      let placements = concat(
-        managed_placements(identities: inventory_identities(i: managed)),
-        legacy_placements(identities: inventory_identities(i: legacy))
-      )
-      let census = session_placement_census(placements: placements)
-      let verdict = match census {
-        SessionPlacementCensusIncomplete { unclassifiable: us } =>
-          join(["census\tINCOMPLETE\t", to_string(count(us)), " unattributable flat docker scope(s); no aggregate may be established over this host\n"], "")
-        SessionPlacementCensusComplete { placements: ps } =>
-          match census_membership_signal(c: census) {
-            Absent => "census\tCOMPLETE\tbut no membership signal could be projected\n"
-            Present { value: sig } =>
-              match session_demand_membership_gate(host: host, m: session_membership_standing(m: sig)) {
-                Absent => join(["census\tCOMPLETE\tAllSessionsManaged over ", to_string(count(ps)), " session(s); an aggregate may be established\n"], "")
-                Present { value: o } => match o {
-                  SessionDemandPopulationIncomplete { host: _, membership: _, cause: why } =>
-                    join(["census\tCOMPLETE\tbut membership refuses the aggregate: ", why, "\n"], "")
-                  NoConcurrentSessionDemandObserved { host: _ } =>
-                    "census\tCOMPLETE\tNoConcurrentSessionDemandObserved: the read ran and counted zero sessions\n"
-                  SessionDemandObservationUnavailable { host: _, cause: why } =>
-                    join(["census\tUNAVAILABLE\t", why, "\n"], "")
-                  SessionDemandObserved { receipt: _ } => "census\tOBSERVED\n"
-                }
+      // THE CLASSIFICATION IS EXERCISED, NOT JUST THE ENUMERATION. A receipt that printed rows
+      // and stopped would leave the census and the membership gate unexecuted on real hosts, so
+      // the one thing the cut claims -- that a COMPLETE observation can be established -- would
+      // rest on fixtures. Running it here makes a converged host and a mixed host produce visibly
+      // different verdicts from the same code path.
+      let population = session_population(managed: managed, legacy: legacy)
+      let verdict = match population {
+        SessionPopulationUnavailable { cause: why } =>
+          join(["census\tUNAVAILABLE\t", why, "\n"], "")
+        SessionPopulationEstablished { placements: placements } =>
+          match session_placement_census(placements: placements) {
+            SessionPlacementCensusIncomplete { unclassifiable: us } =>
+              join(["census\tINCOMPLETE\t", to_string(count(us)), " unattributable flat docker scope(s); no aggregate may be established over this host\n"], "")
+            SessionPlacementCensusComplete { placements: ps } =>
+              match census_membership_signal(c: session_placement_census(placements: placements)) {
+                Absent => "census\tCOMPLETE\tbut no membership signal could be projected\n"
+                Present { value: sig } =>
+                  match session_demand_membership_gate(host: host, m: session_membership_standing(m: sig)) {
+                    Absent => join(["census\tCOMPLETE\tAllSessionsManaged over ", to_string(count(ps)), " session(s); an aggregate may be established\n"], "")
+                    Present { value: o } => match o {
+                      SessionDemandPopulationIncomplete { host: _, membership: _, cause: why } =>
+                        join(["census\tCOMPLETE\tbut membership refuses the aggregate: ", why, "\n"], "")
+                      NoConcurrentSessionDemandObserved { host: _ } =>
+                        "census\tCOMPLETE\tNoConcurrentSessionDemandObserved: the read ran and counted zero sessions\n"
+                      SessionDemandObservationUnavailable { host: _, cause: why } =>
+                        join(["census\tUNAVAILABLE\t", why, "\n"], "")
+                      SessionDemandObserved { receipt: _ } => "census\tOBSERVED\n"
+                    }
+                  }
               }
           }
       }
+      // COMPLETED IS STAMPED HERE AND NOWHERE EARLIER (review 56217). It previously sat in the
+      // header, which is bound BEFORE the per-session memory.current reads -- so the receipt named
+      // a completion time that did not bound the observation it described. Every read above this
+      // line has happened by the time this clock is consulted.
+      let header = join([
+        "collector\t", session_demand_collector_revision as String, "\n",
+        "host\t", host as String, "\n",
+        "observation_started\t", started as String, "\n",
+        "observation_completed\t", clock_now_probed_at_or_unknown() as String, "\n",
+      ], "")
       let body = join([header, parent_slice_lines(p: slice), managed_body, legacy_body, verdict], "")
       let w = Filesystem.Write(path: session_demand_observe_receipt_path, content: body)
       if w.success == false {
         exit_failure(reason: join(["session-demand receipt write failed: ", w.error], ""))
       } else {
-        match managed {
-          SessionContainerInventoryUnavailable { host: _, cause: why } =>
-            exit_failure(reason: join(["session_demand_observe_ci_wet: the managed slice could not be enumerated, so no population was established: ", why, "\n", body], ""))
-          SessionContainerInventoryObserved { host: _, identities: _ } => ExitSuccess
+        match population {
+          SessionPopulationUnavailable { cause: why } =>
+            exit_failure(reason: join(["session_demand_observe_ci_wet: no population was established, so nothing here may be read as an observation of this host: ", why, "\n", body], ""))
+          SessionPopulationEstablished { placements: _ } => ExitSuccess
         }
       }
     }

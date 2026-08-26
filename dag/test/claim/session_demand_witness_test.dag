@@ -13,11 +13,13 @@ import extdeps.linux.cgroup_v2_memory {
 }
 import gunbc.session_demand_observe {
   cgroup_child_names, managed_placements, legacy_placements,
-  cgroup_name_is_docker_scope, flat_session_candidates,
+  cgroup_name_is_docker_scope, flat_session_candidates, session_population,
 }
 import gunbc.session_demand {
   ManagedSession, LegacyFlatSession, SessionPlacementUnclassifiable,
   SessionPlacementCensusComplete, SessionPlacementCensusIncomplete,
+  SessionContainerInventoryObserved, SessionContainerInventoryUnavailable,
+  SessionPopulationEstablished, SessionPopulationUnavailable,
   session_placement_census, census_membership_signal,
   placement_is_managed, placement_is_unclassifiable,
   session_demand_membership_gate,
@@ -229,8 +231,45 @@ fn systemd_units_are_not_session_candidates() -> Bool {
   none_of_the_units && the_scope_is_a_candidate && count(mixed) == 1 && units_do_not_refuse_the_census
 }
 
+// AN UNREADABLE system.slice MUST NOT PRODUCE A POPULATION (review 56217). This is the pair the
+// defect it caught would have failed, and it is worth stating why NONE of the other twelve
+// witnesses could see it: the fabricating projection answered `[]` for an unreadable inventory,
+// which is a PERFECTLY VALID population, so the census logic below it was correct, the carriers
+// were correct, and every assertion stayed green. The wrong thing was the DENOMINATOR, one layer
+// above anything that was being asserted about.
+//
+// The dangerous direction is specific: it is the flat side that would have REFUSED the aggregate,
+// so losing it silently is what turns an unobserved host into "AllSessionsManaged, an aggregate
+// may be established". The managed side failing is the safe direction and is asserted too, so the
+// test cannot pass by guarding only the arm that happens to be checked.
+fn unreadable_inventory_never_establishes_a_population() -> Bool {
+  let observed_managed = SessionContainerInventoryObserved {
+    host: operator_host_srv1,
+    identities: ["docker-0000000000000000000000000000000000000000000000000000000000000000.scope"],
+  }
+  let observed_empty = SessionContainerInventoryObserved { host: operator_host_srv1, identities: [] }
+  let unreadable = SessionContainerInventoryUnavailable {
+    host: operator_host_srv1,
+    cause: "find exited unsuccessfully",
+  }
+  let legacy_unreadable_refuses = match session_population(managed: observed_managed, legacy: unreadable) {
+    SessionPopulationUnavailable { cause: _ } => true
+    SessionPopulationEstablished { placements: _ } => false
+  }
+  let managed_unreadable_refuses = match session_population(managed: unreadable, legacy: observed_empty) {
+    SessionPopulationUnavailable { cause: _ } => true
+    SessionPopulationEstablished { placements: _ } => false
+  }
+  let both_readable_establishes = match session_population(managed: observed_managed, legacy: observed_empty) {
+    SessionPopulationEstablished { placements: ps } => count(ps) == 1
+    SessionPopulationUnavailable { cause: _ } => false
+  }
+  legacy_unreadable_refuses && managed_unreadable_refuses && both_readable_establishes
+}
+
 fn session_demand_producer_pure_half_holds() -> Bool {
   child_name_parsing_holds()
     && placement_classification_needs_no_naming_authority()
     && systemd_units_are_not_session_candidates()
+    && unreadable_inventory_never_establishes_a_population()
 }
