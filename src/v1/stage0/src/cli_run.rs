@@ -7410,9 +7410,24 @@ mod entry_admission_tests {
             "control: rust alone must complete, else the pair proves nothing: {:?}",
             rust_only.disposition.tag()
         );
-        let clean_file_count = rust_only.emissions[0].result.files.len();
+        // THE WHOLE TREE, NOT ITS SIZE. An equal-count comparison would pass a refusal that
+        // silently substituted different bytes, which is the assertion this test exists to
+        // make -- so the control captures (path, content) for every file and the refused run
+        // is compared against it verbatim.
+        let tree_of = |run: &CompileRun| -> Vec<(String, String)> {
+            let mut v: Vec<(String, String)> = run
+                .emissions
+                .iter()
+                .filter(|emission| emission.target_name == "rust")
+                .flat_map(|emission| emission.result.files.iter())
+                .map(|f| (format!("{:?}", f.path), f.content.clone()))
+                .collect();
+            v.sort();
+            v
+        };
+        let clean_tree = tree_of(&rust_only);
         assert!(
-            clean_file_count > 0,
+            !clean_tree.is_empty(),
             "control: rust alone must emit a non-empty tree"
         );
 
@@ -7448,11 +7463,17 @@ mod entry_admission_tests {
             .iter()
             .find(|emission| emission.target_name == "rust")
             .expect("the rust emission must be present on the refused run");
+        assert!(
+            !rust_emission.result.files.is_empty(),
+            "the refused run must hold rust's files, not an emptied emission"
+        );
         assert_eq!(
-            rust_emission.result.files.len(),
-            clean_file_count,
+            tree_of(&both),
+            clean_tree,
             "the refused run must hold the SAME finished rust tree the control emitted, \
-             unwritten -- a shrunken tree would mean the refusal also discarded work"
+             BYTE FOR BYTE and unwritten -- a shrunken tree would mean the refusal discarded \
+             work, and an equal-count-but-different-content tree would mean it silently \
+             substituted output while reporting a refusal"
         );
     }
 
