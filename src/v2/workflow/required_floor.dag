@@ -299,18 +299,13 @@ fn required_floor_site_disposition(
   }
 }
 
-// THE ONE PREDICATE A CONSUMER READS TO ASK "DOES THIS SITE JOIN THE EXECUTED ROSTER", and it
-// descends rather than testing a rendered name. There is no wildcard: a fifth disposition arm
-// must make this function fail to compile, so whoever adds it decides whether it is planned
-// rather than inheriting whichever verdict a `_` happened to name.
-fn required_floor_disposition_is_planned(d: RequiredFloorDisposition) -> Bool {
-  match d {
-    Planned => true
-    DeclinedLongModule { matched_prefix: _ } => false
-    DeclinedFixtureMember { matched_prefix: _ } => false
-    DeclinedLiveTree => false
-  }
-}
+// NO `required_floor_disposition_is_planned` LIVES HERE. An earlier revision of this change
+// carried one — a `Bool` over this closed coproduct — and it was the same mechanical shape the
+// rest of this branch dissolved three of (review 55984). Its only consumer filtered a roster with
+// it, keeping the routed side and discarding the declined one, which is the fact the census
+// exists to carry. `gunbc.discovery_census` `census_partition` now descends over these arms in one
+// pass and returns both sides, so a fifth arm must be classified rather than absorbed into
+// `false`, and the roster cannot be produced without its exclusions.
 
 
 

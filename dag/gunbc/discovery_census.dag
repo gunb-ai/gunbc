@@ -14,7 +14,6 @@ import v2.workflow.required_floor {
   RequiredFloorDisposition,
   Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedLiveTree,
   required_floor_site_disposition,
-  required_floor_disposition_is_planned,
 }
 import v2.std.live_tree { LiveTreeDisposition }
 import v2.std.optional { Optional, Absent, Present, optional_absent, optional_present }
@@ -225,8 +224,46 @@ fn discovery_census(sites: List<DiscoveredSite>) -> SiteCensus {
 // //:required, DERIVED FROM THE PLANNED SUBSET
 // ---------------------------------------------------------------------------------------------
 
+// THE CENSUS PARTITIONS IN ONE PASS RATHER THAN FILTERING ON A BOOL, and the reason is this
+// module's own subject. A `filter` over a `Bool` predicate keeps the routed side and DROPS the
+// declined one — which is precisely the fact this census exists to carry, since the overclaim it
+// was built to make unwritable is "a discovered witness executes". Reading routed and declined
+// out of one fold means the two are computed from a single traversal and neither can be produced
+// without the other, so the roster and its exclusions cannot drift apart.
+//
+// It also removes the `Bool` over a closed coproduct (review 55984): the partition descends over
+// `RequiredFloorDisposition` here, wildcard-free, so a fifth arm must be classified rather than
+// silently absorbed into the declined side by a predicate that answered `false`.
+type CensusPartition {
+  planned: List<CensusRow>
+  declined: List<CensusRow>
+}
+
+fn census_partition_step(acc: CensusPartition, row: CensusRow) -> CensusPartition {
+  match row.disposition {
+    Planned => CensusPartition { planned: concat([row], acc.planned), declined: acc.declined }
+    DeclinedLongModule { matched_prefix: _ } =>
+      CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
+    DeclinedFixtureMember { matched_prefix: _ } =>
+      CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
+    DeclinedLiveTree =>
+      CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
+  }
+}
+
+fn census_partition(rows: List<CensusRow>) -> CensusPartition {
+  let built = fold(rows, init: CensusPartition { planned: [], declined: [] }, f: fn(acc, row) {
+    census_partition_step(acc: acc, row: row)
+  })
+  CensusPartition { planned: reverse(built.planned), declined: reverse(built.declined) }
+}
+
 fn census_planned_rows(rows: List<CensusRow>) -> List<CensusRow> {
-  filter(rows, row => required_floor_disposition_is_planned(d: row.disposition))
+  census_partition(rows: rows).planned
+}
+
+fn census_declined_rows(rows: List<CensusRow>) -> List<CensusRow> {
+  census_partition(rows: rows).declined
 }
 
 fn census_planned_labels(rows: List<CensusRow>) -> List<Label> {
