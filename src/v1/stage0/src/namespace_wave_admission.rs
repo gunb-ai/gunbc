@@ -792,7 +792,17 @@ pub enum WaveAdmissionOutcome {
     },
 }
 
-/// Run git in the workspace and return trimmed stdout, or a refusal naming the command.
+/// Run git in the workspace and return stdout with TRAILING whitespace removed, or a refusal
+/// naming the command.
+///
+/// `trim_end`, not `trim`, and the asymmetry is load-bearing rather than incidental: one caller
+/// asks for the CONTENT OF A FILE at a ref (`git show <ref>:<path>`), and a `.dag` module whose
+/// first line is indented would arrive with that indentation eaten -- a different file from the
+/// one committed, compared against a head side read from disk intact. Every other caller here
+/// (`rev-parse`, `merge-base`, `diff --name-only`, `status --porcelain`) produces output that
+/// either carries no leading whitespace or is re-trimmed by the caller, so nothing pays for the
+/// asymmetry. `status --porcelain` is the one to notice: its lines BEGIN with the two-column XY
+/// code, so a leading `trim` would have corrupted a status read rather than tidied it.
 ///
 /// THE ONE COPY. `claim_executor` carried a byte-identical private copy, and this module's first
 /// draft carried a second — three spellings of one concept would have been the §3 fork this wall
