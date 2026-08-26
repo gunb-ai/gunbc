@@ -42,7 +42,10 @@ fn sweep_errors(dir: &Path, module: &str, body: &str) -> Vec<String> {
     std::fs::create_dir_all(&root).expect("probe root");
     std::fs::write(root.join("probe.dag"), body).expect("probe source");
     match v1_compiler::cli_run::run_dag_parse_sweep(dir, &["probe_root"]) {
-        Ok(n) => panic!("{module}: sweep reported {n} clean file(s); the fixture must refuse"),
+        Ok(sweep) => panic!(
+            "{module}: sweep reported {} clean file(s); the fixture must refuse",
+            sweep.parse_clean
+        ),
         Err(errors) => errors,
     }
 }

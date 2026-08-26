@@ -126,7 +126,7 @@ fn port_reading(arg_capture: Node) -> v2.lens.complexity_accumulator_copy.PortRe
     v2.lens.complexity_accumulator_copy.PortPureLiteral
   } else {
     if idents == 1 {
-      match arg_value_symbol(arg_capture: arg_capture) {
+      match v2.lens.complexity_accumulator_copy.analyze.arg_value_symbol(arg_capture: arg_capture) {
         Present { value: sym } => v2.lens.complexity_accumulator_copy.PortBareName { name: sym }
         Absent => v2.lens.complexity_accumulator_copy.PortComputedExpression { mentions: mentions }
       }
@@ -243,7 +243,7 @@ fn let_resolution(
             LetBindsFact { binding: v2.lens.complexity_accumulator_copy.LetBinding { name: binder, fact: v2.lens.complexity_accumulator_copy.BindsFresh } }
           } else {
             if idents == 1 {
-              match arg_value_symbol(arg_capture: rhs) {
+              match v2.lens.complexity_accumulator_copy.analyze.arg_value_symbol(arg_capture: rhs) {
                 Absent =>
                   LetBindsFact {
                     binding: v2.lens.complexity_accumulator_copy.LetBinding {
@@ -857,7 +857,7 @@ fn findings_have_refusal(fs: List<v2.lens.complexity_accumulator_copy.Finding>) 
 
 fn findings_have_refusal_cause(fs: List<v2.lens.complexity_accumulator_copy.Finding>, cause: Symbol) -> Bool {
   findings_any(fs: fs, pred: fn(f) {
-    match finding_refusal_cause(f: f) {
+    match v2.lens.complexity_accumulator_copy.analyze.finding_refusal_cause(f: f) {
       Present { value: c } => c == cause
       Absent => false
     }

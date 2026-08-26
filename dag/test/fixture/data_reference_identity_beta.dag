@@ -1,0 +1,14 @@
+module test.fixture.data_reference_identity_beta
+
+// The other HALF of the collision -- same spelling, different module, different value.
+type DriBetaNet {
+  id: Int
+}
+
+data dri_model: String = "dri-beta-model"
+
+func dri_beta_run(beta_model: String = dri_model) -> String
+  uses net: DriBetaNet
+{
+  beta_model
+}
