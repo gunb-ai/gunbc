@@ -27,23 +27,8 @@ import extdeps.github.actions { Step, RunStep }
 import v2.workflow.ci_workflow_run_emit {
   ci_toolchain_home_isolation_script,
   ci_pin_rustup_default_script,
-  ci_hostile_legacy_writer_discriminator_script,
 }
 import v2.std.optional { Present }
-
-fn hostile_legacy_writer_discriminator_step() -> Step {
-  RunStep {
-    name: Present { value: "Discriminate private homes from a hostile legacy writer" },
-    id: none,
-    run: ci_hostile_legacy_writer_discriminator_script(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
 
 // THE STEP NAME IS NOT "Isolate toolchain dirs". That name is load-bearing elsewhere --
 // gunbc.ci_materialization ci_cost_floor_exempt_step_names_note keys the cost-floor exempt roster
