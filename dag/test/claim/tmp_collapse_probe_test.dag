@@ -1,0 +1,24 @@
+module test.claim.tmp_collapse_probe
+
+import std.types { String, Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn bare_unimported_head_already_matches() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_collapse_bare\n\ntype CollapseHolderA<K, V> {\n  row: KeyedRow<K, V>\n}\n",
+    "src/probe_collapse_bare.rs",
+    ["pub struct CollapseHolderA<K: Clone, V: Clone>"],
+    []
+  )
+}
+
+test fn qualified_nonsense_head_matches_the_same_leaf() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_collapse_qual\n\ntype CollapseHolderB<K, V> {\n  row: no.such.module.KeyedRow<K, V>\n}\n",
+    "src/probe_collapse_qual.rs",
+    ["pub struct CollapseHolderB<K: Clone, V: Clone>"],
+    []
+  )
+}
