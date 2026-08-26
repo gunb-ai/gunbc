@@ -316,13 +316,45 @@ test fn paramless_step_fold_is_step_shape_invalid() -> Bool {
   is_step_shape_invalid(source_text: paramless_step_fold_snippet, file: ^paramless_step_probe_file)
 }
 
-// (a) NO LOOP IS FABRICATED ON ANY OF THEM -- the substantive safety property,
-// unchanged by the split and asserted across every subject it touches.
-test fn split_dispositions_fabricate_no_loop() -> Bool {
-  fabricates_no_loop(source_text: named_step_fold_snippet, file: ^named_step_probe_file)
-    && fabricates_no_loop(source_text: algebra_fold_snippet, file: ^algebra_probe_file)
-    && fabricates_no_loop(source_text: bodyless_fold_snippet, file: ^bodyless_probe_file)
-    && fabricates_no_loop(source_text: paramless_step_fold_snippet, file: ^paramless_step_probe_file)
+// (a) THE PROJECTION'S LAST UNCOVERED ARM, CROSSED ONCE.
+//
+// WHAT WAS HERE, AND WHY ONE CLAIM REPLACES IT RATHER THAN FOUR. A single
+// `split_dispositions_fabricate_no_loop` re-ingested all four snippets to ask
+// whether `fold_call_to_loop` rejects them -- four crossings of the ingest and
+// lowering apparatus, and the corpus's second most expensive witness at
+// cpu_ms=4058 against a 1552ms disclosure line, measured from the required
+// floor's own `[over-cost]` line on run 32915551049.
+//
+// SPLITTING IT INTO FOUR WITNESSES WOULD HAVE DIVIDED THAT COST RATHER THAN
+// REMOVING IT, and bought little: `fold_call_to_loop` is an exhaustive
+// projection over `FoldCallLowering` with NO fixture-dependent behaviour once
+// the variant is selected, and three of the four snippets select the SAME
+// variant. Three witnesses re-proving one arm is the redundancy DESIGN §2
+// prices, not a subject each.
+//
+// WHAT ACTUALLY NEEDED COVERING is the one projection arm no other claim
+// reaches. Verified by reading every claim in this file rather than by trusting
+// the argument for the deletion -- a conjunction cannot object to its own
+// removal, and the case for removing this one rested entirely on claims
+// asserted to already exist. Three did. One did not:
+//
+//     FoldCallLowered            -> Accepted   fold_call_lowers_to_terminating_loop
+//     FoldCallNotAFold           -> Rejected   non_fold_call_refuses
+//     FoldCallStepFormUnresolved -> Rejected   bodyless_fold_call_refuses_no_loop_fabricated
+//     FoldCallStepShapeInvalid   -> Rejected   NOTHING -- only the deleted conjunction
+//
+// So the conjunction WAS carrying one distinction alone, and deleting it
+// without this replacement would have lost an arm while looking like it
+// removed a redundancy. This is that arm, crossed once.
+//
+// SELECTION COVERAGE IS UNAFFECTED AND WAS CHECKED SEPARATELY, because "the
+// disposition claims already cover selection" is exactly the kind of assertion
+// that needs executing rather than reading. `is_step_form_unresolved` and
+// `is_step_shape_invalid` are TOTAL matches over all four variants -- true for
+// the named one, false for the other three -- so each of the four snippets
+// keeps a claim that goes red if it starts selecting a different variant.
+test fn paramless_step_fold_refuses_no_loop_fabricated() -> Bool {
+  fabricates_no_loop(source_text: paramless_step_fold_snippet, file: ^paramless_step_probe_file)
 }
 
 // THE POSITIVE CONTROL FOR THE SPLIT ITSELF. A well-formed fold still lowers,

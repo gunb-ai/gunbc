@@ -1,0 +1,62 @@
+module test.claim.data_reference_ambiguous_refusal_witness_test
+
+// EXECUTING evidence for the ONE arm that data_reference_declaration_identity_witness_test
+// measured and could not enroll: a workflow parameter default naming a spelling that MORE THAN
+// ONE visible declaration answers to refuses, by name, instead of silently taking one.
+//
+// WHY THAT WITNESS COULD NOT HOLD IT, in its own words: the ambiguity fixture is an INVALID
+// program, "and the only harness that can hold one here is a real corpus module, which would make
+// whole-corpus emission refuse forever over a test." That is correct about a corpus-member
+// fixture, and it is the reason the arm was measured and then removed rather than committed. Its
+// NEXT-RUNG TRIGGER is "a multi-module compile fixture that is not a corpus member".
+//
+// THIS IS THAT HARNESS, AND IT NEEDED NO NEW MECHANISM. compile_dag_rust_emit_check compiles ONE
+// AUTHORED SOURCE and resolves its imports from the real tree, so the split falls out: the CORPUS
+// modules carry only the two DECLARATIONS, which are perfectly valid and already exist for the
+// sibling witness, and the AMBIGUOUS REFERENCE lives in the virtual entry below -- a module that
+// is compiled but never a corpus member, so whole-corpus emission never sees it. The invalid
+// program exists only for the length of this claim.
+//
+// NO NEW FIXTURES. The alpha and beta halves already declare `dri_model` with different values,
+// and shared already declares one `dri_shared_endpoint`; minting a second ambiguous pair for one
+// concept is the redundancy DESIGN section 2 forbids. This file authors only the two references.
+//
+// THE PAIR IS WHAT DISCRIMINATES. Both entries are the same shape -- imports, a `uses` type, one
+// workflow func whose `model` default names an imported spelling -- and differ ONLY in how many
+// imports answer to that spelling. Two answers refuses; one answer folds. A resolver that stopped
+// reading imported defaults at all would pass the refusal and FAIL the control, and a resolver
+// that kept guessing passes the control and FAILS the refusal. Neither arm is satisfiable by a
+// check that always answers the same way.
+
+data dra_ambiguous_entry_source: String = "module dra_probe_ambiguous\n\nimport test.fixture.data_reference_identity_alpha\nimport test.fixture.data_reference_identity_beta\n\ntype DraAmbNet \{\n  id: Int\n}\n\nfunc dra_amb_run(model: String = dri_model) -> String\n  uses net: DraAmbNet\n\{\n  model\n}\n"
+
+data dra_sole_entry_source: String = "module dra_probe_sole\n\nimport test.fixture.data_reference_identity_shared\n\ntype DraSoleNet \{\n  id: Int\n}\n\nfunc dra_sole_run(endpoint: String = dri_shared_endpoint) -> String\n  uses net: DraSoleNet\n\{\n  endpoint\n}\n"
+
+// THE REFUSAL. Two visible declarations answer to `dri_model`, so the fold answers with neither
+// and the unfolded default reaches validate_workflow_param_defaults -- one hard diagnostic,
+// emission refused. That is why this reads `== false`: the refusing path emits NO FILE AT ALL,
+// which is the fail-closed outcome (DESIGN section 5), not a missing substring. An excludes-only
+// assertion would have been weaker, because a compile that refused for any unrelated reason also
+// contains neither value; the control below is what rules that out.
+test fn an_ambiguously_visible_data_reference_refuses_rather_than_picking_one() -> Bool {
+  compile_dag_rust_emit_check(
+    dra_ambiguous_entry_source,
+    "src/main.rs",
+    [],
+    []
+  ) == false
+}
+
+// THE CONTROL. One import, one declaration, and the default folds through to the emitted CLI with
+// its value bound ADJACENT to its own field name -- the same value-to-field discipline the sibling
+// witness uses, so a resolver that resolved the reference but crossed it still reds. Without this
+// arm the refusal above is satisfied by an emitter that refuses every imported default, which
+// would be a narrowing dressed as a wall.
+test fn a_solely_visible_data_reference_still_folds_into_the_cli_default() -> Bool {
+  compile_dag_rust_emit_check(
+    dra_sole_entry_source,
+    "src/main.rs",
+    ["endpoint", "default_value = \"dri-shared-endpoint\""],
+    []
+  )
+}

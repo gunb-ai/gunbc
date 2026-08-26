@@ -7,7 +7,10 @@ import extdeps.languages.json.emit {
   serialize_json
 }
 import extdeps.languages.json.parse {
-  parse_json,
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_document_gap_text,
   json_object_unique_member,
   JsonMemberFound,
   JsonMemberAbsent,
@@ -622,9 +625,9 @@ fn component_alert_summaries_of(components: List<JsonValue>) -> ComponentSummary
 data receipt_count_decode_note: String = "component_count is read by the strict numeric reader, the same one the component index uses. It previously admitted a string and compared text, so a receipt declaring \"1\" passed against a decoded count of 1 — the field was checked for AGREEMENT while its type went unchecked, which is half a boundary. The writer emits json_int; a string here means the producer changed."
 
 fn floor_component_receipt_decode_with(text: String, expected_schema: NonEmptyStr) -> FloorComponentReceiptDecoding {
-  match parse_json(s: text) {
-    Absent => ReceiptNotJson { detail: "receipt is not valid JSON" }
-    Present { value: doc } =>
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: gap } => ReceiptNotJson { detail: concat("the component receipt is ", json_document_gap_text(gap: gap)) }
+    JsonDocumentParsed { value: doc } =>
       match receipt_text_at(v: doc, key: receipt_member_schema) {
         ReceiptTextFailed { decoding: d } => d
         ReceiptTextFound { text: schema } =>
