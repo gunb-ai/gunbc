@@ -50,10 +50,12 @@ fn main() {
         }
     }
 
-    let commit = git_output(&["rev-parse", "HEAD"]).unwrap_or_default();
+    let commit = git_output(&["rev-parse", "HEAD"]).expect(
+        "gunbc build cannot observe its source commit: `git rev-parse HEAD` failed or Git is unavailable",
+    );
     assert!(
         commit.len() == 40 && commit.bytes().all(|byte| byte.is_ascii_hexdigit()),
-        "gunbc build requires an exact 40-hex source commit from `git rev-parse HEAD`"
+        "gunbc build received a non-40-hex source commit from `git rev-parse HEAD`"
     );
     let dirty = git_output(&["status", "--porcelain"])
         .map(|s| !s.is_empty())
