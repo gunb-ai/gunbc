@@ -4,7 +4,8 @@ import std.measure { Measure, measure_add, measure_le }
 import std.nat { Nat }
 import std.types { NonEmptyStr, List, Timestamp }
 import extdeps.accounting.budget { Appropriation }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 
 // Encumbrance accounting, the upstream this module models. In fund and
@@ -31,6 +32,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "en.wikipedia.org/wiki/Encumbrance_(accounting)"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.accounting.encumbrance",
+      decl_name: "Encumbrance",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // The lifecycle is a closed three-state coproduct rather than a record with
