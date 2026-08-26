@@ -3786,6 +3786,79 @@ recording:** 193 is the **defect** grain (distinct names needing a provider edge
 the set was deduped. And all three are **lower bounds on the corpus** — this is one entry's
 closure, not the whole tree.
 
+### 11.2q RULED — the old side is a past-tense, subject-bound observation; the X→Y wall is a migration instrument that dissolves at cutover
+
+The question §11.2o's correction forced: **rebound is a join, so what owns the OLD side?** Storing
+`old_declaration` makes the wall carry a snapshot of an authority scheduled to die, and a stale
+snapshot that happens to match is indistinguishable from a genuine preservation; recomputing X on
+demand makes X a production dependency of the wall, which §3 forbids. The ruling is **both, at
+different lifecycle points** — and neither of the shapes I proposed.
+
+**The old resolver's output changes grammatical tense at the cut.** Before F, X is the production
+authority. During the cut, `X(B)` is an *offline treatment observation over exact base B*. After
+F, *"X at B produced this binding"* is **historical evidence**, and Y is the sole authority for
+every current binding. Calling the post-cut artifact an **oracle** is itself the error — it
+preserves normative force the thing no longer has. It is a `LegacyBindingObservation`.
+
+**Ownership is sequential, and after F nothing owns a current old binding** — there is no current
+old subject:
+
+| fact | owner |
+|---|---|
+| the binding before F | production resolver X |
+| *"X over subject B returned this outcome"* | the legacy-binding observation producer |
+| *"X(B) and Y(P(B)) preserve / rebind / strand this occurrence"* | the binding-delta join |
+| *"the authority transition at this exact cut was admitted"* | a content-addressed cutover receipt |
+| every binding after F | production resolver Y |
+
+**The observation must be SUBJECT-BOUND, not a naked ledger — this is what kills the stale-match
+objection by construction.** `{ occurrence, declaration }` says nothing about which source tree,
+compiler, policy or occurrence population produced it, so a row from six commits ago can equal
+today's declaration and pass. The subject carries semantic-source digest, source-set digest,
+compiler-artifact digest, resolver identity, resolver policy, occurrence-transport digest and
+declaration-index digest. **A commit SHA alone is insufficient** — the same revision answers
+differently under another root set, dependency pool, policy, transport or compiler binary. The
+join proves applicability *first*; a mismatch yields `BindingDeltaSubjectMismatch` and **never**
+`BindingPreserved`.
+
+**It is a pure function of THREE immutable inputs, not two.** Full qualification rewrites source
+and moves spans, so the comparison needs the projection's **occurrence correspondence** alongside
+the two observations — and the comparator must never infer correspondence from matching text or
+nearby spans. The mapping carries population laws (every surviving old reference maps exactly
+once; no candidate reference appears without transform provenance; every mapping belongs to the
+stated subjects), because otherwise a missing occurrence disappears from *both* the declaration
+comparison and the delta population.
+
+**"Recompute X" is allowed offline and forbidden in production**, and the distinction is the
+whole of §3's fallback rule: `Y cannot answer → ask X → use X's answer` is forbidden; `CI runs
+X(B)`, `CI runs Y(P(B))`, `comparator joins two independent observations` is a treatment/control
+experiment in which X is never in Y's semantic call graph. Content addressing means X *need not*
+be re-executed, not that it may not be.
+
+**And the correction to my own framing: once per exact old SUBJECT, not once for the program.**
+The final observation is minted from the exact base of the final cut transaction, *after* every
+preparatory compiler fix has landed. That is §11.2o's evidence rule turned on the migration
+itself — evidence authored after the transaction is provenance, not enrollment.
+
+**What survives cutover is not the wall.** The wall emits a cutover receipt and dissolves; the
+standing controls are **Y-native** — a fully qualified occurrence binds its exact declaring
+identity; unrelated loaded files do not change an existing binding; zero/one/many candidates
+produce their typed outcomes; every cross-module closure edge derives from an exact bound
+occurrence; no ambient whole-pool or module-proximity fallback is reachable; a rebound fixture
+compares unequal exact declarations; a production refusal cannot be read as unbound. Former-X
+cases may remain as fixtures whose expected answer is an **authored** `DeclarationRef` — they do
+not invoke X. (One trap named: a receipt cannot contain its own final commit hash. Anchor it as an
+external required check on the exact head, or bind it to a source-set digest excluding the receipt
+— never a guessed future SHA.)
+
+**AND IT SHARPENS §11.2p RATHER THAN RESTATING IT.** Deleting the whole-pool-unique arm before Y
+can produce candidate outcomes gives `old = Bound`, `new = not producible` — which is **not** a
+`StrandedUnbound` census, it is `CandidateBindingProductionRefused`. So *"the deletion is the
+census"* holds only once Y exists sufficiently to return a typed candidate outcome that can be
+fixed forward. **Before that, the deletion measures the absence of the replacement mechanism, not
+the corpus's migration disposition** — which is the precise reason C.1 sits behind M2, stated
+better than the gap-intolerance argument I gave.
+
 ### 11.3 The dispatch protocol
 
 Every dispatch across a lane boundary carries five lines, and a dispatch without them is refused rather than interpreted:
