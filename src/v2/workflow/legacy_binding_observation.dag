@@ -1,9 +1,8 @@
 module v2.workflow.legacy_binding_observation
 
 import std.types { String, Bool, Int, List, Map, NonEmptyStr }
-import v2.std.optional { Present, Absent }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_field_eq }
 import std.occurrence_identity {
   OccurrenceId,
   ReferenceOccurrence,
@@ -124,10 +123,19 @@ fn observed_occurrence_ids<O>(observation: LegacyBindingObservation<O>) -> List<
 // as success. So the law is stated twice, once in each direction: nothing expected may be missing,
 // and nothing observed may be foreign. Either alone is satisfiable by a wrong answer set of the
 // right size.
+// AND ONE OCCURRENCE MAY BE ANSWERED FOR ONCE, which membership alone does not say.
+//
+// Rows [11, 11, 22, 33] against expected [11, 22, 33] have every expected occurrence present and no
+// foreign one, so a two-direction MEMBERSHIP check calls them complete -- while the artifact carries
+// two, possibly conflicting, outcomes for occurrence 11. That is the one-outcome-per-occurrence
+// grain this module declares, admitted as a writable state by the very law that was supposed to
+// enforce it. It is also precisely the attempt-versus-occurrence grain confusion the row type warns
+// about: an unreconciled producer hands over attempt rows, and without this arm they pass.
 type LegacyObservationCompleteness
   = LegacyObservationComplete
   | LegacyObservationMissingExpected { occurrences: List<Int> }
   | LegacyObservationForeignObserved { occurrences: List<Int> }
+  | LegacyObservationRepeatedObserved { occurrences: List<Int> }
 
 // THE JOIN TAKES THE DERIVED LIST, NOT THE TRANSPORT, AND THE SPLIT IS DELIBERATE. Two facts sit
 // here: WHAT the subject's questions are (a derivation, above) and WHETHER an answer set matches
@@ -141,8 +149,10 @@ fn legacy_observation_completeness<O>(
   let observed = observed_occurrence_ids(observation: observation)
   let missing = expected |> filter(id => !(observed |> any(o => o == id)))
   let foreign = observed |> filter(id => !(expected |> any(e => e == id)))
+  let repeated = expected |> filter(id => (observed |> filter(o => o == id) |> count) > 1)
   if (missing |> count) > 0 { LegacyObservationMissingExpected { occurrences: missing } }
   else if (foreign |> count) > 0 { LegacyObservationForeignObserved { occurrences: foreign } }
+  else if (repeated |> count) > 0 { LegacyObservationRepeatedObserved { occurrences: repeated } }
   else { LegacyObservationComplete }
 }
 
@@ -157,6 +167,13 @@ type LegacySubjectApplicability
   = LegacySubjectApplicable
   | LegacySubjectDiverged { field: String }
 
+// THE FIELD ARM CONSUMES std.decl_ref's OWN EQUALITY RATHER THAN A BARE `!=`, and the reason is a
+// question a reviewer asked rather than a preference. DeclField's authority module ships
+// decl_field_eq; if a bare coproduct `!=` were structurally correct here then that helper would be
+// redundant and its own module would have the problem, and if it is not then this arm would have
+// been wrong. Either way, two answers to one question existed and only one of them lives beside the
+// type. LegacyResolutionPolicy is different and stays a bare comparison: this module declares it,
+// so there is no second authority to consume.
 fn legacy_subject_applicability(
   left: LegacyBindingObservationSubject,
   right: LegacyBindingObservationSubject
@@ -171,7 +188,7 @@ fn legacy_subject_applicability(
     LegacySubjectDiverged { field: "resolver_identity.module_path" }
   } else if left.resolver_identity.decl_name != right.resolver_identity.decl_name {
     LegacySubjectDiverged { field: "resolver_identity.decl_name" }
-  } else if left.resolver_identity.field != right.resolver_identity.field {
+  } else if !decl_field_eq(a: left.resolver_identity.field, b: right.resolver_identity.field) {
     LegacySubjectDiverged { field: "resolver_identity.field" }
   } else if left.resolver_policy != right.resolver_policy {
     LegacySubjectDiverged { field: "resolver_policy" }
@@ -203,10 +220,27 @@ fn legacy_resolution_policy_label(policy: LegacyResolutionPolicy) -> String {
   }
 }
 
+// THE FIELD IS FOLDED BECAUSE APPLICABILITY DIVERGES ON IT, and the two must not be able to
+// disagree. A pair of subjects that applicability refuses and the content address cannot tell apart
+// would be exactly the stored-versus-derived split this function exists to avoid -- one authority
+// saying "different bases" and another saying "same base", with nothing to adjudicate. So the rule
+// is mechanical rather than a matter of taste: every field the comparison reads, the address folds.
+// Caught by review on the first cut of this module, where the address folded six of the eight
+// fields the comparison reads.
+fn decl_field_label(field: DeclField) -> String {
+  match field {
+    WholeDeclaration => "whole_declaration"
+    NamedField { field_name: n } => n
+  }
+}
+
 fn legacy_subject_identity(subject: LegacyBindingObservationSubject) -> Fnv1a64Structural {
   let resolver = content_hash_combine_structural(
-    left: content_hash_atom(value: subject.resolver_identity.module_path),
-    right: content_hash_atom(value: subject.resolver_identity.decl_name)
+    left: content_hash_combine_structural(
+      left: content_hash_atom(value: subject.resolver_identity.module_path),
+      right: content_hash_atom(value: subject.resolver_identity.decl_name)
+    ),
+    right: content_hash_atom(value: decl_field_label(field: subject.resolver_identity.field) as NonEmptyStr)
   )
   let policy = content_hash_atom(value: legacy_resolution_policy_label(policy: subject.resolver_policy) as NonEmptyStr)
   let sources = content_hash_combine_structural(

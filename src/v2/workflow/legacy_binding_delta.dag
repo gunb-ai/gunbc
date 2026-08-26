@@ -97,19 +97,6 @@ fn refs_out_of_scope(refs: List<SubjectOccurrenceRef>, identity: Fnv1a64Structur
   refs |> filter(r => r.subject_identity.digest != identity.digest) |> map(r => r.occurrence.value)
 }
 
-// PROVENANCE TOTALITY IS THREE LAWS, AND EACH ONE FAILS A DIFFERENT LIE.
-//
-// A source left out means the projection dropped an occurrence the base carried -- a site the
-// migration silently declined to consider. A source appearing twice means one base occurrence was
-// projected to two targets, which is a fork the delta cannot interpret. A target left out means
-// the projection produced something it will not account for. A pair naming an occurrence outside
-// either denominator means the provenance is about some other pair of compiles entirely, and that
-// is the failure that reads as success -- exactly the count-equality trap, since such a provenance
-// can have the right size.
-//
-// NOTE WHAT IS NOT A LAW: a target with no source is admitted, because insertion is the point. The
-// asymmetry between the source and target laws is therefore deliberate and is the one place a
-// reader should expect the two directions NOT to mirror each other.
 // PROVENANCE TOTALITY IS FIVE LAWS, AND EACH ONE FAILS A DIFFERENT LIE.
 //
 // A source left out means the projection dropped an occurrence the base carried -- a site the
