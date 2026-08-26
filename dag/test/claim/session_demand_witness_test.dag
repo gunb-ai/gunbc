@@ -1,0 +1,187 @@
+module test.claim.session_demand_witness_test
+
+import std.types { Bool }
+import std.measure { byte_size_count }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import extdeps.linux.cgroup_v2_memory {
+  CgroupMemoryLimited, CgroupMemoryUnlimited, CgroupMemoryLimitUnparseable,
+  CgroupMemoryCount, CgroupMemoryCountUnparseable,
+  parse_cgroup_memory_limit, parse_cgroup_memory_count,
+  MemoryCurrent, MemoryPeak, MemoryEvents,
+  Instantaneous, LifetimeEpochScoped, CumulativeCounter,
+  cgroup_memory_metric_kind,
+}
+import gunbc.session_demand {
+  ManagedSession, LegacyFlatSession, SessionPlacementUnclassifiable,
+  SessionPlacementCensusComplete, SessionPlacementCensusIncomplete,
+  session_placement_census, census_membership_signal,
+  session_demand_membership_gate,
+  SessionDemandPopulationIncomplete, NoConcurrentSessionDemandObserved,
+  SessionDemandObservationUnavailable, SessionDemandObserved,
+}
+import gunbc.oomd_install {
+  AllSessionsManaged, MixedSessionMembership, AllSessionsLegacy, NoSessionsObserved,
+}
+import v2.std.optional { Present, Absent }
+
+// THE `max` SENTINEL IS NOT A NUMBER, AND A NEGATIVE IS NOT A MAGNITUDE. Both directions are
+// asserted because each is a way the parse could silently lie: folding "max" into a huge ByteSize
+// fabricates a limit the host does not have, and taking the absolute value of "-1" turns malformed
+// bytes into the plausible value 1. A parser that did either would pass a test that only checked
+// the well-formed case.
+fn limit_parse_discriminates() -> Bool {
+  let unlimited = match parse_cgroup_memory_limit(body: "max\n") {
+    CgroupMemoryUnlimited => true
+    CgroupMemoryLimited { bytes: _ } => false
+    CgroupMemoryLimitUnparseable { body: _ } => false
+  }
+  let limited = match parse_cgroup_memory_limit(body: "33578549248\n") {
+    CgroupMemoryLimited { bytes: b } => byte_size_count(b: b) == 33578549248
+    CgroupMemoryUnlimited => false
+    CgroupMemoryLimitUnparseable { body: _ } => false
+  }
+  let negative_refuses = match parse_cgroup_memory_limit(body: "-1") {
+    CgroupMemoryLimitUnparseable { body: _ } => true
+    CgroupMemoryLimited { bytes: _ } => false
+    CgroupMemoryUnlimited => false
+  }
+  unlimited && limited && negative_refuses
+}
+
+// A COUNT FILE HAS NO SENTINEL, so the SAME body that is a legitimate "no limit" in a limit file is
+// MALFORMED in a count file. This is the pair that proves the two parsers are genuinely different
+// rather than one aliased twice -- a single shared parser would answer Unlimited here and go green
+// against a weaker test.
+fn count_parse_has_no_sentinel_arm() -> Bool {
+  let max_is_malformed_here = match parse_cgroup_memory_count(body: "max") {
+    CgroupMemoryCountUnparseable { body: _ } => true
+    CgroupMemoryCount { bytes: _ } => false
+  }
+  let counts = match parse_cgroup_memory_count(body: "7030472704\n") {
+    CgroupMemoryCount { bytes: b } => byte_size_count(b: b) == 7030472704
+    CgroupMemoryCountUnparseable { body: _ } => false
+  }
+  max_is_malformed_here && counts
+}
+
+fn metric_kinds_follow_the_authority() -> Bool {
+  let current = match cgroup_memory_metric_kind(f: MemoryCurrent) {
+    Instantaneous => true
+    LifetimeEpochScoped => false
+    CumulativeCounter => false
+  }
+  let peak = match cgroup_memory_metric_kind(f: MemoryPeak) {
+    LifetimeEpochScoped => true
+    Instantaneous => false
+    CumulativeCounter => false
+  }
+  let events = match cgroup_memory_metric_kind(f: MemoryEvents) {
+    CumulativeCounter => true
+    Instantaneous => false
+    LifetimeEpochScoped => false
+  }
+  current && peak && events
+}
+
+// ONE UNCLASSIFIABLE IDENTITY REFUSES THE WHOLE CENSUS. The discriminating pair is the point: the
+// SAME two classified containers admit when the third is classified and refuse when it is not, so
+// the arm does the work rather than the length. If unclassifiable were dropped from the population
+// instead, both calls would return Complete and the denominator would have silently shrunk to the
+// containers that happened to classify.
+fn census_refuses_rather_than_dropping() -> Bool {
+  let a = ManagedSession { identity: "a", cgroup: "/sys/fs/cgroup/sessions.slice/a" }
+  let b = LegacyFlatSession { identity: "b", cgroup: "/sys/fs/cgroup/system.slice/b" }
+  let u = SessionPlacementUnclassifiable { identity: "c", cause: "flat scope with no attributable session" }
+  let complete = match session_placement_census(placements: [a, b]) {
+    SessionPlacementCensusComplete { placements: ps } => count(ps) == 2
+    SessionPlacementCensusIncomplete { unclassifiable: _ } => false
+  }
+  let incomplete = match session_placement_census(placements: [a, b, u]) {
+    SessionPlacementCensusIncomplete { unclassifiable: us } => count(us) == 1
+    SessionPlacementCensusComplete { placements: _ } => false
+  }
+  complete && incomplete
+}
+
+// THE COUNTS ARE PROJECTED ONLY FROM A COMPLETE CENSUS, and an incomplete one yields NO signal at
+// all rather than a signal over the classifiable subset. A partial signal is the dangerous shape:
+// it would flow into #9280's classifier, which would faithfully classify a population that is not
+// the host's.
+fn incomplete_census_yields_no_signal() -> Bool {
+  let a = ManagedSession { identity: "a", cgroup: "/sys/fs/cgroup/sessions.slice/a" }
+  let u = SessionPlacementUnclassifiable { identity: "c", cause: "unattributable" }
+  let projected = match census_membership_signal(c: session_placement_census(placements: [a])) {
+    Present { value: sig } => sig.sessions_in_slice == 1 && sig.sessions_legacy_flat == 0
+    Absent => false
+  }
+  let withheld = match census_membership_signal(c: session_placement_census(placements: [a, u])) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  projected && withheld
+}
+
+// A COUNTED ZERO IS NOT AN ABSENCE OF EVIDENCE. NoSessionsObserved means the read RAN and found no
+// sessions; it must not answer the same thing as a producer that never ran. The two grant capacity
+// on opposite grounds, so this is the arm most worth pinning: an implementation that folded them
+// would look correct on every host that actually has sessions.
+fn counted_zero_is_not_unavailable() -> Bool {
+  let zero = match session_demand_membership_gate(host: operator_host_srv1, m: NoSessionsObserved) {
+    Present { value: o } => match o {
+      NoConcurrentSessionDemandObserved { host: _ } => true
+      SessionDemandObservationUnavailable { host: _, cause: _ } => false
+      SessionDemandPopulationIncomplete { host: _, membership: _, cause: _ } => false
+      SessionDemandObserved { receipt: _ } => false
+    }
+    Absent => false
+  }
+  zero
+}
+
+// ONLY THE ALL-MANAGED ARM MAY ESTABLISH AN AGGREGATE. Mixed and AllLegacy both refuse, and they
+// refuse SEPARATELY from the counted zero above, which is what keeps three different situations
+// from sharing one attractive small number.
+fn only_all_managed_opens_the_gate() -> Bool {
+  let opens = match session_demand_membership_gate(
+    host: operator_host_srv1,
+    m: AllSessionsManaged { managed_count: 19 },
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let mixed_refuses = match session_demand_membership_gate(
+    host: operator_host_srv1,
+    m: MixedSessionMembership { managed_count: 1, legacy_count: 50 },
+  ) {
+    Present { value: o } => match o {
+      SessionDemandPopulationIncomplete { host: _, membership: _, cause: _ } => true
+      NoConcurrentSessionDemandObserved { host: _ } => false
+      SessionDemandObservationUnavailable { host: _, cause: _ } => false
+      SessionDemandObserved { receipt: _ } => false
+    }
+    Absent => false
+  }
+  let legacy_refuses = match session_demand_membership_gate(
+    host: operator_host_srv1,
+    m: AllSessionsLegacy { legacy_count: 19 },
+  ) {
+    Present { value: o } => match o {
+      SessionDemandPopulationIncomplete { host: _, membership: _, cause: _ } => true
+      NoConcurrentSessionDemandObserved { host: _ } => false
+      SessionDemandObservationUnavailable { host: _, cause: _ } => false
+      SessionDemandObserved { receipt: _ } => false
+    }
+    Absent => false
+  }
+  opens && mixed_refuses && legacy_refuses
+}
+
+fn session_demand_carriers_hold() -> Bool {
+  limit_parse_discriminates()
+    && count_parse_has_no_sentinel_arm()
+    && metric_kinds_follow_the_authority()
+    && census_refuses_rather_than_dropping()
+    && incomplete_census_yields_no_signal()
+    && counted_zero_is_not_unavailable()
+    && only_all_managed_opens_the_gate()
+}

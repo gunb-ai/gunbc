@@ -1,0 +1,67 @@
+module extdeps.linux.cgroup_v2
+
+import std.types { Bool, NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Https, Uri }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.kernel.org/admin-guide/cgroup-v2.html"
+  }
+}
+
+// THE UNIFIED HIERARCHY IS MOUNTED AT ONE PLACE, AND IT IS THE KERNEL'S PLACE, NOT OURS. Every
+// consumer that spells this path itself is a second authority for it (DESIGN 3), which is how a
+// mount point ends up differing by one character between the reader and the thing it reads.
+data cgroup_v2_mount_point: NonEmptyStr = "/sys/fs/cgroup"
+
+// A CHILD CGROUP IS A DIRECTORY; AN INTERFACE FILE IS NOT. The kernel represents the hierarchy in
+// the filesystem, so enumerating children is exactly enumerating SUBDIRECTORIES -- and a plain
+// listing of the directory would return the interface files (memory.current, cgroup.procs, ...)
+// intermixed with the children, which is why this constrains to -type d rather than filtering
+// names afterwards. Filtering by name would encode a guess about which prefixes are interface
+// files; -type d encodes the kernel's actual representation.
+//
+// -mindepth 1 excludes the directory itself; -maxdepth 1 keeps it to immediate children, because a
+// session's own descendants are that session's internal business and counting them would inflate
+// the population. -printf %f yields the bare child name rather than a full path.
+service linux.CgroupV2 {
+  operation ListChildCgroups {
+    input { cgroup_path: NonEmptyStr }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    transport shell {
+      argv: ["find", "{cgroup_path}", "-mindepth", "1", "-maxdepth", "1", "-type", "d", "-printf", "%f\n"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "cgroup child enumeration failed"
+    }
+  }
+
+  operation ReadInterfaceFile {
+    input { cgroup_path: NonEmptyStr, interface_file: NonEmptyStr }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    transport shell {
+      argv: ["cat", "{cgroup_path}/{interface_file}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "cgroup interface file read failed"
+    }
+  }
+}
+
+fn cgroup_v2_child_path(parent: NonEmptyStr, child: NonEmptyStr) -> NonEmptyStr {
+  concat(parent as String, "/", child as String) as NonEmptyStr
+}
+
+fn cgroup_v2_slice_path(slice: NonEmptyStr) -> NonEmptyStr {
+  cgroup_v2_child_path(parent: cgroup_v2_mount_point, child: slice)
+}
