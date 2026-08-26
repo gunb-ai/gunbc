@@ -2,7 +2,14 @@
 // Source module: extdeps.languages.rust.capabilities
 
 use self::RustCapability::*;
+pub use crate::extdeps_external_authority::{
+    ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
+};
+use crate::extdeps_uri::UriScheme::Https;
+pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_algebra::FreeMonoid;
+use crate::std_decl_ref::DeclField::WholeDeclaration;
+pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape::{
     ReprDeriveElemKernelBool, ReprDeriveElemKernelInt, ReprDeriveElemKernelString,
     ReprDeriveElemKernelUnit, ReprDeriveElemNullaryEnumCopy, ReprDeriveElemPayloadCoproduct,
@@ -17,6 +24,53 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+
+pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
+    thread_local! {
+            static CACHED: Rc<ExternalAuthority> = {
+                Rc::new(ExternalAuthority {
+        uri: Rc::new(Uri {
+        scheme: UriScheme::Https,
+        locator: "doc.rust-lang.org/reference/attributes/derive.html".to_string(),
+    }),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+}
+
+pub fn rust_serde_derive_external_authority_anchor() -> Rc<ExternalAuthority> {
+    thread_local! {
+            static CACHED: Rc<ExternalAuthority> = {
+                Rc::new(ExternalAuthority {
+        uri: Rc::new(Uri {
+        scheme: UriScheme::Https,
+        locator: "serde.rs/derive.html".to_string(),
+    }),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+}
+
+pub fn extdeps_model_scope() -> Rc<ExternalModelScope> {
+    thread_local! {
+            static CACHED: Rc<ExternalModelScope> = {
+                Rc::new(ExternalModelScope {
+        subject: Rc::new(ExternalSubjectRef {
+        declaration: Rc::new(DeclarationRef {
+        module_path: "extdeps.languages.rust.capabilities".to_string(),
+        decl_name: "RustCapability".to_string(),
+        field: Rc::new(DeclField::WholeDeclaration),
+    }),
+    }),
+        first_citation: extdeps_external_authority_anchor(),
+        further_citations: Rc::new(vec![rust_serde_derive_external_authority_anchor()]),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<ExternalModelScope>| c.clone())
+}
 
 pub fn rust_capabilities_note() -> String {
     thread_local! {
