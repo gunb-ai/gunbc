@@ -26,6 +26,20 @@ data systemd_parse_label_derivation_debt: List<NonEmptyStr> = [
   "dissolve-on: when contract-driven derivation is available (§3 single authority), derive parse/label from wire contract instead of hand-rolling",
 ]
 
+// `MainPID` IS THE PROPERTY THAT SAYS WHICH PROCESS THE MANAGER BELIEVES IT IS SUPERVISING, and it
+// is a magnitude like the cgroup evidence beside it rather than a lifecycle word like `LoadState`,
+// which is why it joins this coproduct instead of taking its own operation the way LoadState did.
+//
+// It is read for a reason the other members cannot serve: every property here answers for the unit
+// AS THE MANAGER SEES IT, and a consumer comparing the manager's view against the cgroup's actual
+// occupants needs the manager's own nominated pid to make that comparison at all. Without it the
+// two views cannot be joined -- a reader can see that a cgroup holds four processes and that the
+// unit is active, and still not know which one systemd would signal.
+//
+// systemd answers `0` for a unit with no main process, which is not a pid; decoding that boundary
+// belongs to the consumer, because "the manager supervises nothing" and "the manager supervises pid
+// N" are different observations and this authority's job is to carry the wire value, not to decide
+// what an absent main process means for any one unit.
 type SystemdUnitProperty
   = MemoryMax
   | MemorySwapMax
@@ -37,6 +51,7 @@ type SystemdUnitProperty
   | ControlGroup
   | ActiveEnterTimestampMonotonic
   | ActiveState
+  | MainPID
 
 fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
   match property {
@@ -50,6 +65,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     ControlGroup => "ControlGroup" as NonEmptyStr
     ActiveEnterTimestampMonotonic => "ActiveEnterTimestampMonotonic" as NonEmptyStr
     ActiveState => "ActiveState" as NonEmptyStr
+    MainPID => "MainPID" as NonEmptyStr
   }
 }
 

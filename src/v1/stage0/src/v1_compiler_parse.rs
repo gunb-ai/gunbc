@@ -3168,6 +3168,14 @@ pub fn parse_import(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Import
                 let names = r.names.clone();
                 let tokens = r.tokens.clone();
                 let ctx = r.ctx.clone();
+                if ((names.clone().len() as i64) == 0) {
+                    return Rc::new(ImportResult {
+    import: err_import.clone(),
+    tokens: tokens.clone(),
+    ctx: ctx.clone(),
+    err: Some(parse_error(v1_rt::concat("import of `".to_string(), v1_rt::concat(mod_path.clone(), "` binds no names: a member list of arity zero names a module and imports none of it, which is a declaration with no content. Write the members, or delete the import.".to_string())), mod_path_span.clone())),
+});
+                }
                 let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
                 if has_err(r.err.clone()) {
                     return Rc::new(ImportResult {

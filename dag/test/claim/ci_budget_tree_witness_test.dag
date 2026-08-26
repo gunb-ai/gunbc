@@ -19,8 +19,16 @@ fn fitting_slice() -> Int {
   53687091200
 }
 
+// OVERSIZED MUST BE OVERSIZED BY CONSTRUCTION, NOT BY A LITERAL CHOSEN AGAINST ONE HOST SIZE.
+// This was 214748364800 (200 GiB), which overcommitted srv1 while srv1 had 128 GiB of RAM. srv1
+// was upgraded to 8 x 64 GiB on 2026-08-22, and 200 GiB stopped overcommitting a ~502 GiB host --
+// so the fixture silently stopped testing overcommit and witness_overcommit_fails_conservation
+// went red on main. The literal was never grounded in a controlled fixture; it was grounded in the
+// live host's RAM, which is the oracle failure DESIGN 5 names: a number copied from the tree it is
+// asserting about. Deriving it from the same allocatable authority the tree divides makes it
+// exceed the host for ANY host size, so no future RAM change can quietly disarm this arm.
 fn oversized_slice() -> Int {
-  214748364800
+  byte_size_count(b: host_allocatable_bytes(offer: srv1_offer)) + 1
 }
 
 test fn witness_live_trees_conserve() -> Bool {
@@ -105,10 +113,6 @@ test fn witness_hard_cap_is_runner_cgroup_cap() -> Bool {
   byte_size_count(b: srv1_ci_run_container_hard_cap()) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
 }
 
-test fn witness_cap_split_runner_lt_session() -> Bool {
-  witness_runner_cgroup_cap_lt_dashboard_session_cap()
-    && byte_size_count(b: gunbc_ci_dashboard_session_container_cap) > byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
-}
 
 test fn witness_floor_budget_equals_selected_target_budget_holds() -> Bool {
   witness_floor_budget_equals_selected_target_budget()

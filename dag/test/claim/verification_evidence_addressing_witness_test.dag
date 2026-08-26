@@ -8,6 +8,7 @@ import std.content_hash {
   content_hash_of_value,
   serialize_content_hash,
 }
+import v2.std.algebra { list_snoc_item }
 import extdeps.languages.json.emit {
   serialize_json,
   json_object,
@@ -15,6 +16,7 @@ import extdeps.languages.json.emit {
   json_string,
   json_array,
   json_int,
+  JsonKeyValue,
 }
 import gunbc.git_diff_change_window {
   git_diff_window_absent_identity,
@@ -89,6 +91,10 @@ import gunbc.roadmap_verification_receipt {
   exact_verification_address_for,
   verification_receipt_schema_v1,
   verification_receipt_v1_decode,
+  LegacyExactHeadDecoded,
+  LegacyExactHeadNotReadable,
+  LegacyReceiptBytesUnreadable,
+  LegacyReceiptVerdictMemberMissing,
 }
 import gunbc.roadmap_belt_actuate {
   belt_verification_receipt_source,
@@ -191,8 +197,11 @@ fn v1_legacy_receipt_text() -> String {
   ]))
 }
 
-fn v1_receipt_with_one_execution_text() -> String {
-  serialize_json(v: json_object(members: [
+// FACTORED SO THE TWO FIXTURES DIFFER IN EXACTLY ONE MEMBER. A hand-authored second document would
+// let an unrelated typo produce the refusal the witness attributes to the missing verdict; sharing
+// the prefix makes the verdict the only variable.
+fn v1_receipt_members_without_verdict() -> List<JsonKeyValue> {
+  [
     json_kv(
       key: "schema",
       value: json_string(s: verification_receipt_schema_v1 as String),
@@ -253,7 +262,11 @@ fn v1_receipt_with_one_execution_text() -> String {
         ]),
       ]),
     ),
-    json_kv(
+  ]
+}
+
+fn v1_receipt_verdict_member() -> JsonKeyValue {
+  json_kv(
       key: "verdict",
       value: json_object(members: [
         json_kv(key: "key", value: json_string(s: "passed")),
@@ -267,8 +280,18 @@ fn v1_receipt_with_one_execution_text() -> String {
           ),
         ),
       ]),
-    ),
-  ]))
+    )
+}
+
+fn v1_receipt_with_one_execution_text() -> String {
+  serialize_json(v: json_object(members: list_snoc_item(
+    xs: v1_receipt_members_without_verdict(),
+    item: v1_receipt_verdict_member(),
+  )))
+}
+
+fn v1_receipt_without_verdict_text() -> String {
+  serialize_json(v: json_object(members: v1_receipt_members_without_verdict()))
 }
 
 fn fixture_node_id() -> RoadmapNodeId {
@@ -728,8 +751,31 @@ test fn not_run_migration_receipt_runs() -> Bool {
 
 test fn v1_decode_preserves_execution_rows() -> Bool {
   match verification_receipt_v1_decode(receipt: v1_receipt_with_one_execution_text()) {
-    Present { value: legacy } => count(legacy.executions) == 1
-    Absent => false
+    LegacyExactHeadDecoded { receipt: legacy } => count(legacy.executions) == 1
+    LegacyExactHeadNotReadable { gap: _ } => false
+  }
+}
+
+// THE COLLAPSE THIS CHANGE REMOVES, ASSERTED AS TWO DIFFERENT VALUES. The predecessor returned an
+// Optional, so a receipt whose BYTES are not a document and a receipt that decodes all the way to
+// its verdict and stops both answered `none`, and the production consumer rendered both as the one
+// sentence "the v1 exact-head body is not readable". A corrupt file and a single drifted member got
+// the same diagnostic.
+test fn RED_unreadable_v1_receipt_bytes_are_located_as_bytes() -> Bool {
+  match verification_receipt_v1_decode(receipt: "not a document") {
+    LegacyExactHeadNotReadable { gap: gap } => gap == LegacyReceiptBytesUnreadable
+    LegacyExactHeadDecoded { receipt: _ } => false
+  }
+}
+
+// THE DISCRIMINATOR FOR THE ABOVE. This body PARSES and carries a decodable subject and oracle
+// identity, and stops at the verdict -- so a decoder that answered BytesUnreadable for every
+// failure would satisfy the witness above and fail here. It is built from the same fixture text as
+// the positive control, with one member removed, so the two differ only in the thing under test.
+test fn RED_v1_receipt_missing_verdict_is_located_at_the_verdict() -> Bool {
+  match verification_receipt_v1_decode(receipt: v1_receipt_without_verdict_text()) {
+    LegacyExactHeadNotReadable { gap: gap } => gap == LegacyReceiptVerdictMemberMissing
+    LegacyExactHeadDecoded { receipt: _ } => false
   }
 }
 

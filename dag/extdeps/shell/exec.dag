@@ -170,16 +170,18 @@ fn process_observation(exit_code: Int, stdout: String, stderr: String) -> Proces
   ProcessObservation { exit_code: exit_code, stdout: stdout, stderr: stderr }
 }
 
-// CONVERGENCE OWED, declared rather than left for someone to notice. extdeps.tools.jq carries
-// JqOutcome / JqExitPolicy / jq_classify_observation, which are this same pair specialized to one
-// tool -- JqOutputPresent, JqOutputAbsent, JqExecutionRefused against the general variants above.
-// Two names for one concept is the nicknaming DESIGN section 3 forbids, and the correct end state
-// is that jq's policy becomes a ProcessExitPolicy row (its 4-means-absent rule is a third variant
-// this type does not yet carry) and JqOutcome dissolves into ProcessOutcome.
+// THE OBSERVATION HALF OF THAT CONVERGENCE IS DONE: extdeps.tools.jq declared a byte-identical
+// JqProcessObservation and no longer does -- it consumes this type, so the raw triple has one
+// name. The triple was the half with nothing tool-specific in it: exit_code, stdout and stderr
+// are what any process returns, so the fork was pure nicknaming (DESIGN section 3).
 //
-// It is NOT done in this change, and the reason is scope rather than difficulty: jq's classifier
-// is landed, reviewed and consumed by witnesses, so folding it in belongs with the consumer
-// migration that motivates it rather than inside the operation that models the seam.
+// CONVERGENCE STILL OWED, on the half that is NOT a copy of anything here. jq carries
+// JqOutcome / JqExitPolicy / jq_classify_observation, and its four-code contract reads exit 1 as
+// a false-or-null last output and exit 4 as absence -- neither of which ProcessExitPolicy above
+// can express, so folding it in requires a third policy variant and is a MODEL change, not a
+// rename. That is deliberately not done here: this change dissolved a duplicate, and inventing a
+// policy variant to absorb jq's semantics is the consumer-driven work that must justify itself
+// with a live caller.
 // DISSOLVE-ON: the first consumer migrated onto RunArgv, at which point both classifiers have a
 // live caller and the merge is a refactor with execution behind it rather than a speculative one.
 

@@ -22,11 +22,19 @@ import gunbc.scm.load_standing {
   LoadDocumentMalformed, LoadIdentityCollision,
   standing_may_supersede_generation, standing_loaded,
 }
+import gunbc.scm.json_member { MemberReadSubjectNotObject }
+import gunbc.scm.target_reference { TargetReferenceNotOneArm }
+import gunbc.scm.object_table_json {
+  ObjectTableUnknownKindTag,
+  ObjectTableEdgeTargetUnresolved,
+  ObjectTableObjectCollision,
+  object_table_load_standing,
+}
 import gunbc.scm.commit_closure_json_v2 {
-  ClosureDocRefusal, ClosureDocFormatUnrecognized, ClosureDocObjectCollision,
-  ClosureDocNotAnObject, ClosureDocMemberMissing, ClosureDocUnknownKindTag,
-  ClosureDocUnexpectedMember, ClosureDocEnvelopeMembers, ClosureDocEdgeTargetUnresolved,
-  ClosureDocTargetNotOneArm,
+  ClosureDocRefusal, ClosureDocFormatUnrecognized, ClosureDocObjectTableRefused,
+  ClosureDocMemberReadRefused,
+  ClosureDocUnexpectedMember, ClosureDocEnvelopeMembers,
+  ClosureDocTargetReferenceRefused,
   closure_document_load_standing, loaded_closure_standing,
 }
 
@@ -117,7 +125,7 @@ test fn only_an_unrecognized_format_is_a_protocol_gap() -> Bool {
   let member = closure_document_load_standing(
     cause: ClosureDocUnexpectedMember { context: ClosureDocEnvelopeMembers, key: "provenance" }
   )
-  let tag = closure_document_load_standing(cause: ClosureDocUnknownKindTag { found: "quantum" })
+  let tag = object_table_load_standing(cause: ObjectTableUnknownKindTag { found: "quantum" })
   standing_eq(a: protocol, b: LoadUnsupportedProtocol)
     && standing_eq(a: member, b: LoadDocumentMalformed)
     && standing_eq(a: tag, b: LoadDocumentMalformed)
@@ -128,11 +136,13 @@ test fn only_an_unrecognized_format_is_a_protocol_gap() -> Bool {
 // which is not a refusal and never reaches this classifier at all.
 test fn an_unresolved_position_is_malformed_not_fetchable() -> Bool {
   standing_eq(
-    a: closure_document_load_standing(cause: ClosureDocEdgeTargetUnresolved { reference: "7" }),
+    a: object_table_load_standing(cause: ObjectTableEdgeTargetUnresolved { reference: "7" }),
     b: LoadDocumentMalformed
   )
     && standing_eq(
-      a: closure_document_load_standing(cause: ClosureDocTargetNotOneArm { found: 2 }),
+      a: closure_document_load_standing(
+        cause: ClosureDocTargetReferenceRefused { cause: TargetReferenceNotOneArm { found: 2 } }
+      ),
       b: LoadDocumentMalformed
     )
 }
@@ -142,9 +152,13 @@ test fn an_unresolved_position_is_malformed_not_fetchable() -> Bool {
 // malformed would let a reader discard a writer's valid generation over an honest hash coincidence.
 test fn an_honest_collision_is_its_own_standing_and_never_supersedes() -> Bool {
   let collision = closure_document_load_standing(
-    cause: ClosureDocObjectCollision { identity: ls_full().root }
+    cause: ClosureDocObjectTableRefused {
+      cause: ObjectTableObjectCollision { identity: ls_full().root }
+    }
   )
-  let malformed = closure_document_load_standing(cause: ClosureDocNotAnObject)
+  let malformed = closure_document_load_standing(
+    cause: ClosureDocMemberReadRefused { cause: MemberReadSubjectNotObject }
+  )
   standing_eq(a: collision, b: LoadIdentityCollision)
     && standing_eq(a: malformed, b: LoadDocumentMalformed)
     && !standing_may_supersede_generation(standing: collision)

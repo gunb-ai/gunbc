@@ -7,9 +7,9 @@ import extdeps.exec.command { ArgvCommand, argv_command }
 // claim_executor is built from this tree, so its flags are a fact this repository already owns
 // rather than an upstream contract to cite. It is homed under gunbc/ for exactly that reason.
 //
-// WHY IT EXISTS: two workflow emitters -- gunbc.fabric_witness_run and
-// gunbc.corpus_type_judgment_workflow -- each hand-spelled the path and the mode flag into their own
-// argv, so "where the release binary lives" was two facts that happened to agree. The path is
+// WHY IT EXISTS: two workflow emitters -- gunbc.fabric_witness_run and a peer since deleted --
+// each hand-spelled the path and the mode flag into their own argv, so "where the release binary
+// lives" was two facts that happened to agree. The path is
 // relative because it names a build output inside the checkout the job is standing in, not an
 // installed program; that is a real difference from every extdeps tool row, whose absolute paths
 // exist because a sudoers rule or an ambient PATH would otherwise decide which binary ran.

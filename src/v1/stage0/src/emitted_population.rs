@@ -27,6 +27,7 @@
 // src/extdeps_uri_path.rs
 // src/extdeps_version.rs
 // src/extdeps_version_semver.rs
+// src/gunbc_cli_dispatch_surface.rs
 // src/gunbc_rust_decl_type_overlay.rs
 // src/gunbc_stage0_crate_layout_generated.rs
 // src/gunbc_stage0_crate_partition_generated.rs
@@ -65,6 +66,7 @@
 // src/std_occurrence_binding_resolve.rs
 // src/std_occurrence_identity.rs
 // src/std_pareto.rs
+// src/std_primitive_projection.rs
 // src/std_process_termination.rs
 // src/std_realization_schedule.rs
 // src/std_reference_binding_observation.rs

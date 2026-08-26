@@ -56,6 +56,7 @@ pub struct TypeEnv {
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
     pub source_visible_names: Rc<HashMap<String, bool>>,
+    pub authored_import_names: Rc<HashMap<String, bool>>,
     pub symbol_index: Rc<SymbolIndex>,
     pub module_path: String,
 }
@@ -159,6 +160,7 @@ pub fn empty_type_env() -> Rc<TypeEnv> {
         source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
         intern_table: empty_intern_table(),
         source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
+        authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
         symbol_index: empty_symbol_index(),
     })
 }
@@ -1985,6 +1987,7 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                     tp_name.clone(),
                     true,
                 ),
+                authored_import_names: e.authored_import_names.clone(),
                 symbol_index: e.symbol_index.clone(),
             })
         })

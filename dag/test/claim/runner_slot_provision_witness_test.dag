@@ -4,7 +4,7 @@ import std.logic { Bool }
 import std.types { list_length, NonEmptyStr, List, String }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.github.actions_runner {
-  actions_runner_release_2_334_0,
+  actions_runner_release_2_336_0,
   actions_runner_binary_artifact_for_arch,
   actions_runner_download_url,
 }
@@ -47,11 +47,11 @@ import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, oper
 import extdeps.exec.command { shell_command_render }
 
 test fn witness_actions_runner_release_cites_github_digest() -> Bool {
-  match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_334_0, arch: Aarch64) {
+  match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_336_0, arch: Aarch64) {
     Present { value: artifact } =>
       string_contains(
         s: actions_runner_download_url(artifact: artifact),
-        pattern: "github.com/actions/runner/releases/download/v2.334.0/actions-runner-linux-arm64-2.334.0.tar.gz",
+        pattern: "github.com/actions/runner/releases/download/v2.336.0/actions-runner-linux-arm64-2.336.0.tar.gz",
       )
     Absent => false
   }
@@ -124,7 +124,7 @@ test fn witness_membership_reconcile_adds_delta_slots() -> Bool {
 }
 
 test fn witness_provision_plan_extracts_only_upserts() -> Bool {
-  match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_334_0, arch: Aarch64) {
+  match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_336_0, arch: Aarch64) {
     Present { value: artifact } =>
       let observed: List<RunnerSlotMember> = [
         RunnerSlotMember {
@@ -237,7 +237,7 @@ data observed_two_fixture: RunnerSlotObservation = RunnerSlotsObserved {
 // unread population proposes installing every desired slot onto a machine whose real state nobody
 // saw. This is the arm that turns a silent overwrite into a stop.
 test fn an_unobserved_host_refuses_instead_of_planning() -> Bool {
-  match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_334_0, arch: Aarch64) {
+  match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_336_0, arch: Aarch64) {
     Absent => false
     Present { value: artifact } =>
       match runner_slot_converge_verdict(
@@ -256,7 +256,7 @@ test fn an_unobserved_host_refuses_instead_of_planning() -> Bool {
 // srv1 commits twenty-one and two slots are observed, so a plan must be produced AND must propose
 // adding the nineteen that are missing.
 test fn an_observed_host_plans_the_missing_slots() -> Bool {
-  match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_334_0, arch: Aarch64) {
+  match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_336_0, arch: Aarch64) {
     Absent => false
     Present { value: artifact } =>
       match runner_slot_converge_verdict(

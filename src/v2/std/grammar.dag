@@ -25,7 +25,7 @@ import v2.std.diagnostic {
   node_locus,
   outcome_accepted,
   outcome_rejected,
-  port_locus
+  invariant_port_locus
 }
 import v2.std.node_query { find_named_child }
 import v2.std.compilers.lexing { LexRules }
@@ -95,7 +95,7 @@ type WellFormedFormalGrammar {
 fn validate_grammar_diagnostic(reason: Symbol) -> Diagnostic {
   Diagnostic {
     reason: reason,
-    at: port_locus(port: ^validate_grammar_port),
+    at: invariant_port_locus(port: ^validate_grammar_port, invariant: reason),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

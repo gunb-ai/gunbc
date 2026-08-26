@@ -3,6 +3,7 @@ module gunbc.fabric_cell_converge
 import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
 import std.nat { Nat }
 import std.disposition { Disposition, SingleAuthority }
+import std.string_type { string_is_lexicographically_before }
 import v2.std.optional { Optional, Present, Absent }
 import std.measure { byte_size_count }
 import product.placement_supply { HostIdentity }
@@ -79,6 +80,39 @@ fn fabric_cell_resource_address_wire(address: FabricCellResourceAddress) -> Stri
     FabricCellRootAddress => "cell-root"
     FabricCellAttemptRootAddress => "attempt-root"
     FabricCellResourceBoundaryAddress => "resource-boundary"
+  }
+}
+
+// COMPARED STRUCTURALLY, NOT THROUGH THE RENDERED NAME, AND THIS IS THE HALF `observation_targets`
+// LEFT BEHIND. That function's own header records repairing the SLOT side of exactly this defect --
+// a display projection standing in as the backward identity test -- and then compared the ADDRESS
+// side through `fabric_cell_resource_address_wire` two lines below it. One axis of one predicate was
+// grounded and the other was not, which is why the comment reads as settled and the code was not.
+//
+// THE WIRE SPELLING IS FOR TRANSPORT AND DISPLAY. Routing identity through it makes every future
+// rename of a wire word a silent change to what compares equal, and it is a second naming scheme for
+// a fact the closed coproduct already owns (DESIGN section 3). Three arms, matched exhaustively, so
+// a fourth address cannot be added without deciding here what it equals.
+fn fabric_cell_resource_address_equal(a: FabricCellResourceAddress, b: FabricCellResourceAddress) -> Bool {
+  match a {
+    FabricCellRootAddress =>
+      match b {
+        FabricCellRootAddress => true
+        FabricCellAttemptRootAddress => false
+        FabricCellResourceBoundaryAddress => false
+      }
+    FabricCellAttemptRootAddress =>
+      match b {
+        FabricCellAttemptRootAddress => true
+        FabricCellRootAddress => false
+        FabricCellResourceBoundaryAddress => false
+      }
+    FabricCellResourceBoundaryAddress =>
+      match b {
+        FabricCellResourceBoundaryAddress => true
+        FabricCellRootAddress => false
+        FabricCellAttemptRootAddress => false
+      }
   }
 }
 
@@ -256,8 +290,7 @@ fn observation_address(o: FabricCellAddressObservation) -> FabricCellResourceAdd
 // change to how a slot renders. `runner_slot_identity_equal` compares host and index directly.
 fn observation_targets(o: FabricCellAddressObservation, slot: RunnerSlotIdentity, address: FabricCellResourceAddress) -> Bool {
   runner_slot_identity_equal(a: observation_slot(o: o), b: slot)
-    && fabric_cell_resource_address_wire(address: observation_address(o: o))
-        == fabric_cell_resource_address_wire(address: address)
+    && fabric_cell_resource_address_equal(a: observation_address(o: o), b: address)
 }
 
 // THE READBACK NAMES ITS SUBJECT ONCE. An earlier cut carried `cell: CellId` here while every
@@ -326,20 +359,9 @@ fn fabric_cell_readback_for_slot(
   }
 }
 
-fn fabric_cell_host_standings(readback: FabricCellHostReadback) -> List<FabricCellAddressStanding> {
-  fold(
-    fabric_cell_expected_slots(host: readback.host),
-    init: [],
-    f: (acc, s) => concat(
-      acc,
-      fabric_cell_address_standings(
-        readback: fabric_cell_readback_for_slot(readback: readback, slot: s),
-        slot: s,
-      )
-    )
-  )
-}
-
+// THE AUTHORITY-BOUND WRAPPER. It supplies the one thing the kernel refuses to know -- which slots
+// this host is declared to carry -- and nothing else. Keeping it a separate function is what lets
+// the kernel be exercised at a width the authority does not currently have.
 // AN ADDRESS REFERENCE NAMES ITS CELL, AND UNTIL THIS REVISION IT DID NOT.
 //
 // The dispositions carried a bare FabricCellResourceAddress, so "resource-boundary unreadable" could
@@ -490,11 +512,11 @@ fn fabric_cell_address_dispositions(
 //
 // AN UNOBSERVED ADDRESS BLOCKS; IT DOES NOT COUNT AS ABSENT. This is the seam that reopened the
 // empty-observation narrow one layer in from where the typed population closed it. An earlier
-// revision mapped AddressUnobserved to StandingUnmet, which is non-blocking, so a readback holding
-// NO observations produced FabricCellPopulationObserved with an empty member list -- and reconcile
+// revision mapped AddressUnobserved to a non-blocking standing, so a readback holding
+// NO observations produced FabricCellObservationAdmitted with an empty member list -- and reconcile
 // reads an empty observed population as "the host has none of these" and answers with three ADDs.
 // A host nobody read would have been planned as a host with nothing on it, which is the exact
-// failure FabricCellPopulation was introduced to prevent, arrived at from inside instead of from
+// failure the observation carrier was introduced to prevent, arrived at from inside instead of from
 // the caller.
 //
 // MissingOnHost and Unobserved are therefore on opposite sides of this line even though both are
@@ -515,9 +537,53 @@ fn fabric_cell_address_dispositions(
 // whose observed digest differs from the desired one is NOT satisfied -- it is a resource carrying
 // the wrong value, and the remedy is a repair rather than a create. Folding that judgment in here
 // keeps it on the same descent as the rest, rather than in a fourth predicate applied afterwards.
+// DRIFT AND ABSENCE ARE DIFFERENT STANDINGS BECAUSE THEY HAVE OPPOSITE REMEDIES, and one arm held
+// both until #9122 had already merged. `StandingUnmet` covered a resource that is MISSING and a
+// resource that is PRESENT WITH THE WRONG VALUE, and the observed-member fold kept only
+// `StandingSatisfied` -- so both produced an identical observed population, reconcile answered
+// `MemberAdded` for both, and `MemberChanged` was unreachable for a drifted address. The model
+// chose CREATE against a resource that already existed, which inverts the entire reason the
+// membership is resource-addressed.
+//
+// NOTHING WAS GOING TO CATCH IT, and that is the part worth keeping. The fold was TOTAL over
+// `FabricCellAddressStanding` -- every arm matched, no wildcard, no warning -- so there was no
+// missing case for a reviewer or a lens to see. The distinction that picks the remedy lived INSIDE
+// the arm's disposition, which the fold bound and discarded, and the discarded disposition still
+// carried the member. Two approvals and a GREEN required floor stood behind the defect
+// simultaneously. It is the repository's `total at the level examined, blind one level down` class
+// with a receipt.
+//
+// THE SPLIT IS WHY THIS CANNOT RECUR RATHER THAN BEING TESTED AGAINST: with two arms, a fold that
+// wants to drop absent members must now NAME the drift arm to drop it too, so the collapsed form
+// fails to compile here instead of quietly inheriting one remedy for two states.
+// ONE CANONICAL PAIR, TWO DERIVED VIEWS, AND THE DISAGREEMENT HAS NO SPELLING. The drift arm's
+// first cut carried `observed_member` AND the whole `FabricCellAddressDisposition` it came from --
+// and that disposition is `AddressPresent \{ ref, member \}`, so the observed member was stored
+// twice and the two copies could disagree, with the population fold reading one and the verdict
+// fold reading the other (codex review 55651). Repairing the state-space collapse by minting a
+// parallel representation of the member would have traded one DESIGN failure for another.
+//
+// The arm therefore carries the SUBJECT and the OBSERVED VALUE and nothing else: `ref` is
+// authority-derived (the address the fold is answering about) and `observed_state_digest` is what
+// the host reported for it. A member is DERIVED from that pair here, once, and both consumers call
+// this -- so a member claiming a different slot or address than the ref it is filed under cannot be
+// constructed at all, rather than being constructible and checked.
+fn fabric_cell_observed_member_at(ref: FabricCellAddressRef, state_digest: NonEmptyStr) -> FabricCellMember {
+  FabricCellMember { slot: ref.slot, address: ref.address, state_digest: state_digest }
+}
+
+// THE SATISFIED ARM CARRIES A REF AND NOTHING ELSE, FOR THE REASON THE DRIFT ARM DOES. An earlier
+// cut wrote `StandingSatisfied { address, member }`, where `member` already contains that address
+// -- two writable copies of one coordinate, which every consumer discarded one of and which the
+// variant permitted to disagree (codex review 55704). The repair is not to drop the duplicated
+// field and keep the member: `satisfied` MEANS the observed digest equals the desired one, so the
+// whole member is a function of the ref, and carrying it stores a value the ref already decides.
+// Both parallel copies go, and the three non-blocked arms now read as one shape -- a ref, plus
+// exactly the fact the ref does not determine.
 type FabricCellAddressStanding
-  = StandingSatisfied { address: FabricCellResourceAddress, member: FabricCellMember }
-  | StandingUnmet { disposition: FabricCellAddressDisposition }
+  = StandingSatisfied { ref: FabricCellAddressRef }
+  | StandingObservedDrift { ref: FabricCellAddressRef, observed_state_digest: NonEmptyStr }
+  | StandingExplicitlyAbsent { ref: FabricCellAddressRef }
   | StandingBlocked { disposition: FabricCellAddressDisposition }
 
 fn fabric_cell_address_standing(
@@ -527,13 +593,13 @@ fn fabric_cell_address_standing(
   match d {
     AddressUnreadable { ref: _, cause: _ } => StandingBlocked { disposition: d }
     AddressContradicted { ref: _ } => StandingBlocked { disposition: d }
-    AddressMissingOnHost { ref: _ } => StandingUnmet { disposition: d }
+    AddressMissingOnHost { ref: r } => StandingExplicitlyAbsent { ref: r }
     AddressUnobserved { ref: _ } => StandingBlocked { disposition: d }
     AddressPresent { ref: r, member: m } =>
       if (m.state_digest as String) == (fabric_cell_desired_state_digest(slot: r.slot, address: r.address) as String) {
-        StandingSatisfied { address: r.address, member: m }
+        StandingSatisfied { ref: r }
       } else {
-        StandingUnmet { disposition: d }
+        StandingObservedDrift { ref: r, observed_state_digest: m.state_digest }
       }
   }
 }
@@ -549,7 +615,7 @@ fn fabric_cell_address_standings(
 }
 
 // THE OBSERVED POPULATION IS A TYPED RESULT, NOT A BARE LIST, so that an unreadable resource cannot
-// reach the reconcile as an empty observation. Only FabricCellPopulationObserved carries members
+// reach the reconcile as an empty observation. Only FabricCellObservationAdmitted carries members
 // into membership_reconcile; the refused arm stops the line and names the address it could not read.
 // THE POPULATION IS HOST-SCOPED BECAUSE THE DESIRED SIDE IS. It previously carried one CellId while
 // fabric_cell_desired_members folds every declared fabric slot for a host, the observed arm ignored
@@ -560,7 +626,7 @@ fn fabric_cell_address_standings(
 // RATHER THAN BY ANYONE'S DISCIPLINE. An earlier cut declared the observed arm as a bare
 // `members: List<FabricCellMember>`, which named the distinction between "the host was read and
 // holds nothing" and "no usable observation was produced" without controlling who may assert it:
-// any module could write `FabricCellPopulationObserved { host: h, members: [] }` and obtain
+// any module could write `FabricCellObservationAdmitted { host: h, members: [] }` and obtain
 // observed-empty for free. The spine witness in fact did exactly that. A type that names a
 // distinction it does not own is the shape DESIGN section 4b calls cosmetic -- a `Validated<T>`
 // whose construction enforces nothing -- and the repair is construction, not a check: the member
@@ -571,40 +637,437 @@ fn fabric_cell_address_standings(
 // suggests (gap analysis item 1a): `sole_constructor` confines WHO CONSTRUCTS, not WHAT IS TRUE of
 // the value constructed. It is exactly right here because the fold is the module's own fixed law
 // with no caller-supplied predicate to lie -- every member in the list came from a
-// `StandingSatisfied`, and blocked standings divert the whole population to the refused arm before
-// this carrier is reached. It would establish much less if the mint took a caller's validator.
+// `StandingSatisfied` or a `StandingObservedDrift`, and blocked standings divert the whole
+// population to the refused arm before this carrier is reached. It would establish much less if the
+// mint took a caller's validator.
 type FabricCellObservedMembers sole_constructor { members: List<FabricCellMember> }
 
 fn fabric_cell_observed_members(observed: FabricCellObservedMembers) -> List<FabricCellMember> {
   observed.members
 }
 
-type FabricCellPopulation
-  = FabricCellPopulationObserved { host: HostIdentity, observed: FabricCellObservedMembers }
-  | FabricCellPopulationObservationRefused { host: HostIdentity, blocked: List<FabricCellAddressDisposition> }
+// THE OBSERVER NEVER DECIDES WHICH DECLARED CELLS DESERVE OBSERVATION, AND IT NEVER DISCARDS
+// EVIDENCE IT DID NOT ASK FOR. Those are the two halves of one law, and until this carrier existed
+// only the first half was expressible. The host fold enumerated the authority-expected slots and
+// gathered the readbacks matching each one; a readback supplied for a slot NOT on that roster had
+// no output position at all, so it was dropped in silence. An srv3-07 cell arriving beside a
+// converged srv3-06 produced a result identical to srv3-06 alone -- an implicit exclusion list
+// encoded as iteration direction, which is the empty-observation narrow wearing the shape of a
+// loop.
+//
+// THE KERNEL THEREFORE RETURNS BOTH SIDES OF THE RELATION rather than one side and a shrug:
+// exactly one standing per expected ref, and every supplied subject the expected side did not
+// consume. Two conservation equations become checkable instead of assumed --
+// `expected_ref_count = list_length(standings)` and
+// `supplied_subject_count = matched + unexpected` -- and no subject may disappear between them.
+type FabricCellHostClassification {
+  standings: List<FabricCellAddressStanding>
+  unexpected: List<FabricCellUnexpectedCellEvidence>
+  host_mismatched: List<FabricCellReadbackHostMismatch>
+  roster_mismatched: List<FabricCellObservationRefusal>
+}
 
-fn fabric_cell_population(readback: FabricCellHostReadback) -> FabricCellPopulation {
-  let standings = fabric_cell_host_standings(readback: readback)
-  let blocked = fold(standings, init: [], f: (acc, st) =>
-    match st {
-      StandingBlocked { disposition: d } => concat(acc, [d])
-      StandingUnmet { disposition: _ } => acc
-      StandingSatisfied { address: _, member: _ } => acc
-    })
-  if list_length(items: blocked) > 0 {
-    FabricCellPopulationObservationRefused { host: readback.host, blocked: blocked }
-  } else {
-    let satisfied_members = fold(standings, init: [], f: (acc, st) =>
-      match st {
-        StandingSatisfied { address: _, member: m } => concat(acc, [m])
-        StandingUnmet { disposition: _ } => acc
-        StandingBlocked { disposition: _ } => acc
-      })
-    FabricCellPopulationObserved {
-      host: readback.host,
-      observed: FabricCellObservedMembers { members: satisfied_members },
-    }
+// A THIRD DESTINATION, BECAUSE A SUPPLIED READBACK HAS THREE HONEST FATES AND NOT TWO. An earlier
+// cut partitioned the supplied side into expected and unexpected, which is exhaustive over what a
+// readback IS and silent about whether it is about THIS HOST at all: `FabricCellHostReadback`
+// carries `host` and each child carries a full `RunnerSlotIdentity`, so an srv3 host readback may
+// hold an srv4-07 child and nothing refused it. It fell into `unexpected` -- a cell this host does
+// not declare, which is true and useless, because the remedy for "a foreign cell exists on srv3"
+// and "somebody handed me srv4's readback labelled srv3" are not the same remedy and the second is
+// a defect in the caller.
+//
+// IT IS ROUTED, NOT VALIDATED, and that distinction is what closes the ordering hole below rather
+// than merely reporting it. Because a cross-host readback never reaches the unexpected fold, every
+// member of that fold shares the enclosing host by construction -- so `slot_index` IS a total order
+// over it, and the assumption the canonical order used to admit is no longer an assumption. A
+// check placed beside the fold would have left the bad state writable and the order still
+// conditional on the check running (DESIGN section 5).
+type FabricCellReadbackHostMismatch {
+  enclosing_host: HostIdentity
+  supplied_slot: RunnerSlotIdentity
+}
+
+// NORMALIZED BY SLOT, BECAUSE THE SUBJECT IS THE CELL AND NOT THE PROBE. One unexpected cell
+// reported twice is one unexpected cell. An earlier cut emitted one row per READBACK RECORD, so
+// supplying the identical unexpected readback twice produced two refusals, a refusal count of 2 and
+// a different member-set fingerprint -- while the host substrate was unchanged and only probe
+// multiplicity differed. That is the same idempotence obligation the expected side already meets
+// (`fabric_cell_readback_for_slot` merges duplicate readbacks rather than taking the last), left
+// unmet on the supplied side because the two sides were written a PR apart.
+//
+// THE MULTIPLICITY COUNTERS ARE GONE, AND THE REASON IS THAT "OUTSIDE THE MEMBER-SET FINGERPRINT"
+// IS NOT "OUTSIDE IDENTITY". An earlier cut carried `readback_count` and `observation_count` here
+// and called them diagnostics on the strength of the BASELINE row serializing the slot alone. The
+// baseline was indeed clean; the reviewer-facing refusal line rendered `observations=<n>`, that
+// line enters `plan_body`, and `fleet_converge_plan_artifact` content-hashes the whole body into
+// the held-lease owner fingerprint. So one probe and two identical probes produced the same
+// member-set fingerprint and a DIFFERENT plan artifact -- the very idempotence the normalization
+// was added to establish, defeated one layer out, by numbers whose own annotation said they could
+// not reach it. Probe multiplicity is not a host-state change, so it is not carried: the subject is
+// the unique unexpected slot and nothing else. There is no non-authoritative channel in this family
+// to publish the counts on, and a field with no consumer is dead data (DESIGN section 4c).
+type FabricCellUnexpectedCellEvidence {
+  slot: RunnerSlotIdentity
+}
+
+fn fabric_cell_unexpected_holds_slot(
+  acc: List<FabricCellUnexpectedCellEvidence>,
+  slot: RunnerSlotIdentity,
+) -> Bool {
+  fold(acc, init: false, f: (seen, u) => seen || runner_slot_identity_equal(a: u.slot, b: slot))
+}
+
+fn fabric_cell_merge_unexpected(
+  acc: List<FabricCellUnexpectedCellEvidence>,
+  r: FabricCellReadback,
+) -> List<FabricCellUnexpectedCellEvidence> {
+  if fabric_cell_unexpected_holds_slot(acc: acc, slot: r.slot) { acc }
+  else { concat(acc, [FabricCellUnexpectedCellEvidence { slot: r.slot }]) }
+}
+
+// PURE: NO AUTHORITY READ, NO SEALED MINT, NO ACTUATION LICENSED. The expected roster arrives as a
+// PARAMETER, which is the whole point of the split -- a fixture may hand this function twenty-one
+// synthetic cells, or zero, without the corpus growing a second production authority beside
+// `fabric_execution_slot_identities`. Five of the six defects this family has had came from a
+// fixture that could not express the failure, and every one of them was reachable only because the
+// classification could not be called except through the one declared slot.
+fn classify_fabric_cell_host(
+  expected_slots: List<RunnerSlotIdentity>,
+  readback: FabricCellHostReadback,
+) -> FabricCellHostClassification {
+  FabricCellHostClassification {
+    standings: fold(
+      expected_slots,
+      init: [],
+      f: (acc, s) =>
+        if (s.host as String) != (readback.host as String) { acc }
+        else { concat(
+          acc,
+          fabric_cell_address_standings(
+            readback: fabric_cell_readback_for_slot(readback: readback, slot: s),
+            slot: s,
+          )
+        ) }
+    ),
+    roster_mismatched: fold(
+      expected_slots,
+      init: [],
+      f: (acc, s) =>
+        if (s.host as String) == (readback.host as String) { acc }
+        else {
+          fabric_cell_refusal_insert_ordered(acc: acc, r: ExpectedRosterHostMismatch {
+            enclosing_host: readback.host,
+            expected_slot: s,
+          })
+        }
+    ),
+    unexpected: fabric_cell_unexpected_canonical(unexpected: fold(
+      readback.cell_readbacks,
+      init: [],
+      f: (acc, r) =>
+        if !fabric_cell_readback_names_enclosing_host(readback: readback, r: r) { acc }
+        else if fabric_cell_slot_is_expected(expected_slots: expected_slots, slot: r.slot) { acc }
+        else { fabric_cell_merge_unexpected(acc: acc, r: r) }
+    )),
+    host_mismatched: fabric_cell_host_mismatch_canonical(mismatched: fold(
+      readback.cell_readbacks,
+      init: [],
+      f: (acc, r) =>
+        if fabric_cell_readback_names_enclosing_host(readback: readback, r: r) { acc }
+        else if fabric_cell_host_mismatch_holds_slot(acc: acc, slot: r.slot) { acc }
+        else {
+          concat(acc, [FabricCellReadbackHostMismatch {
+            enclosing_host: readback.host,
+            supplied_slot: r.slot,
+          }])
+        }
+    )),
   }
+}
+
+// AND THE EXPECTED ROSTER IS BOUND TO THE ENCLOSING HOST TOO, WHICH IS THE SAME PARTITION QUESTION
+// ASKED FROM THE OTHER SIDE. The kernel is public precisely so a synthetic roster can be handed to
+// it, and an unrestricted roster let ONE supplied subject land in TWO destinations: an expected slot
+// naming srv4 under an srv3 readback produced a standing (the readback matched it by identity) AND a
+// host mismatch (its host is not the enclosing one), so the promised exclusive partition failed for
+// an input the contract permitted (codex review 55760). Filtering the roster silently would be the
+// silent exclusion this kernel has already been repaired for twice, so the dropped slots become a
+// typed refusal population rather than a dropped one -- a mis-scoped roster is a CALLER defect whose
+// remedy is upstream of this fold, like a mislabeled readback, and it is a DIFFERENT defect from
+// one, so it gets its own arm rather than borrowing that one's.
+//
+// IT REUSES THE REFUSAL IDENTITY'S ORDER AND MINTS NO FOURTH ORDERING RULE. Three populations were
+// each canonicalized where they were built, each with its own key; a fourth hand-written comparator
+// is the fork that repetition was heading for.
+fn fabric_cell_readback_names_enclosing_host(readback: FabricCellHostReadback, r: FabricCellReadback) -> Bool {
+  (r.slot.host as String) == (readback.host as String)
+}
+
+// THE MISMATCHED SIDE IS ORDERED TOO, AND ITS OMISSION IS THE SAME DEFECT ONE FIELD OVER. The
+// commit that added this destination normalized it by slot -- deduplicated -- and appended in input
+// ORDER, which is exactly the half the unexpected side had already been repaired for. So `[srv4-07,
+// srv1-08]` and `[srv1-08, srv4-07]` under one srv3 readback describe the same pair of caller
+// defects and produced differently ordered baseline rows, rendered lines and member-set
+// fingerprints. The existing cross-host reversal row could not see it: it pairs ONE same-host
+// unexpected cell with ONE mismatch, and the two classes are concatenated in a fixed class order,
+// so nothing in it reorders two members WITHIN this list.
+//
+// THE ORDER IS OVER THE COMPLETE IDENTITY, NOT THE INDEX, and that is the one place this differs
+// from the unexpected side. There the routing guarantees one host, so index alone is total. Here
+// every member is by construction a DIFFERENT host from the enclosing one, and two of them may
+// share an index -- srv1-08 and srv4-07 do not, but srv1-07 and srv4-07 would. Host is compared
+// first and index breaks the tie, on the same lexicographic authority the observer's discovery uses
+// (`std.string_type` string_is_lexicographically_before) rather than a second spelling of "which
+// name sorts first".
+fn fabric_cell_host_mismatch_canonical(
+  mismatched: List<FabricCellReadbackHostMismatch>,
+) -> List<FabricCellReadbackHostMismatch> {
+  fold(mismatched, init: [], f: (acc, m) => fabric_cell_host_mismatch_insert_ordered(acc: acc, m: m))
+}
+
+fn fabric_cell_host_mismatch_before(a: FabricCellReadbackHostMismatch, b: FabricCellReadbackHostMismatch) -> Bool {
+  if (a.supplied_slot.host as String) == (b.supplied_slot.host as String) {
+    a.supplied_slot.slot_index < b.supplied_slot.slot_index
+  } else {
+    string_is_lexicographically_before(
+      left: a.supplied_slot.host as String,
+      right: b.supplied_slot.host as String,
+    )
+  }
+}
+
+fn fabric_cell_host_mismatch_insert_ordered(
+  acc: List<FabricCellReadbackHostMismatch>,
+  m: FabricCellReadbackHostMismatch,
+) -> List<FabricCellReadbackHostMismatch> {
+  concat(
+    fold(acc, init: [], f: (kept, e) => if fabric_cell_host_mismatch_before(a: e, b: m) { concat(kept, [e]) } else { kept }),
+    concat(
+      [m],
+      fold(acc, init: [], f: (kept, e) => if fabric_cell_host_mismatch_before(a: e, b: m) { kept } else { concat(kept, [e]) }),
+    ),
+  )
+}
+
+fn fabric_cell_host_mismatch_holds_slot(
+  acc: List<FabricCellReadbackHostMismatch>,
+  slot: RunnerSlotIdentity,
+) -> Bool {
+  fold(acc, init: false, f: (seen, m) => seen || runner_slot_identity_equal(a: m.supplied_slot, b: slot))
+}
+
+// THE UNEXPECTED SIDE IS PUT IN A CANONICAL ORDER BECAUSE NOTHING ELSE ORDERS IT, and the asymmetry
+// is what made this necessary rather than tidy. The EXPECTED side is emitted in authority order --
+// the roster decides it, and two runs of the same host produce the same sequence. The supplied side
+// has no such spine: it arrives in whatever order the probes came back, so `[cell-07, cell-08]` and
+// `[cell-08, cell-07]` serialized into two different baselines and hashed to two different
+// member-set fingerprints. Same host, same substrate, different plan identity depending on probe
+// arrival order -- which is the CAS defect this family already fixed once, reappearing on the side
+// that did not exist when it was fixed.
+//
+// FOUND BY THE LAW, NOT BY REVIEW. The row that caught it asserts only that the reversed supply
+// order produces the same fingerprint; no scenario fixture would have supplied the same two cells
+// twice in two orders.
+//
+// THE ORDER IS BY SLOT INDEX, AND THE REASON IT IS NOT BY SORTED NAME IS A MEASUREMENT RATHER THAN
+// A PREFERENCE. The obvious construction is a map keyed on the slot's instance name read back
+// through `sorted_map_keys`, which is what the rest of the corpus uses to make a fold
+// deterministic. It does not run: `sorted_map_keys` raises `NoSuchFunction` in the interpreter on
+// this tree, and so does the corpus's own witness for it
+// (`test.claim.sorted_map_keys_interpreter_order_witness_test`), whose annotation states the arm
+// exists. That is a live defect in a shared primitive, reported rather than worked around here --
+// this fold needs a total order it can actually compute, not a dependency on a primitive that
+// raises.
+//
+// SLOT INDEX IS A TOTAL ORDER HERE BECAUSE THE FOLD IS HOST-EXACT, AND AN EARLIER REVISION OF THIS
+// ANNOTATION ADMITTED THAT IT WAS NOT. Two unexpected slots differing by HOST rather than index
+// compare equal under this comparison, and that state WAS representable: a child readback carries
+// its own `RunnerSlotIdentity`, so an srv3 host readback could hold srv3-07 and srv4-07 and the
+// reversed supply order produced the reversed canonical output and a different fingerprint. The
+// annotation named it as a next-rung trigger, which was the wrong disposition -- it was an admitted
+// live defect in the newly modeled denominator, not a bounded assumption about an unreachable one.
+// It is closed by routing rather than by comparison: a cross-host readback goes to
+// `host_mismatched` and never reaches this fold, so every element compared here shares one host and
+// index alone decides. Nothing was added to the sort.
+fn fabric_cell_unexpected_canonical(
+  unexpected: List<FabricCellUnexpectedCellEvidence>,
+) -> List<FabricCellUnexpectedCellEvidence> {
+  fold(unexpected, init: [], f: (acc, u) => fabric_cell_unexpected_insert_ordered(acc: acc, u: u))
+}
+
+fn fabric_cell_unexpected_insert_ordered(
+  acc: List<FabricCellUnexpectedCellEvidence>,
+  u: FabricCellUnexpectedCellEvidence,
+) -> List<FabricCellUnexpectedCellEvidence> {
+  concat(
+    fold(acc, init: [], f: (kept, e) => if e.slot.slot_index < u.slot.slot_index { concat(kept, [e]) } else { kept }),
+    concat(
+      [u],
+      fold(acc, init: [], f: (kept, e) => if e.slot.slot_index < u.slot.slot_index { kept } else { concat(kept, [e]) }),
+    ),
+  )
+}
+
+
+fn fabric_cell_slot_is_expected(
+  expected_slots: List<RunnerSlotIdentity>,
+  slot: RunnerSlotIdentity,
+) -> Bool {
+  fold(expected_slots, init: false, f: (acc, s) => acc || runner_slot_identity_equal(a: s, b: slot))
+}
+
+// ONE REFUSAL VOCABULARY, EXTENDED RATHER THAN FORKED. Unexpected evidence is not an address
+// disposition -- there is no expected ref it is about -- so it cannot be filed in the blocked list
+// as it stood, and giving the population a THIRD arm for it would have split one question ("may
+// this observation be trusted as complete?") across two shapes that every consumer must then join.
+// The refusal channel becomes a coproduct instead, so a new cause is a variant and not a new arm,
+// and the rendering and counting folds stay single.
+//
+// UNEXPECTED EVIDENCE REFUSES RATHER THAN BEING RECONCILED, and that is the fail-closed direction
+// rather than the timid one. A cell present on the host but absent from the authority is either a
+// roster that shrank without teardown or a resource this fold has no provenance for; deciding
+// between those requires positive ownership evidence the model does not yet carry. Planning a
+// REMOVE against it would be "anything with a fabric-looking name is ours to delete", and ignoring
+// it is the silent exclusion this whole carrier exists to end.
+//
+// A HOST-MISMATCHED READBACK REFUSES TOO, RATHER THAN BEING ROUTED AWAY AND FORGOTTEN. Routing it
+// out of the unexpected fold is what makes the canonical order total; it is NOT a disposition of
+// the readback itself, and a subject that leaves every counted population without appearing in a
+// refusal is the silent exclusion this carrier exists to end, reintroduced by the repair for a
+// different silent exclusion.
+type FabricCellObservationRefusal
+  = ExpectedAddressBlocked { disposition: FabricCellAddressDisposition }
+  | UnexpectedCellEvidence { evidence: FabricCellUnexpectedCellEvidence }
+  | ReadbackHostMismatch { mismatch: FabricCellReadbackHostMismatch }
+  | ForeignArtifactObserved { host: HostIdentity, observed_name: String, location: String }
+  | DiscoveryUnavailable { host: HostIdentity, cause: String }
+  | SuppliedProbeUnconsumed { host: HostIdentity, slot: RunnerSlotIdentity, address: FabricCellResourceAddress }
+  | SuppliedNamespaceUnconsumed { host: HostIdentity, slot: RunnerSlotIdentity }
+  | UnexpectedCommittedSlotArtifact { host: HostIdentity, slot: RunnerSlotIdentity, location: String }
+  | ExpectedRosterHostMismatch { enclosing_host: HostIdentity, expected_slot: RunnerSlotIdentity }
+  | ObserverUnavailable { host: HostIdentity }
+  | CrossHostNamedArtifactObserved {
+      observed_on: HostIdentity
+      observed_name: String
+      matched_committed_slot: RunnerSlotIdentity
+      location: String
+    }
+
+// THE TYPED SUBJECT OF A REFUSAL, WHICH IS WHAT DECIDES SAMENESS -- NEVER THE WORDING. Two refusals
+// are the same refusal when they are about the same thing, and what "the same thing" means is the
+// coordinate the authority derived, never the sentence a transport happened to produce. So a cause
+// string never enters here: a host that reports "connection reset" on one run and "connection reset
+// by peer" on the next has one deficit, and an identity carrying the wording would make it two,
+// change the population, and move the plan's fingerprint under a purely cosmetic difference.
+//
+// THIS IS THE FOURTH SUPPLIED POPULATION TO GET A CANONICAL ORDER AND THE FIRST TO GET IT HERE. The
+// three before it were each canonicalized where they were built, with their own key -- which is the
+// forked-logic trap one more repetition would have cemented. The refusal type is the single place
+// that knows every subject, so the identity lives on it and the population is canonicalized ONCE,
+// at the last point before it reaches plan identity.
+fn fabric_cell_observation_refusal_identity(refusal: FabricCellObservationRefusal) -> String {
+  match refusal {
+    ExpectedAddressBlocked { disposition: d } =>
+      join(["blocked|", fabric_cell_disposition_subject_identity(d: d)], "")
+    UnexpectedCellEvidence { evidence: e } =>
+      join(["unexpected-cell|", runner_slot_instance_name(slot: e.slot)], "")
+    ReadbackHostMismatch { mismatch: m } =>
+      join([
+        "host-mismatched-readback|", m.enclosing_host as String,
+        "|", runner_slot_instance_name(slot: m.supplied_slot),
+      ], "")
+    ForeignArtifactObserved { host: h, observed_name: n, location: l } =>
+      join(["foreign-artifact|", h as String, "|", l, "|", n], "")
+    DiscoveryUnavailable { host: h, cause: _ } =>
+      join(["discovery-unavailable|", h as String], "")
+    SuppliedProbeUnconsumed { host: h, slot: sl, address: a } =>
+      join([
+        "unconsumed-probe|", h as String, "|", runner_slot_instance_name(slot: sl),
+        "|", fabric_cell_resource_address_wire(address: a),
+      ], "")
+    SuppliedNamespaceUnconsumed { host: h, slot: sl } =>
+      join(["unconsumed-namespace|", h as String, "|", runner_slot_instance_name(slot: sl)], "")
+    ExpectedRosterHostMismatch { enclosing_host: h, expected_slot: sl } =>
+      join(["expected-roster-host-mismatch|", h as String, "|", runner_slot_instance_name(slot: sl)], "")
+    ObserverUnavailable { host: h } => join(["observer-unavailable|", h as String], "")
+    UnexpectedCommittedSlotArtifact { host: h, slot: sl, location: l } =>
+      join([
+        "unexpected-committed-slot-artifact|", h as String,
+        "|", l, "|", runner_slot_instance_name(slot: sl),
+      ], "")
+    CrossHostNamedArtifactObserved {
+      observed_on: oh
+      observed_name: n
+      matched_committed_slot: ms
+      location: l
+    } =>
+      join([
+        "cross-host-named-artifact|", oh as String, "|", l, "|", n,
+        "|", runner_slot_instance_name(slot: ms),
+      ], "")
+  }
+}
+
+// THE SUBJECT OF A DISPOSITION IS ITS REF, PLUS WHICH DISPOSITION IT IS. `AddressUnreadable` carries
+// a cause and it is deliberately not read: unreadable-for-one-reason and unreadable-for-another are
+// one deficit about one address.
+fn fabric_cell_disposition_subject_identity(d: FabricCellAddressDisposition) -> String {
+  match d {
+    AddressPresent { ref: r, member: _ } => join(["present|", fabric_cell_address_ref_identity(ref: r)], "")
+    AddressMissingOnHost { ref: r } => join(["missing|", fabric_cell_address_ref_identity(ref: r)], "")
+    AddressUnobserved { ref: r } => join(["unobserved|", fabric_cell_address_ref_identity(ref: r)], "")
+    AddressContradicted { ref: r } => join(["contradicted|", fabric_cell_address_ref_identity(ref: r)], "")
+    AddressUnreadable { ref: r, cause: _ } => join(["unreadable|", fabric_cell_address_ref_identity(ref: r)], "")
+  }
+}
+
+fn fabric_cell_address_ref_identity(ref: FabricCellAddressRef) -> String {
+  join([
+    runner_slot_instance_name(slot: ref.slot),
+    "|", fabric_cell_resource_address_wire(address: ref.address),
+  ], "")
+}
+
+// ONE ORDER FOR THE WHOLE REFUSAL POPULATION, APPLIED ONCE. Everything downstream of this -- the
+// blocked list, the baseline rows, the member-set fingerprint, the rendered lines, the plan body,
+// the lease owner -- is a function of this list's order, so two probes carrying the same evidence in
+// a different sequence must arrive here as the same list or they describe the same host with two
+// identities.
+fn fabric_cell_canonical_refusals(
+  refusals: List<FabricCellObservationRefusal>,
+) -> List<FabricCellObservationRefusal> {
+  fold(refusals, init: [], f: (acc, r) => fabric_cell_refusal_insert_ordered(acc: acc, r: r))
+}
+
+fn fabric_cell_refusal_insert_ordered(
+  acc: List<FabricCellObservationRefusal>,
+  r: FabricCellObservationRefusal,
+) -> List<FabricCellObservationRefusal> {
+  if fabric_cell_refusals_hold(acc: acc, identity: fabric_cell_observation_refusal_identity(refusal: r)) {
+    acc
+  } else {
+    let key = fabric_cell_observation_refusal_identity(refusal: r)
+    concat(
+      fold(acc, init: [], f: (kept, e) =>
+        if string_is_lexicographically_before(
+          left: fabric_cell_observation_refusal_identity(refusal: e),
+          right: key,
+        ) { concat(kept, [e]) } else { kept }),
+      concat(
+        [r],
+        fold(acc, init: [], f: (kept, e) =>
+          if string_is_lexicographically_before(
+            left: fabric_cell_observation_refusal_identity(refusal: e),
+            right: key,
+          ) { kept } else { concat(kept, [e]) }),
+      ),
+    )
+  }
+}
+
+fn fabric_cell_refusals_hold(acc: List<FabricCellObservationRefusal>, identity: String) -> Bool {
+  fold(acc, init: false, f: (found, e) =>
+    found || fabric_cell_observation_refusal_identity(refusal: e) == identity)
 }
 
 // THE THREE VERDICTS THE BRIEF NAMES, DERIVED FROM THE PER-ADDRESS OBSERVATION RATHER THAN BEING ITS
@@ -623,17 +1086,20 @@ fn fabric_cell_substrate_verdict(readback: FabricCellReadback) -> FabricCellSubs
   let blocked = fold(standings, init: [], f: (acc, st) =>
     match st {
       StandingBlocked { disposition: d } => concat(acc, [d])
-      StandingUnmet { disposition: _ } => acc
-      StandingSatisfied { address: _, member: _ } => acc
+      StandingObservedDrift { ref: _, observed_state_digest: _ } => acc
+      StandingExplicitlyAbsent { ref: _ } => acc
+      StandingSatisfied { ref: _ } => acc
     })
   if list_length(items: blocked) > 0 {
     FabricCellSubstrateObservationRefused { cell: cell, blocked: blocked }
   } else {
     let unmet = fold(standings, init: [], f: (acc, st) =>
       match st {
-        StandingUnmet { disposition: d } => concat(acc, [d])
+        StandingObservedDrift { ref: r, observed_state_digest: g } =>
+          concat(acc, [AddressPresent { ref: r, member: fabric_cell_observed_member_at(ref: r, state_digest: g) }])
+        StandingExplicitlyAbsent { ref: r } => concat(acc, [AddressMissingOnHost { ref: r }])
         StandingBlocked { disposition: d } => concat(acc, [d])
-        StandingSatisfied { address: _, member: _ } => acc
+        StandingSatisfied { ref: _ } => acc
       })
     if list_length(items: unmet) > 0 {
       FabricCellSubstrateUnprovisioned { cell: cell, missing_or_drifted: unmet }
@@ -689,39 +1155,3 @@ fn fabric_cell_unreadable_dispositions_for_slot(
 
 data fabric_cell_no_observer_cause: String = "no fabric cell observer is wired: this host has not been read for fabric cell resources, and an unread host is not an empty one"
 
-// AN UNREAD HOST IS ONLY UNREAD FOR THE CELLS IT IS EXPECTED TO HAVE, and this function projected
-// the GLOBAL slot roster into every host until codex review 55439 caught it. Because that authority
-// holds exactly one member today, planning ANY host -- srv4, or a host with no fabric cells at all
-// -- fabricated an srv3-06 unreadable-resource refusal and stopped the line over resources that
-// host was never expected to carry. The CLI calls this on every plan, so the defect was in
-// production planning rather than latent (`gunbc.fleet_converge_plan_cli` `fleet_converge_plan_cli_main`).
-//
-// TWO SEPARATE ERRORS, and only fixing the filter would have left the second. The roster is now
-// host-filtered through the same fabric_cell_expected_slots the observing fold uses -- one authority
-// for "which cells does this host expect", not two. And a host expecting NO fabric cells converges
-// OBSERVED-EMPTY rather than refused: there is nothing unread about a host with nothing to read, and
-// answering Refused there is fabricating an obligation, which is the mirror of the fabricated
-// plausible output DESIGN section 5 forbids -- a refusal invented where no fact was missing.
-//
-// THE TWO ROUTES NOW AGREE BY CONSTRUCTION: fabric_cell_population_unobserved(srv4) and
-// fabric_cell_population(FabricCellHostReadback { host: srv4, cell_readbacks: [] }) both answer
-// observed-empty, because both derive the expected set from the same authority. Before this they
-// disagreed -- the observing fold was already host-exact and this constructor was not.
-fn fabric_cell_population_unobserved(host: HostIdentity) -> FabricCellPopulation {
-  let expected = fabric_cell_expected_slots(host: host)
-  if list_length(items: expected) == 0 {
-    FabricCellPopulationObserved {
-      host: host,
-      observed: FabricCellObservedMembers { members: [] },
-    }
-  } else {
-    FabricCellPopulationObservationRefused {
-      host: host,
-      blocked: fold(
-        expected,
-        init: [],
-        f: (acc, slot) => concat(acc, fabric_cell_unreadable_dispositions_for_slot(slot: slot))
-      )
-    }
-  }
-}
