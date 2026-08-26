@@ -490,14 +490,12 @@ pub fn occurrence_containment_path_contains_ancestor(
 pub fn occurrence_containment_ancestors_as_list(
     ancestors: Rc<Vec<OccurrenceId>>,
 ) -> Rc<Vec<OccurrenceId>> {
-    v1_rt::reverse(
-        ancestors
-            .iter()
-            .cloned()
-            .fold(Rc::new(vec![]), |acc: _, id: OccurrenceId| {
-                v1_rt::concat(Rc::new(vec![id.clone()]), acc)
-            }),
-    )
+    v1_rt::reverse(ancestors.iter().cloned().fold(
+        Rc::new(vec![]),
+        |acc: Rc<Vec<OccurrenceId>>, id: OccurrenceId| {
+            v1_rt::concat(Rc::new(vec![id.clone()]), acc)
+        },
+    ))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
