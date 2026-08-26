@@ -228,13 +228,16 @@ pub fn render_subject_annotation_blocks(
         let texts = source_annotation_graph_rows(graph.clone())
             .iter()
             .cloned()
-            .fold(Rc::new(vec![]), |acc: _, row: Rc<SourceAnnotationDebt>| {
-                if (row.subject.clone().value.clone() == subject.value.clone()) {
-                    v1_rt::rc_list_push(acc.clone(), row.text.clone())
-                } else {
-                    acc.clone()
-                }
-            });
+            .fold(
+                Rc::new(vec![]),
+                |acc: Rc<Vec<String>>, row: Rc<SourceAnnotationDebt>| {
+                    if (row.subject.clone().value.clone() == subject.value.clone()) {
+                        v1_rt::rc_list_push(acc.clone(), row.text.clone())
+                    } else {
+                        acc.clone()
+                    }
+                },
+            );
         if ((texts.clone().len() as i64) == 0) {
             None
         } else {
