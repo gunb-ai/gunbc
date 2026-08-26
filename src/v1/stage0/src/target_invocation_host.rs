@@ -233,6 +233,23 @@ pub fn invocation_exit_status(t: Termination) -> i32 {
     }
 }
 
+/// AN OUTCOME, DELIBERATELY NOT A RECEIPT, AND THE NAME IS THE WHOLE OF WHAT IS CLAIMED.
+///
+/// The producer executes against an UNPINNED LIVE WORKING TREE. Nothing binds the bytes it read to
+/// the answer it returned: the corpus may change while the walk is in progress, so the population
+/// reported here is not identified with any source state a later run could reconstruct. Calling
+/// this a receipt would assert exactly that binding, so it is not called one.
+///
+/// NO HASH FIELD CLOSES THIS AND ONE MUST NOT BE ADDED. Hashing the tree before the run, after it,
+/// or both proves nothing -- the tree can go A -> B -> A while the producer reads a MIXED
+/// population, and both hashes agree. The requirement is that the bytes producing the manifest ARE
+/// the bytes the producer consumes, which cannot be arranged by observing one mutable namespace and
+/// executing against it afterwards. A digest field here would look like evidence and carry none,
+/// which is worse than the honest gap.
+///
+/// SO WHAT IS NOT CLAIMED, named rather than left for a reader to assume safe: this outcome does
+/// not support target-result caching, cross-run comparison, remote execution, replay, or the
+/// statement "this standing was about source X". Each of those needs source binding first.
 pub struct InvocationOutcome {
     pub termination: Termination,
     pub message: String,
@@ -283,6 +300,25 @@ fn run_heads_reading_differential(source_roots: &[String]) -> InvocationOutcome 
     for path in d.regressed.iter() {
         message.push_str(&format!("\nheads-reading-differential: REGRESSED {path}"));
     }
+    // THE PARSE-WALL FIGURES ARE CARRIED OVER FROM THE DELETED `--heads-reading-differential`
+    // MODE, AND THEY ARE HOST OUTPUT RATHER THAN PART OF THE MODELED OBSERVATION.
+    //
+    // `HeadsReadingDifferentialObservation` carries the four populations and no timing, so these
+    // two numbers have no home in the standing. They are printed rather than dropped because the
+    // route they came from is being deleted in this same change and a replacement that silently
+    // loses a capability is not a replacement. They are printed BELOW the populations and take no
+    // part in the verdict, which is the split `gunbc.build_target` already states: cost has its own
+    // authority and folding it into a correctness answer gives the cost axis a second home. Their
+    // next rung is a cost carrier on the observation; until one exists, this is an unmodeled host
+    // line and is named as such rather than left to look like modeled output.
+    //
+    // It measures the PARSE only -- tokenize, newline indexing and per-file setup sit outside both
+    // timers -- so it is not the whole `pool_parse` saving and must never be quoted as one.
+    message.push_str(&format!(
+        "\nheads-reading-differential: full_reading_parse_ms={} heads_reading_parse_ms={}",
+        d.full_reading_nanos / 1_000_000,
+        d.heads_reading_nanos / 1_000_000,
+    ));
     InvocationOutcome {
         termination: if d.holds() {
             Termination::ObservationHeld

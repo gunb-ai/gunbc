@@ -87,6 +87,21 @@ fn heads_reading_differential_source_roots() -> List<String> {
   ["dag", "src/v2"]
 }
 
+// WHAT AN INVOCATION OF THIS INSTRUMENT DOES NOT ESTABLISH, STATED HERE RATHER THAN ASSUMED SAFE.
+//
+// The producer reads an UNPINNED LIVE WORKING TREE. Nothing binds the bytes it consumed to the
+// standing it returned -- the corpus may change while the walk is in progress -- so a completed
+// observation is not identified with any source state a later run could reconstruct. Every arm of
+// `HeadsReadingDifferentialStanding` is therefore an OUTCOME and none of them is a receipt, and no
+// digest, commit or head-ref field may be added here to close the gap: hashing before the run,
+// after it, or both proves nothing, because the tree can go A -> B -> A while the producer reads a
+// MIXED population and both hashes agree. A field that looks like provenance and supports none is
+// worse than the gap it hides.
+//
+// SO THE FOLLOWING ARE OUT OF REACH UNTIL SOURCE BINDING LANDS AS ITS OWN CAPABILITY: caching a
+// target's result, comparing two runs, executing remotely, replaying, and the statement "this
+// standing was about source X". Direct invocation and its immediate rendering are what this seam
+// claims, and they need none of them.
 fn instrument_targets() -> List<Label> {
   [heads_reading_differential_label()]
 }
