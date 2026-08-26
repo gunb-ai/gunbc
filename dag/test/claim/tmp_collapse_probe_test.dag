@@ -5,20 +5,20 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn bare_unimported_head_already_matches() -> Bool {
+test fn bare_head_binds_the_local_declaration() -> Bool {
   compile_dag_rust_emit_check(
-    "module probe_collapse_bare\n\ntype CollapseHolderA<K, V> {\n  row: KeyedRow<K, V>\n}\n",
+    "module probe_collapse_bare\n\ntype LocalRow<K, V> {\n  k: K\n  v: V\n}\n\ntype HolderA<K, V> {\n  row: LocalRow<K, V>\n}\n",
     "src/probe_collapse_bare.rs",
-    ["pub struct CollapseHolderA<K: Clone, V: Clone>"],
-    []
+    ["pub struct HolderA<K: Clone, V: Clone>"],
+    ["compile_error"]
   )
 }
 
-test fn qualified_nonsense_head_matches_the_same_leaf() -> Bool {
+test fn nonsense_qualifier_binds_the_same_local_declaration() -> Bool {
   compile_dag_rust_emit_check(
-    "module probe_collapse_qual\n\ntype CollapseHolderB<K, V> {\n  row: no.such.module.KeyedRow<K, V>\n}\n",
+    "module probe_collapse_qual\n\ntype LocalRow<K, V> {\n  k: K\n  v: V\n}\n\ntype HolderB<K, V> {\n  row: no.such.module.LocalRow<K, V>\n}\n",
     "src/probe_collapse_qual.rs",
-    ["pub struct CollapseHolderB<K: Clone, V: Clone>"],
-    []
+    ["pub struct HolderB<K: Clone, V: Clone>"],
+    ["compile_error"]
   )
 }
