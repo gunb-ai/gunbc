@@ -118,9 +118,10 @@ pub use crate::v1_std_core::{
     is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at, let_binding_name_at,
     let_body, let_value, local_transport_node, make_error_node, match_arm_nodes, match_scrutinee,
     method_arg_nodes, method_receiver, module_imports, module_items, operation_modifier_name,
-    param_node_default_value, param_node_name_at, param_node_type_expr, record_lit_type_name_at,
-    return_value, slice_base, slice_end, slice_start, transport_base_path, transport_has_auth,
-    transport_verb, tuple_type_name, unaryop_operand, with_required_cardinality,
+    param_node_default_value, param_node_name_at, param_node_type_expr, qualified_last_segment,
+    record_lit_type_name_at, return_value, slice_base, slice_end, slice_start, transport_base_path,
+    transport_has_auth, transport_verb, tuple_type_name, unaryop_operand,
+    with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, DeclaredFuncSig, ErrorNode, ExprData,
@@ -1594,7 +1595,7 @@ pub fn render_node_type(
         }
         let is_conj = (n.connective.clone() == Connective::Conj);
         let is_disj = (n.connective.clone() == Connective::Disj);
-        let shared = v1_rt::set_contains(&shared_types, tn.clone());
+        let shared = v1_rt::set_contains(&shared_types, qualified_last_segment(tn.clone()));
         if is_disj.clone() {
             {
                 let base = if (n.ident_span.clone() != None) {
