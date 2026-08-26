@@ -3003,16 +3003,40 @@ pub(crate) fn brace_delta(line: &str) -> i32 {
 
 type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
 
+/// THE PANICKING WRAPPER, RETAINED FOR CALLERS WHOSE INPUTS ARE ALREADY
+/// INVARIANT-ESTABLISHED. New callers on a user-supplied path must use
+/// `try_build_module_index` -- a missing root, an unreadable directory or a non-UTF-8
+/// source is an ORDINARY, USER-CAUSED condition and owes a typed located refusal, not a
+/// panic four frames down (DESIGN §5).
 fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
+    try_build_module_index(source_roots).unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// The fallible core. Every filesystem condition and every corpus-authority violation
+/// returns a located `Err` instead of unwinding.
+fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, String> {
     let mut index = ModuleSourceIndex::new();
     for (root_idx, root) in source_roots.iter().enumerate() {
         let anchored_root = anchor_source_root(root);
         let root_path = std::path::Path::new(&anchored_root);
+        if !root_path.exists() {
+            return Err(format!(
+                "source root does not exist: {root} (anchored to {})",
+                root_path.display()
+            ));
+        }
+        if !root_path.is_dir() {
+            return Err(format!(
+                "source root is not a directory: {root} (anchored to {}) -- --source-root names \
+                 a directory to walk, not a file",
+                root_path.display()
+            ));
+        }
         let mut dag_files = Vec::new();
-        collect_dag_files(root_path, &mut dag_files);
+        collect_dag_files_result(root_path, &mut dag_files)?;
         for path in dag_files {
             let content = std::fs::read_to_string(&path)
-                .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+                .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
             if let Some(module_path) = extract_module_path(&content) {
                 let rel_path = module_index_path_key(&path);
                 let rel_forward = rel_path.clone();
@@ -3025,14 +3049,11 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
                         if root_idx > 0 {
                             continue;
                         }
-                        panic!(
-                            "{}",
-                            module_path_collision_panic_message(
-                                &module_path,
-                                &existing.path,
-                                &rel_path,
-                            )
-                        );
+                        return Err(module_path_collision_panic_message(
+                            &module_path,
+                            &existing.path,
+                            &rel_path,
+                        ));
                     }
                     continue;
                 }
@@ -3046,22 +3067,28 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
             }
         }
     }
-    index
+    Ok(index)
 }
 
 /// `primary-precedence` pool indexing: the first root is authoritative; later roots
 /// fill only modules not already present (matches `gunbc compile --dependency-pool-index
 /// primary-precedence` in `dag_compile_clean_transport`).
 fn build_module_index_primary_precedence(source_roots: &[String]) -> ModuleSourceIndex {
+    try_build_module_index_primary_precedence(source_roots).unwrap_or_else(|e| panic!("{e}"))
+}
+
+fn try_build_module_index_primary_precedence(
+    source_roots: &[String],
+) -> Result<ModuleSourceIndex, String> {
     let mut index = ModuleSourceIndex::new();
     if source_roots.is_empty() {
-        return index;
+        return Ok(index);
     }
-    index_source_root_into_module_index(&source_roots[0], &mut index, false);
+    try_index_source_root_into_module_index(&source_roots[0], &mut index, false)?;
     for root in &source_roots[1..] {
-        index_source_root_into_module_index(root, &mut index, true);
+        try_index_source_root_into_module_index(root, &mut index, true)?;
     }
-    index
+    Ok(index)
 }
 
 fn index_source_root_into_module_index(
@@ -3069,16 +3096,31 @@ fn index_source_root_into_module_index(
     index: &mut ModuleSourceIndex,
     pool_fill_only: bool,
 ) {
+    try_index_source_root_into_module_index(root, index, pool_fill_only)
+        .unwrap_or_else(|e| panic!("{e}"))
+}
+
+fn try_index_source_root_into_module_index(
+    root: &str,
+    index: &mut ModuleSourceIndex,
+    pool_fill_only: bool,
+) -> Result<(), String> {
     let root_path = std::path::Path::new(root);
     if !root_path.exists() {
-        panic!("source root does not exist: {}", root);
+        return Err(format!("source root does not exist: {root}"));
+    }
+    if !root_path.is_dir() {
+        return Err(format!(
+            "source root is not a directory: {root} -- --source-root names a directory to \
+             walk, not a file"
+        ));
     }
     let mut dag_files = Vec::new();
-    collect_dag_files(root_path, &mut dag_files);
+    collect_dag_files_result(root_path, &mut dag_files)?;
     let mut within_root: HashMap<String, String> = HashMap::new();
     for path in dag_files {
         let content = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+            .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
         if let Some(module_path) = extract_module_path(&content) {
             let rel_path = path.to_string_lossy().to_string();
             if pool_fill_only {
@@ -3087,17 +3129,17 @@ fn index_source_root_into_module_index(
                 }
             } else if let Some(existing) = index.get(&module_path) {
                 if existing.path != rel_path {
-                    panic!(
+                    return Err(format!(
                         "module-path collision: module '{}' is declared by both '{}' and '{}' — one module, one authority (DESIGN §3); silent last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01) — de-fork or rename one side",
                         module_path, existing.path, rel_path
-                    );
+                    ));
                 }
             }
             if let Some(existing_path) = within_root.get(&module_path) {
-                panic!(
+                return Err(format!(
                     "duplicate module path '{}' within source root '{}': declared in both '{}' and '{}'",
                     module_path, root, existing_path, rel_path
-                );
+                ));
             }
             within_root.insert(module_path.clone(), rel_path.clone());
             index.insert(
@@ -3109,6 +3151,7 @@ fn index_source_root_into_module_index(
             );
         }
     }
+    Ok(())
 }
 
 fn load_compile_clean_entry_sources(
@@ -7372,6 +7415,82 @@ mod entry_admission_tests {
         }
     }
 
+    /// SOURCE DISCOVERY REFUSES; IT DOES NOT PANIC.
+    ///
+    /// Every arm below was a `panic!` on the compile transaction's own path until this
+    /// change. A missing root, a file named where a directory belongs, an unreadable
+    /// source -- these are ORDINARY USER-CAUSED conditions, and DESIGN §5 owes them a
+    /// typed located refusal rather than `rc=101` with no phase and no cause.
+    ///
+    /// THE RED IS AUTHORABLE AND WAS OBSERVED BEFORE IT WAS WRITTEN: #9242's atomicity
+    /// test panicked with exactly `source root does not exist` because its fixture was
+    /// not yet committed. These arms would each have unwound the same way.
+    ///
+    /// A `#[should_panic]` test would assert the OLD behaviour; these assert the new one,
+    /// so they go red both if the panic returns AND if the refusal loses its phase.
+    #[test]
+    fn a_missing_source_root_refuses_at_source_discovery_instead_of_panicking() {
+        let run = compile_emission(&CompileRequest {
+            subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            source_roots: vec![ws("fixtures/definitely-not-a-real-root")],
+            primary_precedence: true,
+            render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
+        });
+        let (phase, cause) = match &run.disposition {
+            CompileDisposition::NotExecuted {
+                earlier_phase,
+                cause,
+            } => (earlier_phase.clone(), cause.clone()),
+            other => panic!("expected NotExecuted, got {other:?}"),
+        };
+        assert_eq!(phase, "source-discovery", "cause: {cause}");
+        assert!(
+            cause.contains("source root does not exist"),
+            "the refusal must name the condition, not merely fail: {cause}"
+        );
+    }
+
+    /// A FILE WHERE A DIRECTORY BELONGS IS ITS OWN STATE, not "missing". Collapsing the two
+    /// would tell an author to create a path that already exists.
+    #[test]
+    fn a_file_named_as_a_source_root_refuses_and_says_it_is_not_a_directory() {
+        let run = compile_emission(&CompileRequest {
+            subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            source_roots: vec![ws("fixtures/v2_emission_gate/green/subject.dag")],
+            primary_precedence: true,
+            render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
+        });
+        let (phase, cause) = match &run.disposition {
+            CompileDisposition::NotExecuted {
+                earlier_phase,
+                cause,
+            } => (earlier_phase.clone(), cause.clone()),
+            other => panic!("expected NotExecuted, got {other:?}"),
+        };
+        assert_eq!(phase, "source-discovery", "cause: {cause}");
+        assert!(
+            cause.contains("not a directory"),
+            "a file root must be distinguished from a missing one: {cause}"
+        );
+    }
+
+    /// THE POSITIVE CONTROL. Without it, both refusals above would still pass if discovery
+    /// had simply stopped working for every input.
+    #[test]
+    fn a_valid_source_root_still_completes_through_the_fallible_route() {
+        let run = compile_emission(&CompileRequest {
+            subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            source_roots: vec![ws("fixtures/v2_emission_gate/green")],
+            primary_precedence: true,
+            render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
+        });
+        assert!(
+            matches!(run.disposition, CompileDisposition::Completed { .. }),
+            "the fallible route must still compile a good tree: {:?}",
+            run.disposition.tag()
+        );
+    }
+
     /// THE ALL-OR-NOTHING PROPERTY, WITH A RED THAT IS ACTUALLY AUTHORABLE.
     ///
     /// The CLI writes a tree only after the AGGREGATE disposition is `Completed`, so one
@@ -8040,12 +8159,35 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
     // 55167). Building it here and handing the SAME index to both also removes the
     // possibility that the closure and the census are computed against different
     // populations, which is a correctness property and not only a cost one.
+    // SOURCE DISCOVERY IS FALLIBLE ON THIS PATH AND ONLY ON THIS PATH. A missing root, a
+    // file where a directory was named, an unreadable directory, a non-UTF-8 source, or a
+    // module-path collision are ORDINARY USER-CAUSED conditions -- they owe a typed located
+    // refusal, not a panic four frames down in the index walk (DESIGN §5, fail-closed).
+    //
+    // FOUND BY EXECUTION, NOT BY READING: the atomicity test in #9242 panicked with
+    // `source root does not exist: fixtures/atomic_materialization` because its fixture was
+    // not yet committed -- an ordinary authoring mistake that produced `rc=101`, no phase and
+    // no located cause. Review had independently claimed this site; the panic is the receipt.
+    //
+    // THE PANICKING WRAPPERS SURVIVE for callers whose inputs are already
+    // invariant-established; this is the one route that takes a path straight from a CLI
+    // argument, so it is the one that must refuse instead.
     let index: Rc<MultiEntryIndex> = if primary_precedence {
-        Rc::new(build_multi_entry_index_primary_precedence(source_roots))
+        match try_build_multi_entry_index_primary_precedence(source_roots) {
+            Ok(idx) => Rc::new(idx),
+            Err(cause) => {
+                return compile_not_executed(&request.subject, started, "source-discovery", cause)
+            }
+        }
     } else {
         // Strict routes through the process-shared index, so a second `--entry` compile in
         // one process is a cache hit rather than a rebuild.
-        process_shared_index(source_roots)
+        match try_process_shared_index(source_roots) {
+            Ok(idx) => idx,
+            Err(cause) => {
+                return compile_not_executed(&request.subject, started, "source-discovery", cause)
+            }
+        }
     };
     let closure = match &request.subject {
         CompileSubject::Entry(path) => match load_sources_for_entry_with_pool(&index, path) {
@@ -10469,6 +10611,13 @@ fn canonical_shared_index_roots(source_roots: &[String]) -> Vec<String> {
 /// identity. The divergence census walls that site with parent-owned `Rc` identity;
 /// the class-wide next rung is canonical `SourceFile` identity at construction.
 pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
+    try_process_shared_index(source_roots).unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// Fallible twin of `process_shared_index`. The MEMO IS ONLY WRITTEN ON SUCCESS -- a failed
+/// discovery must not install a partial index that every later caller in the process would
+/// then read as complete.
+pub fn try_process_shared_index(source_roots: &[String]) -> Result<Rc<MultiEntryIndex>, String> {
     let roots = canonical_shared_index_roots(source_roots);
     let roots_key = roots.join("\u{1f}");
     let existing = PROCESS_RESOLVE_INDEX.with(|s| {
@@ -10481,10 +10630,14 @@ pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
         })
     });
     if let Some(idx) = existing {
-        return idx;
+        return Ok(idx);
     }
     let build_started = std::time::Instant::now();
-    let idx = Rc::new(build_multi_entry_index(&roots));
+    let idx = Rc::new(new_multi_entry_index_shell(
+        try_build_module_index(&roots)?,
+        &roots,
+        None,
+    ));
     discovery_phase_totals::add(
         &discovery_phase_totals::SHARED_INDEX_BUILD_MS,
         build_started.elapsed(),
@@ -10492,7 +10645,7 @@ pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
     PROCESS_RESOLVE_INDEX.with(|s| {
         *s.borrow_mut() = Some((roots_key, idx.clone()));
     });
-    idx
+    Ok(idx)
 }
 
 pub fn resolve_entry_graph_shared(
@@ -11569,6 +11722,17 @@ fn build_multi_entry_index_primary_precedence(source_roots: &[String]) -> MultiE
         source_roots,
         None,
     )
+}
+
+/// Fallible twin of the above, for the compile transaction. See `try_build_module_index`.
+fn try_build_multi_entry_index_primary_precedence(
+    source_roots: &[String],
+) -> Result<MultiEntryIndex, String> {
+    Ok(new_multi_entry_index_shell(
+        try_build_module_index_primary_precedence(source_roots)?,
+        source_roots,
+        None,
+    ))
 }
 
 pub fn build_multi_entry_index_with_shared_caches(
