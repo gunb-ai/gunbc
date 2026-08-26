@@ -3164,6 +3164,30 @@ vs Primitive(String)`. Neither was catchable by any fixture writable *from the
 defect*, and neither is visible in a diff. Only the corpus arm found them, which
 makes these the second and third instances of §11.2(5).
 
+**"COLLAPSE" IS THREE CLASSES, AND THEY DO NOT SHARE A REPAIR.** Naming them is
+what stops the next fix over-reaching the way #9233's first form did:
+
+| class | specimen | terminal treatment |
+|---|---|---|
+| **declared semantic equivalence** | `type AttemptKey = String` at type compatibility | preserve the equivalence **explicitly** — it is intended |
+| **consumer-local abstraction** | a container classifier needs `Map`, not the exact declaration path | preserve the richer fact; project a **typed classification** per consumer |
+| **ignorance fabricated as a value** | an unknown empty-list element type rendered as `Unit` | represent unknown/deferred — **no value answer** |
+
+#9233's first form applied one generic *stop collapsing* to the first class and
+broke live code that relies on transparent compatibility. #9200's `List<Unit>` is
+the third: not an intended equivalence but ignorance rendered as a fully resolved
+value — and the fabricated resolution actively switched off the if-join's
+re-inference. **So the general class is not "a dishonest collapse" but: a
+representation collapsed states without carrying WHICH collapse it was** —
+equivalence, projection, or missing knowledge.
+
+**And the migration unit follows from that.** The question is not *who mentions
+the collapsed spelling* — that is a grep, and a useful preflight only. It is
+**which judgment changes when exact identity replaces the old quotient**, which
+is answered by preserving the richer fact, defining the exact relation each
+consumer is entitled to use, and shadow-measuring the decision changes before
+moving production.
+
 **The operational rule, and it is cheaper than any measurement: when a fix
 replaces a collapse with an honest answer, ask WHO WAS RELYING ON THE COLLAPSE
 before measuring anything.** For #9233 the answer is a ten-second grep — `^type
