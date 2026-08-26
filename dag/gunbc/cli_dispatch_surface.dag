@@ -95,6 +95,15 @@ type CliSurfaceEmission
   = EmittedByEmitMainRs
   | AbsentFromEmitMainRs
 
+// WHICH IDENTITY `gunbc --version` REPORTS.
+//
+// A package release number cannot identify a compiler binary built between releases, which is
+// the distinction this surface exists to preserve. The interface therefore promises the exact
+// source commit. How a target binds that commit at build time is realization; the Rust emitter
+// currently renders it from the build-script-provided `GUNBC_BUILD_COMMIT` value.
+type CliVersionIdentity
+  = CliSourceCommit
+
 // WHAT THE ARM DOES, which is a THIRD fact beside the option list and the emission state.
 //
 // `CliRefusesUnwired` is not a missing arm. `converge`'s arm is a typed refusal naming a
@@ -130,6 +139,10 @@ fn gunbc_cli_binary_name() -> String {
 
 fn gunbc_cli_about() -> String {
   "A causal compiler: write .dag, get Rust/Python/Go."
+}
+
+fn gunbc_cli_version_identity() -> CliVersionIdentity {
+  CliSourceCommit
 }
 
 // WHAT IS DELIBERATELY NOT HERE: `--dry-run`.

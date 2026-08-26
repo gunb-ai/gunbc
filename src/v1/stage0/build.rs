@@ -23,11 +23,16 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
     let commit = git_output(&["rev-parse", "HEAD"]).unwrap_or_default();
+    assert!(
+        commit.len() == 40 && commit.bytes().all(|byte| byte.is_ascii_hexdigit()),
+        "gunbc build requires an exact 40-hex source commit from `git rev-parse HEAD`"
+    );
     let tree = git_output(&["rev-parse", "HEAD^{tree}"]).unwrap_or_default();
     let dirty = git_output(&["status", "--porcelain"])
         .map(|s| !s.is_empty())
         .unwrap_or(true);
     println!("cargo:rustc-env=FRONTIER_PROBE_SURVEY_BUILD_COMMIT={commit}");
+    println!("cargo:rustc-env=GUNBC_BUILD_COMMIT={commit}");
     println!("cargo:rustc-env=FRONTIER_PROBE_SURVEY_BUILD_TREE={tree}");
     println!(
         "cargo:rustc-env=FRONTIER_PROBE_SURVEY_BUILD_DIRTY={}",

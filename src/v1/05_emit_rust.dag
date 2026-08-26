@@ -55,11 +55,13 @@ import gunbc.cli_dispatch_surface {
   CliOptionValue,
   CliRepeated,
   CliRequired,
+  CliSourceCommit,
   CliPortValue,
   CliSubcommandRow,
   CliTextValue,
   CliToggleValue,
   cli_subcommand_emitted_options,
+  gunbc_cli_version_identity,
   gunbc_cli_emitted_subcommands
 }
 import std.measure { millisecond_count }
@@ -12930,9 +12932,12 @@ fn emit_main_mod_uses(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool, cr
 
 fn emit_cli_struct(workflow_funcs: List<WorkflowFunc>, binary_name: String, about: String) -> String {
   let about_attr = if about != "" { concat(", about = \"", about, "\"") } else { "" }
+  let version_attr = match gunbc_cli_version_identity() {
+    CliSourceCommit => ", version = env!(\"GUNBC_BUILD_COMMIT\")"
+  }
   concat(
     "#[derive(Parser)]\n",
-    "#[command(name = \"", binary_name, "\"", about_attr, ")]\n",
+    "#[command(name = \"", binary_name, "\"", about_attr, version_attr, ")]\n",
     "struct Cli {\n",
     "    #[command(subcommand)]\n",
     "    command: Commands,\n",

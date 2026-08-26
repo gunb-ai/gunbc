@@ -21,11 +21,12 @@ use crate::gunbc_cli_dispatch_surface::CliOptionArity::{CliAtMostOne, CliRepeate
 use crate::gunbc_cli_dispatch_surface::CliOptionValue::{
     CliMillisecondValue, CliPortValue, CliTextValue, CliToggleValue,
 };
+use crate::gunbc_cli_dispatch_surface::CliVersionIdentity::CliSourceCommit;
 pub use crate::gunbc_cli_dispatch_surface::{
-    cli_subcommand_emitted_options, gunbc_cli_emitted_subcommands,
+    cli_subcommand_emitted_options, gunbc_cli_emitted_subcommands, gunbc_cli_version_identity,
 };
 pub use crate::gunbc_cli_dispatch_surface::{
-    CliOptionArity, CliOptionRow, CliOptionValue, CliSubcommandRow,
+    CliOptionArity, CliOptionRow, CliOptionValue, CliSubcommandRow, CliVersionIdentity,
 };
 pub use crate::gunbc_rust_decl_type_overlay::rust_decl_type_container_overlay_is_admitted;
 pub use crate::gunbc_stage0_crate_layout_generated::generated_pub_mod_block;
@@ -34085,6 +34086,11 @@ pub fn emit_cli_struct(
         } else {
             "".to_string()
         };
+        let version_attr = match gunbc_cli_version_identity() {
+            CliVersionIdentity::CliSourceCommit => {
+                ", version = env!(\"GUNBC_BUILD_COMMIT\")".to_string()
+            }
+        };
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
@@ -34104,7 +34110,7 @@ pub fn emit_cli_struct(
                                                 ),
                                                 "\"".to_string(),
                                             ),
-                                            about_attr.clone(),
+                                            v1_rt::concat(about_attr.clone(), version_attr.clone()),
                                         ),
                                         ")]\n".to_string(),
                                     ),

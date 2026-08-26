@@ -50,6 +50,14 @@ pub enum CliSurfaceEmission {
     AbsentFromEmitMainRs,
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum CliVersionIdentity {
+    CliSourceCommit,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CliArmRealization {
@@ -84,6 +92,10 @@ pub fn gunbc_cli_binary_name() -> String {
 
 pub fn gunbc_cli_about() -> String {
     "A causal compiler: write .dag, get Rust/Python/Go.".to_string()
+}
+
+pub fn gunbc_cli_version_identity() -> CliVersionIdentity {
+    CliVersionIdentity::CliSourceCommit
 }
 
 pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {

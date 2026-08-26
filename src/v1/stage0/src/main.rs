@@ -17,7 +17,8 @@ use v1_compiler::v1_std_core::{
 #[derive(Parser)]
 #[command(
     name = "gunbc",
-    about = "A causal compiler: write .dag, get Rust/Python/Go."
+    about = "A causal compiler: write .dag, get Rust/Python/Go.",
+    version = env!("GUNBC_BUILD_COMMIT")
 )]
 struct Cli {
     #[command(subcommand)]
@@ -859,6 +860,8 @@ fn render_one_diagnostic(
 
 #[cfg(test)]
 mod tests {
+    use super::Cli;
+    use clap::CommandFactory;
     // THE TESTS SURVIVE THE FUNCTION AND ARE RE-POINTED AT THE SURVIVING AUTHORITY.
     // They were written against this file's private copy of `extract_module_path`, which the
     // fork closure deleted; the behaviour they pin is `cli_run`'s, so they now assert it there.
@@ -866,6 +869,18 @@ mod tests {
     // implementations, which is exactly what DESIGN §4b(4) forbids: the redundant machinery
     // goes, the discriminating cases stay enrolled.
     use v1_compiler::cli_run::extract_module_path_public as extract_module_path;
+
+    #[test]
+    fn version_surface_reports_the_exact_source_commit() {
+        assert_eq!(
+            Cli::command().get_version(),
+            Some(env!("GUNBC_BUILD_COMMIT"))
+        );
+        assert_eq!(env!("GUNBC_BUILD_COMMIT").len(), 40);
+        assert!(env!("GUNBC_BUILD_COMMIT")
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit()));
+    }
 
     #[test]
     fn extract_module_path_none_for_moduleless_parse_fixture() {
