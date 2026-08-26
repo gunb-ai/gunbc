@@ -3496,6 +3496,13 @@ The census is therefore a **disposition vocabulary over the delta**, not a count
 |---|---|---|
 | `ImportOnlyNoEffect` | the import edge disappears and nothing depended on it | admitted mechanically — unused-subject reduction |
 | `ImportClosureCarrier` | no direct member used, but an occurrence or subject depends on the imported closure | **refused** until an exact reference-derived edge replaces it |
+
+*(§11.2o's correction amends this table's inputs: the dispositions are computed
+from **typed binding outcomes**, never from diagnostics, and a failure to produce
+the candidate judgment at all is a fourth state — `BindingProductionRefused` —
+which is a typed non-observation of the delta, **not** an `ImportClosureCarrier`
+refusal. Classifying an unproduced judgment as a stranded binding would report
+the wall's own unavailability as a finding about the corpus.)*
 | `ReferencePreservingReplacement` | the import-derived edge is gone; a reference-derived edge reaches the same declaration identity | admitted mechanically |
 
 **THE DISPOSITIONS ARE JUDGED AT BINDING GRAIN, NOT MODULE-SET GRAIN, AND THIS
@@ -3665,15 +3672,68 @@ repair did not work. **The instrument must be able to carry the distinction
 before the distinction is worth minting** — `census_blocking_count_for_class`,
 which names the class, not a harness that answers *did it refuse*.
 
-**This governs the delta wall too, and that is the larger stake.** All four of
-the wall's acceptance conditions (§11.2n) are **why** questions — did this
-occurrence keep its target, become unresolved, become ambiguous, or silently
-rebind — and a `Bool` oracle answers *refused* identically for a preserved
-binding and a stranded one. A wall built on it would report the execution-
-provenance collapse one layer up, inside the instrument the wall depends on. So
-the sequence is: **typed compile oracle → typed resolver causes → delta wall**,
-and any other order measures its own repairs through something that cannot see
-them.
+**CORRECTED 2026-08-26 — AND THE ERROR IS WORTH MORE THAN THE FIX.** An earlier
+revision continued *"this governs the delta wall too … so the sequence is typed
+compile oracle → typed resolver causes → delta wall."* **That conflates a
+semantic dependency with an instrumentation dependency.** The side-chat ruling
+that corrects it gives the rule in one line:
+
+> **A diagnostic is a rendering of a judgment, never an input to another
+> judgment.**
+
+The real graph branches rather than chains:
+
+```
+exact typed binding judgment
+    ├──> binding-delta wall
+    └──> typed diagnostic projection ──> typed compile oracle
+```
+
+**No wall arm reads a diagnostic — the stranded arm included.** Every input the
+wall needs exists *before* anything is rendered: preservation is
+`old_declaration == new_declaration` over two `Bound` outcomes; rebound is the
+same two with `!=`; stranded is `old = Bound` against `new = Unbound | Ambiguous`;
+and a failure to produce the new judgment at all is a **fourth** category
+(`BindingProductionRefused`), never a stranded row. The substrate already carries
+the separation — `OccurrenceBindingResult` is
+`OccurrenceBound | OccurrenceUnbound | OccurrenceAmbiguous`, with malformed
+transport kept outside it rather than squeezed into *unbound*.
+
+**One correction to §11.2n's `candidate_outcome`, and it is this document's own
+lesson applied to itself: REBOUND IS NOT A CANDIDATE OUTCOME.** It is a relation
+between two completed outcomes — the candidate run answers `Bound(new)`, and the
+**join** against the old answer decides preserved-versus-rebound. Storing
+`Rebound` in the candidate carrier would record a fact unknowable from the
+candidate run alone, mixing *what Y answered* with *how Y compares to X*. That is
+exactly the stored-derived-fact defect `gunbc.namespace_cut_landing_order`
+removed when `current_landing_order` stopped storing a pointer and began deriving
+one.
+
+**What the typed compile oracle does gate**, stated so the repair is not dropped
+along with the ordering: claims that the production compile reports
+`AmbiguousReference` rather than `InternalError`, that all three terminal causes
+are distinguishable through the public compile surface, and that a compile-path
+fixture exercised the expected cause rather than merely failing somehow. It gates
+the **diagnostic-repair lane's** before/after instrument; it does not gate
+computing a binding delta. §11.2o's repair stands on its own merits — the
+`InternalError` projection is independently wrong for authors, CI, diagnostic
+censuses and black-box fixtures.
+
+**The one qualification, and it is an evidence dependency rather than a design
+one.** If the only way to *execute* the wall is through
+`compile_dag_rust_emit_check`, the typed oracle becomes a prerequisite for
+**claiming** the wall is production-wired and cause-discriminating. The response
+is not to let the wall read diagnostics; it is to give the wall a **direct
+executing fixture** — same candidate → `Preserved`, different candidate →
+`Rebound`, zero candidates → `StrandedUnbound`, two candidates →
+`StrandedAmbiguous`, index refuses → `DeltaProductionRefused` — and to prove
+separately that the production compile invokes it.
+
+So the program is **two parallel verticals joined only at enrollment**, not one
+chain: `binding authority → delta wall`, and `binding authority → typed
+diagnostic → typed compile observation`, joined where the wall is shown to be
+production-wired and publicly observable.
+
 
 ### 11.2p MEASURED — C.1 alone is a BREAK, not a cut: the whole-pool-unique arm is currently carrying the entire shared-vocabulary case
 
