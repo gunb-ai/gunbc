@@ -30,6 +30,10 @@ import v2.workflow.floor_terminal_ledger {
   KnownRedHeld,
   KnownRedNowPassing,
   ObservationUnreadableBeforeVerdict,
+  NotAttempted,
+  NotAttemptedAfterAbort,
+  Panicked,
+  PanickedBeforeVerdict,
   Passed,
   RouteGapBeforeVerdict,
   RuntimeErroredBeforeVerdict,
@@ -224,6 +228,8 @@ fn render_terminal_tag(terminal: ClaimAttemptTerminal) -> String {
         ObservationUnrepresentable { reason: _ } => "returned-unreadable"
       }
     RuntimeErrored { message: _ } => "runtime-errored"
+    Panicked { payload: _ } => "panicked"
+    NotAttempted { halted_by: _ } => "not-attempted"
     BudgetRefused { safety: s } =>
       match s {
         SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } =>
@@ -254,6 +260,8 @@ fn render_terminal_detail(terminal: ClaimAttemptTerminal) -> String {
         ObservationUnrepresentable { reason: r } => r as String
       }
     RuntimeErrored { message: m } => m
+    Panicked { payload: p } => p
+    NotAttempted { halted_by: h } => h
     BudgetRefused { safety: s } => render_safety_detail(safety: s)
     HostToolUnresolved { name: n, probed: _ } => n
     RouteGap { route: r } => r
@@ -692,6 +700,12 @@ fn readback_disposition(row: LedgerReadbackRow) -> ClaimDisposition? {
   if row.terminal_tag == "runtime-errored" {
     Present { value: RuntimeErroredBeforeVerdict }
   } else {
+  if row.terminal_tag == "panicked" {
+    Present { value: PanickedBeforeVerdict }
+  } else {
+  if row.terminal_tag == "not-attempted" {
+    Present { value: NotAttemptedAfterAbort }
+  } else {
   if row.terminal_tag == "budget-refused" {
     Present { value: BudgetRefusedBeforeVerdict }
   } else {
@@ -726,7 +740,7 @@ fn readback_disposition(row: LedgerReadbackRow) -> ClaimDisposition? {
     }
   } else {
     none
-  }}}}}}}}}
+  }}}}}}}}}}}
 }
 
 // ── THE SEED-FACING SURFACE, AND THE MIRROR COMPARATOR THAT COMES WITH IT ──────────────────
@@ -772,6 +786,8 @@ fn render_disposition(disposition: ClaimDisposition) -> String {
     HostToolUnresolvedBeforeVerdict => "host-tool-unresolved-before-verdict"
     RouteGapBeforeVerdict => "route-gap-before-verdict"
     RuntimeErroredBeforeVerdict => "runtime-errored-before-verdict"
+    PanickedBeforeVerdict => "panicked-before-verdict"
+    NotAttemptedAfterAbort => "not-attempted-after-abort"
     ObservationUnreadableBeforeVerdict => "observation-unreadable-before-verdict"
   }
 }
