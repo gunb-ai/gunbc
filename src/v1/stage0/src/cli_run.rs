@@ -45807,7 +45807,7 @@ fn floor_decode_module_prefix_roster(
             other => {
                 return Err(format!(
                     "{qualified_name}: expected String rows, got {}",
-                    floor_value_shape(Some(&other))
+                    floor_value_shape(Some(other))
                 ))
             }
         }
@@ -46853,7 +46853,7 @@ pub fn run_required_floor(
                 other => {
                     return Err(format!(
                     "required floor producer prewarm {function}: expected Bool artifact, got {}",
-                    floor_value_shape(Some(other))
+                    floor_value_shape(Some(&other))
                 ))
                 }
             }
