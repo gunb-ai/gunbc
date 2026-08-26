@@ -1,6 +1,7 @@
 module test.claim.gigabyte_mp72_board_profile_witness
 
 import std.nat { Nat }
+import std.measure { square_millimeter_count, watt_count }
 import extdeps.boards.gigabyte {
   BaseboardPhysicalProfile, BoardProcurementStanding,
   gigabyte_mp72_hb0_catalog, gigabyte_mp72_hb0_physical_profile,
@@ -8,8 +9,8 @@ import extdeps.boards.gigabyte {
   gigabyte_mp72_hb0_procurement_standing, gigabyte_mp72_hb0_purchase_gate,
   PowerInputPopulationStanding, PowerInputPopulationSpecified, PowerInputPopulationUnresolved,
   asrock_altrad8ud_required_input_population,
-  board_profile_power_headers_match, board_profile_area_mm2,
-  board_profile_max_socket_power_w,
+  board_profile_power_headers_match, board_profile_area,
+  board_profile_max_socket_power,
 }
 
 data mp72_witness_note: String = "Three witnesses over a CANDIDATE board row that no fleet asset cites. They exist to keep a reading honest, not to admit hardware: the profile must agree with the vendor page on the fields the physical design actually consumes, the procurement standing must not silently advance past what a stock photograph can establish, and the architectural claim that motivated the candidate must be the true claim rather than the flattering one."
@@ -50,10 +51,10 @@ test fn witness_candidate_board_standing_is_listing_only() -> Bool {
 data density_witness_note: String = "The architectural claim, stated as the TRUE one rather than the flattering one. Two dual-socket boards carry the same socket count as four single-socket boards in materially less area, and the E-ATX board doubles the power a single carrier must deliver. Both are checked, because the seductive framing - half as many tiles is automatically better - hides that each tile becomes a heavier, hotter, larger failure domain. Area falls by roughly 23 percent for equal sockets; it does not halve."
 
 test fn witness_dual_socket_density_claim_is_the_true_one() -> Bool {
-  let dual_area = board_profile_area_mm2(p: gigabyte_mp72_hb0_physical_profile) * 3
-  let single_area = board_profile_area_mm2(p: asrock_altrad8ud_1l2t_physical_profile) * 6
-  let dual_power = board_profile_max_socket_power_w(p: gigabyte_mp72_hb0_physical_profile)
-  let single_power = board_profile_max_socket_power_w(p: asrock_altrad8ud_1l2t_physical_profile)
+  let dual_area = square_millimeter_count(m: board_profile_area(p: gigabyte_mp72_hb0_physical_profile)) * 3
+  let single_area = square_millimeter_count(m: board_profile_area(p: asrock_altrad8ud_1l2t_physical_profile)) * 6
+  let dual_power = watt_count(w: board_profile_max_socket_power(p: gigabyte_mp72_hb0_physical_profile))
+  let single_power = watt_count(w: board_profile_max_socket_power(p: asrock_altrad8ud_1l2t_physical_profile))
   single_area > dual_area
     && dual_area * 100 > single_area * 70
     && dual_power == single_power * 2

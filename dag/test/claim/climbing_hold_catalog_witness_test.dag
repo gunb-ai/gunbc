@@ -20,7 +20,7 @@ import extdeps.climbing_holds.types {
   HoldLocalFrameStanding, HoldLocalFrameReady,
 }
 import extdeps.climbing_holds.atomik {
-  atomik_xl_arrow_down_climb_jug, atomik_bolt_on_frame, atomik_page_relay,
+  atomik_xl_arrow_down_climb_jug, atomik_bolt_on_frame, extdeps_external_authority_anchor,
 }
 
 // PLACEMENT FIXTURES. hold_lift_role_is_admissible used to take a bare
@@ -129,10 +129,10 @@ test fn witness_search_summary_envelope_is_not_spendable() -> Bool {
 test fn witness_evidence_spendability_discriminates() -> Bool {
   dimension_evidence_is_spendable(evidence: SampleMeasured { receipt: "calipered, three positions" })
     && dimension_evidence_is_spendable(
-         evidence: VendorPageRead { authority: atomik_page_relay, read_on: "unused in this tree" },
+         evidence: VendorPageRead { authority: extdeps_external_authority_anchor, read_on: "unused in this tree" },
        )
     && dimension_evidence_is_spendable(
-         evidence: OperatorRelayedDocument { authority: atomik_page_relay, relay_note: "relayed" },
+         evidence: OperatorRelayedDocument { authority: extdeps_external_authority_anchor, relay_note: "relayed" },
        )
     && !dimension_evidence_is_spendable(evidence: SearchSummaryOnly { obligation: "read it" })
     && !dimension_evidence_is_spendable(evidence: DimensionUnread { obligation: "read it" })

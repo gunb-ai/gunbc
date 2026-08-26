@@ -66,13 +66,14 @@ data atomik_provenance_note: NonEmptyStr = "Figures relayed by a routed review r
 // nothing downstream can tell a wrong number from a right one. The refusal is what stopped it.
 data atomik_search_summary_was_wrong_note: NonEmptyStr = "The earlier search-summary reading gave 6-7/8 in width, 3-1/4 in projection and a 5 in lip. The relayed page reading gives 6-1/2 in, 3 in and a 4-1/2 in usable internal width. The summary was wrong on every one, and overstated grip room. This is the concrete payoff of refusing unspendable provenance rather than merely labelling it."
 
-data atomik_page_relay: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "www.atomikclimbingholds.com/xl-arrow-shaped-down-climb-jug"
-  }
-}
-
+// ONE SOURCE, ONE DECLARATION. This module previously carried atomik_page_relay as a SECOND
+// ExternalAuthority holding the identical URI as the anchor above, and every evidence row cited the
+// copy. Two independently editable declarations for one source is the DESIGN section 3 violation in
+// its plainest form: nothing would have flagged the day one was corrected and the other was not.
+// The evidence rows now consume the anchor. What was genuinely distinct about the relay - that the
+// page was relayed by a routed review rather than fetched here - was never in the URI and is
+// carried by atomik_relayed_evidence_note and by the OperatorRelayedDocument variant, which is
+// where a provenance fact belongs.
 data atomik_relayed_evidence_note: NonEmptyStr = "Relayed by routed review 2026-08-11; not fetched by this session."
 
 // Source readings in the vendor's own units, stored EXACTLY. 6-1/2 in is 13/2, 7-1/2 in is 15/2,
@@ -81,7 +82,7 @@ data atomik_relayed_evidence_note: NonEmptyStr = "Relayed by routed review 2026-
 data atomik_source_width: CatalogLengthReading = CatalogLengthReading {
   value: SourceNativeLength { numerator: 13, denominator: 2, unit: Inch },
   evidence: OperatorRelayedDocument {
-    authority: atomik_page_relay,
+    authority: extdeps_external_authority_anchor,
     relay_note: atomik_relayed_evidence_note,
   },
 }
@@ -89,7 +90,7 @@ data atomik_source_width: CatalogLengthReading = CatalogLengthReading {
 data atomik_source_height: CatalogLengthReading = CatalogLengthReading {
   value: SourceNativeLength { numerator: 15, denominator: 2, unit: Inch },
   evidence: OperatorRelayedDocument {
-    authority: atomik_page_relay,
+    authority: extdeps_external_authority_anchor,
     relay_note: atomik_relayed_evidence_note,
   },
 }
@@ -97,7 +98,7 @@ data atomik_source_height: CatalogLengthReading = CatalogLengthReading {
 data atomik_source_projection: CatalogLengthReading = CatalogLengthReading {
   value: SourceNativeLength { numerator: 3, denominator: 1, unit: Inch },
   evidence: OperatorRelayedDocument {
-    authority: atomik_page_relay,
+    authority: extdeps_external_authority_anchor,
     relay_note: atomik_relayed_evidence_note,
   },
 }
@@ -113,7 +114,7 @@ data atomik_clearance_envelope: ConservativeClearanceEnvelope = ConservativeClea
     source_note: "Rounded up from 13/2 in = 165.1 mm, 15/2 in = 190.5 mm, 3/1 in = 76.2 mm. Conservative for reservation; invalid as a datum.",
   },
   evidence: OperatorRelayedDocument {
-    authority: atomik_page_relay,
+    authority: extdeps_external_authority_anchor,
     relay_note: atomik_relayed_evidence_note,
   },
 }
@@ -161,14 +162,14 @@ data atomik_xl_arrow_down_climb_jug_grasp: HoldGraspProfile = HoldGraspProfile {
   usable_internal_width: CatalogLengthReading {
     value: SourceNativeLength { numerator: 9, denominator: 2, unit: Inch },
     evidence: OperatorRelayedDocument {
-      authority: atomik_page_relay,
+      authority: extdeps_external_authority_anchor,
       relay_note: atomik_relayed_evidence_note,
     },
   },
   lip_thickness: CatalogLengthReading {
     value: SourceNativeLength { numerator: 3, denominator: 2, unit: Inch },
     evidence: OperatorRelayedDocument {
-      authority: atomik_page_relay,
+      authority: extdeps_external_authority_anchor,
       relay_note: atomik_relayed_evidence_note,
     },
   },
