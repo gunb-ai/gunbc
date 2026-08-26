@@ -1,7 +1,7 @@
 #![allow(clippy::disallowed_macros)]
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 use std::rc::Rc;
 use v1_compiler::cli_run::namespace_wave_admission::git_stdout;
@@ -1784,7 +1784,7 @@ mod tests {
     }
 
     fn repo_root_from_manifest() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../..")
             .canonicalize()
             .expect("repo root from CARGO_MANIFEST_DIR")
