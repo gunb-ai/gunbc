@@ -21,7 +21,8 @@ import std.types { NonEmptyStr, Bool, List }
 // irreversible retirement step. A reader who collapses this back to a program
 // order gets a different plan whichever direction they collapse it in.
 type ProgramMilestone
-  = SelfHostCargoRatchetEnrolled
+  = SelfHostWholeCorpusPopulationDerived
+  | SelfHostCargoRatchetEnrolled
   | NamespaceWaveAdmissionEnrolled
   | NamespaceFirstSemanticWave
   | NamespaceTerminalEndState
@@ -29,7 +30,8 @@ type ProgramMilestone
 
 fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
   match m {
-    SelfHostCargoRatchetEnrolled => "self-host: required cargo-executing phase and identity-grain debt ratchet enrolled" as NonEmptyStr
+    SelfHostWholeCorpusPopulationDerived => "self-host S2: the exact whole-corpus population re-derived" as NonEmptyStr
+    SelfHostCargoRatchetEnrolled => "self-host S3+S4: required cargo-executing phase with a discriminating red, and the identity-grain debt ratchet, both enrolled" as NonEmptyStr
     NamespaceWaveAdmissionEnrolled => "namespace: required wave-admission wall over closure, subject-membership and occurrence-binding deltas" as NonEmptyStr
     NamespaceFirstSemanticWave => "namespace: first semantic wave (Step 1, deletion of the import-name universe)" as NonEmptyStr
     NamespaceTerminalEndState => "namespace: terminal end state (Steps 1-5 complete, import grammar retired)" as NonEmptyStr
@@ -37,6 +39,20 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
   }
 }
 
+// WHY THE S2 CENSUS IS ITS OWN VARIANT RATHER THAN A WORD INSIDE ANOTHER ONE.
+// The ruling gates the first namespace wave on S2 + S3 + S4. An earlier revision
+// carried S3 and S4 in SelfHostCargoRatchetEnrolled and left S2 implicit in the
+// phrase "proof envelope" -- which is a real gap and not a naming preference:
+// the closed variant makes an omitted MILESTONE fail to compile, but it cannot
+// make an omitted FACT fail to compile when that fact is hiding inside a
+// composite name. Totality protects the enumeration, never the contents of an
+// element of it. So a required precondition became unenforceable in exactly the
+// carrier built to enforce preconditions (operator, 2026-08-26). The general
+// rule this instance teaches: when a construction derives its guarantee from
+// exhaustiveness, every fact the guarantee is supposed to cover must be its own
+// element, because a composite element is a place for a fact to hide from the
+// very check that makes the construction worth having.
+//
 // THE PRECEDENCE RELATION AS A TOTAL FUNCTION, not a list of edges. A list is
 // satisfied by omission -- a milestone nobody wrote an edge for silently has no
 // prerequisites, and the failure is invisible. An exhaustive match over a closed
@@ -45,9 +61,10 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
 // validation: the unstated-prerequisite state is unwritable rather than checked.
 fn milestone_prerequisites(m: ProgramMilestone) -> List<ProgramMilestone> {
   match m {
+    SelfHostWholeCorpusPopulationDerived => []
     SelfHostCargoRatchetEnrolled => []
     NamespaceWaveAdmissionEnrolled => []
-    NamespaceFirstSemanticWave => [SelfHostCargoRatchetEnrolled, NamespaceWaveAdmissionEnrolled]
+    NamespaceFirstSemanticWave => [SelfHostWholeCorpusPopulationDerived, SelfHostCargoRatchetEnrolled, NamespaceWaveAdmissionEnrolled]
     NamespaceTerminalEndState => [NamespaceFirstSemanticWave]
     SelfHostSeedRetirement => [NamespaceTerminalEndState]
   }

@@ -135,7 +135,7 @@ fn section_9() -> List<MarkdownBlock> {
       li(text: "**Step ownership is not carried by any authority.** Section 4 says which half is assumed."),
       li(text: "**The ordering relation to self-host is RULED and is no longer a gap** — section 7 projects `gunbc.compiler_frontend_program_interlock`. It is listed here only so a reader of an older revision does not go looking for the open question."),
     ]),
-    p(text: "Four gaps, each named at the grain at which someone could close it. That is the deliverable for a first anchor — not the appearance of a finished program."),
+    p(text: "**Three live gaps and one retired question**, each named at the grain at which someone could close it. The ordering bullet above is the retired one and is kept only so a reader of an earlier revision does not go hunting for an open question that has been answered. That is the deliverable for a first anchor — not the appearance of a finished program."),
   ]
 }
 
