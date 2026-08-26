@@ -227,10 +227,23 @@ fn legacy_resolution_policy_label(policy: LegacyResolutionPolicy) -> String {
 // is mechanical rather than a matter of taste: every field the comparison reads, the address folds.
 // Caught by review on the first cut of this module, where the address folded six of the eight
 // fields the comparison reads.
+// AND THE LABELLING MUST BE INJECTIVE, WHICH TOTALITY DOES NOT GIVE. A total match guarantees
+// every arm is considered; a hash fold needs the arms to map to DISTINCT values, which is a
+// property of the codomain rather than of the match. The first cut of this function returned the
+// field name bare, so NamedField { field_name: "whole_declaration" } and WholeDeclaration folded to
+// the same address while decl_field_eq correctly reported them different -- the comparison and the
+// address disagreeing about what a subject is, reproduced INSIDE the repair for that exact defect.
+// The arm tag makes a payload unable to impersonate the nullary arm, because ":" cannot appear
+// before it in a bare field name.
+//
+// legacy_resolution_policy_label needs no such tag and it is worth saying why rather than leaving
+// the asymmetry unexplained: both of its arms are nullary with distinct literals, so nothing can
+// collide. DeclField is the only labelled type here carrying a payload, which is why it is the only
+// one exposed to this class.
 fn decl_field_label(field: DeclField) -> String {
   match field {
     WholeDeclaration => "whole_declaration"
-    NamedField { field_name: n } => n
+    NamedField { field_name: n } => concat("named_field:", n)
   }
 }
 
