@@ -205,6 +205,13 @@ pub enum PartitionCompileOutcome {
     Completed {
         status: i32,
         packages: Vec<String>,
+        /// The packages cargo itself said it could not compile, parsed from its own
+        /// `could not compile `X`` lines. THE REFUSAL MUST NAME WHICH, not only how many: a
+        /// stop that reports `status=101 packages=7` sends the author back to re-run the build
+        /// by hand to learn what this run already knew. Empty when cargo failed without
+        /// attributing to a package (a resolver or manifest error), which is why it is
+        /// reported beside the status rather than instead of it.
+        failed_packages: Vec<String>,
         stderr_tail: String,
     },
 }
@@ -225,8 +232,21 @@ impl PartitionCompileOutcome {
                 format!("DidNotComplete detail={detail}")
             }
             PartitionCompileOutcome::Completed {
-                status, packages, ..
-            } => format!("Completed status={status} packages={}", packages.len()),
+                status,
+                packages,
+                failed_packages,
+                ..
+            } => {
+                if failed_packages.is_empty() {
+                    format!("Completed status={status} packages={}", packages.len())
+                } else {
+                    format!(
+                        "Completed status={status} packages={} failed=[{}]",
+                        packages.len(),
+                        failed_packages.join(" ")
+                    )
+                }
+            }
         }
     }
 }
@@ -266,6 +286,7 @@ pub fn compile_partition_crates(packages: &[String]) -> PartitionCompileOutcome 
                 PartitionCompileOutcome::Completed {
                     status,
                     packages: packages.to_vec(),
+                    failed_packages: failed_packages_from_stderr(&stderr),
                     stderr_tail: tail.into_iter().rev().collect::<Vec<_>>().join("\n"),
                 }
             }
@@ -279,4 +300,26 @@ pub fn partition_package_names() -> Vec<String> {
         .iter()
         .map(|row| row.package_name.clone())
         .collect()
+}
+
+/// The packages cargo attributed a compilation failure to, read from its own output.
+///
+/// Cargo ends a failed package with ``error: could not compile `NAME` (lib) due to N previous
+/// errors``. Parsing that is reading the toolchain's own attribution rather than re-deriving
+/// it: we do not decide which crate failed, cargo does, and this only carries the answer up to
+/// where the refusal is printed.
+fn failed_packages_from_stderr(stderr: &str) -> Vec<String> {
+    let mut found: Vec<String> = Vec::new();
+    for line in stderr.lines() {
+        let Some(rest) = line.split_once("could not compile `") else {
+            continue;
+        };
+        let Some((name, _)) = rest.1.split_once('`') else {
+            continue;
+        };
+        if !found.iter().any(|f| f == name) {
+            found.push(name.to_string());
+        }
+    }
+    found
 }
