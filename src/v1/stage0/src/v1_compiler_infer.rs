@@ -87,9 +87,11 @@ pub use crate::v1_compiler_infer_env::{
 use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
 };
+use crate::v1_compiler_infer_items::ModuleTypecheckProgress::{AbandonedBeforeItems, ItemsChecked};
 pub use crate::v1_compiler_infer_items::{inferred_to_outputs, item_kind};
 pub use crate::v1_compiler_infer_items::{
-    ItemInfo, ItemKind, ModuleInterface, ResolvedGraph, TypedGraph, TypedModule,
+    ItemInfo, ItemKind, ModuleInterface, ModuleTypecheckProgress, ResolvedGraph, TypedGraph,
+    TypedModule,
 };
 use crate::v1_compiler_infer_lookup::ConstructorDeclarationLookup::{
     AdmissionBearingDeclarationUnavailable, ExactConstructorDeclaration,
@@ -21160,6 +21162,7 @@ pub fn typecheck_module(
         if ((env_errors.clone().len() as i64) > 0) {
             return Rc::new(TypecheckModuleResult {
                 typed: Rc::new(TypedModule {
+                    progress: ModuleTypecheckProgress::AbandonedBeforeItems,
                     module: resolved.module.clone(),
                     items: Rc::new(vec![]),
                     type_env: env.clone(),
@@ -21316,6 +21319,7 @@ pub fn typecheck_module(
         });
         Rc::new(TypecheckModuleResult {
             typed: Rc::new(TypedModule {
+                progress: ModuleTypecheckProgress::ItemsChecked,
                 module: typed_module.clone(),
                 items: reannotated_items.clone(),
                 type_env: env.clone(),
@@ -22390,6 +22394,7 @@ pub fn rewire_type_env_import_str_binding_identity(
                         ),
                     });
                     Rc::new(TypedModule {
+                        progress: m.progress.clone(),
                         module: m.module.clone(),
                         items: m.items.clone(),
                         type_env: Rc::new(TypeEnv {
@@ -22698,6 +22703,7 @@ pub fn rewire_type_env_parent_links(
                         __result
                     });
                     Rc::new(TypedModule {
+                        progress: m.progress.clone(),
                         module: m.module.clone(),
                         items: m.items.clone(),
                         type_env: Rc::new(TypeEnv {
@@ -22769,6 +22775,7 @@ pub fn rewire_func_env_parent_links(
                         __result
                     });
                     Rc::new(TypedModule {
+                        progress: m.progress.clone(),
                         module: m.module.clone(),
                         items: m.items.clone(),
                         type_env: m.type_env.clone(),
