@@ -19,7 +19,7 @@ import v1.std.core {
   MatchBoundBinding, CallSemantics, PlainCallSemantics, LookupCallSemantics, FunctionValueCallSemantics, MethodSemantics,
   PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, MatchPattern,
   field_binding_pattern, TextFile, ErrorNode, make_error_node, InternalError,
-  UnlistedImportUse, AmbiguousAnonymousRecordLiteral, SourceSpan, resource_use_resource, UnaryOpKind, StringPart, Text,
+  UnlistedImportUse, AmbiguousAnonymousRecordLiteral, AmbiguousReference, DataReferenceVisibilityBudgetExceeded, ParameterDefaultFormNotAdmitted, SourceSpan, resource_use_resource, UnaryOpKind, StringPart, Text,
   Interpolation, transport_base_url, transport_has_auth, transport_auth_token,
   transport_auth_header_name, transport_headers, transport_env, transport_method,
   transport_path_template, transport_query, transport_request_body, transport_stdin,
@@ -12792,6 +12792,21 @@ fn cli_default_literal_value(expr: Node) -> String? {
   }
 }
 
+// THE CAUSE THIS MODULE ARGUES FOR FOUR TYPES DEEP IS RENDERED HERE, AND FOR A WHILE IT WAS NOT.
+// DataReferenceUnresolvableCause, DataRefAmbiguous, ConstantFoldAmbiguousDataReference and
+// ParamDefaultAmbiguousDataReference all carry the distinction faithfully, and then all three
+// terminal arms below emitted InternalError -- so an author's ambiguous data reference surfaced as
+// "the compiler has a bug", which misdirects the repair and leaves the class no identity to key on.
+//
+// EACH ARM NOW NAMES ITS OWN CLASS, AND NONE OF THE THREE IS A NEW SPELLING OF A CAUSE THAT
+// ALREADY HAD ONE. The ambiguity routes to AmbiguousReference, which v1.compiler.infer has owned
+// all along and which already renders the candidate list and the remedy -- minting a fifth
+// data-reference-flavoured ambiguity would have been the nickname DESIGN section 3 forbids. The
+// exhausted visibility walk is not an authoring error and does not become one: it says no verdict
+// is asserted about how many declarations answer to the name, which is the honest report of a walk
+// that stopped before it finished looking. The absent arm is a different question entirely -- the
+// default's FORM was never admitted -- and it carries the admitted forms as data rather than
+// baking them into a sentence.
 fn validate_workflow_param_defaults(workflow_funcs: List<WorkflowFunc>) -> List<ErrorNode> {
   workflow_funcs |> flat_map(wf =>
     wf.params |> flat_map(param =>
@@ -12810,23 +12825,21 @@ fn validate_workflow_param_defaults(workflow_funcs: List<WorkflowFunc>) -> List<
             match map_get(wf.unresolvable_default_data_references, param_name) {
               Present { value: unresolvable } =>
                 match unresolvable.cause {
-                  DataReferenceAmbiguous { modules: mods } => [make_error_node(diagnostic: InternalError { message: concat(
-                      "workflow CLI default for parameter `", param_name,
-                      "` names `", unresolvable.name,
-                      "`, which more than one visible data declaration answers to (",
-                      mods |> join(separator: ", "),
-                      "); qualify the reference or narrow the import"
-                    ), span: param.span }, module_name: wf.module_name)]
-                  DataReferenceVisibilityBudgetExhausted => [make_error_node(diagnostic: InternalError { message: concat(
-                      "workflow CLI default for parameter `", param_name,
-                      "` names `", unresolvable.name,
-                      "`, whose visible declarations could not be enumerated: the import re-export walk exceeded its depth bound, so this is a compiler limit and not an authoring error"
-                    ), span: param.span }, module_name: wf.module_name)]
+                  DataReferenceAmbiguous { modules: mods } => [make_error_node(diagnostic: AmbiguousReference {
+                      name: unresolvable.name,
+                      candidates: mods,
+                      span: param.span
+                    }, module_name: wf.module_name)]
+                  DataReferenceVisibilityBudgetExhausted => [make_error_node(diagnostic: DataReferenceVisibilityBudgetExceeded {
+                      name: unresolvable.name,
+                      span: param.span
+                    }, module_name: wf.module_name)]
                 }
-              Absent => [make_error_node(diagnostic: InternalError { message: concat(
-                  "workflow CLI default for parameter `", param_name,
-                  "` must be a string, int, float, bool literal, or data reference"
-                ), span: param.span }, module_name: wf.module_name)]
+              Absent => [make_error_node(diagnostic: ParameterDefaultFormNotAdmitted {
+                  parameter: param_name,
+                  admitted: ["string literal", "int literal", "float literal", "bool literal", "data reference"],
+                  span: param.span
+                }, module_name: wf.module_name)]
             }
           }
         Absent => []

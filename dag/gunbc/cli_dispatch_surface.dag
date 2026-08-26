@@ -289,15 +289,6 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
       emission: EmittedByEmitMainRs
     },
     CliSubcommandRow {
-      verb: "ci",
-      variant: "Ci",
-      doc: [],
-      operands: [],
-      options: [],
-      realization: CliDelegatesToHostFn { symbol: "run_verb" },
-      emission: AbsentFromEmitMainRs
-    },
-    CliSubcommandRow {
       verb: "run",
       variant: "Run",
       doc: ["Execute a .dag program directly (interpreter)"],
