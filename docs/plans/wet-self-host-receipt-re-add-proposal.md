@@ -32,15 +32,23 @@ that consumed it is deleted. **An expect_red row is a claim that something is re
 executor, nothing establishes the red and nothing would notice it turning green.** The rows
 are still counted as admitted debt, so they read as managed. They are unmeasured.
 
-**(c) Ten are per-module receipts that were never enrolled at all.** They dispatch through
-`tools.self_host_module_behavioral_transport_roster` `compiler_module_behavioral_receipt_for`,
-keyed by `module_path`, and their enrolment gate is a `SelfHostWetReceiptBinding` in
+**(c) Ten are per-module receipts that were never enrolled and have never been measured.**
+They dispatch through `tools.self_host_module_behavioral_transport_roster`
+`compiler_module_behavioral_receipt_for`, keyed by `module_path`, and their enrolment gate is
+a `SelfHostWetReceiptBinding` in
 `v2.compiler.self_host.seed_emitter_behavioral_wet_module_bindings` — a roster that is
-**empty**. Its `falsifier_self_host_wet_module_bindings_revocation_note` records the
-revocation on the same 2026-07-25 run, with restoration gated on a local wet receipt
-greening first. So these were unenrolled three weeks *before* the falsifier was deleted.
-They did not lose an executor; they were withdrawn from one, believed red, and have not
-been measured since.
+**empty**.
+
+Say what that emptiness does and does not establish, because an earlier revision of this
+document got it wrong in the direction that flatters the proposal. The roster's
+`falsifier_self_host_wet_module_bindings_revocation_note` records that **"the six SelfEmitted
+wet bindings were RED on cadence run 30126573464"** — six, and they are the same six that are
+the quarantine rows of (b). The note says nothing about these ten. They have no binding, no
+cadence run, and no recorded verdict in either direction. **Their standing is UNKNOWN, not
+red.** The earlier revision read the revocation note as covering the whole unenrolled
+remainder, which is the authority-substitution failure DESIGN's recurring-failure list names:
+a real authority (the revocation) borrowed to answer for a population it does not describe,
+with no relation claimed by either carrier. Caught by review 56141 on this PR.
 
 One thing that looks like a defect and is not: `self_host_03_normalize` carries both an
 `OfflineLocalRecipe` exclusion row in `gunbc.ci_layer_roots` and a quarantine row here. The
@@ -48,13 +56,19 @@ admission row explains it at exact grain — the file's sibling `declared_source
 is offline, so classifying the FILE as expect_red would have orphaned the sibling. Two facts
 at two grains, neither restating the other. Left alone.
 
-**What follows for the ask.** Re-adding a cadence over "the 17" would enrol 16 subjects whose
-last and only measurement was red, into a lane that would be red on its first run — and the
-dissolution condition already written on every one of those rows states the opposite order:
-green locally, *then* restore the binding, *then* enrol. A proposal covering all 17 would be
-asking to re-add an executor in order to find out whether its subjects work. So this proposal
-asks for a **measurement route first**, and an enrolment for **at most the subset that a
-measurement shows green** — a subset that on present evidence has at most one member.
+**What follows for the ask, stated at the grain the evidence actually supports.** Of the 17:
+one has a scheduled home and lost it; six carry an executed red from 2026-07-25 and their
+dissolution condition states the order explicitly — green locally, *then* restore the binding,
+*then* enrol; ten have no measurement at all. **No bound on the number that would pass is
+available from any authority in the tree, and this document does not assert one.** The
+unmeasured ten are the reason to measure, not evidence for a number.
+
+That is enough to decide the shape without deciding the size. A cadence re-added over "the 17"
+would enrol six subjects into a lane guaranteed red on its first run, in the opposite order to
+their own stated dissolution, and ten subjects nobody has ever run — which is asking to re-add
+an executor in order to find out whether its subjects work. So this proposal asks for a
+**measurement route first**, and an enrolment sized by **whatever subset that measurement shows
+green**, which may be all of them, none of them, or anything between.
 
 ## 2. What this proposal would NOT re-add
 
@@ -63,8 +77,9 @@ the wrong shape and `gunbc.ci_layer_roots`' own restoration clause argues agains
 
 - Not the falsifier workflow, the affected-set cadence, or `gunbc_falsifier_plan`. Those were
   cut for their own reasons; nothing here restores an affected-set control.
-- Not the ten revoked per-module receipts of (c) as a batch. They are re-admitted one binding
-  at a time, by the dissolution condition their own carrier already states.
+- Not the ten unmeasured per-module receipts of (c) as a batch. They are measured individually
+  and re-admitted one binding at a time; a batch enrolment of subjects with no measurement is
+  the same error as a batch enrolment of subjects measured red.
 - Not the six quarantine rows of (b) as expect_red. If a measurement shows one green, the
   correct move is the one its dissolution names — delete the admission row and promote the
   witness — not to re-add a batch that inverts a verdict nobody has taken.
@@ -147,14 +162,18 @@ Stated as one bounded question rather than a request for a cadence:
 > executed green measurement*, on a stated cadence, under a stated per-receipt wall budget
 > with kill-at-deadline, reporting a per-receipt terminal ledger?
 
-With, attached: the instrument (§3), the per-receipt measurements it produces, and the
-count of receipts that are actually green — which today is unknown and, on the last
-evidence available, is at most 1 of 17.
+With, attached: the instrument (§3), the per-receipt measurements it produces, and the count
+of receipts that are actually green. **That count is unknown today and this proposal offers no
+estimate of it** — six receipts have a year-old-by-CI-standards red from one run, ten have
+never been measured, and guessing at the total is exactly the fabricated-plausible-output
+failure the instrument exists to remove. The decision is meant to be taken against the
+measurement, not against a forecast of it.
 
-If that count comes back at or near zero, the honest outcome is **no lane**, and the work
-converts to root-cause on why the 16 are red — which several sibling lanes are already
-positioned to dissolve. A proposal that would accept "no lane" as an answer is the only
-kind worth putting in front of an operator.
+The proposal is therefore indifferent to which way the count comes out. If enough receipts are
+green, a lane is worth asking for and is sized by them. If few or none are, the honest outcome
+is **no lane**, and the work converts to root-cause on why they are red — which several sibling
+lanes are already positioned to dissolve. A proposal that would accept "no lane" as an answer is
+the only kind worth putting in front of an operator.
 
 ## 7. Standing correction to the carriers
 
