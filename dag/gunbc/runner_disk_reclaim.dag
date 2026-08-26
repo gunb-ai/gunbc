@@ -192,11 +192,11 @@ fn reclaim_managed_unit_paths() -> List<NonEmptyStr> {
 }
 
 fn reclaim_path_is_managed(p: NonEmptyStr) -> Bool {
-  any(reclaim_managed_unit_paths(), q => q as String == p as String)
+  any(reclaim_managed_unit_paths(), q => reclaim_member_key_eq(a: q, b: p))
 }
 
 fn reclaim_member_ownership(m: ReclaimMember) -> Ownership? {
-  if reclaim_path_is_managed(p: m.unit_path) {
+  if reclaim_path_is_managed(p: reclaim_member_key(m: m)) {
     Present { value: Owned }
   } else {
     none
