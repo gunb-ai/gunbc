@@ -26,6 +26,7 @@ type ProgramMilestone
   | SelfHostRatchetObservationEnrolled
   | SelfHostRatchetGateEnrolled
   | NamespaceWaveAdmissionEnrolled
+  | NamespaceBaselineObservationComplete
   | NamespaceFirstSemanticWave
   | NamespaceFixForwardComplete
   | NamespaceGrammarRetired
@@ -38,6 +39,7 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
     SelfHostRatchetObservationEnrolled => "self-host S4a: the ratchet enrolled as an OBSERVATION -- taken and persisted, never merge-blocking" as NonEmptyStr
     SelfHostRatchetGateEnrolled => "self-host S4b: the ratchet enrolled as a GATE, merge-blocking, against S2's identity-grain population" as NonEmptyStr
     NamespaceWaveAdmissionEnrolled => "namespace: required wave-admission wall over closure, subject-membership and occurrence-binding deltas" as NonEmptyStr
+    NamespaceBaselineObservationComplete => "namespace Step 0.5: the pre-deletion baseline -- a content-addressed, past-tense record of what the legacy resolver ACTUALLY SELECTED over one exact base" as NonEmptyStr
     NamespaceFirstSemanticWave => "namespace: first semantic wave (Step 1, deletion of the import-name universe)" as NonEmptyStr
     NamespaceFixForwardComplete => "namespace: Steps 2-4 complete (host and emit machinery, repoints, fix-forward at class grain)" as NonEmptyStr
     NamespaceGrammarRetired => "namespace: Step 5, the LAST step -- grammar and parse deletion, a no-op over a corpus that already spells nothing that way" as NonEmptyStr
@@ -120,6 +122,25 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
 // between a repair and a wall: repairing reported sites converges on the
 // attention of reviewers, and enumerating the shape converges on the corpus.
 //
+// A FIFTH FINDING OF A DIFFERENT SHAPE, AND IT BOUNDS WHAT THIS CONSTRUCTION
+// CAN DO (snappy-dove-250, 2026-08-26). The four above were FUSIONS. This one
+// was an OMISSION: Step 0.5, the pre-deletion baseline observation, was not a
+// variant at all. It records what the legacy resolver ACTUALLY SELECTED over
+// one exact base, and it must precede Step 1 because ONCE THE CUT LANDS THAT
+// RECORD IS UNRECOVERABLE -- the strongest kind of ordering constraint there
+// is, since violating it destroys evidence rather than merely reordering work.
+// It was missing while a session built it, so the graph showed that session as
+// blocked on prerequisites its actual work does not have.
+//
+// THE LIMIT THIS EXPOSES: exhaustiveness forces prerequisites to be stated for
+// every milestone DECLARED. It cannot force a milestone to be declared. So the
+// match makes an unstated prerequisite unwritable and leaves an unstated
+// MILESTONE invisible -- totality protecting the enumeration and not its
+// completeness, one level up from the rule three entries above. A missing
+// variant is therefore NOT findable by any census of this file; it is only
+// findable by joining the file against the programs it claims to describe.
+// That join has no mechanism today and this annotation is not one.
+//
 // THE PRECEDENCE RELATION AS A TOTAL FUNCTION, not a list of edges. A list is
 // satisfied by omission -- a milestone nobody wrote an edge for silently has no
 // prerequisites, and the failure is invisible. An exhaustive match over a closed
@@ -133,7 +154,8 @@ fn milestone_prerequisites(m: ProgramMilestone) -> List<ProgramMilestone> {
     SelfHostRatchetObservationEnrolled => []
     SelfHostRatchetGateEnrolled => [SelfHostWholeCorpusPopulationDerived, SelfHostCargoPhaseEnrolled, SelfHostRatchetObservationEnrolled]
     NamespaceWaveAdmissionEnrolled => []
-    NamespaceFirstSemanticWave => [SelfHostRatchetGateEnrolled, NamespaceWaveAdmissionEnrolled]
+    NamespaceBaselineObservationComplete => []
+    NamespaceFirstSemanticWave => [SelfHostRatchetGateEnrolled, NamespaceWaveAdmissionEnrolled, NamespaceBaselineObservationComplete]
     NamespaceFixForwardComplete => [NamespaceFirstSemanticWave]
     NamespaceGrammarRetired => [NamespaceFixForwardComplete]
     SelfHostSeedRetirement => [NamespaceGrammarRetired]
