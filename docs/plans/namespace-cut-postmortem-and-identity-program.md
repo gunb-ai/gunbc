@@ -1373,11 +1373,11 @@ step 6 names, reached from the direction that looks most conservative.
 |---|---|---|
 | **M0** | **Measurable.** No gate can report a prefix of the truth as the truth | every acceptance count names its producing stage; a gate reachable only past an earlier early-return declares that |
 | **M1** | **Emission preserves the seal.** A `sole_constructor` declaration emits a carrier that cannot be forged | `UriValidatedScalar` forgery refused: private field, no derived `Deserialize`, mint the only route. *Not* "a branded scalar is a distinct Rust type" — that spelling stood here until 2026-08-26 and names the superseded A0 subject, unreachable while `type Brand = String` is transparent in the model |
-| **M2** | **One closure authority.** Every subject is built the same way | no second `extract_imports`; every closure edge names its occurrence and provider |
+| **M2** | **One production subject-construction authority — still X-backed.** Every production consumer receives one `DependencyFacts` answer, so the old subject `B` is **singular and content-addressable** | no second `extract_imports`; compile, regen, tests, floor, generation and emission consume the same facts; every legacy edge carries its `ImportOccurrenceId` and target `ModuleId`. **Not** "every closure edge names its occurrence and provider" — that phrase stood here until 2026-08-26 and collapsed two era-typed relations into one (§11.2r) |
 | **M3** | **Identity survives the pipeline.** Resolution's answer reaches emission intact | the 12 censused emitter sites key on declaration identity; `build_emit_graph_info` has a collision arm |
 | **M4** | **Keys are typed.** A spelling is unspellable in key position | `key_eq` is not a parameter anywhere; a content-derived `key_of` does not compile |
-| **M5** | **The projection is green.** A binding-preserving import-free corpus exists, derived | `old_resolved_declaration == projected_resolved_declaration`, 0 binding-identity changes |
-| **M6** | **Semantic authority flipped AND imports semantically inert** — every production consumer on the reference-derived authority, all import-derived producers and ambient fallbacks gone | acceptance set green; stage0 regenerated; no live import reader remains |
+| **M5** | **The candidate namespace subject is green.** Strict Y constructs the reference-derived closure over the **projection** `P(B)` | every mapped occurrence receives a typed Y outcome; zero candidate-production refusals; every cross-module edge carries `ReferenceOccurrenceId` + `DeclarationRef`; `old_resolved_declaration == projected_resolved_declaration`, 0 binding-identity changes; closure reaches a fixed point |
+| **M6** | **The one production producer changes — apply `P(B)`, switch the slot, delete X's fallback in the same motion.** Semantic authority flipped AND imports semantically inert** — every production consumer on the reference-derived authority, all import-derived producers and ambient fallbacks gone | acceptance set green; stage0 regenerated; no live import reader remains |
 | **M7** | **Grammar deleted** — the terminal milestone | `import` refuses at parse; token, AST and production gone |
 
 M0–M4 are independently valuable on main *with imports*. M5 onward is the cut.
@@ -1392,12 +1392,13 @@ WAVE 1   0.1 pipe lowering   0.2 arg ordering   0.4 coercion parse
          0.3 build_data_body_index: bare-name index over 3927 modules
 
 WAVE 2   B.3 parser-owned reference facts        [needs B.1]
-         C.1 delete ambient + proximity fallback [MOVED — see 11.2p: needs M2, not B.1]
+         C.1Y strict candidate Y carries NO fallback — non-production, buildable NOW on qualified fixtures [see 11.2r]
          C.2 build_emit_graph_info collision arm [needs A.1]
          D.2 impostor separation, two arms       [needs A.1]
 
 WAVE 3   C.3 remaining emitter sites   [needs C.2]
-         C.4 OccurrenceBinding ledger  [needs C.1 — a ledger over a heuristic records the guess]
+         C.4a LegacyBindingObservation O_X(B) — minted WHILE X's fallback still lives [see 11.2r]
+         C.4b CandidateBindingObservation O_Y(P(B)) — after C.1Y and after projection
          D.3 KeyedRoster wall          [needs D.2]
 
 WAVE 4   E.1 derived projection  [needs C.4]
@@ -1412,9 +1413,16 @@ WAVE 5   F   one semantic motion             ← single owner
 WAVE 6   G   bounded corpse deletion — grammar, token, AST, production
 ```
 
-The two hard edges: **C.4 must follow C.1** — a ledger built while ambient
-binding is live records a heuristic's guess as truth — and **F.1 is one motion
-with one owner**, because it is the authority transition.
+The hard edges: **F.1 is one motion with one owner**, because it is the
+authority transition — and **C.1X (deleting X's ambient fallback) happens inside
+F**, never in a preparation wave.
+
+***The edge that used to read "C.4 must follow C.1 — a ledger built while ambient
+binding is live records a heuristic's guess as truth" is REVERSED for the legacy
+observation and kept only for the standing ledger (§11.2r).*** `O_X(B)` must be
+minted **while X's fallback still exists**, because capturing exactly those
+selections is what produces the qualifiers for the 593 off-chain sites. It does
+not call them truth; its whole proposition is past-tense.
 
 ### Three lanes, divided by question rather than by file
 
@@ -3858,6 +3866,83 @@ census"* holds only once Y exists sufficiently to return a typed candidate outco
 fixed forward. **Before that, the deletion measures the absence of the replacement mechanism, not
 the corpus's migration disposition** — which is the precise reason C.1 sits behind M2, stated
 better than the gap-intolerance argument I gave.
+
+### 11.2r RULED — an index makes an already-selected declaration addressable; it does not select one. So M2 is X-backed, and C.1/C.4 both split by authority
+
+I asked whether M2 (*one closure authority*) is reachable before M5 (*the
+projection is green*), given §11.2p's 593 off-chain sites, and offered three
+resolutions. **The answer is a fourth, and my preferred option is refused
+outright.**
+
+**Option 2 — *Y binds bare off-chain occurrences from the declaration index* —
+is NO, and the reason is the cut's own law:**
+
+> **An index provides addressability AFTER identity is established. It does not
+> establish identity.**
+
+The index answers *where is `P.f`, which module provides it*. It cannot answer
+*given the bare spelling `f`, which declaration did the author mean* — unless
+some other relation already authorises a candidate (lexical/ancestor containment,
+an authored qualified path, a declared prelude vocabulary, or the old import
+visibility). **Choosing the sole corpus-wide declaration because the index finds
+exactly one IS the ambient whole-pool-unique fallback being deleted.** So for the
+593 sites the full qualifier is not a readability improvement — **it is the
+authored relation that makes the binding decidable.** The projection is therefore
+unavoidably on the **cutover** critical path, while remaining off the critical
+path for M2's infrastructure work.
+
+**THE FOURTH OPTION — split the authority SLOT from its candidate REALIZATION:**
+
+```
+M2  one closure slot, X-backed          →  the old subject B is singular
+M5  Y(P(B)) proven                      →  strict Y over the projection
+M6  slot switched once; X deleted       →  one motion
+```
+
+**M2 supplies the singular noun `B`. M5 proves `Y(P(B))`.** Without M2 there is
+no *one* old subject to content-address — there is `B_compile`, `B_regen`,
+`B_floor`, `B_emit`, and a green binding delta over one of them authorises
+nothing about the others. **That is what makes §11.2q's seven-field subject
+identity meaningful across the production population**, and it is why M2 still
+precedes M5 even though M2 cannot mean *production uses Y*.
+
+**M2's closing check was over-specified and is corrected.** *"Every closure edge
+names its occurrence and provider"* used one untyped phrase for two relations
+that belong to different eras:
+
+```dag
+type LegacyImportClosureEdge   { import_occurrence: ImportOccurrenceId, target_module: ModuleId }
+type ReferenceClosureEdge      { reference_occurrence: ReferenceOccurrenceId, declaration: DeclarationRef }
+```
+
+**An unused import has an import occurrence and a target module and deliberately
+has NO binding reference occurrence — and that difference is the entire subject
+of the delta wall.** A prose obligation that implies the two are one fact erases
+the distinction the wall exists to measure.
+
+**C.1 SPLITS BY AUTHORITY.** `C.1Y` — strict candidate Y never carries an ambient
+or proximity fallback; non-production until F; **buildable now** on exact
+qualified fixtures. `C.1X` — deleting X's fallback — happens **inside F**, after
+`P(B)` is applied and the producer switches. X's fallback stays production-live
+throughout preparation because the accepted corpus depends on it; **Y never
+acquires it.** That is the one-producer invariant held from both ends.
+
+**C.4 SPLITS TOO, AND THIS REVERSES A HARD EDGE I HAD SHIPPED.** The plan carried
+*"C.4 must follow C.1 — a ledger built while ambient binding is live records a
+heuristic's guess as truth."* That is correct **only for a standing canonical
+ledger**. Three distinct things exist:
+
+| | must be produced |
+|---|---|
+| `LegacyBindingObservation O_X(B)` — *X at B selected D* | **while X, including its fallback, still exists** |
+| `CandidateBindingObservation O_Y(P(B))` | after C.1Y **and** after projection |
+| standing production binding ledger | after F, Y only |
+
+The first is **allowed** to contain X's heuristic results because it does not call
+them truth — its whole proposition is past-tense. And more than allowed:
+**capturing exactly those selections is what produces the qualifiers for the 593
+sites.** The rule that would have forbidden it would have deleted the input the
+projection is derived from.
 
 ### 11.3 The dispatch protocol
 
