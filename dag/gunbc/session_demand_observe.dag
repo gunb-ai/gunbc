@@ -21,7 +21,7 @@ import extdeps.linux.cgroup_v2_memory {
 import gunbc.host_effect { HostEffectTransport, LocalShell }
 import gunbc.host_operation_exec {
   HostOperationObserved, HostOperationRefused, host_operation_exec,
-  CgroupListChildren, CgroupReadInterfaceFile, HostnameReadShort,
+  CgroupListChildren, CgroupReadInterfaceFile, CgroupPathIsDirectory, HostnameReadShort,
 }
 import gunbc.oomd_install { gunbc_oomd_sessions_slice }
 import gunbc.session_demand {
