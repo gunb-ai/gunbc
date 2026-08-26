@@ -1,6 +1,7 @@
 module gunbc.emit_diagnostic_observation
 
 import std.types { Bool, Int, String }
+import std.measure { ByteSize, byte_size, byte_size_count }
 
 // THE EMIT STAGE'S OWN POPULATION, decoded from the only surface `gunbc compile` offers.
 //
@@ -106,7 +107,7 @@ type EmitDiagnosticRead
   | EmitSummaryDisagreement { compiled_total: Int, severity_total: Int }
   | EmitAnchorDuplicated { anchor: EmitSummaryAnchor, count: Int }
   | EmitScopeUnconfirmed
-  | EmitOutputTruncated
+  | EmitOutputTruncated { extent: CaptureExtent }
 
 // WHICH OF THE TWO ANCHORS WAS SEEN MORE THAN ONCE. A closed pair rather than a name, so a third
 // anchor cannot be reported without this coproduct gaining an arm and every reader refusing to
@@ -334,6 +335,33 @@ fn emit_entry_scope_confirmed(lines: List<String>) -> Bool {
   count(filter(lines, line => string_contains(s: line, pattern: emit_entry_scope_marker))) > 0
 }
 
+// THE CAPTURE'S OWN STANDING, carried as ONE record because its three facts are only meaningful
+// together. A total with no window to measure it against is a number that needs a constant to
+// interpret, and the flag alone says a stream was clipped without saying by how much. Grouping them
+// is what lets the refusal below report an OVERAGE rather than a verdict.
+//
+// THE SIZES ARE ByteSize AND NOT Int. `std.measure` already owns the byte quantity, and a bare
+// scalar here would be a second representation of a concept with one authority -- the same finding
+// review 56126 raised against this change's own fixture, applied to the carrier rather than only to
+// the place it was caught.
+//
+// THE FLAG IS CARRIED RATHER THAN DERIVED from `total > retained`. The host performs that judgment
+// itself (`bounded_shell_host_drain.rs` sets `truncated` per policy, and for the complete-within
+// policy it is NOT simply a size comparison), so deriving it here would be a second implementation
+// of a decision the observer already made -- and one that would silently disagree with it the day
+// the policies differ.
+type CaptureExtent {
+  truncated: Bool
+  total: ByteSize
+  retained: ByteSize
+}
+
+// HOW FAR OVER THE WINDOW A STREAM RAN, which is the quantity a reader actually acts on: it is the
+// difference between knowing a wall exists and knowing what it would take to move it.
+fn capture_overage_bytes(extent: CaptureExtent) -> Int {
+  byte_size_count(extent.total) - byte_size_count(extent.retained)
+}
+
 // THE TRUNCATION ARM RUNS FIRST, AND THE ORDER IS THE WHOLE POINT.
 //
 // The v1 host captures a subprocess's stderr as a BOUNDED TAIL -- `bounded_shell_host_drain.rs`
@@ -366,9 +394,9 @@ fn emit_entry_scope_confirmed(lines: List<String>) -> Bool {
 // repair is neither: the entry scope is a fact the COMPILER owns, and recovering it by matching its
 // prose is a positional citation of something that has a symbol. A typed scope output retires both
 // the grep and this arm; that decision is above this module and is not made here.
-fn read_emit_diagnostics(stderr: String, stderr_truncated: Bool) -> EmitDiagnosticRead {
-  if stderr_truncated == true {
-    EmitOutputTruncated
+fn read_emit_diagnostics(stderr: String, capture: CaptureExtent) -> EmitDiagnosticRead {
+  if capture.truncated == true {
+    EmitOutputTruncated { extent: capture }
   } else {
     let lines = split(s: stderr, delimiter: "\n")
     if emit_entry_scope_confirmed(lines: lines) {
@@ -482,8 +510,17 @@ fn emit_diagnostic_read_refusal_reason(read: EmitDiagnosticRead) -> String {
           " times in one output — one population with more than one account of itself, and taking the last would discard the others without a diagnostic"
         )
       )
-    EmitOutputTruncated =>
-      "the compiler's stderr reached this decode TRUNCATED — the v1 host retains a bounded tail (bounded_shell_host_drain.rs DEFAULT_SHELL_STDERR_TAIL_BYTES), so the head of the stream, including the entry-scope marker, was discarded before anything could be read. This is a limit of the instrument's capture and says nothing about the subject: no population may be reported from a stream of unknown extent, and no value of the tail bound fixes it, because the marker's distance from the tail is the subject's total output"
+    EmitOutputTruncated { extent: e } =>
+      concat(
+        concat(
+          concat("the compiler's stderr reached this decode TRUNCATED: the host retained ", to_string(byte_size_count(e.retained))),
+          concat(" of ", concat(to_string(byte_size_count(e.total)), " byte(s), discarding "))
+        ),
+        concat(
+          to_string(capture_overage_bytes(extent: e)),
+          " byte(s) from the HEAD of the stream, including the entry-scope marker. The v1 host retains a bounded tail (bounded_shell_host_drain.rs DEFAULT_SHELL_STDERR_TAIL_BYTES). This is a limit of the instrument's capture and says nothing about the subject: no population may be reported from a stream of unknown extent, and no value of the tail bound fixes it, because the marker's distance from the tail is the subject's total output"
+        )
+      )
     EmitScopeUnconfirmed =>
       "gunbc compile did not report a reference-derived closure, so the compile this output describes cannot be established as scoped to the requested entry — a whole-tree population reported as one entry's is the substitution this decode refuses, and `--entry` is carried only by the hand-maintained main.rs rather than by the .dag authority"
     EmitSummaryDisagreement { compiled_total: c, severity_total: s } =>
