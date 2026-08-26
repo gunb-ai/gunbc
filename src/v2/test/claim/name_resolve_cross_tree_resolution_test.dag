@@ -415,9 +415,8 @@ test fn witness_cross_tree_dag_to_v2_grounded_denied_holds() -> Bool {
         (r.head.reason == ^resolve_cross_tree_import_denied)
           && locus_eq(
             a: r.head.at,
-            b: invariant_port_locus(port: ^resolve_cross_tree_import_denied, invariant: ^resolve_cross_tree_import_denied)
+            b: invariant_port_locus(port: ^resolve_diagnostic_port, invariant: ^resolve_cross_tree_import_denied)
           )
     }
   }
 }
-
