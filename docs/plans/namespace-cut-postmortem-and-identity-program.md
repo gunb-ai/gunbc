@@ -2471,7 +2471,8 @@ trace reported that the whole branch is gated behind
 `name_resolution_policy_is_namespace_only()`, whose in-tree comment reads
 "default false = production fail-open path" — concluding that this is a
 precondition on a future policy flip rather than a present obligation. That is
-false. `v1_rt.rs:164` is `Cell::new(true)`, `cli_run.rs` records that the flag
+false. `v1_rt.rs` `NAME_RESOLUTION_POLICY_NAMESPACE_ONLY` is
+`const { Cell::new(true) }`, `cli_run.rs` records that the flag
 "now defaults to true (§13 unique-on-chain)" as the thing that turned a test
 red, and `v1_compiler_infer_env.rs` names the ratification: "step-4 default ON =
 NamespaceOnlyY", operator-ratified 2026-07-21. **`false` is the bracket, not the
@@ -4396,3 +4397,40 @@ an open one.
 closure. The category **shape** is likely to generalise — `Type` references dominating while `Type`
 declarations are absent is a *producer* property, not a property of these four files — but **every
 count here is this subject's**, and none may be quoted as a corpus figure.
+
+
+### 11.2v SELF-AUDIT — this document carried the positional citations it was written to prosecute
+
+Prompted by `review 56243`, which approved on scope (prose, no `.dag`) and noted in passing that
+skimming for *positional citations, unmarked debt, absorbing-fallback prose* was worthwhile but not
+blocking. It was worthwhile. **This lane has spent the week enforcing §3's cite-the-symbol rule on
+other people's work and had never run it against this file.**
+
+§3 admits a position **only where no symbol exists to name** — a generated artifact, a data row, a
+line inside a blob — and requires that where a position *is* carried, it sits beside the symbol and
+never as the citation itself. Audited on that test, seven positional references:
+
+**One real violation, fixed.** `` `v1_rt.rs:164` is `Cell::new(true)` `` cited a line where a symbol
+was plainly available: the thread-local is
+`NAME_RESOLUTION_POLICY_NAMESPACE_ONLY`, and the initializer is `const { Cell::new(true) }`. The
+citation is now symbolic. This is precisely the decay §3 describes — the offset was correct when
+written and any edit above it silently falsifies it, with no one touching either end.
+
+**Four admissible, and worth stating so they are not "fixed" later by someone reading only the
+rule.** `dag/std/layout.dag:59` `fn render(doc, proto)`, `order_typed_call_args` (line 326),
+`pub struct TypecheckModuleResult` at `v1_compiler_infer.rs:20786`, and `HitRefused` at
+`dag/std/cache_interface.dag:319` all **name the symbol and carry the position beside it**, which is
+the convenience form §3 permits.
+
+**Two admissible for the stronger reason — no symbol exists.** The
+`src/v2/extdeps/coercion_widening.dag:29:49` parse failure is cited at three sites, and a **parse
+failure has no symbol by construction**: the file did not parse, so nothing in the containment tree
+names the location. That is the carve-out's central case rather than an exception to it. Likewise
+the reference to what a numbered line of a quoted output block shows.
+
+**The finding is the ratio, not the fix.** One violation in seven is a good result and it is not the
+point: the point is that the audit had never been run here, on the document whose subject is
+single authority, by the lane that had been ruling on it elsewhere all day. **A rule you enforce
+outward and never run inward is not a standard, it is a preference you apply to other people** — and
+it took an approving, explicitly non-blocking review to surface it, which is the argument for reading
+those rather than filing them.
