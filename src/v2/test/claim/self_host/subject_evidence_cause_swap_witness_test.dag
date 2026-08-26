@@ -1,16 +1,20 @@
-module v2.test.self_host.subject_evidence_cause_swap_witness
+module v2.test.claim.self_host.subject_evidence_cause_swap_witness_test
 
-import v2.std.logic { Bool }
-import v2.std.optional { Absent }
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
+  Outcome,
   Rejected,
   Unavailable,
   diagnostics_singleton,
   port_locus
 }
 import v2.std.verdict {
+  BuildFailed,
+  Deferred,
+  Pass,
+  RunFailed,
+  SemanticMismatch,
   Verdict,
   verdict_build_failed,
   verdict_establishes_divergence,
@@ -19,6 +23,10 @@ import v2.std.verdict {
   verdict_run_failed,
   verdict_semantic_mismatch
 }
+import v2.std.collection { Absent }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

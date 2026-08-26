@@ -53,10 +53,16 @@ import v2.std.logic { Bool }
 // WHAT THIS TYPE DELIBERATELY DOES NOT DO: it carries no verdict of its own. Whether a completed
 // outcome LICENSES a claim is the domain's question, answered by the domain's own outcome type, and
 // folding the two would make one carrier answer for two authorities.
-type SubjectEvidence<NoVerdict, Outcome>
+// THE OUTCOME PARAMETER IS `SubjectOutcome` AND NOT `Outcome`, AND THAT IS NOT COSMETIC. Spelling it
+// `Outcome` collides with the concrete `v2.std.diagnostic.Outcome` that most consumers of this
+// module already import, and the collision does not refuse -- the checker binds the generic
+// formal's payload to the CONCRETE type in scope, so a `licenses: fn(Outcome) -> Bool` callback was
+// typechecked against the diagnostic coproduct and reported `non-exhaustive match: missing
+// variant(s) Accepted, Rejected` at a call site that never mentioned either. Found by execution.
+type SubjectEvidence<NoVerdict, SubjectOutcome>
   = EvidenceInstrumentRefused { cause: NoVerdict }
   | EvidenceSubjectUnreached { cause: NoVerdict }
-  | EvidenceSubjectCompleted { outcome: Outcome }
+  | EvidenceSubjectCompleted { outcome: SubjectOutcome }
 
 // THE COMPARISON OUTCOME, kept as a SEPARATE type from the standing above rather than as three flat
 // variants beside it. That separation is what makes one standing shape serve both an equivalence
@@ -85,9 +91,9 @@ type BehavioralComparison<Difference>
 // false means the claim was refuted, but because a claim is not established by an execution that
 // did not happen. Callers that need to distinguish the two match the coproduct directly; this is
 // for the terminal `test fn` boundary, which can only return Bool.
-fn subject_evidence_establishes<NoVerdict, Outcome>(
-  evidence: SubjectEvidence<NoVerdict, Outcome>,
-  licenses: fn(Outcome) -> Bool
+fn subject_evidence_establishes<NoVerdict, SubjectOutcome>(
+  evidence: SubjectEvidence<NoVerdict, SubjectOutcome>,
+  licenses: fn(SubjectOutcome) -> Bool
 ) -> Bool {
   match evidence {
     EvidenceSubjectCompleted { outcome: o } => licenses(o)
@@ -101,8 +107,8 @@ fn subject_evidence_establishes<NoVerdict, Outcome>(
 // by a genuine refutation AND by an execution that never happened -- the very aliasing this module
 // exists to remove, so a control written against it would prove nothing. This answers the narrower
 // question the control actually needs: was a verdict produced at all.
-fn subject_evidence_produced_a_verdict<NoVerdict, Outcome>(
-  evidence: SubjectEvidence<NoVerdict, Outcome>
+fn subject_evidence_produced_a_verdict<NoVerdict, SubjectOutcome>(
+  evidence: SubjectEvidence<NoVerdict, SubjectOutcome>
 ) -> Bool {
   match evidence {
     EvidenceSubjectCompleted { outcome: _ } => true
