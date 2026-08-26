@@ -1566,6 +1566,128 @@ So the split is clean, and it falls exactly along the line that clause draws:
   claim.** The verified version cost six greps and one log read, all available
   while the original sentence was being written.
 
+- **THE CONFLATION IS IN THE COMPILER, NOT THE INSTRUMENT — `TypecheckModuleResult`
+  cannot say whether the module was checked** (`cool-swift-307`, 2026-08-26;
+  verified independently here by source read). The type carries `typed` /
+  `diagnostics` / `binding_forks` and nothing that states progress, and
+  `typecheck_module`'s `if env_errors |> count > 0` arm returns a `TypedModule`
+  with `items: []` and `item_registry: empty_map()`, never reaching
+  `analyze_item`. So **a module that completed with no items and a module
+  abandoned before item checking render identically to every consumer.**
+
+  **An earlier revision of this row put the reader count at 89 and that was
+  wrong** — a corpus-wide `.items` grep that never asked what the receivers were.
+  32 of those are unrelated `language_spec(...).items`; **57 are not, and ~37 are
+  definitely `TypedModule`, 30 clustered in `05_emit_rust`** (corrected by
+  `cool-swift-307`, confirmed here). A denominator that inflates the blast radius
+  argues for the change on false weight.
+
+  **The executed arm has NOT been exhibited, and the fixture that tried did not
+  reach it.** A three-module fixture compiled an unresolvable *import* and refused
+  at `exit=1` with a located diagnostic — but `UnresolvedImport` is minted at
+  `v1.03_resolve`, upstream of `typecheck_module`, and none of `build_type_env`'s
+  three diagnostic sources (`import_diags`, an `InternalError` about a missing
+  parent environment; `namespace_alias_diags`; `resolved_diags` from
+  `resolve_env_bindings`) is that diagnostic. **A fixture that stops before the
+  stage says nothing about the stage** — the finding's own class, arriving as the
+  method error of the lane reporting it. The fixture that would reach the arm
+  authors an unresolvable *type name* in a signature, with no import problem;
+  **not yet run.**
+
+  **This is the same defect §11.2l measured, not an analogous one.** The oracle
+  could not distinguish `total_arm1=1` from a genuine single-ask module *because
+  the stage it was observing does not distinguish them either*. The instrument
+  was faithfully reporting a conflation already present in the compiler, which
+  inverts how §11.2l reads: the oracle was not badly built.
+
+  It also **corrects the requirement in the row below**. A progress receipt bolted
+  onto the probe would be a second representation of a fact the producer already
+  knows, and would leave all 89 in-tree consumers as blind as they are now — so
+  the honest home is `TypecheckModuleResult` itself, distinguishing *Completed*
+  from *AbandonedBeforeItems* with the early return naming which.
+
+  Stated at the grain that survives a hostile read: **the carrier does not state
+  it**, rather than the information being destroyed. The abandoned arm does carry
+  env error diagnostics, so a consumer could try to infer abandonment from "items
+  empty and error diagnostics present" — unreliably, since a completed module
+  with item-level errors looks the same. The defect is that **consumers must
+  infer a fact the producer knows**.
+
+  **NOT AUTHORIZED, AND THE ROUTED QUESTION IS NARROWER THAN "may we touch v1".**
+  `gunbc.v1_maintenance_standing` was read rather than assumed. The purpose test
+  (2026-08-20) is satisfied on the axis its own precedent pair uses — the noun
+  repair was admitted because it was *exhibited today* inside the v2 program's
+  measuring instrument; the argv fabrication was refused because it exhibits
+  nothing. This case is on the admitted side of that axis, with a named victim.
+
+  **But one refused class is live, and refusals dominate every admission.**
+  `v1_maintenance_rung_note` states the measurement for it: *"PublicSurfaceGrowth
+  is a diff over the emitted seed's exported declarations."* Widening
+  `TypecheckModuleResult` is a change in exactly that diff. So the decidable
+  question — and the only one that needs an operator — is: **does
+  PublicSurfaceGrowth mean a NEW exported declaration, or ANY change to the
+  exported surface?** The noun repair clears under both readings (it was one
+  string), so the precedent does not discriminate, which is why the question has
+  never had to be answered.
+
+  **The premise was checked by execution rather than inferred** (`warm-hawk-909`,
+  confirmed here): `pub struct TypecheckModuleResult` at
+  `v1_compiler_infer.rs:20786` in the emitted seed, **23** references across its
+  `.rs` files. The type does cross the exported boundary, so the surface diff is
+  measured, not assumed.
+
+  **AND THE SERDE BOUNDARY IS NAMED HERE SO THE NEXT LANE DOES NOT RE-DERIVE IT
+  IN EITHER DIRECTION.** `shared_typecheck_store.rs` carries a *"Cross-worker
+  serde contract"* moving `TypecheckModuleResult` as bytes via
+  `encode_typed_snapshot` / `decode_typed_snapshot`, which reads as a second
+  refused class (a compatibility obligation) that would dominate even under the
+  permissive reading. **It does not hold.** The same file scopes it: the store
+  crosses worker *threads* when explicitly armed, in one process, in one run, and
+  calls itself *"the interim serde byte transport"* with its own `dissolve-on`
+  marker. Encode and decode are always the same binary, so a snapshot written
+  before the change and read after cannot occur. The contract it actually
+  declares is representation-independence — authored **names** rather than
+  per-worker `InternTable` indices — which a new field does not violate. **So the
+  routed question stays ONE class, not two**; recorded because an objection that
+  does not survive its own file makes a refusal look stronger than it is.
+
+  **No construction fix avoids the class, and the reason is structural rather
+  than exhaustive search** (`warm-hawk-909`'s phrasing, which is better than the
+  original here): **the fact that needs stating is *about the result*, and the
+  result is what crosses the boundary — so any carrier honest enough to state it
+  is by construction on the far side.** The rename that saved the noun repair has
+  no analogue, because there is nothing misnamed here, only something unstated. If the strict reading holds, **this defect is unfixable under the
+  freeze as currently read**, which is a legitimate outcome rather than a gap:
+  the §9 rows stand and the measurement discipline below carries the weight
+  without touching the seed. Recorded as an argument, not a verdict; the
+  permissive reading is not advocated here, because reinterpreting a refused
+  class is how a freeze repeals by drift — the standing danger that carrier names
+  in its own words.
+
+  **THE CONSUMER SWEEP RESOLVED WITH NO READER CHANGES — derivation on one half,
+  execution on the other.** *Emit-side readers are join-unreachable with an
+  abandoned module*: abandonment requires `is_error_diagnostic`,
+  `emittable_graph` returns none on any `is_interpreter_blocking_diagnostic`, and
+  the only two error-but-not-blocking kinds both mint downstream of
+  `build_type_env` — so abandonment implies a blocking diagnostic and no
+  abandoned module reaches emit. Unreachability, not emptiness. *Pre-gate readers
+  are reachable and the expected defect does not occur*: the hypothesis was
+  cascade misattribution (an abandoned provider publishes an empty export
+  surface, the importer is blamed), and a two-module fixture whose provider
+  declares a field of an undefined type returns **one** diagnostic located in the
+  **provider**, against a positive control that compiles clean and emits. So "no
+  reader changes behavior" is a finding with a receipt, not work declined.
+
+  **RULED: it does not land bare.** The field has no production consumer, which
+  is close to specification-without-execution — and §4b's exemption does not
+  apply, because the RED is authorable and was authored (a mutation control
+  yields `missing required field progress in literal of type TypedModule` at the
+  exact site). The enrolled evidence is the *discriminating pair*, not the
+  mutation control: abandoned-before-items and completed-with-no-items must be
+  distinguishable through the field, and it stays enrolled permanently per
+  §4b(4). Manufacturing an in-tree reader so the field looks used would be worse
+  than the gap; a witness is not a manufactured consumer.
+
 - **A per-file measurement needs a per-module progress receipt, and none exists.**
   Every per-file instrument in this program shares §11.2l's hazard: a row from a
   module that never reached the stage issuing its asks is indistinguishable from a
