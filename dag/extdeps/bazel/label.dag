@@ -243,11 +243,11 @@ fn label_structural_eq(a: Label, b: Label) -> Bool {
   packages_equal && (a.target.name == b.target.name)
 }
 
+// label_eq is deliberately NOT used here: package_eq renders both packages, so
+// PackagePath(["a", "b"]) and PackagePath(["a/b"]) compare equal. Canonicality instead
+// compares the segment structure that parse_label constructs.
 fn label_is_canonical(label: Label) -> Bool {
   match parse_label(text: render_label(l: label)) {
-    // label_eq is deliberately NOT used here: package_eq renders both packages, so
-    // PackagePath(["a", "b"]) and PackagePath(["a/b"]) compare equal. Canonicality instead
-    // compares the segment structure that parse_label constructs.
     LabelParsed { label: parsed } => label_structural_eq(a: label, b: parsed)
     LabelRefused { cause: _ } => false
   }
