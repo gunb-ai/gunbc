@@ -92,6 +92,24 @@ test fn live_long_spellings_are_distinct_within_a_verb() -> Bool {
   })
 }
 
+test fn clean_version_identity_is_the_exact_commit() -> Bool {
+  let commit = "0123456789abcdef0123456789abcdef01234567" as CommitSha
+  gunbc_cli_version_text(
+    identity: gunbc_cli_version_identity(source_commit: commit, source_dirty: false)
+  )
+    == commit
+}
+
+// Discriminating control for the provenance lie this surface closes: changing only the dirty
+// observation must make the output cease to inhabit the 40-hex commit spelling.
+test fn dirty_version_identity_cannot_impersonate_the_commit() -> Bool {
+  let commit = "0123456789abcdef0123456789abcdef01234567" as CommitSha
+  gunbc_cli_version_text(
+    identity: gunbc_cli_version_identity(source_commit: commit, source_dirty: true)
+  )
+    == concat(commit, "-dirty")
+}
+
 // THE TOGGLE-DEFAULT CHECK IS DELETED, NOT MOVED.
 //
 // A witness here asserted that no toggle option declares a default. `CliToggleValue` now has no

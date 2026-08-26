@@ -30,7 +30,7 @@ import gunbc.scm.object_store {
   CopyOutcome, Copied, CopySourceAbsent, CopyLocatorCollision, copy_object,
 }
 import gunbc.scm.commit_closure { uncontained_targets }
-import gunbc.scm.ancestry { CommitAncestry, RootCommit, DescendsFrom }
+import gunbc.scm.ancestry { CommitAncestry, RootCommit, DescendsFrom, RepositoryCommitRef }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope, RepositoryCommit,
   RepositoryDecodeOutcome, RepositoryDecoded, RepositoryDecodeRefused,
@@ -97,7 +97,7 @@ fn scm_env_two_commit_repository() -> RepositoryEnvelope {
       RepositoryCommit {
         root: second.identity,
         message: "second",
-        ancestry: DescendsFrom { parent: first.identity },
+        ancestry: DescendsFrom { parent: RepositoryCommitRef { reference: "0" } },
       },
     ],
     checked_out: Present { value: "1" },
@@ -759,11 +759,7 @@ test fn scm_env_a_stated_parent_survives_the_round_trip() -> Bool {
     Present { value: ancestry } =>
       match ancestry {
         RootCommit => false
-        DescendsFrom { parent: parent } =>
-          match commit_at_reference(commits: repo.commits, reference: "0") {
-            Absent => false
-            Present { value: first } => object_id_eq(left: parent, right: first.root)
-          }
+        DescendsFrom { parent: parent } => parent.reference == "0"
       }
   }
 }
@@ -930,7 +926,7 @@ fn scm_env_orphan_parent_repository() -> RepositoryEnvelope {
       RepositoryCommit {
         root: first.identity,
         message: "child",
-        ancestry: DescendsFrom { parent: second.identity },
+        ancestry: DescendsFrom { parent: RepositoryCommitRef { reference: "1" } },
       },
     ],
     checked_out: none,
@@ -953,12 +949,12 @@ fn scm_env_cyclic_repository() -> RepositoryEnvelope {
       RepositoryCommit {
         root: first.identity,
         message: "first",
-        ancestry: DescendsFrom { parent: second.identity },
+        ancestry: DescendsFrom { parent: RepositoryCommitRef { reference: "1" } },
       },
       RepositoryCommit {
         root: second.identity,
         message: "second",
-        ancestry: DescendsFrom { parent: first.identity },
+        ancestry: DescendsFrom { parent: RepositoryCommitRef { reference: "0" } },
       },
     ],
     checked_out: none,

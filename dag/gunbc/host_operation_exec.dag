@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr, List, Bool }
 import extdeps.systemd.systemctl
 import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire }
 import extdeps.tools.hostname
+import extdeps.linux.cgroup_v2
 import gunbc.host_effect {
   HostEffectTransport,
   LocalShell,
@@ -108,6 +109,9 @@ type HostOperation =
   | SystemctlShowProperty { unit: NonEmptyStr, property: SystemdUnitProperty }
   | SystemctlShowLoadState { unit: NonEmptyStr }
   | HostnameReadShort
+  | CgroupListChildren { cgroup_path: NonEmptyStr }
+  | CgroupReadInterfaceFile { file_path: NonEmptyStr }
+  | CgroupPathIsDirectory { path: NonEmptyStr }
 
 // THE OUTCOME IS DELIBERATELY NOT SshSessionExecResult. Three of the four legs produce one, but
 // naming a local process observation after ssh would be a nickname in the return position, and the
@@ -162,6 +166,30 @@ fn host_operation_invocation(operation: HostOperation) -> BoundOperationInvocati
         operation: "ReadShort",
       },
       bindings: [],
+    )
+    CgroupListChildren { cgroup_path: p } => bind_operation_invocation(
+      at: OperationRef {
+        path: cgroup_v2_operation_path,
+        service: cgroup_v2_operation_service,
+        operation: "ListChildCgroups",
+      },
+      bindings: [operation_argv_bind_text(name: "cgroup_path", text: p as String)],
+    )
+    CgroupReadInterfaceFile { file_path: p } => bind_operation_invocation(
+      at: OperationRef {
+        path: cgroup_v2_operation_path,
+        service: cgroup_v2_operation_service,
+        operation: "ReadInterfaceFile",
+      },
+      bindings: [operation_argv_bind_text(name: "file_path", text: p as String)],
+    )
+    CgroupPathIsDirectory { path: p } => bind_operation_invocation(
+      at: OperationRef {
+        path: cgroup_v2_operation_path,
+        service: cgroup_v2_operation_service,
+        operation: "PathIsDirectory",
+      },
+      bindings: [operation_argv_bind_text(name: "path", text: p as String)],
     )
   }
 }
@@ -237,6 +265,18 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
       let result = os.Hostname.ReadShort()
       HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
     }
+    CgroupListChildren { cgroup_path: p } => {
+      let result = linux.CgroupV2.ListChildCgroups(cgroup_path: p)
+      HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
+    }
+    CgroupReadInterfaceFile { file_path: p } => {
+      let result = linux.CgroupV2.ReadInterfaceFile(file_path: p)
+      HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
+    }
+    CgroupPathIsDirectory { path: p } => {
+      let result = linux.CgroupV2.PathIsDirectory(path: p)
+      HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
+    }
   }
 }
 
@@ -304,6 +344,9 @@ data systemctl_operation_path: String = "dag/extdeps/systemd/systemctl.dag"
 data systemctl_operation_service: String = "systemd.Systemctl"
 data hostname_operation_path: String = "dag/extdeps/tools/hostname.dag"
 data hostname_operation_service: String = "os.Hostname"
+
+data cgroup_v2_operation_path: String = "dag/extdeps/linux/cgroup_v2.dag"
+data cgroup_v2_operation_service: String = "linux.CgroupV2"
 
 fn systemctl_operation_ref(operation: String) -> OperationRef {
   OperationRef {

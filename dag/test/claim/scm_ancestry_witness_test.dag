@@ -1,98 +1,72 @@
 module test.claim.scm_ancestry_witness
 
 import std.types { Bool, String, List }
-import v2.std.node { Node, Symbol, TypeNode, Atom, node_synthetic }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.scm.object_store {
-  ObjectStore,
-  ObjectId,
-  empty_store,
-  store_node,
-  Stored,
-  LocatorCollision,
-  object_id_eq,
-}
 import gunbc.scm.ancestry {
   CommitAncestry,
   RootCommit,
   DescendsFrom,
-  CommitAncestryLookup,
-  AncestryKnown,
-  AncestryUnknownCommit,
+  RepositoryCommitRef,
+  repository_commit_ref_eq,
+  AncestryStep,
+  RepositoryHistory,
+  history_step_at,
   AncestryWalk,
   AncestryTraced,
   AncestryBrokenAt,
   AncestryStartNotInHistory,
   AncestryRevisitsACommit,
   ancestry_walk,
-  commit_is_ancestor_of,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Names qualified: top-level definitions are corpus-wide and the resolver silently selects among
 // duplicates (#8707), which this layer's witness files already document hitting.
-fn ancestry_witness_id(name: Symbol) -> ObjectId {
-  match store_node(
-    store: empty_store(),
-    n: node_synthetic(kind: TypeNode { connective: Atom { identity: name } }, children: []),
+//
+// A REFERENCE NAMES A HISTORY ROW, so this helper no longer reaches the object store at all. The
+// previous form hashed a synthetic node to mint an ObjectId, which was the wrong grain: it produced
+// the identity of a PROGRAM where the walk needs the identity of a RECORD.
+fn ancestry_witness_ref(name: String) -> RepositoryCommitRef {
+  RepositoryCommitRef { reference: name }
+}
+
+
+
+// THIS WITNESS DERIVES ITS OWN BOOLEAN FROM THE WALK, which is what the deleted
+// `commit_is_ancestor_of` used to do for everyone. The module no longer offers it, because
+// collapsing four outcomes into `false` erased the difference between "traced, and not an ancestor"
+// and "could not establish anything" -- so each consumer now decides what a refusal means to IT.
+//
+// WHAT THIS CONSUMER DECIDES, stated rather than buried: only a completed trace can establish
+// ancestry, so the three refusal arms answer false HERE. That is safe in these witnesses and not in
+// general -- the fixtures below are well-formed by construction, so the refusal arms are unreachable
+// from them, and the broken-chain, cycle and unknown-start states are asserted directly by their own
+// witnesses rather than through this helper. A production consumer with damaged input must not reuse
+// this reasoning.
+fn ancestry_witness_traces_through(
+  candidate: RepositoryCommitRef,
+  descendant: RepositoryCommitRef,
+  history: RepositoryHistory,
+) -> Bool {
+  match ancestry_walk(
+    start: descendant,
+    history: history,
   ) {
-    Stored { store: _, identity: identity } => identity
-    LocatorCollision { identity: identity, existing: _, incoming: _ } => identity
+    AncestryTraced { chain: chain } =>
+      fold(chain, init: false, f: fn(seen, c) {
+        if seen { true } else { repository_commit_ref_eq(left: c, right: candidate) }
+      })
+    AncestryBrokenAt { commit: _, missing_parent: _ } => false
+    AncestryStartNotInHistory { start: _ } => false
+    AncestryRevisitsACommit { detected_from: _ } => false
   }
 }
 
-type AncestryWitnessEntry {
-  commit: ObjectId
-  ancestry: CommitAncestry
-}
-
-fn ancestry_witness_lookup_in(
-  entries: List<AncestryWitnessEntry>,
-  wanted: ObjectId,
-) -> CommitAncestryLookup {
-  fold(entries, init: AncestryUnknownCommit, f: fn(found, e) {
-    match found {
-      AncestryKnown { ancestry: _ } => found
-      AncestryUnknownCommit =>
-        if object_id_eq(left: e.commit, right: wanted) {
-          AncestryKnown { ancestry: e.ancestry }
-        } else {
-          AncestryUnknownCommit
-        }
-    }
-  })
-}
-
-// A linear history: c0 is the root, c1 descends from c0, c2 from c1.
-fn ancestry_witness_linear() -> List<AncestryWitnessEntry> {
-  [
-    AncestryWitnessEntry { commit: ancestry_witness_id(name: ^c0), ancestry: RootCommit },
-    AncestryWitnessEntry {
-      commit: ancestry_witness_id(name: ^c1),
-      ancestry: DescendsFrom { parent: ancestry_witness_id(name: ^c0) },
-    },
-    AncestryWitnessEntry {
-      commit: ancestry_witness_id(name: ^c2),
-      ancestry: DescendsFrom { parent: ancestry_witness_id(name: ^c1) },
-    },
-  ]
-}
-
-fn ancestry_witness_linear_history() -> List<ObjectId> {
-  map(ancestry_witness_linear(), e => e.commit)
-}
-
-// THE ROOT IS ITS OWN STATE. Asserted against the alternative this module refuses -- a parent field
-// holding a "nothing" value, which would make "this commit begins the history" and "this commit's
-// parent is missing" the same value. Those are opposite facts: the first is every repository's
-// ordinary first commit, the second is damage.
-// The root/descends discrimination is asserted with a WITNESS-LOCAL reader rather than a predicate
-// exported from gunbc.scm.ancestry. review 56207 objected to that export, and the decisive fact is
-// that it had NO production consumer -- its only caller was this claim. A helper whose sole consumer
-// is the test asserting it works belongs in the test (DESIGN section 6: an artifact with no final
-// consumer). The production module keeps the coproduct and no predicate over it, so every real
-// consumer matches the arms and stays exhaustive when a variant is added.
+// THE MODULE NO LONGER OFFERS A ROOT READER, so this witness derives one -- which is what any real
+// consumer would do. The deletion rests on consumer count, the same criterion that removed the
+// Boolean ancestor predicate from this module: zero production consumers, and an arm with no
+// producer is worse than absent because it gets cited as a capability.
 fn ancestry_witness_reads_as_root(ancestry: CommitAncestry) -> Bool {
   match ancestry {
     RootCommit => true
@@ -100,24 +74,41 @@ fn ancestry_witness_reads_as_root(ancestry: CommitAncestry) -> Bool {
   }
 }
 
+// A linear history: c0 is the root, c1 descends from c0, c2 from c1.
+fn ancestry_witness_linear() -> RepositoryHistory {
+  RepositoryHistory { steps: [
+    AncestryStep { at: ancestry_witness_ref(name: "c0"), ancestry: RootCommit },
+    AncestryStep {
+      at: ancestry_witness_ref(name: "c1"),
+      ancestry: DescendsFrom { parent: ancestry_witness_ref(name: "c0") },
+    },
+    AncestryStep {
+      at: ancestry_witness_ref(name: "c2"),
+      ancestry: DescendsFrom { parent: ancestry_witness_ref(name: "c1") },
+    },
+  ] }
+}
+
+
+// THE ROOT IS ITS OWN STATE. Asserted against the alternative this module refuses -- a parent field
+// holding a "nothing" value, which would make "this commit begins the history" and "this commit's
+// parent is missing" the same value. Those are opposite facts: the first is every repository's
+// ordinary first commit, the second is damage.
 test fn the_root_commit_is_structurally_a_root_not_a_missing_parent() -> Bool {
   ancestry_witness_reads_as_root(ancestry: RootCommit)
-    && !ancestry_witness_reads_as_root(
-         ancestry: DescendsFrom { parent: ancestry_witness_id(name: ^c0) }
-       )
+    && !ancestry_witness_reads_as_root(ancestry: DescendsFrom { parent: ancestry_witness_ref(name: "c0") })
 }
 
 test fn a_linear_history_traces_from_the_start_back_to_the_root() -> Bool {
   match ancestry_walk(
-    start: ancestry_witness_id(name: ^c2),
-    history: ancestry_witness_linear_history(),
-    lookup: fn(id) { ancestry_witness_lookup_in(entries: ancestry_witness_linear(), wanted: id) },
+    start: ancestry_witness_ref(name: "c2"),
+    history: ancestry_witness_linear(),
   ) {
     AncestryTraced { chain: chain } =>
       chain == [
-        ancestry_witness_id(name: ^c2),
-        ancestry_witness_id(name: ^c1),
-        ancestry_witness_id(name: ^c0),
+        ancestry_witness_ref(name: "c2"),
+        ancestry_witness_ref(name: "c1"),
+        ancestry_witness_ref(name: "c0"),
       ]
     AncestryBrokenAt { commit: _, missing_parent: _ } => false
     AncestryStartNotInHistory { start: _ } => false
@@ -129,20 +120,16 @@ test fn a_linear_history_traces_from_the_start_back_to_the_root() -> Bool {
 // history at all. Answering "traced" here would report a broken chain as a complete one -- the same
 // shape as reporting an unreadable document as an empty one, which is the empty-observation narrow.
 test fn a_parent_outside_the_history_is_broken_not_traced() -> Bool {
-  let entries = [
-    AncestryWitnessEntry {
-      commit: ancestry_witness_id(name: ^c1),
-      ancestry: DescendsFrom { parent: ancestry_witness_id(name: ^c0) },
+  let history = RepositoryHistory { steps: [
+    AncestryStep {
+      at: ancestry_witness_ref(name: "c1"),
+      ancestry: DescendsFrom { parent: ancestry_witness_ref(name: "c0") },
     },
-  ]
-  match ancestry_walk(
-    start: ancestry_witness_id(name: ^c1),
-    history: [ancestry_witness_id(name: ^c1)],
-    lookup: fn(id) { ancestry_witness_lookup_in(entries: entries, wanted: id) },
-  ) {
+  ] }
+  match ancestry_walk(start: ancestry_witness_ref(name: "c1"), history: history) {
     AncestryBrokenAt { commit: c, missing_parent: p } =>
-      object_id_eq(left: c, right: ancestry_witness_id(name: ^c1))
-        && object_id_eq(left: p, right: ancestry_witness_id(name: ^c0))
+      repository_commit_ref_eq(left: c, right: ancestry_witness_ref(name: "c1"))
+        && repository_commit_ref_eq(left: p, right: ancestry_witness_ref(name: "c0"))
     AncestryTraced { chain: _ } => false
     AncestryStartNotInHistory { start: _ } => false
     AncestryRevisitsACommit { detected_from: _ } => false
@@ -154,23 +141,19 @@ test fn a_parent_outside_the_history_is_broken_not_traced() -> Bool {
 // precisely because nothing constructs commits yet -- a fixture can state a cycle that no producer
 // would, which is what makes this an executing wall rather than a decoration.
 test fn a_cyclic_parent_chain_is_refused_rather_than_traced() -> Bool {
-  let entries = [
-    AncestryWitnessEntry {
-      commit: ancestry_witness_id(name: ^c0),
-      ancestry: DescendsFrom { parent: ancestry_witness_id(name: ^c1) },
+  let history = RepositoryHistory { steps: [
+    AncestryStep {
+      at: ancestry_witness_ref(name: "c0"),
+      ancestry: DescendsFrom { parent: ancestry_witness_ref(name: "c1") },
     },
-    AncestryWitnessEntry {
-      commit: ancestry_witness_id(name: ^c1),
-      ancestry: DescendsFrom { parent: ancestry_witness_id(name: ^c0) },
+    AncestryStep {
+      at: ancestry_witness_ref(name: "c1"),
+      ancestry: DescendsFrom { parent: ancestry_witness_ref(name: "c0") },
     },
-  ]
-  match ancestry_walk(
-    start: ancestry_witness_id(name: ^c0),
-    history: [ancestry_witness_id(name: ^c0), ancestry_witness_id(name: ^c1)],
-    lookup: fn(id) { ancestry_witness_lookup_in(entries: entries, wanted: id) },
-  ) {
+  ] }
+  match ancestry_walk(start: ancestry_witness_ref(name: "c0"), history: history) {
     AncestryRevisitsACommit { detected_from: d } =>
-      object_id_eq(left: d, right: ancestry_witness_id(name: ^c0))
+      repository_commit_ref_eq(left: d, right: ancestry_witness_ref(name: "c0"))
     AncestryTraced { chain: _ } => false
     AncestryStartNotInHistory { start: _ } => false
     AncestryBrokenAt { commit: _, missing_parent: _ } => false
@@ -184,40 +167,64 @@ test fn a_cyclic_parent_chain_is_refused_rather_than_traced() -> Bool {
 // would call c0 an ancestor of c1 here. Nothing does, because the relation is asserted rather than
 // inferred, and this witness is what would go red if someone later "optimised" the walk into an
 // index comparison.
+// TWO UNRELATED ROOTS, hoisted out of the witness below so its positive companion shares this exact
+// fixture by construction rather than by an author remembering to copy it.
+fn ancestry_witness_two_roots() -> RepositoryHistory {
+  RepositoryHistory { steps: [
+    AncestryStep { at: ancestry_witness_ref(name: "c0"), ancestry: RootCommit },
+    AncestryStep { at: ancestry_witness_ref(name: "c1"), ancestry: RootCommit },
+  ] }
+}
+
+
 test fn adjacent_position_does_not_make_one_commit_an_ancestor_of_another() -> Bool {
-  let entries = [
-    AncestryWitnessEntry { commit: ancestry_witness_id(name: ^c0), ancestry: RootCommit },
-    AncestryWitnessEntry { commit: ancestry_witness_id(name: ^c1), ancestry: RootCommit },
-  ]
-  let history = [ancestry_witness_id(name: ^c0), ancestry_witness_id(name: ^c1)]
-  !commit_is_ancestor_of(
-    candidate: ancestry_witness_id(name: ^c0),
-    descendant: ancestry_witness_id(name: ^c1),
-    history: history,
-    lookup: fn(id) { ancestry_witness_lookup_in(entries: entries, wanted: id) },
+  !ancestry_witness_traces_through(
+    candidate: ancestry_witness_ref(name: "c0"),
+    descendant: ancestry_witness_ref(name: "c1"),
+    history: ancestry_witness_two_roots(),
   )
+}
+
+// THE POSITIVE COMPANION FOR THE NEGATION ABOVE, OVER THE SAME FIXTURE.
+//
+// The negation is satisfied by a walk that FAILS for any reason, because the helper answers false on
+// every refusal arm. The suite's other positive control does not rescue it: that control runs over
+// the LINEAR fixture and never touches this one, so a failure that struck only this shape -- two
+// records that are both roots, which is exactly the shape the revert fixture makes interesting --
+// would leave the negation green and nothing else would notice.
+//
+// So this asserts something this fixture must answer TRUE: a walk from c1, which is itself a root,
+// completes and traces exactly itself. A selective failure on this shape now reddens here.
+test fn the_two_root_fixture_still_traces_a_root_to_itself() -> Bool {
+  match ancestry_walk(
+    start: ancestry_witness_ref(name: "c1"),
+    history: ancestry_witness_two_roots(),
+  ) {
+    AncestryTraced { chain: chain } => length(chain) == 1
+    AncestryBrokenAt { commit: _, missing_parent: _ } => false
+    AncestryStartNotInHistory { start: _ } => false
+    AncestryRevisitsACommit { detected_from: _ } => false
+  }
 }
 
 // THE POSITIVE CONTROL FOR THE ABOVE, and without it a function that answered false for everything
 // would satisfy it. A STATED ancestor is found, across two generations rather than one, so the claim
 // is about tracing rather than about comparing a commit to its immediate parent.
 test fn a_stated_ancestor_two_generations_back_is_found() -> Bool {
-  commit_is_ancestor_of(
-    candidate: ancestry_witness_id(name: ^c0),
-    descendant: ancestry_witness_id(name: ^c2),
-    history: ancestry_witness_linear_history(),
-    lookup: fn(id) { ancestry_witness_lookup_in(entries: ancestry_witness_linear(), wanted: id) },
+  ancestry_witness_traces_through(
+    candidate: ancestry_witness_ref(name: "c0"),
+    descendant: ancestry_witness_ref(name: "c2"),
+    history: ancestry_witness_linear(),
   )
 }
 
 // DESCENT HAS A DIRECTION. c2 is not an ancestor of c0, and a walk that ignored direction -- or a
 // membership test over the whole history -- would answer true here.
 test fn ancestry_has_a_direction_and_a_descendant_is_not_an_ancestor() -> Bool {
-  !commit_is_ancestor_of(
-    candidate: ancestry_witness_id(name: ^c2),
-    descendant: ancestry_witness_id(name: ^c0),
-    history: ancestry_witness_linear_history(),
-    lookup: fn(id) { ancestry_witness_lookup_in(entries: ancestry_witness_linear(), wanted: id) },
+  !ancestry_witness_traces_through(
+    candidate: ancestry_witness_ref(name: "c2"),
+    descendant: ancestry_witness_ref(name: "c0"),
+    history: ancestry_witness_linear(),
   )
 }
 
@@ -231,63 +238,115 @@ test fn ancestry_has_a_direction_and_a_descendant_is_not_an_ancestor() -> Bool {
 // that answered this arm for every input would satisfy a bare not-traced claim, and the two witnesses
 // above -- a real trace and a real truncation -- are what stop that reading.
 test fn a_start_outside_the_history_is_the_callers_fact_not_a_broken_chain() -> Bool {
-  let entries = [
-    AncestryWitnessEntry {
-      commit: ancestry_witness_id(name: ^c1),
-      ancestry: RootCommit,
-    },
-  ]
-  match ancestry_walk(
-    start: ancestry_witness_id(name: ^c9),
-    history: [ancestry_witness_id(name: ^c1)],
-    lookup: fn(id) { ancestry_witness_lookup_in(entries: entries, wanted: id) },
-  ) {
+  let history = RepositoryHistory { steps: [
+    AncestryStep { at: ancestry_witness_ref(name: "c1"), ancestry: RootCommit },
+  ] }
+  match ancestry_walk(start: ancestry_witness_ref(name: "c9"), history: history) {
     AncestryStartNotInHistory { start: s } =>
-      object_id_eq(left: s, right: ancestry_witness_id(name: ^c9))
+      repository_commit_ref_eq(left: s, right: ancestry_witness_ref(name: "c9"))
     AncestryTraced { chain: _ } => false
     AncestryBrokenAt { commit: _, missing_parent: _ } => false
     AncestryRevisitsACommit { detected_from: _ } => false
   }
 }
 
-// AN EMPTY HISTORY CANNOT CONTAIN A CYCLE (review 56225). Before the membership gate, the fold ran
-// zero steps, `done` stayed false, and the fallthrough reported AncestryRevisitsACommit -- a cycle,
-// concluded from having looked at nothing. The pigeonhole argument needs at least one step taken;
-// with none, it is vacuous.
+// THE REVERT: THE HISTORY THAT ROOT-KEYED ANCESTRY CANNOT REPRESENT.
 //
-// It asserts the START IDENTITY on the start-not-in-history arm rather than merely that the answer
-// is not a cycle: an implementation answering that arm for every input would satisfy the weaker
-// claim, and the traced and cyclic witnesses above are what stop that reading.
-test fn an_empty_history_is_not_a_cycle() -> Bool {
-  match ancestry_walk(
-    start: ancestry_witness_id(name: ^c0),
-    history: [],
-    lookup: fn(id) { AncestryKnown { ancestry: RootCommit } },
-  ) {
-    AncestryStartNotInHistory { start: s } =>
-      object_id_eq(left: s, right: ancestry_witness_id(name: ^c0))
-    AncestryRevisitsACommit { detected_from: _ } => false
-    AncestryTraced { chain: _ } => false
-    AncestryBrokenAt { commit: _, missing_parent: _ } => false
-  }
+// This is the discriminating control for the identity grain, and it is an ORDINARY revert rather
+// than a corner case: r2 restores exactly the program r0 stored, so content addressing correctly
+// gives r0 and r2 the SAME root. Under the previous ObjectId-keyed model, a lookup on that shared
+// root answered with r0's `RootCommit` on first match, so a walk from r2 terminated immediately and
+// reported r2 as a root -- r1 and the revert edge vanished. Not a refusal: a well-formed, confident,
+// wrong answer.
+//
+// Row references make the two occurrences distinct, so the walk traces all three. This witness stays
+// enrolled after it greens (DESIGN section 4b(4)): it is the control that keeps the grain from
+// drifting back, and deleting it on the grounds that it now passes would recreate exactly the
+// specification-without-execution the recut removed.
+fn ancestry_witness_revert() -> RepositoryHistory {
+  RepositoryHistory { steps: [
+    AncestryStep { at: ancestry_witness_ref(name: "r0"), ancestry: RootCommit },
+    AncestryStep {
+      at: ancestry_witness_ref(name: "r1"),
+      ancestry: DescendsFrom { parent: ancestry_witness_ref(name: "r0") },
+    },
+    AncestryStep {
+      at: ancestry_witness_ref(name: "r2"),
+      ancestry: DescendsFrom { parent: ancestry_witness_ref(name: "r1") },
+    },
+  ] }
 }
 
-// THE POSITIVE CONTROL FOR THE GATE, and it is the one that matters: the lookup above answers KNOWN
-// for every identity, so a gate that merely trusted `lookup` would have walked happily. The claim is
-// that membership in the stated HISTORY decides it, and this asserts the gate did not break the
-// ordinary case where the start IS a member.
-test fn a_start_inside_the_history_still_walks() -> Bool {
-  let entries = [
-    AncestryWitnessEntry { commit: ancestry_witness_id(name: ^c0), ancestry: RootCommit },
-  ]
+
+test fn a_revert_to_an_earlier_program_still_traces_every_record() -> Bool {
   match ancestry_walk(
-    start: ancestry_witness_id(name: ^c0),
-    history: [ancestry_witness_id(name: ^c0)],
-    lookup: fn(id) { ancestry_witness_lookup_in(entries: entries, wanted: id) },
+    start: ancestry_witness_ref(name: "r2"),
+    history: ancestry_witness_revert(),
   ) {
-    AncestryTraced { chain: chain } => chain == [ancestry_witness_id(name: ^c0)]
+    AncestryTraced { chain: chain } => length(chain) == 3
+    AncestryBrokenAt { commit: _, missing_parent: _ } => false
     AncestryStartNotInHistory { start: _ } => false
     AncestryRevisitsACommit { detected_from: _ } => false
+  }
+}
+
+// THE REVERTED-TO RECORD IS AN ANCESTOR OF THE REVERT, and is not the same record as it.
+//
+// Asserted separately from the chain length above because a walk could trace three rows and still
+// have collapsed the two occurrences -- length alone does not establish that r0 and r2 stayed
+// distinct. This is the assertion that a root-keyed model cannot satisfy at all.
+test fn the_reverted_to_record_is_an_ancestor_and_not_the_revert_itself() -> Bool {
+  ancestry_witness_traces_through(
+    candidate: ancestry_witness_ref(name: "r0"),
+    descendant: ancestry_witness_ref(name: "r2"),
+    history: ancestry_witness_revert(),
+  ) && !repository_commit_ref_eq(
+    left: ancestry_witness_ref(name: "r0"),
+    right: ancestry_witness_ref(name: "r2"),
+  )
+}
+
+// AN EMPTY HISTORY CANNOT CONTAIN A CYCLE, AND THIS IS THE SPECIMEN THAT WAS SILENTLY WRONG.
+//
+// This was a live wrong ANSWER, not a missing check, and it predates the identity recut -- the same
+// shape sits on the pre-recut head with only the type names different. The walk folded over the
+// history to bound itself, so an EMPTY history folded zero times, `done` stayed false, and the
+// accumulator's INITIAL value survived to be returned as the verdict: a revisit reported after
+// observing nothing at all. A default doing duty as a conclusion.
+//
+// It is unrepresentable now rather than checked. There is no separate population to be empty while a
+// lookup still answers: the walk asks the carrier for a row at the start, an empty carrier has none,
+// and StartNotInHistory follows from the absence rather than from a guard someone added in front.
+//
+// It asserts the START IDENTITY rather than merely that the answer is not a cycle, because an
+// implementation answering StartNotInHistory for every input would satisfy the weaker claim. The
+// traced and cyclic witnesses above are the positive controls that stop that reading. Per DESIGN
+// section 4b(4) this stays enrolled after it greens: it is the executing evidence that the state
+// remains unwritable, and deleting it on the grounds that it now passes would recreate
+// specification-without-execution one rung up.
+test fn an_empty_history_is_not_a_cycle() -> Bool {
+  match ancestry_walk(
+    start: ancestry_witness_ref(name: "c0"),
+    history: RepositoryHistory { steps: [] },
+  ) {
+    AncestryStartNotInHistory { start: s } =>
+      repository_commit_ref_eq(left: s, right: ancestry_witness_ref(name: "c0"))
+    AncestryRevisitsACommit { detected_from: _ } => false
+    AncestryTraced { chain: _ } => false
     AncestryBrokenAt { commit: _, missing_parent: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE ROW-EXISTENCE QUESTION ITSELF, over the same carrier the walk uses.
+// Without it, a history_step_at that answered Absent for everything would satisfy the claim above
+// while making every walk in this file return StartNotInHistory.
+test fn a_row_that_is_present_is_found_by_the_same_lookup_the_walk_uses() -> Bool {
+  match history_step_at(
+    history: ancestry_witness_linear(),
+    at: ancestry_witness_ref(name: "c1"),
+  ) {
+    Present { value: step } =>
+      repository_commit_ref_eq(left: step.at, right: ancestry_witness_ref(name: "c1"))
+    Absent => false
   }
 }

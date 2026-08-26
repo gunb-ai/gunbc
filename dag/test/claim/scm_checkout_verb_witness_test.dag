@@ -18,9 +18,13 @@ import gunbc.scm.object_store {
   store_node,
   Stored,
   LocatorCollision,
-  object_id_eq,
 }
-import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit, commit_at_reference }
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  RepositoryCommit,
+  commit_at_reference,
+  repository_history,
+}
 import gunbc.scm.merge { Proposal }
 import gunbc.scm.status {
   StatusCheckout,
@@ -34,9 +38,7 @@ import gunbc.scm.ancestry {
   CommitAncestry,
   RootCommit,
   DescendsFrom,
-  CommitAncestryLookup,
-  AncestryKnown,
-  AncestryUnknownCommit,
+  RepositoryCommitRef,
   AncestryWalk,
   AncestryTraced,
   AncestryBrokenAt,
@@ -166,8 +168,13 @@ test fn scm_ck_a_lost_object_is_the_stores_fact_not_the_callers() -> Bool {
 
 // A repository whose only commit states a parent that is NOT in the commit list -- a truncated
 // history -- while the commit's own root object is wholly present.
+//
+// THE ABSENT PARENT IS A ROW REFERENCE, NOT A STORED OBJECT, since the recut. An earlier revision
+// built a real object and named it as the parent, which under the old ObjectId keying was the only
+// way to spell "a parent that is not one of my commits". A parent now names a HISTORY ROW, so the
+// absence is expressed directly: reference "7" is out of range for a one-row list, and no object
+// needs to exist to say so.
 fn scm_ck_truncated_history_repository() -> RepositoryEnvelope {
-  let missing_parent = scm_ck_put(store: empty_store(), n: scm_ck_atom(name: ^ancestor))
   let child = scm_ck_put(store: empty_store(), n: scm_ck_atom(name: ^child))
   RepositoryEnvelope {
     store: child.store,
@@ -175,7 +182,7 @@ fn scm_ck_truncated_history_repository() -> RepositoryEnvelope {
       RepositoryCommit {
         root: child.identity,
         message: "child of a commit this repository does not have",
-        ancestry: DescendsFrom { parent: missing_parent.identity },
+        ancestry: DescendsFrom { parent: RepositoryCommitRef { reference: "7" } },
       },
     ],
     checked_out: none,
@@ -211,30 +218,15 @@ test fn scm_ck_that_same_commit_has_a_broken_ancestry() -> Bool {
     Absent => false
     Present { value: c } =>
       match ancestry_walk(
-        start: c.root,
-        history: [c.root],
-        lookup: fn(id) { scm_ck_lookup_in(commits: repo.commits, wanted: id) },
+        start: RepositoryCommitRef { reference: "0" },
+        history: repository_history(commits: repo.commits),
       ) {
-        AncestryBrokenAt { commit: at, missing_parent: _ } => object_id_eq(left: at, right: c.root)
+        AncestryBrokenAt { commit: at, missing_parent: _ } => at.reference == "0"
         AncestryTraced { chain: _ } => false
         AncestryStartNotInHistory { start: _ } => false
         AncestryRevisitsACommit { detected_from: _ } => false
       }
   }
-}
-
-fn scm_ck_lookup_in(commits: List<RepositoryCommit>, wanted: ObjectId) -> CommitAncestryLookup {
-  fold(commits, init: AncestryUnknownCommit, f: fn(acc, c) {
-    match acc {
-      AncestryKnown { ancestry: _ } => acc
-      AncestryUnknownCommit =>
-        if object_id_eq(left: c.root, right: wanted) {
-          AncestryKnown { ancestry: c.ancestry }
-        } else {
-          AncestryUnknownCommit
-        }
-    }
-  })
 }
 
 // ------------------------------------------------------------------------------------------------
