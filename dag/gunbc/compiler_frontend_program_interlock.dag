@@ -27,7 +27,8 @@ type ProgramMilestone
   | SelfHostRatchetGateEnrolled
   | NamespaceWaveAdmissionEnrolled
   | NamespaceFirstSemanticWave
-  | NamespaceTerminalEndState
+  | NamespaceFixForwardComplete
+  | NamespaceGrammarRetired
   | SelfHostSeedRetirement
 
 fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
@@ -38,7 +39,8 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
     SelfHostRatchetGateEnrolled => "self-host S4b: the ratchet enrolled as a GATE, merge-blocking, against S2's identity-grain population" as NonEmptyStr
     NamespaceWaveAdmissionEnrolled => "namespace: required wave-admission wall over closure, subject-membership and occurrence-binding deltas" as NonEmptyStr
     NamespaceFirstSemanticWave => "namespace: first semantic wave (Step 1, deletion of the import-name universe)" as NonEmptyStr
-    NamespaceTerminalEndState => "namespace: terminal end state (Steps 1-5 complete, import grammar retired)" as NonEmptyStr
+    NamespaceFixForwardComplete => "namespace: Steps 2-4 complete (host and emit machinery, repoints, fix-forward at class grain)" as NonEmptyStr
+    NamespaceGrammarRetired => "namespace: Step 5, the LAST step -- grammar and parse deletion, a no-op over a corpus that already spells nothing that way" as NonEmptyStr
     SelfHostSeedRetirement => "self-host: S6 retirement of the v1 seed" as NonEmptyStr
   }
 }
@@ -100,6 +102,24 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
 // but to ask whether the variant carries TWO facts that would state DIFFERENT
 // prerequisites if separated. If it does, it is two variants.
 //
+// A FOURTH INSTANCE, found by running that obligation as a CENSUS over every
+// variant rather than repairing the site a review reported (loyal-lark-254,
+// 2026-08-26: a review reports one instance because it found one instance,
+// which is a property of the reviewer's attention and never a census).
+// NamespaceTerminalEndState fused Steps 1-5 into one "terminal end state".
+// The namespace plan marks Step 5, the grammar and parse deletion, as LAST --
+// and gives the reason: deleting the grammar first makes every unrepaired
+// module unparseable at once, converting a fix-forward program into a flag
+// day. So the fused variant ERASED ITS OWN ORDERING CONSTRAINT, and the one
+// it erased is the constraint that keeps the program survivable. Split into
+// Steps 2-4 and the grammar deletion that must follow them, with seed
+// retirement now downstream of the grammar rather than of a composite.
+//
+// FOUR INSTANCES, AND THE LAST WAS FOUND ONLY BY CENSUS. The first three were
+// each reported by someone who had run into them. That is the difference
+// between a repair and a wall: repairing reported sites converges on the
+// attention of reviewers, and enumerating the shape converges on the corpus.
+//
 // THE PRECEDENCE RELATION AS A TOTAL FUNCTION, not a list of edges. A list is
 // satisfied by omission -- a milestone nobody wrote an edge for silently has no
 // prerequisites, and the failure is invisible. An exhaustive match over a closed
@@ -114,8 +134,9 @@ fn milestone_prerequisites(m: ProgramMilestone) -> List<ProgramMilestone> {
     SelfHostRatchetGateEnrolled => [SelfHostWholeCorpusPopulationDerived, SelfHostCargoPhaseEnrolled, SelfHostRatchetObservationEnrolled]
     NamespaceWaveAdmissionEnrolled => []
     NamespaceFirstSemanticWave => [SelfHostRatchetGateEnrolled, NamespaceWaveAdmissionEnrolled]
-    NamespaceTerminalEndState => [NamespaceFirstSemanticWave]
-    SelfHostSeedRetirement => [NamespaceTerminalEndState]
+    NamespaceFixForwardComplete => [NamespaceFirstSemanticWave]
+    NamespaceGrammarRetired => [NamespaceFixForwardComplete]
+    SelfHostSeedRetirement => [NamespaceGrammarRetired]
   }
 }
 
