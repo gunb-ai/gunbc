@@ -185,11 +185,34 @@ fn ancestry_walk_step(
 // The walk is bounded by the population it walks: `history` supplies both the membership test and
 // the step budget, so the fold is total and terminates by construction rather than by a guard this
 // module has to keep correct.
+//
+// MEMBERSHIP IS DECIDED BEFORE THE WALK, AND THAT IS WHAT MAKES THE PIGEONHOLE ARM HONEST
+// (review 56225). The fallthrough below concludes "a chain longer than the population must have
+// revisited a commit". That argument needs at least one step to have been taken: with an EMPTY
+// history the fold runs zero times, `done` stays false, and the walk reported a CYCLE having looked
+// at nothing at all. An empty population cannot contain a cycle, so that was a fabricated cause --
+// the exact failure this module's own header refuses, committed in its own walker.
+//
+// The repair is not a special case for empty. The start's membership in `history` is decidable up
+// front, and answering AncestryStartNotInHistory when it is absent is what the first step would have
+// concluded anyway, since lookup would have said so. The empty history then falls out as an
+// instance -- nothing is a member of nothing -- rather than being a branch someone has to remember.
+// It also makes the arm's meaning honest: the refusal now names the population it is about, instead
+// of relying on `lookup`'s domain agreeing with `history`.
+fn object_id_in(population: List<ObjectId>, wanted: ObjectId) -> Bool {
+  fold(population, init: false, f: fn(seen, id) {
+    if seen { true } else { object_id_eq(left: id, right: wanted) }
+  })
+}
+
 fn ancestry_walk(
   start: ObjectId,
   history: List<ObjectId>,
   lookup: fn(ObjectId) -> CommitAncestryLookup,
 ) -> AncestryWalk {
+  if !object_id_in(population: history, wanted: start) {
+    AncestryStartNotInHistory { start: start }
+  } else {
   match fold(
     history,
     init: AncestryWalkAcc {
@@ -206,6 +229,7 @@ fn ancestry_walk(
       } else {
         AncestryRevisitsACommit { detected_from: start }
       }
+  }
   }
 }
 
