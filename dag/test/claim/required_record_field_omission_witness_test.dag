@@ -1,0 +1,33 @@
+module test.claim.required_record_field_omission_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data required_record_field_omission_witness_note: String = "Construction control for the v1 NodeOccurrenceIdentity carrier. The negative and positive sources differ only in whether the required `identity` field is supplied. The negative must be refused by the production compile path; the positive prevents a parser, resolver, or harness failure shared by both sources from satisfying that assertion vacuously. This establishes the structural mechanism the carrier relies on before the carrier changes Node: omitting a required record field cannot compile, while supplying every required field can."
+
+fn required_record_field_omitted_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    "module required_field_red\ntype Pair { identity: Int, label: String }\ndata pair: Pair = Pair { label: \"red\" }\n",
+    "src/required_field_red.rs",
+    [],
+    []
+  )
+}
+
+fn required_record_fields_supplied_compile() -> Bool {
+  compile_dag_rust_emit_check(
+    "module required_field_green\ntype Pair { identity: Int, label: String }\ndata pair: Pair = Pair { identity: 1, label: \"green\" }\n",
+    "src/required_field_green.rs",
+    [],
+    []
+  )
+}
+
+test fn omitted_required_record_field_refuses() -> Bool {
+  !required_record_field_omitted_compiles()
+}
+
+test fn complete_required_record_literal_accepts() -> Bool {
+  required_record_fields_supplied_compile()
+}
