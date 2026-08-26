@@ -12792,6 +12792,21 @@ fn cli_default_literal_value(expr: Node) -> String? {
   }
 }
 
+// THE CAUSE THIS MODULE ARGUES FOR FOUR TYPES DEEP IS RENDERED HERE, AND FOR A WHILE IT WAS NOT.
+// DataReferenceUnresolvableCause, DataRefAmbiguous, ConstantFoldAmbiguousDataReference and
+// ParamDefaultAmbiguousDataReference all carry the distinction faithfully, and then all three
+// terminal arms below emitted InternalError -- so an author's ambiguous data reference surfaced as
+// "the compiler has a bug", which misdirects the repair and leaves the class no identity to key on.
+//
+// EACH ARM NOW NAMES ITS OWN CLASS, AND NONE OF THE THREE IS A NEW SPELLING OF A CAUSE THAT
+// ALREADY HAD ONE. The ambiguity routes to AmbiguousReference, which v1.compiler.infer has owned
+// all along and which already renders the candidate list and the remedy -- minting a fifth
+// data-reference-flavoured ambiguity would have been the nickname DESIGN section 3 forbids. The
+// exhausted visibility walk is not an authoring error and does not become one: it says no verdict
+// is asserted about how many declarations answer to the name, which is the honest report of a walk
+// that stopped before it finished looking. The absent arm is a different question entirely -- the
+// default's FORM was never admitted -- and it carries the admitted forms as data rather than
+// baking them into a sentence.
 fn validate_workflow_param_defaults(workflow_funcs: List<WorkflowFunc>) -> List<ErrorNode> {
   workflow_funcs |> flat_map(wf =>
     wf.params |> flat_map(param =>
