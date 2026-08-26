@@ -1,0 +1,5 @@
+module test.fixture.borrowed_census_unique_caller
+
+fn call_borrowed_census_unique_probe() -> Int {
+  borrowed_census_unique_probe()
+}
