@@ -2,7 +2,11 @@
 // Source module: v1.compiler.infer
 
 use self::CallArgumentFormalSelection::*;
+use self::DeclaredTypePosition::*;
 use self::DescentSizeExpr::*;
+use self::InhabitanceRefusalReason::*;
+use self::InhabitanceUndecidableReason::*;
+use self::InhabitanceVerdict::*;
 use self::ServiceConfigFieldJudgment::*;
 pub use crate::extdeps_container_oci_digest::{
     oci_other_digest_algorithm, oci_other_digest_encoded,
@@ -53,6 +57,7 @@ pub use crate::std_types::{
     container_param_name, container_template_algebra, is_kernel_type, kernel_type_set,
 };
 pub use crate::std_types::{NonEmptyStr, SourceSpan};
+pub use crate::v1_compiler_coercion::{decl_file_realizes_natively, type_reference_decl_file};
 pub use crate::v1_compiler_infer_access::AccessCheckResultNode;
 pub use crate::v1_compiler_infer_access::{check_index_access_node, check_slice_access_node};
 pub use crate::v1_compiler_infer_cycle::detect_type_cycles_kahn;
@@ -87,9 +92,11 @@ pub use crate::v1_compiler_infer_env::{
 use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
 };
+use crate::v1_compiler_infer_items::ModuleTypecheckProgress::{AbandonedBeforeItems, ItemsChecked};
 pub use crate::v1_compiler_infer_items::{inferred_to_outputs, item_kind};
 pub use crate::v1_compiler_infer_items::{
-    ItemInfo, ItemKind, ModuleInterface, ResolvedGraph, TypedGraph, TypedModule,
+    ItemInfo, ItemKind, ModuleInterface, ModuleTypecheckProgress, ResolvedGraph, TypedGraph,
+    TypedModule,
 };
 use crate::v1_compiler_infer_lookup::ConstructorDeclarationLookup::{
     AdmissionBearingDeclarationUnavailable, ExactConstructorDeclaration,
@@ -3365,10 +3372,17 @@ pub fn coproduct_variant_name_sets_differ(
     }
 }
 
+pub fn coproduct_name_is_unnamed_or_optional_carrier(name: String) -> bool {
+    {
+        let last = qualified_last_segment(name.clone());
+        ((last.clone() == "".to_string()) || (last.clone() == "Optional".to_string()))
+    }
+}
+
 pub fn coproduct_name_is_kernel_or_optional_carrier(name: String) -> bool {
     {
         let last = qualified_last_segment(name.clone());
-        (((last.clone() == "".to_string()) || (last.clone() == "Optional".to_string()))
+        (coproduct_name_is_unnamed_or_optional_carrier(name.clone())
             || is_kernel_type(last.clone()))
     }
 }
@@ -3382,7 +3396,7 @@ pub fn foreign_concrete_coproduct_where_parent_required(
 ) -> bool {
     {
         let source_indices = scope.type_env.clone().source_indices.clone();
-        if ((coproduct_name_is_kernel_or_optional_carrier(formal_name.clone())
+        if ((coproduct_name_is_unnamed_or_optional_carrier(formal_name.clone())
             || coproduct_name_is_kernel_or_optional_carrier(actual_name.clone()))
             || ((actual_rep.clone() != "".to_string())
                 && coproduct_name_is_kernel_or_optional_carrier(actual_rep.clone())))
@@ -3416,6 +3430,212 @@ pub fn foreign_concrete_coproduct_where_parent_required(
                 }
             }
         }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum DeclaredTypePosition {
+    PositionRecordLiteralField,
+    PositionListElement,
+    PositionMapValue,
+    PositionDataInitializer,
+    PositionDeclaredReturn,
+    PositionLetAnnotation,
+    PositionVariantPayload,
+    PositionGenericTypeArgument,
+    PositionCastTarget,
+    PositionParameterDefault,
+    PositionCallableReturn,
+    PositionDirectCallArgument,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DeclaredTypeObligation {
+    pub position: DeclaredTypePosition,
+    pub declared: Rc<Node>,
+    pub produced: Rc<Node>,
+    pub span: Rc<SourceSpan>,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum InhabitanceUndecidableReason {
+    UndecidableGenericFormal,
+    UndecidableOptionalCarrier,
+    UndecidableFormalUnresolved,
+    UndecidableProducedIdentityErased,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum InhabitanceRefusalReason {
+    RefusedPayloadAtParent,
+    RefusedKernelAtStructured,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum InhabitanceVerdict {
+    Inhabits,
+    InhabitanceRefused {
+        reason: InhabitanceRefusalReason,
+    },
+    InhabitanceUndecidable {
+        reason: InhabitanceUndecidableReason,
+    },
+}
+
+pub fn declared_type_position_label(position: DeclaredTypePosition) -> String {
+    match position.clone() {
+        DeclaredTypePosition::PositionRecordLiteralField => "record literal field".to_string(),
+        DeclaredTypePosition::PositionListElement => "list element".to_string(),
+        DeclaredTypePosition::PositionMapValue => "map value".to_string(),
+        DeclaredTypePosition::PositionDataInitializer => "data initializer".to_string(),
+        DeclaredTypePosition::PositionDeclaredReturn => "declared return".to_string(),
+        DeclaredTypePosition::PositionLetAnnotation => "let annotation".to_string(),
+        DeclaredTypePosition::PositionVariantPayload => "variant payload".to_string(),
+        DeclaredTypePosition::PositionGenericTypeArgument => "generic type argument".to_string(),
+        DeclaredTypePosition::PositionCastTarget => "cast target".to_string(),
+        DeclaredTypePosition::PositionParameterDefault => "parameter default".to_string(),
+        DeclaredTypePosition::PositionCallableReturn => "callable return".to_string(),
+        DeclaredTypePosition::PositionDirectCallArgument => "direct call argument".to_string(),
+    }
+}
+
+pub fn declared_type_inhabitance(
+    obligation: Rc<DeclaredTypeObligation>,
+    scope: Rc<InferScope>,
+) -> Rc<InhabitanceVerdict> {
+    {
+        let declared = obligation.declared.clone();
+        let produced = obligation.produced.clone();
+        let source_indices = scope.type_env.clone().source_indices.clone();
+        let declared_name = authored_name_at(source_indices.clone(), declared.clone());
+        let produced_name = authored_name_at(source_indices.clone(), produced.clone());
+        let either_optional = ((declared.return_cardinality.clone() == Cardinality::CardOptional)
+            || (produced.return_cardinality.clone() == Cardinality::CardOptional));
+        let declared_is_generic = ((declared.params.clone().len() as i64) > 0);
+        if either_optional.clone() {
+            Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
+                reason: InhabitanceUndecidableReason::UndecidableOptionalCarrier,
+            })
+        } else {
+            if declared_is_generic.clone() {
+                Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
+                    reason: InhabitanceUndecidableReason::UndecidableGenericFormal,
+                })
+            } else {
+                if (declared_name.clone() == "".to_string()) {
+                    Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
+                        reason: InhabitanceUndecidableReason::UndecidableFormalUnresolved,
+                    })
+                } else {
+                    if (produced_name.clone() == "".to_string()) {
+                        Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
+                            reason: InhabitanceUndecidableReason::UndecidableProducedIdentityErased,
+                        })
+                    } else {
+                        if declared_realizes_as_kernel_numeric(
+                            declared.clone(),
+                            produced.clone(),
+                            source_indices.clone(),
+                        ) {
+                            Rc::new(InhabitanceVerdict::Inhabits)
+                        } else {
+                            if kernel_value_declared_type_mismatch(
+                                declared.clone(),
+                                produced.clone(),
+                                scope.type_env.clone(),
+                                source_indices.clone(),
+                            ) {
+                                Rc::new(InhabitanceVerdict::InhabitanceRefused {
+                                    reason: InhabitanceRefusalReason::RefusedKernelAtStructured,
+                                })
+                            } else {
+                                if coproduct_payload_where_parent_required(
+                                    declared.clone(),
+                                    produced.clone(),
+                                    scope.clone(),
+                                ) {
+                                    Rc::new(InhabitanceVerdict::InhabitanceRefused {
+                                        reason: InhabitanceRefusalReason::RefusedPayloadAtParent,
+                                    })
+                                } else {
+                                    Rc::new(InhabitanceVerdict::Inhabits)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn declared_realizes_as_kernel_numeric(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let produced_name = authored_name_at(source_indices.clone(), produced.clone());
+        let produced_is_kernel_numeric = ((produced_name.clone() == "Int".to_string())
+            || (produced_name.clone() == "Float".to_string()));
+        if (produced_is_kernel_numeric.clone() == false) {
+            false
+        } else {
+            decl_file_realizes_natively(type_reference_decl_file(declared.clone()))
+        }
+    }
+}
+
+pub fn inhabitance_undecidable_reason_label(reason: InhabitanceUndecidableReason) -> String {
+    match reason.clone() {
+    InhabitanceUndecidableReason::UndecidableGenericFormal => "generic formal: the declared position's payload types can be type variables, so membership is not decidable from the declaration alone".to_string(),
+    InhabitanceUndecidableReason::UndecidableOptionalCarrier => "optional carrier: the language's own cardinality carrier, where a T standing in an Optional<T> position is the declared spelling rather than a payload escape".to_string(),
+    InhabitanceUndecidableReason::UndecidableFormalUnresolved => "formal unresolved: the declared type did not resolve to a declaration, so there is nothing to judge inhabitance against".to_string(),
+    InhabitanceUndecidableReason::UndecidableProducedIdentityErased => "produced identity erased: the produced value's type identity is not recoverable at this seam".to_string(),
+}
+}
+
+pub fn declared_type_obligation_diags(
+    obligation: Rc<DeclaredTypeObligation>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match (*declared_type_inhabitance(obligation.clone(), scope.clone())).clone() {
+        InhabitanceVerdict::Inhabits => Rc::new(vec![]),
+        InhabitanceVerdict::InhabitanceUndecidable { reason: r, .. } => {
+            Rc::new(vec![make_error_node(
+                Rc::new(CompilerDiagnostic::DeclaredTypeInhabitanceUndecided {
+                    position: declared_type_position_label(obligation.position.clone()),
+                    reason: inhabitance_undecidable_reason_label(r.clone()),
+                    span: obligation.span.clone(),
+                }),
+                scope.module_name.clone(),
+            )])
+        }
+        InhabitanceVerdict::InhabitanceRefused { reason: _, .. } => Rc::new(vec![make_error_node(
+            Rc::new(CompilerDiagnostic::DeclaredTypeNotInhabited {
+                position: declared_type_position_label(obligation.position.clone()),
+                expected: node_type_shape(
+                    obligation.declared.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                ),
+                got: node_type_shape(
+                    obligation.produced.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                ),
+                span: obligation.span.clone(),
+            }),
+            scope.module_name.clone(),
+        )]),
     }
 }
 
@@ -4157,6 +4377,37 @@ pub fn direct_call_structured_application_mismatch_diags(
             __result
         })
     }
+}
+
+pub fn direct_call_argument_inhabitance_diags(
+    plan: Rc<Vec<Rc<CallFormalApplication>>>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for app in plan.iter().cloned() {
+            __result.extend(
+                (*match app.matched_arg.clone() {
+                    Some(ta) => {
+                        let actual_expr = arg_value(ta.clone());
+                        declared_type_obligation_diags(
+                            Rc::new(DeclaredTypeObligation {
+                                position: DeclaredTypePosition::PositionDirectCallArgument,
+                                declared: app.formal_subst.clone(),
+                                produced: resolved_type(actual_expr.clone()),
+                                span: actual_expr.span.clone(),
+                            }),
+                            scope.clone(),
+                        )
+                    }
+                    None => Rc::new(vec![]),
+                })
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
 }
 
 pub fn container_element_nominal_brand_mismatch(
@@ -7371,6 +7622,11 @@ Rc::new(ArgGenericFoldState {
                                             call_application_plan.clone(),
                                             scope.clone(),
                                         );
+                                    let inhabitance_arg_diags =
+                                        direct_call_argument_inhabitance_diags(
+                                            call_application_plan.clone(),
+                                            scope.clone(),
+                                        );
                                     Rc::new(InferResult {
                                         typed: make_named_expr_node(
                                             func_name.clone(),
@@ -7393,7 +7649,10 @@ Rc::new(ArgGenericFoldState {
                                                 arg_shape_diags.clone(),
                                                 v1_rt::concat(
                                                     arg_compat_diags.clone(),
-                                                    structured_arg_diags.clone(),
+                                                    v1_rt::concat(
+                                                        structured_arg_diags.clone(),
+                                                        inhabitance_arg_diags.clone(),
+                                                    ),
                                                 ),
                                             ),
                                         ),
@@ -8804,13 +9063,38 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                 }
                 __result
             });
-            let elem_diags = Rc::new({
-                let mut __result = Vec::new();
-                for r in elem_results.iter().cloned() {
-                    __result.extend((*r.diagnostics.clone()).iter().cloned());
-                }
-                __result
-            });
+            let elem_inhabitance_diags = match elem_expected.clone() {
+                Some(declared_elem) => Rc::new({
+                    let mut __result = Vec::new();
+                    for te in typed_elements.iter().cloned() {
+                        __result.extend(
+                            (*declared_type_obligation_diags(
+                                Rc::new(DeclaredTypeObligation {
+                                    position: DeclaredTypePosition::PositionListElement,
+                                    declared: declared_elem.clone(),
+                                    produced: resolved_type(te.clone()),
+                                    span: te.span.clone(),
+                                }),
+                                scope.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                }),
+                None => Rc::new(vec![]),
+            };
+            let elem_diags = v1_rt::concat(
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for r in elem_results.iter().cloned() {
+                        __result.extend((*r.diagnostics.clone()).iter().cloned());
+                    }
+                    __result
+                }),
+                elem_inhabitance_diags.clone(),
+            );
             let elem_type_node = if ((elem_results.clone().len() as i64) > 0) {
                 match elem_results.clone().first().cloned() {
                     Some(r) => resolved_type(r.typed.clone()),
@@ -11149,6 +11433,7 @@ pub struct DescentContext {
     pub scope_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub func_env: Rc<ResolvedFuncEnv>,
     pub per_field_vars: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+    pub body_locals: Rc<HashMap<String, bool>>,
 }
 
 pub fn classify_size_expr(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<DescentSizeExpr>> {
@@ -11570,12 +11855,8 @@ pub fn build_per_field_for_let(
         ExprData::ExprCall { .. } => {
             let callee =
                 expr_call_func_at(val.clone(), ctx.type_env.clone().source_indices.clone());
-            match (*func_sig_for_derivation(lookup_func_sig(
-                ctx.func_env.clone(),
-                ctx.type_env.clone(),
-                callee.clone(),
-            )))
-            .clone()
+            match (*func_sig_for_derivation(descent_callee_sig(ctx.clone(), callee.clone())))
+                .clone()
             {
                 DerivedCalleeSig::DerivedFromSig { sig: sig, .. } => {
                     if ((sig.output_provenance.clone().len() as i64) > 1) {
@@ -11636,12 +11917,8 @@ pub fn build_per_field_for_let(
         } => {
             let callee =
                 expr_method_name_at(val.clone(), ctx.type_env.clone().source_indices.clone());
-            match (*func_sig_for_derivation(lookup_func_sig(
-                ctx.func_env.clone(),
-                ctx.type_env.clone(),
-                callee.clone(),
-            )))
-            .clone()
+            match (*func_sig_for_derivation(descent_callee_sig(ctx.clone(), callee.clone())))
+                .clone()
             {
                 DerivedCalleeSig::DerivedFromSig { sig: sig, .. } => {
                     if ((sig.output_provenance.clone().len() as i64) > 1) {
@@ -11991,25 +12268,22 @@ pub fn classify_let_value(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<S
         ExprData::ExprCall { .. } => {
             let callee =
                 expr_call_func_at(val.clone(), ctx.type_env.clone().source_indices.clone());
-            let from_provenance = match (*func_sig_for_derivation(lookup_func_sig(
-                ctx.func_env.clone(),
-                ctx.type_env.clone(),
-                callee.clone(),
-            )))
-            .clone()
-            {
-                DerivedCalleeSig::DerivedFromSig { sig: sig, .. } => {
-                    match sig.output_provenance.clone().first().cloned() {
-                        Some(param_map) => classify_call_via_provenance(
-                            val.clone(),
-                            param_map.clone(),
-                            ctx.clone(),
-                        ),
-                        None => None,
+            let from_provenance =
+                match (*func_sig_for_derivation(descent_callee_sig(ctx.clone(), callee.clone())))
+                    .clone()
+                {
+                    DerivedCalleeSig::DerivedFromSig { sig: sig, .. } => {
+                        match sig.output_provenance.clone().first().cloned() {
+                            Some(param_map) => classify_call_via_provenance(
+                                val.clone(),
+                                param_map.clone(),
+                                ctx.clone(),
+                            ),
+                            None => None,
+                        }
                     }
-                }
-                DerivedCalleeSig::NoDerivableSig { reason: _, .. } => None,
-            };
+                    DerivedCalleeSig::NoDerivableSig { reason: _, .. } => None,
+                };
             match from_provenance.clone() {
                 Some(_) => from_provenance.clone(),
                 None => {
@@ -12582,26 +12856,23 @@ pub fn classify_argument(
                                     arg_expr.clone(),
                                     ctx.type_env.clone().source_indices.clone(),
                                 );
-                                let from_provenance =
-                                    match (*func_sig_for_derivation(lookup_func_sig(
-                                        ctx.func_env.clone(),
-                                        ctx.type_env.clone(),
-                                        callee.clone(),
-                                    )))
-                                    .clone()
-                                    {
-                                        DerivedCalleeSig::DerivedFromSig { sig: sig, .. } => {
-                                            match sig.output_provenance.clone().first().cloned() {
-                                                Some(param_map) => classify_call_via_provenance(
-                                                    arg_expr.clone(),
-                                                    param_map.clone(),
-                                                    ctx.clone(),
-                                                ),
-                                                None => None,
-                                            }
+                                let from_provenance = match (*func_sig_for_derivation(
+                                    descent_callee_sig(ctx.clone(), callee.clone()),
+                                ))
+                                .clone()
+                                {
+                                    DerivedCalleeSig::DerivedFromSig { sig: sig, .. } => {
+                                        match sig.output_provenance.clone().first().cloned() {
+                                            Some(param_map) => classify_call_via_provenance(
+                                                arg_expr.clone(),
+                                                param_map.clone(),
+                                                ctx.clone(),
+                                            ),
+                                            None => None,
                                         }
-                                        DerivedCalleeSig::NoDerivableSig { reason: _, .. } => None,
-                                    };
+                                    }
+                                    DerivedCalleeSig::NoDerivableSig { reason: _, .. } => None,
+                                };
                                 match from_provenance.clone() {
                                     Some(prov_rel) => prov_rel.clone(),
                                     None => {
@@ -13067,6 +13338,81 @@ pub fn descent_source_type(found: String, arg_node: Rc<Node>, ctx: Rc<DescentCon
     }
 }
 
+pub fn descent_callee_sig(ctx: Rc<DescentContext>, name: String) -> Rc<FuncSigLookup> {
+    if v1_rt::map_has(&ctx.body_locals.clone(), name.clone()) {
+        Rc::new(FuncSigLookup::FuncSigUnresolved)
+    } else {
+        lookup_func_sig(ctx.func_env.clone(), ctx.type_env.clone(), name.clone())
+    }
+}
+
+pub fn provenance_callee_sig(
+    callee: String,
+    param_types: Rc<HashMap<String, String>>,
+    let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+    func_env: Rc<ResolvedFuncEnv>,
+    type_env: Rc<TypeEnv>,
+) -> Rc<FuncSigLookup> {
+    if (v1_rt::map_has(&param_types, callee.clone()) || v1_rt::map_has(&let_prov, callee.clone())) {
+        Rc::new(FuncSigLookup::FuncSigUnresolved)
+    } else {
+        lookup_func_sig(func_env.clone(), type_env.clone(), callee.clone())
+    }
+}
+
+pub fn descent_pattern_bound_names(pattern: Rc<MatchPattern>) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*pattern.clone()).clone() {
+            MatchPattern::Bind {
+                declaration: declaration,
+                ..
+            } => Rc::new(vec![declaration.name.clone()]),
+            MatchPattern::VariantPattern {
+                field_bindings: bindings,
+                ..
+            } => Rc::new({
+                let mut __result = Vec::new();
+                for fb in bindings.iter().cloned() {
+                    __result.extend(
+                        (*descent_pattern_bound_names(field_binding_pattern(fb.clone())))
+                            .iter()
+                            .cloned(),
+                    );
+                }
+                __result
+            }),
+            _ => Rc::new(vec![]),
+        }
+    })
+}
+
+pub fn descent_ctx_shadowing_names(
+    ctx: Rc<DescentContext>,
+    names: Rc<Vec<String>>,
+) -> Rc<DescentContext> {
+    Rc::new(DescentContext {
+        fn_name: ctx.fn_name.clone(),
+        param_names: ctx.param_names.clone(),
+        param_order: ctx.param_order.clone(),
+        type_env: ctx.type_env.clone(),
+        sub_value_vars: ctx.sub_value_vars.clone(),
+        size_aliases: ctx.size_aliases.clone(),
+        scope_locals: ctx.scope_locals.clone(),
+        func_env: ctx.func_env.clone(),
+        per_field_vars: ctx.per_field_vars.clone(),
+        body_locals: names.iter().cloned().fold(
+            ctx.body_locals.clone(),
+            |acc: Rc<HashMap<String, bool>>, n: String| {
+                if (n.clone() == "".to_string()) {
+                    acc.clone()
+                } else {
+                    v1_rt::rc_map_insert(acc.clone(), n.clone(), true)
+                }
+            },
+        ),
+    })
+}
+
 pub fn annotate_descent(body: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
@@ -13181,6 +13527,7 @@ pub fn annotate_descent(body: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Node> {
                                                 scope_locals: ctx.scope_locals.clone(),
                                                 func_env: ctx.func_env.clone(),
                                                 per_field_vars: ctx.per_field_vars.clone(),
+                                                body_locals: ctx.body_locals.clone(),
                                             });
                                             make_arg_node(
                                                 arg_name_at(
@@ -13352,9 +13699,8 @@ pub fn annotate_descent(body: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Node> {
                             scrut.clone(),
                             ctx.type_env.clone().source_indices.clone(),
                         );
-                        match (*func_sig_for_derivation(lookup_func_sig(
-                            ctx.func_env.clone(),
-                            ctx.type_env.clone(),
+                        match (*func_sig_for_derivation(descent_callee_sig(
+                            ctx.clone(),
                             callee.clone(),
                         )))
                         .clone()
@@ -13403,6 +13749,7 @@ let arm_ctx = match variant_arm_ctx.clone() {
     scope_locals: c.scope_locals.clone(),
     func_env: c.func_env.clone(),
     per_field_vars: c.per_field_vars.clone(),
+    body_locals: c.body_locals.clone(),
 }),
     MatchPattern::VariantPattern { name: inner_vname, field_bindings: inner_bindings, .. } => {
                             let inner_ind_fields = inductive_fields_for(c.type_env.clone(), ind_field.element_type.clone());
@@ -13428,6 +13775,7 @@ match inner_matching.clone() {
     scope_locals: ic.scope_locals.clone(),
     func_env: ic.func_env.clone(),
     per_field_vars: ic.per_field_vars.clone(),
+    body_locals: ic.body_locals.clone(),
 })
                                 } else {
                                     ic.clone()
@@ -13465,6 +13813,7 @@ match matching.clone() {
     scope_locals: c.scope_locals.clone(),
     func_env: c.func_env.clone(),
     per_field_vars: c.per_field_vars.clone(),
+    body_locals: c.body_locals.clone(),
 })
                             } else {
                                 c.clone()
@@ -13485,6 +13834,7 @@ match matching.clone() {
     scope_locals: ctx.scope_locals.clone(),
     func_env: ctx.func_env.clone(),
     per_field_vars: ctx.per_field_vars.clone(),
+    body_locals: ctx.body_locals.clone(),
 })
                     } else {
                         match scrut_inducing_field.clone() {
@@ -13501,6 +13851,7 @@ match matching.clone() {
     scope_locals: ctx.scope_locals.clone(),
     func_env: ctx.func_env.clone(),
     per_field_vars: ctx.per_field_vars.clone(),
+    body_locals: ctx.body_locals.clone(),
 }),
     None => ctx.clone(),
 }
@@ -13511,7 +13862,7 @@ match matching.clone() {
                     ctx.clone()
                 },
 };
-let annotated_body = annotate_descent(arm_body(arm_node.clone()), arm_ctx.clone());
+let annotated_body = annotate_descent(arm_body(arm_node.clone()), descent_ctx_shadowing_names(arm_ctx.clone(), descent_pattern_bound_names(arm_pattern(arm_node.clone()))));
 make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annotated_body.clone(), arm_node.span.clone())
 });
                     }
@@ -13598,6 +13949,11 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                             ),
                             func_env: ctx.func_env.clone(),
                             per_field_vars: inner_per_field.clone(),
+                            body_locals: v1_rt::rc_map_insert(
+                                ctx.body_locals.clone(),
+                                binding_name.clone(),
+                                true,
+                            ),
                         })
                     }
                     None => Rc::new(DescentContext {
@@ -13618,6 +13974,11 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                         ),
                         func_env: ctx.func_env.clone(),
                         per_field_vars: inner_per_field.clone(),
+                        body_locals: v1_rt::rc_map_insert(
+                            ctx.body_locals.clone(),
+                            binding_name.clone(),
+                            true,
+                        ),
                     }),
                 };
                 let annotated_value = annotate_descent(val.clone(), ctx.clone());
@@ -13715,6 +14076,11 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                                             ),
                                             func_env: acc.ctx.clone().func_env.clone(),
                                             per_field_vars: acc.ctx.clone().per_field_vars.clone(),
+                                            body_locals: v1_rt::rc_map_insert(
+                                                acc.ctx.clone().body_locals.clone(),
+                                                bname.clone(),
+                                                true,
+                                            ),
                                         })
                                     }
                                     None => Rc::new(DescentContext {
@@ -13737,6 +14103,11 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                                         ),
                                         func_env: acc.ctx.clone().func_env.clone(),
                                         per_field_vars: acc.ctx.clone().per_field_vars.clone(),
+                                        body_locals: v1_rt::rc_map_insert(
+                                            acc.ctx.clone().body_locals.clone(),
+                                            bname.clone(),
+                                            true,
+                                        ),
                                     }),
                                 }
                             }
@@ -13954,6 +14325,7 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                                     scope_locals: ctx.scope_locals.clone(),
                                     func_env: ctx.func_env.clone(),
                                     per_field_vars: ctx.per_field_vars.clone(),
+                                    body_locals: ctx.body_locals.clone(),
                                 }),
                                 None => Rc::new(DescentContext {
                                     fn_name: ctx.fn_name.clone(),
@@ -13969,6 +14341,7 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                                     scope_locals: ctx.scope_locals.clone(),
                                     func_env: ctx.func_env.clone(),
                                     per_field_vars: ctx.per_field_vars.clone(),
+                                    body_locals: ctx.body_locals.clone(),
                                 }),
                             },
                             None => ctx.clone(),
@@ -14045,6 +14418,18 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                     })
                 }
             }
+            ExprData::ExprLambda => {
+                let lam_ctx = descent_ctx_shadowing_names(
+                    ctx.clone(),
+                    lambda_param_names_at(
+                        body.clone(),
+                        ctx.type_env.clone().source_indices.clone(),
+                    ),
+                );
+                map_children(body.clone(), |child| {
+                    annotate_descent(child.clone(), lam_ctx.clone())
+                })
+            }
             ExprData::ExprForEach => {
                 let coll = foreach_collection(body.clone());
                 let fe_body = foreach_body(body.clone());
@@ -14072,6 +14457,11 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                         scope_locals: ctx.scope_locals.clone(),
                         func_env: ctx.func_env.clone(),
                         per_field_vars: ctx.per_field_vars.clone(),
+                        body_locals: v1_rt::rc_map_insert(
+                            ctx.body_locals.clone(),
+                            fe_var.clone(),
+                            true,
+                        ),
                     }),
                     None => Rc::new(DescentContext {
                         fn_name: ctx.fn_name.clone(),
@@ -14083,6 +14473,11 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                         scope_locals: ctx.scope_locals.clone(),
                         func_env: ctx.func_env.clone(),
                         per_field_vars: ctx.per_field_vars.clone(),
+                        body_locals: v1_rt::rc_map_insert(
+                            ctx.body_locals.clone(),
+                            fe_var.clone(),
+                            true,
+                        ),
                     }),
                 };
                 let annotated_coll = annotate_descent(coll.clone(), ctx.clone());
@@ -14329,6 +14724,8 @@ pub fn classify_body_provenance(
                         expr.clone(),
                         func_env.clone(),
                         type_env.clone(),
+                        param_types.clone(),
+                        let_prov.clone(),
                         type_env.source_indices.clone(),
                     ),
                     param_names.clone(),
@@ -14609,16 +15006,20 @@ pub fn method_call_args_by_name(
     call: Rc<Node>,
     func_env: Rc<ResolvedFuncEnv>,
     type_env: Rc<TypeEnv>,
+    param_types: Rc<HashMap<String, String>>,
+    let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<Node>>> {
     {
         let mname = expr_method_name_at(call.clone(), source_indices.clone());
         let recv = method_receiver(call.clone());
         let mc_args = method_arg_nodes(call.clone());
-        let base = match (*func_sig_for_derivation(lookup_func_sig(
+        let base = match (*func_sig_for_derivation(provenance_callee_sig(
+            mname.clone(),
+            param_types.clone(),
+            let_prov.clone(),
             func_env.clone(),
             type_env.clone(),
-            mname.clone(),
         )))
         .clone()
         {
@@ -14668,10 +15069,12 @@ pub fn compose_callee_provenance(
     func_env: Rc<ResolvedFuncEnv>,
     let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
 ) -> Rc<HashMap<String, Rc<SubValueRelation>>> {
-    match (*func_sig_for_derivation(lookup_func_sig(
+    match (*func_sig_for_derivation(provenance_callee_sig(
+        callee.clone(),
+        param_types.clone(),
+        let_prov.clone(),
         func_env.clone(),
         type_env.clone(),
-        callee.clone(),
     )))
     .clone()
     {
@@ -15112,6 +15515,7 @@ pub fn arm_ctx_from_variant_provenance(
                                             scope_locals: c.scope_locals.clone(),
                                             func_env: c.func_env.clone(),
                                             per_field_vars: c.per_field_vars.clone(),
+                                            body_locals: c.body_locals.clone(),
                                         }),
                                     }
                                 }
@@ -15334,10 +15738,12 @@ pub fn collect_variant_constructors(
             },
             ExprData::ExprCall { .. } => {
                 let callee = expr_call_func_at(body.clone(), type_env.source_indices.clone());
-                match (*func_sig_for_derivation(lookup_func_sig(
+                match (*func_sig_for_derivation(provenance_callee_sig(
+                    callee.clone(),
+                    param_types.clone(),
+                    let_prov.clone(),
                     func_env.clone(),
                     type_env.clone(),
-                    callee.clone(),
                 )))
                 .clone()
                 {
@@ -15845,6 +16251,16 @@ pub fn annotate_descent_evidence(
             scope_locals: scope_locals.clone(),
             func_env: func_env.clone(),
             per_field_vars: v1_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<SubValueRelation>>>>(
+            ),
+            body_locals: params.iter().cloned().fold(
+                v1_rt::rc_empty_map::<String, bool>(),
+                |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
+                    v1_rt::rc_map_insert(
+                        acc,
+                        param_node_name_at(p.clone(), type_env.source_indices.clone()),
+                        true,
+                    )
+                },
             ),
         });
         annotate_descent(body.clone(), ctx.clone())
@@ -21160,6 +21576,7 @@ pub fn typecheck_module(
         if ((env_errors.clone().len() as i64) > 0) {
             return Rc::new(TypecheckModuleResult {
                 typed: Rc::new(TypedModule {
+                    progress: ModuleTypecheckProgress::AbandonedBeforeItems,
                     module: resolved.module.clone(),
                     items: Rc::new(vec![]),
                     type_env: env.clone(),
@@ -21316,6 +21733,7 @@ pub fn typecheck_module(
         });
         Rc::new(TypecheckModuleResult {
             typed: Rc::new(TypedModule {
+                progress: ModuleTypecheckProgress::ItemsChecked,
                 module: typed_module.clone(),
                 items: reannotated_items.clone(),
                 type_env: env.clone(),
@@ -22390,6 +22808,7 @@ pub fn rewire_type_env_import_str_binding_identity(
                         ),
                     });
                     Rc::new(TypedModule {
+                        progress: m.progress.clone(),
                         module: m.module.clone(),
                         items: m.items.clone(),
                         type_env: Rc::new(TypeEnv {
@@ -22698,6 +23117,7 @@ pub fn rewire_type_env_parent_links(
                         __result
                     });
                     Rc::new(TypedModule {
+                        progress: m.progress.clone(),
                         module: m.module.clone(),
                         items: m.items.clone(),
                         type_env: Rc::new(TypeEnv {
@@ -22769,6 +23189,7 @@ pub fn rewire_func_env_parent_links(
                         __result
                     });
                     Rc::new(TypedModule {
+                        progress: m.progress.clone(),
                         module: m.module.clone(),
                         items: m.items.clone(),
                         type_env: m.type_env.clone(),
@@ -22831,3 +23252,40 @@ pub fn reconcile_with_census_extra(
         })
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PositionRecordLiteralField;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PositionListElement;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PositionMapValue;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PositionDataInitializer;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PositionDeclaredReturn;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PositionLetAnnotation;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PositionVariantPayload;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PositionGenericTypeArgument;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PositionCastTarget;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PositionParameterDefault;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PositionCallableReturn;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PositionDirectCallArgument;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UndecidableGenericFormal;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UndecidableOptionalCarrier;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UndecidableFormalUnresolved;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UndecidableProducedIdentityErased;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RefusedPayloadAtParent;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RefusedKernelAtStructured;

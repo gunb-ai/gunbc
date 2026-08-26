@@ -46,6 +46,28 @@ fn repo_self_build_package_command() -> String {
   )
 }
 
+data repo_self_build_all_bins_flag: String = "--bins"
+
+// ALL DECLARED BIN TARGETS, WHICH IS A DIFFERENT REQUEST FROM EITHER OF THE TWO ABOVE.
+// The empty-bin-set note above describes cargo's bare package build, which builds the lib and
+// every target; this asks for exactly the BIN targets and nothing else. The distinction is the
+// reason a caller wants it: the question is whether every binary this package DECLARES still
+// compiles, and a bin that no consumer selects is precisely the one that rots unobserved --
+// gunbc#9205 repaired one such bin after it had drifted with nothing building it. So the roster
+// is read from the manifest by cargo rather than restated as a list here, which is the same
+// single-authority move this module makes for the package name: a caller free to enumerate the
+// bins could omit the drifting one and still look like a conforming call.
+//
+// The argv word is a real addition to the fork this module's authority note declares, and it is
+// added under that note's own terms rather than against them: the note refuses a NEW argv word
+// the modeled surface already owns, and the measurement it records is that extdeps.rust.cargo
+// exposes no vocabulary at all outside a transport shell block -- so there is nothing to consume
+// for `--bin` today and nothing for `--bins` either. It dissolves with the rest of this adapter
+// on the same trigger.
+fn repo_self_build_all_bins_command() -> String {
+  join([repo_self_build_package_command(), repo_self_build_all_bins_flag], " ")
+}
+
 fn repo_self_build_command(bins: List<String>) -> String {
   if bins |> count == 0 {
     repo_self_build_package_command()

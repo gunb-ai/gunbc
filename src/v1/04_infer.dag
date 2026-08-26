@@ -97,6 +97,7 @@ import v1.compiler.infer_method {
   builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
+import v1.compiler.coercion { decl_file_realizes_natively, type_reference_decl_file }
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
@@ -166,6 +167,7 @@ import v1.compiler.infer_emit_info {
 import v1.compiler.infer_items {
   ItemKind, FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem,
   ItemInfo, TypedModule, TypedGraph, ResolvedGraph, ModuleInterface,
+  ModuleTypecheckProgress, ItemsChecked, AbandonedBeforeItems,
   inferred_to_outputs, item_kind
 }
 import v1.compiler.infer_service {
@@ -2317,13 +2319,33 @@ fn coproduct_variant_payload_admits_type_name(
 // from an absence, and it is the same discipline the payload arm uses when it requires the actual to
 // BE one of the formal's declared payload types.
 //
-// KERNEL NAMES ARE EXCLUDED ON BOTH SIDES, and that is a DISJOINTNESS condition between walls, not a
-// carve-out. `dag/std/types.dag` declares `type Bool = True | False`, so `Bool` is simultaneously a
-// kernel type and a declared coproduct, and `dag/std/bit.dag` declares `type Bit = Bool`. Kernel
-// scalars are already `kernel_value_declared_type_mismatch`'s judgment at this very seam; letting
-// this arm judge them too would be two authorities for one fact, and the disagreement would surface
-// as a refusal on correct code. The exclusion is applied to the alias REPRESENTATIVE as well as the
-// authored name, because `Bit` is the one alias in the corpus that names a coproduct.
+// KERNEL NAMES ARE EXCLUDED ON THE ACTUAL SIDE, and that is a DISJOINTNESS condition between walls,
+// not a carve-out. `dag/std/types.dag` declares `type Bool = True | False`, so `Bool` is
+// simultaneously a kernel type and a declared coproduct, and `dag/std/bit.dag` declares
+// `type Bit = Bool`. A kernel VALUE in a coproduct field is already
+// `kernel_value_declared_type_mismatch`'s judgment at this very seam; letting this arm judge it too
+// would be two authorities for one fact, and the disagreement would surface as a refusal on correct
+// code. The exclusion is applied to the alias REPRESENTATIVE as well as the authored name, because
+// `Bit` is the one alias in the corpus that names a coproduct -- and that representative arm is what
+// keeps `Bit` reaching a `Bool` field silent, from either direction.
+//
+// AND IT IS NOT APPLIED TO THE FORMAL SIDE, because there it buys no disjointness. The two walls are
+// not triggered by the same fact: `kernel_value_declared_type_mismatch` bails unless the ACTUAL
+// resolves to a kernel type name, so when the formal is `Bool` and the actual is a wholly foreign
+// coproduct, that wall is silent BY CONSTRUCTION and there is no second authority to disagree with.
+// A formal-side kernel exclusion there does not separate two judgments, it deletes the only one.
+// MEASURED on the pre-narrowing binary at this seam, and the fixtures are enrolled at
+// `test.claim.coproduct_payload_soundness_witness_test`:
+//
+//   type BcpBeta = BcpB1 { c: Int } | BcpB2 { d: Int }
+//   type BcpHolder { flag: Bool }
+//   BcpHolder { flag: bcp_beta() }   ->  compiled, 0 diagnostics
+//
+// So the formal side excludes only the two names that are not judgments about kernels at all: the
+// EMPTY name, which has nothing to compare, and `Optional`, the language's own cardinality carrier.
+// That is `coproduct_name_is_unnamed_or_optional_carrier`; the actual side keeps the kernel-inclusive
+// `coproduct_name_is_kernel_or_optional_carrier` unchanged, and
+// `dcp_primitive_in_coproduct_field_still_refuses` is the row that says so if it ever moves.
 //
 // COST. Two map lookups and a walk bounded by the two declarations' own arm counts. Nothing is
 // re-derived from normalized structure and nothing is denominated in the corpus.
@@ -2338,9 +2360,14 @@ fn coproduct_variant_name_sets_differ(
   counts_differ || left_has_unmatched
 }
 
+fn coproduct_name_is_unnamed_or_optional_carrier(name: String) -> Bool {
+  let last = qualified_last_segment(name: name)
+  last == "" || last == "Optional"
+}
+
 fn coproduct_name_is_kernel_or_optional_carrier(name: String) -> Bool {
   let last = qualified_last_segment(name: name)
-  last == "" || last == "Optional" || is_kernel_type(name: last)
+  coproduct_name_is_unnamed_or_optional_carrier(name: name) || is_kernel_type(name: last)
 }
 
 fn foreign_concrete_coproduct_where_parent_required(
@@ -2351,7 +2378,7 @@ fn foreign_concrete_coproduct_where_parent_required(
   scope: InferScope
 ) -> Bool {
   let source_indices = scope.type_env.source_indices
-  if coproduct_name_is_kernel_or_optional_carrier(name: formal_name)
+  if coproduct_name_is_unnamed_or_optional_carrier(name: formal_name)
     || coproduct_name_is_kernel_or_optional_carrier(name: actual_name)
     || (actual_rep != "" && coproduct_name_is_kernel_or_optional_carrier(name: actual_rep)) {
     false
@@ -2386,6 +2413,238 @@ fn foreign_concrete_coproduct_where_parent_required(
 // makes "the actual is one of this coproduct's payload types" undecidable from the declaration
 // alone; refusing there would be a fabricated refusal, which DESIGN section 5 forbids exactly as it
 // forbids a fabricated success.
+// ONE OBLIGATION, ONE AUTHORITY. The grammar has fourteen type positions and twelve of them
+// can receive a source value. Before this carrier each position that judged anything judged it
+// with its own local chain of else-if predicates, which is one rule in N representations: a
+// position added later inherits nothing, and a rule fixed at one position stays broken at the
+// rest. A DeclaredTypeObligation names WHERE the obligation arose, WHAT was declared and WHAT
+// was produced; declared_type_inhabitance is the single relation that decides; the position
+// travels with the obligation so the diagnostic can locate the refusal without the decision
+// procedure forking per position.
+// TWO OF THE TWELVE ARE WIRED. THE OTHER TEN ARE DECLARED HERE AND PRODUCE NOTHING YET, AND
+// THAT IS STATED AS A COUNT RATHER THAN LEFT TO BE DISCOVERED FROM THE ABSENCE OF CALLERS.
+// Measured by construction site, not by reading: PositionDirectCallArgument and
+// PositionListElement are the only two members CONSTRUCTED anywhere -- every other member
+// occurs solely in declared_type_position_label's match, which renders a name and judges
+// nothing. So this coproduct is today an OBLIGATION VOCABULARY, of which two positions have a
+// producer.
+//
+// WHY THAT IS NOT AN UNDECIDABLE ARM AND MUST NEVER BE FILED AS ONE: an unwired position is a
+// MISSING OBLIGATION PRODUCER, not a fact the model cannot settle. It is absent from the census
+// rather than present with a verdict -- so it produces no diagnostic, blocking or advisory, and
+// nothing in the corpus is red on its account. Recording these as expected-red rows would be
+// exactly the rung inflation 4b names, since there is no red to expect; and recording them as
+// InhabitanceUndecidable would report "we did not look" as "it cannot be decided", which is the
+// same inflation aimed at this relation's own self-description.
+//
+// NEXT-RUNG TRIGGER, one per position and all the same shape: a producer at that grammar seam
+// that builds a DeclaredTypeObligation and hands it to declared_type_obligation_diags. The
+// decision procedure is already shared and position-agnostic, so wiring one is authoring a
+// construction site, never extending this relation -- which is the whole point of the carrier
+// and is why the residual ten cost a call each rather than a rule each.
+//
+// THE TEN AWAITING A PRODUCER: PositionRecordLiteralField, PositionMapValue,
+// PositionDataInitializer, PositionDeclaredReturn, PositionLetAnnotation, PositionVariantPayload,
+// PositionGenericTypeArgument, PositionCastTarget, PositionParameterDefault,
+// PositionCallableReturn. Wiring any of them is a separate change with its own evidence: a
+// discriminating RED at that seam plus an accepted positive control, per 4b(1). Until then this
+// carrier's honest claim is TWO POSITIONS JUDGED, ten declared -- and any statement that it
+// judges "every grammar type position" is false.
+type DeclaredTypePosition
+  = PositionRecordLiteralField
+  | PositionListElement
+  | PositionMapValue
+  | PositionDataInitializer
+  | PositionDeclaredReturn
+  | PositionLetAnnotation
+  | PositionVariantPayload
+  | PositionGenericTypeArgument
+  | PositionCastTarget
+  | PositionParameterDefault
+  | PositionCallableReturn
+  | PositionDirectCallArgument
+
+type DeclaredTypeObligation {
+  position: DeclaredTypePosition
+  declared: Node
+  produced: Node
+  span: SourceSpan
+}
+
+// UNDECIDABLE IS A PROPERTY OF THE FACTS, NEVER OF THE WIRING. Each reason names something the
+// modeled facts genuinely cannot settle at this seam. A position that has not been wired yet is
+// NOT undecidable -- it is a missing obligation producer, and it is absent from the census
+// rather than present with a verdict. Reading "we did not look" as "it cannot be decided" is
+// the rung inflation DESIGN 4b names, applied to this relation's own self-description.
+type InhabitanceUndecidableReason
+  = UndecidableGenericFormal
+  | UndecidableOptionalCarrier
+  | UndecidableFormalUnresolved
+  | UndecidableProducedIdentityErased
+
+type InhabitanceRefusalReason
+  = RefusedPayloadAtParent
+  | RefusedKernelAtStructured
+
+type InhabitanceVerdict
+  = Inhabits
+  | InhabitanceRefused { reason: InhabitanceRefusalReason }
+  | InhabitanceUndecidable { reason: InhabitanceUndecidableReason }
+
+fn declared_type_position_label(position: DeclaredTypePosition) -> String {
+  match position {
+    PositionRecordLiteralField => "record literal field"
+    PositionListElement => "list element"
+    PositionMapValue => "map value"
+    PositionDataInitializer => "data initializer"
+    PositionDeclaredReturn => "declared return"
+    PositionLetAnnotation => "let annotation"
+    PositionVariantPayload => "variant payload"
+    PositionGenericTypeArgument => "generic type argument"
+    PositionCastTarget => "cast target"
+    PositionParameterDefault => "parameter default"
+    PositionCallableReturn => "callable return"
+    PositionDirectCallArgument => "direct call argument"
+  }
+}
+
+// THE SINGLE DECISION PROCEDURE. It CONSUMES the established predicates rather than restating
+// them: coproduct_payload_where_parent_required already peels transparent aliases through
+// transparent_alias_identity_agrees, so alias identity is decided in exactly one place in the
+// tree and this relation inherits it instead of re-deriving a second answer.
+fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferScope) -> InhabitanceVerdict {
+  let declared = obligation.declared
+  let produced = obligation.produced
+  let source_indices = scope.type_env.source_indices
+  let declared_name = authored_name_at(source_indices: source_indices, node: declared)
+  let produced_name = authored_name_at(source_indices: source_indices, node: produced)
+  let either_optional = declared.return_cardinality == CardOptional || produced.return_cardinality == CardOptional
+  let declared_is_generic = (declared.params |> count) > 0
+  if either_optional {
+    InhabitanceUndecidable { reason: UndecidableOptionalCarrier }
+  } else if declared_is_generic {
+    InhabitanceUndecidable { reason: UndecidableGenericFormal }
+  } else if declared_name == "" {
+    InhabitanceUndecidable { reason: UndecidableFormalUnresolved }
+  } else if produced_name == "" {
+    InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
+  } else if declared_realizes_as_kernel_numeric(
+      declared: declared, produced: produced, source_indices: source_indices) {
+    Inhabits
+  } else if kernel_value_declared_type_mismatch(
+      formal: declared, actual: produced,
+      type_env: scope.type_env, source_indices: source_indices) {
+    InhabitanceRefused { reason: RefusedKernelAtStructured }
+  } else if coproduct_payload_where_parent_required(formal: declared, actual: produced, scope: scope) {
+    InhabitanceRefused { reason: RefusedPayloadAtParent }
+  } else {
+    Inhabits
+  }
+}
+
+// The obligation carries its own position, so ONE emitter locates every refusal. A per-position
+// diagnostic function would be the N-representation problem moved one layer down.
+// WHY A KERNEL LITERAL AT AN ALGEBRAICALLY-DECLARED NUMERIC IS ADMITTED, AND WHY THIS IS
+// CONSULTING AN AUTHORITY RATHER THAN WIDENING AN ARM. std.nat declares
+// `type Nat = CommutativeSemiring<Magnitude>` and std.integer declares
+// `type Int = AbelianGroup<GroupCompletion<Nat>>`: the canonical form of both is an algebraic
+// STRUCTURE while their values are authored as kernel integer literals. Read structurally that
+// is kernel-at-structured and the relation refused it -- measured, 33 of 50 sites at the
+// direct-call seam, every one correct code.
+//
+// The corpus does not leave this to convention. v1.compiler.coercion
+// numeric_realization_declaring_modules records that exactly these declaring modules realize
+// natively, and decl_file_realizes_natively answers it. So the class was never undecidable, it
+// was UNCONSULTED -- which is why nothing here is counted: a residue would record a deficit
+// that does not exist.
+//
+// THREE PROPERTIES THIS RELIES ON, none of them incidental:
+//   IDENTITY, NOT SPELLING. The authority is keyed on the resolved declaring module.
+//   numeric_realization_identity_note names the exact hazard: std.nat.Nat realizes natively
+//   while v2.std.nat.Nat is the Peano coproduct Zero|Succ and must NOT, so a bare-name rule
+//   admits the wrong one. The enrolled RED for that pair is the regression control.
+//   FAIL-CLOSED ON UNKNOWN IDENTITY. decl_file_realizes_natively answers false for the empty
+//   string, and the empty string is what an unestablished identity yields. No fallback is
+//   added here, so a site that cannot establish identity keeps refusing.
+//   A CONJUNCTION, NOT A CARVE-OUT. The produced value must ALSO be a kernel numeric, so a
+//   String literal at a Nat-declared position stays refused.
+//
+// SOURCE-LEVEL, NOT EMISSION. decl_file_realizes_natively takes only decl_file; the neighbouring
+// lookup_checkpoint takes a RenderTarget and would have made an emission fact answer a
+// source-level question, which is why it is deliberately not the surface used here.
+// INTERIM, AND THE ROW THAT DISSOLVES IT IS v2.workflow.floor_expected_red chunk_14.
+// This decides that a kernel numeral inhabits Nat by asking whether Nat's DECLARING MODULE is
+// kernel-backed -- a REALIZATION fact answering a TYPING question. It fails closed on unknown
+// identity and is measured behaviour-preserving against main, so it is not unsound; it is
+// UNDER-SPECIFIC, and it grants literal syntax module-wide permission to inhabit anything whose
+// implementation eventually mentions a numeric carrier. The durable model is an
+// expected-type-directed literal introduction judgment -- a type admits a numeral because it
+// SUPPLIES one, not because its module realizes natively. Do not build on this predicate.
+fn declared_realizes_as_kernel_numeric(
+  declared: Node,
+  produced: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  let produced_name = authored_name_at(source_indices: source_indices, node: produced)
+  let produced_is_kernel_numeric = produced_name == "Int" || produced_name == "Float"
+  if produced_is_kernel_numeric == false {
+    false
+  } else {
+    decl_file_realizes_natively(decl_file: type_reference_decl_file(n: declared))
+  }
+}
+
+// THE UNDECIDABLE ARM IS COUNTED, NOT SILENT, AND NOT A REFUSAL. It used to read
+// `InhabitanceUndecidable { reason: _ } => []`, which is total over the verdict and blind one
+// level down: the four reasons are declared precisely because they are different facts, and the
+// wildcard gave all four the SAME rendering as Inhabits -- an undecidable seam and a decided-good
+// seam left the relation as the identical empty list, so nothing downstream could tell a value
+// that was judged from one that was never judgeable. That is the fail-open fabrication DESIGN
+// section 5 forbids, and its cost is the one section 5 names: the deficit's frequency was zero by
+// construction, so no reason could ever rank for the modeling that would settle it.
+//
+// WHY ADVISORY AND NOT A REFUSAL. Refusing here would fabricate a verdict in the other direction:
+// the facts do not settle inhabitance, so asserting non-inhabitance is exactly as invented as
+// asserting inhabitance. Undecidable is a property of the facts, never of the wiring, and the
+// honest report is that no verdict was reached -- located, per-reason, and countable, so the four
+// populations are observable and prioritizable. DeclaredTypeInhabitanceUndecided is registered
+// non-blocking in v1.00_core is_interpreter_blocking_diagnostic and advisory in
+// is_discovery_corpus_advisory_typecheck_diagnostic, so this makes the residue visible without
+// reddening a corpus whose seams were never judged before this carrier existed either.
+fn inhabitance_undecidable_reason_label(reason: InhabitanceUndecidableReason) -> String {
+  match reason {
+    UndecidableGenericFormal => "generic formal: the declared position's payload types can be type variables, so membership is not decidable from the declaration alone"
+    UndecidableOptionalCarrier => "optional carrier: the language's own cardinality carrier, where a T standing in an Optional<T> position is the declared spelling rather than a payload escape"
+    UndecidableFormalUnresolved => "formal unresolved: the declared type did not resolve to a declaration, so there is nothing to judge inhabitance against"
+    UndecidableProducedIdentityErased => "produced identity erased: the produced value's type identity is not recoverable at this seam"
+  }
+}
+
+fn declared_type_obligation_diags(obligation: DeclaredTypeObligation, scope: InferScope) -> List<ErrorNode> {
+  match declared_type_inhabitance(obligation: obligation, scope: scope) {
+    Inhabits => []
+    InhabitanceUndecidable { reason: r } =>
+      [make_error_node(
+        diagnostic: DeclaredTypeInhabitanceUndecided {
+          position: declared_type_position_label(position: obligation.position),
+          reason: inhabitance_undecidable_reason_label(reason: r),
+          span: obligation.span
+        },
+        module_name: scope.module_name
+      )]
+    InhabitanceRefused { reason: _ } =>
+      [make_error_node(
+        diagnostic: DeclaredTypeNotInhabited {
+          position: declared_type_position_label(position: obligation.position),
+          expected: node_type_shape(n: obligation.declared, source_indices: scope.type_env.source_indices),
+          got: node_type_shape(n: obligation.produced, source_indices: scope.type_env.source_indices),
+          span: obligation.span
+        },
+        module_name: scope.module_name
+      )]
+  }
+}
+
 fn coproduct_payload_where_parent_required(
   formal: Node,
   actual: Node,
@@ -2731,6 +2990,30 @@ fn direct_call_structured_application_mismatch_diags(
           } else {
             []
           }
+        Absent => []
+      }
+  )
+}
+
+fn direct_call_argument_inhabitance_diags(
+  plan: List<CallFormalApplication>,
+  scope: InferScope
+) -> List<ErrorNode> {
+  flat_map(
+    plan,
+    app =>
+      match app.matched_arg {
+        Present { value: ta } =>
+          let actual_expr = arg_value(n: ta)
+          declared_type_obligation_diags(
+            obligation: DeclaredTypeObligation {
+              position: PositionDirectCallArgument,
+              declared: app.formal_subst,
+              produced: resolved_type(n: actual_expr),
+              span: actual_expr.span
+            },
+            scope: scope
+          )
         Absent => []
       }
   )
@@ -4305,6 +4588,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           plan: call_application_plan,
           scope: scope
         )
+        let inhabitance_arg_diags = direct_call_argument_inhabitance_diags(
+          plan: call_application_plan,
+          scope: scope
+        )
         InferResult {
           typed: make_named_expr_node(
             name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
@@ -4313,7 +4600,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             span: span,
             name_span: node_name_span(n: texpr)
           ),
-          diagnostics: concat(arg_diags, concat(arg_shape_diags, concat(arg_compat_diags, structured_arg_diags)))
+          diagnostics: concat(arg_diags, concat(arg_shape_diags, concat(arg_compat_diags, concat(structured_arg_diags, inhabitance_arg_diags))))
         }
       } else {
         let first_arg_type = match typed_args |> first {
@@ -4992,7 +5279,22 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       }
       let elem_results = elements |> map(e => infer_list_literal_element(element: e, expected: elem_expected, scope: scope))
       let typed_elements = elem_results |> map(r => r.typed)
-      let elem_diags = flat_map(elem_results, r => r.diagnostics)
+      let elem_inhabitance_diags = match elem_expected {
+        Present { value: declared_elem } =>
+          flat_map(typed_elements, te =>
+            declared_type_obligation_diags(
+              obligation: DeclaredTypeObligation {
+                position: PositionListElement,
+                declared: declared_elem,
+                produced: resolved_type(n: te),
+                span: te.span
+              },
+              scope: scope
+            )
+          )
+        Absent => []
+      }
+      let elem_diags = concat(flat_map(elem_results, r => r.diagnostics), elem_inhabitance_diags)
       let elem_type_node = if count(elem_results) > 0 {
         match first(elem_results) {
           Present { value: r } => resolved_type(n: r.typed)
@@ -6135,6 +6437,7 @@ type DescentContext {
   scope_locals: Map<String, TypeBinding>
   func_env: ResolvedFuncEnv
   per_field_vars: Map<String, Map<String, SubValueRelation>>
+  body_locals: Map<String, Bool>
 }
 
 fn classify_size_expr(val: Node, ctx: DescentContext) -> DescentSizeExpr? {
@@ -6337,7 +6640,7 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
   match val.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+      match func_sig_for_derivation(lookup: descent_callee_sig(ctx: ctx, name: callee)) {
         DerivedFromSig { sig: sig } =>
           if sig.output_provenance |> count > 1 {
             let return_type = sig.inferred
@@ -6355,7 +6658,7 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
       }
     ExprMethodCall { method_semantics: _ } =>
       let callee = expr_method_name_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+      match func_sig_for_derivation(lookup: descent_callee_sig(ctx: ctx, name: callee)) {
         DerivedFromSig { sig: sig } =>
           if sig.output_provenance |> count > 1 {
             let return_type = sig.inferred
@@ -6505,7 +6808,7 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      let from_provenance = match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+      let from_provenance = match func_sig_for_derivation(lookup: descent_callee_sig(ctx: ctx, name: callee)) {
         DerivedFromSig { sig: sig } =>
           match sig.output_provenance |> first {
             Present { value: param_map } =>
@@ -6772,7 +7075,7 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
             ArithmeticDescent { param: _, factor: _ } => inner_rel
             PreservedValue =>
               let callee = expr_call_func_at(texpr: arg_expr, source_indices: ctx.type_env.source_indices)
-              let from_provenance = match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+              let from_provenance = match func_sig_for_derivation(lookup: descent_callee_sig(ctx: ctx, name: callee)) {
                 DerivedFromSig { sig: sig } =>
                   match sig.output_provenance |> first {
                     Present { value: param_map } =>
@@ -6992,6 +7295,98 @@ fn descent_source_type(found: String, arg_node: Node, ctx: DescentContext) -> St
   }
 }
 
+// A DESCENT- OR PROVENANCE-GRAIN CALLEE LOOKUP MUST SEE THE VALUE BINDINGS IN SCOPE BEFORE IT
+// CONSULTS THE CORPUS. `lookup_func_sig` reads module fn envs and the whole-pool census only;
+// it has no notion of a body-scope binding. So a callee name bound to a FUNCTION VALUE in the
+// body -- a fn parameter, a `let`, a lambda or match binder, a for-each variable -- was
+// answered by whatever corpus-global homonym carried that name, and that declaration's
+// `output_provenance` / `variant_provenance` were then read as facts about the local value.
+// Nothing refuses and nothing is located: the derivation is attributed to a declaration the
+// call site never named. The only thing that ever exposed it was an ARITY or label mismatch
+// making the argument join come up empty -- an accident of the homonym's shape, never a check,
+// and a same-shape homonym is silently believed. That is silent wrongness -- DESIGN section 5 --
+// which is outside the guarantee ladder rather than low on it: no arm refuses, no arm counts,
+// and the fact published is about a declaration nobody wrote at the call site.
+// THE BLAST RADIUS IS STATED AS MEASURED AND NOT AS THE OBVIOUS ONE, because the obvious one
+// would be inflation (DESIGN section 4b(1)). The product of this derivation is the
+// `descent_evidence` annotation on `ExprCall`, and TODAY NOTHING IN THE COMPILER READS IT:
+// `expr_call_descent_evidence` has zero callers, and complexity.dag discards the field in every
+// `ExprCall` arm it matches, computing its own progress from its own state lattice. The one
+// live consumer is `serialize_descent_evidence` in compile.dag, the serialized typed program.
+// So the class today is A WRONG PUBLISHED FACT, not a fabricated termination proof, and this
+// repair must not be read as closing one.
+// IT IS FIXED ANYWAY, AND THAT IS THE RULE RATHER THAN A PREFERENCE: DESIGN section 6's bare
+// minimum cost says a proven wrong-attribution defect is always repaired regardless of the
+// realized n, because "n is small here" is not a time-stable fact. The annotation exists to be
+// read; the first consumer that reads it inherits a homonym's `StrictSubValue` attributed to a
+// local identity function, and at that moment the wrong published fact becomes a fabricated
+// descent proof with no diff to point at.
+// THE SHADOW SET IS `body_locals`, THE CORPUS'S EXISTING SHADOWING AUTHORITY (see
+// call_locals_shadow_note), NOT `scope_locals`. `locals` is pre-seeded with module variant and
+// service census bindings that must not eclipse fn sigs -- shadowing on it would strip sigs
+// from ordinary calls and degrade descent proofs corpus-wide. One authority for "what is a body
+// binding", read at both seams, rather than a second rule minted per seam (DESIGN section 3).
+// THE PROVENANCE CHAIN CARRIES THE SAME SET UNDER TWO NAMES IT ALREADY THREADS: `param_types`
+// keys are the fn's parameters and `let_prov` keys are its `let` binders, inserted
+// unconditionally by classify_body_provenance. No new threading is introduced there.
+// KNOWN RESIDUE, stated rather than left to be rediscovered: the provenance chain does not
+// thread lambda or match binders, so a function-valued binder of those two forms is still
+// looked up corpus-wide at that seam. The descent chain covers all four forms. Next-rung
+// trigger for the provenance half: carrying one shadow set through classify_body_provenance in
+// place of the two it reconstructs.
+// EVIDENCE, AND WHAT IT DOES NOT INCLUDE. The executed evidence is the v1 self-host regen:
+// the authority compiles clean under this change and the rebuilt seed reproduces its own
+// mirror, 135 of 135, first_generation_equal=true. That is a positive control -- the repair
+// changes no answer the whole corpus depended on -- and it is NOT a discriminating red.
+// NO DISCRIMINATING RED IS AUTHORED, and the reason is a missing harness rather than a saving
+// (DESIGN section 4b(1), the fixture-boundary test). The forbidden input IS authorable: a
+// single-module source whose `let` binds a function value under the name of a corpus fn is
+// ordinary .dag text. What no boundary can express is the OBSERVATION -- `descent_evidence` has
+// no substrate-visible surface at all, so gunbc.compile_diagnostic_census (the one .dag-callable
+// v1 compile) reports the same zero blocking rows whichever declaration the derivation
+// attributed. A probe written against it would be permanently green by construction and would
+// then be cited as coverage, which is the decoration that clause calls worse than absent.
+// NEXT-RUNG TRIGGER FOR THE EVIDENCE: a substrate-visible descent-evidence observation surface,
+// the same one the first real consumer of the annotation will need. It is can-climb-now-but-
+// unbuilt, not a ceiling.
+fn descent_callee_sig(ctx: DescentContext, name: String) -> FuncSigLookup {
+  if map_has(ctx.body_locals, name) {
+    FuncSigUnresolved
+  } else {
+    lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: name)
+  }
+}
+
+fn provenance_callee_sig(callee: String, param_types: Map<String, String>, let_prov: Map<String, Map<String, SubValueRelation>>, func_env: ResolvedFuncEnv, type_env: TypeEnv) -> FuncSigLookup {
+  if map_has(param_types, callee) || map_has(let_prov, callee) {
+    FuncSigUnresolved
+  } else {
+    lookup_func_sig(func_env: func_env, type_env: type_env, name: callee)
+  }
+}
+
+// Pattern binders are shadowed for the WHOLE arm, independent of whether the arm's
+// sub-value derivation produced a relation for them: the arms above extend the context only
+// when a relation is derivable, and a binder with no derivable relation still shadows a
+// corpus homonym.
+fn descent_pattern_bound_names(pattern: MatchPattern) -> List<String> {
+  match pattern {
+    Bind { declaration: declaration } => [declaration.name]
+    VariantPattern { name: _, parent_enum: _, field_bindings: bindings } =>
+      bindings |> flat_map(fb => descent_pattern_bound_names(pattern: field_binding_pattern(n: fb)))
+    _ => []
+  }
+}
+
+fn descent_ctx_shadowing_names(ctx: DescentContext, names: List<String>) -> DescentContext {
+  DescentContext {
+    fn_name: ctx.fn_name, param_names: ctx.param_names, param_order: ctx.param_order,
+    type_env: ctx.type_env, sub_value_vars: ctx.sub_value_vars, size_aliases: ctx.size_aliases,
+    scope_locals: ctx.scope_locals, func_env: ctx.func_env, per_field_vars: ctx.per_field_vars,
+    body_locals: fold(names, init: ctx.body_locals, f: (acc, n) => if n == "" { acc } else { map_insert(acc, n, true) })
+  }
+}
+
 fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
   match body.expr_data {
     ExprCall { call_semantics: cs, descent_evidence: _ } =>
@@ -7023,7 +7418,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                 } else { ctx.sub_value_vars },
                 size_aliases: ctx.size_aliases,
                 scope_locals: ctx.scope_locals, func_env: ctx.func_env,
-                per_field_vars: ctx.per_field_vars
+                per_field_vars: ctx.per_field_vars,
+                body_locals: ctx.body_locals
               }
               make_arg_node(name: arg_name_at(n: child, source_indices: ctx.type_env.source_indices), value: annotate_descent(body: arg_val, ctx: lambda_ctx), span: child.span, name_span: child.span)
             } else {
@@ -7095,7 +7491,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       let scrut_variant_sig = match scrut.expr_data {
         ExprCall { call_semantics: _, descent_evidence: _ } =>
           let callee = expr_call_func_at(texpr: scrut, source_indices: ctx.type_env.source_indices)
-          match func_sig_for_derivation(lookup: lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee)) {
+          match func_sig_for_derivation(lookup: descent_callee_sig(ctx: ctx, name: callee)) {
             DerivedFromSig { sig: sig } =>
               if map_keys(sig.variant_provenance) |> count > 0 { Present { value: sig } }
               else { none }
@@ -7129,7 +7525,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                             sub_value_vars: map_insert(c.sub_value_vars, declaration.name, StrictSubValue { field: ind_field, factor: UnitShrink }),
                             size_aliases: c.size_aliases,
                             scope_locals: c.scope_locals, func_env: c.func_env,
-                            per_field_vars: c.per_field_vars
+                            per_field_vars: c.per_field_vars,
+                            body_locals: c.body_locals
                           }
                         VariantPattern { name: inner_vname, parent_enum: _, field_bindings: inner_bindings } =>
                           let inner_ind_fields = inductive_fields_for(env: c.type_env, type_name: ind_field.element_type)
@@ -7150,7 +7547,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                                     sub_value_vars: map_insert(ic.sub_value_vars, inner_bind_name, StrictSubValue { field: inner_ind_field, factor: UnitShrink }),
                                     size_aliases: ic.size_aliases,
                                     scope_locals: ic.scope_locals, func_env: ic.func_env,
-                                    per_field_vars: ic.per_field_vars
+                                    per_field_vars: ic.per_field_vars,
+                                    body_locals: ic.body_locals
                                   }
                                 } else { ic }
                               Absent => ic
@@ -7177,7 +7575,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                             sub_value_vars: map_insert(c.sub_value_vars, bind_name, StrictSubValue { field: ind_field, factor: UnitShrink }),
                             size_aliases: c.size_aliases,
                             scope_locals: c.scope_locals, func_env: c.func_env,
-                            per_field_vars: c.per_field_vars
+                            per_field_vars: c.per_field_vars,
+                            body_locals: c.body_locals
                           }
                         } else { c }
                       Absent => c
@@ -7193,7 +7592,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   sub_value_vars: map_insert(ctx.sub_value_vars, declaration.name, PreservedValue),
                   size_aliases: ctx.size_aliases,
                   scope_locals: ctx.scope_locals, func_env: ctx.func_env,
-                  per_field_vars: ctx.per_field_vars
+                  per_field_vars: ctx.per_field_vars,
+                  body_locals: ctx.body_locals
                 }
               } else {
                 match scrut_inducing_field {
@@ -7205,7 +7605,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                       sub_value_vars: map_insert(ctx.sub_value_vars, declaration.name, StrictSubValue { field: ind_field, factor: UnitShrink }),
                       size_aliases: ctx.size_aliases,
                       scope_locals: ctx.scope_locals, func_env: ctx.func_env,
-                      per_field_vars: ctx.per_field_vars
+                      per_field_vars: ctx.per_field_vars,
+                      body_locals: ctx.body_locals
                     }
                   Absent => ctx
                 }
@@ -7214,7 +7615,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
           }
         } else { ctx }
         }
-        let annotated_body = annotate_descent(body: arm_body(n: arm_node), ctx: arm_ctx)
+        let annotated_body = annotate_descent(body: arm_body(n: arm_node), ctx: descent_ctx_shadowing_names(ctx: arm_ctx, names: descent_pattern_bound_names(pattern: arm_pattern(n: arm_node))))
         make_arm_node(pattern: arm_pattern(n: arm_node), guard: arm_guard(n: arm_node), body: annotated_body, span: arm_node.span)
       )
       Node {
@@ -7253,7 +7654,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             size_aliases: inner_size_aliases,
             scope_locals: map_insert(ctx.scope_locals, binding_name, TypeBinding { name: binding_name, resolved: resolved_type(n: val), provenance: rel }),
             func_env: ctx.func_env,
-            per_field_vars: inner_per_field
+            per_field_vars: inner_per_field,
+            body_locals: map_insert(ctx.body_locals, binding_name, true)
           }
         Absent =>
           DescentContext {
@@ -7262,7 +7664,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             size_aliases: inner_size_aliases,
             scope_locals: map_insert(ctx.scope_locals, binding_name, TypeBinding { name: binding_name, resolved: resolved_type(n: val), provenance: SubValueUnknown }),
             func_env: ctx.func_env,
-            per_field_vars: inner_per_field
+            per_field_vars: inner_per_field,
+            body_locals: map_insert(ctx.body_locals, binding_name, true)
           }
       }
       let annotated_value = annotate_descent(body: val, ctx: ctx)
@@ -7308,7 +7711,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   size_aliases: new_sa,
                   scope_locals: map_insert(acc.ctx.scope_locals, bname, TypeBinding { name: bname, resolved: resolved_type(n: val), provenance: rel }),
                   func_env: acc.ctx.func_env,
-                  per_field_vars: acc.ctx.per_field_vars
+                  per_field_vars: acc.ctx.per_field_vars,
+                  body_locals: map_insert(acc.ctx.body_locals, bname, true)
                 }
               Absent =>
                 DescentContext {
@@ -7317,7 +7721,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   size_aliases: new_sa,
                   scope_locals: map_insert(acc.ctx.scope_locals, bname, TypeBinding { name: bname, resolved: resolved_type(n: val), provenance: SubValueUnknown }),
                   func_env: acc.ctx.func_env,
-                  per_field_vars: acc.ctx.per_field_vars
+                  per_field_vars: acc.ctx.per_field_vars,
+                  body_locals: map_insert(acc.ctx.body_locals, bname, true)
                 }
             }
           _ => acc.ctx
@@ -7410,7 +7815,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                     else { map_insert(ctx.sub_value_vars, elem_name, IteratedSubValue { field: ind_field }) },
                   size_aliases: ctx.size_aliases,
                   scope_locals: ctx.scope_locals, func_env: ctx.func_env,
-                  per_field_vars: ctx.per_field_vars
+                  per_field_vars: ctx.per_field_vars,
+                  body_locals: ctx.body_locals
                 }
               Absent =>
                 DescentContext {
@@ -7419,7 +7825,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   sub_value_vars: if is_fold { empty_map() } else { ctx.sub_value_vars },
                   size_aliases: ctx.size_aliases,
                   scope_locals: ctx.scope_locals, func_env: ctx.func_env,
-                  per_field_vars: ctx.per_field_vars
+                  per_field_vars: ctx.per_field_vars,
+                  body_locals: ctx.body_locals
                 }
             }
           Absent => ctx
@@ -7448,6 +7855,9 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       } else {
         map_children(node: body, transform: child => annotate_descent(body: child, ctx: ctx))
       }
+    ExprLambda =>
+      let lam_ctx = descent_ctx_shadowing_names(ctx: ctx, names: lambda_param_names_at(texpr: body, source_indices: ctx.type_env.source_indices))
+      map_children(node: body, transform: child => annotate_descent(body: child, ctx: lam_ctx))
     ExprForEach =>
       let coll = foreach_collection(texpr: body)
       let fe_body = foreach_body(texpr: body)
@@ -7462,7 +7872,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             sub_value_vars: map_insert(empty_map(), fe_var, IteratedSubValue { field: ind_field }),
             size_aliases: ctx.size_aliases,
             scope_locals: ctx.scope_locals, func_env: ctx.func_env,
-            per_field_vars: ctx.per_field_vars
+            per_field_vars: ctx.per_field_vars,
+            body_locals: map_insert(ctx.body_locals, fe_var, true)
           }
         Absent =>
           DescentContext {
@@ -7471,7 +7882,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             sub_value_vars: empty_map(),
             size_aliases: ctx.size_aliases,
             scope_locals: ctx.scope_locals, func_env: ctx.func_env,
-            per_field_vars: ctx.per_field_vars
+            per_field_vars: ctx.per_field_vars,
+            body_locals: map_insert(ctx.body_locals, fe_var, true)
           }
       }
       let annotated_coll = annotate_descent(body: coll, ctx: ctx)
@@ -7571,7 +7983,7 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
 
     ExprMethodCall { method_semantics: ms } =>
       let mname = expr_method_name_at(texpr: expr, source_indices: type_env.source_indices)
-      let callee_result = compose_callee_provenance(callee: mname, arg_by_name: method_call_args_by_name(call: expr, func_env: func_env, type_env: type_env, source_indices: type_env.source_indices), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
+      let callee_result = compose_callee_provenance(callee: mname, arg_by_name: method_call_args_by_name(call: expr, func_env: func_env, type_env: type_env, param_types: param_types, let_prov: let_prov, source_indices: type_env.source_indices), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
       if map_keys(callee_result) |> count > 0 { callee_result }
       else {
         let is_shrink = match ms {
@@ -7699,11 +8111,11 @@ fn call_args_by_name(call: Node, source_indices: Map<String, NewlineIndex>) -> M
   )
 }
 
-fn method_call_args_by_name(call: Node, func_env: ResolvedFuncEnv, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Map<String, Node> {
+fn method_call_args_by_name(call: Node, func_env: ResolvedFuncEnv, type_env: TypeEnv, param_types: Map<String, String>, let_prov: Map<String, Map<String, SubValueRelation>>, source_indices: Map<String, NewlineIndex>) -> Map<String, Node> {
   let mname = expr_method_name_at(texpr: call, source_indices: source_indices)
   let recv = method_receiver(texpr: call)
   let mc_args = method_arg_nodes(texpr: call)
-  let base = match func_sig_for_derivation(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: mname)) {
+  let base = match func_sig_for_derivation(lookup: provenance_callee_sig(callee: mname, param_types: param_types, let_prov: let_prov, func_env: func_env, type_env: type_env)) {
     DerivedFromSig { sig: sig } =>
       match sig.params |> first {
         Present { value: first_p } =>
@@ -7722,7 +8134,7 @@ fn method_call_args_by_name(call: Node, func_env: ResolvedFuncEnv, type_env: Typ
 }
 
 fn compose_callee_provenance(callee: String, arg_by_name: Map<String, Node>, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_env: ResolvedFuncEnv, let_prov: Map<String, Map<String, SubValueRelation>>) -> Map<String, SubValueRelation> {
-  match func_sig_for_derivation(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: callee)) {
+  match func_sig_for_derivation(lookup: provenance_callee_sig(callee: callee, param_types: param_types, let_prov: let_prov, func_env: func_env, type_env: type_env)) {
     DerivedFromSig { sig: sig } =>
       match sig.output_provenance |> first {
         Present { value: callee_prov } =>
@@ -7891,7 +8303,7 @@ fn arm_ctx_from_variant_provenance(arm_node: Node, sig: ResolvedFuncSig, scrut: 
                   let best = merge_argument_relations(rels: all_rels)
                   match best {
                     SubValueUnknown => c
-                    _ => DescentContext { fn_name: c.fn_name, param_names: c.param_names, param_order: c.param_order, type_env: c.type_env, sub_value_vars: map_insert(c.sub_value_vars, bind_name, best), size_aliases: c.size_aliases, scope_locals: c.scope_locals, func_env: c.func_env, per_field_vars: c.per_field_vars }
+                    _ => DescentContext { fn_name: c.fn_name, param_names: c.param_names, param_order: c.param_order, type_env: c.type_env, sub_value_vars: map_insert(c.sub_value_vars, bind_name, best), size_aliases: c.size_aliases, scope_locals: c.scope_locals, func_env: c.func_env, per_field_vars: c.per_field_vars, body_locals: c.body_locals }
                   }
                 Absent => c
               }
@@ -7973,7 +8385,7 @@ fn collect_variant_constructors(body: Node, parent_enum: String, param_names: Li
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: body, source_indices: type_env.source_indices)
-      match func_sig_for_derivation(lookup: lookup_func_sig(func_env: func_env, type_env: type_env, name: callee)) {
+      match func_sig_for_derivation(lookup: provenance_callee_sig(callee: callee, param_types: param_types, let_prov: let_prov, func_env: func_env, type_env: type_env)) {
         DerivedFromSig { sig: sig } =>
           if authored_name_at(source_indices: type_env.source_indices, node: sig.inferred) == parent_enum
             && (map_keys(sig.variant_provenance) |> count > 0) {
@@ -8170,7 +8582,8 @@ fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, ty
     size_aliases: empty_map(),
     scope_locals: scope_locals,
     func_env: func_env,
-    per_field_vars: empty_map()
+    per_field_vars: empty_map(),
+    body_locals: fold(params, init: empty_map(), f: (acc, p) => map_insert(acc, param_node_name_at(n: p, source_indices: type_env.source_indices), true))
   }
   annotate_descent(body: body, ctx: ctx)
 }
@@ -10551,6 +10964,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   if env_errors |> count > 0 {
     return TypecheckModuleResult {
       typed: TypedModule {
+        progress: AbandonedBeforeItems,
         module: resolved.module,
         items: [],
         type_env: env,
@@ -10642,6 +11056,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
 
   TypecheckModuleResult {
     typed: TypedModule {
+      progress: ItemsChecked,
       module: typed_module,
       items: reannotated_items,
       type_env: env,
@@ -11175,6 +11590,7 @@ fn rewire_type_env_import_str_binding_identity(modules: List<TypedModule>, sourc
       ancestry_str_bindings: map_merge(m.type_env.ancestry_str_bindings, rewrites)
     }
     TypedModule {
+      progress: m.progress,
       module: m.module,
       items: m.items,
       type_env: TypeEnv { module_path: m.type_env.module_path,
@@ -11252,6 +11668,7 @@ fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<
       }
     )
     TypedModule {
+      progress: m.progress,
       module: m.module,
       items: m.items,
       type_env: TypeEnv { module_path: m.type_env.module_path,
@@ -11289,6 +11706,7 @@ fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<
       }
     )
     TypedModule {
+      progress: m.progress,
       module: m.module,
       items: m.items,
       type_env: m.type_env,

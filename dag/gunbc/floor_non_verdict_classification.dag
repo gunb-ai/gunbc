@@ -132,32 +132,9 @@ data closure_dependent_rows: List<ClassifiedNonVerdictRow> = [
   }
 ]
 
-data closure_independent_rows: List<ClassifiedNonVerdictRow> = [
-  ClassifiedNonVerdictRow {
-    identity: non_verdict_row_identity(module_path: "v2.test.manual.bootstrap_footprint_anchor", function: "bootstrap_footprint_canonical_holds"),
-    cause: ClosureIndependent { subject: "Atom.identity is DECLARED Symbol in v2.std.node and carries Int character CODE POINTS, put there by semantic_decl_string_to_bundle_node folding a String; content_hash's atom fold routes that into atom_identity_hash, which requires a string" },
-    standing: HonestDebtWithStatedTrigger,
-    measured_evidence: "throws under BOTH a narrow closure and the floor; with the intrinsic's refusal widened to print its argument it reports `TMPDEBUG got 1 arg(s): [Int(10)]`"
-  },
-  ClassifiedNonVerdictRow {
-    identity: non_verdict_row_identity(module_path: "v2.test.manual.bootstrap_footprint_anchor", function: "bootstrap_footprint_non_canonical_violates"),
-    cause: ClosureIndependent { subject: "same Int-in-a-Symbol-field path; every bootstrap_footprint input hashes a closure embedding rust_target_model().bundle" },
-    standing: HonestDebtWithStatedTrigger,
-    measured_evidence: "throws under both closures"
-  },
-  ClassifiedNonVerdictRow {
-    identity: non_verdict_row_identity(module_path: "v2.test.manual.bootstrap_footprint_anchor", function: "bootstrap_footprint_bad_content_hash_violates"),
-    cause: ClosureIndependent { subject: "same Int-in-a-Symbol-field path" },
-    standing: HonestDebtWithStatedTrigger,
-    measured_evidence: "throws under both closures"
-  },
-  ClassifiedNonVerdictRow {
-    identity: non_verdict_row_identity(module_path: "v2.test.manual.bootstrap_footprint_anchor", function: "bootstrap_footprint_bad_runtime_same_identity_violates"),
-    cause: ClosureIndependent { subject: "same Int-in-a-Symbol-field path" },
-    standing: HonestDebtWithStatedTrigger,
-    measured_evidence: "throws under both closures"
-  }
-]
+data closure_independent_repaid_note: String = "EMPTY, AND THAT IS A REPAYMENT RECEIPT RATHER THAN A MISSING MEASUREMENT. This list held the four v2.test.manual.bootstrap_footprint_anchor identities, the only ClosureIndependent / HonestDebtWithStatedTrigger rows in the population. Their cause was a Symbol-declared field holding Int code points: semantic_decl_string_to_bundle_node folded a String into character atoms carrying raw code points, and canonical_hash_of_connective routed that field into content_hash_atom -> atom_identity_hash, which requires a string, so the hash threw before any assertion ran. Repaired at the PRODUCER by giving character atoms a string identity through from_code_point, with code_point as its inverse on the two decoders. All four now ANSWER: three PASS and bootstrap_footprint_canonical_holds FAILS honestly, so the four left this roster and the three passing ones left floor_expected_red in the same change. The list stays declared rather than deleted because the CAUSE remains constructible -- nothing prevents another producer putting a non-Symbol into Atom.identity -- and an emptied arm with its reason recorded is a different fact from an arm that never existed."
+
+data closure_independent_rows: List<ClassifiedNonVerdictRow> = []
 
 data unmeasured_rows: List<ClassifiedNonVerdictRow> = [
   ClassifiedNonVerdictRow {

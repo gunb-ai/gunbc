@@ -5,7 +5,10 @@ import extdeps.uri { Uri, Https }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonNumber }
 import extdeps.languages.json.parse {
-  parse_json,
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_document_gap_text,
   json_object_unique_member,
   JsonMemberFound,
   JsonMemberAbsent,
@@ -225,10 +228,10 @@ fn workflow_run_event_assemble(
 }
 
 fn workflow_run_event_from_json(text: String) -> WorkflowRunEventObservation {
-  match parse_json(s: text) {
-    Absent =>
-      WorkflowRunEventMalformed { detail: "GITHUB_EVENT_PATH payload is not valid JSON" }
-    Present { value: doc } =>
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: gap } =>
+      WorkflowRunEventMalformed { detail: concat("the GITHUB_EVENT_PATH payload is ", json_document_gap_text(gap: gap)) }
+    JsonDocumentParsed { value: doc } =>
       match workflow_run_event_required_string_at(v: doc, key: "action") {
         WorkflowRunEventTextFailed { observation: o } => o
         WorkflowRunEventTextFound { text: activity } =>

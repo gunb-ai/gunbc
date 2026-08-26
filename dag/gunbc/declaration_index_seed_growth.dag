@@ -1,0 +1,363 @@
+module gunbc.declaration_index_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import gunbc.guarantee_rung_drop {
+  GuaranteeStall,
+  Mitigatable,
+  MechanicallyPreventable,
+  AwaitsOneGrounding,
+  BoundedPopulation,
+}
+
+data declaration_index_seed_growth_note: String = "Seed-growth obligation for the ingestion-time per-module declaration index (gunbc#9211). Homed here, beside the obligation it declares, rather than inside gunbc.seed_growth_admission, which owns the ROSTER and the join.\n\nWHAT THE CHANGE IS. v1_compiler.cli_run run_dag_parse_sweep already parses every .dag under DAG_PARSE_SWEEP_ROOTS -- src/v1, dag and src/v2, 3991 files -- once, in parallel, on every required run, and threw every parse tree away. It now builds one ModuleDeclarationRecord per module from that same parse, and three integrity questions are answered from that single keyed index rather than by three corpus-wide walks: import-member claim integrity, the cited-symbol wall, and the lens authorship fact. --required-cited-symbol is DELETED in the same change, so the replacement has one route and not two.\n\nTHE EXHIBITED COST, WHICH IS WHAT ADMITS THIS RATHER THAN THE TWO DESIGN TRIGGERS. v1_maintenance_loaded_index_noun_admission_note states the axis: reachability with exhibited cost, and the argv-fabrication row was refused because it exhibits nothing today. This exhibits, measured on the live tree at 46 sites over 38 distinct targets: authored citations naming declarations that do not exist, unguarded since the operator removed the cited-symbol job on 2026-08-23. And it exhibits a class no mechanism in the repository covers at all: v1's own MissingExport is a function of the COMPILE CLOSURE it is handed, so an ORPHAN module's import claims are checked by nothing -- DESIGN's 2026-08-25 row records gunbc.auth.credentials standing on main with four hard errors for exactly that reason. That premise is MEASURED rather than inferred: orphan_import_claim_is_refused_here_and_nowhere_else holds the identical false claim in a module the resolver sees (MissingExport fires, the index agrees) and in one no closure reaches (the resolver is never asked, the index refuses alone).\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE, ON PRECEDENT RATHER THAN ANALOGY. gunbc.v1_maintenance_standing v1_seed_standing admits by PURPOSE -- does the change serve the v2 self-host program -- and the purpose test reaches the INSTRUMENT that measures that program, not only the program. gunbc.parse_refusal_location_seed_growth admits hand-Rust growth in this same run_dag_parse_sweep on that exact ground: a required-CI phase that cannot locate its own refusals taxes every lane INCLUDING THE SELF-HOST WORK. gunbc.floor_non_verdict_enrollment admits on the same footing: the required floor is the INSTRUMENT that guards that program.\n\nCLASSIFIED AGAINST ALL FIVE REFUSED CLASSES, because a refusal dominates every admission and the nearest one has to be answered rather than skipped. NewLanguageBehavior: no. The compile pipeline is byte-untouched -- no diagnostic is added, moved or removed, and resolve, infer and emit are not edited. NewCompatibilityObligation: no. Nothing is kept working for an old caller; a mode is deleted. NewEscapeHatchOrAdmissionRow: no, and the direction is opposite -- this adds a wall and removes a route. There is no flag, env var or mode that skips it. SeedFeatureCompletion: no. The seed COMPILER gains no capability; it compiles exactly what it compiled before. PublicSurfaceGrowth: this is the nearest, and the test v1_maintenance_rung_note states is a diff over THE EMITTED SEED'S EXPORTED DECLARATIONS. Checked rather than asserted: declaration_index.rs is wired by #[path] mod inside cli_run.rs, exactly as phase_profile.rs and required_regen_host.rs are, so it contributes no pub mod line to the emitted lib.rs -- its SeedRetainedIntrinsicRegistration carries has_pub_mod: false, and the emitted crate's exported surface is unchanged. What grows is the SeedRetained roster, enumerated here.\n\nHAND-ITEM DELTA: +55, all enumerated below rather than counted, and ZERO of them uncitable -- there is not one impl block in either file, which is deliberate: the first draft carried four, and every impl method is uncitable as a DeclarationRef because std.decl_ref offers WholeDeclaration or NamedField and neither names a method on an impl block, so it would have grown the class gunbc.seed_growth_admission reports as seed_growth_uncitable_item_keys. MEASURED FROM THE MERGE BASE 58a15c7eef5702668ae3464be4d9b20c836d3573, not against the moving tip, because a branch delta taken against the tip renders main's own commits as deletions the author did not make. src/v1/stage0/src/cli_run.rs is +70/-10 and adds ZERO declarations -- the change is inside the existing run_dag_parse_sweep plus one #[path] mod line and one returned struct -- so its disposition is ExistingSeedItemModified and listing it would net a modification into an addition census. src/v1/stage0/src/bin/claim_executor.rs and bin/v1_src_dag_parse.rs likewise add no declaration; claim_executor NETS DOWN, deleting three functions with the --required-cited-symbol mode.\n\nRUNG, STATED AT THE HONEST GRAIN AND NOT INFLATED. The class -- an authored claim about another module that names nothing real -- moves from MITIGATABLE (review diligence, which is where DESIGN's 2026-08-23 row left it) to MECHANICALLY PREVENTABLE: a real wall, armed on every required run, whose red is authorable at the FIXTURE boundary and is authored there, in tests/declaration_index_integrity.rs, one planted violation per arm beside a positive control that must stay clean. It is NOT structurally guaranteed and this row does not claim it: the invalid state stays perfectly writable and safety depends on the phase executing. WHAT IS DISCHARGED AND WHAT IS NOT, because the two DESIGN triggers have two halves and only one moves here: the CORPUS-WALK half is discharged FOR THESE THREE QUESTIONS -- one module's facts now come from one module's source at ingestion, and the citation wall no longer reaches decl_facts at all, because --required-cited-symbol and its lens are off the required path entirely. WHAT THAT DOES NOT SAY, corrected before merge because the earlier wording said it and it is not true: decl_facts is NOT unconsulted by the required run. It has live .dag consumers, and several are floor-discovered witness modules -- decl_facts_reflection_witness_test, record_construction_census_witness_test, floor_expected_red_coherence_witness_test and others -- so the corpus walk still executes inside the required floor for their sake. Retiring those consumers is a separate cut with its own subject and its own review surface. The claim this change earns is that THE THREE INTEGRITY QUESTIONS come from one construction instead of three walks, not that the walks are gone. The HAND-RUST half is not: the index is host Rust rather than a modeled ingestion operation, which is why this carrier exists at all.\n\nWHAT THE ARMS DO NOT COVER, named rather than left to be discovered. A citation authored INSIDE a witness or fixture carrier is not enrolled, because a witness proving the resolver refuses an absent module has to author an absent module -- test.claim.annotation_carrier cites extdeps.network.mac parse_mac_addres on purpose, one letter short. The property is read off the module's own path, not from an exemption list, and the population is counted (in_fixtures) rather than dropped. A citation naming a namespace no swept module declares -- v1_compiler.cli_run and its siblings name hand-Rust -- is likewise counted (outside_index) rather than refused, and the line between it and a DELETED .dag module is the namespace root, which is decidable from the index itself. And the field arm resolves against the union over a declaration's subtree, so a field belonging to a different variant of the same coproduct resolves; that weakening is confined to the field arm and its next rung is a lookup that descends the declared TYPE."
+
+data declaration_index_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "SourceLocation",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "source_location_of",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "CONSTRUCTION_JUSTIFICATION_DECL",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "DECLARATION_REF_TYPE",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "DECL_REF_FN",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "DECL_FIELD_REF_FN",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "CitedSymbol",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "ImportClaim",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "ModuleDeclarationRecord",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "import_surface_has",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "DeclarationIntegrityKind",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "integrity_kind_label",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "DeclarationIntegrityFinding",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "module_is_fixture_carrier",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "is_top_level_lens_module",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "for_each_node",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "is_record_literal",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "is_call",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "bound_value",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "citation_from_record_literal",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "named_field_name",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "citation_from_constructor_call",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "declaration_field_names",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "record_from_module",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "DeclarationIndex",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "DeclarationIndexPopulation",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "index_insert",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "index_get",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "index_records",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "index_population",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "resolve_cited_module",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "citation_is_outside_index",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "import_member_findings",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "PRE_EXISTING_CITATION_DEBT",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "citation_in_roster",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "citation_debt_findings",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "cited_symbol_findings",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "citation_resolution_refusal",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "lens_authorship_findings",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "duplicate_findings",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "index_findings",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "span_offset_in",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "render_finding",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.declaration_index_integrity",
+      decl_name: "scratch_root",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.declaration_index_integrity",
+      decl_name: "author",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.declaration_index_integrity",
+      decl_name: "findings_over",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.declaration_index_integrity",
+      decl_name: "AUTHORITY",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.declaration_index_integrity",
+      decl_name: "import_member_absent_is_refused_and_located",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.declaration_index_integrity",
+      decl_name: "import_member_present_stays_clean",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.declaration_index_integrity",
+      decl_name: "orphan_import_claim_is_refused_here_and_nowhere_else",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.declaration_index_integrity",
+      decl_name: "missing_export_names",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.declaration_index_integrity",
+      decl_name: "stale_citation_is_refused",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.declaration_index_integrity",
+      decl_name: "citation_to_a_deleted_module_is_refused_and_a_foreign_namespace_is_not",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.declaration_index_integrity",
+      decl_name: "lens_without_construction_justification_is_refused",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.declaration_index_integrity",
+      decl_name: "lens_with_construction_justification_stays_clean",
+      field: WholeDeclaration
+    }
+  ],
+  reason: "WHY RUST IS STILL NEEDED, and it is a REACHABILITY limit rather than a modeling gap: the subject is INGESTION -- the moment a .dag file is read off the filesystem and parsed -- and the only ingestion that executes today is host Rust. A .dag witness cannot reach it: run_required_floor's hermetic envelope refuses host effects during preparation, so a witness whose subject is a filesystem walk is counted executed while its assertion never runs. Asserting the index's behaviour from a mocked file tree would assert the mock, which is the specification-without-execution trap, so the construction and its discriminating evidence both have to live where the walk does.\n\nTHE CONSEQUENCE OF REFUSING IT, stated second because it is not the admitting argument: there is no second executing ingestion to re-home this to, so a refusal would leave both of DESIGN's next-rung triggers -- section 6's module-authorship trigger and section 3's cited-symbol restoration trigger -- undischargeable until v2 is the compiler.\n\nWHAT THE GROWTH BUYS, at identity grain rather than as a category: three walls on one construction, replacing one deleted corpus-walk census and two obligations that had no mechanism at all. It also NETS DOWN inside claim_executor, which loses the --required-cited-symbol mode and its three helper functions.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete all 55 when INGESTION is itself modeled -- when the .dag source walk and the per-module record it derives are expressed as a .dag operation over a typed filesystem transport, the index becomes an ordinary substrate fold and these declarations move to the substrate. A PARTIAL migration IS admissible and is the expected shape: the moment the RECORD DERIVATION is modeled (record_from_module is a pure function of one parse tree and needs no host effect at all), the record builder and every finding function follow it, while the directory walk and the parse-clean plumbing stay behind for as long as the WALK is host-only; delete those on the second step. What does NOT dissolve them is the checks moving to another host entry point, and what does NOT dissolve them is a hermetic witness asserting a fabricated module tree -- that would retire the evidence while retiring nothing it guards.",
+  current_boundary: "src/v1/stage0/src/declaration_index.rs; src/v1/stage0/src/cli_run.rs run_dag_parse_sweep; src/v1/stage0/tests/declaration_index_integrity.rs; src/v1/stage0/src/bin/claim_executor.rs; src/v1/stage0/src/bin/v1_src_dag_parse.rs; dag/gunbc/declaration_index_seed_growth.dag"
+}
+
+data declaration_index_kernel_named_import_escape_note: String = "THE ONE HOLE THE IMPORT-MEMBER ARM DOES NOT CLOSE, HELD OPEN DELIBERATELY AND HELD COUNTABLE. v1.compiler.resolve get_exported_names builds a module's export surface as item names, variant names, the names that module itself LISTS in its own import blocks, and every key of kernel_type_set. The last term means EVERY module in the corpus exports every kernel type name, so the claim import m -- Int -- is admitted whatever m declares. The index mirrors that rather than refusing it, because refusing source the seed compiler accepts is a change to what the seed ACCEPTS, and editing get_exported_names classifies as NewLanguageBehavior, which the v1 freeze refuses and which a refusal dominates every admission of.\n\nMEASURED AGAINST THE INSTALLED COMPILER, not inferred from the code. On a throwaway source root, a module whose entire body is one fn returning Int was imported as import extdeps.probe_missing_anchor -- Int, String, Bool -- and compiled to 6 files with 0 diagnostics. THE ZERO IS READABLE BECAUSE THE NONZERO WAS RUN BESIDE IT: the same source root with a member named probe_absent_member_RED refused with a located MissingExport at the member token, 0 files emitted. So the wall is live and this class walks through it.\n\nTHE SPECIMEN IS NOT SYNTHETIC, and it is a finding in its own right rather than a count. std.types declares no Int, no String and no Float anywhere -- it names them as KEYS of kernel_type_set, which is a different fact -- and modules across the corpus author import std.types -- Int, String. Every one of those claims is false about std.types and always has been. The reason nobody noticed is precisely the escape: the claim is unfalsifiable, so its frequency is zero by construction, which is the absorbing-fallback shape in its purest form -- a deficit whose frequency is zero because nothing can ever report it, not because it does not occur.\n\nKERNEL-NAMED AND DECLARED ARE INDEPENDENT AXES, AND THE SPLIT IS THE FINDING. Measured over dag/std/types.dag against the eight keys of kernel_type_set: FIVE are genuinely declared there -- Bool, Secret, Json, Unit, Bytes -- and THREE are not -- Int, String, Float. So import std.types -- Bool is a TRUE claim and import std.types -- Int is a FALSE one, and a counter that renders them identically would be reporting that a name appears in kernel_type_set, which needs no census to learn. import_member_is_kernel_named splits them by ORDER: it asks import_surface_has FIRST and consults the kernel set only when the target really declares nothing. An ordering is an implementation detail until something asserts the behaviour it produces, so kernel_named_counter_splits_declared_from_undeclared plants both arms under one member name -- a module that declares it and one that does not -- and requires the counter to answer 1 rather than 2. Reversing the two conjuncts leaves every other arm green and reds that one. The COUNT over the live corpus is not transcribed here: it is emitted as import_members_kernel_named on every required run, and a number copied into prose is the positional citation DESIGN section 3 forbids.\n\nWHAT THIS CHANGE DOES ABOUT IT, which is the only thing DESIGN section 5 permits an arm that widens to do: make the frequency OBSERVABLE. A bare continue would have zeroed the deficit exactly as the corpus does, so the class could never rank for repair -- section 6 prices by displaced cost and a masked cost displaces nothing. It is now counted as import_members_kernel_named on DeclarationIndexPopulation and printed beside every other denominator in both the required-ci and the standalone sweep lines, so a green names it. It is NOT reported as a finding and does not stop the line.\n\nTHE EVIDENCE IS AT THE FIXTURE BOUNDARY, where DESIGN section 4b requires it and where the corpus cannot reach: kernel_named_import_member_is_admitted_but_counted plants the claim and requires BOTH no finding AND a count of exactly one, and a_declared_member_does_not_count_as_kernel_named requires a real member to leave the counter at zero. The first assertion alone would be satisfied by re-silencing the escape; the pair is what makes that a RED.\n\nNEXT-RUNG TRIGGER: get_exported_names grounds its export surface in DEFINITIONS rather than appending the kernel set to every module, at which point import_member_is_kernel_named deletes and the members it admits become ordinary ImportMemberAbsent findings. That is a v1 language-behavior change and is out of scope here; this row is what keeps it ranked."
+
+data declaration_index_authorship_arm_is_not_a_mandatory_tag_region_note: String = "WHY THE LENS AUTHORSHIP ARM IS HOST-SIDE RATHER THAN A SECOND MandatoryTagRegion, recorded because it is the first thing a reviewer will propose and because the reason is a measurement rather than a preference.\n\nv2.lens.mandatory_tag already models exactly this shape: a MandatoryTagRegion names a dotted prefix, a required declaration name and a required type name, and mandatory_tag_law states that a violating module FAILS COMPILATION with a typed, located diagnostic -- unwritable at definition admission, not flagged post-hoc by a corpus scan. mandatory_tag_lens is enrolled in v2.compiler.00_compile always_required_root_lenses. So the obvious move is one more region with prefix v2.lens., required declaration construction_justification, required type ConstructionJustification.\n\nIT DOES NOT FIRE. Measured on the installed compiler: a module declaring itself extdeps.probe_missing_anchor, carrying no extdeps_external_authority_anchor and matched by none of that region's exempt_modules, exempt_module_prefixes or exempt_module_suffixes rows, compiled to 5 files with 0 diagnostics. The v2 compile door is not on the gunbc compile path; the executing compiler is the v1 seed. The zero is readable because the same source root produced a located MissingExport refusal in the control described in the sibling row above, so the compiler does refuse at ingestion -- this gate is simply not reached.\n\nWHAT IS AND IS NOT CLAIMED. This is a note about REACHABILITY of one gate from one path, and it is not a defect finding filed against v2.lens.mandatory_tag, whose fold is correct and whose own witness exercises it. It is the reason the authorship obligation is answered here instead: an arm enrolled in a door that the required run never opens would be green by construction, which DESIGN section 4b calls worse than absent because it gets cited as coverage. When the v2 compile door is the executing ingestion, this arm is the one that should dissolve into a MandatoryTagRegion, and that is its next rung."
+
+data declaration_index_citation_debt_contract_note: String = "THE FOUR CONDITIONS DESIGN SECTION 5 PUTS ON A MONOTONE DEBT CONTRACT, ANSWERED ONE BY ONE, because without all four a one-sided ratchet over hand-authored rows is only a quieter snapshot -- it counts the subjects someone remembered to author.\n\n1. INDEPENDENTLY DISCOVERED AND CLOSED SUBJECT UNIVERSE. The universe is every authored DeclarationRef in a non-fixture module, discovered by this index from the corpus's own parse rather than enrolled by anyone. It is CLOSED because membership is decided by the same walk that decides the wall: a citation is in the universe if a swept module's source contains it, and there is no route by which a citation exists and the universe does not contain it. This is the condition the mechanism this change replaces FAILED -- v2.lens.cited_symbol_resolution's population was five hand-listed carriers, so a carrier nobody enrolled was outside the universe by default, and the census could not see DESIGN's own worked example.\n\n2. IDENTITY GRAIN, NOT COUNT. A row is the triple of cited module path, cited declaration name and cited field. Nothing anywhere compares a total. One row being replaced by a duplicate of another is not a state this contract can occupy, because the rows are a set of identities and the check is membership.\n\n3. ROADMAP-JUSTIFIED DIRECTION. The direction is toward zero authored citations that name nothing, which is the executing half of DESIGN section 3's cite-the-symbol-not-the-position rule; the lane that owns it is the one this carrier already names, v1-hand-queue-drain. The roster's terminal state is empty, at which point PRE_EXISTING_CITATION_DEBT and citation_debt_findings both delete.\n\n4. TYPED DISPOSITION ON EVERY REMOVAL, and this is the one worth spelling out because two edits that look identical in a diff must not be the same act. A row leaves this roster in exactly one way: the citation it names stops refusing, because someone repaired it. Both other directions are REFUSED, in opposite arms, which is what makes this a contract rather than a suppression list. Delete a row while its citation still refuses and the citation becomes an ordinary CitedDeclarationAbsent finding and stops the line -- so a row cannot be dropped to buy a green. Repair a citation and LEAVE its row standing and citation_debt_findings emits CitationDebtRowStale naming the spent row -- so the roster cannot rot into a list of things that used to be true. The two arms close the loop in both directions, and neither is a judgement call: each is decided by re-running the same resolution the wall runs.\n\nWHAT IS NOT CLAIMED. The rows are not repaired here, and that is a scope decision rather than a coverage claim: the repair for a citation is a judgement about what its author MEANT, across 38 distinct targets with 38 owners, and guessing it is how a stale citation becomes a confidently wrong one."
+
+data declaration_index_false_quantifier_residue_note: String = "DECLARED RESIDUE: THIS WALL CLOSES THE STALE-SYMBOL HALF AND LEAVES THE FALSE-QUANTIFIER HALF ENTIRELY OPEN. Named here so the next reader finds the gap rather than assuming the citation wall covers it.\n\nWHAT THE WALL CHECKS: that a named symbol RESOLVES. What it does not check: that a QUANTIFIED CLAIM ABOUT A POPULATION is true. The two are independent, and the distinction is not hypothetical -- it was measured twice on this branch, both times inside typed carriers, both times a claim about a population that nobody had counted.\n\nSPECIMEN ONE, in the debt roster's own doc comment: FOUR ROWS AT THE END ARE NOT DEBT ... the deleted census's planted controls. The rows were never added, only described, and the wall's first corpus run reported all four controls as ordinary refusals -- so prose describing rows that do not exist produced a real, imminent, wrong red.\n\nSPECIMEN TWO, in this very carrier, authored by the same hand that built the wall: decl_facts is no longer consulted by any required check. False. decl_facts has live .dag consumers and several are floor-discovered witness modules, so that corpus walk still executes inside the required floor.\n\nWHY THE WALL CANNOT REACH EITHER OF THEM, and this is the structural point rather than an omission: decl_facts is a REAL SYMBOL that RESOLVES. The sentence claiming nothing consults it would pass a cited-symbol census cleanly, because every name in it is true and only the QUANTIFIER is false. A resolver answers does this name exist; nothing in this construction answers is this count right. Section 4c states the general form -- prose is unfalsifiable by construction, which is exactly why an invariant, receipt, count or dissolution condition belongs in a typed carrier and not in a sentence.\n\nHOW THEY WERE ACTUALLY CAUGHT, stated because it is the honest rung: by running the wall over the corpus, and by re-reading the carrier against the request before merge. The first is a mechanism; the second is review diligence, which DESIGN calls strictly weaker in exactly the way it calls the deleted inert-lens census's replacement weaker. So this class sits at MITIGATABLE and nothing here climbs it.\n\nNEXT-RUNG TRIGGER: a quantified claim in a carrier is DERIVED rather than AUTHORED -- the count is a projection of the population it describes, so the sentence cannot disagree with the corpus because it is not a sentence. Until that lands, a prose quantifier inside a typed carrier is debt, and the two specimens above are its measured instances rather than its bound."
+
+data declaration_index_hand_rust_roster_rot_specimen_note: String = "THE OUTSIDE-INDEX BOUNDARY IS NOT THEORETICAL: IT ROTTED THIS PR'S OWN ROSTER INSIDE THIS PR, AND REVIEW CAUGHT IT RATHER THAN THE WALL (review 55899, 2026-08-25). Recorded rather than quietly corrected, for the same reason the false-quantifier row above records its two specimens: a defect found in the carrier that declares the mechanism is evidence about the mechanism.\n\nWHAT HAPPENED. The roster below cited v1_compiler.declaration_index citation_is_pre_existing_debt. That predicate was RENAMED to citation_in_roster earlier on this same branch, as part of the repair that made the debt roster a PARAMETER defaulted to the identity element. The rename updated the code and every caller; it did not update this roster row, so the carrier declaring this PR's hand-Rust obligation cited a symbol this PR had deleted.\n\nWHY THE NEW WALL DID NOT REFUSE IT, and this is the structural point rather than an excuse. The wall resolves a citation against the INDEX, and the index is built from swept .dag modules. v1_compiler is a hand-Rust namespace root that no swept module declares, so citation_is_outside_index counts the row rather than refusing it -- exactly as the boundary disclosed in the note above says it will. The consequence was not disclosed there and is disclosed here: the seed-growth carriers are PRECISELY the rosters that name hand-Rust items, so they are the one population where a rename in the same commit silently rots its own citation. The wall's coverage and the rosters that most need covering are disjoint.\n\nMEASURED AFTER THE REPAIR, over all 55 rows rather than the one review named, because fixing the reported instance and not the class is how a second one survives: 55 rows, 54 resolved against a definition in the five hand-Rust files this carrier enumerates, 1 unresolved -- the row above, now corrected. The +55 enumeration claim in the main note is therefore true, and was true of the COUNT while being false of one row's CONTENT.\n\nNEXT-RUNG TRIGGER. A citation into a hand-Rust namespace resolves against an index of hand-Rust declarations -- the same keyed lookup, over a second source of records derived from the .rs files this carrier already enumerates -- at which case citation_is_outside_index narrows to genuinely unindexed roots and this class stops being writable. That is a strictly larger construction than this PR and is not attempted here; until it lands, a DeclarationRef into v1_compiler is checked by review diligence, which is the same MITIGATABLE rung the false-quantifier row sits at."
+
+data declaration_index_fixture_carrier_exemption_grain_note: String = "CARRIER IDENTITY IS NOT A LICENCE: THE FIXTURE EXEMPTION MOVED FROM MODULE GRAIN TO CITATION GRAIN (review 55939, 2026-08-26). Recorded here rather than silently amended, because the row above -- WHAT THE ARMS DO NOT COVER -- DISCLOSED this exemption as a bounded scope decision, and the disclosure was wrong about the boundary rather than merely incomplete about it.\n\nWHAT WAS HERE. Both citation arms skipped every citation in a module module_is_fixture_carrier answered true for. The justification was real and still is: a witness proving the resolver refuses an absent symbol has to AUTHOR an absent symbol, so its false citation is its evidence rather than its defect. The defect was that the EXEMPTION WAS KEYED ON THE MODULE while the justification is a property of THE CITATION. Carrier identity establishes that SOME citations in a witness are deliberately false; it never establishes that ALL are.\n\nWHAT SETTLED IT WAS THE MEASUREMENT, NOT THE ARGUMENT, and the ratio is the finding: of 161 citations authored inside fixture carriers, 128 RESOLVE. They are ordinary citations of real authorities that happen to live in a test module. The module-grained skip was shielding 128 real citations in order to protect 33 sites. Reporting the excluded population as in_fixtures did not restore integrity -- a counted hole is still a hole, and DESIGN section 5 says so about exactly this move.\n\nTHE HOLE WAS OCCUPIED, WHICH IS WHAT SEPARATES A DEFECT FROM A DISCLOSED BOUNDARY. Two of the enrolled identities are ordinary staleness with nothing to do with fixture intent: dag.test.claim.witness_purpose_taxonomy_witness is a dag.-prefixed module path no module declares -- the real module is test.claim.witness_purpose_taxonomy_witness, so a plain typo -- and std.disposition Disposition marker names a real authority and a real declaration with an absent field, cited twice. Both were invisible for as long as the skip stood, and both are the class this whole change exists to make decidable.\n\nWHAT THE ROSTER IS. FIXTURE_CARRIER_CITATION_EXEMPTIONS, 31 identities at the (module, declaration, field) grain. It is NOT a debt contract and does not claim to be: condition 3 of section 5's four requires a terminal state of empty, and this roster's is not -- a planted control such as NoSuchDecl_G1_RED is permanent by design and will never be repaired. What it shares with the debt contract is the property that makes either safe rather than a suppression list: it is MONOTONE and it REFUSES WHEN SPENT, through the same inverse arm, so a row whose citation stops refusing is reported and a row deleted while its citation still refuses turns that citation into an ordinary finding that stops the line. Neither direction is a judgement call.\n\nWHAT IS NOT CLASSIFIED, stated rather than hidden: the rows are not sorted into deliberate-control versus genuine-staleness. The two specimens above are named because they are decidable by inspection; deciding what the other authors MEANT is the judgement section 5 warns turns a stale citation into a confidently wrong one, and it is the same scope decision the 42 debt rows already carry. NEXT RUNG: a witness declares its planted controls as typed rows, at which point the deliberate half becomes DERIVABLE and only the genuine half survives here as debt.\n\nHOW THE ROWS WERE OBTAINED, because the first attempt was wrong and the mechanism caught it. Extracting the identities by parsing rendered diagnostics silently dropped the FIELD -- a CitedDeclarationAbsent message never prints one -- so rows for citations carrying a NamedField whose DECLARATION is absent matched nothing. The corpus run then reported the same citation as BOTH refusing AND its row as spent: the paired-inverse-arm desynchronization this carrier already documents, firing on its own author within one run. The rows are now derived from the index itself, from the same CitedSymbol values the matcher compares. Five further refusing identities are deliberately absent because they are already enrolled in PRE_EXISTING_CITATION_DEBT or PLANTED_CONTROL_CITATIONS, and a second row for one citation is duplicate authority with a double stale-arm report.\n\nRUNG: unchanged at MECHANICALLY PREVENTABLE, and this is a WIDENING of the enrolled population rather than a climb -- 128 citations that were never judged now are. The red is authorable and authored at the FIXTURE boundary: a_refusing_citation_inside_a_fixture_carrier_is_judged plants one in a module asserted to BE a fixture carrier, a_fixture_citation_exemption_suppresses_only_its_own_identity plants two siblings and requires exempting one to leave the other refusing, and a_fixture_exemption_whose_citation_resolves_is_spent_and_refuses plants a resolving citation and requires the spent-row arm to name the roster holding it."
+
+
+// THE ENROLLED ROWS ARE NOT DISTINGUISHED BETWEEN DELIBERATE-ABSENT AND STALE, AND THAT IS A STALL
+// RATHER THAN A SETTLED BOUNDARY. Two of the thirty-one are decidable by inspection and are named
+// in the carrier prose; the twenty-nine below are not, and a permanently-enrolled unclassified row
+// is exactly where a real defect sits unseen -- which is not a hypothetical, because two were found
+// there. The blocker is AwaitsOneGrounding rather than ClimbableButUnbuilt because what is missing
+// is a DECIDABLE CRITERION, not effort: nothing in the corpus today distinguishes a citation whose
+// author meant it to refuse from one that rotted, and guessing is what turns a stale citation into
+// a confidently wrong one.
+data declaration_index_fixture_exemption_classification_stall: GuaranteeStall = GuaranteeStall {
+  subject: "v1_compiler.declaration_index FIXTURE_CARRIER_CITATION_EXEMPTIONS -- enrolled identities are not distinguished between deliberately-absent (a witness's planted control, permanent by design) and genuinely stale (a citation that rotted and should be repaired)",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: AwaitsOneGrounding {
+    grounding: "no witness declares its planted controls as typed rows, so the deliberate half of this roster is not derivable from anything; the distinction exists only in the authoring intent, which no Accepted program can read",
+  },
+  population: BoundedPopulation {
+    members: [
+      "extdeps.languages.nonexistent.subject nonexistent_language",
+      "extdeps.network.mac already_deleted_frontier_unit",
+      "extdeps.network.mac parse_mac_addres",
+      "extdeps.network.max parse_mac_address",
+      "gunbc.capability_binding x",
+      "gunbc.publication_policy G1_planted_instance_gap_producer_control_RED",
+      "product.altra_motherboard.minimal_design some_other_board",
+      "std.primitive_identity missing_handler",
+      "synthetic.g1_module_absent_RED any",
+      "synthetic.mod HostConfig",
+      "synthetic.mod HostConfig field memory_swap",
+      "test.claim.dissolution_census_mechanism_witness_test absent_subject_row",
+      "test.claim.dissolution_census_mechanism_witness_test planted_bound_target",
+      "test.claim.dissolution_census_mechanism_witness_test planted_retires_target",
+      "test.claim.dissolution_census_mechanism_witness_test planted_unbound_target",
+      "test.claim.dissolution_census_mechanism_witness_test present_subject_row",
+      "test.claim.repository_census_observation_witness census_witness_classifier field rows",
+      "test.fixture planted",
+      "test.fixture.decl_facts_reflection.specimens named_field_anchor field dissolves_to",
+      "test.fixture.dissolution_live_discriminator.subject absent_subject_declaration",
+      "test.fixture.scaffold_disposition_census.pool.specimens no_such_declaration_G1_dangling_bind_control_RED",
+      "v1.compiler.complexity Derived",
+      "v1.compiler.complexity this_declaration_does_not_exist_in_the_seed",
+      "v1.compiler.this_module_does_not_exist classify_complexity",
+      "v2.compiler.parse G1_planted_instance_gap_caller_control_RED",
+      "v2.std.node NoSuchDecl_G1_RED",
+      "v2.std.node NodeKind field NoSuchField_G1_RED",
+      "v2.std.node g1_ambiguous",
+      "v2.test.lens_cost.valuation unmodelled_effect_specimen",
+    ],
+  },
+  next_rung_trigger: "a witness declares each citation it plants to refuse as a typed row beside the citation -- at which point the deliberate half of this roster is DERIVED rather than enrolled, this roster shrinks to the genuinely stale remainder, and that remainder becomes ordinary debt with a terminal state of empty. Until then a new stale citation authored inside a fixture carrier is caught by the wall, but an existing enrolled one is indistinguishable from a control",
+}
