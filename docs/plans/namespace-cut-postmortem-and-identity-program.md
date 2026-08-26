@@ -4509,20 +4509,55 @@ earlier seam at which X held identity and the prober failed to look. Had the var
 as this lane originally specified, a zero here would have been indistinguishable from *the prober
 stood in the wrong place* — and the natural reading of a clean zero is that the instrument is broken.
 
-**THE MECHANISM IS BETTER THAN THE NUMBER, AND IT IS TWO LINES.** Verified independently:
+**THE MECHANISM PARAGRAPH THAT STOOD HERE IS RETRACTED — IT WAS FALSE, AND THIS LANE COUNTERSIGNED
+IT** (2026-08-26, hours after filing; retracted by its own author, `cool-swift-307`).
+
+It read: `ident: Present` occurs once in all of `src/v1/*.dag`, at `02_parse.dag`
+`parsed_node_with_ident`, **which is the occurrence stamp**; `make_expr_node` and
+`make_named_expr_node` omit the field; therefore the stamp is applied at parse and **dropped at the
+first rebuild**, corpus-wide. Every clause of that is checkable and the conclusion is wrong, because
+the second clause of the first sentence is false.
+
+**What is actually true, verified at source here after the retraction:**
 
 ```
-ident: Present   occurs ONCE in all of src/v1/*.dag
-                 → 02_parse.dag `parsed_node_with_ident`, the occurrence stamp itself
+parsed_node_with_ident   called at exactly 3 sites — 02_parse.dag 1613, 1676, 1686
+                         with base_mod / base_imp, i.e. MODULE and IMPORT nodes only
+its ident argument       intern(table: ctx.intern_table, s: mod_path)
+                         → Node.ident is an INTERN-TABLE ID FOR A MODULE PATH STRING
 
-make_expr_node / make_named_expr_node   (00_core.dag)
-                 → construct Node with NO ident field at all, so every node they build is ident=none
+stamp_parsed_node        the actual occurrence stamper: allocates an OccurrenceId, writes it to the
+                         ParseContext SIDECAR, and returns `node: node` — THE NODE UNCHANGED
 ```
 
-Every other site *copies* `n.ident`; none authors it. Infer and typecheck rebuild through those two
-builders. **So the occurrence stamp is applied once at parse and dropped at the first rebuild,
-corpus-wide, by construction.** That is why the count is a clean zero rather than a small number:
-**there is no path by which it could have been nonzero.**
+**Occurrence identity was never on the node.** It has always lived in the parse-time sidecar, keyed
+by authored name and diagnostic span. **Nothing was dropped by any rebuild, because nothing was ever
+there** — and the builders, which the retracted paragraph named as the mechanism, are innocent.
+
+**THE MEASUREMENT STANDS AND ITS MEANING CHANGES.** `selected_decl_ident_present=0` over ~11,400
+selections is real and reproducible. It says X selected declarations carrying no interned
+*module-path* id — **which types, fns and data of course do not have.** The clean zero this section
+called *suspicious and therefore load-bearing* is explained by **the field being inapplicable to
+those node kinds**, not by identity loss.
+
+> **A zero was read and a mechanism was supplied for it.** The zero was real; the arrow was invented.
+> That is authority substitution inside a measurement report — and **this lane countersigned it**:
+> the `ident: Present` grep was independently re-run here and returned exactly one site, which is
+> TRUE, and that true result was treated as confirming the untested claim about *what that site is*.
+> **Verifying the checkable half of a compound claim and reporting the whole as verified is how a
+> second signature gets attached to something nobody checked.** The countersignature made it worse
+> than the original error, because a later shell-quoting correction to the same paragraph made the
+> false version look doubly confirmed.
+
+**THE CONCLUSION SURVIVES BY A SHORTER AND STRONGER ROUTE.**
+
+> **X cannot carry occurrence identity because the carrier it returns has no field for it.**
+> `TypeBinding.resolved` is a `Node`, and `Node` has **no occurrence field at all**.
+
+So this is **not a drop to be repaired at a rebuild site — it is a missing relation between two
+carriers.** And relating an X answer to an occurrence today requires matching on authored name plus
+diagnostic span, which is exactly the **positional reconstruction** §11.2t forbade for the tap: the
+constraint rules out the only bridge that currently exists.
 
 **WHAT THE MEASURER EXPLICITLY DID NOT ESTABLISH**, recorded because the restraint is the reason the
 rest is trustworthy: the intended population control counted `ident` presence over nodes entering
@@ -4553,11 +4588,15 @@ broken; it is measured.**
 THE ONE CORRECTION TO THIS FINDING.**
 
 ```
-(a) make the stamp survive the rebuild        one field, two builders
-       → the DECLARATION side.  "X selected declaration D."
+(a) give the DECLARATION side a carrier       ← NOT "make the stamp survive the rebuild";
+       → "X selected declaration D."             see the retraction above
 (b) thread a reference identity into a resolver interface that takes a name
        → the REFERENCE side.    "occurrence o was resolved."
 ```
+
+**(a) IS NOT "STOP DROPPING A FIELD".** The retracted mechanism made (a) look like one field threaded
+through two builders. It is not: `Node` has no occurrence field, so (a) is **give the relation a
+carrier it does not have** — a different and larger thing, deliberately left unsized here.
 
 **`O_X(B)` is the relation between them.** (a) alone yields what was selected but not for which
 occurrence; (b) alone yields which occurrence resolved but not to what. **Neither alone is an
@@ -4626,7 +4665,31 @@ One guard carried: the artifact must not be *readable* as mostly-bound-with-gaps
 wholly-absent. **A row saying "no identity at decision" and a row saying "the tap never ran" must not
 render identically** — execution provenance, at the artifact's own surface.
 
-**THE CONSTRUCTION RULING, WHICH IS THE PART THAT HAD TO BE SAID BEFORE THE WORK STARTED.** (a) was
+**THE CONSTRUCTION RULING — SOUND AS A PRINCIPLE, AIMED AT THE WRONG FIELD** (corrected 2026-08-26,
+same day, after §11.2x's mechanism was retracted). It is kept because the principle transfers intact
+to *whatever* field ends up carrying identity; but read the retraction in §11.2x first, because
+**threading `Node.ident` would thread an interned module-path id, which does nothing for `O_X(B)`**,
+and the rebuild-versus-mint distinction does not apply to a field only module and import nodes ever
+hold. The blast-radius census it asks for below is therefore **not the question any more**.
+
+**AND THE ONE MEASUREMENT THAT SURVIVES THE RETRACTION INTACT, WHICH IS THE ANSWER TO THE HARDEST OF
+THE THREE QUESTIONS.** *Does anything today depend on rebuilt nodes having `ident=none`?* **Yes**,
+and it was measured before the retraction was found. There are **exactly three readers** of `.ident`
+in all of `src/v1`, and all three have load-bearing `Absent` arms:
+
+```
+04_env.dag  lookup_type_for        Absent → lookup_type_by_name        a NAME fallback
+04_env.dag  is_recursive_type_for  Absent → is_recursive_type_by_name  same shape
+dag_collect.dag  dag_node_key      Present → append ":<id>" · Absent → append ""
+```
+
+The third is the sharp one: `dag_node_key` is a **content-addressed key used for slot collision
+detection**, so turning `ident` Present on nodes that today have it Absent would change node keys
+**wholesale**. Absence there is not a quiet guard — it is **the default path for every non-module node
+in the corpus**. Verified here. That finding is about `Node.ident` specifically and is the reason the
+naive (a) would not have shipped even had the mechanism been right.
+
+**The ruling as originally written, retained for its principle:** (a) was
 described as *one field, two builders*, and the obvious implementation is to add an `ident` field to
 `make_expr_node` and `make_named_expr_node`.
 
