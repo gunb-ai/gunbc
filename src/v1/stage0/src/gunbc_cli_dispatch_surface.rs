@@ -149,15 +149,6 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     realization: Rc::new(CliArmRealization::CliRetainedHostKernel),
     emission: CliSurfaceEmission::EmittedByEmitMainRs,
 }), Rc::new(CliSubcommandRow {
-    verb: "ci".to_string(),
-    variant: "Ci".to_string(),
-    doc: Rc::new(vec![]),
-    options: Rc::new(vec![]),
-    realization: Rc::new(CliArmRealization::CliDelegatesToHostFn {
-    symbol: "run_verb".to_string(),
-}),
-    emission: CliSurfaceEmission::AbsentFromEmitMainRs,
-}), Rc::new(CliSubcommandRow {
     verb: "run".to_string(),
     variant: "Run".to_string(),
     doc: Rc::new(vec!["Execute a .dag program directly (interpreter)".to_string()]),

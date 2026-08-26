@@ -51,7 +51,6 @@ enum Commands {
         #[arg(long)]
         entry: Option<String>,
     },
-    Ci,
 
     /// Execute a .dag program directly (interpreter)
     Run {
@@ -872,25 +871,6 @@ fn main() {
             dry_run,
             claim_run,
             &args,
-        )
-        .apply(),
-        // `ci` is NOT a second verb to wire: the deleted handler was `run` with fixed
-        // arguments, so it is a PARAMETERIZATION of the same seam. Wiring it as its own
-        // path would fork one route into two that must then be kept equal by hand.
-        // The roots come from `cli_run::witness_layer_roots`, which reads the single
-        // `.dag` authority live rather than a literal spelled here.
-        // `ci` passes dry_run: false DELIBERATELY, matching the deleted `handle_ci`,
-        // which took no dry-run parameter and always evaluated Wet. `--dry-run` is a
-        // global flag, so it is ACCEPTED here and ignored — a pre-existing hazard on the
-        // base, not one this seam introduces, and changing it would alter a verb's
-        // semantics under cover of a restoration.
-        Commands::Ci {} => run_verb(
-            &cli_run::witness_layer_roots(),
-            "main",
-            Some("dag/tools/gunbc_ci.dag"),
-            false,
-            false,
-            &[],
         )
         .apply(),
 
