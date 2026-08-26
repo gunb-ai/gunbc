@@ -14,6 +14,7 @@ import extdeps.linux.cgroup_v2_memory {
 import gunbc.session_demand_observe {
   cgroup_child_names, managed_placements, legacy_placements,
   cgroup_name_is_docker_scope, flat_session_candidates, session_population,
+  parent_slice_lines,
 }
 import gunbc.session_demand {
   ManagedSession, LegacyFlatSession, SessionPlacementUnclassifiable,
@@ -22,6 +23,8 @@ import gunbc.session_demand {
   SessionContainerInventoryAbsent,
   SessionPopulationEstablished, SessionPopulationUnavailable,
   SessionPopulationNoSessionSlice,
+  ParentSliceObserved, ParentSliceAbsent, ParentSliceDemand,
+  MemoryCountUnread, MemoryLimitUnread,
   session_placement_census, census_membership_signal,
   placement_is_managed, placement_is_unclassifiable,
   session_demand_membership_gate,
@@ -314,10 +317,37 @@ fn an_absent_slice_is_not_an_unreadable_one() -> Bool {
     && absent_system_slice_refuses
 }
 
+// THE COUNTERS BESIDE THE VERDICT MUST NOT CONTRADICT IT. srv4 produced the residue this asserts
+// against: the census correctly said NOT_A_SESSION_HOST while three counter rows on the same
+// receipt still read UNREAD(cat exited unsuccessfully) -- absence rendered as a failed read, one
+// layer below where the same class had just been repaired, and on the same host in the same run.
+//
+// The pair is what makes this a claim rather than a spelling check. An ABSENT slice must not
+// mention a read at all, and an OBSERVED slice whose counters genuinely could not be read must
+// still say UNREAD -- so collapsing the two would take one half or the other red. Asserting only
+// the first would pass against a projection that had simply stopped printing UNREAD anywhere.
+fn an_absent_parent_slice_reports_no_read_at_all() -> Bool {
+  let absent = parent_slice_lines(o: ParentSliceAbsent { cgroup: "/sys/fs/cgroup/sessions.slice" })
+  let unread = parent_slice_lines(o: ParentSliceObserved {
+    demand: ParentSliceDemand {
+      cgroup: "/sys/fs/cgroup/sessions.slice",
+      memory_current: MemoryCountUnread { cause: "cat exited unsuccessfully for memory.current" },
+      memory_peak: MemoryCountUnread { cause: "cat exited unsuccessfully for memory.peak" },
+      memory_peak_epoch: "epoch",
+      memory_max: MemoryLimitUnread { cause: "cat exited unsuccessfully for memory.max" },
+    }
+  })
+  string_contains(s: absent, pattern: "NO_SUCH_SLICE")
+    && string_contains(s: absent, pattern: "UNREAD") == false
+    && string_contains(s: unread, pattern: "UNREAD")
+    && string_contains(s: unread, pattern: "NO_SUCH_SLICE") == false
+}
+
 fn session_demand_producer_pure_half_holds() -> Bool {
   child_name_parsing_holds()
     && placement_classification_needs_no_naming_authority()
     && systemd_units_are_not_session_candidates()
     && unreadable_inventory_never_establishes_a_population()
     && an_absent_slice_is_not_an_unreadable_one()
+    && an_absent_parent_slice_reports_no_read_at_all()
 }

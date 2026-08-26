@@ -173,6 +173,20 @@ type SessionMemoryDemand {
 // or the value was last reset, NOT the maximum during this observation window. Carrying the epoch
 // beside it is what stops a consumer reading it as a window maximum; a bare peak field would invite
 // exactly that reading and nothing could detect it.
+// THE SLICE'S COUNTERS ARE UNREADABLE OR THEY ARE NOT THERE, AND ONLY ONE OF THOSE IS A PROBLEM.
+// srv4 exposed the residue: with sessions.slice absent, the census correctly said
+// NOT_A_SESSION_HOST while three counters beside it still read
+// UNREAD(cat exited unsuccessfully for memory.current) -- absence rendered as a failed read, one
+// layer below where the same class had just been repaired.
+//
+// The repair is construction rather than a third counter word (DESIGN 5). Wrapping the record
+// means there is NO EXPRESSION that produces per-counter values for a cgroup that does not exist:
+// the reads are not attempted, so they cannot report anything about not having happened. A third
+// spelling of ObservedMemoryCount would have left the bad state writable and merely relabelled it.
+type ParentSliceObservation
+  = ParentSliceObserved { demand: ParentSliceDemand }
+  | ParentSliceAbsent { cgroup: NonEmptyStr }
+
 type ParentSliceDemand {
   cgroup: NonEmptyStr
   memory_current: ObservedMemoryCount

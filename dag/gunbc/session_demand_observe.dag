@@ -30,6 +30,7 @@ import gunbc.session_demand {
   SessionContainerInventoryUnavailable, SessionContainerInventoryAbsent,
   SessionPlacement, ManagedSession, SessionPlacementUnclassifiable,
   SessionMemoryDemand, ParentSliceDemand,
+  ParentSliceObservation, ParentSliceObserved, ParentSliceAbsent,
   SessionPopulation, SessionPopulationEstablished, SessionPopulationUnavailable,
   SessionPopulationNoSessionSlice,
   ObservedMemoryCount, MemoryCountRead, MemoryCountMalformed, MemoryCountUnread,
@@ -229,7 +230,27 @@ fn observe_session_memory_demand(
   }
 }
 
+// A REFUSED PROBE READS ANYWAY, AND THE IDENTICAL ARM IS DELIBERATE. If the probe could not run we
+// do not know whether the slice is there, so the honest move is to attempt the reads and let the
+// counters report UNREAD on their own evidence -- which is a true statement about a read that was
+// tried. Answering ParentSliceAbsent there would convert not knowing into a structural claim about
+// the fleet, which is the direction this whole carrier exists to refuse. The two arms are written
+// separately rather than merged so that a future third probe outcome cannot inherit either
+// behaviour silently.
 fn observe_parent_slice_demand(
+  transport: HostEffectTransport,
+  parent: NonEmptyStr,
+) -> ParentSliceObservation {
+  match probe_cgroup_path(transport: transport, cgroup_path: parent) {
+    CgroupPathIsNotDir => ParentSliceAbsent { cgroup: parent }
+    CgroupPathProbeRefused { reason: _ } =>
+      ParentSliceObserved { demand: read_parent_slice_demand(transport: transport, parent: parent) }
+    CgroupPathIsDir =>
+      ParentSliceObserved { demand: read_parent_slice_demand(transport: transport, parent: parent) }
+  }
+}
+
+fn read_parent_slice_demand(
   transport: HostEffectTransport,
   parent: NonEmptyStr,
 ) -> ParentSliceDemand {
@@ -369,7 +390,15 @@ fn session_demand_line(d: SessionMemoryDemand) -> String {
   join(["session\t", d.identity as String, "\t", d.cgroup as String, "\t", count_value_word(v: d.memory_current), "\n"], "")
 }
 
-fn parent_slice_lines(p: ParentSliceDemand) -> String {
+fn parent_slice_lines(o: ParentSliceObservation) -> String {
+  match o {
+    ParentSliceAbsent { cgroup: c } =>
+      join(["parent_slice\t", c as String, "\tNO_SUCH_SLICE\n"], "")
+    ParentSliceObserved { demand: p } => parent_slice_demand_lines(p: p)
+  }
+}
+
+fn parent_slice_demand_lines(p: ParentSliceDemand) -> String {
   join([
     "parent_slice\t", p.cgroup as String, "\n",
     "parent_memory_current\t", count_value_word(v: p.memory_current), "\n",
@@ -466,7 +495,7 @@ func session_demand_observe_ci_wet() -> ProcessExit {
         "observation_started\t", started as String, "\n",
         "observation_completed\t", clock_now_probed_at_or_unknown() as String, "\n",
       ], "")
-      let body = join([header, parent_slice_lines(p: slice), managed_body, legacy_body, verdict], "")
+      let body = join([header, parent_slice_lines(o: slice), managed_body, legacy_body, verdict], "")
       let w = Filesystem.Write(path: session_demand_observe_receipt_path, content: body)
       if w.success == false {
         exit_failure(reason: join(["session-demand receipt write failed: ", w.error], ""))
