@@ -3365,10 +3365,17 @@ pub fn coproduct_variant_name_sets_differ(
     }
 }
 
+pub fn coproduct_name_is_unnamed_or_optional_carrier(name: String) -> bool {
+    {
+        let last = qualified_last_segment(name.clone());
+        ((last.clone() == "".to_string()) || (last.clone() == "Optional".to_string()))
+    }
+}
+
 pub fn coproduct_name_is_kernel_or_optional_carrier(name: String) -> bool {
     {
         let last = qualified_last_segment(name.clone());
-        (((last.clone() == "".to_string()) || (last.clone() == "Optional".to_string()))
+        (coproduct_name_is_unnamed_or_optional_carrier(name.clone())
             || is_kernel_type(last.clone()))
     }
 }
@@ -3382,7 +3389,7 @@ pub fn foreign_concrete_coproduct_where_parent_required(
 ) -> bool {
     {
         let source_indices = scope.type_env.clone().source_indices.clone();
-        if ((coproduct_name_is_kernel_or_optional_carrier(formal_name.clone())
+        if ((coproduct_name_is_unnamed_or_optional_carrier(formal_name.clone())
             || coproduct_name_is_kernel_or_optional_carrier(actual_name.clone()))
             || ((actual_rep.clone() != "".to_string())
                 && coproduct_name_is_kernel_or_optional_carrier(actual_rep.clone())))

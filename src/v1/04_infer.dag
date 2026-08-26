@@ -2317,13 +2317,33 @@ fn coproduct_variant_payload_admits_type_name(
 // from an absence, and it is the same discipline the payload arm uses when it requires the actual to
 // BE one of the formal's declared payload types.
 //
-// KERNEL NAMES ARE EXCLUDED ON BOTH SIDES, and that is a DISJOINTNESS condition between walls, not a
-// carve-out. `dag/std/types.dag` declares `type Bool = True | False`, so `Bool` is simultaneously a
-// kernel type and a declared coproduct, and `dag/std/bit.dag` declares `type Bit = Bool`. Kernel
-// scalars are already `kernel_value_declared_type_mismatch`'s judgment at this very seam; letting
-// this arm judge them too would be two authorities for one fact, and the disagreement would surface
-// as a refusal on correct code. The exclusion is applied to the alias REPRESENTATIVE as well as the
-// authored name, because `Bit` is the one alias in the corpus that names a coproduct.
+// KERNEL NAMES ARE EXCLUDED ON THE ACTUAL SIDE, and that is a DISJOINTNESS condition between walls,
+// not a carve-out. `dag/std/types.dag` declares `type Bool = True | False`, so `Bool` is
+// simultaneously a kernel type and a declared coproduct, and `dag/std/bit.dag` declares
+// `type Bit = Bool`. A kernel VALUE in a coproduct field is already
+// `kernel_value_declared_type_mismatch`'s judgment at this very seam; letting this arm judge it too
+// would be two authorities for one fact, and the disagreement would surface as a refusal on correct
+// code. The exclusion is applied to the alias REPRESENTATIVE as well as the authored name, because
+// `Bit` is the one alias in the corpus that names a coproduct -- and that representative arm is what
+// keeps `Bit` reaching a `Bool` field silent, from either direction.
+//
+// AND IT IS NOT APPLIED TO THE FORMAL SIDE, because there it buys no disjointness. The two walls are
+// not triggered by the same fact: `kernel_value_declared_type_mismatch` bails unless the ACTUAL
+// resolves to a kernel type name, so when the formal is `Bool` and the actual is a wholly foreign
+// coproduct, that wall is silent BY CONSTRUCTION and there is no second authority to disagree with.
+// A formal-side kernel exclusion there does not separate two judgments, it deletes the only one.
+// MEASURED on the pre-narrowing binary at this seam, and the fixtures are enrolled at
+// `test.claim.coproduct_payload_soundness_witness_test`:
+//
+//   type BcpBeta = BcpB1 { c: Int } | BcpB2 { d: Int }
+//   type BcpHolder { flag: Bool }
+//   BcpHolder { flag: bcp_beta() }   ->  compiled, 0 diagnostics
+//
+// So the formal side excludes only the two names that are not judgments about kernels at all: the
+// EMPTY name, which has nothing to compare, and `Optional`, the language's own cardinality carrier.
+// That is `coproduct_name_is_unnamed_or_optional_carrier`; the actual side keeps the kernel-inclusive
+// `coproduct_name_is_kernel_or_optional_carrier` unchanged, and
+// `dcp_primitive_in_coproduct_field_still_refuses` is the row that says so if it ever moves.
 //
 // COST. Two map lookups and a walk bounded by the two declarations' own arm counts. Nothing is
 // re-derived from normalized structure and nothing is denominated in the corpus.
@@ -2338,9 +2358,14 @@ fn coproduct_variant_name_sets_differ(
   counts_differ || left_has_unmatched
 }
 
+fn coproduct_name_is_unnamed_or_optional_carrier(name: String) -> Bool {
+  let last = qualified_last_segment(name: name)
+  last == "" || last == "Optional"
+}
+
 fn coproduct_name_is_kernel_or_optional_carrier(name: String) -> Bool {
   let last = qualified_last_segment(name: name)
-  last == "" || last == "Optional" || is_kernel_type(name: last)
+  coproduct_name_is_unnamed_or_optional_carrier(name: name) || is_kernel_type(name: last)
 }
 
 fn foreign_concrete_coproduct_where_parent_required(
@@ -2351,7 +2376,7 @@ fn foreign_concrete_coproduct_where_parent_required(
   scope: InferScope
 ) -> Bool {
   let source_indices = scope.type_env.source_indices
-  if coproduct_name_is_kernel_or_optional_carrier(name: formal_name)
+  if coproduct_name_is_unnamed_or_optional_carrier(name: formal_name)
     || coproduct_name_is_kernel_or_optional_carrier(name: actual_name)
     || (actual_rep != "" && coproduct_name_is_kernel_or_optional_carrier(name: actual_rep)) {
     false
