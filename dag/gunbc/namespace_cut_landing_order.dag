@@ -2,6 +2,7 @@ module gunbc.namespace_cut_landing_order
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.guarantee_rung_drop { GuaranteeRung, Mitigatable }
 
 // WHY THIS CARRIER EXISTS AT ALL, since a reader will otherwise look for the
 // ruling in the plan documents where its neighbours live. DESIGN section 4c
@@ -154,4 +155,9 @@ fn landing_order_derivation_witness() -> ProcessExit {
 // carrier, which is the same module-authorship-at-ingestion trigger DESIGN
 // section 6 already names for the deleted inert-lens census; the two should
 // land together rather than each rebuilding a corpus walk.
-data namespace_cut_landing_order_rung: String = "mitigatable"
+// The rung is the closed GuaranteeRung variant, not a string spelling it. It was
+// `String = "mitigatable"` until 2026-08-26 (review 56044) -- the one field in
+// this module still carrying as text what everything around it carries as a
+// coproduct, which made a typo representable in the one place the module claims
+// to be honest about.
+data namespace_cut_landing_order_rung: GuaranteeRung = Mitigatable
