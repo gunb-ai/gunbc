@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr, Int, Bool, List, Timestamp, Duration, li
 import std.disposition { Disposition, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
+import gunbc.runner_unit { runner_slot_unit_name }
 import gunbc.build_cache_instance {
   RunnerSlotIdentity,
   ProcessIdentity,
@@ -173,19 +174,13 @@ data runner_connectivity_rebind_healthy_note: Disposition = Scaffold {
 
 data timestamp_comparison_scaffold_note: String = "HONEST SCAFFOLD: Timestamp is String today and this module compares equality only until PR A lands a parsed observation clock. Freshness and cooldown therefore use same-moment equality as the zero-age case in witnesses and refuse when act_at differs from confirmed_at without a parseable ordering — the wall is real, the parser is deferred to the observation carrier."
 
+// THIS WAS THE FORK THAT PROVED THE FORK WAS LIVE. It re-derived the two-digit slot suffix by hand
+// -- a rule gunbc.build_cache_instance had ALREADY consolidated after three implementations
+// disagreed above index 8 -- and then re-spelled the unit prefix and suffix around it. So the
+// watchdog that restarts a wedged runner computed the unit to restart through a different
+// derivation than the one that named it, and nothing related the two.
 fn recovery_runner_slot_unit_name(slot: RunnerSlotIdentity) -> NonEmptyStr {
-  let idx = if slot.slot_index < 10 {
-    concat("0", slot.slot_index as String)
-  } else {
-    slot.slot_index as String
-  }
-  concat(
-    concat(
-      concat("actions-runner@", slot.host as String),
-      concat("-", idx),
-    ),
-    ".service",
-  ) as NonEmptyStr
+  runner_slot_unit_name(slot: slot)
 }
 
 fn process_identity_eq(a: ProcessIdentity, b: ProcessIdentity) -> Bool {
