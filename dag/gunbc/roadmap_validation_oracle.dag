@@ -52,7 +52,10 @@ import gunbc.git_diff_change_window {
   GitTargetGenerationOutputMalformed,
 }
 import extdeps.languages.json.parse {
-  parse_json,
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_document_gap_text,
   json_object_unique_member,
   JsonMemberFound,
   JsonMemberAbsent,
@@ -983,11 +986,11 @@ fn validation_receipt_decode_document(doc: JsonValue) -> ValidationReceiptDecode
 }
 
 fn validation_receipt_decode(receipt: String) -> ValidationReceiptDecode {
-  match parse_json(s: receipt) {
-    Absent =>
+  match parse_json_document(s: receipt) {
+    JsonDocumentUnreadable { gap: gap } =>
       ValidationReceiptUndecodable {
-        reason: "validation receipt is not one complete JSON value",
+        reason: concat("the validation receipt is ", json_document_gap_text(gap: gap)),
       }
-    Present { value: doc } => validation_receipt_decode_document(doc: doc)
+    JsonDocumentParsed { value: doc } => validation_receipt_decode_document(doc: doc)
   }
 }

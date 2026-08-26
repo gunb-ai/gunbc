@@ -32,7 +32,11 @@ import gunbc.scm.object_store {
 }
 import v2.std.collection { empty_map }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string, JsonValue, JsonObject }
-import extdeps.languages.json.parse { parse_json }
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+}
 import gunbc.scm.json_member { MemberReadDuplicated, MemberReadWrongShape }
 import gunbc.scm.target_reference {
   TargetContainedAt,
@@ -379,11 +383,11 @@ test fn an_uncontained_object_survives_the_wire_and_is_still_named() -> Bool {
   match admitted_for(store: grafted, root: full.root) {
     ClosureCompleteSoNothingToAdmit => false
     PartialClosureAdmitted { admitted: a } =>
-      match parse_json(
+      match parse_json_document(
         s: serialize_json(v: encode_admitted_partial_closure_document(admitted: a))
       ) {
-        Absent => false
-        Present { value: reparsed } =>
+        JsonDocumentUnreadable { gap: _ } => false
+        JsonDocumentParsed { value: reparsed } =>
           match decode_closure_document(v: reparsed) {
             ClosureDocRefused { cause: _ } => false
             ClosureDocLoaded { store: store, root: root } =>

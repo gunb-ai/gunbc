@@ -363,7 +363,7 @@ fn floor_expected_red_chunk_02() -> List<String> {
 }
 
 fn floor_expected_red_chunk_03() -> List<String> {
-  Cons { head: "test.claim.host_effect_apply_witness.witness_ssh_shell_unreachable_fails_closed", tail: Cons { head: "test.claim.host_phase_status.witness_reconcile_covers_upsert_teardown_and_noop", tail: Cons { head: "test.claim.host_phase_status.witness_remaining_work_counts_every_unfinished_cell", tail: Cons { head: "test.claim.interpreter_replacement_cut_witness_test.interpreter_cut_plan_refuses_with_open_decisions", tail: Cons { head: "test.claim.interpreter_replacement_cut_witness_test.retiring_with_x_needs_no_coverage_authority", tail: Empty {} } } } } }
+  Cons { head: "test.claim.host_effect_apply_witness.witness_ssh_shell_unreachable_fails_closed", tail: Empty {} }
 }
 
 fn floor_expected_red_chunk_04() -> List<String> {
@@ -375,7 +375,7 @@ fn floor_expected_red_chunk_05() -> List<String> {
 }
 
 fn floor_expected_red_chunk_06() -> List<String> {
-              Cons { head: "test.claim.source_integration_proof_kernel_acceptance.witness_p1_proof_kernel_acceptance_contract_holds", tail:     Cons { head: "test.claim.srv3_subsumption.comment_only_drift_is_one_change_not_remove_add", tail: Cons { head: "test.claim.srv3_subsumption.reconcile_would_teardown_only_if_ownership_claimed_it", tail: Cons { head: "test.claim.srv3_subsumption.srv3_and_srv4_disagree_on_convergence", tail: Cons { head: "test.claim.srv3_subsumption.srv3_reconcile_adds_exactly_the_missing_fleet_key", tail: Cons { head: "test.claim.srv3_subsumption.srv3_reconcile_refuses_both_unowned_keys_never_teardown", tail: Cons { head: "test.claim.srv3_subsumption.srv4_reconcile_is_converged_empty_plan", tail:               Empty {} } } } } } } }
+              Cons { head: "test.claim.source_integration_proof_kernel_acceptance.witness_p1_proof_kernel_acceptance_contract_holds", tail:                   Empty {} }
 }
 
 // SEVENTEEN generated_conformance_floor ROWS LEFT THIS ROSTER BECAUSE THE FIX THIS BRANCH CARRIES
@@ -429,7 +429,7 @@ fn floor_expected_red_chunk_07() -> List<String> {
 }
 
 fn floor_expected_red_chunk_08() -> List<String> {
-   Cons { head: "v2.test.claim.staging.cached_stage_hit_skips_stage", tail: Cons { head: "v2.test.claim.staging.cached_stage_miss_runs_stage", tail: Cons { head: "v2.test.emit.produced_decl_support_preserved.produced_decl_support_survives_augmentation", tail: Cons { head: "v2.test.execution.dag_add_emit_round_trip.dag_add_domain_coerce_accepts_holds", tail: Cons { head: "v2.test.execution.dag_add_emit_round_trip.dag_add_domain_translate_accepts_holds", tail: Empty {} } } } } }
+   Cons { head: "v2.test.execution.dag_add_emit_round_trip.dag_add_domain_coerce_accepts_holds", tail: Cons { head: "v2.test.execution.dag_add_emit_round_trip.dag_add_domain_translate_accepts_holds", tail: Empty {} } }
 }
 
 fn floor_expected_red_chunk_09() -> List<String> {
@@ -461,10 +461,109 @@ fn floor_expected_red_chunk_13() -> List<String> {
   Cons { head: "test.claim.method_arg_declared_contract_witness_test.w_method_arg_infers_against_declared_contract_not_element_type_test", tail: Empty {} }
 }
 
+// TWO ARMS OF THE DIRECT-CALL INHABITANCE WITNESS, ENROLLED BECAUSE THE WALL THEY ASSERT
+// DOES NOT EXIST AND NEVER DID -- NOT BECAUSE THIS BRANCH BROKE IT. Both arms assert that a
+// value at a direct-call argument is REFUSED. Both are red. The control that settles who
+// caused it was run on 2026-08-23: identical probe sources, identical dispatch, gunbc built
+// from origin/main 907f19c2cc7 and from the branch head, and main returns the same answer at
+// every point.
+//
+//   probe                       branch      main        verdict
+//   kernel 5 at the Peano Nat   accepted    accepted    no change
+//   "forty" at std.nat.Nat      accepted    accepted    no change
+//   40 at std.nat.Nat           accepted    accepted    no change
+//
+// So the refusals were ASSERTED, not broken. The gap is in the consumed predicate
+// v1.compiler.infer kernel_value_declared_type_mismatch, and it is older than this branch and
+// WIDER than these two rows. Measured 2026-08-23 by five probes varying only the declared
+// type's shape, one String argument at every one:
+//
+//   Int                                      kernel primitive   REFUSED
+//   NatLike = CommutativeSemiring<Magnitude> 1-arg application  admitted
+//   OneArg  = List<Int>                      1-arg application  admitted
+//   TwoArg  = Map<String, Int>               2-arg application  admitted
+//   Closed  = ZzA | ZzB { v: Int }           coproduct          REFUSED
+//
+// A KERNEL VALUE IS ADMITTED AT ANY TYPE APPLICATION -- not merely an algebraic one, and not
+// as a function of arity: the two-argument Map is admitted exactly as List<Int> is. So the
+// legible specimen is a String reaching a List<Int> parameter unremarked, which is the ordinary
+// compiler floor DESIGN requires before any differentiating claim, and Nat is one instance of it.
+// The class is "total at the level examined, blind one level down": the judgment is exhaustive
+// over primitive / coproduct / application and the application arm never asks what the
+// application EXPANDS TO, so there is no missing arm for exhaustiveness checking or review to see.
+// Located, with a reproducing input; the admitting branch has NOT been read and no line is named.
+//
+// NEXT-RUNG TRIGGER, TWO PARTS. The mechanical one: that predicate repaired so a kernel value at
+// a type application refuses. The MODEL one, which is what the durable repair looks like and is
+// recorded here so the interim is never cited as the design:
+//
+// declared_realizes_as_kernel_numeric decides that 40 inhabits Nat by consulting
+// v1.compiler.coercion decl_file_realizes_natively -- i.e. because Nat's DECLARING MODULE is
+// kernel-backed. That is a REALIZATION fact standing in for a TYPING fact, and it amounts to
+// peeling the applied type until a scalar appears. It is not unsound: it fails closed on unknown
+// identity, and the admit is measured behaviour-preserving-or-narrowing against main. It is
+// UNDER-SPECIFIC. It answers "this module's numerics are kernel-backed" where the question is
+// "does this type admit this literal", and it therefore grants literal syntax module-wide
+// permission to inhabit anything whose implementation eventually mentions a numeric carrier.
+// The two answers coincide today for Nat and Int and stop coinciding the moment a module
+// declares a numeric type that should NOT take bare literals.
+//
+// THE DURABLE MODEL IS AN EXPECTED-TYPE-DIRECTED LITERAL INTRODUCTION JUDGMENT: 40 inhabits Nat
+// because Nat SUPPLIES A NUMERAL INTRODUCTION, not because its module realizes natively. Lean is
+// the worked precedent -- numerals elaborate against the expected type through an OfNat
+// obligation, and literal introduction is kept separate from coercion insertion. When that lands,
+// declared_realizes_as_kernel_numeric and its consumption of decl_file_realizes_natively dissolve;
+// they are the interim, and this row is their dissolution trigger.
+//
+// TWO CONSTRAINTS ON WHOEVER BUILDS IT, both live in this repository rather than hypothetical.
+// A judgment that peels a declared type to its representation defeats abstraction walls that
+// already hold: TransparentAlias may be exposed; OpaqueType, SoleConstructorCarrier, Refinement
+// and Brand MAY NOT -- sole_constructor is a real, executing construction wall and a peeling
+// judgment walks through it silently. And exposure must derive a canonical view ONCE per type
+// identity and cache it, with cycle detection and a measured expansion budget: recursive aliases
+// can loop, renormalizing at every use site is expensive, and this corpus is already living on a
+// per-witness cost line. When it lands, BOTH rows here go green -- and this roster's self-emptying arm
+// reds the build and names them for removal, at which point they become permanent regression
+// controls under DESIGN 4b(4) rather than being deleted. The flip is EXPECTED and is not a
+// regression; it is the dissolution event.
 fn floor_expected_red_chunk_14() -> List<String> {
-  Empty {}
+  Cons { head: "test.claim.declared_type_inhabitance_direct_call_witness.w_kernel_numeric_at_the_peano_nat_is_refused", tail: Cons { head: "test.claim.declared_type_inhabitance_direct_call_witness.w_non_numeric_kernel_at_the_natively_realized_nat_is_still_refused", tail: Empty {} } }
 }
 
+// THE LIST-ELEMENT ARM OF THE DIRECT-CALL INHABITANCE WITNESS. It asserts that a wrong element
+// type inside a list at a direct-call argument is refused. It is not. Its PAIRED CONTROL --
+// w_the_same_wrong_pair_directly_at_the_argument_is_refused, deliberately NOT enrolled -- passes
+// the identical two types at the identical position without the list, and must stay green: if it
+// ever reds, the probe has stopped measuring lists and this enrolment is meaningless.
+//
+// WHY IT IS ENROLLED RATHER THAN FIXED HERE: the gap was discovered as a live wrong argument in
+// dag/gunbc/heal_revalidation.dag (List<Fnv1a64Structural> into required_gates: List<ContentHash>),
+// and the relation's SILENCE was the only evidence of it. DESIGN 4b(4) puts the evidence in a
+// probe and the repair in production, not the reverse, so the evidence lives here where anyone
+// can reproduce it.
+//
+// THE PRODUCTION SITE WAS REPAIRED TWICE AND ONLY THE SECOND WAY WAS RIGHT. Lifting the argument
+// through as_content_hash_structural DOUBLE-WRAPPED a value that was already the union -- the
+// witness passes Fnv1a64(content_hash_atom(...)) and check_coverage_admits takes ContentHash, so
+// heal_revalidation's own two parameters were the ONLY things in the chain declaring the family
+// member. Lifting made the comparison Fnv1a64(Fnv1a64(x)) against Fnv1a64(x) and reddened
+// heal_revalidation_witness only_exact_healed_head_complete_coverage_admits, a witness that had
+// been green. The chain is now ContentHash end to end and the lifts are gone. Reading the CALLEE
+// is half the discriminator; the CALLER is the other half, and a declaration sandwiched between
+// two that agree with each other is the one that is wrong.
+//
+// NEXT-RUNG TRIGGER: declared_type_inhabitance descending into a list's element type at a
+// direct-call argument. When it lands this row goes green and the roster's self-emptying arm
+// names it for removal, at which point it becomes a permanent regression control.
+// DELIBERATELY EMPTY, AND PERMANENTLY SO -- THE ROW THAT WAS HERE ASSERTED A GAP THAT DOES NOT
+// EXIST. w_wrong_element_type_in_a_list_at_a_direct_call_argument_is_refused was enrolled while
+// its paired control was RED; the control's red proved the pair measured "records are never
+// judged" rather than anything about lists. Rebuilt on a kernel String and left UNENROLLED so a
+// red would show loudly, it PASSES (run 32667623528, failed=0). The relation descends into a
+// list literal's elements at a direct-call argument and always did.
+//
+// The arm stays in the witness file as a permanent regression control over that fact. Nothing is
+// enrolled here because there is nothing red to enrol.
 fn floor_expected_red_chunk_15() -> List<String> {
   Empty {}
 }
@@ -511,7 +610,7 @@ fn floor_expected_red_chunk_19() -> List<String> {
 // -- when the substrate arm lands, these rows PASS, and a passing enrolled row reds the build
 // naming itself. The file's prose trigger could not do that; this roster does it mechanically.
 fn floor_expected_red_chunk_20() -> List<String> {
-  Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_content_hash_violates", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_runtime_same_identity_violates", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_canonical_holds", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_non_canonical_violates", tail: Cons { head: "v2.test.manual.nominal_distinctness_cross_call.nominal_distinct_control_compiles_ok", tail: Empty {} } } } } }
+  Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_canonical_holds", tail: Cons { head: "v2.test.manual.nominal_distinctness_cross_call.nominal_distinct_control_compiles_ok", tail: Empty {} } }
 }
 
 // THREE IDENTITIES ENROLLED 2026-08-23, and they are the first rows here that were AUTHORED red
@@ -539,41 +638,60 @@ fn floor_expected_red_chunk_20() -> List<String> {
 //
 // The partition of the 164 and the measurements behind this family are
 // docs/plans/receipts/floor-runtime-error-partition-2026-08-23/.
+// ONE IDENTITY ENROLLED 2026-08-26 with a per-row reason, because a row without one is how a
+// thrown claim gets filed as a semantic red. THE CLASS: a lexical binding holding a NON-CALLABLE
+// value, called at its own spelling, still falls through to the module free function sharing that
+// spelling and returns ITS answer -- a plausible wrong value with no diagnostic. It is the
+// unrepaired half of the local-binding-shadow class whose callable half landed the same day; the
+// witness's own annotation carries the two-tier disagreement that makes it legible (the compile
+// sibling already refuses a labeled call through this exact binding, naming the callee a function
+// value, while dispatch walks past it). THE ROW ASSERTS THE DESIRED LAW, so it reds now and greens
+// on repair, and its single conjunct returns a Bool and never throws -- an OBSERVED semantic red,
+// never no-verdict debt. NEXT-RUNG TRIGGER: the census of non-callable lexical bindings whose
+// spelling collides with a builtin or module free function; the gate is widened against a measured
+// population, never speculatively.
 fn floor_expected_red_chunk_21() -> List<String> {
-  Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_extra_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_missing_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_wrong_argument_type_must_refuse_at_compile", tail: Cons { head: "test.claim.fabric_cell_evidence_algebra_witness.evidence_full_value_is_order_independent", tail: Empty {} } } } }
+  Cons { head: "v2.test.claim.local_binding_shadow.a_noncallable_local_binding_does_not_fall_through_to_the_module_function", tail:Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_extra_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_missing_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_wrong_argument_type_must_refuse_at_compile", tail: Cons { head: "test.claim.fabric_cell_evidence_algebra_witness.evidence_full_value_is_order_independent", tail: Empty {} } } } } }
 }
 
-// ONE IDENTITY ENROLLED 2026-08-25, and it carries a per-row reason because the nine rows this
-// lane just examined do not, and that absence is what let a thrown claim be filed as a semantic
-// red for weeks.
+// THE SHADOW CHUNK IS DELETED AND THE ROSTER IS RENUMBERED RATHER THAN LEFT WITH A HOLE. The
+// chunk that carried
+// `v2.test.claim.local_binding_shadow.local_named_function_binding_is_what_the_call_reaches`
+// was the last one when it was enrolled; the resolver repair made that row PASS, so its enrolment
+// is deleted -- leaving it would be the stale-quarantine arm firing on a red that no longer
+// exists, which is exactly what an enrolment must not outlive. THE WITNESS IS NOT DELETED WITH IT
+// (DESIGN 4b(4)): the probe stays in the ordinary roster as a permanent regression control, beside
+// the three green controls it always carried. A chunk authored against that same last index on
+// main is renumbered into the vacancy below, so the chunk sequence stays contiguous and
+// `floor_expected_red_chunks` names every index it reaches.
 //
-// THE CLASS: a call site spelling a name held by BOTH a local binding and a module-level free
-// function reaches the FREE FUNCTION when the local's value is a reference to a named top-level
-// function. Measured on a complete grid by two lanes independently -- let, parameter and pattern
-// bindings all behave the same, and a local bound to a LAMBDA reaches the local -- so the binding
-// form is not the axis and the value is. The collision is decided at the CALL SITE by the spelling
-// used there: the same value handed to a differently-named parameter reaches the local, which is
-// why a rename repairs it.
-//
-// WHY BELOW FLOOR RATHER THAN A NAMING HAZARD: where the shadowing symbol's arity DIFFERS the call
-// refuses loudly, and where it AGREES a plausible wrong value is returned with no diagnostic.
-// Reproduced twice on live corpus symbols before the fixture existed -- a displaced predicate
-// returning a ParagraphBlock, and a fold over three elements answering 3 where the direct fold
-// counts 2.
-//
-// THE ROW ASSERTS THE DESIRED LAW, not today's behaviour, so it reds now and greens on repair. Its
-// three conjuncts return Bools and never throw, so this is an OBSERVED semantic red and never
-// no-verdict debt.
-//
-// DISSOLUTION: it FLIPS TO A PERMANENT REGRESSION CONTROL when local bindings win, and is not
-// deleted then. DESIGN 4b(4) -- a climb dissolves the lower-rung production machinery and KEEPS
-// the discriminating evidence; deleting the probe on repair would recreate
-// specification-without-execution one rung up. Its two green controls (the lambda column and the
-// call-site rename) are already permanent for the same reason.
+// OBSERVED RED, 2026-08-25 at parked/twin-source-standing-blocked 62d6de284c1 after restoring
+// the roster gate's missing execution-closure imports. The sanctioned-reader snippet reaches
+// SourceFindingsEstablished and the analyzer then emits a Suspect for that unchanged canonical
+// safe shape (last fixture-content edit: 6f3d374de0c). Owner and dissolution live on the exact
+// admission row in gunbc.explicit_witness_admission; this polarity row is deliberately the same
+// exact function identity. When the analyzer repair makes it pass, stale quarantine names the row
+// and both enrollments delete while the witness remains as an ordinary regression control.
 fn floor_expected_red_chunk_22() -> List<String> {
-  Cons { head: "v2.test.claim.local_binding_shadow.local_named_function_binding_is_what_the_call_reaches", tail: Empty {} }
+  Cons { head: "v2.test.claim.identity_captured_navigation_roster_gate.green_control_sanctioned_reader_body_not_flagged", tail: Empty {} }
 }
 
+// THIRTEEN FURTHER IDENTITIES RETIRED 2026-08-26 BY ONE REPAIR, and the number is the finding
+// rather than the bookkeeping. The local-binding-shadow repair -- a call site spelling a name held
+// by both a local binding and a module-level free function now reaches the LOCAL -- was enrolled
+// with ONE row of its own. On the first required run after it landed, thirteen OTHER enrolled reds
+// across five unrelated modules passed: test.claim.host_phase_status (2),
+// test.claim.interpreter_replacement_cut_witness_test (2), test.claim.srv3_subsumption (6),
+// v2.test.claim.staging (2) and v2.test.emit.produced_decl_support_preserved (1). None of them was
+// authored as a shadow probe and none names the class; they were filed as ordinary reds against
+// their own subjects, which is exactly what a SILENT wrong value looks like from the consumer's
+// side -- the fold returns a plausible answer, the assertion disagrees with it, and the row gets
+// written against the assertion. So this list was carrying thirteen symptoms of one cause, and the
+// cause was legible from none of them.
+//
+// THE ROWS ARE REMOVED AND THE WITNESSES ARE NOT (DESIGN 4b(4)). Every one of those claims stays
+// enrolled and now passes, which is what keeps the repair's reach measured rather than asserted:
+// if the gate regresses, thirteen independent modules go red before the shadow fixture does.
 fn floor_expected_red_chunks() -> List<List<String>> {
   Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_22(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}
 }

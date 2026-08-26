@@ -38,7 +38,7 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   outcome_accepted,
   outcome_rejected,
-  port_locus,
+  invariant_port_locus,
   textual_whole_file_diagnostic
 }
 import v2.std.grammar { ParseTree }
@@ -529,7 +529,10 @@ fn source_ref_read_failed_diagnostic(ref: SourceRef, error: String) -> NonEmptyD
     tail: [
       Diagnostic {
         reason: source_ref_read_refused,
-        at: port_locus(port: symbol_intern_lexeme(lexeme: error)),
+        at: invariant_port_locus(
+          port: symbol_intern_lexeme(lexeme: error),
+          invariant: source_ref_read_refused
+        ),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
     ]
@@ -560,7 +563,10 @@ fn source_ref_content_hash_mismatch_diagnostic(
     tail: [
       Diagnostic {
         reason: source_ref_content_hash_mismatch,
-        at: port_locus(port: symbol_intern_lexeme(lexeme: detail)),
+        at: invariant_port_locus(
+          port: symbol_intern_lexeme(lexeme: detail),
+          invariant: source_ref_content_hash_mismatch
+        ),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
     ]
@@ -753,7 +759,7 @@ type SourceAuthorityRoundTripLaw {
 fn source_authority_diagnostic(reason: Symbol) -> Diagnostic {
   Diagnostic {
     reason: reason,
-    at: port_locus(port: ^source_authority_port),
+    at: invariant_port_locus(port: ^source_authority_port, invariant: reason),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

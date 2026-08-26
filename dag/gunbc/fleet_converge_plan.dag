@@ -46,12 +46,31 @@ import gunbc.fabric_cell_converge {
   fabric_cell_member_key_eq,
   fabric_cell_member_value_eq,
   fabric_cell_member_ownership,
-  fabric_cell_observed_members,
-  FabricCellPopulation,
-  FabricCellPopulationObserved,
-  FabricCellPopulationObservationRefused,
+  FabricCellObservationRefusal,
+  ExpectedAddressBlocked,
+  UnexpectedCellEvidence,
+  ReadbackHostMismatch,
+  ForeignArtifactObserved,
+  DiscoveryUnavailable,
+  SuppliedProbeUnconsumed,
+  SuppliedNamespaceUnconsumed,
+  UnexpectedCommittedSlotArtifact,
+  ExpectedRosterHostMismatch,
+  ObserverUnavailable,
+  CrossHostNamedArtifactObserved,
   fabric_cell_member_key,
+  fabric_cell_resource_address_wire,
   fabric_cell_desired_members,
+}
+import gunbc.fabric_cell_observation_admission {
+  FabricCellObservationDecision,
+  FabricCellObservationOutcome,
+  fabric_cell_observation_outcome,
+  FabricCellObservationAdmitted,
+  FabricCellObservationDenied,
+  FabricCellObservationNotApplicable,
+  fabric_cell_observed_population_host,
+  fabric_cell_observed_population_members,
 }
 import gunbc.membership_reconcile {
   MembershipPlan,
@@ -70,6 +89,7 @@ import gunbc.membership_reconcile {
   membership_refusal_count,
   membership_added_count,
 }
+import gunbc.build_cache_instance { runner_slot_instance_name }
 import gunbc.ownership { Ownership, Owned }
 import gunbc.fleet_posix_accounts {
   fleet_posix_ci_runner_principal, grounded_posix_principal_name,
@@ -171,7 +191,7 @@ fn fleet_converge_plan_subject(
   observed_caps: List<CapMember>,
   observed_spark: List<SparkServingMember>,
   observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
 ) -> FleetConvergePlanSubject {
   FleetConvergePlanSubject {
     host: host,
@@ -192,7 +212,7 @@ fn fleet_converge_member_set_fingerprint(
   observed_caps: List<CapMember>,
   observed_spark: List<SparkServingMember>,
   observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
 ) -> ContentHash {
   content_hash_of_value(
     value: observed_baseline_text(
@@ -217,7 +237,7 @@ fn fleet_converge_apply_subject_admits(
   observed_caps: List<CapMember>,
   observed_spark: List<SparkServingMember>,
   observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
 ) -> Bool {
   fleet_converge_apply_subject_host_matches(planned_host: planned_subject.host, observed_host: observed_host)
     && compare_content_hash(
@@ -264,7 +284,7 @@ fn fleet_converge_member_set_fingerprint_matches(
   observed_caps: List<CapMember>,
   observed_spark: List<SparkServingMember>,
   observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
 ) -> Bool {
   trim(s: planned_fingerprint_text) == (
     serialize_content_hash(
@@ -441,7 +461,7 @@ fn fleet_converge_slot_family(
 // empty list, which reconcile then reads as "the host has none of these" and plans a full install.
 // For a family whose resources are a cgroup and two directories that is the empty-observation
 // narrow: a probe that could not read the host is indistinguishable from a host that has nothing,
-// and the two have opposite remedies. FabricCellPopulation makes them different values, so an
+// and the two have opposite remedies. FabricCellObservationDecision makes them different values, so an
 // unreadable cell stops the line here instead of arriving as work to do.
 // PLANNED WORK WITH NO REALIZER IS A REFUSAL, NOT A ZERO-REFUSAL PLAN.
 //
@@ -476,33 +496,33 @@ fn fleet_converge_slot_family(
 // caller must learn which: preferring the population's host would plan the right host from a
 // mis-supplied argument, and preferring the argument is what produced the hole. The mismatch is a
 // defect in whoever joined them, so the line stops and names both.
+// NOT-APPLICABLE IS NOT CONVERGED, and giving it its own arm is what keeps the plan from claiming an
+// observation nobody made. A host the product does not scan for fabric artifacts plans no actions --
+// same as a converged one -- but the REASON differs and so does what a later reader may conclude:
+// converged means read and correct, not-applicable means never looked at and not expected to be.
 type FleetConvergeFabricCellFamily
-  = FabricCellFamilyConvergedNoActions
+  = FabricCellFamilyNotApplicable
+  | FabricCellFamilyConvergedNoActions
   | FabricCellFamilyRealizationUnavailable { planned: MembershipPlan<FabricCellMember, String> }
-  | FabricCellFamilyObservationRefused { cause: String }
+  | FabricCellFamilyObservationRefused { blocked: List<FabricCellObservationRefusal> }
   | FabricCellFamilyObservationHostMismatch { planned_host: String, observed_host: String }
 
 fn fleet_converge_fabric_cell_family(
   host: NonEmptyStr,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
 ) -> FleetConvergeFabricCellFamily {
-  match observed_fabric_cells {
-    FabricCellPopulationObservationRefused { host: h, blocked: _ } =>
-      FabricCellFamilyObservationRefused {
-        cause: concat(
-          "fabric cell observation refused for host=",
-          h as String,
-          "; the host was not read, so its substrate state is unknown and no membership may be planned against it",
-        )
-      }
-    FabricCellPopulationObserved { host: observed_host, observed: obs } =>
-      if (observed_host as String) != (host as String) {
+  match fabric_cell_observation_outcome(decision: observed_fabric_cells) {
+    FabricCellObservationNotApplicable { host: _ } => FabricCellFamilyNotApplicable
+    FabricCellObservationDenied { host: _, blocked: b } =>
+      FabricCellFamilyObservationRefused { blocked: b }
+    FabricCellObservationAdmitted { population: pop } =>
+      if (fabric_cell_observed_population_host(population: pop) as String) != (host as String) {
         FabricCellFamilyObservationHostMismatch {
           planned_host: host as String,
-          observed_host: observed_host as String,
+          observed_host: fabric_cell_observed_population_host(population: pop) as String,
         }
       } else {
-      let observed = fabric_cell_observed_members(observed: obs)
+      let observed = fabric_cell_observed_population_members(population: pop)
       let planned = membership_plan_admitting_outcome(
         outcome: membership_reconcile(
           desired: fabric_cell_desired_members(host: host as HostIdentity),
@@ -529,11 +549,12 @@ fn fleet_converge_fabric_cell_family(
 // never as an ADD line a reader would take for work that will happen.
 fn fleet_converge_fabric_cell_lines(
   host: NonEmptyStr,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
 ) -> List<String> {
   match fleet_converge_fabric_cell_family(host: host, observed_fabric_cells: observed_fabric_cells) {
-    FabricCellFamilyObservationRefused { cause: c } =>
-      [concat("REFUSED-OBSERVATION fabric-cell ", c)]
+    FabricCellFamilyObservationRefused { blocked: b } =>
+      map(b, r => concat("REFUSED-OBSERVATION fabric-cell ", fabric_cell_observation_refusal_line(refusal: r)))
+    FabricCellFamilyNotApplicable => []
     FabricCellFamilyConvergedNoActions => []
     FabricCellFamilyRealizationUnavailable { planned: p } =>
       map(p.actions, a => concat("REFUSED-REALIZATION ", fabric_cell_action_line(action: a)))
@@ -551,10 +572,11 @@ fn fleet_converge_fabric_cell_lines(
 // that cannot be provisioned is three pieces of undone work, not one inconvenience.
 fn fleet_converge_fabric_cell_refusal_count(
   host: NonEmptyStr,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
 ) -> Int {
   match fleet_converge_fabric_cell_family(host: host, observed_fabric_cells: observed_fabric_cells) {
-    FabricCellFamilyObservationRefused { cause: _ } => 1
+    FabricCellFamilyObservationRefused { blocked: b } => list_length(items: b)
+    FabricCellFamilyNotApplicable => 0
     FabricCellFamilyConvergedNoActions => 0
     FabricCellFamilyRealizationUnavailable { planned: p } => list_length(items: p.actions)
     FabricCellFamilyObservationHostMismatch { planned_host: _, observed_host: _ } => 1
@@ -725,7 +747,7 @@ fn fleet_converge_apply_terminal(
   observed_caps: List<CapMember>,
   timer_plan: MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>,
   cap_plan: MembershipPlan<CapMember, CapMemberAt>,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
   observed_activation_readiness: RunnerActivationReadiness,
 ) -> FleetConvergeApplyTerminal {
   let slot_refused = fleet_converge_slot_refusal_count(host: host, observed_slots: observed_slots)
@@ -896,6 +918,145 @@ fn fabric_cell_disposition_baseline_row(d: FabricCellAddressDisposition) -> Stri
   }
 }
 
+// EVERY REFUSAL IS LOCATED AND COUNTED SEPARATELY, WHICH THIS FAMILY CLAIMED BEFORE IT WAS TRUE.
+// The refused arm used to collapse the whole blocked list into ONE generic host-level sentence and
+// report a refusal count of 1 no matter how many addresses were blocked -- so three unprovisionable
+// resources and one unreadable directory rendered identically, and the deficit's frequency, which
+// is the entire reason DESIGN section 5 asks for counted degradations, was pinned at one by
+// construction. The population always carried the located list; only the plan surface threw it
+// away. It is the same total-at-the-level-examined shape as the drift collapse: the match over
+// FabricCellObservationDecision was exhaustive and the distinction that mattered was inside an arm.
+// THE REMEDY IS RENDERED PER DISPOSITION BECAUSE THE THREE BLOCKED STATES ARE NOT THE SAME EVENT.
+// One sentence -- "the address was not read" -- was appended to all of them, and it is FALSE of
+// AddressContradicted: that address WAS read, and the observations disagreed. A reader told the
+// probe never ran looks at the transport; a reader told two probes disagreed looks at the host.
+// Same typed class, opposite investigations, and the typed baseline row above was already correct
+// -- only the reviewer-facing half lied. It is the collapsed-remedy shape again, in prose rather
+// than in a match arm, which is why it survived the arm being split.
+fn fabric_cell_blocked_remedy(d: FabricCellAddressDisposition) -> String {
+  match d {
+    AddressUnobserved { ref: _ } =>
+      "; no observation was produced for this address, so its state is unknown and no membership may be planned against it"
+    AddressUnreadable { ref: _, cause: _ } =>
+      "; the observation was attempted and refused, so this address's state is unknown and no membership may be planned against it"
+    AddressContradicted { ref: _ } =>
+      "; this address WAS read and its observations disagree, so the host's own reporting is inconsistent and no membership may be planned against it"
+    AddressMissingOnHost { ref: _ } =>
+      "; reported absent -- this disposition does not block, and reaching this arm means a non-blocking standing was filed as blocked"
+    AddressPresent { ref: _, member: _ } =>
+      "; reported present -- this disposition does not block, and reaching this arm means a non-blocking standing was filed as blocked"
+  }
+}
+
+// THE RAW CAUSE IS NOT RENDERED, AND THIS IS THE SAME LESSON THE MULTIPLICITY COUNTERS TAUGHT
+// APPLIED BEFORE IT COST ANYTHING. `DiscoveryUnavailable` carries a free-text cause, and these
+// lines enter `plan_body`, which `fleet_converge_plan_artifact` content-hashes into the held-lease
+// owner fingerprint. Interpolating the cause would make the plan identity a function of how a
+// transport happened to word a failure -- two runs against one unchanged host producing two plan
+// artifacts because a timeout message carried a different duration. What is stable and host-derived
+// is that the host's discovery could not be completed, and that is what is rendered; the typed
+// cause survives on the refusal for a consumer that is not the plan.
+//
+// THE FOREIGN ARTIFACT RENDERS ITS NAME AND LOCATION BECAUSE THOSE ARE HOST STATE, not wording: a
+// different name is a different artifact, and the plan identity SHOULD move when the host's
+// contents do.
+fn fabric_cell_observation_refusal_line(refusal: FabricCellObservationRefusal) -> String {
+  match refusal {
+    ExpectedAddressBlocked { disposition: d } =>
+      concat(fabric_cell_disposition_baseline_row(d: d), fabric_cell_blocked_remedy(d: d))
+    UnexpectedCellEvidence { evidence: e } =>
+      concat(
+        "unexpected-cell ", runner_slot_instance_name(slot: e.slot),
+        "; evidence was supplied for a slot this host does not declare, and no ownership provenance exists to decide whether it is ours to remove",
+      )
+    ReadbackHostMismatch { mismatch: m } =>
+      concat(
+        "host-mismatched-readback ", runner_slot_instance_name(slot: m.supplied_slot),
+        " enclosing-host=", m.enclosing_host as String,
+        "; this readback names a slot on another host, so it is evidence about neither this host's expected cells nor an unexpected cell here -- the caller labelled it wrong and the remedy is upstream of this fold",
+      )
+    ForeignArtifactObserved { host: h, observed_name: n, location: l } =>
+      concat(
+        "foreign-artifact ", n, " in ", l, " on ", h as String,
+        "; the host holds an artifact matching no slot it committed, and no ownership provenance exists to decide whether it is ours to remove -- it is reported by the name observed, never by an identity derived from that name",
+      )
+    SuppliedProbeUnconsumed { host: h, slot: sl, address: a } =>
+      concat(
+        "unconsumed-probe ", runner_slot_instance_name(slot: sl),
+        " ", fabric_cell_resource_address_wire(address: a), " on ", h as String,
+        "; a state read was supplied for a slot this host does not declare, so it was not consumed by any expected address -- evidence that arrived about something nobody asked about is refused rather than dropped",
+      )
+    SuppliedNamespaceUnconsumed { host: h, slot: sl } =>
+      concat(
+        "unconsumed-namespace ", runner_slot_instance_name(slot: sl), " on ", h as String,
+        "; a cell namespace was enumerated for a slot this host does not declare, so nothing consumed it",
+      )
+    ObserverUnavailable { host: h } =>
+      concat(
+        "observer-unavailable on ", h as String,
+        "; no observer is wired for this host, so nothing about its fabric cells was read -- this is not an empty host and no membership may be planned against it",
+      )
+    ExpectedRosterHostMismatch { enclosing_host: h, expected_slot: sl } =>
+      concat(
+        "expected-roster-host-mismatch ", runner_slot_instance_name(slot: sl),
+        " enclosing-host=", h as String,
+        "; the roster asked this host about a slot on ANOTHER host, so no observation of this host can answer for it -- the remedy is upstream of this fold, in whatever scoped the roster",
+      )
+    UnexpectedCommittedSlotArtifact { host: h, slot: sl, location: l } =>
+      concat(
+        "unexpected-committed-slot-artifact ", runner_slot_instance_name(slot: sl),
+        " in ", l, " on ", h as String,
+        "; the host holds a cell artifact for a slot it committed but which the fabric authority does not expect -- the identity is the host's own commitment, not one parsed from the name, and no ownership provenance exists to decide whether it is ours to remove",
+      )
+    CrossHostNamedArtifactObserved {
+      observed_on: oh
+      observed_name: n
+      matched_committed_slot: ms
+      location: l
+    } =>
+      concat(
+        "cross-host-named-artifact ", n, " in ", l, " on ", oh as String,
+        " matches-committed=", runner_slot_instance_name(slot: ms),
+        "; the name matches a slot committed on ANOTHER host, so it is evidence about neither this host's cells nor an artifact nobody committed -- the match is recorded, and it does not assert the artifact IS that slot",
+      )
+    DiscoveryUnavailable { host: h, cause: _ } =>
+      concat(
+        "discovery-unavailable on ", h as String,
+        "; the host's own cells were not enumerated, so an out-of-band artifact would be invisible and no membership may be planned against a population that was only half read",
+      )
+  }
+}
+
+fn fabric_cell_refusal_baseline_row(refusal: FabricCellObservationRefusal) -> String {
+  match refusal {
+    ExpectedAddressBlocked { disposition: d } => fabric_cell_disposition_baseline_row(d: d)
+    UnexpectedCellEvidence { evidence: e } =>
+      concat("unexpected-cell:", runner_slot_instance_name(slot: e.slot))
+    ReadbackHostMismatch { mismatch: m } =>
+      concat("host-mismatched-readback:", runner_slot_instance_name(slot: m.supplied_slot))
+    ForeignArtifactObserved { host: h, observed_name: n, location: l } =>
+      concat("foreign-artifact:", h as String, ":", l, ":", n)
+    DiscoveryUnavailable { host: h, cause: _ } =>
+      concat("discovery-unavailable:", h as String)
+    SuppliedProbeUnconsumed { host: h, slot: sl, address: a } =>
+      concat("unconsumed-probe:", h as String, ":", runner_slot_instance_name(slot: sl), ":", fabric_cell_resource_address_wire(address: a))
+    SuppliedNamespaceUnconsumed { host: h, slot: sl } =>
+      concat("unconsumed-namespace:", h as String, ":", runner_slot_instance_name(slot: sl))
+    ObserverUnavailable { host: h } => concat("observer-unavailable:", h as String)
+    ExpectedRosterHostMismatch { enclosing_host: h, expected_slot: sl } =>
+      concat("expected-roster-host-mismatch:", h as String, ":", runner_slot_instance_name(slot: sl))
+    UnexpectedCommittedSlotArtifact { host: h, slot: sl, location: l } =>
+      concat("unexpected-committed-slot-artifact:", h as String, ":", l, ":", runner_slot_instance_name(slot: sl))
+    CrossHostNamedArtifactObserved {
+      observed_on: oh
+      observed_name: n
+      matched_committed_slot: ms
+      location: l
+    } =>
+      concat("cross-host-named-artifact:", oh as String, ":", l, ":", n, ":", runner_slot_instance_name(slot: ms))
+  }
+}
+
 // THE OBSERVED ARM CARRIES ITS OWN HOST INTO THE BASELINE, and it did not until the host-mismatch
 // row was written. The arm discarded the population's host and serialized members only, so two
 // observed-empty populations on DIFFERENT hosts produced byte-identical rows and hashed identically
@@ -903,19 +1064,21 @@ fn fabric_cell_disposition_baseline_row(d: FabricCellAddressDisposition) -> Stri
 // now refuses a cross-host join outright, so this is the second wall rather than the only one; both
 // belong, because the fingerprint is what a LATER apply re-checks, and it must not admit against a
 // baseline that could have come from somewhere else.
-fn fabric_cell_baseline_rows(population: FabricCellPopulation) -> List<String> {
-  match population {
-    FabricCellPopulationObserved { host: h, observed: obs } =>
+fn fabric_cell_baseline_rows(population: FabricCellObservationDecision) -> List<String> {
+  match fabric_cell_observation_outcome(decision: population) {
+    FabricCellObservationNotApplicable { host: h } =>
+      [concat("fabric-cell-not-applicable:", h as String)]
+    FabricCellObservationAdmitted { population: pop } =>
       concat(
-        [concat("fabric-cell-observed-host:", h as String)],
-        map(fabric_cell_observed_members(observed: obs), m => concat(
+        [concat("fabric-cell-observed-host:", fabric_cell_observed_population_host(population: pop) as String)],
+        map(fabric_cell_observed_population_members(population: pop), m => concat(
           "fabric-cell:", fabric_cell_member_key(member: m), "=", m.state_digest as String,
         )),
       )
-    FabricCellPopulationObservationRefused { host: h, blocked: b } =>
+    FabricCellObservationDenied { host: h, blocked: b } =>
       concat(
         [concat("fabric-cell-observation-refused:", h as String)],
-        map(b, d => concat("fabric-cell-observation-blocked:", fabric_cell_disposition_baseline_row(d: d))),
+        map(b, r => concat("fabric-cell-observation-blocked:", fabric_cell_refusal_baseline_row(refusal: r))),
       )
   }
 }
@@ -926,7 +1089,7 @@ fn observed_baseline_text(
   observed_caps: List<CapMember>,
   observed_spark: List<SparkServingMember>,
   observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
 ) -> String {
   join(
     concat(
@@ -1631,7 +1794,7 @@ fn fleet_converge_apply_shell(
   timer_plan: MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>,
   host: NonEmptyStr,
   observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
   observed_activation_readiness: RunnerActivationReadiness,
   terminal: FleetConvergeApplyTerminal,
 ) -> String {
@@ -1679,7 +1842,7 @@ fn fleet_converge_apply_shell(
 // like a host with no fabric work.
 fn fabric_cell_apply_lines(
   host: NonEmptyStr,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
 ) -> List<String> {
   concat(
     ["# fabric-cell membership (gunbc.fabric_cell_converge) — resolved at plan time; no host effect is emitted by this cut"],
@@ -1697,7 +1860,7 @@ fn fleet_converge_plan_artifact(
   observed_caps: List<CapMember>,
   observed_spark: List<SparkServingMember>,
   observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
   observed_activation_readiness: RunnerActivationReadiness,
 ) -> FleetConvergePlanArtifact? {
   let subject = fleet_converge_plan_subject(
@@ -1831,7 +1994,7 @@ fn fleet_converge_observed_baseline_matches(
   observed_caps: List<CapMember>,
   observed_spark: List<SparkServingMember>,
   observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellPopulation,
+  observed_fabric_cells: FabricCellObservationDecision,
 ) -> Bool {
   let baseline = observed_baseline_text(
     host: host,

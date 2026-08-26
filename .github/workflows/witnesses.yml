@@ -34,7 +34,7 @@ jobs:
       - name: Build the witness fold
         id: build_witness_fold
         run: |
-          cargo build --release -p v1-compiler --bin claim_executor --bin gunbc
+          cargo build --release -p v1-compiler --bins
       - name: Record the toolchain environment
         run: |
           echo "host=$(hostname) runner=${RUNNER_NAME:-unset}"
@@ -110,6 +110,11 @@ jobs:
           if-no-files-found: error
           retention-days: 14
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
+      - name: Every v1-compiler binary target compiles
+        id: build_all_binary_targets
+        run: |
+          cargo build --release -p v1-compiler
+        if: "!cancelled()"
   witnesses:
     runs-on: [self-hosted, linux, arm64]
     needs: [build, floor]
@@ -118,11 +123,8 @@ jobs:
     steps:
       - name: Both required lanes must have succeeded
         run: |
-          BUILD="${{ needs.build.result }}"
-          FLOOR="${{ needs.floor.result }}"
-          echo "required lanes: build=$BUILD floor=$FLOOR"
-          if [ "$BUILD" != "success" ] || [ "$FLOOR" != "success" ]; then
-            echo "::error::a required lane did not succeed (build=$BUILD floor=$FLOOR) — open that job's log" >&2
-            exit 1
-          fi
+          BUILD='${{ needs.build.result }}'
+          FLOOR='${{ needs.floor.result }}'
+          'echo' 'required lanes: build='"$BUILD"' floor='"$FLOOR"
+          if '[' "$BUILD" '!=' 'success' ']' || '[' "$FLOOR" '!=' 'success' ']'; then 'echo' '::error::a required lane did not succeed (build='"$BUILD"' floor='"$FLOOR"') - open that job'\''s log' >&2; exit 1; fi
         if: always()

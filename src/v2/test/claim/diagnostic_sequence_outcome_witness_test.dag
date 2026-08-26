@@ -10,7 +10,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected,
   sequence_outcome,
-  port_locus,
+  invariant_port_locus,
   Diagnostic,
   ExternalContractUnknown,
   Unavailable,
@@ -26,7 +26,7 @@ data accumulate_policy: StageDiagnosticPolicy = StageDiagnosticPolicy { accumula
 fn diagnostic_a() -> Diagnostic {
   Diagnostic {
     reason: ^sequence_outcome_witness_reason_a
-    at: port_locus(port: ^sequence_outcome_witness_port_a)
+    at: invariant_port_locus(port: ^sequence_outcome_witness_port_a, invariant: ^sequence_outcome_witness_port_a)
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -34,7 +34,7 @@ fn diagnostic_a() -> Diagnostic {
 fn diagnostic_b() -> Diagnostic {
   Diagnostic {
     reason: ^sequence_outcome_witness_reason_b
-    at: port_locus(port: ^sequence_outcome_witness_port_b)
+    at: invariant_port_locus(port: ^sequence_outcome_witness_port_b, invariant: ^sequence_outcome_witness_port_b)
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

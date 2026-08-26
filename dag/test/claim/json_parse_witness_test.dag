@@ -6,16 +6,16 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data json_parse_witness_note: String = "parse_json is the forward reading of RFC 8259 and serialize_json is the backward one, so the claims below are stated as round-trips over one JsonValue rather than against golden bytes (DESIGN 4). The escape claims are the discriminating ones: three plain round-trips pass without the escape decoding being right at all, which is exactly how a plausible-but-wrong unescaper survives. The \\u claims fail against an unescaper that passes \\u through, which is what this parser did before it carried json_hex4_at - a receipt detail field carrying a control character would have silently gained four literal hex characters and lost the character itself."
 
 fn parsed_string_of(text: String) -> String {
-  match parse_json(s: text) {
-    Present { value: v } => json_string_value_or_empty(v: v)
-    Absent => "<refused>"
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: v } => json_string_value_or_empty(v: v)
+    JsonDocumentUnreadable { gap: _ } => "<refused>"
   }
 }
 
 fn round_trips(text: String) -> Bool {
-  match parse_json(s: text) {
-    Present { value: v } => serialize_json(v: v) == text
-    Absent => false
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: v } => serialize_json(v: v) == text
+    JsonDocumentUnreadable { gap: _ } => false
   }
 }
 
@@ -31,17 +31,31 @@ test fn literals_and_numbers_round_trip() -> Bool {
   round_trips(text: "[true, false, null, -7, 1.5]")
 }
 
-test fn garbage_is_refused() -> Bool {
-  match parse_json(s: "\{not json") {
-    Absent => true
-    Present { value: _ } => false
+// THESE TWO ARE THE DISCRIMINATING EVIDENCE FOR THE WHOLE CUT, and before it they could not be.
+// Both documents answered `none`, so the pair asserted one fact twice: "refused". They now assert
+// the two GAPS, which is the distinction the Optional destroyed -- and the second document is the
+// one that makes the point, because `{} extra` PARSES COMPLETELY into a valid value and is refused
+// only by full consumption. "The bytes are damaged" and "a writer appended to this document, or two
+// documents were concatenated" have opposite remedies, and a reader told only `none` investigates
+// the wrong half.
+//
+// THE OFFSETS ARE ASSERTED, not merely the variants, because the offset is the fact the parser had
+// already computed and parse_json discarded for its entire life. A variant-only claim would pass
+// against a decoder that located everything at 0, which is exactly the plausible-but-wrong shape
+// this corpus keeps finding.
+test fn garbage_is_refused_as_malformed_at_its_offset() -> Bool {
+  match parse_json_document(s: "\{not json") {
+    JsonDocumentUnreadable { gap: JsonDocumentMalformedAt { at: at } } => at == 1
+    JsonDocumentUnreadable { gap: JsonDocumentTrailingContentAt { at: _ } } => false
+    JsonDocumentParsed { value: _ } => false
   }
 }
 
-test fn trailing_content_after_a_complete_value_is_refused() -> Bool {
-  match parse_json(s: "\{} extra") {
-    Absent => true
-    Present { value: _ } => false
+test fn trailing_content_after_a_complete_value_is_refused_as_trailing() -> Bool {
+  match parse_json_document(s: "\{} extra") {
+    JsonDocumentUnreadable { gap: JsonDocumentTrailingContentAt { at: at } } => at == 3
+    JsonDocumentUnreadable { gap: JsonDocumentMalformedAt { at: _ } } => false
+    JsonDocumentParsed { value: _ } => false
   }
 }
 
@@ -98,9 +112,9 @@ test fn a_lowercase_hex_escape_decodes_the_same_as_uppercase() -> Bool {
 }
 
 fn parses(text: String) -> Bool {
-  match parse_json(s: text) {
-    Present { value: _ } => true
-    Absent => false
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: _ } => true
+    JsonDocumentUnreadable { gap: _ } => false
   }
 }
 
