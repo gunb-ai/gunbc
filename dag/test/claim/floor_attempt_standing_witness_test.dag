@@ -28,6 +28,8 @@ import gunbc.floor_attempt_standing {
   floor_rendered_verdict_unestablished_name,
   floor_attempt_subject_receipt,
   floor_head_standing_unobserved,
+  floor_head_standing_not_applicable,
+  floor_head_standing_pull_request_event_name,
   AttemptStandsRed,
   AttemptStandsUnestablished,
   floor_evaluation_mechanism_name,
@@ -342,6 +344,29 @@ test fn w_RED_the_emitted_gate_renders_both_interruption_axes() -> Bool {
       string_contains(s: yml, pattern: "mechanism=")
         && string_contains(s: yml, pattern: "attribution=")
         && string_contains(s: yml, pattern: floor_mechanism_workflow_cancelled_name) == false
+    WitnessFloorGenerationRefused => false
+  }
+}
+
+
+// THE HEAD AXIS BRANCHES ON THE EVENT TYPE, NOT ON AN EMPTY PULL-REQUEST NUMBER.
+//
+// The negative conjunct is the load-bearing one and the reason this row exists at all. The first
+// cut of the gate branched on `[ -n "$PULL_REQUEST" ]`, which reads an ABSENT SUBJECT as an
+// OPT-OUT: a misspelled workflow context interpolates to the empty string exactly as a push event
+// does, so the receipt would report `not-applicable` for a pull-request run whose subject failed
+// to interpolate, and nothing anywhere could notice. Both arms compose identically today, so no
+// verdict changed -- which is precisely why only a row asserting the EMITTED SHAPE can hold it.
+//
+// Asserting the positive alone would stay green over a gate that branched on both, so the
+// absence of the `-n` test is what makes this discriminating rather than decorative.
+test fn w_RED_the_head_axis_branches_on_event_type_not_an_empty_subject() -> Bool {
+  match expected_witness_floor_yml() {
+    WitnessFloorGenerated { content: yml } =>
+      string_contains(s: yml, pattern: floor_head_standing_pull_request_event_name)
+        && string_contains(s: yml, pattern: floor_head_standing_not_applicable)
+        && string_contains(s: yml, pattern: floor_head_standing_unobserved)
+        && string_contains(s: yml, pattern: "'-n' \"$PULL_REQUEST\"") == false
     WitnessFloorGenerationRefused => false
   }
 }

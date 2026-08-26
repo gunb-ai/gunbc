@@ -45,9 +45,14 @@ import v2.std.logic { Bool }
 // actually produces. Modelling them as `String?` would invent a distinction the transport cannot
 // carry and would let a reader believe an absence had been observed as such.
 //
-// `pull_request` is empty for push, merge_group and workflow_dispatch runs. That emptiness is
-// the whole content of `NoPullRequestSubject` below -- an attempt with no pull request cannot be
-// superseded by a newer push to one.
+// `pull_request` is empty for push, merge_group and workflow_dispatch runs. THAT EMPTINESS IS
+// NOT WHAT DECIDES `NoPullRequestSubject`, and an earlier revision of this comment said it was.
+// The deciding fact is the EVENT TYPE: an attempt triggered by anything other than a pull request
+// cannot be superseded by a newer push to one. Reading the empty NUMBER instead would make a
+// misspelled workflow context -- which also interpolates to the empty string -- indistinguishable
+// from a genuine absence of subject, silently converting a required live read into an opt-out.
+// On a pull-request event an empty number is malformed input or an unreadable subject, which is a
+// deficit someone owns, and it belongs in `CurrentHeadNotAcquired` rather than here.
 //
 // THERE IS NO `run_attempt` FIELD, AND ITS ABSENCE IS A DECISION RATHER THAN AN OVERSIGHT.
 // `run_attempt` has no shape anywhere in `extdeps/` -- it exists in this repository only as the
@@ -316,6 +321,10 @@ data floor_head_standing_superseded: String = "superseded"
 data floor_head_standing_not_applicable: String = "not-applicable"
 data floor_head_standing_unobserved: String = "unobserved"
 
+// THE TRIGGER NAME THE HEAD AXIS BRANCHES ON. `NoPullRequestSubject` is decided by this and never
+// by an empty interpolated payload field; see the note on `FloorAttemptSubject`.
+data floor_head_standing_pull_request_event_name: String = "pull_request"
+
 fn floor_head_standing_name(standing: FloorHeadStanding) -> String {
   match standing {
     FloorHeadCurrent { measured: _ } => floor_head_standing_current
@@ -549,6 +558,16 @@ fn floor_rendered_verdict_name(verdict: FloorRenderedVerdict) -> String {
 // and it has executing consumers in `gunbc.tools.review` and `gunbc.tools.review_codex`. What is
 // missing is a step inside the required run that calls it, and the permission grant that would
 // let it.
+//
+// WHEN IT LANDS, `CurrentHeadNotAcquired { detail: String }` MUST BE SPLIT RATHER THAN POPULATED,
+// and the bare `String` is the tell. Today nothing but a fixture inhabits it, so the field is a
+// placeholder and not a decision; the moment a real acquisition fails there are TWO states with
+// OPPOSITE REPAIRS -- the read did not yield an accepted response (credential, transport, timeout,
+// HTTP non-success), which points at credentials and the network; and the transport succeeded but
+// the payload did not establish exactly one coherent head SHA, which points at the decoder and the
+// response contract. Folding those into one cause string is the state-space conflation this module
+// argues against everywhere else, and it would arrive disguised as "just filling in the detail".
+// (Raised by cool-hawk-324, who hit it building the acquisition carrier.)
 //
 // NEXT-RUNG TRIGGER: an operator agreement enrolling one authenticated read of the pull request's
 // current head in the aggregator, with `pull-requests: read` on that job. When it lands,

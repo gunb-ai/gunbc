@@ -23,6 +23,7 @@ import gunbc.floor_attempt_standing {
   floor_mechanism_unestablished_name,
   floor_attribution_unestablished_name,
   floor_head_standing_not_applicable,
+  floor_head_standing_pull_request_event_name,
   floor_head_standing_unobserved,
   floor_rendered_verdict_green_name,
   floor_rendered_verdict_red_name,
@@ -103,15 +104,6 @@ fn required_lanes_echo(words: List<Node>) -> Node {
 // that reads as coverage (DESIGN 4b), and the receipt saying `unobserved` is the honest form of
 // the same fact. `floor_attempt_standing_acquisition_trigger` carries what would change that.
 
-fn required_lane_word_nonempty_test(var_name: String) -> Node {
-  bash_build_test_bracket(
-    words: [
-      bash_build_word_lit(text: "-n"),
-      bash_build_word_var(name: var_name)
-    ]
-  )
-}
-
 fn required_lane_var_equals_lit_test(var_name: String, text: String) -> Node {
   bash_build_test_bracket(
     words: [
@@ -158,14 +150,38 @@ fn required_lanes_subject_receipt_stmt(
 // THE HEAD AXIS. Two reachable states and no third, and the split is by WHO OWNS THE REPAIR:
 // an attempt with no pull request cannot be superseded, so `not-applicable` is not a deficit;
 // an attempt with one, whose current head we cannot read, is `unobserved`, which is.
+// `not-applicable` IS DECIDED BY THE EVENT TYPE AND NEVER BY AN EMPTY PULL-REQUEST NUMBER, and
+// this is a correction rather than a preference (raised by cool-hawk-324 against the first cut).
+//
+// The first cut branched on `[ -n "$PULL_REQUEST" ]`. That reads an ABSENT SUBJECT as an OPT-OUT,
+// and the two are not the same thing. On a `pull_request` event an empty number is malformed
+// input or an unreadable subject -- a deficit someone owns -- while `not-applicable` says there
+// was nothing to observe in the first place. Deriving the second from the first means a
+// misspelled workflow context interpolates to the empty string and SILENTLY CONVERTS A REQUIRED
+// LIVE READ INTO AN OPT-OUT, with the receipt cheerfully reporting `not-applicable` and no
+// mechanism anywhere able to notice.
+//
+// TODAY THE TWO ARMS COMPOSE IDENTICALLY, so this changes no verdict. It is fixed now anyway
+// because it becomes load-bearing the instant head acquisition lands, and because a construction
+// that is only safe by coincidence is the kind this module exists to remove. The event name is a
+// fact about the trigger that no interpolation of the payload can erase.
+//
+// SO THE PULL-REQUEST NUMBER IS STILL BOUND AND STILL PRINTED -- it is the subject the later
+// acquisition will read -- but it no longer DECIDES anything here. On a pull-request event the
+// head axis is `unobserved` whether or not the number interpolated, which is the honest reading:
+// we did not observe the current head, and if the number is also empty that is a second deficit
+// the receipt shows rather than hides.
 fn required_lanes_head_standing_stmts(
-  pull_request_var: String,
+  event_name_var: String,
   standing_var: String
 ) -> List<Node> {
   [
     bash_build_assign_lit(name: standing_var, text: floor_head_standing_not_applicable),
     bash_build_if_from_stmts(
-      cond: required_lane_word_nonempty_test(var_name: pull_request_var),
+      cond: required_lane_var_equals_lit_test(
+        var_name: event_name_var,
+        text: floor_head_standing_pull_request_event_name
+      ),
       then_stmts: [
         bash_build_assign_lit(name: standing_var, text: floor_head_standing_unobserved)
       ]
@@ -375,6 +391,8 @@ fn required_lanes_gate_stmts(
   floor_result_expression: String,
   pull_request_var: String,
   pull_request_expression: String,
+  event_name_var: String,
+  event_name_expression: String,
   measured_head_var: String,
   measured_head_expression: String,
   run_id_var: String,
@@ -388,13 +406,14 @@ fn required_lanes_gate_stmts(
     bash_build_assign_lit(name: build_var, text: build_result_expression),
     bash_build_assign_lit(name: floor_var, text: floor_result_expression),
     bash_build_assign_lit(name: pull_request_var, text: pull_request_expression),
+    bash_build_assign_lit(name: event_name_var, text: event_name_expression),
     bash_build_assign_lit(name: measured_head_var, text: measured_head_expression),
     bash_build_assign_lit(name: run_id_var, text: run_id_expression)
   ]
   let through_head_axis = list_append(
     left: subject_assignments,
     right: required_lanes_head_standing_stmts(
-      pull_request_var: pull_request_var,
+      event_name_var: event_name_var,
       standing_var: standing_var
     )
   )

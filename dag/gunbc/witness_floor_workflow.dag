@@ -1185,6 +1185,10 @@ fn required_lanes_measured_head_expression() -> String {
   )
 }
 
+fn required_lanes_event_name_expression() -> String {
+  interpolate(expression: ContextAccess { context: Github, path: ["event_name"] })
+}
+
 fn required_lanes_run_id_expression() -> String {
   interpolate(expression: ContextAccess { context: Github, path: ["run_id"] })
 }
@@ -1225,6 +1229,7 @@ fn required_lanes_run_id_expression() -> String {
 data required_lanes_gate_build_var: String = "BUILD"
 data required_lanes_gate_floor_var: String = "FLOOR"
 data required_lanes_gate_pull_request_var: String = "PULL_REQUEST"
+data required_lanes_gate_event_name_var: String = "EVENT_NAME"
 data required_lanes_gate_measured_head_var: String = "MEASURED_HEAD"
 data required_lanes_gate_run_id_var: String = "RUN_ID"
 data required_lanes_gate_standing_var: String = "HEAD_STANDING"
@@ -1241,6 +1246,8 @@ fn required_lanes_aggregate_script_outcome() -> String? {
       floor_result_expression: required_lane_result_expression(job_id: floor_lane_job_id),
       pull_request_var: required_lanes_gate_pull_request_var,
       pull_request_expression: required_lanes_pull_request_expression(),
+      event_name_var: required_lanes_gate_event_name_var,
+      event_name_expression: required_lanes_event_name_expression(),
       measured_head_var: required_lanes_gate_measured_head_var,
       measured_head_expression: required_lanes_measured_head_expression(),
       run_id_var: required_lanes_gate_run_id_var,
