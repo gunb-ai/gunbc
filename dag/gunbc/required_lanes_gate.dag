@@ -154,21 +154,24 @@ fn required_lanes_gate_stmts(
 // AND IF THIS ONE CANNOT BE SERIALIZED EITHER, the workflow EMISSION refuses and no yaml is
 // written at all (`WitnessFloorGenerationRefused`). There is no third fallback, because a third
 // fallback is where a fabricated value would have to live.
+// THE RETURN IS THE RAW LIST, exactly as `required_lanes_gate_stmts` returns its four elements.
+// An earlier revision wrapped it in `bash_build_stmt_list_from_nodes`, which returns a single
+// `Node` -- so a function declared `-> List<Node>` handed one Node to a parameter expecting a
+// list, and the middle rung of the three-state argument above was dead in the very arm the
+// argument is about. Caught in review 55928.
 fn required_lanes_gate_unrenderable_stmts() -> List<Node> {
-  bash_build_stmt_list_from_nodes(
-    stmts: [
-      bash_build_with_redir(
-        inner: required_lanes_echo(
-          words: [
-            bash_build_word_lit(text: "echo"),
-            bash_build_word_lit(
-              text: "::error::the required-lanes gate could not be serialized from gunbc.required_lanes_gate; refusing rather than publishing an empty gate"
-            )
-          ]
-        ),
-        redir: ^bash_production_fold_redir_stdout_to_stderr
+  [
+    bash_build_with_redir(
+      inner: required_lanes_echo(
+        words: [
+          bash_build_word_lit(text: "echo"),
+          bash_build_word_lit(
+            text: "::error::the required-lanes gate could not be serialized from gunbc.required_lanes_gate; refusing rather than publishing an empty gate"
+          )
+        ]
       ),
-      bash_build_exit(code: "1")
-    ]
-  )
+      redir: ^bash_production_fold_redir_stdout_to_stderr
+    ),
+    bash_build_exit(code: "1")
+  ]
 }

@@ -4,6 +4,9 @@ import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id }
 import gunbc.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
+import gunbc.required_lanes_gate { required_lanes_gate_unrenderable_stmts }
+import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
+import v2.std.diagnostic { Outcome }
 
 // THE CI PHASES ARE THE PROGRAM'S TO SEQUENCE, NOT THE JOB'S (operator directive, 2026-08-20:
 // "i would much prefer if it was all handled within the witnesses step and within the gunbc
@@ -246,3 +249,27 @@ test fn w_RED_the_gate_runs_and_refuses_on_a_failed_lane() -> Bool {
 }
 
 data witness_live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+
+// THE UNRENDERABLE-GATE REFUSAL IS EXECUTED, NOT DESCRIBED.
+//
+// This arm exists because the receipt was once WRONG about it in a way nothing executed could
+// have caught: the refusal program was declared `-> List<Node>` while returning a single
+// stmt-list `Node`, so the middle rung of the gate's three-state argument -- "gate rejects, the
+// refusal still serializes, and the run stops loudly" -- was dead in exactly the arm the
+// argument is about (review 55928). The prose said it was Nodes through the same fold; what
+// executed was the wrong shape.
+//
+// So the property is asserted by running the fold over it and reading the program back: it must
+// SERIALIZE, and the text must carry both halves of the refusal -- the annotation the operator
+// sees and the nonzero exit that actually stops the line. An empty or exit-0 program here would
+// publish the required context green over lanes it never read.
+test fn the_unrenderable_gate_refusal_serializes_and_stops_the_line() -> Bool {
+  match bash_fold_serialize_program(stmts: required_lanes_gate_unrenderable_stmts(), set_e: false) {
+    Accepted { value: script, diagnostics: _ } =>
+      string_contains(s: script, pattern: "::error::")
+        && string_contains(s: script, pattern: "could not be serialized")
+        && string_contains(s: script, pattern: "exit 1")
+    Rejected { diagnostics: _ } => false
+  }
+}

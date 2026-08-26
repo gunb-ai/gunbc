@@ -174,22 +174,28 @@ pub fn report_moduleless_dag_entry_skips(skipped_paths: &[String]) {
 /// absent from the module index the subject is discovered from. Walks the filesystem rather than
 /// the index precisely because the index cannot represent these files -- asking the index would
 /// be asking the population that already excluded them.
-fn moduleless_dag_entry_paths_under_root(root_prefix: &str) -> Vec<String> {
+fn moduleless_dag_entry_paths_under_root(root_prefix: &str) -> Result<Vec<String>, String> {
     let root_abs = process_workspace_root().join(root_prefix);
     let mut paths = Vec::new();
     collect_dag_files(&root_abs, &mut paths);
     let mut entry_files: Vec<(String, String)> = Vec::new();
     for path in paths {
-        if let Ok(content) = std::fs::read_to_string(&path) {
-            entry_files.push((
-                workspace_relative_entry_path(&path.to_string_lossy()),
-                content,
-            ));
-        }
+        let content = std::fs::read_to_string(&path).map_err(|error| {
+            format!(
+                "cannot read {} while taking the module-less population under {root_prefix}: \
+                 {error} (the population exists to report which files were dropped from the \
+                 subject, so a file it cannot read is a refusal, not a silent omission)",
+                path.display()
+            )
+        })?;
+        entry_files.push((
+            workspace_relative_entry_path(&path.to_string_lossy()),
+            content,
+        ));
     }
     let mut out = moduleless_dag_entry_paths(&entry_files);
     out.sort();
-    out
+    Ok(out)
 }
 
 pub fn moduleless_dag_entry_paths(entry_files: &[(String, String)]) -> Vec<String> {
@@ -7115,7 +7121,8 @@ impl CompileDisposition {
     }
 }
 
-/// One entry's emission transaction, measured. Counts are reported whatever the
+/// One compile's emission transaction, measured -- one subject, one or more render targets.
+/// Counts are reported whatever the
 /// disposition, because a stopped line is analysed before it restarts (DESIGN §5) -- but
 /// they are reported BESIDE a disposition that says which state produced them, never in
 /// place of one.
@@ -7490,6 +7497,46 @@ pub struct CompileRequest {
 }
 
 impl CompileRequest {
+    /// A REQUEST NAMING NO TARGET CANNOT EXECUTE, and this is the refusal rather than a
+    /// vacuous completion.
+    fn names_at_least_one_target(&self) -> Result<(), String> {
+        if self.render_targets.is_empty() {
+            return Err(
+                "the request names no render target -- a resolution with nothing to emit is a \
+                 run that never reached emission, not an empty compile"
+                    .to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    /// A TARGET NAMED TWICE IS REFUSED, because the second emission would be written to the
+    /// first one's directory.
+    ///
+    /// This is reachable from the public CLI, not merely at the type level: `parse_render_targets`
+    /// appends every recognized component, so `--target rust+rust` parses to two targets, and a
+    /// multi-target run derives each target's output directory from the target -- so both
+    /// emissions land in `output_dir/rust`, the second overwriting the first, while the run
+    /// reports two completed emissions. The counts double, the artifact does not, and nothing
+    /// says so.
+    ///
+    /// Refused rather than deduplicated: silently collapsing the duplicate would answer a
+    /// request nobody made and destroy the only signal that the caller's argv is wrong (DESIGN
+    /// §5 -- a failure arm must refuse, never widen).
+    fn names_each_target_at_most_once(&self) -> Result<(), String> {
+        for (index, target) in self.render_targets.iter().enumerate() {
+            if self.render_targets[..index].contains(target) {
+                return Err(format!(
+                    "render target {} is named more than once -- each target's emission is \
+                     written to a directory derived from the target, so the second would \
+                     overwrite the first while the run reported both as completed",
+                    render_target_name(target)
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// THE SUBJECT AND THE PRECEDENCE ROOT MUST BE THE SAME ROOT, AND THIS REFUSES WHEN THEY
     /// ARE NOT.
     ///
@@ -7523,19 +7570,6 @@ impl CompileRequest {
     /// precedence root are THE SAME FIELD. Under it the disagreement has no spelling and this
     /// function has nothing to check, which is what dissolution on climb means -- this
     /// predicate is deleted by that carrier landing, not kept beside it.
-    /// A REQUEST NAMING NO TARGET CANNOT EXECUTE, and this is the refusal rather than a
-    /// vacuous completion.
-    fn names_at_least_one_target(&self) -> Result<(), String> {
-        if self.render_targets.is_empty() {
-            return Err(
-                "the request names no render target -- a resolution with nothing to emit is a \
-                 run that never reached emission, not an empty compile"
-                    .to_string(),
-            );
-        }
-        Ok(())
-    }
-
     fn primary_root_agrees_with_precedence(&self) -> Result<(), String> {
         match &self.subject {
             CompileSubject::Entry(_) => Ok(()),
@@ -7558,7 +7592,7 @@ impl CompileRequest {
 
 /// THE ENTRY-NAMED ALIASES ARE GONE, AND THAT COMPLETES A RENAME THAT HAD SHIPPED HALF.
 ///
-/// They were introduced pointing the wrong way -- `pub type CompileRun = CompileRun` --
+/// They were introduced pointing the wrong way -- `pub type CompileRun = EntryEmissionRun` --
 /// which makes the generic name an alias of the entry-named authority, so the canonical carrier
 /// stays the one named for a subject it no longer describes. Reversing the direction fixed the
 /// authority but left both spellings live, and two spellings for one type is the §3 violation
@@ -7569,7 +7603,8 @@ impl CompileRequest {
 /// to hold a root, so a consumer reading `run.entry` for a `PrimaryRoot` compile got a
 /// directory from a field that promises a file.
 
-/// THE EMISSION TRANSACTION. One entry, one render target, over `source_roots`.
+/// THE EMISSION TRANSACTION. One subject -- an entry or a primary root -- emitted for every
+/// requested render target, over `source_roots`.
 ///
 /// Both consumers call this and neither reimplements it: `gunbc compile --entry` (which
 /// then writes the tree and renders diagnostics) and `claim_executor --required-v2-emission`
@@ -7620,6 +7655,9 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
     let subject_label = request.subject.label();
     let started = std::time::Instant::now();
     if let Err(cause) = request.names_at_least_one_target() {
+        return compile_not_executed(&request.subject, started, "target-admission", cause);
+    }
+    if let Err(cause) = request.names_each_target_at_most_once() {
         return compile_not_executed(&request.subject, started, "target-admission", cause);
     }
     if let Err(cause) = request.primary_root_agrees_with_precedence() {
@@ -7777,8 +7815,14 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
         },
         // EVERY MODULE UNDER THE PRIMARY ROOT IS AN ENTRY, so the closure is those modules
         // plus their transitive IMPORT edges -- the walk `main.rs` performed before this
-        // transaction absorbed it. Reference derivation is not used here and that is not an
-        // oversight: with every module already an entry it could only over-pull.
+        // transaction absorbed it. Reference derivation IS used here, and an earlier revision
+        // of this comment said the opposite -- it read "reference derivation is not used here
+        // and that is not an oversight", which was written before the fixpoint expansion landed
+        // a few lines below and was left standing beside the call that falsifies it. The reason
+        // it is needed: the import walk pulls from the dependency POOL through import edges,
+        // and an import edge is strictly weaker than a reference in this flat namespace, so the
+        // walk under-pulls across the pool boundary. What is true of the ROOT is that every
+        // module under it is already in the subject, so no derivation is needed for those.
         //
         // A ROOT THAT MATCHES NO MODULE REFUSES rather than compiling nothing. Zero modules
         // is not a clean empty compile, it is the transaction failing to reach any subject,
@@ -7817,7 +7861,19 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
             // classification (`RootPopulation`), under which every `.dag` carries exactly one
             // role and an unclassified file refuses. Until that lands this is countable
             // visibility, not a wall.
-            let moduleless = moduleless_dag_entry_paths_under_root(&root_prefix);
+            // A `.dag` THAT CANNOT BE READ IS A REFUSAL, NOT AN OMISSION. The walk's contract
+            // is "every `.dag` under the root", and an `if let Ok(..)` that skips an unreadable
+            // file narrows that to "every READABLE `.dag`" while still reporting under the
+            // wider name -- so a permission error or a mid-walk deletion would remove a file
+            // from the visibility population that exists to say which files were removed from
+            // the subject. That is the empty-observation narrow at the one place whose job is
+            // to prevent it.
+            let moduleless = match moduleless_dag_entry_paths_under_root(&root_prefix) {
+                Ok(paths) => paths,
+                Err(cause) => {
+                    return compile_not_executed(&request.subject, started, "subject-read", cause)
+                }
+            };
             report_moduleless_dag_entry_skips(&moduleless);
 
             if entry_sources.is_empty() {
