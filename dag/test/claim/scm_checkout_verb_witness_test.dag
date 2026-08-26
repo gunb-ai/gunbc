@@ -1,0 +1,233 @@
+module test.claim.scm_checkout_verb_witness
+
+// THE CHECKOUT VERB AT REPOSITORY GRAIN. The reconstruction half of checkout is already covered by
+// scm_object_store_witness; these claims are about SELECTION -- which commit a repository is
+// positioned at, what refuses, and what checkout does and does not depend on.
+//
+// THE CLAIM THIS FILE EXISTS FOR is scm_ck_a_commit_with_a_missing_parent_still_checks_out: it is
+// the only one that could not be guessed from the type, and it is the one that would go red if
+// someone later "fixed" checkout to consult ancestry.
+
+import std.types { Bool, String, List }
+import v2.std.node { Node, Symbol, TypeNode, Atom, node_synthetic }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.scm.object_store {
+  ObjectStore,
+  ObjectId,
+  empty_store,
+  store_node,
+  Stored,
+  LocatorCollision,
+  object_id_eq,
+}
+import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit, commit_at_reference }
+import gunbc.scm.ancestry {
+  CommitAncestry,
+  RootCommit,
+  DescendsFrom,
+  CommitAncestryLookup,
+  AncestryKnown,
+  AncestryUnknownCommit,
+  AncestryWalk,
+  AncestryTraced,
+  AncestryBrokenAt,
+  AncestryStartNotInHistory,
+  AncestryRevisitsACommit,
+  ancestry_walk,
+}
+import gunbc.scm.checkout {
+  Commit,
+  CheckoutRefusal,
+  MissingObject,
+  RepositoryCheckout,
+  RepositoryCheckedOut,
+  CheckoutReferenceUnresolved,
+  CheckoutProgramUnreconstructable,
+  checkout_repository_at,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Names qualified: top-level definitions are corpus-wide and the resolver silently selects among
+// duplicates (#8707), which this layer's witness files already document hitting.
+type ScmCkPut {
+  store: ObjectStore
+  identity: ObjectId
+}
+
+fn scm_ck_put(store: ObjectStore, n: Node) -> ScmCkPut {
+  match store_node(store: store, n: n) {
+    Stored { store: s, identity: identity } => ScmCkPut { store: s, identity: identity }
+    LocatorCollision { identity: identity, existing: _, incoming: _ } =>
+      ScmCkPut { store: store, identity: identity }
+  }
+}
+
+fn scm_ck_atom(name: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: name } }, children: [])
+}
+
+// A repository with two commits, the second stating the first as its parent, and BOTH root objects
+// present in the store.
+fn scm_ck_two_commit_repository() -> RepositoryEnvelope {
+  let first = scm_ck_put(store: empty_store(), n: scm_ck_atom(name: ^alpha))
+  let second = scm_ck_put(store: first.store, n: scm_ck_atom(name: ^beta))
+  RepositoryEnvelope {
+    store: second.store,
+    commits: [
+      RepositoryCommit { root: first.identity, message: "first", ancestry: RootCommit },
+      RepositoryCommit {
+        root: second.identity,
+        message: "second",
+        ancestry: DescendsFrom { parent: first.identity },
+      },
+    ],
+    checked_out: none,
+  }
+}
+
+test fn scm_ck_checking_out_a_commit_positions_the_repository_at_it() -> Bool {
+  let repo = scm_ck_two_commit_repository()
+  match checkout_repository_at(repo: repo, reference: "1") {
+    RepositoryCheckedOut { repository: r, program: _ } =>
+      match r.checked_out {
+        Absent => false
+        Present { value: selected } =>
+          match commit_at_reference(commits: repo.commits, reference: "1") {
+            Absent => false
+            Present { value: c } => object_id_eq(left: selected, right: c.root)
+          }
+      }
+    CheckoutReferenceUnresolved { reference: _ } => false
+    CheckoutProgramUnreconstructable { reference: _, cause: _ } => false
+  }
+}
+
+// THE ARGUMENT IS NOT MUTATED. A verb that edited its input in place would make "check out, then
+// compare against where we were" impossible, and every caller would need a copy it did not ask for.
+test fn scm_ck_checkout_leaves_its_argument_unpositioned() -> Bool {
+  let repo = scm_ck_two_commit_repository()
+  match checkout_repository_at(repo: repo, reference: "1") {
+    RepositoryCheckedOut { repository: _, program: _ } =>
+      match repo.checked_out {
+        Absent => true
+        Present { value: _ } => false
+      }
+    CheckoutReferenceUnresolved { reference: _ } => false
+    CheckoutProgramUnreconstructable { reference: _, cause: _ } => false
+  }
+}
+
+// A REFERENCE NAMING NO COMMIT IS THE CALLER'S FACT. It asserts the arm AND the reference, not merely
+// that something refused: a checkout that refused everything would satisfy a bare refusal claim, and
+// the positive control above is what stops that reading.
+test fn scm_ck_a_reference_naming_no_commit_is_unresolved() -> Bool {
+  match checkout_repository_at(repo: scm_ck_two_commit_repository(), reference: "7") {
+    CheckoutReferenceUnresolved { reference: r } => r == "7"
+    RepositoryCheckedOut { repository: _, program: _ } => false
+    CheckoutProgramUnreconstructable { reference: _, cause: _ } => false
+  }
+}
+
+// A repository whose commit names a root the store does not hold: the commit exists, the program
+// does not.
+fn scm_ck_lost_object_repository() -> RepositoryEnvelope {
+  let present = scm_ck_put(store: empty_store(), n: scm_ck_atom(name: ^alpha))
+  let absent = scm_ck_put(store: empty_store(), n: scm_ck_atom(name: ^gamma))
+  RepositoryEnvelope {
+    store: present.store,
+    commits: [
+      RepositoryCommit { root: absent.identity, message: "lost", ancestry: RootCommit },
+    ],
+    checked_out: none,
+  }
+}
+
+// A LOST OBJECT IS THE STORE'S FACT, NOT THE CALLER'S, and this is the claim that keeps the two
+// refusals from being collapsed. The reference resolves perfectly -- the commit is right there in
+// the log -- and the failure is that the repository has lost an object it needs. Reporting "no such
+// commit" here would tell a user their commit does not exist while it sits in front of them.
+test fn scm_ck_a_lost_object_is_the_stores_fact_not_the_callers() -> Bool {
+  match checkout_repository_at(repo: scm_ck_lost_object_repository(), reference: "0") {
+    CheckoutProgramUnreconstructable { reference: r, cause: cause } =>
+      r == "0"
+        && match cause {
+             MissingObject { identity: _ } => true
+           }
+    CheckoutReferenceUnresolved { reference: _ } => false
+    RepositoryCheckedOut { repository: _, program: _ } => false
+  }
+}
+
+// A repository whose only commit states a parent that is NOT in the commit list -- a truncated
+// history -- while the commit's own root object is wholly present.
+fn scm_ck_truncated_history_repository() -> RepositoryEnvelope {
+  let missing_parent = scm_ck_put(store: empty_store(), n: scm_ck_atom(name: ^ancestor))
+  let child = scm_ck_put(store: empty_store(), n: scm_ck_atom(name: ^child))
+  RepositoryEnvelope {
+    store: child.store,
+    commits: [
+      RepositoryCommit {
+        root: child.identity,
+        message: "child of a commit this repository does not have",
+        ancestry: DescendsFrom { parent: missing_parent.identity },
+      },
+    ],
+    checked_out: none,
+  }
+}
+
+// ============================================================================================
+// THE CLAIM THIS FILE EXISTS FOR: CHECKOUT DOES NOT CONSULT ANCESTRY, AND THAT IS CORRECT.
+//
+// A commit's program is its ROOT CLOSURE; ancestry is a chain over COMMITS. Two graphs, two
+// populations, and reconstruction walks only the first. So a commit whose parent is missing checks
+// out exactly right -- the history is truncated and the program is not.
+//
+// This is the witness that would go red if someone later "fixed" checkout to require a readable
+// ancestry, which is a plausible-looking change: it would mean a damaged history silently costs a
+// user access to programs that are completely intact.
+// ============================================================================================
+test fn scm_ck_a_commit_with_a_missing_parent_still_checks_out() -> Bool {
+  match checkout_repository_at(repo: scm_ck_truncated_history_repository(), reference: "0") {
+    RepositoryCheckedOut { repository: _, program: _ } => true
+    CheckoutReferenceUnresolved { reference: _ } => false
+    CheckoutProgramUnreconstructable { reference: _, cause: _ } => false
+  }
+}
+
+// THE OTHER HALF OF THAT CLAIM, AND WITHOUT IT THE ONE ABOVE PROVES NOTHING. It establishes that the
+// history in that same repository really IS broken -- so the successful checkout above is checkout
+// correctly ignoring ancestry, rather than a fixture that accidentally has none. One repository, one
+// commit, two questions, two different answers, both right.
+test fn scm_ck_that_same_commit_has_a_broken_ancestry() -> Bool {
+  let repo = scm_ck_truncated_history_repository()
+  match commit_at_reference(commits: repo.commits, reference: "0") {
+    Absent => false
+    Present { value: c } =>
+      match ancestry_walk(
+        start: c.root,
+        history: [c.root],
+        lookup: fn(id) { scm_ck_lookup_in(commits: repo.commits, wanted: id) },
+      ) {
+        AncestryBrokenAt { commit: at, missing_parent: _ } => object_id_eq(left: at, right: c.root)
+        AncestryTraced { chain: _ } => false
+        AncestryStartNotInHistory { start: _ } => false
+        AncestryRevisitsACommit { detected_from: _ } => false
+      }
+  }
+}
+
+fn scm_ck_lookup_in(commits: List<RepositoryCommit>, wanted: ObjectId) -> CommitAncestryLookup {
+  fold(commits, init: AncestryUnknownCommit, f: fn(acc, c) {
+    match acc {
+      AncestryKnown { ancestry: _ } => acc
+      AncestryUnknownCommit =>
+        if object_id_eq(left: c.root, right: wanted) {
+          AncestryKnown { ancestry: c.ancestry }
+        } else {
+          AncestryUnknownCommit
+        }
+    }
+  })
+}
