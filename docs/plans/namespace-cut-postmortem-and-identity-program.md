@@ -4850,6 +4850,24 @@ name or span is the forbidden reconstruction again. So **the answer side must be
 construction regardless of what any join measurement returns**, and no positive join result could
 ever have reduced this to a logging hook.
 
+**AND THE MAPPING IN THE FIRST FILING OF THIS SECTION WAS INVERTED — CORRECTED BY THE MEASURER, AND
+IT MAKES THE POSITION WORSE** (cool-swift-307, 2026-08-26). This lane wrote that §11.2z's join would
+*at best have related the QUERY side, leaving the target side to build.* **The join was aimed at the
+TARGET side**: X selects a declaration, and `(module_path, authored_name)` was meant to recover *that
+declaration's* `OccurrenceId`. The query side — *which reference occurrence asked* — was never touched
+by it, and the original report said so explicitly.
+
+So the true state is not *one end related, one end to build*. It is:
+
+```
+TARGET side   would have been supplied BY FORBIDDEN RECONSTRUCTION   → not supplied at all
+QUERY side    never touched by the join                              → not supplied at all
+```
+
+**Both ends lack minted identity, and the measurement shortcuts neither.** The inverted version
+understated the remaining work by one whole end of the relation — and it understated it in the
+direction that makes the vertical look nearly done.
+
 **THE TWO FINDINGS ARE ONE SPINE, WHICH DISSOLVES THE RANKING QUESTION RATHER THAN ANSWERING IT.**
 
 ```
