@@ -4,7 +4,9 @@ import std.types { String, List, NonEmptyStr, Int }
 import std.algebra { trim }
 import std.content_hash { serialize_content_hash, as_content_hash_cryptographic, sha256_hex_digest }
 import extdeps.languages.json.parse {
-  parse_json,
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
   json_object_unique_member,
   json_string_value_or_empty,
   JsonMemberFound,
@@ -1411,9 +1413,9 @@ type SparkServingManifestDecode
   | SparkServingManifestNamesNoBlobs
 
 fn spark_serving_manifest_decode(body: String) -> SparkServingManifestDecode {
-  match parse_json(s: body) {
-    Absent => SparkServingManifestUnparseable
-    Present { value: doc } =>
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => SparkServingManifestUnparseable
+    JsonDocumentParsed { value: doc } =>
       match spark_serving_manifest_descriptor_lists(doc: doc) {
         SparkServingManifestMalformed { detail: d } => SparkServingManifestMalformed { detail: d }
         SparkServingManifestUnparseable => SparkServingManifestUnparseable

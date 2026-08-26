@@ -10,14 +10,16 @@ import tools.dag_compile_clean_shard_roster {
   compile_clean_shard_entry_paths
 }
 import tools.emission_entry_instrument { EmissionMeasurement, measure_entry_emission }
+import extdeps.shell
 import gunbc.emit_subject_clean_frontier {
+  RatchetUniverse,
+  DualUniverse,
+  IndexOnlyUniverse,
   EmitSubjectCleanRatchet,
   EmitRatchetStanding,
   EmitRatchetHeld,
   EmitRatchetRefused,
   RosterDiscoveryPolicy,
-  RosterDenominators,
-  DeclarationIndexOnly,
   DeclarationIndexUnderRoots,
   emit_subject_clean_admissions,
   emit_ratchet_report_text,
@@ -43,13 +45,7 @@ data emit_subject_clean_roster_policy: RosterDiscoveryPolicy = DeclarationIndexU
   roots: witness_layer_roots
 }
 
-// ONE DENOMINATOR TODAY, AND THE CARRIER REFUSES TO BE GATED ON IT. A module that stops parsing is
-// not indexed, so it is not a subject, so the fold is never asked about it -- it vanishes from the
-// denominator rather than blocking, and a shrinking denominator makes everything left look better.
-// The second denominator is a module inventory, and until it lands
-// gunbc.emit_subject_clean_frontier emit_ratchet_gating_admission refuses any enrolment naming
-// exactly what is missing.
-data emit_subject_clean_roster_denominators: RosterDenominators = DeclarationIndexOnly
+
 
 // THE ROSTER IS DISCOVERED, NEVER AUTHORED. compile_clean_shard_entry_paths reads the parsed
 // declaration index under the declared source roots, so the universe is not derived from imports,
@@ -76,6 +72,58 @@ fn emit_ratchet_roster() -> EmitRatchetRosterRead {
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// THE SECOND DENOMINATOR: the file inventory.
+//
+// WHY IT IS A FIND AND NOT A SECOND INDEX. The declaration index answers "which modules parsed";
+// this answers "which .dag files EXIST". A file that the index cannot classify is invisible to the
+// first question and plainly visible to the second, and no amount of care inside the index closes
+// that -- `module_path_index` documents its own unclassified arm as inseparable, and it is
+// inseparable FROM THE INDEX. Presence on disk does not depend on whether the header parsed.
+//
+// SORTED, so two runs over an unchanged tree produce the same roster and therefore the same digest.
+// Traversal order is not a fact about the corpus and must not reach the identity.
+type ModuleInventoryRead
+  = ModuleInventoryFiles { paths: List<String> }
+  | ModuleInventoryUnreadable { root: String, cause: String }
+
+fn inventory_lines(stdout: String) -> List<String> {
+  fold(
+    split(s: stdout, delimiter: "\n"),
+    init: [],
+    f: (acc, line) => if line == "" { acc } else { concat(acc, [line]) }
+  )
+}
+
+// A ROOT THAT CANNOT BE LISTED REFUSES, and does not contribute an empty list. An unreadable root
+// rendered as "no files here" is the empty-observation narrow at the point where the denominator is
+// built -- the failure would shrink the universe, which is the precise defect this denominator was
+// added to close, committed by the thing closing it.
+fn module_inventory_for_root(root: String) -> ModuleInventoryRead {
+  let found = shell.Find.FilesByNameSorted(root: root, name_glob: "*.dag")
+  if !found.success {
+    ModuleInventoryUnreadable { root: root, cause: found.stderr }
+  } else {
+    ModuleInventoryFiles { paths: inventory_lines(stdout: found.stdout) }
+  }
+}
+
+fn module_inventory(roots: List<String>) -> ModuleInventoryRead {
+  fold(
+    roots,
+    init: ModuleInventoryFiles { paths: [] },
+    f: (acc, root) =>
+      match acc {
+        ModuleInventoryUnreadable { root: r, cause: c } => ModuleInventoryUnreadable { root: r, cause: c }
+        ModuleInventoryFiles { paths: so_far } =>
+          match module_inventory_for_root(root: root) {
+            ModuleInventoryUnreadable { root: r, cause: c } => ModuleInventoryUnreadable { root: r, cause: c }
+            ModuleInventoryFiles { paths: more } => ModuleInventoryFiles { paths: concat(so_far, more) }
+          }
+      }
+  )
+}
+
 fn selected_entries(entries: String, roster: List<String>) -> List<String> {
   if entries == "" {
     roster
@@ -92,11 +140,17 @@ fn measure_selected(selection: List<String>) -> List<EmissionMeasurement> {
   map(selection, entry => measure_entry_emission(entry: entry))
 }
 
-fn run_emit_subject_clean_ratchet(entries: String, roster: List<String>) -> EmitSubjectCleanRatchet {
+fn run_emit_subject_clean_ratchet(
+  entries: String,
+  roster: List<String>,
+  inventory: List<String>
+) -> EmitSubjectCleanRatchet {
   fold_emit_subject_clean_ratchet(
-    policy: emit_subject_clean_roster_policy,
-    denominators: emit_subject_clean_roster_denominators,
-    roster: roster,
+    universe: DualUniverse {
+      policy: emit_subject_clean_roster_policy,
+      entries: roster,
+      inventory: inventory
+    },
     admissions: emit_subject_clean_admissions,
     measurements: measure_selected(selection: selected_entries(entries: entries, roster: roster))
   )
@@ -115,7 +169,7 @@ fn run_emit_subject_clean_ratchet(entries: String, roster: List<String>) -> Emit
 // THE EXIT STATUS REPORTS THE RATCHET, and unlike the instrument beneath it that is a statement
 // about the SUBJECT: a refusing standing is a refusing entry, an orphaned admission row, or a run
 // that did not measure its whole roster. An instrument that could not run reaches the fold as
-// RatchetStandingUnestablished and refuses there, so a broken instrument and a dirty corpus are
+// RatchetNotEvaluated and refuses there, so a broken instrument and a dirty corpus are
 // both nonzero -- and the report says which, per subject, on its own row.
 fn check(entries: String, report: String) -> ProcessExit {
   if report == "" {
@@ -124,24 +178,34 @@ fn check(entries: String, report: String) -> ProcessExit {
     match emit_ratchet_roster() {
       EmitRatchetRosterUnreadable { cause: c } =>
         exit_failure(reason: concat("check: the entry roster could not be read — ", c))
-      EmitRatchetRosterEntries { entries: roster } => {
-        let r = run_emit_subject_clean_ratchet(entries: entries, roster: roster)
-        let write = Filesystem.Write(path: report, content: emit_ratchet_report_text(r: r))
-        if !write.success {
-          exit_failure(reason: concat("check: could not write the standing to ", report))
-        } else {
-          match emit_ratchet_standing(r: r) {
-            EmitRatchetHeld { subject_count: _ } => ExitSuccess
-            EmitRatchetRefused { failing_rows: rows } =>
-              exit_failure(
-                reason: concat(
-                  concat("check: the emit-subject clean ratchet refused — ", to_string(count(rows))),
-                  concat(" row(s), named in ", report)
-                )
+      EmitRatchetRosterEntries { entries: roster } =>
+        match module_inventory(roots: witness_layer_roots) {
+          ModuleInventoryUnreadable { root: rt, cause: c } =>
+            exit_failure(
+              reason: concat(
+                concat("check: the file inventory could not list ", rt),
+                concat(" — refusing rather than folding an unreadable root into an empty one: ", c)
               )
+            )
+          ModuleInventoryFiles { paths: inventory } => {
+            let r = run_emit_subject_clean_ratchet(entries: entries, roster: roster, inventory: inventory)
+            let write = Filesystem.Write(path: report, content: emit_ratchet_report_text(r: r))
+            if !write.success {
+              exit_failure(reason: concat("check: could not write the standing to ", report))
+            } else {
+              match emit_ratchet_standing(r: r) {
+                EmitRatchetHeld { subject_count: _ } => ExitSuccess
+                EmitRatchetRefused { failing_rows: rows } =>
+                  exit_failure(
+                    reason: concat(
+                      concat("check: the emit-subject clean ratchet refused — ", to_string(count(rows))),
+                      concat(" row(s), named in ", report)
+                    )
+                  )
+              }
+            }
           }
         }
-      }
     }
   }
 }

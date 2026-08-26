@@ -80,7 +80,7 @@ fn ts_import_pipeline_parse_import_node(source: String) -> Outcome<Node> {
             Absent =>
               outcome_rejected(Diagnostic {
                 reason: ^ts_import_pipeline_no_import_found,
-                at: port_locus(port: ^ts_import_pipeline_probe),
+                at: invariant_port_locus(port: ^ts_import_pipeline_probe, invariant: ^ts_import_pipeline_no_import_found),
                 correction: Unavailable { reason: ExternalContractUnknown }
               })
             Present { value: import_node } =>

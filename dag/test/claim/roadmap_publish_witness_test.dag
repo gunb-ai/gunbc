@@ -725,11 +725,35 @@ test fn a_receipt_missing_its_subject_refuses() -> Bool {
   }
 }
 
+// THIS WITNESS CAUGHT THE parse_json TYPE CUT, WHICH IS WHY IT IS STRENGTHENED RATHER THAN PATCHED.
+// It asserted that the refusal reason contained "complete JSON value" -- prose that this decoder
+// used to spell for EVERY unreadable receipt. The cut replaced that one sentence with a LOCATED gap,
+// so the phrase survives only on the trailing-content arm, and the witness went red on main. That is
+// the migration working: a consumer depending on a fabricated summary refused the moment the summary
+// became a fact.
+//
+// It now asserts the located refusal EXACTLY rather than by substring. The offset is derived, not
+// copied from a run: "not a receipt" is not a JSON value at its very first byte, so a parser that
+// reports where the document stopped being readable must say offset 0. A substring claim would pass
+// against a decoder that located everything at 0 by accident.
 test fn a_receipt_that_is_not_json_refuses() -> Bool {
   match publication_receipt_decode(receipt: "not a receipt") {
     ReceiptDecoded { receipt: _ } => false
     ReceiptUndecodable { reason: r } =>
-      string_contains(s: r, pattern: "complete JSON value")
+      r == "the publication receipt is not readable as JSON at offset 0"
+  }
+}
+
+// THE ARM THE OLD PROSE COULD NOT DISTINGUISH, and the reason the cut was worth making here. This
+// receipt PARSES COMPLETELY into a valid value and is refused only by full consumption -- under the
+// predecessor it produced the identical sentence as the garbage above, so a reader could not tell
+// "these bytes are damaged" from "a writer appended to this receipt, or two were concatenated".
+// Those have opposite remedies.
+test fn a_receipt_with_trailing_content_refuses_as_trailing_not_as_garbage() -> Bool {
+  match publication_receipt_decode(receipt: "\{} tail") {
+    ReceiptDecoded { receipt: _ } => false
+    ReceiptUndecodable { reason: r } =>
+      r == "the publication receipt is one complete JSON value followed by trailing content at offset 3"
   }
 }
 

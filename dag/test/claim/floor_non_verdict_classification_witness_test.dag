@@ -38,15 +38,29 @@ test fn every_classified_non_verdict_row_carries_measured_evidence() -> Bool {
   every_row_carries_measured_evidence()
 }
 
+// THE INHABITANCE ROW IS DELETED BECAUSE ITS POPULATION IS REPAID, NOT TO MAKE A TEST AGREE WITH
+// BEHAVIOUR. It asserted `stale_enrolment_count() > 0 && unmeasured_count() > 0` -- that neither
+// class was empty and neither had swallowed the other -- and it was the right assertion while the
+// carrier held a live debt population. Every row is now gone: the nine ClosureDependentResolution
+// rows and the two StandingUnmeasured rows all ANSWER and PASS on the required floor after the
+// local-binding-shadow repair, and the four ClosureIndependent rows were repaid earlier at their
+// own producer. A row asserting that a repaid population is non-empty is not evidence that
+// anything works; it is an assertion that the debt must continue to exist, which would make the
+// carrier unable to reach the empty terminal state its own header declares.
+//
+// THE DISTINCTION THIS TURNS ON, stated because the two moves look identical in a diff: editing a
+// witness so it agrees with current behaviour is a claim about the world and is forbidden;
+// deleting a witness whose SUBJECT no longer exists is dissolution. Nothing here weakens a
+// judgment about the classification carrier -- the join, the uniqueness, the evidence-present and
+// the exact-partition rows in this file are untouched and still gate, and they are what red if a
+// row is added or removed anywhere. What is deleted is a claim about the population's SIZE, which is
+// exactly the shape this file already removed once when `row_count() == 15` was found to be a
+// change detector.
+//
+// IT COMES BACK WITH THE DEBT. The carrier keeps both arms declared with their repayment receipts
+// precisely because the causes remain constructible; the day a row is authored into either, this
+// assertion is the one to restore, and the receipts name what would put it there.
 test fn standing_partition_is_exact_over_the_population() -> Bool {
   (stale_enrolment_count() + honest_debt_count() + unmeasured_count())
     == classified_non_verdict_row_count()
-}
-
-// The result this carrier exists to make unmissable, stated as a partition property rather than
-// a literal: SOME rows assert a red that does not exist and SOME were never measured, so neither
-// class is empty and neither has swallowed the other. How many are in each is a measurement the
-// carrier's rows carry; asserting it here would re-mint the change detector removed above.
-test fn both_the_stale_and_the_unmeasured_classes_are_inhabited() -> Bool {
-  stale_enrolment_count() > 0 && unmeasured_count() > 0
 }

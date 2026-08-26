@@ -14,6 +14,9 @@ import gunbc.roadmap_site_surface_render { healthz_body_with_release_identity }
 import gunbc.roadmap_site_surface_expect {
   roadmap_site_healthz_surface_is_current,
   healthz_surface_projection,
+  HealthzSurfaceProjected,
+  HealthzBodyUnreadable,
+  HealthzSurfaceMembersIncomplete,
 }
 import gunbc.running_release_identity {
   RunningReleaseIdentity,
@@ -178,11 +181,13 @@ test fn witness_surface_projection_ignores_identity_members() -> Bool {
   let surface_only = witness_bundle().healthz_body
   let with_identity = healthz_body_at_revision(revision: deploy_witness_release_revision)
   let same_surface = match healthz_surface_projection(body: surface_only) {
-    Absent => false
-    Present { value: a } =>
+    HealthzBodyUnreadable => false
+    HealthzSurfaceMembersIncomplete { present: _ } => false
+    HealthzSurfaceProjected { surface: a } =>
       match healthz_surface_projection(body: with_identity) {
-        Absent => false
-        Present { value: b } => a == b
+        HealthzBodyUnreadable => false
+        HealthzSurfaceMembersIncomplete { present: _ } => false
+        HealthzSurfaceProjected { surface: b } => a == b
       }
   }
   same_surface
@@ -261,3 +266,21 @@ test fn witness_duplicate_revision_member_refuses() -> Bool {
 data duplicate_member_note: String = "TWO REVISION MEMBERS MEANS TWO WRITERS, AND PICKING EITHER WOULD BE A FABRICATED ANSWER ABOUT WHICH PROCESS IS RUNNING. A JSON reader that takes the first or the last would answer plausibly and be right half the time; the observation refuses instead. This is the one arm a hand-written extractor almost always gets wrong, which is why it is stated here rather than left to the general parser's reputation."
 
 data live_process_identity_immutability_receipt: String = "EXECUTED 2026-08-07 AGAINST HEAD c4fe948f201, THREE REAL PROCESSES, AND THE FIRST ATTEMPT AT IT WAS VACUOUS. The property owed was that `gunbc serve` binds what it serves ONCE at process start, so a tree that changes underneath a running process does not change its answers. Recipe, reproducible: launch `gunbc serve --entry dag/gunbc/roadmap_serve.dag --function roadmap_serve_handle --port P --release-revision R` per process, read /healthz, mutate, read again.\\n\\nOBSERVED. Process 1 (port 18731, launched at revision 0123...4567) answered service=gunbc-roadmap. With process 1 still running, dag/gunbc/roadmap_site_surface_render.dag roadmap_site_service_name was edited on disk to gunbc-roadmap-PROBE. Process 1 continued answering service=gunbc-roadmap and revision=0123...4567 — unchanged. Process 3 (port 18733, launched AFTER the edit at revision fedc...ba98) answered service=gunbc-roadmap-PROBE and revision=fedc...ba98. Same bytes on disk, same instant, two different answers, distinguished only by launch time.\\n\\nWHY THE SECOND PROCESS IS THE WHOLE POINT. The first attempt mutated ROADMAP.md and observed no change in the running process — which looked like a pass and proved nothing, because a FRESH process on the mutated tree reported the same digest too. /ROADMAP.md is itself a generated projection of the .dag roadmap authority, so editing the file changes nothing anyone serves. A negative control with no positive control beside it cannot tell immutability from an input that was never read; running the fresh process is what converted a vacuous green into a discriminating one, and it is the reason the mutation subject moved from a generated artifact to a .dag authority.\\n\\nA THIRD FACT FELL OUT, UNLOOKED FOR. Three processes ran concurrently against ONE tree at three declared revisions (0123...4567, 89ab...cdef, fedc...ba98) and each reported its own. Whatever answers /healthz cannot be reading the revision from any shared ambient source — not disk, not env, not git HEAD — because all three share every one of those and disagree anyway.\\n\\nWHAT IS STILL OWED, so this is not read as more than it is: the run was performed by hand, not by an enrolled witness. Each process costs about 100 s of graph compile, so three of them are far outside the per-PR fast lane and enrolling them there would be the cost-shape defect the 2026-08-04 witness-cost ruling names. The trigger is the wet cadence lane: this belongs there as a budgeted wet control, and until it is enrolled the property is established by this receipt at one head rather than defended against regression."
+
+data surface_projection_refusal_discrimination_note: String = "THE CLAIM THIS CHANGE EXISTS FOR, AND IT IS NOT AN ORDINARY MISSING-CASE TEST. healthz_surface_projection returned String?, so `none` answered BOTH 'this body is not JSON' and 'this body is JSON without the surface members'. At an Optional that collapse is worse than at a Bool: the failure is not merely unreported, it is indistinguishable from the ordinary negative result, and the consumer rendered both as ServedSurfaceStale -- telling a deploy operator that the right process serves the wrong tree when an HTML error page was answering the port. The two witnesses below assert the two causes are now different values; without the pair, either could be produced for everything and a single-cause claim would still pass."
+
+test fn RED_unreadable_healthz_body_is_not_a_missing_member() -> Bool {
+  match healthz_surface_projection(body: "<html>502 Bad Gateway</html>") {
+    HealthzBodyUnreadable => true
+    HealthzSurfaceMembersIncomplete { present: _ } => false
+    HealthzSurfaceProjected { surface: _ } => false
+  }
+}
+
+test fn RED_parsed_body_missing_surface_members_is_not_unreadable() -> Bool {
+  match healthz_surface_projection(body: "{\"ok\":true}") {
+    HealthzSurfaceMembersIncomplete { present: n } => n == 0
+    HealthzBodyUnreadable => false
+    HealthzSurfaceProjected { surface: _ } => false
+  }
+}

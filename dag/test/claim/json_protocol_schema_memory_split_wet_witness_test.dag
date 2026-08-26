@@ -7,6 +7,10 @@ import gunbc.package_delivery {
   codex_runtime_lock_path,
   codex_runtime_manifest_path,
   materialize_codex_runtime_finish_bisect_parse_largest_protocol_schema_only,
+  SchemaFileConforms,
+  SchemaFileNotDecodable,
+  SchemaFileNotCanonicalizable,
+  SchemaFileUnreadable,
   materialize_codex_runtime_finish_bisect_parse_canonicalize_largest_protocol_schema_only,
   AdmittedCodexRuntimeSource,
 }
@@ -26,14 +30,30 @@ fn committed_admitted_codex_runtime_source() -> AdmittedCodexRuntimeSource {
   }
 }
 
+// THE WITNESS BRANCHES ON THE STANDING RATHER THAN CONSUMING A Bool, which is what makes the
+// harness/subject split reach a consumer instead of dying one frame short. SchemaFileUnreadable is
+// OUR staging failure; SchemaFileNotDecodable is the vendored executable emitting schema that is not
+// JSON. Both fail the witness -- correctly, since neither is a green bisect step -- but they are now
+// DIFFERENT VALUES at the point a human reads the bisect, so a wrong staging path can no longer be
+// bisected as a subject defect.
 test fn wet_finish_parse_largest_protocol_schema_only() -> Bool {
-  materialize_codex_runtime_finish_bisect_parse_largest_protocol_schema_only(
+  match materialize_codex_runtime_finish_bisect_parse_largest_protocol_schema_only(
     source: committed_admitted_codex_runtime_source(),
-  )
+  ) {
+    SchemaFileConforms => true
+    SchemaFileNotDecodable => false
+    SchemaFileNotCanonicalizable => false
+    SchemaFileUnreadable => false
+  }
 }
 
 test fn wet_finish_parse_canonicalize_largest_protocol_schema_only() -> Bool {
-  materialize_codex_runtime_finish_bisect_parse_canonicalize_largest_protocol_schema_only(
+  match materialize_codex_runtime_finish_bisect_parse_canonicalize_largest_protocol_schema_only(
     source: committed_admitted_codex_runtime_source(),
-  )
+  ) {
+    SchemaFileConforms => true
+    SchemaFileNotDecodable => false
+    SchemaFileNotCanonicalizable => false
+    SchemaFileUnreadable => false
+  }
 }
