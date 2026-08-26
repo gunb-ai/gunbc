@@ -316,6 +316,7 @@ fn unit_expr() -> Rc<Node> {
 fn empty_type_env() -> Rc<TypeEnv> {
     Rc::new(TypeEnv {
         module_path: "".to_string(),
+        authored_import_names: Rc::new(im::HashMap::new()),
         bindings: Rc::new(im::HashMap::new()),
         str_bindings: Rc::new(im::HashMap::new()),
         ancestry_str_bindings: Rc::new(im::HashMap::new()),
@@ -1040,6 +1041,7 @@ fn optional_match_exhaustiveness_reports_missing_absent() {
         Rc::new(vec![variant_arm("Present")]),
         Rc::new(TypeEnv {
             module_path: "".to_string(),
+            authored_import_names: Rc::new(im::HashMap::new()),
             bindings: Rc::new(im::HashMap::new()),
             str_bindings: Rc::new(im::HashMap::new()),
             ancestry_str_bindings: Rc::new(im::HashMap::new()),
@@ -1069,6 +1071,7 @@ fn optional_match_exhaustiveness_rejects_some_and_none() {
         Rc::new(vec![variant_arm("Some"), variant_arm("None")]),
         Rc::new(TypeEnv {
             module_path: "".to_string(),
+            authored_import_names: Rc::new(im::HashMap::new()),
             bindings: Rc::new(im::HashMap::new()),
             str_bindings: Rc::new(im::HashMap::new()),
             ancestry_str_bindings: Rc::new(im::HashMap::new()),
@@ -1098,6 +1101,7 @@ fn optional_match_exhaustiveness_accepts_present_and_absent() {
         Rc::new(vec![variant_arm("Present"), variant_arm("Absent")]),
         Rc::new(TypeEnv {
             module_path: "".to_string(),
+            authored_import_names: Rc::new(im::HashMap::new()),
             bindings: Rc::new(im::HashMap::new()),
             str_bindings: Rc::new(im::HashMap::new()),
             ancestry_str_bindings: Rc::new(im::HashMap::new()),
@@ -1229,6 +1233,7 @@ fn resolve_node_uses_node_name_for_lookup() {
     });
     let env = Rc::new(TypeEnv {
         module_path: "".to_string(),
+        authored_import_names: Rc::new(im::HashMap::new()),
         bindings: Rc::new(im::HashMap::from_iter([(
             user_intern.id,
             user_binding.clone(),
@@ -1933,6 +1938,7 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
     });
     let env = Rc::new(TypeEnv {
         module_path: "".to_string(),
+        authored_import_names: Rc::new(im::HashMap::new()),
         bindings: Rc::new(im::HashMap::from_iter([(
             box_intern.id,
             box_binding.clone(),

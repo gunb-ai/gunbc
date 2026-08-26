@@ -26,8 +26,6 @@ fn materialize_diagnostic_mock(case: PublishedMockCase) -> Outcome<MaterializedD
     outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ssh_reachability })
   } else if case.operation_key == "redfish.Http.GetSystem" {
     outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_system })
-  } else if case.operation_key == "redfish.Http.GetSystemWithNetrc" {
-    outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_system_with_netrc })
   } else if case.operation_key == "redfish.Http.GetChassisSensors" {
     outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_chassis_sensors })
   } else if case.operation_key == "redfish.Http.GetPower" {
