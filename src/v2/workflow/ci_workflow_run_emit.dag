@@ -159,7 +159,28 @@ data ci_toolchain_home_isolation_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
-data ci_toolchain_home_isolation_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2), at which point this carrier and its unmarked siblings ci_isolate_toolchain_script and ci_pin_rustup_default_script dissolve together")
+data ci_toolchain_home_isolation_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not")
+
+// ONE OBLIGATION COVERS ONE INDEPENDENTLY REMOVABLE UNIT, and the pin script is a different unit
+// from the isolation carrier above (review 56168, and the reviewer is right on the doctrine).
+// docs/plans/scaffold-admission-doctrine.md admits a shared obligation only where the artifacts
+// have the same terminal construction, fire on the same observation, AND CANNOT SURVIVE ONE
+// ANOTHER. The pin script fails the first and third: it selects a TOOLCHAIN via rustup, which is
+// not the per-job filesystem-and-environment effect the isolation carrier waits on, so when that
+// effect lands the isolation shell dissolves and this one is still standing. An earlier revision of
+// the trigger above swept it in as a sibling that "dissolves together"; that was the single broad
+// trigger laundering an expanding collection of temporary work the doctrine names, so the claim is
+// withdrawn rather than reworded.
+data ci_pin_rustup_default_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.ci_workflow_run_emit",
+    decl_name: "ci_pin_rustup_default_script",
+    field: WholeDeclaration
+  }
+}
+
+data ci_pin_rustup_default_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing")
 
 fn ci_isolate_toolchain_intent(build_jobs_count: Int) -> Pipeline {
   Pipeline {
@@ -236,5 +257,8 @@ fn ci_pin_rustup_default_intent() -> Pipeline {
 }
 
 fn ci_pin_rustup_default_script() -> String {
-  ci_workflow_run_emit_pipeline(p: ci_pin_rustup_default_intent())
+  concat(
+    concat("# ", concat(dissolution_description(condition: ci_pin_rustup_default_shell_emit_dissolution_trigger), "\n")),
+    ci_workflow_run_emit_pipeline(p: ci_pin_rustup_default_intent())
+  )
 }
