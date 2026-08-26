@@ -542,31 +542,55 @@ fn unresolved_commit_parent(commits: List<RepositoryCommit>) -> RepositoryCommit
 // ANCESTRY are derived in one pass from one list, so a position can never name a row whose ancestry
 // came from somewhere else.
 // THIS BUILDER IS WHERE REFERENCE UNIQUENESS IS DISCHARGED, and saying so is not decoration: the
-// carrier does not enforce it.
+// carrier does not enforce it. The residual duplicated-`at` state, its rung and its next-rung trigger
+// are stated ONCE, on RepositoryHistory in gunbc.scm.ancestry, because that is the carrier the fact is
+// about. They are deliberately not restated here: two annotations that agree are still two
+// authorities for one fact, and the one that drifts is the one nobody is reading.
 //
-// `history_step_at` resolves by first match, so a RepositoryHistory carrying two rows at one
-// reference would silently answer with the earlier -- the exact defect this whole change removed,
-// one level up. It has NO PRODUCER today: every reference is minted from this fold's own index
+// What THIS module owes is the discharge itself. Every reference is minted from this fold's own index
 // counter, so two rows cannot collide, and no other production code constructs the carrier.
 //
-// It is nevertheless AUTHORABLE IN A FIXTURE, which is the honest statement of the rung (DESIGN
-// section 4b): uniqueness is an invariant of this builder, not a property of the type, so it sits at
-// mechanically-preventable-by-construction-here rather than structurally impossible. Adding a
-// uniqueness CHECK would be the wrong repair -- it would concede the duplicate is writable and guard
-// one instance of it. NEXT-RUNG TRIGGER: an unforgeable-construction wall that makes this the sole
-// constructor of RepositoryHistory, at which point the invariant moves from this comment into the
-// type and a fixture cannot express the collision either.
+// THE FOLD PREPENDS AND REVERSES ONCE. An earlier revision appended with `concat(acc.steps, [step])`,
+// which copies the whole accumulator per row and makes building an n-commit history O(n^2). DESIGN
+// section 6 fixes that shape ALWAYS, regardless of the realized n, because "n is small here" is not a
+// time-stable fact -- and this module had the receipt in front of it, since gunbc.scm.merge carries an
+// annotation recording that it committed this same defect and repaired it this same way. Prepending
+// costs one cell per row, which is the whole of the repair.
+//
+// THE TRAILING `reverse` HAS NO DISCRIMINATING WITNESS AND IS STILL LOAD-BEARING. Step order here is
+// not unobservable -- it is OBSERVABLE BUT UNSPECIFIED, and the distinction is the whole reason this
+// line stays. `a_cyclic_commit` folds these steps and reports the FIRST one whose walk finds a cycle,
+// and that commit reaches a user as the actionable example in a cycle refusal. Reverse the sequence
+// and the refusal names a different commit: a changed user-visible output that no witness fails on,
+// because the interface deliberately declines to promise WHICH commit (its own annotation says it
+// answers A cycle, not THE first, so that no traversal order is frozen into the interface).
+//
+// That is why the repair keeps it. Dropping it would make this one commit do two things -- fix a
+// quadratic cost shape AND silently change which commit a refusal names -- and nothing in the corpus
+// would catch the second. The bare-minimum-cost rule does not object: it targets a cost SHAPE defect,
+// this repair fixes the shape (O(n^2) to O(n)), and one further linear pass over an already-linear
+// construction changes a constant factor, not the shape.
+//
+// A WITNESS FOR THIS WOULD BE WRONG, not merely absent: asserting which commit a cycle is reported
+// from would be a change detector over an explicitly unspecified choice, and would freeze into the
+// interface the very thing the annotation above refuses to promise.
+//
+// TRAP FOR THE NEXT READER, stated as a warning and not as a promise the code makes: deleting this
+// `reverse` reverses the step sequence relative to `commits`. Nothing observes that alignment today
+// and no witness checks it, so this is what you would be changing, not an invariant you may rely on.
 fn repository_history(commits: List<RepositoryCommit>) -> RepositoryHistory {
   RepositoryHistory {
-    steps: fold(commits, init: HistoryBuildAcc { index: 0, steps: [] }, f: fn(acc, c) {
-      HistoryBuildAcc {
-        index: acc.index + 1,
-        steps: concat(acc.steps, [AncestryStep {
-          at: RepositoryCommitRef { reference: position_reference(n: acc.index) },
-          ancestry: c.ancestry,
-        }]),
-      }
-    }).steps,
+    steps: reverse(
+      fold(commits, init: HistoryBuildAcc { index: 0, steps: [] }, f: fn(acc, c) {
+        HistoryBuildAcc {
+          index: acc.index + 1,
+          steps: concat([AncestryStep {
+            at: RepositoryCommitRef { reference: position_reference(n: acc.index) },
+            ancestry: c.ancestry,
+          }], acc.steps),
+        }
+      }).steps
+    ),
   }
 }
 
