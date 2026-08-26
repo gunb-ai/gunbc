@@ -27,9 +27,9 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use v1_compiler::cli_run::declaration_index::{
-    citation_debt_findings_against, cited_symbol_findings_against, corpus_findings, index_findings,
-    index_get, index_population, planted_control_findings_against, DeclarationIndex,
-    DeclarationIntegrityKind, ModuleDeclarationRecord,
+    citation_debt_findings_against, citation_debt_findings_named, cited_symbol_findings_against,
+    corpus_findings, index_findings, index_get, index_population, planted_control_findings_against,
+    DeclarationIndex, DeclarationIntegrityKind, ModuleDeclarationRecord,
 };
 use v1_compiler::cli_run::run_dag_parse_sweep;
 
@@ -826,5 +826,147 @@ fn a_roster_row_on_the_wrong_identity_desynchronizes_both_arms() {
         citation_debt_findings_against(&sweep.index, &matched),
         Vec::new(),
         "and the row is live, not spent — both arms agree only when the identity matches"
+    );
+}
+
+// ARM 8 — a fixture carrier's citations are JUDGED, and the exemption is per citation.
+//
+// The removed form skipped every citation in a module `module_is_fixture_carrier` answered
+// true for. These three tests are the discriminating evidence that carrier identity no longer
+// suppresses anything by itself: a refusing citation inside a witness module is an ordinary
+// finding, an enumerated exemption suppresses exactly its own identity, and an exemption whose
+// citation resolves refuses as spent. Without the third, the roster could rot into a list of
+// things that used to be false — the same inverse arm the debt roster carries.
+
+#[test]
+fn a_refusing_citation_inside_a_fixture_carrier_is_judged() {
+    let dir = scratch_root("fixture_citation_judged");
+    author(&dir, "authority.dag", AUTHORITY);
+    author(
+        &dir,
+        "witness_test.dag",
+        "module probe.witness\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data cite: DeclarationRef = DeclarationRef {\n\u{20}\u{20}module_path: \
+         \"probe.authority\",\n\u{20}\u{20}decl_name: \"no_such_declaration\",\n\u{20}\u{20}\
+         field: WholeDeclaration,\n}\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    // PRECONDITION 1: the module really is classified as a fixture carrier, or this test
+    // proves nothing about the class it is named for.
+    let record = plant(&sweep.index, "probe.witness");
+    assert!(
+        record.is_fixture_carrier,
+        "PLANT MALFORMED: `probe.witness` must be a fixture carrier for this arm to bite"
+    );
+    // PRECONDITION 2: the citation was extracted.
+    plant_cites(
+        &sweep.index,
+        "probe.witness",
+        "probe.authority",
+        "no_such_declaration",
+    );
+    // THE VERDICT: unexempted, a fixture carrier's refusing citation is an ordinary finding.
+    let findings = cited_symbol_findings_against(&sweep.index, &[]);
+    assert_eq!(
+        findings.len(),
+        1,
+        "a refusing citation in a fixture carrier must be judged, got {findings:?}"
+    );
+    assert_eq!(
+        findings[0].kind,
+        DeclarationIntegrityKind::CitedDeclarationAbsent
+    );
+}
+
+#[test]
+fn a_fixture_citation_exemption_suppresses_only_its_own_identity() {
+    let dir = scratch_root("fixture_citation_exempt");
+    author(&dir, "authority.dag", AUTHORITY);
+    author(
+        &dir,
+        "witness_test.dag",
+        "module probe.witness\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data planted: DeclarationRef = DeclarationRef {\n\u{20}\u{20}module_path: \
+         \"probe.authority\",\n\u{20}\u{20}decl_name: \"deliberately_absent\",\n\u{20}\u{20}\
+         field: WholeDeclaration,\n}\n\ndata stale: DeclarationRef = DeclarationRef {\n\
+         \u{20}\u{20}module_path: \"probe.authority\",\n\u{20}\u{20}decl_name: \
+         \"accidentally_absent\",\n\u{20}\u{20}field: WholeDeclaration,\n}\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    plant_cites(
+        &sweep.index,
+        "probe.witness",
+        "probe.authority",
+        "deliberately_absent",
+    );
+    plant_cites(
+        &sweep.index,
+        "probe.witness",
+        "probe.authority",
+        "accidentally_absent",
+    );
+    // Both refuse with no roster — the denominator this test measures against.
+    assert_eq!(
+        cited_symbol_findings_against(&sweep.index, &[]).len(),
+        2,
+        "both planted citations must refuse unenrolled"
+    );
+    // Exempting ONE leaves the OTHER refusing. This is the whole content of the repair: the
+    // exemption is keyed on the citation, so it cannot cover a sibling in the same module.
+    let roster = [("probe.authority", "deliberately_absent", "")];
+    let findings = cited_symbol_findings_against(&sweep.index, &roster);
+    assert_eq!(
+        findings.len(),
+        1,
+        "exempting one citation must not shield its sibling, got {findings:?}"
+    );
+    assert!(
+        findings[0].message.contains("accidentally_absent"),
+        "the surviving finding must be the UNEXEMPTED one, got {:?}",
+        findings[0].message
+    );
+}
+
+#[test]
+fn a_fixture_exemption_whose_citation_resolves_is_spent_and_refuses() {
+    let dir = scratch_root("fixture_exempt_spent");
+    author(&dir, "authority.dag", AUTHORITY);
+    author(
+        &dir,
+        "witness_test.dag",
+        "module probe.witness\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data cite: DeclarationRef = DeclarationRef {\n\u{20}\u{20}module_path: \
+         \"probe.authority\",\n\u{20}\u{20}decl_name: \"real_declaration\",\n\u{20}\u{20}\
+         field: WholeDeclaration,\n}\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    // PRECONDITION: the citation RESOLVES — `real_declaration` is declared by AUTHORITY. A
+    // roster row over a resolving citation is exactly a spent row.
+    plant_cites(
+        &sweep.index,
+        "probe.witness",
+        "probe.authority",
+        "real_declaration",
+    );
+    assert_eq!(
+        cited_symbol_findings_against(&sweep.index, &[]),
+        Vec::new(),
+        "PLANT MALFORMED: `real_declaration` must resolve for this to be a SPENT row"
+    );
+    let roster = [("probe.authority", "real_declaration", "")];
+    let spent = citation_debt_findings_named(&sweep.index, &roster, "FIXTURE_CARRIER_EXEMPTIONS");
+    assert_eq!(
+        spent.len(),
+        1,
+        "an exemption over a resolving citation must refuse as spent, got {spent:?}"
+    );
+    assert_eq!(
+        spent[0].kind,
+        DeclarationIntegrityKind::CitationDebtRowStale
+    );
+    assert!(
+        spent[0].message.contains("FIXTURE_CARRIER_EXEMPTIONS"),
+        "the diagnostic must name the roster holding the row, got {:?}",
+        spent[0].message
     );
 }

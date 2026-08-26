@@ -759,6 +759,160 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// bundling it here would put the wall and its predecessor's funeral in one unreviewable
 /// diff. That is the staged form §3's replacement doctrine admits, and these four rows are
 /// its declared residue: they delete with the lens, not before it.
+/// Citations INSIDE fixture and witness carriers that do not resolve, enumerated at identity
+/// grain because carrier identity is not a licence.
+///
+/// WHY THIS EXISTS, AND WHY THE THING IT REPLACED WAS WRONG (review 55939). Both citation arms
+/// used to skip every citation in a module `module_is_fixture_carrier` answered true for. The
+/// justification was real — a witness proving the resolver refuses an absent symbol has to
+/// author an absent symbol, so its false citation is its evidence rather than its defect — but
+/// the EXEMPTION WAS KEYED ON THE MODULE while the justification is a property of the
+/// CITATION. Carrier identity establishes that SOME citations there are deliberately false,
+/// never that ALL are.
+///
+/// THE ROWS ARE DERIVED FROM THE INDEX, NOT FROM DIAGNOSTIC TEXT, and the first attempt got
+/// that wrong in a way worth recording: extracting the identities by parsing rendered
+/// messages silently dropped the FIELD, because a `CitedDeclarationAbsent` message never
+/// prints one. Rows for citations carrying a `NamedField` whose DECLARATION is absent then
+/// matched nothing, and the corpus run reported the same citation as BOTH refusing and its
+/// row as spent — the paired-inverse-arm desynchronization this module already documents,
+/// firing on its author. Five further identities are deliberately NOT here: they refuse but
+/// are already enrolled in `PRE_EXISTING_CITATION_DEBT` or `PLANTED_CONTROL_CITATIONS`, and a
+/// second row for one citation would be duplicate authority with a double stale-arm report.
+///
+/// MEASURED, WHICH IS WHAT SETTLED IT RATHER THAN THE ARGUMENT: of 161 citations authored
+/// inside fixture carriers, 128 RESOLVE. They are ordinary citations of real authorities that
+/// happen to live in a test module, and the module-grained skip was shielding all 128 in order
+/// to protect at most 33. Counting the excluded population as `in_fixtures` did not restore
+/// integrity; a counted hole is still a hole.
+///
+/// AND THE HOLE WAS OCCUPIED, not merely reachable, which is the difference between a
+/// disclosed boundary and a defect. Two of the rows below are ordinary staleness that had
+/// nothing to do with fixture intent:
+///   - `dag.test.claim.witness_purpose_taxonomy_witness` is a `dag.`-prefixed module path no
+///     module declares; the real module is `test.claim.witness_purpose_taxonomy_witness`. A
+///     plain typo, invisible for as long as the skip stood.
+///   - `std.disposition` `Disposition` `marker` names a real authority and a real declaration
+///     with an absent field, cited twice from `v2.lens/disposition_redundancy_test.dag`.
+///
+/// WHAT THIS ROSTER IS AND IS NOT. It is an identity-grain exemption, not a debt contract, and
+/// the difference is condition 3 of §5's four: a debt roster's terminal state is EMPTY, and
+/// this one's is not — a planted control such as `NoSuchDecl_G1_RED` is permanent by design
+/// and will never be repaired. What it shares with the debt contract is the property that
+/// makes either safe: it is MONOTONE and it REFUSES WHEN SPENT. A row whose citation stops
+/// refusing is reported by the same inverse arm that polices `PRE_EXISTING_CITATION_DEBT`, so
+/// the roster cannot rot into a list of things that used to be true, and a citation cannot be
+/// silently un-checked by deleting its row — deleting a row while the citation still refuses
+/// turns it into an ordinary finding that stops the line.
+///
+/// THE ROWS ARE NOT CLASSIFIED into deliberate-control versus genuine-staleness, and that is
+/// stated rather than hidden: the two specimens above are named because they are decidable by
+/// inspection, and the remaining rows are not sorted, because deciding what a witness's author
+/// MEANT is the judgement §5 warns turns a stale citation into a confidently wrong one. The
+/// next rung is a witness declaring its planted controls as typed rows, at which point the
+/// deliberate half becomes derivable and only the genuine half survives here as debt.
+const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str)] = &[
+    (
+        "dag.test.claim.witness_purpose_taxonomy_witness",
+        "witness_purpose_taxonomy_witness_note",
+        "",
+    ),
+    (
+        "extdeps.languages.nonexistent.subject",
+        "nonexistent_language",
+        "",
+    ),
+    ("extdeps.network.mac", "already_deleted_frontier_unit", ""),
+    ("extdeps.network.mac", "parse_mac_addres", ""),
+    ("extdeps.network.max", "parse_mac_address", ""),
+    ("gunbc.capability_binding", "x", ""),
+    (
+        "gunbc.publication_policy",
+        "G1_planted_instance_gap_producer_control_RED",
+        "",
+    ),
+    (
+        "product.altra_motherboard.minimal_design",
+        "some_other_board",
+        "",
+    ),
+    ("std.disposition", "Disposition", "marker"),
+    ("std.primitive_identity", "missing_handler", ""),
+    ("synthetic.g1_module_absent_RED", "any", ""),
+    ("synthetic.mod", "HostConfig", ""),
+    ("synthetic.mod", "HostConfig", "memory_swap"),
+    (
+        "test.claim.dissolution_census_mechanism_witness_test",
+        "absent_subject_row",
+        "",
+    ),
+    (
+        "test.claim.dissolution_census_mechanism_witness_test",
+        "planted_bound_target",
+        "",
+    ),
+    (
+        "test.claim.dissolution_census_mechanism_witness_test",
+        "planted_retires_target",
+        "",
+    ),
+    (
+        "test.claim.dissolution_census_mechanism_witness_test",
+        "planted_unbound_target",
+        "",
+    ),
+    (
+        "test.claim.dissolution_census_mechanism_witness_test",
+        "present_subject_row",
+        "",
+    ),
+    (
+        "test.claim.repository_census_observation_witness",
+        "census_witness_classifier",
+        "rows",
+    ),
+    ("test.fixture", "planted", ""),
+    (
+        "test.fixture.decl_facts_reflection.specimens",
+        "named_field_anchor",
+        "dissolves_to",
+    ),
+    (
+        "test.fixture.dissolution_live_discriminator.subject",
+        "absent_subject_declaration",
+        "",
+    ),
+    (
+        "test.fixture.scaffold_disposition_census.pool.specimens",
+        "no_such_declaration_G1_dangling_bind_control_RED",
+        "",
+    ),
+    ("v1.compiler.complexity", "Derived", ""),
+    (
+        "v1.compiler.complexity",
+        "this_declaration_does_not_exist_in_the_seed",
+        "",
+    ),
+    (
+        "v1.compiler.this_module_does_not_exist",
+        "classify_complexity",
+        "",
+    ),
+    (
+        "v2.compiler.parse",
+        "G1_planted_instance_gap_caller_control_RED",
+        "",
+    ),
+    ("v2.std.node", "NoSuchDecl_G1_RED", ""),
+    ("v2.std.node", "NodeKind", "NoSuchField_G1_RED"),
+    ("v2.std.node", "g1_ambiguous", ""),
+    (
+        "v2.test.lens_cost.valuation",
+        "unmodelled_effect_specimen",
+        "",
+    ),
+];
+
 const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str)] = &[
     ("extdeps.cloud.gcp.secret_manager", "AccessVersion", ""),
     ("extdeps.cloud.gcp.secret_manager", "AddVersion", ""),
@@ -995,11 +1149,19 @@ pub fn citation_debt_findings_against(
     index: &DeclarationIndex,
     roster: &[(&str, &str, &str)],
 ) -> Vec<DeclarationIntegrityFinding> {
+    citation_debt_findings_named(index, roster, "PRE_EXISTING_CITATION_DEBT")
+}
+
+/// The same arm, told which roster carried the row, so the diagnostic names the list the
+/// reader must edit. A spent-row message that names the wrong roster sends the reader to a
+/// file that does not contain the row.
+pub fn citation_debt_findings_named(
+    index: &DeclarationIndex,
+    roster: &[(&str, &str, &str)],
+    roster_name: &str,
+) -> Vec<DeclarationIntegrityFinding> {
     let mut live: BTreeSet<(String, String, String)> = BTreeSet::new();
     for record in index.modules.values() {
-        if record.is_fixture_carrier {
-            continue;
-        }
         for cited in &record.cited {
             if citation_resolution_refusal(index, record, cited).is_some() {
                 live.insert((
@@ -1020,7 +1182,7 @@ pub fn citation_debt_findings_against(
             rel_path: "src/v1/stage0/src/declaration_index.rs".to_string(),
             offset: None,
             message: format!(
-                "PRE_EXISTING_CITATION_DEBT still lists `{module}` `{decl}`{} — that citation \
+                "{roster_name} still lists `{module}` `{decl}`{} — that citation \
                  no longer refuses, so the row is spent and must be deleted; the roster only \
                  shrinks",
                 if field.is_empty() {
@@ -1082,10 +1244,6 @@ pub fn cited_symbol_findings_against(
 ) -> Vec<DeclarationIntegrityFinding> {
     let mut out = Vec::new();
     for record in index.modules.values() {
-        // A witness's deliberately false citation is its evidence, not its defect.
-        if record.is_fixture_carrier {
-            continue;
-        }
         for cited in &record.cited {
             if citation_in_roster(cited, roster) {
                 continue;
@@ -1245,10 +1403,20 @@ pub fn corpus_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegrityFind
     out.extend(import_member_findings(index));
     out.extend(cited_symbol_findings_against(
         index,
-        &[PRE_EXISTING_CITATION_DEBT, PLANTED_CONTROL_CITATIONS].concat()[..],
+        &[
+            PRE_EXISTING_CITATION_DEBT,
+            PLANTED_CONTROL_CITATIONS,
+            FIXTURE_CARRIER_CITATION_EXEMPTIONS,
+        ]
+        .concat()[..],
     ));
     out.extend(lens_authorship_findings(index));
     out.extend(citation_debt_findings(index));
+    out.extend(citation_debt_findings_named(
+        index,
+        FIXTURE_CARRIER_CITATION_EXEMPTIONS,
+        "FIXTURE_CARRIER_CITATION_EXEMPTIONS",
+    ));
     out.extend(planted_control_findings(index));
     out.sort();
     out
