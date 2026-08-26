@@ -388,12 +388,55 @@ staleness*.
 and establish that your measurement traverses it.** One sentence. If it does not traverse the
 changed path, the measurement is live regardless of when it was dispatched.
 
+## Instance 11 — a commit on `main` is not the setting in effect in the job (2026-08-26)
+
+The question was whether a known CI failure class had recurred *after* its repair landed. The
+repair is `cache: false` on `setup-rust-toolchain`, commit `a6871631c6` (#9203), authored
+2026-08-25 21:21 UTC. Three specimens are dated 23:33, 23:53, and 2026-08-26 00:40 UTC.
+
+The available conclusion is immediate and wrong-shaped: every specimen postdates the repair,
+therefore the repair does not work. The dates are correct. The inference joins two different
+subjects — the state of `main` at a timestamp, and the configuration that a particular job
+actually ran under — on a key (wall-clock order) that establishes neither. A job runs the
+workflow file from the ref it was triggered on, not from `main`; a branch behind the repair, a
+re-run of an older attempt, or a job carried forward from a prior attempt all break the join
+silently, and all three break it in the direction that makes the repair look guilty.
+
+The measurement that closes it is not a date at all. `setup-rust-toolchain` echoes its resolved
+inputs into the job log, so the job states its own configuration:
+
+```
+gh api repos/gunb-ai/gunbc/actions/jobs/<job_id>/logs --allow-escape-sequences \
+  | sed 's/\x1b\[[0-9;]*m//g' | grep -m1 -a 'cache: false'
+```
+
+Run against each of the three **failing build jobs** — `98002876566`, `98007396701`,
+`98019746954` — all three print `cache: false` and `components: rustfmt`. The repair was live in
+the jobs that failed, three for three, and the conclusion now rests on the jobs' own testimony
+rather than on repository chronology.
+
+Two things this instance is careful about, and they point opposite ways.
+
+The date argument and the log argument reach the same verdict here, which is exactly why the
+instance is worth recording: a check that agrees with the shortcut on the day you run it teaches
+nothing, and gets dropped. Its value is the cases where they diverge, none of which announce
+themselves.
+
+And confirming recurrence establishes that the repair does not *prevent* the class — not that
+the reasoning behind it was wrong. The carrier rejected a different repair (per-slot
+`CARGO_HOME`) on cost, as a fix for cache-action cleanup deleting files from a shared
+`~/.cargo`. The specimens here die inside `Install Rust toolchain`, before any cache interaction
+occurs. That is a second mechanism sharing one symptom, and reading the recurrence as a refutation
+of the recorded cost argument would be the same wrong join one layer up: same observable,
+different subject.
+
 ## The shared shape
 
 Instances 1–3 are *the subject was substituted*; instance 4 is *there was no subject*; instances
 5–8 are *the subject was fine and the field or query you read was not the one holding the
 answer*; instance 9 is *the answer exists and is withheld*; instance 10 is *the answer existed
-and was thrown away*. All are the same underlying error — **treating a run as a measurement of a change without
+and was thrown away*; instance 11 is *the answer was inferred from repository state instead of
+read off the job*. All are the same underlying error — **treating a run as a measurement of a change without
 establishing that it measured that change** — and all are cheap to close:
 
 | establish | command |
@@ -402,9 +445,12 @@ establishing that it measured that change** — and all are cheap to close:
 | whether it is a merge ref | `gh api …/runs/<id> -q .event` |
 | what that ref was for | `git log -1 --format='%s' <sha>` |
 | whether it reached a verdict | `gh api …/runs/<id>/attempts/<n>/jobs -q '.jobs[]\|"\(.name) \(.status)/\(.conclusion)"'` |
+| what config the job actually ran under | `gh api …/jobs/<job_id>/logs --allow-escape-sequences \| sed 's/\x1b\[[0-9;]*m//g'` |
 
-Four commands. Tonight, each of the four was skipped exactly once, by four different lanes, and
-each skip produced a confident conclusion that was wrong.
+Tonight, each of the first four was skipped exactly once, by four different lanes, and each skip
+produced a confident conclusion that was wrong. The fifth row was added 2026-08-26 (instance 11):
+the first four establish *which change* a run measured, and it establishes *under what
+configuration* — a question repository chronology looks able to answer and cannot.
 
 The fourth row **was `-q .conclusion` until 2026-08-25**, when it was measured wrong — the
 run-level field reports only the *later* of several job outcomes, so it conceals a terminal
