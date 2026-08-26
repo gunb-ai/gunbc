@@ -468,6 +468,26 @@ fn dependency_finding(index: TargetStandingIndex, dep: Label) -> List<AggregateF
 // runs needed to learn what is actually broken is the number of broken things. The count is
 // carried beside the list for the reason the floor's outcome carries its planned population
 // beside its executed one — a list a reader may truncate is not a number a reader may compare.
+//
+// THE `concat(acc, ...)` ACCUMULATOR IS NOT THE COPIED-ACCUMULATOR COST SHAPE IT RESEMBLES, and
+// this is recorded here because the shape §6 names is worth re-raising by default — a reader who
+// finds a `concat` fold inside the function whose purpose was removing a quadratic is right to
+// stop. It was checked against both realizations rather than assumed:
+//
+//   INTERPRETED. `Value::List` is `Rc<RrbVector<Value>>` and `RrbVector` is `im::Vector`, so the
+//   concat arm's `(*items).clone()` is an O(1) structural share and its `append` is an RRB
+//   concatenation, not an element copy. The arm's own `list_concat_items_copied` counter is
+//   charged only by `value_to_list_carrier`'s free-monoid branch, which materializes a NON-list
+//   argument; a list literal is already `Value::List` and is charged zero.
+//
+//   EMITTED. `rc_list_concat` takes `Rc<Vec<T>>` where `v1_rt`'s prelude binds `Vec` to
+//   `im::Vector`, so `Rc::make_mut`'s clone arm shares structure rather than copying the spine —
+//   `v1_rt` states exactly that about its own `rc_*` updates.
+//
+// So the accumulator's spine is never copied per dependency and the fold is linear in the
+// dependency count, times the vector's logarithmic node path. The finding list is also bounded by
+// the REFUSALS rather than by the dependency count, so on the satisfied path it stays empty.
+// This is a reading of the two carriers, not a measurement of a large aggregate.
 fn aggregate_findings(
   aggregate: BuildTarget,
   index: TargetStandingIndex,
