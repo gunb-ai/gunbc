@@ -332,8 +332,10 @@ fn floor_head_standing_name(standing: FloorHeadStanding) -> String {
 // Supersession short-circuits the lane axis entirely -- an abandoned head's lane results are not
 // evidence about anything, whatever they say. Every other head state falls through to the lane
 // axis unchanged, INCLUDING `CurrentHeadNotAcquired`: an unacquired head axis is treated exactly
-// as a current one, which is the fail-closed arm and is byte-for-byte the behaviour the gate had
-// before this module existed. That is the property that makes the head axis safe to add before
+// as a current one, which is the fail-closed arm and preserves the gate's BLOCKING PREDICATE
+// exactly as it stood before this module existed: block iff either lane is not `success`. The
+// emitted script is not byte-identical and the annotation text is deliberately different -- what
+// is unchanged is which runs block, not what they print. That is the property that makes the head axis safe to add before
 // its acquisition is built: with the acquisition absent, every run takes the unobserved arm and
 // nothing about the verdict changes.
 fn floor_rendered_verdict(

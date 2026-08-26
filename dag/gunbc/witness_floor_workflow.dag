@@ -1080,7 +1080,9 @@ fn build_lane_job() -> Job {
 // WHAT IS NOT YET TRUE OF THAT, AND IT IS THE HALF A READER MUST NOT ASSUME: the first arm is
 // not reachable in production today, because nothing in this workflow acquires the pull request's
 // CURRENT head. The gate therefore renders head-standing as `unobserved` on every pull-request
-// run and takes the fail-closed arm, which is byte-for-byte the behaviour this job had before.
+// run and takes the fail-closed arm. The BLOCKING PREDICATE is therefore unchanged -- block iff
+// either lane is not `success`, exactly as before -- while the annotation and the receipt say
+// considerably more. Which runs block is identical; what they print is not.
 // What changed today is the SPLIT BETWEEN RED AND UNESTABLISHED, which needs no acquisition, and
 // the attempt subject printed on every run, which makes the head join computable offline by
 // anyone who can already read the API. `gunbc.floor_attempt_standing`
