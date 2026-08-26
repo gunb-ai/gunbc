@@ -1,0 +1,213 @@
+module test.claim.legacy_binding_delta_witness
+
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash { Fnv1a64Structural, structural_content_hash }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.occurrence_identity { OccurrenceId }
+import v2.workflow.legacy_binding_observation {
+  LegacyBindingObservation,
+  LegacyBindingObservationRow,
+  LegacyBindingObservationSubject,
+  ImportScopedPolicy
+}
+import v2.workflow.legacy_binding_delta {
+  ProjectionProvenance,
+  ProjectionProvenanceEntry,
+  ProjectedFromSource,
+  ProjectedAsInsertion,
+  ProvenanceTotality,
+  ProvenanceTotal,
+  ProvenanceSourceMissing,
+  ProvenanceSourceRepeated,
+  ProvenanceTargetMissing,
+  ProvenanceForeignOccurrence,
+  LegacyBindingDelta,
+  DeltaProvenanceRefused,
+  DeltaComputed,
+  provenance_totality,
+  legacy_binding_delta
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DELTA HAS NO KEY, SO EVERY ONE OF ITS LAWS IS ABOUT THE PROVENANCE THE PROJECTOR EMITTED.
+//
+// There is no admissible cross-compile occurrence key: OccurrenceId is a traversal ordinal, and the
+// projection's inserted qualifier tokens are exactly what shifts it. So the correspondence arrives
+// as the projector's output and this file's whole subject is whether that output ACCOUNTS FOR BOTH
+// DENOMINATORS. The outcome type parameters are instantiated with a one-arm test vocabulary
+// because the delta's laws never read an outcome -- which is itself the claim that the envelope
+// and the producer are separable.
+//
+// THE FIXTURES ARE ALL SIZE-PRESERVING WHERE THEY CAN BE. Each refusal fixture carries a
+// provenance whose entry count is the same as the passing one's wherever the law permits, so no arm
+// is reachable by comparing sizes. That is the operator's oracle rule applied to the fixtures
+// rather than only to the laws they exercise.
+type LbdTestOutcome = LbdObserved
+
+fn lbd_subject() -> LegacyBindingObservationSubject {
+  LegacyBindingObservationSubject {
+    semantic_source_digest: structural_content_hash(digest: "1111111111111111"),
+    source_set_digest: structural_content_hash(digest: "2222222222222222"),
+    compiler_artifact_digest: structural_content_hash(digest: "3333333333333333"),
+    resolver_identity: decl_ref(module_path: "v1.compiler.lookup", decl_name: "lookup_binding_by_name"),
+    resolver_policy: ImportScopedPolicy,
+    occurrence_transport_digest: structural_content_hash(digest: "4444444444444444"),
+    declaration_index_digest: structural_content_hash(digest: "5555555555555555")
+  }
+}
+
+fn lbd_observation(ids: List<Int>) -> LegacyBindingObservation<LbdTestOutcome> {
+  LegacyBindingObservation {
+    subject: lbd_subject(),
+    rows: ids |> map(id => LegacyBindingObservationRow {
+      occurrence: OccurrenceId { value: id },
+      outcome: LbdObserved
+    })
+  }
+}
+
+fn lbd_pair(source: Int, target: Int) -> ProjectionProvenanceEntry {
+  ProjectedFromSource { source: OccurrenceId { value: source }, target: OccurrenceId { value: target } }
+}
+
+fn lbd_insertion(target: Int) -> ProjectionProvenanceEntry {
+  ProjectedAsInsertion { target: OccurrenceId { value: target } }
+}
+
+fn lbd_totality(base: List<Int>, projected: List<Int>, entries: List<ProjectionProvenanceEntry>) -> ProvenanceTotality {
+  provenance_totality(
+    base_observation: lbd_observation(ids: base),
+    projected_observation: lbd_observation(ids: projected),
+    provenance: ProjectionProvenance { entries: entries }
+  )
+}
+
+// THE PASSING SHAPE, AND IT IS THE ONE THE REAL PROJECTION PRODUCES: the base's three occurrences
+// map to three targets whose ordinals have ALL SHIFTED, plus one inserted target with no source.
+// The shifted ordinals are the point -- if any law here accidentally compared ids across the two
+// sides rather than reading the provenance, this arm would refuse.
+test fn a_provenance_accounting_for_both_denominators_is_total() -> Bool {
+  match lbd_totality(
+    base: [10, 20, 30],
+    projected: [11, 21, 31, 41],
+    entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21), lbd_pair(source: 30, target: 31), lbd_insertion(target: 41)]
+  ) {
+    ProvenanceTotal => true
+    ProvenanceSourceMissing { occurrences: _ } => false
+    ProvenanceSourceRepeated { occurrences: _ } => false
+    ProvenanceTargetMissing { occurrences: _ } => false
+    ProvenanceForeignOccurrence { occurrences: _ } => false
+  }
+}
+
+// AN INSERTION IS NOT A MISSING SOURCE, and this arm is why the two are separate constructors. A
+// schema that required every target to carry a source would refuse the projection for doing the one
+// thing it exists to do.
+test fn a_projection_with_no_insertions_is_also_total() -> Bool {
+  match lbd_totality(
+    base: [10, 20],
+    projected: [11, 21],
+    entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21)]
+  ) {
+    ProvenanceTotal => true
+    ProvenanceSourceMissing { occurrences: _ } => false
+    ProvenanceSourceRepeated { occurrences: _ } => false
+    ProvenanceTargetMissing { occurrences: _ } => false
+    ProvenanceForeignOccurrence { occurrences: _ } => false
+  }
+}
+
+// A DROPPED BASE OCCURRENCE IS A SITE THE MIGRATION SILENTLY DECLINED TO CONSIDER. The entry count
+// is unchanged -- an insertion stands where the third pair was -- so this arm is not reachable by
+// counting.
+test fn a_base_occurrence_with_no_provenance_source_refuses() -> Bool {
+  match lbd_totality(
+    base: [10, 20, 30],
+    projected: [11, 21, 41],
+    entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21), lbd_insertion(target: 41)]
+  ) {
+    ProvenanceSourceMissing { occurrences: missing } => (missing |> count) == 1
+    ProvenanceTotal => false
+    ProvenanceSourceRepeated { occurrences: _ } => false
+    ProvenanceTargetMissing { occurrences: _ } => false
+    ProvenanceForeignOccurrence { occurrences: _ } => false
+  }
+}
+
+// ONE BASE OCCURRENCE PROJECTED TO TWO TARGETS IS A FORK THE DELTA CANNOT INTERPRET, and it is a
+// distinct failure from a drop: here nothing is missing and the totals are complete in both
+// directions. Only multiplicity distinguishes it, which is why the law reads multiplicity rather
+// than membership.
+test fn a_base_occurrence_projected_twice_refuses() -> Bool {
+  match lbd_totality(
+    base: [10, 20],
+    projected: [11, 21],
+    entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 10, target: 21), lbd_pair(source: 20, target: 11)]
+  ) {
+    ProvenanceSourceRepeated { occurrences: repeated } => (repeated |> count) == 1
+    ProvenanceTotal => false
+    ProvenanceSourceMissing { occurrences: _ } => false
+    ProvenanceTargetMissing { occurrences: _ } => false
+    ProvenanceForeignOccurrence { occurrences: _ } => false
+  }
+}
+
+// A TARGET THE PROVENANCE WILL NOT ACCOUNT FOR is the projection producing something it declines to
+// explain -- neither derived nor declared as inserted.
+test fn a_projected_occurrence_with_no_provenance_entry_refuses() -> Bool {
+  match lbd_totality(
+    base: [10, 20],
+    projected: [11, 21, 31],
+    entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21)]
+  ) {
+    ProvenanceTargetMissing { occurrences: missing } => (missing |> count) == 1
+    ProvenanceTotal => false
+    ProvenanceSourceMissing { occurrences: _ } => false
+    ProvenanceSourceRepeated { occurrences: _ } => false
+    ProvenanceForeignOccurrence { occurrences: _ } => false
+  }
+}
+
+// THE ARM THAT READS AS SUCCESS IF IT IS NOT CHECKED: a provenance about some other pair of
+// compiles. It has the right entry count, every base occurrence has a source, every target has an
+// entry -- and it names an occurrence neither observation contains. This is the count-equality trap
+// in its own habitat, and it is why the foreign check exists on both sides of the relation.
+test fn a_provenance_naming_an_occurrence_outside_either_denominator_refuses() -> Bool {
+  match lbd_totality(
+    base: [10, 20],
+    projected: [11, 21],
+    entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21), lbd_pair(source: 99, target: 11)]
+  ) {
+    ProvenanceForeignOccurrence { occurrences: foreign } => (foreign |> count) == 1
+    ProvenanceTotal => false
+    ProvenanceSourceMissing { occurrences: _ } => false
+    ProvenanceSourceRepeated { occurrences: _ } => false
+    ProvenanceTargetMissing { occurrences: _ } => false
+  }
+}
+
+// THE DELTA REFUSES BEFORE IT COMPARES, and the two verdicts must not render alike: a comparison
+// that could not be made is not a comparison that agreed.
+test fn the_delta_refuses_rather_than_comparing_over_an_incomplete_provenance() -> Bool {
+  match legacy_binding_delta(
+    base_observation: lbd_observation(ids: [10, 20, 30]),
+    projected_observation: lbd_observation(ids: [11, 21]),
+    provenance: ProjectionProvenance { entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21)] }
+  ) {
+    DeltaProvenanceRefused { totality: _ } => true
+    DeltaComputed { pairs: _ } => false
+  }
+}
+
+test fn the_delta_computes_over_a_total_provenance() -> Bool {
+  match legacy_binding_delta(
+    base_observation: lbd_observation(ids: [10, 20]),
+    projected_observation: lbd_observation(ids: [11, 21, 41]),
+    provenance: ProjectionProvenance { entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21), lbd_insertion(target: 41)] }
+  ) {
+    DeltaComputed { pairs: pairs } => (pairs |> count) == 3
+    DeltaProvenanceRefused { totality: _ } => false
+  }
+}
