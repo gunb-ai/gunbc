@@ -3425,9 +3425,10 @@ because a module is *named* rather than *used*, then import-derived and
 reference-derived closure differ by exactly the imports that carry no surviving
 reference-derived edge — `ImportOnlyNoEffect` plus `ReferencePreservingReplacement`
 above, with `ImportClosureCarrier` the part that refuses — and reference-derived
-closure is the cut's new root. 8.1% of import edges is not a
-rounding error and 1576 files is not a long tail: **this is a first estimate of
-how much the cut changes what compiles**, and §11.2c's finding that the cut
+closure is the cut's new root. **2.5% of import edges and 362 files** (the
+edge-grain figures from the correction above; this sentence carried 8.1% and
+1576 for one hour, which was the member grain) is not a rounding error and not a
+long tail: **this is a first estimate of how much the cut changes what compiles**, and §11.2c's finding that the cut
 *expands* eligibility now has a counterweight to be measured against.
 
 **GRAIN CORRECTION, 2026-08-26, AND IT IS A 3.2x OVERSTATEMENT OF THE NUMBER
