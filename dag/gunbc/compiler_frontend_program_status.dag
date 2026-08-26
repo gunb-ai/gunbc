@@ -136,6 +136,19 @@ fn missing_instrument_label(i: MissingInstrument) -> String {
 // would be a measurement with no producer, which is the debt this repository bankrupted a directory
 // over two days ago.
 //
+// A SECOND CORRECTION TO THIS SAME ARM, AND IT IS WHY THE ROW NO LONGER MENTIONS ROUTING AT ALL. A
+// prior revision said remote is the default route, so a memory-bound job is sent automatically to
+// the smallest available machine. That is TRUE OF CONSUMER SESSIONS AND FALSE HERE: the gunbc shim
+// at /usr/local/ctrl-build-shims/gunbc routes the heavy subcommands remotely, but carries an
+// explicit gunbc-checkout guard that execs the real local binary instead, because in a gunbc-dev
+// session gunbc is the SUBJECT under development rather than a pinned tool. So a whole-corpus
+// compile started from this repository was never being routed away in the first place, and the
+// routing story was an explanation for something that is not happening. How the authority's
+// SIGKILL receipts came to be taken remains unestablished, and this row does not guess -- it states
+// what the predicate is a function of and what would settle it. (Found by reading the shim, one
+// message after the resource itself was corrected; the arm has now been wrong twice for the same
+// underlying reason, which is that it kept explaining a refusal rather than reporting it.)
+//
 // AND THE RESOURCE IS NAMED EXPLICITLY, because getting it wrong is what nearly landed in this arm.
 // A first cut of this row attributed the refusal to a per-entry WALL-CLOCK cost shape another lane
 // had measured the same evening. That was authority substitution: the timing fact lives in one
@@ -158,7 +171,7 @@ fn missing_instrument_obstacle(i: MissingInstrument) -> InstrumentObstacle {
           module_path: "gunbc.whole_corpus_compile_admission",
           decl_name: "whole_corpus_compile_admission_at_budget"
         ),
-        why: "a whole-corpus compile is refused on HOST MEMORY -- the authority compares available memory against a measured peak demand and its receipts are SIGKILLs, not timeouts. So this instrument is not unbuilt and the remedy is not to write a tool. THE HONEST STATE IS NARROWER THAN 'unaffordable': it is refused on a small runner and never attempted on a large one, and remote is the DEFAULT route, so a memory-bound job is sent automatically to the smallest available machine. Nobody is claiming a large host would succeed -- the authority's own admission means NOT PROVABLY DOOMED, never WILL FIT, since the demand figure is a lower bound taken by a different route at an older tree. It is cheap to falsify: run it on a large host and record exit status and peak. Three milestones wait on the answer." as NonEmptyStr
+        why: "a whole-corpus compile is refused on HOST MEMORY -- the authority compares available memory against a measured peak demand, and its receipts are SIGKILLs, not timeouts. So this instrument is not unbuilt and the remedy is not to write a tool. THE HONEST STATE IS NARROWER THAN 'unaffordable': the predicate is a function of the HOST, it refused on the hosts its receipts were taken on, and it has not been attempted on one whose budget it admits. Admission is NOT FIT -- the authority's own admission means not provably doomed, and the demand figure is a lower bound taken by a different route at an older tree, so a host that admits may still be SIGKILLed. THE FALSIFICATION MUST RECORD EXIT STATUS AND PEAK RESIDENT SET TOGETHER: a SIGKILL renders as a fabricated zero to any harness that greps output without reading exit status, so a clean-looking empty population and a killed run are the same bytes. Three milestones wait on that one measurement." as NonEmptyStr
       }
     RequiredCiPhaseRoster => NotBuilt
     RatchetGateEnrolmentFact => NotBuilt
