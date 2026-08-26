@@ -166,11 +166,21 @@ fn fail_identities_chunk_01() -> List<String> {
   }
 }
 
+fn fail_identities_chunk_02() -> List<String> {
+  Cons {
+    head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.gunbc_consumers_reach_transport_vocabulary_only_by_named_admission",
+    tail: Empty {}
+  }
+}
+
 fn fail_identities() -> List<String> {
   list_flat_map(
     xs: Cons {
       head: fail_identities_chunk_00(),
-      tail: Cons { head: fail_identities_chunk_01(), tail: Empty {} }
+      tail: Cons {
+        head: fail_identities_chunk_01(),
+        tail: Cons { head: fail_identities_chunk_02(), tail: Empty {} }
+      }
     },
     f: fn(chunk) { chunk },
   )

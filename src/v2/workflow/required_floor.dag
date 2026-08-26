@@ -190,6 +190,22 @@ fn required_floor_shared_decl_fact_roots() -> List<String> {
   whole_corpus_scope.roots
 }
 
+// These claims consume memoized, immutable compiler/corpus products. Prime the exact producer
+// calls before per-identity clocks start; each test still executes its assertion and obtains the
+// keyed result, but no arbitrary first identity is charged for a shared cold fill.
+fn required_floor_shared_claim_producer_prewarms() -> List<String> {
+  Cons {
+    head: "test.claim.transport_script_wall_compile_red.w_red_a_string_join_into_retained_record",
+    tail: Cons {
+      head: "test.claim.transport_script_wall_compile_red.w_red_b_deleted_free_minter",
+      tail: Cons {
+        head: "dag.test.claim.lifecycle_survivor_corpus_census.scan_denominator_is_a_real_corpus",
+        tail: Empty {}
+      }
+    }
+  }
+}
+
 // THE ADMISSION ORDER, HELD HERE RATHER THAN IN WHOEVER WALKS THE CORPUS.
 //
 // `RequiredFloorDisposition` above names the two arms; until now nothing in this module said

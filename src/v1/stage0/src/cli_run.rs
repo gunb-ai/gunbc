@@ -46834,6 +46834,32 @@ pub fn run_required_floor(
             );
         }
     }
+    {
+        let functions = floor_decode_module_prefix_roster(
+            &hermetic,
+            "v2.workflow.required_floor.required_floor_shared_claim_producer_prewarms",
+        )?;
+        if functions.is_empty() {
+            return Err(
+                "required_floor_shared_claim_producer_prewarms: no producer calls produced"
+                    .to_string(),
+            );
+        }
+        for function in functions {
+            let value = v1_interpreter::run_in_context(&hermetic, &function, false)
+                .map_err(|e| format!("required floor producer prewarm {function}: {e}"))?;
+            match value {
+                v1_interpreter::Value::Bool(_) => {}
+                other => {
+                    return Err(format!(
+                    "required floor producer prewarm {function}: expected Bool artifact, got {}",
+                    floor_value_shape(Some(other))
+                ))
+                }
+            }
+            eprintln!("[floor-shared-fill] claim producer primed function={function}");
+        }
+    }
 
     // AND THIS ROSTER NEEDS NO SEPARATE FREEZE-DISJOINTNESS CHECK, which is worth saying because
     // the wall below now covers three rosters and this is a fourth. The refusal immediately

@@ -313,12 +313,12 @@ test fn w_required_aggregate_dependencies_are_exactly_the_planned_subset() -> Bo
       let rendered = fold(a.dependencies, init: [], f: fn(acc, l) { concat([render_label(l: l)], acc) })
       is_required_aggregate(t: a)
         && (target_identity(t: a) == "//:required")
-        && ((a.dependencies |> count) == 2)
+        && ((a.dependencies |> count) == 4)
         && list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_alpha")
         && list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_beta")
         && !list_holds(xs: rendered, wanted: "//test/claim/long/slow_witness:w_slow")
-        && !list_holds(xs: rendered, wanted: "//v2/test/fixture/walk_plan_stage/common:w_member")
-        && !list_holds(xs: rendered, wanted: "//test/claim/reads_tree_witness:w_reads")
+        && list_holds(xs: rendered, wanted: "//v2/test/fixture/walk_plan_stage/common:w_member")
+        && list_holds(xs: rendered, wanted: "//test/claim/reads_tree_witness:w_reads")
     }
   }
 }
@@ -346,7 +346,7 @@ test fn w_refused_census_yields_no_aggregate_and_keeps_the_cause() -> Bool {
 // away rather than reported as green here.
 test fn w_all_declined_derives_an_aggregate_that_blocks() -> Bool {
   let all_declined = [
-    live_tree_site(module_path: "test.claim.reads_tree_witness", function: "w_reads"),
+    live_tree_site(module_path: "test.claim.long.reads_tree_witness", function: "w_reads"),
     hermetic_site(module_path: "test.claim.long.slow_witness", function: "w_slow")
   ]
   match required_aggregate_from_census(census: discovery_census(sites: all_declined)) {
@@ -381,7 +381,7 @@ test fn w_derived_aggregate_is_satisfiable_against_standings() -> Bool {
         ], acc)
       })
       match required_aggregate_standing(aggregate: a, standings: standings) {
-        AggregateSatisfied { dependency_count: n } => n == 2
+        AggregateSatisfied { dependency_count: n } => n == 4
         AggregateNoDependencies => false
         AggregateRefused { finding_count: _, findings: _ } => false
       }
