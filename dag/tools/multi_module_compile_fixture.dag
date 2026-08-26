@@ -1,0 +1,84 @@
+module tools.multi_module_compile_fixture
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
+
+// THE ISOLATED MULTI-MODULE COMPILE FIXTURE. A caller authors a MANIFEST of `.dag` modules and
+// an entry among them; the instrument compiles exactly those bytes through the v1 pipeline with
+// no module index, no corpus roots, and no filesystem read, and returns what the compile decided.
+//
+// WHY IT EXISTS BESIDE THE SINGLE-MODULE CENSUS RATHER THAN INSIDE IT. `compile_dag_diagnostic_census`
+// resolves its one synthetic module's imports against the live checkout, so the corpus is always
+// in the pool and a SECOND module can never be authored. That makes every question whose subject
+// is the relationship between two modules unaskable on it: a cross-module name collision, an
+// import that must not bind, a spelling held by both a fixture declaration and a corpus one.
+// Three consumers hit that wall independently before this instrument existed -- invalid fixtures
+// relocated out of the corpus for want of it, an ambiguity arm measured and deleted for want of
+// it, and DESIGN naming the missing multi-module compile fixture as the next-rung trigger for the
+// acyclicity class, whose own receipt records that the single-module harness returns ParseError
+// for the ACYCLIC control as well as the cyclic one and so could never reach the wall.
+//
+// IT IS AN INSTRUMENT AND NOT A GATE. Its outcome reports what the compile decided; nothing here
+// judges acceptance, and no workflow invokes it. Callers judge.
+
+data multi_module_compile_fixture_isolation_note: String = "CORPUS ISOLATION IS BY CONSTRUCTION, NOT BY A FLAG, and that is the property the whole instrument rests on. The supplied manifest IS the source vector handed to the pipeline: there is no code path in the host realization that consults a module index, so a fixture module may reuse a corpus module's SPELLING and bind its own declaration. THE OPEN QUESTION THIS ANSWERS, recorded because upstream did not know the answer and asked for it either way: under whole-corpus floor preparation the required floor folds every witness through ONE prepared subject, so a name collision between a witness and the corpus is unconditional there. That preparation is a fact about how WITNESSES are compiled, not about this nested compile - the prepared authority is consulted by unrelated censuses and never by compile_to_resolved - so a fixture compiled through this instrument is isolated even when the caller itself was prepared whole-corpus. Control 5 of the witness measures exactly that rather than assuming it."
+
+data multi_module_compile_fixture_phase_standing_note: String = "PHASE-GRAINED STANDING IS THE POINT OF THE COPRODUCT. FixtureInstrumentRefused is the HARNESS's fault - a ragged manifest, a duplicate path, an entry naming no supplied module, a panic. FixtureCompileRefused is the SUBJECT's fault and carries the compiler's own judgment. FixtureCompileCompleted is the subject passing. Collapsing the first two hands a broken harness the compiler's message, which is the not-applicable-versus-malformed conflation DESIGN records as a recurring failure mode, applied to the instrument itself: one reason symbol over 'the input is wrong' and 'this instrument had nothing to say about it', which have opposite owners and opposite repairs. EXECUTION PROVENANCE IS STRUCTURAL AND NOT A FIELD ANYONE MUST REMEMBER TO READ: FixtureCompileCompleted is constructed at exactly one place in the host, after the emit returned and after the blocking population was counted, so an unreached or killed compile HAS NO SPELLING in which it renders as zero diagnostics. That is the positive-artifact rule moved into the type rather than asserted about it."
+
+data multi_module_compile_fixture_digest_note: String = "THE TWO DIGESTS TRAVEL WITH THE RESULT so a receipt quoting this instrument names the subject it measured and the compiler that measured it. source_digest is a structural fnv1a64 over the entry spelling and every (path, content) pair in the order supplied - a reordering is a different subject and a whitespace edit is a different subject. compiler_digest is resolved_graph_cache transform_content_digest, the content hash of the running compiler binary, which is already the single authority every identity key in the seed consumes for compiler identity rather than a second executable read. Both are absent from the FixtureInstrumentRefused arm on purpose: that arm reports that no subject was formed, and stamping a digest on it would name a measurement that did not happen."
+
+data multi_module_compile_fixture_scope_note: String = "SCOPE, stated so a receipt cannot claim coverage it does not have (DESIGN 4b: a class's rung is the MINIMUM across its in-scope paths). This is the v1 pipeline to the RUST render target over an authored multi-module subject. It observes NOTHING about the interpreter's disposition of the same program, nothing about other emission targets, and nothing about corpus-grain prevalence. Unlike the single-module census it does NOT arm with_type_ref_hit_ne_bind_measure: the census arms that bracket to sharpen masked type refs against a corpus pool this instrument does not have, so arming it here would be a knob with no subject. WHAT module_count MEANS: the number of modules the RESOLVE stage produced, read from the resolved graph - not the length of the supplied list. A control comparing it against the manifest is therefore a join between two different producers rather than measure() == measure()."
+
+type FixtureSource {
+  path: NonEmptyStr
+  content: String
+}
+
+type MultiModuleCompileFixture {
+  sources: List<FixtureSource>
+  entry: NonEmptyStr
+}
+
+type MultiModuleCompileFixtureOutcome
+  = FixtureInstrumentRefused { cause: NonEmptyStr }
+  | FixtureCompileRefused {
+      module_count: Int
+      diagnostics: List<CompileDiagnosticCensusRow>
+      source_digest: NonEmptyStr
+      compiler_digest: NonEmptyStr
+    }
+  | FixtureCompileCompleted {
+      module_count: Int
+      emitted_files: List<String>
+      diagnostics: List<CompileDiagnosticCensusRow>
+      source_digest: NonEmptyStr
+      compiler_digest: NonEmptyStr
+    }
+
+fn fixture_source(path: String, content: String) -> FixtureSource {
+  FixtureSource { path: path, content: content }
+}
+
+fn compile_fixture(fixture: MultiModuleCompileFixture) -> MultiModuleCompileFixtureOutcome {
+  compile_dag_multi_module_fixture(
+    fixture.sources |> map(s => s.path as String),
+    fixture.sources |> map(s => s.content),
+    fixture.entry as String
+  )
+}
+
+// PURE READS OVER ROWS, never over the outcome -- the same construction gunbc.compile_diagnostic_census
+// adopted after an accessor answering [] on the not-runnable arm was found to be the fail-open it
+// exists to prevent. The only way to obtain a diagnostic list here is to MATCH the coproduct, so
+// reading zero diagnostics out of a refused instrument is structurally unwritable.
+fn fixture_blocking_rows(rows: List<CompileDiagnosticCensusRow>) -> List<CompileDiagnosticCensusRow> {
+  rows |> filter(r => r.blocking)
+}
+
+fn fixture_rows_of_class(rows: List<CompileDiagnosticCensusRow>, wanted: String) -> List<CompileDiagnosticCensusRow> {
+  rows |> filter(r => (r.diagnostic_class as String) == wanted)
+}
+
+fn fixture_has_class(rows: List<CompileDiagnosticCensusRow>, wanted: String) -> Bool {
+  count(fixture_rows_of_class(rows, wanted)) > 0
+}

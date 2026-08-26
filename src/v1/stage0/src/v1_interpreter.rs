@@ -8819,6 +8819,76 @@ fn compile_diagnostic_census_value(
     }
 }
 
+/// Projects a host multi-module fixture outcome into the
+/// `tools.multi_module_compile_fixture` coproduct. The three arms stay distinct all the way to
+/// the substrate: a broken harness must never arrive wearing the compiler's verdict, and a
+/// compile that never ran must never arrive as `FixtureCompileCompleted` with an empty diagnostic
+/// list (DESIGN §5 — could-not-measure conflated with the subject passing).
+fn multi_module_compile_fixture_value(
+    outcome: crate::cli_run::MultiModuleCompileFixtureOutcome,
+    ctx: &InterpContext,
+) -> Value {
+    let rows = |rows: Vec<crate::cli_run::CompileDiagnosticCensusRow>| {
+        list_value(
+            rows.into_iter()
+                .map(|r| Value::Record {
+                    type_name: ctx.sym("CompileDiagnosticCensusRow"),
+                    fields: Rc::new(sorted_fields(vec![
+                        (ctx.sym("diagnostic_class"), str_value(r.diagnostic_class)),
+                        (ctx.sym("subject_name"), str_value(r.subject_name)),
+                        (ctx.sym("blocking"), Value::Bool(r.blocking)),
+                        (ctx.sym("count"), Value::Int(r.count)),
+                    ])),
+                })
+                .collect::<Vec<_>>(),
+        )
+    };
+    let variant = |name: &str, fields: Vec<(Symbol, Value)>| Value::Variant {
+        type_name: ctx.sym("MultiModuleCompileFixtureOutcome"),
+        variant_name: ctx.sym(name),
+        fields: Rc::new(sorted_fields(fields)),
+    };
+    match outcome {
+        crate::cli_run::MultiModuleCompileFixtureOutcome::InstrumentRefused { cause } => variant(
+            "FixtureInstrumentRefused",
+            vec![(ctx.sym("cause"), str_value(cause))],
+        ),
+        crate::cli_run::MultiModuleCompileFixtureOutcome::CompileRefused {
+            module_count,
+            diagnostics,
+            source_digest,
+            compiler_digest,
+        } => variant(
+            "FixtureCompileRefused",
+            vec![
+                (ctx.sym("module_count"), Value::Int(module_count)),
+                (ctx.sym("diagnostics"), rows(diagnostics)),
+                (ctx.sym("source_digest"), str_value(source_digest)),
+                (ctx.sym("compiler_digest"), str_value(compiler_digest)),
+            ],
+        ),
+        crate::cli_run::MultiModuleCompileFixtureOutcome::CompileCompleted {
+            module_count,
+            emitted_files,
+            diagnostics,
+            source_digest,
+            compiler_digest,
+        } => variant(
+            "FixtureCompileCompleted",
+            vec![
+                (ctx.sym("module_count"), Value::Int(module_count)),
+                (
+                    ctx.sym("emitted_files"),
+                    list_value(emitted_files.into_iter().map(str_value).collect::<Vec<_>>()),
+                ),
+                (ctx.sym("diagnostics"), rows(diagnostics)),
+                (ctx.sym("source_digest"), str_value(source_digest)),
+                (ctx.sym("compiler_digest"), str_value(compiler_digest)),
+            ],
+        ),
+    }
+}
+
 fn unlisted_import_binding_source_value(
     source: crate::cli_run::UnlistedImportBindingSource,
     ctx: &InterpContext,
@@ -13848,6 +13918,16 @@ macro_rules! v1_builtin_arms {
                 let source = expect_str($positional.first().copied(), $name)?;
                 Ok(Some(compile_diagnostic_census_value(
                     crate::cli_run::compile_dag_diagnostic_census(&source),
+                    $ctx,
+                )))
+            },
+
+            arm "free_call.compile_dag_multi_module_fixture" { "compile_dag_multi_module_fixture" } => {
+                let paths = expect_str_list($positional.first().copied(), $name)?;
+                let contents = expect_str_list($positional.get(1).copied(), $name)?;
+                let entry = expect_str($positional.get(2).copied(), $name)?;
+                Ok(Some(multi_module_compile_fixture_value(
+                    crate::cli_run::compile_dag_multi_module_fixture(&paths, &contents, &entry),
                     $ctx,
                 )))
             },
