@@ -52,6 +52,7 @@ enum Commands {
         #[arg(long)]
         entry: Option<String>,
     },
+
     /// Execute a .dag program directly (interpreter)
     Run {
         /// Source root directories (searched recursively for .dag files)
@@ -615,6 +616,7 @@ fn main() {
             &args,
         )
         .apply(),
+
         // The refusal names a CONDITION, not a branch. An earlier revision said "not
         // available on integration/cli-run-cut", which the merge itself would have
         // falsified — the code would keep naming a branch it no longer ran on, the §3
