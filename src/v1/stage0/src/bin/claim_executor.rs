@@ -6,11 +6,8 @@ use std::process::{Command, ExitCode};
 use std::rc::Rc;
 #[cfg(test)]
 use v1_compiler::cli_run::workspace_root;
-use v1_compiler::cli_run::{
-    make_eval_context, resolve_entry_graph_shared, run_value, PhaseProfile,
-};
+use v1_compiler::cli_run::PhaseProfile;
 use v1_compiler::memory_governor::{binding_cap_cgroup_dir, leaf_cgroup_dir, mem_total_bytes};
-use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext, Value};
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
     match args.get(idx) {
@@ -320,10 +317,11 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut required_floor_mode = false;
     let mut required_ci_mode = false;
     let mut required_ci_lane: Option<RequiredCiLane> = None;
-    let mut required_cited_symbol_mode = false;
     let mut required_v2_emission_mode = false;
     let mut required_v2_emission_selftest_mode = false;
     let mut required_regen_mode = false;
+    let mut emit_partition_crates_mode = false;
+    let mut emit_partition_crates_write = false;
     let mut required_regen_fixed_point_mode = false;
     let mut heads_reading_differential_mode = false;
     let mut behavioral_receipt_plan_mode = false;
@@ -369,9 +367,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                     }
                 }
             }
-            "--required-cited-symbol" => {
-                required_cited_symbol_mode = true;
-            }
             "--required-v2-emission" => {
                 required_v2_emission_mode = true;
             }
@@ -380,6 +375,15 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--required-regen" => {
                 required_regen_mode = true;
+            }
+            // THE SANCTIONED PRODUCER for the derived partition's boundary files. Named by the
+            // phase's own refusal, because a stop whose only remedy does not exist is what
+            // produced this class in the first place.
+            "--emit-partition-crates" => {
+                emit_partition_crates_mode = true;
+            }
+            "--write" => {
+                emit_partition_crates_write = true;
             }
             "--heads-reading-differential" => {
                 heads_reading_differential_mode = true;
@@ -467,10 +471,60 @@ fn run() -> Result<ExitCode, ExitCode> {
         };
     }
 
+    // ORDERED AHEAD OF THE SOURCE-ROOT REQUIREMENT, for the reason `--verify-build-artifacts`
+    // and `--measure-cgroup-peak` are: this mode takes NO roots. It renders from the emitted
+    // authority carrier and reads only the files it is adjudicating, so the generic guard below
+    // would refuse the only invocation it has -- a mode that could never have run once.
+    // MEASURED, NOT REASONED -- the first remote run of this entry point exited 2 with
+    // `provide at least one --source-root` before the branch was moved here.
+    //
+    // THE PRODUCER, AS ITS OWN ENTRY POINT. `--write` installs; without it the run reports and
+    // changes nothing, so the read-only form is safe to run anywhere and the `written` list is
+    // empty BY CONSTRUCTION rather than by a caller remembering not to ask.
+    if emit_partition_crates_mode {
+        let outcome =
+            v1_compiler::cli_run::run_partition_crate_boundary(emit_partition_crates_write);
+        match &outcome {
+            v1_compiler::cli_run::PartitionCrateBoundaryOutcome::CarrierRefused { cause } => {
+                eprintln!("emit-partition-crates: CarrierRefused cause={cause}");
+                return Err(ExitCode::from(1));
+            }
+            v1_compiler::cli_run::PartitionCrateBoundaryOutcome::Rendered { files, written } => {
+                for file in files {
+                    eprintln!(
+                        "emit-partition-crates: {} {}",
+                        file.disposition().name(),
+                        file.path
+                    );
+                }
+                eprintln!(
+                    "emit-partition-crates: rendered={} written={} mode={}",
+                    files.len(),
+                    written.len(),
+                    if emit_partition_crates_write {
+                        "write"
+                    } else {
+                        "read-only"
+                    }
+                );
+                // A READ-ONLY RUN THAT FOUND DRIFT EXITS NONZERO; the write form is what closes
+                // it. Exiting zero here would make the producer's own entry point disagree with
+                // the phase that names it as the remedy.
+                let unresolved = outcome.divergent().len();
+                return if emit_partition_crates_write || unresolved == 0 {
+                    Ok(ExitCode::SUCCESS)
+                } else {
+                    Err(ExitCode::from(1))
+                };
+            }
+        }
+    }
+
     if source_roots.is_empty() {
         eprintln!("claim_executor: provide at least one --source-root");
         return Err(ExitCode::from(2));
     }
+
     let _phase_profile = PhaseProfile::install_from_env();
 
     // THE REQUIRED WITNESS FLOOR: one repository preparation, one immutable scope per distinct
@@ -573,7 +627,53 @@ fn run() -> Result<ExitCode, ExitCode> {
                 &v1_compiler::cli_run::workspace_root(),
                 &v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS,
             ) {
-                Ok(count) => eprintln!("required-ci: parse OK {count} file(s) parse-clean"),
+                Ok(sweep) => {
+                    eprintln!(
+                        "required-ci: parse OK {} file(s) parse-clean",
+                        sweep.parse_clean
+                    );
+                    // THE DECLARATION INTEGRITY CHECKS RIDE THE PARSE THAT JUST RAN.
+                    //
+                    // They are reported inside this phase rather than as a phase of their own
+                    // because they are not a second pass over anything: the index was built by
+                    // insertion from the sweep above, so there is no walk to order, nothing to
+                    // schedule, and no second acquisition of the corpus. DESIGN §6 and §3's
+                    // cited-symbol row both name exactly this — one module's facts from one
+                    // module's source, at ingestion, instead of a corpus-wide job per question.
+                    let population =
+                        v1_compiler::cli_run::declaration_index::index_population(&sweep.index);
+                    let findings =
+                        v1_compiler::cli_run::declaration_index::corpus_findings(&sweep.index);
+                    // A GREEN NAMES ITS DENOMINATORS. `checked=0` and `all clean` are different
+                    // states with different remedies, and an instrument that renders them
+                    // identically is the failure DESIGN §5 names, not a tidy report.
+                    eprintln!(
+                        "required-ci: declarations modules={} declared={} import_members={} \
+                         citations={} debt={} in_fixtures={} outside_index={} kernel_named={} lens_modules={}",
+                        population.modules,
+                        population.declarations,
+                        population.import_members,
+                        population.citations,
+                        population.citations_pre_existing_debt,
+                        population.citations_in_fixtures,
+                        population.citations_outside_index,
+                        population.import_members_kernel_named,
+                        population.lens_modules,
+                    );
+                    for finding in &findings {
+                        eprintln!(
+                            "required-ci: declarations FAIL {}",
+                            v1_compiler::cli_run::declaration_index::render_finding(
+                                &v1_compiler::cli_run::workspace_root(),
+                                finding
+                            )
+                        );
+                    }
+                    if !findings.is_empty() {
+                        phase_failures
+                            .push(format!("declarations ({} finding(s))", findings.len()));
+                    }
+                }
                 Err(errors) => {
                     for e in &errors {
                         eprintln!("required-ci: parse FAIL {e}");
@@ -652,27 +752,22 @@ fn run() -> Result<ExitCode, ExitCode> {
                     for run in &runs {
                         eprintln!("{}", run.measurement_line("required-ci: v2-emission"));
                         match &run.disposition {
-                            v1_compiler::cli_run::EntryEmissionDisposition::Completed {
-                                ..
-                            } => {}
-                            v1_compiler::cli_run::EntryEmissionDisposition::Refused {
-                                phase,
-                                cause,
-                            } => {
+                            v1_compiler::cli_run::CompileDisposition::Completed { .. } => {}
+                            v1_compiler::cli_run::CompileDisposition::Refused { phase, cause } => {
                                 not_completed += 1;
                                 eprintln!(
-                                    "required-ci: v2-emission EmissionRefused entry={} phase={phase} cause={cause}",
-                                    run.entry
+                                    "required-ci: v2-emission EmissionRefused {} phase={phase} cause={cause}",
+                                    run.subject.receipt()
                                 );
                             }
-                            v1_compiler::cli_run::EntryEmissionDisposition::NotExecuted {
+                            v1_compiler::cli_run::CompileDisposition::NotExecuted {
                                 earlier_phase,
                                 cause,
                             } => {
                                 not_completed += 1;
                                 eprintln!(
-                                    "required-ci: v2-emission EmissionNotExecuted entry={} earlier_phase={earlier_phase} cause={cause}",
-                                    run.entry
+                                    "required-ci: v2-emission EmissionNotExecuted {} earlier_phase={earlier_phase} cause={cause}",
+                                    run.subject.receipt()
                                 );
                             }
                         }
@@ -689,6 +784,112 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             }
             ran.push("v2-emission");
+        }
+
+        // PHASE — the derived stage0 partition's crate boundary.
+        //
+        // WHAT IT ANSWERS, and it is deliberately not what a reader assumes from the name: the
+        // committed `lib.rs` and `Cargo.toml` of the seven partition crates are exactly what
+        // `v1.compiler.stage0_crates` renders from the authority. It is a DRIFT question, not a
+        // compile question, and the two are independent — the incident that produced this phase
+        // was a stale AUTHORITY, whose projection was byte-perfect and did not compile. So this
+        // phase is necessary and NOT sufficient; the compile half is the partition crates being
+        // built, which `-p v1-compiler --bins` does not reach (a `-p` selector scopes `--bins`
+        // to that one package, and these are separate packages).
+        //
+        // A CARRIER REFUSAL IS NOT A CLEAN RUN. The outcome type reaches every verdict THROUGH
+        // the rendered population, so `refused before rendering` cannot inhabit the same arm as
+        // `rendered, nothing drifted`. Reporting a zero here without that distinction is the
+        // execution-provenance loss DESIGN names: an unreached observation reading as a pass.
+        if required_ci_phase_selected(RequiredCiPhase::PartitionCrates, required_ci_lane) {
+            eprintln!(
+                "required-ci: phase partition-crates (the derived stage0 partition's boundary files)"
+            );
+            match v1_compiler::cli_run::run_partition_crate_boundary(false) {
+                v1_compiler::cli_run::PartitionCrateBoundaryOutcome::CarrierRefused { cause } => {
+                    eprintln!(
+                        "required-ci: partition-crates CarrierRefused cause={cause} \
+                         (the authority declined to render; nothing was compared)"
+                    );
+                    phase_failures.push(format!("partition-crates carrier refused: {cause}"));
+                }
+                outcome @ v1_compiler::cli_run::PartitionCrateBoundaryOutcome::Rendered {
+                    ..
+                } => {
+                    let divergent = outcome.divergent();
+                    if let v1_compiler::cli_run::PartitionCrateBoundaryOutcome::Rendered {
+                        files,
+                        ..
+                    } = &outcome
+                    {
+                        eprintln!(
+                            "required-ci: partition-crates rendered={} matches={} drifted={} absent={}",
+                            files.len(),
+                            files.len() - divergent.len(),
+                            divergent
+                                .iter()
+                                .filter(|f| f.disposition()
+                                    == v1_compiler::cli_run::BoundaryFileDisposition::Drifted)
+                                .count(),
+                            divergent
+                                .iter()
+                                .filter(|f| f.disposition()
+                                    == v1_compiler::cli_run::BoundaryFileDisposition::Absent)
+                                .count(),
+                        );
+                    }
+                    for file in &divergent {
+                        eprintln!(
+                            "required-ci: partition-crates {} {}",
+                            file.disposition().name(),
+                            file.path
+                        );
+                    }
+                    if !divergent.is_empty() {
+                        // THE REFUSAL NAMES A ROUTE THAT EXISTS. The header on these files used
+                        // to name `regen_stage0`, deleted 2026-08-20, so the only move the stop
+                        // offered was unavailable and the author hand-edited instead.
+                        eprintln!(
+                            "required-ci: partition-crates these are GENERATED projections of \
+                             v2.workflow.rust_crate_partition — do not hand-edit; regenerate with: {}",
+                            v1_compiler::cli_run::PARTITION_CRATE_PRODUCING_COMMAND
+                        );
+                        phase_failures.push(format!(
+                            "partition-crates ({} boundary file(s) not derived)",
+                            divergent.len()
+                        ));
+                    }
+                }
+            }
+
+            // THE SECOND CONJUNCT, AND IT RUNS WHATEVER THE FIRST ANSWERED. Drift being clean
+            // says the projection matches its authority; it says NOTHING about the authority
+            // being complete. The defect this phase exists for had drift ZERO across four
+            // projection links and did not compile, so a drift-only phase reports green on it.
+            //
+            // PLACEMENT IS LOAD-BEARING, and this sat inside the `Rendered` arm first: a
+            // `CarrierRefused` returned before the compile, so the one state where the authority
+            // is most suspect was the one state that skipped the completeness check. The two
+            // conjuncts are independent in both directions, so neither may gate the other.
+            let packages = v1_compiler::cli_run::partition_package_names();
+            let compile = v1_compiler::cli_run::compile_partition_crates(&packages);
+            eprintln!(
+                "required-ci: partition-crates compile {}",
+                compile.summary()
+            );
+            if !compile.passed() {
+                if let v1_compiler::cli_run::PartitionCompileOutcome::Completed {
+                    stderr_tail,
+                    ..
+                } = &compile
+                {
+                    for line in stderr_tail.lines() {
+                        eprintln!("required-ci: partition-crates cargo| {line}");
+                    }
+                }
+                phase_failures.push(format!("partition-crates compile: {}", compile.summary()));
+            }
+            ran.push("partition-crates");
         }
 
         // PHASE 4 — the witness floor. Independent; runs whatever happened above.
@@ -747,25 +948,22 @@ fn run() -> Result<ExitCode, ExitCode> {
                     // of nothing by anything that reads one line at a time.
                     eprintln!("{}", run.measurement_line("required-v2-emission"));
                     match &run.disposition {
-                        v1_compiler::cli_run::EntryEmissionDisposition::Completed { .. } => {}
-                        v1_compiler::cli_run::EntryEmissionDisposition::Refused {
-                            phase,
-                            cause,
-                        } => {
+                        v1_compiler::cli_run::CompileDisposition::Completed { .. } => {}
+                        v1_compiler::cli_run::CompileDisposition::Refused { phase, cause } => {
                             not_completed += 1;
                             eprintln!(
-                                "required-v2-emission: EmissionRefused entry={} phase={phase} cause={cause}",
-                                run.entry
+                                "required-v2-emission: EmissionRefused {} phase={phase} cause={cause}",
+                                run.subject.receipt()
                             );
                         }
-                        v1_compiler::cli_run::EntryEmissionDisposition::NotExecuted {
+                        v1_compiler::cli_run::CompileDisposition::NotExecuted {
                             earlier_phase,
                             cause,
                         } => {
                             not_completed += 1;
                             eprintln!(
-                                "required-v2-emission: EmissionNotExecuted entry={} earlier_phase={earlier_phase} cause={cause}",
-                                run.entry
+                                "required-v2-emission: EmissionNotExecuted {} earlier_phase={earlier_phase} cause={cause}",
+                                run.subject.receipt()
                             );
                         }
                     }
@@ -835,64 +1033,22 @@ fn run() -> Result<ExitCode, ExitCode> {
         };
     }
 
-    // THE CITED-SYMBOL CENSUS IS ITS OWN REQUIRED CHECK, NOT A PHASE OF `--required-ci`.
+    // THE CITED-SYMBOL CENSUS IS GONE FROM HERE, AND ITS SUBJECT MOVED RATHER THAN LAPSING.
     //
-    // WHY IT IS NOT A PHASE. The operator narrowed `--required-ci` from eight phases to three on
-    // 2026-08-21 (#8791), and that ruling is about what one composed entry point is responsible
-    // for. A census with a different subject gets its own named check instead: `--required-ci`
-    // stays at exactly three phases, so nothing about the narrowing is weakened, contradicted or
-    // quietly reinterpreted. Routing the same phase in under a different name would be the
-    // workaround this repository refuses; a distinct concern with its own check is the shape the
-    // ruling points at.
+    // `--required-cited-symbol` ran `v2.lens.cited_symbol_resolution` over the corpus-wide
+    // `decl_facts` + `module_declaration_facts` walks, answering each authored reference by a
+    // LINEAR SCAN of a flat list of every declaration in the repository. DESIGN §3's rung-drop
+    // row names exactly that shape as the thing to stop doing: the wall belongs "checked at
+    // ingestion, on the module whose source carries the citation, from that module's own text,
+    // rather than reconstructed corpus-wide by a second job".
     //
-    // WHY IT IS NOT A FLOOR CLAIM EITHER, and this one is structural rather than a preference.
-    // `run_required_floor` declines any entry that reads the live tree (`DeclinedLiveTree`), and
-    // reading the live corpus IS this census's subject -- relocating the witness moves it from
-    // `DeclinedLongModule` to `DeclinedLiveTree` and never to `Planned`. No amount of making it
-    // cheaper opens that door.
-    //
-    // WHAT IT REPORTS. Every unresolved reference with the typed arm that refused it, and -- on a
-    // green -- the population it checked. An empty refusal list means both "every authored
-    // reference resolved" and "there were no references to check"; those are different states and
-    // only the first is coverage, so a population it cannot read FAILS rather than greening over
-    // an unknown denominator.
-    if required_cited_symbol_mode {
-        let (ctx, _entry) = match cited_symbol_lens_context(&source_roots) {
-            Ok(v) => v,
-            Err(e) => {
-                eprintln!("cited-symbol: refused: {e}");
-                return Err(ExitCode::from(1));
-            }
-        };
-        let rows = match cited_symbol_census(&ctx) {
-            Ok(rows) => rows,
-            Err(e) => {
-                eprintln!("cited-symbol: refused: {e}");
-                return Err(ExitCode::from(1));
-            }
-        };
-        if !rows.is_empty() {
-            for row in &rows {
-                eprintln!("cited-symbol: REFUSED {row}");
-            }
-            eprintln!(
-                "cited-symbol: FAIL {} authored reference(s) do not resolve — a citation outlived \
-                 what it names (DESIGN §3)",
-                rows.len()
-            );
-            return Err(ExitCode::from(1));
-        }
-        return match cited_symbol_population(&ctx) {
-            Ok(checked) => {
-                eprintln!("cited-symbol: OK every authored reference resolves checked={checked}");
-                Ok(ExitCode::SUCCESS)
-            }
-            Err(e) => {
-                eprintln!("cited-symbol: refused: population unreadable: {e}");
-                Err(ExitCode::from(1))
-            }
-        };
-    }
+    // It is now the `parse` phase above, over the per-module declaration index the sweep builds
+    // from the parse it was already performing. The mode is deleted rather than left standing as
+    // a second route to one question (§3, single authority), and the replacement is STRICTLY
+    // WIDER, which is the test §3's replacement doctrine sets: it enrolls every authored
+    // `DeclarationRef` in the corpus rather than the five carriers the lens's population named,
+    // and it indexes test modules, which `decl_facts` deliberately did not — so the
+    // outside-index disposition those exclusions forced is not needed at all.
 
     // The heads reading's own instrument. It is not enrolled in the required run and this
     // clause does not pretend otherwise: reading 3875 modules TWICE is precisely the cost
@@ -1146,6 +1302,7 @@ enum RequiredCiPhase {
     Parse,
     Regen,
     V2Emission,
+    PartitionCrates,
     Floor,
 }
 
@@ -1155,6 +1312,7 @@ impl RequiredCiPhase {
             RequiredCiPhase::Parse => "parse",
             RequiredCiPhase::Regen => "regen",
             RequiredCiPhase::V2Emission => "v2-emission",
+            RequiredCiPhase::PartitionCrates => "partition-crates",
             RequiredCiPhase::Floor => "floor",
         }
     }
@@ -1170,15 +1328,21 @@ impl RequiredCiPhase {
             RequiredCiPhase::Parse => RequiredCiLane::Witnesses,
             RequiredCiPhase::Regen => RequiredCiLane::Build,
             RequiredCiPhase::V2Emission => RequiredCiLane::Build,
+            // A DRIFT COMPARISON OVER DERIVED RUST, so it belongs beside regen and
+            // v2-emission rather than beside the witness corpus. The two lanes carry no
+            // `needs` edge, so this costs nothing until the build lane exceeds the floor's
+            // wall clock; beside the floor it would be pure addition to the critical path.
+            RequiredCiPhase::PartitionCrates => RequiredCiLane::Build,
             RequiredCiPhase::Floor => RequiredCiLane::Witnesses,
         }
     }
 }
 
-const REQUIRED_CI_PHASES: [RequiredCiPhase; 4] = [
+const REQUIRED_CI_PHASES: [RequiredCiPhase; 5] = [
     RequiredCiPhase::Parse,
     RequiredCiPhase::Regen,
     RequiredCiPhase::V2Emission,
+    RequiredCiPhase::PartitionCrates,
     RequiredCiPhase::Floor,
 ];
 
@@ -4049,112 +4213,6 @@ fn run_behavioral_receipt_census(source_roots: &[String]) -> Result<ExitCode, Ex
             eprintln!("receipt-census: REFUSED — {e}");
             Err(ExitCode::from(1))
         }
-    }
-}
-
-/// THE RECEIPT'S OWN ARMS, ENROLLED.
-///
-/// A behavioral receipt is only evidence if it can still tell equivalence from divergence. That
-/// property is not established by the mode existing, and it is not established by a transcript in
-/// a pull request: a red control that no longer discriminates looks exactly like a red control
-/// that does, until the day it is needed. So both arms live here and execute -- DESIGN §4b: the
-/// discriminating RED and the positive control REMAIN ENROLLED as the executing evidence that the
-/// rung stays real.
-///
-/// Run against a CONTROLLED FIXTURE (`fixtures/receipt_fixture`), never against the live corpus.
-/// The fixture independently authors its own input and its own expected outcome, which is what
-/// DESIGN §5 requires of an oracle -- a measurement copied from the current tree is not one. It
-/// also means this control cannot be satisfied by a tree in which nothing happens to have changed.
-///
-/// WHAT THIS CONTROL COVERS: the grammar-backed read of a declared surface, the derivation of the
-/// corpus from it, the enumeration of argument tuples, driver generation, both builds, the
-/// transcript comparison, and the verdict. WHAT IT DOES NOT COVER, stated rather than implied:
-/// the emit, and the emit-path-to-mirror lookup. Those have their own gates; this one would
-/// report a false green about them, so it does not speak about them at all.
-/// THE CITED-SYMBOL CENSUS, RUN AS ITS OWN REQUIRED CHECK BECAUSE IT CANNOT BE RUN AS A CLAIM.
-///
-/// `v2.lens.cited_symbol_resolution` resolves every structural `DeclarationRef` the repository
-/// authors -- hand-authored doc binds, the generated design document's references, and the roster
-/// registry -- against live declaration facts, and refuses a reference whose module, declaration or
-/// field is absent or ambiguous. Its live-corpus claim was carried only by a witness under
-/// `dag/test/claim/long/`, whose entire file is classified `OfflineLocalRecipe`, so nothing executed
-/// it: on unmodified main the lens was RED with 27 refusing production references while every
-/// required check was green.
-///
-/// WHY NOT THE FLOOR. `run_required_floor` declines an identity whose entry reads the live tree
-/// (`DeclinedLiveTree`), and reading the live corpus IS this census's subject. Relocating the
-/// witness out of the long home moves it from one decline arm to the other and never to `Planned`.
-/// The route is therefore a MODE, `--required-cited-symbol`, invoked by its own job -- not a claim,
-/// so it sits outside both the per-claim safety deadline and the live-tree arm, and not a phase of
-/// `--required-ci`, which the operator narrowed to three on 2026-08-21 and which this leaves
-/// byte-unchanged.
-///
-/// Returns the located refusals -- one line per unresolved reference, carrying the typed arm that
-/// refused it -- so the failure names what to fix rather than reporting a count.
-/// The size of the population the census just checked, so a green names its denominator.
-///
-/// An empty refusal list is returned both when every reference resolves and when there are no
-/// references at all; those are different states and only the first is coverage.
-fn cited_symbol_population(ctx: &InterpContext) -> Result<i64, String> {
-    match run_value(ctx, "cited_symbol_production_reference_count") {
-        Ok(Value::Int(n)) => Ok(n),
-        Ok(other) => Err(format!(
-            "cited_symbol_production_reference_count must be an Int, got {other:?}"
-        )),
-        Err(msg) => Err(msg),
-    }
-}
-
-/// The lens's evaluation context. The caller builds it ONCE and lends it to both readers -- the
-/// refusal report and the population count -- which is why they take a `&InterpContext` rather
-/// than source roots: two constructions would be two reads of a tree that can change between them,
-/// and a denominator is only meaningful for the census it accompanies. An earlier revision said
-/// this while both helpers built their own; the comment was true of the intent and false of the
-/// code, which is the stale-claim class this very census exists to catch (found in review 54581).
-fn cited_symbol_lens_context(source_roots: &[String]) -> Result<(InterpContext, String), String> {
-    const LENS_REL: &str = "lens/cited_symbol_resolution.dag";
-    let entry = source_roots
-        .iter()
-        .map(|r| Path::new(r).join(LENS_REL))
-        .find(|p| p.exists())
-        .ok_or_else(|| {
-            format!(
-                "cited-symbol: no source root carries {LENS_REL} (roots: {}) -- the census cannot \
-                 be run, which is ignorance and not a green",
-                source_roots.join(", ")
-            )
-        })?
-        .to_string_lossy()
-        .into_owned();
-    let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry)
-        .map_err(|e| format!("cited-symbol: resolve {entry} failed: {e}"))?;
-    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
-    Ok((ctx, entry))
-}
-
-fn cited_symbol_census(ctx: &InterpContext) -> Result<Vec<String>, String> {
-    match run_value(ctx, "cited_symbol_unresolved_reference_report") {
-        Ok(Value::List(rows)) => {
-            let mut out = Vec::new();
-            for row in rows.iter() {
-                match row {
-                    Value::Str(s) => out.push(s.to_string()),
-                    other => {
-                        return Err(format!(
-                            "cited-symbol: report rows must be String, got {other:?} (fail-closed)"
-                        ))
-                    }
-                }
-            }
-            Ok(out)
-        }
-        Ok(other) => Err(format!(
-            "cited-symbol: cited_symbol_unresolved_reference_report must return a List, got \
-             {other:?} (fail-closed)"
-        )),
-        Err(msg) => Err(format!(
-            "cited-symbol: census unavailable (fail-closed): {msg}"
-        )),
     }
 }
 

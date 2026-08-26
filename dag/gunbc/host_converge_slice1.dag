@@ -22,6 +22,8 @@ import gunbc.systemctl_show_read {
   SystemdPropertyCaptureRefused,
 }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
+import gunbc.runner_unit { runner_slot_unit_name }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet_host_budget { declared_runner_count_for }
 import gunbc.host_converge {
   ConvergeKnob,
@@ -76,7 +78,9 @@ fn host_converge_slice1_shadow_revert_script_matches_authority(unit: NonEmptyStr
   control_shadow_revert_script_matches_extdeps_argv(u: control_shadow_unit(unit: unit))
 }
 
-data host_converge_slice1_probe_unit: NonEmptyStr = "actions-runner@srv1-01.service"
+// The probe unit is srv1 slot 1 DERIVED, not spelled. Same reason as every other site: the name
+// this row must equal is the one gunbc.host_converge writes drop-ins for.
+data host_converge_slice1_probe_unit: NonEmptyStr = runner_slot_unit_name(slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 })
 
 data host_converge_slice1_knob_name: String = "per_slot_memory_max_bytes"
 
