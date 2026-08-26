@@ -34104,14 +34104,17 @@ pub fn emit_cli_struct(
                                             v1_rt::concat(
                                                 v1_rt::concat(
                                                     v1_rt::concat(
-                                                        "#[derive(Parser)]\n".to_string(),
-                                                        "#[command(name = \"".to_string(),
+                                                        v1_rt::concat(
+                                                            "#[derive(Parser)]\n".to_string(),
+                                                            "#[command(name = \"".to_string(),
+                                                        ),
+                                                        binary_name.clone(),
                                                     ),
-                                                    binary_name.clone(),
+                                                    "\"".to_string(),
                                                 ),
-                                                "\"".to_string(),
+                                                about_attr.clone(),
                                             ),
-                                            v1_rt::concat(about_attr.clone(), version_attr.clone()),
+                                            version_attr.clone(),
                                         ),
                                         ")]\n".to_string(),
                                     ),

@@ -5,8 +5,10 @@ use self::CliArmRealization::*;
 use self::CliOptionArity::*;
 use self::CliOptionValue::*;
 use self::CliSurfaceEmission::*;
+use self::CliVersionIdentity::*;
+pub use crate::std_dissolution::unbound_dissolution;
+pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
-pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
 pub use crate::std_measure::millisecond_count;
 pub use crate::std_measure::Millisecond;
 use crate::std_types::Bool::*;
@@ -58,6 +60,14 @@ pub enum CliVersionIdentity {
     CliCleanSourceCommit { commit: CommitSha },
     CliDirtySourceCommit { commit: CommitSha },
 }
+impl CliVersionIdentity {
+    pub fn commit(&self) -> CommitSha {
+        match self {
+            CliVersionIdentity::CliCleanSourceCommit { commit: __val, .. } => __val.clone(),
+            CliVersionIdentity::CliDirtySourceCommit { commit: __val, .. } => __val.clone(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -96,24 +106,24 @@ pub fn gunbc_cli_about() -> String {
 }
 
 pub fn gunbc_cli_version_identity(
-    source_commit: CommitSha,
+    source_commit: String,
     source_dirty: bool,
 ) -> Rc<CliVersionIdentity> {
-    if source_dirty {
+    if source_dirty.clone() {
         Rc::new(CliVersionIdentity::CliDirtySourceCommit {
-            commit: source_commit,
+            commit: source_commit.clone(),
         })
     } else {
         Rc::new(CliVersionIdentity::CliCleanSourceCommit {
-            commit: source_commit,
+            commit: source_commit.clone(),
         })
     }
 }
 
 pub fn gunbc_cli_version_text(identity: Rc<CliVersionIdentity>) -> String {
-    match identity.as_ref() {
-        CliVersionIdentity::CliCleanSourceCommit { commit } => commit.clone(),
-        CliVersionIdentity::CliDirtySourceCommit { commit } => {
+    match (*identity.clone()).clone() {
+        CliVersionIdentity::CliCleanSourceCommit { commit: commit, .. } => commit.clone(),
+        CliVersionIdentity::CliDirtySourceCommit { commit: commit, .. } => {
             v1_rt::concat(commit.clone(), "-dirty".to_string())
         }
     }
