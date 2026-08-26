@@ -3,27 +3,21 @@ module gunbc.fleet_fan_tach_health_witness
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.measure { rpm }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import product.fan_tach { FanTachEndpointIdentity, FanTachWindow }
 import gunbc.fleet_fan_tach_expectation {
-  ChassisBayHeader,
-  FanHeaderExpectationRow,
   HostFanTachExpectation,
-  ProcessorCoolerHeader,
-  TachExpected,
-  TachNotExpected,
   chassis_tach_expected,
   expected_tach_headers,
   srv1_fan_tach_expectation,
+  srv2_fan_tach_expectation,
   srv3_fan_tach_expectation,
   srv4_fan_tach_expectation,
 }
 import gunbc.fleet_fan_tach_observation {
-  FanTachObservationRow,
-  HostFanTachObservation,
-  TachRotating,
-  rotating,
-  srv1_fan_tach_observation,
-  srv3_fan_tach_observation,
-  srv4_fan_tach_observation,
+  srv1_windows,
+  srv2_windows,
+  srv3_windows,
+  srv4_windows,
 }
 import product.fan_tach_health {
   DuplicateExpectedHeader,
@@ -32,23 +26,35 @@ import product.fan_tach_health {
   ExpectedRotationNotObserved,
   FanTachAssessed,
   FanTachRefused,
+  HostIdentityMismatch,
   ObservationForUndeclaredHeader,
   RotationCorrectlyAbsent,
+  RotationDegraded,
   RotationObserved,
-  TachValueNotPublished,
   UnexpectedRotation,
   assess_fan_tach,
   authority_gap_count,
   expectation_drift_count,
   observation_gap_count,
   rotation_anomaly_count,
+  rotation_degraded_count,
 }
+
+// 12 of 20 is the declared rotation floor. srv2's healthy endpoints sit at 16-20 and srv1's two
+// bad ones at 4 and 9, so any floor in that gap separates them. It is a PARAMETER threaded from
+// here rather than a constant inside the judgement, for the reason DESIGN gives about oracles: a
+// number measured on the current fleet must not quietly become the definition of healthy.
+data rotating_floor: Int = 12
 
 fn verdicts_of(
   expectation: HostFanTachExpectation,
-  observation: HostFanTachObservation,
+  windows: List<FanTachWindow>,
 ) -> List<NonEmptyStr> {
-  match assess_fan_tach(expectation: expectation, observation: observation) {
+  match assess_fan_tach(
+    expectation: expectation,
+    windows: windows,
+    minimum_rotating: rotating_floor,
+  ) {
     FanTachRefused { cause } => []
     FanTachAssessed { verdicts } =>
       map(
@@ -58,6 +64,7 @@ fn verdicts_of(
             RotationObserved { header, speed } => "spin"
             RotationCorrectlyAbsent { header } => "nominal-absent"
             ExpectedRotationNotObserved { header, role, absence } => "no-rotation"
+            RotationDegraded { header, role, rotating_count, sample_count } => "degraded"
             UnexpectedRotation { header, speed } => "drift"
             ExpectedHeaderObservationMissing { header, role } => "obs-gap"
             ObservationForUndeclaredHeader { header } => "authority-gap"
@@ -70,77 +77,81 @@ fn count_of(tags: List<NonEmptyStr>, tag: NonEmptyStr) -> Int {
   fold(tags, init: 0, f: (acc, t) => if t == tag { acc + 1 } else { acc })
 }
 
-// THE CENTRAL DISCRIMINATION, AND THE TWO INPUTS ARE BYTE-IDENTICAL.
-// srv1/FAN4 and srv3/FAN2 both publish no tach value. One is a stopped fan on an endpoint where
-// rotation is expected; one is an endpoint where nothing is expected. Only the expectation
-// separates them, which is the reason this module exists.
-fn identical_readings_get_opposite_verdicts() -> Bool {
-  let a = verdicts_of(
-    expectation: srv1_fan_tach_expectation,
-    observation: srv1_fan_tach_observation,
-  )
-  let b = verdicts_of(
-    expectation: srv3_fan_tach_expectation,
-    observation: srv3_fan_tach_observation,
-  )
-  count_of(tags: a, tag: "no-rotation") == 2
-    && count_of(tags: a, tag: "nominal-absent") == 0
-    && count_of(tags: b, tag: "no-rotation") == 0
-    && count_of(tags: b, tag: "nominal-absent") == 1
+fn drop_window(windows: List<FanTachWindow>, header: NonEmptyStr) -> List<FanTachWindow> {
+  filter(windows, w => w.endpoint.name != header)
 }
 
-// EQUAL CARDINALITY, DIFFERENT ENDPOINTS. Any check that compares counts passes on both hosts
-// while the configuration is wrong for one of them.
+// DEGRADED IS ITS OWN VERDICT, AND THIS IS THE CONTROL THAT FORCED IT TO EXIST.
+// srv1/FAN4 rotates 9 times in 20 and srv1/FAN5 four times, against 16-20 for the same fans on
+// the control host at the same duty. A two-state vocabulary put them in the wrong bucket either
+// way: "not rotating" reads as a hardware emergency, "rotating" reads as nothing at all.
+fn srv1_degraded_pair_is_neither_healthy_nor_absent() -> Bool {
+  let tags = verdicts_of(expectation: srv1_fan_tach_expectation, windows: srv1_windows)
+  count_of(tags: tags, tag: "degraded") == 2
+    && count_of(tags: tags, tag: "no-rotation") == 0
+    && count_of(tags: tags, tag: "spin") == 3
+}
+
+// THE CONTROL HOST MUST BE CLEAN ON THE SAME JUDGEMENT. Without this, a floor set too high would
+// call the whole fleet degraded and the conjunct above would still pass.
+fn srv2_control_is_clean() -> Bool {
+  let tags = verdicts_of(expectation: srv2_fan_tach_expectation, windows: srv2_windows)
+  count_of(tags: tags, tag: "spin") == 5 && count_of(tags: tags, tag: "degraded") == 0
+}
+
+// AN INTERMITTENT ZERO IS NOT A FAULT. srv2 reads zero on every chassis endpoint 2-4 times in 20
+// while healthy, so a judgement keying on "any zero" would condemn a working machine. This is
+// the conjunct that makes the RATE load-bearing rather than decorative.
+fn ordinary_dropout_is_not_a_fault() -> Bool {
+  let tags = verdicts_of(expectation: srv2_fan_tach_expectation, windows: srv2_windows)
+  count_of(tags: tags, tag: "no-rotation") == 0 && count_of(tags: tags, tag: "degraded") == 0
+}
+
+// UNAVAILABLE AND NEVER-ROTATED ARE DIFFERENT ABSENCES. srv3/FAN2 publishes nothing because
+// nothing is wired to it; that is not the same as a rotor that was read and never turned.
+fn unwired_endpoint_is_nominal() -> Bool {
+  let tags = verdicts_of(expectation: srv3_fan_tach_expectation, windows: srv3_windows)
+  count_of(tags: tags, tag: "nominal-absent") == 1
+    && count_of(tags: tags, tag: "no-rotation") == 0
+    && count_of(tags: tags, tag: "spin") == 4
+}
+
 fn srv3_srv4_differ_by_identity_not_count() -> Bool {
   let a = expected_tach_headers(expectation: srv3_fan_tach_expectation)
   let b = expected_tach_headers(expectation: srv4_fan_tach_expectation)
   a.length() == 4 && b.length() == 4 && a != b
 }
 
-// THE FAIL-OPEN CONTROL. Drop srv1/FAN4's observation row entirely - the shape a collector
-// produces when it omits a sensor object rather than reporting it absent. The expectation-driven
-// fold must still judge FAN4; an observation-driven fold returns nothing for it and looks clean.
-data srv1_observation_missing_fan4: HostFanTachObservation = HostFanTachObservation {
-  host: srv1_fan_tach_observation.host,
-  rows: filter(srv1_fan_tach_observation.rows, row => row.header != "FAN4"),
-}
-
-fn missing_observation_row_is_caught() -> Bool {
+// THE FAIL-OPEN CONTROL. Drop a window entirely - the shape a collector produces when it omits an
+// endpoint rather than reporting it absent. An expectation-driven fold still judges it; an
+// observation-driven fold returns nothing and looks clean.
+fn missing_window_is_caught() -> Bool {
   let tags = verdicts_of(
     expectation: srv1_fan_tach_expectation,
-    observation: srv1_observation_missing_fan4,
+    windows: drop_window(windows: srv1_windows, header: "FAN4"),
   )
   count_of(tags: tags, tag: "obs-gap") == 1 && tags.length() == 5
 }
 
-data srv3_observation_duplicate_fan3: HostFanTachObservation = HostFanTachObservation {
-  host: srv3_fan_tach_observation.host,
-  rows: flat_map(
-    [srv3_fan_tach_observation.rows, [rotating(header: "FAN3", speed: rpm(1583))]],
-    g => g,
-  ),
-}
-
-data srv3_expectation_duplicate_fan3: HostFanTachExpectation = HostFanTachExpectation {
-  host: srv3_fan_tach_expectation.host,
-  headers: flat_map(
-    [srv3_fan_tach_expectation.headers, [chassis_tach_expected(header: "FAN3")]],
-    g => g,
-  ),
-}
-
-// DUPLICATES REFUSE RATHER THAN RESOLVING BY FIRST MATCH.
 fn duplicates_refuse() -> Bool {
   let dup_obs = match assess_fan_tach(
     expectation: srv3_fan_tach_expectation,
-    observation: srv3_observation_duplicate_fan3,
+    windows: flat_map([srv3_windows, [srv3_windows.first()]], g => g),
+    minimum_rotating: rotating_floor,
   ) {
-    FanTachRefused { cause: DuplicateObservedHeader { header } } => header == "FAN3"
+    FanTachRefused { cause: DuplicateObservedHeader { header } } => header == "FAN1"
     other => false
   }
   let dup_exp = match assess_fan_tach(
-    expectation: srv3_expectation_duplicate_fan3,
-    observation: srv3_fan_tach_observation,
+    expectation: HostFanTachExpectation {
+      host: srv3_fan_tach_expectation.host,
+      headers: flat_map(
+        [srv3_fan_tach_expectation.headers, [chassis_tach_expected(header: "FAN3")]],
+        g => g,
+      ),
+    },
+    windows: srv3_windows,
+    minimum_rotating: rotating_floor,
   ) {
     FanTachRefused { cause: DuplicateExpectedHeader { header } } => header == "FAN3"
     other => false
@@ -148,75 +159,62 @@ fn duplicates_refuse() -> Bool {
   dup_obs && dup_exp
 }
 
-// POSITIVE TACH ON AN UNEXPECTED ENDPOINT IS EXPECTATION DRIFT, NOT A FAN FAULT. Someone fitted
-// a fan nobody recorded; the remedy is the inventory, not a hardware ticket.
-data srv3_observation_fan2_spinning: HostFanTachObservation = HostFanTachObservation {
-  host: srv3_fan_tach_observation.host,
-  rows: map(
-    srv3_fan_tach_observation.rows,
-    row => if row.header == "FAN2" { rotating(header: "FAN2", speed: rpm(1500)) } else { row },
-  ),
-}
-
-fn unexpected_rotation_is_drift_not_failure() -> Bool {
-  let tags = verdicts_of(
+// ONE HOST'S EXPECTATION AGAINST ANOTHER HOST'S WINDOWS MUST REFUSE. srv3 and srv4 both carry
+// four expected endpoints, so nothing about the SHAPE of this pairing is wrong - only the
+// identity is, which is exactly why the endpoint carries its host.
+fn cross_host_pairing_refuses() -> Bool {
+  match assess_fan_tach(
     expectation: srv3_fan_tach_expectation,
-    observation: srv3_observation_fan2_spinning,
-  )
-  count_of(tags: tags, tag: "drift") == 1 && count_of(tags: tags, tag: "no-rotation") == 0
-}
-
-// AN OBSERVATION FOR A HEADER NO AUTHORITY DECLARES IS AN AUTHORITY GAP, not a silent drop.
-data srv4_expectation_missing_fan4: HostFanTachExpectation = HostFanTachExpectation {
-  host: srv4_fan_tach_expectation.host,
-  headers: filter(srv4_fan_tach_expectation.headers, row => row.header != "FAN4"),
+    windows: srv4_windows,
+    minimum_rotating: rotating_floor,
+  ) {
+    FanTachRefused { cause: HostIdentityMismatch } => true
+    other => false
+  }
 }
 
 fn undeclared_header_is_authority_gap() -> Bool {
   let tags = verdicts_of(
-    expectation: srv4_expectation_missing_fan4,
-    observation: srv4_fan_tach_observation,
+    expectation: HostFanTachExpectation {
+      host: srv4_fan_tach_expectation.host,
+      headers: filter(srv4_fan_tach_expectation.headers, row => row.header != "FAN4"),
+    },
+    windows: srv4_windows,
   )
   count_of(tags: tags, tag: "authority-gap") == 1
 }
 
-// THE OWNERS STAY SEPARATE. One input carrying all four conditions must produce four distinct
-// counts, not one total.
+// THE OWNERS STAY SEPARATE. srv1 carries two degraded endpoints and no other condition, so a
+// single collapsed "failure count" would be indistinguishable from two dead fans.
 fn counts_stay_separated() -> Bool {
   match assess_fan_tach(
-    expectation: srv4_expectation_missing_fan4,
-    observation: srv4_fan_tach_observation,
+    expectation: srv1_fan_tach_expectation,
+    windows: srv1_windows,
+    minimum_rotating: rotating_floor,
   ) {
     FanTachRefused { cause } => false
     FanTachAssessed { verdicts } =>
-      rotation_anomaly_count(verdicts: verdicts) == 0
+      rotation_degraded_count(verdicts: verdicts) == 2
+        && rotation_anomaly_count(verdicts: verdicts) == 0
         && expectation_drift_count(verdicts: verdicts) == 0
-        && authority_gap_count(verdicts: verdicts) == 1
+        && authority_gap_count(verdicts: verdicts) == 0
         && observation_gap_count(verdicts: verdicts) == 0
   }
 }
 
-fn healthy_host_is_clean() -> Bool {
-  let tags = verdicts_of(
-    expectation: srv4_fan_tach_expectation,
-    observation: srv4_fan_tach_observation,
-  )
-  count_of(tags: tags, tag: "spin") == 4
-    && count_of(tags: tags, tag: "nominal-absent") == 1
-    && tags.length() == 5
-}
-
 fn fan_tach_health_witness() -> ProcessExit {
-  if identical_readings_get_opposite_verdicts()
+  if srv1_degraded_pair_is_neither_healthy_nor_absent()
+    && srv2_control_is_clean()
+    && ordinary_dropout_is_not_a_fault()
+    && unwired_endpoint_is_nominal()
     && srv3_srv4_differ_by_identity_not_count()
-    && missing_observation_row_is_caught()
+    && missing_window_is_caught()
     && duplicates_refuse()
-    && unexpected_rotation_is_drift_not_failure()
+    && cross_host_pairing_refuses()
     && undeclared_header_is_authority_gap()
-    && counts_stay_separated()
-    && healthy_host_is_clean() {
+    && counts_stay_separated() {
     ExitSuccess
   } else {
-    exit_failure(reason: "fan tach health witness: expectation-driven join, duplicate refusal, or owner-separated counts changed")
+    exit_failure(reason: "fan tach health witness: degraded/absent discrimination, rate floor, expectation-driven join, host pairing, or owner-separated counts changed")
   }
 }

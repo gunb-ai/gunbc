@@ -2,6 +2,7 @@ module product.fan_tach_health
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.measure { RevolutionsPerMinute }
+import product.placement_supply { HostIdentity }
 import gunbc.fleet_fan_tach_expectation {
   ChassisBayHeader,
   FanHeaderExpectationRow,
@@ -11,14 +12,7 @@ import gunbc.fleet_fan_tach_expectation {
   TachExpected,
   TachNotExpected,
 }
-import gunbc.fleet_fan_tach_observation {
-  FanTachObservationRow,
-  FanTachReading,
-  HostFanTachObservation,
-  TachReadZero,
-  TachRotating,
-  TachValueUnavailable,
-}
+import product.fan_tach { FanTachEndpointIdentity, FanTachWindow }
 
 // THE JOIN, AND IT IS DRIVEN BY THE EXPECTATION RATHER THAN BY THE OBSERVATIONS.
 //
@@ -40,8 +34,18 @@ import gunbc.fleet_fan_tach_observation {
 // failed publication, or a header the BMC declines to report - which is evidence about the
 // telemetry path.
 type FanRotationAbsence
-  = RotorReadZero
+  = RotorNeverRotatedInWindow
   | TachValueNotPublished
+
+// DEGRADED IS NOT ABSENT, AND IT TOOK A CONTROL TO SEE IT. A verdict vocabulary with only
+// "rotating" and "not rotating" forced srv1's FAN4 and FAN5 into the wrong one: they rotate, at
+// roughly 60% of the speed the same fans reach on the control host at the same duty, dropping
+// out at 11/20 and 16/20 against a healthy baseline of 1-4/20. Called absent, they read as a
+// hardware emergency; called healthy, they read as nothing. Neither is true.
+//
+// The floor and the reference are PARAMETERS rather than constants because both are policy about
+// one fleet's telemetry, not facts about tachometers - and because a constant here would be a
+// number measured on the current tree standing in as an oracle.
 
 // NOTE WHAT IS ABSENT FROM THIS COPRODUCT: there is no FanFailed arm.
 //
@@ -58,6 +62,12 @@ type FanTachVerdict
       header: NonEmptyStr,
       role: FanHeaderRole,
       absence: FanRotationAbsence,
+    }
+  | RotationDegraded {
+      header: NonEmptyStr,
+      role: FanHeaderRole,
+      rotating_count: Int,
+      sample_count: Int,
     }
   | UnexpectedRotation { header: NonEmptyStr, speed: RevolutionsPerMinute }
   | ExpectedHeaderObservationMissing { header: NonEmptyStr, role: FanHeaderRole }
@@ -88,17 +98,27 @@ fn first_duplicate(headers: List<NonEmptyStr>) -> NonEmptyStr? {
   )
 }
 
-fn observation_for(
-  observation: HostFanTachObservation,
+// NO HOST COMPARISON HERE, DELIBERATELY. assess_fan_tach refuses the whole assessment if any
+// window carries a host other than the expectation's, so by the time this runs every window is
+// already this host's. A host check here would be a SECOND representation of a constraint the
+// boundary already holds - and it was measured unreachable rather than merely quiet: removing it
+// left the witness green, because no input can reach this function carrying a foreign host.
+fn window_for(
+  windows: List<FanTachWindow>,
   header: NonEmptyStr,
-) -> FanTachObservationRow? {
+) -> FanTachWindow? {
   fold(
-    observation.rows,
+    windows,
     init: none,
-    f: (acc, row) =>
+    f: (acc, w) =>
       match acc {
         Present { value } => Present { value: value }
-        none => if row.header == header { Present { value: row } } else { none }
+        none =>
+          if w.endpoint.name == header {
+            Present { value: w }
+          } else {
+            none
+          }
       },
   )
 }
@@ -121,52 +141,69 @@ fn expectation_for(
 fn verdict_for_expected(
   header: NonEmptyStr,
   role: FanHeaderRole,
-  observation: HostFanTachObservation,
+  windows: List<FanTachWindow>,
+  minimum_rotating: Int,
 ) -> FanTachVerdict {
-  match observation_for(observation: observation, header: header) {
+  match window_for(windows: windows, header: header) {
     none => ExpectedHeaderObservationMissing { header: header, role: role }
-    Present { value: row } =>
-      match row.reading {
-        TachRotating { speed } => RotationObserved { header: header, speed: speed }
-        TachReadZero =>
-          ExpectedRotationNotObserved { header: header, role: role, absence: RotorReadZero }
-        TachValueUnavailable =>
+    Present { value: w } =>
+      if w.rotating_count == 0 {
+        if w.unavailable_count == w.sample_count {
           ExpectedRotationNotObserved {
             header: header,
             role: role,
             absence: TachValueNotPublished,
           }
+        } else {
+          ExpectedRotationNotObserved {
+            header: header,
+            role: role,
+            absence: RotorNeverRotatedInWindow,
+          }
+        }
+      } else {
+        if w.rotating_count >= minimum_rotating {
+          RotationObserved { header: header, speed: w.median }
+        } else {
+          RotationDegraded {
+            header: header,
+            role: role,
+            rotating_count: w.rotating_count,
+            sample_count: w.sample_count,
+          }
+        }
       }
   }
 }
 
 fn verdict_for_unexpected(
   header: NonEmptyStr,
-  observation: HostFanTachObservation,
+  windows: List<FanTachWindow>,
 ) -> FanTachVerdict {
-  match observation_for(observation: observation, header: header) {
+  match window_for(windows: windows, header: header) {
     none => RotationCorrectlyAbsent { header: header }
-    Present { value: row } =>
-      match row.reading {
-        TachRotating { speed } => UnexpectedRotation { header: header, speed: speed }
-        TachReadZero => RotationCorrectlyAbsent { header: header }
-        TachValueUnavailable => RotationCorrectlyAbsent { header: header }
+    Present { value: w } =>
+      if w.rotating_count > 0 {
+        UnexpectedRotation { header: header, speed: w.median }
+      } else {
+        RotationCorrectlyAbsent { header: header }
       }
   }
 }
 
 fn assess_fan_tach(
   expectation: HostFanTachExpectation,
-  observation: HostFanTachObservation,
+  windows: List<FanTachWindow>,
+  minimum_rotating: Int,
 ) -> FanTachAssessment {
-  if expectation.host != observation.host {
+  if fold(windows, init: false, f: (acc, w) => if acc { true } else { w.endpoint.host != expectation.host }) {
     FanTachRefused { cause: HostIdentityMismatch }
   } else {
     match first_duplicate(headers: map(expectation.headers, row => row.header)) {
       Present { value: header } =>
         FanTachRefused { cause: DuplicateExpectedHeader { header: header } }
       none =>
-        match first_duplicate(headers: map(observation.rows, row => row.header)) {
+        match first_duplicate(headers: map(windows, w => w.endpoint.name)) {
           Present { value: header } =>
             FanTachRefused { cause: DuplicateObservedHeader { header: header } }
           none =>
@@ -181,22 +218,23 @@ fn assess_fan_tach(
                           verdict_for_expected(
                             header: row.header,
                             role: role,
-                            observation: observation,
+                            windows: windows,
+                            minimum_rotating: minimum_rotating,
                           )
                         TachNotExpected =>
-                          verdict_for_unexpected(header: row.header, observation: observation)
+                          verdict_for_unexpected(header: row.header, windows: windows)
                       },
                   ),
                   map(
                     filter(
-                      observation.rows,
-                      row =>
-                        match expectation_for(expectation: expectation, header: row.header) {
+                      windows,
+                      w =>
+                        match expectation_for(expectation: expectation, header: w.endpoint.name) {
                           Present { value } => false
                           none => true
                         },
                     ),
-                    row => ObservationForUndeclaredHeader { header: row.header },
+                    w => ObservationForUndeclaredHeader { header: w.endpoint.name },
                   ),
                 ],
                 group => group,
@@ -220,6 +258,18 @@ fn rotation_anomaly_count(verdicts: List<FanTachVerdict>) -> Int {
     f: (acc, v) =>
       match v {
         ExpectedRotationNotObserved { header, role, absence } => acc + 1
+        other => acc
+      },
+  )
+}
+
+fn rotation_degraded_count(verdicts: List<FanTachVerdict>) -> Int {
+  fold(
+    verdicts,
+    init: 0,
+    f: (acc, v) =>
+      match v {
+        RotationDegraded { header, role, rotating_count, sample_count } => acc + 1
         other => acc
       },
   )
