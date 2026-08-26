@@ -7,6 +7,8 @@ import gunbc.fabric_witness_run { required_ci_lane_build, required_ci_lane_witne
 import gunbc.required_lanes_gate { required_lanes_gate_unrenderable_stmts }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
 import v2.std.diagnostic { Outcome }
+import extdeps.languages.yaml.gha_workflow { pr_activity_string }
+import extdeps.github.actions { PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview, Closed }
 
 // THE CI PHASES ARE THE PROGRAM'S TO SEQUENCE, NOT THE JOB'S (operator directive, 2026-08-20:
 // "i would much prefer if it was all handled within the witnesses step and within the gunbc
@@ -271,5 +273,49 @@ test fn the_unrenderable_gate_refusal_serializes_and_stops_the_line() -> Bool {
         && string_contains(s: script, pattern: "could not be serialized")
         && string_contains(s: script, pattern: "exit 1")
     Rejected { diagnostics: _ } => false
+  }
+}
+
+
+// THE PULL-REQUEST ACTIVITY SET IS EXACTLY THE THREE THAT CAN CARRY A NEW SUBJECT.
+//
+// gunbc#9361 deleted `ready_for_review` from this workflow's trigger. Nothing in the tree
+// asserted the activity set at all, so the deletion was a +3/-3 diff over an unwitnessed fact --
+// and the reverse deletion, or a re-add, would have been equally invisible.
+//
+// BOTH HALVES ARE ASSERTED AND THAT IS THE POINT. An absence-only row greens if the whole
+// activity list is deleted, which is a DIFFERENT defect (the workflow would then run on every
+// PR activity GitHub defines) passing the same check. So the surviving three are read by name,
+// through the same `pr_activity_string` mapping the emitter uses, so a respelling moves both
+// sides together rather than silently vacating the negative.
+//
+// WHY ready_for_review IS THE ONE THAT GOES, stated at the grain that is actually true: the
+// question that matters is whether a HEAD has been verified against the relevant BASE; the
+// event being consumed is whether the PR moved from draft to ready. Those correlate and are not
+// equivalent. `ready_for_review` accidentally catches some base movement that happened before
+// the undraft, misses base movement after it, misses drafts that stay drafts, and reruns
+// subjects where neither head nor base moved. Since this workflow already tests drafts from
+// `Opened`, what remains of it is duplicate runs against a fixed runner pool. This row does NOT
+// claim the trigger can never observe anything new -- main may move while the head is unchanged,
+// so an undraft can face a base it has genuinely not been tested against. A future
+// base-congruence requirement therefore needs a carrier naming the base sha or merge subject
+// directly; a lifecycle event cannot stand in for it, which is the limitation rather than an
+// incapacity.
+//
+// EXECUTED, BOTH DIRECTIONS, ON THE HEAD THIS LANDS WITH. GREEN on the tree as authored. RED on
+// two mutations of the authority, run separately: re-adding ReadyForReview to the activity set
+// (the reversion this row exists to catch) and emptying the activity list entirely (the
+// over-deletion an absence-only row would have passed). Both went FAIL; the unmutated tree went
+// PASS.
+test fn w_RED_the_pull_request_activity_set_is_the_three_that_carry_a_new_subject() -> Bool {
+  match expected_witness_floor_yml() {
+    WitnessFloorGenerated { content: yml } =>
+      string_contains(
+        s: yml,
+        pattern: concat("    types: [", concat(pr_activity_string(a: Opened), concat(", ", concat(pr_activity_string(a: Synchronize), concat(", ", concat(pr_activity_string(a: Reopened), "]"))))))
+      )
+        && !string_contains(s: yml, pattern: pr_activity_string(a: ReadyForReview))
+        && !string_contains(s: yml, pattern: pr_activity_string(a: Closed))
+    WitnessFloorGenerationRefused { reason: _ } => false
   }
 }
