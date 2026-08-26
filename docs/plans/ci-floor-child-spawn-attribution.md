@@ -126,7 +126,7 @@ Standalone `gunbc compile --target dag` over the three witness-layer roots (`dag
 `src/v1` — the exact `compile_clean_source_roots()` set) exits **rc=1 with 2652 `UnlistedImportUse`
 errors** on the tree CI greens (identical count at 2 and 3 roots). CI's compile-clean gate does
 **not** exercise this path: it consumes `claim_executor`'s internal shared-index compile receipt
-(`run_clean_tree_compile` → `consume_floor_compile_clean_gate_verdict`), and the CLI transport
+(`run_clean_tree_compile` → `install_or_consume_floor_compile_clean_gate_receipt`), and the CLI transport
 (`run_clean_tree_compile_typed` / `run_dag_compile_clean_gate_shell`) has no in-tree caller.
 `UnlistedImportUse` is precisely the resolver class the namespace-resolution lane is mid-promotion
 on (`namespace_import_closure_behavioral_transport.dag:15`: "DISSOLVES WHEN … UnlistedImportUse
