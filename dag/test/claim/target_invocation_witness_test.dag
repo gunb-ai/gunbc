@@ -1,0 +1,369 @@
+module test.claim.target_invocation_witness
+
+import extdeps.bazel.label {
+  Label, PackagePath, TargetName,
+  LabelRefusal, TargetPattern, MissingRepositoryRootPrefix,
+  render_label, label_eq, label_is_canonical,
+}
+import gunbc.target_binding {
+  TargetBinding,
+  TargetProducer, HeadsReadingDifferentialProducer, BehavioralReceiptPlanProducer,
+  HeadsReadingDifferentialStanding,
+  HeadsReadingDifferentialCompleted, HeadsReadingDifferentialSubjectUnreached,
+  HeadsReadingDifferentialRefused,
+  HeadsReadingDifferentialObservation,
+  DifferentialSourceRootAbsent, DifferentialReadingExecutionRefused,
+}
+import gunbc.target_invocation {
+  TargetInvocationRoute, TargetInvocationRouted, TargetInvocationRouteRefused,
+  TargetInvocationRefusal,
+  OperandNotALabel, InvocationRegistryRefused, InvocationLabelNotCanonical,
+  TargetIsUnknown, TargetHasNoProducer,
+  InvocationTermination,
+  InvocationObservationHeld, InvocationObservationDidNotHold,
+  InvocationSubjectUnreached, InvocationRefused,
+  route_target_invocation, invocation_exit_status,
+}
+import gunbc.instrument_targets {
+  heads_reading_differential_label,
+  heads_reading_differential_target,
+  heads_reading_differential_binding,
+  instrument_targets, instrument_bindings,
+  invoke_target,
+  heads_reading_differential_termination,
+  heads_reading_differential_standing_rendered,
+}
+import gunbc.build_target {
+  BuildTarget, TestRule,
+  TestStanding, TestMeasuredByHeadsReadingDifferential,
+  StandingVerdict, StandingSatisfied, StandingUnsatisfied,
+  StandingCause, TestProducerOutsideRequiredAggregate,
+  test_standing_verdict,
+  BlazeTestStatusExport, BlazeTestStatusExported, TestStandingNotExportable,
+  blaze_test_status_of_test_standing,
+}
+import gunbc.discovery_census {
+  DiscoveredSite,
+  SiteCensus, CensusAccepted, CensusRefused,
+  discovery_census, census_planned_labels,
+  RequiredAggregateDerivation, RequiredAggregateDerived, RequiredAggregateUnderivable,
+  required_aggregate_from_census,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool }
+import std.integer { Int }
+
+// EVERY FIXTURE IN THIS MODULE IS AUTHORED IN THE SOURCE, so the whole file is hermetic and says
+// so. Without the declaration the floor's fail-closed default reads the module as live-tree
+// reading and DECLINES it: discovered, counted, never run.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn differential_operand() -> String {
+  "//gunbc/instruments:heads-reading-differential"
+}
+
+fn label_in(labels: List<Label>, wanted: Label) -> Bool {
+  fold(labels, init: false, f: fn(acc, l) { acc || label_eq(a: l, b: wanted) })
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE ACCEPTANCE CASE: AN EXACT LABEL REACHES ITS REAL PRODUCER
+// ---------------------------------------------------------------------------------------------
+
+// THE COMMAND THE SEAM EXISTS FOR, AS THE OPERAND TEXT A SHELL WOULD HAND IT. The route is asked
+// exactly what argv carries -- a string -- and the assertion is that it ends at the producer the
+// live registry binds, not merely that it parses.
+test fn the_acceptance_operand_routes_to_the_real_differential_producer() -> Bool {
+  match invoke_target(operand: differential_operand()) {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: heads_reading_differential_label())
+        && (b.producer == HeadsReadingDifferentialProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE ROUTE ITSELF. A label of the same SHAPE that names no registered
+// target must refuse rather than reach a producer -- without this, the assertion above is
+// satisfied by any function that returns the one binding it knows.
+test fn a_well_formed_label_naming_no_registered_target_refuses() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:no-such-instrument") {
+    TargetInvocationRouted { binding: _ } => false
+    TargetInvocationRouteRefused { cause: c } =>
+      match c {
+        TargetIsUnknown { target: t } =>
+          render_label(l: t) == "//gunbc/instruments:no-such-instrument"
+        OperandNotALabel { operand: _, cause: _ } => false
+        InvocationRegistryRefused { cause: _ } => false
+        InvocationLabelNotCanonical { target: _ } => false
+        TargetHasNoProducer { target: _ } => false
+      }
+  }
+}
+
+// THE MATCH IS EXACT AND THERE IS NO NEAR MISS. A prefix of a registered label is a different
+// target, and a seam that ran the registered one because the operand looked close would run
+// something the caller did not name.
+test fn a_prefix_of_a_registered_label_is_not_the_registered_target() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:heads-reading") {
+    TargetInvocationRouted { binding: _ } => false
+    TargetInvocationRouteRefused { cause: _ } => true
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// PATTERNS REFUSE, AND THE CITED GRAMMAR IS WHAT REFUSES THEM
+// ---------------------------------------------------------------------------------------------
+
+// THE THREE PATTERN FORMS THE LABEL AUTHORITY NAMES, EACH ARRIVING AS ITS OWN CAUSE. The
+// assertion is not merely that they refuse: it is that the refusal carries `TargetPattern`, which
+// is what distinguishes "name one target" from every other malformed-operand remedy. A second
+// pattern test written at the CLI layer would satisfy the first half and lose the second.
+fn operand_refuses_as_pattern(operand: String) -> Bool {
+  match invoke_target(operand: operand) {
+    TargetInvocationRouted { binding: _ } => false
+    TargetInvocationRouteRefused { cause: c } =>
+      match c {
+        OperandNotALabel { operand: _, cause: lc } =>
+          match lc {
+            TargetPattern { pattern: _ } => true
+            _ => false
+          }
+        _ => false
+      }
+  }
+}
+
+test fn target_patterns_refuse_with_the_cited_grammars_own_cause() -> Bool {
+  operand_refuses_as_pattern(operand: "//gunbc/instruments:all")
+    && operand_refuses_as_pattern(operand: "//gunbc/instruments:*")
+    && operand_refuses_as_pattern(operand: "//gunbc/...")
+}
+
+// A RELATIVE OPERAND IS A DIFFERENT REFUSAL WITH A DIFFERENT REMEDY, and asserting that keeps the
+// pattern witness above from being satisfied by a route that refuses everything malformed alike.
+test fn a_relative_operand_refuses_as_not_absolute_and_not_as_a_pattern() -> Bool {
+  match invoke_target(operand: ":heads-reading-differential") {
+    TargetInvocationRouted { binding: _ } => false
+    TargetInvocationRouteRefused { cause: c } =>
+      match c {
+        OperandNotALabel { operand: _, cause: lc } =>
+          match lc {
+            MissingRepositoryRootPrefix { text: _ } => true
+            _ => false
+          }
+        _ => false
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE PRODUCER'S NATIVE STANDING, NOT THE AGGREGATE'S VERDICT
+// ---------------------------------------------------------------------------------------------
+
+fn held_observation() -> HeadsReadingDifferentialObservation {
+  HeadsReadingDifferentialObservation {
+    modules_compared: 3
+    divergent: []
+    narrowed: ["dag/one.dag"]
+    regressed: []
+    both_refused: []
+  }
+}
+
+fn divergent_observation() -> HeadsReadingDifferentialObservation {
+  HeadsReadingDifferentialObservation {
+    modules_compared: 3
+    divergent: ["dag/two.dag"]
+    narrowed: []
+    regressed: []
+    both_refused: []
+  }
+}
+
+// A NARROWING IS NOT A DEFECT AND A DIVERGENCE IS, which is the producer's own criterion and the
+// reason this classification lives beside the producer rather than in a consumer. Both arms are
+// asserted together: an implementation that answered `Held` unconditionally passes the first, and
+// one that counted `narrowed` as a defect passes the second.
+test fn narrowing_holds_while_divergence_does_not() -> Bool {
+  (heads_reading_differential_termination(
+     s: HeadsReadingDifferentialCompleted { observation: held_observation() }
+   ) == InvocationObservationHeld {})
+  && (heads_reading_differential_termination(
+        s: HeadsReadingDifferentialCompleted { observation: divergent_observation() }
+      ) == InvocationObservationDidNotHold {})
+}
+
+// AN UNREACHED SUBJECT IS NOT A FAILED READING, AND THE STATUSES SEPARATE THEM. Collapsing the two
+// would announce a defect where no reading was taken -- and a caller reading only the status could
+// not tell an instrument that found divergence from one that never ran.
+test fn an_unreached_subject_is_not_reported_as_a_failed_reading() -> Bool {
+  let unreached = heads_reading_differential_termination(
+    s: HeadsReadingDifferentialSubjectUnreached {
+      source_roots: ["dag"],
+      cause: DifferentialSourceRootAbsent {}
+    }
+  )
+  let diverged = heads_reading_differential_termination(
+    s: HeadsReadingDifferentialCompleted { observation: divergent_observation() }
+  )
+  (unreached == InvocationSubjectUnreached {})
+    && (invocation_exit_status(t: unreached) == 2)
+    && (invocation_exit_status(t: diverged) == 1)
+    && (invocation_exit_status(t: InvocationObservationHeld {}) == 0)
+}
+
+// THE OUTPUT-POLICY TRAP, ASSERTED FROM BOTH SIDES.
+//
+// This is the whole reason a direct invocation has its own rendering. The SAME completed, HELD
+// observation that this seam reports as an ordinary reading is what `//:required` aggregate policy
+// refuses as out-of-aggregate, and what the Blaze export refuses as unexportable. Both of those
+// are correct at their own seams; either one consulted here would report a healthy instrument as
+// a problem. The witness pins all three answers together, so a later change that routed the direct
+// result through either policy reds here rather than in production.
+test fn the_direct_standing_is_not_the_aggregate_verdict_nor_the_blaze_export() -> Bool {
+  let standing = HeadsReadingDifferentialCompleted { observation: held_observation() }
+  let direct_holds = heads_reading_differential_termination(s: standing) == InvocationObservationHeld {}
+  let aggregate_refuses = match test_standing_verdict(
+    t: TestMeasuredByHeadsReadingDifferential { standing: standing }
+  ) {
+    StandingSatisfied => false
+    StandingUnsatisfied { cause: c } =>
+      match c {
+        TestProducerOutsideRequiredAggregate { producer: p } =>
+          p == HeadsReadingDifferentialProducer {}
+        _ => false
+      }
+  }
+  let export_refuses = match blaze_test_status_of_test_standing(
+    t: TestMeasuredByHeadsReadingDifferential { standing: standing }
+  ) {
+    BlazeTestStatusExported { status: _ } => false
+    TestStandingNotExportable { producer: p } => p == HeadsReadingDifferentialProducer {}
+  }
+  direct_holds && aggregate_refuses && export_refuses
+}
+
+// THE RENDERING SPEAKS THE PRODUCER'S VOCABULARY AND BORROWS NONE OF THE AGGREGATE'S.
+test fn the_rendering_reports_the_populations_the_differential_measured() -> Bool {
+  heads_reading_differential_standing_rendered(
+    s: HeadsReadingDifferentialCompleted { observation: divergent_observation() }
+  ) == "heads-reading-differential: compared=3 divergent=1 narrowed=0 regressed=0 both_refused=0"
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE ROWS ARE REAL, AND THE LABEL IS ABSENT FROM //:required
+// ---------------------------------------------------------------------------------------------
+
+test fn the_instrument_target_and_its_binding_are_the_same_identity() -> Bool {
+  let t = heads_reading_differential_target()
+  let b = heads_reading_differential_binding()
+  label_eq(a: t.label, b: b.target)
+    && label_is_canonical(label: t.label)
+    && (render_label(l: t.label) == differential_operand())
+    && ((instrument_targets() |> count) == 1)
+    && ((instrument_bindings() |> count) == 1)
+}
+
+// THE ABSENCE PROOF, MEASURED OVER THE DERIVED POPULATION RATHER THAN ASSERTED IN PROSE.
+//
+// `//:required`'s dependencies are DERIVED by `gunbc.discovery_census` from the floor's discovered
+// witness sites. The fixture authors two sites -- one the floor plans, one it declines -- and the
+// assertion is a membership test at identity grain against the aggregate that derivation produces.
+//
+// THE DISCRIMINATING CONTROL IS THE SECOND CONJUNCT AND IT IS WHAT MAKES THIS A CHECK. The planned
+// site's OWN label must be present in the same population; without it, an aggregate that lost
+// every row -- or a membership predicate stuck at false -- would satisfy the absence claim
+// perfectly. Absence is only evidence when presence is demonstrated by the same instrument.
+fn census_fixture_sites() -> List<DiscoveredSite> {
+  [
+    DiscoveredSite {
+      module_path: "test.claim.some_witness",
+      function: "a_planned_site",
+      reads_live_tree: SubstrateInputsOnly {}
+    },
+    DiscoveredSite {
+      module_path: "gunbc.instruments",
+      function: "heads_reading_differential",
+      reads_live_tree: SubstrateInputsOnly {}
+    }
+  ]
+}
+
+fn planned_site_label() -> Label {
+  Label {
+    package: PackagePath { segments: ["test", "claim", "some_witness"] }
+    target: TargetName { name: "a_planned_site" }
+  }
+}
+
+test fn the_instrument_label_is_absent_from_the_derived_required_aggregate() -> Bool {
+  match required_aggregate_from_census(census: discovery_census(sites: census_fixture_sites())) {
+    RequiredAggregateUnderivable { cause: _ } => false
+    RequiredAggregateDerived { aggregate: a } =>
+      !label_in(labels: a.dependencies, wanted: heads_reading_differential_label())
+        && label_in(labels: a.dependencies, wanted: planned_site_label())
+  }
+}
+
+// THE TWO NAMING AXES CANNOT COLLIDE, AND THE FIXTURE ABOVE IS BUILT TO TRY.
+//
+// Its second site is the closest a discovered site can come to the instrument: the same package
+// path, and the function name that would be the instrument's if a `.dag` function could carry
+// hyphens. It cannot, so the derived label is `:heads_reading_differential` with underscores and
+// the instrument's is `:heads-reading-differential` with hyphens. This asserts the near miss
+// stays a miss -- which is why the absence above is a property of the naming axes rather than of
+// which sites this fixture happened to author.
+test fn the_nearest_discoverable_site_label_is_still_not_the_instrument_label() -> Bool {
+  match discovery_census(sites: census_fixture_sites()) {
+    CensusRefused { cause: _ } => false
+    CensusAccepted { rows: rows } =>
+      !label_in(labels: census_planned_labels(rows: rows), wanted: heads_reading_differential_label())
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE ROUTE IS GENERIC: THE SAME FOLD ANSWERS FOR A POPULATION IT HAS NEVER SEEN
+// ---------------------------------------------------------------------------------------------
+
+// A TARGET REGISTERED WITH NO BINDING IS A REGISTRY GAP, NOT AN UNKNOWN TARGET, and the two are
+// separated because their remedies are: one is a label to fix, the other is a producer to bind.
+// This state is reachable only through the parameterized route -- the live population binds every
+// target it registers -- which is exactly why the route takes its population as an argument.
+fn unbound_label() -> Label {
+  Label {
+    package: PackagePath { segments: ["gunbc", "instruments"] }
+    target: TargetName { name: "unbound-instrument" }
+  }
+}
+
+test fn a_registered_target_with_no_producer_refuses_as_a_registry_gap() -> Bool {
+  match route_target_invocation(
+    operand: "//gunbc/instruments:unbound-instrument",
+    targets: [unbound_label()],
+    bindings: []
+  ) {
+    TargetInvocationRouted { binding: _ } => false
+    TargetInvocationRouteRefused { cause: c } =>
+      match c {
+        TargetHasNoProducer { target: t } => label_eq(a: t, b: unbound_label())
+        _ => false
+      }
+  }
+}
+
+// THE FOLD KNOWS NO INSTRUMENT'S NAME. A population this module invents, bound to a producer the
+// differential does not use, routes through the same function with no edit anywhere -- which is
+// the property that makes the remaining three instruments rows rather than dispatch work.
+test fn an_invented_population_routes_through_the_same_fold() -> Bool {
+  match route_target_invocation(
+    operand: "//gunbc/instruments:unbound-instrument",
+    targets: [unbound_label()],
+    bindings: [TargetBinding {
+      target: unbound_label()
+      producer: BehavioralReceiptPlanProducer {}
+    }]
+  ) {
+    TargetInvocationRouteRefused { cause: _ } => false
+    TargetInvocationRouted { binding: b } => b.producer == BehavioralReceiptPlanProducer {}
+  }
+}

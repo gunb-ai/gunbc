@@ -1,0 +1,196 @@
+module gunbc.instrument_targets
+
+import extdeps.bazel.label { Label, PackageName, PackagePath, TargetName }
+import gunbc.build_target { BuildTarget, TestRule }
+import gunbc.target_binding {
+  TargetBinding,
+  HeadsReadingDifferentialProducer,
+  HeadsReadingDifferentialStanding,
+  HeadsReadingDifferentialCompleted,
+  HeadsReadingDifferentialSubjectUnreached,
+  HeadsReadingDifferentialRefused,
+  HeadsReadingDifferentialObservation,
+  HeadsReadingDifferentialSubjectCause,
+  DifferentialSourceRootAbsent, DifferentialSourceRootUnreadable,
+  DifferentialSourcePopulationIndexRefused,
+  HeadsReadingDifferentialRefusalCause,
+  DifferentialReadingExecutionRefused, DifferentialObservationAssemblyRefused,
+}
+import gunbc.target_invocation {
+  TargetInvocationRoute,
+  InvocationTermination,
+  InvocationObservationHeld, InvocationObservationDidNotHold,
+  InvocationSubjectUnreached, InvocationRefused,
+  route_target_invocation,
+}
+import std.types { String, Bool }
+
+// THE REAL INSTRUMENT TARGETS, AND THEY ARE PRODUCTION ROWS RATHER THAN FIXTURE EXAMPLES.
+//
+// `gunbc.target_binding` declares the carriers and the witness beside it authors examples; neither
+// declares an addressable target that exists in this repository. This module does, and the
+// population is deliberately ONE. Landing four instruments at once would have made a first failure
+// ambiguous between dispatch, subject reachability and output policy; the seam it proves is
+// generic, so the remaining three are rows added here — a `BuildTarget`, a `TargetBinding`, and one
+// classifier — and never an edit to `gunbc.target_invocation`.
+//
+// THE INSTRUMENTS ARE OUTSIDE `//:required` AND NOTHING HERE ADDS THEM TO IT. That is not a
+// promise kept by diligence: `//:required`'s dependencies are DERIVED by
+// `gunbc.discovery_census` from the floor's discovered witness sites, whose labels are
+// `//<module path>:<function>` for a site the floor found. No fold anywhere feeds this population
+// into that one, so an instrument target has no route into the aggregate at all — and the witness
+// beside this module measures the derived population rather than restating the sentence.
+
+fn instruments_package() -> PackageName {
+  PackagePath { segments: ["gunbc", "instruments"] }
+}
+
+// THE TARGET NAME IS THE INSTRUMENT'S OWN SPELLING, HYPHENATED, and that is worth one sentence
+// because it is also what keeps this population disjoint from the census one by construction: a
+// discovered site's target name is a `.dag` FUNCTION name, and `heads-reading-differential` is not
+// an identifier any function could carry. The two naming axes cannot collide even by accident.
+fn heads_reading_differential_label() -> Label {
+  Label {
+    package: instruments_package()
+    target: TargetName { name: "heads-reading-differential" }
+  }
+}
+
+// THE INSTRUMENT IS A `TestRule` WITH NO DEPENDENCIES, and both halves are measurements rather
+// than placeholders. It answers a test question — does the heads reading read the same grammar as
+// the full reading — so it is not a `BuildRule`; and it depends on no other target in this graph,
+// because its subject is the source corpus handed to it at invocation, not a built artifact.
+fn heads_reading_differential_target() -> BuildTarget {
+  BuildTarget {
+    label: heads_reading_differential_label()
+    kind: TestRule {}
+    dependencies: []
+  }
+}
+
+fn heads_reading_differential_binding() -> TargetBinding {
+  TargetBinding {
+    target: heads_reading_differential_label()
+    producer: HeadsReadingDifferentialProducer {}
+  }
+}
+
+// THE SUBJECT IS THE INSTRUMENT'S OWN FACT, NOT AN ARGUMENT THE CALLER SUPPLIES.
+//
+// `gunbc test //gunbc/instruments:heads-reading-differential` takes no source-root option, and
+// that is a modelling decision rather than a convenience: which corpus the heads reading is a
+// reading OF is a property of this instrument, so making it a CLI option would give one fact two
+// homes and let an invocation quietly measure a different corpus while reporting the same target's
+// standing. These are the two roots the existing `--heads-reading-differential` mode already
+// reads, so this row moves the literal out of argv rather than inventing a third population.
+fn heads_reading_differential_source_roots() -> List<String> {
+  ["dag", "src/v2"]
+}
+
+fn instrument_targets() -> List<Label> {
+  [heads_reading_differential_label()]
+}
+
+fn instrument_bindings() -> List<TargetBinding> {
+  [heads_reading_differential_binding()]
+}
+
+// THE PRODUCTION ENTRY: the generic route, bound to the live population, in one place. Every
+// caller — the CLI verb, a witness, a future coordinator — asks here, so there is exactly one
+// answer to "which producer does this label name in this repository".
+fn invoke_target(operand: String) -> TargetInvocationRoute {
+  route_target_invocation(
+    operand: operand,
+    targets: instrument_targets(),
+    bindings: instrument_bindings()
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE DIFFERENTIAL'S OWN CLASSIFIER AND ITS OWN RENDERING
+// ---------------------------------------------------------------------------------------------
+
+// WHAT "HELD" MEANS IS THE PRODUCER'S DECISION, TAKEN HERE, ONCE.
+//
+// `divergent` must be empty — a divergence means the heads reading is a second, weaker parser
+// rather than a reading of the same grammar — and `regressed` must be empty, since the heads
+// reading may never refuse what the full reading accepts. `narrowed` is NOT a defect and is
+// excluded deliberately: it is the declared, bounded scope narrowing, counted rather than absorbed,
+// and folding it into the verdict would make a documented boundary report as a defect. `both_refused`
+// is a property of the corpus, not of the reading, and is likewise reported without deciding.
+fn heads_reading_differential_holds(o: HeadsReadingDifferentialObservation) -> Bool {
+  ((o.divergent |> count) == 0) && ((o.regressed |> count) == 0)
+}
+
+// THE CLASSIFIER INTO THE SHARED TERMINATION VOCABULARY, WILDCARD-FREE. A fourth standing arm
+// added upstream must fail to compile here rather than inherit whichever termination a `_` named.
+fn heads_reading_differential_termination(
+  s: HeadsReadingDifferentialStanding
+) -> InvocationTermination {
+  match s {
+    HeadsReadingDifferentialCompleted { observation: o } =>
+      if heads_reading_differential_holds(o: o) {
+        InvocationObservationHeld {}
+      } else {
+        InvocationObservationDidNotHold {}
+      }
+    HeadsReadingDifferentialSubjectUnreached { source_roots: _, cause: _ } =>
+      InvocationSubjectUnreached {}
+    HeadsReadingDifferentialRefused { cause: _ } => InvocationRefused {}
+  }
+}
+
+fn differential_subject_cause_rendered(c: HeadsReadingDifferentialSubjectCause) -> String {
+  match c {
+    DifferentialSourceRootAbsent => "source root absent"
+    DifferentialSourceRootUnreadable => "source root unreadable"
+    DifferentialSourcePopulationIndexRefused => "source population index refused"
+  }
+}
+
+fn differential_refusal_cause_rendered(c: HeadsReadingDifferentialRefusalCause) -> String {
+  match c {
+    DifferentialReadingExecutionRefused => "reading execution refused"
+    DifferentialObservationAssemblyRefused => "observation assembly refused"
+  }
+}
+
+// THE RENDERING IS THE PRODUCER'S NATIVE VOCABULARY AND NOTHING ELSE.
+//
+// It does not say PASSED or FAILED, and the omission is the point. Those are the aggregate's
+// words, and a direct invocation that borrowed them would quietly re-answer the question
+// `test_standing_verdict` deliberately refuses for an instrument. What a reader gets is what the
+// differential measured: how many modules were compared, and the four populations it partitions
+// them into.
+fn heads_reading_differential_observation_rendered(
+  o: HeadsReadingDifferentialObservation
+) -> String {
+  join([
+    "heads-reading-differential: compared=", to_string(o.modules_compared),
+    " divergent=", to_string(o.divergent |> count),
+    " narrowed=", to_string(o.narrowed |> count),
+    " regressed=", to_string(o.regressed |> count),
+    " both_refused=", to_string(o.both_refused |> count)
+  ], "")
+}
+
+fn heads_reading_differential_standing_rendered(
+  s: HeadsReadingDifferentialStanding
+) -> String {
+  match s {
+    HeadsReadingDifferentialCompleted { observation: o } =>
+      heads_reading_differential_observation_rendered(o: o)
+    HeadsReadingDifferentialSubjectUnreached { source_roots: roots, cause: c } =>
+      join([
+        "heads-reading-differential: subject unreached (",
+        differential_subject_cause_rendered(c: c),
+        "): ",
+        join(roots, ", ")
+      ], "")
+    HeadsReadingDifferentialRefused { cause: c } =>
+      concat(
+        "heads-reading-differential: refused: ",
+        differential_refusal_cause_rendered(c: c)
+      )
+  }
+}
