@@ -1678,15 +1678,34 @@ So the split is clean, and it falls exactly along the line that clause draws:
   **provider**, against a positive control that compiles clean and emits. So "no
   reader changes behavior" is a finding with a receipt, not work declined.
 
-  **RULED: it does not land bare.** The field has no production consumer, which
-  is close to specification-without-execution — and §4b's exemption does not
-  apply, because the RED is authorable and was authored (a mutation control
-  yields `missing required field progress in literal of type TypedModule` at the
-  exact site). The enrolled evidence is the *discriminating pair*, not the
-  mutation control: abandoned-before-items and completed-with-no-items must be
-  distinguishable through the field, and it stays enrolled permanently per
-  §4b(4). Manufacturing an in-tree reader so the field looks used would be worse
-  than the gap; a witness is not a manufactured consumer.
+  **RULED, THEN THE RULING WAS REFUTED BY THE LANE THAT TRIED TO BUILD IT.** The
+  first ruling here was that the carrier must not land without an enrolled
+  *discriminating pair* — abandoned-before-items and completed-with-no-items
+  distinguishable through the field. **No harness can express that.** Exactly two
+  reach the production compile path: `compile_dag_rust_emit_check`, which
+  observes emitted Rust, and `compile_dag_diagnostic_census`, whose rows carry
+  `{ diagnostic_class, subject_name, blocking, count }`. Neither sees a per-module
+  progress field — **and the emit harness is foreclosed by this row's own
+  Partition-1 derivation**, since an abandoned module never reaches emit. The
+  ruling asked for evidence that cannot exist, which is the
+  specification-without-execution failure committed while invoking it.
+
+  **The obvious substitute is a decoration and was refused.** A single-module
+  pair discriminating by *diagnostic count* was observable before this change and
+  stays observable if the field is deleted — permanently green with respect to
+  the thing it claims to witness, and it would then be cited as the enrolled
+  evidence. Evidence about diagnostics offered as evidence about the carrier.
+
+  **TERMINAL: a DECLARED rung drop, §4b(2)'s "can climb after one grounding".**
+  The carrier lands with representational value stated, the exhibited victim
+  named as out-of-band (the dead demand oracle), **evidence explicitly NOT
+  enrolled and why**, and the next-rung trigger named: *a per-module progress
+  projection on the census the host already builds*. Population: one field on one
+  carrier. What is **not** done is building that projection now — it is a new
+  exported observation surface on the frozen seed, i.e. exactly the
+  PublicSurfaceGrowth question the operator's ruling did not settle, and citing
+  this admission to authorize it would breach the limit clause the same author
+  had just written.
 
 - **A per-file measurement needs a per-module progress receipt, and none exists.**
   Every per-file instrument in this program shares §11.2l's hazard: a row from a
