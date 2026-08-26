@@ -4,12 +4,12 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { String }
 
-data vacuous_witness_census_note: String = "CENSUS OF WITNESSES THAT CANNOT RETURN FALSE (2026-08-26). A check whose RED is unauthorable is not a weak wall but a DECORATION -- permanently green by construction, carrying no information, and WORSE THAN ABSENT because it is cited as coverage (DESIGN 4b). This carrier records the measured population at identity grain. It records findings only; no witness is repaired, deleted or re-routed by this change, and the repairs are separately owned.\n\nWHAT MAKES A ROW VACUOUS. Each subject is a zero-argument Bool function whose entire body compares, or matches, a field of a record returned by a zero-argument callee whose body is a SINGLE UNCONDITIONAL RECORD CONSTRUCTOR. Substituting the constructor reduces the body to a comparison of a term with itself. The reader test that decides it: THE EDIT A READER WOULD REACH FOR MOVES BOTH SIDES AT ONCE -- changing the compared authority changes the constructor field with it -- so each row is stated as a claim about a VALUE and can fail only on a claim about WIRING.\n\nWHY THESE ARE REPAIRABLE RATHER THAN REMOVABLE. Every row has a real property behind it; the check is vacuous because it asserts against its own input instead of against something independently produced. The recurring origin is a FOOTHOLD CHECK: written when its subject had no second instance, so there was nothing else to compare against. That is why the repair is to compare against an independent producer, and why deletion is the wrong default.\n\nEXECUTION IS PART OF THE FINDING, NOT A DETAIL. A dormant vacuous row claims no coverage because it does not run. An executing one is cited every required run. The two carry different severities and different priorities, so the disposition is modeled rather than described. NOTE THE ROUTING HAZARD THIS CREATES: a split that routes everything hermetic in a module ACTIVATES whatever dormant vacuous rows sit in it, converting a decoration into a cited one. A recoverable assertion is therefore not automatically worth routing.\n\nTHE DETECTOR THAT PRODUCED THIS IS NARROW AND ITS LIMITS ARE ENUMERATED BELOW rather than hedged in prose. Measured over the discovered-but-declined population, it classified 4 of 3703 recoverable assertions; the remaining 3699 are outside its reach. So this roster is a FLOOR on the vacuous population and gives no upper bound. A shape that scrapes match arms for a uniform true was BUILT AND WITHDRAWN before publication: it returns true wherever it returns, which is not the same as cannot return false, the gap being refusal and non-termination -- a single-arm match over a multi-variant coproduct reds on any other variant, an exhaustive both-arms-true match reds on a crash, and nested matches carry real assertions a scraper never reaches. Its 11 hits are not recorded here because they are live checks.\n\nTHE DENOMINATOR DEPENDS ON WHICH QUERY WAS RUN, and both are named in vacuous_census_queries rather than left implicit. The two DORMANT rows are reached by DIFFERENT queries: the recoverable-assertion screen finds one of them and cannot see the other, because that other module sits outside every discovery scan dir while its consumer declares ReadsLiveTree. NEITHER QUERY IS THE POPULATION. A census whose denominator varies with the query is sound only if it says so; treating either list as complete yields a different answer and is the empty-observation shape DESIGN names."
-
-type SelfReferenceShape
-  = ConstructorFieldRestatesAuthority
-  | ConstructorFieldRestatesLiteral
-
+// CENSUS OF WITNESSES THAT CANNOT RETURN FALSE (2026-08-26). A check whose RED is unauthorable is not a weak wall but a DECORATION -- permanently green by construction, carrying no information, and WORSE THAN ABSENT because it is cited as coverage (DESIGN 4b). This carrier records the measured population at identity grain. It records findings only; no witness is repaired, deleted or re-routed by this change, and the repairs are separately owned.
+// WHAT MAKES A ROW VACUOUS. Each subject is a zero-argument Bool function whose entire body compares, or matches, a field of a record returned by a zero-argument callee whose body is a SINGLE UNCONDITIONAL RECORD CONSTRUCTOR. Substituting the constructor reduces the body to a comparison of a term with itself. The reader test that decides it: THE EDIT A READER WOULD REACH FOR MOVES BOTH SIDES AT ONCE -- changing the compared authority changes the constructor field with it -- so each row is stated as a claim about a VALUE and can fail only on a claim about WIRING.
+// WHY THESE ARE REPAIRABLE RATHER THAN REMOVABLE. Every row has a real property behind it; the check is vacuous because it asserts against its own input instead of against something independently produced. The recurring origin is a FOOTHOLD CHECK: written when its subject had no second instance, so there was nothing else to compare against. That is why the repair is to compare against an independent producer, and why deletion is the wrong default.
+// EXECUTION IS PART OF THE FINDING, NOT A DETAIL. A dormant vacuous row claims no coverage because it does not run. An executing one is cited every required run. The two carry different severities and different priorities, so the disposition is modeled rather than described. NOTE THE ROUTING HAZARD THIS CREATES: a split that routes everything hermetic in a module ACTIVATES whatever dormant vacuous rows sit in it, converting a decoration into a cited one. A recoverable assertion is therefore not automatically worth routing.
+// THE DETECTOR THAT PRODUCED THIS IS NARROW AND ITS LIMITS ARE ENUMERATED BELOW rather than hedged in prose. Measured over the discovered-but-declined population, it classified 4 of 3703 recoverable assertions; the remaining 3699 are outside its reach. So this roster is a FLOOR on the vacuous population and gives no upper bound. A shape that scrapes match arms for a uniform true was BUILT AND WITHDRAWN before publication: it returns true wherever it returns, which is not the same as cannot return false, the gap being refusal and non-termination -- a single-arm match over a multi-variant coproduct reds on any other variant, an exhaustive both-arms-true match reds on a crash, and nested matches carry real assertions a scraper never reaches. Its 11 hits are not recorded here because they are live checks.
+// THE DENOMINATOR DEPENDS ON WHICH QUERY WAS RUN, and both are named in vacuous_census_queries rather than left implicit. The two DORMANT rows are reached by DIFFERENT queries: the recoverable-assertion screen finds one of them and cannot see the other, because that other module sits outside every discovery scan dir while its consumer declares ReadsLiveTree. NEITHER QUERY IS THE POPULATION. A census whose denominator varies with the query is sound only if it says so; treating either list as complete yields a different answer and is the empty-observation shape DESIGN names.
 type RedAuthorability
   = RedAuthorableByEditingSubject
   | RedUnauthorableAnywhere
@@ -33,7 +33,6 @@ type VacuousWitnessRow {
   constructor: DeclarationRef
   field_name: String
   compared_against: ComparedTerm
-  shape: SelfReferenceShape
   red_authorability: RedAuthorability
   oracle_status: OracleStatus
   execution: VacuousExecution
@@ -77,7 +76,6 @@ data vacuous_witness_rows: List<VacuousWitnessRow> = [
         field: WholeDeclaration
       }
     },
-    shape: ConstructorFieldRestatesAuthority,
     red_authorability: RedAuthorableByEditingSubject,
     oracle_status: NoIndependentOracleInCorpus,
     execution: ExecutingInRequiredFloor,
@@ -104,7 +102,6 @@ data vacuous_witness_rows: List<VacuousWitnessRow> = [
         field: WholeDeclaration
       }
     },
-    shape: ConstructorFieldRestatesAuthority,
     red_authorability: RedAuthorableByEditingSubject,
     oracle_status: NoIndependentOracleInCorpus,
     execution: ExecutingInRequiredFloor,
@@ -131,7 +128,6 @@ data vacuous_witness_rows: List<VacuousWitnessRow> = [
         field: WholeDeclaration
       }
     },
-    shape: ConstructorFieldRestatesAuthority,
     red_authorability: RedAuthorableByEditingSubject,
     oracle_status: NoIndependentOracleInCorpus,
     execution: ExecutingInRequiredFloor,
@@ -158,13 +154,12 @@ data vacuous_witness_rows: List<VacuousWitnessRow> = [
         field: WholeDeclaration
       }
     },
-    shape: ConstructorFieldRestatesAuthority,
     red_authorability: RedAuthorableByEditingSubject,
     oracle_status: NoIndependentOracleInCorpus,
     execution: ExecutingInRequiredFloor,
     intended_property: "a Medium of Node round-trips LOSSLESSLY through an actual ingest and emit, rather than a hardcoded constructor restating its own argument",
     introduced_in: "gunbc#5217, 2026-06-18",
-    dissolution: unbound_dissolution(description: "the witness asserts over a real round-trip whose output is independently produced; the foothold PR that introduced it had no second instance to compare against, and one now exists")
+    dissolution: unbound_dissolution(description: "a producer of Medium of Node that is NOT this constructor must exist first -- measured on this tree, medium_node_lossless is the ONLY function in the corpus returning Medium of Node, so no independent instance is available to compare against and the oracle_status above is not a placeholder. The dissolution is therefore two steps: build the round-trip producer, then repoint the witness at it")
   },
   VacuousWitnessRow {
     subject: DeclarationRef {
@@ -179,7 +174,6 @@ data vacuous_witness_rows: List<VacuousWitnessRow> = [
     },
     field_name: "fidelity",
     compared_against: ComparedLiteral { rendered: "Lossless" },
-    shape: ConstructorFieldRestatesLiteral,
     red_authorability: RedAuthorableByEditingSubject,
     oracle_status: NoIndependentOracleInCorpus,
     execution: ExecutingInRequiredFloor,
@@ -206,7 +200,6 @@ data vacuous_witness_rows: List<VacuousWitnessRow> = [
         field: WholeDeclaration
       }
     },
-    shape: ConstructorFieldRestatesAuthority,
     red_authorability: RedAuthorableByEditingSubject,
     oracle_status: NoIndependentOracleInCorpus,
     execution: DormantDeclined,
@@ -227,7 +220,6 @@ data vacuous_witness_rows: List<VacuousWitnessRow> = [
     },
     field_name: "next_id",
     compared_against: ComparedLiteral { rendered: "0" },
-    shape: ConstructorFieldRestatesAuthority,
     red_authorability: RedAuthorableByEditingSubject,
     oracle_status: NoIndependentOracleInCorpus,
     execution: DormantDeclined,
@@ -248,7 +240,6 @@ data vacuous_witness_rows: List<VacuousWitnessRow> = [
     },
     field_name: "module_path",
     compared_against: ComparedLiteral { rendered: "src/v2/compiler/03_resolve.dag" },
-    shape: ConstructorFieldRestatesAuthority,
     red_authorability: RedAuthorableByEditingSubject,
     oracle_status: NoIndependentOracleInCorpus,
     execution: UnverifiedCandidate,
