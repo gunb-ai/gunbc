@@ -19,11 +19,25 @@ import gunbc.emit_subject_clean_frontier {
   EmitRatchetStanding,
   EmitRatchetHeld,
   EmitRatchetRefused,
+  EmitRatchetEnrolment,
+  EnrolledAsGate,
+  EmitRatchetEnrolmentAdmission,
+  EnrolmentPermitted,
+  EnrolmentRefusedNoUniverse,
+  EnrolmentRefusedDenominator,
+  EnrolmentRefusedUnevaluated,
+  EmitRatchetObservation,
+  ObservationTaken,
+  ObservationNotTaken,
   RosterDiscoveryPolicy,
   DeclarationIndexUnderRoots,
   emit_subject_clean_admissions,
   emit_ratchet_report_text,
   emit_ratchet_standing,
+  emit_ratchet_observation,
+  emit_ratchet_observation_text,
+  emit_ratchet_enrolment_admission,
+  emit_ratchet_enrolment_admission_text,
   fold_emit_subject_clean_ratchet
 }
 
@@ -157,55 +171,156 @@ fn run_emit_subject_clean_ratchet(
 }
 
 // ---------------------------------------------------------------------------------------------
-// THE CLI SURFACE.
+// THE ATTEMPT, WHICH IS WHERE THE HOST HALF'S EXECUTION PROVENANCE LIVES.
+//
+// Two things can go wrong before a fold exists at all: the roster cannot be read, or a source root
+// cannot be listed. Neither is a standing about the corpus and neither may be folded into one -- a
+// run that never reached the fold and a run that folded and found nothing are the two states DESIGN
+// says must not render alike, and here they are separated at the point where the difference is
+// still knowable. Below this line every consumer holds a fold or a typed cause, never a silence.
+// ---------------------------------------------------------------------------------------------
+type RatchetRunAttempt
+  = RatchetRunFolded { ratchet: EmitSubjectCleanRatchet }
+  | RatchetRunUnattempted { cause: String }
+
+fn attempt_emit_subject_clean_ratchet(entries: String) -> RatchetRunAttempt {
+  match emit_ratchet_roster() {
+    EmitRatchetRosterUnreadable { cause: c } =>
+      RatchetRunUnattempted { cause: concat("the entry roster could not be read — ", c) }
+    EmitRatchetRosterEntries { entries: roster } =>
+      match module_inventory(roots: witness_layer_roots) {
+        ModuleInventoryUnreadable { root: rt, cause: c } =>
+          RatchetRunUnattempted {
+            cause: concat(
+              concat("the file inventory could not list ", rt),
+              concat(
+                " — refusing rather than folding an unreadable root into an empty one: ",
+                c
+              )
+            )
+          }
+        ModuleInventoryFiles { paths: inventory } =>
+          RatchetRunFolded {
+            ratchet: run_emit_subject_clean_ratchet(
+              entries: entries,
+              roster: roster,
+              inventory: inventory
+            )
+          }
+      }
+  }
+}
+
+fn write_ratchet_report(report: String, r: EmitSubjectCleanRatchet) -> Bool {
+  Filesystem.Write(path: report, content: emit_ratchet_report_text(r: r)).success
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE CLI SURFACE: TWO VERBS, BECAUSE ENROLMENT IS TWO QUESTIONS.
 //
 //   gunbc run --source-root dag --source-root src/v2 \
-//     --entry dag/tools/emit_subject_clean_ratchet.dag --function check \
+//     --entry dag/tools/emit_subject_clean_ratchet.dag --function observe \
 //     --arg entries=dag/std/logic.dag --arg report=/tmp/ratchet.tsv
 //
 // The report is WRITTEN rather than returned for the same reason the instrument's is: `gunbc run`
 // maps a returned value to an exit status and has no value-printing verb.
 //
-// THE EXIT STATUS REPORTS THE RATCHET, and unlike the instrument beneath it that is a statement
-// about the SUBJECT: a refusing standing is a refusing entry, an orphaned admission row, or a run
-// that did not measure its whole roster. An instrument that could not run reaches the fold as
-// RatchetNotEvaluated and refuses there, so a broken instrument and a dirty corpus are
-// both nonzero -- and the report says which, per subject, on its own row.
+// `observe` REPORTS AND DOES NOT JUDGE THE CORPUS. Its exit status answers one question and it is
+// not the one a reader expects: did the observation happen. A refusing standing -- a regressed
+// entry, a stale admission row, a subject with no verdict -- exits SUCCESS, because the observation
+// succeeded and its content is bad news that belongs in the report a human reads. What exits
+// FAILURE is being unable to observe: the roster unreadable, a source root unlistable, the report
+// unwritable, or a universe of no subjects. That is the split DESIGN's execution-provenance row
+// demands, placed on the one channel a CI step actually reads.
+//
+// `check` IS THE GATE VERB AND IT REFUSES TO BE ONE TODAY. It routes through the enrolment
+// admission first, so a consumer that wires it into a merge decision receives a typed refusal
+// naming what disqualifies the carrier -- a single denominator, or roster subjects with no verdict
+// at all -- rather than a verdict computed over a universe the fold could not evaluate. The
+// refusal is a construction rather than a note precisely because no `Accepted` program can read a
+// note, and the note is what this repository has already watched fail.
+// ---------------------------------------------------------------------------------------------
+fn observe(entries: String, report: String) -> ProcessExit {
+  if report == "" {
+    exit_failure(reason: "observe: --arg report=<path> is required — the observation is written, not printed")
+  } else {
+    match attempt_emit_subject_clean_ratchet(entries: entries) {
+      RatchetRunUnattempted { cause: c } =>
+        exit_failure(reason: concat("observe: the observation was not taken — ", c))
+      RatchetRunFolded { ratchet: r } =>
+        if !write_ratchet_report(report: report, r: r) {
+          exit_failure(
+            reason: concat(
+              "observe: the observation was taken and could not be written to ",
+              report
+            )
+          )
+        } else {
+          match emit_ratchet_observation(r: r) {
+            ObservationTaken { roster: _, standing: _ } => ExitSuccess
+            ObservationNotTaken { cause: c } =>
+              exit_failure(reason: concat("observe: the observation was not taken — ", c))
+          }
+        }
+    }
+  }
+}
+
 fn check(entries: String, report: String) -> ProcessExit {
   if report == "" {
     exit_failure(reason: "check: --arg report=<path> is required — the standing is written, not printed")
   } else {
-    match emit_ratchet_roster() {
-      EmitRatchetRosterUnreadable { cause: c } =>
-        exit_failure(reason: concat("check: the entry roster could not be read — ", c))
-      EmitRatchetRosterEntries { entries: roster } =>
-        match module_inventory(roots: witness_layer_roots) {
-          ModuleInventoryUnreadable { root: rt, cause: c } =>
-            exit_failure(
-              reason: concat(
-                concat("check: the file inventory could not list ", rt),
-                concat(" — refusing rather than folding an unreadable root into an empty one: ", c)
-              )
-            )
-          ModuleInventoryFiles { paths: inventory } => {
-            let r = run_emit_subject_clean_ratchet(entries: entries, roster: roster, inventory: inventory)
-            let write = Filesystem.Write(path: report, content: emit_ratchet_report_text(r: r))
-            if !write.success {
-              exit_failure(reason: concat("check: could not write the standing to ", report))
-            } else {
-              match emit_ratchet_standing(r: r) {
-                EmitRatchetHeld { subject_count: _ } => ExitSuccess
-                EmitRatchetRefused { failing_rows: rows } =>
-                  exit_failure(
-                    reason: concat(
-                      concat("check: the emit-subject clean ratchet refused — ", to_string(count(rows))),
-                      concat(" row(s), named in ", report)
-                    )
+    match attempt_emit_subject_clean_ratchet(entries: entries) {
+      RatchetRunUnattempted { cause: c } =>
+        exit_failure(reason: concat("check: ", c))
+      RatchetRunFolded { ratchet: r } =>
+        if !write_ratchet_report(report: report, r: r) {
+          exit_failure(reason: concat("check: could not write the standing to ", report))
+        } else {
+          match emit_ratchet_enrolment_admission(enrolment: EnrolledAsGate, r: r) {
+            EnrolmentPermitted { enrolment: _ } => check_standing(r: r, report: report)
+            EnrolmentRefusedNoUniverse { enrolment: e } =>
+              exit_failure(
+                reason: concat(
+                  "check: this carrier may not decide a merge — ",
+                  emit_ratchet_enrolment_admission_text(
+                    admission: EnrolmentRefusedNoUniverse { enrolment: e }
                   )
-              }
-            }
+                )
+              )
+            EnrolmentRefusedDenominator { enrolment: e, missing: m } =>
+              exit_failure(
+                reason: concat(
+                  "check: this carrier may not decide a merge — ",
+                  emit_ratchet_enrolment_admission_text(
+                    admission: EnrolmentRefusedDenominator { enrolment: e, missing: m }
+                  )
+                )
+              )
+            EnrolmentRefusedUnevaluated { enrolment: e, subjects: ss } =>
+              exit_failure(
+                reason: concat(
+                  "check: this carrier may not decide a merge — ",
+                  emit_ratchet_enrolment_admission_text(
+                    admission: EnrolmentRefusedUnevaluated { enrolment: e, subjects: ss }
+                  )
+                )
+              )
           }
         }
     }
+  }
+}
+
+fn check_standing(r: EmitSubjectCleanRatchet, report: String) -> ProcessExit {
+  match emit_ratchet_standing(r: r) {
+    EmitRatchetHeld { subject_count: _ } => ExitSuccess
+    EmitRatchetRefused { failing_rows: rows } =>
+      exit_failure(
+        reason: concat(
+          concat("check: the emit-subject clean ratchet refused — ", to_string(count(rows))),
+          concat(" row(s), named in ", report)
+        )
+      )
   }
 }

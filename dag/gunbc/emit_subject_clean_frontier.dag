@@ -4,6 +4,14 @@ import std.types { Bool, Int, String, NonEmptyStr }
 import std.materialization_ladder { string_list_contains }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.dissolution { DissolutionCondition }
+import std.witness_admission {
+  WitnessConsumerCadence,
+  NoConsumer,
+  WitnessExecutionStanding,
+  WitnessHasExecutingConsumer,
+  UnexecutedDeferredWitness,
+  witness_cadence_has_scheduled_route
+}
 import std.roster_frontier {
   FrontierRow,
   frontier_row_path,
@@ -1026,51 +1034,219 @@ fn emit_ratchet_standing_text(standing: EmitRatchetStanding) -> String {
 // function of rows the report also prints in full, so a reader can reconstruct it and no consumer
 // has to trust it. Nothing above admits or refuses on one.
 // ---------------------------------------------------------------------------------------------
-// THE ENROLMENT WALL.
+// THE ENROLMENT WALL, AND WHY ENROLMENT IS TWO QUESTIONS RATHER THAN ONE.
 //
-// Any consumer that would let a merge decision ride on this carrier routes through here first, and
-// today it always refuses, because hole 2 is open: a universe discovered from the declaration index
-// alone drops a file it cannot CLASSIFY instead of blocking it, so a gate reading it would report
-// IMPROVEMENT when ingest regresses. That is fabricated plausible output with merge authority
-// behind it.
+// The wall that stood here answered ONE question -- may a merge decision ride on this carrier --
+// and answered it from ONE fact, the denominators the universe was discovered under. That was the
+// only fact it needed while hole 2 was open, because a single-denominator universe disqualifies
+// every enrolment at once. Hole 2 closed, the permitting arm became producible, and the wall then
+// permitted a carrier that must still not gate: the question it asks is now too narrow for the
+// answer it gives.
 //
-// THIS IS A CONSTRUCTION, NOT A NOTE, AND THE DIFFERENCE IS THE POINT. The same rule written as
-// prose is enforced only by the next author reading a paragraph and correctly believing it applies
-// to them; written here it is a typed refusal naming the missing denominator. When the module
-// inventory lands, the field changes, this permits, and there is no sentence anyone has to remember
-// to delete.
+// SO THE ENROLMENT MODE IS A PARAMETER, NOT AN ASSUMPTION. An OBSERVATION reports what it measured
+// and decides nothing; a GATE stops a merge. They are different claims about the same fold, they
+// have different preconditions, and collapsing them is what would let a first live run be adopted
+// as a baseline. DESIGN §5 is explicit that a population measured from the tree being judged is not
+// an oracle -- and the first live run of this ratchet over a corpus nobody has measured produces
+// exactly such a population. Enrolled as an observation it is a reading; enrolled as a gate it is a
+// snapshot with merge authority, and the refusal below is what keeps the second from being reachable
+// by wiring alone.
 //
-// BOTH ARMS ARE REACHABLE TODAY — the permitting arm is authorable by handing the fold the dual
-// denominator, which is why this is a wall rather than a decoration that could only ever refuse.
-type EmitRatchetGatingAdmission
-  = GatingPermitted
-  | GatingRefusedDenominator { missing: String }
+// THE PRECONDITIONS, PER MODE, AND EACH ONE IS DERIVED FROM THE FOLD RATHER THAN ASSERTED ABOUT IT:
+//
+//   BOTH -- the universe is non-empty. A fold over no subjects is a discovery failure, and a
+//   discovery failure rendered as an observation of nothing is the empty-observation narrow at the
+//   point where the observation is taken.
+//
+//   GATE ONLY -- the dual denominator, for the reason the previous wall gave verbatim and which is
+//   unchanged.
+//
+//   GATE ONLY -- every roster subject was EVALUATED. A subject that reached NOT-EVALUATED or was
+//   never measured has no verdict about its cleanliness at all, and a gate whose universe contains
+//   such subjects is deciding a closed-universe question over an open one. This is hole 3 arriving
+//   at the enrolment seam: while the instrument cannot recover entry scope for a talkative subject,
+//   a realistic universe folds to a wall of not-evaluated rows, and the honest consequence is that
+//   the carrier may be READ and may not GATE.
+//
+// AND THE ASYMMETRY IS DELIBERATE RATHER THAN LENIENT. An observation is NOT refused by a single
+// denominator or by unevaluated subjects, because those are the observation's CONTENT: refusing to
+// look because the looking is imperfect is the same narrow the empty-universe arm refuses, committed
+// one level up. What the observation may not do is be quoted as a gate, and that is not a property
+// of the reading -- it is the question this admission answers.
+//
+// BOTH ARMS OF EVERY REFUSAL ARE AUTHORABLE, which is what makes this a wall rather than a
+// decoration: the witness beside this module produces each refusing input and its one-field control.
+// ---------------------------------------------------------------------------------------------
+type EmitRatchetEnrolment
+  = EnrolledAsObservation
+  | EnrolledAsGate
 
-fn emit_ratchet_gating_admission(r: EmitSubjectCleanRatchet) -> EmitRatchetGatingAdmission {
-  match r.roster {
-    RosterEmpty { policy: _, denominators: dn } => emit_ratchet_gating_admission_of(denominators: dn)
-    RosterIdentified { policy: _, denominators: dn, subject_count: _, digest: _ } =>
-      emit_ratchet_gating_admission_of(denominators: dn)
+fn emit_ratchet_enrolment_text(enrolment: EmitRatchetEnrolment) -> String {
+  match enrolment {
+    EnrolledAsObservation => "observation"
+    EnrolledAsGate => "gate"
   }
 }
 
-fn emit_ratchet_gating_admission_of(denominators: RosterDenominators) -> EmitRatchetGatingAdmission {
-  match denominators {
-    DeclarationIndexAndModuleInventory => GatingPermitted
+type EmitRatchetEnrolmentAdmission
+  = EnrolmentPermitted { enrolment: EmitRatchetEnrolment }
+  | EnrolmentRefusedNoUniverse { enrolment: EmitRatchetEnrolment }
+  | EnrolmentRefusedDenominator { enrolment: EmitRatchetEnrolment, missing: String }
+  | EnrolmentRefusedUnevaluated { enrolment: EmitRatchetEnrolment, subjects: List<String> }
+
+fn ratchet_roster_is_empty(r: EmitSubjectCleanRatchet) -> Bool {
+  match r.roster {
+    RosterEmpty { policy: _, denominators: _ } => true
+    RosterIdentified { policy: _, denominators: _, subject_count: _, digest: _ } => false
+  }
+}
+
+fn ratchet_denominators(r: EmitSubjectCleanRatchet) -> RosterDenominators {
+  match r.roster {
+    RosterEmpty { policy: _, denominators: dn } => dn
+    RosterIdentified { policy: _, denominators: dn, subject_count: _, digest: _ } => dn
+  }
+}
+
+// THE UNEVALUATED SUBJECTS, BY NAME. A count would be the wrong shape for the same reason every
+// other count in this module is display only: the refusal has to tell an operator WHICH subjects
+// have no verdict, because that list is the work that closes the gap.
+fn ratchet_unevaluated_subjects(r: EmitSubjectCleanRatchet) -> List<String> {
+  fold(
+    r.verdicts,
+    init: [],
+    f: (acc, v) =>
+      match v {
+        RatchetCleanHeld { entry: _ } => acc
+        RatchetDebtHeld { entry: _, cause: _ } => acc
+        RatchetRegressed { entry: _, cause: _ } => acc
+        RatchetFrontierStale { entry: _ } => acc
+        RatchetNotEvaluated { entry: e, on_frontier: _, cause: _ } => concat(acc, [e])
+        RatchetSubjectUnmeasured { entry: e, on_frontier: _ } => concat(acc, [e])
+      }
+  )
+}
+
+fn emit_ratchet_gate_admission(r: EmitSubjectCleanRatchet) -> EmitRatchetEnrolmentAdmission {
+  match ratchet_denominators(r: r) {
     DeclarationIndexOnly =>
-      GatingRefusedDenominator {
+      EnrolmentRefusedDenominator {
+        enrolment: EnrolledAsGate,
         missing: "file inventory — a universe discovered from the declaration index alone loses a file the index cannot CLASSIFY (a fragment, a header preceded by non-comment text, an empty module name) instead of blocking it, so a gate over it reports improvement when such a file drops out of classification"
       }
+    DeclarationIndexAndModuleInventory => {
+      let unevaluated = ratchet_unevaluated_subjects(r: r)
+      if count(unevaluated) == 0 {
+        EnrolmentPermitted { enrolment: EnrolledAsGate }
+      } else {
+        EnrolmentRefusedUnevaluated { enrolment: EnrolledAsGate, subjects: unevaluated }
+      }
+    }
   }
 }
 
+fn emit_ratchet_enrolment_admission(
+  enrolment: EmitRatchetEnrolment,
+  r: EmitSubjectCleanRatchet
+) -> EmitRatchetEnrolmentAdmission {
+  if ratchet_roster_is_empty(r: r) {
+    EnrolmentRefusedNoUniverse { enrolment: enrolment }
+  } else {
+    match enrolment {
+      EnrolledAsObservation => EnrolmentPermitted { enrolment: enrolment }
+      EnrolledAsGate => emit_ratchet_gate_admission(r: r)
+    }
+  }
+}
+
+fn emit_ratchet_enrolment_admission_text(admission: EmitRatchetEnrolmentAdmission) -> String {
+  match admission {
+    EnrolmentPermitted { enrolment: e } =>
+      concat("permitted as ", emit_ratchet_enrolment_text(enrolment: e))
+    EnrolmentRefusedNoUniverse { enrolment: e } =>
+      concat(
+        concat("refused as ", emit_ratchet_enrolment_text(enrolment: e)),
+        " — the fold discovered no subject, so there is nothing to report and nothing to decide"
+      )
+    EnrolmentRefusedDenominator { enrolment: e, missing: m } =>
+      concat(
+        concat(concat("refused as ", emit_ratchet_enrolment_text(enrolment: e)), " — missing "),
+        m
+      )
+    EnrolmentRefusedUnevaluated { enrolment: e, subjects: ss } =>
+      concat(
+        concat(
+          concat("refused as ", emit_ratchet_enrolment_text(enrolment: e)),
+          " — no verdict was established for: "
+        ),
+        join(ss, ", ")
+      )
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE OBSERVATION, AND ITS EXECUTION PROVENANCE.
+//
+// A standing and a fold that could not be taken must not render alike, and the coproduct is what
+// makes that structural rather than checked. DESIGN's execution-provenance-loss row states the test
+// exactly: if a count of zero and an unreached stage produce the same output, the number is not an
+// observation. `ObservationNotTaken` is therefore not a standing with no failing rows -- it holds no
+// standing at all, so there is no spelling in which a fold that never happened reads as a fold that
+// found nothing wrong.
+//
+// AND A REFUSING STANDING IS A TAKEN OBSERVATION. That is the whole distinction this carrier exists
+// to hold: the observation succeeded and the news is bad. Its consumer reports it and does not stop
+// the line on it; what stops the line is being unable to observe at all.
+// ---------------------------------------------------------------------------------------------
+type EmitRatchetObservation
+  = ObservationTaken { roster: RosterIdentity, standing: EmitRatchetStanding }
+  | ObservationNotTaken { cause: String }
+
+fn emit_ratchet_observation(r: EmitSubjectCleanRatchet) -> EmitRatchetObservation {
+  let admission = emit_ratchet_enrolment_admission(enrolment: EnrolledAsObservation, r: r)
+  match admission {
+    EnrolmentPermitted { enrolment: _ } =>
+      ObservationTaken { roster: r.roster, standing: emit_ratchet_standing(r: r) }
+    EnrolmentRefusedNoUniverse { enrolment: _ } =>
+      ObservationNotTaken { cause: emit_ratchet_enrolment_admission_text(admission: admission) }
+    EnrolmentRefusedDenominator { enrolment: _, missing: _ } =>
+      ObservationNotTaken { cause: emit_ratchet_enrolment_admission_text(admission: admission) }
+    EnrolmentRefusedUnevaluated { enrolment: _, subjects: _ } =>
+      ObservationNotTaken { cause: emit_ratchet_enrolment_admission_text(admission: admission) }
+  }
+}
+
+fn emit_ratchet_observation_text(observation: EmitRatchetObservation) -> String {
+  match observation {
+    ObservationTaken { roster: _, standing: s } =>
+      concat("taken — ", emit_ratchet_standing_text(standing: s))
+    ObservationNotTaken { cause: c } => concat("NOT TAKEN — ", c)
+  }
+}
+
+// THE REPORT CARRIES THE OBSERVATION, NEVER A BARE STANDING. A row reading `standing\theld over 0
+// subject(s)` and a row reading `standing\t...` written by a run that never folded anything are the
+// same bytes, and DESIGN's execution-provenance test is exactly that: if a count of zero and an
+// unreached stage produce the same output, the number is not an observation. So the standing is
+// reachable on this report only THROUGH the observation, whose not-taken arm holds no standing to
+// print. The gate admission is printed beside it because a reader of an observation report must be
+// able to see, on the artifact itself, that it is not a gate verdict.
 fn emit_ratchet_report_rows(r: EmitSubjectCleanRatchet) -> List<String> {
   concat(
     concat(
       roster_identity_rows(identity: r.roster),
       [
         concat("admission_rows\t", to_string(r.admission_count)),
-        concat("standing\t", emit_ratchet_standing_text(standing: emit_ratchet_standing(r: r)))
+        concat(
+          "observation\t",
+          emit_ratchet_observation_text(observation: emit_ratchet_observation(r: r))
+        ),
+        concat(
+          "enrolment_gate\t",
+          emit_ratchet_enrolment_admission_text(
+            admission: emit_ratchet_enrolment_admission(enrolment: EnrolledAsGate, r: r)
+          )
+        )
       ]
     ),
     concat(
@@ -1100,3 +1276,47 @@ fn emit_ratchet_report_text(r: EmitSubjectCleanRatchet) -> String {
 // empty roster that greened would be the absorbing fallback; one that refuses is a debt roster with
 // nothing yet admitted to it.
 data emit_subject_clean_admissions: List<EmitDebtAdmission> = []
+
+// ---------------------------------------------------------------------------------------------
+// WHO RUNS THIS, TODAY: NOBODY, AND THAT IS A DECLARED FACT RATHER THAN A GAP SOMEONE HAS TO NOTICE.
+//
+// THE DISTINCTION THIS CLOSES is not "did the fold succeed" -- the observation above answers that --
+// but the one a reader of an absent report actually needs: HAS THE RATCHET NOT RUN YET, or WILL IT
+// NEVER RUN HERE. They render identically as absence and only the second is terminal, so a consumer
+// that reports both as "no report" strands whoever is waiting on the first.
+//
+// THE VOCABULARY IS BORROWED, NOT MINTED. `std.witness_admission` already separates a row with an
+// executing consumer from a row nothing claims from a row whose named cadence has no scheduled
+// route, and it already carries the mechanical per-cadence realization gate. Minting a second
+// "does anything run this" vocabulary beside it would be the §3 nicknaming violation, in the exact
+// place this carrier is arguing that a name without a mechanism is worthless.
+//
+// TODAY'S ANSWER IS `NoConsumer`, and it is measured rather than assumed: no workflow, no phase and
+// no module in the tree names `tools.emit_subject_clean_ratchet` or this module. So the derived
+// standing is UnexecutedDeferredWitness -- nothing claims the runner -- whose remedy the admission
+// authority states as naming a cadence or deleting the witness. Neither is available from inside a
+// PR: enrolment is a floor-cut re-add and DESIGN requires each of those to be re-derived under its
+// own operator agreement, which is not a thing a diff can author.
+//
+// AND THIS FUNCTION IS NOT CONSTANT, which is what keeps the declaration from being a decoration:
+// handed a cadence that HAS a scheduled route it returns the covered arm, and the witness beside
+// this module asserts both directions. The day enrolment is agreed, the cadence row below changes,
+// the claim naming today's answer goes RED, and it is that red -- not a paragraph -- that forces
+// this block to be rewritten.
+// ---------------------------------------------------------------------------------------------
+data emit_ratchet_runner_entry: String = "dag/tools/emit_subject_clean_ratchet.dag"
+
+data emit_ratchet_runner_observe_function: String = "observe"
+
+data emit_ratchet_runner_cadence: WitnessConsumerCadence = NoConsumer
+
+fn emit_ratchet_runner_execution_standing(cadence: WitnessConsumerCadence) -> WitnessExecutionStanding {
+  if witness_cadence_has_scheduled_route(cadence: cadence) {
+    WitnessHasExecutingConsumer { cadence: cadence }
+  } else {
+    UnexecutedDeferredWitness {
+      entry: emit_ratchet_runner_entry,
+      function: emit_ratchet_runner_observe_function
+    }
+  }
+}
