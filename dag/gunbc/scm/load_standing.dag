@@ -44,12 +44,18 @@ type LoadStanding
   | LoadDocumentMalformed
   | LoadIdentityCollision
 
-// PERMISSION IS NOT ACTION. This answers "is replacing this generation ADMISSIBLE", never "replace
-// it". Even a malformed selected generation gets an explicit recovery path, never a silent fall back
-// to whatever else is on disk -- that fallback would be the absorbing arm DESIGN section 5 forbids.
+// WHY THE PERMISSION RELATION IS NOT HERE, and why it is not a Bool anywhere.
 //
-// EXACTLY ONE STANDING PERMITS REPLACEMENT, and the three refusals are each refused for a different
-// reason rather than by one rule:
+// This module owned `standing_may_supersede_generation : LoadStanding -> Bool` until
+// `gunbc.scm.supersession` landed. It is DELETED rather than kept beside its replacement (DESIGN
+// section 4b(4): a climb deletes the production machinery it obsoletes), because a Bool carries none
+// of what a destructive actuation depends on -- not the exact generation observed, not the document
+// examined, not the schema identity under which malformedness was established -- so every route into
+// it was equally authoritative and none of them could be joined to the swap it authorized.
+//
+// The relation itself survives unchanged in content: `LoadDocumentMalformed` is still the sole
+// standing that permits superseding a generation, and the four refusals are still refused for four
+// different reasons rather than by one rule --
 //
 //   LoadComplete            nothing is wrong; there is nothing to replace.
 //   LoadPartial             the document is CORRECT and deliberately incomplete. Superseding a valid
@@ -65,15 +71,11 @@ type LoadStanding
 //   LoadDocumentMalformed   the tag matched, so this build claims to understand the EXACT schema,
 //                           and the document does not conform. This is the only standing where the
 //                           bytes are known-bad to a reader that should have understood them.
-fn standing_may_supersede_generation(standing: LoadStanding) -> Bool {
-  match standing {
-    LoadDocumentMalformed => true
-    LoadComplete => false
-    LoadPartial => false
-    LoadUnsupportedProtocol => false
-    LoadIdentityCollision => false
-  }
-}
+//
+// -- and it is stated by `gunbc.scm.supersession` `standing_permission_refusal`, which answers with
+// the standing that refused rather than with `false`. It lives THERE rather than here for the same
+// reason this module names no format: what a loader may do next is a fact about head slots, and a
+// permission that names no slot and no generation is not a fact about anything.
 
 // Whether a standing represents a load that produced a usable closure at all. LoadPartial answers
 // TRUE: a delta is usable, it simply needs its missing objects supplied before checkout.

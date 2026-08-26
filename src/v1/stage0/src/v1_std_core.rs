@@ -4048,7 +4048,7 @@ pub fn build_newline_index(file: String, source: String) -> Rc<NewlineIndex> {
         )
         .iter()
         .cloned()
-        .fold(Rc::new(vec![]), |acc: _, pair: (i64, i64)| {
+        .fold(Rc::new(vec![]), |acc: Rc<Vec<i64>>, pair: (i64, i64)| {
             if (pair.1.clone() == 10) {
                 v1_rt::rc_list_push(acc.clone(), pair.0.clone())
             } else {
