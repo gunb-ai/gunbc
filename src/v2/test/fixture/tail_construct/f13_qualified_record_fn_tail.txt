@@ -1,0 +1,11 @@
+module v2.test.fixture.tail_construct.f13_qualified_record_fn_tail
+
+
+type PortReading
+  = PortPureLiteral
+  | PortBareName { name: Symbol }
+  | PortComputedExpression { mentions: List<Symbol> }
+
+fn port_reading(mentions: List<Symbol>) -> PortReading {
+  v2.test.fixture.tail_construct.f13_qualified_record_fn_tail.PortComputedExpression { mentions: mentions }
+}
