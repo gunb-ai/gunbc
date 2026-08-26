@@ -1563,12 +1563,33 @@ So the split is clean, and it falls exactly along the line that clause draws:
   with item-level errors looks the same. The defect is that **consumers must
   infer a fact the producer knows**.
 
-  **NOT AUTHORIZED, AWAITING AN OPERATOR RULING.** `04_infer` is a load-bearing
-  pipeline stage in a frozen seed and the v1 admission test is PURPOSE. The
-  argument that it passes is real — a self-host program cannot measure its own
-  stages through a carrier that cannot say whether a stage ran — but that is a
-  freeze-admission judgment this document does not hold, and it is recorded here
-  as an argument, not a verdict.
+  **NOT AUTHORIZED, AND THE ROUTED QUESTION IS NARROWER THAN "may we touch v1".**
+  `gunbc.v1_maintenance_standing` was read rather than assumed. The purpose test
+  (2026-08-20) is satisfied on the axis its own precedent pair uses — the noun
+  repair was admitted because it was *exhibited today* inside the v2 program's
+  measuring instrument; the argv fabrication was refused because it exhibits
+  nothing. This case is on the admitted side of that axis, with a named victim.
+
+  **But one refused class is live, and refusals dominate every admission.**
+  `v1_maintenance_rung_note` states the measurement for it: *"PublicSurfaceGrowth
+  is a diff over the emitted seed's exported declarations."* Widening
+  `TypecheckModuleResult` is a change in exactly that diff. So the decidable
+  question — and the only one that needs an operator — is: **does
+  PublicSurfaceGrowth mean a NEW exported declaration, or ANY change to the
+  exported surface?** The noun repair clears under both readings (it was one
+  string), so the precedent does not discriminate, which is why the question has
+  never had to be answered.
+
+  **No construction fix appears to avoid the class.** Every shape — variant,
+  field, distinct result arm — widens the same exported surface, because the fact
+  that needs stating is *about the result* and the result is what crosses the
+  boundary. If the strict reading holds, **this defect is unfixable under the
+  freeze as currently read**, which is a legitimate outcome rather than a gap:
+  the §9 rows stand and the measurement discipline below carries the weight
+  without touching the seed. Recorded as an argument, not a verdict; the
+  permissive reading is not advocated here, because reinterpreting a refused
+  class is how a freeze repeals by drift — the standing danger that carrier names
+  in its own words.
 
 - **A per-file measurement needs a per-module progress receipt, and none exists.**
   Every per-file instrument in this program shares §11.2l's hazard: a row from a
