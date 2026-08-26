@@ -1,0 +1,214 @@
+module gunbc.scm.ancestry
+
+// ANCESTRY: WHICH COMMIT A COMMIT CAME FROM.
+//
+// The model did not have this. Every `parent` in gunbc.scm is TREE-NODE parentage inside the object
+// store -- an edge from a node to its child -- and none of it relates one commit to another. A
+// RepositoryCommit is { root, message }, and `commits` is a flat List, so before this module a
+// repository's history was a SEQUENCE and not a graph. Every operation git states in terms of
+// ancestry -- merge-base, ahead/behind, commits-since, log ranges, and merge itself -- had no
+// referent here at all.
+//
+// IT IS CARRIED, NOT RECOVERED FROM POSITION, and that is forced rather than chosen. Position gives
+// a total order and says nothing about descent: that the commit at index 1 follows the one at index
+// 0 in the list does not make it its child, and reading it that way would assume history is both
+// linear and append-ordered -- neither of which anything in this model establishes (there is no
+// commit-authoring verb, so nothing defines what appending means). Recovering ancestry from position
+// would therefore not be recovering it; it would be inventing it, and the invention would be
+// invisible because it would agree with position by construction.
+//
+// THIS MODULE LANDS BEFORE ANY PRODUCER, WHICH IS THE CHEAPEST MOMENT IT COULD. RepositoryCommit is
+// constructed in exactly two places on main -- its own type home and a witness -- so no production
+// code has yet baked in the assumption that history is a sequence. That is model-before-implement in
+// the order DESIGN prescribes, not a type built speculatively ahead of its consumer.
+
+import std.types { Bool, Int, List, String }
+import gunbc.scm.object_store { ObjectId, object_id_eq }
+
+// THE ROOT IS A STRUCTURAL STATE, NOT AN EMPTY PARENT.
+//
+// The alternative -- a parent field holding some "nothing" value -- makes "this commit begins the
+// history" and "this commit's parent is missing" the same value, and those have opposite meanings: the
+// first is the ordinary state of every repository's first commit, the second is damage. That is the
+// same conflation `log` refused when it made the empty history its own state rather than an empty
+// row list, and it is refused here for the same reason and one layer deeper.
+//
+// EXACTLY ONE PARENT, AND THIS IS THE DECISION THAT WOULD BE UNWRITABLE LATER, so it is derived from
+// what the model's own merge does rather than from what git does.
+//
+// gunbc.scm.merge `merge` takes ONE target Commit and a LIST OF PROPOSALS, and answers `Merged`
+// carrying ONE commit. A Proposal is a set of authored requirements -- it is not a commit, it has no
+// root, no message and no identity in history. So a merge in THIS model combines one commit with N
+// things that were never commits, and the result has exactly one commit antecedent. Git's second
+// parent exists because git merges two BRANCHES, which are two commits; that shape has no referent
+// here, because nothing in this model can merge two commits at all.
+//
+// So a parent LIST would not be more general, it would be a state with no producer -- an arm nothing
+// can construct, which DESIGN section 4b rules worse than absent because it gets cited as capability
+// the model does not have. WIDENING TRIGGER, stated so the reason is checkable rather than trusted:
+// if `merge` ever takes two Commits rather than one commit and N proposals, this coproduct gains a
+// several-parents arm, and the change is a compile error at every consumer rather than a silent
+// reinterpretation -- which is what makes single-parent a safe decision now rather than an
+// irreversible one.
+type CommitAncestry
+  = RootCommit
+  | DescendsFrom { parent: ObjectId }
+
+// AUTHOR AND TIMESTAMP ARE NOT DECIDED HERE, AND ARE EXPLICITLY SEPARATED RATHER THAN LEFT TO RIDE
+// ALONG. They were reported absent beside `parent` by the log verb, and they are absent for a
+// DIFFERENT REASON, which is why they cannot be settled in this change:
+//
+//   PARENT is a STRUCTURAL fact. It relates two things the model already holds, it is decidable
+//   inside the model, and nothing external is consulted to know it. That is why it can land now.
+//
+//   AUTHOR and TIMESTAMP are EXTERNAL OBSERVATIONS -- who ran the command, and what the clock said.
+//   Neither is derivable from the graph, and DESIGN is explicit that external reality is observed,
+//   typed, and admitted or refused, never fabricated. This repository has no modelled clock and no
+//   modelled process identity to observe them WITH, and acquiring either is the same frozen-host
+//   question that gates the store binding and process output.
+//
+// So modelling them here would mean inventing two facts to fill fields, which is the fabricated-
+// plausible-output failure at the exact boundary a commit is supposed to be trustworthy. They are
+// blocked on a ruling; parent was not. Recording that difference is the point of this note.
+
+fn ancestry_is_root(ancestry: CommitAncestry) -> Bool {
+  match ancestry {
+    RootCommit => true
+    DescendsFrom { parent: _ } => false
+  }
+}
+
+// The history this walk may traverse, supplied as the commit identities the repository holds. It is
+// a PROJECTION of the envelope's own commit list rather than a second authority: nothing here stores
+// history, and a caller that passed a different population would be describing a different
+// repository, not corrupting this one.
+type CommitAncestryLookup
+  = AncestryKnown { ancestry: CommitAncestry }
+  | AncestryUnknownCommit
+
+type AncestryStep {
+  at: ObjectId
+  ancestry: CommitAncestry
+}
+
+// THREE OUTCOMES, AND THE THIRD IS THE ONE A NAIVE WALK GETS WRONG BY LOOPING FOREVER.
+//
+// AncestryTraced carries the chain from the starting commit back to the root, inclusive and in that
+// order, so a consumer reads descent without re-deriving it.
+//
+// AncestryBrokenAt names a commit whose parent is not in this history. That is damage, and it is
+// distinguished from reaching the root because they are opposite facts: one is a complete history,
+// the other is a truncated one, and a walk that answered "done" for both would report a broken chain
+// as a finished one.
+//
+// AncestryRevisitsACommit is a REFUSAL, not a truncation. A parent chain that returns to a commit it
+// already visited is a cycle, and DESIGN's substrate is bounded and forward -- cyclic relations are
+// encoded acyclically, never traversed as cyclic values. Detected by exhausting the population: a
+// chain that takes more steps than the history has commits must have revisited one, by pigeonhole,
+// so the refusal is DERIVED from the bound rather than asserted by a visited-set this module would
+// have to keep correct.
+type AncestryWalk
+  = AncestryTraced { chain: List<ObjectId> }
+  | AncestryBrokenAt { commit: ObjectId, missing_parent: ObjectId }
+  | AncestryRevisitsACommit { detected_from: ObjectId }
+
+type AncestryWalkAcc {
+  chain: List<ObjectId>
+  cursor: ObjectId
+  done: Bool
+  outcome: AncestryWalk
+}
+
+fn ancestry_walk_step(
+  acc: AncestryWalkAcc,
+  lookup: fn(ObjectId) -> CommitAncestryLookup,
+) -> AncestryWalkAcc {
+  if acc.done {
+    acc
+  } else {
+    match lookup(acc.cursor) {
+      AncestryUnknownCommit =>
+        AncestryWalkAcc {
+          chain: acc.chain,
+          cursor: acc.cursor,
+          done: true,
+          outcome: AncestryBrokenAt { commit: acc.cursor, missing_parent: acc.cursor },
+        }
+      AncestryKnown { ancestry: ancestry } =>
+        match ancestry {
+          RootCommit =>
+            AncestryWalkAcc {
+              chain: acc.chain,
+              cursor: acc.cursor,
+              done: true,
+              outcome: AncestryTraced { chain: acc.chain },
+            }
+          DescendsFrom { parent: parent } =>
+            match lookup(parent) {
+              AncestryUnknownCommit =>
+                AncestryWalkAcc {
+                  chain: acc.chain,
+                  cursor: acc.cursor,
+                  done: true,
+                  outcome: AncestryBrokenAt { commit: acc.cursor, missing_parent: parent },
+                }
+              AncestryKnown { ancestry: _ } =>
+                AncestryWalkAcc {
+                  chain: concat(acc.chain, [parent]),
+                  cursor: parent,
+                  done: false,
+                  outcome: acc.outcome,
+                }
+            }
+        }
+    }
+  }
+}
+
+// The walk is bounded by the population it walks: `history` supplies both the membership test and
+// the step budget, so the fold is total and terminates by construction rather than by a guard this
+// module has to keep correct.
+fn ancestry_walk(
+  start: ObjectId,
+  history: List<ObjectId>,
+  lookup: fn(ObjectId) -> CommitAncestryLookup,
+) -> AncestryWalk {
+  match fold(
+    history,
+    init: AncestryWalkAcc {
+      chain: [start],
+      cursor: start,
+      done: false,
+      outcome: AncestryRevisitsACommit { detected_from: start },
+    },
+    f: fn(acc, _unused) { ancestry_walk_step(acc: acc, lookup: lookup) },
+  ) {
+    AncestryWalkAcc { chain: _, cursor: _, done: done, outcome: outcome } =>
+      if done {
+        outcome
+      } else {
+        AncestryRevisitsACommit { detected_from: start }
+      }
+  }
+}
+
+// Whether one commit is an ancestor of another, decided by tracing rather than by comparing
+// positions. A broken or cyclic history answers FALSE rather than refusing, because the question
+// asked is "is this established", and an unreadable history has not established it -- but a caller
+// that needs to tell "no" from "could not tell" walks the ancestry itself, which is why the walk is
+// the exported surface and this is a convenience over it.
+fn commit_is_ancestor_of(
+  candidate: ObjectId,
+  descendant: ObjectId,
+  history: List<ObjectId>,
+  lookup: fn(ObjectId) -> CommitAncestryLookup,
+) -> Bool {
+  match ancestry_walk(start: descendant, history: history, lookup: lookup) {
+    AncestryTraced { chain: chain } =>
+      fold(chain, init: false, f: fn(seen, c) {
+        if seen { true } else { object_id_eq(left: c, right: candidate) }
+      })
+    AncestryBrokenAt { commit: _, missing_parent: _ } => false
+    AncestryRevisitsACommit { detected_from: _ } => false
+  }
+}

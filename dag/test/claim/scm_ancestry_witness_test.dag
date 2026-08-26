@@ -1,0 +1,204 @@
+module test.claim.scm_ancestry_witness
+
+import std.types { Bool, String, List }
+import v2.std.node { Node, Symbol, TypeNode, Atom, node_synthetic }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.scm.object_store {
+  ObjectStore,
+  ObjectId,
+  empty_store,
+  store_node,
+  Stored,
+  LocatorCollision,
+  object_id_eq,
+}
+import gunbc.scm.ancestry {
+  CommitAncestry,
+  RootCommit,
+  DescendsFrom,
+  ancestry_is_root,
+  CommitAncestryLookup,
+  AncestryKnown,
+  AncestryUnknownCommit,
+  AncestryWalk,
+  AncestryTraced,
+  AncestryBrokenAt,
+  AncestryRevisitsACommit,
+  ancestry_walk,
+  commit_is_ancestor_of,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Names qualified: top-level definitions are corpus-wide and the resolver silently selects among
+// duplicates (#8707), which this layer's witness files already document hitting.
+fn ancestry_witness_id(name: Symbol) -> ObjectId {
+  match store_node(
+    store: empty_store(),
+    n: node_synthetic(kind: TypeNode { connective: Atom { identity: name } }, children: []),
+  ) {
+    Stored { store: _, identity: identity } => identity
+    LocatorCollision { identity: identity, existing: _, incoming: _ } => identity
+  }
+}
+
+type AncestryWitnessEntry {
+  commit: ObjectId
+  ancestry: CommitAncestry
+}
+
+fn ancestry_witness_lookup_in(
+  entries: List<AncestryWitnessEntry>,
+  wanted: ObjectId,
+) -> CommitAncestryLookup {
+  fold(entries, init: AncestryUnknownCommit, f: fn(found, e) {
+    match found {
+      AncestryKnown { ancestry: _ } => found
+      AncestryUnknownCommit =>
+        if object_id_eq(left: e.commit, right: wanted) {
+          AncestryKnown { ancestry: e.ancestry }
+        } else {
+          AncestryUnknownCommit
+        }
+    }
+  })
+}
+
+// A linear history: c0 is the root, c1 descends from c0, c2 from c1.
+fn ancestry_witness_linear() -> List<AncestryWitnessEntry> {
+  [
+    AncestryWitnessEntry { commit: ancestry_witness_id(name: ^c0), ancestry: RootCommit },
+    AncestryWitnessEntry {
+      commit: ancestry_witness_id(name: ^c1),
+      ancestry: DescendsFrom { parent: ancestry_witness_id(name: ^c0) },
+    },
+    AncestryWitnessEntry {
+      commit: ancestry_witness_id(name: ^c2),
+      ancestry: DescendsFrom { parent: ancestry_witness_id(name: ^c1) },
+    },
+  ]
+}
+
+fn ancestry_witness_linear_history() -> List<ObjectId> {
+  map(ancestry_witness_linear(), e => e.commit)
+}
+
+// THE ROOT IS ITS OWN STATE. Asserted against the alternative this module refuses -- a parent field
+// holding a "nothing" value, which would make "this commit begins the history" and "this commit's
+// parent is missing" the same value. Those are opposite facts: the first is every repository's
+// ordinary first commit, the second is damage.
+test fn the_root_commit_is_structurally_a_root_not_a_missing_parent() -> Bool {
+  ancestry_is_root(ancestry: RootCommit)
+    && !ancestry_is_root(ancestry: DescendsFrom { parent: ancestry_witness_id(name: ^c0) })
+}
+
+test fn a_linear_history_traces_from_the_start_back_to_the_root() -> Bool {
+  match ancestry_walk(
+    start: ancestry_witness_id(name: ^c2),
+    history: ancestry_witness_linear_history(),
+    lookup: fn(id) { ancestry_witness_lookup_in(entries: ancestry_witness_linear(), wanted: id) },
+  ) {
+    AncestryTraced { chain: chain } =>
+      chain == [
+        ancestry_witness_id(name: ^c2),
+        ancestry_witness_id(name: ^c1),
+        ancestry_witness_id(name: ^c0),
+      ]
+    AncestryBrokenAt { commit: _, missing_parent: _ } => false
+    AncestryRevisitsACommit { detected_from: _ } => false
+  }
+}
+
+// A TRUNCATED HISTORY IS NOT A FINISHED ONE. c1 names c0 as its parent, but c0 is not in this
+// history at all. Answering "traced" here would report a broken chain as a complete one -- the same
+// shape as reporting an unreadable document as an empty one, which is the empty-observation narrow.
+test fn a_parent_outside_the_history_is_broken_not_traced() -> Bool {
+  let entries = [
+    AncestryWitnessEntry {
+      commit: ancestry_witness_id(name: ^c1),
+      ancestry: DescendsFrom { parent: ancestry_witness_id(name: ^c0) },
+    },
+  ]
+  match ancestry_walk(
+    start: ancestry_witness_id(name: ^c1),
+    history: [ancestry_witness_id(name: ^c1)],
+    lookup: fn(id) { ancestry_witness_lookup_in(entries: entries, wanted: id) },
+  ) {
+    AncestryBrokenAt { commit: c, missing_parent: p } =>
+      object_id_eq(left: c, right: ancestry_witness_id(name: ^c1))
+        && object_id_eq(left: p, right: ancestry_witness_id(name: ^c0))
+    AncestryTraced { chain: _ } => false
+    AncestryRevisitsACommit { detected_from: _ } => false
+  }
+}
+
+// A CYCLE IS REFUSED, NOT TRUNCATED AND NOT LOOPED. DESIGN's substrate is bounded and forward, so a
+// parent chain that returns to a commit it already visited must refuse. The RED is authorable here
+// precisely because nothing constructs commits yet -- a fixture can state a cycle that no producer
+// would, which is what makes this an executing wall rather than a decoration.
+test fn a_cyclic_parent_chain_is_refused_rather_than_traced() -> Bool {
+  let entries = [
+    AncestryWitnessEntry {
+      commit: ancestry_witness_id(name: ^c0),
+      ancestry: DescendsFrom { parent: ancestry_witness_id(name: ^c1) },
+    },
+    AncestryWitnessEntry {
+      commit: ancestry_witness_id(name: ^c1),
+      ancestry: DescendsFrom { parent: ancestry_witness_id(name: ^c0) },
+    },
+  ]
+  match ancestry_walk(
+    start: ancestry_witness_id(name: ^c0),
+    history: [ancestry_witness_id(name: ^c0), ancestry_witness_id(name: ^c1)],
+    lookup: fn(id) { ancestry_witness_lookup_in(entries: entries, wanted: id) },
+  ) {
+    AncestryRevisitsACommit { detected_from: d } =>
+      object_id_eq(left: d, right: ancestry_witness_id(name: ^c0))
+    AncestryTraced { chain: _ } => false
+    AncestryBrokenAt { commit: _, missing_parent: _ } => false
+  }
+}
+
+// THE CLAIM THIS MODULE EXISTS FOR: ANCESTRY IS CARRIED, NOT RECOVERED FROM POSITION.
+//
+// Both commits are in the history, ADJACENT, in the order a log would list them -- and neither
+// descends from the other, because both are stated roots. A model that read descent off position
+// would call c0 an ancestor of c1 here. Nothing does, because the relation is asserted rather than
+// inferred, and this witness is what would go red if someone later "optimised" the walk into an
+// index comparison.
+test fn adjacent_position_does_not_make_one_commit_an_ancestor_of_another() -> Bool {
+  let entries = [
+    AncestryWitnessEntry { commit: ancestry_witness_id(name: ^c0), ancestry: RootCommit },
+    AncestryWitnessEntry { commit: ancestry_witness_id(name: ^c1), ancestry: RootCommit },
+  ]
+  let history = [ancestry_witness_id(name: ^c0), ancestry_witness_id(name: ^c1)]
+  !commit_is_ancestor_of(
+    candidate: ancestry_witness_id(name: ^c0),
+    descendant: ancestry_witness_id(name: ^c1),
+    history: history,
+    lookup: fn(id) { ancestry_witness_lookup_in(entries: entries, wanted: id) },
+  )
+}
+
+// THE POSITIVE CONTROL FOR THE ABOVE, and without it a function that answered false for everything
+// would satisfy it. A STATED ancestor is found, across two generations rather than one, so the claim
+// is about tracing rather than about comparing a commit to its immediate parent.
+test fn a_stated_ancestor_two_generations_back_is_found() -> Bool {
+  commit_is_ancestor_of(
+    candidate: ancestry_witness_id(name: ^c0),
+    descendant: ancestry_witness_id(name: ^c2),
+    history: ancestry_witness_linear_history(),
+    lookup: fn(id) { ancestry_witness_lookup_in(entries: ancestry_witness_linear(), wanted: id) },
+  )
+}
+
+// DESCENT HAS A DIRECTION. c2 is not an ancestor of c0, and a walk that ignored direction -- or a
+// membership test over the whole history -- would answer true here.
+test fn ancestry_has_a_direction_and_a_descendant_is_not_an_ancestor() -> Bool {
+  !commit_is_ancestor_of(
+    candidate: ancestry_witness_id(name: ^c2),
+    descendant: ancestry_witness_id(name: ^c0),
+    history: ancestry_witness_linear_history(),
+    lookup: fn(id) { ancestry_witness_lookup_in(entries: ancestry_witness_linear(), wanted: id) },
+  )
+}
