@@ -3612,6 +3612,32 @@ diagnostic is the modeling equivalent of computing a precise answer and printing
 `⊤`** — the state-space work was done, and the one consumer who needed it gets
 none of it.
 
+**PROVENANCE OF THIS ROW, STATED BEFORE ITS CONSEQUENCE, because the row would
+otherwise be read as three measurements and it is one** (`jolly-deer-475`,
+2026-08-26). **Executed: the ambiguity arm only** — `InternalError == 1` on a
+two-supplier source. **Source read, not executed: the budget-exhausted and absent
+arms.** The corpus has no live budget-exhausted case to execute against, so that
+arm's RED may be authorable **only as a fixture**, and the collapse is confirmed
+for one of three arms by execution and for three by reading. Nothing here is
+retracted — the three arms do emit `InternalError` in the source — but *reads as
+one variant to an author* is proven for exactly one of them, and this row says so
+rather than letting a source read borrow the executed arm's standing.
+
+**And the arm already enrolled does NOT protect the repair.**
+`test.claim.data_reference_ambiguous_refusal_witness_test`
+`an_ambiguously_visible_data_reference_refuses_rather_than_picking_one` asserts
+the refusal **class-agnostically** — it checks that the compile refused, not
+which diagnostic — which was deliberate, so it would not cement `InternalError`
+as the contract. The consequence is exact and cuts both ways: it **will not red**
+when the classification is fixed, so it **cannot be cited as coverage for the
+repair**; and it will not obstruct the repair either. It is, however, the natural
+**home** for the assertion that does discriminate — once one arm per cause lands,
+that arm strengthens to `AmbiguousReference == 1` with `InternalError == 0`
+beside it, which is a discriminating RED for precisely this regression, on a
+fixture that already exists. That is the §4b(4) shape: the class-agnostic
+assertion stays enrolled as the refusal control, and the class-specific one is
+added above it rather than replacing it.
+
 **Why it is this program's problem and not only that module's.** *Becomes
 ambiguous* is one of the delta wall's four acceptance conditions (§11.2n): the
 wall must distinguish *this occurrence still binds to the same declaration* from
