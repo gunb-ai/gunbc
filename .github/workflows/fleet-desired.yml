@@ -31,6 +31,21 @@ jobs:
         with:
           components: rustfmt
           cache: false
+      - name: Record the toolchain environment
+        run: |
+          echo "host=$(hostname) runner=${RUNNER_NAME:-unset}"
+          echo "PATH=$PATH"
+          CARGO_BIN_DIR="${CARGO_HOME:-$HOME/.cargo}/bin"
+          case ":$PATH:" in *":$CARGO_BIN_DIR:"*) ;; *) echo "::error::cargo bin dir absent from PATH: $CARGO_BIN_DIR"; exit 1;; esac
+          stat -c '%d:%i:%s:%y:%z' "$CARGO_BIN_DIR/rustup" > "$RUNNER_TEMP/gunbc-rustup-after.stat"
+          if ! cmp -s "$RUNNER_TEMP/gunbc-rustup-before.stat" "$RUNNER_TEMP/gunbc-rustup-after.stat"; then echo "::error::rustup dispatcher was rewritten during this job"; diff -u "$RUNNER_TEMP/gunbc-rustup-before.stat" "$RUNNER_TEMP/gunbc-rustup-after.stat" || true; exit 1; fi
+          which -a rustfmt || echo "which rustfmt: absent from PATH"
+          which -a cargo rustc rustup || echo "which cargo/rustc/rustup: absent from PATH"
+          ls -l "${CARGO_HOME:-$HOME/.cargo}/bin" || echo "cargo bin dir: absent"
+          rustup which rustfmt || echo "rustup which rustfmt: no answer"
+          rustup toolchain list || echo "rustup toolchain list: no answer"
+          rustup default || echo "rustup default: no answer"
+        if: "!cancelled()"
       - name: Build the admission binary
         run: |
           cargo build --release -p v1-compiler --bin gunbc

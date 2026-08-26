@@ -19,6 +19,7 @@ import gunbc.witness_floor_workflow {
   witness_floor_workflow_name,
   witness_floor_expose_installed_rustup_step,
   witness_floor_toolchain_step,
+  witness_toolchain_environment_probe_step,
 }
 import gunbc.fleet_desired_admission {
   fleet_desired_admission_event_payload_path,
@@ -182,6 +183,7 @@ fn fleet_desired_admission_job() -> Job {
       fleet_desired_admission_checkout_step(),
       witness_floor_expose_installed_rustup_step(),
       witness_floor_toolchain_step(),
+      witness_toolchain_environment_probe_step(),
       fleet_desired_admission_build_step(),
       fleet_desired_admission_stage_payload_step(),
       fleet_desired_admission_decide_step(),
