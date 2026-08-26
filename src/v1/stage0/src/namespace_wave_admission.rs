@@ -73,6 +73,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use crate::cli_run::declaration_index::{
     import_surface_has, index_get, index_records, DeclarationIndex, ModuleDeclarationRecord,
 };
+use crate::v1_std_core::qualified_last_segment;
 
 /// The nine dispositions of `gunbc.compiler_frontend_program_interlock`
 /// `NamespaceDeltaDisposition`, realized for the host reader.
@@ -95,37 +96,46 @@ pub enum NamespaceDeltaDisposition {
     NotEvaluated,
 }
 
-impl NamespaceDeltaDisposition {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::SameDeclarationIdentityRebind => "SameDeclarationIdentityRebind",
-            Self::UnusedSubjectMembershipRemoved => "UnusedSubjectMembershipRemoved",
-            Self::ExplicitlyEvaluatedZeroDelta => "ExplicitlyEvaluatedZeroDelta",
-            Self::TargetChanged => "TargetChanged",
-            Self::NewAmbiguity => "NewAmbiguity",
-            Self::NewUnresolvedness => "NewUnresolvedness",
-            Self::NewPoolCoincidenceResolution => "NewPoolCoincidenceResolution",
-            Self::UnexplainedSubjectMotion => "UnexplainedSubjectMotion",
-            Self::NotEvaluated => "NotEvaluated",
+/// FREE FUNCTIONS RATHER THAN INHERENT METHODS, THROUGHOUT THIS MODULE, and it is not a style
+/// choice. `std.decl_ref` offers `WholeDeclaration` or `NamedField` and neither names a method on
+/// an `impl` block, so every method here would be an UNCITABLE seed-growth item — a declaration
+/// the obligation roster in `gunbc.namespace_wave_admission` structurally cannot enumerate.
+/// `gunbc.declaration_index_seed_growth` records the same decision and the same reason.
+pub fn disposition_label(d: NamespaceDeltaDisposition) -> &'static str {
+    match d {
+        NamespaceDeltaDisposition::SameDeclarationIdentityRebind => "SameDeclarationIdentityRebind",
+        NamespaceDeltaDisposition::UnusedSubjectMembershipRemoved => {
+            "UnusedSubjectMembershipRemoved"
         }
+        NamespaceDeltaDisposition::ExplicitlyEvaluatedZeroDelta => "ExplicitlyEvaluatedZeroDelta",
+        NamespaceDeltaDisposition::TargetChanged => "TargetChanged",
+        NamespaceDeltaDisposition::NewAmbiguity => "NewAmbiguity",
+        NamespaceDeltaDisposition::NewUnresolvedness => "NewUnresolvedness",
+        NamespaceDeltaDisposition::NewPoolCoincidenceResolution => "NewPoolCoincidenceResolution",
+        NamespaceDeltaDisposition::UnexplainedSubjectMotion => "UnexplainedSubjectMotion",
+        NamespaceDeltaDisposition::NotEvaluated => "NotEvaluated",
     }
+}
 
-    /// The operator's partition, verbatim from the carrier: a same-declaration-identity
-    /// rebind, a removal of genuinely unused subject membership, and an explicitly evaluated
-    /// zero delta are auto-admitted. Every other disposition — including `NotEvaluated` —
-    /// refuses unless an exact transition admission names it.
-    pub fn auto_admitted(self) -> bool {
-        match self {
-            Self::SameDeclarationIdentityRebind
-            | Self::UnusedSubjectMembershipRemoved
-            | Self::ExplicitlyEvaluatedZeroDelta => true,
-            Self::TargetChanged
-            | Self::NewAmbiguity
-            | Self::NewUnresolvedness
-            | Self::NewPoolCoincidenceResolution
-            | Self::UnexplainedSubjectMotion
-            | Self::NotEvaluated => false,
-        }
+/// The operator's partition, verbatim from the carrier: a same-declaration-identity rebind, a
+/// removal of genuinely unused subject membership, and an explicitly evaluated zero delta are
+/// auto-admitted. Every other disposition — including `NotEvaluated` — refuses unless an exact
+/// transition admission names it.
+///
+/// THE MATCH IS EXHAUSTIVE, which protects THIS FILE's consistency and nothing else: a variant
+/// added to the `.dag` authority and not here compiles perfectly. `vocabulary_findings` is the
+/// join that closes that.
+pub fn disposition_auto_admitted(d: NamespaceDeltaDisposition) -> bool {
+    match d {
+        NamespaceDeltaDisposition::SameDeclarationIdentityRebind
+        | NamespaceDeltaDisposition::UnusedSubjectMembershipRemoved
+        | NamespaceDeltaDisposition::ExplicitlyEvaluatedZeroDelta => true,
+        NamespaceDeltaDisposition::TargetChanged
+        | NamespaceDeltaDisposition::NewAmbiguity
+        | NamespaceDeltaDisposition::NewUnresolvedness
+        | NamespaceDeltaDisposition::NewPoolCoincidenceResolution
+        | NamespaceDeltaDisposition::UnexplainedSubjectMotion
+        | NamespaceDeltaDisposition::NotEvaluated => false,
     }
 }
 
@@ -207,16 +217,14 @@ pub enum DeltaSubject {
     },
 }
 
-impl DeltaSubject {
-    pub fn render(&self) -> String {
-        match self {
-            Self::Membership { module, target } => format!("membership {module} -> {target}"),
-            Self::Binding {
-                module,
-                in_declaration,
-                spelling,
-            } => format!("binding {module}::{in_declaration} `{spelling}`"),
-        }
+pub fn delta_subject_render(subject: &DeltaSubject) -> String {
+    match subject {
+        DeltaSubject::Membership { module, target } => format!("membership {module} -> {target}"),
+        DeltaSubject::Binding {
+            module,
+            in_declaration,
+            spelling,
+        } => format!("binding {module}::{in_declaration} `{spelling}`"),
     }
 }
 
@@ -282,14 +290,13 @@ pub struct WaveAdmissionReport {
     pub stale_admissions: Vec<String>,
 }
 
-impl WaveAdmissionReport {
-    /// The wall's verdict: every delta is either auto-admitted or named by an admission.
-    pub fn unadjudicated(&self) -> Vec<&NamespaceDelta> {
-        self.deltas
-            .iter()
-            .filter(|d| !d.disposition.auto_admitted() && d.admitted_by.is_none())
-            .collect()
-    }
+/// The wall's verdict: every delta is either auto-admitted or named by an admission.
+pub fn report_unadjudicated(report: &WaveAdmissionReport) -> Vec<&NamespaceDelta> {
+    report
+        .deltas
+        .iter()
+        .filter(|d| !disposition_auto_admitted(d.disposition) && d.admitted_by.is_none())
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -458,17 +465,13 @@ fn binding_rows(
 ) -> BTreeMap<(String, String), BTreeSet<String>> {
     let mut out: BTreeMap<(String, String), BTreeSet<String>> = BTreeMap::new();
     for (in_declaration, spelling) in &record.referenced {
-        let leaf = leaf_of(spelling);
+        let leaf = qualified_last_segment(spelling.clone());
         let candidates = declaring_candidates(index, record, spelling);
         out.entry((in_declaration.clone(), leaf))
             .or_default()
             .extend(candidates);
     }
     out
-}
-
-fn leaf_of(spelling: &str) -> String {
-    spelling.rsplit('.').next().unwrap_or(spelling).to_string()
 }
 
 /// Transitive closure of direct membership, per module.
@@ -594,8 +597,8 @@ pub fn adjudicate(
                 disposition,
                 detail: format!(
                     "base {{{}}} -> head {{{}}}",
-                    render_set(base_set),
-                    render_set(head_set)
+                    base_set.iter().cloned().collect::<Vec<_>>().join(", "),
+                    head_set.iter().cloned().collect::<Vec<_>>().join(", ")
                 ),
                 closure_blast_radius: 0,
                 admitted_by: None,
@@ -686,8 +689,8 @@ pub fn adjudicate(
             format!(
                 "{} ({} {}) matches no delta in this run",
                 a.label,
-                a.disposition.label(),
-                a.subject.render()
+                disposition_label(a.disposition),
+                delta_subject_render(&a.subject)
             )
         })
         .collect();
@@ -742,10 +745,6 @@ fn blast_radius(moved: &BTreeMap<String, BTreeSet<String>>, target: &str) -> usi
     moved.values().filter(|s| s.contains(target)).count()
 }
 
-fn render_set(set: &BTreeSet<String>) -> String {
-    set.iter().cloned().collect::<Vec<_>>().join(", ")
-}
-
 pub fn render_delta(delta: &NamespaceDelta) -> String {
     let admitted = match &delta.admitted_by {
         Some(label) => format!(" ADMITTED-BY {label}"),
@@ -753,8 +752,8 @@ pub fn render_delta(delta: &NamespaceDelta) -> String {
     };
     format!(
         "{} {} — {}{} [closure blast radius: {} module(s)]",
-        delta.disposition.label(),
-        delta.subject.render(),
+        disposition_label(delta.disposition),
+        delta_subject_render(&delta.subject),
         delta.detail,
         admitted,
         delta.closure_blast_radius
@@ -793,7 +792,14 @@ pub enum WaveAdmissionOutcome {
     },
 }
 
-fn git_stdout(workspace: &Path, args: &[&str]) -> Result<String, String> {
+/// Run git in the workspace and return trimmed stdout, or a refusal naming the command.
+///
+/// THE ONE COPY. `claim_executor` carried a byte-identical private copy, and this module's first
+/// draft carried a second — three spellings of one concept would have been the §3 fork this wall
+/// exists to refuse elsewhere. It is `pub` here rather than private there because the wall is a
+/// library fold and the bin is one of its callers; the bin's copy is deleted and its five call
+/// sites read this one.
+pub fn git_stdout(workspace: &Path, args: &[&str]) -> Result<String, String> {
     let out = Command::new("git")
         .args(args)
         .current_dir(workspace)

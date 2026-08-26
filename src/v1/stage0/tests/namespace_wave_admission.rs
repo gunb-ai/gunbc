@@ -15,7 +15,8 @@
 use std::path::{Path, PathBuf};
 
 use v1_compiler::cli_run::namespace_wave_admission::{
-    adjudicate, DeltaSubject, NamespaceDeltaDisposition, TransitionAdmission, WaveAdmissionReport,
+    adjudicate, disposition_label, report_unadjudicated, DeltaSubject, NamespaceDeltaDisposition,
+    TransitionAdmission, WaveAdmissionReport,
 };
 use v1_compiler::cli_run::run_dag_parse_sweep;
 
@@ -140,7 +141,7 @@ fn an_unchanged_tree_carries_no_delta_and_names_what_it_compared() {
         report.population.binding_rows_compared > 0,
         "no binding row was compared, so the zero above is ignorance rather than agreement"
     );
-    assert!(report.unadjudicated().is_empty());
+    assert!(report_unadjudicated(&report).is_empty());
 }
 
 // ── AUTO-ADMITTED: the route moved and the declaring identity did not ──
@@ -158,12 +159,11 @@ fn dropping_an_import_for_a_qualified_spelling_keeps_the_declarer_and_is_admitte
     // The membership edge SURVIVES — the qualified spelling reaches the same module — so the
     // only motion is the route. Nothing here may refuse.
     assert!(
-        report.unadjudicated().is_empty(),
+        report_unadjudicated(&report).is_empty(),
         "a route change that preserves every declaring identity must be admitted, got: {:?}",
-        report
-            .unadjudicated()
+        report_unadjudicated(&report)
             .iter()
-            .map(|d| (d.disposition.label(), d.detail.clone()))
+            .map(|d| (disposition_label(d.disposition), d.detail.clone()))
             .collect::<Vec<_>>()
     );
 }
@@ -229,7 +229,7 @@ fn moving_a_declaration_to_another_module_refuses_as_target_changed() {
         report.deltas
     );
     assert!(
-        !report.unadjudicated().is_empty(),
+        !report_unadjudicated(&report).is_empty(),
         "TargetChanged is on the refusing side of the ruling's partition"
     );
 }
@@ -271,7 +271,7 @@ fn a_spelling_that_stops_denoting_anything_refuses_as_new_unresolvedness() {
         "a name that lost its declaration must be NewUnresolvedness, got: {:?}",
         report.deltas
     );
-    assert!(!report.unadjudicated().is_empty());
+    assert!(!report_unadjudicated(&report).is_empty());
 }
 
 #[test]
@@ -308,7 +308,7 @@ fn an_exact_transition_admission_admits_that_delta_and_only_that_delta() {
     ];
     let refused = compare("admission_before", &base, &head);
     assert!(
-        !refused.unadjudicated().is_empty(),
+        !report_unadjudicated(&refused).is_empty(),
         "PLANT NEVER REACHED: the un-admitted arm must refuse, or the admission below proves nothing"
     );
 
@@ -362,7 +362,7 @@ fn an_admission_naming_a_different_subject_does_not_admit_and_reports_stale() {
     }];
     let report = compare_with("admission_wrong", &base, &head, &admissions);
     assert!(
-        !report.unadjudicated().is_empty(),
+        !report_unadjudicated(&report).is_empty(),
         "an admission for another subject must not admit this one"
     );
     assert_eq!(

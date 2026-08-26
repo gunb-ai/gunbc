@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::rc::Rc;
+use v1_compiler::cli_run::namespace_wave_admission::git_stdout;
 #[cfg(test)]
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::PhaseProfile;
@@ -1484,7 +1485,7 @@ fn report_wave_admission_outcome(
             for stale in &report.stale_admissions {
                 eprintln!("required-ci: namespace-wave-admission STALE ADMISSION {stale}");
             }
-            let unadjudicated = report.unadjudicated();
+            let unadjudicated = nwa::report_unadjudicated(report);
             // A STALE ADMISSION REFUSES TOO. A row that matches no delta is a permission
             // standing over nothing, and leaving it means the roster stops being a fact about
             // the corpus and becomes a list someone forgot to prune.
@@ -2112,27 +2113,6 @@ mod witness_walk_flags_tests {
 #[cfg(test)]
 mod scoped_execution_request_tests {
     use super::*;
-}
-
-/// Run git in the workspace and return trimmed stdout, or a refusal naming the command.
-///
-/// Kept when the mirror-drift gate was removed: the behavioral receipt resolves its own baseline
-/// through it, so this is a shared helper rather than that gate's private one.
-fn git_stdout(workspace: &Path, args: &[&str]) -> Result<String, String> {
-    let out = Command::new("git")
-        .args(args)
-        .current_dir(workspace)
-        .env("GIT_PAGER", "cat")
-        .output()
-        .map_err(|e| format!("spawn git {}: {e}", args.join(" ")))?;
-    if !out.status.success() {
-        return Err(format!(
-            "git {} failed: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
-    }
-    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
 // ---------------------------------------------------------------------------
