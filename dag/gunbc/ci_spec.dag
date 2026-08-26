@@ -651,7 +651,8 @@ fn gunbc_ci_multi_principal_probe_invoke() -> String {
 // THE MARKER'S ORIGINAL TRIGGER WAS UNFALSIFIABLE, AND THIS ROW RECORDS WHY BEFORE
 // DELETING IT (parent-session finding, 2026-08-21). It read "DISSOLVES WHEN the typed
 // secret-materialization effect... lands on host_effect_apply" — but host_effect_apply's
-// HostEffectIntent.target is a NodeControlPlane, and both its arms require a ComputeHost.
+// HostEffectIntent.target is a NodeControlPlane. Fleet effects use arms carrying ComputeHost;
+// explicitly runner-local effects use RunnerLocalHost without fabricating a fleet identity.
 // An ephemeral GitHub Actions runner is not a ComputeHost the fleet models; there was no
 // host_effect_apply arm this step could ever land on, so the condition named could never
 // occur. That is the same defect class as the trigger corrected alongside it this session

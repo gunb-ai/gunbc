@@ -27,6 +27,7 @@ import gunbc.toolchain_home_standing {
 import gunbc.toolchain_workflow_steps {
   toolchain_home_isolation_step,
   toolchain_pin_rustup_default_step,
+  toolchain_home_interference_probe_step,
 }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
@@ -777,6 +778,11 @@ fn prepared_bound_steps(build_script: String) -> List<WitnessFloorBoundStep> {
       step: witness_floor_build_step(build_script: build_script),
       role: consumes_only(capabilities: [CargoCapability]),
       step_name: "Build the witness fold",
+    },
+    WitnessFloorBoundStep {
+      step: toolchain_home_interference_probe_step(),
+      role: capability_neutral,
+      step_name: "Discriminate private homes from a hostile legacy writer",
     },
   ]
 }

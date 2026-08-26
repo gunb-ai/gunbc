@@ -11680,6 +11680,143 @@ fn eval_filesystem_read_builtin(path: String, ctx: &InterpContext) -> InterpResu
     })
 }
 
+fn toolchain_probe_variant(
+    ctx: &InterpContext,
+    variant: &str,
+    fields: Vec<(&str, Value)>,
+) -> Value {
+    Value::Variant {
+        type_name: ctx.sym("ToolchainInterferenceProbeResult"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(sorted_fields(
+            fields
+                .into_iter()
+                .map(|(name, value)| (ctx.sym(name), value))
+                .collect(),
+        )),
+    }
+}
+
+fn toolchain_probe_refused(ctx: &InterpContext, cause: &str, fields: Vec<(&str, Value)>) -> Value {
+    let cause_value = Value::Variant {
+        type_name: ctx.sym("ToolchainInterferenceProbeRefusal"),
+        variant_name: ctx.sym(cause),
+        fields: Rc::new(sorted_fields(
+            fields
+                .into_iter()
+                .map(|(name, value)| (ctx.sym(name), value))
+                .collect(),
+        )),
+    };
+    toolchain_probe_variant(
+        ctx,
+        "ToolchainInterferenceProbeRefused",
+        vec![("cause", cause_value)],
+    )
+}
+
+fn eval_toolchain_home_interference_probe_builtin(ctx: &InterpContext) -> Value {
+    use std::path::Path;
+    use std::process::Command;
+    use std::sync::{Arc, Barrier};
+
+    fn run_arm(reader_home: &Path, legacy_home: &Path, tag: &str) -> Result<bool, String> {
+        let reader_bin = reader_home.join("bin");
+        let legacy_bin = legacy_home.join("bin");
+        std::fs::create_dir_all(&reader_bin).map_err(|e| format!("create reader bin: {e}"))?;
+        std::fs::create_dir_all(&legacy_bin).map_err(|e| format!("create legacy bin: {e}"))?;
+        let probe_name = format!("gunbc-toolchain-interference-{}-{tag}", std::process::id());
+        let reader_probe = reader_bin.join(&probe_name);
+        let legacy_probe = legacy_bin.join(&probe_name);
+        std::fs::copy("/bin/true", &reader_probe)
+            .map_err(|e| format!("install safe probe: {e}"))?;
+
+        let barrier = Arc::new(Barrier::new(3));
+        let spawn_reader = |probe: std::path::PathBuf, barrier: Arc<Barrier>| {
+            std::thread::spawn(move || {
+                barrier.wait();
+                Command::new(probe)
+                    .status()
+                    .map(|s| s.success())
+                    .map_err(|e| e.to_string())
+            })
+        };
+        let a = spawn_reader(reader_probe.clone(), barrier.clone());
+        let b = spawn_reader(reader_probe.clone(), barrier.clone());
+        let writer_barrier = barrier.clone();
+        let writer = std::thread::spawn(move || -> Result<(), String> {
+            let replaced = (|| -> Result<(), String> {
+                let replacement = legacy_probe.with_extension("replacement");
+                std::fs::copy("/bin/false", &replacement)
+                    .map_err(|e| format!("stage hostile probe: {e}"))?;
+                std::fs::rename(&replacement, &legacy_probe)
+                    .map_err(|e| format!("replace probe: {e}"))?;
+                Ok(())
+            })();
+            writer_barrier.wait();
+            replaced
+        });
+        writer.join().map_err(|_| "writer panicked".to_string())??;
+        let ar = a.join().map_err(|_| "reader-a panicked".to_string())??;
+        let br = b.join().map_err(|_| "reader-b panicked".to_string())??;
+        let _ = std::fs::remove_file(reader_probe);
+        Ok(ar && br)
+    }
+
+    let runner_temp = std::env::var("RUNNER_TEMP").unwrap_or_default();
+    let observed = std::env::var("CARGO_HOME").unwrap_or_default();
+    let expected = if runner_temp.is_empty() {
+        String::new()
+    } else {
+        format!("{runner_temp}/cargo")
+    };
+    if observed != expected || expected.is_empty() {
+        return toolchain_probe_refused(
+            ctx,
+            "ToolchainPrivateHomeBindingMissing",
+            vec![
+                ("observed", str_value(observed)),
+                ("expected", str_value(expected)),
+            ],
+        );
+    }
+    let root = std::path::PathBuf::from(&runner_temp).join(format!(
+        "gunbc-toolchain-interference-{}",
+        std::process::id()
+    ));
+    let result = (|| -> Result<Value, String> {
+        std::fs::create_dir_all(&root).map_err(|e| format!("create fixture root: {e}"))?;
+        let shared = root.join("shared");
+        if run_arm(&shared, &shared, "shared")? {
+            return Ok(toolchain_probe_refused(
+                ctx,
+                "ToolchainSharedArmDidNotObserveInterference",
+                vec![],
+            ));
+        }
+        if !run_arm(Path::new(&observed), &root.join("legacy"), "private")? {
+            return Ok(toolchain_probe_refused(
+                ctx,
+                "ToolchainPrivateHomeIsolationBreached",
+                vec![],
+            ));
+        }
+        Ok(toolchain_probe_variant(
+            ctx,
+            "ToolchainInterferenceDiscriminated",
+            vec![],
+        ))
+    })();
+    let _ = std::fs::remove_dir_all(&root);
+    result.unwrap_or_else(|detail| {
+        toolchain_probe_refused(
+            ctx,
+            "ToolchainInterferenceFixtureFailed",
+            vec![("detail", str_value(detail))],
+        )
+    })
+}
+
 /// Host tap for `v2.compiler.emit_host.run_host_process` (kernel-D emit_host transport):
 /// materialize a workspace from resolved `{path, text}` rows, run the build argvs then the
 /// run argv with typed argv (no shell), and return exit/stdout/stderr/build-log as data.
@@ -13430,6 +13567,13 @@ macro_rules! v1_builtin_arms {
             arm "free_call.filesystem_read" { "filesystem_read" } => {
                 let path = expect_str($positional.first().copied(), "filesystem_read")?;
                 Ok(Some(eval_filesystem_read_builtin(path, $ctx)?))
+            },
+
+            arm "free_call.toolchain_home_interference_probe" { "toolchain_home_interference_probe" } => {
+                if !$positional.is_empty() {
+                    return Err(InterpError::TypeError { msg: "toolchain_home_interference_probe takes no arguments".to_string() });
+                }
+                Ok(Some(eval_toolchain_home_interference_probe_builtin($ctx)))
             },
 
             arm "free_call.emit_host_run_transport" { "emit_host_run_transport" } => Ok(Some(eval_emit_host_run_transport_builtin(
