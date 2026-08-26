@@ -3,13 +3,7 @@ module gunbc.tools.review
 import extdeps.git
 import std.types { GitRef, FilePath, Seconds }
 
-// SPELLED WITH ITS BACKEND IN THE NAME. This and gunbc.tools.review_codex's
-// `default_codex_model` were both spelled `default_model`, two different backends' model ids
-// under one name, and both are read as a workflow param default. That is the ambiguity
-// test.claim.workflow_default_module_scope_witness_test's subject reproduces; the emitter now
-// resolves a default to its own module's declaration, so this rename is the specimen's half of
-// that repair and not what makes it correct.
-data default_review_model: String = "claude-sonnet-4-6-20250929"
+data default_model: String = "claude-sonnet-4-6-20250929"
 
 data review_fetch_stall_deadline_seconds: Seconds = 300
 data cron_schedule: CronSchedule = CronSchedule {
@@ -94,7 +88,7 @@ func review_pr(
   owner: String,
   repo: String,
   pr_number: Int,
-  model: String = default_review_model
+  model: String = default_model
 ) -> { reviewed: Bool, comment_url: String } {
 
   pr = github.Pulls.Get(

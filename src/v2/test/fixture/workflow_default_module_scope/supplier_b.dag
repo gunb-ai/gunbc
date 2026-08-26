@@ -1,5 +1,0 @@
-module v2.test.fixture.workflow_default_module_scope.supplier_b
-
-// The other half of the ambiguous pair -- see supplier_a.
-
-data wdms_shared_model: String = "wdms-supplier-b"

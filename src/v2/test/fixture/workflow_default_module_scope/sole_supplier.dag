@@ -1,7 +1,0 @@
-module v2.test.fixture.workflow_default_module_scope.sole_supplier
-
-// The UNAMBIGUOUS control for the pair above: exactly one import supplies this name, so a
-// consumer's default binds to this declaration and folds. Without it, the refusal arm is
-// satisfied by an emitter that simply stopped resolving imported defaults at all.
-
-data wdms_sole_model: String = "wdms-sole-supplier"
