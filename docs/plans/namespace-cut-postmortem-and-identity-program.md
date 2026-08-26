@@ -3422,11 +3422,57 @@ a text scan cannot**, and the index is `#9211`'s, not a second corpus walk.
 
 **WHY THIS IS THE CUT'S HEADLINE RATHER THAN A SIDE EFFECT.** If an edge exists
 because a module is *named* rather than *used*, then import-derived and
-reference-derived closure differ by **exactly the dead-import population** — and
-reference-derived closure is the cut's new root. 8.1% of import edges is not a
+reference-derived closure differ by exactly the imports that carry no surviving
+reference-derived edge — `ImportOnlyNoEffect` plus `ReferencePreservingReplacement`
+above, with `ImportClosureCarrier` the part that refuses — and reference-derived
+closure is the cut's new root. 8.1% of import edges is not a
 rounding error and 1576 files is not a long tail: **this is a first estimate of
 how much the cut changes what compiles**, and §11.2c's finding that the cut
 *expands* eligibility now has a counterweight to be measured against.
+
+**METHOD CORRECTION, 2026-08-26, AND IT CHANGES WHAT 6187 IS A COUNT OF.** The
+figure above is a **lexical** measurement, and a lexical check cannot establish
+that an import is dead. Arm D is the reason: an import with no used member still
+pulls its provider into the closure, so a **bare occurrence elsewhere may bind
+through it**. Such an import is load-bearing — not as a binding, but as a
+**closure carrier** — and a sweep for textually-unused members classifies it as
+dead. So 6187 is a count of *textually-unused import members*, not of dead
+imports, and the two are not the same population.
+
+The safe classification is a semantic comparison, not a spelling test: removal is
+admissible iff no occurrence target changes, no surviving occurrence becomes
+unresolved or ambiguous, no silent pick changes, and every subject-membership
+change is explained. That is **already the wave's closure-delta wall**, so a
+separate unused-import gate would be a weaker duplicate of a wall this program
+already needs — the §3 fork arriving as a second mechanism.
+
+The census is therefore a **disposition vocabulary over the delta**, not a count:
+
+| class | what it is | disposition |
+|---|---|---|
+| `ImportOnlyNoEffect` | the import edge disappears and nothing depended on it | admitted mechanically — unused-subject reduction |
+| `ImportClosureCarrier` | no direct member used, but an occurrence or subject depends on the imported closure | **refused** until an exact reference-derived edge replaces it |
+| `ReferencePreservingReplacement` | the import-derived edge is gone; a reference-derived edge reaches the same declaration identity | admitted mechanically |
+
+**The planning consequence inverts what the raw number suggests.** This is not a
+prerequisite burndown requiring 6187 hand deletions: genuine dead edges disappear
+**automatically** under the delta wall, and only hidden closure carriers block. So
+the population that matters is a **refusal set**, and it is much smaller than the
+lexical count. Had the lexical census been run first it would have produced a
+number wrong in the direction that costs most — understating the refusals while
+overstating the work.
+
+**The terminal law settles the policy question rather than answering it**
+(operator, 2026-08-26): `LoadedClosure(entry)` is the transitive closure of exact
+resolved declaration-reference edges, and **an authored import line contributes
+zero production closure edges**. So "should an unused import refuse, or become
+inert?" has no answer because it has no subject: import syntax **retires** and
+refuses as `ImportSyntaxRetired`. The legitimate intent behind naming a
+not-yet-used module is accepted and its *spelling* refused — a future or
+non-code dependency (packaging, capability, preload, deployment) gets its own
+named carrier, never a reuse of `import`, because one spelling answering both
+*what does this program reference* and *what might this author want later* is the
+§3 nickname violation.
 
 **AND IT BOUNDS WHAT THE ARITY WALL MAY CLAIM.** The arity-zero form has a
 measured population of **one** (`gunbc.floor_component_receipt`, multiline
