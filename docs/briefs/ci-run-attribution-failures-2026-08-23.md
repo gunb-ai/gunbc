@@ -777,13 +777,48 @@ could have been prevented by a more careful reader. This one could not have been
 
 ### The repair is not a blank page — the precedent is shipped and executing
 
-`measure_entry_emission` faced this exact question in this exact domain and answered it.
-`EmissionMeasurement` carries no spelling in which an unreached stage renders as a stage that ran
-and found nothing. gunbc#9273's `cargo_standing` splits a failed build carrying **zero** coded
-rustc diagnostics (`Unestablished` — the *host* failed) from one carrying them (`Refuted` — the
-*subject* failed), on the argument that an uncoded failure is ignorance rather than evidence. That
-is precisely the distinction these 24 folds lack, and it was authored from a measured sccache
-spawn failure rather than imagined.
+**Correction, 2026-08-26 — an earlier revision of this section cited a symbol that does not
+exist, and the correction belongs here rather than in a footnote, because this brief's whole
+subject is claims detached from their referent.** That revision named `cargo_standing` in
+gunbc#9273 as splitting a failed build carrying zero coded rustc diagnostics (`Unestablished`)
+from one carrying them (`Refuted`). **No such symbol exists** — not in #9273, whose diff is
+10,291 bytes and contains none of `standing`, `Unestablished`, or `Refuted`, and not anywhere in
+the tree. The author of this brief relayed a mechanism he had verified together with a name he
+had not, then repeated it to three parties, one of whom cited it back as established. The
+mechanism was real; **the name is the part that travels**, and it travelled alone.
+
+The real precedent is stronger than the invented one, and it is on `main` rather than in any PR.
+`dag/tools/emission_entry_instrument.dag` defines `EmissionMeasurement` with **five** arms —
+`EmissionSubjectUnestablished`, `EmissionUnreached`, `EmissionEmitRefused`,
+`EmissionCargoUnreached`, `EmissionMeasured` — and states the principle in its own header:
+
+> The measurement is COMPLETE whenever the instrument reached a verdict about the entry, **which
+> includes an entry the compiler refused**. It is INCOMPLETE only where the instrument itself
+> could not run. Conflating the two is how an instrument reports its own breakage as a finding
+> about its subject.
+
+`gunbc#9273` does contribute a real arm to this family — `EmitOutputTruncated` on
+`EmitDiagnosticRead` in `gunbc.emit_diagnostic_observation`, separating *the host kept a bounded
+tail so the marker was discarded* from *the compiler did not scope*. That is instrument-failure
+versus subject-failure, authored from a measured receipt. It is simply about truncation, and
+carries none of the vocabulary the retracted sentence attached to it.
+
+**The retraction changes the design conclusion, which is why it is not a cosmetic fix.** The
+invented citation described a *two-valued* split — host failed, subject failed — and the real
+carrier is not two-valued at all. `emission_measurement_completed` returns `true` for
+`EmissionEmitRefused` and `false` for `EmissionUnreached`: a subject's refusal is a **completed**
+measurement. So the carrier separates two independent questions, and only the first is the
+enumeration:
+
+1. **Did the instrument reach a verdict?** — completeness of the *measurement*
+2. **What is the verdict?** — including *nobody failed*
+
+*Who failed* is not the top-level axis; it is a projection over arms that already answer (1).
+Compressing five arms into the two-armed sentence this brief wanted is the same move that
+produced the fake symbol — and had it been built, the carrier would have had no way to type a
+result where the instrument ran, the subject is correct, and the population is *deliberately
+incomplete*: nobody failed, so a who-failed enumeration must fabricate an answer. That failure
+mode was caught by review before construction, not by the author.
 
 So the carrier change has a worked shape available to it: a stage that can prevent a comparison
 from executing must participate in the verdict, so that *never ran* and *ran and disagreed* have
