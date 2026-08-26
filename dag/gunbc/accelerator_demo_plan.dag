@@ -1,5 +1,7 @@
 module gunbc.accelerator_demo_plan
 
+import std.realization { LocalAccelerator }
+
 
 type ElementwiseFoldClass
   = PureElementwiseChain { op_count: Int }

@@ -1,0 +1,15 @@
+test.claim.host_phase_status.witness_reconcile_covers_upsert_teardown_and_noop	 runtime error: type error: atom_identity_hash requires exactly one string argument
+test.claim.host_phase_status.witness_remaining_work_counts_every_unfinished_cell	 runtime error: type error: atom_identity_hash requires exactly one string argument
+test.claim.srv3_subsumption.srv3_reconcile_adds_exactly_the_missing_fleet_key	 runtime error: type error: atom_identity_hash requires exactly one string argument
+test.claim.srv3_subsumption.srv3_reconcile_refuses_both_unowned_keys_never_teardown	 runtime error: type error: atom_identity_hash requires exactly one string argument
+test.claim.srv3_subsumption.srv4_reconcile_is_converged_empty_plan	 runtime error: type error: atom_identity_hash requires exactly one string argument
+test.claim.srv3_subsumption.srv3_and_srv4_disagree_on_convergence	 runtime error: type error: atom_identity_hash requires exactly one string argument
+test.claim.srv3_subsumption.reconcile_would_teardown_only_if_ownership_claimed_it	 runtime error: type error: atom_identity_hash requires exactly one string argument
+test.claim.srv3_subsumption.comment_only_drift_is_one_change_not_remove_add	 runtime error: type error: atom_identity_hash requires exactly one string argument
+v2.test.emit.produced_decl_support_preserved.produced_decl_support_survives_augmentation	 runtime error: call contract mismatch calling 'render': missing required argument 'proto' (1 of 2 required argument(s) supplied)
+v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_canonical_holds	 runtime error: type error: atom_identity_hash requires exactly one string argument
+v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_non_canonical_violates	 runtime error: type error: atom_identity_hash requires exactly one string argument
+v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_content_hash_violates	 runtime error: type error: atom_identity_hash requires exactly one string argument
+v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_runtime_same_identity_violates	 runtime error: type error: atom_identity_hash requires exactly one string argument
+v2.test.claim.staging.cached_stage_hit_skips_stage	 runtime error: type error: cannot access field 'raw' on Int
+v2.test.claim.staging.cached_stage_miss_runs_stage	 runtime error: type error: cannot access field 'raw' on Int

@@ -1,5 +1,7 @@
 module test.claim.emit_host_gate_witness
 
+import tools.emit_host_fixtures { go_stdout_fixture_source, python_stdout_fixture_source, rust_stdout_fixture_source, stdout_byte_count, ts_host_fixture_source, ts_signed_i32_le_byte_count }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn nonempty(s: String) -> Bool {

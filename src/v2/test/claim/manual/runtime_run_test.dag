@@ -114,7 +114,7 @@ fn runtime_run_fact_lookup(node: Node) -> Optional<InferredFacts> {
 fn runtime_run_test_tree() -> InferredTree {
   InferredTree {
     root: runtime_run_node_a,
-    facts: Map { lookup: runtime_run_fact_lookup }
+    facts: PartialFunction { lookup: runtime_run_fact_lookup }
   }
 }
 

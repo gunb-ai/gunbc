@@ -87,7 +87,7 @@ import v2.std.provenance {
 import v2.std.collection {
   List,
   Map,
-  Set,
+  PointwisePower,
   empty_map,
   list_at_optional,
   map_get,
@@ -277,7 +277,7 @@ type ParseTableRealization {
   memo_hits: Int
   memo_misses: Int
   memo_lookup_calls: Int
-  nullable_set: Set<Symbol>
+  nullable_set: PointwisePower<Symbol>
   first_rows: Map<Symbol, List<Symbol>>
   productions_by_name: Map<Symbol, GrammarProduction>
 }
@@ -634,7 +634,7 @@ fn parse_table_empty() -> ParseTable {
     memo_hits: 0,
     memo_misses: 0,
     memo_lookup_calls: 0,
-    nullable_set: Set { member: fn(_) { false } },
+    nullable_set: PointwisePower { member: fn(_) { false } },
     first_rows: empty_map(),
     productions_by_name: empty_map()
   }
@@ -1166,13 +1166,13 @@ fn parse_nonterminal_memoized_core(
   }
 }
 
-fn set_symbol_insert(s: Set<Symbol>, item: Symbol) -> Set<Symbol> {
-  Set {
+fn set_symbol_insert(s: PointwisePower<Symbol>, item: Symbol) -> PointwisePower<Symbol> {
+  PointwisePower {
     member: fn(sym) { sym == item || s.member(sym) }
   }
 }
 
-fn expr_is_nullable_given_set(expr: GrammarExpr, nullable_set: Set<Symbol>) -> Bool {
+fn expr_is_nullable_given_set(expr: GrammarExpr, nullable_set: PointwisePower<Symbol>) -> Bool {
   fold_grammar_expr(
     expr: expr,
     algebra: GrammarExprFold {
@@ -1186,7 +1186,7 @@ fn expr_is_nullable_given_set(expr: GrammarExpr, nullable_set: Set<Symbol>) -> B
   )
 }
 
-fn compute_nullable_step(ns: Set<Symbol>, p: GrammarProduction) -> Set<Symbol> {
+fn compute_nullable_step(ns: PointwisePower<Symbol>, p: GrammarProduction) -> PointwisePower<Symbol> {
   if expr_is_nullable_given_set(expr: p.expression, nullable_set: ns) {
     set_symbol_insert(s: ns, item: p.name)
   } else {
@@ -1196,7 +1196,7 @@ fn compute_nullable_step(ns: Set<Symbol>, p: GrammarProduction) -> Set<Symbol> {
 
 // ONE ROUND of the nullable fixpoint: every production gets a chance to join the set given what
 // the set already holds.
-fn compute_nullable_round(root: GrammarRoot, ns: Set<Symbol>) -> Set<Symbol> {
+fn compute_nullable_round(root: GrammarRoot, ns: PointwisePower<Symbol>) -> PointwisePower<Symbol> {
   fold_list(
     xs: root.productions,
     empty: ns,
@@ -1206,13 +1206,13 @@ fn compute_nullable_round(root: GrammarRoot, ns: Set<Symbol>) -> Set<Symbol> {
   )
 }
 
-// THE CONVERGENCE MEASURE. `Set` is a `PointwisePower` — a characteristic function — so two sets
-// cannot be compared directly, and the fixpoint cannot stop by testing `next == previous`. It can
+// THE CONVERGENCE MEASURE. The carrier is a `PointwisePower` — a characteristic function — so two
+// sets cannot be compared directly, and the fixpoint cannot stop by testing `next == previous`. It can
 // stop on a MONOTONE MEASURE instead: `compute_nullable_step` only ever inserts, so the number of
 // productions the set admits rises until the round adds nothing, and equal counts across a round
 // mean equal sets. Counting over `root.productions` is exact here because that is the only
 // population `compute_nullable_step` can insert from.
-fn nullable_member_count(root: GrammarRoot, ns: Set<Symbol>) -> Int {
+fn nullable_member_count(root: GrammarRoot, ns: PointwisePower<Symbol>) -> Int {
   fold_list(
     xs: root.productions,
     empty: 0,
@@ -1232,10 +1232,10 @@ fn nullable_member_count(root: GrammarRoot, ns: Set<Symbol>) -> Int {
 // a round adds nothing, so the RESULT is identical and only the redundant rounds are gone.
 fn compute_nullable_fixpoint(
   root: GrammarRoot,
-  ns: Set<Symbol>,
+  ns: PointwisePower<Symbol>,
   seen_count: Int,
   fuel: Int
-) -> Set<Symbol> {
+) -> PointwisePower<Symbol> {
   if fuel == 0 {
     ns
   } else {
@@ -1249,10 +1249,10 @@ fn compute_nullable_fixpoint(
   }
 }
 
-fn compute_nullable_set(root: GrammarRoot) -> Set<Symbol> {
+fn compute_nullable_set(root: GrammarRoot) -> PointwisePower<Symbol> {
   compute_nullable_fixpoint(
     root: root,
-    ns: Set { member: fn(_) { false } },
+    ns: PointwisePower { member: fn(_) { false } },
     seen_count: 0,
     fuel: length(xs: root.productions)
   )
@@ -1264,7 +1264,7 @@ type GrammarExprFirstFold {
 }
 
 type GrammarFirstAnalysis {
-  nullable_set: Set<Symbol>
+  nullable_set: PointwisePower<Symbol>
   first_rows: Map<Symbol, List<Symbol>>
 }
 
@@ -1314,7 +1314,7 @@ fn expr_first_fold_terminal(token_class: Symbol) -> GrammarExprFirstFold {
 
 fn expr_first_fold_nonterminal(
   name: Symbol,
-  nullable_set: Set<Symbol>,
+  nullable_set: PointwisePower<Symbol>,
   first_rows: Map<Symbol, List<Symbol>>
 ) -> GrammarExprFirstFold {
   GrammarExprFirstFold {
@@ -1350,7 +1350,7 @@ fn expr_first_fold_repeat(element: GrammarExprFirstFold) -> GrammarExprFirstFold
 
 fn expr_first_fold(
   expr: GrammarExpr,
-  nullable_set: Set<Symbol>,
+  nullable_set: PointwisePower<Symbol>,
   first_rows: Map<Symbol, List<Symbol>>
 ) -> GrammarExprFirstFold {
   fold_grammar_expr(
@@ -1371,7 +1371,7 @@ fn expr_first_fold(
 fn compute_production_first_row_terminals(
   rows: Map<Symbol, List<Symbol>>,
   p: GrammarProduction,
-  nullable_set: Set<Symbol>
+  nullable_set: PointwisePower<Symbol>
 ) -> List<Symbol> {
   expr_first_fold(
     expr: p.expression,
@@ -1382,7 +1382,7 @@ fn compute_production_first_row_terminals(
 
 fn compute_production_first_rows_round(
   root: GrammarRoot,
-  nullable_set: Set<Symbol>,
+  nullable_set: PointwisePower<Symbol>,
   rows: Map<Symbol, List<Symbol>>
 ) -> Map<Symbol, List<Symbol>> {
   fold_list(
@@ -1419,7 +1419,7 @@ fn production_first_rows_total(root: GrammarRoot, rows: Map<Symbol, List<Symbol>
 
 fn compute_production_first_rows_fixpoint(
   root: GrammarRoot,
-  nullable_set: Set<Symbol>,
+  nullable_set: PointwisePower<Symbol>,
   rows: Map<Symbol, List<Symbol>>,
   seen_total: Int,
   fuel: Int
@@ -1445,7 +1445,7 @@ fn compute_production_first_rows_fixpoint(
 
 fn compute_production_first_rows(
   root: GrammarRoot,
-  nullable_set: Set<Symbol>
+  nullable_set: PointwisePower<Symbol>
 ) -> Map<Symbol, List<Symbol>> {
   compute_production_first_rows_fixpoint(
     root: root,
@@ -1489,7 +1489,7 @@ fn append_choice_ambiguity_row(
 fn collect_choice_ambiguities_in_expr(
   expr: GrammarExpr,
   production: Symbol,
-  nullable_set: Set<Symbol>,
+  nullable_set: PointwisePower<Symbol>,
   first_rows: Map<Symbol, List<Symbol>>,
   acc: List<GrammarChoiceAmbiguityRow>
 ) -> List<GrammarChoiceAmbiguityRow> {
@@ -1554,7 +1554,7 @@ fn collect_choice_ambiguities_in_expr(
 
 fn compute_grammar_first_analysis_given(
   root: GrammarRoot,
-  nullable_set: Set<Symbol>
+  nullable_set: PointwisePower<Symbol>
 ) -> GrammarFirstAnalysis {
   GrammarFirstAnalysis {
     nullable_set: nullable_set,
@@ -1656,7 +1656,7 @@ fn expr_corner_fold_terminal(_: Symbol) -> GrammarExprCornerFold {
   GrammarExprCornerFold { corners: std.algebra.Empty, nullable: false }
 }
 
-fn expr_corner_fold_nonterminal(name: Symbol, nullable_set: Set<Symbol>) -> GrammarExprCornerFold {
+fn expr_corner_fold_nonterminal(name: Symbol, nullable_set: PointwisePower<Symbol>) -> GrammarExprCornerFold {
   GrammarExprCornerFold {
     corners: Cons { head: name, tail: std.algebra.Empty },
     nullable: nullable_set.member(name)
@@ -1699,7 +1699,7 @@ fn expr_corner_fold_repeat(element_fold: GrammarExprCornerFold) -> GrammarExprCo
   GrammarExprCornerFold { corners: element_fold.corners, nullable: true }
 }
 
-fn expr_corner_nullable_fold(expr: GrammarExpr, nullable_set: Set<Symbol>) -> GrammarExprCornerFold {
+fn expr_corner_nullable_fold(expr: GrammarExpr, nullable_set: PointwisePower<Symbol>) -> GrammarExprCornerFold {
   fold_grammar_expr(
     expr: expr,
     algebra: GrammarExprFold {
@@ -1713,7 +1713,7 @@ fn expr_corner_nullable_fold(expr: GrammarExpr, nullable_set: Set<Symbol>) -> Gr
   )
 }
 
-fn expr_direct_left_corner_list(expr: GrammarExpr, nullable_set: Set<Symbol>) -> List<Symbol> {
+fn expr_direct_left_corner_list(expr: GrammarExpr, nullable_set: PointwisePower<Symbol>) -> List<Symbol> {
   expr_corner_nullable_fold(expr: expr, nullable_set: nullable_set).corners
 }
 
@@ -1744,7 +1744,7 @@ fn left_corner_list_union(left: List<Symbol>, right: List<Symbol>) -> List<Symbo
 // The rows below are seeded with each production's DIRECT left corners and then expanded to their
 // fixpoint. The result per production is the same set the per-production closure produced — the
 // transitive closure of the same edge relation — so this is the identical question asked once.
-fn left_corner_direct_rows(root: GrammarRoot, nullable_set: Set<Symbol>) -> Map<Symbol, List<Symbol>> {
+fn left_corner_direct_rows(root: GrammarRoot, nullable_set: PointwisePower<Symbol>) -> Map<Symbol, List<Symbol>> {
   fold_list(
     xs: root.productions,
     empty: empty_map(),
@@ -1825,7 +1825,7 @@ fn left_corner_fixpoint(
   }
 }
 
-fn left_corner_rows(root: GrammarRoot, nullable_set: Set<Symbol>) -> Map<Symbol, List<Symbol>> {
+fn left_corner_rows(root: GrammarRoot, nullable_set: PointwisePower<Symbol>) -> Map<Symbol, List<Symbol>> {
   let seeded = left_corner_direct_rows(root: root, nullable_set: nullable_set)
   left_corner_fixpoint(
     root: root,
@@ -1838,7 +1838,7 @@ fn left_corner_rows(root: GrammarRoot, nullable_set: Set<Symbol>) -> Map<Symbol,
 // The nullable set is a parameter here because `grammar_validate_and_analyze` already computes it
 // for the FIRST analysis: the previous shape recomputed it inside this check, so one preparation
 // paid for the same fixpoint three times over.
-fn grammar_has_left_recursion_given(root: GrammarRoot, nullable_set: Set<Symbol>) -> Bool {
+fn grammar_has_left_recursion_given(root: GrammarRoot, nullable_set: PointwisePower<Symbol>) -> Bool {
   let rows = left_corner_rows(root: root, nullable_set: nullable_set)
   any(
     xs: root.productions,

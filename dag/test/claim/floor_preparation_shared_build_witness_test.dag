@@ -1,0 +1,201 @@
+module test.claim.floor_preparation_shared_build
+
+import v2.std.text { String }
+import v2.workflow.required_floor {
+  ClaimSafetyOutcome,
+  CompletedWithinSafetyLimits,
+  CompletedPastSafetyLimit,
+  CooperativelyPollable,
+  FloorPreparationPhase,
+  ModulePathIndexBuild,
+  SharedModuleIndexBuild,
+  BareReferenceEdgeIndexBuild,
+  FloorPreparationOutcome,
+  PreparationWithinLimits,
+  FloorPreparationRefused,
+  floor_preparation_outcome,
+  floor_preparation_outcome_blocks,
+  SharedBuildProvenance,
+  BuiltByPreparation,
+  AlreadyWarmOnEntry,
+  floor_run_blocks,
+  required_floor_preparation_cpu_safety_limit,
+  required_floor_preparation_wall_safety_limit,
+  required_floor_preparation_rss_growth_limit,
+}
+import std.measure { millisecond, byte_size, millisecond_count }
+
+data receipt_note: String = "THE MEASURED RECEIPT THIS WITNESS DERIVES FROM, and the one number in it that is NOT a threshold. test.claim.qualified_spelling_identity_witness_test.qualified_spelling_takes_the_shared_layer was charged 57193ms CPU against a 5000ms required_floor_claim_cpu_safety_limit_ms while its sibling, reaching the identical shared computation milliseconds later, measured 5ms. The shared bare-reference edge index build behind that charge is memoized once per index (edge_index_construction { builds: 1 }, two census misses over two roots against ONE index address), so the defect was never duplication -- it was that a subject-level artifact was billed to whichever claim touched it first. The figures used below are OCCURRENCE observations exercising each branch of the derivation; the LIMITS are read from v2.workflow.required_floor, which derives them from the resource each protects (CI job budget, host memory cap), never from what any build was measured to cost."
+
+// The ordinary case: a shared build inside all three of its limits is not refused, and says so
+// while carrying its observations. A phase that reported nothing would be indistinguishable from
+// a phase that did not run.
+test fn w_shared_build_within_limits_does_not_block() -> Bool {
+  match floor_preparation_outcome(
+    phase: BareReferenceEdgeIndexBuild,
+    observed_cpu: millisecond(count: 28441),
+    observed_wall: millisecond(count: 28441),
+    observed_rss_growth: byte_size(count: 1073741824),
+    cpu_limit: required_floor_preparation_cpu_safety_limit(),
+    wall_limit: required_floor_preparation_wall_safety_limit(),
+    rss_growth_limit: required_floor_preparation_rss_growth_limit(),
+  ) {
+    PreparationWithinLimits { phase: _, observed_cpu: cpu, observed_wall: _, observed_rss_growth: _ } =>
+      millisecond_count(m: cpu) == 28441
+    FloorPreparationRefused { phase: _, observed_cpu: _, observed_wall: _, observed_rss_growth: _ } => false
+  }
+}
+
+data three_axis_note: String = "THE THREE AXES ARE INDEPENDENT BOUNDS ON ONE UNIT, NEVER TIERS. Each arm below crosses exactly ONE axis and leaves the other two comfortably inside, so a derivation that had fused the axes -- or that had let a later axis overwrite an earlier refusal -- goes red here on the arm it dropped rather than passing on the strength of the other two. The RSS axis is the one the two clocks cannot see at all: a build can stay inside both time limits while retaining gigabytes, and with swap disabled that is an immediate kill rather than a spill."
+
+test fn w_cpu_axis_alone_refuses() -> Bool {
+  floor_preparation_outcome_blocks(
+    floor_preparation_outcome(
+      phase: BareReferenceEdgeIndexBuild,
+      observed_cpu: millisecond(count: 1080001),
+      observed_wall: millisecond(count: 1080001),
+      observed_rss_growth: byte_size(count: 1),
+      cpu_limit: required_floor_preparation_cpu_safety_limit(),
+      wall_limit: required_floor_preparation_wall_safety_limit(),
+      rss_growth_limit: required_floor_preparation_rss_growth_limit(),
+    )
+  ) == true
+}
+
+test fn w_wall_axis_alone_refuses() -> Bool {
+  floor_preparation_outcome_blocks(
+    floor_preparation_outcome(
+      phase: SharedModuleIndexBuild,
+      observed_cpu: millisecond(count: 1),
+      observed_wall: millisecond(count: 2160001),
+      observed_rss_growth: byte_size(count: 1),
+      cpu_limit: required_floor_preparation_cpu_safety_limit(),
+      wall_limit: required_floor_preparation_wall_safety_limit(),
+      rss_growth_limit: required_floor_preparation_rss_growth_limit(),
+    )
+  ) == true
+}
+
+test fn w_rss_axis_alone_refuses() -> Bool {
+  floor_preparation_outcome_blocks(
+    floor_preparation_outcome(
+      phase: ModulePathIndexBuild,
+      observed_cpu: millisecond(count: 1),
+      observed_wall: millisecond(count: 1),
+      observed_rss_growth: byte_size(count: 3221225473),
+      cpu_limit: required_floor_preparation_cpu_safety_limit(),
+      wall_limit: required_floor_preparation_wall_safety_limit(),
+      rss_growth_limit: required_floor_preparation_rss_growth_limit(),
+    )
+  ) == true
+}
+
+data phase_is_carried_note: String = "THE REFUSAL MUST NAME WHICH SHARED BUILD CROSSED. A refusal that lost the phase would report that preparation exceeded its limits without saying which of the three artifacts did it, which is the located half of a typed, located diagnostic. This is asserted directly rather than inferred from the arms above, all of which discard the phase."
+
+test fn w_refusal_carries_its_phase() -> Bool {
+  match floor_preparation_outcome(
+    phase: BareReferenceEdgeIndexBuild,
+    observed_cpu: millisecond(count: 1080001),
+    observed_wall: millisecond(count: 1),
+    observed_rss_growth: byte_size(count: 1),
+    cpu_limit: required_floor_preparation_cpu_safety_limit(),
+    wall_limit: required_floor_preparation_wall_safety_limit(),
+    rss_growth_limit: required_floor_preparation_rss_growth_limit(),
+  ) {
+    PreparationWithinLimits { phase: _, observed_cpu: _, observed_wall: _, observed_rss_growth: _ } => false
+    FloorPreparationRefused { phase: p, observed_cpu: _, observed_wall: _, observed_rss_growth: _ } =>
+      match p {
+        ModulePathIndexBuild => false
+        SharedModuleIndexBuild => false
+        BareReferenceEdgeIndexBuild => true
+      }
+  }
+}
+
+data not_the_claim_limit_note: String = "THE ONE ASSERTION THAT KEEPS THE UNITS APART. The whole defect was a shared build judged by a per-claim ceiling, so the repair is empty if the preparation limits are ever set to the claim figures. This asserts the preparation CPU limit is strictly greater than the measured cold build of the largest current member -- not as a ratification of that measurement, but because a preparation limit at or below it would refuse every healthy run and force the exit the quarantine row's dissolution trigger forbids: raising the per-claim ceiling until it admits the defect."
+
+test fn w_preparation_limit_is_not_the_claim_limit() -> Bool {
+  floor_preparation_outcome_blocks(
+    floor_preparation_outcome(
+      phase: BareReferenceEdgeIndexBuild,
+      observed_cpu: millisecond(count: 28441),
+      observed_wall: millisecond(count: 28441),
+      observed_rss_growth: byte_size(count: 1),
+      cpu_limit: required_floor_preparation_cpu_safety_limit(),
+      wall_limit: required_floor_preparation_wall_safety_limit(),
+      rss_growth_limit: required_floor_preparation_rss_growth_limit(),
+    )
+  ) == false
+}
+
+data independence_note: String = "THE TWO TERMS BLOCK INDEPENDENTLY AND NEITHER SUBSUMES THE OTHER. This is the pair that makes 'independent' an executed fact rather than a word in a comment: a refused shared build blocks while every claim is healthy, and a claim past its deadline blocks while preparation sat well inside its envelope. A derivation that had let either outcome excuse the other -- a precedence rule, or an arm that reads only one -- goes red on exactly one of these two, which is why they are separate rows rather than one conjunction."
+
+test fn w_refused_preparation_blocks_though_every_claim_is_healthy() -> Bool {
+  floor_run_blocks(
+    preparation: FloorPreparationRefused {
+      phase: BareReferenceEdgeIndexBuild,
+      observed_cpu: millisecond(count: 1080001),
+      observed_wall: millisecond(count: 1),
+      observed_rss_growth: byte_size(count: 1),
+    },
+    claim: CompletedWithinSafetyLimits,
+  ) == true
+}
+
+test fn w_over_limit_claim_blocks_though_preparation_was_inside_its_envelope() -> Bool {
+  floor_run_blocks(
+    preparation: PreparationWithinLimits {
+      phase: BareReferenceEdgeIndexBuild,
+      observed_cpu: millisecond(count: 28441),
+      observed_wall: millisecond(count: 28441),
+      observed_rss_growth: byte_size(count: 1073741824),
+    },
+    claim: CompletedPastSafetyLimit {
+      observed_cpu: millisecond(count: 57193),
+      observed_wall: millisecond(count: 57193),
+      preemption: CooperativelyPollable,
+    },
+  ) == true
+}
+
+test fn w_both_within_their_own_limits_does_not_block() -> Bool {
+  floor_run_blocks(
+    preparation: PreparationWithinLimits {
+      phase: BareReferenceEdgeIndexBuild,
+      observed_cpu: millisecond(count: 28441),
+      observed_wall: millisecond(count: 28441),
+      observed_rss_growth: byte_size(count: 1073741824),
+    },
+    claim: CompletedWithinSafetyLimits,
+  ) == false
+}
+
+data provenance_note: String = "TRIGGERED_BY IS NOT OWNED_BY, and this is the row that keeps the distinction from decaying back into a Bool. The AlreadyWarmOnEntry arm CANNOT be constructed without naming what got there first: a carrier that recorded only 'someone else went first' would discard the one fact an attribution model exists to keep, and this asserts the name survives the round trip rather than that the arm merely exists."
+
+// THE SPECIMENS ARE BUILT BY HELPERS, NOT INLINE, AND THAT IS A GRAMMAR FACT RATHER THAN A STYLE
+// CHOICE. `match BuiltByPreparation {` parses as a RECORD LITERAL whose body then hits `=>`
+// ("expected expression, found FatArrow"), because a bare variant name followed by `{` is exactly
+// the record-construction form. Naming the specimen first removes the ambiguity at the source
+// rather than working around it, and it is why both arms are constructed the same way even though
+// only the record-carrying one strictly needs it.
+fn already_warm_specimen() -> SharedBuildProvenance {
+  AlreadyWarmOnEntry { triggered_by: "a-site-ahead-of-floor-preparation" }
+}
+
+fn built_by_preparation_specimen() -> SharedBuildProvenance {
+  BuiltByPreparation
+}
+
+test fn w_already_warm_arm_carries_its_trigger() -> Bool {
+  match already_warm_specimen() {
+    BuiltByPreparation => false
+    AlreadyWarmOnEntry { triggered_by: who } => (who) == "a-site-ahead-of-floor-preparation"
+  }
+}
+
+test fn w_built_by_preparation_is_the_intended_state() -> Bool {
+  match built_by_preparation_specimen() {
+    BuiltByPreparation => true
+    AlreadyWarmOnEntry { triggered_by: _ } => false
+  }
+}

@@ -88,7 +88,8 @@ test fn w_digest_subject_survives_grounded_pull_request_ref() -> Bool {
     created_at: "2026-06-18T00:00:00Z",
     updated_at: "2026-06-18T00:00:00Z",
     merged_at: none,
-    draft: false
+    draft: false,
+    merge_commit_sha: none,
   }
   let subject = digest_subject(pr: pr)
   subject.head_sha == sample_sha && subject.base_ref == "main"

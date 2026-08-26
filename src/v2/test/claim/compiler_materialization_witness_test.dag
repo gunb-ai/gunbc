@@ -1,5 +1,7 @@
 module v2.test.claim.compiler_materialization_witness
 
+import std.realization { LocalInProcess }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

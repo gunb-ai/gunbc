@@ -171,8 +171,8 @@ fn v2_eval_binding_lookup_miss(_key: EnvironmentBindingKey) -> Witness<RuntimeVa
   }
 }
 
-fn v2_eval_empty_bindings() -> Map<EnvironmentBindingKey, RuntimeValue> {
-  Map {
+fn v2_eval_empty_bindings() -> PartialFunction<EnvironmentBindingKey, RuntimeValue> {
+  PartialFunction {
     lookup: v2_eval_binding_lookup_miss
   }
 }

@@ -32,7 +32,7 @@ data python_algebra_inhabitants: List<InhabitantDecl> = [
     import_path: none,
     is_copy: none },
 
-  { algebra: "BooleanAlgebra",
+  { algebra: "FinitePowerSet",
     template: "set[\{0\}]",
     arity: 1,
     identity_expr: "set()",
@@ -47,6 +47,13 @@ data python_algebra_inhabitants: List<InhabitantDecl> = [
     is_copy: none },
 
   { algebra: "PartialFunction",
+    template: "dict[\{0\}, \{1\}]",
+    arity: 2,
+    identity_expr: "{}",
+    import_path: none,
+    is_copy: none },
+
+  { algebra: "FinitelySupportedFunction",
     template: "dict[\{0\}, \{1\}]",
     arity: 2,
     identity_expr: "{}",

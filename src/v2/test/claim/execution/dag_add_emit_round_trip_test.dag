@@ -140,7 +140,7 @@ fn dag_add_facts_lookup(key: Node) -> Optional<InferredFacts> {
 
 data dag_add_inferred_tree: InferredTree = InferredTree {
   root: dag_add_emitted_root,
-  facts: Map {
+  facts: PartialFunction {
     lookup: dag_add_facts_lookup
   }
 }
@@ -213,7 +213,7 @@ test fn dag_add_domain_translate_accepts_holds() -> Bool {
   match translate_emitted_node(
     tree: InferredTree {
       root: dag_arrow_domain_conj_node(),
-      facts: Map { lookup: dag_add_facts_lookup }
+      facts: PartialFunction { lookup: dag_add_facts_lookup }
     },
     target: dag_add_target_model
   ) {

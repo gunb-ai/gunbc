@@ -3,11 +3,12 @@ module test.claim.runner_lifecycle
 import std.logic { Bool }
 import std.types { list_length, NonEmptyStr }
 import std.measure { byte_size, byte_size_count }
+import gunbc.runner_unit { runner_slot_unit_name }
 import gunbc.runner_lifecycle {
   runner_slot_add_sequence_for,
   RunnerSlotAddSequence,
   GitHubRunnerAddSequence,
-  FabricSlotProvisioningNotModeled,
+  FabricSlotHasNoGitHubAddSequence,
   SlotIsNotACommittedMember,
   runner_slot_add_steps_ordered,
   runner_slot_caps_precede_start,
@@ -22,7 +23,6 @@ import gunbc.runner_lifecycle {
   DiskHeadroomUnobserved,
   host_runner_capacity_converged,
   HostRunnerCapacityReceipt,
-  runner_slot_unit_name,
 }
 import gunbc.build_cache_instance { runner_slot_instance_name, runner_slot_index_suffix }
 import gunbc.runner_incarnation { runner_slot_incarnation }
@@ -144,7 +144,7 @@ test fn witness_slot_identity_formats_zero_padded_unit() -> Bool {
 fn sequence_registers_with_github(seq: RunnerSlotAddSequence) -> Bool {
   match seq {
     GitHubRunnerAddSequence { steps: s } => list_length(items: s) == 12
-    FabricSlotProvisioningNotModeled { reason: _ } => false
+    FabricSlotHasNoGitHubAddSequence { reason: _ } => false
     SlotIsNotACommittedMember { reason: _ } => false
   }
 }

@@ -2,10 +2,10 @@ module v2.extdeps.runtimes.v2_effect_io_pure
 
 import std.algebra { Cons, Empty }
 import v2.std.collection {
+  Absent,
   List,
   Map,
   Present,
-  Absent,
   empty_map,
   list_nth,
   map_get,
@@ -107,7 +107,7 @@ fn effect_io_pure_operation_ref() -> PrimitiveOperationRef {
 
 fn effect_io_pure_empty_environment() -> EvaluationEnvironment {
   EvaluationEnvironment {
-    bindings: Map {
+    bindings: PartialFunction {
       lookup: fn(_) {
         Absent
       }

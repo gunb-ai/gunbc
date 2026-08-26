@@ -156,7 +156,7 @@ fn branch_if_then_else_facts_lookup(key: Node) -> Optional<InferredFacts> {
 
 data branch_if_then_else_inferred_tree: InferredTree = InferredTree {
   root: branch_if_then_else_emitted_root,
-  facts: Map {
+  facts: PartialFunction {
     lookup: branch_if_then_else_facts_lookup
   }
 }

@@ -63,7 +63,7 @@ import v1.compiler.emit {
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
   lookup_item,
-  typed_named_arg_matches, order_typed_call_args,
+  order_typed_call_args,
   has_nested_records_node,
   is_null_coalesce, emit_null_coalesce,
   has_service_items,

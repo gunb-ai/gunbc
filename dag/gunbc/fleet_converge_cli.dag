@@ -10,7 +10,7 @@ import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
 import gunbc.hostname_read {
   HostnameShortCaptured,
   HostnameShortCaptureRefused,
-  hostname_short_read_local,
+  hostname_short_read,
 }
 import gunbc.fleet_converge_apply { converge_apply_for_host, fleet_compute_host_for_identity }
 import gunbc.host_layout { fleet_converge_receipt_dir, srv1_gunbc_repo_root }
@@ -135,7 +135,7 @@ fn converge_kernel_short_hostname_from_content(raw: String) -> String {
 }
 
 fn converge_local_kernel_short_hostname() -> String {
-  match hostname_short_read_local() {
+  match hostname_short_read(transport: LocalShell) {
     HostnameShortCaptured { value: v } => v
     HostnameShortCaptureRefused { reason: _ } => ""
   }

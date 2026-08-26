@@ -262,7 +262,7 @@ fn direct_rust_door_facts_lookup(key: Node) -> Optional<InferredFacts> {
 
 data direct_rust_door_inferred_tree: InferredTree = InferredTree {
   root: rust_fixture_emitted_add_fn,
-  facts: Map {
+  facts: PartialFunction {
     lookup: direct_rust_door_facts_lookup
   }
 }

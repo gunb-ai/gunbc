@@ -29,7 +29,7 @@ pub use crate::v1_compiler_emit::{
     empty_emit_scope, escape_go_interp_text, extract_string_interp_parts, has_nested_records_node,
     is_null_coalesce, is_tco_eligible, lookup_item, module_emit_scope, order_typed_call_args,
     scope_after_expr, seed_bindings, service_fallback_transport, service_field_decls,
-    test_file_path, typed_named_arg_matches,
+    test_file_path,
 };
 pub use crate::v1_compiler_emit::{BlockEmitState, BoundOperation, InterpPart, ServiceFieldSet};
 pub use crate::v1_compiler_emit_core_support::{

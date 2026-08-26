@@ -62,7 +62,7 @@ fn compile_eval_thesis_facts_lookup(key: Node) -> Optional<InferredFacts> {
 fn compile_eval_thesis_inferred(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map {
+    facts: PartialFunction {
       lookup: compile_eval_thesis_facts_lookup
     }
   }

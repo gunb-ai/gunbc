@@ -1,5 +1,7 @@
 module test.claim.accelerator_demo_model_witness
 
+import std.realization { LocalAccelerator }
+
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 

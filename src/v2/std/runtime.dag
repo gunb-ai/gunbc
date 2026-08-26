@@ -54,7 +54,7 @@ fn environment_binding_key_for_symbol(sym: Symbol) -> EnvironmentBindingKey {
 }
 
 type EvaluationEnvironment {
-  bindings: Map<EnvironmentBindingKey, RuntimeValue>
+  bindings: PartialFunction<EnvironmentBindingKey, RuntimeValue>
 }
 
 type RuntimePrimitiveValue {

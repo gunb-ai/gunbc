@@ -146,7 +146,7 @@ fn lbe_inferred_tree(root: Node) -> InferredTree {
   let facts = lbe_inferred_facts(resolved: root)
   InferredTree {
     root: root,
-    facts: Map {
+    facts: PartialFunction {
       lookup: fn(_) {
         Present { value: facts }
       }

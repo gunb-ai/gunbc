@@ -1,6 +1,7 @@
 module v1.compiler.infer_env
 
 import v1.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, ExprData, InferredNode, kernel_span, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
+import v1.compiler.type_head_exposure { TypeHeadExposure }
 
 import std.types { SourceSpan, is_kernel_type }
 
@@ -27,6 +28,7 @@ type TypeEnv {
   source_indices: Map<String, NewlineIndex>
   intern_table: InternTable
   source_visible_names: Map<String, Bool>
+  authored_import_names: Map<String, Bool>
   symbol_index: SymbolIndex
   module_path: String
 }
@@ -76,6 +78,7 @@ type SymbolIndex {
   global_bare: Map<String, GlobalBareLookupState>
   services: Map<String, ServiceCensusEntry>
   transparent_alias_rep: Map<String, String>
+  type_head_exposures: Map<String, TypeHeadExposure>
 }
 
 type Scope {
@@ -83,7 +86,7 @@ type Scope {
 }
 
 fn empty_symbol_index() -> SymbolIndex {
-  SymbolIndex { entries: empty_map(), global_bare: empty_map(), services: empty_map(), transparent_alias_rep: empty_map() }
+  SymbolIndex { entries: empty_map(), global_bare: empty_map(), services: empty_map(), transparent_alias_rep: empty_map(), type_head_exposures: empty_map() }
 }
 
 fn empty_type_env() -> TypeEnv {
@@ -98,7 +101,7 @@ fn empty_type_env() -> TypeEnv {
     inductive_fields: empty_map(),
     source_indices: empty_map(),
     intern_table: empty_intern_table(),
-    source_visible_names: empty_map(),
+    source_visible_names: empty_map(), authored_import_names: empty_map(),
     symbol_index: empty_symbol_index()
   }
 }
@@ -145,7 +148,8 @@ fn symbol_index_insert(index: SymbolIndex, qualified_name: String, resolved: Nod
     entries: map_insert(index.entries, qualified_name, resolved),
     global_bare: index.global_bare,
     services: index.services,
-    transparent_alias_rep: index.transparent_alias_rep
+    transparent_alias_rep: index.transparent_alias_rep,
+    type_head_exposures: index.type_head_exposures
   }
 }
 
@@ -154,7 +158,8 @@ fn symbol_index_insert_decl(index: SymbolIndex, module_path: String, binding: Ty
     entries: map_insert(index.entries, concat(module_path, ".", binding.name), binding.resolved),
     global_bare: symbol_index_track_global_bare(global_bare: index.global_bare, module_path: module_path, binding: binding),
     services: index.services,
-    transparent_alias_rep: index.transparent_alias_rep
+    transparent_alias_rep: index.transparent_alias_rep,
+    type_head_exposures: index.type_head_exposures
   }
 }
 
@@ -163,7 +168,8 @@ fn symbol_index_insert_service(index: SymbolIndex, name: String, module_path: St
     entries: index.entries,
     global_bare: index.global_bare,
     services: map_insert(index.services, name, ServiceCensusEntry { module_path: module_path, item: item }),
-    transparent_alias_rep: index.transparent_alias_rep
+    transparent_alias_rep: index.transparent_alias_rep,
+    type_head_exposures: index.type_head_exposures
   }
 }
 
@@ -1076,6 +1082,7 @@ fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> Type
       source_indices: e.source_indices,
       intern_table: e.intern_table,
       source_visible_names: map_insert(e.source_visible_names, tp_name, true),
+      authored_import_names: e.authored_import_names,
       symbol_index: e.symbol_index
     }
   )

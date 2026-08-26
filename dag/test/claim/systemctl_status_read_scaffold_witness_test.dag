@@ -4,7 +4,7 @@ import std.dissolution { dissolution_description }
 
 import std.types { Bool, NonEmptyStr, String }
 import gunbc.systemctl_status_read {
-  systemctl_status_read_local,
+  systemctl_status_read,
   systemctl_status_operation_argv_matches_authority,
   unit_status_capture_from_stdout,
 }
@@ -25,7 +25,7 @@ test fn witness_status_operation_argv_matches_authority() -> Bool {
 }
 
 test fn witness_status_read_local_returns_text() -> Bool {
-  match systemctl_status_read_local(unit: "demo.service" as NonEmptyStr) {
+  match systemctl_status_read(transport: LocalShell, unit: "demo.service" as NonEmptyStr) {
     UnitStatusCaptured { text: t } => t != ""
     UnitStatusCaptureRefused { reason: _ } => false
   }

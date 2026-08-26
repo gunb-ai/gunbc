@@ -43,7 +43,12 @@ import v2.workflow.floor_terminal_ledger_wire {
   render_terminal_tag,
   render_expectation
 }
-import v2.workflow.required_floor { SafetyInterrupted }
+import v2.workflow.required_floor {
+  CompletedPastSafetyLimit,
+  CompletedWithinSafetyLimits,
+  OpaqueHostCallUnbounded,
+  SafetyInterrupted
+}
 
 // THE FIXTURE'S SNAPSHOT IS BUILT THROUGH THE PRODUCTION ADMISSION, so a bad hex here degrades to
 // `UnpublishedWorkingTree` -- and `an_unpublished_run_is_a_shape_and_an_unrecognized_snapshot_refuses`
@@ -86,6 +91,12 @@ fn rendered_text(rows: List<ClaimTerminalRow>) -> String {
 
 // EVERY TERMINAL SHAPE, NOT A SAMPLE. A tag collision shows up in exactly one arm and nowhere
 // else, so a test over three representative shapes would pass while two dispositions were fused.
+// THE POPULATION IS TWELVE, NOT NINE, AND THE THREE ADDED SHAPES ARE THE ONES A WILDCARDED
+// `safety` COULD NOT DISTINGUISH. Before the split every one of them rendered as `budget-refused`
+// and projected to `BudgetRefusedBeforeVerdict`, so a round trip over them agreed with a mapping
+// that was wrong on both sides identically -- the failure a same-instrument comparison cannot
+// see. Each now carries its own tag and its own disposition, and that is the RED: collapse either
+// mapping back to one arm and the agreement assertion below fails.
 fn every_shape() -> List<ClaimTerminalRow> {
   [
     ClaimTerminalRow {
@@ -128,6 +139,33 @@ fn every_shape() -> List<ClaimTerminalRow> {
           elapsed_wall_at_least: 0
         }
       }
+    },
+    ClaimTerminalRow {
+      identity: ident(f: "passed_over_budget"),
+      expectation: ExpectedToHold,
+      terminal: BudgetRefused {
+        safety: CompletedPastSafetyLimit {
+          observed_cpu: 57193,
+          observed_wall: 57337,
+          preemption: OpaqueHostCallUnbounded { operation: "compile_dag_rust_emit_check" }
+        }
+      }
+    },
+    ClaimTerminalRow {
+      identity: ident(f: "known_red_passed_over_budget"),
+      expectation: ExpectedRed,
+      terminal: BudgetRefused {
+        safety: CompletedPastSafetyLimit {
+          observed_cpu: 57193,
+          observed_wall: 57337,
+          preemption: OpaqueHostCallUnbounded { operation: "compile_dag_rust_emit_check" }
+        }
+      }
+    },
+    ClaimTerminalRow {
+      identity: ident(f: "budget_terminal_without_safety_cause"),
+      expectation: ExpectedToHold,
+      terminal: BudgetRefused { safety: CompletedWithinSafetyLimits }
     },
     ClaimTerminalRow {
       identity: ident(f: "host_tool_unresolved"),
@@ -177,7 +215,7 @@ test fn the_disposition_survives_the_round_trip_for_every_terminal_shape() -> Bo
   let rows = every_shape()
   let readback = readback_rows_of(text: rendered_text(rows: rows))
   readback.length() == rows.length()
-    && rows.length() == 9
+    && rows.length() == 12
     && filter(rows, r => !disposition_survives(row: r)).length() == 0
 }
 

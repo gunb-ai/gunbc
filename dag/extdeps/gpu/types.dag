@@ -8,9 +8,8 @@ import extdeps.memory.types { MemoryFacts }
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.vendor.amd { amd }
 import extdeps.storage.types { PcieLink }
-import extdeps.cpu.types { CacheGeometryCitation }
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, FactCitation }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -85,5 +84,5 @@ type GpuModelCatalogRow {
   supported_runtimes: List<GpuRuntime>
   interconnect: PcieLink?
   sm_cache: GpuSmCacheGeometry?
-  sm_cache_citations: List<CacheGeometryCitation>
+  sm_cache_citations: List<FactCitation>
 }

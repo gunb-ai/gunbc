@@ -153,9 +153,6 @@ data network_settings_bare_strings_frontier_rows: List<FrontierRow> = [
 service docker.Container {
   config {
     endpoint: docker_default_endpoint
-    auth: None
-
-    retry: { max_attempts: 3, backoff: exponential, retry_on: [500, 502, 503, 504] }
   }
 
   operation Inspect {

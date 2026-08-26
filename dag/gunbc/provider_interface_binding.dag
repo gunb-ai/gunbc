@@ -19,6 +19,37 @@ data provider_interface_binding_note: String = "ONE nested ProviderInterfaceBind
 type ProviderControlInterface
   = CodexAppServer {}
 
+// "PROVIDER" IS A HOMONYM, AND THIS CARRIER OWNS ONLY ONE OF THE TWO SENSES. Written here rather
+// than where the confusion was discovered, because this is the carrier a search opens first, so it
+// is where the mistake gets made.
+//
+// SENSE ONE, WHICH IS THIS TYPE: the coding-agent RUNTIME WE INSTALL AND CONTROL. Every field below
+// is about how a process is installed and controlled -- which control interface, over which
+// transport, from which executable, at which runtime and protocol-schema identity.
+// gunbc.codex_provider_runtime_receipt CodexProviderRuntimeReceipt is the same subject.
+//
+// SENSE TWO, WHICH THIS CARRIER DOES NOT OWN: the INFERENCE BACKEND that process sends requests to
+// -- upstream codex's own use of the word, as in its `model_providers` config key. An endpoint
+// field here would fuse process-control with model-backend, one carrier answering for another
+// subject, so its absence from this type is deliberate rather than an omission.
+//
+// WHY THAT IS WORTH SAYING OUT LOUD: a search for an endpoint or base URL under the word "provider"
+// lands on this type, finds a true zero, AND THAT ZERO IS ABOUT THE WRONG SUBJECT -- so it reads as
+// a zero everywhere. Searches have concluded from it, more than once and independently, that the
+// concept does not exist. This is section 3 read in the direction grep cannot see: the ordinary
+// nicknaming violation is two names for one concept and a name-level search finds it, whereas ONE
+// NAME FOR TWO CONCEPTS makes every search for the second sense match the word and miss the
+// subject, which is the failure mode that returns a confident answer.
+//
+// SO SEARCH BY SUBJECT, NOT BY THIS WORD. Whether a sense-two carrier exists is a question to ask
+// the tree, and this annotation deliberately does not answer it -- a census recorded here would go
+// stale without this file changing, which is the stale-citation class in its expensive form: a
+// reason that outlives its cause and is taken by the next reader as a live constraint. Two durable
+// pointers instead. extdeps.ollama.api's scope note assigns "which model, which host, which
+// endpoint binding" to gunbc and keeps only the HTTP API surface for itself, so that layer is the
+// one to look in. And gunbc.spark.serving_desired spark_serving_local_endpoint_url already builds a
+// dialled URL on the same OllamaEndpoint grounding from the SERVING side -- same shape, opposite
+// sense, and the seam where the two would silently fuse.
 type ProviderInterfaceBinding {
   interface: ProviderControlInterface
   transport: CodexAppServerTransport

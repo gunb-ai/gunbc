@@ -1,7 +1,7 @@
 module v2.test.execution.emit_on_demand_match_loop_fold_family_witness
 
 import std.logic { Bool }
-import std.types { String }
+import std.types { Int, String }
 import std.content_hash { ContentHash, Fnv1a64Structural }
 import std.measure { ByteSize, byte_size }
 import std.cache_interface {
@@ -73,7 +73,6 @@ import v2.test.emit.fold_call_closure_fixture {
   fold_fixture_param_canonical_arrow,
   fold_fixture_param_wrong_arrow,
 }
-import v2.std.machine { Byte }
 import v2.std.collection {
   List
 }
@@ -122,12 +121,31 @@ fn family_cache_root_for(test_id: String) -> String {
   concat(family_cache_root, "/", test_id)
 }
 
-data match_expected_octets: List<Byte> = [0, 1, 0, 0, 0]
-data match_alt_expected_octets: List<Byte> = [0, 2, 0, 0, 0]
-data loop_expected_octets: List<Byte> = [0, 1, 0, 0, 0]
-data loop_alt_expected_octets: List<Byte> = [0, 2, 0, 0, 0]
-data fold_expected_octets: List<Byte> = [0, 7, 0, 0, 0]
-data fold_alt_expected_octets: List<Byte> = [0, 255, 255, 255, 255]
+// WHY List<Int> AND NOT List<Byte>, AND WHAT WOULD REPLACE IT. These rows are octet
+// values compared against emitted bytes. They were declared List<Byte> while holding
+// integers, which the list-element inhabitance obligation refused: std.bit's Byte is
+// `type Byte { bits: List<Bit> }`, a bit-record, so an Int literal never inhabited it.
+// The consumer's signature already carried the right type -- v2.compiler.emit_host
+// `emit_host_octets_byte_string(octets: List<Int>)` -- so this is the declaration
+// agreeing with its single authority, not a carrier weakened to satisfy a wall.
+//
+// Int is nonetheless weaker than the values deserve: an octet is 0..255 and nothing
+// here says so. The correctly shaped type already exists and is grounded --
+// extdeps.network.ipv4 `Octet`, declared as Int refined by range(min: 0, max: 255) --
+// but it is homed in the IPv4 domain, and reaching into a network module for a
+// compiler-emission byte would be the layer inversion DESIGN 3 warns about rather
+// than a reuse. What is missing is a domain-agnostic octet carrier, not a new
+// spelling of one that exists.
+//
+// So the pointer, deliberately stated as rationale rather than a machine claim: when
+// such a carrier lands, these rows and emit_host_octets_byte_string's parameter move
+// to it together -- the parameter first, since the declaration follows its consumer.
+data match_expected_octets: List<Int> = [0, 1, 0, 0, 0]
+data match_alt_expected_octets: List<Int> = [0, 2, 0, 0, 0]
+data loop_expected_octets: List<Int> = [0, 1, 0, 0, 0]
+data loop_alt_expected_octets: List<Int> = [0, 2, 0, 0, 0]
+data fold_expected_octets: List<Int> = [0, 7, 0, 0, 0]
+data fold_alt_expected_octets: List<Int> = [0, 255, 255, 255, 255]
 
 fn match_fixture_inputs() -> Inputs {
   inputs_for_emit_host(
@@ -212,7 +230,7 @@ fn mlf_family_member_run(
   source: Medium<String>,
   member_id: String,
   expect_compile_skipped: Bool,
-  expected_octets: List<Byte>
+  expected_octets: List<Int>
 ) -> Bool {
   match run_emit_host_cached_with_run_args(
     workspace_dir: workspace,

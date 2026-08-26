@@ -20,8 +20,6 @@ service gcp.IamAdmin {
     auth_input: access_token
 
     rate_limit: { requests: 60, per: minute, scope: iam_admin }
-
-    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 503] }
   }
 
   operation CreateServiceAccount {

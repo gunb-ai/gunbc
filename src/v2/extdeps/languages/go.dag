@@ -41,7 +41,7 @@ import v2.std.compilers.lexing {
   TriviaRule,
   lex_rule_set_token_class_member
 }
-import v2.std.collection { Absent, List, Map, Present, Set, empty_map, map_insert, optional_absent }
+import v2.std.collection { Absent, List, Map, PointwisePower, Present, empty_map, map_insert, optional_absent }
 import v2.std.model_core {
   AlgebraInhabitanceDecl,
   EffectSemanticsDecl,
@@ -633,11 +633,7 @@ fn go_string_facts_node(facts: GoStringPrimitiveFacts) -> Node {
 }
 
 fn go_empty_primitive_spec_facts() -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      v2.std.optional.Absent
-    }
-  }
+  empty_map()
 }
 
 fn go_primitive_fact_map_2(
@@ -2137,8 +2133,8 @@ fn go_catalog_surface_symbol(sym: Symbol) -> Bool {
     go_string_catalog_surface_symbol(sym: sym)
 }
 
-fn go_language_model_canonical_symbols() -> Set<Symbol> {
-  Set {
+fn go_language_model_canonical_symbols() -> PointwisePower<Symbol> {
+  PointwisePower {
     member: fn(sym) {
       go_catalog_surface_symbol(sym: sym) ||
         go_lex_token_symbol(sym: sym) ||

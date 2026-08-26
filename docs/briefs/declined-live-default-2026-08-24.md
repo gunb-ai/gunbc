@@ -64,7 +64,16 @@ member depended on any of this.
 
 ---
 
-# The floor's live-tree default renders ignorance as a claim, and the cost is silent non-execution
+# THE ORIGINAL ACCOUNT (2026-08-24), RETAINED AS RETROSPECTIVE EVIDENCE — its auto-discovery
+# half is FALSE and its proposed repair is SUPERSEDED
+
+> Everything from here to *The actual root* below is the account as first written. It is kept
+> because the reasoning is the evidence for how the error was made, **not** because any of it
+> is actionable. Nothing in this span is a present-tense claim about the tree and nothing in it
+> is a recommendation. The live findings are *The actual root: a two-valued carrier over a
+> three-valued domain* and *The class splits in two, and the split decides the repair*.
+
+## The floor's live-tree default renders ignorance as a claim (as originally described)
 
 Found 2026-08-24 while reviewing two unrelated child PRs that had each, independently and
 carefully, authored discriminating evidence into a population CI never executes.
@@ -128,16 +137,22 @@ disposition on those files is a true statement about what they do. The trap here
 cheapest fix for each individual file is the forbidden one, which is why the default has to
 change rather than the files.
 
-## The repair
+## The repair this brief ORIGINALLY proposed — SUPERSEDED, recorded, not recommended
 
-The refusal arm **already exists**: `EntryLiveTreeDispositionRefused`. An undeclared disposition
-should take it. Then a new witness module refuses at discovery — loudly, located, once — and the
+**Do not apply this.** The live repair is *The actual root* below: return the three-state value and
+let each consumer decide. What follows is what was proposed before the carrier was understood, kept
+so the reasoning that produced a too-narrow fix stays visible.
+
+The original argument ran: the refusal arm already exists (`EntryLiveTreeDispositionRefused`), so an
+undeclared disposition was said to belong in it. Then a new witness module refuses at discovery — loudly, located, once — and the
 author declares the honest answer in the same minute they wrote the file, instead of discovering
 a year later that their wall was never measured. The alternative (default to the executing arm)
 is worse: it would silently admit modules that genuinely read the live tree.
 
-This is the §5 construction move at the routing layer: make *undeclared* unrepresentable rather
-than quietly meaningful.
+That was described at the time as the §5 construction move at the routing layer. It is not — it
+makes *undeclared* refuse at one consumer while the other consumer still needs the third state.
+Routing a genuine third value into a refusal is the *arm* fix applied to a *carrier* defect, which
+is exactly the distinction the split below turns out to decide.
 
 ## Standing
 
@@ -239,10 +254,13 @@ whether its value is a determination or a shrug wearing a determination's clothe
 answer for "I could not tell" is the same symbol as the answer for a real case, the two are
 already conflated, whether or not anything has fallen in yet.
 
-The repair is uniform too, and it is not a wider default: it is a **refusal**. All three
-instruments already have a refusal arm or could carry one — `EntryLiveTreeDispositionRefused`
-exists and is unreached for this case. A boundary that cannot express *I do not know* must be
-given that state explicitly, and the state must be loud.
+The repair was described here as uniform too, and not a wider default: a **refusal** in all three
+instruments. **That generalisation is superseded and is recorded rather than recommended.** It is
+right that a boundary which cannot express *I do not know* needs that state explicitly; it does not
+follow that every such boundary wants a refusal. Whether the third state belongs in a refusal or in
+the carrier is decided per instrument by the question in *The class splits in two* below — **does the
+third state reach the consumer?** — and for this brief's own subject the answer turned out to be the
+carrier, not the arm. The uniformity claimed in this paragraph is the error the split corrects.
 
 ### The authoring-time member of the same family
 

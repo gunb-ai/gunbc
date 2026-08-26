@@ -14,6 +14,28 @@ fn inert_row(unit: String, reason: String) -> FrontierRow {
   frontier_row_path(path: unit, reason: reason, dissolution: inert_carrier_row_dissolve)
 }
 
+// SCOPE, stated on the carrier rather than only in the plan that specified it: this
+// roster holds carriers that are DECLARED + REFERENCED BY A TEST + read by no
+// production code. A carrier referenced by nothing at all -- no consumer and no test
+// -- is invisible here BY CONSTRUCTION (the self_tested gate in the host producer,
+// cli_run.rs compute_inert_carrier_data), and that is intended, not a hole in the
+// lens. The reason is the remedy, not the size of the set: an inert row says "modeled
+// ahead of its consumer, tested, awaiting one" and dissolves when a consumer lands;
+// the unreferenced class dissolves the other way -- delete the carrier, or write the
+// missing test and let it land here -- so folding it in would file hundreds of rows
+// each asserting a test that does not exist. It is owned by the still-unbuilt
+// run-root reachability cut named in gunbc.plans.inert_layer_lens (v2.lens.inert_layer),
+// whose retirement condition already carries it; this lens is not its next rung and
+// must not be read as covering it.
+//
+// Measured over the witness layer roots (dag, src/v2) at 32597358f16 on 2026-08-24:
+// 8821 declared carriers, 14 flagged here (this roster's exact 14), 270 skipped by
+// that gate -- the same order the plan predicted for a raw sweep. A dated observation, not a
+// bound -- nothing gates on either number, and the exclusion itself is pinned by an
+// executing control in the host producer's unit tests
+// (green_control_untested_unused_carrier_is_not_flagged, which plants exactly such a
+// carrier and asserts it stays off this roster; executed both ways 2026-08-24 --
+// gate present, 12 passed; gate deleted, that control alone fails), not by the count.
 data inert_carrier_roster: List<FrontierRow> = [
   inert_row(unit: "DownstreamSupportRoster", reason: "modeled downstream coverage-roster carrier from the extdeps modeling preflight (#7571): it is the declared home for support/coverage rows that an upstream module may not carry, and the plan text names it, but no module constructs or reads one yet"),
   inert_row(unit: "Attempt", reason: "modeled compute-fabric execution carrier from the terminal-contract slice (#8413): one execution attempt with its lineage, declared ahead of the executor that issues attempts against a grant, and referenced only by fabric_terminal_contract_witness_test so far"),
@@ -26,6 +48,7 @@ data inert_carrier_roster: List<FrontierRow> = [
   inert_row(unit: "LocalAlias", reason: "inert G1 fixture type in qualified_module_projection_stripped_fixture.dag (see inert_carrier_local_alias_roster_note)"),
   inert_row(unit: "OwnedDataDiscoveryReceipt", reason: "modeled discovery-receipt carrier in v2.compiler.discovery_enumeration whose only non-test consumer was a COMMITTED COPY of an ephemeral artifact: v1_compiler.cli_run discover_owned_data_decls generates a manifest module constructing this receipt and stamps it DO NOT COMMIT, and a stale committed instance of it under a second module path (v2.test.workflow.host_discovered_owned_data_manifest, all-zero counts) was the only thing reading the carrier in the corpus. That copy was deleted by the unconsumed-module residue disposition, so the carrier is now inert BY CONSTRUCTION in the committed tree -- its real consumer is generated at runtime and deliberately never committed, which no corpus scan can see"),
   inert_row(unit: "ReactHookSite", reason: "modeled typescript extdeps carrier with no live consumer yet"),
+  inert_row(unit: "SharedBuildProvenance", reason: "modeled floor-preparation provenance carrier in v2.workflow.required_floor (#9046): it records whether a shared build was BUILT BY preparation or found already warm and, in that arm, WHICH site got there first -- the triggered_by/owned_by distinction the attribution repair exists to keep structural. It is declared ahead of its reader: the host mirror (v1_compiler.cli_run SharedBuildProvenance) is what the running floor renders today, so the corpus carries the model with only floor_preparation_shared_build_witness_test referencing it. Its reader is the .dag-side preparation report that supersedes that hand-written host mirror, which floor_preparation_host_mirror_dissolve_on in that same module already tracks"),
   inert_row(unit: "SystemdUnitStatus", reason: "modeled systemd extdeps carrier with no live consumer yet"),
   inert_row(unit: "TerminatingOneShotFrontier", reason: "modeled std.witness_purpose frontier coproduct from #7965 (Slice C-a): its variants name the two substrate absences that block a terminating one-shot classification, and only its own test file references it, so it is inert by the seed rule until the classifier consumes it"),
   inert_row(unit: "WitnessPurpose", reason: "modeled std.witness_purpose taxonomy from #7965 (Slice C-a): the stable purpose coproduct a witness declares, landed ahead of the consumer that derives witness size from it, with no non-test reference yet")
@@ -37,6 +60,7 @@ fn inert_carrier_rostered_names() -> List<String> {
 
 data empty_inert_carrier_names: List<String> = []
 
+
 fn list_contains_str(xs: List<String>, target: String) -> Bool {
   fold_list(
     xs: xs,
@@ -45,30 +69,144 @@ fn list_contains_str(xs: List<String>, target: String) -> Bool {
   )
 }
 
-fn count_not_in_roster(names: List<String>, roster: List<String>) -> Int {
+// The two populations have OPPOSITE remedies, which is why they are two
+// variants and not one located list. UnrosteredInertCarrier: the carrier is
+// inert in the live tree and the roster does not admit it -- the repair is to
+// give it a live consumer, or (if it is deliberately staged ahead of one) to
+// author a roster row with a reason and a dissolution condition.
+// StaleInertCarrierRow: the roster admits a carrier that is NO LONGER inert --
+// a consumer exists, so the repair is to DELETE the row. Applying either
+// remedy to the other population is wrong in both directions: rostering a live
+// carrier re-opens the admission the row exists to close, and deleting a row
+// for an unrostered carrier removes nothing.
+type InertCarrierFinding
+  = UnrosteredInertCarrier { carrier: String }
+  | StaleInertCarrierRow { carrier: String }
+
+type InertCarrierPopulations {
+  unrostered: List<String>
+  stale_rows: List<String>
+}
+
+type InertCarrierRosterVerdict
+  = InertCarrierRosterClean
+  | InertCarrierRosterDiverged { findings: List<InertCarrierFinding> }
+
+data empty_inert_carrier_findings: List<InertCarrierFinding> = []
+
+
+fn names_not_in_roster(names: List<String>, roster: List<String>) -> List<String> {
   fold_list(
     xs: names,
-    empty: 0,
-    cons: fn(count, name) {
-      if list_contains_str(xs: roster, target: name) { count } else { count + 1 }
+    empty: empty_inert_carrier_names,
+    cons: fn(acc, name) {
+      if list_contains_str(xs: roster, target: name) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: name)
+      }
     }
   )
+}
+
+fn stale_roster_names(roster: List<String>, inert_names: List<String>) -> List<String> {
+  fold_list(
+    xs: roster,
+    empty: empty_inert_carrier_names,
+    cons: fn(acc, entry) {
+      if list_contains_str(xs: inert_names, target: entry) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: entry)
+      }
+    }
+  )
+}
+
+fn count_not_in_roster(names: List<String>, roster: List<String>) -> Int {
+  length(xs: names_not_in_roster(names: names, roster: roster))
 }
 
 fn count_stale_roster(roster: List<String>, inert_names: List<String>) -> Int {
+  length(xs: stale_roster_names(roster: roster, inert_names: inert_names))
+}
+
+fn inert_carrier_findings(names: List<String>, roster: List<String>) -> List<InertCarrierFinding> {
+  let unrostered = fold_list(
+    xs: names_not_in_roster(names: names, roster: roster),
+    empty: empty_inert_carrier_findings,
+    cons: fn(acc, name) { list_snoc_item(xs: acc, item: UnrosteredInertCarrier { carrier: name }) }
+  )
   fold_list(
-    xs: roster,
-    empty: 0,
-    cons: fn(count, entry) {
-      if list_contains_str(xs: inert_names, target: entry) { count } else { count + 1 }
-    }
+    xs: stale_roster_names(roster: roster, inert_names: names),
+    empty: unrostered,
+    cons: fn(acc, entry) { list_snoc_item(xs: acc, item: StaleInertCarrierRow { carrier: entry }) }
   )
 }
 
+fn inert_carrier_verdict_from_findings(findings: List<InertCarrierFinding>) -> InertCarrierRosterVerdict {
+  if is_empty(xs: findings) {
+    InertCarrierRosterClean
+  } else {
+    InertCarrierRosterDiverged { findings: findings }
+  }
+}
+
+fn inert_carrier_roster_verdict(names: List<String>, roster: List<String>) -> InertCarrierRosterVerdict {
+  inert_carrier_verdict_from_findings(findings: inert_carrier_findings(names: names, roster: roster))
+}
+
+fn inert_carrier_live_roster_verdict() -> InertCarrierRosterVerdict {
+  inert_carrier_roster_verdict(names: inert_carrier_names_live(), roster: inert_carrier_rostered_names())
+}
+
+fn inert_carrier_verdict_findings(v: InertCarrierRosterVerdict) -> List<InertCarrierFinding> {
+  match v {
+    InertCarrierRosterClean => empty_inert_carrier_findings
+    InertCarrierRosterDiverged { findings } => findings
+  }
+}
+
+fn inert_carrier_verdict_is_clean(v: InertCarrierRosterVerdict) -> Bool {
+  is_empty(xs: inert_carrier_verdict_findings(v: v))
+}
+
+data empty_inert_carrier_populations: InertCarrierPopulations = InertCarrierPopulations {
+  unrostered: empty_inert_carrier_names,
+  stale_rows: empty_inert_carrier_names
+}
+
+fn inert_carrier_population_add(acc: InertCarrierPopulations, f: InertCarrierFinding) -> InertCarrierPopulations {
+  match f {
+    UnrosteredInertCarrier { carrier } => InertCarrierPopulations {
+      unrostered: list_snoc_item(xs: acc.unrostered, item: carrier),
+      stale_rows: acc.stale_rows
+    }
+    StaleInertCarrierRow { carrier } => InertCarrierPopulations {
+      unrostered: acc.unrostered,
+      stale_rows: list_snoc_item(xs: acc.stale_rows, item: carrier)
+    }
+  }
+}
+
+fn inert_carrier_populations(v: InertCarrierRosterVerdict) -> InertCarrierPopulations {
+  fold_list(
+    xs: inert_carrier_verdict_findings(v: v),
+    empty: empty_inert_carrier_populations,
+    cons: fn(acc, f) { inert_carrier_population_add(acc: acc, f: f) }
+  )
+}
+
+fn inert_carrier_unrostered_names(v: InertCarrierRosterVerdict) -> List<String> {
+  inert_carrier_populations(v: v).unrostered
+}
+
+fn inert_carrier_stale_row_names(v: InertCarrierRosterVerdict) -> List<String> {
+  inert_carrier_populations(v: v).stale_rows
+}
+
 fn inert_carrier_clean_holds() -> Bool {
-  let names = inert_carrier_names_live()
-  count_not_in_roster(names: names, roster: inert_carrier_rostered_names()) == 0
-    && count_stale_roster(roster: inert_carrier_rostered_names(), inert_names: names) == 0
+  inert_carrier_verdict_is_clean(v: inert_carrier_live_roster_verdict())
 }
 
 fn inert_carrier_live_count() -> Int {
@@ -76,11 +214,11 @@ fn inert_carrier_live_count() -> Int {
 }
 
 fn inert_carrier_live_unrostered_count() -> Int {
-  count_not_in_roster(names: inert_carrier_names_live(), roster: inert_carrier_rostered_names())
+  length(xs: inert_carrier_unrostered_names(v: inert_carrier_live_roster_verdict()))
 }
 
 fn inert_carrier_live_stale_roster_count() -> Int {
-  count_stale_roster(roster: inert_carrier_rostered_names(), inert_names: inert_carrier_names_live())
+  length(xs: inert_carrier_stale_row_names(v: inert_carrier_live_roster_verdict()))
 }
 
 fn inert_carrier_live_declared_count() -> Int {

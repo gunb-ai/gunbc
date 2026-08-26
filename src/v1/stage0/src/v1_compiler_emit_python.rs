@@ -29,7 +29,6 @@ pub use crate::v1_compiler_emit::{
     has_nested_records_node, has_service_items, is_null_coalesce, is_tco_eligible, lookup_item,
     module_emit_scope, order_typed_call_args, scope_after_expr, seed_bindings,
     service_fallback_transport, service_field_ctors, service_field_decls, test_file_path,
-    typed_named_arg_matches,
 };
 pub use crate::v1_compiler_emit::{BlockEmitState, BoundOperation, InterpPart, ServiceFieldSet};
 pub use crate::v1_compiler_emit_core_support::{

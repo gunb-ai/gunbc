@@ -49,8 +49,34 @@ fn systemctl_daemon_reload_argv() -> List<String> {
   ["systemctl", "daemon-reload"]
 }
 
+// ENABLE AND START ARE TWO VERBS AND TWO ROWS, AND THE SPELLINGS ARE HOISTED BECAUSE A THIRD
+// CONSUMER ARRIVED. These argv builders spelled their verbs inline while
+// gunbc.executor_privileged_operation needs the same words to build an ABSOLUTE-path argv that a
+// sudoers match is derived from -- so the verb would have been authored a second time in a module
+// whose whole purpose is that a grant and its command have one spelling. The rows carry the verb;
+// the builders below and the privileged operation both read them.
+//
+// enable --now IS DELIBERATELY NOT DERIVABLE FROM THESE. systemctl_enable_now_command exists and
+// keeps its own spelling, because fusing durable boot intent with immediate activity is a
+// DIFFERENT operation from doing both in order, not a shorthand for it: `enable` authorizes a
+// future boot to start the unit under readiness conditions nobody will re-observe at that boot,
+// and `start` acts under conditions observable now. A caller that wants both wants two
+// separately-admitted transitions.
+data systemctl_enable_verb: NonEmptyStr = "enable" as NonEmptyStr
+
+data systemctl_start_verb: NonEmptyStr = "start" as NonEmptyStr
+
 fn systemctl_enable_argv(unit: NonEmptyStr) -> List<String> {
-  ["systemctl", "enable", unit as String]
+  ["systemctl", systemctl_enable_verb as String, unit as String]
+}
+
+// START IS NOT RESTART, AND FOR A SLICE THE DIFFERENCE IS DESTRUCTIVE RATHER THAN STYLISTIC. Stopping a
+// slice kills every process in it (systemd.slice(5)), so `restart` applied to a compile pool would terminate
+// the compilers the pool exists to hold. `start` on an already-active slice is a no-op that re-applies the
+// unit's resource directives, which is what a converger wants. The modeled `Start` operation already exists
+// on the service surface; this is its argv authority for the shell-body realization edge.
+fn systemctl_start_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", systemctl_start_verb as String, unit as String]
 }
 
 fn systemctl_restart_argv(unit: NonEmptyStr) -> List<String> {
@@ -128,6 +154,14 @@ fn systemctl_user_start_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", "--user", "start", unit as String]
 }
 
+// LoadState is the only observation that distinguishes an ABSENT unit from a present one, which is why the
+// `ShowLoadState` operation on the service surface above is its own operation rather than a
+// SystemdUnitProperty arm: that coproduct is numeric cgroup evidence sharing one numeric mock, and a wire
+// value of `not-found` is not a magnitude. Cited to systemd.unit(5) LoadState -- `loaded`, `not-found`,
+// `bad-setting`, `error`, `masked` -- of which `not-found` is the one this corpus reads positively.
+// `systemctl show` exits 0 for a unit the manager has never heard of and prints not-found, so a nonzero exit
+// means the MANAGER was unreadable, which is a different refusal from an absent unit and must not be folded
+// into it.
 fn systemctl_show_load_state_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", "show", unit as String, "--property=LoadState", "--value"]
 }
@@ -299,6 +333,23 @@ service systemd.Systemctl {
     }
     mock_response {
       0 => { value: "8589934592", success: true } "hermetic systemd.Systemctl.ShowProperty"
+    }
+  }
+
+  operation ShowLoadState {
+    input { unit: NonEmptyStr }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["systemctl", "show", "{unit}", "--property=LoadState", "--value"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl show LoadState failed"
+    }
+    mock_response {
+      0 => { value: "not-found", success: true } "hermetic systemd.Systemctl.ShowLoadState"
     }
   }
 

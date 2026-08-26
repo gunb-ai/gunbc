@@ -456,10 +456,7 @@ pub fn checkpoint_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> 
 }
 
 pub fn inhabitant_test_names() -> Rc<Vec<String>> {
-    v1_rt::concat(
-        canonical_container_names(),
-        Rc::new(vec!["PointwisePower".to_string()]),
-    )
+    canonical_container_names()
 }
 
 pub fn inhabitant_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> {

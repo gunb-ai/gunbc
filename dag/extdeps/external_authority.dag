@@ -11,7 +11,7 @@ type ExternalAuthority {
 
 data external_model_scope_law: String = "DESIGN §3 'External upstream decomposition' (operator verdicts on gunbc#7556 and gunbc#7571): 'one concept, one authority' unifies a shared interface or formal shape; it does not merge independently governed entities that inhabit that shape. Each independently versioned upstream product, implementation, engine, vendor, or specification has its own extdeps module authority, declared as one ExternalModelScope per module: ONE subject, one-or-more citations. A subject can have several citations; a module cannot silently have several independently governed subjects. A generic hub may define or re-export agnostic shapes but may not enumerate concrete products, dispatch among their authorities, carry product-specific version rows, or store consumer coverage state. Observations produced by this repository are receipts in the observing product/workflow layer (downstream), never 'Unobserved' properties authored inside an upstream module."
 
-data external_subject_symbolic_identity_note: String = "Subject identity is SYMBOLIC, never a name string (operator verdict on gunbc#7571, 2026-08-01, closing the string-spelling fork an earlier revision opened: 'Chromium' / 'chromium' / 'The Chromium Projects' were distinct subjects, and a scope restated a legal name its own module already declared). ExternalSubjectRef carries a DeclarationRef to the subject's one declaration — e.g. extdeps.vendor.microsoft's scope points at its existing 'microsoft' Vendor declaration rather than repeating 'Microsoft Corporation'. The same §3 cite-the-symbol rule that moved FactAuthorityOverride.fact off prose applies to every identity this carrier holds."
+data external_subject_symbolic_identity_note: String = "Subject identity is SYMBOLIC, never a name string (operator verdict on gunbc#7571, 2026-08-01, closing the string-spelling fork an earlier revision opened: 'Chromium' / 'chromium' / 'The Chromium Projects' were distinct subjects, and a scope restated a legal name its own module already declared). ExternalSubjectRef carries a DeclarationRef to the subject's one declaration — e.g. extdeps.vendor.microsoft's scope points at its existing 'microsoft' Vendor declaration rather than repeating 'Microsoft Corporation'. The same §3 cite-the-symbol rule that moved FactCitation.fact off prose applies to every identity this carrier holds."
 
 type ExternalSubjectRef {
   declaration: DeclarationRef
@@ -35,9 +35,9 @@ fn external_subject_ref_eq(a: ExternalSubjectRef, b: ExternalSubjectRef) -> Bool
   declaration_ref_eq(a: a.declaration, b: b.declaration)
 }
 
-data fact_authority_override_ref_note: String = "FactAuthorityOverride.fact is a DeclarationRef, not prose (operator verdict on gunbc#7556; the §3 cite-the-symbol rule applied to the override carrier): the overridden fact is named by module + declaration in the containment tree's own key space, so a stale override is decidable by symbol resolution rather than rotting as free text."
+data fact_citation_note: String = "FactCitation is the ONE carrier for 'this modeled fact is attested by that external authority' (operator verdicts on gunbc#7556 and gunbc#7571, the §3 cite-the-symbol rule). It replaces three forks that were the same fact under three names: FactAuthorityOverride, and extdeps.cpu.types' byte-identical SocketFactCitation / CacheGeometryCitation pair — whose 'field: NonEmptyStr' was a POSITIONAL naming scheme for something the containment tree already names, so a renamed field left the citation green over a name that no longer existed, and a GPU module had to import a CPU type to cite a cache fact. The cited fact is a DeclarationRef: module + declaration + field in the containment tree's own key space, so a stale citation is decidable by symbol resolution rather than rotting as free text."
 
-type FactAuthorityOverride {
+type FactCitation {
   fact: DeclarationRef
   authority: ExternalAuthority
 }

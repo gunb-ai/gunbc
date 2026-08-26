@@ -1,2 +1,0 @@
-caller_module	caller_decl	callee	formal_index	formal_label	exempt	call_file	call_start	actual_file	actual_start	actual_end	formal_type	actual_type	why	outcome	cause
-v2.std.node	planted_pass_string	planted_take_int	0	n	exempt	src/v2/std/node.dag	53703	src/v2/std/node.dag	53723	53724	Primitive(Int)	Primitive(String)	nominal=false container=false kernel=true bg_fa=false bg_af=false lookup_formal=true lookup_actual=true fname=Int aname=String	WouldDiagnose	

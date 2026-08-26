@@ -7,7 +7,12 @@ import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
-import v2.workflow.required_floor { ClaimSafetyOutcome }
+import v2.workflow.required_floor {
+  ClaimSafetyOutcome,
+  CompletedPastSafetyLimit,
+  CompletedWithinSafetyLimits,
+  SafetyInterrupted
+}
 
 // THE FLOOR'S TERMINAL EVIDENCE, OWNED BY v2, TO BE SERIALIZED BY THE SEED.
 //
@@ -77,7 +82,8 @@ import v2.workflow.required_floor { ClaimSafetyOutcome }
 //
 // These arms are not a taxonomy invented here: they mirror the arms the seed ALREADY holds
 // typed, one for one. `ClaimOutcome` in the seed is Pass | Fail | NotBool { got } | RuntimeError
-// { message } | TimedOut { elapsed_ms, budget_ms, kind, completion } | HostToolUnresolved { name,
+// { message } | BudgetInterrupted { elapsed_at_least_ms, budget_ms, kind } | CompletedOverBudget
+// { elapsed_ms, budget_ms, kind } | HostToolUnresolved { name,
 // probed } | (route gap), and its own comment at that match says why: "Every non-pass arm is
 // reported with the fact that distinguishes it. A collapsed `failed` would make a budget refusal,
 // a runtime error and a witness that answered false read alike, and those three have different
@@ -230,20 +236,63 @@ type TerminalLedger {
 // one fact is the defect this dissolves: the counter is derived from the finalized rows, so a
 // counter that disagrees with the ledger is unrepresentable rather than detected by a
 // cross-check.
+// TWO OF THE ARMS BELOW ARE NEW AND NEITHER IS A `...BeforeVerdict` ONE, which is the whole
+// point of both.
+//
+// `PassedOverBudget` REACHED ITS VERDICT AND THEN EXCEEDED ITS BUDGET. The erasure this repairs
+// was precisely a disposition whose NAME asserted that no verdict was produced, for a row that
+// demonstrably produced one, so re-using a `BeforeVerdict` name here would reinstate the defect
+// while appearing to fix it.
+//
+// `BudgetTerminalWithoutSafetyCause` IS THE CONTRADICTORY PAIRING, NAMED RATHER THAN ABSORBED: a
+// budget terminal whose safety outcome says the claim stayed WITHIN its limits. No measurement
+// supports calling it either a refusal or a completed overrun, so it is neither.
+//
+// §4b RUNG AND ITS TRIGGER for that arm, declared here rather than left to be rediscovered as a
+// gap. The class sits at MITIGATABLE: the state is REPRESENTABLE and is caught by a check
+// (`ledger_green_admission` refuses a ledger carrying it), not made unwritable. Making it
+// unwritable by narrowing `BudgetRefused`'s carrier to the two coherent arms is REJECTED, and not
+// for cost: `ClaimSafetyOutcome` is owned by `v2.workflow.required_floor` and reused here
+// deliberately, so a narrowed two-arm twin declared beside it would be one concept forked by
+// rigor -- §3 nicknaming -- and a fork gets consolidated later at someone else's cost.
+// NEXT-RUNG TRIGGER: the safety axis declared as a family in its OWNING module, with the
+// budget-bearing sub-family derived there rather than re-spelled here. At that point this arm has
+// no constructor and this disposition, its refusal arm and their evidence dissolve together
+// (operator ruling, 2026-08-24).
 type ClaimDisposition
   = Passed
   | Failed
   | KnownRedHeld
   | KnownRedNowPassing
   | BudgetRefusedBeforeVerdict
+  | PassedOverBudget
+  | BudgetTerminalWithoutSafetyCause
   | HostToolUnresolvedBeforeVerdict
   | RouteGapBeforeVerdict
   | RuntimeErroredBeforeVerdict
   | ObservationUnreadableBeforeVerdict
 
+// THE MODEL HAD THE DISTINCTION; THIS PROJECTION DROPPED IT. `ClaimSafetyOutcome` already
+// separates an interruption from a completion past the limit -- the axis was modelled one import
+// away -- and the `BudgetRefused { safety: _ }` arm below gave both the single disposition
+// `BudgetRefusedBeforeVerdict`, whose name asserts BEFORE VERDICT for a claim that had reached
+// one. That is the same habit its seed mirror carried at four further sites: total at the level
+// examined, blind one level down. The expectation split under `CompletedPastSafetyLimit` mirrors
+// the seed exactly, because the two mappings are compared per row in production and a divergence
+// here makes the ledger unrenderable.
 fn claim_disposition(row: ClaimTerminalRow) -> ClaimDisposition {
   match row.terminal {
-    BudgetRefused { safety: _ } => BudgetRefusedBeforeVerdict
+    BudgetRefused { safety: s } =>
+      match s {
+        SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } =>
+          BudgetRefusedBeforeVerdict
+        CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } =>
+          match row.expectation {
+            ExpectedToHold => PassedOverBudget
+            ExpectedRed => KnownRedNowPassing
+          }
+        CompletedWithinSafetyLimits => BudgetTerminalWithoutSafetyCause
+      }
     RuntimeErrored { message: _ } => RuntimeErroredBeforeVerdict
     HostToolUnresolved { name: _, probed: _ } => HostToolUnresolvedBeforeVerdict
     RouteGap { route: _ } => RouteGapBeforeVerdict
@@ -313,12 +362,38 @@ type LedgerPublication
 // happened to parse. Comparing the footer to the rows read would be an identity: a truncation that
 // removed rows AND rewrote the footer to match would agree with itself. The planned population is
 // the independent referent, and it is the one the caller already holds.
+//
+// `EvidenceCarriesIncoherentRow` IS A ROW THAT CONTRADICTS ITSELF REFUSING THE LEDGER, AND IT
+// CARRIES THE IDENTITIES so the refusal is LOCATED rather than merely typed -- a reader gets the
+// rows to go and look at, not a count to go hunting with.
+//
+// Why it refuses rather than being counted: an arm that neither stops the line nor is reported
+// would be a name that DESCRIBES a contradiction and PERMITS it, so its frequency is unobservable
+// by construction and the deficit never ranks for fixing -- the absorbing fallback's quiet half.
+// And every other judgment this function makes over such a row is meaningless: the row does not
+// say what happened to the claim, so completeness over it is completeness in name.
 type LedgerGreenAdmission
   = EvidenceComplete
   | EvidenceUnfinalized { reason: Symbol }
   | EvidenceReconciliationFailed { reconciliation: LedgerReconciliation }
   | EvidenceFooterCountDisagrees { footer_rows: Int, planned_rows: Int }
+  | EvidenceCarriesIncoherentRow { rows: List<WitnessIdentity> }
 
+// THE ROWS WHOSE DISPOSITION IS THE CONTRADICTORY PAIRING, keyed by identity. A fold over the
+// SAME `claim_disposition` every other consumer reads, so this cannot disagree with the ledger's
+// own projection -- asking a second question of the row here would be a second authority over the
+// fact the disposition already answers.
+fn incoherent_ledger_rows(rows: List<ClaimTerminalRow>) -> List<WitnessIdentity> {
+  map(
+    filter(rows, r => claim_disposition(row: r) == BudgetTerminalWithoutSafetyCause),
+    r => r.identity
+  )
+}
+
+// THE INCOHERENT-ROW CHECK RUNS AHEAD OF COMPLETENESS AND THE FOOTER, because those two ask
+// whether the right rows are present and this one asks whether a row says anything at all.
+// Reporting a population as complete while one of its members carries no readable outcome would
+// publish the count as the answer to a question the count cannot reach.
 fn ledger_green_admission(
   ledger: TerminalLedger,
   reconciliation: LedgerReconciliation,
@@ -326,7 +401,11 @@ fn ledger_green_admission(
 ) -> LedgerGreenAdmission {
   match ledger.publication {
     LedgerPartial { reason: r } => EvidenceUnfinalized { reason: r }
-    LedgerFinalized { row_count: n, digest: _ } =>
+    LedgerFinalized { row_count: n, digest: _ } => {
+      let incoherent = incoherent_ledger_rows(rows: ledger.rows)
+      if incoherent.length() > 0 {
+        EvidenceCarriesIncoherentRow { rows: incoherent }
+      } else {
       if ledger_is_complete(r: reconciliation) {
         if n == planned.length() {
           EvidenceComplete
@@ -335,6 +414,7 @@ fn ledger_green_admission(
         }
       } else {
         EvidenceReconciliationFailed { reconciliation: reconciliation }
-      }
+      }}
+    }
   }
 }
