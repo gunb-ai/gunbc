@@ -45,8 +45,10 @@ data namespace_wave_admission_occurrence_grain_stall: GuaranteeStall = Guarantee
     members: [
       "a spelling shadowed by a let declaration inside the declaration that also reaches it from an outer scope",
       "a spelling shadowed by a lambda or match-arm binder inside the declaration that also reaches it from an outer scope",
+      "two references to one leaf inside one declaration where only one of them is requalified",
     ],
   },
+  next_rung_trigger: "A projector-emitted correspondence between the two trees being compared -- v2.workflow.legacy_binding_delta ProjectionProvenanceEntry, whose ProjectedFromSource arm relates one target occurrence to its source. The wall's row key descends from the leaf to the occurrence the moment a base/head pair carries one, and the union taken in binding_rows deletes with it. What does NOT close this is a finer key invented here: the scope law rules out every property computable from a finished tree in isolation, so an occurrence key that is not emitted by a transformation is not a stronger key, it is a wrong one."
 }
 
 data namespace_wave_admission_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
