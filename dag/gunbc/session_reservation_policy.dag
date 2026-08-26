@@ -1,0 +1,143 @@
+module gunbc.session_reservation_policy
+
+import std.types { NonEmptyStr, String }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import gunbc.fleet_intent_network {
+  HostIdentity,
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+}
+
+// WHAT WAS OBSERVED AND WHAT WAS CHOSEN ARE TWO FACTS, AND THE OLD CARRIER HAD ONE FIELD FOR BOTH.
+// gunbc_ci_session_reservation_mode declared SessionAggregateMeasured { 21474836480 } -- the
+// MEASURED constructor over a round power of two that its own module note admits has "no derivation
+// from the thirteen measured per-session samples beside it". That is rung inflation in a
+// constructor name (DESIGN 4b): the carrier claims the evidence class it does not hold, and no
+// reader can tell a measurement from a policy literal because the type cannot express the
+// difference.
+//
+// The split follows the precedent this repository already set for the same problem one field over:
+// HostFixedOverhead separates Measured { bytes, provenance } from Allowance { bytes, reason }. This
+// is that shape applied to the session reservation, so it is a reuse rather than a new coinage.
+type SessionAggregateEvidence
+  = SessionAggregateSnapshotObserved { current: ByteSize, receipt: NonEmptyStr }
+  | SessionAggregateEpochPeakObserved {
+      peak: ByteSize
+      epoch: String
+      receipt: NonEmptyStr
+    }
+  | SessionAggregateSeriesObserved { derived_peak: ByteSize, receipt: NonEmptyStr }
+  | SessionAggregatePopulationIncomplete { cause: String, receipt: NonEmptyStr }
+  | SessionAggregateUnobserved
+
+// THE POLICY IS HOST-KEYED BECAUSE THE MEASUREMENT IS, and one fleet-wide row could not express the
+// difference it was being asked to carry. srv1 and srv2 are the only session hosts; srv3 and srv4
+// carry no sessions.slice at all. A single value is therefore either too small for the host that
+// exceeds it or too expensive for the host that cannot afford it -- and it was in fact too small
+// for srv1 while being charged to hosts that owe nothing.
+//
+// Unestablished is NOT a zero and NOT a default. It refuses, so a capacity plan stops rather than
+// continuing to certify a width from a charge nobody can ground.
+type HostSessionReservationPolicy
+  = SessionReservationNotApplicable { evidence: SessionAggregateEvidence }
+  | SessionReservationUnestablished { evidence: SessionAggregateEvidence, cause: String }
+  | SessionReservationAllowance {
+      bytes: ByteSize
+      evidence_floor: SessionAggregateEvidence
+      operator_reason: String
+    }
+
+// THE OBSERVED PEAK IS THE FLOOR, THE ALLOWANCE IS THE POLICY, AND THEY ARE NOT THE SAME NUMBER.
+// srv1's sessions.slice memory.peak read 55216033792 bytes; the allowance is 55834574848. The
+// difference is a rounding to whole gibibytes, which is an operator choice and not a measurement --
+// so writing 52 GiB into an evidence field would fabricate a reading nobody took. The evidence_floor
+// carries the measured 51.42 GiB and the bytes carry the chosen 52 GiB, and a reader can always
+// recover which is which.
+//
+// THE EPOCH IS CARRIED BECAUSE memory.peak IS LifetimeEpochScoped per the cgroup-v2 authority: it is
+// an extremum since the cgroup was created or last reset, NOT a maximum over this observation
+// window. The allowance is therefore grounded on an observed LOWER BOUND -- greater than every
+// aggregate value this cgroup epoch has exposed -- which is defensible as a temporary allowance and
+// is not a capacity derivation. A bounded concurrent series is what would replace it.
+data srv1_session_aggregate_epoch_peak: SessionAggregateEvidence = SessionAggregateEpochPeakObserved {
+  peak: byte_size(55216033792),
+  epoch: "cgroup lifetime since creation or last reset; this observation did not reset it and cannot bound it to its own window",
+  receipt: "gunbc.session_demand_observe session_demand_observe_ci_wet on srv1",
+}
+
+// srv2 IS A SESSION HOST WHOSE AGGREGATE CANNOT BE READ, WHICH IS NOT THE SAME AS A HOST THAT OWES
+// NOTHING. One docker scope runs under system.slice, outside the slice the aggregate is denominated
+// over, and the observer cannot attribute it to an agent session. So srv2's parent-slice peak
+// measures a PROPER SUBSET of the host's session demand: ceil(managed-subset peak) is not a
+// complete-host figure, and choosing an allowance from it would be exactly the incomplete-denominator
+// error the observer refuses to make one layer down.
+data srv2_session_aggregate_incomplete: SessionAggregateEvidence = SessionAggregatePopulationIncomplete {
+  cause: "one docker scope under system.slice is not attributable to an agent session, so the sessions.slice reading measures a proper subset of this host's session demand",
+  receipt: "gunbc.session_demand_observe session_demand_observe_ci_wet on srv2",
+}
+
+data srv3_session_slice_absent: SessionAggregateEvidence = SessionAggregateUnobserved
+
+data srv4_session_slice_absent: SessionAggregateEvidence = SessionAggregateUnobserved
+
+fn session_reservation_policy_for(host: HostIdentity) -> HostSessionReservationPolicy {
+  if (host as String) == (operator_host_srv1 as String) {
+    SessionReservationAllowance {
+      bytes: byte_size(55834574848),
+      evidence_floor: srv1_session_aggregate_epoch_peak,
+      operator_reason: "temporary ceil-to-whole-gibibytes allowance above the observed epoch peak, pending a bounded concurrent series; the rounding is policy and the 51.42 GiB floor beneath it is the measurement",
+    }
+  } else if (host as String) == (operator_host_srv2 as String) {
+    SessionReservationUnestablished {
+      evidence: srv2_session_aggregate_incomplete,
+      cause: "one session-shaped scope remains outside sessions.slice; the observed parent peak measures a proper subset, so no complete-host aggregate exists to choose an allowance from",
+    }
+  } else if (host as String) == (operator_host_srv3 as String) {
+    SessionReservationNotApplicable { evidence: srv3_session_slice_absent }
+  } else if (host as String) == (operator_host_srv4 as String) {
+    SessionReservationNotApplicable { evidence: srv4_session_slice_absent }
+  } else {
+    SessionReservationUnestablished {
+      evidence: SessionAggregateUnobserved,
+      cause: "host is not enrolled in the session-reservation authority, so whether it carries sessions and at what aggregate is unknown: refuse rather than charge zero",
+    }
+  }
+}
+
+// THE ALLOWANCE BYTES ARE PROJECTED ONLY FROM THE ARM THAT HAS THEM, and the two non-allowance arms
+// have no bytes to project rather than a zero standing in for them. A total projection returning
+// byte_size(0) for Unestablished would be the absorbing fallback DESIGN 5 forbids: a host whose
+// reservation nobody could ground would look like a host that needs none, which is the most
+// permissive possible answer to a question nobody answered.
+fn session_reservation_allowance_bytes(p: HostSessionReservationPolicy) -> ByteSize? {
+  match p {
+    SessionReservationAllowance { bytes: b, evidence_floor: _, operator_reason: _ } => Present { value: b }
+    SessionReservationUnestablished { evidence: _, cause: _ } => none
+    SessionReservationNotApplicable { evidence: _ } => none
+  }
+}
+
+fn evidence_floor_bytes(e: SessionAggregateEvidence) -> ByteSize? {
+  match e {
+    SessionAggregateSnapshotObserved { current: c, receipt: _ } => Present { value: c }
+    SessionAggregateEpochPeakObserved { peak: p, epoch: _, receipt: _ } => Present { value: p }
+    SessionAggregateSeriesObserved { derived_peak: d, receipt: _ } => Present { value: d }
+    SessionAggregatePopulationIncomplete { cause: _, receipt: _ } => none
+    SessionAggregateUnobserved => none
+  }
+}
+
+// AN ALLOWANCE BELOW ITS OWN EVIDENCE FLOOR IS A CONTRADICTION, not a conservative choice: it would
+// reserve less than the host has already been observed to use, while carrying the observation that
+// says so. This is the one relation between the two fields that must hold, and it is checked here
+// rather than trusted, because the fields are authored independently.
+fn allowance_covers_its_evidence(p: HostSessionReservationPolicy) -> Bool {
+  match p {
+    SessionReservationAllowance { bytes: b, evidence_floor: e, operator_reason: _ } =>
+      match evidence_floor_bytes(e: e) {
+        Present { value: floor } => byte_size_count(b: b) >= byte_size_count(b: floor)
+        Absent => false
+      }
+    SessionReservationUnestablished { evidence: _, cause: _ } => true
+    SessionReservationNotApplicable { evidence: _ } => true
+  }
+}

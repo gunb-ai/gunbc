@@ -11,6 +11,10 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.session_reservation_policy {
+  session_reservation_policy_for,
+  SessionReservationAllowance, SessionReservationUnestablished, SessionReservationNotApplicable,
+}
 import gunbc.session_residency { host_carries_interactive_sessions }
 import gunbc.fleet_host_budget {
   gunbc_fleet_oomd_evidence,
@@ -226,30 +230,30 @@ type HostSessionSliceResolution
   | SessionSliceNotApplicable
   | SessionSliceUnsized { reason: String }
 
-fn session_reservation_declared_bytes() -> ByteSize? {
-  match gunbc_ci_session_reservation_mode {
-    Regime2AggregateOomd { oomd_eviction_ceiling: _, session_concurrency: _, aggregate_reservation: agg } =>
-      match agg {
-        SessionAggregateMeasured { bytes: b } => Present { value: b }
-        SessionAggregateUnmeasured => none
-      }
-    Regime1WorstCase { point: p } =>
-      match p {
-        SessionOperatingPointSet { per_session_cap: c, session_concurrency: n } =>
-          Present { value: measure_scale_fraction_floor(m: c, num: n, den: 1) }
-        SessionOperatingPointUnset => none
-      }
-    SessionReservationModeUnset => none
-  }
-}
-
+// TWO AUTHORITIES, TWO QUESTIONS, AND THEY ARE DELIBERATELY NOT MERGED. gunbc.session_residency
+// owns WHETHER a host carries interactive sessions; gunbc.session_reservation_policy owns HOW MUCH
+// is reserved for them. Sourcing both from the reservation table would have made it a second
+// answer to the residency question, which is the nicknaming violation DESIGN 3 forbids -- and the
+// residency module's unknown arm charges rather than exempts on purpose, a polarity a size table
+// has no business re-deciding.
+//
+// THE DISAGREEMENT ARM IS NOT DEAD CODE. Residency saying "sessions here" while the size table says
+// "not applicable" is a contradiction between two live authorities, and the safe reading is the
+// expensive one: refuse. Silently taking NotApplicable would drop the largest non-runner claim on a
+// host residency says is carrying sessions, which is precisely the overcommit this wall exists to
+// stop. It is empty today because the two agree on all four hosts; empty is not unreachable.
 fn host_session_slice_resolution(host: HostIdentity) -> HostSessionSliceResolution {
   if host_carries_interactive_sessions(host: host) {
-    match session_reservation_declared_bytes() {
-      Present { value: b } => SessionSliceCharged { bytes: b }
-      Absent =>
+    match session_reservation_policy_for(host: host) {
+      SessionReservationAllowance { bytes: b, evidence_floor: _, operator_reason: _ } =>
+        SessionSliceCharged { bytes: b }
+      SessionReservationUnestablished { evidence: _, cause: why } =>
         SessionSliceUnsized {
-          reason: concat("host runs interactive session containers (gunbc.session_residency host_session_residency) but gunbc_ci_session_reservation_mode yields no reservation size, so the largest non-runner claim on this host is unknown: refuse to derive a runner width rather than charge zero for it. Host: ", host)
+          reason: concat("no session reservation is established for this host, so the largest non-runner claim on it is unknown: refuse to derive a runner width rather than charge zero for it. Cause: ", why, " Host: ", host)
+        }
+      SessionReservationNotApplicable { evidence: _ } =>
+        SessionSliceUnsized {
+          reason: concat("gunbc.session_residency reports this host carries interactive sessions but gunbc.session_reservation_policy holds no reservation for it: two authorities disagree about the same host, and charging zero would drop the largest non-runner claim. Host: ", host)
         }
     }
   } else {

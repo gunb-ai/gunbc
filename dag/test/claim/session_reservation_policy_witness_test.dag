@@ -1,0 +1,137 @@
+module test.claim.session_reservation_policy_witness_test
+
+import std.types { Bool, String }
+import std.measure { byte_size, byte_size_count }
+import gunbc.fleet_intent_network {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+}
+import gunbc.session_reservation_policy {
+  session_reservation_policy_for, allowance_covers_its_evidence, evidence_floor_bytes,
+  session_reservation_allowance_bytes,
+  SessionAggregateEpochPeakObserved, SessionAggregatePopulationIncomplete,
+  SessionAggregateUnobserved, SessionAggregateSnapshotObserved,
+  SessionReservationAllowance, SessionReservationUnestablished, SessionReservationNotApplicable,
+}
+
+// THE FOUR HOSTS REACH THREE DIFFERENT DISPOSITIONS FROM ONE TABLE, and the pair that matters is
+// srv1 against srv2: both are session hosts, and only one can ground an allowance. A table that
+// charged both -- as the fleet-wide row it replaces did -- would be indistinguishable from this one
+// on srv1 alone, so asserting srv1 by itself would pass against the defect being removed.
+fn the_four_hosts_reach_three_dispositions() -> Bool {
+  let srv1_allows = match session_reservation_policy_for(host: operator_host_srv1) {
+    SessionReservationAllowance { bytes: b, evidence_floor: _, operator_reason: _ } =>
+      byte_size_count(b: b) == 55834574848
+    SessionReservationUnestablished { evidence: _, cause: _ } => false
+    SessionReservationNotApplicable { evidence: _ } => false
+  }
+  let srv2_refuses = match session_reservation_policy_for(host: operator_host_srv2) {
+    SessionReservationUnestablished { evidence: _, cause: _ } => true
+    SessionReservationAllowance { bytes: _, evidence_floor: _, operator_reason: _ } => false
+    SessionReservationNotApplicable { evidence: _ } => false
+  }
+  let srv3_not_applicable = match session_reservation_policy_for(host: operator_host_srv3) {
+    SessionReservationNotApplicable { evidence: _ } => true
+    SessionReservationAllowance { bytes: _, evidence_floor: _, operator_reason: _ } => false
+    SessionReservationUnestablished { evidence: _, cause: _ } => false
+  }
+  let srv4_not_applicable = match session_reservation_policy_for(host: operator_host_srv4) {
+    SessionReservationNotApplicable { evidence: _ } => true
+    SessionReservationAllowance { bytes: _, evidence_floor: _, operator_reason: _ } => false
+    SessionReservationUnestablished { evidence: _, cause: _ } => false
+  }
+  srv1_allows && srv2_refuses && srv3_not_applicable && srv4_not_applicable
+}
+
+// UNESTABLISHED AND NOT-APPLICABLE BOTH YIELD NO BYTES, AND THAT IS THE WHOLE POINT OF THE OPTION.
+// A total projection returning zero would make "we could not ground a reservation" read as "this
+// host needs none" -- the most permissive answer to an unanswered question, in the input to a
+// conservation wall. The srv1 arm is asserted alongside so this cannot pass by returning none for
+// everything.
+fn only_an_allowance_projects_bytes() -> Bool {
+  let srv1_has_bytes = match session_reservation_allowance_bytes(p: session_reservation_policy_for(host: operator_host_srv1)) {
+    Present { value: b } => byte_size_count(b: b) == 55834574848
+    Absent => false
+  }
+  let srv2_has_none = match session_reservation_allowance_bytes(p: session_reservation_policy_for(host: operator_host_srv2)) {
+    Present { value: _ } => false
+    Absent => true
+  }
+  let srv3_has_none = match session_reservation_allowance_bytes(p: session_reservation_policy_for(host: operator_host_srv3)) {
+    Present { value: _ } => false
+    Absent => true
+  }
+  srv1_has_bytes && srv2_has_none && srv3_has_none
+}
+
+// THE ALLOWANCE AND ITS EVIDENCE ARE DIFFERENT NUMBERS AND THE CARRIER KEEPS THEM APART. 52 GiB is
+// policy; 51.42 GiB is what the host was observed to reach. The old carrier had one field named
+// SessionAggregateMeasured holding a round literal nobody measured, so a reader could not tell a
+// reading from a choice. This asserts they are BOTH present and NOT equal -- a carrier that merged
+// them would fail the inequality, and one that dropped the evidence would fail the Present.
+fn policy_and_measurement_are_separable() -> Bool {
+  match session_reservation_policy_for(host: operator_host_srv1) {
+    SessionReservationAllowance { bytes: b, evidence_floor: e, operator_reason: _ } =>
+      match evidence_floor_bytes(e: e) {
+        Present { value: floor } =>
+          byte_size_count(b: floor) == 55216033792 && byte_size_count(b: b) != byte_size_count(b: floor)
+        Absent => false
+      }
+    SessionReservationUnestablished { evidence: _, cause: _ } => false
+    SessionReservationNotApplicable { evidence: _ } => false
+  }
+}
+
+// AN INCOMPLETE POPULATION YIELDS NO FLOOR, WHICH IS WHY srv2 CANNOT TAKE AN ALLOWANCE. Its
+// sessions.slice peak is a real number, but it measures a proper subset of the host's sessions, so
+// it is not a floor for the host. The discriminating pair is an epoch peak (yields a floor) against
+// a population-incomplete evidence (does not), because collapsing them would let a subset reading
+// ground a whole-host allowance -- the exact incomplete-denominator error the observer refuses one
+// layer down.
+fn an_incomplete_population_grounds_no_floor() -> Bool {
+  let peak_grounds = match evidence_floor_bytes(e: SessionAggregateEpochPeakObserved {
+    peak: byte_size(48356954112),
+    epoch: "lifetime",
+    receipt: "srv2 observation",
+  }) {
+    Present { value: v } => byte_size_count(b: v) == 48356954112
+    Absent => false
+  }
+  let incomplete_grounds_nothing = match evidence_floor_bytes(e: SessionAggregatePopulationIncomplete {
+    cause: "a scope outside sessions.slice is unattributed",
+    receipt: "srv2 observation",
+  }) {
+    Present { value: _ } => false
+    Absent => true
+  }
+  let unobserved_grounds_nothing = match evidence_floor_bytes(e: SessionAggregateUnobserved) {
+    Present { value: _ } => false
+    Absent => true
+  }
+  peak_grounds && incomplete_grounds_nothing && unobserved_grounds_nothing
+}
+
+// AN ALLOWANCE BELOW ITS OWN EVIDENCE FLOOR IS A CONTRADICTION AND MUST NOT HOLD. The live row is
+// asserted true and a deliberately inverted one false, so this cannot pass by always answering
+// true -- which a predicate that ignored its argument would.
+fn an_allowance_may_not_sit_below_its_evidence() -> Bool {
+  let live_holds = allowance_covers_its_evidence(p: session_reservation_policy_for(host: operator_host_srv1))
+  let inverted_refuses = allowance_covers_its_evidence(p: SessionReservationAllowance {
+    bytes: byte_size(1024),
+    evidence_floor: SessionAggregateSnapshotObserved { current: byte_size(4096), receipt: "fixture" },
+    operator_reason: "deliberately below its own floor",
+  }) == false
+  let evidenceless_allowance_refuses = allowance_covers_its_evidence(p: SessionReservationAllowance {
+    bytes: byte_size(4096),
+    evidence_floor: SessionAggregateUnobserved,
+    operator_reason: "an allowance with nothing under it",
+  }) == false
+  live_holds && inverted_refuses && evidenceless_allowance_refuses
+}
+
+fn session_reservation_policy_holds() -> Bool {
+  the_four_hosts_reach_three_dispositions()
+    && only_an_allowance_projects_bytes()
+    && policy_and_measurement_are_separable()
+    && an_incomplete_population_grounds_no_floor()
+    && an_allowance_may_not_sit_below_its_evidence()
+}
