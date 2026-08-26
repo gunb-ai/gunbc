@@ -66,6 +66,34 @@ fn an_unresolvable_qualified_head_still_refuses() -> Bool {
   )
 }
 
+// THE RESIDUAL, MEASURED RATHER THAN ASSERTED. Peeling to the leaf means an UNRESOLVABLE qualifier
+// whose leaf collides with a declared name binds that declaration. That is not a collapse this
+// change creates: type_decl_items (04_emit_info add_emit_item_summary) is keyed on the BARE
+// declared name across the whole closure, so the same collision is already reachable from a bare
+// spelling, and peeling a bare name is the identity. The two arms below are the discriminator --
+// measured together, both green: the bare spelling and the nonsense qualifier bind the SAME local
+// declaration, so after the peel the two spellings are indistinguishable, which is exactly the
+// property the repair was for. Verifying the qualifier instead would need the module index, which
+// this predicate does not receive and which no fact in scope substitutes for; that is the class's
+// next-rung trigger and it belongs to qualifier resolution, not to Clone-bound derivation.
+fn a_bare_head_binds_the_local_declaration() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_collide_bare\n\ntype LocalRow<K, V> {\n  k: K\n  v: V\n}\n\ntype HolderA<K, V> {\n  row: LocalRow<K, V>\n}\n",
+    "src/probe_collide_bare.rs",
+    ["pub struct HolderA<K: Clone, V: Clone>"],
+    ["compile_error"]
+  )
+}
+
+fn a_nonsense_qualifier_binds_the_same_local_declaration() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_collide_qual\n\ntype LocalRow<K, V> {\n  k: K\n  v: V\n}\n\ntype HolderB<K, V> {\n  row: no.such.module.LocalRow<K, V>\n}\n",
+    "src/probe_collide_qual.rs",
+    ["pub struct HolderB<K: Clone, V: Clone>"],
+    ["compile_error"]
+  )
+}
+
 test fn a_bare_generic_head_carries_its_clone_bounds() -> Bool {
   bare_head_emits_clone_bounds()
 }
@@ -80,4 +108,12 @@ test fn a_qualified_generic_head_does_not_emit_a_refusal() -> Bool {
 
 test fn a_head_that_resolves_nowhere_still_refuses() -> Bool {
   an_unresolvable_qualified_head_still_refuses()
+}
+
+test fn a_bare_head_binds_a_colliding_local_declaration() -> Bool {
+  a_bare_head_binds_the_local_declaration()
+}
+
+test fn a_nonsense_qualifier_binds_the_same_colliding_declaration() -> Bool {
+  a_nonsense_qualifier_binds_the_same_local_declaration()
 }
