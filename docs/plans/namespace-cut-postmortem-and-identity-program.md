@@ -1570,9 +1570,14 @@ So the split is clean, and it falls exactly along the line that clause draws:
 
   with those diagnostics returning through `EnvResolveResult` into
   `build_type_env`'s `resolved_diags`. So an unresolvable type name in a module's
-  own bindings yields `env_errors > 0` and the early return is taken. (The other
-  `UnresolvedType` mint, in `build_type_env`'s namespace-alias arm, is eliminated
-  because the fixtures author no aliases.)
+  own bindings yields `env_errors > 0` and the early return is taken. Two mints
+  are eliminated rather than assumed away: the `UnresolvedType` in
+  `build_type_env`'s namespace-alias arm (the fixtures author no aliases), and
+  `resolve_node_bounded`'s *first* `bare_name_miss_diagnostic` call — which sits
+  in the lookup-**hit** arm behind the `type_ref_hit_ne_bind_measure_active` host
+  bracket and, per `type_ref_hit_ne_bind_measure_resolve_note`, is off in
+  production. The fixtures take the **miss** arm, reached after `is_kernel_type`,
+  type-variable, error-node and unit-variant-phantom lookups all decline.
 
   **What is NOT claimed: `typecheck_module`'s return was never observed
   directly** — the arm's selection rests on source and call graph, not execution.
