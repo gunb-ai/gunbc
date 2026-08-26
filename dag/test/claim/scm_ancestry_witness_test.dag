@@ -63,9 +63,10 @@ fn ancestry_witness_traces_through(
   }
 }
 
-// THE MODULE NO LONGER OFFERS A ROOT READER, on the same consumer-count reasoning that deleted the
-// Boolean ancestor predicate: there was no production consumer, and an arm with no producer is worse
-// than absent. This witness derives it locally, which is what a real consumer would do.
+// THE MODULE NO LONGER OFFERS A ROOT READER, so this witness derives one -- which is what any real
+// consumer would do. The deletion rests on consumer count, the same criterion that removed the
+// Boolean ancestor predicate from this module: zero production consumers, and an arm with no
+// producer is worse than absent because it gets cited as a capability.
 fn ancestry_witness_reads_as_root(ancestry: CommitAncestry) -> Bool {
   match ancestry {
     RootCommit => true
