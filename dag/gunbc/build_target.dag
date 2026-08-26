@@ -422,6 +422,13 @@ fn index_standing(acc: TargetStandingIndexAcc, standing: TargetStanding) -> Targ
 // stopped at the construction path rather than at the carrier, which is exactly the gap review
 // 56266 named.
 //
+// MEASURED, NOT READ. A probe constructing the record from the witness module returned
+// "sole_constructor type 'TargetStandingIndex' cannot be constructed outside its defining module",
+// and the probe was removed after measurement. The keyword is recorded here with its executed
+// refusal because a seal asserted from its own spelling is the rung inflation §4b names — the
+// enrolled suite keeps it honest by reaching every index only through
+// `build_target_standing_index`.
+//
 // WHAT IS NOT CLOSED, and it is a property of the substrate rather than of this type: DESIGN §4b
 // records that a `sole_constructor` type's own EMITTED mirror is forgeable, so the guarantee here
 // is measured on the source→`.dag`-acceptance path and does not extend to a Rust-emission
