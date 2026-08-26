@@ -77,9 +77,12 @@ data fabric_cell_slice_unit_pattern: NonEmptyStr = "fabric-cell-*.slice" as NonE
 // `success: Bool`, so a listing that failed and a directory that is not there are the SAME false
 // through that operation alone -- and they have opposite consequences: not-there licenses a
 // provisioning ADD, could-not-read must stop the line. The pair is separated by an independent
-// observation (`test -d`) rather than by reading the error text, because parsing a message for
-// "No such file" is a heuristic standing where a declared operation was available, and DESIGN
-// section 4 rules a heuristic never necessary in a closed system.
+// observation of the path's KIND rather than by reading the error text, because parsing a message
+// for "No such file" is a heuristic standing where a declared operation was available, and DESIGN
+// section 4 rules a heuristic never necessary in a closed system. Which observation carries that
+// separation is settled four paragraphs down and is NOT a boolean test: this sentence named
+// `test -d` while the same source below explained why every boolean construction was retired, so a
+// reader who stopped here left with the predecessor mechanism.
 //
 // THE FOURTH STATE IS THE ONE A `Bool` CANNOT HOLD AT ALL. A path occupied by something that is not
 // a directory is not an absence -- reporting it as one would license an ADD that cannot succeed,
@@ -252,8 +255,8 @@ fn fabric_cell_directory_address_probe(
 // --- host effects ------------------------------------------------------------------------------
 
 // ORDERED SO THAT ABSENCE IS ESTABLISHED BEFORE A LISTING IS ATTEMPTED, not inferred from one that
-// failed. `test -d` false is not yet absence -- a regular file at the path is also false -- so the
-// two are separated by a second declared read rather than by assuming which one it was.
+// failed. "not a directory" is not yet absence -- a regular file at the path answers the same way
+// -- so the two are separated by the parent's own listing rather than by assuming which one it was.
 // WHAT THE CONTAINING DIRECTORY SAID ABOUT THIS ENTRY, WHICH IS THE ONLY THING THAT CAN ESTABLISH
 // ABSENCE. A probe of the path itself cannot: every failure it can report is its own failure to
 // observe, and reading that as "nothing is there" is the empty-observation narrow at the smallest
@@ -282,14 +285,47 @@ fn fabric_cell_parent_standing_of(
 
 type FabricCellPathObservation
   = PathKindObserved { kind: FabricCellPathKind }
-  | PathMetadataUnread { path: String }
+  | PathMetadataUnread { path: String, cause: String }
+
+// A COMPLETED `stat` THAT PRINTED NOTHING IS NOT A KIND, AND THE COLLAPSE IT CAUSES IS THE WORST
+// AVAILABLE ONE. Exit success alone was once taken as an answer here, so an empty `%F` fell through
+// the token decoder to `UnknownKind { word: "" }` and out as `PathOccupiedByNonDirectory` -- a
+// POSITIVE assertion that some object nobody can name is sitting on the path. That fails closed for
+// provisioning and is still wrong, because it sends the operator to the wrong remedy: "something is
+// in the way, go look at it" instead of "the metadata operation did not answer, the host read is
+// broken". The distinction is the same one the property reader below already draws for
+// `systemctl show`, and it is drawn here for the same reason -- success is a fact about the CALL,
+// never about whether the OUTPUT carrying the answer arrived.
+type FabricCellPathKindObservation
+  = PathKindRead { kind: FabricCellPathKind }
+  | PathKindReadRefused { cause: String }
+
+// PURE, SO THE `success` x `output` RELATION IS TESTABLE WITHOUT A HOST. The token decoder below it
+// is total over nonempty words by construction; what needed a wall is the step BEFORE it, which is
+// the only place an unanswered call can be mistaken for an answer.
+fn fabric_cell_path_kind_observation(
+  success: Bool,
+  output: String,
+) -> FabricCellPathKindObservation {
+  if success {
+    let w = trim(output)
+    if w == "" {
+      PathKindReadRefused {
+        cause: "the metadata read exited successfully and printed no file type, so the path kind is unanswered and not unrecognized",
+      }
+    } else {
+      PathKindRead { kind: fabric_cell_path_kind_of(word: w) }
+    }
+  } else {
+    PathKindReadRefused { cause: "the metadata read did not complete" }
+  }
+}
 
 func fabric_cell_observe_path_kind(path: String) -> FabricCellPathObservation {
   let t = stat.File.FileType(path: path)
-  if t.success {
-    PathKindObserved { kind: fabric_cell_path_kind_of(word: t.file_type) }
-  } else {
-    PathMetadataUnread { path: path }
+  match fabric_cell_path_kind_observation(success: t.success, output: t.file_type) {
+    PathKindRead { kind: k } => PathKindObserved { kind: k }
+    PathKindReadRefused { cause: c } => PathMetadataUnread { path: path, cause: c }
   }
 }
 
@@ -302,7 +338,8 @@ func fabric_cell_observe_directory(
   parent: FabricCellParentStanding,
 ) -> FabricCellDirectoryObservation {
   match fabric_cell_observe_path_kind(path: path) {
-    PathMetadataUnread { path: p } => fabric_cell_unread_path_observation(path: p, parent: parent)
+    PathMetadataUnread { path: p, cause: c } =>
+      fabric_cell_unread_path_observation(path: p, parent: parent, read_cause: c)
     PathKindObserved { kind: k } =>
       match k {
         DirectoryKind => fabric_cell_list_directory(path: path)
@@ -320,13 +357,14 @@ func fabric_cell_observe_directory(
 fn fabric_cell_unread_path_observation(
   path: String,
   parent: FabricCellParentStanding,
+  read_cause: String,
 ) -> FabricCellDirectoryObservation {
   match parent {
     ParentLacksEntry => DirectoryNotPresent
     ParentHoldsEntry =>
       DirectoryUnreadable {
         path: path,
-        cause: "the containing directory holds this entry and its metadata could not be read",
+        cause: join(["the containing directory holds this entry and ", read_cause], ""),
       }
     ParentUnobserved { cause: c } => DirectoryUnreadable { path: path, cause: c }
   }

@@ -41,6 +41,10 @@ import gunbc.fabric_cell_acquire {
   RegularFileKind,
   UnknownKind,
   fabric_cell_path_kind_of,
+  fabric_cell_path_kind_observation,
+  FabricCellPathKindObservation,
+  PathKindRead,
+  PathKindReadRefused,
   FabricCellParentStanding,
   ParentHoldsEntry,
   ParentLacksEntry,
@@ -313,14 +317,17 @@ test fn witness_acquire_unread_metadata_is_absence_only_when_the_parent_said_so(
   observation_is_absent_dir(o: fabric_cell_unread_path_observation(
     path: "/opt/fabric-cells/srv3-06",
     parent: ParentLacksEntry,
+    read_cause: "the metadata read did not complete",
   ))
     && observation_is_unreadable(o: fabric_cell_unread_path_observation(
         path: "/opt/fabric-cells/srv3-06",
         parent: ParentHoldsEntry,
+        read_cause: "the metadata read did not complete",
       ))
     && observation_is_unreadable(o: fabric_cell_unread_path_observation(
         path: "/opt/fabric-cells/srv3-06",
         parent: ParentUnobserved { cause: "the containing directory /opt could not be listed" },
+        read_cause: "the metadata read did not complete",
       ))
 }
 
@@ -517,5 +524,38 @@ fn property_is_read_as(o: FabricCellPropertyObservation, value: String) -> Bool 
   match o {
     PropertyRead { value: v } => (v as String) == value
     PropertyReadRefused { cause: _ } => false
+  }
+}
+
+// LAW 17 -- A METADATA CALL THAT EXITED ZERO AND PRINTED NOTHING IS UNANSWERED, NOT UNRECOGNIZED.
+// The token decoder in law 14 is total, which is exactly what made this reachable: an empty `%F`
+// is a word it has never met, so it decoded to `UnknownKind { word: "" }` and left as a POSITIVE
+// claim that some unnameable object occupies the path. The two readings send an operator to
+// opposite remedies -- clear the obstruction, versus fix the host read that answered nothing -- so
+// the emptiness is decided BEFORE the decoder rather than inside it. The rows below are a presence
+// test and not a value filter, which is why "0" and "-" are asserted READ: a reader that dropped
+// values it found uninteresting would pass an emptiness assertion and still lose real answers.
+test fn witness_acquire_empty_file_type_refuses_rather_than_naming_a_kind() -> Bool {
+  path_kind_is_refused(o: fabric_cell_path_kind_observation(success: true, output: ""))
+    && path_kind_is_refused(o: fabric_cell_path_kind_observation(success: true, output: "   "))
+    && path_kind_is_refused(o: fabric_cell_path_kind_observation(success: false, output: "directory"))
+    && path_kind_is_read(o: fabric_cell_path_kind_observation(success: true, output: "directory"))
+    && path_kind_is_read(o: fabric_cell_path_kind_observation(success: true, output: "symbolic link"))
+    && path_kind_is_read(o: fabric_cell_path_kind_observation(success: true, output: "socket"))
+    && path_kind_is_read(o: fabric_cell_path_kind_observation(success: true, output: "0"))
+    && path_kind_is_read(o: fabric_cell_path_kind_observation(success: true, output: "weird new thing"))
+}
+
+fn path_kind_is_refused(o: FabricCellPathKindObservation) -> Bool {
+  match o {
+    PathKindReadRefused { cause: _ } => true
+    PathKindRead { kind: _ } => false
+  }
+}
+
+fn path_kind_is_read(o: FabricCellPathKindObservation) -> Bool {
+  match o {
+    PathKindRead { kind: _ } => true
+    PathKindReadRefused { cause: _ } => false
   }
 }
