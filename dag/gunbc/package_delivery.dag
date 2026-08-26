@@ -1379,15 +1379,26 @@ type ProtocolSchemaBundleFileStanding
   | BundleFileDigestRefused { path: String }
   | BundleFileManifestAppendRefused { path: String }
 
-fn protocol_schema_bundle_file_admitted(standing: ProtocolSchemaBundleFileStanding) -> Bool {
+// RENDERS THE STANDING, RATHER THAN REDUCING IT TO A Bool. An earlier revision of this file carried
+// `protocol_schema_bundle_file_admitted`, which matched this coproduct and answered true for one
+// variant and false for every refusal -- and its caller then turned that Bool into `none`, so the
+// located cause this change exists to compute was discarded one frame after being produced. Review
+// on gunbc#9241 (review 55992) called that correctly: modelling a distinction and erasing it at the
+// only consumer leaves the repair claimed rather than delivered.
+//
+// The cause now reaches the consumer, carrying the path, because every arm names the file that
+// stopped the bundle. That is the whole value of the standing: "the bundle failed" is unactionable,
+// "this file could not be read" is a place to look.
+fn protocol_schema_bundle_file_standing_text(standing: ProtocolSchemaBundleFileStanding) -> String {
   match standing {
-    BundleFileAdmitted => true
-    BundleFileUnreadable { path: _ } => false
-    BundleFileNotDecodable { path: _ } => false
-    BundleFileNotCanonicalizable { path: _ } => false
-    BundleFileCanonicalWriteRefused { path: _ } => false
-    BundleFileDigestRefused { path: _ } => false
-    BundleFileManifestAppendRefused { path: _ } => false
+    BundleFileAdmitted => "admitted"
+    BundleFileUnreadable { path: path } => concat("could not read ", path)
+    BundleFileNotDecodable { path: path } => concat("not decodable as JSON: ", path)
+    BundleFileNotCanonicalizable { path: path } => concat("not canonicalizable: ", path)
+    BundleFileCanonicalWriteRefused { path: path } =>
+      concat("canonical staging write refused: ", path)
+    BundleFileDigestRefused { path: path } => concat("digest refused: ", path)
+    BundleFileManifestAppendRefused { path: path } => concat("manifest append refused: ", path)
   }
 }
 
@@ -1453,35 +1464,56 @@ fn protocol_schema_process_file_for_bundle(
 // Widening it reaches four callers and is its own cut. The located cause is now COMPUTED and
 // reaches the admitted-check below; the next repair here is to stop discarding it, not to argue
 // that discarding it is fine.
+// THE CAUSE REACHES THE CALLER NOW, WHICH IS WHAT THE EARLIER REVISION OF THIS FUNCTION PROMISED
+// AND DID NOT DO. It returned ContentHash? behind EIGHT `none` arms, and the annotation here said
+// the located cause "reaches this line" and that the next repair was to stop discarding it. Review
+// on gunbc#9241 (review 55992) pointed out that registering a future repair is not a disposition:
+// the distinction was computed and thrown away in the same change that computed it.
+//
+// Each arm now names what this observation could not do, IN ITS OWN VOCABULARY -- these are facts
+// about producing a canonical protocol-schema bundle, not re-spellings of a JSON tokenizer or a
+// shell exit status.
+type ProtocolSchemaIdentityObservation
+  = ProtocolSchemaIdentified { identity: ContentHash }
+  | ProtocolSchemaObservationRefused { cause: NonEmptyStr }
+
 fn observe_protocol_schema_identity(
   native_executable: FilePath,
   work_dir: FilePath,
-) -> ContentHash? {
+) -> ProtocolSchemaIdentityObservation {
   let schema_dir = concat(work_dir as String, "/protocol-schema") as FilePath
   let made = shell.Mkdir.Parents(path: schema_dir)
   if made.success == false {
-    none
+    ProtocolSchemaObservationRefused {
+      cause: "protocol schema staging directory could not be created" as NonEmptyStr,
+    }
   } else {
     let gen = codex_app_server.Cli.GenerateJsonSchema(
       executable: CodexAppServerExecutable { path: native_executable },
       output_dir: schema_dir,
     )
     if gen.success == false {
-      none
+      ProtocolSchemaObservationRefused {
+        cause: "the vendored executable refused to generate its protocol schema" as NonEmptyStr,
+      }
     } else {
       let listed = shell.Find.FilesByNameSorted(
         root: schema_dir,
         name_glob: "*.json" as NonEmptyStr,
       )
       if listed.success == false {
-        none
+        ProtocolSchemaObservationRefused {
+          cause: "the generated protocol schema directory could not be listed" as NonEmptyStr,
+        }
       } else {
         let abs_paths = filter(
           split(s: listed.stdout, delimiter: "\n"),
           p => p != "",
         )
         if count(abs_paths) == 0 {
-          none
+          ProtocolSchemaObservationRefused {
+            cause: "the vendored executable generated no protocol schema files" as NonEmptyStr,
+          }
         } else {
           let schema_prefix = concat(schema_dir as String, "/")
           let canon_staging_dir = concat(work_dir as String, "/schema-canonical") as FilePath
@@ -1491,11 +1523,15 @@ fn observe_protocol_schema_identity(
             "/protocol-schema-bundle.manifest",
           )
           if made_canon.success == false {
-            none
+            ProtocolSchemaObservationRefused {
+              cause: "the canonical staging directory could not be created" as NonEmptyStr,
+            }
           } else {
             let init_manifest = Filesystem.Write(path: manifest_path, content: "")
             if init_manifest.success == false {
-              none
+              ProtocolSchemaObservationRefused {
+                cause: "the bundle manifest could not be initialized" as NonEmptyStr,
+              }
             } else {
               let bundle_standing = fold(
                 abs_paths,
@@ -1520,14 +1556,60 @@ fn observe_protocol_schema_identity(
                       BundleFileManifestAppendRefused { path: p }
                   },
               )
-              if protocol_schema_bundle_file_admitted(standing: bundle_standing) == false {
-                none
-              } else {
-                match sha512sum_observe_file(path: manifest_path as FilePath) {
-                  Sha512FileObserved { digest } =>
-                    Present { value: as_content_hash_sha512(digest: digest) }
-                  Sha512FileObservationRefused { cause: _ } => none
-                }
+              match bundle_standing {
+                BundleFileAdmitted =>
+                  match sha512sum_observe_file(path: manifest_path as FilePath) {
+                    Sha512FileObserved { digest } =>
+                      ProtocolSchemaIdentified {
+                        identity: as_content_hash_sha512(digest: digest),
+                      }
+                    Sha512FileObservationRefused { cause: _ } =>
+                      ProtocolSchemaObservationRefused {
+                        cause: "the bundle manifest digest could not be observed" as NonEmptyStr,
+                      }
+                  }
+                BundleFileUnreadable { path: _ } =>
+                  ProtocolSchemaObservationRefused {
+                    cause: concat(
+                      "protocol schema bundle refused: ",
+                      protocol_schema_bundle_file_standing_text(standing: bundle_standing),
+                    ) as NonEmptyStr,
+                  }
+                BundleFileNotDecodable { path: _ } =>
+                  ProtocolSchemaObservationRefused {
+                    cause: concat(
+                      "protocol schema bundle refused: ",
+                      protocol_schema_bundle_file_standing_text(standing: bundle_standing),
+                    ) as NonEmptyStr,
+                  }
+                BundleFileNotCanonicalizable { path: _ } =>
+                  ProtocolSchemaObservationRefused {
+                    cause: concat(
+                      "protocol schema bundle refused: ",
+                      protocol_schema_bundle_file_standing_text(standing: bundle_standing),
+                    ) as NonEmptyStr,
+                  }
+                BundleFileCanonicalWriteRefused { path: _ } =>
+                  ProtocolSchemaObservationRefused {
+                    cause: concat(
+                      "protocol schema bundle refused: ",
+                      protocol_schema_bundle_file_standing_text(standing: bundle_standing),
+                    ) as NonEmptyStr,
+                  }
+                BundleFileDigestRefused { path: _ } =>
+                  ProtocolSchemaObservationRefused {
+                    cause: concat(
+                      "protocol schema bundle refused: ",
+                      protocol_schema_bundle_file_standing_text(standing: bundle_standing),
+                    ) as NonEmptyStr,
+                  }
+                BundleFileManifestAppendRefused { path: _ } =>
+                  ProtocolSchemaObservationRefused {
+                    cause: concat(
+                      "protocol schema bundle refused: ",
+                      protocol_schema_bundle_file_standing_text(standing: bundle_standing),
+                    ) as NonEmptyStr,
+                  }
               }
             }
           }
@@ -2235,11 +2317,9 @@ fn finish_codex_runtime_materialization_after_install(
                         native_executable: native_path,
                         work_dir: build_root,
                       ) {
-                        Absent =>
-                          CodexRuntimeReceiptObservationRefused {
-                            cause: "canonical protocol schema bundle identity observation refused" as NonEmptyStr,
-                          }
-                        Present { value: protocol_id } =>
+                        ProtocolSchemaObservationRefused { cause: cause } =>
+                          CodexRuntimeReceiptObservationRefused { cause: cause }
+                        ProtocolSchemaIdentified { identity: protocol_id } =>
                           match observe_package_materialized_tree(
                             root: build_root,
                             work_dir: staging_dir,
@@ -2602,8 +2682,8 @@ fn finish_bisect_observe_protocol_schema_identity(
     native_executable: ctx.native_path,
     work_dir: ctx.build_root,
   ) {
-    Present { value: _ } => true
-    Absent => false
+    ProtocolSchemaIdentified { identity: _ } => true
+    ProtocolSchemaObservationRefused { cause: _ } => false
   }
 }
 
@@ -2678,20 +2758,27 @@ fn finish_bisect_parse_canonicalize_protocol_schema_file(
   }
 }
 
-// THE HARNESS ARM IS SEPARATED FROM THE SUBJECT ARMS, not folded back into one `false`. This
-// enclosing probe still answers Bool because a bisect driver consumes a yes/no -- but an unreadable
-// staging file is OUR defect and must not be reported as the subject failing, so it is distinguished
-// at the match below rather than counted as a negative bisect result. The same reading applies to
-// finish_bisect_parse_largest_protocol_schema_file.
+// THE HARNESS ARM IS CARRIED, NOT COLLAPSED, AND AN EARLIER REVISION OF THIS CLAUSE WAS FALSE.
+//
+// It read that an unreadable staging file "is distinguished at the match below rather than counted
+// as a negative bisect result". It was not: the match reduced all three standings to `false`, so a
+// staging file this harness could not read reported EXACTLY what a subject that emits undecodable
+// schema reports. The annotation asserted the repair while the code performed the defect, which is
+// worse than the defect alone -- a reader auditing this file would have found a written claim that
+// the distinction survived. Caught in review on gunbc#9241 (review 55992).
+//
+// The standing is now propagated to the wet witness that consumes it, so the bisect driver sees
+// SchemaFileUnreadable -- OUR failure -- as a different value from SchemaFileNotDecodable, which is
+// the subject's. There is no Bool in this chain to collapse them any more.
 fn finish_bisect_parse_canonicalize_largest_protocol_schema_file(
   native_executable: FilePath,
   work_dir: FilePath,
-) -> Bool {
+) -> ProtocolSchemaFileStanding {
   if finish_bisect_generate_protocol_schema_dir(
     native_executable: native_executable,
     work_dir: work_dir,
   ) == false {
-    false
+    SchemaFileUnreadable
   } else {
     let schema_path = concat(
       work_dir as String,
@@ -2700,24 +2787,19 @@ fn finish_bisect_parse_canonicalize_largest_protocol_schema_file(
         protocol_schema_largest_file_rel as String,
       ),
     ) as FilePath
-    match finish_bisect_parse_canonicalize_protocol_schema_file(path: schema_path) {
-      SchemaFileConforms => true
-      SchemaFileNotDecodable => false
-      SchemaFileNotCanonicalizable => false
-      SchemaFileUnreadable => false
-    }
+    finish_bisect_parse_canonicalize_protocol_schema_file(path: schema_path)
   }
 }
 
 fn finish_bisect_parse_largest_protocol_schema_file(
   native_executable: FilePath,
   work_dir: FilePath,
-) -> Bool {
+) -> ProtocolSchemaFileStanding {
   if finish_bisect_generate_protocol_schema_dir(
     native_executable: native_executable,
     work_dir: work_dir,
   ) == false {
-    false
+    SchemaFileUnreadable
   } else {
     let schema_path = concat(
       work_dir as String,
@@ -2726,12 +2808,7 @@ fn finish_bisect_parse_largest_protocol_schema_file(
         protocol_schema_largest_file_rel as String,
       ),
     ) as FilePath
-    match finish_bisect_parse_protocol_schema_file(path: schema_path) {
-      SchemaFileConforms => true
-      SchemaFileNotDecodable => false
-      SchemaFileNotCanonicalizable => false
-      SchemaFileUnreadable => false
-    }
+    finish_bisect_parse_protocol_schema_file(path: schema_path)
   }
 }
 
@@ -2794,8 +2871,8 @@ fn finish_bisect_build_receipt_without_identity(
                         native_executable: ctx.native_path,
                         work_dir: ctx.build_root,
                       ) {
-                        Absent => none
-                        Present { value: protocol_id } =>
+                        ProtocolSchemaObservationRefused { cause: _ } => none
+                        ProtocolSchemaIdentified { identity: protocol_id } =>
                           match observe_package_materialized_tree(
                             root: ctx.build_root,
                             work_dir: ctx.staging_dir,
@@ -2902,27 +2979,27 @@ fn materialize_codex_runtime_finish_bisect_observe_protocol_schema_only(
 
 fn materialize_codex_runtime_finish_bisect_parse_largest_protocol_schema_only(
   source: AdmittedCodexRuntimeSource,
-) -> Bool {
+) -> ProtocolSchemaFileStanding {
   match codex_runtime_install_context_from_source(source: source) {
     Present { value: ctx } =>
       finish_bisect_parse_largest_protocol_schema_file(
         native_executable: ctx.native_path,
         work_dir: ctx.build_root,
       )
-    Absent => false
+    Absent => SchemaFileUnreadable
   }
 }
 
 fn materialize_codex_runtime_finish_bisect_parse_canonicalize_largest_protocol_schema_only(
   source: AdmittedCodexRuntimeSource,
-) -> Bool {
+) -> ProtocolSchemaFileStanding {
   match codex_runtime_install_context_from_source(source: source) {
     Present { value: ctx } =>
       finish_bisect_parse_canonicalize_largest_protocol_schema_file(
         native_executable: ctx.native_path,
         work_dir: ctx.build_root,
       )
-    Absent => false
+    Absent => SchemaFileUnreadable
   }
 }
 
