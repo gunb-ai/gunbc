@@ -7,7 +7,7 @@ import v2.std.diagnostic {
   Rejected,
   Unavailable,
   diagnostics_singleton,
-  port_locus
+  invariant_port_locus
 }
 import v2.std.verdict {
   BuildFailed,
@@ -36,7 +36,7 @@ data subject_evidence_cause_swap_doc: String = "THE CAUSE-SWAP CONTROL for the V
 fn sample_diagnostic(reason: Symbol) -> Diagnostic {
   Diagnostic {
     reason: reason,
-    at: port_locus(port: ^subject_evidence_cause_swap_surface),
+    at: invariant_port_locus(port: ^subject_evidence_cause_swap_surface, invariant: reason),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
