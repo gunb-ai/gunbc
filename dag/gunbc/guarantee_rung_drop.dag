@@ -314,15 +314,6 @@ data doc_graph_dangling_link_population_stall: GuaranteeStall = GuaranteeStall {
   next_rung_trigger: "the derived dangling-link identity population is empty and every enrolled projection reports NowPassing"
 }
 
-data doc_graph_registered_admitted_root_stall: GuaranteeStall = GuaranteeStall {
-  subject: "registered documentation roots and admitted documentation roots disagree",
-  current: OutsideTheLadder,
-  ceiling: MechanicallyPreventable,
-  blocker: ClimbableButUnbuilt,
-  population: BoundedPopulation { members: Cons { head: "test.claim.doc_reachability_witness.doc_graph_registered_plan_roots_all_admitted", tail: Empty {} } },
-  next_rung_trigger: "registered-root identities and admitted-root identities join exactly in both directions"
-}
-
 data enforcement_live_closure_gate_stall: GuaranteeStall = GuaranteeStall {
   subject: "the live enforcement closure and its question-zero gate are non-green",
   current: OutsideTheLadder,
