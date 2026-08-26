@@ -7684,6 +7684,30 @@ mod entry_admission_tests {
         );
     }
 
+    /// NESTING IS REFUSED LOUDLY, AND THIS IS THE ARM THAT SAYS SO.
+    ///
+    /// The review condition this answers asked that `Drop` restore the value found on entry
+    /// rather than a blind `false`. It cannot: `resolution_silent_pick_enable` resets the
+    /// counters as its first act, so an inner session destroys the outer session's telemetry
+    /// before any restore could run, and a restored flag over emptied counters would report
+    /// "nothing observed" for a transaction whose observations were thrown away. The refusal is
+    /// therefore the honest arm, and this test is what keeps it from being an assertion nobody
+    /// executes.
+    ///
+    /// It is a fixture-authorable state and not a production-reachable one; that is the
+    /// distinction that makes it a wall rather than a decoration.
+    #[test]
+    #[should_panic(expected = "already armed")]
+    fn arming_the_transaction_inside_an_armed_one_refuses_instead_of_discarding_telemetry() {
+        crate::v1_rt::resolution_silent_pick_enable();
+        let _ = compile_emission(&CompileRequest {
+            subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            source_roots: vec![ws("fixtures/v2_emission_gate/green")],
+            primary_precedence: true,
+            render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
+        });
+    }
+
     /// A FILE WHERE A DIRECTORY BELONGS IS ITS OWN STATE, not "missing". Collapsing the two
     /// would tell an author to create a path that already exists.
     #[test]
@@ -7948,7 +7972,36 @@ struct SilentPickSession {
 }
 
 impl SilentPickSession {
+    // NESTING IS REFUSED HERE RATHER THAN ACCOMMODATED, and the reason is a property of the
+    // primitive rather than a preference about guards.
+    //
+    // The ordinary law for a thread-local guard is that `Drop` restores the value the guard found
+    // on entry, never a blind `false` -- and this repository already has that idiom in
+    // `v1_rt::with_type_ref_hit_ne_bind_measure`, which does prev/set/restore. It is correct
+    // there because that flag is NON-DESTRUCTIVE.
+    //
+    // `resolution_silent_pick_enable` is destructive: its FIRST statement resets the telemetry to
+    // default. So by the time an inner session could restore an outer session's flag, the outer
+    // session's accumulated counters are already gone. A save-and-restore guard would then leave
+    // the flag `true` over silently zeroed telemetry -- an outer transaction reporting "no silent
+    // picks observed" when what actually happened is that its observations were discarded. That is
+    // a fabricated plausible output, and it is strictly worse than the state it replaces.
+    //
+    // So the double-arm is made LOUD instead. This is a programming-error invariant, not an
+    // input-derived condition: no input to the compile transaction can reach it, only a code edit
+    // that arms the flag around a call to `compile_emission`. Nesting is not reachable in
+    // production today -- `main.rs`'s other `resolution_silent_pick_enable` is the legacy
+    // `--source-dir` arm, which sits DOWNSTREAM of the `--source-root` transaction's
+    // `std::process::exit(0)` rather than around it -- but it is authorable in a fixture, which is
+    // the reachability test that decides whether a wall is a wall or a decoration.
     fn enable() -> Self {
+        assert!(
+            !crate::v1_rt::resolution_silent_pick_is_enabled(),
+            "resolution-silent-pick telemetry was already armed when this compile transaction \
+             tried to arm it; `resolution_silent_pick_enable` RESETS the counters, so proceeding \
+             would silently discard the enclosing transaction's observations and report the \
+             emptied result as its own"
+        );
         crate::v1_rt::resolution_silent_pick_enable();
         Self { armed: true }
     }

@@ -1,0 +1,207 @@
+module gunbc.attempt_currentness
+
+import std.types { String, Bool }
+
+// WHETHER THIS ATTEMPT STILL DESCRIBES THE PULL REQUEST IT WAS CREATED FOR.
+//
+// WHY THE QUESTION EXISTS AT ALL. On `pull_request` runs the workflow tests GitHub's SYNTHETIC
+// MERGE COMMIT, so `github.sha` is not the branch head. The event payload's
+// `github.event.pull_request.head.sha` identifies the head WHEN THE RUN WAS CREATED, and a floor
+// lane runs for the better part of an hour -- so by the time an aggregator decides, that head may
+// have been superseded by a push the run knows nothing about. Nothing in the payload can tell it
+// apart from a head that is still current, which is the absence-versus-typed-state defect this
+// repository keeps finding, arriving at the required check itself.
+//
+// A GET at aggregation time supplies the missing comparison, and the comparison is the whole
+// point: `event_head_sha` against `current_head_sha` is an observation seam, not a lookup.
+//
+// THE LIFECYCLE FIELD IS CARRIED BUT DOES NOT DECIDE. One GET returns the head SHA and the
+// open/merged standing together, so recording only the SHA would discard something already paid
+// for; but see the note on `AttemptCurrentness` for why that standing is a receipt field rather
+// than a sixth state.
+//
+// THIS IS A POINT-IN-TIME OBSERVATION AND NOT A LEASE. The GET says what the head was when it was
+// read; it does not prevent the head moving a second later, and no arm here should be read as
+// claiming it does.
+//
+// Operator ruling issued in deep-ant-102's side-chat thread 6a862123 at 2026-08-26 07:17 UTC,
+// relayed verbatim in dashboard message msg_04e716b7-cd37-484e-afc8-44958179dbb1. The ruling is
+// authoritative wherever it was issued; that message is the artifact a reader here can resolve,
+// because side-chat threads are per-session and this one is not reachable from this lane.
+
+// WHAT THE ACQUISITION ITSELF RETURNED. FOUR states, and an earlier revision of this type had
+// three -- it carried one `PullRequestHeadAcquisitionFailed` arm over two facts with different
+// owners, which is precisely the defect gunbc#9324 had just finished repairing one file away.
+// A REQUEST THAT NEVER COMPLETED and A RESPONSE THAT COMPLETED AND DID NOT YIELD ONE USABLE HEAD
+// are not one state: the first is an outage or a missing credential and its owner is the runner's
+// environment; the second is a well-formed transaction whose payload disagreed with the shape
+// this module expects, and its owner is this module. Folding them gives one `cause` string whose
+// reader cannot tell which of the two they are looking at.
+type PullRequestHeadAcquisition
+  = PullRequestHeadAcquired {
+      number: String,
+      event_head_sha: String,
+      current_head_sha: String,
+      state: String,
+      merged: Bool
+    }
+  | PullRequestHeadNotApplicable { event_name: String }
+  | PullRequestHeadReadRefused { number: String, cause: String }
+  | PullRequestHeadResponseUnreadable { number: String, cause: String }
+
+// WHAT THE ACQUISITION MEANS FOR THIS ATTEMPT. Five states, and the acquired arm is not itself a
+// verdict -- it is a record that still has to be READ.
+//
+// LIFECYCLE IS NOT ONE OF THE FIVE, AND AN EARLIER REVISION OF THIS TYPE MADE IT A SIXTH. The
+// argument for the sixth was that a merged pull request commonly has an UNCHANGED head (merging
+// does not move it), so a SHA comparison alone answers "current" for a pull request that no
+// longer exists to be current for. That observation is true and it does not support a state,
+// because of the composition law this module is built on: ONLY A POSITIVELY ESTABLISHED
+// SUPERSESSION MAY EXCUSE A NON-SUCCESS LANE. A closed or merged pull request has not been
+// superseded by a newer head, so it may not excuse one either -- which makes its verdict row
+// IDENTICAL to `AttemptIsCurrent`'s in both columns. A state that changes no verdict is not a
+// state; it is a receipt field, and `state` and `merged` are carried as exactly that on the
+// acquired record, where the one GET already paid to acquire them. Demoting it keeps the
+// information and removes the false distinction.
+type AttemptCurrentness
+  = AttemptIsCurrent
+  | AttemptIsSuperseded { event_head_sha: String, current_head_sha: String }
+  | CurrentnessNotApplicable { event_name: String }
+  | CurrentnessReadRefused { cause: String }
+  | CurrentnessResponseUnreadable { cause: String }
+
+// APPLICABILITY COMES FROM THE EVENT TYPE AND FROM NOTHING ELSE. There is deliberately no arm
+// deriving `NotApplicable` from an empty pull-request number: on a pull-request event an empty
+// number is malformed input or an unreadable subject, never evidence that the operation did not
+// apply. A misspelled workflow context would otherwise convert a required live read into a silent
+// opt-out -- absence rendered as a typed state, the failure this whole carrier exists to prevent.
+fn attempt_currentness_of(acquisition: PullRequestHeadAcquisition) -> AttemptCurrentness {
+  match acquisition {
+    PullRequestHeadNotApplicable { event_name: event_name } =>
+      CurrentnessNotApplicable { event_name: event_name }
+    PullRequestHeadReadRefused { number: _, cause: cause } =>
+      CurrentnessReadRefused { cause: cause }
+    PullRequestHeadResponseUnreadable { number: _, cause: cause } =>
+      CurrentnessResponseUnreadable { cause: cause }
+    PullRequestHeadAcquired {
+      number: _,
+      event_head_sha: event_head_sha,
+      current_head_sha: current_head_sha,
+      state: _,
+      merged: _
+    } => if event_head_sha != current_head_sha {
+      AttemptIsSuperseded {
+        event_head_sha: event_head_sha,
+        current_head_sha: current_head_sha
+      }
+    } else {
+      AttemptIsCurrent
+    }
+  }
+}
+
+// WHAT THE AGGREGATOR PUBLISHES. `RequiredContextPassed` and `RequiredContextSupersededQuiet` both
+// exit zero and they are DIFFERENT STATES, which is the whole reason this is not a Bool: a
+// superseded attempt whose lanes failed exits zero because the lanes measured an obsolete subject,
+// and saying "passed" there would be a fabricated plausible output. The renderer must say
+// SUPERSEDED and name both heads.
+type RequiredContextDisposition
+  = RequiredContextPassed
+  | RequiredContextFailed { build_result: String, floor_result: String }
+  | RequiredContextSupersededQuiet {
+      event_head_sha: String,
+      current_head_sha: String,
+      build_result: String,
+      floor_result: String
+    }
+  | RequiredContextPassedWithCurrentnessReadRefused { cause: String }
+  | RequiredContextPassedWithCurrentnessResponseUnreadable { cause: String }
+
+data required_lane_success: String = "success"
+
+fn both_lanes_succeeded(build_result: String, floor_result: String) -> Bool {
+  if build_result != required_lane_success {
+    false
+  } else {
+    floor_result == required_lane_success
+  }
+}
+
+// ACQUISITION FAILURE NEVER EXCUSES A FAILED LANE, and the asymmetry is the ruling's, not a
+// preference. An API outage may fail to SUPPRESS a stale alert; it must never SUPPRESS A REAL
+// LANE FAILURE. So both unobservable arms compose with a failed lane as failure and with a
+// succeeding lane as success carrying an explicit warning -- never as `Superseded`, which is the
+// arm that would let an outage silence a genuine red.
+//
+// LANE ADMISSION IS AN ALLOWLIST OF EXACTLY ONE WORD and never an enumeration of bad ones. A
+// production run exposed `abandoned` as a reachable `needs` result that no author here knew
+// about; a guard listing known-bad states would have admitted it and published the required
+// context green over two lanes that never ran. `both_lanes_succeeded` therefore tests equality
+// against `success`, so a lane word invented by GitHub tomorrow blocks by construction.
+fn required_context_disposition(
+  build_result: String,
+  floor_result: String,
+  currentness: AttemptCurrentness
+) -> RequiredContextDisposition {
+  match currentness {
+    AttemptIsCurrent => if both_lanes_succeeded(
+      build_result: build_result,
+      floor_result: floor_result
+    ) {
+      RequiredContextPassed
+    } else {
+      RequiredContextFailed { build_result: build_result, floor_result: floor_result }
+    }
+    CurrentnessNotApplicable { event_name: _ } => if both_lanes_succeeded(
+      build_result: build_result,
+      floor_result: floor_result
+    ) {
+      RequiredContextPassed
+    } else {
+      RequiredContextFailed { build_result: build_result, floor_result: floor_result }
+    }
+    AttemptIsSuperseded {
+      event_head_sha: event_head_sha,
+      current_head_sha: current_head_sha
+    } => RequiredContextSupersededQuiet {
+      event_head_sha: event_head_sha,
+      current_head_sha: current_head_sha,
+      build_result: build_result,
+      floor_result: floor_result
+    }
+    CurrentnessReadRefused { cause: cause } => if both_lanes_succeeded(
+      build_result: build_result,
+      floor_result: floor_result
+    ) {
+      RequiredContextPassedWithCurrentnessReadRefused { cause: cause }
+    } else {
+      RequiredContextFailed { build_result: build_result, floor_result: floor_result }
+    }
+    CurrentnessResponseUnreadable { cause: cause } => if both_lanes_succeeded(
+      build_result: build_result,
+      floor_result: floor_result
+    ) {
+      RequiredContextPassedWithCurrentnessResponseUnreadable { cause: cause }
+    } else {
+      RequiredContextFailed { build_result: build_result, floor_result: floor_result }
+    }
+  }
+}
+
+// The process exit the disposition demands. Only `RequiredContextFailed` stops the line; every
+// other arm exits zero, and each for a DIFFERENT stated reason, which is why the renderer above
+// keeps them apart rather than reducing to this number.
+fn required_context_exit_code(disposition: RequiredContextDisposition) -> String {
+  match disposition {
+    RequiredContextFailed { build_result: _, floor_result: _ } => "1"
+    RequiredContextPassed => "0"
+    RequiredContextSupersededQuiet {
+      event_head_sha: _,
+      current_head_sha: _,
+      build_result: _,
+      floor_result: _
+    } => "0"
+    RequiredContextPassedWithCurrentnessReadRefused { cause: _ } => "0"
+    RequiredContextPassedWithCurrentnessResponseUnreadable { cause: _ } => "0"
+  }
+}
