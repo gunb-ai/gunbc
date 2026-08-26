@@ -147,9 +147,11 @@ data capacity_class_refused_remedies: List<CapacityClassRemedy> = [
 // ASSUMING EITHER WAY.
 //
 // The eight DeclarationRefs above look like the ones the cited-symbol gate enforces. They are not.
-// Replacing "TrustDomainRef" with a fabricated name and re-running --required-cited-symbol still
-// reports OK with checked=390, unchanged -- before and after this module gained an importing
-// witness. So a stale citation here would not be caught.
+// Replacing "TrustDomainRef" with a fabricated name and re-running --required-cited-symbol
+// REPORTED OK with checked=390, unchanged -- before and after this module gained an importing
+// witness. So a stale citation here would not be caught. Past tense as of 2026-08-26: that flag
+// and its census are deleted, so this measurement can no longer be re-taken by anyone. The
+// conclusion it supports is unchanged; what is gone is the route that would falsify it.
 //
 // THIS IS A DECLARED SCOPE, NOT A DEFECT, and saying so is the point of writing it down. The lens's
 // own law states its population: every DeclarationRef enrolled in
