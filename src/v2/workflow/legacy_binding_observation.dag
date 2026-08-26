@@ -36,6 +36,19 @@ import std.occurrence_identity {
 // It also means this module is buildable and testable BEFORE the tap exists, without a stub
 // standing in for a producer -- a stub would be a second, lying authority for the same fact, and
 // the fixtures below instantiate the parameter with an ordinary test vocabulary instead.
+// THE ROW GRAIN IS ONE OUTCOME PER REFERENCE OCCURRENCE, AND THE SEAM HAS TO AGREE ON IT.
+//
+// X is queried more than once per authored reference -- the same occurrence is asked about across
+// inference stages, and some of those calls are the compiler's internal questions rather than
+// decisions about an authored reference at all. So a producer's natural unit is an ATTEMPT, and
+// this envelope's unit is an OCCURRENCE. Those are different denominators.
+//
+// THE CONSEQUENCE IS NOT ABSTRACT: attempt-grain rows handed to the completeness join fail it, and
+// they fail it looking like a defect in the join. Repeated attempts must be reconciled BEFORE they
+// reach here -- one outcome per occurrence, emitted only when the attempts agree, and disagreement
+// surfaced as a typed conflict rather than as a last-writer-wins pick. That reconciliation is the
+// producer's, because only the producer can see the attempts; the refusal to guess is this
+// module's, because a row it cannot check is a row it must not accept.
 type LegacyBindingObservationRow<O> {
   occurrence: OccurrenceId
   outcome: O
@@ -61,6 +74,18 @@ type LegacyResolutionPolicy
   = ImportScopedPolicy
   | NamespaceOnlyPolicy
 
+// WHY NOTHING HERE TYPES THE ANSWER AS A DeclarationRef, stated because it is the schema mistake
+// this envelope is one edit away from at all times.
+//
+// Not every binding X selects is an authored declaration. A LEXICAL BINDER may have no declaration
+// reference to project to at all, and kernel and synthetic bindings differ again -- which is the
+// same fact that makes occurrence grain mandatory, seen from the answer side rather than the
+// question side. An answer schema that stored a DeclarationRef would therefore be wrong for three
+// of its four cases, and wrong in the direction that looks complete.
+//
+// The outcome type parameter is what keeps that decision out of this module: the closed target
+// domain belongs beside the producer that can tell the cases apart, and a DeclarationRef is
+// DERIVED from the authored case rather than stored beside it, so the two cannot disagree.
 type LegacyBindingObservationSubject {
   semantic_source_digest: Fnv1a64Structural
   source_set_digest: Fnv1a64Structural
