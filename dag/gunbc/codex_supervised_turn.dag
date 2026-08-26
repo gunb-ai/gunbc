@@ -23,6 +23,7 @@ import gunbc.provider_turn_adjudication {
   ProviderTurnCompleted,
   ProviderTurnFailed,
   ProviderTurnNotObserved,
+  ProviderTurnStreamUnreadable,
   ProviderNativeCauseUnknown,
   press_display_finished,
 }
@@ -70,7 +71,9 @@ import extdeps.languages.json.emit {
   JsonNull,
 }
 import extdeps.languages.json.parse {
-  parse_json,
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
   json_object_unique_member,
   JsonMemberFound,
   JsonMemberAbsent,
@@ -147,10 +150,20 @@ type SupervisedTurnTerminalSignal
   | SupervisedTurnTerminalCompleted
   | SupervisedTurnTerminalFailed { reason: NonEmptyStr }
 
+// unreadable_lines COUNTS WHAT THE FOLD COULD NOT READ, because the alternative was to drop it.
+// absorb_supervised_turn_line previously answered `acc` for a line parse_json refused: the line
+// vanished, the accumulator advanced, and nothing anywhere recorded that a line had been lost. A
+// stream of wholly unreadable lines then reached disposition_from_supervised_parse looking exactly
+// like a stream that carried no terminal event.
+//
+// An EMPTY line is not counted and never was -- absorb_supervised_turn_line tests for it before
+// parsing, and a blank line between records is ordinary stream shape rather than a failure. That
+// distinction already existed and is preserved deliberately; only the unparseable arm changed.
 type SupervisedTurnParseAcc {
   thread_start: SupervisedRpcObservation
   turn_start: SupervisedRpcObservation
   turn_terminal: SupervisedTurnTerminalSignal
+  unreadable_lines: Int
 }
 
 fn codex_supervised_turn_lease_key(attempt_key: AttemptKey, turn_key: String) -> NonEmptyStr {
@@ -409,21 +422,69 @@ fn codex_supervised_turn_start_line_template(user_input: String) -> String {
   ) as String
 }
 
-fn supervised_thread_id_from_line(line: String) -> NonEmptyStr? {
+// FOUR CAUSES BEHIND ONE `none`, AND THE LAST ARM WAS A WILDCARD OVER A COPRODUCT WHOSE VARIANTS
+// HAVE DIFFERENT REMEDIES -- the shape DESIGN names as total at the level examined, blind one level
+// down. `_ => none` was exhaustive over SupervisedRpcObservation and said nothing about the
+// distinction that decides what to do: an RPC ERROR is the provider refusing our thread-start, a
+// DUPLICATE is two responses claiming the same id (a protocol violation on the wire), and neither
+// is "this line was not the thread-start response", which is the ordinary, expected answer while
+// scanning a stream.
+//
+// At an Optional that collapse is the worse one: a scanner looking for the thread id gets `none`
+// for the line it should skip AND for the provider having refused, so a supervised run whose
+// thread-start was rejected looks exactly like one whose response has not arrived yet.
+type SupervisedThreadIdReading
+  = ThreadIdRead { id: NonEmptyStr }
+  | ThreadIdLineBlank
+  | ThreadIdLineUnreadable
+  | ThreadIdRpcRefused { reason: NonEmptyStr }
+  | ThreadIdRpcDuplicated { count: Int }
+  | ThreadIdLineNotThreadStart
+
+// THE not-this-line ARM EXISTS AND IS UNPRODUCIBLE TODAY, AND THAT IS A REPORTED DEFECT RATHER
+// THAN AN OVERSIGHT.
+//
+// Writing this vocabulary surfaced it: supervised_rpc_from_id_response takes `id: Int` and NEVER
+// INSPECTS THE id MEMBER OF THE DOCUMENT -- the parameter is used only to build message text. So
+// any well-formed response carrying result.<entity>.id is read as the thread-start response
+// whatever id it is answering, and SupervisedRpcAbsent is UNPRODUCIBLE TODAY from that function.
+//
+// UNPRODUCIBLE-TODAY, NOT UNREACHABLE, and the two read alike while only one is a permanent
+// property. Nothing about this arm is structurally impossible: the moment a reader compares the
+// document's id against the one it asked for, a mis-addressed line has an answer and this arm is
+// the answer. A reviewer who takes it for unreachable concludes the arm should be deleted, which
+// would re-collapse the distinction the next repair depends on.
+//
+// The arm is kept rather than folded into a neighbour, because mapping "this line was addressed
+// elsewhere" onto ThreadIdLineUnreadable would be the state-space conflation this whole change is
+// removing -- it would put a lie in the decoder to avoid an unreachable arm. What is NOT done is
+// write a witness for it: its RED is unauthorable today, and DESIGN section 4b rules such a probe
+// worse than absent because it is cited as coverage. Exhaustiveness requires the arm; evidence
+// cannot yet be authored for it, and the difference is stated rather than papered over.
+//
+// The mis-addressed-response class is NOT repaired here -- it is an id-matching defect, not a
+// parse_json fail-open, and repairing it silently inside a decoder-honesty pass would be the
+// widening this pass exists to stop doing. Its NEXT-RUNG TRIGGER is the id check landing in
+// supervised_rpc_from_id_response, at which point this arm becomes producible and gets its witness.
+// It is witnessed at its CURRENT behaviour in the witness module, so that fix turns that witness
+// red at the line explaining why.
+fn supervised_thread_id_from_line(line: String) -> SupervisedThreadIdReading {
   let trimmed = line.trim()
   if trimmed == "" {
-    none
+    ThreadIdLineBlank
   } else {
-    match parse_json(s: trimmed) {
-      Absent => none
-      Present { value: parsed } =>
+    match parse_json_document(s: trimmed) {
+      JsonDocumentUnreadable { gap: _ } => ThreadIdLineUnreadable
+      JsonDocumentParsed { value: parsed } =>
         match supervised_rpc_from_id_response(
           id: codex_supervised_thread_start_id,
           obj: parsed,
           entity_key: codex_thread_start_result_thread_key as String,
         ) {
-          SupervisedRpcOk { native_id: id } => Present { value: id }
-          _ => none
+          SupervisedRpcOk { native_id: id } => ThreadIdRead { id: id }
+          SupervisedRpcError { reason: reason } => ThreadIdRpcRefused { reason: reason }
+          SupervisedRpcDuplicate { count: count } => ThreadIdRpcDuplicated { count: count }
+          SupervisedRpcAbsent => ThreadIdLineNotThreadStart
         }
     }
   }
@@ -554,9 +615,15 @@ fn absorb_supervised_turn_line(
   if trimmed == "" {
     acc
   } else {
-    match parse_json(s: trimmed) {
-      Absent => acc
-      Present { value: parsed } =>
+    match parse_json_document(s: trimmed) {
+      JsonDocumentUnreadable { gap: _ } =>
+        SupervisedTurnParseAcc {
+          thread_start: acc.thread_start,
+          turn_start: acc.turn_start,
+          turn_terminal: acc.turn_terminal,
+          unreadable_lines: acc.unreadable_lines + 1,
+        }
+      JsonDocumentParsed { value: parsed } =>
         match json_object_unique_member(v: parsed, key: "id") {
           JsonMemberFound { value: idv } =>
             match json_rpc_id_as_int(v: idv) {
@@ -573,6 +640,7 @@ fn absorb_supervised_turn_line(
                     ),
                     turn_start: acc.turn_start,
                     turn_terminal: acc.turn_terminal,
+                    unreadable_lines: acc.unreadable_lines,
                   }
                 } else if n == codex_supervised_turn_start_wire_id {
                   SupervisedTurnParseAcc {
@@ -586,6 +654,7 @@ fn absorb_supervised_turn_line(
                       ),
                     ),
                     turn_terminal: acc.turn_terminal,
+                    unreadable_lines: acc.unreadable_lines,
                   }
                 } else {
                   acc
@@ -598,6 +667,7 @@ fn absorb_supervised_turn_line(
                       thread_start: acc.thread_start,
                       turn_start: acc.turn_start,
                       turn_terminal: signal,
+                      unreadable_lines: acc.unreadable_lines,
                     }
                 }
             }
@@ -609,6 +679,7 @@ fn absorb_supervised_turn_line(
                   thread_start: acc.thread_start,
                   turn_start: acc.turn_start,
                   turn_terminal: signal,
+                  unreadable_lines: acc.unreadable_lines,
                 }
             }
         }
@@ -632,6 +703,7 @@ fn empty_supervised_turn_parse_acc() -> SupervisedTurnParseAcc {
     thread_start: SupervisedRpcAbsent,
     turn_start: SupervisedRpcAbsent,
     turn_terminal: SupervisedTurnTerminalAbsent,
+    unreadable_lines: 0,
   }
 }
 
@@ -643,6 +715,11 @@ fn parse_supervised_turn_stdout(stdout: String) -> SupervisedTurnParseAcc {
   )
 }
 
+// A NONZERO EXIT STILL REPORTS FAILURE EVEN WHEN LINES WERE UNREADABLE, and that ordering is a
+// judgement rather than an oversight. A process that exited nonzero has told us something about
+// ITSELF, from outside our decoder; our inability to read its stdout does not weaken that. The
+// unreadable check therefore guards only the two arms that would otherwise answer NotObserved --
+// the arms that assert an ABSENCE this build is no longer entitled to assert.
 fn disposition_from_supervised_parse(
   parse: SupervisedTurnParseAcc,
   exit_code: Int?,
@@ -657,7 +734,11 @@ fn disposition_from_supervised_parse(
       match exit_code {
         Present { value: code } =>
           if code == 0 {
-            ProviderTurnNotObserved
+            if parse.unreadable_lines > 0 {
+              ProviderTurnStreamUnreadable { unreadable_lines: parse.unreadable_lines }
+            } else {
+              ProviderTurnNotObserved
+            }
           } else {
             ProviderTurnFailed {
               cause: ProviderNativeCauseUnknown {
@@ -669,7 +750,12 @@ fn disposition_from_supervised_parse(
               },
             }
           }
-        Absent => ProviderTurnNotObserved
+        Absent =>
+          if parse.unreadable_lines > 0 {
+            ProviderTurnStreamUnreadable { unreadable_lines: parse.unreadable_lines }
+          } else {
+            ProviderTurnNotObserved
+          }
       }
   }
 }

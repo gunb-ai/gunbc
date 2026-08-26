@@ -14,7 +14,11 @@ import extdeps.languages.json.emit {
   JsonValue, JsonKeyValue, JsonObject, JsonArray, JsonNull,
   json_kv, json_array, json_object, json_string, serialize_json,
 }
-import extdeps.languages.json.parse { parse_json }
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+}
 
 import v2.std.node {
   Node, Edge, Named, TypeNode, Connective, Atom, Conj, Symbol, node_synthetic,
@@ -333,9 +337,9 @@ test fn scm_env_an_absent_checkout_is_valid_not_a_refusal() -> Bool {
 // The durable bytes, not just the value tree.
 test fn scm_env_survives_serialization_to_text_and_back() -> Bool {
   let text = serialize_json(v: encode_repository(repo: scm_env_two_commit_repository()))
-  match parse_json(s: text) {
-    Absent => false
-    Present { value: reparsed } => scm_env_commit_count(outcome: decode_repository(v: reparsed)) == 2
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: _ } => false
+    JsonDocumentParsed { value: reparsed } => scm_env_commit_count(outcome: decode_repository(v: reparsed)) == 2
   }
 }
 

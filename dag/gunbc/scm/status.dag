@@ -1,0 +1,177 @@
+module gunbc.scm.status
+
+// THE STATUS VERB: what this repository can truthfully say about where the author stands.
+//
+// EVERY SHAPE DECISION BELOW IS DERIVED FROM WHAT THE ENVELOPE CARRIES, AND THE DERIVATION IS AT THE
+// SITE RATHER THAN THE CHOICE. A reader who finds "the checked-out commit and a count" with no
+// reason will read it as an arbitrary UI call and change it; the reasons are therefore written where
+// the decision is, not in a PR body that no future reader will have.
+//
+// MOST OF THE GIT-STATUS MENTAL MODEL IS NOT EXPRESSIBLE HERE, AND THAT IS A PROPERTY OF THE MODEL
+// RATHER THAN A MISSING FEATURE. RepositoryEnvelope carries exactly a store, a commit list, and an
+// optional checked-out selection; this layer has NO path, NO branch, NO author, NO timestamp, NO
+// working tree and NO remote anywhere in it. So modified-files, staged-versus-unstaged BY PATH,
+// ahead/behind, and current-branch cannot appear -- not deferred, but unproducible: no fact in the
+// envelope yields them. A status surface reporting any of them would be fabricating, which is
+// exactly the plausible-output failure DESIGN section 5 forbids at a user-facing boundary.
+//
+// THE STRUCTURE IS THE MODEL AND THE TEXT IS ONE REALIZATION OF IT. repository_status answers a
+// typed value; render_repository_status is a projection of that value. They are split because a
+// second consumer -- a machine-readable status, an HTTP surface, a future porcelain -- must read the
+// FACTS rather than parse prose back out of a terminal rendering, which would be a second authority
+// for one answer.
+
+import std.types { Bool, Int, List, String }
+import v2.std.node { Symbol }
+import gunbc.scm.object_store { ObjectId, ObjectStore, store_contains, object_id_eq }
+import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
+import gunbc.scm.merge {
+  Requirement,
+  RequireBinding,
+  RequireBindingAbsent,
+  Proposal,
+  requirement_role,
+}
+
+// NOTHING CHECKED OUT IS NORMAL, NOT A WARNING, AND THIS IS SETTLED BY A STATED AUTHORITY RATHER
+// THAN BY TASTE. gunbc.scm.repository_envelope's header says `init` produces a repository with no
+// commits and no root at all, and that "neither is an error". Rendering it as a problem would
+// contradict that authority and fabricate a fault the model says does not exist.
+//
+// CheckedOutCommitMissing IS NOT A THIRD MOOD ON THE SAME FACT -- it is a different fact, and
+// omitting it would make status assert something it has not checked. The envelope's own encoder
+// refuses on RepositoryCheckoutNotInCommits, so "the selection names a commit this repository does
+// not have" is DECIDABLE here; reporting the selection as an ordinary checkout without deciding it
+// would state a commit exists when it may not.
+type StatusCheckout
+  = NothingCheckedOut
+  | CheckedOutCommit { root: ObjectId, message: String }
+  | CheckedOutCommitMissing { root: ObjectId }
+
+// THREE STATES, NOT TWO, AND THE THIRD IS THE ONE A SURFACE LOSES BY ACCIDENT. It is not enough that
+// a stated absence be distinguishable from a present binding: the load-bearing distinction is from
+// NOT MENTIONED AT ALL, because merge's silence-means-preserve rule makes "role not stated" and
+// "role stated absent" SEMANTICALLY OPPOSITE -- one preserves the target's binding, the other
+// deletes it. A rendering where a stated absence looks like an empty slot is the not-applicable
+// versus malformed conflation carried all the way into a user surface, and the user acts on it.
+//
+// Here the third state is structural rather than rendered: a role that is not stated does not appear
+// in this list at all. That is what keeps the distinction total -- there is no value in this type
+// that means "not stated", because the absence of a row IS that state.
+type StagedRole
+  = StagedBinding { role: Symbol }
+  | StagedAbsence { role: Symbol }
+
+// THE COMMIT COUNT AND THE CHECKED-OUT COMMIT, NOT THE WHOLE LOG. A `log` verb will exist and will
+// own what happened; status owning it too would be two surfaces for one fact, which is the
+// redundancy DESIGN section 2 prices and the second authority section 3 forbids. This is the least
+// forced of the decisions here, since `log` does not exist yet -- but building status to duplicate a
+// verb we know is coming buys nothing, and shrinking a published surface later is harder than
+// growing one.
+//
+// THE OBJECT-STORE POPULATION IS DELIBERATELY ABSENT. A store object count is a fact about
+// REPRESENTATION, not about the author's intent state, and below-boundary representation is opaque
+// (DESIGN section 3). A reader who needs it wants a store-inspection verb, not status.
+//
+// THE PENDING PROPOSAL IS IN STATUS RATHER THAN BEHIND ITS OWN VERB, because "what have I staged
+// that is not committed" is the primary question status exists to answer -- and given how little
+// else the envelope carries, status without it would be a near-empty surface.
+type RepositoryStatus {
+  checkout: StatusCheckout
+  commit_count: Int
+  staged: List<StagedRole>
+}
+
+fn commit_with_root(commits: List<RepositoryCommit>, root: ObjectId) -> RepositoryCommit? {
+  fold(commits, init: none, f: fn(found, c) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        if object_id_eq(left: c.root, right: root) { Present { value: c } } else { none }
+    }
+  })
+}
+
+fn status_checkout_of(envelope: RepositoryEnvelope) -> StatusCheckout {
+  match envelope.checked_out {
+    Absent => NothingCheckedOut
+    Present { value: root } =>
+      match commit_with_root(commits: envelope.commits, root: root) {
+        Present { value: c } => CheckedOutCommit { root: root, message: c.message }
+        Absent => CheckedOutCommitMissing { root: root }
+      }
+  }
+}
+
+fn staged_role_of(requirement: Requirement) -> StagedRole {
+  match requirement {
+    RequireBinding { role: role, value: _ } => StagedBinding { role: role }
+    RequireBindingAbsent { role: role } => StagedAbsence { role: role }
+  }
+}
+
+// STATUS TAKES THE PENDING PROPOSAL EXPLICITLY rather than reaching for an ambient one, for the same
+// reason the repository root is an explicit argument at this stage: an implicit "current proposal"
+// is a second policy -- WHICH proposal is this invocation's -- that nothing here has to decide yet.
+fn repository_status(envelope: RepositoryEnvelope, pending: Proposal) -> RepositoryStatus {
+  RepositoryStatus {
+    checkout: status_checkout_of(envelope: envelope),
+    commit_count: count(envelope.commits),
+    staged: map(pending.requirements, r => staged_role_of(requirement: r)),
+  }
+}
+
+// Whether the checked-out selection is one this repository can actually produce. Named rather than
+// inlined at the rendering, because it is a FACT about the repository that a machine consumer wants
+// without going through prose.
+fn status_checkout_is_resolvable(status: RepositoryStatus) -> Bool {
+  match status.checkout {
+    CheckedOutCommit { root: _, message: _ } => true
+    NothingCheckedOut => true
+    CheckedOutCommitMissing { root: _ } => false
+  }
+}
+
+fn render_staged_role(staged: StagedRole) -> String {
+  match staged {
+    StagedBinding { role: role } => concat("  staged:  ", role as String)
+    StagedAbsence { role: role } => concat("  removed: ", role as String)
+  }
+}
+
+fn render_status_checkout(checkout: StatusCheckout) -> String {
+  match checkout {
+    NothingCheckedOut => "nothing checked out"
+    CheckedOutCommit { root: _, message: message } => concat("on commit: ", message)
+    CheckedOutCommitMissing { root: _ } =>
+      "the checked-out selection names a commit this repository does not contain"
+  }
+}
+
+fn render_commit_count(commit_count: Int) -> String {
+  if commit_count == 1 { "1 commit" } else { concat(to_string(n: commit_count), " commits") }
+}
+
+// THE EMPTY STAGED LIST IS RENDERED EXPLICITLY, not left as blank space. "nothing staged" and "this
+// surface did not report staging" are different facts, and a surface that renders the first as
+// silence makes them identical to the reader -- the empty-observation narrow, carried to a human.
+fn render_staged(staged: List<StagedRole>) -> List<String> {
+  if count(staged) == 0 {
+    ["  nothing staged"]
+  } else {
+    map(staged, s => render_staged_role(staged: s))
+  }
+}
+
+fn render_repository_status(status: RepositoryStatus) -> String {
+  join(
+    concat(
+      [
+        render_status_checkout(checkout: status.checkout),
+        render_commit_count(commit_count: status.commit_count),
+      ],
+      render_staged(staged: status.staged),
+    ),
+    "\n",
+  )
+}

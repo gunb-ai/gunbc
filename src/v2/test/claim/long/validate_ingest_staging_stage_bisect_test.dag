@@ -35,7 +35,7 @@ import v2.std.diagnostic {
   bind_outcome,
   diagnostics_singleton,
   outcome_accepted,
-  port_locus
+  invariant_port_locus
 }
 import v2.std.grammar { ModeledGrammar, ValidatedGrammarRoot, ParseTree }
 import v2.std.logic { Bool }
@@ -114,13 +114,13 @@ fn bisect_through_grammar_validate() -> Outcome<ValidatedGrammarRoot> {
   let lm = dag_language_model()
   match lm.grammar {
     ModeledGrammar { root: root } =>
-      grammar_validate_for_parse(root: root, at: port_locus(port: ^parse_stage_locus_port))
+      grammar_validate_for_parse(root: root, at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^validate_ingest_staging_stage_bisect_test_grammar_contract))
     _ =>
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {
             reason: ^bisect_language_model_grammar_unmodeled,
-            at: port_locus(port: ^parse_stage_locus_port),
+            at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^bisect_language_model_grammar_unmodeled),
             correction: Unavailable { reason: CorrectionNotModeled }
           }
         )

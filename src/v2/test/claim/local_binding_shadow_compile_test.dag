@@ -1,0 +1,92 @@
+module v2.test.claim.local_binding_shadow_compile
+
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  FixtureSource,
+  fixture_source,
+  compile_fixture,
+  fixture_has_class
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE COMPILE HALF OF THE LOCAL-BINDING-SHADOW LAW. Its sibling
+// v2.test.claim.local_binding_shadow measures DISPATCH by execution: which function a call site
+// actually reaches. This file measures SHAPE: what the compiler's call-shape judgment believes it
+// is looking at. The two are one question and were answered differently by the same binding, which
+// is the whole reason this file is separate rather than three more arms over there.
+//
+// ONE BINDING STANDING, AND WHAT IT MEANS HERE. A named-argument call through a function VALUE is
+// a blocking refusal by operator ruling -- direct declaration calls keep named arguments,
+// function-value calls stay positional-only -- so `CallNamedArgOnFunctionValue` firing is the
+// SHAPE tier stating, in the compiler's own vocabulary, that the spelling names a local binding
+// and not the module declaration. The discriminating control is the same labeled call with NO
+// local binding, which compiles CLEAN because it is a declaration call. So the refusal is a
+// property of the BINDING, never of the label.
+//
+// WHY IT IS AN ISOLATED MULTI-MODULE FIXTURE AND NOT AN IN-CORPUS PAIR. The subject is a name held
+// by two modules at once, and the corpus is not a controlled setting for that: under whole-corpus
+// floor preparation every witness is folded through one prepared subject, so a third module could
+// supply the spelling and neither the red nor the green would be attributable. Every byte compiled
+// here is authored below, and nothing outside this file can rename, delete or supply
+// `shadow_sentinel` in that compile -- which is also how the "unrelated global renamed or removed"
+// arm is answered: by construction, not by sampling one rename.
+
+data shadow_peer_source: String = "module shadowx.peer\nfn shadow_sentinel(n: Int) -> Int { 900 }\n"
+
+data entry_local_positional: String = "module shadowx.entry\nimport shadowx.peer { shadow_sentinel }\nfn local_sentinel(n: Int) -> Int { n + 1 }\nfn f() -> Int { let shadow_sentinel = local_sentinel\n  shadow_sentinel(1) }\n"
+
+data entry_local_labeled: String = "module shadowx.entry\nimport shadowx.peer { shadow_sentinel }\nfn local_sentinel(n: Int) -> Int { n + 1 }\nfn f() -> Int { let shadow_sentinel = local_sentinel\n  shadow_sentinel(n: 1) }\n"
+
+data entry_declaration_labeled: String = "module shadowx.entry\nimport shadowx.peer { shadow_sentinel }\nfn f() -> Int { shadow_sentinel(n: 1) }\n"
+
+fn shadow_compile(entry: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("shadowx/peer.dag", shadow_peer_source),
+      fixture_source("shadowx/entry.dag", entry)
+    ],
+    entry: "shadowx/entry.dag"
+  })
+}
+
+fn compiles_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } => count(rows) == 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+fn refuses_with_class(o: MultiModuleCompileFixtureOutcome, wanted: String) -> Bool {
+  match o {
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => fixture_has_class(rows, wanted),
+    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+// THE SHAPE TIER SEES THE LOCAL BINDING. A labeled call through a local that shadows a peer's free
+// function refuses CallNamedArgOnFunctionValue -- the compiler naming the callee a function value,
+// which only the LOCAL is. The second conjunct is the discriminator and carries the whole claim:
+// the identical labeled call with no local binding compiles CLEAN, because it is then a
+// declaration call and declaration calls keep their labels. Without it the first conjunct would be
+// satisfied by a compiler that refused every labeled call.
+test fn the_shape_tier_reads_the_shadowing_local_as_a_function_value() -> Bool {
+  refuses_with_class(shadow_compile(entry_local_labeled), "CallNamedArgOnFunctionValue")
+    && compiles_clean(shadow_compile(entry_declaration_labeled))
+}
+
+// AND THE POSITIONAL FORM IS ADMITTED, which is the precondition for the dispatch half to be
+// measurable at all: the sibling witness asserts that this exact program evaluates to the LOCAL's
+// answer, and an assertion about a program the compiler refuses would be no verdict.
+test fn the_positional_form_of_the_shadowed_call_compiles_clean() -> Bool {
+  compiles_clean(shadow_compile(entry_local_positional))
+}
