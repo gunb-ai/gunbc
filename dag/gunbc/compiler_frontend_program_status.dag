@@ -1,6 +1,8 @@
 module gunbc.compiler_frontend_program_status
 
 import std.types { NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.witness_admission {
   WitnessConsumerCadence,
   witness_cadence_has_scheduled_route,
@@ -281,11 +283,23 @@ fn join_names(names: List<String>) -> String {
 // it is a question they can RUN rather than a paragraph someone maintains:
 //
 //   gunbc run --source-root dag --source-root src/v2 \
-//     --entry dag/gunbc/compiler_frontend_program_status.dag --function report
+//     --entry dag/gunbc/compiler_frontend_program_status.dag --function where_are_we \
+//     --arg out=/tmp/program-standing.txt
 //
 // Every line is recomputed from the populations above on every invocation. Nothing in it is stored,
 // so there is no spelling in which this report can be stale with respect to the tree that produced
-// it.
+// it -- which is the whole difference between this and the status ledger it replaces.
+//
+// THE REPORT IS WRITTEN RATHER THAN RETURNED, for the reason `tools.emit_subject_clean_ratchet`
+// already records at its own surface: `gunbc run` maps a returned value to an exit STATUS and has
+// no value-printing verb, so a String-returning entry is refused by the host rather than printed.
+//
+// AND THE EXIT STATUS ANSWERS ONE QUESTION THAT IS NOT THE ONE A READER EXPECTS: could the standing
+// be derived and written. A report full of OUTSTANDING and NotDerivable exits SUCCESS, because
+// those ARE the answer and they belong in the artifact a human reads. What exits FAILURE is being
+// unable to produce the report at all. Collapsing those would make the CI-visible channel say
+// "the program is not done", which is a fact nobody needs a gate for, while hiding the one thing a
+// gate can usefully catch -- that the instrument itself stopped working.
 // ---------------------------------------------------------------------------------------------
 data program_milestones: List<ProgramMilestone> = [
   SelfHostWholeCorpusPopulationDerived,
@@ -331,4 +345,16 @@ fn report() -> String {
       concat(acc, concat(milestone_report_line(m: m), "\n"))
     })
   )
+}
+
+fn where_are_we(out: String) -> ProcessExit {
+  if out == "" {
+    exit_failure(reason: "where_are_we: --arg out=<path> is required — the standing is written, not printed")
+  } else {
+    if Filesystem.Write(path: out, content: report()).success {
+      ExitSuccess
+    } else {
+      exit_failure(reason: concat("where_are_we: the standing was derived and could not be written to ", out))
+    }
+  }
 }
