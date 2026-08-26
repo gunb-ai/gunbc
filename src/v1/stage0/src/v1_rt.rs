@@ -279,10 +279,13 @@ pub fn concat<T: V2Concat>(a: T, b: T) -> T {
 /// offset equal the code-point offset, so nothing past `pos` is examined and the
 /// per-call whole-string `s.is_ascii()` rescan is gone (STRING-INDEX-0). Cost is
 /// O(min(pos, n)) -- the fallback's own cost -- never O(n) unconditionally.
-/// RESIDUAL: a left-to-right walk of the whole string is still O(n^2). Making a
-/// single call O(1) needs the ASCII fact carried on the string value itself, and
-/// no such carrier exists in this seed -- that carrier, or a cursor surface that
-/// does not re-index from zero, is this class's next rung.
+/// This is the entry point for a caller holding a bare `&str` and therefore no ASCII
+/// fact: it must test, and O(min(pos, n)) is the cheapest honest test. A caller that
+/// holds an `RcStr` carries the fact instead and calls `RcStr::char_at`, which is
+/// O(1) on ASCII text; the interpreter routes every string index that way.
+/// RESIDUAL: a left-to-right walk through THIS function is still O(n^2), and a walk
+/// through the carrier is linear rather than constant per string -- a cursor surface
+/// that does not re-index from zero is that residual's next rung.
 pub fn char_at(s: &str, pos: i64) -> String {
     let pos = pos.max(0) as usize;
     let bytes = s.as_bytes();
@@ -367,6 +370,160 @@ pub fn utf8_decode_bytes(bytes: &[u8]) -> Result<String, String> {
 
 pub fn clamp(val: i64, min_val: i64, max_val: i64) -> i64 {
     val.clamp(min_val, max_val)
+}
+
+/// The string carrier for interpreted values: an `Rc<str>` plus the ASCII fact,
+/// computed ONCE at construction (`RcStr::new`) instead of rescanned on every
+/// index. `char_at`/`substring`/`string_length` above are the no-carrier entry
+/// points for emitted code holding a bare `&str`; they bound their ASCII test by
+/// the requested position, which is O(min(pos, n)) and makes a left-to-right walk
+/// O(n^2). The methods here read the carried flag instead, so a single call is
+/// O(1) on ASCII text and the walk is linear (STRING-INDEX-0).
+///
+/// The flag has exactly one producer -- `RcStr::new` -- so it is the carrier's own
+/// fact rather than a parameter a caller could supply wrongly. Semantics are the
+/// free functions' semantics: each method falls back to the function it shadows
+/// whenever the flag is false, and takes the byte path only under the same
+/// condition that path is already taken there (byte index == code-point index).
+#[derive(Debug, Clone)]
+pub struct RcStr {
+    rc: Rc<str>,
+    is_ascii: bool,
+}
+
+impl RcStr {
+    pub fn new(rc: Rc<str>) -> Self {
+        let is_ascii = rc.is_ascii();
+        RcStr { rc, is_ascii }
+    }
+
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        &self.rc
+    }
+
+    #[inline]
+    pub fn is_ascii(&self) -> bool {
+        self.is_ascii
+    }
+
+    /// Owned handle on the underlying allocation, for sites that need a bare `Rc<str>`.
+    pub fn rc(&self) -> Rc<str> {
+        Rc::clone(&self.rc)
+    }
+
+    /// Pointer identity of the underlying allocation, for consumers whose subject is
+    /// sharing rather than content.
+    pub fn ptr_eq(a: &RcStr, b: &RcStr) -> bool {
+        Rc::ptr_eq(&a.rc, &b.rc)
+    }
+
+    pub fn char_at(&self, pos: i64) -> String {
+        if !self.is_ascii {
+            return char_at(&self.rc, pos);
+        }
+        let pos = pos.max(0) as usize;
+        let bytes = self.rc.as_bytes();
+        if pos >= bytes.len() {
+            return String::new();
+        }
+        String::from(bytes[pos] as char)
+    }
+
+    pub fn string_length(&self) -> i64 {
+        if self.is_ascii {
+            self.rc.len() as i64
+        } else {
+            self.rc.chars().count() as i64
+        }
+    }
+
+    pub fn substring(&self, start: i64, end: i64) -> String {
+        if !self.is_ascii {
+            return substring(&self.rc, start, end);
+        }
+        let start = start.max(0) as usize;
+        let end = end.max(0) as usize;
+        if end <= start {
+            return String::new();
+        }
+        let bytes = self.rc.as_bytes();
+        if start >= bytes.len() {
+            return String::new();
+        }
+        let out_end = end.min(bytes.len());
+        record_substring_chars_walked(&self.rc, start, out_end.saturating_sub(start));
+        self.rc[start..out_end].to_string()
+    }
+}
+
+impl std::ops::Deref for RcStr {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.rc
+    }
+}
+
+impl AsRef<str> for RcStr {
+    fn as_ref(&self) -> &str {
+        &self.rc
+    }
+}
+
+impl std::borrow::Borrow<str> for RcStr {
+    fn borrow(&self) -> &str {
+        &self.rc
+    }
+}
+
+impl std::fmt::Display for RcStr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&*self.rc, f)
+    }
+}
+
+impl PartialEq for RcStr {
+    fn eq(&self, other: &Self) -> bool {
+        self.rc == other.rc
+    }
+}
+
+impl Eq for RcStr {}
+
+impl PartialOrd for RcStr {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for RcStr {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.rc.as_ref().cmp(other.rc.as_ref())
+    }
+}
+
+impl std::hash::Hash for RcStr {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.rc.as_ref().hash(state)
+    }
+}
+
+impl From<Rc<str>> for RcStr {
+    fn from(rc: Rc<str>) -> Self {
+        RcStr::new(rc)
+    }
+}
+
+impl From<&str> for RcStr {
+    fn from(s: &str) -> Self {
+        RcStr::new(Rc::from(s))
+    }
+}
+
+impl From<String> for RcStr {
+    fn from(s: String) -> Self {
+        RcStr::new(Rc::from(s.as_str()))
+    }
 }
 
 pub fn lookup<K: std::cmp::Eq + std::hash::Hash, V: Clone>(m: &HashMap<K, V>, key: K) -> Option<V> {
