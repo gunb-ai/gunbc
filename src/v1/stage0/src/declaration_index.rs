@@ -749,16 +749,27 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// tidier corner of this one: debt shrinks to empty, controls never retire, and the two arms
 /// read the same trigger in opposite directions. See that constant.
 
-/// WHY THE LENS IS NOT DELETED IN THIS CHANGE, stated plainly rather than left as an
-/// omission. `v2.lens.cited_symbol_resolution` is invoked by nothing: the operator removed
-/// its CI job on 2026-08-23 and this change removes `--required-cited-symbol`, its last
-/// caller. So it is dead code, not a competing authority — §3's attractor argument is about
-/// a live X answering the same question, and after this change nothing asks it anything.
-/// Its deletion cascades through sixteen witnesses, the lens registry, the deferral freeze
-/// and the doc-graph population, which is a second cut with its own review surface, and
-/// bundling it here would put the wall and its predecessor's funeral in one unreviewable
-/// diff. That is the staged form §3's replacement doctrine admits, and these four rows are
-/// its declared residue: they delete with the lens, not before it.
+/// THE LENS IS DELETED AS OF 2026-08-26, AND THE HAND-OFF THIS COMMENT LEFT WAS HALF RIGHT.
+/// It read "its deletion cascades through sixteen witnesses ... they delete with the lens,
+/// not before it", and the staged form it invoked was correct — the wall and its
+/// predecessor's funeral did belong in separate diffs. What it got wrong is the population.
+///
+/// SIXTEEN WAS THE COUNT AT #7707, when the lens landed. The file grew twice after that
+/// (#8673 enrolled roster_registry, #8775 the two instance-gap carriers) and carried 27
+/// `test fn` identities by the time this comment was written beside it.
+///
+/// AND "DEAD" WAS TRUE OF THE LENS AND FALSE OF ITS WITNESSES. Measured against the seven
+/// symbols the witness file imported FROM the lens, only 6 of the 27 touch one. Six more
+/// call `resolve_declaration_ref` directly — which lives in `v2.std.decl_ref_resolution`,
+/// a module that SURVIVES with four other consumers — so they are the only executing
+/// evidence for a live authority's five-arm refusal, and §4b(4) keeps them enrolled rather
+/// than deleting them with the machinery that climbed. They moved to
+/// `test.claim.long.decl_ref_resolution_witness_test`. The remaining 15 are population and
+/// projection claims about the carriers that PROJECT `DeclarationRef`s, and they moved to
+/// `test.claim.long.carrier_reference_integrity_witness_test`.
+///
+/// So the disposition is three-way and this comment admitted only two arms: the lens dies,
+/// six witnesses die with it, twelve rehome onto subjects that outlive it.
 /// Citations INSIDE fixture and witness carriers that do not resolve, enumerated at identity
 /// grain because carrier identity is not a licence.
 ///
@@ -1075,20 +1086,29 @@ pub fn citation_debt_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// how the claim was caught. A false statement inside the carrier built to stop false
 /// statements is the specimen this whole change exists to make impossible, and it is recorded
 /// here rather than quietly corrected.
-const PLANTED_CONTROL_CITATIONS: &[(&str, &str, &str)] = &[
-    ("synthetic.g1_planted_module_absent_control_RED", "any", ""),
-    (
-        "v2.std.node",
-        "G1_planted_declaration_absent_control_RED",
-        "",
-    ),
-    ("v2.std.node", "G1_planted_ambiguous_control_RED", ""),
-    (
-        "v2.std.node",
-        "NodeKind",
-        "G1_planted_field_absent_control_RED",
-    ),
-];
+/// EMPTY AS OF 2026-08-26, AND EMPTY IS NOT DEAD. All four rows named citations authored
+/// inside `v2.lens.cited_symbol_resolution`; deleting that lens deleted the citations, and
+/// this roster's own inverse arm reported all four as `PlantedControlNoLongerRefuses` on the
+/// first corpus run after the cut — the mechanism working, not a regression.
+///
+/// THE ROSTER STAYS AND THE ARM STAYS. DESIGN's reachability-read-as-occupancy row asks three
+/// questions and only the first two decide whether a guard should exist: the mechanism can
+/// still produce this state (any future control row), and it can still classify an element of
+/// this operation's denominator (every authored citation). Current occupancy is zero. Yes /
+/// yes / zero is a healthy guard being quiet, and deleting the arm because nothing lands in
+/// it today would remove a live wall while looking principled.
+///
+/// WHAT REPLACED THE COVERAGE, because the four rows were real evidence and it is not enough
+/// to say they were the lens's. Each named one refusal arm of the cited-symbol wall. Three of
+/// those arms already had controlled fixtures in `tests/declaration_index_integrity.rs`
+/// (`import_member_absent_is_refused_and_located`, `stale_citation_is_refused`,
+/// `citation_to_a_deleted_module_is_refused_and_a_foreign_namespace_is_not`). The FOURTH,
+/// `CitedFieldAbsent`, had none — measured, the string did not occur in that file — so
+/// `citation_to_an_absent_field_is_refused_and_a_present_field_is_not` was authored in the
+/// same change that empties this roster. A controlled fixture that authors both input and
+/// expected population is the stronger oracle anyway (§5); a planted row over the live corpus
+/// only ever asserted that one hand-authored citation still refuses.
+const PLANTED_CONTROL_CITATIONS: &[(&str, &str, &str)] = &[];
 
 /// A control that has STOPPED refusing has lost its discriminating power, and that is a red in
 /// its own right — the inverse of a spent debt row, and the reason these are a separate roster.
