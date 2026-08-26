@@ -219,6 +219,22 @@ fn membership_invariant_rows(key: EmitSubjectKey, membership: SubjectMembership)
 // against it. Taking the roster from that environment would make the subject list a function of
 // what resolved, so a module that stopped resolving would leave the roster silently. The inventory
 // is the file-level fact and it does not move when resolution does.
+//
+// AND THE DUAL DENOMINATOR (gunbc#9231) CANNOT DISAGREE WITH ITSELF AT THIS GRAIN, which is worth
+// stating because the question is a good one and the answer is structural rather than lucky. That
+// change makes a `.dag` file the declaration index cannot CLASSIFY block instead of vanishing, so
+// the natural follow-up is whether a subject KEY is stable under such a file. It is, and for a
+// reason that admits no exception: the key's root is a SOURCE ROOT, not a file. No file's
+// classification adds a key, removes one, or changes one, because no file is named by any key --
+// the matrix is roots times kinds and both factors are closed and authored.
+//
+// SO NO WITNESS IS AUTHORED FOR IT, DELIBERATELY. DESIGN §4b says to ask whether a check's RED is
+// authorable BEFORE writing the check: here there is no input by which a classification outcome
+// could reach a key, so the claim would be permanently green by construction -- a decoration, and
+// worse than absent because it would be cited as coverage for an interaction it never tested. The
+// denominators DO matter one layer out, where the frontier's roster is keyed by ENTRY PATH and a
+// file is exactly what can vanish from it; that is `gunbc.emit_subject_clean_frontier`'s hole 2 and
+// it is closed there, in the carrier that can actually express the failure.
 data emit_subject_kinds: List<EmitSubjectKind> = [ModuleClosure, DeclarationSurface, ProductClosure]
 
 type EmitSubjectMatrix
