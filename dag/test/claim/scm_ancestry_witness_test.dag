@@ -23,6 +23,7 @@ import gunbc.scm.ancestry {
   AncestryWalk,
   AncestryTraced,
   AncestryBrokenAt,
+  AncestryStartNotInHistory,
   AncestryRevisitsACommit,
   ancestry_walk,
   commit_is_ancestor_of,
@@ -105,6 +106,7 @@ test fn a_linear_history_traces_from_the_start_back_to_the_root() -> Bool {
         ancestry_witness_id(name: ^c0),
       ]
     AncestryBrokenAt { commit: _, missing_parent: _ } => false
+    AncestryStartNotInHistory { start: _ } => false
     AncestryRevisitsACommit { detected_from: _ } => false
   }
 }
@@ -128,6 +130,7 @@ test fn a_parent_outside_the_history_is_broken_not_traced() -> Bool {
       object_id_eq(left: c, right: ancestry_witness_id(name: ^c1))
         && object_id_eq(left: p, right: ancestry_witness_id(name: ^c0))
     AncestryTraced { chain: _ } => false
+    AncestryStartNotInHistory { start: _ } => false
     AncestryRevisitsACommit { detected_from: _ } => false
   }
 }
@@ -155,6 +158,7 @@ test fn a_cyclic_parent_chain_is_refused_rather_than_traced() -> Bool {
     AncestryRevisitsACommit { detected_from: d } =>
       object_id_eq(left: d, right: ancestry_witness_id(name: ^c0))
     AncestryTraced { chain: _ } => false
+    AncestryStartNotInHistory { start: _ } => false
     AncestryBrokenAt { commit: _, missing_parent: _ } => false
   }
 }
@@ -201,4 +205,33 @@ test fn ancestry_has_a_direction_and_a_descendant_is_not_an_ancestor() -> Bool {
     history: ancestry_witness_linear_history(),
     lookup: fn(id) { ancestry_witness_lookup_in(entries: ancestry_witness_linear(), wanted: id) },
   )
+}
+
+// AN UNKNOWN START IS THE CALLER'S FACT, NOT A TRUNCATED HISTORY, and this is the claim review 56102
+// asked for. Before the split, this answered AncestryBrokenAt with `missing_parent` set to the START
+// -- a parent the input never supplied and that nothing in the history names. So the walk fabricated
+// an identity, and a consumer acting on "commit X's parent Y is missing" would have gone looking for
+// an object that was never claimed to exist.
+//
+// It asserts the START IDENTITY, not merely that some non-traced arm came back: an implementation
+// that answered this arm for every input would satisfy a bare not-traced claim, and the two witnesses
+// above -- a real trace and a real truncation -- are what stop that reading.
+test fn a_start_outside_the_history_is_the_callers_fact_not_a_broken_chain() -> Bool {
+  let entries = [
+    AncestryWitnessEntry {
+      commit: ancestry_witness_id(name: ^c1),
+      ancestry: RootCommit,
+    },
+  ]
+  match ancestry_walk(
+    start: ancestry_witness_id(name: ^c9),
+    history: [ancestry_witness_id(name: ^c1)],
+    lookup: fn(id) { ancestry_witness_lookup_in(entries: entries, wanted: id) },
+  ) {
+    AncestryStartNotInHistory { start: s } =>
+      object_id_eq(left: s, right: ancestry_witness_id(name: ^c9))
+    AncestryTraced { chain: _ } => false
+    AncestryBrokenAt { commit: _, missing_parent: _ } => false
+    AncestryRevisitsACommit { detected_from: _ } => false
+  }
 }

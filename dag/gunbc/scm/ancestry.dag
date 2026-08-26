@@ -101,6 +101,17 @@ type AncestryStep {
 // the other is a truncated one, and a walk that answered "done" for both would report a broken chain
 // as a finished one.
 //
+// AncestryStartNotInHistory is the caller's fact, not the history's, and separating it is the whole
+// reason this arm exists. "The commit you asked me to walk from is not in this history" and "commit
+// c's parent p is missing" have OPPOSITE OWNERS -- the first is a bad argument, the second is a
+// truncated history -- and opposite remedies. Collapsing them additionally forced the walk to invent
+// a `missing_parent`, since an unknown start supplies no parent to name: the fabricated-plausible-
+// output failure at the boundary this module exists to be trustworthy over.
+//
+// IT IS REACHABLE ONLY FROM THE START, BY CONSTRUCTION rather than by convention. The step advances
+// the cursor only after `lookup(parent)` has already answered AncestryKnown, so every cursor after
+// the first is a commit this history holds. The unverified cursor is the starting one and no other.
+//
 // AncestryRevisitsACommit is a REFUSAL, not a truncation. A parent chain that returns to a commit it
 // already visited is a cycle, and DESIGN's substrate is bounded and forward -- cyclic relations are
 // encoded acyclically, never traversed as cyclic values. Detected by exhausting the population: a
@@ -110,6 +121,7 @@ type AncestryStep {
 type AncestryWalk
   = AncestryTraced { chain: List<ObjectId> }
   | AncestryBrokenAt { commit: ObjectId, missing_parent: ObjectId }
+  | AncestryStartNotInHistory { start: ObjectId }
   | AncestryRevisitsACommit { detected_from: ObjectId }
 
 type AncestryWalkAcc {
@@ -144,7 +156,7 @@ fn ancestry_walk_step(
           chain: acc.chain,
           cursor: acc.cursor,
           done: true,
-          outcome: AncestryBrokenAt { commit: acc.cursor, missing_parent: acc.cursor },
+          outcome: AncestryStartNotInHistory { start: acc.cursor },
         }
       AncestryKnown { ancestry: ancestry } =>
         match ancestry {
@@ -221,6 +233,7 @@ fn commit_is_ancestor_of(
         if seen { true } else { object_id_eq(left: c, right: candidate) }
       })
     AncestryBrokenAt { commit: _, missing_parent: _ } => false
+    AncestryStartNotInHistory { start: _ } => false
     AncestryRevisitsACommit { detected_from: _ } => false
   }
 }
