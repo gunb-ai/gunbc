@@ -65,9 +65,27 @@ import gunbc.fleet_intent_network {
 // "P8 PWM PST" and "P8 PWM PST CO" are different products and the CO variant is not implied by
 // the base name. A catalog row for the package would put a quantity-5 fact where a per-header
 // part belongs.
+// AND NEITHER LIVE BINDING WAS ACTUALLY OPERATOR-DECLARED, which is why this arm exists rather
+// than the two-arm split a review round proposed and I first shipped. The operator named the
+// COOLERS - a Noctua NH-D9 AMP-4926 4U and a Dynatron W1 - not the fan part numbers. NF-A9
+// HS-PWM and DF126025BU-PWMH came from those assemblies' own specifications. So marking the
+// headers OperatorDeclared asserted a sentence nobody said, in the same carrier that exists to
+// keep such assertions honest; the evidence is a DERIVATION from a declared assembly, and its
+// failure mode is different again - the assembly is right and the bundled part changed, or the
+// spec names a variant.
+//
+// The assembly split is not decoration either: the Dynatron cooler has a cited catalog row and
+// the Noctua one does not, so AssemblyNamedNotCatalogued makes that gap a state something can
+// read instead of a silence. Minting a Noctua row here would have meant guessing a socket, a
+// design power and a rack height to satisfy a shape.
+type DeclaredAssembly
+  = AssemblyCatalogued { catalog: DeclarationRef }
+  | AssemblyNamedNotCatalogued { model_label: NonEmptyStr }
+
 type FanModelEvidence
   = LabelObserved
-  | OperatorDeclared
+  | OperatorDeclaredPart
+  | DerivedFromDeclaredAssembly { assembly: DeclaredAssembly }
 
 type InstalledFanModelStanding
   = FanModelExact { catalog: DeclarationRef, evidence: FanModelEvidence }
@@ -95,6 +113,54 @@ type FanHeaderWiring {
   driven_fan_count: Int
   model: InstalledFanModelStanding
   tach_source: FanTachSourceStanding
+}
+
+// THE EVIDENCE ARM DECIDES SOMETHING, or it is vocabulary. A physical-inventory claim - what is
+// actually bolted into this machine - is admitted ONLY by a label somebody read. A derivation
+// from a declared assembly is enough to pick a curve or order a spare and is NOT enough to say
+// the machine was inspected, which is exactly the claim an inventory answers. Without this
+// consumer the split would be good naming that nothing enforces; with it, weakening a binding's
+// evidence changes an outcome.
+type PhysicalInventoryRefusalCause
+  = PhysicalLabelNotObserved { evidence: FanModelEvidence }
+  | PhysicalModelUnobserved
+
+type PhysicalInventoryConfirmation
+  = PhysicalInventoryConfirmed { catalog: DeclarationRef }
+  | PhysicalInventoryRefused { cause: PhysicalInventoryRefusalCause }
+
+fn physical_inventory_confirmation(
+  standing: InstalledFanModelStanding,
+) -> PhysicalInventoryConfirmation {
+  match standing {
+    FanModelUnobserved =>
+      PhysicalInventoryRefused { cause: PhysicalModelUnobserved }
+    FanModelExact { catalog, evidence } =>
+      match evidence {
+        LabelObserved => PhysicalInventoryConfirmed { catalog: catalog }
+        OperatorDeclaredPart =>
+          PhysicalInventoryRefused {
+            cause: PhysicalLabelNotObserved { evidence: OperatorDeclaredPart },
+          }
+        DerivedFromDeclaredAssembly { assembly } =>
+          PhysicalInventoryRefused {
+            cause: PhysicalLabelNotObserved {
+              evidence: DerivedFromDeclaredAssembly { assembly: assembly },
+            },
+          }
+      }
+  }
+}
+
+// THE WEAKER CONSUMER STAYS ADMITTED, and it is the half that makes the refusal above a boundary
+// rather than a blanket. Selecting a curve or a spare needs the PART, not the inspection, so
+// every bound model answers here regardless of how it came to be known. If both consumers moved
+// together the evidence axis would be deciding nothing.
+fn catalog_selection_admits(standing: InstalledFanModelStanding) -> Bool {
+  match standing {
+    FanModelUnobserved => false
+    FanModelExact { catalog, evidence } => true
+  }
 }
 
 type HostFanWiring {
@@ -212,6 +278,20 @@ fn fan_wiring_coverage(
   }
 }
 
+data dynatron_w1_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.cooling.dynatron",
+  decl_name: "dynatron_w1_catalog",
+  field: WholeDeclaration,
+}
+
+data dynatron_cooler_derivation: FanModelEvidence = DerivedFromDeclaredAssembly {
+  assembly: AssemblyCatalogued { catalog: dynatron_w1_ref },
+}
+
+data noctua_cooler_derivation: FanModelEvidence = DerivedFromDeclaredAssembly {
+  assembly: AssemblyNamedNotCatalogued { model_label: "Noctua NH-D9 AMP-4926 4U" },
+}
+
 data noctua_nf_a9_hs_pwm_ref: DeclarationRef = DeclarationRef {
   module_path: "extdeps.fans.noctua",
   decl_name: "noctua_nf_a9_hs_pwm_catalog",
@@ -246,7 +326,7 @@ data srv1_fan_wiring: HostFanWiring = HostFanWiring {
     FanHeaderWiring {
       header: "FAN1",
       driven_fan_count: 2,
-      model: FanModelExact { catalog: noctua_nf_a9_hs_pwm_ref, evidence: OperatorDeclared },
+      model: FanModelExact { catalog: noctua_nf_a9_hs_pwm_ref, evidence: noctua_cooler_derivation },
       tach_source: TachCarriedByDrivenFan,
     },
     chassis_bay_wiring(header: "FAN2"),
@@ -262,7 +342,7 @@ data srv2_fan_wiring: HostFanWiring = HostFanWiring {
     FanHeaderWiring {
       header: "FAN1",
       driven_fan_count: 2,
-      model: FanModelExact { catalog: noctua_nf_a9_hs_pwm_ref, evidence: OperatorDeclared },
+      model: FanModelExact { catalog: noctua_nf_a9_hs_pwm_ref, evidence: noctua_cooler_derivation },
       tach_source: TachCarriedByDrivenFan,
     },
     chassis_bay_wiring(header: "FAN2"),
@@ -282,7 +362,7 @@ data srv3_fan_wiring: HostFanWiring = HostFanWiring {
     FanHeaderWiring {
       header: "FAN1",
       driven_fan_count: 1,
-      model: FanModelExact { catalog: dynatron_df126025bu_pwmh_ref, evidence: OperatorDeclared },
+      model: FanModelExact { catalog: dynatron_df126025bu_pwmh_ref, evidence: dynatron_cooler_derivation },
       tach_source: TachCarriedByDrivenFan,
     },
     chassis_bay_wiring(header: "FAN3"),
@@ -297,7 +377,7 @@ data srv4_fan_wiring: HostFanWiring = HostFanWiring {
     FanHeaderWiring {
       header: "FAN1",
       driven_fan_count: 1,
-      model: FanModelExact { catalog: dynatron_df126025bu_pwmh_ref, evidence: OperatorDeclared },
+      model: FanModelExact { catalog: dynatron_df126025bu_pwmh_ref, evidence: dynatron_cooler_derivation },
       tach_source: TachCarriedByDrivenFan,
     },
     chassis_bay_wiring(header: "FAN2"),

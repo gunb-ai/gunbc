@@ -10,7 +10,23 @@ import gunbc.fleet_fan_tach_expectation {
 import gunbc.fleet_fan_wiring {
   FanHeaderIdentity,
   FanHeaderWiring,
+  AssemblyCatalogued,
+  AssemblyNamedNotCatalogued,
+  DerivedFromDeclaredAssembly,
+  FanModelEvidence,
+  FanModelExact,
   FanModelUnobserved,
+  InstalledFanModelStanding,
+  LabelObserved,
+  OperatorDeclaredPart,
+  PhysicalInventoryConfirmed,
+  PhysicalInventoryRefused,
+  PhysicalLabelNotObserved,
+  PhysicalModelUnobserved,
+  catalog_selection_admits,
+  dynatron_df126025bu_pwmh_ref,
+  noctua_cooler_derivation,
+  physical_inventory_confirmation,
   HostFanWiring,
   TachNotCarried,
   TachSourceUnobserved,
@@ -171,13 +187,84 @@ fn unobserved_tach_is_not_an_expected_readback() -> Bool {
   control.length() == 4 && tach.length() == 3
 }
 
+// THE EVIDENCE AXIS DECIDES AN OUTCOME, and the pair is what makes that a claim rather than a
+// hope. One binding, one catalog row, one field changed: LabelObserved confirms the physical
+// inventory, and every weaker evidence arm refuses it. If the axis were decorative both calls
+// would agree, so this conjunct goes red the moment physical_inventory_confirmation stops
+// reading the field.
+fn label_evidence_gates_physical_inventory() -> Bool {
+  let observed: InstalledFanModelStanding = FanModelExact {
+    catalog: dynatron_df126025bu_pwmh_ref,
+    evidence: LabelObserved,
+  }
+  let derived: InstalledFanModelStanding = FanModelExact {
+    catalog: dynatron_df126025bu_pwmh_ref,
+    evidence: noctua_cooler_derivation,
+  }
+  let declared: InstalledFanModelStanding = FanModelExact {
+    catalog: dynatron_df126025bu_pwmh_ref,
+    evidence: OperatorDeclaredPart,
+  }
+  let confirmed = match physical_inventory_confirmation(standing: observed) {
+    PhysicalInventoryConfirmed { catalog } => true
+    PhysicalInventoryRefused { cause } => false
+  }
+  let derived_refuses = match physical_inventory_confirmation(standing: derived) {
+    PhysicalInventoryRefused { cause } =>
+      match cause {
+        PhysicalLabelNotObserved { evidence } => true
+        PhysicalModelUnobserved => false
+      }
+    PhysicalInventoryConfirmed { catalog } => false
+  }
+  let declared_refuses = match physical_inventory_confirmation(standing: declared) {
+    PhysicalInventoryRefused { cause } =>
+      match cause {
+        PhysicalLabelNotObserved { evidence } => true
+        PhysicalModelUnobserved => false
+      }
+    PhysicalInventoryConfirmed { catalog } => false
+  }
+  let unobserved_refuses = match physical_inventory_confirmation(standing: FanModelUnobserved) {
+    PhysicalInventoryRefused { cause } =>
+      match cause {
+        PhysicalModelUnobserved => true
+        PhysicalLabelNotObserved { evidence } => false
+      }
+    PhysicalInventoryConfirmed { catalog } => false
+  }
+  confirmed && derived_refuses && declared_refuses && unobserved_refuses
+}
+
+// THE TWO CONSUMERS MOVE INDEPENDENTLY. Weakening evidence must change the inventory answer and
+// NOT the catalog-selection answer -- a curve or a spare needs the part, not the inspection.
+// Without this half the previous conjunct is satisfied by a mechanism that refuses everything
+// weaker across the board, which would be a blanket rather than a boundary.
+fn weaker_evidence_still_selects_a_catalog() -> Bool {
+  catalog_selection_admits(
+    standing: FanModelExact {
+      catalog: dynatron_df126025bu_pwmh_ref,
+      evidence: noctua_cooler_derivation,
+    },
+  )
+    && catalog_selection_admits(
+      standing: FanModelExact {
+        catalog: dynatron_df126025bu_pwmh_ref,
+        evidence: LabelObserved,
+      },
+    )
+    && !catalog_selection_admits(standing: FanModelUnobserved)
+}
+
 fn fan_wiring_witness() -> ProcessExit {
   if srv3_srv4_differ_by_identity_not_count()
     && unobserved_tach_is_not_an_expected_readback()
     && splitter_actuated_but_unobserved()
     && unknown_model_still_derives_control()
     && coverage_refuses_both_directions()
-    && all_hosts_cover() {
+    && all_hosts_cover()
+    && label_evidence_gates_physical_inventory()
+    && weaker_evidence_still_selects_a_catalog() {
     ExitSuccess
   } else {
     exit_failure(reason: "fan wiring witness: endpoint derivation, splitter actuation/observation split, or population-wiring coverage changed")
