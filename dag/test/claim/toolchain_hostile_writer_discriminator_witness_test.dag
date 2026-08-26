@@ -13,7 +13,7 @@ test fn w_shared_arm_requires_observed_interference() -> Bool {
     pattern: "if [ \"$SHARED_STATUS\" -ne 1 ]; then"
   ) && string_contains(
     s: ci_hostile_legacy_writer_discriminator_script(),
-    pattern: "shared-arm control unexpectedly passed"
+    pattern: "hostile writer shared-arm expected reader interference"
   )
 }
 
