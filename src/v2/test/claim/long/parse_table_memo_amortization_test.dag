@@ -16,7 +16,7 @@ import v2.std.diagnostic {
   Unavailable,
   diagnostics_singleton,
   outcome_accepted,
-  port_locus
+  invariant_port_locus
 }
 import v2.std.logic { Bool }
 import v2.std.cross_tree.import_model { V2Tree }
@@ -81,7 +81,7 @@ fn memo_amort_not_single_root_rejection<T>() -> Outcome<T> {
     diagnostics: diagnostics_singleton(
       d: Diagnostic {
         reason: ^memo_amort_expected_exactly_one_module_root,
-        at: port_locus(port: ^memo_amort_single_root_locus_port),
+        at: invariant_port_locus(port: ^memo_amort_single_root_locus_port, invariant: ^memo_amort_expected_exactly_one_module_root),
         correction: Unavailable { reason: CorrectionNotModeled }
       }
     )
