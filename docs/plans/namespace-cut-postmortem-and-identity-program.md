@@ -919,11 +919,29 @@ class that killed gen 3.
 **Phase C+ — the derived import-free projection.**
 T7, and it replaces "re-derive the cut mechanically" as the vehicle. Do **not**
 commit a mass qualification. Generate an overlay under `target/` from the binding
-ledger: parse current source, drop import declarations in the derived
-representation, rewrite only reference occurrences whose exact declaration is
-non-local, use the declaration's canonical path, and touch no binder,
-declaration, shadowed use, annotation or string literal. Emit a receipt mapping
-each changed occurrence to its old and new binding.
+ledger — and **as a GRAPH TRANSFORM, never a text rewrite (§11.2ac, which supersedes
+the instruction that stood here)**: transform the occurrence-bearing graph, drop
+import declarations in the derived representation, rewrite only reference
+occurrences whose exact declaration is non-local, use the declaration's canonical
+path, touch no binder, declaration, shadowed use, annotation or string literal, and
+**emit the projected text FROM the transformed graph**. The receipt mapping each
+changed occurrence to its old and new binding is then **minted by the transform** —
+a fact it had in hand — rather than recovered afterwards.
+
+> **This paragraph read "parse current source … rewrite only reference occurrences"
+> until 2026-08-26 (`review 56276`), which is precisely the text-level construction
+> §11.2ac rejects.** A text rewrite destroys provenance **at the text boundary**:
+> once two independently-parsed trees are all you hold, every remaining bridge —
+> span, authored name, spelling, structural equality, content hash, traversal
+> ordinal — is on `std.occurrence_identity`'s forbidden list, so the receipt this
+> phase promises **would have had no admissible construction.** The ruling was filed
+> and the operative instruction was not updated, leaving two incompatible executable
+> designs in one authority — **the third instance of that exact failure in this
+> document in one day** (§11.2p's grain note undone by its own prose, §11.2x's
+> heading outliving its retraction, and now this). The recurrence is the argument
+> that filing a ruling is not the same act as retiring what it supersedes, and that
+> **the operative instruction is what a worker executes — so it is the thing that
+> must be searched, not the section that announced the change.**
 
 This is a **lens over one authority, not a second authority** — main's source stays
 imported, the projection is mechanically derived and authors no semantic fact of
