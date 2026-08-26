@@ -4721,3 +4721,88 @@ spelling. That makes *a rebuild that lost the stamp* **unwritable** rather than 
 repair before it exists. It is the same argument the CI section records for the formatter fixed
 point: **if the cheap arm and the correct arm spell the same, the cheap arm wins by default,
 forever.**
+
+### 11.2z MEASURED — a non-positional join **exists and is exact**: `(module_path, authored_name)` collides **0 times** over 36,184 module-scope declarations, and X already holds both halves
+
+Measured by cool-swift-307 (2026-08-26) in answer to the bounded question §11.2x's retraction left:
+*can the parse-time sidecar be joined to X's answers without span-matching?* — asked because it
+decides whether the identity needs **relating** or **creating**, which are very different sizes. It
+needs relating, and the relating is nearly free.
+
+**WHAT THE SIDECAR IS KEYED BY** — the other half of the question, and the reason the answer was not
+obvious:
+
+```
+OccurrenceProjection   { occurrence, authored_name, diagnostic_span }
+DeclarationOccurrence  { occurrence, containment, category, diagnostic_span }
+ReferenceOccurrence    { occurrence, containment, category, diagnostic_span }
+```
+
+Three kinds of handle: a **name**, a **span**, and containment/occurrence ids internal to the sidecar
+with no counterpart on X's side. Span is the positional one §11.2t forbade; containment cannot cross.
+That leaves the name — **and a name alone is not a key, since homonyms are the entire problem X
+exists to solve.** The escape is that the name does not have to be alone.
+
+**THE JOIN, MEASURED CORPUS-WIDE.** Candidate key `(module_path, authored_name)` into the declaring
+module's sidecar, over every `.dag` under `dag/` and `src/v1`:
+
+```
+files 2787 · parsed 2786 · refused 1
+named module-scope declarations   36184
+COLLIDING NAMES                       0
+declarations under a colliding name   0
+```
+
+**Zero — not small, zero, across 2,786 modules.** Within a module, a named module-scope declaration
+name identifies exactly one declaration occurrence, so the key resolves to an exact `OccurrenceId`.
+
+**AND THE FIRST PASS DID NOT SAY ZERO, WHICH IS THE DISCIPLINE WORTH COPYING.** It reported **34
+colliding names over 253 declarations** — reportable as a 0.09% residue, and it would have been
+believed. Every one had `name=""`, **the empty string**. They were not homonyms; they were an
+**empty-name bucket collapsing unrelated declarations** — a state-space conflation inside the
+measurement itself, where "no authored name" and "this name" shared a key. Splitting it yields the
+zero above *plus* a clean bounded exception:
+
+```
+275 module-scope declarations with an EMPTY authored_name, in 56 modules
+ALL of category Callable, all in extdeps.*
+  openbmc_password_ssh_transport 40 · git 35 · shell 32 · git.plumbing 18 · browser 16 · …
+```
+
+Named as a **typed exception rather than rounded away**: 275 of 36,459, one category, one module
+family — a bounded population *with a shape*, which is actionable where a percentage is not. **Why
+those `Callable`s carry no authored name is not established** and was not chased.
+
+**WHY THIS MAKES (a) FAR SMALLER THAN §11.2x's RETRACTION LEFT IT.** The declaration side does not
+need an occurrence carrier on `Node`. **X already holds both halves of the key and discards one on
+return:**
+
+```
+authored_name   TypeBinding carries `name`.  Already returned.
+module_path     global_bare_lookup DECIDES on it — GlobalBareUniqueBinding is
+                { module_path, binding } and the function returns ONLY the binding.
+                The module_path is in hand at the decision and thrown away at the return.
+```
+
+So (a) is **a return-type change on one function plus a keyed lookup into the sidecar X already
+produces** — not a new identity threaded through the node algebra. **And it does not touch
+`Node.ident`**, so the three load-bearing `Absent` arms — including `dag_node_key`'s
+content-addressed key, where absence is the default path for every non-module node — are untouched.
+
+That is the direct payoff of measuring (ii) before designing (i): the design exercise was premised on
+an answer nobody had.
+
+**THREE LIMITS, STATED BEFORE ANYONE SCOPES OFF THIS.**
+
+1. **Declaration-side only.** It yields *"X selected declaration D, and D is exactly this
+   `OccurrenceId`"* and says nothing about **which reference occurrence asked**. **(b) is untouched**
+   and §11.2y's shadowing blocker stands exactly as written.
+2. **The denominator is module-scope declarations** — correct for the global-bare subset, since
+   global-bare candidates are module-scope by construction and that is the off-chain population the
+   projector cares about. It is **not** correct for `lookup_binding_by_name` answers generally, which
+   can be local bindings with no module-scope exposure. **The subset the projector needs was
+   measured, not all of X.**
+3. **This is exactness of the KEY, not a live join.** `module_path` was not threaded out of X and
+   resolved against a transport at runtime. What is measured: the key is unambiguous corpus-wide.
+   What is not: that a live join returns the declaration anyone expects. Small, unexecuted, and
+   **the zero is not permitted to stand in for it.**
