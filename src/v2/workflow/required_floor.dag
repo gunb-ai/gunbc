@@ -211,6 +211,16 @@ fn long_home_prefixes() -> List<String> {
 // added later would need a declared position, not because a witness holds it today. Do not cite
 // this ordering as covered.
 //
+// NEXT-RUNG TRIGGER, NAMED SO THIS READS AS NOBODY-BUILT-IT AND NOT AS CANNOT-COVER (DESIGN
+// section 4b(2)). This order becomes falsifiable again when a decline exists whose subject CAN
+// collide with an existing one — a site that legitimately satisfies two decline reasons at once,
+// so which reason it reports is a decision some input can get wrong. At that point the
+// discriminating witness is authorable and is owed. Until then the gap is that no such subject
+// exists, not that the property is unprovable, and the correct response to the absence is to
+// build the third decline's collision case rather than to re-point a witness at a subject that
+// cannot disagree with itself. A re-pointed discriminator here would be permanently green BY
+// CONSTRUCTION, which is worse than none: it would be cited as coverage.
+//
 // THE LIVE-TREE INPUT IS THE DECLARED `LiveTreeDisposition`, NOT A `Bool`. The host currently
 // hands this decision a `reads_live_tree` boolean it computed one level up; taking the declared
 // coproduct here means a third live-tree state added upstream fails to compile in this match
