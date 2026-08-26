@@ -1720,14 +1720,17 @@ fn v1_declared_arg_positions_need_clone_param(
 // impl needs. A spurious bound is not free -- it tightens the emitted signature and breaks every
 // caller instantiating with a non-Clone argument -- so the two walks stay split on the fact they
 // answer, exactly as the two sub-predicates already are.
+fn v1_callable_argument_and_return_type_exprs(type_expr: Node) -> List<Node> {
+  concat(
+    [resolved_type(n: type_expr)],
+    type_expr.params |> map(p => param_node_type_expr(n: p))
+  )
+}
+
 fn v1_callable_type_expr_component_type_exprs(type_expr: Node) -> List<Node> {
-  if type_expr.connective == Arrow {
-    concat(
-      type_expr.params |> map(p => param_node_type_expr(n: p)),
-      [resolved_type(n: type_expr)]
-    )
-  } else {
-    []
+  match type_expr.connective {
+    Arrow => v1_callable_argument_and_return_type_exprs(type_expr: type_expr)
+    _ => []
   }
 }
 
