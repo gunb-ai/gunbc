@@ -938,6 +938,109 @@ so the absorbed diff was load-bearing and the excluded one was somebody else's, 
 were checkable rather than tasteful. `fleet-converge.yml` remains drifted and unclaimed, which is
 the correct outcome: visible, owned by its author, not laundered through an unrelated PR.
 
+## Where the answer already lived — and why five lanes did not find it
+
+The instances above describe a class: evidence that cannot distinguish its own failure causes.
+Over one night, five lanes reached it independently from five subjects, and four of them began
+designing a carrier for it. **A complete, correct, cited carrier for exactly this already existed
+in `std`.** This section records where, so the sixth lane consumes it instead of re-deriving it.
+
+### It exists, at two grains, in `dag/std/claim_evidence.dag`
+
+```
+type ClaimInformationState { support: Bool, challenge: Bool }
+```
+
+The two independent bits, literally — four states as their product: support only, challenge only,
+both/conflicted, neither/insufficient. `claim_information_state()` derives it by folding evidence
+link directions over a `ClaimAssessment`.
+
+```
+type ClaimRequirementReadiness<F, C, A, FidelityBoundary, Independence>
+  = ClaimRequirementReady        { claim, supporting }
+  | ClaimRequirementChallenged   { claim, challenging }
+  | ClaimRequirementConflicted   { claim, supporting, challenging }
+  | ClaimRequirementMissing      { claim }
+  | ClaimRequirementEvidenceRefused { claim, supporting, challenging, refusals }
+```
+
+The named projection — the four states plus admission-refused as a distinct fifth — generic over
+five type parameters, with a fold. **The worked instantiation is
+`dag/gunbc/source_integration_landing_spine.dag`**, which binds concrete type arguments and folds
+the result; it is the template a new consumer should copy. It was, at the time of writing, the
+*only* consumer outside the declaring module.
+
+The grounding is cited, not invented: `extdeps.assurance.claim_evidence`
+`belnap_four_valued_information_authority`, and `docs/plans/dag-scm-design.md` states the
+requirement in prose — *"preserves two independent bits — support and challenge: support only,
+challenge only, both/conflicted, or neither/insufficient. This is the Belnap–Dunn shape … not
+permission to reuse that logic's final type names before DFS."*
+
+### Why the arity is not a design choice
+
+Every lane that reached this class tried to pick an arity by counting the subjects it had met —
+two, then three, then five. Each count was falsified by the next subject within the hour. The
+arity is not ours to choose: **information states are four-valued because support and challenge
+are two independent bits**, and a count of observed cases is convention standing where necessity
+was available. The count is also unstable by construction, which is why it kept moving.
+
+One consequence worth stating, because no lane derived it from cases: **told-both is real and
+nobody invents it.** A collision where two records are *both legitimate* and the locator cannot
+represent both is not a gap and carries no outstanding obligation — it is contradictory
+information. Lanes reasoning from observed failures reach *absent* easily and *conflicted* never,
+because a conflict does not look like a failure. That cell is the strongest argument for
+realizing a grounded shape rather than enumerating one.
+
+Distinguish it from what is *not* a value: a result that is complete and correct but deliberately
+partial, and a set of identities planned and never reached, are **obligations carried alongside a
+reached verdict**, not truth values of the claim. Two lanes described these in nearly identical
+words — *a property of the population, not of the measurement or of any party* — precisely
+because there was no slot for an obligation and it presented as a missing arm.
+
+### Declared boundary — what this carrier does not reach
+
+A four-valued *standing* carrier answers whether a claim is supported, challenged, both, or
+neither. It says nothing about **which** fault a refusal represents when both alternatives are
+subject faults. A seam whose two refusal paths both return `Bool` with one shared downstream
+diagnostic loses *which arm refused*, one level below this distinction, and this carrier cannot
+see it. That is a refusal vocabulary at the seam, not a standing. **Stated here so the carrier is
+never cited as covering it** — a check credited with coverage it structurally cannot provide is
+the coverage-by-illusion failure occurring at the mechanism built to prevent it.
+
+### Why it was missed, which is the transferable part
+
+Two independent lanes grepped for the concept and concluded it was absent:
+
+```
+Neither | NoInformation | Contradiction | FourValued | Belnap
+ToldBoth | ToldNothing | NoInformation | FourValued
+```
+
+Both empty. Both read the empty as absence *of the concept*. But the design document had said in
+advance that those names would not be there — and named the four states in prose one line above
+the warning. The corpus did exactly what §3 asks (model the shape; do not adopt an upstream's
+final type names before DFS), and both lanes penalised it for complying.
+
+> **A grep proves the absence of a spelling. It never proves the absence of a concept.**
+
+When the question is *does this concept exist*, the query must run over the concept's **structure**
+— a coproduct with a support arm, a challenge arm, a both arm, a neither arm — or over the
+**authority that would ground it**, following its imports to their declarations. Both lanes held
+that thread and let go of it: `std.claim_evidence` imports
+`belnap_four_valued_information_authority` twice, and neither opened the module doing the
+importing. The citation was the one structural, resolvable edge available, and both measured
+around it.
+
+There is a second, sharper reason the grep could not win. The module *does* document itself —
+`claim_evidence_boundary_note` states that `ClaimAssessment` is the four-valued information view
+and that `ClaimInformationState` is the product of two independent bits, "so conflict and
+insufficiency cannot collapse into chronology or a Boolean last observation." That is this class's
+thesis, written in the module before any of these lanes existed. **It lives in a
+`data … : NonEmptyStr` row** — prose the substrate cannot see (§4c). No lens reads it, no index
+surfaces it, and grep finds it only if you already guessed the author's vocabulary. The knowledge
+was not missing; it was in the one representation nothing can consume. That is what five
+re-derivations cost, and the repair is discoverability, not construction.
+
 ## The shared shape
 
 Instances 1–3 are *the subject was substituted*; instance 4 is *there was no subject*; instances
