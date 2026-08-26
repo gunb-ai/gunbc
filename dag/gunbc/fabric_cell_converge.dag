@@ -83,6 +83,39 @@ fn fabric_cell_resource_address_wire(address: FabricCellResourceAddress) -> Stri
   }
 }
 
+// COMPARED STRUCTURALLY, NOT THROUGH THE RENDERED NAME, AND THIS IS THE HALF `observation_targets`
+// LEFT BEHIND. That function's own header records repairing the SLOT side of exactly this defect --
+// a display projection standing in as the backward identity test -- and then compared the ADDRESS
+// side through `fabric_cell_resource_address_wire` two lines below it. One axis of one predicate was
+// grounded and the other was not, which is why the comment reads as settled and the code was not.
+//
+// THE WIRE SPELLING IS FOR TRANSPORT AND DISPLAY. Routing identity through it makes every future
+// rename of a wire word a silent change to what compares equal, and it is a second naming scheme for
+// a fact the closed coproduct already owns (DESIGN section 3). Three arms, matched exhaustively, so
+// a fourth address cannot be added without deciding here what it equals.
+fn fabric_cell_resource_address_equal(a: FabricCellResourceAddress, b: FabricCellResourceAddress) -> Bool {
+  match a {
+    FabricCellRootAddress =>
+      match b {
+        FabricCellRootAddress => true
+        FabricCellAttemptRootAddress => false
+        FabricCellResourceBoundaryAddress => false
+      }
+    FabricCellAttemptRootAddress =>
+      match b {
+        FabricCellAttemptRootAddress => true
+        FabricCellRootAddress => false
+        FabricCellResourceBoundaryAddress => false
+      }
+    FabricCellResourceBoundaryAddress =>
+      match b {
+        FabricCellResourceBoundaryAddress => true
+        FabricCellRootAddress => false
+        FabricCellAttemptRootAddress => false
+      }
+  }
+}
+
 fn fabric_cell_resource_addresses() -> List<FabricCellResourceAddress> {
   [FabricCellRootAddress, FabricCellAttemptRootAddress, FabricCellResourceBoundaryAddress]
 }
@@ -257,8 +290,7 @@ fn observation_address(o: FabricCellAddressObservation) -> FabricCellResourceAdd
 // change to how a slot renders. `runner_slot_identity_equal` compares host and index directly.
 fn observation_targets(o: FabricCellAddressObservation, slot: RunnerSlotIdentity, address: FabricCellResourceAddress) -> Bool {
   runner_slot_identity_equal(a: observation_slot(o: o), b: slot)
-    && fabric_cell_resource_address_wire(address: observation_address(o: o))
-        == fabric_cell_resource_address_wire(address: address)
+    && fabric_cell_resource_address_equal(a: observation_address(o: o), b: address)
 }
 
 // THE READBACK NAMES ITS SUBJECT ONCE. An earlier cut carried `cell: CellId` here while every

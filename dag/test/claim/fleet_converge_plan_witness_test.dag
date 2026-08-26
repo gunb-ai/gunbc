@@ -54,7 +54,7 @@ import gunbc.fabric_cell_converge {
   fabric_cell_desired_members,
   fabric_cell_id_for_slot,
   fabric_cell_member_key,
-  fabric_cell_resource_address_wire,
+  fabric_cell_resource_address_equal,
   classify_fabric_cell_host,
   fabric_cell_observation_refusal_identity,
   ReadbackHostMismatch,
@@ -824,8 +824,7 @@ fn fabric_probe_boundary_drifted() -> FabricCellHostProbe {
         slot: fabric_witness_slot(),
         address: a,
         probe: AddressStateRead {
-          state_digest: if fabric_cell_resource_address_wire(address: a)
-            == fabric_cell_resource_address_wire(address: FabricCellResourceBoundaryAddress) {
+          state_digest: if fabric_cell_resource_address_equal(a: a, b: FabricCellResourceBoundaryAddress) {
             "a-different-boundary-reading" as NonEmptyStr
           } else {
             fabric_cell_desired_state_digest(slot: fabric_witness_slot(), address: a)
@@ -1175,7 +1174,7 @@ fn fabric_boundary_desired_key() -> String {
     fabric_cell_desired_members(host: operator_host_srv3),
     init: "",
     f: (acc, m) =>
-      if fabric_cell_resource_address_wire(address: m.address) == "resource-boundary" {
+      if fabric_cell_resource_address_equal(a: m.address, b: FabricCellResourceBoundaryAddress) {
         fabric_cell_member_key(member: m)
       } else { acc },
   )
@@ -1190,7 +1189,7 @@ fn fabric_cell_readback_boundary_drifted() -> FabricCellReadback {
     observations: map(
       fabric_cell_desired_members(host: operator_host_srv3),
       m =>
-        if fabric_cell_resource_address_wire(address: m.address) == "resource-boundary" {
+        if fabric_cell_resource_address_equal(a: m.address, b: FabricCellResourceBoundaryAddress) {
           AddressObserved {
             member: FabricCellMember {
               slot: m.slot,
@@ -1209,7 +1208,7 @@ fn fabric_cell_readback_boundary_absent() -> FabricCellReadback {
     observations: map(
       fabric_cell_desired_members(host: operator_host_srv3),
       m =>
-        if fabric_cell_resource_address_wire(address: m.address) == "resource-boundary" {
+        if fabric_cell_resource_address_equal(a: m.address, b: FabricCellResourceBoundaryAddress) {
           AddressAbsent { slot: fabric_witness_slot(), address: m.address }
         } else { AddressObserved { member: m } },
     ),

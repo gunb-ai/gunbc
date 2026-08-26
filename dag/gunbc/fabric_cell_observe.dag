@@ -13,7 +13,7 @@ import gunbc.fabric_cell_converge {
   FabricCellAttemptRootAddress,
   FabricCellResourceBoundaryAddress,
   fabric_cell_resource_addresses,
-  fabric_cell_resource_address_wire,
+  fabric_cell_resource_address_equal,
   fabric_cell_slice_name,
   fabric_cell_expected_slots,
   ExpectedAddressBlocked,
@@ -263,7 +263,7 @@ fn fabric_cell_address_probe_standing(
     init: AddressProbeAbsent,
     f: (acc, e) =>
       if runner_slot_identity_equal(a: e.slot, b: slot)
-        && fabric_cell_resource_address_wire(address: e.address) == fabric_cell_resource_address_wire(address: address) {
+        && fabric_cell_resource_address_equal(a: e.address, b: address) {
         match acc {
           AddressProbeAbsent => AddressProbeSupplied { probe: e.probe }
           AddressProbeSupplied { probe: p } => fabric_cell_merge_address_probe(first: p, second: e.probe)

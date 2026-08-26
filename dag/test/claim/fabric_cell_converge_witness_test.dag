@@ -27,7 +27,6 @@ import gunbc.fabric_cell_converge {
   fabric_cell_id_for_slot,
   fabric_cell_ids,
   fabric_cell_resource_addresses,
-  fabric_cell_resource_address_wire,
   FabricCellResourceAddress,
   FabricCellRootAddress,
   FabricCellAttemptRootAddress,
