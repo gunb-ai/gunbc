@@ -31,6 +31,10 @@ import gunbc.emit_subject_clean_frontier {
   ObservationNotTaken,
   RosterDiscoveryPolicy,
   DeclarationIndexUnderRoots,
+  SubjectSelection,
+  SelectionWholeRoster,
+  SelectionSubset,
+  subject_selection_entries,
   emit_subject_clean_admissions,
   emit_ratchet_report_text,
   emit_ratchet_standing,
@@ -138,15 +142,15 @@ fn module_inventory(roots: List<String>) -> ModuleInventoryRead {
   )
 }
 
-fn selected_entries(entries: String, roster: List<String>) -> List<String> {
+// An empty `entries` is WHOLE-ROSTER and not an empty subset. That is the one place the two could
+// have been conflated, and the coproduct is what keeps them apart all the way to the report.
+fn subject_selection(entries: String, roster: List<String>) -> SubjectSelection {
   if entries == "" {
-    roster
+    SelectionWholeRoster
   } else {
-    fold(
-      split(s: entries, delimiter: ","),
-      init: [],
-      f: (acc, e) => if e == "" { acc } else { concat(acc, [e]) }
-    )
+    SelectionSubset {
+      entries: filter(split(s: entries, delimiter: ","), e => e != "")
+    }
   }
 }
 
@@ -154,11 +158,16 @@ fn measure_selected(selection: List<String>) -> List<EmissionMeasurement> {
   map(selection, entry => measure_entry_emission(entry: entry))
 }
 
+// ONE SELECTION, READ TWICE. The list the instrument is invoked over and the selection the fold
+// classifies against are derived from the same value rather than computed twice from `entries` --
+// two derivations could disagree, and a disagreement here would render as an UNMEASURED subject
+// the run had in fact measured, which is the precise confusion the selection carrier removes.
 fn run_emit_subject_clean_ratchet(
   entries: String,
   roster: List<String>,
   inventory: List<String>
 ) -> EmitSubjectCleanRatchet {
+  let selection = subject_selection(entries: entries, roster: roster)
   fold_emit_subject_clean_ratchet(
     universe: DualUniverse {
       policy: emit_subject_clean_roster_policy,
@@ -166,7 +175,10 @@ fn run_emit_subject_clean_ratchet(
       inventory: inventory
     },
     admissions: emit_subject_clean_admissions,
-    measurements: measure_selected(selection: selected_entries(entries: entries, roster: roster))
+    selection: selection,
+    measurements: measure_selected(
+      selection: subject_selection_entries(selection: selection, roster: roster)
+    )
   )
 }
 
