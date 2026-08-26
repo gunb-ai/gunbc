@@ -26,6 +26,7 @@ import v2.workflow.floor_terminal_ledger {
   Passed, Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict,
   PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict,
   RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, ObservationUnreadableBeforeVerdict,
+  PanickedBeforeVerdict, NotAttemptedAfterAbort,
 }
 import gunbc.build_target {
   TargetKind, BuildRule, TestRule, AggregateAlias,
@@ -284,6 +285,8 @@ test fn w_claim_disposition_policy_is_stated_arm_by_arm() -> Bool {
     && !verdict_holds(v: claim_disposition_verdict(d: RouteGapBeforeVerdict {}))
     && !verdict_holds(v: claim_disposition_verdict(d: RuntimeErroredBeforeVerdict {}))
     && !verdict_holds(v: claim_disposition_verdict(d: ObservationUnreadableBeforeVerdict {}))
+    && !verdict_holds(v: claim_disposition_verdict(d: PanickedBeforeVerdict {}))
+    && !verdict_holds(v: claim_disposition_verdict(d: NotAttemptedAfterAbort {}))
 }
 
 // THE REFUSED ARM CARRIES THE DISPOSITION IT REFUSED, which is exactly what the deleted `Bool`
@@ -473,4 +476,22 @@ test fn w_export_maps_budget_and_unreached_arms_apart() -> Bool {
     && (blaze_test_status_of_test_standing(t: NotATestTarget {}) == TestStatusNoStatus {})
     && (blaze_test_status_of_test_standing(t: TestReportedByBazel { status: TestStatusFlaky {} }) == TestStatusFlaky {})
     && (blaze_test_status_of_test_standing(t: TestRunByFloor { disposition: Passed {} }) == TestStatusPassed {})
+}
+
+// THE TWO ABORT-SIDE ARMS ARE SPLIT BY WHETHER THE CLAIM RAN, NOT BY SEVERITY, and this witness is
+// what makes that split executable rather than a comment. A panic means the claim executed and
+// died, so it exports as `FAILED` beside `RuntimeErroredBeforeVerdict`. An unattempted claim never
+// executed at all, so it exports as `INCOMPLETE` beside `RouteGapBeforeVerdict`.
+//
+// The `INCOMPLETE` half is the assertion that earns its keep. Exporting a claim that never ran as
+// `FAILED` would report that an assertion failed when no assertion executed — a verdict fabricated
+// for an observation nobody made — so this witness goes red on exactly the collapse that is
+// tempting to make, and the disposition-level pairing beneath it keeps the two from being merged
+// in the other direction either.
+test fn w_export_splits_panic_from_unattempted_by_whether_the_claim_ran() -> Bool {
+  (blaze_test_status_of_claim_disposition(d: PanickedBeforeVerdict {}) == TestStatusFailed {})
+    && (blaze_test_status_of_claim_disposition(d: RuntimeErroredBeforeVerdict {}) == TestStatusFailed {})
+    && (blaze_test_status_of_claim_disposition(d: NotAttemptedAfterAbort {}) == TestStatusIncomplete {})
+    && !verdict_holds(v: claim_disposition_verdict(d: PanickedBeforeVerdict {}))
+    && !verdict_holds(v: claim_disposition_verdict(d: NotAttemptedAfterAbort {}))
 }
