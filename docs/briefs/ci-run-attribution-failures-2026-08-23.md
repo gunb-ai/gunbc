@@ -3,6 +3,12 @@
 **Subject:** attributing a CI result to a change. **Deliverable:** one class, seven measured
 instances, and the check that closes each. **No repair is proposed here.**
 
+> **Every run id cited below is attempt 1**, verified 2026-08-26. This matters and is not
+> boilerplate: a re-run overwrites run-level fields, so an un-qualified run id can stop
+> reproducing without anyone editing this file. See *The run-level object is a mutable
+> projection* under instance 5. If a citation here ever fails to reproduce, check
+> `run_attempt` before concluding the claim was wrong.
+
 Instances 1–4 were measured 2026-08-23. Instances 5–6 were measured 2026-08-25 and one of them
 **falsified instance 4's own check**, which is why they are folded in here rather than filed
 beside: two accounts of one fact is the failure this document exists to describe. Instance 7 was
@@ -99,7 +105,7 @@ Instance 4's check reads the run's `conclusion`. That field reports only the **l
 job outcomes, so a job that failed terminally is overwritten by a cancellation that arrived
 afterwards.
 
-Receipt, run `32909985425`:
+Receipt, run `32909985425` **attempt 1**:
 
 ```
 build   COMPLETED     conclusion=FAILURE      23:35:43   <- real, terminal (rustfmt ETXTBSY)
@@ -115,8 +121,33 @@ closed as noise.
 **The direction matters: the masking FLATTERS.** `cancelled` reads as no-verdict while a failure
 sits underneath, so this error always resolves toward "nothing is wrong."
 
-**Check:** `gh api …/runs/<id>/jobs` and read **`status` and `conclusion` per job, naming the
-lane**. A cancelled run is not a red, but it is not necessarily a non-red either.
+**Check:** `gh api …/runs/<id>/attempts/<n>/jobs` and read **`status` and `conclusion` per job,
+naming the lane**. A cancelled run is not a red, but it is not necessarily a non-red either.
+
+### The run-level object is a MUTABLE PROJECTION of the latest attempt
+
+The same field that hides a job failure also hides an *earlier attempt*, and this one rots a
+citation silently.
+
+**A re-run overwrites run-level fields.** Measured: a failed run queried after re-running
+reported the new attempt's `started_at` (22:12) where the true first-attempt time was 21:10. The
+run-level object is not a record; it is a view of whichever attempt ran last. **The immutable
+record is the attempt.**
+
+That lands directly on the receipt above. It reproduces today because nobody has re-run
+`32909985425` — run-level `run_attempt=1`, and `attempts/1` agrees. **If anyone ever re-runs it,
+the run-level conclusion becomes the new attempt and the claim stops reproducing for a reader who
+checks.** The citation would not become *wrong*; it would become *unverifiable*, with no edit to
+this document. That is precisely the rot pointers are supposed to avoid, arriving through a
+channel that looks immutable.
+
+So: **cite `…/runs/<id>/attempts/<n>`, or write "attempt 1" beside the id.** It costs one word and
+it is the only grain that stays checkable. `attempts/<n>/jobs` carries the per-job detail, so
+nothing is given up by descending.
+
+**One mutable projection, two things hidden under it:** the run-level *conclusion* masks a job
+failure, and the run-level *timestamp* masks the earlier attempt. A reader who learns to descend
+to jobs should learn to descend to attempts in the same breath.
 
 ### The classification ladder
 
@@ -238,7 +269,7 @@ establishing that it measured that change** — and all are cheap to close:
 | which ref was built | `gh api …/runs/<id> -q .head_sha` |
 | whether it is a merge ref | `gh api …/runs/<id> -q .event` |
 | what that ref was for | `git log -1 --format='%s' <sha>` |
-| whether it reached a verdict | `gh api …/runs/<id>/jobs -q '.jobs[]\|"\(.name) \(.status)/\(.conclusion)"'` |
+| whether it reached a verdict | `gh api …/runs/<id>/attempts/<n>/jobs -q '.jobs[]\|"\(.name) \(.status)/\(.conclusion)"'` |
 
 Four commands. Tonight, each of the four was skipped exactly once, by four different lanes, and
 each skip produced a confident conclusion that was wrong.
