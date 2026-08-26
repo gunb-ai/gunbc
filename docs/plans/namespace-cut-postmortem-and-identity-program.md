@@ -1514,6 +1514,33 @@ So the split is clean, and it falls exactly along the line that clause draws:
 
 ## 9. Open, and owned elsewhere
 
+- **B.3 — "which producer's closure fits better" is CLOSED as measured-and-circular,
+  not as pending infrastructure** (`cool-swift-307`, 2026-08-26; the receipt is
+  §11.2l). Demand is a function of how far typecheck progressed, progress of what
+  was loaded, and what was loaded is the producer under test — so demand-under-A
+  scores A against a target A shaped, and the distortion is largest exactly where
+  A pulled least. **The next question is denotational, not comparative: M2's
+  per-edge naming — does every closure edge name the occurrence that caused it
+  and the declaration that provides it?** A producer that cannot answer per edge
+  is not a candidate whatever it scores, and "over-broad for this consumer"
+  becomes an edge with no naming occurrence — a refusal constructible on a fixed
+  small subject, with no whole-corpus run.
+
+- **The affected-set budget check refuses at ANY partition size, because it
+  compares against a fixed whole-tree constant rather than the subject.** Surfaced
+  by the blocked B.3 measurement, but the blast radius is much larger than one
+  oracle: a bound that does not scale with its subject makes **every** partitioned
+  measurement unavailable, so partitioning — the standard response to a run too
+  large for a session — cannot be used at all. Carried upward as its own item;
+  not the measuring lane's to fix from inside a blocked measurement.
+
+- **A per-file measurement needs a per-module progress receipt, and none exists.**
+  Every per-file instrument in this program shares §11.2l's hazard: a row from a
+  module that never reached the stage issuing its asks is indistinguishable from a
+  real low-demand row (`total=1` vs a genuine single-ask module). The requirement
+  is that a row without a receipt is **dropped, never averaged**. Specified, **not
+  built** — stated here so it is not assumed done.
+
 - ~~`undefined variable 'v2'` × 95~~ — **CLOSED, and it was never a distinct
   defect** (`crisp-crab-430`, 2026-08-25, four arms by execution). It is the
   **bootstrap trap wearing a resolution diagnostic's clothes**, and the reason
