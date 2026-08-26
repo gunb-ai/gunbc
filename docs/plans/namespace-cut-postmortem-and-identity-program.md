@@ -4806,3 +4806,132 @@ an answer nobody had.
    resolved against a transport at runtime. What is measured: the key is unambiguous corpus-wide.
    What is not: that a live join returns the declaration anyone expects. Small, unexecuted, and
    **the zero is not permitted to stand in for it.**
+
+### 11.2aa RULED — the missing thing is one **identity-production spine**, not a tap; and §11.2z's join is keyed on a **forbidden identity input**
+
+Supersedes this lane's own "BUILD (a)" ruling of the same day, which was wrong on two independent
+counts. Filed with the error rather than around it.
+
+**THE JOIN IS FORBIDDEN, AND THE LAW SAYS SO IN THE SENTENCE THIS LANE ALREADY QUOTED HALF OF.**
+Verified at source: `std.occurrence_identity` `occurrence_identity_scope_law` —
+
+> *"Filename, SourceSpan, **authored name**, structural Node equality, content hash, and
+> module-local allocator reset are **forbidden identity inputs**."*
+
+and the collector receipt in the same module: *"…enter the collector once by exact occurrence
+identity, **never by spelling**, SourceSpan, or Node structure."*
+
+**Authored name is named explicitly, in the same list as SourceSpan.** This lane forbade span
+matching for the tap (§11.2t) and then authorised a **name**-keyed join — the same prohibition, from
+the same sentence of the same law — having reasoned that *not positional* was sufficient. The law was
+one grep away, in a file called `occurrence_identity`, on a law called `scope_law`.
+
+**And the zero does not rescue it.** §11.2z's 0-collisions-over-36,184 is a true fact about the
+corpus and is not retracted. But it is **a measurement copied from the current tree, used to license
+a rule** — precisely what §5 says an oracle is not. It shows the name *happens* to be unambiguous
+today; it cannot make a spelling a legitimate identity input. **The distinction the law draws is not
+"is the key unique" but "was this identity MINTED, or is it being RECONSTRUCTED FROM A SPELLING"** —
+and a lookup that selects which occurrence applies on the basis of a name is reconstruction *even
+when the name is unique*, because uniqueness is a property of the corpus and the law is about the
+mechanism. The valid form: **a key minted once by the parser transaction and already present on both
+sides.**
+
+**THE SECOND ERROR IS INDEPENDENT OF THE LAW: THERE ARE TWO MISSING RELATIONS, AND (a) ADDRESSED
+ONE.**
+
+```
+QUERY identity    ReferenceOccurrenceId  ↔  the particular invocation of X deciding that reference
+ANSWER identity   selected TypeBinding   ↔  the exact declaration or lexical binder selected
+```
+
+`TypeBinding` carries `name`, `resolved`, `provenance` — **and no exact target identity**. That
+`resolved` is a `Node` does not help: the node carries no occurrence identity, and recovering it from
+name or span is the forbidden reconstruction again. So **the answer side must be created at binding
+construction regardless of what any join measurement returns**, and no positive join result could
+ever have reduced this to a logging hook.
+
+**THE TWO FINDINGS ARE ONE SPINE, WHICH DISSOLVES THE RANKING QUESTION RATHER THAN ANSWERING IT.**
+
+```
+B.3          the parser does not produce Type declaration occurrences     ← production end
+X observation  semantic lookup does not receive reference occurrences
+               and the selected binding carries no target identity        ← consumption end
+```
+
+> **Occurrence identity does not survive from authored declaration/reference production into semantic
+> binding decisions.**
+
+So B.3 and the X carrier are not competing long poles — they are opposite ends of one
+resolution-owned vertical. The Type-declaration gap blocks both the answer side *and* strict Y, which
+makes it a **common prerequisite** rather than a competitor to E.0.
+
+**THE DISPATCH IS CORRECT BY OWNERSHIP AND WAS WRONG BY CRITICALITY.** E.0 remains the right parallel
+assignment; it is **no longer the immediate blocking producer**. If only one lane could run it should
+be the producer lane. crisp-crab-430's envelope work — subject identity and its applicability
+components, the transport-derived denominator, content-addressed artifact identity,
+complete-or-refused construction, missing/extra-outcome refusals, stable serialization, controls
+against a *synthetic* exact binding producer — all stands, and must stay **honestly named an
+observation envelope, not `O_X(B)`**. It may not derive outcomes from `(name, span)`, invent a
+temporary X adapter, or claim the legacy observation is executable. The seam stays abstract: the
+resolution lane supplies the produced population; **the migration lane never decides how X binds.**
+
+**THREE SHAPE CONSTRAINTS ON THE PRODUCER, EACH FORECLOSING A TEMPTING HALF-MEASURE.**
+
+*Do not force every target into `DeclarationRef`.* Local shadowing is the whole reason occurrence
+grain is mandatory, and a local binder cannot necessarily project to one; kernel and synthetic
+bindings differ again. A closed target domain — authored declaration · lexical binder · kernel ·
+synthetic, each carrying its own exact identity — and `DeclarationRef` **derived** from the authored
+case rather than stored beside it where the two can disagree.
+
+*Do not add an optional identity field to `TypeBinding` and call it done.* §11.2x already shows what
+an optional carrier looks like in practice: **every live selection inhabits the absent arm.** The
+binding's origin must be a **closed typed state**, not an optional fact consumers may ignore.
+
+*Do not implement the observation as a second invocation beside production.* Production X routes
+**through** the identity-bearing decision and projects the existing `TypeBinding` for old consumers —
+one decision authority, two consumers. That may be a broad call-site migration; the alternative is
+running a separately reconstructed old resolver and calling its result X's answer, which is worse.
+
+**AND THE 19,500 DECISIONS ARE NOT 19,500 REFERENCES.** One authored reference may be queried
+**multiple times across inference stages**, and some calls are internal questions rather than authored
+reference decisions. Once identity reaches the calls, collect **attempts** at occurrence grain and
+finalise only when all attempts for an occurrence **agree**; disagreement is a typed conflict and a
+real X defect this work would expose. **Never** first-wins, last-wins, dedup-by-spelling, or counting
+calls as occurrences.
+
+**THE REVISED CRITICAL PATH, WITH THE HIDDEN STATES PROMOTED OUT OF E.0.**
+
+```
+P0  parser occurrence production complete enough for the subject (references + declarations/binders)
+P1  occurrence identity reaches X's query
+P2  exact binding-target identity reaches X's result
+P3  typed legacy decision population complete
+      ↓  E.0 subject-bound O_X(B) → E.1 P(B)+correspondence → strict Y(P(B)) → binding delta → M5
+```
+
+| Milestone | Closing condition |
+|---|---|
+| **M4X — legacy decisions are identity-addressable** | every semantic reference occurrence in an exact subject reaches X with its parser-minted identity; every Bound/Ambiguous target carries exact binding-target identity; **no span/name/Node reconstruction**; missing categories and conflicting repeated decisions refuse |
+| **M5A — legacy observation executable** | `O_X(B)` subject-bound, complete, content-addressed, applicable |
+| **M5 — projection green** | `O_X(B)` joins through total correspondence to strict `O_Y(P(B))`: zero rebounds, stranded bindings, or production refusals |
+
+F's admission gains a named producer prerequisite: **`LegacyDecisionAddressability = green`** before F
+may begin its authority-changing portion.
+
+**AND A GENERAL EVIDENCE FORM, EARNED BY THIS LANE COMMITTING THE SAME FAILURE TWICE IN ONE DAY.**
+§11.2x's countersignature attached a signature on one grep to three causal clauses. This section's
+error attached a signature on one *measurement* to the question of whether the thing measured was
+**permitted**. The rule that covers both:
+
+> **Verification attaches to individual propositions, not to a compound narrative containing one
+> checked clause.**
+
+| Clause | Standing |
+|---|---|
+| exact code fact | verified |
+| semantic interpretation of that fact | separately verified / open |
+| downstream causal claim | executed / open |
+| proposed repair reaches the cause | discriminating mutation / open |
+| **the repair is permitted by the governing authority** | **read the law / open** |
+
+The last row is this section's addition, and it is the one that would have caught it.
