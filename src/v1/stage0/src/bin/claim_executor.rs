@@ -265,7 +265,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     }
 
     // ORDERED AHEAD OF THE SOURCE-ROOT REQUIREMENT, for the reason `--verify-build-artifacts`
-    // and `--measure-cgroup-peak` are: this mode takes NO roots. It renders from the emitted
+    // is: this mode takes NO roots. It renders from the emitted
     // authority carrier and reads only the files it is adjudicating, so the generic guard below
     // would refuse the only invocation it has -- a mode that could never have run once.
     // MEASURED, NOT REASONED -- the first remote run of this entry point exited 2 with
