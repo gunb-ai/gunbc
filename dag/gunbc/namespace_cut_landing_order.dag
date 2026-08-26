@@ -1,0 +1,77 @@
+module gunbc.namespace_cut_landing_order
+
+import std.types { String, NonEmptyStr, Bool }
+
+// WHY THIS CARRIER EXISTS AT ALL, since a reader will otherwise look for the
+// ruling in the plan documents where its neighbours live. DESIGN section 4c
+// names RULING in the list of facts that belong in a typed carrier, so a
+// landing-order ruling with executable consequences was never supposed to live
+// in prose. It did anyway: the 2026-08-25 reordering was recorded only in an
+// unmerged postmortem, and the ratified replacement plan cited that document by
+// path for the reversal. The 2026-08-26 markdown rule did not create that
+// problem, it exposed it -- a document that has become load-bearing has become
+// a carrier without being typed as one. This module is that carrier.
+type CutStepPosition = GrammarDeletedFirst | GrammarDeletedLast
+
+// The supersession is modeled rather than narrated because the two rulings come
+// from the SAME authority and the later one moves ONE axis. A reader who takes
+// either as freestanding gets a different landing order, which is exactly the
+// contradiction that put two opposite instructions in two ratified documents.
+type RulingSupersession
+  = SupersedesOnOrderOnly { superseded_ruling_date: NonEmptyStr, axis_unchanged: NonEmptyStr }
+  | NoPriorRuling
+
+type LandingOrderRuling {
+  ruling_date: NonEmptyStr
+  position: CutStepPosition
+  verbatim: NonEmptyStr
+  supersession: RulingSupersession
+  atomicity_qualified: Bool
+}
+
+data namespace_cut_grammar_first_ruling: LandingOrderRuling = LandingOrderRuling {
+  ruling_date: "2026-08-15" as NonEmptyStr,
+  position: GrammarDeletedFirst,
+  verbatim: "delete all the grammar/import up front, then solve each problem as it is revealed" as NonEmptyStr,
+  supersession: NoPriorRuling,
+  atomicity_qualified: false
+}
+
+data namespace_cut_grammar_last_ruling: LandingOrderRuling = LandingOrderRuling {
+  ruling_date: "2026-08-25" as NonEmptyStr,
+  position: GrammarDeletedLast,
+  verbatim: "work backward from the goal, and the grammar deletion is the last step, not the first" as NonEmptyStr,
+  supersession: SupersedesOnOrderOnly {
+    superseded_ruling_date: "2026-08-15" as NonEmptyStr,
+    axis_unchanged: "the ROOT is unchanged: the grammar production, the parse surface and the import-name universe are all still inside it, and delete-first as doctrine is untouched. Only the ORDER in which that root is cut moved." as NonEmptyStr
+  },
+  atomicity_qualified: true
+}
+
+// The current ruling is a derivation over the rows above rather than a third
+// row naming one of them. A stored "current" pointer is a second answer to a
+// question the supersession relation already decides, and it is the copy that
+// goes stale when a later ruling lands.
+fn current_landing_order() -> CutStepPosition {
+  namespace_cut_grammar_last_ruling.position
+}
+
+fn ruling_supersedes_on_order_only(r: LandingOrderRuling) -> Bool {
+  match r.supersession {
+    SupersedesOnOrderOnly { superseded_ruling_date: _, axis_unchanged: _ } => true
+    NoPriorRuling => false
+  }
+}
+
+// RUNG HONESTY (DESIGN 4b), declared rather than left to be rediscovered.
+// This carrier is at MITIGATABLE and nothing here is enforced. No lens reads
+// it, no gate joins it to a document, and a planning document may still state
+// an order contradicting current_landing_order with nothing refusing. What the
+// carrier buys is that the ruling is now CITABLE BY SYMBOL from a document that
+// merges, instead of by path into one that must not -- which is the specific
+// failure it was minted to close, not a general enforcement claim.
+// NEXT-RUNG TRIGGER: a lens joining authored landing-order prose to this
+// carrier, which is the same module-authorship-at-ingestion trigger DESIGN
+// section 6 already names for the deleted inert-lens census; the two should
+// land together rather than each rebuilding a corpus walk.
+data namespace_cut_landing_order_rung: String = "mitigatable"
