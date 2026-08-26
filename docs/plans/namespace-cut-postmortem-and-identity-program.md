@@ -4953,3 +4953,24 @@ error attached a signature on one *measurement* to the question of whether the t
 | **the repair is permitted by the governing authority** | **read the law / open** |
 
 The last row is this section's addition, and it is the one that would have caught it.
+
+**AND THE MECHANISM BEHIND BOTH FAILURES IS SHARPER THAN "SOMEONE DIDN'T CHECK".** The measurer had
+`std.occurrence_identity` **open earlier in the same session**, read the scope law in full, and used
+the same file as the source for what the sidecar contains — then proposed the one key that law names
+as forbidden. Their account is that they *optimised against the half of the law they remembered*:
+the proposal was framed entirely around not being positional.
+
+This lane then **inherited the frame and checked within it** — evaluating whether the join was
+positional, which it was not, and never evaluating the law, which forbids it anyway.
+
+> **Two people can each be careful and jointly certify something false, when one supplies the frame
+> and the other checks inside it.** Neither step looks like a lapse from inside: the author checked a
+> real constraint, the reviewer checked the author's claim, and the question nobody asked was whether
+> the frame was the right one.
+
+The measurer offered the apportionment *"a reviewer cannot check a constraint the author silently
+dropped."* **That is declined, and the second half is false** — the governing authority is a fixed
+artifact openable at any time, and a ruling is a decision about what the repository will do, not a
+review of a message. Nothing about the framing prevented reading the law before saying BUILD. **The
+remedy is therefore not more care but a different target: the frame is checked against the authority,
+not against itself** — which is exactly what the table's last row makes routine.
