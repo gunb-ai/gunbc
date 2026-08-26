@@ -513,15 +513,16 @@ fn fabric_cell_rendered_slot_name(rendering: FabricCellNamespaceRendering, slot:
   }
 }
 
+// THE LOCATION LABEL IS THE NAMESPACE'S OWN WIRE WORD, NOT A SECOND SPELLING OF IT. Both labels
+// were written out twice -- once in `fabric_cell_namespace_wire` and once in a location helper --
+// so the same concept had two authorities and a rename would have moved one of them. A discovered
+// subject's location IS the namespace it was found in, so it is projected from that namespace
+// through the function that already owns how a namespace spells itself.
 fn fabric_cell_rendering_location(rendering: FabricCellNamespaceRendering) -> String {
   match rendering {
-    CellRootRendering => fabric_cell_base_dir_name()
-    SliceRendering => fabric_cell_slice_namespace_name()
+    CellRootRendering => fabric_cell_namespace_wire(n: FabricCellsRootNamespace)
+    SliceRendering => fabric_cell_namespace_wire(n: FabricCellSliceNamespace)
   }
-}
-
-fn fabric_cell_slice_namespace_name() -> String {
-  "fabric-slices"
 }
 
 fn fabric_cell_committed_slot_named_on(
@@ -600,7 +601,7 @@ fn fabric_cell_classify_uncommitted_here(
 }
 
 fn fabric_cell_base_dir_name() -> String {
-  "fabric-cells-root"
+  fabric_cell_namespace_wire(n: FabricCellsRootNamespace)
 }
 
 // EVERY ENTRY THE ROOT ENUMERATION RETURNED GETS A POSITION, AND A REFUSED ENUMERATION DISCOVERS
