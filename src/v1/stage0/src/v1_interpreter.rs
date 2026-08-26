@@ -11731,9 +11731,11 @@ fn eval_toolchain_home_interference_probe_builtin(ctx: &InterpContext) -> Value 
         std::fs::copy("/bin/true", &reader_probe)
             .map_err(|e| format!("install safe probe: {e}"))?;
 
-        // The first hostile replacement makes the discriminator deterministic. The second runs
-        // inside the same start/finish interval as both tool executions, so this fixture also
-        // exercises concurrent filesystem mutation rather than merely naming concurrency.
+        // The hostile tool replacement makes the discriminator deterministic. A second mutation
+        // of the same tool during exec is not portable (Linux may return ETXTBSY), so the writer
+        // mutates a neighboring bin entry inside the readers' start/finish interval. This retains
+        // real concurrent toolchain-home mutation without turning an executable-open race into
+        // fixture failure.
         let start = Arc::new(Barrier::new(3));
         let finish = Arc::new(Barrier::new(3));
         let spawn_reader =
@@ -11753,17 +11755,24 @@ fn eval_toolchain_home_interference_probe_builtin(ctx: &InterpContext) -> Value 
         let writer_start = start.clone();
         let writer_finish = finish.clone();
         let writer = std::thread::spawn(move || -> Result<(), String> {
-            let replace = |phase: &str| -> Result<(), String> {
+            let replace = || -> Result<(), String> {
                 let replacement = legacy_probe.with_extension("replacement");
                 std::fs::copy("/bin/false", &replacement)
-                    .map_err(|e| format!("stage hostile probe {phase}: {e}"))?;
+                    .map_err(|e| format!("stage hostile probe: {e}"))?;
                 std::fs::rename(&replacement, &legacy_probe)
-                    .map_err(|e| format!("replace probe {phase}: {e}"))?;
+                    .map_err(|e| format!("replace probe: {e}"))?;
                 Ok(())
             };
-            let initial = replace("before-readers");
+            let initial = replace();
             writer_start.wait();
-            let concurrent = initial.and_then(|_| replace("during-reader-interval"));
+            let concurrent = initial.and_then(|_| {
+                let staged = legacy_probe.with_extension("concurrent-staged");
+                let installed = legacy_probe.with_extension("concurrent");
+                std::fs::write(&staged, b"hostile-writer")
+                    .map_err(|e| format!("stage concurrent toolchain mutation: {e}"))?;
+                std::fs::rename(staged, installed)
+                    .map_err(|e| format!("install concurrent toolchain mutation: {e}"))
+            });
             writer_finish.wait();
             concurrent
         });
