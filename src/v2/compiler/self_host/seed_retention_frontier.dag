@@ -120,6 +120,7 @@ data seed_retention_frontier_roster: List<SeedRetentionFrontierRow> = [
   retained_reason_undeclared(path: "src/codex_app_server_stdio_session.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/coproduct_reflection.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_elsewhere(path: "src/data_initializer_identity.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "data_initializer_identity_seed_retained_note"),
+  retained_reason_elsewhere(path: "src/declaration_index.rs", cause: SeedRetainedIntrinsicSource, module_path: "gunbc.declaration_index_seed_growth", decl_name: "declaration_index_seed_growth_note"),
   retained_reason_undeclared(path: "src/resolved_graph_cache.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/shared_typecheck_store.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/recorded_fixture.rs", cause: SeedRetainedIntrinsicSource),

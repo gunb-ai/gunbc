@@ -1,31 +1,42 @@
 module gunbc.cli_run_hand_rust_area_ledger
 
 import gunbc.plans.cli_run_hollowing_plan { cli_run_hollowing_plan }
-import std.types { Int, List, String }
+import std.types { Int, List, NonEmptyStr, String }
 
-data cli_run_hand_rust_area_ledger_note: String = "LIVE ITEM-GRAIN ledger for cli_run.rs hand Rust (Lane swift-lynx-164). Supersedes cli_run_hollowing_plan §0 stale prose (26,773 LOC / 976 fns dated 2026-07-23). Live scale is measured at execution by scripts/rust_item_census.py — this note does NOT pin numeric literals (DESIGN §3 stale-citation class). Area grain follows the 16 functional areas in gunbc.plans.cli_run_hollowing_plan §2.1–2.16. NOT a per-function ledger (#7074 closed). NOT a deletion plan — instrument only."
+data cli_run_hand_rust_area_ledger_note: String = "LIVE ITEM-GRAIN ledger for cli_run.rs hand Rust. Supersedes cli_run_hollowing_plan section 0 stale prose. Area grain follows the 16 functional areas in gunbc.plans.cli_run_hollowing_plan sections 2.1 to 2.16. NOT a per-function ledger. NOT a deletion plan -- instrument only. This note does NOT pin numeric literals, per DESIGN section 3's stale-citation class."
 
-data cli_run_area_2_2_anchor_retirement_receipt: String = "Area 2.2 lost ONE anchor symbol, not the row. handle_run_with_options was the argv-dispatch DRIVER; the cli-run cut (PR 8286) deleted it and rebuilt that seam in main.rs, so its occurrence count in cli_run.rs went 3 to 0 and the symbol no longer names anything. It is removed from anchor_symbols. The ROW SURVIVES because its other two anchors do: claim_batch and claim_executor are both live in the retained engine (19 and 21 occurrences at the time of writing, deliberately not pinned here per the module note's stale-citation rule). The disposition stays RetainedKernel and is unchanged by this edit.
+data cli_run_ledger_measurement_route_missing: String = "THE LEDGER HAS NO EXECUTABLE MEASUREMENT ROUTE, AND THIS ROW SAYS SO INSTEAD OF PRETENDING OTHERWISE. Until 2026-08-24 the module note above named scripts/rust_item_census.py as the instrument that re-derived this ledger's live scale at execution -- item identity primary, LOC secondary. THAT FILE IS DELETED. It went with the measurement bankruptcy (gunbc#9132), which removed docs/probes/ whole and left no .sh or .py anywhere in the repository outside .githooks, under the ruling that an ad-hoc script is DESIGN section 6 unmodeled realization: if a measurement is worth re-deriving it is worth a .dag entry point, and if it is not worth an entry point it is not an instrument. So the ledger has been citing a dead instrument since that cut, which is the rot mode DESIGN section 3 predicts of a citation nothing checks. WHAT IS MISSING, precisely, because 'no instrument' is too coarse to act on. Two different measurements have no route, and they fail for different reasons. (1) LIVE SCALE -- how much hand Rust cli_run.rs still carries, at item grain. Nothing in the tree re-derives it. (2) ANCHOR LIVENESS -- whether a symbol named in anchor_symbols still names a declared Rust item, and where. No host builtin answers 'does this Rust symbol exist and in which file'; the module-fact builtins reach .dag modules, not .rs items, so this is not a matter of wiring an existing feed up. RESTORATION TRIGGER: a .dag entry point that walks the seed's Rust sources and returns item identities with their declaring file, cited by name from this module -- at which point both measurements become derivable and anchor_home below stops being an authored field. WHAT THIS ROW DOES NOT CLAIM: that the ledger is unusable meanwhile. The disposition carrier below is now a construction rather than a transcription, which is a real climb and is independent of this gap; what stays unmeasured is the SCALE the ledger reports on, not the READINESS it asserts."
 
-WHY THE GRAIN IS THE ANCHOR SYMBOL AND NOT THE ROW: this ledger was DELETED WHOLE by that same cut and then restored, because deleting it unmarked 22 live areas to retire one symbol. Restoring it unedited would have been the mirror error — an anchor pointing at a symbol that no longer exists is an obligation nobody can discharge, which never retires and reads as live debt forever. Neither whole-file answer was available; both halves are answerable per symbol. That is the same grain rule the cut itself was corrected by, applied one level down."
+data cli_run_area_anchor_retirement_receipt: String = "FOUR ANCHOR SYMBOLS ARE RETIRED IN THIS EDIT, AND TWO MORE ARE RE-HOMED. The grain is the anchor symbol, not the row, and the reason is recorded rather than assumed: this ledger was once DELETED WHOLE by a cut and then restored, because deleting it unmarked 22 live areas in order to retire one symbol. Restoring it unedited would have been the mirror error -- an anchor pointing at a symbol that no longer exists is an obligation nobody can discharge, so it never retires and reads as live debt forever. Neither whole-file answer was available; both halves are answerable per symbol.\n\nRETIRED, each because the symbol names nothing in the seed: load_both_closure and run_witness_batch resolve nowhere in src/v1/stage0/src at all; merge_envs survives only inside a prose string in a generated file, its subject having been DELETED by operator ruling on 2026-07-06 (v1.compiler.infer_env visible_bindings_invariant records that deletion, and DESIGN section 6 carries the receipt for why the example that cited it was kept without it); regen_stage0 survives only in generated file headers, its binary having been deleted at the root by the regen cut. Their rows SURVIVE -- 2.4, 2.5, 2.10 and 2.12 each keep their other anchors and their dispositions -- because retiring a symbol is not retiring an area.\n\nRE-HOMED rather than retired: eval_builtin and floor_materialization are both LIVE and neither is in cli_run.rs. eval_builtin is a real function in v1_interpreter.rs, which is correct for area 2.13 (the interpreter seam) and merely not in this ledger's nominal subject file; floor_materialization is a .dag module read from claim_executor.rs. ONE ANCHOR IS ALSO RESPELLED, and it is a different defect from either of the two above: area 2.11 carried the anchor \"compile_clean\", which is a PREFIX rather than a symbol -- it matches compile_clean_scope_plan_for_ci, compile_clean_source_roots, compile_clean_diagnostic_is_hard and a dozen more, so it names no declaration and any liveness check over it answers yes forever regardless of what is actually there. It is replaced by compile_clean_scope_plan_for_ci, a real function in the subject and the symbol DESIGN's CI section already names when it reports that this area's selection capability has no caller. A prefix anchor is the positional-citation failure wearing a name: it looks symbolic and resolves to nothing in particular. That mix is what the anchor_home field below exists to make visible: the previous shape was a bare List<String>, so a reader could not tell an anchor in the subject from an anchor somewhere else in the seed from an anchor naming nothing at all, and all three read identically."
 
-data cli_run_live_scale_receipt: String = "cli_run.rs LIVE SCALE is measured at execution by scripts/rust_item_census.py (item identity primary, LOC secondary). cli_run_hollowing_plan §0 prose (26,773 LOC dated 2026-07-23) is stale. seed-shrink-census Chunk F (~4,165 LOC) remains the dissolution sign-off unit for CI orchestration only."
+data cli_run_disposition_is_derived_not_transcribed: String = "THE CARRIER NOW REFUSES AN UNEARNED READINESS, WHICH IS THE POINT OF THIS EDIT. GenerateNow means 'the v2 replacement exists, generate it'. As a BARE VARIANT it was a transcription -- a claim about readiness that only a human's memory could check, and one that had gone false underneath eight rows without any of them changing. The 2026-08-15 floor cut DELETED the machinery two of those rows named as their replacement (gunbc.ci_floor_plan and src/v2/workflow/ci_floor_plan.dag are both absent from the tree) rather than replacing it, and for the other six nothing in the repository establishes that the named v2 authority carries the area -- the module existing is necessary and nowhere near sufficient. A row asserting a readiness with no referent is rung inflation in DESIGN section 4b's sense, and its cost is exactly the one that clause names: an inflated row never ranks for climbing, because it already reports the state it is supposed to reach.\n\nTHE FIX IS CONSTRUCTION, NOT A CORRECTED TRANSCRIPTION. GenerateNow now CARRIES the entry point that emits the area, so the claim cannot be written without naming the thing that would discharge it -- 'name the instrument, never transcribe its output', applied to a disposition. No such entry point can be named for any of the sixteen areas today, so no row is GenerateNow, and that is a fact about the tree rather than a judgement about it. Correspondingly UnclassifiedStopLine carries its cause, so a stop-line row says WHICH of the two situations it is in -- replacement deleted, or replacement never established -- which are different problems with different owners and were previously the same variant.\n\nWHAT THIS DOES NOT CLAIM: that the eight retyped areas are un-generatable, or that the six whose named authority still stands are as far from generation as the two whose authority was deleted. It claims only that nothing in the tree currently establishes readiness, which is what the row is now shaped to record. A row climbs back to GenerateNow the moment someone can name its emitting entry, and that is a one-field edit rather than an argument."
 
 type CliRunHandRustAreaDisposition
   = DeleteNow
-  | GenerateNow
+  | GenerateNow { emitting_entry: NonEmptyStr }
   | ThinHostBoundary
   | DeleteWithV1
   | RetainedKernel
-  | UnclassifiedStopLine
+  | UnclassifiedStopLine { cause: NonEmptyStr }
+
+type CliRunAreaAnchor {
+  symbol: NonEmptyStr
+  anchor_home: NonEmptyStr
+}
 
 type CliRunHandRustAreaRow {
   area_id: String
   area_title: String
   disposition: CliRunHandRustAreaDisposition
   hollowing_plan_disposition: String
-  anchor_symbols: List<String>
+  anchors: List<CliRunAreaAnchor>
 }
+
+data subject: NonEmptyStr = "src/v1/stage0/src/cli_run.rs" as NonEmptyStr
+
+data replacement_deleted_by_floor_cut: NonEmptyStr = "the named v2 replacement is ABSENT from the tree: gunbc.ci_floor_plan and src/v2/workflow/ci_floor_plan.dag were deleted by the 2026-08-15 floor cut, which removed the machinery rather than replacing it (DESIGN CI section, the declared rung drop)" as NonEmptyStr
+
+data replacement_not_established: NonEmptyStr = "the named v2 authority is present in the tree but nothing establishes that it carries this area, and no entry point emits it -- necessary is not sufficient, and the module's existence was the whole of the evidence behind the previous GenerateNow" as NonEmptyStr
 
 fn cli_run_hand_rust_area_rows() -> List<CliRunHandRustAreaRow> {
   [
@@ -34,112 +45,161 @@ fn cli_run_hand_rust_area_rows() -> List<CliRunHandRustAreaRow> {
       area_title: "Workspace & repo paths",
       disposition: ThinHostBoundary,
       hollowing_plan_disposition: "emit-when",
-      anchor_symbols: ["workspace_root", "repo_relative_path"]
+      anchors: [
+        CliRunAreaAnchor { symbol: "workspace_root" as NonEmptyStr, anchor_home: subject },
+        CliRunAreaAnchor { symbol: "repo_relative_path" as NonEmptyStr, anchor_home: subject }
+      ]
     },
     CliRunHandRustAreaRow {
       area_id: "2.2",
       area_title: "CLI argv & bin dispatch",
       disposition: RetainedKernel,
       hollowing_plan_disposition: "seed-kernel-retained",
-      anchor_symbols: ["claim_batch", "claim_executor"]
+      anchors: [
+        CliRunAreaAnchor { symbol: "claim_batch" as NonEmptyStr, anchor_home: subject },
+        CliRunAreaAnchor { symbol: "claim_executor" as NonEmptyStr, anchor_home: subject }
+      ]
     },
     CliRunHandRustAreaRow {
       area_id: "2.3",
       area_title: "Corpus discovery & file walk",
-      disposition: GenerateNow,
+      disposition: UnclassifiedStopLine { cause: replacement_deleted_by_floor_cut },
       hollowing_plan_disposition: "emit-when",
-      anchor_symbols: ["collect_dag_files", "run_discovery_corpus"]
+      anchors: [
+        CliRunAreaAnchor { symbol: "collect_dag_files" as NonEmptyStr, anchor_home: subject },
+        CliRunAreaAnchor { symbol: "run_discovery_corpus" as NonEmptyStr, anchor_home: subject }
+      ]
     },
     CliRunHandRustAreaRow {
       area_id: "2.4",
       area_title: "Resolve / typecheck entry orchestration",
-      disposition: GenerateNow,
+      disposition: UnclassifiedStopLine { cause: replacement_not_established },
       hollowing_plan_disposition: "emit-when",
-      anchor_symbols: ["resolve_entry_graph", "load_both_closure"]
+      anchors: [
+        CliRunAreaAnchor { symbol: "resolve_entry_graph" as NonEmptyStr, anchor_home: subject }
+      ]
     },
     CliRunHandRustAreaRow {
       area_id: "2.5",
       area_title: "Reconcile & env merge",
-      disposition: GenerateNow,
+      disposition: UnclassifiedStopLine { cause: replacement_not_established },
       hollowing_plan_disposition: "already-subsumed",
-      anchor_symbols: ["reconcile", "merge_envs"]
+      anchors: [
+        CliRunAreaAnchor { symbol: "reconcile" as NonEmptyStr, anchor_home: subject }
+      ]
     },
     CliRunHandRustAreaRow {
       area_id: "2.6",
       area_title: "Typed module cache / memo",
-      disposition: GenerateNow,
+      disposition: UnclassifiedStopLine { cause: replacement_not_established },
       hollowing_plan_disposition: "emit-when",
-      anchor_symbols: ["typed_module_cache", "resolved_graph_cache"]
+      anchors: [
+        CliRunAreaAnchor { symbol: "typed_module_cache" as NonEmptyStr, anchor_home: subject },
+        CliRunAreaAnchor { symbol: "resolved_graph_cache" as NonEmptyStr, anchor_home: subject }
+      ]
     },
     CliRunHandRustAreaRow {
       area_id: "2.7",
       area_title: "Import & module-graph host facts",
       disposition: ThinHostBoundary,
       hollowing_plan_disposition: "emit-when",
-      anchor_symbols: ["import_resolution_facts", "module_declaration_facts"]
+      anchors: [
+        CliRunAreaAnchor { symbol: "import_resolution_facts" as NonEmptyStr, anchor_home: subject },
+        CliRunAreaAnchor { symbol: "module_declaration_facts" as NonEmptyStr, anchor_home: subject }
+      ]
     },
     CliRunHandRustAreaRow {
       area_id: "2.8",
       area_title: "Reference / cross-tree edges",
-      disposition: GenerateNow,
+      disposition: UnclassifiedStopLine { cause: replacement_not_established },
       hollowing_plan_disposition: "emit-when",
-      anchor_symbols: ["reference_resolution_facts", "reference_edges_as_import_facts"]
+      anchors: [
+        CliRunAreaAnchor { symbol: "reference_resolution_facts" as NonEmptyStr, anchor_home: subject },
+        CliRunAreaAnchor { symbol: "reference_edges_as_import_facts" as NonEmptyStr, anchor_home: subject }
+      ]
     },
     CliRunHandRustAreaRow {
       area_id: "2.9",
       area_title: "Affected-set & diff provenance",
-      disposition: GenerateNow,
+      disposition: UnclassifiedStopLine { cause: replacement_not_established },
       hollowing_plan_disposition: "emit-when",
-      anchor_symbols: ["floor_diff_observe", "affected_set"]
+      anchors: [
+        CliRunAreaAnchor { symbol: "floor_diff_observe" as NonEmptyStr, anchor_home: subject },
+        CliRunAreaAnchor { symbol: "affected_set" as NonEmptyStr, anchor_home: subject }
+      ]
     },
     CliRunHandRustAreaRow {
       area_id: "2.10",
       area_title: "Floor / witness execution",
-      disposition: GenerateNow,
+      disposition: UnclassifiedStopLine { cause: replacement_deleted_by_floor_cut },
       hollowing_plan_disposition: "emit-when",
-      anchor_symbols: ["run_discovery_corpus", "run_witness_batch"]
+      anchors: [
+        CliRunAreaAnchor { symbol: "run_discovery_corpus" as NonEmptyStr, anchor_home: subject }
+      ]
     },
     CliRunHandRustAreaRow {
       area_id: "2.11",
       area_title: "Compile-clean shard scope",
       disposition: ThinHostBoundary,
       hollowing_plan_disposition: "partial",
-      anchor_symbols: ["dag_compile_clean_scope", "compile_clean"]
+      anchors: [
+        CliRunAreaAnchor { symbol: "dag_compile_clean_scope" as NonEmptyStr, anchor_home: subject },
+        CliRunAreaAnchor { symbol: "compile_clean_scope_plan_for_ci" as NonEmptyStr, anchor_home: subject }
+      ]
     },
     CliRunHandRustAreaRow {
       area_id: "2.12",
       area_title: "Regen oracle & self-host scope",
       disposition: DeleteWithV1,
       hollowing_plan_disposition: "delete-with-v1",
-      anchor_symbols: ["regen_input_sources", "regen_stage0"]
+      anchors: [
+        CliRunAreaAnchor { symbol: "regen_input_sources" as NonEmptyStr, anchor_home: subject }
+      ]
     },
     CliRunHandRustAreaRow {
       area_id: "2.13",
       area_title: "Host builtin bridge",
       disposition: RetainedKernel,
       hollowing_plan_disposition: "seed-kernel-retained",
-      anchor_symbols: ["eval_builtin", "filesystem_read"]
+      anchors: [
+        CliRunAreaAnchor {
+          symbol: "eval_builtin" as NonEmptyStr,
+          anchor_home: "src/v1/stage0/src/v1_interpreter.rs" as NonEmptyStr
+        },
+        CliRunAreaAnchor { symbol: "filesystem_read" as NonEmptyStr, anchor_home: subject }
+      ]
     },
     CliRunHandRustAreaRow {
       area_id: "2.14",
       area_title: "Lens census / hygiene host feeds",
-      disposition: GenerateNow,
+      disposition: UnclassifiedStopLine { cause: replacement_not_established },
       hollowing_plan_disposition: "emit-when",
-      anchor_symbols: ["non_fold_residue", "fact_cardinality"]
+      anchors: [
+        CliRunAreaAnchor { symbol: "non_fold_residue" as NonEmptyStr, anchor_home: subject },
+        CliRunAreaAnchor { symbol: "fact_cardinality" as NonEmptyStr, anchor_home: subject }
+      ]
     },
     CliRunHandRustAreaRow {
       area_id: "2.15",
       area_title: "Floor observability & adaptive width",
       disposition: ThinHostBoundary,
       hollowing_plan_disposition: "partial",
-      anchor_symbols: ["floor_materialization", "memory_governor"]
+      anchors: [
+        CliRunAreaAnchor {
+          symbol: "floor_materialization" as NonEmptyStr,
+          anchor_home: "dag/gunbc/floor_materialization.dag" as NonEmptyStr
+        },
+        CliRunAreaAnchor { symbol: "memory_governor" as NonEmptyStr, anchor_home: subject }
+      ]
     },
     CliRunHandRustAreaRow {
       area_id: "2.16",
       area_title: "Test-migration debt builtins",
       disposition: DeleteWithV1,
       hollowing_plan_disposition: "delete-with-v1",
-      anchor_symbols: ["test_migration_debt"]
+      anchors: [
+        CliRunAreaAnchor { symbol: "test_migration_debt" as NonEmptyStr, anchor_home: subject }
+      ]
     }
   ]
 }
@@ -150,4 +210,28 @@ fn cli_run_hand_rust_area_row_count() -> Int {
 
 fn cli_run_hand_rust_area_ledger_covers_sixteen_areas() -> Bool {
   cli_run_hand_rust_area_row_count() == 16
+}
+
+data generate_now_row_count_note: String = "The readiness reader, and it counts ROWS rather than answering a Bool so that a caller can tell 'none are ready' from 'the ledger is empty'. Its RED is authorable in a fixture -- a test module constructs a row carrying GenerateNow with an emitting entry -- which is what keeps the live-tree assertion in dag/test/claim/cli_run_area_ledger_witness_test.dag a check rather than a decoration."
+
+fn cli_run_area_generate_now_row_count(rows: List<CliRunHandRustAreaRow>) -> Int {
+  fold(rows, init: 0, f: (acc, r) => match r.disposition {
+    GenerateNow { emitting_entry: _ } => acc + 1
+    DeleteNow => acc
+    ThinHostBoundary => acc
+    DeleteWithV1 => acc
+    RetainedKernel => acc
+    UnclassifiedStopLine { cause: _ } => acc
+  })
+}
+
+fn cli_run_area_stop_line_row_count(rows: List<CliRunHandRustAreaRow>) -> Int {
+  fold(rows, init: 0, f: (acc, r) => match r.disposition {
+    UnclassifiedStopLine { cause: _ } => acc + 1
+    GenerateNow { emitting_entry: _ } => acc
+    DeleteNow => acc
+    ThinHostBoundary => acc
+    DeleteWithV1 => acc
+    RetainedKernel => acc
+  })
 }
