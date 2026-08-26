@@ -1664,6 +1664,17 @@ fn parse_import(tokens: TokenStream, ctx: ParseContext) -> ImportResult {
     let names = r.names
     let tokens = r.tokens
     let ctx = r.ctx
+    if (names |> count) == 0 {
+      return ImportResult {
+        import: err_import,
+        tokens: tokens,
+        ctx: ctx,
+        err: Present { value: parse_error(
+          msg: concat("import of `", concat(mod_path, "` binds no names: a member list of arity zero names a module and imports none of it, which is a declaration with no content. Write the members, or delete the import.")),
+          span: mod_path_span
+        ) }
+      }
+    }
     let r = expect(tokens: tokens, expected: ExpectRBrace)
     if has_err(err: r.err) { return ImportResult { import: err_import, tokens: r.tokens, ctx: ctx, err: r.err } }
     let tokens = skip_newlines(tokens: r.tokens)

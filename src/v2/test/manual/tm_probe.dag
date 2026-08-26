@@ -3,7 +3,7 @@ module v2.test.manual.tm_probe
 
 fn tm_probe_parses() -> Bool {
   let lm = dag_language_model()
-  let at = port_locus(port: ^tm_probe_locus)
+  let at = invariant_port_locus(port: ^tm_probe_locus, invariant: ^tm_probe_locus)
   let source = filesystem_read(path: "src/v2/std/compilers/target_model.dag").content
   match tokenize(text: source, file: ^tm_probe_anchor, rules: lm.lex) {
     Rejected { diagnostics: _ } => false

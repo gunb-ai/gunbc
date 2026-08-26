@@ -10,7 +10,7 @@ import v2.std.diagnostic {
   Locus,
   Textual,
   Unavailable,
-  port_locus
+  invariant_port_locus
 }
 import v2.std.node { Node, Symbol }
 import v2.std.optional { Absent, Present }
@@ -43,7 +43,7 @@ fn span_index_record(index: SpanIndex, id: OccurrenceId, event: OriginEvent) -> 
 fn span_index_occurrence_absent_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^span_index_occurrence_absent,
-    at: port_locus(port: ^span_index_lookup_port),
+    at: invariant_port_locus(port: ^span_index_lookup_port, invariant: ^span_index_occurrence_absent),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -74,7 +74,7 @@ fn span_index_merge(base: SpanIndex, incoming: SpanIndex) -> SpanIndex {
 fn span_index_origin_chain_exhausted_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^span_index_origin_chain_exhausted,
-    at: port_locus(port: ^span_index_lookup_port),
+    at: invariant_port_locus(port: ^span_index_lookup_port, invariant: ^span_index_origin_chain_exhausted),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

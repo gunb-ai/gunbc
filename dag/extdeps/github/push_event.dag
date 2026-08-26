@@ -8,7 +8,10 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.github.actions { github_event_path_env }
 import extdeps.languages.json.emit { JsonValue, JsonString }
 import extdeps.languages.json.parse {
-  parse_json,
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_document_gap_text,
   json_object_unique_member,
   JsonMemberFound,
   JsonMemberAbsent,
@@ -58,10 +61,10 @@ fn push_before_commit_sha_from_hex(hex: String) -> PushBeforeObservation {
 }
 
 fn push_before_from_event_json(text: String) -> PushBeforeObservation {
-  match parse_json(s: text) {
-    Absent =>
-      PushBeforeMalformed { detail: "GITHUB_EVENT_PATH payload is not valid JSON" }
-    Present { value: doc } =>
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: gap } =>
+      PushBeforeMalformed { detail: concat("the GITHUB_EVENT_PATH payload is ", json_document_gap_text(gap: gap)) }
+    JsonDocumentParsed { value: doc } =>
       match json_object_unique_member(v: doc, key: push_event_before_member) {
         JsonMemberAbsent =>
           PushBeforeAbsent { detail: "push event payload has no before member" }

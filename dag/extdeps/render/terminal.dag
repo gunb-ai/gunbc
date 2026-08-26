@@ -37,8 +37,9 @@ fn span_width(span: Span, tier: Tier) -> Int? {
 }
 
 fn truncate_spans(spans: List<Span>, budget: Int, tier: Tier) -> List<Span>? {
+  let kept_init: List<Span> = []
   let state = fold(spans,
-    init: Present { value: { kept: [], remaining: budget } },
+    init: Present { value: { kept: kept_init, remaining: budget } },
     f: (acc, span) => match acc {
       Absent => none
       Present { value: st } =>

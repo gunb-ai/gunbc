@@ -80,7 +80,7 @@ test fn w_ci_invokes_one_composed_mode_not_a_step_ladder() -> Bool {
         && !string_contains(s: yml, pattern: "--required-floor")
         && !string_contains(s: yml, pattern: "--required-regen")
         && !string_contains(s: yml, pattern: "target/release/v1_src_dag_parse")
-    WitnessFloorGenerationRefused => false
+    WitnessFloorGenerationRefused { reason: _ } => false
   }
 }
 
@@ -93,7 +93,7 @@ test fn w_no_phase_precondition_reads_another_phases_outcome() -> Bool {
     WitnessFloorGenerated { content: yml } =>
       !string_contains(s: yml, pattern: "steps.required_regen.outcome")
         && string_contains(s: yml, pattern: "steps.build_witness_fold.outcome == 'success'")
-    WitnessFloorGenerationRefused => false
+    WitnessFloorGenerationRefused { reason: _ } => false
   }
 }
 
@@ -122,7 +122,7 @@ test fn w_the_required_workflow_does_not_build_the_parse_binary() -> Bool {
       string_contains(s: yml, pattern: "--required-ci")
         && string_contains(s: yml, pattern: "--bin claim_executor")
         && !string_contains(s: yml, pattern: "--bin v1_src_dag_parse")
-    WitnessFloorGenerationRefused => false
+    WitnessFloorGenerationRefused { reason: _ } => false
   }
 }
 
@@ -156,7 +156,7 @@ test fn w_RED_the_retired_step_names_do_not_return() -> Bool {
         && !string_contains(s: yml, pattern: "name: src/v1 .dag sources parse")
         && !string_contains(s: yml, pattern: "Regen fixed point:")
         && !string_contains(s: yml, pattern: "Regen determinism:")
-    WitnessFloorGenerationRefused => false
+    WitnessFloorGenerationRefused { reason: _ } => false
   }
 }
 
@@ -174,7 +174,7 @@ test fn w_the_required_workflow_carries_both_lanes() -> Bool {
         && string_contains(s: yml, pattern: concat("  ", concat(build_lane_job_id, ":")))
         && string_contains(s: yml, pattern: concat("  ", concat(floor_lane_job_id, ":")))
         && string_contains(s: yml, pattern: concat("  ", concat(witness_floor_workflow_job_id, ":")))
-    WitnessFloorGenerationRefused => false
+    WitnessFloorGenerationRefused { reason: _ } => false
   }
 }
 
@@ -203,7 +203,7 @@ test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
       string_contains(s: yml, pattern: concat("needs: [", concat(build_lane_job_id, concat(", ", concat(floor_lane_job_id, "]")))))
         && !string_contains(s: yml, pattern: concat("needs: [", concat(build_lane_job_id, "]")))
         && !string_contains(s: yml, pattern: concat("needs: [", concat(floor_lane_job_id, "]")))
-    WitnessFloorGenerationRefused => false
+    WitnessFloorGenerationRefused { reason: _ } => false
   }
 }
 
@@ -244,7 +244,7 @@ test fn w_RED_the_gate_runs_and_refuses_on_a_failed_lane() -> Bool {
         && string_contains(s: yml, pattern: "\n        if: always()")
         && string_contains(s: yml, pattern: "exit 1")
         && string_contains(s: yml, pattern: "'!=' 'success'")
-    WitnessFloorGenerationRefused => false
+    WitnessFloorGenerationRefused { reason: _ } => false
   }
 }
 
