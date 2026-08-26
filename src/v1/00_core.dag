@@ -200,6 +200,8 @@ type CompilerDiagnostic
   | DeclaredTypeInhabitanceUndecided { position: String, reason: String, span: SourceSpan }
   | UnlistedImportUse { name: String, span: SourceSpan }
   | AmbiguousReference { name: String, candidates: List<String>, span: SourceSpan }
+  | DataReferenceVisibilityBudgetExceeded { name: String, span: SourceSpan }
+  | ParameterDefaultFormNotAdmitted { parameter: String, admitted: List<String>, span: SourceSpan }
   | AmbiguousAnonymousRecordLiteral { candidates: List<String>, span: SourceSpan }
   | CallArgumentNameUnknown { callee: String, argument: String, declared: List<String>, span: SourceSpan }
   | CallPositionalSurplus { callee: String, supplied: Int, capacity: Int, span: SourceSpan }
@@ -349,6 +351,8 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: s } => s
     UnlistedImportUse { name: _, span: s } => s
     AmbiguousReference { name: _, candidates: _, span: s } => s
+    DataReferenceVisibilityBudgetExceeded { name: _, span: s } => s
+    ParameterDefaultFormNotAdmitted { parameter: _, admitted: _, span: s } => s
     AmbiguousAnonymousRecordLiteral { candidates: _, span: s } => s
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: s } => s
     CallPositionalSurplus { callee: _, supplied: _, capacity: _, span: s } => s
@@ -429,6 +433,10 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("declared-type inhabitance is undecidable at the ", pos, " (", r, "): the modeled facts do not settle whether the produced value inhabits its declared type, so no verdict is asserted in either direction")
     UnlistedImportUse { name: n, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
     AmbiguousReference { name: n, candidates: cs, span: _ } => concat("ambiguous reference '", n, "': ", to_string(value: cs |> count), " candidates: ", join(cs, separator: ", "), " — qualify by containment path, alias, or rename")
+    DataReferenceVisibilityBudgetExceeded { name: n, span: _ } =>
+      concat("visible declarations of '", n, "' could not be enumerated: the import re-export walk exceeded its depth bound, so no verdict is asserted about how many declarations answer to the name")
+    ParameterDefaultFormNotAdmitted { parameter: p, admitted: forms, span: _ } =>
+      concat("default value for parameter '", p, "' is not an admitted form (admitted: ", join(forms, separator: ", "), ")")
     AmbiguousAnonymousRecordLiteral { candidates: cs, span: _ } => concat("ambiguous anonymous record literal shape matches ", to_string(value: cs |> count), " structs: ", join(cs, separator: ", "), " — add a nominal type")
     CallArgumentNameUnknown { callee: c, argument: a, declared: ds, span: _ } =>
       concat("call shape mismatch calling '", c, "': no parameter named '", a, "' (declared: [", join(ds, separator: ", "), "])")
