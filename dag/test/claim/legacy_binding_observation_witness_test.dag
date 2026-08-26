@@ -70,6 +70,13 @@ fn lbo_digest(label: String) -> Fnv1a64Structural {
 // and `src/v2` at `90bfcfad293` found 47 names declared in two or more modules with at least one
 // declaration carrying a field. The first measurement that produced the claim searched two roots
 // and compared only adjacent rows of a sort, so it was a property of the search, not of the corpus.
+// 47 against 1 is not a near miss, it is the signature of a census whose denominator was its own
+// search, and the adjacent-rows filter names the mechanism: it can only ever surface PAIRS, never a
+// name declared three or more times, so it was blind by construction to the widest members of the
+// very population it was counting. A claim false at authorship is also worse than one that rotted,
+// because a rotted claim has a moment in the tree that justified it and a re-measurement disagrees
+// cleanly; this one has no such moment anywhere, so re-measuring it looks like a regression someone
+// introduced and the next reader spends their time hunting for the change that broke it.
 // The claim is not repaired by bounding it to a SHA, because the fixture never needed it: what the
 // arms need is that THIS pair holds, and that is self-checking rather than censused -- the citation
 // wall refuses this module if either declaration or the field stops existing, so the arms cannot go
