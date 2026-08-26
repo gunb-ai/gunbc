@@ -6,11 +6,8 @@ use std::process::{Command, ExitCode};
 use std::rc::Rc;
 #[cfg(test)]
 use v1_compiler::cli_run::workspace_root;
-use v1_compiler::cli_run::{
-    make_eval_context, resolve_entry_graph_shared, run_value, PhaseProfile,
-};
+use v1_compiler::cli_run::PhaseProfile;
 use v1_compiler::memory_governor::{binding_cap_cgroup_dir, leaf_cgroup_dir, mem_total_bytes};
-use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext, Value};
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
     match args.get(idx) {
