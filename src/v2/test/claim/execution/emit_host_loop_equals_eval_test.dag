@@ -71,7 +71,7 @@ import v2.std.runtime {
   MatchInterpreter,
   runtime_reject_match_arm
 }
-import v2.std.verdict { BuildFailed, Deferred, Pass, RunFailed, SemanticMismatch, Verdict }
+import v2.std.verdict { verdict_establishes_divergence, verdict_establishes_equivalence }
 import v2.std.verification {
   EqualsClaim,
   Integration,
@@ -269,23 +269,11 @@ fn emit_loop_eval_run(tree: InferredTree) -> TestClaimRun<Node, RuntimeValue> {
 }
 
 fn emit_loop_eval_verdict_is_pass(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
-  match run.verdict {
-    Pass => true
-    SemanticMismatch { actual: _, falsification: _ } => false
-    BuildFailed { actual: _, diagnostic: _ } => false
-    RunFailed { actual: _, diagnostic: _ } => false
-    Deferred { actual: _, diagnostic: _ } => false
-  }
+  verdict_establishes_equivalence(v: run.verdict)
 }
 
 fn emit_loop_eval_verdict_is_fail(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
-  match run.verdict {
-    SemanticMismatch { actual: _, falsification: _ } => true
-    Pass => false
-    BuildFailed { actual: _, diagnostic: _ } => false
-    RunFailed { actual: _, diagnostic: _ } => false
-    Deferred { actual: _, diagnostic: _ } => false
-  }
+  verdict_establishes_divergence(v: run.verdict)
 }
 
 test fn emit_host_loop_equals_eval_holds() -> Bool {
