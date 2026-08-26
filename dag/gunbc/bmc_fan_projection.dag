@@ -36,7 +36,8 @@ import std.state_durability {
 import std.types { Bool, List, NonEmptyStr }
 
 type BmcFanProjectionApplyRefusalCause
-  = BmcFanProjectionBoardMismatch
+  = BmcFanProjectionObservedProgramNotAdopted
+  | BmcFanProjectionBoardMismatch
   | BmcFanProjectionFirmwareMismatch
   | BmcFanProjectionCurveMismatch
   | BmcFanProjectionConfigPathMismatch
@@ -255,13 +256,24 @@ fn bmc_fan_policy_projection_capability(
   }
 }
 
+// THE ADOPTION GATE RUNS FIRST, and the ordering is the point rather than tidiness. Every check
+// below compares the projection against the OBSERVATION - board, firmware, curve, path, service.
+// All of them can agree while the host runs an actuator topology the projection has no
+// representation for, because the observation carrier cannot see a second fan controller entry
+// either. So a green result from the comparisons below is not evidence that applying is safe;
+// it is evidence that the things we can compare match. Asking "may we write to this host at
+// all" before asking "does what we can see line up" is what keeps an unrepresentable live
+// program from passing as suitable.
 fn bmc_fan_policy_projection_apply_suitability(
   capability: BmcFanPolicyProjectionCapability,
   board: BaseboardModel,
   desired_curve: BmcFanCurve,
   observation: BmcFanPolicyObservation,
+  actuation_admitted: Bool,
 ) -> BmcFanProjectionApplySuitability {
-  if capability.board != board {
+  if !actuation_admitted {
+    BmcFanProjectionApplyRefused { cause: BmcFanProjectionObservedProgramNotAdopted }
+  } else if capability.board != board {
     BmcFanProjectionApplyRefused { cause: BmcFanProjectionBoardMismatch }
   } else if capability.firmware != observation.firmware {
     BmcFanProjectionApplyRefused { cause: BmcFanProjectionFirmwareMismatch }

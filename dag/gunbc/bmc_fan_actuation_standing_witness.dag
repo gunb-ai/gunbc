@@ -1,0 +1,83 @@
+module gunbc.bmc_fan_actuation_standing_witness
+
+import std.types { Bool, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.bmc_fan_actuation_standing {
+  BmcFanIntentAlignment,
+  HostBmcFanActuationStanding,
+  IntentMatchesObservedProgram,
+  ObservedProgramNotAdopted,
+  ObservedProgramNotRepresentableByIntent,
+  actuation_admitted,
+  fleet_bmc_fan_actuation_standings,
+  host_actuation_admitted,
+}
+import gunbc.fleet_intent_network {
+  operator_host_srv1,
+  operator_host_srv3,
+  operator_host_srv4,
+}
+
+// THE HOSTS I RECONFIGURED BY HAND MUST REFUSE ACTUATION. This is the conjunct that makes the
+// interlock real rather than declared: it fails the moment someone marks srv3 or srv4 adopted
+// without the carrier having gained a shape for what they run.
+fn hand_configured_hosts_refuse() -> Bool {
+  !host_actuation_admitted(standings: fleet_bmc_fan_actuation_standings, host: operator_host_srv3)
+    && !host_actuation_admitted(
+      standings: fleet_bmc_fan_actuation_standings,
+      host: operator_host_srv4,
+    )
+}
+
+// AN UNEXAMINED HOST REFUSES TOO. srv1 was never touched, and that is precisely why it is not
+// admitted: nobody has established that the intent describes it either.
+fn unexamined_host_refuses() -> Bool {
+  !host_actuation_admitted(standings: fleet_bmc_fan_actuation_standings, host: operator_host_srv1)
+}
+
+// A HOST WITH NO ROW AT ALL REFUSES, rather than falling through to permitted. An empty roster
+// is the state where writing is least safe, so the lookup's failure arm must not read as consent.
+fn absent_standing_refuses() -> Bool {
+  !host_actuation_admitted(standings: [], host: operator_host_srv3)
+}
+
+// THE POSITIVE CONTROL, without which every conjunct above passes on a function that always
+// returns false. A represented program IS admitted.
+fn represented_program_is_admitted() -> Bool {
+  actuation_admitted(
+    standing: HostBmcFanActuationStanding {
+      host: operator_host_srv3,
+      alignment: IntentMatchesObservedProgram,
+    },
+  )
+}
+
+// THE TWO REFUSING ARMS STAY DISTINGUISHABLE. They produce the same verdict today, so nothing
+// about the OUTCOME would notice them collapsing - only their remedies differ, and that is
+// exactly the kind of distinction that erodes silently.
+fn refusal_arms_stay_separate() -> Bool {
+  let unadopted: BmcFanIntentAlignment = ObservedProgramNotAdopted
+  let unrepresentable: BmcFanIntentAlignment =
+    ObservedProgramNotRepresentableByIntent { missing: "x" }
+  let a = match unadopted {
+    ObservedProgramNotAdopted => true
+    other => false
+  }
+  let b = match unrepresentable {
+    ObservedProgramNotRepresentableByIntent { missing } => missing == "x"
+    other => false
+  }
+  a && b
+}
+
+fn bmc_fan_actuation_standing_witness() -> ProcessExit {
+  if hand_configured_hosts_refuse()
+    && unexamined_host_refuses()
+    && absent_standing_refuses()
+    && represented_program_is_admitted()
+    && refusal_arms_stay_separate() {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "bmc fan actuation standing witness: the srv3/srv4 interlock, the fail-closed default, or the admitted control changed")
+  }
+}

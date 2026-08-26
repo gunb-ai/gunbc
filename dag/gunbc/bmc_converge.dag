@@ -26,6 +26,10 @@ import extdeps.filesystem.linux {
   linux_overlay_observation_is_flash_backed,
 }
 import extdeps.uri { Uri }
+import gunbc.bmc_fan_actuation_standing {
+  fleet_bmc_fan_actuation_standings,
+  host_actuation_admitted,
+}
 import gunbc.bmc_intent {
   BmcControlPlaneIntent,
 }
@@ -172,6 +176,8 @@ fn bmc_fan_policy_suitability_refusal_reason(
       "bmc fan projection installed-tach topology differs from fleet intent"
     FanPolicyProjectionCapabilityRefused { cause: cause } =>
       match cause {
+        BmcFanProjectionObservedProgramNotAdopted =>
+          "bmc fan actuation refused: the host runs a fan control program the intent cannot represent, so applying would partially revert it"
         BmcFanProjectionBoardMismatch =>
           "bmc fan projection capability board does not match the observed board"
         BmcFanProjectionFirmwareMismatch =>
@@ -401,6 +407,10 @@ fn bmc_fan_policy_apply_suitability(
         board: board,
         desired_curve: intent.fan_policy.curve,
         observation: observation,
+        actuation_admitted: host_actuation_admitted(
+          standings: fleet_bmc_fan_actuation_standings,
+          host: host,
+        ),
       ) {
         BmcFanProjectionApplyRefused { cause: cause } =>
           FanPolicySuitabilityRefused {
