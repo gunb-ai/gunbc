@@ -119,7 +119,7 @@ jobs:
     runs-on: [self-hosted, linux, arm64]
     needs: [build, floor]
     timeout-minutes: 5
-    if: "!cancelled()"
+    if: always() && needs.build.result != 'cancelled' && needs.floor.result != 'cancelled'
     steps:
       - name: Both required lanes must have succeeded
         run: |

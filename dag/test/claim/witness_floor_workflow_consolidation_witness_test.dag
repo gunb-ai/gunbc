@@ -240,15 +240,18 @@ test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
 // never produced a verdict refuses here rather than passing.
 //
 // THIS IS EMITTED-SHAPE EVIDENCE, NOT A BEHAVIOURAL GITHUB RECEIPT. It proves the job-level
-// cancellation guard and the live-attempt refusal are both present at their distinct YAML
+// cancelled-lane exclusions and the live-attempt refusal are both present at their distinct YAML
 // grains. It does not prove that GitHub classifies a superseded run correctly, nor what branch
 // protection does with a skipped required context after cancellation without replacement. The
 // authority's required_lanes_aggregate_cancellation_rung_drop names that uncovered boundary and
 // its restoration trigger; a string_contains witness must not be cited as having closed it.
-test fn w_RED_aggregate_skips_cancelled_workflow_and_refuses_failed_lane() -> Bool {
+test fn w_RED_aggregate_skips_cancelled_lane_and_refuses_failed_lane() -> Bool {
   match expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
-      string_contains(s: yml, pattern: "\n    if: \"!cancelled()\"")
+      string_contains(
+        s: yml,
+        pattern: "\n    if: always() && needs.build.result != 'cancelled' && needs.floor.result != 'cancelled'"
+      )
         && string_contains(s: yml, pattern: "\n        if: always()")
         && string_contains(s: yml, pattern: "exit 1")
         && string_contains(s: yml, pattern: "'!=' 'success'")

@@ -1054,33 +1054,57 @@ fn build_lane_job() -> Job {
 // CANCELLATION DOES NOT PROVE SUPERSESSION. It says only that this attempt stopped. Two
 // cancellation-without-replacement cases were observed on 2026-08-25: one had an empty
 // runner_name and zero steps, and one ended both lanes at 18:43 with no push involved. Under
-// `!cancelled()` those live heads leave the required context skipped rather than receiving this
-// gate's loud refusal. The exact GitHub merge-admission treatment of that skipped required
-// context remains unmeasured; this change must not describe it as safe by construction.
+// a cancelled-lane exclusion those live heads leave the required context skipped rather than
+// receiving this gate's loud refusal. The exact GitHub merge-admission treatment of that skipped
+// required context remains unmeasured; this change must not describe it as safe by construction.
+// For a manual cancel, runner eviction, workflow timeout or operator-stopped queue on the CURRENT
+// head, this is specifically fail-open: CurrentHeadUnestablished receives no aggregate context
+// even though it must block. The modal supersession case and this hazardous case share
+// LaneCancelled; only an independent head-standing observation can separate them.
 //
 // RUNG DROP, DECLARED UNDER DESIGN §4b(3). PREVIOUS RUNG: mechanically preventive -- `always()`
 // made the aggregate context exist and refuse for every stopped lane, including cancellations
 // with no replacement. TEMPORARY RUNG: mitigatable -- superseded pull-request runs no longer
 // fabricate failures, but a cancelled live attempt depends on GitHub's skipped-required-context
 // handling and an operator must rerun it rather than receiving a located aggregate refusal.
-// REASON: the current workflow input carries cancellation but no replacement-run observation,
+// REASON: the current lane-result input carries cancellation but no replacement-run observation,
 // so it cannot distinguish the modal lawful supersession from an abandoned live attempt; the
-// false failure alert is removed at the only distinction currently available. BOUNDED
+// false failure alert is removed at the only distinction currently available, accepting the
+// explicit CurrentHeadUnestablished fail-open above until the restoration lands. BOUNDED
 // POPULATION: pull_request workflow runs only -- cancel-in-progress is false for push,
 // merge_group and workflow_dispatch, and their concurrency group is unique per run. Within that
 // boundary the two abandoned cases above are the observed population; no count of future
 // cancellations is claimed. RESTORATION TRIGGER: a typed observation joins this run's PR and
 // created_at to a newer run for the same PR. Then the job returns to `always()` and distinguishes
 // replacement-present (superseded: no failure) from replacement-absent (abandoned: refuse) before
-// reading the strict lane gate.
+// reading the strict lane gate. This trigger is the operator-ranked `floor-current-head-binding`:
+// FloorAttemptSubject carries pull_request, measured_head, run_id and run_attempt;
+// FloorHeadStanding is Current, Superseded or Unobservable independently of FloorLaneTerminal.
 //
 // This is deliberately NOT a relaxation of the lane gate on a non-cancelled workflow. The job
 // still runs after failed or skipped needs and the script still admits exactly `success`;
 // failure, skip, abandonment and every unknown lane result remain loud refusals there.
-data required_lanes_aggregate_cancellation_rung_drop: String = "Previous rung mechanically preventive; temporary rung mitigatable; reason cancellation lacks replacement identity; population bounded to pull_request cancellation events; restore when a typed same-PR newer-run observation distinguishes superseded from abandoned."
+data required_lanes_aggregate_cancellation_rung_drop: String = "Previous rung mechanically preventive; temporary rung mitigatable; reason a cancelled lane lacks replacement identity; population bounded to pull_request cancellation events; restore when a typed same-PR newer-run observation distinguishes superseded from abandoned."
 
+data required_lane_cancelled_result: String = "cancelled"
+
+fn required_lane_result_not_cancelled_condition(job_id: String) -> String {
+  concat("needs.", concat(job_id, concat(".result != '", concat(required_lane_cancelled_result, "'"))))
+}
+
+// `cancelled()` WAS THE WRONG OBSERVATION. Run 32935233342 proved it: floor concluded
+// `cancelled`, the workflow eventually concluded `cancelled`, yet this job's `!cancelled()`
+// condition armed and the aggregate fabricated FAILURE. The needed jobs' result fields are the
+// values the gate actually consumes, so cancellation is excluded from those same fields. The
+// leading status function remains necessary to displace GitHub's implicit success() over needs.
 fn required_lanes_aggregate_job_condition() -> String {
-  witness_step_status_guard_expression()
+  concat(
+    "always() && ",
+    concat(
+      required_lane_result_not_cancelled_condition(job_id: build_lane_job_id),
+      concat(" && ", required_lane_result_not_cancelled_condition(job_id: floor_lane_job_id))
+    )
+  )
 }
 //
 // THE STEP-LEVEL `always()` STAYS, and it guards a different thing rather than restating this
