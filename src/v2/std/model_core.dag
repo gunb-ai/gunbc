@@ -1,6 +1,6 @@
 module v2.std.model_core
 
-import v2.std.collection { Absent, List, Map, Present }
+import v2.std.collection { Absent, List, Map, Present, empty_map, map_insert }
 import v2.std.diagnostic {
   Diagnostic,
   Textual,
@@ -148,14 +148,15 @@ fn model_core_bool_fact_lookup(facts: BoolPrimitiveFacts, axis: Symbol) -> Witne
 }
 
 fn model_core_bool_spec_facts(facts: BoolPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      match model_core_bool_fact_lookup(facts: facts, axis: axis) {
-        Holds { value: v } => Present { value: v }
-        Violates { diagnostic: _ } => Absent
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      empty_map(),
+      discriminant(v: ModelCoreFactAxisWidth {}),
+      bool_width_fact_node(width: facts.width)
+    ),
+    discriminant(v: ModelCoreFactAxisEncoding {}),
+    bool_encoding_fact_node(encoding: facts.encoding)
+  )
 }
 
 fn model_core_bool_primitive_bundle() -> PrimitiveFactBundle {

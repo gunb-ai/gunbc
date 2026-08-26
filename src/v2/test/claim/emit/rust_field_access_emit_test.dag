@@ -88,7 +88,7 @@ fn rust_field_access_emit_facts_miss(key: Node) -> Optional<InferredFacts> {
 fn rust_field_access_emit_inferred_tree_for(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map { lookup: rust_field_access_emit_facts_miss }
+    facts: PartialFunction { lookup: rust_field_access_emit_facts_miss }
   }
 }
 

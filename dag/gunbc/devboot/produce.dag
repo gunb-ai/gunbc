@@ -6,15 +6,17 @@ import std.content_hash { sha256_hex_digest }
 
 import extdeps.shell
 import extdeps.gunbc
+import extdeps.tools.env { env_path_resolved_program, env_prefixed_args }
+import v2.std.orchestration { EnvBinding, EnvSet }
 import extdeps.git
 import extdeps.git.plumbing
 import extdeps.filesystem.filesystem_io
 import gunbc.devboot.transport {
   devboot_witness_run,
+  devboot_ensure_directory,
   devboot_repo_address,
   devboot_store_address,
   devboot_ref_observation,
-  retained_devboot_mkdir,
   retained_devboot_rm_file,
   retained_devboot_rm_rf,
   retained_devboot_rustc_version,
@@ -87,7 +89,10 @@ import extdeps.git.plumbing {
 import extdeps.toolchain.types { TargetTriple, ToolchainRequirement }
 import extdeps.rust.target_triple { parse_rust_target_triple }
 import extdeps.gnu.libc { PlatformCLibrary, GnuLibc, LibcUnobserved }
-import extdeps.cargo { CargoTarget, Lib, Bin, CargoTest, Example, Bench }
+import extdeps.cargo {
+  CargoTarget, Lib, Bin, CargoTest, Example, Bench,
+  CargoEnvironmentVariable, CargoTargetDirEnv, cargo_environment_variable_name,
+}
 import gunbc.devboot.program { devboot_program_package }
 
 // THE PRODUCER, AND IT IS THE LIVE PATH RATHER THAN A WITNESS. This module is invoked through `gunbc run`, so the first consumer of the identity carriers is the ordinary CLI surface -- a witness suite proving the same functions in isolation would not have established that anything is ever actually built or retrieved.
@@ -128,10 +133,7 @@ fn snapshot_step_refusal(step: String, exit_code: Int, stderr: String) -> String
 
 fn devboot_snapshot(repo_root: String, work_root: String) -> SnapshotOutcome {
   let index_path = devboot_snapshot_index_path(work_root: work_root)
-  let prepared = devboot_witness_run(
-    site: retained_devboot_mkdir,
-    workdir: repo_root, bin_path: "mkdir", args: ["-p", work_root]
-  )
+  let prepared = devboot_ensure_directory(repo_root: repo_root, path: work_root)
   let cleared = devboot_witness_run(
     site: retained_devboot_rm_file,
     workdir: repo_root, bin_path: "rm", args: ["-f", index_path]
@@ -190,10 +192,7 @@ fn devboot_materialize_source(repo_root: String, work_root: String, token: Strin
     site: retained_devboot_rm_rf,
     workdir: repo_root, bin_path: "rm", args: ["-rf", source_dir]
   )
-  let made = devboot_witness_run(
-    site: retained_devboot_mkdir,
-    workdir: repo_root, bin_path: "mkdir", args: ["-p", source_dir]
-  )
+  let made = devboot_ensure_directory(repo_root: repo_root, path: source_dir)
   let loaded = git.Plumbing.ReadTreeIntoIndex(
     address: devboot_repo_address(repo_root: repo_root),
     index: checkout_index as FilePath,
@@ -1046,8 +1045,13 @@ fn devboot_run_build_plan(
   let built = devboot_witness_run(
     site: retained_devboot_cargo_build,
     workdir: source_dir,
-    bin_path: "env",
-    args: concat([concat("CARGO_TARGET_DIR=", target_dir), "cargo"], args),
+    bin_path: env_path_resolved_program as String,
+    args: env_prefixed_args(
+      bindings: [
+        EnvSet { name: cargo_environment_variable_name(variable: CargoTargetDirEnv) as String, value: target_dir },
+      ],
+      command_argv: concat(["cargo"], args),
+    ),
   )
   if !built.success {
     ProduceRefused {

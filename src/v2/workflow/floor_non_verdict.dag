@@ -1,0 +1,156 @@
+module v2.workflow.floor_non_verdict
+
+import v2.std.algebra { Cons, Empty }
+import v2.std.collection { List }
+import v2.std.text { String }
+
+// THE NON-VERDICT ROSTER: identities enrolled as expected-red that the required floor EXECUTES
+// and that produce NO BOOLEAN VERDICT -- they throw, or they answer with something that is not a
+// Bool -- enrolled by exact qualified name.
+//
+// WHY IT EXISTS, and the fact it exists to make gating rather than merely visible. `cli_run`
+// `run_required_floor` routes such a claim to `known_red_runtime_errored` or
+// `known_red_observation_unreadable`, and those arms are HONEST: they say correctly that this
+// enrolled claim produced no verdict. The defect was never in the arm. It was in the
+// COMPOSITION -- `claim_executor` `required_floor_outcome_is_clean` consulted neither, so the
+// floor returned CLEAN while an enrolled expected-red assertion had ceased to assert anything.
+// A diagnostic can describe the evidence truthfully while the gate draws a false conclusion
+// from it, and that is what happened here on every run for a day.
+//
+// THE RUNG, PER SEAM, because the governing rung is the minimum across them and stating only
+// the strongest seam is the inflation DESIGN section 4b(1) forbids: routing a thrown claim into
+// its arm is MITIGATABLE; printing the count is MITIGATABLE; printing `failed=0` without
+// distinguishing verdict incompleteness is a MISLEADING PROJECTION; and returning CLEAN while
+// an enrolled claim produced no verdict is BELOW FLOOR. Below floor is not a rung -- it is
+// outside the ladder and forbidden outright -- which is why this roster gates rather than
+// waiting for the population to be repaid first.
+//
+// WHAT ENROLMENT ADMITS, AND WHAT IT CANNOT. Enrolment in `floor_expected_red` is an admission
+// about a known SEMANTIC VERDICT: this witness reaches its subject and answers false. It is not
+// permission for the subject to stop evaluating. Without this roster the expected-red arm
+// absorbs an arbitrary regression INSIDE the enrolled population -- yesterday the witness
+// executed and returned false, today it throws before reaching its assertion, no verdict
+// exists, and the floor stays clean. (Strictly inside it: an UNENROLLED witness that throws
+// goes through the ordinary failure path and already gates. The absorption was never repo-wide,
+// and saying otherwise would overstate the defect this closes.)
+//
+// WHAT THIS WALL CONFINES, AND WHAT IT DOES NOT. Stated first because the short name for this
+// module -- a growth freeze -- claims more than the mechanism delivers, and a reader who takes
+// the name literally will conclude that growth is REFUSED. It is not, in one direction.
+//
+// CONFINED, by execution, every run: the OBSERVED population must equal the ROSTER exactly. An
+// observed identity the roster does not carry refuses (unrostered debt); a rostered identity the
+// run did not observe refuses (stale exemption). Together those pin O = R.
+//
+// NOT CONFINED: the roster itself. Nothing here compares the roster authored at HEAD against the
+// roster admitted at the MERGE BASE, so an author whose change makes a NEW identity stop
+// producing a verdict may add its row IN THE SAME CHANGE. Observed then equals roster, both
+// arms pass, and the regression is admitted -- LEGALISED BY THE ROSTER THAT EXISTS TO BOUND IT.
+// The row becomes the permission, which is exactly the defect review 55361 identified for stale
+// rows, arriving through authorship rather than through survival.
+//
+// THIS IS A CONSEQUENCE OF THE SINGLE-RUN DESIGN AND NOT AN OVERSIGHT IN IT. The admission was
+// specified as `added = head_observed - base_observed`, which needs a SECOND floor run over the
+// base. Substituting the roster for base-observation is what makes the wall implementable in one
+// run -- and that substitution is sound exactly to the degree the roster cannot be grown freely.
+// So `R subset-of B` is the condition that makes the simplification safe, not an extra nicety on
+// top of it, and its absence is the honest cost of the cheap design.
+//
+// RUNG ON THAT AXIS: MITIGATABLE. Roster growth is confined by review diligence alone, which is
+// strictly weaker than execution, and this paragraph is the declaration rather than a reader's
+// inference.
+//
+// NEXT-RUNG TRIGGER: the floor establishes `H subset-of B` -- the roster in the COMPOSED RESULT is a
+// subset of the roster at that result's CURRENT TARGET-BASE PARENT. NOT the merge base, and the
+// difference is a real admission rather than a spelling: with M = {a} at the merge base, main
+// repairing `a` and deleting its row (B = {}), and a stale branch reintroducing it (H = O = {a}),
+// a subset-of-M rule PASSES and readmits an exemption main already retired. The mirror is a false
+// red on a row main legitimately added after the fork. The cut therefore needs the composed result
+// and its base parent, which a branch-head-only run cannot supply.
+
+// THE ADMISSION AS IMPLEMENTED: the ADDED set is empty.
+//
+//     added  = head_non_verdict_identities - roster
+//     repaid = roster - head_non_verdict_identities
+//     admit  <=> added is empty
+//
+// Shrinking the observed identity set toward empty is admitted; adding any identity refuses. So
+// does one old identity repairing while a different identity begins throwing, even when the two
+// sets have the same cardinality -- and THAT is why both sides are compared as IDENTITY SETS and
+// never as counts. A repaired witness must not buy permission for an unrelated witness to lose
+// its verdict. The corpus has already paid for this lesson once in the other direction: the false
+// regression that produced this module was a comparison whose `planned` counts matched on both
+// sides while the trees did not.
+//
+// REPAYMENT AND ROSTER DELETION ARE ONE ACT, and an earlier revision of this header said the
+// opposite. It argued that refusing a stale row "punishes the fix", because gunbc#9020 repairs
+// 99 of these in one landing and would go red for it. That argument is wrong, and review 55361
+// found why: A STALE ROW IS A LIVE EXEMPTION. The identity is repaired, the row stays, and if
+// that witness later stops producing a verdict again it is ALREADY ROSTERED -- so the exact
+// regression this wall exists to refuse is admitted in silence. Repayment without deletion turns
+// a bounded debt row into a permanent licence, which is the absorbing fallback wearing the word
+// "diagnostic".
+//
+// Refusing does not punish a repair; it requires the repair to be COMPLETE. The run names every
+// row to delete, the deletion is mechanical, and this is the discipline `floor_route_gap` and
+// the expected-red staleness join already enforce. The asymmetry was the error and consistency
+// with them is the repair -- which is worth recording, because the asymmetry had an argument
+// behind it and was endorsed before a reviewer found the hole in it.
+//
+// EMPTY IS THE INTENDED TERMINAL STATE. When every enrolled identity reaches its subject and
+// answers, this module deletes, and the two collections become ordinary conjuncts over nothing.
+//
+// THE LIVE POPULATION IS 15 IDENTITIES. The original 142-row roster was measured before #9039
+// repaired 127 identities, but #9095 authored that stale population after #9039 was already in
+// its ancestry. The wall then proved those 127 rows unreachable: they were absent from
+// `floor_expected_red`, so they could never enter either known-red non-verdict arm. Retiring the
+// exact non-verdict-minus-expected-red set keeps the 15 identities that can classify live debt;
+// enrolling the other 127 as expected-red instead would fabricate semantic verdicts.
+fn floor_non_verdict_roster() -> List<String> {
+  Cons {
+    head: "test.claim.host_phase_status.witness_reconcile_covers_upsert_teardown_and_noop",
+    tail: Cons {
+      head: "test.claim.host_phase_status.witness_remaining_work_counts_every_unfinished_cell",
+      tail: Cons {
+        head: "test.claim.srv3_subsumption.comment_only_drift_is_one_change_not_remove_add",
+        tail: Cons {
+          head: "test.claim.srv3_subsumption.reconcile_would_teardown_only_if_ownership_claimed_it",
+          tail: Cons {
+            head: "test.claim.srv3_subsumption.srv3_and_srv4_disagree_on_convergence",
+            tail: Cons {
+              head: "test.claim.srv3_subsumption.srv3_reconcile_adds_exactly_the_missing_fleet_key",
+              tail: Cons {
+                head: "test.claim.srv3_subsumption.srv3_reconcile_refuses_both_unowned_keys_never_teardown",
+                tail: Cons {
+                  head: "test.claim.srv3_subsumption.srv4_reconcile_is_converged_empty_plan",
+                  tail: Cons {
+                    head: "v2.test.claim.staging.cached_stage_hit_skips_stage",
+                    tail: Cons {
+                      head: "v2.test.claim.staging.cached_stage_miss_runs_stage",
+                      tail: Cons {
+                        head: "v2.test.emit.produced_decl_support_preserved.produced_decl_support_survives_augmentation",
+                        tail: Cons {
+                          head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_content_hash_violates",
+                          tail: Cons {
+                            head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_runtime_same_identity_violates",
+                            tail: Cons {
+                              head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_canonical_holds",
+                              tail: Cons {
+                                head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_non_canonical_violates",
+                                tail: Empty {}
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

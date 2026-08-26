@@ -64,7 +64,7 @@ fn rust_literal_bind_facts_miss(key: Node) -> Optional<InferredFacts> {
 fn rust_literal_bind_inferred_tree_for(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map { lookup: rust_literal_bind_facts_miss }
+    facts: PartialFunction { lookup: rust_literal_bind_facts_miss }
   }
 }
 

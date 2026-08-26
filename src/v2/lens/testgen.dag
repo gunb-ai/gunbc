@@ -4,7 +4,7 @@ import v2.lens.common.construction_justification { ConstructionJustification, Ra
 
 import v2.std.collection { List }
 import std.algebra { FreeMonoid, Empty, Cons }
-import v2.std.algebra { count_where, filter, fold_list, fold_list_right, length, list_append, non_empty, list_snoc_item, zip_eq }
+import v2.std.algebra { count_where, filter, fold_list, fold_list_right, length, list_append, list_flat_map, list_map, non_empty, list_snoc_item, zip_eq }
 import v2.std.diagnostic {
   Outcome,
   Diagnostic,
@@ -1667,28 +1667,18 @@ fn coproduct_exhaustiveness_generator(
 fn coproduct_exhaustiveness_generators_for_decl(
   decl: ConceptDecl
 ) -> List<Generator<TestgenConcept>> {
-  fold(
-    coproduct_arm_key_list_from_node(node: decl.node),
-    init: Empty,
-    f: fn(acc, arm) {
-      list_snoc_item(
-        xs: acc,
-        item: coproduct_exhaustiveness_generator(coproduct_type: decl.name, omitted_variant: arm)
-      )
+  list_map(
+    xs: coproduct_arm_key_list_from_node(node: decl.node),
+    f: fn(arm) {
+      coproduct_exhaustiveness_generator(coproduct_type: decl.name, omitted_variant: arm)
     }
   )
 }
 
 fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<TestgenConcept>> {
-  fold(
-    enumerate_coproduct_decls(),
-    init: Empty,
-    f: fn(acc, decl) {
-      list_append(
-        left: acc,
-        right: coproduct_exhaustiveness_generators_for_decl(decl: decl)
-      )
-    }
+  list_flat_map(
+    xs: enumerate_coproduct_decls(),
+    f: fn(decl) { coproduct_exhaustiveness_generators_for_decl(decl: decl) }
   )
 }
 

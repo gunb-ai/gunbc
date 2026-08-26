@@ -16,7 +16,7 @@ import v2.compiler.infer {
   InferredTree
 }
 import v2.compiler.resolve { ResolvedTree }
-import v2.std.collection { List, Map }
+import v2.std.collection { List, Map, empty_map }
 import v2.std.diagnostic {
   Accepted,
   AmbiguousIntent,
@@ -240,11 +240,7 @@ fn infer_receipt_context() -> EvalContext {
 fn infer_receipt_empty_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map {
-      lookup: fn(_) {
-        Absent
-      }
-    }
+    facts: empty_map()
   }
 }
 

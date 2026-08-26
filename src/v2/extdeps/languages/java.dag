@@ -46,7 +46,7 @@ import v2.std.compilers.lexing {
 import v2.std.collection {
   List,
   Map,
-  Set,
+  PointwisePower,
   empty_map,
   map_insert
 }
@@ -1490,8 +1490,8 @@ fn java_grammar() -> ParseGrammar {
   ModeledGrammar { root: java_grammar_root() }
 }
 
-fn java_canonical_symbols() -> Set<Symbol> {
-  Set {
+fn java_canonical_symbols() -> PointwisePower<Symbol> {
+  PointwisePower {
     member: fn(sym) {
       java_catalog_surface_symbol(sym: sym) ||
         sym == ^java_surface_spelling_void ||
@@ -1588,8 +1588,8 @@ fn java_method_add_lex_token_symbol(sym: Symbol) -> Bool {
     sym == ^java_token_semicolon
 }
 
-fn java_language_model_canonical_symbols() -> Set<Symbol> {
-  Set {
+fn java_language_model_canonical_symbols() -> PointwisePower<Symbol> {
+  PointwisePower {
     member: fn(sym) {
       java_catalog_surface_symbol(sym: sym) ||
         sym == ^java_surface_spelling_void ||
@@ -1602,51 +1602,51 @@ fn java_language_model_canonical_symbols() -> Set<Symbol> {
 }
 
 fn java_integer_spec_facts(facts: JavaIntegerPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: java_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          v2.std.optional.Present { value: java_int_width_node(width: facts.width) }
-      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
-          v2.std.optional.Present { value: java_int_kind_node(kind: facts.signedness) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          v2.std.optional.Present { value: java_integer_encoding_fact(facts: facts) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(
+          empty_map(),
+          discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+          java_inhabitant_atom(id: facts.surface_spelling)
+        ),
+        discriminant(v: ModelCoreFactAxisWidth {}),
+        java_int_width_node(width: facts.width)
+      ),
+      discriminant(v: ModelCoreFactAxisSignedness {}),
+      java_int_kind_node(kind: facts.signedness)
+    ),
+    discriminant(v: ModelCoreFactAxisEncoding {}),
+    java_integer_encoding_fact(facts: facts)
+  )
 }
 
 fn java_float_spec_facts(facts: JavaFloatPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: java_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          v2.std.optional.Present { value: java_float_width_node(width: facts.width) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          v2.std.optional.Present { value: java_inhabitant_atom(id: facts.ieee754_binary) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      map_insert(
+        empty_map(),
+        discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+        java_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      discriminant(v: ModelCoreFactAxisWidth {}),
+      java_float_width_node(width: facts.width)
+    ),
+    discriminant(v: ModelCoreFactAxisEncoding {}),
+    java_inhabitant_atom(id: facts.ieee754_binary)
+  )
 }
 
 fn java_noninteger_spec_facts(facts: JavaNonIntegerPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: java_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          v2.std.optional.Present { value: java_inhabitant_atom(id: facts.representation) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      empty_map(),
+      discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+      java_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    discriminant(v: ModelCoreFactAxisEncoding {}),
+    java_inhabitant_atom(id: facts.representation)
+  )
 }
 
 fn java_primitive_bundle_from_integer_facts(facts: JavaIntegerPrimitiveFacts) -> PrimitiveFactBundle {

@@ -141,7 +141,7 @@ fn record_construct_facts_lookup(key: Node) -> Optional<InferredFacts> {
 
 data record_construct_inferred_tree: InferredTree = InferredTree {
   root: record_construct_emitted_root,
-  facts: Map { lookup: record_construct_facts_lookup }
+  facts: PartialFunction { lookup: record_construct_facts_lookup }
 }
 
 test fn record_construct_emit_holds() -> Bool {

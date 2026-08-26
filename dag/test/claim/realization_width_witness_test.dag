@@ -20,7 +20,7 @@ fn witness_threads_4() -> HardwareThreadCount {
 
 fn synthetic_plan() -> RealizationPlan<Nano> {
   RealizationPlan {
-    target: "width-witness-target"
+    target: std.content_hash.content_hash_of_value(value: "width-witness-target")
     objective: RealizationObjective { goals: [] }
     schedule: [
       [RunnableSingleClaim { entry: gate_entry, function: compile_gate_fn, profile: runnable_resource_profile_negligible() }],

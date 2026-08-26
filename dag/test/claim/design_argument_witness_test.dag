@@ -1,5 +1,7 @@
 module test.claim.design_argument_witness
 
+import gunbc.design_argument { design_argument, design_axioms, design_section_1_argument }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

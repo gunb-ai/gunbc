@@ -241,7 +241,7 @@ fn python_add_facts_lookup(key: Node) -> Optional<InferredFacts> {
 
 data python_add_inferred_tree: InferredTree = InferredTree {
   root: python_add_emitted_root,
-  facts: Map {
+  facts: PartialFunction {
     lookup: python_add_facts_lookup
   }
 }

@@ -42,7 +42,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data rust_record_construct_emit_inferred_tree: InferredTree = InferredTree {
   root: dag_fixture_emitted_rec_fn,
-  facts: Map { lookup: rust_record_construct_emit_facts_miss }
+  facts: PartialFunction { lookup: rust_record_construct_emit_facts_miss }
 }
 
 fn rust_record_construct_emit_facts_miss(key: Node) -> Optional<InferredFacts> {

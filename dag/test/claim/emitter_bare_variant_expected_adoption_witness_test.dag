@@ -10,7 +10,7 @@ data emitter_bare_variant_expected_adoption_witness_note: String = "PERMANENT RE
 // unwrapped spelling `sign: Sign::Plus` must be absent. The must-contain row alone
 // would be satisfiable by an emitter that produced both forms; the must-not-contain row
 // alone passes vacuously if emission fails and yields no text at all.
-fn w_optional_field_bare_variant_keeps_its_wrapper() -> Bool {
+test fn w_optional_field_bare_variant_keeps_its_wrapper() -> Bool {
   compile_dag_rust_emit_check(
     "module optvar\n\nimport std.types { String }\n\ntype Sign\n  = Plus\n  | Minus\n\ntype Holder {\n  sign: Sign?\n  label: String\n}\n\nfn make(l: String) -> Holder {\n  Holder { sign: Plus, label: l }\n}\n",
     "src/optvar.rs",
@@ -22,7 +22,7 @@ fn w_optional_field_bare_variant_keeps_its_wrapper() -> Bool {
 // The same shape at a REQUIRED field, which must keep rendering the bare constructor.
 // This is the feature's positive control: it is what keeps the repair above from being
 // satisfiable by wrapping every variant, or by refusing every adoption.
-fn w_required_field_bare_variant_is_not_wrapped() -> Bool {
+test fn w_required_field_bare_variant_is_not_wrapped() -> Bool {
   compile_dag_rust_emit_check(
     "module reqvar\n\nimport std.types { String }\n\ntype Sign\n  = Plus\n  | Minus\n\ntype Holder {\n  sign: Sign\n  label: String\n}\n\nfn make(l: String) -> Holder {\n  Holder { sign: Minus, label: l }\n}\n",
     "src/reqvar.rs",

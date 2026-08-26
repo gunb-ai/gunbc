@@ -68,7 +68,7 @@ data nominal_distinct_records_compile_receipt: Outcome<Medium<String>> = anchor_
 data nominal_distinct_brands_compile_receipt: Outcome<Medium<String>> = anchor_nominal_distinct_brands_compile()
 data nominal_distinct_control_compile_receipt: Outcome<Medium<String>> = anchor_nominal_distinct_control_compile()
 
-fn nominal_distinct_control_compiles_ok() -> Bool {
+test fn nominal_distinct_control_compiles_ok() -> Bool {
   match nominal_distinct_control_compile_receipt {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false

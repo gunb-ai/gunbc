@@ -1,5 +1,7 @@
 module test.claim.realization_reconcile_witness
 
+import std.realization { LocalInProcess }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn is_share(m: Materialization) -> Bool {

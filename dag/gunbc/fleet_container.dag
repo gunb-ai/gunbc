@@ -13,6 +13,10 @@ import gunbc.fleet_intent {
   Ubicloud,
   GcloudRun,
 }
+import product.fabric.envelope {
+  CpuRequirement, GpuRequirement, MemoryRequirement, StorageRequirement, NetworkRequirement,
+  ResourceEnvelope,
+}
 import extdeps.toolchain.types { Architecture }
 import extdeps.gpu.types { GpuRuntime }
 import extdeps.storage.types { PersistenceKind }
@@ -30,19 +34,11 @@ import std.measure {
 }
 import std.realization_width { bounded_host_spawn_width, memory_aware_spawn_width }
 
-type CpuRequirement { min_threads: HardwareThreadCount, architecture: Architecture? }
-type GpuRequirement { min_vram: ByteSize, runtimes: List<GpuRuntime> }
-type MemoryRequirement { min_bytes: ByteSize }
-type StorageRequirement { min_bytes: ByteSize, persistence: PersistenceKind }
-type NetworkRequirement { egress: NetworkEgressClass?, ambient_allowed: Bool }
-
-type ResourceEnvelope {
-  cpu: CpuRequirement?
-  gpu: GpuRequirement?
-  memory: MemoryRequirement?
-  storage: StorageRequirement?
-  network: NetworkRequirement?
-}
+// THE REQUIREMENT VOCABULARY MOVED TO product.fabric.envelope AND IS CONSUMED HERE.
+//
+// These are machine questions, not container questions -- a bare-metal host and a rented VM answer
+// them identically -- so owning them inside a model of our fleet's containers put a general fact in
+// a specific home. Consumed, not redeclared (DESIGN section 3).
 
 type ContainerBaseline
   = ContainerBaselineMeasured { idle: ResourceEnvelope }

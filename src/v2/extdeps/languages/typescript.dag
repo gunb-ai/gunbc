@@ -54,7 +54,7 @@ import v2.std.compilers.lexing {
 import v2.std.collection {
   List,
   Map,
-  Set,
+  PointwisePower,
   empty_map,
   map_insert
 }
@@ -2146,8 +2146,8 @@ fn ts_catalog_surface_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn ts_language_model_canonical_symbols() -> Set<Symbol> {
-  Set {
+fn ts_language_model_canonical_symbols() -> PointwisePower<Symbol> {
+  PointwisePower {
     member: fn(sym) {
       ts_catalog_surface_symbol(sym: sym) ||
         ts_fn_add_lex_token_symbol(sym: sym) ||
@@ -2159,47 +2159,43 @@ fn ts_language_model_canonical_symbols() -> Set<Symbol> {
 }
 
 fn ts_number_spec_facts(facts: TsNumberPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: ts_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          v2.std.optional.Present { value: ts_inhabitant_atom(id: ^ts_tag_bits64) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          v2.std.optional.Present { value: ts_inhabitant_atom(id: facts.ieee754_binary) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      map_insert(
+        empty_map(),
+        discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+        ts_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      discriminant(v: ModelCoreFactAxisWidth {}),
+      ts_inhabitant_atom(id: ^ts_tag_bits64)
+    ),
+    discriminant(v: ModelCoreFactAxisEncoding {}),
+    ts_inhabitant_atom(id: facts.ieee754_binary)
+  )
 }
 
 fn ts_bigint_spec_facts(facts: TsBigIntPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: ts_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          v2.std.optional.Present { value: ts_inhabitant_atom(id: facts.encoding) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      empty_map(),
+      discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+      ts_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    discriminant(v: ModelCoreFactAxisEncoding {}),
+    ts_inhabitant_atom(id: facts.encoding)
+  )
 }
 
 fn ts_bool_spec_facts(facts: TsBooleanPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: ts_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          v2.std.optional.Present { value: ts_inhabitant_atom(id: facts.encoding) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      empty_map(),
+      discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+      ts_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    discriminant(v: ModelCoreFactAxisEncoding {}),
+    ts_inhabitant_atom(id: facts.encoding)
+  )
 }
 
 fn ts_primitive_bundle_from_number_facts(facts: TsNumberPrimitiveFacts) -> PrimitiveFactBundle {
@@ -3099,8 +3095,8 @@ fn ts_grammar() -> ParseGrammar {
   ModeledGrammar { root: ts_grammar_root() }
 }
 
-fn ts_grammar_canonical_symbols() -> Set<Symbol> {
-  Set {
+fn ts_grammar_canonical_symbols() -> PointwisePower<Symbol> {
+  PointwisePower {
     member: fn(sym) {
       ts_catalog_surface_symbol(sym: sym) ||
         ts_lex_token_symbol(sym: sym) ||
@@ -3645,8 +3641,8 @@ fn ts_model_core() -> ModelCore {
   }
 }
 
-fn ts_canonical_symbols() -> Set<Symbol> {
-  Set {
+fn ts_canonical_symbols() -> PointwisePower<Symbol> {
+  PointwisePower {
     member: fn(sym) {
       ts_grammar_canonical_symbols().member(sym: sym) ||
         sym == ^ts_surface_spelling_string

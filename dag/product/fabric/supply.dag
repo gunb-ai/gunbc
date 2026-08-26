@@ -1,8 +1,10 @@
 module product.fabric.supply
 
-import std.types { Timestamp, Int }
+import std.types { Timestamp, Int, List }
 import std.measure {
-  MoneyAmountMicro, MoneyPerSecond, MoneyPerHour, MoneyOnce,
+  ByteSize,
+  byte_size_count,
+  MoneyAmountMicro, MoneyPerSecond, MoneyPerMinute, MoneyPerHour, MoneyOnce,
   HardwareThreadCount, hardware_thread_count_value, money_amount_micro_count,
   Second, second_count, minutes_per_hour, seconds_per_minute, measure_scale_fraction_ceil,
 }
@@ -10,13 +12,19 @@ import std.currency { CurrencyCode }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { Shape, CapabilityManifestRef, TrustDomainRef, ExecutionRequirements }
+import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
+import product.fabric.envelope { ResourceEnvelope }
+import product.fabric.isolation {
+  IsolationProfile, IsolationGuarantee,
+  unsatisfied_isolation_guarantees, unsatisfied_isolation_wire,
+}
 
-// An Offer is a supplier's statement of capacity it is willing to sell. Owned
+// A SupplierOffer is a supplier's statement of capacity it is willing to sell. Owned
 // capacity and rented capacity are ONE type: what differs is the evidence behind
 // the statement, not the kind of thing being stated.
 
 // Observed and quoted supply differ in their evidence, not in their type, and
-// minting two Offer types would fork the selection fold that must compare
+// minting two SupplierOffer types would fork the selection fold that must compare
 // them. ObservedSupply is a measurement - this host has three free slots right
 // now, and here is the receipt. QuotedSupply is a standing willingness to sell
 // - this supplier will provide up to N of this shape at this rate until this
@@ -47,7 +55,7 @@ import product.fabric.work { Shape, CapabilityManifestRef, TrustDomainRef, Execu
 //
 // The runtime coproduct is here for a reason the type parameter cannot serve:
 // selection ranks offers billed on different bases against each other, so they
-// must inhabit one roster, and Offer<P, PerHour> and Offer<P, PerSecond> would
+// must inhabit one roster, and SupplierOffer<P, PerHour> and SupplierOffer<P, PerSecond> would
 // be different types. Discriminating at the value level keeps the roster
 // homogeneous while keeping the periods unaddable, since reaching either
 // amount requires naming which period it is.
@@ -59,12 +67,14 @@ import product.fabric.work { Shape, CapabilityManifestRef, TrustDomainRef, Execu
 
 type OfferQuote =
   | QuotedPerSecond(MoneyPerSecond)
+  | QuotedPerMinute(MoneyPerMinute)
   | QuotedPerHour(MoneyPerHour)
   | QuotedFlatPerGrant(MoneyOnce)
 
 fn offer_quote_amount(q: OfferQuote) -> MoneyAmountMicro {
   match q {
     QuotedPerSecond(r) => r.amount
+    QuotedPerMinute(r) => r.amount
     QuotedPerHour(r) => r.amount
     QuotedFlatPerGrant(r) => r.amount
   }
@@ -73,6 +83,7 @@ fn offer_quote_amount(q: OfferQuote) -> MoneyAmountMicro {
 fn offer_quote_currency(q: OfferQuote) -> CurrencyCode {
   match q {
     QuotedPerSecond(r) => r.currency
+    QuotedPerMinute(r) => r.currency
     QuotedPerHour(r) => r.currency
     QuotedFlatPerGrant(r) => r.currency
   }
@@ -86,19 +97,21 @@ type OfferEvidence
       receipt: ObservationReceiptRef,
     }
 
-type Offer<P> {
+type SupplierOffer<P> {
   id: FabricIdentity<P, OfferKey>
   executor: P
   shape: Shape
   capabilities: CapabilityManifestRef
   trust_domain: TrustDomainRef
+  isolation: IsolationProfile
   quantity_bound: Int
   ready_at: Timestamp
   quote: OfferQuote
+  billing_quantum: Second
   evidence: OfferEvidence
 }
 
-// An Offer carries no remaining_capacity field. Remaining capacity is DERIVED
+// A SupplierOffer carries no remaining_capacity field. Remaining capacity is DERIVED
 // as the allocatable bound minus the sum of active grant claims against that
 // offer, and deriving it is precisely what makes atomic grant issuance
 // conserve supply. A stored remainder is a second representation of the grant
@@ -134,7 +147,7 @@ type Offer<P> {
 // refusal or a demand that stays pending. It is never a degraded execution
 // path, and there is no arm to reach for one.
 
-type SelectionPolicy =
+type SupplySelectionPolicy =
   | CheapestFungibleWithDelayValuation
 
 // FUNGIBILITY IS THE FABRIC'S QUESTION, NOT A CONSUMER'S.
@@ -142,7 +155,7 @@ type SelectionPolicy =
 // This fold arrived here from gunbc.fabric_witness_run, where it had been
 // written as authorize_floor_run with a FloorRunRefusal coproduct. Nothing in
 // it was ever about the floor: comparing a Work's requirements against an
-// Offer's capabilities is provider-neutral, and work.dag's own header already
+// SupplierOffer's capabilities is provider-neutral, and work.dag's own header already
 // calls fungibility "selection's first and load-bearing step". A consumer that
 // owns this fold is a consumer that will answer it differently from the next
 // consumer, which is the fork the fabric exists to prevent.
@@ -166,9 +179,19 @@ type SelectionPolicy =
 
 type OfferFungibility
   = Fungible
-  | ShapeNotCovered { required_threads: HardwareThreadCount, offered_threads: HardwareThreadCount }
   | TrustDomainMismatch { required: TrustDomainRef, offered: TrustDomainRef }
   | CapabilitiesNotOffered { required: CapabilityManifestRef, offered: CapabilityManifestRef }
+  | IsolationNotProvided { missing: List<IsolationGuarantee> }
+  | ShapeAxesNotCovered { unmet: List<UnmetShapeAxis> }
+
+// ShapeNotCovered IS DELETED RATHER THAN KEPT BESIDE ITS REPLACEMENT.
+//
+// It carried exactly one axis -- required and offered thread counts -- which ShapeAxesNotCovered
+// now carries as ThreadsNotCovered alongside the axes it could not express. Nothing constructs it
+// any more, so keeping it would leave a variant every consumer must match and no producer can
+// ever emit: a permanently-unreachable arm that reads as coverage. DESIGN section 4b(4) is
+// explicit that a climb deletes the redundant lower-rung machinery it obsoletes rather than
+// accumulating it beside the replacement.
 
 // GRANT DURATION -- the fact a RATE quote needs before its per-unit price can
 // be compared to a per-grant ceiling AT ALL. "I cannot compare a $/hr rate to
@@ -206,7 +229,106 @@ type DemandOfferAffordability
   | QuoteCurrencyMismatch { quoted: CurrencyCode, budgeted: CurrencyCode }
 
 fn offer_covers_shape(offered: Shape, needed: Shape) -> Bool {
-  hardware_thread_count_value(t: offered.hard.threads) >= hardware_thread_count_value(t: needed.hard.threads)
+  (unmet_shape_axes(offered: offered, needed: needed) |> count) == 0
+}
+
+// THREADS WERE THE ONLY AXIS COMPARED, SO FUNGIBILITY RETURNED WRONG ANSWERS.
+//
+// An 8 GiB x64 workload was declared fungible with a 6 GiB arm offer whenever thread counts and the
+// textual capability ref matched. The broker would route work to a machine that cannot run it, and
+// nothing downstream refuses because fungibility already said yes.
+//
+// EACH UNMET AXIS IS NAMED, FOR THE REASON THE ISOLATION MATCH GIVES: "does not fit" is
+// unactionable, while "needs 8589934592 bytes, offered 6442450944" tells a broker which supplier
+// class to look for. An axis the WORK does not state is skipped and is not reported as checked --
+// unstated is not satisfied-by-everything, and rendering it as covered would turn absence of a
+// requirement into a positive clearance.
+//
+// ARCHITECTURE IS EQUALITY, NOT ORDER. There is no sense in which x86_64 "covers" aarch64: a
+// binary built for one does not run on the other, so the comparison is a match and a mismatch is
+// total. Threads and memory are genuine at-least comparisons.
+type UnmetShapeAxis
+  = ThreadsNotCovered { required: HardwareThreadCount, offered: HardwareThreadCount }
+  | MemoryNotCovered { required: ByteSize, offered: ByteSize }
+  | MemoryNotOffered { required: ByteSize }
+  | ArchitectureMismatch { required: Architecture, offered: Architecture }
+  | ArchitectureNotOffered { required: Architecture }
+
+fn unmet_shape_axis_wire(axis: UnmetShapeAxis) -> String {
+  match axis {
+    ThreadsNotCovered { required: r, offered: o } =>
+      join(["threads: needs ", to_string(hardware_thread_count_value(t: r)),
+            ", offered ", to_string(hardware_thread_count_value(t: o))], "")
+    MemoryNotCovered { required: r, offered: o } =>
+      join(["memory: needs ", to_string(byte_size_count(b: r)),
+            " bytes, offered ", to_string(byte_size_count(b: o))], "")
+    MemoryNotOffered { required: r } =>
+      join(["memory: needs ", to_string(byte_size_count(b: r)),
+            " bytes, offer states none"], "")
+    ArchitectureMismatch { required: r, offered: o } =>
+      join(["architecture: needs ", architecture_diagnostic_name(arch: r) as String,
+            ", offered ", architecture_diagnostic_name(arch: o) as String], "")
+    ArchitectureNotOffered { required: r } =>
+      join(["architecture: needs ", architecture_diagnostic_name(arch: r) as String,
+            ", offer states none"], "")
+  }
+}
+
+fn unmet_thread_axis(offered: Shape, needed: Shape) -> List<UnmetShapeAxis> {
+  if hardware_thread_count_value(t: offered.hard.threads)
+    >= hardware_thread_count_value(t: needed.hard.threads) {
+    []
+  } else {
+    [ThreadsNotCovered { required: needed.hard.threads, offered: offered.hard.threads }]
+  }
+}
+
+fn unmet_memory_axis(offered: Shape, needed: Shape) -> List<UnmetShapeAxis> {
+  match needed.envelope.memory {
+    Absent => []
+    Present { value: want } =>
+      match offered.envelope.memory {
+        Absent => [MemoryNotOffered { required: want.min_bytes }]
+        Present { value: have } =>
+          if byte_size_count(b: have.min_bytes) >= byte_size_count(b: want.min_bytes) {
+            []
+          } else {
+            [MemoryNotCovered { required: want.min_bytes, offered: have.min_bytes }]
+          }
+      }
+  }
+}
+
+fn unmet_architecture_axis(offered: Shape, needed: Shape) -> List<UnmetShapeAxis> {
+  match needed.envelope.cpu {
+    Absent => []
+    Present { value: want_cpu } =>
+      match want_cpu.architecture {
+        Absent => []
+        Present { value: want } =>
+          match offered.envelope.cpu {
+            Absent => [ArchitectureNotOffered { required: want }]
+            Present { value: have_cpu } =>
+              match have_cpu.architecture {
+                Absent => [ArchitectureNotOffered { required: want }]
+                Present { value: have } =>
+                  if have == want { [] } else {
+                    [ArchitectureMismatch { required: want, offered: have }]
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn unmet_shape_axes(offered: Shape, needed: Shape) -> List<UnmetShapeAxis> {
+  concat(
+    unmet_thread_axis(offered: offered, needed: needed),
+    concat(
+      unmet_memory_axis(offered: offered, needed: needed),
+      unmet_architecture_axis(offered: offered, needed: needed),
+    ),
+  )
 }
 
 // THIS FOLD SCREENS FUNGIBILITY. IT DOES NOT SELECT, AND IT TAKES NO MONEY.
@@ -216,16 +338,20 @@ fn offer_covers_shape(offered: Shape, needed: Shape) -> Bool {
 // fungible offers, and choosing -- like pricing -- is where economics live,
 // never here.
 
-fn offer_fungibility_for<P>(requirements: ExecutionRequirements, offer: Offer<P>) -> OfferFungibility {
+fn offer_fungibility_for<P>(requirements: ExecutionRequirements, offer: SupplierOffer<P>) -> OfferFungibility {
+  let missing_isolation = unsatisfied_isolation_guarantees(
+    required: requirements.isolation,
+    provided: offer.isolation,
+  )
+  let unmet_axes = unmet_shape_axes(offered: offer.shape, needed: requirements.shape)
   if requirements.trust_domain != offer.trust_domain {
     TrustDomainMismatch { required: requirements.trust_domain, offered: offer.trust_domain }
   } else if requirements.capabilities != offer.capabilities {
     CapabilitiesNotOffered { required: requirements.capabilities, offered: offer.capabilities }
-  } else if !offer_covers_shape(offered: offer.shape, needed: requirements.shape) {
-    ShapeNotCovered {
-      required_threads: requirements.shape.hard.threads,
-      offered_threads: offer.shape.hard.threads,
-    }
+  } else if (missing_isolation |> count) > 0 {
+    IsolationNotProvided { missing: missing_isolation }
+  } else if (unmet_axes |> count) > 0 {
+    ShapeAxesNotCovered { unmet: unmet_axes }
   } else {
     Fungible
   }
@@ -236,22 +362,27 @@ fn seconds_per_hour() -> Nat {
 }
 
 // A BILLING QUANTUM: the smallest interval a supplier ever charges for, and
-// suppliers round UP a partial quantum rather than pro-rating it. Hetzner
-// bills a ONE HOUR MINIMUM, rounded up -- one second of use and 3601 seconds
-// of use both cost two hours if the run crosses an hour boundary. Modeling
-// duration as a bare scalar divided by 3600 (as the old fold modelled a bare
-// rate against a bare ceiling) would understate an hourly bill exactly the
-// way that fold once mispriced a rate as a total.
+// suppliers round UP a partial quantum rather than pro-rating it. It is a
+// PER-SUPPLIER FACT and is carried on the offer, because it is not a property
+// the fabric may choose. Hetzner bills a one-hour minimum rounded up, so one
+// second of use costs an hour; Ubicloud bills by the minute; owned capacity
+// bills nothing at all and is therefore CONTINUOUS.
 //
-// This is a SYNTHETIC one-hour quantum, not the full supplier tariff --
-// gunb-ai/gunbc-private's dag/strategy/ci_product_surface.dag already models
-// a richer per-supplier tariff (attr_billing_quantum, quantum_fit,
-// BillingQuantumFit) for a provider whose minimum billed increment exceeds a
-// typical job; cited by name per DESIGN section 2 rather than reinvented,
-// and not imported because gunbc and gunbc-private are separate repos with
-// no shared symbols. A hard-coded one-hour quantum is enough to make the
-// positive hourly control well-formed without modeling the full assignment
-// economy (variable quantum, renewal boundary, paid-through commitment).
+// A quantum of ZERO means continuous, and that is not a degenerate case to be
+// tolerated -- it is the modeled advantage of owned compute. A 90-second job on
+// an hourly supplier is billed 3600 seconds and wastes 3510 of them; the same
+// job on continuous capacity is billed 90. For short CI work that waste can
+// exceed the entire difference in headline rate, so a fold that compared rates
+// while assuming one quantum for everybody would rank suppliers by the wrong
+// number and never say why.
+//
+// An earlier revision hard-coded a SYNTHETIC one-hour quantum here for every
+// offer, and cited gunbc-private's richer per-supplier tariff by name as the
+// thing it was standing in for. That stand-in silently overcharged every
+// sub-hourly supplier by up to a full hour per grant: normalizing a per-minute
+// vendor into the per-hour arm made a three-minute job project a whole hour, a
+// twentyfold overstatement that would have kept the selection fold from ever
+// choosing that supplier. The quantum is now the supplier's own.
 fn billed_unit_count(seconds: Nat, quantum_seconds: Nat) -> Nat {
   if quantum_seconds == 0 {
     seconds
@@ -275,17 +406,35 @@ fn billed_unit_count(seconds: Nat, quantum_seconds: Nat) -> Nat {
 // cost exceeds the ceiling, which is the absorbing-fallback failure (DESIGN
 // section 5) one level down: a refusal arm that quietly narrows instead of
 // refusing.
-fn offer_quoted_total_for_grant(quote: OfferQuote, duration: GrantDuration) -> MoneyAmountMicro {
+fn billed_seconds(seconds: Nat, quantum_seconds: Nat) -> Nat {
+  if quantum_seconds == 0 {
+    seconds
+  } else {
+    billed_unit_count(seconds: seconds, quantum_seconds: quantum_seconds) * quantum_seconds
+  }
+}
+
+// The quantum arrives as a Second rather than a bare Nat for the same reason
+// GrantDuration does, two declarations up: this file already models every other
+// duration it carries as Second, so a *_seconds: Nat field here was the one place
+// the magnitude's name lived in the field name instead of in its type. Both are
+// unwrapped to counts on the next two lines because what follows is integer
+// ceiling arithmetic over unit counts, and a count scaled by measure_scale_fraction_ceil
+// is a dimensionless multiplier, not a duration.
+fn offer_quoted_total_for_grant(
+  quote: OfferQuote,
+  duration: GrantDuration,
+  quantum: Second,
+) -> MoneyAmountMicro {
   let seconds = second_count(s: grant_duration_seconds(d: duration))
+  let billed = billed_seconds(seconds: seconds, quantum_seconds: second_count(s: quantum))
   match quote {
     QuotedFlatPerGrant(r) => r.amount
-    QuotedPerSecond(r) => measure_scale_fraction_ceil(m: r.amount, num: seconds, den: 1)
+    QuotedPerSecond(r) => measure_scale_fraction_ceil(m: r.amount, num: billed, den: 1)
+    QuotedPerMinute(r) =>
+      measure_scale_fraction_ceil(m: r.amount, num: billed, den: seconds_per_minute())
     QuotedPerHour(r) =>
-      measure_scale_fraction_ceil(
-        m: r.amount,
-        num: billed_unit_count(seconds: seconds, quantum_seconds: seconds_per_hour()),
-        den: 1,
-      )
+      measure_scale_fraction_ceil(m: r.amount, num: billed, den: seconds_per_hour())
   }
 }
 
@@ -333,7 +482,7 @@ fn offer_quoted_total_for_grant(quote: OfferQuote, duration: GrantDuration) -> M
 // known to whoever is asking, never stored on the offer.
 
 fn offer_affordability_for<P>(
-  offer: Offer<P>,
+  offer: SupplierOffer<P>,
   maximum_buy_order: MoneyAmountMicro,
   budget_currency: CurrencyCode,
   duration: GrantDuration,
@@ -341,7 +490,7 @@ fn offer_affordability_for<P>(
   if offer_quote_currency(q: offer.quote) != budget_currency {
     QuoteCurrencyMismatch { quoted: offer_quote_currency(q: offer.quote), budgeted: budget_currency }
   } else {
-    let projected = offer_quoted_total_for_grant(quote: offer.quote, duration: duration)
+    let projected = offer_quoted_total_for_grant(quote: offer.quote, duration: duration, quantum: offer.billing_quantum)
     if money_amount_micro_count(m: projected) > money_amount_micro_count(m: maximum_buy_order) {
       QuoteExceedsMaximumBuyOrder { quoted: projected, maximum: maximum_buy_order }
     } else {
@@ -350,6 +499,8 @@ fn offer_affordability_for<P>(
         EstimatedGrantDuration { seconds: s } => match offer.quote {
           QuotedFlatPerGrant(_) => Affordable
           QuotedPerSecond(_) =>
+            AffordableUnderEstimate { duration_seconds: s, projected_total: projected }
+          QuotedPerMinute(_) =>
             AffordableUnderEstimate { duration_seconds: s, projected_total: projected }
           QuotedPerHour(_) =>
             AffordableUnderEstimate { duration_seconds: s, projected_total: projected }

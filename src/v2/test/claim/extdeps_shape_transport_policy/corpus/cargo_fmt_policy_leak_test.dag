@@ -1,5 +1,7 @@
 module v2.test.extdeps_shape_transport_policy.corpus.cargo_fmt_policy_leak
 
+import v2.lens.extdeps_shape_transport_policy.module_refs { extdeps_cargo_build_module }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

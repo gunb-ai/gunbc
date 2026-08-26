@@ -11,6 +11,7 @@ pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Go;
+use crate::v1_compiler_emit::BoundOperation::*;
 pub use crate::v1_compiler_emit::{
     apply_naming_case, compute_service_fields, effective_operation_transport,
     emit_algebra_method_template, emit_bin_op_symbol, emit_container, emit_default_bin_op,
@@ -28,9 +29,9 @@ pub use crate::v1_compiler_emit::{
     empty_emit_scope, escape_go_interp_text, extract_string_interp_parts, has_nested_records_node,
     is_null_coalesce, is_tco_eligible, lookup_item, module_emit_scope, order_typed_call_args,
     scope_after_expr, seed_bindings, service_fallback_transport, service_field_decls,
-    test_file_path, typed_named_arg_matches,
+    test_file_path,
 };
-pub use crate::v1_compiler_emit::{BlockEmitState, InterpPart, ServiceFieldSet};
+pub use crate::v1_compiler_emit::{BlockEmitState, BoundOperation, InterpPart, ServiceFieldSet};
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
     capitalize_first, escape_json_string, escape_string_literal_body, extract_test_projections,
@@ -1412,13 +1413,13 @@ pub fn emit_go_typed_expr(
 }
 
 pub fn emit_go_transport_body(
-    transport: Rc<Node>,
+    bound: Rc<BoundOperation>,
     op_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     depth: i64,
 ) -> String {
     emit_unified_transport_dispatch(
-        transport.clone(),
+        bound.clone(),
         op_name.clone(),
         source_indices.clone(),
         depth.clone(),
@@ -1442,13 +1443,8 @@ pub fn emit_go_service_def(
         |name, transport, ops, si| {
             emit_go_service_struct(name.clone(), transport.clone(), ops.clone(), si.clone())
         },
-        |transport, op_name, si, depth| {
-            emit_go_transport_body(
-                transport.clone(),
-                op_name.clone(),
-                si.clone(),
-                depth.clone(),
-            )
+        |bound, op_name, si, depth| {
+            emit_go_transport_body(bound.clone(), op_name.clone(), si.clone(), depth.clone())
         },
     )
 }

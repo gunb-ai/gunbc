@@ -398,7 +398,7 @@ fn add_body_ts_facts_lookup(key: Node) -> Optional<InferredFacts> {
 fn add_body_ts_inferred_tree_for(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map { lookup: add_body_ts_facts_lookup }
+    facts: PartialFunction { lookup: add_body_ts_facts_lookup }
   }
 }
 

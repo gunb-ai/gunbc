@@ -31,7 +31,7 @@ type InferredFacts {
 
 type InferredTree {
   root: Node
-  facts: Map<Node, InferredFacts>
+  facts: PartialFunction<Node, InferredFacts>
 }
 
 type InferredFactsEntry {

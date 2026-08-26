@@ -1,0 +1,290 @@
+module gunbc.floor_non_verdict_enrollment
+
+import std.types { List, String, Int }
+import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.seed_growth { SeedGrowthJustification }
+import gunbc.roadmap_authority { RoadmapNodeId }
+
+// AN EXPECTED-RED ENROLLMENT DISCHARGED BY AN OUTCOME THAT IS NOT A VERDICT, REPORTED AND NOT
+// GATING.
+//
+// v1_compiler.cli_run run_required_floor routes an enrolled identity that THREW to
+// known_red_runtime_errored and one that answered a non-Bool to known_red_observation_unreadable,
+// and its own message says why: "Enrollment asserts an expected verdict; a claim that threw
+// produced none." Both collections are printed by claim_executor report_required_floor_outcome and
+// NEITHER is read by required_floor_outcome_is_clean, whose comment records the choice: they "are
+// REPORTED and deliberately NOT gating", because making them block "reds lanes with no connection
+// to the defect, which needs an approved design and a shadow phase rather than an author's
+// judgement".
+//
+// THAT CHOICE IS NOT RESTATED HERE AND IS NOT DISPUTED BY THIS MODULE. What is missing is the
+// DESIGN section 4b(2) obligation that comes with it: a class below its ceiling must name its
+// next-rung trigger and its population, or the stall is untracked. This module carries those two
+// facts and nothing else -- no gate, no roster, no second copy of the arms.
+//
+// WHAT THE HEADLINE LOOKS LIKE WHILE THE CLASS IS OPEN, because that is the harm and it is exactly
+// the shape the same receipt line already repaired once for route gaps: the run prints failed=0,
+// and a reader takes failed=0 as "nothing is broken". The correcting counters are on the same line
+// (known_red_runtime_errored, known_red_observation_unreadable) -- which is why this is a stall
+// rather than a silence -- but the population they count has never been sized, classified, or
+// bound.
+
+// WHAT AN ENROLLED IDENTITY ACTUALLY DID INSTEAD OF ANSWERING. One variant per cause the census
+// below observed, and no variant for a cause it did not: an arm nothing measured would be
+// vocabulary claiming coverage. These are causes of the THROW, not a taxonomy of witness defects --
+// a name that does not resolve in the run's loaded index and a call whose contract does not match
+// have different owners and different repairs, which is the whole reason the census splits them.
+type NonVerdictCause
+  = NameNotInLoadedIndex
+  | TypeError
+  | UndefinedVariable
+  | CallContractMismatch
+
+type NonVerdictCauseCount {
+  cause: NonVerdictCause
+  identities: Int
+}
+
+// THE POPULATION IS MEASURED, AND THE MEASUREMENT IS A SNAPSHOT OF ONE RUN -- NOT A BOUND.
+//
+// DESIGN section 4b(3) requires a bounded population and section 5 rules that a count copied from
+// the current tree is not an oracle. Both apply here and neither is satisfied by a number: nothing
+// counts a witness that starts throwing after this row was written, and nothing refuses one. So the
+// basis is carried as an arm rather than implied by the presence of a figure, and the figure below
+// is what the named run measured at the moment it ran.
+type PopulationBasis
+  = MeasuredOnOneRun { run: String, head_commit: String }
+  | BoundedByRefusal { refusal: String }
+
+// THE REPAIR THIS ROW WAS WAITING ON HAS LANDED, AND THE FIGURES BELOW ARE RE-MEASURED. An
+// earlier revision recorded 142 measured on run 32681700364 and said in as many words that the
+// row is re-measured when the in-flight repair merges. It did, by a different route than the one
+// named: `floor_expected_red` was drained from 192 identities to 65 (gunbc#9039), and since only
+// an ENROLLED identity can produce a non-verdict observation at all, the non-verdict population
+// fell with it. The old figures are not annotated in place -- they are replaced, because two
+// counts for one population is two accounts of one fact.
+//
+// THE CAUSE PROFILE DID NOT MERELY SHRINK, IT CHANGED SHAPE, which is the part a count hides:
+// `NameNotInLoadedIndex` was 119 of 142 and is now ZERO, so the unimportable-witness class that
+// dominated this population is entirely gone from it. What remains is a different and much
+// narrower thing -- twelve identities failing on one host builtin's argument contract
+// (`atom_identity_hash requires exactly one string argument`), two on one field access, and one
+// on a missing call argument. The arm is absent from the census below rather than carried at
+// zero, per `every_declared_cause_was_actually_measured`.
+//
+// THE ROSTER ITSELF WAS ALREADY RETIRED BY gunbc#9161, WHICH IS WHY THIS CHANGE TOUCHES ONLY THE
+// TYPED ROWS. That PR deleted the 127 unreachable rows from `v2.workflow.floor_non_verdict` and
+// corrected that module's header, closing the `NonVerdictRowUnreachable` refusal on main. It did
+// not reach here, so main carried a typed census describing 142 identities with 119 unresolved
+// names beside a roster of 15 with none -- and a `dominant_cause_specimen` naming
+// `test.claim.design_argument_witness design_s1_argument_form_is_valid`, an identity the same PR
+// had just established PRODUCES A VERDICT. NOTHING DETECTED IT: the census witness checks that the
+// arms sum to the total, and 119+13+9+1 == 142 stays true however far the population moves away
+// from it. A sum is an internal consistency check, never a binding to the run it claims.
+//
+// THESE ROWS ARE A HISTORICAL OBSERVATION, NOT A PROPERTY OF THE TREE, AND THEY ARE STALE AT
+// BIRTH BY CONSTRUCTION. A measurement committed INTO the tree it measures cannot name its own
+// commit: authoring the row makes a new one, so `head_commit` is always an ANCESTOR of the commit
+// the row lives in. That is unavoidable for any authored snapshot rather than a defect in this
+// one, and it decides how every row below must be READ.
+//
+// So read them in this voice: ON RUN 32799641240 AT 4ab80676e7a, THE NON-VERDICT POPULATION WAS
+// 15. That sentence stays true forever, including after the population moves again. "The
+// non-verdict population IS 15" goes false silently, and it is the sentence a reader will take
+// from a row named `floor_non_verdict_measured_total` unless this paragraph stops them -- the
+// name is a third surface and it reads present-tense whatever the value says.
+//
+// A CONSUMER WANTING THE CURRENT POPULATION MUST RE-RUN THE FLOOR, never read these. The floor
+// prints `[floor-non-verdict] roster carries N enrolled identity(ies)` and observes the live
+// population on every required run; that is the instrument, and these rows are one of its old
+// outputs kept on purpose.
+//
+// THE FALSE REGRESSION AN EARLIER REVISION NAMED, kept because deleting the superseded figures
+// around it would otherwise take it with them: the brief was that 99 witnesses went PASSED ->
+// RUNTIME-ERRORED across 330f63c514..5482863b4e while the floor reported failed=0. An identity-set
+// diff shows no such transition -- the 99 were baselined against a branch head already carrying
+// the fix, so they were compared to a tree they never ran in. The brief was wrong about the cause
+// and right about the smell, and the smell is this module.
+//
+// THE MEASUREMENT IS NOT TRANSCRIBED IN PROSE ANYWHERE, per the 2026-08-24 bankruptcy ruling
+// (#9132: name the instrument, never transcribe its output). It lives below as typed rows whose
+// PopulationBasis names the run and head each was measured on, so a reader can tell a figure from
+// a receipt -- the distinction a markdown board cannot carry.
+data floor_non_verdict_population_basis: PopulationBasis = MeasuredOnOneRun {
+  run: "github actions witnesses.yml run 32799641240",
+  head_commit: "4ab80676e7a3375542d09a8e0c1f96c4a36a15a0",
+}
+
+// THE CAUSE CENSUS AS MEASURED ON THAT RUN. The sum is the run's known_red_runtime_errored figure;
+// known_red_observation_unreadable was 0 on the same run, so every non-verdict identity in this
+// population threw.
+data floor_non_verdict_cause_census: List<NonVerdictCauseCount> = [
+  { cause: TypeError, identities: 14 },
+  { cause: CallContractMismatch, identities: 1 },
+]
+
+data floor_non_verdict_measured_total: Int = 15
+
+// THE DOMINANT CAUSE IS AN AUTHORED WITNESS DEFECT, NOT A FLOOR SCOPE DEFECT, and the distinction
+// is stated because it decides who owns the repair. It also has a DIFFERENT SUBJECT than it did
+// when this paragraph was first written, and the previous subject is recorded rather than
+// overwritten because a reader who remembers it would otherwise look for a class that is gone.
+//
+// WAS: 119 of 142 identities failed to resolve a name that IS declared in the corpus, because the
+// witness referencing it declared no import bringing that name into the run's loaded index -- an
+// unimportable witness, repaired one import at a time. A later census partitioned the erroring
+// modules 53 declaring NO import against 8 declaring imports and erroring anyway, so the bucket
+// was never homogeneous; the second shape was an INCOMPLETE import set rather than an absent one
+// (`v2.lens.vacuity_test` importing `v2.test.nat_semiring.rung_5`, which REFERENCES
+// `nat_add_left_identity_input` but is not the module declaring it). That whole class is now ZERO
+// in this population.
+//
+// IS: 14 of 15 are type errors, and 12 of those 14 are ONE error text --
+// `atom_identity_hash requires exactly one string argument` -- so the population is now dominated
+// by a single host-builtin call contract rather than by a name-resolution class. The specimen
+// below names one of them. This is still an authored defect at the call site and still not a
+// floor scope defect, so "widen the scope" remains the wrong trigger; what changed is the repair,
+// which is now a call-shape correction rather than an added import.
+//
+// WHAT IS NOT CLAIMED: that the 12 share one ROOT. They share one error text, which is a weaker
+// fact, and no per-call-site read was performed for this row.
+data floor_non_verdict_dominant_cause_specimen: DeclarationRef = decl_ref(module_path: "v2.test.manual.bootstrap_footprint_anchor", decl_name: "bootstrap_footprint_canonical_holds")
+
+// RUNG, PER SEAM, AND THE GOVERNING RUNG IS THE MINIMUM ACROSS THEM.
+//
+// An earlier revision of this row read "the class sits at MITIGATABLE: every identity is typed,
+// located and counted on the receipt line, and the line does not stop", with the gating conjunct
+// named as a next rung. That was too generous, and the correction is a ruling rather than a
+// rewording: THE OBSERVATION ARM IS NOT THE DEFECT. `known_red_runtime_errored` and
+// `known_red_observation_unreadable` say something TRUE -- this enrolled claim produced no
+// Boolean verdict. What was wrong is the COMPOSITION that read them:
+//
+//   routing a thrown claim into its arm ................ mitigatable
+//   printing the count on the receipt line ............. mitigatable
+//   printing `failed=0` without distinguishing
+//     verdict incompleteness ........................... misleading projection
+//   returning CLEAN while an enrolled claim
+//     produced no verdict .............................. BELOW FLOOR
+//
+// Below floor is not a rung. It is outside the ladder and forbidden outright, so it is not a
+// stall to be tracked -- which is what the earlier revision made it -- and the remedy could not
+// wait on the population being repaid. A diagnostic can describe the evidence truthfully while
+// the gate draws a false conclusion from it, and that gap is where this class lived.
+//
+// WHAT CLOSED IT, and what deliberately did not. `v2.workflow.floor_non_verdict` freezes the
+// population's GROWTH at identity grain: an enrolled identity that produces no verdict and is
+// not on that roster stops the line. The two arms themselves are still not gating conjuncts,
+// and making them so is still not this author's call -- the ruling did not change that half.
+// So a shrinking roster is admitted in any order, a growing one refuses, and a swap that leaves
+// the count unmoved refuses too, which is the case that makes the identity-grain decision load-bearing
+// rather than incidental.
+// THE DECISION NOW HAS TWO IMPLEMENTATIONS, AND THE CLASS RUNG IS THE MINIMUM ACROSS THEM.
+//
+// `v2.workflow.floor_non_verdict_admission` models the admission -- added = observed - roster,
+// admit iff added is empty -- and `v1_compiler.cli_run` `non_verdict_admission` recomputes it
+// over two HashSets. That is a second representation of one rule, and it is recorded here rather
+// than left for a reader to notice, on exactly the footing the corpus already uses for the same
+// shape: `v1_compiler.required_regen_host` `run_required_regen` mirrors its carrier's ordering BY
+// HAND and is therefore only MITIGATABLE, with its next-rung trigger declared as the host being
+// derived from the carrier rather than written beside it.
+//
+// So: the modeled half may reach a higher rung; THE SEED HALF IS MITIGATABLE UNTIL DERIVED, and
+// the class rung is the minimum, which is mitigatable. What keeps that honest rather than
+// nominal is that the seed half carries its OWN discriminating red -- `non_verdict_admission` is
+// a pure function of two identity sets precisely so it can be refuted without a floor run, and
+// `floor_non_verdict_admission_seed_path` drives growth, the equal-count swap, and the empty
+// roster through the code that actually gates. What that test does NOT reach is the wiring from
+// a real thrown witness into the observed set; that is the residual gap and it is named here
+// rather than papered over.
+
+// THE WALL HAS TWO AXES AND ONLY ONE OF THEM EXECUTES.
+//
+// OBSERVED-VS-ROSTER is walled by execution every run: the two sets must be equal, growth and
+// stale exemptions both refuse. ROSTER-VS-BASE-ROSTER is not walled at all. Nothing compares the
+// roster authored at HEAD against the one admitted at the MERGE BASE, so a change that makes a
+// new identity stop producing a verdict may add its row in the same change, satisfy both
+// executing arms, and be admitted -- the roster legalising the regression it exists to bound.
+//
+// That is the same shape review 55361 caught for stale rows (the row becomes the permission),
+// reached through authorship instead of through survival, and it is recorded here rather than
+// left for a reader to infer from the wall's name. It is also the honest price of the
+// single-run design: the admission was specified against a BASE OBSERVATION, and substituting
+// the roster for it is what makes the wall runnable in one pass -- sound exactly to the degree
+// the roster cannot be grown freely.
+//
+// RUNG ON THIS AXIS: MITIGATABLE -- confined by review diligence, which is strictly weaker than
+// execution. The class rung stays the minimum across axes and paths, which is mitigatable.
+
+// THE FUTURE AUTHORITY IS THE TARGET-BASE TIP, NOT THE MERGE BASE, and an earlier revision of
+// this trigger named the merge base. That is not a wording preference: EXEMPTION RESURRECTION.
+// Let M be the roster at the historical merge base, B the roster at the current base tip, H the
+// roster in the composed result, O the observed population.
+//
+//   M = {a}. Main later repairs `a` and deletes its row, so B = {}. A stale branch reintroduces
+//   `a` and it throws: H = {a}, O = {a}. Then O = H passes, and H subset-of M PASSES -- readmitting
+//   an exemption main has already paid off. H subset-of B fails, which is the law actually wanted.
+//
+// The mirror is a FALSE RED: a row main legitimately adds after the fork is in B and in the
+// composed result, but not in M, so a subset-of-M rule refuses a branch that did nothing wrong.
+//
+// CONSEQUENCE FOR THE CUT'S SHAPE, worth knowing before it is scoped: a BRANCH-HEAD-ONLY RUN
+// CANNOT ESTABLISH THIS LAW. It needs the composed result AND that result's base parent, which
+// is strictly stronger than "read the roster at another commit".
+
+// THE CENSUS ROWS ARE AUTHORED BESIDE THEIR RUN, NOT DERIVED FROM IT, AND THAT IS THE CLASS
+// RATHER THAN THIS INSTANCE. Stated as its own trigger because this number has now been corrected
+// twice and the third person to correct it should not think they are the first.
+//
+// `non_verdict_cause_census_sums_to_the_measured_total` CANNOT DETECT A STALE CENSUS. It checks
+// the arms against the total, so 119+13+9+1 == 142 stays true however far the population drifts
+// from the tree it claims to describe -- a sum is an internal consistency check over the row's own
+// fields and is never a binding to the run named in `floor_non_verdict_population_basis`. With
+// respect to the defect it appears to guard, its RED IS UNREACHABLE: no authored value of these
+// rows that is WRONG ABOUT THE TREE makes it fail. That is DESIGN section 4b's decoration -- worse
+// than absent, because it is cited as coverage -- and it is why the basis arm carries a run and a
+// head at all. The witness is not deleted: it still refuses an internally incoherent row, which is
+// a real if narrow subject, and it is honest about being that.
+//
+// The rung is therefore MITIGATABLE and the mitigation is authorship diligence, which is what
+// failed here: gunbc#9161 deleted the population and left the rows describing it.
+data floor_non_verdict_census_derivation_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: floor_non_verdict_measured_total and floor_non_verdict_cause_census are DERIVED from the run floor_non_verdict_population_basis names -- read from that run's own receipt rather than authored beside it -- at which point a transcribed count has no spelling and the rows cannot disagree with the tree. This is DESIGN's 2026-08-24 ruling applied to this carrier: name the instrument, never transcribe its output. THE TARGET IS NOT THAT OLD MEASUREMENTS STOP EXISTING -- storing one is legitimate and useful, and this row is one. It is that STALENESS REMAINS REPRESENTABLE WHILE STALE-AS-CURRENT BECOMES UNREPRESENTABLE: a consumer asking about the CURRENT subject must not be able to read an observation of an OLD one and get a value back, and the mismatch must be a typed refusal rather than a stale answer that still reads. Three orthogonal laws are in play and the enrolled witness proves only the first: INTERNAL COHERENCE (the arms sum to the total), PROVENANCE (the payload really was produced by the named observer over the named subject -- authoring both fields side by side does not bind them, only a producer-minted receipt does), and APPLICABILITY (the receipt's subject is the subject the consumer is asking about). At identity grain the four authored figures here -- total, histogram, dominant cause, specimen -- all DERIVE from the observed rows, and the stale dominant-cause specimen this change repairs could not have survived authoring, because its membership would be checked against the population it claims to exemplify. Established by execution against a discriminating red: a basis naming a run whose observed non-verdict population differs from the authored census, refused. Not satisfied by a second sum check over the same authored fields, which is the check that already cannot see the defect; and not satisfied by re-measuring by hand, which is what produced the correction this trigger exists to make unnecessary.")
+
+data floor_non_verdict_roster_growth_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the required floor establishes H subset-of B -- the roster in the COMPOSED RESULT is a subset of the roster at that result's CURRENT TARGET-BASE PARENT -- refusing when it is not, established by execution against a discriminating red: one composed result carrying a row for an identity the base roster does not carry, refused. NOT the merge base: a merge-base baseline admits exemption resurrection, where main repairs an identity and deletes its row while a stale branch reintroduces it, and it also false-reds a row main legitimately added after the fork. Identity grain, for the same reason the observed-vs-roster admission is: an addition and a deletion in one change leave every count unmoved. RECEIPT THE CUT PINS: target_base_sha, composed_result_sha, base_roster_identity_set, result_roster_identity_set, added_exemptions = result - base; and it refuses when the base subject or its roster cannot be evaluated, the same read-failure polarity the executing arms already carry.")
+
+data floor_non_verdict_seed_mirror_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: v1_compiler.cli_run non_verdict_admission is DERIVED from v2.workflow.floor_non_verdict_admission rather than written beside it -- the same trigger v1_compiler.required_regen_host carries for its hand-mirrored ordering -- at which point the two implementations become one and the minimum-across-paths rung stops being pinned by the seed. Not satisfied by the seed's unit test alone: a discriminating red proves the mirror is correct TODAY, which is what mitigatable means, and does not make a divergence unwritable.")
+
+data floor_non_verdict_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: known_red_runtime_errored and known_red_observation_unreadable are conjuncts of v1_compiler.claim_executor required_floor_outcome_is_clean, established by execution against a discriminating red -- one enrolled identity made to throw, the run refusing. Precondition, not a follow-up: the measured population is repaid to zero first (the surviving population is dominated by one host-builtin argument-contract error text, repaired at the call site, or by deleting the witness; the unresolved-name class that once dominated it is already zero), so the conjunct lands over an empty collection rather than converting a counted silence into an uncounted red.")
+
+// WHERE THE ARMS AND THE GATE ACTUALLY LIVE. Cited rather than copied: this module must not become
+// a second account of the seed's routing, which is the fork DESIGN section 3 forbids.
+data floor_non_verdict_routing_authority: DeclarationRef = decl_ref(module_path: "v1_compiler.cli_run", decl_name: "run_required_floor")
+
+data floor_non_verdict_gate_authority: DeclarationRef = decl_ref(module_path: "v1_compiler.claim_executor", decl_name: "required_floor_outcome_is_clean")
+
+// THE FORWARD-FREEZE ENUMERATION FOR THIS CHANGE'S HAND-AUTHORED RUST.
+//
+// `gunbc.seed_growth_admission` `seed_growth_forward_freeze_policy_note` requires every PR that
+// adds hand-written src/v1 Rust to enumerate exact item identity, .dag authority, why Rust is
+// still needed, owning lane, deletion trigger, current boundary, hand-item delta and hand-LOC
+// delta -- and rules that unenumerated hand growth is a stop-line, with no netting of deletions
+// against additions. This change added hand Rust and shipped without the row; review 55361
+// caught it. The row is authored here, beside the obligation it declares, and joined into the
+// closed roster in that module.
+data floor_non_verdict_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "NonVerdictAdmission", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "non_verdict_admission", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "non_verdict_admits", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.tests.floor_non_verdict_admission_seed_path", decl_name: "unchanged_population_is_admitted", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.tests.floor_non_verdict_admission_seed_path", decl_name: "repayment_that_leaves_the_row_behind_refuses", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.tests.floor_non_verdict_admission_seed_path", decl_name: "repayment_with_the_row_deleted_is_admitted", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.tests.floor_non_verdict_admission_seed_path", decl_name: "growth_stops_the_line", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.tests.floor_non_verdict_admission_seed_path", decl_name: "a_swap_that_leaves_the_count_unmoved_still_stops_the_line", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.tests.floor_non_verdict_admission_seed_path", decl_name: "an_empty_roster_refuses_every_observed_non_verdict", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST IS STILL NEEDED: the required floor executes in the seed. `claim_executor` is the only witness-executing consumer in the tree, so a wall that must stop THAT line has to be readable by it; a modeled admission alone would be a specification with no consumer at the point the run is admitted or refused. The rule itself is modeled in v2.workflow.floor_non_verdict_admission and this Rust is its mirror, not a second authority -- the carrier records the mirror as MITIGATABLE with derivation as its next rung, on the footing v1_compiler.required_regen_host already carries for its hand-mirrored ordering.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits a change by PURPOSE -- it serves the v2 self-host program. The required floor is the instrument that guards that program, and the defect repaired here is below floor: the composition returned CLEAN while an enrolled expected-red assertion had ceased to assert anything. This is defect repair on the self-host path, not growth of the seed for its own sake, and the roster-plumbing seam it uses is the one floor_route_gap already established.\n\nHAND-ITEM DELTA: +8, enumerated above rather than counted from what was touched. Three are production -- the admission record, the pure function over two identity sets, and the admission predicate -- and five are the unit tests that discriminate it, including the equal-count swap that a count-based implementation passes in silence.\n\nHAND-LOC DELTA: +210/-1 in cli_run.rs, +60/-5 in claim_executor.rs and +102/-0 in the new test file, measured as git diff --numstat against origin/main at the head this row ships on, a large share of it doc comments carrying the receipts and the refusal strings. CORRECTED 2026-08-24 (review 55577): an earlier revision read +195 and +65 and omitted claim_executor's deletions entirely, which is the stale-transcription failure this policy exists to refuse -- a receipt measured once and then not re-measured as the change grew is a figure, not a receipt, and it must be re-measured on every push that touches these files.\n\nWHAT IS NOT GROWTH AND IS NOT LISTED: the two new fields on RequiredFloorOutcome (non_verdict_unenrolled, stale_non_verdict), the new conjuncts inside required_floor_outcome_is_clean, the roster read, and the report lines. None of them adds a declaration -- each modifies an existing item -- so their disposition is ExistingSeedItemModified, and listing them would net modifications into an addition census.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete all eight declarations when the self-emitted claim executor drives the floor's execution, at which point v2.workflow.floor_non_verdict_admission is the sole authority and the seed's copy goes with the rest of the mirror. This is the same trigger the terminal ledger's seam carries and it is joined here rather than restated.",
+  current_boundary: "v2.workflow.floor_non_verdict_admission non_verdict_admits -> v1_compiler.cli_run non_verdict_admission -> v1_compiler.claim_executor required_floor_outcome_is_clean"
+}

@@ -197,28 +197,19 @@ fn rust_seed_host_numeric_alias(name: String, decl_file: String) -> String? {
 // already documents for five of its own seven rows (checkpoint_identity_keying_migration_note) --
 // not a new gap this relocation introduces.
 //
-// DERIVE-SET-NARROWING LANE: STILL BLOCKED, MEASURED (sharp-badger-802, adhoc-2ea6fb98-a3f,
-// 2026-08-21, re-measurement requested by smart-ram-730 against E0277 90->46->21 same-day
-// movement). This decision is now called and this file's own map-key-alias-hop mechanism landed
-// (v1_item_alias_hop_type_exprs / v1_item_field_type_exprs_alias_hop_note, trait_derive_emit.dag),
-// but that landing touched trait_derive_emit.dag's map-key-specific function ONLY. The sibling
-// consumer this note has named since it was written -- gunbc#8716's fn-field derive-narrowing walk,
-// which decides whether a coproduct holding a function-valued field can still derive Clone/Serialize
-// -- was never touched. src/v1/04_emit_info.dag build_field_type_map / build_type_summary still
-// resolve a field's type via authored_name_at(...), which for a bare-alias field records the
-// alias's OWN name and never follows to the aliased declaration; no call to type_realization_decision
-// or lookup_checkpoint exists anywhere in that file. #8716's own residue table found 3 of its 5
-// remaining failures reaching their function value through exactly this alias-with-no-fields shape.
-// POPULATION IS UNCOUNTED as of this note: no board produced since (docs/plans/self-host-cargo-
-// refusal-root-partition.md sec20, same corpus/config, same day) buckets this population separately.
-// Its two E0277 buckets that superficially match are BOTH the wrong root: T7/T5a (8 sites,
-// Fnv1a64Structural/OccurrenceId Hash/Eq) is the map-key lane above, already closed by #8739/#8736,
-// not this one; T5b (35 sites, 42.7% of E0277, the largest bucket) looks like the derive-narrowing
-// shape but its dominant specimen (CommutativeSemiring<Magnitude>, sec18.1) carries a literal
-// Rc<dyn Fn> field ON THE DECLARATION -- genuinely non-derivable, not an alias miss. Next step for
-// whoever picks this lane up: count the population first (a small probe mirroring
-// map_key_alias_hop_witness_test.dag's construction, but against the fn-field enum-derive path),
-// not repair-on-sight -- the wiring gap is confirmed live, but its size is not yet known.
+// DERIVE-SET-NARROWING ALIAS HOP: LANDED (tidy-raven-252, adhoc-be86d536-532, 2026-08-23).
+// The sibling consumer named here now asks this decision through lookup_checkpoint while building
+// the function-reachability graph in v1.compiler.infer_emit_info. A structural alias contributes
+// its resolved RHS names (and a separate direct-arrow fact, because an Arrow has no authored name)
+// to the SAME transitive closure that already handles direct fields, containers and coproduct
+// payloads. A Rust-native alias contributes neither: its declared RHS is not the representation the
+// emitter writes, so traversing it would recreate the Int/Nat false-positive class this decision
+// was introduced to prevent. The derive selector still consumes one has_fn_fields answer and emits
+// Clone alone; no alias-specific derive roster exists. Executing controls live in
+// test.claim.function_derive_alias_hop_witness: structural alias to fn narrows, native Bytes alias
+// does not, and structural alias to a plain record stays full-derive. No population count is claimed
+// here: the earlier per-code boards use incompatible subjects and refs, and cross-code partitioning
+// owns any later census rather than this producer repair.
 fn type_realization_decision(
   target: RenderTarget, dag_name: String, decl_file: String
 ) -> TypeRealizationDecision {
@@ -383,7 +374,7 @@ fn checkpoint_tests(target: RenderTarget) -> List<CoercionTestEntry> {
 }
 
 fn inhabitant_test_names() -> List<String> {
-  concat(canonical_container_names(), ["PointwisePower"])
+  canonical_container_names()
 }
 
 fn inhabitant_tests(target: RenderTarget) -> List<CoercionTestEntry> {

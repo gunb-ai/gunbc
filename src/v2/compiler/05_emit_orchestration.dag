@@ -161,7 +161,7 @@ fn orch_emit_from_registry(
       emit(
         tree: InferredTree {
           root: emitted_root,
-          facts: Map { lookup: orch_emit_facts_lookup }
+          facts: PartialFunction { lookup: orch_emit_facts_lookup }
         },
         target: target
       )
@@ -174,7 +174,7 @@ fn orch_emit_node_spelling(emitted_root: Node, target: TargetModel) -> Outcome<S
     o: emit(
       tree: InferredTree {
         root: emitted_root,
-        facts: Map { lookup: orch_emit_facts_lookup }
+        facts: PartialFunction { lookup: orch_emit_facts_lookup }
       },
       target: target
     ),

@@ -27,6 +27,7 @@
 // src/extdeps_uri_path.rs
 // src/extdeps_version.rs
 // src/extdeps_version_semver.rs
+// src/gunbc_cli_dispatch_surface.rs
 // src/gunbc_rust_decl_type_overlay.rs
 // src/gunbc_stage0_crate_layout_generated.rs
 // src/gunbc_stage0_crate_partition_generated.rs
@@ -65,6 +66,7 @@
 // src/std_occurrence_binding_resolve.rs
 // src/std_occurrence_identity.rs
 // src/std_pareto.rs
+// src/std_primitive_projection.rs
 // src/std_process_termination.rs
 // src/std_realization_schedule.rs
 // src/std_reference_binding_observation.rs
@@ -121,6 +123,7 @@
 // src/v1_compiler_trace.rs
 // src/v1_compiler_trait_bound_witness.rs
 // src/v1_compiler_trait_derive_emit.rs
+// src/v1_compiler_type_head_exposure.rs
 // src/v1_compiler_workspace_members.rs
 // src/v1_gunbc_namespace_reference_derived_closure_production_observations.rs
 // src/v1_gunbc_occurrence_binding_parser_walk.rs
@@ -129,6 +132,7 @@
 // src/v1_std_core.rs
 // src/v1_test_non_ascii_perf_fixture.rs
 // src/v1_tests_claim_checkpoint_identity_keying_witness_test.rs
+// src/v1_tests_claim_transport_roster_closure_witness_test.rs
 // src/wt_a.rs
 // src/wt_b.rs
 // src/wt_common.rs

@@ -331,7 +331,7 @@ fn loop_facts_lookup(key: Node) -> Optional<InferredFacts> {
 fn loop_admitted_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map {
+    facts: PartialFunction {
       lookup: loop_facts_lookup
     }
   }

@@ -1,0 +1,19 @@
+module v2.test.claim.local_binding_shadow_peer
+
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+
+// THE SHADOWING SYMBOL, AUTHORED HERE RATHER THAN BORROWED. The defect reproduces on any
+// module-level free function whose name a local binding reuses, and the first fixtures for it
+// borrowed live corpus symbols (std.layout render, gunbc.plans.md_helpers p). Borrowing makes the
+// fixture hostage to an unrelated module's shape: rename or delete that symbol and the probe goes
+// green while the defect is untouched, which is the decoration DESIGN 4b warns is worse than
+// absent. This one is owned by the fixture.
+//
+// IT RETURNS A CONSTANT true, WHICH IS THE POINT. Same arity as the local it displaces, and a
+// Bool rather than a foreign type, so displacing the local produces a PLAUSIBLE ANSWER and no
+// diagnostic -- the silent face. A shadow of a different arity refuses loudly instead, and that
+// face is recorded in the witness annotation because a throw cannot be a witness verdict.
+fn shadow_pred(n: Int) -> Bool {
+  true
+}

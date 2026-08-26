@@ -3,39 +3,19 @@ module gunbc.systemctl_status_read
 import std.algebra { trim }
 
 import std.types { String, NonEmptyStr, List }
-import extdeps.systemd.systemctl
-import gunbc.host_effect { fleet_ssh_leaf_unmigrated_refused, HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
-import v2.std.operation_argv {
-  ArgvMaterialization,
-  ArgvMaterialized,
-  ArgvMaterializationRefused,
-  operation_argv_bind_text,
-  operation_argv_cause_label,
+import gunbc.host_effect { HostEffectTransport }
+import v2.std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
+import gunbc.host_operation_exec {
+  HostOperationObserved,
+  HostOperationRefused,
+  host_operation_exec,
+  host_operation_materialize_argv,
+  SystemctlStatus,
 }
-import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
-import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh,
-  typed_argv_exec_over_ssh,
-  typed_argv_shell_safe_refusal_argv,
-  TypedArgvExecConverged,
-  TypedArgvExecRefused,
-}
-
-data systemctl_status_path: String = "dag/extdeps/systemd/systemctl.dag"
-data systemctl_status_service: String = "systemd.Systemctl"
-data systemctl_status_operation: String = "Status"
 
 type UnitStatusCapture =
     UnitStatusCaptured { text: String }
   | UnitStatusCaptureRefused { reason: String }
-
-fn systemctl_status_operation_argv(unit: NonEmptyStr) -> ArgvMaterialization {
-  shell_materialize_operation_argv(
-    systemctl_status_path,
-    systemctl_status_service,
-    systemctl_status_operation,
-    [operation_argv_bind_text(name: "unit", text: unit as String)]
-  )
-}
 
 fn unit_status_capture_from_stdout(stdout: String, refusal: String) -> UnitStatusCapture {
   if refusal != "" {
@@ -50,61 +30,14 @@ fn unit_status_capture_from_stdout(stdout: String, refusal: String) -> UnitStatu
   }
 }
 
-fn systemctl_status_read_local(unit: NonEmptyStr) -> UnitStatusCapture {
-  let result = systemd.Systemctl.Status(unit: unit)
-  unit_status_capture_from_stdout(stdout: result.stdout, refusal: "")
-}
-
-fn systemctl_status_read_ssh_argv(host: NonEmptyStr, argv: List<String>) -> UnitStatusCapture {
-  match typed_argv_shell_safe_refusal_argv(argv: argv) {
-    Present { value: why } =>
-      UnitStatusCaptureRefused { reason: why }
-    Absent => unit_status_capture_from_outcome(outcome: typed_argv_exec_over_ssh(host: host, argv: argv))
-  }
-}
-
-// One outcome handler shared by both producers: the paths differ in how the leg is obtained, never
-// in how its result is read.
-fn unit_status_capture_from_outcome(outcome: TypedArgvExecOutcome) -> UnitStatusCapture {
-  match outcome {
-    TypedArgvExecConverged { result: r } =>
-      unit_status_capture_from_stdout(stdout: r.stdout, refusal: "")
-    TypedArgvExecRefused { reason: why } => UnitStatusCaptureRefused { reason: why }
-  }
-}
-
-fn systemctl_status_read_fleet_ssh(
-  target: SshTarget,
-  context: FleetSshExecutionContext,
-  unit: NonEmptyStr,
-) -> UnitStatusCapture {
-  match systemctl_status_operation_argv(unit: unit) {
-    ArgvMaterialized { argv: argv } =>
-      unit_status_capture_from_outcome(
-        outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv),
-      )
-    ArgvMaterializationRefused { at: _, cause: c } =>
-      UnitStatusCaptureRefused { reason: operation_argv_cause_label(cause: c) }
-  }
-}
-
-fn systemctl_status_read_ssh(host: NonEmptyStr, unit: NonEmptyStr) -> UnitStatusCapture {
-  match systemctl_status_operation_argv(unit: unit) {
-    ArgvMaterialized { argv: argv } => systemctl_status_read_ssh_argv(host: host, argv: argv)
-    ArgvMaterializationRefused { at: _, cause: c } =>
-      UnitStatusCaptureRefused { reason: operation_argv_cause_label(cause: c) }
-  }
-}
-
+// One dispatch, in the realization layer. See gunbc.systemctl_is_active_read for the same shape
+// commented in full; this file carries only its operation row and its decoder.
 fn systemctl_status_read(transport: HostEffectTransport, unit: NonEmptyStr) -> UnitStatusCapture {
-  match transport {
-    LocalShell => systemctl_status_read_local(unit: unit)
-    SshShell { ssh_host: h } => systemctl_status_read_ssh(host: h, unit: unit)
-    FleetSsh { target: t, context: c } => systemctl_status_read_fleet_ssh(target: t, context: c, unit: unit)
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      UnitStatusCaptureRefused {
-        reason: "systemctl status refused EmitArtifactThenThinRun transport",
-      }
+  match host_operation_exec(transport: transport, operation: SystemctlStatus { unit: unit }) {
+    HostOperationObserved { stdout: out, success: _, stderr: _ } =>
+      unit_status_capture_from_stdout(stdout: out, refusal: "")
+    HostOperationRefused { operation: _, reason: why } =>
+      UnitStatusCaptureRefused { reason: why }
   }
 }
 
@@ -118,7 +51,7 @@ fn unit_status_capture_text(capture: UnitStatusCapture) -> String {
 
 fn systemctl_status_operation_argv_matches_authority(unit: NonEmptyStr) -> Bool {
   let authority = ["systemctl", "status", "--no-pager", "--full", unit as String]
-  match systemctl_status_operation_argv(unit: unit) {
+  match host_operation_materialize_argv(operation: SystemctlStatus { unit: unit }) {
     ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
     ArgvMaterializationRefused { at: _, cause: _ } => false
   }

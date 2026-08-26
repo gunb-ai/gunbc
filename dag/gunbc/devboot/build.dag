@@ -9,6 +9,17 @@ import extdeps.filesystem.filesystem_io
 import extdeps.git
 import extdeps.git.plumbing
 import extdeps.git { git_ref_missing_exit_code, git_repository_unusable_exit_code }
+import extdeps.cargo {
+  CargoEnvironmentVariable,
+  CargoHomeEnv,
+  CargoTargetDirEnv,
+  CargoBuildJobsEnv,
+  RustcWrapperEnv,
+  cargo_environment_variable_name,
+}
+import extdeps.rustup { rustup_home_env_name }
+import extdeps.tools.env { env_path_resolved_program, env_prefixed_args }
+import v2.std.orchestration { EnvBinding, EnvSet }
 import extdeps.git.object_store { GitObjectId, GitRefName, git_object_id_from_untagged_hex }
 import extdeps.git.plumbing {
   GitRepositoryAddress,
@@ -30,7 +41,7 @@ import gunbc.devboot.transport {
   devboot_repo_address,
   devboot_observe_ref,
   retained_devboot_rm_rf,
-  retained_devboot_mkdir,
+  devboot_ensure_directory,
   retained_devboot_sleep,
   retained_devboot_sha256sum,
   retained_devboot_cp,
@@ -127,12 +138,7 @@ fn materialize_ref_tree(repo_root: String, work_root: String, token: String, ref
     bin_path: "rm",
     args: ["-rf", out_dir, index_path],
   )
-  let made = devboot_witness_run(
-    site: retained_devboot_mkdir,
-    workdir: repo_root,
-    bin_path: "mkdir",
-    args: ["-p", out_dir],
-  )
+  let made = devboot_ensure_directory(repo_root: repo_root, path: out_dir)
   let loaded = git.Plumbing.ReadTreeIntoIndex(
     address: devboot_repo_address(repo_root: repo_root),
     index: index_path as FilePath,
@@ -357,12 +363,7 @@ fn client_repo_dir(work_root: String) -> String {
 }
 
 fn ensure_client_repo(repo_root: String, work_root: String) -> Bool {
-  let made = devboot_witness_run(
-    site: retained_devboot_mkdir,
-    workdir: repo_root,
-    bin_path: "mkdir",
-    args: ["-p", client_repo_dir(work_root: work_root)],
-  )
+  let made = devboot_ensure_directory(repo_root: repo_root, path: client_repo_dir(work_root: work_root))
   git.Plumbing.InitAt(
     address: devboot_repo_address(repo_root: repo_root),
     path: client_repo_dir(work_root: work_root) as FilePath,
@@ -460,12 +461,7 @@ fn publish_request(
     bin_path: "rm",
     args: ["-rf", staging, index_path],
   )
-  let made = devboot_witness_run(
-    site: retained_devboot_mkdir,
-    workdir: repo_root,
-    bin_path: "mkdir",
-    args: ["-p", staging],
-  )
+  let made = devboot_ensure_directory(repo_root: repo_root, path: staging)
   let subject_path = join([staging, "/subject"], "")
   let program_path = join([staging, "/program"], "")
   match stage_text_blob(repo_root: repo_root, path: subject_path, text: subject_text) {
@@ -905,12 +901,7 @@ fn publish_produced_tree(
     bin_path: "rm",
     args: ["-rf", staging, index_path],
   )
-  let made = devboot_witness_run(
-    site: retained_devboot_mkdir,
-    workdir: repo_root,
-    bin_path: "mkdir",
-    args: ["-p", staging],
-  )
+  let made = devboot_ensure_directory(repo_root: repo_root, path: staging)
   match stage_text_blob(repo_root: repo_root, path: join([staging, "/subject"], ""), text: subject_text) {
     GitOidCommandFailed { exit_code, stderr } =>
       produced_publication_refused(detail: join(["could not stage the produced subject: ", stderr], ""))
@@ -1125,21 +1116,25 @@ fn devboot_serve_built(
   let built = devboot_witness_run(
     site: retained_devboot_cargo_build,
     workdir: source_dir,
-    bin_path: "env",
-    args: [
-      concat("RUSTUP_HOME=", home.rustup_home),
-      concat("CARGO_HOME=", home.cargo_home),
-      concat("CARGO_TARGET_DIR=", target_dir),
-      concat("CARGO_BUILD_JOBS=", home.build_jobs),
-      "RUSTC_WRAPPER=",
-      home.cargo_bin,
-      "build",
-      "--release",
-      "--package",
-      package,
-      "--bin",
-      bin_name,
-    ],
+    bin_path: env_path_resolved_program as String,
+    args: env_prefixed_args(
+      bindings: [
+        EnvSet { name: rustup_home_env_name as String, value: home.rustup_home },
+        EnvSet { name: cargo_environment_variable_name(variable: CargoHomeEnv) as String, value: home.cargo_home },
+        EnvSet { name: cargo_environment_variable_name(variable: CargoTargetDirEnv) as String, value: target_dir },
+        EnvSet { name: cargo_environment_variable_name(variable: CargoBuildJobsEnv) as String, value: home.build_jobs },
+        EnvSet { name: cargo_environment_variable_name(variable: RustcWrapperEnv) as String, value: "" },
+      ],
+      command_argv: [
+        home.cargo_bin,
+        "build",
+        "--release",
+        "--package",
+        package,
+        "--bin",
+        bin_name,
+      ],
+    ),
   )
   if !built.success {
     serve_refusal(

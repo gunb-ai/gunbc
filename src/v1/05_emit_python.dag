@@ -63,7 +63,7 @@ import v1.compiler.emit {
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
   lookup_item,
-  typed_named_arg_matches, order_typed_call_args,
+  order_typed_call_args,
   has_nested_records_node,
   is_null_coalesce, emit_null_coalesce,
   has_service_items,
@@ -83,7 +83,8 @@ import v1.compiler.emit {
   emit_typed_match_unified,
   emit_unified_typed_expr,
   emit_tco_unified, emit_unified_pattern, test_file_path, emit_unified_typed_func_body,
-  emit_unified_service_def, emit_unified_operation_method, emit_unified_transport_dispatch
+  emit_unified_service_def, emit_unified_operation_method, emit_unified_transport_dispatch,
+  BoundOperation
 }
 
 import v1.compiler.emit_core_support {
@@ -406,9 +407,9 @@ fn emit_py_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: Infer
     render_pattern: pat => emit_unified_pattern(pattern: pat, target: Python, source_indices: scope.type_env.source_indices))
 }
 
-fn emit_py_transport_body(transport: Node, op_name: String, source_indices: Map<String, NewlineIndex>, depth: Int) -> String {
+fn emit_py_transport_body(bound: BoundOperation, op_name: String, source_indices: Map<String, NewlineIndex>, depth: Int) -> String {
   emit_unified_transport_dispatch(
-    transport: transport, op_name: op_name, source_indices: source_indices, depth: depth, target: Python,
+    bound: bound, op_name: op_name, source_indices: source_indices, depth: depth, target: Python,
     render_rest: (n, t, d, si) => emit_py_rest_call(op_name: n, transport: t, source_indices: si),
     render_shell: (n, t, d, si) => emit_py_shell_call(op_name: n, transport: t, source_indices: si),
     render_local: (n, d) => emit_py_local_call(op_name: n))
@@ -419,8 +420,8 @@ fn emit_py_service_def(item: Node, registry: Map<String, ItemInfo>, env: TypeEnv
     item: item, target: Python, registry: registry, env: env,
     render_service_fields: (name, transport, ops, si) =>
       emit_py_service_init(fallback_transport: transport, op_children: ops, source_indices: si),
-    render_transport_body: (transport, op_name, si, depth) =>
-      emit_py_transport_body(transport: transport, op_name: op_name, source_indices: si, depth: depth))
+    render_transport_body: (bound, op_name, si, depth) =>
+      emit_py_transport_body(bound: bound, op_name: op_name, source_indices: si, depth: depth))
 }
 
 fn emit_py_service_init(fallback_transport: Node, op_children: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {

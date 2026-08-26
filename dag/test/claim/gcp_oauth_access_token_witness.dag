@@ -9,65 +9,99 @@ fn secret_eq(a: Secret, b: Secret) -> Bool {
   (a as String) == (b as String)
 }
 
+// These witnesses assert ROUTE EQUIVALENCE -- that the strategy dispatch reaches
+// the same leaf the leaf pattern reaches directly. Since gcp_oauth_access_token
+// now returns an outcome, equivalence is asserted on the OUTCOME, which compares
+// refusals as well as tokens: two routes that both refuse for the same cause are
+// equivalent, and a route that refuses where its leaf succeeds is not. Projecting
+// to a token and defaulting the refusals would have made every witness green
+// whenever both sides failed.
+fn adc_outcome_eq(a: GcpAdcTokenOutcome, b: GcpAdcTokenOutcome) -> Bool {
+  match a {
+    GcpAdcTokenReady { token: ta } =>
+      match b {
+        GcpAdcTokenReady { token: tb } => secret_eq(a: ta, b: tb)
+        GcpAdcReadRefused { path: _, cause: _ } => false
+        GcpAdcDocumentRefused { path: _, cause: _ } => false
+      }
+    GcpAdcReadRefused { path: pa, cause: ca } =>
+      match b {
+        GcpAdcReadRefused { path: pb, cause: cb } => pa == pb && ca == cb
+        GcpAdcTokenReady { token: _ } => false
+        GcpAdcDocumentRefused { path: _, cause: _ } => false
+      }
+    GcpAdcDocumentRefused { path: pa, cause: _ } =>
+      match b {
+        GcpAdcDocumentRefused { path: pb, cause: _ } => pa == pb
+        GcpAdcTokenReady { token: _ } => false
+        GcpAdcReadRefused { path: _, cause: _ } => false
+      }
+  }
+}
+
 fn witness_gcloud_cli_routes_to_gcloud_leaf() -> Bool {
-  secret_eq(
-    a: gcp_oauth_access_token(strategy: GcloudCli).token,
-    b: gcp_oauth_access_token_via_gcloud().token
+  adc_outcome_eq(
+    a: gcp_oauth_access_token(strategy: GcloudCli),
+    b: gcp_oauth_access_token_via_gcloud()
   )
 }
 
 fn witness_adc_refresh_absent_routes_to_adc_leaf() -> Bool {
-  secret_eq(
-    a: gcp_oauth_access_token(strategy: AdcRefresh { adc_path: Absent }).token,
-    b: gcp_oauth_access_token_via_adc_refresh().token
+  adc_outcome_eq(
+    a: gcp_oauth_access_token(strategy: AdcRefresh { adc_path: Absent }),
+    b: gcp_oauth_access_token_via_adc_refresh()
   )
 }
 
 fn witness_adc_refresh_present_routes_to_adc_leaf() -> Bool {
-  secret_eq(
+  adc_outcome_eq(
     a: gcp_oauth_access_token(
       strategy: AdcRefresh { adc_path: Present { value: witness_adc_path } }
-    ).token,
-    b: gcp_oauth_access_token_via_adc_refresh(adc_path: witness_adc_path).token
+    ),
+    b: gcp_oauth_access_token_via_adc_refresh(adc_path: witness_adc_path)
   )
 }
 
 fn witness_adc_refresh_null_optional_routes_to_adc_leaf() -> Bool {
-  secret_eq(
-    a: gcp_oauth_access_token(strategy: AdcRefresh { adc_path: null_adc_path }).token,
-    b: gcp_oauth_access_token_via_adc_refresh().token
+  adc_outcome_eq(
+    a: gcp_oauth_access_token(strategy: AdcRefresh { adc_path: null_adc_path }),
+    b: gcp_oauth_access_token_via_adc_refresh()
   )
 }
 
 fn witness_leaves_are_distinguishable() -> Bool {
-  !secret_eq(
-    a: gcp_oauth_access_token_via_gcloud().token,
-    b: gcp_oauth_access_token_via_adc_refresh().token
+  !adc_outcome_eq(
+    a: gcp_oauth_access_token_via_gcloud(),
+    b: gcp_oauth_access_token_via_adc_refresh()
   )
 }
 
-pattern gcp_oauth_access_token_dispatch_swapped(strategy: GcpOAuth2AccessTokenStrategy) -> { token: Secret }
+// The deliberately mis-wired control: it must remain a real discriminator, so it
+// returns the same outcome type the correct dispatch does. Had it kept a token
+// record, these two witnesses would compare different types and the control
+// would stop being able to go red.
+pattern gcp_oauth_access_token_dispatch_swapped(strategy: GcpOAuth2AccessTokenStrategy) -> GcpAdcTokenOutcome
 {
   node result = match strategy {
     GcloudCli => gcp_oauth_access_token_via_adc_refresh()
     AdcRefresh { adc_path: _path } => gcp_oauth_access_token_via_gcloud()
   }
-  return { token: result.token }
+  return result
 }
 
 fn witness_swapped_gcloud_hits_adc_leaf() -> Bool {
-  secret_eq(
-    a: gcp_oauth_access_token_dispatch_swapped(strategy: GcloudCli).token,
-    b: gcp_oauth_access_token_via_adc_refresh().token
+  adc_outcome_eq(
+    a: gcp_oauth_access_token_dispatch_swapped(strategy: GcloudCli),
+    b: gcp_oauth_access_token_via_adc_refresh()
   )
 }
 
 fn witness_swapped_adc_hits_gcloud_leaf() -> Bool {
-  secret_eq(
+  adc_outcome_eq(
     a: gcp_oauth_access_token_dispatch_swapped(
       strategy: AdcRefresh { adc_path: Absent }
-    ).token,
-    b: gcp_oauth_access_token_via_gcloud().token
+    ),
+    b: gcp_oauth_access_token_via_gcloud()
   )
 }
 

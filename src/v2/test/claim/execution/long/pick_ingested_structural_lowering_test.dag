@@ -331,7 +331,7 @@ fn pick_eval_facts_lookup(key: Node) -> Optional<InferredFacts> {
 fn pick_eval_admitted_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map {
+    facts: PartialFunction {
       lookup: pick_eval_facts_lookup
     }
   }

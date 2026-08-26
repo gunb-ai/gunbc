@@ -317,7 +317,7 @@ fn eval_fact_lookup(node: Node) -> Optional<InferredFacts> {
 fn eval_inferred_tree() -> InferredTree {
   InferredTree {
     root: eval_add_subgraph(),
-    facts: Map {
+    facts: PartialFunction {
       lookup: eval_fact_lookup
     }
   }

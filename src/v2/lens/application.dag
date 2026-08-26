@@ -72,7 +72,7 @@ type AdvisoryLens {
   read: fn(Node) -> List<Report>
 }
 
-type LensApplicationConfig<Output, Budget, Projected>
+type LensApplicationConfig<Budget>
   = LensIntrospect
   | LensEnforce {
       budget: Budget
@@ -476,7 +476,7 @@ fn apply_advisory_lens(
   lens: AdvisoryLens,
   section: SectionRef,
   root: Node,
-  config: LensApplicationConfig<Report, Report, Report>
+  config: LensApplicationConfig<Report>
 ) -> Outcome<List<Report>> {
   bind_outcome(
     o: section_subject(root: root, section: section),

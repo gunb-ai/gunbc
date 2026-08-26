@@ -1,0 +1,343 @@
+module extdeps.cpu_attachment.lotes_azifa072
+
+import std.types { Bool, List, NonEmptyStr }
+import std.integer { Int }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, File, Https }
+import extdeps.vendor.lotes { lotes }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+// THE SOCKET BODY, WHICH IS A DIFFERENT PART FROM THE RETENTION ASSEMBLY AND HAS ITS OWN
+// AUTHORITY. extdeps.cpu_attachment.ilm4926 carries the DESIGNATION -- what ILM4926 names, and
+// how strongly each publisher attests it -- and resolved one constituent, the ILM-and-backplate
+// assembly AZIF0222. This module is a second, independently versioned Lotes product: the item
+// that receives the processor and solders to the board. Two orderable parts from one vendor are
+// two subjects, not one (DESIGN section 3, external upstream decomposition), so a revision of
+// this drawing must not require editing the designation module.
+//
+// WHY IT LANDS HERE RATHER THAN INSIDE ilm4926: that module's whole content is a designation
+// whose referent no cited document fixed. Folding a resolved part into it would make the
+// unresolved-referent question look answered by the part's arrival, and it is not -- what the
+// four-letter designator EXPANDS to is still unattested. A part number resolves procurement; it
+// does not retroactively expand an initialism.
+// THE AUTHORITY IS THE ROUTE TO THE DRAWING, NOT A COPY OF IT (corrected 2026-08-23). An earlier
+// revision of this module cited a File URI pointing at the vendor's PDF committed into this
+// repository. That is refused by repository policy for EVERY subject, not as a per-subject
+// judgement: product.altra_motherboard.attachment_stack states it on RepositoryCarriageStanding,
+// where the deliberately absent fourth arm is SourceExpressionMayBeCarried, because copying a
+// vendor's PDF, figure, prose or table layout is never a degree of freedom a row may grant itself.
+// The operator's clearance covered CONFIDENTIALITY -- there is no NDA on this part -- which is a
+// different question from whether this repository carries a vendor's expression of its own facts.
+// Both had to be true and only the first was checked.
+//
+// So the drawing is cited the way this repository already cites every document it does not hold:
+// by the route through which it can be obtained, with the document's exact identity carried
+// beside it in azifa072_drawing. That is the same shape as extdeps.vendor.ampere's Customer
+// Connect anchor -- a locator for the route, not for the bytes. A later reader resolves this
+// citation by asking Lotes for GAP-AZIFA072 revision 2, which is precisely how it was obtained.
+data azifa072_drawing_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.lotes.cc/en/contact.php"
+  }
+}
+
+// THE ANCHOR IS A BINDING, NOT A SECOND URI. extdeps.cpu_attachment.ilm4926 does the same thing
+// with the Ampere datasheet locators: the conventional anchor name points at the declaration that
+// already holds the authority, so the locator is typed once and a consumer that wants to name the
+// drawing specifically has a name for it that does not collide across modules.
+data extdeps_external_authority_anchor: ExternalAuthority = azifa072_drawing_authority
+
+// THE DRAWING IS COMMITTED, AND THAT IS WHY THE CITATION IS A FILE URI. It arrived by direct
+// vendor correspondence rather than from a catalogue page, so there is no public locator to
+// point at; a citation naming a document only this repository's authors have seen is not a
+// citation. Committing the bytes is what makes the reference resolvable by a later reader, and
+// the absence of any confidentiality marking is what makes committing them permissible.
+// CARRIABILITY IS A TYPED FACT, NOT A REASSURING SENTENCE. Whether a document's content may be
+// reproduced in a public repository decides whether resolving a question ADVANCES the model or
+// merely satisfies a reader, and ilm4926 already types that distinction on its two routes
+// (route_yields_a_carriable_fact). Writing it as prose here would leave the one fact that governs
+// what may be copied out of this drawing invisible to everything except a human re-reading it.
+type DocumentCarriage
+  = CarriableOpenSupply {
+      supplied_in_response_to: NonEmptyStr
+      no_confidentiality_marking_observed: Bool
+    }
+  | NotCarriableAccessGated { gate: NonEmptyStr }
+
+// THE SECOND FIELD IS AN OBSERVATION, AND ITS NAME SAYS SO. "No confidentiality marking observed"
+// is what this repository checked; it is not a legal clearance and must not read as one. The arm
+// is still Carriable because the operator cleared it in the request that produced this work --
+// the observation supports that ruling rather than substituting for it.
+data azifa072_drawing_carriage: DocumentCarriage = CarriableOpenSupply {
+  supplied_in_response_to: "the socket-body part number that mates with AZIF0222, then its customer drawing or recommended PCB layout -- the public route recorded in extdeps.cpu_attachment.ilm4926 lga4926_land_pattern_public_route",
+  no_confidentiality_marking_observed: true,
+}
+
+fn document_content_may_be_carried(c: DocumentCarriage) -> Bool {
+  match c {
+    CarriableOpenSupply { supplied_in_response_to: _, no_confidentiality_marking_observed: seen } => seen
+    NotCarriableAccessGated { gate: _ } => false
+  }
+}
+
+data lotes_catalogue_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.lotes.cc/en/about.php"
+  }
+}
+
+// DOCUMENT IDENTITY IS CARRIED, NOT SUMMARISED. A drawing is only an authority for the revision
+// it is; a geometry fact read off revision 2 is not a fact about revision 3, and a reader who
+// finds a newer PDF needs enough here to tell whether this module's numbers still stand.
+type CustomerDrawing {
+  drawing_number: NonEmptyStr
+  part_number: NonEmptyStr
+  title: NonEmptyStr
+  revision: NonEmptyStr
+  engineering_change_notice: NonEmptyStr
+  sheet_count: Int
+  authority: ExternalAuthority
+}
+
+data azifa072_drawing: CustomerDrawing = CustomerDrawing {
+  drawing_number: "GAP-AZIFA072",
+  part_number: "AZIFA072-P001CCS",
+  title: "LGA4926 SOCKET",
+  revision: "2",
+  engineering_change_notice: "N230045, 04/10'2023",
+  sheet_count: 5,
+  authority: azifa072_drawing_authority,
+}
+
+data azifa072_socket_body_vendor: Vendor<Hardware> = lotes
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cpu_attachment.lotes_azifa072",
+      decl_name: "azifa072_drawing",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: azifa072_drawing_authority,
+  further_citations: [lotes_catalogue_authority]
+}
+
+// ================= THE LAND PATTERN =================
+//
+// EVERY FIELD BELOW IS A DRAWING FACT OR A CROSS-CHECKED EXTRACTION, AND THE TWO ARE DIFFERENT
+// EPISTEMIC STATES. A callout is what the vendor wrote; an extraction is what this repository
+// measured off the vector content. They are separated because their failure modes differ -- a
+// callout can be misread, an extraction can be mis-scaled -- and because a reader deciding
+// whether to trust a number needs to know which kind it is. Where both exist and agree, that
+// agreement is itself recorded rather than collapsed into one unlabelled number.
+type GeometryProvenance
+  = VendorCallout { sheet: Int, wording: NonEmptyStr }
+  | ExtractedFromDrawingVectors { method: NonEmptyStr }
+  | CalloutConfirmedByExtraction { sheet: Int, wording: NonEmptyStr, agreement: NonEmptyStr }
+
+// THE LATTICE IS CARRIED AS PARAMETERS, NOT AS 4,926 ROWS. The array is generated by a staggered
+// lattice with voids; storing every centre in this module would be storing a derivable fact
+// 4,926 times (DESIGN section 2). The positions ARE committed, as a CSV beside the drawing, because
+// the voids are not derivable from the parameters -- but the CSV is a derived artifact of the
+// drawing, not a second authority for the pitch.
+type StaggeredLattice {
+  column_pitch_um: Int
+  row_pitch_um: Int
+  row_stagger_um: Int
+  nearest_neighbour_um: Int
+}
+
+// MICROMETRES, BECAUSE THE PITCH IS EXACT AND A DECIMAL IS NOT. 1.000 mm and 0.870 mm are exact
+// vendor quantities; carrying them as Int micrometres makes the exactness structural rather than
+// dependent on how a float prints.
+data azifa072_lattice: StaggeredLattice = StaggeredLattice {
+  column_pitch_um: 1000,
+  row_pitch_um: 870,
+  row_stagger_um: 500,
+  nearest_neighbour_um: 1000,
+}
+
+data azifa072_lattice_provenance: GeometryProvenance = ExtractedFromDrawingVectors {
+  method: "sheet 3 pad view, per-row column-index fit over the drawn pad centres; scale fixed by setting the within-row pitch to 1.000 mm and confirmed independently against the sheet 4 detail circle, which measures 0.4599 mm at its stated 80:1 against a 0.46 callout",
+}
+
+type PadGeometry {
+  pad_count: Int
+  pad_diameter_um: Int
+  pad_diameter_tolerance_um: Int
+  array_extent_x_um: Int
+  array_extent_y_um: Int
+  row_count: Int
+}
+
+data azifa072_pad_geometry: PadGeometry = PadGeometry {
+  pad_count: 4926,
+  pad_diameter_um: 460,
+  pad_diameter_tolerance_um: 50,
+  array_extent_x_um: 63449,
+  array_extent_y_um: 75470,
+  row_count: 84,
+}
+
+data azifa072_pad_count_provenance: GeometryProvenance = CalloutConfirmedByExtraction {
+  sheet: 3,
+  wording: "4926 X Ø0.46 ±0.05 PCB PADS",
+  agreement: "the sheet 3 pad view yields exactly 4926 drawn pad elements after eleven off-block strays are dropped; the callout count and the drawn count were obtained independently and match exactly",
+}
+
+data azifa072_pad_positions_artifact: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: File
+    locator: "docs/extdeps/lotes_azifa072/lga4926_pcb_pads.csv"
+  }
+}
+
+// THE INTERIOR VOIDS ARE WHY THE CSV EXISTS, AND THE DISCREPANCY IS CARRIED AS NUMBERS RATHER
+// THAN AS PROSE. A lattice plus an outline does not reproduce this array, and the size of the
+// shortfall is the whole reason the extracted positions are committed as an artifact instead of
+// regenerated from azifa072_lattice. Written as a sentence, "359 positions are depopulated"
+// is a claim no reader can check and no lens can see; as three fields with a derived identity
+// it is arithmetic that either holds or does not (DESIGN section 4c -- a machine-consumed fact
+// belongs in a typed carrier, and a String whose sole purpose is commentary is misplaced data).
+type LatticeFillDiscrepancy {
+  outline_fill_position_count: Int
+  actual_pad_count: Int
+  depopulated_position_count: Int
+  bank_count: Int
+  bank_gap_um: Int
+  central_void_width_um: Int
+  central_void_height_um: Int
+}
+
+data azifa072_fill_discrepancy: LatticeFillDiscrepancy = LatticeFillDiscrepancy {
+  outline_fill_position_count: 5285,
+  actual_pad_count: 4926,
+  depopulated_position_count: 359,
+  bank_count: 2,
+  bank_gap_um: 4130,
+  central_void_width_um: 13900,
+  central_void_height_um: 25000,
+}
+
+// THE THIRD FIELD IS DERIVABLE FROM THE FIRST TWO, AND THAT IS THE POINT. Carrying it and
+// checking it is not redundancy: the fill count and the pad count come from DIFFERENT sources --
+// the STEP solid's perimeter and the drawing's own vector content -- so their difference is a
+// cross-source arithmetic identity. A future edit that changes one number without the other is
+// the failure this catches, and it is decidable rather than a matter of someone re-reading prose.
+// THE SUBTRACTION IS PARENTHESISED ON ONE LINE ON PURPOSE, AND THE REASON IS A LANGUAGE DEFECT
+// RATHER THAN TASTE. Written across lines with the operator leading its continuation --
+//     azifa072_fill_discrepancy.outline_fill_position_count
+//       - azifa072_fill_discrepancy.actual_pad_count
+// -- the parser ENDS the expression at the newline and reads `- x` as a fresh statement applying
+// unary minus, silently discarding one operand. Measured, not inferred: this exact function
+// returned false with the numbers correct, and a reduced case gives `100 \n - 1` == -1 while
+// `100 \n + 1` == 101 and `100 \n * 3` == 300. Only `-` is affected, because only `-` has a
+// unary form that can legally begin a statement -- the classic automatic-semicolon hazard.
+// Receipt and reduced cases: docs/probes/leading_minus_continuation_silently_truncates_2026-08-23.md
+fn azifa072_depopulation_is_arithmetically_consistent() -> Bool {
+  (azifa072_fill_discrepancy.outline_fill_position_count - azifa072_fill_discrepancy.actual_pad_count)
+    == azifa072_fill_discrepancy.depopulated_position_count
+    && azifa072_fill_discrepancy.actual_pad_count == azifa072_pad_geometry.pad_count
+}
+
+type SolderTermination {
+  ball_diameter_before_smt_um: Int
+  ball_centre_height_before_smt_um: Int
+}
+
+data azifa072_termination: SolderTermination = SolderTermination {
+  ball_diameter_before_smt_um: 520,
+  ball_centre_height_before_smt_um: 260,
+}
+
+data azifa072_termination_provenance: GeometryProvenance = CalloutConfirmedByExtraction {
+  sheet: 2,
+  wording: "4926 X Ø0.52 SOLDER BALLS BEFORE SMT",
+  agreement: "the STEP solid models 650 spherical faces at radius exactly 0.26, so the callout diameter and the modelled radius agree without either being read from the other",
+}
+
+// ================= OUTLINE AND KEEPOUT =================
+//
+// THE WIDEST PLANE IS ASYMMETRIC AND A KEEPOUT TAKEN FROM THE HOUSING OUTLINE IS WRONG. The body
+// is symmetric about the pad-array centre; the plane at +2.38 mm is not, reaching 5.118 mm
+// further on +X than on -X. That protrusion is the drawing's 2X FINGER ACCESS -- the actuation
+// side -- and it is the single measurement most likely to be missed, because every other outline
+// on the part is symmetric and invites the assumption.
+type SocketOutline {
+  housing_bottom_x_um: Int
+  housing_bottom_y_um: Int
+  housing_top_x_um: Int
+  housing_top_y_um: Int
+  widest_plane_x_um: Int
+  widest_plane_y_um: Int
+  widest_plane_height_um: Int
+  asymmetric_protrusion_plus_x_um: Int
+  height_above_pcb_before_smt_um: Int
+}
+
+data azifa072_outline: SocketOutline = SocketOutline {
+  housing_bottom_x_um: 70900,
+  housing_bottom_y_um: 80900,
+  housing_top_x_um: 72300,
+  housing_top_y_um: 82300,
+  widest_plane_x_um: 77418,
+  widest_plane_y_um: 82300,
+  widest_plane_height_um: 2380,
+  asymmetric_protrusion_plus_x_um: 5118,
+  height_above_pcb_before_smt_um: 4680,
+}
+
+data azifa072_outline_provenance: GeometryProvenance = ExtractedFromDrawingVectors {
+  method: "STEP solid AZIFA072_B_220208(LGA4926 SKT)-1, planar point extents at each Z band, expressed relative to the PCB pad plane taken as the solder-ball tangent before SMT",
+}
+
+// ================= WHAT THIS DRAWING DOES NOT ESTABLISH =================
+//
+// NAMED HERE RATHER THAN LEFT TO BE REDISCOVERED, and typed rather than written as prose, because
+// a footprint release has to be able to ASK whether these are closed. A gap recorded only in a
+// README is a gap a generator cannot consult.
+type LandPatternGap
+  = StencilApertureUnread { reason: NonEmptyStr }
+  | PinOneCornerUnlocated { reason: NonEmptyStr }
+  | SolderMaskOpeningUnidentified { reason: NonEmptyStr }
+
+data azifa072_open_gaps: List<LandPatternGap> = [
+  StencilApertureUnread {
+    reason: "sheet 4 carries the STENCIL APERTURE detail at 80:1, but its dimension values are drawn as vector outlines rather than text and the only closed shape recoverable at that scale is the Ø0.46 pad itself. The aperture must be read off the drawing by eye before paste is released.",
+  },
+  PinOneCornerUnlocated {
+    reason: "sheet 2 carries MARKING FOR Pin1 and the array is demonstrably not symmetric -- the two banks depopulate differently -- so the orientation is recoverable, but no extraction has established WHICH corner is A1 and a guessed A1 rotates the whole board.",
+  },
+  SolderMaskOpeningUnidentified {
+    reason: "sheet 3's second view draws the same 4926-position lattice with a larger circle measuring about 0.73 to 0.77 mm. No recovered callout attaches a name to it, so whether it is the mask opening, the contact-tip footprint or a keepout is unestablished.",
+  },
+]
+
+fn land_pattern_gap_count() -> Int {
+  count(azifa072_open_gaps)
+}
+
+// A FOOTPRINT MAY NOT EMIT WHILE ANY GAP STANDS -- AND NOTHING TODAY ASKS IT. The rung is stated
+// honestly rather than implied by the function's existence: no footprint emitter for this part
+// exists in the tree, so the only consumer is the witness that executes this predicate. That
+// makes it a real, executing answer to "may it emit" and NOT evidence that anything is prevented.
+// Calling it the gate an emitter consults would be the specification-without-execution claim
+// DESIGN section 5 names, one step before the inert-lens tier: the machinery exists and nothing
+// gates on it.
+//
+// NEXT-RUNG TRIGGER: the first consumer that turns this land pattern into pads. product.pcb.footprint
+// already carries the Pad carrier that would receive them, and it is the module that would have to
+// call this before emitting. Until such a caller exists the class sits at mitigatable -- the answer
+// is right and unenforced -- and a released footprint is prevented by review, not by construction.
+//
+// The refusal itself is deliberately not a warning: a paste layer released without its aperture
+// and a board rotated by a guessed A1 are both unrecoverable at fabrication, so the failure arm
+// refuses rather than proceeding with a default (DESIGN section 5).
+fn azifa072_footprint_may_emit() -> Bool {
+  land_pattern_gap_count() == 0
+}

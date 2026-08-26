@@ -365,7 +365,7 @@ fn branch_facts_lookup(key: Node) -> Optional<InferredFacts> {
 fn branch_admitted_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map {
+    facts: PartialFunction {
       lookup: branch_facts_lookup
     }
   }

@@ -6,7 +6,9 @@ import std.algebra { Cons, Empty }
 import v2.std.algebra { fold_list, list_append, list_snoc_item }
 import v2.std.collection {
   List,
-  Map
+  Map,
+  empty_map,
+  map_insert
 }
 import v2.std.optional {
   Absent,
@@ -261,43 +263,35 @@ fn sql_nonnumeric_facts_node(facts: SqlNonNumericPrimitiveFacts) -> Node {
 }
 
 fn sql_integer_spec_facts(facts: SqlIntegerPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: sql_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
-          v2.std.optional.Present { value: sql_inhabitant_atom(id: ^sql_tag_signed) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      empty_map(),
+      discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+      sql_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    discriminant(v: ModelCoreFactAxisSignedness {}),
+    sql_inhabitant_atom(id: ^sql_tag_signed)
+  )
 }
 
 fn sql_float_spec_facts(facts: SqlFloatPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: sql_inhabitant_atom(id: facts.surface_spelling) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+  map_insert(
+    empty_map(),
+    discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+    sql_inhabitant_atom(id: facts.surface_spelling)
+  )
 }
 
 fn sql_nonnumeric_spec_facts(facts: SqlNonNumericPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: sql_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          v2.std.optional.Present { value: sql_inhabitant_atom(id: facts.representation) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      empty_map(),
+      discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+      sql_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    discriminant(v: ModelCoreFactAxisEncoding {}),
+    sql_inhabitant_atom(id: facts.representation)
+  )
 }
 
 fn sql_primitive_bundle_from_integer_facts(facts: SqlIntegerPrimitiveFacts) -> PrimitiveFactBundle {

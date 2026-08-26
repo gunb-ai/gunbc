@@ -20,8 +20,8 @@ test fn parse_table_token_position_indices_no_extra_append_holds() -> Bool {
     && ((length(xs: token_position_indices(tokens: parse_table_two_tokens)) == 4) == false)
 }
 
-fn nullable_set_singleton(name: Symbol) -> Set<Symbol> {
-  Set { member: fn(sym) { sym == name } }
+fn nullable_set_singleton(name: Symbol) -> PointwisePower<Symbol> {
+  PointwisePower { member: fn(sym) { sym == name } }
 }
 
 test fn parse_table_nullable_morphism_holds() -> Bool {

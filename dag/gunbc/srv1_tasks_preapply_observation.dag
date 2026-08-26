@@ -1,6 +1,7 @@
 module gunbc.srv1_tasks_preapply_observation
 
 import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.host_effect { LocalShell }
 import std.types { String, NonEmptyStr, Bool, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.host_converge { runner_instance_glob }
@@ -10,7 +11,7 @@ import gunbc.host_converge_slice1 {
   host_converge_slice1_read_tasks_current_raw,
 }
 import gunbc.systemctl_show_read {
-  systemctl_show_property_read_local,
+  systemctl_show_property_read,
   SystemdPropertyCapture,
   SystemdPropertyCaptured,
   SystemdPropertyCaptureRefused,
@@ -79,7 +80,7 @@ fn observe_unit_tasks(unit: NonEmptyStr) -> Srv1TasksUnitObservation {
     Present { value: tmax } =>
       match host_converge_slice1_read_tasks_current_raw(unit: unit) {
         Present { value: tcur } =>
-          match systemctl_show_property_read_local(unit: unit, property: ControlGroup) {
+          match systemctl_show_property_read(transport: LocalShell, unit: unit, property: ControlGroup) {
             SystemdPropertyCaptured { value: cg } =>
               if cg == "" {
                 Srv1TasksUnitObservationRefused { unit: unit, cause: "ControlGroup read returned empty — cannot locate cgroupfs pids files" }

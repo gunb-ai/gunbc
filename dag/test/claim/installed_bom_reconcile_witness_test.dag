@@ -71,6 +71,7 @@ import gunbc.fleet_physical_inventory {
   intended_allocation_total,
   fleet_dimm_verdicts,
   fleet_processor_verdicts,
+  srv1_dimm_expectation,
   srv1_dimm_observation,
   srv3_dimm_observation,
   srv4_dimm_observation,
@@ -99,7 +100,7 @@ fn cataloged_slot(locator: NonEmptyStr, part_is_expected: Bool) -> ObservedDimmS
 // part, so the fleet's own first row confirms.
 test fn srv1_live_population_confirms_the_expectation() -> Bool {
   match dimm_reconcile_verdict(
-    expectation: uniform_expectation(host: w_host_a, count: 8),
+    expectation: srv1_dimm_expectation,
     observation: srv1_dimm_observation,
   ) {
     DimmPopulationConfirmed { host: _, stick_count: n } => n == 8
@@ -351,7 +352,7 @@ test fn every_fold_produced_verdict_is_grounded() -> Bool {
 test fn confirmation_predicate_separates_the_two_live_hosts() -> Bool {
   dimm_verdict_is_confirmed(
     verdict: dimm_reconcile_verdict(
-      expectation: uniform_expectation(host: w_host_a, count: 8),
+      expectation: srv1_dimm_expectation,
       observation: srv1_dimm_observation,
     ),
   ) && !dimm_verdict_is_confirmed(

@@ -6,7 +6,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data fn_equality_bound_witness_note: String = "Executing floor witness for the FN-level PartialEq bound trigger (v1.compiler.emit_rust v1_fn_body_equality_bound_param_names, deciding via v1.compiler.trait_bound_witness v1_equality_bound_param_name). The emitter derives Clone bounds on generic fn params ~30-48 references deep but derived NOTHING for equality, so a generic fn comparing two values of its own type param emitted bare and rustc refused with E0369 'binary operation == cannot be applied to type K'. GROUNDING FOR THE EXPECTED SPELLING, so it is not a measurement copied from this tree: quick-lynx-620 measured the requirement against rustc on the real emission -- hand-adding the bound to the emitted mirror and rebuilding the seed gave zero errors, and the required rendering is `K: Clone + PartialEq`, the equality bound COMPOSING with the separately-derived Clone bound on the same parameter rather than replacing it. THE DISCRIMINATOR IS TYPE RESOLUTION, NOT THE == SPELLING, and the two rows below exist to prove the trigger cannot be satisfied by matching on the operator. earning_comparison_bounds_its_generic_param carries BOTH comparisons in one body, exactly the shape of the real specimen: a concrete closed-enum comparison that must earn nothing, and a comparison of two K values that must earn the bound -- rustc emits exactly ONE E0369 on that real shape, at the second comparison, so the first provably compiles unbounded today. concrete_only_comparison_leaves_generic_param_bare is the sharper negative: a fn that HAS a generic param and HAS a comparison, where the comparison involves only concrete types. A predicate keyed on the presence of == bounds K there and breaks every caller instantiating K with a non-PartialEq type; the type-resolving predicate must leave it bare. That row is what makes the pair discriminating rather than two positives, and it is why the refusals below assert the bounded spelling is ABSENT rather than merely asserting some other spelling is present. Over-approximation is not free here: adding a bound TIGHTENS the emitted signature, so a spurious bound is a real break, while a missed bound only leaves the pre-existing E0369 in place."
 
-fn earning_comparison_bounds_its_generic_param() -> Bool {
+test fn earning_comparison_bounds_its_generic_param() -> Bool {
   compile_dag_rust_emit_check(
     "module fn_equality_witness.earning\n\ntype ShapeTag = ShapeAlpha | ShapeBeta\n\ntype CapRow<K> {\n  shape: ShapeTag\n  keys: List<K>\n}\n\nfn cap_row_has<K>(row: CapRow<K>, shape: ShapeTag, key: K) -> Bool {\n  row.shape == shape && (row.keys |> any(k => k == key))\n}\n",
     "src/fn_equality_witness_earning.rs",
@@ -15,7 +15,7 @@ fn earning_comparison_bounds_its_generic_param() -> Bool {
   )
 }
 
-fn concrete_only_comparison_leaves_generic_param_bare() -> Bool {
+test fn concrete_only_comparison_leaves_generic_param_bare() -> Bool {
   compile_dag_rust_emit_check(
     "module fn_equality_witness.concrete\n\ntype ShapeTag = ShapeAlpha | ShapeBeta\n\ntype CapRow<K> {\n  shape: ShapeTag\n  keys: List<K>\n}\n\nfn cap_row_shape_is<K>(row: CapRow<K>, shape: ShapeTag) -> Bool {\n  row.shape == shape\n}\n",
     "src/fn_equality_witness_concrete.rs",
@@ -26,7 +26,7 @@ fn concrete_only_comparison_leaves_generic_param_bare() -> Bool {
 
 data fn_equality_forwarding_note: String = "Executing floor witness for the CALL-FORWARDING half of the same trigger (v1.compiler.emit_rust v1_call_forwarding_equality_bound_param_names). The seed synthesized the bound only on the fn whose OWN body compares, which is a program that does not typecheck one hop up: a caller instantiating that fn's K with its own generic param is obliged by rustc to prove a bound it never states, and rustc refuses with E0277. MEASURED, not assumed: the real specimen is gunbc#8605's std.trait_derive_shape, where repr_grounding_derive_shape_has_trait<K> compares k == capability_key and earns the bound while repr_grounding_derive_completeness_predicate<K> forwards its own K into that parameter; the reduction below was emitted through the seed before the fix and produced `pub fn cap_table_complete<K: Clone>` -- the Clone bound present, the PartialEq bound absent -- which is why the refusal asserts that exact spelling is gone rather than merely asserting the fixed one is present. THE FORWARDED CALL IS NOT AT THE BODY'S ROOT: it sits inside a lambda inside a pipelined all(), the shape the pre-existing Clone forwarding structurally cannot reach, so a row whose caller body IS the call would pass without exercising the recursive walk this row exists to hold. forwarding_into_unbounded_callee_leaves_generic_param_bare is the discriminator: same wrapper shape, same generic param, same pipeline, but the callee compares only concrete types and so earns nothing -- a derivation keyed on 'my callee is generic' rather than on the callee's own resolved-type verdict bounds K there and breaks every caller instantiating K with a non-PartialEq type."
 
-fn forwarding_caller_inherits_callee_equality_bound() -> Bool {
+test fn forwarding_caller_inherits_callee_equality_bound() -> Bool {
   compile_dag_rust_emit_check(
     "module fn_equality_witness.forwarding\n\ntype ShapeTag = ShapeAlpha | ShapeBeta\n\ntype CapRow<K> {\n  shape: ShapeTag\n  keys: List<K>\n}\n\nfn cap_row_has<K>(row: CapRow<K>, shape: ShapeTag, key: K) -> Bool {\n  row.shape == shape && (row.keys |> any(k => k == key))\n}\n\nfn cap_table_complete<K>(row: CapRow<K>, shape: ShapeTag, required: List<K>) -> Bool {\n  required |> all(k => cap_row_has(row: row, shape: shape, key: k))\n}\n",
     "src/fn_equality_witness_forwarding.rs",
@@ -35,7 +35,7 @@ fn forwarding_caller_inherits_callee_equality_bound() -> Bool {
   )
 }
 
-fn forwarding_into_unbounded_callee_leaves_generic_param_bare() -> Bool {
+test fn forwarding_into_unbounded_callee_leaves_generic_param_bare() -> Bool {
   compile_dag_rust_emit_check(
     "module fn_equality_witness.forwarding_bare\n\ntype ShapeTag = ShapeAlpha | ShapeBeta\n\ntype CapRow<K> {\n  shape: ShapeTag\n  keys: List<K>\n}\n\nfn cap_row_shape_is<K>(row: CapRow<K>, shape: ShapeTag) -> Bool {\n  row.shape == shape\n}\n\nfn cap_table_shape_is<K>(row: CapRow<K>, shapes: List<ShapeTag>) -> Bool {\n  shapes |> all(s => cap_row_shape_is(row: row, shape: s))\n}\n",
     "src/fn_equality_witness_forwarding_bare.rs",

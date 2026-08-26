@@ -140,7 +140,6 @@ service github.Checks {
     auth_source: EnvVar { name: "GITHUB_TOKEN" }
 
     rate_limit: { requests: 5000, per: hour, scope: core }
-    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503, 504] }
   }
 
   operation ListForRef {

@@ -1,7 +1,7 @@
 module v2.std.concept_index
 
 import std.algebra { Empty }
-import v2.std.algebra { list_map, list_snoc_item }
+import v2.std.algebra { filter, list_map, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.node {
   Conj,
@@ -131,11 +131,8 @@ fn build_concept_name_index(idx: List<QualifiedConcept>) -> List<ConceptByName> 
 }
 
 fn enumerate_coproduct_decls() -> List<ConceptDecl> {
-  fold(concept_decl_facts_live(), init: Empty, f: fn(acc, decl) {
-    if node_is_coproduct(node: decl.node) {
-      list_snoc_item(xs: acc, item: decl)
-    } else {
-      acc
-    }
-  })
+  filter(
+    xs: concept_decl_facts_live(),
+    predicate: fn(decl) { node_is_coproduct(node: decl.node) }
+  )
 }

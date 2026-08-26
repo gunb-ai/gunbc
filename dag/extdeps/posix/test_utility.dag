@@ -1,0 +1,32 @@
+module extdeps.posix.test_utility
+
+import std.types { String, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/test.html"
+  }
+}
+
+// THE STANDALONE UTILITY, NOT THE SHELL BUILTIN, and that is why this module exists at all rather
+// than the question being answered by a shell fragment. Every shell also implements `test` as a
+// builtin, so a caller that reaches for a shell to ask it pays for a shell parse and inherits that
+// shell's own quoting rules. Spawning the utility asks the same question of a real program with a
+// real argv, which is exactly what this repository's ArgvCommand carrier is for.
+// PATH-resolved program name, deliberately: this repository has made no filesystem observation of
+// the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
+// criterion for climbing to an absolute row, and the counter-example that makes the distinction
+// load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
+data test_program: NonEmptyStr = "test"
+
+// -f IS "EXISTS AND IS A REGULAR FILE", which is a stronger claim than -e ("exists"): a directory, a
+// socket or a dangling symlink at that path answers false here and true under -e. The two are not
+// interchangeable and this builder commits to the one its callers mean -- a unit file that turned
+// out to be a directory is not present, it is broken.
+fn test_regular_file_command(path: String) -> ArgvCommand {
+  argv_command(program: test_program, arguments: ["-f", path])
+}

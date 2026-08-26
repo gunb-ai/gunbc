@@ -1,5 +1,7 @@
 module v2.test.extdeps.spice_rc_passive_deck_claims
 
+import v2.test.fixture.spice_rc_passive_deck { spice_rc_passive_deck }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

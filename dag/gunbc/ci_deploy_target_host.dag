@@ -8,7 +8,7 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.shell
 import gunbc.hostname_read {
-  hostname_short_read_local,
+  hostname_short_read,
   HostnameShortCaptured,
   HostnameShortCaptureRefused,
 }
@@ -35,7 +35,7 @@ type DeployTargetHostObservation {
 }
 
 fn deploy_target_host_observed_hostname() -> String {
-  match hostname_short_read_local() {
+  match hostname_short_read(transport: LocalShell) {
     HostnameShortCaptured { value: name } => name
     HostnameShortCaptureRefused { reason: _ } => ""
   }

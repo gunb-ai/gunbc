@@ -1,10 +1,11 @@
 module extdeps.tools.curl
 
-import std.types { String }
+import std.types { String, NonEmptyStr }
 import std.measure { Second, second, second_count }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.tools { CliTool, SourceApt }
 import extdeps.apt { package_curl }
 
@@ -43,4 +44,19 @@ fn curl_localhost_bounded_get_argv_prefix() -> String {
     connect_timeout: curl_localhost_connect_timeout,
     max_time: curl_localhost_max_time
   )
+}
+
+// THE DOWNLOAD, WITH ITS SUCCESS SEMANTICS ATTACHED. -f is not decoration: without it curl exits 0
+// on a 404 and writes the error page to the destination, which is the fail-open class
+// gunbc.plans.transport_argv_anemia_dissolution exists to remove. -s suppresses the progress meter,
+// -L follows redirects, -o names the destination. Moved here from extdeps.exec.command, which is a
+// generic hub and may not carry one product's flags (DESIGN section 3).
+// PATH-resolved program name, deliberately: this repository has made no filesystem observation of
+// the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
+// criterion for climbing to an absolute row, and the counter-example that makes the distinction
+// load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
+data curl_program: NonEmptyStr = "curl"
+
+fn curl_download_command(url: String, destination: String) -> ArgvCommand {
+  argv_command(program: curl_program, arguments: ["-fsL", "-o", destination, url])
 }

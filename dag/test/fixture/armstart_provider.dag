@@ -1,0 +1,7 @@
+module test.fixture.armstart_provider
+
+data armstart_provider_fixture_note: String = "Provider fixture for test.claim.qualified_arm_start_witness_test: one two-variant coproduct, no imports, so the witness closure stays minimal (witness-cost ruling, DESIGN open thread 2026-08-04). Its only job is to give a match pattern a NAMESPACE-QUALIFIED spelling, which is the shape looks_like_arm_start could not recognise; the variant names are deliberately unlike anything in the seed so a bare-name registry homonym cannot satisfy the assertion by accident."
+
+type ArmStartKind
+  = ArmStartAlpha
+  | ArmStartBeta

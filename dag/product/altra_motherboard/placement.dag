@@ -36,6 +36,9 @@ import std.spatial_frame {
 }
 import product.altra_motherboard.minimal_design {
   AltraMinimalMotherboard,
+  DesignIntent,
+  EngineeringBringUp,
+  Production,
   DdrSlotIdentity,
   ddr_channel_ordinal,
   ddr_slot_identity_eq,
@@ -49,6 +52,7 @@ import product.altra_motherboard.realization {
   altra_1p_requirement_part_realizations,
   population_realization_refusals,
 }
+import extdeps.external_authority { ExternalAuthority }
 import extdeps.land_pattern.types { PackageBodyDimensions }
 import extdeps.network.ti_dp83867 { dp83867_rgz0048b_body }
 import extdeps.power.ti_tps53688 { tps53688_rsb0040a_body }
@@ -316,16 +320,127 @@ fn realization_placement_refusals(plan: BoardPlacementPlan) -> List<PlacementRef
   )
 }
 
+// ================= WHICH ROLES A BOARD OWES, AS A FUNCTION OF WHAT IT IS FOR =================
+//
+// THE ROLE SET USED TO BE A CONSTANT AND THAT MADE THE INTENT A HALF-MEASURE. minimal_design
+// already selects the DDR channel count against DesignIntent, because the same count is
+// admissible for bring-up and refused for production. Every OTHER requirement then ignored the
+// same distinction: required_roles returned the identical thirteen whether the board was a
+// production server or a debug fixture, so a fixture was obliged to carry a host network PHY and
+// an NVMe endpoint it does not need to come out of reset. A design intent that governs one axis
+// and is silent on the rest is not a modelled intent, it is a comment with a type.
+//
+// THE BASIS IS TYPED BECAUSE THESE TWO KINDS OF CLAIM MUST NOT BE CONFUSED. The channel-count
+// gate is backed by Ampere's own datasheet, which documents the one- and two-channel populations
+// as engineering debug. NOTHING BELOW HAS THAT BACKING. That a bring-up fixture may omit host
+// networking is this repository's design judgement, not a vendor statement, and a reader deciding
+// whether to trust a row needs to see which it is. Modelling the basis as prose would let the two
+// blur on the next edit; as a coproduct, a row claiming vendor backing has to name an authority.
+type RoleRequirementBasis
+  = VendorProductionEnvelope { authority: ExternalAuthority }
+  | RepositoryDesignPolicy { because: NonEmptyStr }
+
+// THREE ARMS, NOT A BOOL PER INTENT. RequiredUnderEveryIntent is a POSITIVE claim -- this role is
+// owed no matter what the board is for -- rather than the absence of a gate, which is what a
+// two-field record of Bools would have made it. The difference shows up when a third intent is
+// added: a Bool pair silently leaves the new intent unrepresented, while these arms state their
+// scope and requirement_applies_under below has to decide.
+type RoleRequirement
+  = RequiredUnderEveryIntent { basis: RoleRequirementBasis }
+  | RequiredOnlyUnderProduction { basis: RoleRequirementBasis }
+  | RequiredOnlyUnderBringUp { basis: RoleRequirementBasis }
+
+// TOTAL OVER THE ROLE COPRODUCT, WHICH IS THE WHOLE POINT OF WRITING IT THIS WAY. A new
+// BoardComponentRole cannot be added without failing to compile HERE, so its necessity is decided
+// by whoever adds it rather than inherited from whichever default a wildcard happened to name.
+// That is the distinction DESIGN calls total-at-the-level-examined-blind-one-level-down: a match
+// that compiles and looks complete while the arm that decides the outcome was never written.
+fn role_requirement(r: BoardComponentRole) -> RoleRequirement {
+  match r {
+    ProcessorSocket => RequiredUnderEveryIntent {
+      basis: RepositoryDesignPolicy { because: "the board is an Altra board; without the socket there is no processor attachment at all" },
+    }
+    ProcessorPackage => RequiredUnderEveryIntent {
+      basis: RepositoryDesignPolicy { because: "the processor is the subject of the design under every intent" },
+    }
+    MemoryModuleSlot { slot: _ } => RequiredUnderEveryIntent {
+      basis: RepositoryDesignPolicy { because: "the slot population is already selected against intent in minimal_design; each slot the topology names is owed under whatever intent produced that topology" },
+    }
+    ProcessorRailSequencer => RequiredUnderEveryIntent {
+      basis: RepositoryDesignPolicy { because: "the processor rails have a documented enable order; nothing comes out of reset without something applying it" },
+    }
+    ProcessorPowerStage => RequiredUnderEveryIntent {
+      basis: RepositoryDesignPolicy { because: "the part draws its power through a stage that must exist before it runs at all" },
+    }
+    ProcessorPowerGoodSupervisor => RequiredUnderEveryIntent {
+      basis: RepositoryDesignPolicy { because: "sequencing without supervision cannot tell a rail that came up from one that did not, which is a silent-wrongness failure in hardware" },
+    }
+    ResetController => RequiredUnderEveryIntent {
+      basis: RepositoryDesignPolicy { because: "reset supervision is what makes power-up a defined transition rather than an undefined one" },
+    }
+    BootFirmwareEeprom => RequiredUnderEveryIntent {
+      basis: RepositoryDesignPolicy { because: "the processor fetches boot firmware before any board feature exists to be useful" },
+    }
+    FirmwareFlash => RequiredUnderEveryIntent {
+      basis: RepositoryDesignPolicy { because: "host firmware storage is on the boot path under every intent" },
+    }
+    BoardControlCpld => RequiredUnderEveryIntent {
+      basis: RepositoryDesignPolicy { because: "board control logic carries the sequencing and reset behaviour the discrete parts are wired into" },
+    }
+    DebugConnector => RequiredUnderEveryIntent {
+      basis: RepositoryDesignPolicy { because: "DebugAccess is a named BoardRequirementIdentity in realization.dag, so debug is a requirement this board model already recognises rather than a bring-up convenience. A first draft of this row made it bring-up-only, which would have asserted that a production Altra server is not owed debug access -- a claim no cited document supports and which the requirements model contradicts" },
+    }
+    HostNetworkPhy => RequiredOnlyUnderProduction {
+      basis: RepositoryDesignPolicy { because: "host networking is what the server is FOR, and is on no path required to bring the processor up; a fixture that must carry a PHY to be admitted is paying for a feature it does not exercise" },
+    }
+    ManagementNetworkPath => RequiredOnlyUnderProduction {
+      basis: RepositoryDesignPolicy { because: "out-of-band management is a property of a deployed server; a fixture on a bench is managed by the person standing at it" },
+    }
+    StorageEndpoint => RequiredOnlyUnderProduction {
+      basis: RepositoryDesignPolicy { because: "an NVMe endpoint carries the workload, not the boot path this model requires; a fixture boots from firmware already required above" },
+    }
+  }
+}
+
+// THE ONE PLACE INTENT IS APPLIED, so adding a DesignIntent breaks exactly here and loudly rather
+// than in fourteen role arms.
+fn requirement_applies_under(req: RoleRequirement, intent: DesignIntent) -> Bool {
+  match req {
+    RequiredUnderEveryIntent { basis: _ } => true
+    RequiredOnlyUnderProduction { basis: _ } =>
+      match intent {
+        Production => true
+        EngineeringBringUp => false
+      }
+    RequiredOnlyUnderBringUp { basis: _ } =>
+      match intent {
+        EngineeringBringUp => true
+        Production => false
+      }
+  }
+}
+
+fn role_is_required_under(r: BoardComponentRole, intent: DesignIntent) -> Bool {
+  requirement_applies_under(req: role_requirement(r: r), intent: intent)
+}
+
+// THE CANDIDATE SET IS ENUMERATED ONCE. Every non-slot role the board can carry, in one list, so
+// required_roles filters rather than re-listing -- a second hand-maintained list would be the fork
+// that drifts the first time a role is added to one and not the other.
+fn every_non_slot_role() -> List<BoardComponentRole> {
+  [ProcessorSocket, ProcessorPackage, BoardControlCpld, BootFirmwareEeprom, FirmwareFlash,
+   ResetController, ProcessorRailSequencer, ProcessorPowerStage, ProcessorPowerGoodSupervisor,
+   HostNetworkPhy, ManagementNetworkPath, StorageEndpoint, DebugConnector]
+}
+
 fn required_roles(d: AltraMinimalMotherboard) -> List<BoardComponentRole> {
   let slots = fold(topology_slot_identities(t: d.memory.topology), init: [], f: fn(acc, s) {
     concat(acc, [MemoryModuleSlot { slot: s }])
   })
-  concat(
-    [ProcessorSocket, ProcessorPackage, BoardControlCpld, BootFirmwareEeprom, FirmwareFlash,
-     ResetController, ProcessorRailSequencer, ProcessorPowerStage, ProcessorPowerGoodSupervisor,
-     HostNetworkPhy, ManagementNetworkPath, StorageEndpoint, DebugConnector],
-    slots
-  )
+  let gated = fold(every_non_slot_role(), init: [], f: fn(acc, r) {
+    if role_is_required_under(r: r, intent: d.intent) { concat(acc, [r]) } else { acc }
+  })
+  concat(gated, slots)
 }
 
 fn role_fill_count(plan: BoardPlacementPlan, r: BoardComponentRole) -> Int {

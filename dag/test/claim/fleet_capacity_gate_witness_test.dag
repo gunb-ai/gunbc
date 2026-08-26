@@ -1,0 +1,109 @@
+module test.claim.fleet_capacity_gate_witness_test
+
+import std.types { Bool, NonEmptyStr, List }
+import extdeps.llm.cli_lifecycle { ProviderKind, CodexCliProvider, ClaudeCliProvider }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_capacity_control {
+  HostCapacityWithdrawal, ProviderCapacityWithdrawal,
+  WithdrawnForMaintenance, WithdrawnToReduceSpend,
+}
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance }
+import gunbc.dispatch_selection {
+  ProviderOffer, ProviderInventory,
+  declared_provider_inventory_for_instance,
+  provider_inventory_for_instance,
+  provider_inventory_withdrawn_for_instance,
+  capacity_admitted_offers_in, capacity_withdrawn_offers_in,
+}
+
+
+fn live_instance() -> HostDashboardInstance {
+  srv1_live_dashboard_instance()
+}
+
+fn declared_offers() -> List<ProviderOffer> {
+  declared_provider_inventory_for_instance(instance: live_instance()).offers
+}
+
+fn withdraw_this_host() -> List<HostCapacityWithdrawal> {
+  [HostCapacityWithdrawal {
+    host: live_instance().host_identity as HostIdentity,
+    cause: WithdrawnForMaintenance { detail: "memory upgrade" as NonEmptyStr },
+  }]
+}
+
+fn withdraw_codex() -> List<ProviderCapacityWithdrawal> {
+  [ProviderCapacityWithdrawal {
+    provider: CodexCliProvider,
+    cause: WithdrawnToReduceSpend { detail: "quota exhausted" as NonEmptyStr },
+  }]
+}
+
+// THE GATE ACTUALLY CUTS, WHICH IS THE CLAIM A NEUTRAL LIVE ROSTER CANNOT MAKE.
+//
+// The live rosters are empty, so the production inventory is unchanged by this wiring. That is
+// correct and it is also why this witness authors its own withdrawal: without it every assertion
+// here would be about the half of the gate that does nothing, and a wiring that silently failed to
+// filter would stay green forever.
+test fn withdrawing_this_host_removes_every_offer_it_had() -> Bool {
+  let before = declared_offers()
+  let after = capacity_admitted_offers_in(
+    host_rows: withdraw_this_host(), provider_rows: [],
+    instance: live_instance(), offers: before,
+  )
+  (before |> count) > 0 && (after |> count) == 0
+}
+
+// AN INVENTORY EMPTIED BY WITHDRAWAL IS DISTINGUISHABLE FROM ONE THAT WAS NEVER FILLED.
+//
+// This is the empty-observation narrow, guarded. A bare filter renders both as the same empty
+// list, and the two have opposite remedies -- restore the host, versus install a provider. The
+// withdrawn list is what carries the distinguishing fact, so it must be NON-EMPTY exactly when the
+// offers went away because someone cut them.
+test fn a_withdrawn_empty_inventory_is_not_an_unfilled_one() -> Bool {
+  let offers = declared_offers()
+  let admitted = capacity_admitted_offers_in(
+    host_rows: withdraw_this_host(), provider_rows: [],
+    instance: live_instance(), offers: offers,
+  )
+  let withdrawn = capacity_withdrawn_offers_in(
+    host_rows: withdraw_this_host(), provider_rows: [],
+    instance: live_instance(), offers: offers,
+  )
+  (admitted |> count) == 0
+    && (withdrawn |> count) == (offers |> count)
+    && (withdrawn |> count) > 0
+}
+
+// CUTTING ONE RUNTIME IS NOT CUTTING THE HOST: THE PARTITION IS EXACT AND LOSES NOTHING.
+//
+// Every declared offer lands in exactly one of the two lists. A gate that dropped an offer from
+// both -- or double-counted one -- would still look plausible on the admitted side alone, which is
+// why this asserts the sum against the denominator rather than just that something was removed.
+test fn the_gate_partitions_offers_without_losing_any() -> Bool {
+  let offers = declared_offers()
+  let admitted = capacity_admitted_offers_in(
+    host_rows: [], provider_rows: withdraw_codex(),
+    instance: live_instance(), offers: offers,
+  )
+  let withdrawn = capacity_withdrawn_offers_in(
+    host_rows: [], provider_rows: withdraw_codex(),
+    instance: live_instance(), offers: offers,
+  )
+  (admitted |> count) + (withdrawn |> count) == (offers |> count)
+    && (offers |> count) > 0
+}
+
+// THE LIVE PRODUCTION INVENTORY IS UNCHANGED BY THIS WIRING.
+//
+// With empty rosters the gate is exactly the identity, and nothing is withdrawn. This is the
+// no-op control: it goes red if the gate ever starts removing production capacity that no operator
+// asked to remove, which is the failure this change could plausibly introduce.
+test fn the_live_inventory_loses_nothing_to_the_gate() -> Bool {
+  let declared = declared_provider_inventory_for_instance(instance: live_instance())
+  let gated = provider_inventory_for_instance(instance: live_instance())
+  let withdrawn = provider_inventory_withdrawn_for_instance(instance: live_instance())
+  (gated.offers |> count) == (declared.offers |> count)
+    && (withdrawn |> count) == 0
+    && (declared.offers |> count) > 0
+}

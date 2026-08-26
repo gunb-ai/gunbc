@@ -6,6 +6,9 @@ import std.disposition { Disposition, SingleAuthority }
 import std.algebra { trim }
 import std.checked_arithmetic { CheckedNat, CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
 import extdeps.linux.procfs { ProcfsPath, ProcNetUnix, procfs_path_literal }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.gnu_coreutils { cat_command, readlink_command }
+import extdeps.tools.stat { stat_file_type_command, stat_owner_user_name_command }
 import extdeps.cache.sccache { SccacheServerUnixSocket, SccacheServerTcpPort }
 import extdeps.linux.proc_self_cgroup {
   ProcPidCgroupMembershipRecord,
@@ -14,6 +17,13 @@ import extdeps.linux.proc_self_cgroup {
   MembershipAmbiguous,
   MembershipMalformed,
   read_unified_cgroup_membership,
+}
+import gunbc.runner_unit {
+  read_runner_unit_name,
+  RunnerUnitNameReading,
+  NotARunnerUnit,
+  RunnerUnitInstanceMalformed,
+  RunnerUnitInstance,
 }
 import gunbc.build_cache_instance {
   BuildCacheInstance,
@@ -100,38 +110,42 @@ type BuildCacheEndpointSurvey {
 
 data listener_chain_is_the_receipt_chain_note: String = "THIS IS THE CHAIN THE STEP-1 PLACEMENT RECEIPT EXECUTED BY HAND, and it is here rather than a tool that answers the same question in one call because the receipt and gunbc.build_cache_instance endpoint_ownership_note both specify it and both explicitly exclude ss, pgrep, head -1 and lsof. An earlier revision of this module DID use ss, on the stated ground that resolving a socket inode to its holder needs a glob over /proc and therefore a shell this lane may not emit. THAT GROUND WAS FALSE and was refuted by execution 2026-08-21, twice independently: find takes the whole walk as one argv with no shell (extdeps.shell shell.Find SocketInodeHolders), so the receipt's chain was reachable the whole time and the substitution bought nothing. The measurement that produced the error is worth as much as the one that corrected it -- the first probe used the bracketed pattern socket:[N], find read the brackets as a glob character class, it matched nothing, and 'found nothing' was accepted as confirmation that the walk could not be done. A zero with no nonzero beside it in the same run is not a measurement. It is recorded rather than quietly corrected because the false claim had already been written into three carrier notes and a PR body as a capability boundary, and a fabricated boundary is worse than a missing feature -- it tells the next person not to try.\n\nWHAT THE CORRECTION BUYS, concretely: the fd-holder step IS clause (3) of gunbc.build_cache_endpoint_path's stale-socket observer contract -- no open descriptor anywhere in /proc still resolves to the socket's inode. Under ss that clause was unreadable, so EndpointStaleSocket could never be produced and srv4's stranded socket refused forever. It is readable now, so the arm is produced and the admitted unlink is reachable."
 
-fn proc_net_unix_read_argv() -> List<String> {
-  ["cat", procfs_path_literal(p: ProcNetUnix) as String]
+// THE READS ARE COMMANDS, NOT WORD LISTS. Each of these was a bare argv literal whose first element
+// happened to be a tool name; they now derive from the cited coreutils authorities, and the two
+// transports that consume them take the same value -- the local one runs it, the ssh ones flatten it
+// with extdeps.exec.command argv_words. One construction, two addressings.
+fn proc_net_unix_read_command() -> ArgvCommand {
+  cat_command(path: procfs_path_literal(p: ProcNetUnix) as String)
 }
 
 data boot_id_path: String = "/proc/sys/kernel/random/boot_id"
 
-fn boot_id_read_argv() -> List<String> {
-  ["cat", boot_id_path]
+fn boot_id_read_command() -> ArgvCommand {
+  cat_command(path: boot_id_path)
 }
 
-fn endpoint_path_kind_argv(path: NonEmptyStr) -> List<String> {
-  ["stat", "-c", "%F", "--", path as String]
+fn endpoint_path_kind_command(path: NonEmptyStr) -> ArgvCommand {
+  stat_file_type_command(path: path as String)
 }
 
 fn proc_pid_path(pid: Nat, leaf: String) -> String {
   join(["/proc/", to_string(pid), "/", leaf], "")
 }
 
-fn owner_cgroup_argv(pid: Nat) -> List<String> {
-  ["cat", proc_pid_path(pid: pid, leaf: "cgroup")]
+fn owner_cgroup_command(pid: Nat) -> ArgvCommand {
+  cat_command(path: proc_pid_path(pid: pid, leaf: "cgroup"))
 }
 
-fn owner_proc_stat_argv(pid: Nat) -> List<String> {
-  ["cat", proc_pid_path(pid: pid, leaf: "stat")]
+fn owner_proc_stat_command(pid: Nat) -> ArgvCommand {
+  cat_command(path: proc_pid_path(pid: pid, leaf: "stat"))
 }
 
-fn owner_principal_argv(pid: Nat) -> List<String> {
-  ["stat", "-c", "%U", "--", proc_pid_path(pid: pid, leaf: "")]
+fn owner_principal_command(pid: Nat) -> ArgvCommand {
+  stat_owner_user_name_command(path: proc_pid_path(pid: pid, leaf: ""))
 }
 
-fn owner_executable_argv(pid: Nat) -> List<String> {
-  ["readlink", proc_pid_path(pid: pid, leaf: "exe")]
+fn owner_executable_command(pid: Nat) -> ArgvCommand {
+  readlink_command(path: proc_pid_path(pid: pid, leaf: "exe"))
 }
 
 // --- decoders ---------------------------------------------------------------
@@ -338,7 +352,15 @@ data currency_is_read_first_and_never_derived_note: String = "CURRENCY IS THE BO
 
 // --- cgroup classification --------------------------------------------------
 
-data runner_slot_unit_prefix: String = "actions-runner@"
+// THE RUNNER UNIT PREFIX IS NOT SPELLED HERE ANY MORE. This module held the SEVENTH copy of it,
+// and the only one used to read the contract BACKWARDS -- given a cgroup path, which runner slot
+// owns it. A parser built on an independently spelled prefix fails silently when the renderer
+// moves: an unrecognised name does not refuse, it falls through to "some other systemd unit", so a
+// runner-owned build cache would have been reclassified as a managed one and the placement wall
+// this module exists to hold would have opened without a single diagnostic.
+//
+// The `.service` suffix stays as its own row because this module uses it for a different question
+// -- whether a cgroup's last segment is ANY systemd service -- which is not the runner contract.
 data systemd_unit_suffix: String = ".service"
 
 fn cgroup_last_segment_from(segments: List<String>) -> String {
@@ -356,11 +378,14 @@ fn unit_name_of_cgroup_path(cgroup_path: NonEmptyStr) -> String {
 data runner_slot_index_is_decided_against_current_intent_note: String = "THE LIFECYCLE IS A QUESTION ABOUT TODAY'S FLEET, ASKED AT CLASSIFICATION TIME. gunbc.build_cache_instance runner_slot_lifecycle_note fixes the rule -- a slot is retired exactly when it does not appear in the fleet's desired slots now, not when someone remembers it being decommissioned -- so the index parsed out of the cgroup is compared against gunbc_runner_slots_per_host for the host the instance names. That comparison is why the coproduct can carry a slot and a lifecycle together and never half-filled: finding the slot and deciding its lifecycle are the same act (review 46217). A cgroup whose unit looks like a runner slot but whose index does not parse is OwnerContextUndecided, never a fabricated index."
 
 fn runner_slot_index_text(unit_name: String) -> String {
-  let after_at = unit_name.substring(start: string_length(s: runner_slot_unit_prefix), end: string_length(s: unit_name))
-  let instance_token = after_at.substring(start: 0, end: string_length(s: after_at) - string_length(s: systemd_unit_suffix))
-  match instance_token.split("-").last() {
-    Present { value: tail } => tail
-    Absent => ""
+  match read_runner_unit_name(observed: unit_name as NonEmptyStr) {
+    NotARunnerUnit { observed: _ } => ""
+    RunnerUnitInstanceMalformed { observed: _, cause: _ } => ""
+    RunnerUnitInstance { registration_name: n } =>
+      match (n as String).split("-").last() {
+        Present { value: tail } => tail
+        Absent => ""
+      }
   }
 }
 
@@ -417,10 +442,18 @@ fn owner_context_of_cgroup_path(
       detail: "the endpoint owner's cgroup ends in no systemd unit, so no supervisor owns it" as NonEmptyStr,
       observed_cgroup: cgroup_path,
     }
-  } else if unit_name.starts_with(runner_slot_unit_prefix) {
-    runner_owner_context(instance: instance, unit_name: unit_name, cgroup_path: cgroup_path)
   } else {
-    OwnerInSystemdUnit { unit: unit_name as NonEmptyStr, observed_cgroup: cgroup_path }
+    match read_runner_unit_name(observed: unit_name as NonEmptyStr) {
+      RunnerUnitInstance { registration_name: _ } =>
+        runner_owner_context(instance: instance, unit_name: unit_name, cgroup_path: cgroup_path)
+      RunnerUnitInstanceMalformed { observed: _, cause: c } =>
+        OwnerContextUndecided {
+          detail: concat("the endpoint owner's cgroup names a runner-slot unit that names no slot: ", c as String) as NonEmptyStr,
+          observed_cgroup: cgroup_path,
+        }
+      NotARunnerUnit { observed: _ } =>
+        OwnerInSystemdUnit { unit: unit_name as NonEmptyStr, observed_cgroup: cgroup_path }
+    }
   }
 }
 

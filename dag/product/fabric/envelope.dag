@@ -1,0 +1,75 @@
+module product.fabric.envelope
+
+import std.types { List, Bool }
+import std.measure { ByteSize, HardwareThreadCount }
+import extdeps.toolchain.types { Architecture }
+import extdeps.gpu.types { GpuRuntime }
+import extdeps.storage.types { PersistenceKind }
+import product.network_topology { NetworkEgressClass }
+
+// WHAT A UNIT OF WORK NEEDS FROM A MACHINE, AS GENERAL VOCABULARY RATHER THAN CONTAINER VOCABULARY.
+//
+// These five requirement types and the envelope over them were authored inside
+// gunbc.fleet_container, which is a model of OUR fleet's containers. They are not container facts:
+// a bare-metal host, a rented cloud VM and a microVM all answer the same questions about threads,
+// memory, storage and egress, and a fabric that brokers any of those needs the vocabulary without
+// depending on our container model. DESIGN section 3's rule is that a fact's home is its LAYER, so
+// the move is the single-authority action -- gunbc.fleet_container now consumes these rather than
+// owning them, and no second envelope was minted beside the first.
+//
+// THE ROWS ARE MOVED VERBATIM, NOT RE-DERIVED. Every field, optionality and cited type is exactly
+// what fleet_container carried; this relocation changes the home and nothing else, so a reader
+// comparing against git history should find the definitions byte-identical.
+data fabric_envelope_note: String = "General resource-requirement vocabulary for brokered compute. Moved verbatim from gunbc.fleet_container, which now consumes it: the questions are machine questions, not container questions."
+
+type CpuRequirement { min_threads: HardwareThreadCount, architecture: Architecture? }
+
+type GpuRequirement { min_vram: ByteSize, runtimes: List<GpuRuntime> }
+
+type MemoryRequirement { min_bytes: ByteSize }
+
+type StorageRequirement { min_bytes: ByteSize, persistence: PersistenceKind }
+
+type NetworkRequirement { egress: NetworkEgressClass?, ambient_allowed: Bool }
+
+// EVERY AXIS IS OPTIONAL, AND THE OPTIONALITY MEANS UNSTATED RATHER THAN UNCONSTRAINED.
+//
+// An absent axis is a requirement nobody expressed, not a requirement satisfied by everything.
+// The distinction decides who may answer: a fold matching an offer against an envelope may skip an
+// unstated axis, but it must never report an unstated axis as CHECKED -- that is the conflation
+// where absence of observation becomes positive clearance, and it is the same error
+// gunbc.runner_slot_allocation records for an unmeasured disk width.
+type ResourceEnvelope {
+  cpu: CpuRequirement?
+  gpu: GpuRequirement?
+  memory: MemoryRequirement?
+  storage: StorageRequirement?
+  network: NetworkRequirement?
+}
+
+// THE ALL-UNSTATED ENVELOPE, NAMED SO CALLERS DO NOT HAND-WRITE FIVE ABSENCES.
+//
+// Named "unstated" rather than "empty" or "any", because those two words claim different things
+// and only one of them is true: this states NO requirement on any axis, which a matching fold must
+// treat as nothing-to-check, never as satisfied-by-everything. A constructor called any_envelope
+// would invite the second reading at every call site.
+fn unstated_envelope() -> ResourceEnvelope {
+  ResourceEnvelope { cpu: none, gpu: none, memory: none, storage: none, network: none }
+}
+
+// THE TWO AXES FUNGIBILITY ACTUALLY COMPARES, FOR CALLERS THAT STATE A REAL REQUIREMENT.
+fn cpu_memory_envelope(
+  min_threads: HardwareThreadCount,
+  architecture: Architecture?,
+  min_bytes: ByteSize,
+) -> ResourceEnvelope {
+  ResourceEnvelope {
+    cpu: Present {
+      value: CpuRequirement { min_threads: min_threads, architecture: architecture },
+    },
+    gpu: none,
+    memory: Present { value: MemoryRequirement { min_bytes: min_bytes } },
+    storage: none,
+    network: none,
+  }
+}

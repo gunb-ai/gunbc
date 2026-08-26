@@ -8,6 +8,10 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.tools.gnu_coreutils { whoami_command }
+import extdeps.tools.hostname { hostname_read_command }
+import extdeps.posix.sh_invocation { posix_sh_program_command }
+import extdeps.ssh.openssh_client_commands { ssh_keyscan_command, ssh_keygen_fingerprint_command, ssh_keygen_known_hosts_find_command }
 import extdeps.ssh { ssh_public_key_line }
 import gunbc.command_runner { run_shell_commands, run_shell_command_capture, process_outcome_admitted, process_outcome_receipt_text }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
@@ -178,7 +182,7 @@ func verify_enrollment_outcome() -> String
   uses net: Network
 {
   match run_shell_command_capture(
-    command: ArgvCommand { argv: ["sh", "-c", "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); grep -qxF \"$(cat target/fleet-authorized-key-line | head -1)\" \"$H/.ssh/authorized_keys\" && echo enrolled || echo ABSENT-after-apply"] },
+    command: posix_sh_program_command(script: "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); grep -qxF \"$(cat target/fleet-authorized-key-line | head -1)\" \"$H/.ssh/authorized_keys\" && echo enrolled || echo ABSENT-after-apply"),
     transport: LocalExec,
   ) {
     ProcessOutputPresent { text: t } => concat("outcome=", trim(s: t))
@@ -201,7 +205,7 @@ func verify_enrollment_outcome() -> String
 fn scan_host_key_lines(host: String) -> String {
   let endpoint = fleet_probe_endpoint_for(host: host)
   match run_shell_command_capture(
-    command: ArgvCommand { argv: ["ssh-keyscan", "-T", "5", "-t", "ed25519", endpoint] },
+    command: ssh_keyscan_command(host: endpoint, key_type: "ed25519", timeout_seconds: 5),
     transport: LocalExec,
   ) {
     ProcessOutputPresent { text: key_text } => {
@@ -210,7 +214,7 @@ fn scan_host_key_lines(host: String) -> String {
       let fingerprint_text = if w.success {
         process_outcome_receipt_text(
           outcome: run_shell_command_capture(
-            command: ArgvCommand { argv: ["ssh-keygen", "-l", "-f", key_file] },
+            command: ssh_keygen_fingerprint_command(key_file: key_file),
             transport: LocalExec,
           )
         )
@@ -300,7 +304,7 @@ func fleet_host_key_enroll_apply() -> String
         "fi; chmod 600 \"$CFG\"",
       ], "")
       let applied = run_shell_commands(
-        commands: [ ArgvCommand { argv: ["sh", "-c", pin_cmd] } ],
+        commands: [ posix_sh_program_command(script: pin_cmd) ],
         transport: LocalExec,
       )
       match applied {
@@ -308,7 +312,7 @@ func fleet_host_key_enroll_apply() -> String
         ExitSuccess =>
           join(map(fleet_host_key_enrollments, k => {
             let f = run_shell_command_capture(
-              command: ArgvCommand { argv: ["ssh-keygen", "-F", k.endpoint, "-f", staged] },
+              command: ssh_keygen_known_hosts_find_command(host: k.endpoint, known_hosts_file: staged),
               transport: LocalExec,
             )
             join([
@@ -367,14 +371,14 @@ fn fleet_automation_authorized_keys_line() -> String {
 func fleet_authorized_key_self_enroll_wet() -> ProcessExit
   uses net: Network
 {
-  let user = run_shell_command_capture(command: ArgvCommand { argv: ["whoami"] }, transport: LocalExec)
-  let hostname = run_shell_command_capture(command: ArgvCommand { argv: ["hostname"] }, transport: LocalExec)
+  let user = run_shell_command_capture(command: whoami_command(), transport: LocalExec)
+  let hostname = run_shell_command_capture(command: hostname_read_command(), transport: LocalExec)
   let line = fleet_automation_authorized_keys_line()
   let staged = "target/fleet-authorized-key-line"
   let w = Filesystem.Write(path: staged, content: concat(line, "\n"))
   let outcome = if w.success {
     let check = run_shell_command_capture(
-      command: ArgvCommand { argv: ["sh", "-c", "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); grep -qxF \"$(cat target/fleet-authorized-key-line | head -1)\" \"$H/.ssh/authorized_keys\" 2>/dev/null && echo present || echo absent"] },
+      command: posix_sh_program_command(script: "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); grep -qxF \"$(cat target/fleet-authorized-key-line | head -1)\" \"$H/.ssh/authorized_keys\" 2>/dev/null && echo present || echo absent"),
       transport: LocalExec,
     )
     match check {
@@ -387,7 +391,7 @@ func fleet_authorized_key_self_enroll_wet() -> ProcessExit
       "outcome=already-present"
     } else {
       let apply = run_shell_command_capture(
-        command: ArgvCommand { argv: ["sh", "-c", "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); mkdir -p \"$H/.ssh\" && chmod 700 \"$H/.ssh\" && touch \"$H/.ssh/authorized_keys\" && chmod 600 \"$H/.ssh/authorized_keys\" && cat target/fleet-authorized-key-line >> \"$H/.ssh/authorized_keys\""] },
+        command: posix_sh_program_command(script: "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); mkdir -p \"$H/.ssh\" && chmod 700 \"$H/.ssh\" && touch \"$H/.ssh/authorized_keys\" && chmod 600 \"$H/.ssh/authorized_keys\" && cat target/fleet-authorized-key-line >> \"$H/.ssh/authorized_keys\""),
         transport: LocalExec,
       )
       match apply {

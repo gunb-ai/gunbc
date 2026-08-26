@@ -106,7 +106,7 @@ test fn w_severed_fixture_refusal_message_names_the_derivation_not_an_exclusion(
 //
 // This file's fixture witnesses are the complete, permanent proof of the mechanism
 // (see v2.workflow.floor_expected_red_coherence's floor_expected_red_chunk_coherence_check_note).
-// floor_expected_red.dag's own 20 chunks against its own evaluated roster is a
+// floor_expected_red.dag's own 21 chunks against its own evaluated roster is a
 // separate, pre-existing, unowned gap this file does not close -- see that module's
 // live_floor_expected_red_coherence_join_gap_note for the measured cost and natural
 // home of that still-open work.

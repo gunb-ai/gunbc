@@ -316,7 +316,7 @@ fn loop_eval_tree_root(call: Node, expected: Node) -> Node {
 fn loop_eval_admitted_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map { lookup: loop_eval_facts_lookup }
+    facts: PartialFunction { lookup: loop_eval_facts_lookup }
   }
 }
 

@@ -65,7 +65,7 @@ fn emit_directive_bash_emit(d: EmitDirective) -> Outcome<Medium<String>> {
   emit(
     tree: InferredTree {
       root: emit_directive_bash_emitted_command,
-      facts: Map { lookup: emit_directive_facts_lookup }
+      facts: PartialFunction { lookup: emit_directive_facts_lookup }
     },
     target: emit_directive_bash_target_model(d: d)
   )
@@ -106,7 +106,7 @@ fn emit_directive_bash_emit_to_stdout_wrong(d: EmitDirective) -> Outcome<Medium<
   emit(
     tree: InferredTree {
       root: emit_directive_bash_emitted_command,
-      facts: Map { lookup: emit_directive_facts_lookup }
+      facts: PartialFunction { lookup: emit_directive_facts_lookup }
     },
     target: emit_directive_bash_to_stdout_wrong_target_model(d: d)
   )

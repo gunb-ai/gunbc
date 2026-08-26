@@ -135,7 +135,7 @@ fn translate_mixed_tree_facts_lookup(key: Node) -> Optional<InferredFacts> {
 
 data translate_mixed_derived_root_underived_child_tree: InferredTree = InferredTree {
   root: translate_mixed_tree_root(),
-  facts: Map { lookup: translate_mixed_tree_facts_lookup }
+  facts: PartialFunction { lookup: translate_mixed_tree_facts_lookup }
 }
 
 fn translate_absent_parent_underived_child_facts_lookup(key: Node) -> Optional<InferredFacts> {
@@ -148,7 +148,7 @@ fn translate_absent_parent_underived_child_facts_lookup(key: Node) -> Optional<I
 
 data translate_absent_parent_underived_child_tree: InferredTree = InferredTree {
   root: translate_mixed_tree_root(),
-  facts: Map { lookup: translate_absent_parent_underived_child_facts_lookup }
+  facts: PartialFunction { lookup: translate_absent_parent_underived_child_facts_lookup }
 }
 
 fn translate_bodyless_emission_root_with_poison_child_root() -> Node {
@@ -180,7 +180,7 @@ fn translate_bodyless_emission_root_with_poison_child_facts_lookup(key: Node) ->
 
 data translate_bodyless_emission_root_with_poison_child_tree: InferredTree = InferredTree {
   root: translate_bodyless_emission_root_with_poison_child_root(),
-  facts: Map { lookup: translate_bodyless_emission_root_with_poison_child_facts_lookup }
+  facts: PartialFunction { lookup: translate_bodyless_emission_root_with_poison_child_facts_lookup }
 }
 
 fn translate_bodied_arrow_shortcut_root() -> Outcome<Node> {
@@ -218,7 +218,7 @@ fn translate_bodied_arrow_shortcut_underived_descendant_tree() -> Outcome<Inferr
       outcome_accepted(
         value: InferredTree {
           root: root,
-          facts: Map { lookup: translate_bodied_arrow_shortcut_facts_lookup }
+          facts: PartialFunction { lookup: translate_bodied_arrow_shortcut_facts_lookup }
         }
       )
     }
@@ -249,7 +249,7 @@ fn translate_projection_absent_fold_bodied_arrow_underived_descendant_tree() -> 
       outcome_accepted(
         value: InferredTree {
           root: root,
-          facts: Map { lookup: translate_bodied_arrow_shortcut_facts_lookup }
+          facts: PartialFunction { lookup: translate_bodied_arrow_shortcut_facts_lookup }
         }
       )
     }

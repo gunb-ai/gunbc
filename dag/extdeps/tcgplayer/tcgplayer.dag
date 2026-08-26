@@ -50,8 +50,6 @@ data client_credentials_grant_type: NonEmptyStr = "client_credentials"
 service tcgplayer.Auth {
   config {
     endpoint: production_api_base
-
-    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503] }
   }
 
   operation MintBearerToken {

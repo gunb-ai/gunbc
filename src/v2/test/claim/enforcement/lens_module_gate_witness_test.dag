@@ -19,7 +19,6 @@ import v2.lens.enforcement.gate {
 }
 import v2.lens.enforcement.standing_intent { standing_intent_lens_closure_question_zero }
 import v2.lens.registry.completeness { lens_registry_completeness_bound_module_paths }
-import v2.workflow.enforcement_live { lens_closure_question_zero_holds_live }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -61,7 +60,7 @@ data lens_module_gate_genuinely_new_surface: List<LensInvariantSurface> = [
 ]
 
 test fn lens_closure_question_zero_holds_live() -> Bool {
-  lens_closure_question_zero_holds_live()
+  v2.workflow.enforcement_live.lens_closure_question_zero_holds_live()
 }
 
 test fn lens_module_gate_holds_live() -> Bool {

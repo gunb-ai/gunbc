@@ -1,0 +1,88 @@
+module gunbc.scm.load_standing
+
+// WHAT A LOADER MAY DO NEXT, IN A VOCABULARY NO FORMAT OWNS.
+//
+// A codec answers WHAT WENT WRONG. This answers the only question a publication boundary has to act
+// on: WHAT MAY THE LOADER DO NEXT. Those are different questions with different vocabularies, and
+// fusing them puts a policy decision inside a codec -- the decoder would have to know whether a
+// damaged generation may be superseded, which is a fact about head slots and not about JSON.
+//
+// THIS MODULE NAMES NO FORMAT, AND THAT IS THE POINT. Unsupported-protocol, malformed-document and
+// identity-collision are properties ANY serialization can have; nothing about them is JSON-specific.
+// An earlier attempt (gunbc#8940, closed) computed exactly this vocabulary INSIDE publication by
+// matching on one format's error enum. The classification was right and the PLACEMENT was wrong:
+// DESIGN section 3 rules that the dispatch selecting a realization is itself realization, so each
+// format classifies ITS OWN refusals into this shared vocabulary and the consumer sees only the
+// standing. A new format is then a new classifier beside its own refusals, not an edit here.
+//
+// THE STANDINGS CARRY NO CAUSE PAYLOAD, deliberately. A cause is format-shaped -- a JSON member key,
+// a positional reference, a variant tag -- and threading it through this type would re-import the
+// coupling the split exists to remove. The cause stays with the format that produced it, for
+// diagnostics; the DECISION needs only the standing. If publication ever needs to render a cause it
+// asks the format for a rendering, it does not pattern-match one.
+
+import std.types { Bool }
+
+// A LOAD THAT SUCCEEDED BUT DID NOT BRING EVERYTHING IS NOT A FAILURE, and this arm is the whole
+// reason this vocabulary could not exist before the closure recut.
+//
+// The predecessor format stored backward POSITIONS with every identity re-derived on load, so a
+// reference that did not resolve inside the document denoted nothing outside it. There was no such
+// thing as "loaded, and here is what is missing" -- an unresolved reference was damage, full stop,
+// and a fetchable-absence standing had NO MECHANISM THAT COULD PRODUCE IT. Adding it then would have
+// been an invented arm (DESIGN: reachability read as occupancy).
+//
+// With two-arm references it has a producer: an uncontained reference is a well-formed statement
+// that this document does not carry an object, and the load succeeds with the missing identities
+// nameable as content addresses. So LoadPartial is a SUCCESS arm sitting beside three failure arms,
+// and conflating it with LoadDocumentMalformed would be the state-space conflation DESIGN names --
+// "I could not read this" and "I read this, and it is a delta" have opposite remedies.
+type LoadStanding
+  = LoadComplete
+  | LoadPartial
+  | LoadUnsupportedProtocol
+  | LoadDocumentMalformed
+  | LoadIdentityCollision
+
+// PERMISSION IS NOT ACTION. This answers "is replacing this generation ADMISSIBLE", never "replace
+// it". Even a malformed selected generation gets an explicit recovery path, never a silent fall back
+// to whatever else is on disk -- that fallback would be the absorbing arm DESIGN section 5 forbids.
+//
+// EXACTLY ONE STANDING PERMITS REPLACEMENT, and the three refusals are each refused for a different
+// reason rather than by one rule:
+//
+//   LoadComplete            nothing is wrong; there is nothing to replace.
+//   LoadPartial             the document is CORRECT and deliberately incomplete. Superseding a valid
+//                           delta because it did not carry everything would discard a writer's good
+//                           generation for doing exactly what it was asked to do.
+//   LoadUnsupportedProtocol the writer named a protocol this build lacks, so the bytes may be
+//                           perfectly good and unreadable ONLY HERE. Replacing them is an older
+//                           reader destroying a newer writer's work.
+//   LoadIdentityCollision   both colliding records are legitimate (object_store: the forged pairing
+//                           is prevented by construction). A collision means the structural locator
+//                           cannot represent both, not that either is damaged -- so superseding
+//                           discards a valid generation over an honest hash coincidence.
+//   LoadDocumentMalformed   the tag matched, so this build claims to understand the EXACT schema,
+//                           and the document does not conform. This is the only standing where the
+//                           bytes are known-bad to a reader that should have understood them.
+fn standing_may_supersede_generation(standing: LoadStanding) -> Bool {
+  match standing {
+    LoadDocumentMalformed => true
+    LoadComplete => false
+    LoadPartial => false
+    LoadUnsupportedProtocol => false
+    LoadIdentityCollision => false
+  }
+}
+
+// Whether a standing represents a load that produced a usable closure at all. LoadPartial answers
+// TRUE: a delta is usable, it simply needs its missing objects supplied before checkout.
+fn standing_loaded(standing: LoadStanding) -> Bool {
+  match standing {
+    LoadComplete => true
+    LoadPartial => true
+    LoadUnsupportedProtocol => false
+    LoadDocumentMalformed => false
+    LoadIdentityCollision => false
+  }
+}

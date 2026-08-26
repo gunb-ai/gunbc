@@ -4,7 +4,7 @@ import std.algebra { Cons, Empty }
 import v2.std.algebra { fold_list, fold_list_node, list_append, list_snoc_item, zip_eq }
 import v2.std.collection {
   List,
-  Set,
+  PointwisePower,
   list_nth
 }
 import v2.std.optional {
@@ -73,8 +73,8 @@ type FormalProduction {
 }
 
 type FormalGrammar {
-  nonterminals: Set<FormalNonterminal>
-  terminals: Set<FormalTerminal>
+  nonterminals: PointwisePower<FormalNonterminal>
+  terminals: PointwisePower<FormalTerminal>
   productions: List<FormalProduction>
   start: FormalNonterminal
 }
@@ -101,8 +101,8 @@ fn validate_grammar_diagnostic(reason: Symbol) -> Diagnostic {
 }
 
 fn formal_grammar_symbol_in_alphabet(
-  nonterminals: Set<FormalNonterminal>,
-  terminals: Set<FormalTerminal>,
+  nonterminals: PointwisePower<FormalNonterminal>,
+  terminals: PointwisePower<FormalTerminal>,
   symbol: FormalGrammarSymbol
 ) -> Bool {
   match symbol {
@@ -114,8 +114,8 @@ fn formal_grammar_symbol_in_alphabet(
 }
 
 fn formal_production_rhs_in_alphabet(
-  nonterminals: Set<FormalNonterminal>,
-  terminals: Set<FormalTerminal>,
+  nonterminals: PointwisePower<FormalNonterminal>,
+  terminals: PointwisePower<FormalTerminal>,
   production: FormalProduction
 ) -> Bool {
   fold_list(
@@ -294,9 +294,9 @@ type GrammarProduction {
 // A grammar's error-recovery sync tokens are finite and known at authoring time — every producer in
 // the corpus writes either an empty set or a literal list of keyword classes. Carrying them as
 // `Set<Symbol>` made them a POINTWISE-POWER characteristic function (`std.types` grounds
-// `Set<element> = PointwisePower<element>`), which is the right grounding for a set in general and
-// the wrong carrier for six literal keywords: a characteristic function cannot be enumerated, so
-// the whole grammar value became unhashable through this one field.
+// `Set<element> = PointwisePower<element>`), which is the right grounding for a predicate and the
+// wrong carrier for six literal keywords: a characteristic function cannot be enumerated, so the
+// whole grammar value became unhashable through this one field.
 //
 // That was not a theoretical loss. `prepare_grammar` is memoized cross-claim on
 // (declaration identity, content hash of the grammar), and the interpreter's content-hash walk
@@ -304,8 +304,10 @@ type GrammarProduction {
 // language in the corpus and not only `.dag`. The measured consequence was a full ~12s grammar
 // preparation on every parse, including of an empty module.
 //
-// The field is therefore the enumeration it always was. `Set` keeps its grounding untouched; what
-// changed is that this field stopped borrowing a power-set to carry a list.
+// The field is therefore the enumeration it always was; what changed is that this field stopped
+// borrowing a power-set to carry a list. The sibling fields beside it went the other way: they are
+// predicates and now say so, carrying `PointwisePower<FormalNonterminal>` and
+// `PointwisePower<FormalTerminal>` under their own name rather than under `Set`.
 type GrammarRoot {
   start: Symbol
   productions: List<GrammarProduction>
