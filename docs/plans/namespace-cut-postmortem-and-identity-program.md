@@ -1544,6 +1544,18 @@ So the split is clean, and it falls exactly along the line that clause draws:
   abandoned before item checking render identically to every consumer** — 8
   `.items` reads in `04_infer` alone, 89 across `src/v1/*.dag`.
 
+  **The executed arm has NOT been exhibited, and the fixture that tried did not
+  reach it.** A three-module fixture compiled an unresolvable *import* and refused
+  at `exit=1` with a located diagnostic — but `UnresolvedImport` is minted at
+  `v1.03_resolve`, upstream of `typecheck_module`, and none of `build_type_env`'s
+  three diagnostic sources (`import_diags`, an `InternalError` about a missing
+  parent environment; `namespace_alias_diags`; `resolved_diags` from
+  `resolve_env_bindings`) is that diagnostic. **A fixture that stops before the
+  stage says nothing about the stage** — the finding's own class, arriving as the
+  method error of the lane reporting it. The fixture that would reach the arm
+  authors an unresolvable *type name* in a signature, with no import problem;
+  **not yet run.**
+
   **This is the same defect §11.2l measured, not an analogous one.** The oracle
   could not distinguish `total_arm1=1` from a genuine single-ask module *because
   the stage it was observing does not distinguish them either*. The instrument
@@ -1580,10 +1592,33 @@ So the split is clean, and it falls exactly along the line that clause draws:
   string), so the precedent does not discriminate, which is why the question has
   never had to be answered.
 
-  **No construction fix appears to avoid the class.** Every shape — variant,
-  field, distinct result arm — widens the same exported surface, because the fact
-  that needs stating is *about the result* and the result is what crosses the
-  boundary. If the strict reading holds, **this defect is unfixable under the
+  **The premise was checked by execution rather than inferred** (`warm-hawk-909`,
+  confirmed here): `pub struct TypecheckModuleResult` at
+  `v1_compiler_infer.rs:20786` in the emitted seed, **23** references across its
+  `.rs` files. The type does cross the exported boundary, so the surface diff is
+  measured, not assumed.
+
+  **AND THE SERDE BOUNDARY IS NAMED HERE SO THE NEXT LANE DOES NOT RE-DERIVE IT
+  IN EITHER DIRECTION.** `shared_typecheck_store.rs` carries a *"Cross-worker
+  serde contract"* moving `TypecheckModuleResult` as bytes via
+  `encode_typed_snapshot` / `decode_typed_snapshot`, which reads as a second
+  refused class (a compatibility obligation) that would dominate even under the
+  permissive reading. **It does not hold.** The same file scopes it: the store
+  crosses worker *threads* when explicitly armed, in one process, in one run, and
+  calls itself *"the interim serde byte transport"* with its own `dissolve-on`
+  marker. Encode and decode are always the same binary, so a snapshot written
+  before the change and read after cannot occur. The contract it actually
+  declares is representation-independence — authored **names** rather than
+  per-worker `InternTable` indices — which a new field does not violate. **So the
+  routed question stays ONE class, not two**; recorded because an objection that
+  does not survive its own file makes a refusal look stronger than it is.
+
+  **No construction fix avoids the class, and the reason is structural rather
+  than exhaustive search** (`warm-hawk-909`'s phrasing, which is better than the
+  original here): **the fact that needs stating is *about the result*, and the
+  result is what crosses the boundary — so any carrier honest enough to state it
+  is by construction on the far side.** The rename that saved the noun repair has
+  no analogue, because there is nothing misnamed here, only something unstated. If the strict reading holds, **this defect is unfixable under the
   freeze as currently read**, which is a legitimate outcome rather than a gap:
   the §9 rows stand and the measurement discipline below carries the weight
   without touching the seed. Recorded as an argument, not a verdict; the
