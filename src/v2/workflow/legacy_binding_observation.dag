@@ -1,0 +1,160 @@
+module v2.workflow.legacy_binding_observation
+
+import std.types { String, Bool, Int, List, Map }
+import v2.std.optional { Present, Absent }
+import std.content_hash { Fnv1a64Structural }
+import std.decl_ref { DeclarationRef }
+import std.occurrence_identity {
+  OccurrenceId,
+  ReferenceOccurrence,
+  ValidatedOccurrenceTransport
+}
+
+// WHAT THIS OBSERVES, AND WHY IT IS AN OBSERVATION RATHER THAN A RESOLVER.
+//
+// The legacy resolver X decides, today, what a bare name binds to. A migration that changes how
+// names are spelled has to know what X ACTUALLY SELECTED before it changes anything, and it has to
+// know it about ONE EXACT BASE -- not about "the tree", which moves under any measurement long
+// enough to be useful. O_X(B) is that record: a complete, content-addressed, past-tense statement
+// of X's selections over one exact subject B.
+//
+// THE ENVELOPE IS NOT THE PRODUCER, AND THE SEPARATION IS THE POINT. Everything here is about
+// WHICH occurrences must be answered for, WHETHER the answer set is complete, and WHETHER an
+// observation may be compared to a later one. NOTHING here decides what X would choose -- that
+// judgment arrives through the outcome type parameter, from the tap that sits inside X's own
+// decision functions. If this module ever needed to know what X would have selected, it would be
+// reconstructing X from the outside, which is authority substitution wearing a completeness claim.
+
+// WHY THE OUTCOME IS A TYPE PARAMETER RATHER THAN A COPRODUCT DECLARED HERE.
+//
+// X's decision vocabulary belongs to the tap that observes X, not to the envelope that counts
+// rows. Declaring it here would fork it: the tap would either import a vocabulary written by
+// someone who cannot see X's decision sites, or mint its own beside it, and DESIGN section 3 says
+// what happens next. Parameterising leaves exactly one authority for what X answered and exactly
+// one for whether the answering is complete, which are genuinely two facts.
+//
+// It also means this module is buildable and testable BEFORE the tap exists, without a stub
+// standing in for a producer -- a stub would be a second, lying authority for the same fact, and
+// the fixtures below instantiate the parameter with an ordinary test vocabulary instead.
+type LegacyBindingObservationRow<O> {
+  occurrence: OccurrenceId
+  outcome: O
+}
+
+// THE SUBJECT IS THE WHOLE OF WHAT MAKES TWO OBSERVATIONS COMPARABLE, and every field is here
+// because changing it alone changes what X answers.
+//
+// Semantic source and source set are two facts, not one: the same semantic content can be reached
+// through a different source-root set, and the reachable declarations differ even though every
+// byte the compiler read is identical. Compiler artifact and resolver identity are likewise two:
+// the artifact fixes the whole binary, the resolver identity fixes WHICH decision surface inside
+// it was tapped, and an observation of one resolver is not evidence about another. Occurrence
+// transport and declaration index are the two populations the answer ranges over -- the questions
+// asked and the answers available.
+//
+// RESOLVER POLICY IS CARRIED, NOT OBSERVED, AND THAT IS DELIBERATE. The policy gate is a host
+// thread-local; dag/test/retirement/model.dag records that a substrate program has no handle to
+// read or flip it. So this envelope cannot derive the field and must not invent it: it is required
+// with no default, and the producer -- which runs where the gate is readable -- states it. A field
+// this module could not check is the one field it must refuse to guess.
+type LegacyResolutionPolicy
+  = ImportScopedPolicy
+  | NamespaceOnlyPolicy
+
+type LegacyBindingObservationSubject {
+  semantic_source_digest: Fnv1a64Structural
+  source_set_digest: Fnv1a64Structural
+  compiler_artifact_digest: Fnv1a64Structural
+  resolver_identity: DeclarationRef
+  resolver_policy: LegacyResolutionPolicy
+  occurrence_transport_digest: Fnv1a64Structural
+  declaration_index_digest: Fnv1a64Structural
+}
+
+type LegacyBindingObservation<O> {
+  subject: LegacyBindingObservationSubject
+  rows: List<LegacyBindingObservationRow<O>>
+}
+
+// THE DENOMINATOR IS DERIVED FROM THE SUBJECT'S OWN TRANSPORTS AND FROM NOTHING ELSE.
+//
+// Every reference occurrence the validated transport carries is a question this observation owes
+// an answer for. NOT the names a grep finds, NOT the modules in the widest entry, NOT a hand-kept
+// roster, and above all NOT the occurrences for which the producer happened to return a convenient
+// answer -- that last one is the failure this whole envelope exists to prevent, because an
+// observation that defines its denominator as "whatever I could answer" is complete by
+// construction and says nothing.
+fn expected_reference_occurrence_ids(transport: ValidatedOccurrenceTransport) -> List<Int> {
+  map_keys(transport.references_by_id)
+}
+
+fn observed_occurrence_ids<O>(observation: LegacyBindingObservation<O>) -> List<Int> {
+  observation.rows |> map(row => row.occurrence.value)
+}
+
+// COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT EQUALITY, and the two refusals below are why.
+//
+// A count equality passes when an observation answers for N occurrences that are not the subject's
+// -- the exact oracle failure DESIGN section 5 forbids, and it fails in the direction that reads
+// as success. So the law is stated twice, once in each direction: nothing expected may be missing,
+// and nothing observed may be foreign. Either alone is satisfiable by a wrong answer set of the
+// right size.
+type LegacyObservationCompleteness
+  = LegacyObservationComplete
+  | LegacyObservationMissingExpected { occurrences: List<Int> }
+  | LegacyObservationForeignObserved { occurrences: List<Int> }
+
+// THE JOIN TAKES THE DERIVED LIST, NOT THE TRANSPORT, AND THE SPLIT IS DELIBERATE. Two facts sit
+// here: WHAT the subject's questions are (a derivation, above) and WHETHER an answer set matches
+// them exactly (a join). Folding the derivation into the join would leave the join untestable
+// except through a hand-built transport -- which is the named-scenario fixture this program
+// already refuses -- and would let a change to either half hide behind the other.
+fn legacy_observation_completeness<O>(
+  observation: LegacyBindingObservation<O>,
+  expected: List<Int>
+) -> LegacyObservationCompleteness {
+  let observed = observed_occurrence_ids(observation: observation)
+  let missing = expected |> filter(id => !(observed |> any(o => o == id)))
+  let foreign = observed |> filter(id => !(expected |> any(e => e == id)))
+  if (missing |> count) > 0 { LegacyObservationMissingExpected { occurrences: missing } }
+  else if (foreign |> count) > 0 { LegacyObservationForeignObserved { occurrences: foreign } }
+  else { LegacyObservationComplete }
+}
+
+// APPLICABILITY IS A REFUSAL, NOT A COMPARISON RESULT.
+//
+// An observation is evidence about the base it was taken on and about no other. Comparing two
+// observations whose subjects differ in ANY field is not a weaker comparison, it is a category
+// error, so it answers with the field that diverged rather than with a verdict. Naming the field
+// is what makes the refusal actionable: "these are different bases" sends a reader looking, while
+// "the source-set digest differs" tells them what moved.
+type LegacySubjectApplicability
+  = LegacySubjectApplicable
+  | LegacySubjectDiverged { field: String }
+
+fn legacy_subject_applicability(
+  left: LegacyBindingObservationSubject,
+  right: LegacyBindingObservationSubject
+) -> LegacySubjectApplicability {
+  if left.semantic_source_digest.digest != right.semantic_source_digest.digest {
+    LegacySubjectDiverged { field: "semantic_source_digest" }
+  } else if left.source_set_digest.digest != right.source_set_digest.digest {
+    LegacySubjectDiverged { field: "source_set_digest" }
+  } else if left.compiler_artifact_digest.digest != right.compiler_artifact_digest.digest {
+    LegacySubjectDiverged { field: "compiler_artifact_digest" }
+  } else if left.resolver_identity.module_path != right.resolver_identity.module_path {
+    LegacySubjectDiverged { field: "resolver_identity.module_path" }
+  } else if left.resolver_identity.decl_name != right.resolver_identity.decl_name {
+    LegacySubjectDiverged { field: "resolver_identity.decl_name" }
+  } else if left.resolver_identity.field != right.resolver_identity.field {
+    LegacySubjectDiverged { field: "resolver_identity.field" }
+  } else if left.resolver_policy != right.resolver_policy {
+    LegacySubjectDiverged { field: "resolver_policy" }
+  } else if left.occurrence_transport_digest.digest != right.occurrence_transport_digest.digest {
+    LegacySubjectDiverged { field: "occurrence_transport_digest" }
+  } else if left.declaration_index_digest.digest != right.declaration_index_digest.digest {
+    LegacySubjectDiverged { field: "declaration_index_digest" }
+  } else {
+    LegacySubjectApplicable
+  }
+}
