@@ -106,6 +106,7 @@ type EmitDiagnosticRead
   | EmitSummaryDisagreement { compiled_total: Int, severity_total: Int }
   | EmitAnchorDuplicated { anchor: EmitSummaryAnchor, count: Int }
   | EmitScopeUnconfirmed
+  | EmitOutputTruncated
 
 // WHICH OF THE TWO ANCHORS WAS SEEN MORE THAN ONCE. A closed pair rather than a name, so a third
 // anchor cannot be reported without this coproduct gaining an arm and every reader refusing to
@@ -333,12 +334,48 @@ fn emit_entry_scope_confirmed(lines: List<String>) -> Bool {
   count(filter(lines, line => string_contains(s: line, pattern: emit_entry_scope_marker))) > 0
 }
 
-fn read_emit_diagnostics(stderr: String) -> EmitDiagnosticRead {
-  let lines = split(s: stderr, delimiter: "\n")
-  if emit_entry_scope_confirmed(lines: lines) {
-    read_scoped_emit_diagnostics(lines: lines)
+// THE TRUNCATION ARM RUNS FIRST, AND THE ORDER IS THE WHOLE POINT.
+//
+// The v1 host captures a subprocess's stderr as a BOUNDED TAIL -- `bounded_shell_host_drain.rs`
+// `DEFAULT_SHELL_STDERR_TAIL_BYTES`, 16 KiB -- so what this decode receives for a talkative
+// compile is the END of the stream and not the stream. The scope marker the check below requires is
+// printed near the HEAD, so before this arm existed a truncated read landed on
+// EmitScopeUnconfirmed, whose stated cause is that the compiler did not report a reference-derived
+// closure. That cause is FALSE about the compiler: it did report one, in bytes nobody kept. DESIGN
+// names that class -- not-applicable rendered as malformed, one reason symbol over two states with
+// opposite owners -- and the recognition rule fits exactly: the arm sat downstream of a search that
+// returned Absent, so it needed its own reason.
+//
+// RECEIPT: `dag/std/abi.dag` compiles 0 blocking / 90 advisory; its stderr is 51,029 bytes; the
+// marker is on line 8 of 371 and the last 16 KiB contains it zero times. Through the instrument
+// that entry returned unreached-at-emit-decode, twice, citing the compiler's scoping.
+//
+// AND IT IS NOT A MARGINAL CASE. Nine `dag/std` and `dag/extdeps` entries were compiled directly
+// and their stderr sized: `dag/std/logic.dag` is 360 bytes and every other one -- content_hash,
+// measure, process, integer, interval, os, types, and `extdeps/uri` -- falls between 51,029 and
+// 79,265 bytes. Eight of nine candidates are three to five times over the window, so a consumer
+// that folds this decode over a discovered universe will find most of it unreadable, and before
+// this arm it would have been told the compiler was at fault for all of it.
+//
+// AND THE ASYMMETRY IS THE DURABLE FINDING, worth more than this arm. The marker's position is
+// bounded FROM THE HEAD by construction; the retained window is bounded from the TAIL, so its
+// distance from the head is the subject's total stderr, which is unbounded. A head fact is being
+// read through a tail instrument, and NO value of the tail constant makes it readable -- raising it
+// buys subjects until the next talkative one and moves the cliff rather than removing it. That is
+// why this change declares the truncation rather than widening the window, and why the durable
+// repair is neither: the entry scope is a fact the COMPILER owns, and recovering it by matching its
+// prose is a positional citation of something that has a symbol. A typed scope output retires both
+// the grep and this arm; that decision is above this module and is not made here.
+fn read_emit_diagnostics(stderr: String, stderr_truncated: Bool) -> EmitDiagnosticRead {
+  if stderr_truncated == true {
+    EmitOutputTruncated
   } else {
-    EmitScopeUnconfirmed
+    let lines = split(s: stderr, delimiter: "\n")
+    if emit_entry_scope_confirmed(lines: lines) {
+      read_scoped_emit_diagnostics(lines: lines)
+    } else {
+      EmitScopeUnconfirmed
+    }
   }
 }
 
@@ -445,6 +482,8 @@ fn emit_diagnostic_read_refusal_reason(read: EmitDiagnosticRead) -> String {
           " times in one output — one population with more than one account of itself, and taking the last would discard the others without a diagnostic"
         )
       )
+    EmitOutputTruncated =>
+      "the compiler's stderr reached this decode TRUNCATED — the v1 host retains a bounded tail (bounded_shell_host_drain.rs DEFAULT_SHELL_STDERR_TAIL_BYTES), so the head of the stream, including the entry-scope marker, was discarded before anything could be read. This is a limit of the instrument's capture and says nothing about the subject: no population may be reported from a stream of unknown extent, and no value of the tail bound fixes it, because the marker's distance from the tail is the subject's total output"
     EmitScopeUnconfirmed =>
       "gunbc compile did not report a reference-derived closure, so the compile this output describes cannot be established as scoped to the requested entry — a whole-tree population reported as one entry's is the substitution this decode refuses, and `--entry` is carried only by the hand-maintained main.rs rather than by the .dag authority"
     EmitSummaryDisagreement { compiled_total: c, severity_total: s } =>

@@ -160,7 +160,11 @@ data emit_scope_line: String = "resolved 27 sources (reference-derived closure),
 data emit_whole_tree_scope_line: String = "resolved 3892 sources (transitive import closure)"
 
 fn emit_read_of(lines: List<String>) -> EmitDiagnosticRead {
-  read_emit_diagnostics(stderr: stream_of(lines: lines))
+  read_emit_diagnostics(stderr: stream_of(lines: lines), stderr_truncated: false)
+}
+
+fn emit_read_of_truncated(lines: List<String>) -> EmitDiagnosticRead {
+  read_emit_diagnostics(stderr: stream_of(lines: lines), stderr_truncated: true)
 }
 
 fn emit_rows(lines: List<String>) -> List<String> {
@@ -255,6 +259,30 @@ test fn a_second_severity_summary_line_refuses_rather_than_overwriting_the_first
 test fn a_whole_tree_compile_is_not_read_as_an_entry_population() -> Bool {
   match emit_read_of(lines: [emit_whole_tree_scope_line, emit_error_line, emit_severity_summary_one_error]) {
     EmitScopeUnconfirmed => true
+    read => false
+  }
+}
+
+// RED: A TRUNCATED STREAM IS NOT A COMPILER THAT FAILED TO SCOPE. The input below is a WELL-FORMED,
+// entry-scoped, readable population -- the very lines the control beneath it reads normally -- and
+// the ONLY difference is the host's report that it kept a bounded tail. Without the pair, an arm
+// that simply refused everything would pass this and mean nothing.
+test fn a_truncated_capture_refuses_under_its_own_name() -> Bool {
+  match emit_read_of_truncated(lines: [emit_scope_line, emit_error_line, emit_severity_summary_one_error]) {
+    EmitOutputTruncated => true
+    read => false
+  }
+}
+
+// THE OTHER HALF OF THE DISCRIMINATION, and the one that keeps the arm from swallowing a real
+// finding: a stream that WAS truncated and ALSO lost its scope marker still refuses for truncation,
+// because truncation is the fact that explains the missing marker. Its opposite -- an untruncated
+// stream with no marker -- is the whole-tree substitution, and it must keep landing on
+// EmitScopeUnconfirmed. That claim is a_whole_tree_compile_is_not_read_as_an_entry_population above,
+// which is now this arm's control rather than merely its neighbour.
+test fn truncation_is_reported_ahead_of_a_missing_marker_it_explains() -> Bool {
+  match emit_read_of_truncated(lines: [emit_error_line, emit_severity_summary_one_error]) {
+    EmitOutputTruncated => true
     read => false
   }
 }

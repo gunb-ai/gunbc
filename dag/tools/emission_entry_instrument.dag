@@ -30,6 +30,7 @@ import gunbc.emit_diagnostic_observation {
   EmittedFileCount,
   EmitAnchorDuplicated,
   EmitScopeUnconfirmed,
+  EmitOutputTruncated,
   EmitPopulationExtent,
   emit_population_extent_of,
   emit_population_extent_text,
@@ -469,7 +470,7 @@ fn measure_with_subject(
       "--dependency-pool-index", "primary-precedence"
     ]
   )
-  let read = read_emit_diagnostics(stderr: emit.stderr)
+  let read = read_emit_diagnostics(stderr: emit.stderr, stderr_truncated: emit.stderr_truncated)
   match read {
     EmitDiagnosticsRead { diagnostics: ds, emitted_files: files, declared_total: _ } =>
       if !emit.success {
@@ -495,6 +496,7 @@ fn measure_with_subject(
     EmitSummaryDisagreement { compiled_total: _, severity_total: _ } => emit_decode_unreached(subject: subject, read: read)
     EmitAnchorDuplicated { anchor: _, count: _ } => emit_decode_unreached(subject: subject, read: read)
     EmitScopeUnconfirmed => emit_decode_unreached(subject: subject, read: read)
+    EmitOutputTruncated => emit_decode_unreached(subject: subject, read: read)
   }
 }
 
