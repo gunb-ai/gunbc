@@ -5,6 +5,8 @@ import gunbc.host_effect { LocalShell }
 import std.disposition { Disposition, Terminal }
 import gunbc.clock_read { clock_now_probed_at }
 import product.placement_supply { HostIdentity }
+import gunbc.runner_unit { runner_slot_unit_name }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.host_converge {
   ConvergeKnob,
   ConvergeVerdict,
@@ -49,8 +51,13 @@ type RunnerMemoryCapVerifyReceipt {
   verdict: ConvergeVerdict
 }
 
+// AN EIGHTH SPELLING OF THE UNIT NAME, and the one whose drift would have been hardest to see: it
+// names the unit a cap read-back SAMPLES. A probe reading a unit systemd does not have gets no
+// value, and this module's own assumption row already records that a drift confined to the slots it
+// does not sample is invisible -- so a probe pointed at a name nothing installs would report the
+// same nothing as a host with no caps at all.
 fn runner_memory_cap_probe_unit(host: HostIdentity) -> NonEmptyStr {
-  concat(concat("actions-runner@", host), "-01.service") as NonEmptyStr
+  runner_slot_unit_name(slot: RunnerSlotIdentity { host: host, slot_index: 1 })
 }
 
 fn runner_memory_cap_verify_tally_knob(

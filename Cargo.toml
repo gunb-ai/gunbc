@@ -8,8 +8,8 @@ members = [
     "src/v1/stage0_std_core",
     "src/v1/stage0_std_surface",
     "src/v1/stage0_extdeps_languages",
-    "src/v1/stage0_v1_infer",
     "src/v1/stage0_v1_artifact",
+    "src/v1/stage0_v1_infer",
     "src/v1/stage0_emit_core",
     # END generated stage0 crate members
     "src/v1/tests",
