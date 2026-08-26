@@ -165,6 +165,66 @@ type TimerRetirementMemberAt = NonEmptyStr
 
 data fleet_converge_plan_authority_note: String = "On-demand fleet converge PLAN authority (operator directive 2026-08-13, sleek-heron-218): membership_reconcile computes the typed hunks — MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused — that a human reviews BEFORE apply. Plan and apply are the same spine at different poles; this module owns serialization, the content-addressed artifact, subject identity, std.temporal_effect LeaseEpoch generation protection, and the observed baseline fingerprint apply must CAS against. A plan names its subject (host + member-set fingerprint) and mints a generation-scoped lease so two applies against the same observed baseline cannot both act. Timer retirement: desired has NO fleet-converge timers; observed lists legacy units still on the host. MemberRemovalRefused arms are rendered in plan output and never filtered — they are precisely what a reviewer needs to see before approving."
 
+// SCOPE IS A PROPERTY OF THE REQUEST, NOT A FLAG BESIDE IT. A fleet converge answers for a set of
+// resource families, and the fabric-execution-cells cut needs to answer for exactly one of them.
+// The tempting spelling is a scope flag alongside the existing all-families signature, with the
+// unselected families passed empty -- and that is the empty-observation narrow at the plan layer:
+// an empty list says THIS FAMILY HAS NO MEMBERS, which is a positive claim about the host, while
+// the truth is that nobody was asked. The two have opposite consequences, because the first
+// licenses removals.
+//
+// OUT OF SCOPE IS NOT A REFUSAL EITHER, and this is the distinction that decides the shape. A
+// refusal means a SELECTED obligation could not be satisfied; out of scope means the obligation was
+// never selected. Rendering the unselected families as refusals would make every fabric-only plan
+// operationally red for reasons no operator can act on.
+//
+// SO NEITHER STATE IS REPRESENTED: the fabric-only arm carries NO POSITION for timers, caps, spark
+// or slots. There is no field to pass empty and no field to pass refused, so the fabric-only CLI
+// branch cannot invoke those observers and then discard them -- it cannot reach them at all. That
+// is the section 5 construction move: the bad state has no spelling rather than being checked for.
+type FleetConvergeScope
+  = FullHost
+  | FabricExecutionCellsOnly
+
+type FleetConvergeRequest
+  = FullHostConverge {
+      host: NonEmptyStr
+      observed_timers: List<TimerRetirementMember>
+      observed_caps: List<CapMember>
+      observed_spark: List<SparkServingMember>
+      observed_slots: List<RunnerSlotMember>
+      observed_fabric_cells: FabricCellObservationDecision
+    }
+  | FabricExecutionCellsConverge {
+      host: NonEmptyStr
+      observed_fabric_cells: FabricCellObservationDecision
+    }
+
+fn fleet_converge_request_scope(request: FleetConvergeRequest) -> FleetConvergeScope {
+  match request {
+    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _ } => FullHost
+    FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => FabricExecutionCellsOnly
+  }
+}
+
+fn fleet_converge_request_host(request: FleetConvergeRequest) -> NonEmptyStr {
+  match request {
+    FullHostConverge { host: h, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _ } => h
+    FabricExecutionCellsConverge { host: h, observed_fabric_cells: _ } => h
+  }
+}
+
+// THE SCOPE IS IN THE BASELINE TEXT, so two scopes over one host cannot collide on subject identity
+// -- a fabric-only plan and a full-host plan that happened to observe the same fabric population
+// would otherwise fingerprint identically, and an apply admitted against the wrong one would
+// actuate a plan nobody reviewed.
+fn fleet_converge_scope_wire(scope: FleetConvergeScope) -> String {
+  match scope {
+    FullHost => "scope:full-host"
+    FabricExecutionCellsOnly => "scope:fabric-execution-cells-only"
+  }
+}
+
 type FleetConvergePlanSubject {
   host: NonEmptyStr
   member_set_fingerprint: ContentHash
@@ -185,71 +245,37 @@ fn fleet_converge_plan_resource_fingerprint(subject: FleetConvergePlanSubject) -
   content_hash_of_value(value: fleet_converge_plan_subject_identity_text(subject: subject) as NonEmptyStr)
 }
 
-fn fleet_converge_plan_subject(
-  host: NonEmptyStr,
-  observed_timers: List<TimerRetirementMember>,
-  observed_caps: List<CapMember>,
-  observed_spark: List<SparkServingMember>,
-  observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellObservationDecision,
-) -> FleetConvergePlanSubject {
+fn fleet_converge_plan_subject(request: FleetConvergeRequest) -> FleetConvergePlanSubject {
   FleetConvergePlanSubject {
-    host: host,
-    member_set_fingerprint: fleet_converge_member_set_fingerprint(
-      host: host,
-      observed_timers: observed_timers,
-      observed_caps: observed_caps,
-      observed_spark: observed_spark,
-      observed_slots: observed_slots,
-      observed_fabric_cells: observed_fabric_cells,
-    ),
+    host: fleet_converge_request_host(request: request),
+    member_set_fingerprint: fleet_converge_member_set_fingerprint(request: request),
   }
 }
 
-fn fleet_converge_member_set_fingerprint(
-  host: NonEmptyStr,
-  observed_timers: List<TimerRetirementMember>,
-  observed_caps: List<CapMember>,
-  observed_spark: List<SparkServingMember>,
-  observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellObservationDecision,
-) -> ContentHash {
-  content_hash_of_value(
-    value: observed_baseline_text(
-      host: host,
-      observed_timers: observed_timers,
-      observed_caps: observed_caps,
-      observed_spark: observed_spark,
-      observed_slots: observed_slots,
-      observed_fabric_cells: observed_fabric_cells,
-    ) as NonEmptyStr,
-  )
+fn fleet_converge_member_set_fingerprint(request: FleetConvergeRequest) -> ContentHash {
+  content_hash_of_value(value: observed_baseline_text(request: request) as NonEmptyStr)
 }
 
 fn fleet_converge_apply_subject_host_matches(planned_host: NonEmptyStr, observed_host: NonEmptyStr) -> Bool {
   planned_host == observed_host
 }
 
+// APPLY RE-OBSERVES UNDER THE REQUEST, WHICH CARRIES THE SCOPE THE PLAN WAS BUILT FROM. Taking the
+// families as loose parameters here would let an apply admit a fabric-only plan against a full-host
+// re-observation, or the reverse -- the fingerprints would simply be computed over different family
+// sets and the mismatch would read as ordinary drift rather than as a scope confusion. Since the
+// scope is inside the baseline text, a scope mismatch cannot compare equal.
 fn fleet_converge_apply_subject_admits(
   planned_subject: FleetConvergePlanSubject,
-  observed_host: NonEmptyStr,
-  observed_timers: List<TimerRetirementMember>,
-  observed_caps: List<CapMember>,
-  observed_spark: List<SparkServingMember>,
-  observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellObservationDecision,
+  observed: FleetConvergeRequest,
 ) -> Bool {
-  fleet_converge_apply_subject_host_matches(planned_host: planned_subject.host, observed_host: observed_host)
+  fleet_converge_apply_subject_host_matches(
+    planned_host: planned_subject.host,
+    observed_host: fleet_converge_request_host(request: observed),
+  )
     && compare_content_hash(
       left: planned_subject.member_set_fingerprint,
-      right: fleet_converge_member_set_fingerprint(
-        host: observed_host,
-        observed_timers: observed_timers,
-        observed_caps: observed_caps,
-        observed_spark: observed_spark,
-        observed_slots: observed_slots,
-        observed_fabric_cells: observed_fabric_cells,
-      ),
+      right: fleet_converge_member_set_fingerprint(request: observed),
     ) == ContentHashEqual
 }
 
@@ -289,12 +315,14 @@ fn fleet_converge_member_set_fingerprint_matches(
   trim(s: planned_fingerprint_text) == (
     serialize_content_hash(
       hash: fleet_converge_member_set_fingerprint(
-        host: host,
-        observed_timers: observed_timers,
-        observed_caps: observed_caps,
-        observed_spark: observed_spark,
-        observed_slots: observed_slots,
-        observed_fabric_cells: observed_fabric_cells,
+        request: FullHostConverge {
+          host: host,
+          observed_timers: observed_timers,
+          observed_caps: observed_caps,
+          observed_spark: observed_spark,
+          observed_slots: observed_slots,
+          observed_fabric_cells: observed_fabric_cells,
+        },
       ),
     ) as String
   )
@@ -1083,35 +1111,52 @@ fn fabric_cell_baseline_rows(population: FabricCellObservationDecision) -> List<
   }
 }
 
-fn observed_baseline_text(
-  host: NonEmptyStr,
-  observed_timers: List<TimerRetirementMember>,
-  observed_caps: List<CapMember>,
-  observed_spark: List<SparkServingMember>,
-  observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellObservationDecision,
-) -> String {
-  join(
-    concat(
-      concat(
-        concat(
-          [concat("host:", host as String)],
-          map(observed_timers, m => concat("timer:", m.unit_name as String)),
-        ),
+// THE BASELINE IS DERIVED FROM THE REQUEST, so the rows that exist are exactly the families the
+// request named. The fabric-only arm emits the scope, the host and the fabric rows and nothing
+// else -- not empty timer rows, which would assert the host has no timers.
+fn observed_baseline_text(request: FleetConvergeRequest) -> String {
+  match request {
+    FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: observed_caps,
+      observed_spark: observed_spark,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+    } =>
+      join(
         concat(
           concat(
-            map(observed_caps, c => concat("cap:", c.dropin_path as String, "=", c.content)),
-            map(observed_spark, m => concat(
-              "spark:", spark_serving_member_key(member: m), "=", m.state_digest as String,
-            )),
+            concat(
+              [fleet_converge_scope_wire(scope: FullHost), concat("host:", host as String)],
+              map(observed_timers, m => concat("timer:", m.unit_name as String)),
+            ),
+            concat(
+                concat(
+                  map(observed_caps, c => concat("cap:", c.dropin_path as String, "=", c.content)),
+                  map(observed_spark, m => concat(
+                    "spark:", spark_serving_member_key(member: m), "=", m.state_digest as String,
+                  )),
+                ),
+                map(observed_slots, m => concat("slot:", runner_slot_member_key(m: m) as String)),
+              ),
           ),
-          map(observed_slots, m => concat("slot:", runner_slot_member_key(m: m) as String)),
+          fabric_cell_baseline_rows(population: observed_fabric_cells),
         ),
-      ),
-      fabric_cell_baseline_rows(population: observed_fabric_cells),
-    ),
-    "\n",
-  )
+        "\n",
+      )
+    FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } =>
+      join(
+        concat(
+          [
+            fleet_converge_scope_wire(scope: FabricExecutionCellsOnly),
+            concat("host:", host as String),
+          ],
+          fabric_cell_baseline_rows(population: observed_fabric_cells),
+        ),
+        "\n",
+      )
+  }
 }
 
 // THE ROW FREEZES WHAT APPLY EXECUTES, not merely what it should figure out.
@@ -1863,26 +1908,20 @@ fn fleet_converge_plan_artifact(
   observed_fabric_cells: FabricCellObservationDecision,
   observed_activation_readiness: RunnerActivationReadiness,
 ) -> FleetConvergePlanArtifact? {
-  let subject = fleet_converge_plan_subject(
+  let request = FullHostConverge {
     host: host,
     observed_timers: observed_timers,
     observed_caps: observed_caps,
     observed_spark: observed_spark,
     observed_slots: observed_slots,
     observed_fabric_cells: observed_fabric_cells,
-  )
+  }
+  let subject = fleet_converge_plan_subject(request: request)
   let timer_plan = timer_retirement_plan(observed: observed_timers)
   let cap_plan = caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps)
   let timer_lines = membership_plan_lines_timer(plan: timer_plan)
   let cap_lines = membership_plan_lines_cap(plan: cap_plan)
-  let baseline = observed_baseline_text(
-    host: host,
-    observed_timers: observed_timers,
-    observed_caps: observed_caps,
-    observed_spark: observed_spark,
-    observed_slots: observed_slots,
-    observed_fabric_cells: observed_fabric_cells,
-  )
+  let baseline = observed_baseline_text(request: request)
   let planned_generation = prior_generation + 1
   let body = join(
     concat(
@@ -1997,12 +2036,14 @@ fn fleet_converge_observed_baseline_matches(
   observed_fabric_cells: FabricCellObservationDecision,
 ) -> Bool {
   let baseline = observed_baseline_text(
-    host: host,
-    observed_timers: observed_timers,
-    observed_caps: observed_caps,
-    observed_spark: observed_spark,
-    observed_slots: observed_slots,
-    observed_fabric_cells: observed_fabric_cells,
+    request: FullHostConverge {
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: observed_caps,
+      observed_spark: observed_spark,
+      observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
+    },
   )
   match content_hash_of_value(value: baseline as NonEmptyStr) {
     Fnv1a64(structural) => structural.digest == observed_baseline_hex

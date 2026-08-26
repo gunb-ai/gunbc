@@ -79,6 +79,15 @@ import gunbc.fleet_converge_plan {
   fleet_converge_apply_generation_stale,
   fleet_converge_member_set_fingerprint_matches,
   fleet_converge_member_set_fingerprint,
+  FleetConvergeRequest,
+  FleetConvergeScope,
+  FullHost,
+  FabricExecutionCellsOnly,
+  FullHostConverge,
+  FabricExecutionCellsConverge,
+  fleet_converge_request_scope,
+  fleet_converge_request_host,
+  observed_baseline_text,
   fleet_converge_fabric_cell_lines,
   fleet_converge_fabric_cell_refusal_count,
   timer_retirement_plan,
@@ -256,12 +265,14 @@ test fn cross_host_apply_refuses_subject_identity() -> Bool {
     Present { value: artifact } =>
       !fleet_converge_apply_subject_admits(
         planned_subject: artifact.subject,
-        observed_host: witness_host_srv2,
-        observed_timers: [],
-        observed_caps: [observed_cap],
-        observed_spark: [],
-        observed_slots: [],
-        observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        observed: FullHostConverge {
+          host: witness_host_srv2,
+          observed_timers: [],
+          observed_caps: [observed_cap],
+          observed_spark: [],
+          observed_slots: [],
+          observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        },
       )
     Absent => false
   }
@@ -913,12 +924,14 @@ fn fabric_cells_observed_empty() -> FabricCellObservationDecision {
 fn fabric_fingerprint_with(population: FabricCellObservationDecision) -> String {
   serialize_content_hash(
     hash: fleet_converge_member_set_fingerprint(
-      host: "srv3" as NonEmptyStr,
-      observed_timers: [],
-      observed_caps: [],
-      observed_spark: [],
-      observed_slots: [],
-      observed_fabric_cells: population,
+      request: FullHostConverge {
+        host: "srv3" as NonEmptyStr,
+        observed_timers: [],
+        observed_caps: [],
+        observed_spark: [],
+        observed_slots: [],
+        observed_fabric_cells: population,
+      },
     ),
   ) as String
 }
@@ -1617,4 +1630,98 @@ test fn witness_fabric_cell_supplied_refusals_render_as_refusals() -> Bool {
   ]
   fabric_refusal_count_of(entries: entries) == 1
     && string_contains(s: fabric_refusal_lines(entries: entries), pattern: "host-mismatched-readback ")
+}
+
+// SCOPE IS PART OF SUBJECT IDENTITY, WHICH IS WHAT STOPS AN APPLY FROM ACTUATING A PLAN NOBODY
+// REVIEWED. A fabric-only request and a full-host request over the same host, observing the SAME
+// fabric population, must not fingerprint alike: the full-host plan additionally answers for
+// timers, caps, spark and slots, and admitting one against the other would let an apply proceed
+// against a member set its reviewer never saw. The full-host arm here is given empty family lists
+// deliberately -- that is the closest a full-host request can come to the fabric-only one, so if
+// any pair could collide it is this one.
+test fn witness_scope_changes_subject_identity() -> Bool {
+  let population = fabric_cell_observation_unobserved(host: operator_host_srv3)
+  let full = FullHostConverge {
+    host: "srv3" as NonEmptyStr,
+    observed_timers: [],
+    observed_caps: [],
+    observed_spark: [],
+    observed_slots: [],
+    observed_fabric_cells: population,
+  }
+  let fabric_only = FabricExecutionCellsConverge {
+    host: "srv3" as NonEmptyStr,
+    observed_fabric_cells: population,
+  }
+  compare_content_hash(
+    left: fleet_converge_member_set_fingerprint(request: full),
+    right: fleet_converge_member_set_fingerprint(request: fabric_only),
+  ) != ContentHashEqual
+    && fleet_converge_plan_subject(request: full).host == fleet_converge_plan_subject(request: fabric_only).host
+}
+
+// THE SCOPE OF A REQUEST IS DERIVED FROM ITS ARM AND NOT CARRIED BESIDE IT, so a request cannot
+// claim one scope while holding another family's observations.
+test fn witness_request_scope_is_its_arm() -> Bool {
+  let population = fabric_cell_observation_unobserved(host: operator_host_srv3)
+  scope_is_full_host(s: fleet_converge_request_scope(request: FullHostConverge {
+    host: "srv3" as NonEmptyStr,
+    observed_timers: [],
+    observed_caps: [],
+    observed_spark: [],
+    observed_slots: [],
+    observed_fabric_cells: population,
+  }))
+    && scope_is_fabric_only(s: fleet_converge_request_scope(request: FabricExecutionCellsConverge {
+        host: "srv3" as NonEmptyStr,
+        observed_fabric_cells: population,
+      }))
+}
+
+// THE SCOPE ROW IS THE ONLY THING SEPARATING THE TWO BASELINES, WHICH IS PRECISELY WHY IT MUST BE
+// IN THE TEXT. Give the full-host request empty families and it renders no timer, cap, spark or
+// slot rows -- exactly what the fabric-only request renders, because it has no such fields. So
+// without the scope row the two texts would be byte-identical and the two subjects would collide:
+// an apply could admit a fabric-only plan against a full-host re-observation. This law asserts the
+// separation is real and that it is carried by the scope row alone.
+test fn witness_scope_row_is_what_separates_the_two_baselines() -> Bool {
+  let population = fabric_cell_observation_unobserved(host: operator_host_srv3)
+  let full_lines = split(
+    observed_baseline_text(request: FullHostConverge {
+      host: "srv3" as NonEmptyStr,
+      observed_timers: [],
+      observed_caps: [],
+      observed_spark: [],
+      observed_slots: [],
+      observed_fabric_cells: population,
+    }),
+    separator: "\n",
+  )
+  let fabric_lines = split(
+    observed_baseline_text(request: FabricExecutionCellsConverge {
+      host: "srv3" as NonEmptyStr,
+      observed_fabric_cells: population,
+    }),
+    separator: "\n",
+  )
+  list_length(items: full_lines) == list_length(items: fabric_lines)
+    && list_length(items: filter(fabric_lines, l => l == "scope:fabric-execution-cells-only")) == 1
+    && list_length(items: filter(fabric_lines, l => l == "scope:full-host")) == 0
+    && list_length(items: filter(full_lines, l => l == "scope:full-host")) == 1
+    && list_length(items: filter(full_lines, l => l == "host:srv3")) == 1
+    && list_length(items: filter(fabric_lines, l => l == "host:srv3")) == 1
+}
+
+fn scope_is_full_host(s: FleetConvergeScope) -> Bool {
+  match s {
+    FullHost => true
+    FabricExecutionCellsOnly => false
+  }
+}
+
+fn scope_is_fabric_only(s: FleetConvergeScope) -> Bool {
+  match s {
+    FabricExecutionCellsOnly => true
+    FullHost => false
+  }
 }
