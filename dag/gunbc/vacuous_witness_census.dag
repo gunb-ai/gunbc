@@ -111,7 +111,7 @@ data vacuous_witness_rows: List<VacuousWitnessRow> = [
   },
   VacuousWitnessRow {
     subject: DeclarationRef {
-      module_path: "test.claim.srv3_bmc_credential_resolve_witness",
+      module_path: "test.claim.srv3_bmc_credential_resolve",
       decl_name: "srv3_credential_intent_grounds_bmc_srv3_admin_secret_ref",
       field: WholeDeclaration
     },
@@ -123,7 +123,7 @@ data vacuous_witness_rows: List<VacuousWitnessRow> = [
     field_name: "rotated_secret_ref",
     compared_against: ComparedDeclaration {
       declaration: DeclarationRef {
-        module_path: "gunbc.srv3_bmc_credential_resolve",
+        module_path: "gunbc.assimilate.bmc_wif_delegation_chain",
         decl_name: "bmc_srv3_admin_secret_ref",
         field: WholeDeclaration
       }
@@ -209,7 +209,7 @@ data vacuous_witness_rows: List<VacuousWitnessRow> = [
   },
   VacuousWitnessRow {
     subject: DeclarationRef {
-      module_path: "test.claim.occurrence_identity_witness",
+      module_path: "test.claim.occurrence_identity_witness_test",
       decl_name: "occurrence_identity_initial_allocator_starts_at_zero_holds",
       field: WholeDeclaration
     },
@@ -229,12 +229,12 @@ data vacuous_witness_rows: List<VacuousWitnessRow> = [
   },
   VacuousWitnessRow {
     subject: DeclarationRef {
-      module_path: "v2.test.self_host.frontier_probe_empty_ingest",
+      module_path: "v2.test.claim.self_host.frontier_probe_empty_ingest",
       decl_name: "empty_ingest_keeps_the_module_path_it_was_asked_about_holds",
       field: WholeDeclaration
     },
     constructor: DeclarationRef {
-      module_path: "v2.test.self_host.frontier_probe_empty_ingest",
+      module_path: "v2.test.claim.self_host.frontier_probe_empty_ingest",
       decl_name: "empty_ingest_receipt",
       field: WholeDeclaration
     },
