@@ -261,3 +261,85 @@ test fn dcp_unresolved_name_in_coproduct_field_still_refuses() -> Bool {
     []
   )
 }
+
+// ============================================================================
+// THE FORMAL-SIDE KERNEL EXCLUSION: MEASURED, THEN NARROWED.
+//
+// The arm above excludes kernel names on BOTH sides and calls that a DISJOINTNESS condition with
+// `kernel_value_declared_type_mismatch`. That reasoning is sound on the ACTUAL side and buys nothing
+// on the FORMAL side, because the two walls are not triggered by the same fact.
+// `kernel_value_declared_type_mismatch` bails unless the ACTUAL resolves to a kernel type name
+// (`is_kernel_type(name: actual_name) == false -> false`). So when the FORMAL is `Bool` -- which
+// `dag/std/types.dag` declares as `True | False`, a real coproduct -- and the ACTUAL is a wholly
+// foreign coproduct, that wall is silent by construction, and the formal-side exclusion silenced the
+// only other arm that could have spoken. Two authorities cannot disagree over a fact neither of them
+// judges.
+//
+// MEASURED BY EXECUTION, both arms on the same harness and the same runner, the compiler files
+// reverted to main for the BEFORE arm and nothing else changed. All ten functions in this file were
+// run in each arm, and EXACTLY ONE ROW MOVED:
+//
+//   type BcpBeta = BcpB1 { c: Int } | BcpB2 { d: Int }
+//   type BcpHolder { flag: Bool }
+//
+//   BEFORE  bcp_foreign_coproduct_where_bool_required_must_refuse  FAIL  (the compile ACCEPTED it)
+//   AFTER   bcp_foreign_coproduct_where_bool_required_must_refuse  PASS
+//   BEFORE and AFTER, the other nine rows                          PASS
+//
+// The nine unmoved rows are what makes this a narrowing rather than a widening: the three payload
+// arms, the four `Dcp` arms, and both controls below are byte-identical across the pair.
+//
+// THE NARROWING IS THE MINIMUM ONE. The formal side keeps the empty-name and `Optional` exclusions --
+// `Optional` is the language's own cardinality carrier and an unnamed formal has nothing to compare --
+// and drops ONLY `is_kernel_type`. The ACTUAL side keeps the full kernel exclusion unchanged, which is
+// where the disjointness with `kernel_value_declared_type_mismatch` actually lives, and
+// `dcp_primitive_in_coproduct_field_still_refuses` above is the row that says so if it ever moves.
+//
+// dissolve-on: none. DESIGN section 4b(4) -- the evidence stays enrolled when the wall lands.
+
+fn bcp_foreign_into_bool_fixture_source() -> String {
+  "module bcp.probe\n\nimport std.types { Int, Bool }\n\ntype BcpBeta\n  = BcpB1 { c: Int }\n  | BcpB2 { d: Int }\n\ntype BcpHolder {\n  flag: Bool\n}\n\nfn bcp_beta() -> BcpBeta {\n  BcpB1 { c: 7 }\n}\n\nfn bcp_foreign_where_bool_required() -> BcpHolder {\n  BcpHolder { flag: bcp_beta() }\n}\n"
+}
+
+fn bcp_bool_into_bool_fixture_source() -> String {
+  "module bcp.control\n\nimport std.types { Int, Bool }\n\ntype BcpBeta\n  = BcpB1 { c: Int }\n  | BcpB2 { d: Int }\n\ntype BcpHolder {\n  flag: Bool\n}\n\nfn bcp_bool_where_bool_required() -> BcpHolder {\n  BcpHolder { flag: true }\n}\n"
+}
+
+fn bcp_primitive_into_bool_fixture_source() -> String {
+  "module bcp.primitive\n\nimport std.types { Int, Bool }\n\ntype BcpHolder {\n  flag: Bool\n}\n\nfn bcp_int() -> Int {\n  7\n}\n\nfn bcp_primitive_where_bool_required() -> BcpHolder {\n  BcpHolder { flag: bcp_int() }\n}\n"
+}
+
+// THE DISCRIMINATING RED FOR THE NARROWING. `BcpBeta` is not `Bool`, is not one of its arms, and is
+// not one of its arms' payloads. Before the narrowing this compiled clean, because the formal-side
+// kernel exclusion returned false ahead of every judgment.
+test fn bcp_foreign_coproduct_where_bool_required_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    bcp_foreign_into_bool_fixture_source(),
+    "src/bcp_probe.rs",
+    [],
+    []
+  )
+}
+
+// THE POSITIVE CONTROL. A `Bool` field holding a `Bool` must still compile, or the red above is
+// satisfied by an arm that refuses every kernel-declared field.
+test fn bcp_bool_where_bool_required_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    bcp_bool_into_bool_fixture_source(),
+    "src/bcp_control.rs",
+    [],
+    []
+  )
+}
+
+// THE DISJOINTNESS CONTROL FOR THE HALF THAT IS KEPT. A kernel scalar into a kernel-declared field is
+// `kernel_value_declared_type_mismatch`'s judgment and must stay so: the ACTUAL-side exclusion is
+// untouched by this change, and this row is what says so if it ever moves.
+test fn bcp_primitive_where_bool_required_still_refuses() -> Bool {
+  !compile_dag_rust_emit_check(
+    bcp_primitive_into_bool_fixture_source(),
+    "src/bcp_primitive.rs",
+    [],
+    []
+  )
+}
