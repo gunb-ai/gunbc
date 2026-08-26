@@ -1,13 +1,12 @@
 module test.claim.claim_entailing_evidence_cause_swap_witness
 
 import std.logic { Bool }
-import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import tools.self_host_curated_seed_linked_harness {
   cssl_fault_run_detected_the_planted_fault,
   cssl_pass_marker_stem
 }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data cause_swap_witness_doc: String = "THE CAUSE-SWAP CONTROL for tools.self_host_curated_seed_linked_harness cssl_fault_run_detected_the_planted_fault. It is an unusual control and the shape is the point: it is a probe the OLD mechanism PASSES and the NEW one must REFUSE. A conventional discriminating red cannot detect this class at all, because the subject is fine -- the EVIDENCE ABOUT the subject is what was invalid, so the control has to test the carrier rather than the subject. The rule it enforces: an evidence standing may establish a proposition only when EVERY execution path that constructs it proves the subject reached the relevant phase and entails the proposition. The old predicate fault_run.success == false was true when the planted fault was detected AND when the binary never existed, so its truth set was strictly wider than the proposition it was cited for. Both arms below hold the OLD predicate constant at true and vary only the CAUSE; the new carrier must admit the first and refuse the second."
 
