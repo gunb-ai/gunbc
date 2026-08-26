@@ -390,7 +390,7 @@ fn index_standing(acc: TargetStandingIndexAcc, standing: TargetStanding) -> Targ
         }
       } else {
         let key = render_label(l: standing.target)
-        match map_get(acc.index.standings_by_identity, key) {
+        match lookup(acc.index.standings_by_identity, key) {
           Present { value: existing } => TargetStandingIndexAcc {
             index: acc.index
             refusal: Present {
@@ -440,11 +440,16 @@ type TargetStandingLookup
   | StandingNotObserved { target: Label }
   | StandingLookupLabelNotCanonical { target: Label }
 
+// THE LOOKUP SPELLING IS `lookup`, NOT `map_get`, AND THE REASON IS RESOLUTION RATHER THAN TASTE.
+// Two declarations answer to the bare name `map_get` — the builtin, returning `Optional<V>`, and
+// `v2.std.collection.map_get`, returning `Outcome<Optional<V>>` — so in a module whose imports make
+// both visible the reference is ambiguous and refuses outright. `lookup` is the dual-dispatch
+// chokepoint, has one declaration, and already returns the `Optional` these matches read.
 fn target_standing_lookup(index: TargetStandingIndex, target: Label) -> TargetStandingLookup {
   if !label_is_canonical(label: target) {
     StandingLookupLabelNotCanonical { target: target }
   } else {
-    match map_get(index.standings_by_identity, render_label(l: target)) {
+    match lookup(index.standings_by_identity, render_label(l: target)) {
       Present { value: s } => TargetStandingFound { standing: s }
       Absent => StandingNotObserved { target: target }
     }
