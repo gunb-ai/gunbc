@@ -1,0 +1,277 @@
+module gunbc.session_demand
+
+import std.types { Bool, List, NonEmptyStr, String, Timestamp }
+import std.nat { Nat }
+import std.measure { ByteSize }
+import product.placement_supply { HostIdentity }
+import gunbc.oomd_install {
+  SessionMembershipStanding,
+  SliceMembershipSignal,
+  session_membership_standing,
+  AllSessionsManaged,
+  MixedSessionMembership,
+  AllSessionsLegacy,
+  NoSessionsObserved,
+}
+
+// STEP 4A IS AN OBSERVATION CUT AND STOPS THERE. It answers exactly one semantic question -- CAN THE
+// FLEET PRODUCE A COMPLETE, HOST-BOUND CONCURRENT-SESSION-DEMAND OBSERVATION -- and deliberately
+// answers nothing about what the session capacity SHOULD be. No MemoryHigh, no MemoryMax, no
+// concurrency policy, no operator margin, and no replacement of the authored 20 GiB aggregate
+// reservation appears here or follows from anything here. A reader looking for the capacity ruling
+// will not find it, because it has not been made.
+
+// THE EXACT IDENTITIES COME FIRST, AND THE COUNTS ARE PROJECTED FROM THEM. gunbc.oomd_install's
+// SliceMembershipSignal carries two Nats, which is sufficient for ITS classification kernel and is
+// NOT sufficient to be the denominator of a measurement: two counts cannot say which containers
+// they counted, so a container nobody could classify has nowhere to go except into one of the two
+// counts or out of the population entirely. Both of those are fabrications. Starting from
+// identities makes the unclassifiable case REPRESENTABLE, which is the whole reason this layer
+// exists above the signal rather than beside it.
+// A SLICE THAT IS NOT ON THIS HOST IS NOT A SLICE WE FAILED TO READ. Found by the live fleet
+// rather than by review: srv3 and srv4 carry no sessions.slice at all -- they run CI runners and
+// host no sessions -- and the first cut reported them UNAVAILABLE, "the managed slice could not
+// be enumerated". Nothing was wrong with those hosts, and nothing was wrong with the read.
+// This is the not-applicable-rendered-as-malformed class DESIGN names, and the recognition rule
+// fires exactly: the arm sat downstream of an enumeration that found nothing to enumerate.
+//
+// The two have OPPOSITE consequences for the capacity question this cut feeds. Absent means the
+// host contributes no session demand and never will, which is a positive finding an aggregate
+// may rely on. Unavailable means we are blind, and blindness must never be spent as though it
+// were a zero.
+type SessionContainerInventory
+  = SessionContainerInventoryObserved {
+      host: HostIdentity
+      identities: List<NonEmptyStr>
+    }
+  | SessionContainerInventoryUnavailable {
+      host: HostIdentity
+      cause: String
+    }
+  | SessionContainerInventoryAbsent {
+      host: HostIdentity
+      cgroup_path: NonEmptyStr
+    }
+
+// AN UNCLASSIFIABLE CONTAINER IS ITS OWN ARM AND MUST SURVIVE INTO THE CENSUS. Guessing it into
+// either count is the fabricated-plausible-output failure, and dropping it from the population is
+// the empty-observation narrow -- the denominator would silently shrink to the containers that
+// happened to be classifiable, and every ratio computed from it would read as complete.
+type SessionPlacement
+  = ManagedSession { identity: NonEmptyStr, cgroup: NonEmptyStr }
+  | LegacyFlatSession { identity: NonEmptyStr, cgroup: NonEmptyStr }
+  | SessionPlacementUnclassifiable { identity: NonEmptyStr, cause: String }
+
+// THE CENSUS REFUSES RATHER THAN ROUNDING. Only a census in which EVERY observed identity is
+// classified may project counts; one unclassifiable identity makes the whole census incomplete and
+// carries the offenders with it, so the remedy names the containers rather than a number.
+type SessionPlacementCensus
+  = SessionPlacementCensusComplete { placements: List<SessionPlacement> }
+  | SessionPlacementCensusIncomplete { unclassifiable: List<SessionPlacement> }
+
+// EITHER INVENTORY BEING UNREADABLE MAKES THE POPULATION UNESTABLISHED, and this type exists so
+// that fact cannot be lost between the two reads. The population is a join over BOTH the managed
+// slice and the flat candidates; if either read failed, no census over the join means anything,
+// because the missing side is exactly the side that would have refused it.
+// THE HOST HOSTS NO SESSIONS, WHICH IS AN ANSWER RATHER THAN A FAILURE TO ANSWER. Kept distinct
+// from Established-with-an-empty-list as well as from Unavailable: an empty managed slice means
+// sessions COULD run here and none is running now, which is a demand reading that can change by
+// the next observation; no slice at all means this host is not a session host, which is a
+// structural fact about the fleet. A capacity policy keyed on the first would be re-derived every
+// run; one keyed on the second would not.
+type SessionPopulation
+  = SessionPopulationEstablished { placements: List<SessionPlacement> }
+  | SessionPopulationUnavailable { cause: String }
+  | SessionPopulationNoSessionSlice { cgroup_path: NonEmptyStr }
+
+fn placement_is_unclassifiable(p: SessionPlacement) -> Bool {
+  match p {
+    SessionPlacementUnclassifiable { identity: _, cause: _ } => true
+    ManagedSession { identity: _, cgroup: _ } => false
+    LegacyFlatSession { identity: _, cgroup: _ } => false
+  }
+}
+
+fn placement_is_managed(p: SessionPlacement) -> Bool {
+  match p {
+    ManagedSession { identity: _, cgroup: _ } => true
+    LegacyFlatSession { identity: _, cgroup: _ } => false
+    SessionPlacementUnclassifiable { identity: _, cause: _ } => false
+  }
+}
+
+fn placement_is_legacy(p: SessionPlacement) -> Bool {
+  match p {
+    LegacyFlatSession { identity: _, cgroup: _ } => true
+    ManagedSession { identity: _, cgroup: _ } => false
+    SessionPlacementUnclassifiable { identity: _, cause: _ } => false
+  }
+}
+
+fn session_placement_census(placements: List<SessionPlacement>) -> SessionPlacementCensus {
+  let unclassifiable = placements |> filter(p => placement_is_unclassifiable(p: p))
+  if count(unclassifiable) == 0 {
+    SessionPlacementCensusComplete { placements: placements }
+  } else {
+    SessionPlacementCensusIncomplete { unclassifiable: unclassifiable }
+  }
+}
+
+// THE PROJECTION ONTO #9280's SIGNAL, and it is a projection rather than a second classifier. The
+// four standings and the rule that only AllSessionsManaged grounds the backstop belong to
+// gunbc.oomd_install; re-deriving them here would be the nickname DESIGN 3 forbids. This function
+// only supplies the two counts that authority already consumes, from a census it has proven
+// complete.
+fn census_membership_signal(c: SessionPlacementCensus) -> SliceMembershipSignal? {
+  match c {
+    SessionPlacementCensusComplete { placements: ps } =>
+      Present {
+        value: SliceMembershipSignal {
+          sessions_in_slice: count(ps |> filter(p => placement_is_managed(p: p))),
+          sessions_legacy_flat: count(ps |> filter(p => placement_is_legacy(p: p))),
+        }
+      }
+    SessionPlacementCensusIncomplete { unclassifiable: _ } => none
+  }
+}
+
+// PER-SESSION DEMAND KEEPS THE READ'S OWN OUTCOME, rather than a bare ByteSize. memory.current is
+// documented as a plain byte count, so its parse has exactly two outcomes, and a container whose
+// counter could not be read must not contribute a fabricated zero to an aggregate -- a zero and an
+// unreadable counter are the same number and opposite facts.
+// AN UNREAD COUNTER AND A MALFORMED ONE ARE DIFFERENT FACTS (review 56218). The producer used to
+// manufacture a body like "<read failed: memory.current>" on a failed read and hand it to the
+// PARSER, which duly classified it as Unparseable -- so "we never got a body" and "the kernel wrote
+// something we cannot parse" landed in one arm, and the `body` field held a string this repository
+// invented rather than anything the kernel produced. That is fabricated plausible output feeding a
+// state-space conflation, and it is the same not-applicable-rendered-as-malformed class this
+// module's own commentary cites as the bar.
+//
+// THE SPLIT IS AT THE RIGHT LAYER. extdeps.linux.cgroup_v2_memory keeps its two arms because it is
+// an authority on PARSING A BODY IT WAS GIVEN; whether a body was obtained at all is an
+// OBSERVATION fact and belongs here. So the parse authority is unchanged and the third state is
+// added by the layer that actually knows about reads.
+type ObservedMemoryCount
+  = MemoryCountRead { bytes: ByteSize }
+  | MemoryCountMalformed { body: String }
+  | MemoryCountUnread { cause: String }
+
+type ObservedMemoryLimit
+  = MemoryLimitRead { bytes: ByteSize }
+  | MemoryLimitUnlimited
+  | MemoryLimitMalformed { body: String }
+  | MemoryLimitUnread { cause: String }
+
+type SessionMemoryDemand {
+  identity: NonEmptyStr
+  cgroup: NonEmptyStr
+  memory_current: ObservedMemoryCount
+}
+
+// THE PARENT SLICE CARRIES ITS PEAK WITH THE EPOCH THAT PRODUCED IT. memory.peak is
+// LifetimeEpochScoped per the cgroup-v2 authority: it is an extremum since the cgroup was created
+// or the value was last reset, NOT the maximum during this observation window. Carrying the epoch
+// beside it is what stops a consumer reading it as a window maximum; a bare peak field would invite
+// exactly that reading and nothing could detect it.
+// THE SLICE'S COUNTERS ARE UNREADABLE OR THEY ARE NOT THERE, AND ONLY ONE OF THOSE IS A PROBLEM.
+// srv4 exposed the residue: with sessions.slice absent, the census correctly said
+// NOT_A_SESSION_HOST while three counters beside it still read
+// UNREAD(cat exited unsuccessfully for memory.current) -- absence rendered as a failed read, one
+// layer below where the same class had just been repaired.
+//
+// The repair is construction rather than a third counter word (DESIGN 5). Wrapping the record
+// means there is NO EXPRESSION that produces per-counter values for a cgroup that does not exist:
+// the reads are not attempted, so they cannot report anything about not having happened. A third
+// spelling of ObservedMemoryCount would have left the bad state writable and merely relabelled it.
+type ParentSliceObservation
+  = ParentSliceObserved { demand: ParentSliceDemand }
+  | ParentSliceAbsent { cgroup: NonEmptyStr }
+
+type ParentSliceDemand {
+  cgroup: NonEmptyStr
+  memory_current: ObservedMemoryCount
+  memory_peak: ObservedMemoryCount
+  memory_peak_epoch: String
+  memory_max: ObservedMemoryLimit
+}
+
+// EACH SAMPLE CARRIES ITS OWN POPULATION. Session arrival and departure is part of what is being
+// observed, so storing one population at the receipt level and assuming it held for every sample
+// would fabricate a stability the host does not have -- and the fabrication is invisible, because
+// the aggregate still sums.
+//
+// STORAGE AND PRESSURE ARE DELIBERATELY ABSENT rather than stubbed. Modeling a field this cut does
+// not read would put an unpopulated axis in the carrier that a later reader could mistake for an
+// observed one; the axes here are exactly the ones the producer reads.
+type SessionDemandSample {
+  observed_at: Timestamp
+  membership: SessionMembershipStanding
+  parent_slice: ParentSliceDemand
+  per_session: List<SessionMemoryDemand>
+}
+
+type SessionDemandReceipt {
+  host: HostIdentity
+  observation_started: Timestamp
+  observation_completed: Timestamp
+  collector_revision: NonEmptyStr
+  parent_cgroup_identity: NonEmptyStr
+  samples: List<SessionDemandSample>
+}
+
+// THE FOUR OUTCOMES ARE NOT COLLAPSIBLE, and the two that look alike are the ones that matter.
+// NoConcurrentSessionDemandObserved means THE READ RAN AND COUNTED ZERO SESSIONS -- an absence of
+// demand, which is a real observation. SessionDemandObservationUnavailable means the producer did
+// not run, the inventory read failed, or the denominator could not be established -- an absence of
+// EVIDENCE. Folding them would let "nobody is using this host" and "we could not look" answer the
+// same capacity question with the same attractive small number, and the second one grants capacity
+// on no evidence at all.
+type SessionDemandObservation
+  = SessionDemandObservationUnavailable { host: HostIdentity, cause: String }
+  | SessionDemandPopulationIncomplete {
+      host: HostIdentity
+      membership: SessionMembershipStanding
+      cause: String
+    }
+  | NoConcurrentSessionDemandObserved { host: HostIdentity }
+  | SessionDemandObserved { receipt: SessionDemandReceipt }
+
+// THE MEMBERSHIP GATE, taken from #9280's classification rather than re-decided here. Only the
+// all-managed arm may establish an aggregate, for the same reason it is the only arm that grounds
+// the oomd backstop: in every other arm some running session is outside the cgroup the aggregate is
+// computed over, so the aggregate is measuring a proper subset while naming the whole.
+// BOTH OUTCOMES ARE NAMED (review 56218). The gate returned SessionDemandObservation?, where
+// Absent meant "the gate admits, proceed" and Present meant "the gate produced a terminal
+// verdict" -- one Option carrying two unrelated meanings, which is the state-space conflation
+// DESIGN's recurring-failures list names. Nothing about "admits" is an ABSENCE of anything; it is
+// a positive finding with its own payload, and it was the arm a caller most needed to recognise.
+type SessionDemandMembershipGate
+  = MembershipAdmitsAggregate { managed_count: Nat }
+  | MembershipRefusesAggregate { observation: SessionDemandObservation }
+
+fn session_demand_membership_gate(
+  host: HostIdentity,
+  m: SessionMembershipStanding,
+) -> SessionDemandMembershipGate {
+  match m {
+    AllSessionsManaged { managed_count: n } => MembershipAdmitsAggregate { managed_count: n }
+    MixedSessionMembership { managed_count: mc, legacy_count: lc } =>
+      MembershipRefusesAggregate {
+        observation: SessionDemandPopulationIncomplete {
+          host: host,
+          membership: m,
+          cause: "mixed session membership: some sessions are parented under the managed slice and some are flat under system.slice, so an aggregate over the slice measures a proper subset of concurrent demand while naming the whole. The unparented sessions are precisely the ones the slice cannot account for",
+        }
+      }
+    AllSessionsLegacy { legacy_count: _ } =>
+      MembershipRefusesAggregate {
+        observation: SessionDemandPopulationIncomplete {
+          host: host,
+          membership: m,
+          cause: "all sessions are flat under system.slice and none are parented under the managed slice: the slice aggregate would read near zero while the host carries real concurrent demand, which is the most dangerous direction this instrument can be wrong in",
+        }
+      }
+    NoSessionsObserved =>
+      MembershipRefusesAggregate { observation: NoConcurrentSessionDemandObserved { host: host } }
+  }
+}

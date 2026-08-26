@@ -1225,7 +1225,7 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     // refusing. Modelling that split is a RequiredFloorDisposition question in
     // src/v2/workflow/required_floor.dag, not something to decide inside an eprintln!.
     eprintln!(
-        "required-floor: planned={} executed={} terminal={} passed={} \
+        "required-floor: planned={} executed={} not_attempted={} terminal={} passed={} \
          known_red_held={} failed={} stale_quarantine={} \
          interrupted_before_verdict={} completed_over_cost_requirement={} \
          host_tool_unresolved={} route_gap_unenrolled={} route_gap_held={} \
@@ -1235,6 +1235,7 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
          known_red_observation_unreadable={} over_cost_line_diagnostic={}",
         outcome.claims_planned,
         outcome.claims_executed,
+        outcome.not_attempted_after_abort,
         outcome.receipt_identities,
         outcome.passed,
         outcome.known_red_held,
