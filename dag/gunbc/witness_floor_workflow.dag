@@ -1,7 +1,9 @@
 module gunbc.witness_floor_workflow
 
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
-import gunbc.roadmap_execution_contract { CargoCapability, RustfmtCapability }
+import gunbc.roadmap_execution_contract {
+  CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
+}
 import gunbc.repo_self_build { repo_self_build_command, repo_self_build_all_bins_command }
 import gunbc.workflow_capability_closure {
   CapabilityAnnotatedStep,
@@ -15,6 +17,17 @@ import gunbc.workflow_capability_closure {
 import v2.std.algebra { list_map }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import v2.workflow.ci_workflow_run_emit { ci_toolchain_homes_isolated_or_refuse_command }
+import gunbc.toolchain_home_standing {
+  admit_workflow_toolchain_homes,
+  WorkflowToolchainHomesAdmitted,
+  WorkflowToolchainHomeRefused,
+  toolchain_home_refusal_reason,
+}
+import gunbc.toolchain_workflow_steps {
+  toolchain_home_isolation_step,
+  toolchain_pin_rustup_default_step,
+}
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   upload_artifact_action,
@@ -511,13 +524,16 @@ fn witness_toolchain_environment_probe_script() -> String {
         concat(
           "which -a cargo rustc rustup || echo \"which cargo/rustc/rustup: absent from PATH\"\n",
           concat(
-            "ls -l \"$\{CARGO_HOME:-$HOME/.cargo}/bin\" || echo \"cargo bin dir: absent\"\n",
+            concat(ci_toolchain_homes_isolated_or_refuse_command, "\n"),
+            concat(
+            "ls -l \"$CARGO_HOME/bin\" || echo \"cargo bin dir: absent\"\n",
             concat(
               "rustup which rustfmt || echo \"rustup which rustfmt: no answer\"\n",
               concat(
                 "rustup toolchain list || echo \"rustup toolchain list: no answer\"\n",
                 "rustup default || echo \"rustup default: no answer\"\n"
               )
+            )
             )
           )
         )
@@ -720,6 +736,13 @@ fn witness_floor_tsv_upload_step(step_name: String, artifact_name: String, path:
 // jobs, so they are authored ONCE here and each job appends only the step that distinguishes it.
 // Two copies would be two definitions of one fact, free to drift the moment either is edited --
 // the §3 fork this file already closes for the step/role pair, reintroduced across jobs.
+// THE SAME ACTION PROVIDES THE SAME CAPABILITIES WHEREVER IT RUNS. The Install Rust toolchain
+// binding below declared only [Cargo, Rustfmt] while gunbc.fleet_workflow_steps ci_setup_rust_step
+// declares [Cargo, Rustc, Rustfmt, Rustup] for the identical setup_rust_action -- one action with
+// two capability stories, which is the DESIGN 3 fork. It went unnoticed because nothing here
+// consumed Rustup until the pin step did, and then the closure refused. The under-declaration is
+// corrected rather than the consumer weakened: the action really does install rustup and rustc.
+//
 // THE TWO LANES BOOTSTRAP DIFFERENTLY AND THAT DIFFERENCE IS THE POINT, not an oversight.
 // The floor lane builds the two bins it actually executes. The BUILD lane builds every declared
 // bin (`--bins`), because host-Rust coverage of the whole bin roster is a fact somebody has to
@@ -735,9 +758,21 @@ fn prepared_bound_steps(build_script: String) -> List<WitnessFloorBoundStep> {
       step_name: "Checkout",
     },
     WitnessFloorBoundStep {
+      step: toolchain_home_isolation_step(),
+      role: capability_neutral,
+      step_name: "Isolate toolchain homes",
+    },
+    WitnessFloorBoundStep {
       step: witness_floor_toolchain_step(),
-      role: provides_only(capabilities: [CargoCapability, RustfmtCapability]),
+      role: provides_only(capabilities: [
+        CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
+      ]),
       step_name: "Install Rust toolchain",
+    },
+    WitnessFloorBoundStep {
+      step: toolchain_pin_rustup_default_step(),
+      role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
+      step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
     },
     WitnessFloorBoundStep {
       step: witness_floor_build_step(build_script: build_script),
@@ -1344,13 +1379,23 @@ data witness_floor_capability_closure_per_job_note: String = "expected_witness_f
 
 type WitnessFloorGenerationOutcome
   = WitnessFloorGenerated { content: String }
-  | WitnessFloorGenerationRefused
+  | WitnessFloorGenerationRefused { reason: String }
+
+// THE REFUSAL NOW CARRIES ITS CAUSE. It did not before: gunbc.generated_artifact_emit named one
+// static string for every arm, so a toolchain-home refusal and a capability-closure refusal reached
+// the operator as the same sentence. The two have nothing in common but the file they suppress.
+data witness_floor_capability_closure_refusal_reason: String = "REFUSED gunbc.witness_floor_workflow: a lane's capability closure does not hold, or the required-lanes gate is not renderable. No workflow yaml was emitted. Fix the step roles in the lane's annotations, or the order of the steps themselves."
 
 fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
-  if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && required_lanes_gate_is_renderable() {
-    WitnessFloorGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow)) }
-  } else {
-    WitnessFloorGenerationRefused
+  match admit_workflow_toolchain_homes(workflow: witness_floor_workflow) {
+    WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+      WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
+    WorkflowToolchainHomesAdmitted =>
+      if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && required_lanes_gate_is_renderable() {
+        WitnessFloorGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow)) }
+      } else {
+        WitnessFloorGenerationRefused { reason: witness_floor_capability_closure_refusal_reason }
+      }
   }
 }
 

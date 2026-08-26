@@ -97,6 +97,9 @@ service gunbc.WitnessBin {
       exit_code: Int from "exit_code"
       stdout: String from "stdout"
       stderr: String from "stderr"
+      stderr_truncated: Bool from "stderr_truncated"
+      stderr_total_bytes: Int from "stderr_total_bytes"
+      stderr_retained_bytes: Int from "stderr_retained_bytes"
     }
     transport shell { argv: ["env", "-C", "{workdir}", "{bin_path}", args] }
     exit {
