@@ -15,6 +15,7 @@ import gunbc.fabric_cell_converge {
   fabric_cell_root_path,
   fabric_cell_slice_name,
 }
+import extdeps.systemd { MemoryMax, TasksMax }
 import gunbc.fabric_cell_observe {
   FabricCellNamespaceProbe,
   NamespaceEnumerated,
@@ -458,5 +459,63 @@ fn converged_boundary_values() -> FabricCellBoundaryReading {
     memory_swap_max: to_string(byte_size_count(b: desired.memory_swap_max)),
     tasks_max: to_string(desired.tasks_max),
     cpu_weight: to_string(desired.cpu_weight),
+  }
+}
+
+// LAW 15 -- A COMPLETED CALL THAT PRINTED NOTHING IS NOT A VALUE. `systemctl show` can exit zero
+// and print an empty line, and admitting that as a reading put an empty string into the digest --
+// which then differs from the desired digest, reports MemberChanged, and plans a repair against a
+// property nobody read. It is the same conflation as the exit-zero-with-defaults defect one level
+// down: the operation completed and did not answer the question.
+//
+// THE POSITIVE CONTROLS ARE THE HALF THAT MAKES THIS A LAW. A reader that refused EVERYTHING would
+// satisfy the empty-output row and break every real host, so "0" and "infinity" are asserted read
+// -- "0" because it is falsy-looking and a plausible thing to filter out by accident, "infinity"
+// because it is the value systemd prints for an unset cap and therefore the most common real one.
+test fn witness_acquire_empty_property_output_refuses_rather_than_reading() -> Bool {
+  property_is_refused(o: fabric_cell_boundary_property_observation(success: true, output: "", property: MemoryMax))
+    && property_is_refused(o: fabric_cell_boundary_property_observation(success: true, output: "   ", property: MemoryMax))
+    && property_is_refused(o: fabric_cell_boundary_property_observation(success: false, output: "4096", property: TasksMax))
+    && property_is_read_as(o: fabric_cell_boundary_property_observation(success: true, output: "0", property: MemoryMax), value: "0")
+    && property_is_read_as(o: fabric_cell_boundary_property_observation(success: true, output: "infinity", property: MemoryMax), value: "infinity")
+    && property_is_read_as(o: fabric_cell_boundary_property_observation(success: true, output: " 4096\n", property: TasksMax), value: "4096")
+}
+
+// LAW 16 -- ONE ACQUISITION PROJECTS INTO BOTH VIEWS, so the namespace entry and the address
+// evidence for one cell root cannot disagree. The previous cut observed each cell root twice inside
+// one nominal probe -- once for the child namespace, once in the address fold -- and if the path
+// changed between them the observer received a contradiction its own acquisition layer had
+// manufactured, reported as host drift that never happened. This row reads both projections out of
+// ONE carrier and asserts they describe the same observation.
+test fn witness_acquire_one_acquisition_projects_consistently() -> Bool {
+  let listed = FabricCellSlotAcquisition {
+    slot: witness_slot(),
+    cell_root: DirectoryListed { entries: ["attempts"] },
+    attempt_root: DirectoryListed { entries: [] },
+    boundary: [],
+  }
+  let absent = FabricCellSlotAcquisition {
+    slot: witness_slot(),
+    cell_root: DirectoryNotPresent,
+    attempt_root: DirectoryNotPresent,
+    boundary: [],
+  }
+  probe_is_enumerated_as(p: fabric_cell_acquisition_namespace_entry(acquisition: listed).probe, entries: ["attempts"])
+    && list_length(items: fabric_cell_acquisition_address_entries(acquisition: listed)) == 2
+    && probe_is_observed_absent(p: fabric_cell_acquisition_namespace_entry(acquisition: absent).probe)
+    && list_length(items: fabric_cell_acquisition_address_entries(acquisition: absent)) == 0
+}
+
+fn property_is_refused(o: FabricCellPropertyObservation) -> Bool {
+  match o {
+    PropertyReadRefused { cause: _ } => true
+    PropertyRead { value: _ } => false
+  }
+}
+
+fn property_is_read_as(o: FabricCellPropertyObservation, value: String) -> Bool {
+  match o {
+    PropertyRead { value: v } => (v as String) == value
+    PropertyReadRefused { cause: _ } => false
   }
 }

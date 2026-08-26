@@ -9,6 +9,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.stat
 import extdeps.systemd.systemctl
 import extdeps.systemd {
+  systemd_unit_property_wire,
   SystemdUnitProperty,
   MemoryMax,
   MemoryHigh,
@@ -340,38 +341,82 @@ func fabric_cell_list_directory(path: String) -> FabricCellDirectoryObservation 
   }
 }
 
-func fabric_cell_read_boundary_property(unit: NonEmptyStr, property: SystemdUnitProperty) -> String? {
-  let shown = systemd.Systemctl.ShowProperty(unit: unit, property: property)
-  if shown.success {
-    Present { value: trim(shown.value) }
+// A COMPLETED CALL THAT ANSWERED NOTHING IS NOT AN ANSWER. `systemctl show` can exit zero and print
+// an empty line, and the first cut of this reader admitted that as a value -- so an empty string
+// became part of a digest, the digest differed from the desired one, and the boundary reported
+// MemberChanged. A repair would then have been planned against a property nobody read. The honest
+// outcome is the same refusal a nonzero exit produces: the operation completed and did not answer
+// the requested question, which is the operation-completed-but-said-nothing arm of the same
+// state-space conflation the exit-zero-with-defaults defect had at the unit level.
+//
+// SPLIT OUT AS A PURE FUNCTION so the three answers are testable without a host, and so the
+// positive controls can cover "0", a decimal magnitude and "infinity" -- an empty-output refusal
+// that also rejected "0" would be a reader that refuses everything, which passes the negative row
+// and breaks every real host.
+type FabricCellPropertyObservation
+  = PropertyRead { value: NonEmptyStr }
+  | PropertyReadRefused { cause: String }
+
+fn fabric_cell_boundary_property_observation(
+  success: Bool,
+  output: String,
+  property: SystemdUnitProperty,
+) -> FabricCellPropertyObservation {
+  let word = systemd_unit_property_wire(property: property) as String
+  if !success {
+    PropertyReadRefused {
+      cause: join(["systemctl show ", word, " exited unsuccessfully for the cell slice"], ""),
+    }
   } else {
-    none
+    let value = trim(output)
+    if value == "" {
+      PropertyReadRefused {
+        cause: join([
+          "systemctl show ", word,
+          " completed and printed nothing for the cell slice, so the property was not read",
+        ], ""),
+      }
+    } else {
+      PropertyRead { value: value as NonEmptyStr }
+    }
   }
+}
+
+func fabric_cell_read_boundary_property(
+  unit: NonEmptyStr,
+  property: SystemdUnitProperty,
+) -> FabricCellPropertyObservation {
+  let shown = systemd.Systemctl.ShowProperty(unit: unit, property: property)
+  fabric_cell_boundary_property_observation(
+    success: shown.success,
+    output: shown.value,
+    property: property,
+  )
 }
 
 func fabric_cell_read_boundary(slot: RunnerSlotIdentity) -> FabricCellBoundaryReading {
   let unit = fabric_cell_slice_name(slot: slot) as NonEmptyStr
   match fabric_cell_read_boundary_property(unit: unit, property: MemoryMax) {
-    Absent => BoundaryReadRefused { cause: "systemctl show MemoryMax refused for the cell slice" }
-    Present { value: mx } =>
+    PropertyReadRefused { cause: c } => BoundaryReadRefused { cause: c }
+    PropertyRead { value: mx } =>
       match fabric_cell_read_boundary_property(unit: unit, property: MemoryHigh) {
-        Absent => BoundaryReadRefused { cause: "systemctl show MemoryHigh refused for the cell slice" }
-        Present { value: mh } =>
+        PropertyReadRefused { cause: c } => BoundaryReadRefused { cause: c }
+        PropertyRead { value: mh } =>
           match fabric_cell_read_boundary_property(unit: unit, property: MemorySwapMax) {
-            Absent => BoundaryReadRefused { cause: "systemctl show MemorySwapMax refused for the cell slice" }
-            Present { value: ms } =>
+            PropertyReadRefused { cause: c } => BoundaryReadRefused { cause: c }
+            PropertyRead { value: ms } =>
               match fabric_cell_read_boundary_property(unit: unit, property: TasksMax) {
-                Absent => BoundaryReadRefused { cause: "systemctl show TasksMax refused for the cell slice" }
-                Present { value: tm } =>
+                PropertyReadRefused { cause: c } => BoundaryReadRefused { cause: c }
+                PropertyRead { value: tm } =>
                   match fabric_cell_read_boundary_property(unit: unit, property: CPUWeight) {
-                    Absent => BoundaryReadRefused { cause: "systemctl show CPUWeight refused for the cell slice" }
-                    Present { value: cw } =>
+                    PropertyReadRefused { cause: c } => BoundaryReadRefused { cause: c }
+                    PropertyRead { value: cw } =>
                       BoundaryValuesRead {
-                        memory_max: mx,
-                        memory_high: mh,
-                        memory_swap_max: ms,
-                        tasks_max: tm,
-                        cpu_weight: cw,
+                        memory_max: mx as String,
+                        memory_high: mh as String,
+                        memory_swap_max: ms as String,
+                        tasks_max: tm as String,
+                        cpu_weight: cw as String,
                       }
                   }
               }
@@ -425,7 +470,10 @@ fn fabric_cell_unit_name_field(line: String) -> String {
 func fabric_cell_probe_wet(host: HostIdentity) -> FabricCellHostProbe {
   let root = fabric_cell_observe_cells_root()
   let slices = fabric_cell_observe_slice_namespace()
-  let slots = fabric_cell_expected_slots(host: host)
+  let acquired = map(
+    fabric_cell_expected_slots(host: host),
+    s => fabric_cell_acquire_slot(slot: s, cells_root: root, slices: slices),
+  )
   FabricCellHostProbe {
     host: host,
     namespaces: concat(
@@ -439,18 +487,77 @@ func fabric_cell_probe_wet(host: HostIdentity) -> FabricCellHostProbe {
           probe: slices,
         },
       ],
-      map(
-        slots,
-        s => FabricCellNamespaceProbeEntry {
-          namespace: FabricCellChildNamespace { slot: s },
-          probe: fabric_cell_namespace_probe_of(
-            observation: fabric_cell_observe_cell_root(slot: s, cells_root: root),
-          ),
-        },
-      ),
+      map(acquired, a => fabric_cell_acquisition_namespace_entry(acquisition: a)),
     ),
-    addresses: flat_map(slots, s => fabric_cell_slot_address_probes(slot: s, cells_root: root, slices: slices)),
+    addresses: flat_map(acquired, a => fabric_cell_acquisition_address_entries(acquisition: a)),
   }
+}
+
+// ONE SUBJECT IS ACQUIRED ONCE PER TICK, AND THE PROJECTIONS READ THE VALUE RATHER THAN THE HOST.
+// The previous cut observed each cell root TWICE inside one nominal probe: once while building the
+// child-namespace entry, and again inside the address fold. Two reads of one subject is not a
+// duplicate cost, it is a CONSISTENCY hole -- if the path changes between them, the observer
+// receives a namespace derived from read A and address evidence derived from read B and refuses a
+// contradiction its own acquisition layer manufactured. It fails closed, which is why it would
+// have surfaced as host drift that never happened rather than as a false ADD, and that is exactly
+// the kind of defect that gets diagnosed on the host instead of in the producer.
+//
+// This is the same law the plan and apply paths already obey one level up, where the probe is bound
+// once and compared twice. It is stated here at slot grain because the acquisition layer is where a
+// second read is cheapest to write and hardest to see.
+type FabricCellSlotAcquisition {
+  slot: RunnerSlotIdentity
+  cell_root: FabricCellDirectoryObservation
+  attempt_root: FabricCellDirectoryObservation
+  boundary: List<FabricCellAddressProbeEntry>
+}
+
+func fabric_cell_acquire_slot(
+  slot: RunnerSlotIdentity,
+  cells_root: FabricCellDirectoryObservation,
+  slices: FabricCellNamespaceProbe,
+) -> FabricCellSlotAcquisition {
+  let cell_root = fabric_cell_observe_cell_root(slot: slot, cells_root: cells_root)
+  FabricCellSlotAcquisition {
+    slot: slot,
+    cell_root: cell_root,
+    attempt_root: fabric_cell_observe_directory(
+      path: fabric_cell_attempt_root_path(slot: slot),
+      parent: fabric_cell_parent_standing_of(parent: cell_root, entry: fabric_cell_attempt_root_entry_name),
+    ),
+    boundary: fabric_cell_boundary_address_entries(slot: slot, slices: slices),
+  }
+}
+
+fn fabric_cell_acquisition_namespace_entry(
+  acquisition: FabricCellSlotAcquisition,
+) -> FabricCellNamespaceProbeEntry {
+  FabricCellNamespaceProbeEntry {
+    namespace: FabricCellChildNamespace { slot: acquisition.slot },
+    probe: fabric_cell_namespace_probe_of(observation: acquisition.cell_root),
+  }
+}
+
+fn fabric_cell_acquisition_address_entries(
+  acquisition: FabricCellSlotAcquisition,
+) -> List<FabricCellAddressProbeEntry> {
+  concat(
+    fabric_cell_directory_address_entries(
+      slot: acquisition.slot,
+      address: FabricCellRootAddress,
+      path: fabric_cell_root_path(slot: acquisition.slot),
+      observation: acquisition.cell_root,
+    ),
+    concat(
+      fabric_cell_directory_address_entries(
+        slot: acquisition.slot,
+        address: FabricCellAttemptRootAddress,
+        path: fabric_cell_attempt_root_path(slot: acquisition.slot),
+        observation: acquisition.attempt_root,
+      ),
+      acquisition.boundary,
+    ),
+  )
 }
 
 // A STATE READ IS PERFORMED ONLY WHERE THE ENUMERATION SAID THE ENTRY IS THERE, and that is the
@@ -467,33 +574,6 @@ func fabric_cell_probe_wet(host: HostIdentity) -> FabricCellHostProbe {
 // "first real observation of an unprovisioned host blocked instead of planning" failure
 // gunbc.fabric_cell_observe records in its own header. A success exit is not evidence that a unit
 // exists, so the enumeration decides whether to ask at all.
-func fabric_cell_slot_address_probes(
-  slot: RunnerSlotIdentity,
-  cells_root: FabricCellDirectoryObservation,
-  slices: FabricCellNamespaceProbe,
-) -> List<FabricCellAddressProbeEntry> {
-  let cell_root = fabric_cell_observe_cell_root(slot: slot, cells_root: cells_root)
-  concat(
-    fabric_cell_directory_address_entries(
-      slot: slot,
-      address: FabricCellRootAddress,
-      path: fabric_cell_root_path(slot: slot),
-      observation: cell_root,
-    ),
-    concat(
-      fabric_cell_directory_address_entries(
-        slot: slot,
-        address: FabricCellAttemptRootAddress,
-        path: fabric_cell_attempt_root_path(slot: slot),
-        observation: fabric_cell_observe_directory(
-          path: fabric_cell_attempt_root_path(slot: slot),
-          parent: fabric_cell_parent_standing_of(parent: cell_root, entry: fabric_cell_attempt_root_entry_name),
-        ),
-      ),
-      fabric_cell_boundary_address_entries(slot: slot, slices: slices),
-    ),
-  )
-}
 
 data fabric_cell_attempt_root_entry_name: String = "attempts"
 
