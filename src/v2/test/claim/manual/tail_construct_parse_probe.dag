@@ -16,7 +16,10 @@ data tcp_subject: Symbol = ^tail_construct_probe_subject
 
 fn tcp_cause(source_text: String) -> Symbol {
   let lm = dag_language_model()
-  let at = port_locus(port: ^parse_stage_locus_port)
+  let at = invariant_port_locus(
+    port: ^parse_stage_locus_port,
+    invariant: ^tail_construct_parse_probe_grammar_contract
+  )
   match lm.grammar {
     VoidGrammar => ^language_grammar_unavailable
     ModeledGrammar { root: root } =>

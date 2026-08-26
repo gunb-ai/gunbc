@@ -128,6 +128,15 @@ pub fn compile_dag_diagnostic_census_row_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn compile_dag_multi_module_fixture_row_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE MULTI-MODULE COMPILE FIXTURE, and why it is a row rather than an argument to the census row above. compile_dag_diagnostic_census compiles ONE synthetic module and resolves its imports against build_module_path_index_from_witness_roots, which walks the live checkout - so it cannot express any subject whose content is the RELATIONSHIP BETWEEN TWO MODULES, because the second module cannot be authored and the corpus is always in the pool. This row registers a builtin whose subject is a caller-authored MANIFEST of modules compiled with no module index and no corpus roots at all. Registered as a type variable rather than a kernel record for the same reason its sibling is: the result is a COPRODUCT with three arms whose owners differ - the harness refusing, the subject refusing, and the subject passing. DISSOLUTION: inherits compile_dag_diagnostic_census_row_note PrimitiveDefinition identity-join trigger exactly - do not mint a fresh trigger.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn gate_receipt_rows_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -374,6 +383,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             m.clone(),
             "compile_dag_diagnostic_census".to_string(),
             type_variable_node("compile_diagnostic_census_result".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "compile_dag_multi_module_fixture".to_string(),
+            type_variable_node("multi_module_compile_fixture_result".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),

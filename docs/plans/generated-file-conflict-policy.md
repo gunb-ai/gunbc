@@ -193,9 +193,10 @@ projection + the emitted `.gitattributes` itself).
 
 ## Lane 3 — derive stage0 output membership (gates the emitted-Rust extension)
 
-**LANDED, BY A DIFFERENT DERIVATION THAN THIS LANE PLANNED.** `generated_stage0_files`
-was a handwritten filename list — the second-authority shape exactly — and it is now
-deleted. The derivation this lane sketched routed through the stage0 emission plan:
+**LANDED, AND THIS SECTION PREVIOUSLY MARKED IT LANDED ON A HALF THAT DID NOT REACH ITS
+CONSUMER.** `generated_stage0_files` was a handwritten filename list — the second-authority
+shape exactly — and it is deleted. The derivation this lane sketched routed through the
+stage0 emission plan:
 
 ```text
 stage0 emission plan → produced module/file identities → canonical output paths
@@ -203,19 +204,37 @@ stage0 emission plan → produced module/file identities → canonical output pa
 ```
 
 That route is not available: `gunbc.stage0_emit_plan` was deleted at the root by the
-regen cut (#8406), which is also what left the roster producerless. What landed instead
-is the derivation the executing host already performed — `required_regen_host`
-`committed_generated_basenames` — lifted into `.dag` as
-`gunbc.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths`: a direct-child
-`.rs` under the stage0 source root that `v2.compiler.self_host.stage0_crate_layout`
-does not claim IS generated. Same single authority, reached from the committed tree
-rather than from a plan, and it makes `.dag` and the host agree by construction.
+regen cut (#8406), which is also what left the roster producerless. A derivation did land
+in its place — `gunbc.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths`,
+which reads the emitter's own declared population at a revision and intersects it with the
+tracked tree. **The last sentence of the old text — "the derived paths feed the merge-attribute
+population" — was never true of it.** The derivation landed; the join this lane names as its own
+gate did not, and for months `.gitattributes` covered only the committed generated-artifact
+registry while every emitted stage0 source resolved to `merge: unspecified`. That is the artifact
+the driver was written for (DESIGN's #7836 receipt is against this mirror), so the driver
+protected everything except its own subject.
 
-Only after this derivation lands do stage0 emitted `.rs` outputs join the
-generated-projection merge policy (lane 2's rows). Extending `.gitattributes` from the
-handwritten roster would propagate the existing dual representation into another
-generated file. Resolution guidance for emitted `.rs` meanwhile stays: take either side,
-rerun `regen_stage0`, verify divergence 0 — never hand-pick hunks.
+**THE JOIN COULD NOT HAVE BEEN MADE THE WAY THIS LANE PLANNED IT, AND THAT IS WHY IT SAT.**
+`derived_generated_stage0_repo_paths` takes two live observations — `git ls-files` and a
+`git show` of the emitted-population manifest — while `.gitattributes` is a committed byte
+projection reached through a pure generator that the drift gate assesses purely. Wiring one to
+the other would make the file's expected bytes a function of somebody's working tree: two clones
+at one commit could disagree about what it must contain.
+
+**WHAT LANDED INSTEAD IS A COMPLEMENT, NOT A PATH LIST.** `gunbc.generated_projection_paths`
+`deterministic_generated_projection_merge_rows` emits one glob claiming the direct children of
+the stage0 source root, followed by one unset row per `v2.compiler.self_host.stage0_crate_layout`
+`hand_maintained_stage0_filenames` member that is not itself a registry artifact. Row order is
+load-bearing — the last matching attributes line wins, so an unset row above the glob is inert in
+the dangerous direction. A newly emitted stage0 source is covered by construction, which is what
+a roster of any kind cannot do: the population gained three files during the hours this defect was
+being diagnosed.
+
+**RECOVERY GUIDANCE, CORRECTED.** The old text said to rerun `regen_stage0`. That binary was
+deleted by #8406, so the instruction named nothing for as long as it stood. The route is
+`claim_executor --required-regen`, and for the generated-artifact registry, `main_wet` on
+`dag/tools/generated_artifact_gate.dag`. Take either side, regenerate from the merged
+authorities, verify divergence 0 — never hand-pick hunks.
 
 **Acceptance wall (operator second-pass review, 2026-08-01):** an Unavailable/Refused
 source supply cannot project to an ordinary empty list or a syntactically valid generated

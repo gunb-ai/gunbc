@@ -17,7 +17,8 @@ use v1_compiler::v1_std_core::{
 #[derive(Parser)]
 #[command(
     name = "gunbc",
-    about = "A causal compiler: write .dag, get Rust/Python/Go."
+    about = "A causal compiler: write .dag, get Rust/Python/Go.",
+    version = env!("GUNBC_BUILD_IDENTITY")
 )]
 struct Cli {
     #[command(subcommand)]
@@ -839,6 +840,8 @@ fn render_one_diagnostic(
 
 #[cfg(test)]
 mod tests {
+    use super::Cli;
+    use clap::CommandFactory;
     // THE TESTS SURVIVE THE FUNCTION AND ARE RE-POINTED AT THE SURVIVING AUTHORITY.
     // They were written against this file's private copy of `extract_module_path`, which the
     // fork closure deleted; the behaviour they pin is `cli_run`'s, so they now assert it there.
@@ -846,6 +849,31 @@ mod tests {
     // implementations, which is exactly what DESIGN §4b(4) forbids: the redundant machinery
     // goes, the discriminating cases stay enrolled.
     use v1_compiler::cli_run::extract_module_path_public as extract_module_path;
+
+    #[test]
+    fn version_surface_reports_the_exact_source_commit() {
+        assert_eq!(
+            Cli::command().get_version(),
+            Some(env!("GUNBC_BUILD_IDENTITY"))
+        );
+        let identity = env!("GUNBC_BUILD_IDENTITY");
+        let commit = identity.strip_suffix("-dirty").unwrap_or(identity);
+        assert_eq!(commit.len(), 40);
+        assert!(commit.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        assert!(identity == commit || identity == format!("{commit}-dirty"));
+    }
+
+    #[test]
+    fn emitted_non_gunbc_cli_has_no_gunbc_build_environment_dependency() {
+        let rendered = v1_compiler::v1_compiler_emit_rust::emit_cli_struct(
+            std::rc::Rc::new(im::vector![]),
+            "user-program".to_string(),
+            "".to_string(),
+            "".to_string(),
+        );
+        assert!(!rendered.contains("GUNBC_BUILD_IDENTITY"));
+        assert!(!rendered.contains("version ="));
+    }
 
     #[test]
     fn extract_module_path_none_for_moduleless_parse_fixture() {
