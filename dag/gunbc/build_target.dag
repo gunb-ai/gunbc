@@ -357,7 +357,7 @@ type AggregateStanding
 // so it is stated once beside that grammar and read here. A second canonicality predicate in a
 // consumer would be a §3 nickname for the first, and the two would drift the moment either was
 // refined.
-type TargetStandingIndex {
+type TargetStandingIndex sole_constructor {
   standings_by_identity: Map<String, TargetStanding>
 }
 
@@ -411,6 +411,22 @@ fn index_standing(acc: TargetStandingIndexAcc, standing: TargetStanding) -> Targ
   }
 }
 
+// RUNG HONESTY (DESIGN §4b), declared rather than left to be rediscovered.
+//
+// WHAT IS CLOSED. `TargetStandingIndex` cannot be forged. It is `sole_constructor`, so a
+// cross-module record literal or cast refuses at compile time, and the only in-module constructions
+// are the empty index below — which satisfies the key law vacuously — and `index_standing`, which
+// derives the key from the standing it is inserting. So no route reaches a `TargetStandingIndex`
+// whose rendered key disagrees with the stored standing's target, and `target_standing_lookup` is
+// entitled to trust the entry it finds. Without this the type was an ordinary record and the wall
+// stopped at the construction path rather than at the carrier, which is exactly the gap review
+// 56266 named.
+//
+// WHAT IS NOT CLOSED, and it is a property of the substrate rather than of this type: DESIGN §4b
+// records that a `sole_constructor` type's own EMITTED mirror is forgeable, so the guarantee here
+// is measured on the source→`.dag`-acceptance path and does not extend to a Rust-emission
+// realization of this module. NEXT-RUNG TRIGGER: unforgeable construction surviving emission,
+// which that section already tracks as the live capability gap.
 fn build_target_standing_index(standings: List<TargetStanding>) -> TargetStandingIndexBuild {
   let empty = TargetStandingIndexAcc {
     index: TargetStandingIndex { standings_by_identity: empty_map() }
