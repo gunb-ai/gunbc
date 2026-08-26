@@ -12,9 +12,14 @@ import gunbc.generated_artifact {
   artifact_path,
   committed_generated_artifacts
 }
-import gunbc.fleet_converge_workflow { expected_fleet_converge_yml, FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused }
-import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml }
-import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused }
+import gunbc.fleet_converge_workflow { fleet_converge_workflow, expected_fleet_converge_yml, FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused }
+import gunbc.fleet_desired_admission_workflow { fleet_desired_admission_workflow, expected_fleet_desired_yml }
+import gunbc.witness_floor_workflow { witness_floor_workflow, expected_witness_floor_yml, WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused }
+import gunbc.toolchain_workflow_isolation {
+  WorkflowToolchainClassified,
+  WorkflowToolchainUnclassified,
+  classify_workflow_toolchain_jobs,
+}
 import gunbc.ci_yaml_validate { ci_yml_parses }
 import gunbc.gitignore_emit { expected_gitignore }
 import gunbc.gitattributes_emit { GitattributesGenerated, GitattributesGenerationRefused, expected_gitattributes }
@@ -51,15 +56,24 @@ fn artifact_generated(content: String) -> ArtifactGenerationOutcome {
 
 fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
   match a {
-    WitnessFloorYamlArtifact => match expected_witness_floor_yml() {
-      WitnessFloorGenerated { content } => artifact_generated(content: content)
-      WitnessFloorGenerationRefused => ArtifactGenerationRefused { reason: "witness floor workflow capability closure refused" }
+    WitnessFloorYamlArtifact => match classify_workflow_toolchain_jobs(workflow: witness_floor_workflow) {
+      WorkflowToolchainUnclassified { job_id } => ArtifactGenerationRefused { reason: concat("unclassified setup-rust-toolchain job: ", job_id) }
+      WorkflowToolchainClassified => match expected_witness_floor_yml() {
+        WitnessFloorGenerated { content } => artifact_generated(content: content)
+        WitnessFloorGenerationRefused => ArtifactGenerationRefused { reason: "witness floor workflow capability closure refused" }
+      }
     }
-    FleetConvergeYamlArtifact => match expected_fleet_converge_yml() {
-      FleetConvergeYamlGenerated { content } => artifact_generated(content: content)
-      FleetConvergeYamlGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    FleetConvergeYamlArtifact => match classify_workflow_toolchain_jobs(workflow: fleet_converge_workflow) {
+      WorkflowToolchainUnclassified { job_id } => ArtifactGenerationRefused { reason: concat("unclassified setup-rust-toolchain job: ", job_id) }
+      WorkflowToolchainClassified => match expected_fleet_converge_yml() {
+        FleetConvergeYamlGenerated { content } => artifact_generated(content: content)
+        FleetConvergeYamlGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+      }
     }
-    FleetDesiredAdmissionYamlArtifact => artifact_generated(content: expected_fleet_desired_yml())
+    FleetDesiredAdmissionYamlArtifact => match classify_workflow_toolchain_jobs(workflow: fleet_desired_admission_workflow) {
+      WorkflowToolchainUnclassified { job_id } => ArtifactGenerationRefused { reason: concat("unclassified setup-rust-toolchain job: ", job_id) }
+      WorkflowToolchainClassified => artifact_generated(content: expected_fleet_desired_yml())
+    }
     GitignoreArtifact => artifact_generated(content: expected_gitignore())
     GitattributesArtifact => match expected_gitattributes() {
       GitattributesGenerated { content } => artifact_generated(content: content)

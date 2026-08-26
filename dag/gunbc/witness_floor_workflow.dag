@@ -19,6 +19,7 @@ import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import v2.workflow.ci_workflow_run_emit { ci_toolchain_homes_isolated_or_refuse_command }
 import gunbc.toolchain_workflow_steps {
+  hostile_legacy_writer_discriminator_step,
   toolchain_home_isolation_step,
   toolchain_pin_rustup_default_step,
 }
@@ -766,6 +767,11 @@ fn prepared_bound_steps(build_script: String) -> List<WitnessFloorBoundStep> {
       step: toolchain_pin_rustup_default_step(),
       role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
       step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
+    },
+    WitnessFloorBoundStep {
+      step: hostile_legacy_writer_discriminator_step(),
+      role: consumes_only(capabilities: [RustupCapability]),
+      step_name: "Hostile legacy shared-home writer discriminator",
     },
     WitnessFloorBoundStep {
       step: witness_floor_build_step(build_script: build_script),

@@ -68,3 +68,43 @@ fn toolchain_pin_rustup_default_step() -> Step {
     timeout_minutes: none
   }
 }
+
+// THE HOSTILE CONTROL MUST NOT COOPERATE WITH THE ISOLATED READERS. Two private readers alone
+// also pass under #9281's superseded PATH/snapshot protocol, so they discriminate nothing. This
+// script runs two readers from private homes while a third actor repeatedly unlinks and reinstalls
+// a dispatcher in a legacy shared-home fixture. The readers never consult that directory and must
+// finish unaffected. Both unlink/rename-shaped ENOENT and in-place-write-shaped ETXTBSY incidents
+// are covered by the same fact: the mutable directory is no longer shared.
+//
+// RUNNER_TEMP is GitHub's job-scoped temporary directory and is emptied at the beginning and end
+// of each job. That upstream lifecycle is why a rerun receives a different mutable home without a
+// hand-authored run-id/attempt/job suffix, and why this fixture cannot accumulate on the host.
+fn hostile_legacy_writer_discriminator_script() -> String {
+  join([
+    "set -eu\n",
+    "LEGACY_HOME=\"$RUNNER_TEMP/legacy-shared-toolchain\"\n",
+    "PRIVATE_A=\"$RUNNER_TEMP/private-toolchain-a\"\n",
+    "PRIVATE_B=\"$RUNNER_TEMP/private-toolchain-b\"\n",
+    "mkdir -p \"$LEGACY_HOME/bin\" \"$PRIVATE_A/bin\" \"$PRIVATE_B/bin\"\n",
+    "cp \"$CARGO_HOME/bin/rustup\" \"$PRIVATE_A/bin/rustup\"\n",
+    "cp \"$CARGO_HOME/bin/rustup\" \"$PRIVATE_B/bin/rustup\"\n",
+    "( i=0; while [ \"$i\" -lt 64 ]; do \"$PRIVATE_A/bin/rustup\" --version >/dev/null; i=$((i + 1)); done ) & A_PID=$!\n",
+    "( i=0; while [ \"$i\" -lt 64 ]; do \"$PRIVATE_B/bin/rustup\" --version >/dev/null; i=$((i + 1)); done ) & B_PID=$!\n",
+    "( i=0; while [ \"$i\" -lt 64 ]; do rm -f \"$LEGACY_HOME/bin/rustup\"; cp \"$CARGO_HOME/bin/rustup\" \"$LEGACY_HOME/bin/rustup\"; i=$((i + 1)); done ) & C_PID=$!\n",
+    "wait \"$A_PID\"\nwait \"$B_PID\"\nwait \"$C_PID\"\n",
+  ], "")
+}
+
+fn hostile_legacy_writer_discriminator_step() -> Step {
+  RunStep {
+    name: Present { value: "Hostile legacy shared-home writer discriminator" },
+    id: none,
+    run: hostile_legacy_writer_discriminator_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}

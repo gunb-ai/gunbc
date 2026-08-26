@@ -1,0 +1,127 @@
+module gunbc.toolchain_workflow_isolation
+
+// CLASSIFY THE JOBS THE WORKFLOW AUTHORITIES ACTUALLY DECLARE, NOT A SECOND ROSTER OF JOB NAMES.
+//
+// The incident affected every job that invokes setup-rust-toolchain before establishing private
+// HOME/CARGO_HOME/RUSTUP_HOME. A hand-maintained list of job ids would answer that question a
+// second time and silently omit the next job that imports the action. This fold instead consumes
+// extdeps.github.actions Job.steps, recognizes the cited setup_rust_action, and respects step
+// order. The emitted workflow and this classification are two projections of one authority.
+//
+// The isolation predicate recognizes the three environment bindings that establish the boundary,
+// rather than a presentation name. fleet-converge composes those bindings with fleet-only tuning;
+// the witness and fleet-desired workflows use the narrow shared step. Both classify from what they
+// execute, so renaming a step cannot change the verdict.
+
+import extdeps.github.actions { ActionRef, Job, Step, Workflow, RunStep, UsesStep, setup_rust_action }
+import std.types { List, String, Int }
+
+type ToolchainWriterJobClassification
+  = PrivateMutableHome
+  | ImmutableToolchain
+  | ToolchainJobUnclassified { job_id: String, unisolated_writer_count: Int }
+
+type ToolchainIsolationScan {
+  isolation_precedes_writer: Bool
+  writer_count: Int
+  unisolated_writer_count: Int
+}
+
+fn action_ref_equal(a: ActionRef, b: ActionRef) -> Bool {
+  a.owner == b.owner && a.repo == b.repo && a.ref == b.ref
+}
+
+fn step_installs_rust_toolchain(step: Step) -> Bool {
+  match step {
+    UsesStep {
+      name: _, id: _, uses: action, with: _, env: _, if_condition: _,
+      continue_on_error: _, timeout_minutes: _,
+    } => action_ref_equal(a: action, b: setup_rust_action)
+    RunStep {
+      name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _,
+      continue_on_error: _, timeout_minutes: _,
+    } => false
+  }
+}
+
+fn step_isolates_toolchain_homes(step: Step) -> Bool {
+  match step {
+    RunStep {
+      name: _, id: _, run: script, shell: _, env: _, working_directory: _, if_condition: _,
+      continue_on_error: _, timeout_minutes: _,
+    } =>
+      string_contains(s: script, pattern: "HOME=$RUNNER_TEMP") &&
+        string_contains(s: script, pattern: "CARGO_HOME=$RUNNER_TEMP/cargo") &&
+        string_contains(s: script, pattern: "RUSTUP_HOME=$RUNNER_TEMP/rustup")
+    UsesStep {
+      name: _, id: _, uses: _, with: _, env: _, if_condition: _,
+      continue_on_error: _, timeout_minutes: _,
+    } => false
+  }
+}
+
+fn scan_toolchain_isolation_step(
+  scan: ToolchainIsolationScan,
+  step: Step,
+) -> ToolchainIsolationScan {
+  if step_isolates_toolchain_homes(step: step) {
+    ToolchainIsolationScan {
+      isolation_precedes_writer: true,
+      writer_count: scan.writer_count,
+      unisolated_writer_count: scan.unisolated_writer_count,
+    }
+  } else if step_installs_rust_toolchain(step: step) {
+    ToolchainIsolationScan {
+      isolation_precedes_writer: scan.isolation_precedes_writer,
+      writer_count: scan.writer_count + 1,
+      unisolated_writer_count: scan.unisolated_writer_count +
+        if scan.isolation_precedes_writer { 0 } else { 1 },
+    }
+  } else {
+    scan
+  }
+}
+
+fn classify_toolchain_writer_job(job: Job) -> ToolchainWriterJobClassification {
+  let scan = fold(
+    job.steps,
+    init: ToolchainIsolationScan {
+      isolation_precedes_writer: false,
+      writer_count: 0,
+      unisolated_writer_count: 0,
+    },
+    f: fn(acc, step) { scan_toolchain_isolation_step(scan: acc, step: step) },
+  )
+  if scan.writer_count == 0 {
+    ImmutableToolchain
+  } else if scan.unisolated_writer_count == 0 {
+    PrivateMutableHome
+  } else {
+    ToolchainJobUnclassified {
+      job_id: job.id,
+      unisolated_writer_count: scan.unisolated_writer_count,
+    }
+  }
+}
+
+fn classify_toolchain_writer_jobs(jobs: List<Job>) -> List<ToolchainWriterJobClassification> {
+  list_map(xs: jobs, f: fn(job) { classify_toolchain_writer_job(job: job) })
+}
+
+type WorkflowToolchainClassification
+  = WorkflowToolchainClassified
+  | WorkflowToolchainUnclassified { job_id: String }
+
+fn classify_workflow_toolchain_jobs(workflow: Workflow) -> WorkflowToolchainClassification {
+  fold(workflow.jobs, init: WorkflowToolchainClassified, f: fn(acc, job) {
+    match acc {
+      WorkflowToolchainUnclassified { job_id } => WorkflowToolchainUnclassified { job_id: job_id }
+      WorkflowToolchainClassified => match classify_toolchain_writer_job(job: job) {
+        PrivateMutableHome => WorkflowToolchainClassified
+        ImmutableToolchain => WorkflowToolchainClassified
+        ToolchainJobUnclassified { job_id, unisolated_writer_count: _ } =>
+          WorkflowToolchainUnclassified { job_id: job_id }
+      }
+    }
+  })
+}
