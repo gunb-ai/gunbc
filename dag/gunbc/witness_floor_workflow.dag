@@ -206,30 +206,24 @@ fn witness_floor_checkout_step() -> Step {
   }
 }
 
-// setup-rust-toolchain installs rustup only when `command -v rustup` fails. GitHub's
-// non-login shell does not inherit rustup's profile edit, so a reused self-hosted runner can
-// carry rustup on disk while every job downloads rustup-init and rewrites the one dispatcher
-// all concurrent Rust commands symlink to. Put the installed bin directory on the next step's
-// PATH before the action asks its guard, and snapshot the dispatcher so the probe below refuses
-// any write during this job rather than waiting for a probabilistic collision.
-fn witness_floor_expose_installed_rustup_script() -> String {
+// TERMINAL REPLACEMENT FOR THE SHARED-DISPATCHER MITIGATION. github.run_id alone is not a
+// job identity: build and floor execute concurrently inside one run, and a rerun reuses the run
+// id. The mutable-home identity therefore includes run, attempt and job. Neither home may remain
+// shared: CARGO_HOME owns the dispatcher and registry while RUSTUP_HOME owns installed toolchains.
+// No matrix job currently consumes this step; a matrix consumer must append its matrix coordinate
+// rather than collapsing its members back onto one home.
+fn witness_floor_private_toolchain_homes_script() -> String {
   concat(
-    "CARGO_BIN_DIR=\"$\{CARGO_HOME:-$HOME/.cargo}/bin\"\n",
-    concat(
-      "echo \"$CARGO_BIN_DIR\" >> \"$GITHUB_PATH\"\n",
-      concat(
-        "test -x \"$CARGO_BIN_DIR/rustup\" || { echo \"::error::installed rustup missing at $CARGO_BIN_DIR/rustup\"; exit 1; }\n",
-        "stat -c '%d:%i:%s:%y:%z' \"$CARGO_BIN_DIR/rustup\" > \"$RUNNER_TEMP/gunbc-rustup-before.stat\"\n"
-      )
-    )
+    "echo \"CARGO_HOME=$RUNNER_TEMP/cargo/$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT/$GITHUB_JOB\" >> \"$GITHUB_ENV\"\n",
+    "echo \"RUSTUP_HOME=$RUNNER_TEMP/rustup/$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT/$GITHUB_JOB\" >> \"$GITHUB_ENV\"\n"
   )
 }
 
-fn witness_floor_expose_installed_rustup_step() -> Step {
+fn witness_floor_private_toolchain_homes_step() -> Step {
   RunStep {
-    name: Present { value: "Expose installed rustup to setup guard" },
+    name: Present { value: "Isolate mutable Rust homes" },
     id: none,
-    run: witness_floor_expose_installed_rustup_script(),
+    run: witness_floor_private_toolchain_homes_script(),
     shell: none,
     env: none,
     working_directory: none,
@@ -269,11 +263,12 @@ fn witness_floor_expose_installed_rustup_step() -> Step {
 // so almost every hit lands in the witness step — which is what an overlap-probability
 // argument predicts and what a configuration error would not.
 //
-// WHY DISABLING RATHER THAN SPLITTING THE HOME. A per-slot CARGO_HOME also works and was the
-// first candidate, but it multiplies the registry by the slot count on every host to solve a
-// problem caused by a cache layer this fleet does not need: ~/.cargo already persists across
-// jobs on a self-hosted runner, so restore-and-save buys nothing here and only the cleanup
-// half has an effect. Disabling is the smaller change and removes the mechanism outright.
+// WHY THE EARLIER SHARED-HOME DECISION IS SUPERSEDED. Disabling the cache cleanup removed its
+// deleters, but did not make one job immune to setup-rust-toolchain rewriting another job's
+// shared dispatcher. The incident mitigation then suppressed the known high-frequency writers
+// by exposing the installed shared rustup to the action's guard, but residual writers remained.
+// Private per-job CARGO_HOME plus RUSTUP_HOME is the terminal construction: no mutable Rust home
+// is shared, at the accepted cost of one registry and toolchain store per concurrent job.
 //
 // THE COST, STATED. Nothing now prunes ~/.cargo, so the registry grows without bound and
 // becomes a disk-pressure question instead of a correctness one. That is the right trade —
@@ -539,7 +534,7 @@ fn witness_toolchain_environment_probe_script() -> String {
     concat(
       "echo \"PATH=$PATH\"\n",
       concat(
-        "CARGO_BIN_DIR=\"$\{CARGO_HOME:-$HOME/.cargo}/bin\"\ncase \":$PATH:\" in *\":$CARGO_BIN_DIR:\"*) ;; *) echo \"::error::cargo bin dir absent from PATH: $CARGO_BIN_DIR\"; exit 1;; esac\nstat -c '%d:%i:%s:%y:%z' \"$CARGO_BIN_DIR/rustup\" > \"$RUNNER_TEMP/gunbc-rustup-after.stat\"\nif ! cmp -s \"$RUNNER_TEMP/gunbc-rustup-before.stat\" \"$RUNNER_TEMP/gunbc-rustup-after.stat\"; then echo \"::error::rustup dispatcher was rewritten during this job\"; diff -u \"$RUNNER_TEMP/gunbc-rustup-before.stat\" \"$RUNNER_TEMP/gunbc-rustup-after.stat\" || true; exit 1; fi\nwhich -a rustfmt || echo \"which rustfmt: absent from PATH\"\n",
+        "which -a rustfmt || echo \"which rustfmt: absent from PATH\"\n",
         concat(
           "which -a cargo rustc rustup || echo \"which cargo/rustc/rustup: absent from PATH\"\n",
           concat(
@@ -767,9 +762,9 @@ fn prepared_bound_steps(build_script: String) -> List<WitnessFloorBoundStep> {
       step_name: "Checkout",
     },
     WitnessFloorBoundStep {
-      step: witness_floor_expose_installed_rustup_step(),
+      step: witness_floor_private_toolchain_homes_step(),
       role: capability_neutral,
-      step_name: "Expose installed rustup to setup guard",
+      step_name: "Isolate mutable Rust homes",
     },
     WitnessFloorBoundStep {
       step: witness_floor_toolchain_step(),
