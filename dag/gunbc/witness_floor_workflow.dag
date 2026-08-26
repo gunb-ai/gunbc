@@ -17,6 +17,7 @@ import gunbc.workflow_capability_closure {
 import v2.std.algebra { list_map }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import v2.workflow.ci_workflow_run_emit { ci_toolchain_homes_isolated_or_refuse_command }
 import gunbc.toolchain_workflow_steps {
   toolchain_home_isolation_step,
   toolchain_pin_rustup_default_step,
@@ -516,7 +517,7 @@ fn witness_toolchain_environment_probe_script() -> String {
         concat(
           "which -a cargo rustc rustup || echo \"which cargo/rustc/rustup: absent from PATH\"\n",
           concat(
-            "if [ -z \"$\{CARGO_HOME:-}\" ] || [ -z \"$\{RUSTUP_HOME:-}\" ]; then\n  echo \"::error::ToolchainHomesNotIsolated CARGO_HOME=$\{CARGO_HOME:-unset} RUSTUP_HOME=$\{RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run\" >&2\n  exit 1\nfi\n",
+            concat(ci_toolchain_homes_isolated_or_refuse_command, "\n"),
             concat(
             "ls -l \"$CARGO_HOME/bin\" || echo \"cargo bin dir: absent\"\n",
             concat(

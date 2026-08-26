@@ -28,6 +28,7 @@ jobs:
           fetch-depth: 0
       - name: Isolate toolchain homes
         run: |
+          # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2), at which point this carrier and its unmarked siblings ci_isolate_toolchain_script and ci_pin_rustup_default_script dissolve together
           rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
           echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
           echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
@@ -53,10 +54,7 @@ jobs:
           echo "PATH=$PATH"
           which -a rustfmt || echo "which rustfmt: absent from PATH"
           which -a cargo rustc rustup || echo "which cargo/rustc/rustup: absent from PATH"
-          if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then
-            echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2
-            exit 1
-          fi
+          if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2; exit 1; fi
           ls -l "$CARGO_HOME/bin" || echo "cargo bin dir: absent"
           rustup which rustfmt || echo "rustup which rustfmt: no answer"
           rustup toolchain list || echo "rustup toolchain list: no answer"
@@ -78,6 +76,7 @@ jobs:
           fetch-depth: 0
       - name: Isolate toolchain homes
         run: |
+          # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2), at which point this carrier and its unmarked siblings ci_isolate_toolchain_script and ci_pin_rustup_default_script dissolve together
           rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
           echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
           echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
@@ -103,10 +102,7 @@ jobs:
           echo "PATH=$PATH"
           which -a rustfmt || echo "which rustfmt: absent from PATH"
           which -a cargo rustc rustup || echo "which cargo/rustc/rustup: absent from PATH"
-          if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then
-            echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2
-            exit 1
-          fi
+          if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2; exit 1; fi
           ls -l "$CARGO_HOME/bin" || echo "cargo bin dir: absent"
           rustup which rustfmt || echo "rustup which rustfmt: no answer"
           rustup toolchain list || echo "rustup toolchain list: no answer"

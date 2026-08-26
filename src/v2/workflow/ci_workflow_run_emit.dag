@@ -61,6 +61,12 @@ data ci_pin_rustup_cargo_bin_missing_command: String = "if [ -z \"$CARGO_BIN\" ]
 
 data ci_pin_rustup_echo_cargo_bin_command: String = "echo \"CARGO_BIN=$CARGO_BIN\" >> \"$GITHUB_ENV\""
 
+// THE REFUSAL LIVES BESIDE ITS SIBLINGS, NOT IN THE CONSUMER. review 56091 caught this authored as
+// hand-built control flow inside a concat chain in gunbc.witness_floor_workflow -- the
+// medium-as-string form. It is a command row here, in the same shape and the same place as
+// ci_pin_rustup_cargo_bin_missing_command, so the probe composes it rather than spelling shell.
+data ci_toolchain_homes_isolated_or_refuse_command: String = "if [ -z \"$\{CARGO_HOME:-}\" ] || [ -z \"$\{RUSTUP_HOME:-}\" ]; then echo \"::error::ToolchainHomesNotIsolated CARGO_HOME=$\{CARGO_HOME:-unset} RUSTUP_HOME=$\{RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run\" >&2; exit 1; fi"
+
 fn ci_workflow_run(command: String) -> Run {
   Run {
     command: command,
@@ -128,8 +134,32 @@ fn ci_toolchain_home_isolation_intent() -> Pipeline {
 }
 
 fn ci_toolchain_home_isolation_script() -> String {
-  ci_workflow_run_emit_pipeline(p: ci_toolchain_home_isolation_intent())
+  concat(
+    concat("# ", concat(dissolution_description(condition: ci_toolchain_home_isolation_shell_emit_dissolution_trigger), "\n")),
+    ci_workflow_run_emit_pipeline(p: ci_toolchain_home_isolation_intent())
+  )
 }
+
+// MARKED ON REQUEST (review 56091), and the honest scope is narrower than "a new shell carrier".
+// This function authors NO new shell: it emits four pre-existing command rows
+// (ci_isolate_rm_rustup_cargo_command and the three echo rows), unchanged, that
+// ci_isolate_toolchain_script already emitted. What is new is the COMPOSITION, not the medium.
+//
+// The marker is still correct, because the carrier really is orch-emitted foreign-executor shell
+// pending the same shell-to-intent migration ci_native_cache_root_script names. WORTH RECORDING:
+// its unmarked siblings ci_isolate_toolchain_script and ci_pin_rustup_default_script are the same
+// class and carried no marker before this PR either, so marking only the extracted subset leaves an
+// inconsistency this change does not create and does not close.
+data ci_toolchain_home_isolation_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.ci_workflow_run_emit",
+    decl_name: "ci_toolchain_home_isolation_script",
+    field: WholeDeclaration
+  }
+}
+
+data ci_toolchain_home_isolation_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2), at which point this carrier and its unmarked siblings ci_isolate_toolchain_script and ci_pin_rustup_default_script dissolve together")
 
 fn ci_isolate_toolchain_intent(build_jobs_count: Int) -> Pipeline {
   Pipeline {
