@@ -1144,3 +1144,32 @@ test fn a_divergent_binding_cannot_be_priced() -> Bool {
     }
   }
 }
+
+// THE UNEVALUATED COUNT MUST REACH THE READER. It is carried on the dimensions record, but a field
+// nobody renders is a field nobody reads -- and this is the one dimension a reader will treat as
+// bookkeeping. Per-entry measurement mapped across a roster covers the union of those entries'
+// closures, never the corpus, so this number is how much the receipt does NOT speak for. A clean
+// board printed without it reads as coverage while being precisely the shape that is not.
+test fn a_bound_receipt_reports_what_it_does_not_speak_for() -> Bool {
+  let rendered = emit_pricing_receipt_text(
+    receipt: fixture_receipt(subjects: [fixture_clean_subject()], persistence: fixture_persisted)
+  )
+  string_contains(s: rendered, pattern: "unevaluated_subjects\t0")
+    && string_contains(s: rendered, pattern: "roster_size\t2")
+    && string_contains(s: rendered, pattern: "report_bytes\t4096")
+}
+
+// A REFUSED RECEIPT RENDERS AS A REFUSAL NAMING ITS CAUSE, never as a row of zeroes. Zeroed cost
+// figures beside a refusal would read as a measured cheap run.
+test fn a_refused_receipt_renders_no_dimensions_at_all() -> Bool {
+  let rendered = emit_pricing_receipt_text(
+    receipt: fixture_receipt(
+      subjects: [fixture_subject(revision: fixture_revision_a, compiler_hex: "aaaa", tree: WorkingTreeDirty)],
+      persistence: fixture_persisted
+    )
+  )
+  string_contains(s: rendered, pattern: "pricing NOT TAKEN")
+    && string_contains(s: rendered, pattern: "cannot be checked out again")
+    && !string_contains(s: rendered, pattern: "wall_ms")
+    && !string_contains(s: rendered, pattern: "unevaluated_subjects")
+}

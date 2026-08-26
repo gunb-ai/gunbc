@@ -1844,6 +1844,64 @@ fn emit_pricing_receipt(
   }
 }
 
+fn pricing_refusal_cause_text(cause: PricingRefusalCause) -> String {
+  match cause {
+    PricingObservationNotTaken => "the observation was never taken"
+    PricingBindingDivergent { component: c, values: vs } =>
+      concat(
+        concat("the population disagrees about ", observation_component_name(component: c)),
+        concat(" across ", concat(to_string(count(vs)), " distinct values"))
+      )
+    PricingBindingAbsent => "no measurement carried a subject, so there is no run to attribute this to"
+    PricingWorkingTreeDirty => "the working tree was dirty — this cost cannot be checked out again"
+    PricingRunCoordinateUnbound { coordinate: n } =>
+      concat("the runner supplied no ", concat(n, " — the receipt cannot say which run produced it"))
+    PricingReportNotPersisted { cause: c } => concat("the report was not persisted — ", c)
+  }
+}
+
+// THE UNEVALUATED COUNT IS RENDERED BESIDE THE COST FIGURES, NOT BELOW THEM, and that placement is
+// the point rather than formatting. Per-entry measurement mapped across a roster measures the union
+// of the entries' closures, which is NOT the corpus -- a narrow run is on record reporting clean
+// while twelve real sites sat outside what it looked at. So the number of roster subjects this
+// receipt establishes nothing about is the number that says how much it does not speak for, and a
+// clean board printed without it reads as coverage while being exactly the shape that is not.
+fn emit_pricing_receipt_text(receipt: EmitPricingReceipt) -> String {
+  match receipt {
+    PricingReceiptRefused { cause: c } =>
+      concat("pricing NOT TAKEN\t", pricing_refusal_cause_text(cause: c))
+    PricingReceiptBound { context: ctx, dimensions: d } =>
+      concat(
+        concat(
+          concat("pricing\trevision\t", ctx.source_revision as String),
+          concat("\trun\t", run_coordinate_text(coordinate: ctx.run_identity))
+        ),
+        concat(
+          concat(
+            concat("\tattempt\t", run_coordinate_text(coordinate: ctx.run_attempt)),
+            concat("\trunner\t", run_coordinate_text(coordinate: ctx.runner_binding))
+          ),
+          concat(
+            concat(
+              concat("\troster_size\t", to_string(d.roster_size)),
+              concat("\tunevaluated_subjects\t", to_string(d.unevaluated_subject_count))
+            ),
+            concat(
+              concat("\twall_ms\t", to_string(d.wall_ms)),
+              concat(
+                concat("\tcpu_ms\t", to_string(d.cpu_ms)),
+                concat(
+                  concat("\tpeak_rss_bytes\t", to_string(d.peak_rss_bytes)),
+                  concat("\treport_bytes\t", to_string(d.report_bytes))
+                )
+              )
+            )
+          )
+        )
+      )
+  }
+}
+
 fn roster_subject_count(roster: RosterIdentity) -> Int {
   match roster {
     RosterIdentified { policy: _, denominators: _, subject_count: n, digest: _ } => n
