@@ -23,6 +23,7 @@ import v1.std.core {
   generic_param_name_at,
   param_node_type_expr,
   NoConnective,
+  Arrow,
   ContainerSpellingVerdict,
   ContainerSpellingDeclared,
   NotAContainerSpelling,
@@ -1700,6 +1701,36 @@ fn v1_declared_arg_positions_need_clone_param(
   }
 }
 
+// A callable type expression carries its component types OFF the children list: parse builds it as
+// Node { name: "Callable", children: [], connective: Arrow, params: <argument params>, inferred:
+// <return type> }, so every walk that recurses through `.children` sees a leaf. That is why the
+// well-formedness fixpoint below could not see `fn(OrderedClosedInterval<T>) -> R`: the field is a
+// Callable, the Callable has no children, and the walk returned false before ever reaching the
+// declared type named inside it.
+//
+// The components are real type positions, not an encoding detail: an arrow realizes in Rust as
+// `Rc<dyn Fn(A) -> R>` (render_rust_type / callable_type_template), and naming a Clone-bounded
+// declared type at A or R is exactly as ill-formed as naming it at a bare field -- rustc E0277 at
+// the field, before any derive is considered, which is the same trigger
+// trait_derive_emit_item_clone_bound_wf_propagation_note already states for the children path.
+//
+// This yields the components for the WELL-FORMEDNESS walk only, deliberately not for the
+// clone-IMPL walk (v1_type_expr_clone_impl_needs_param): `Rc<dyn Fn(A) -> R>: Clone` is satisfied
+// by Rc alone and requires nothing of A or R, so descending there would bound parameters that no
+// impl needs. A spurious bound is not free -- it tightens the emitted signature and breaks every
+// caller instantiating with a non-Clone argument -- so the two walks stay split on the fact they
+// answer, exactly as the two sub-predicates already are.
+fn v1_callable_type_expr_component_type_exprs(type_expr: Node) -> List<Node> {
+  if type_expr.connective == Arrow {
+    concat(
+      type_expr.params |> map(p => param_node_type_expr(n: p)),
+      [resolved_type(n: type_expr)]
+    )
+  } else {
+    []
+  }
+}
+
 fn v1_type_expr_wf_needs_clone_param(
   param_name: String,
   type_expr: Node,
@@ -1708,7 +1739,18 @@ fn v1_type_expr_wf_needs_clone_param(
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
   let name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: type_expr))
-  if (type_expr.children |> count) == 0 {
+  let callable_components = v1_callable_type_expr_component_type_exprs(type_expr: type_expr)
+  if (callable_components |> count) > 0 {
+    callable_components |> any(c =>
+      v1_type_expr_wf_needs_clone_param(
+        param_name: param_name,
+        type_expr: c,
+        bounds: bounds,
+        type_decl_items: type_decl_items,
+        source_indices: source_indices
+      )
+    )
+  } else if (type_expr.children |> count) == 0 {
     false
   } else {
     let nested = type_expr.children |> any(c =>
