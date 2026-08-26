@@ -11,10 +11,12 @@ import extdeps.linux.cgroup_v2_memory {
   Instantaneous, LifetimeEpochScoped, CumulativeCounter,
   cgroup_memory_metric_kind,
 }
+import gunbc.session_demand_observe { cgroup_child_names, managed_placements, legacy_placements }
 import gunbc.session_demand {
   ManagedSession, LegacyFlatSession, SessionPlacementUnclassifiable,
   SessionPlacementCensusComplete, SessionPlacementCensusIncomplete,
   session_placement_census, census_membership_signal,
+  placement_is_managed, placement_is_unclassifiable,
   session_demand_membership_gate,
   SessionDemandPopulationIncomplete, NoConcurrentSessionDemandObserved,
   SessionDemandObservationUnavailable, SessionDemandObserved,
@@ -184,4 +186,31 @@ fn session_demand_carriers_hold() -> Bool {
     && incomplete_census_yields_no_signal()
     && counted_zero_is_not_unavailable()
     && only_all_managed_opens_the_gate()
+}
+
+// THE PRODUCER'S PURE HALF, exercised so that resolving this witness TYPECHECKS
+// gunbc.session_demand_observe and, through its imports, the two new HostOperation variants in
+// gunbc.host_operation_exec. The host-effect half cannot run here -- a session container sees a
+// namespaced cgroup root and no fleet host -- so what is asserted is exactly the part that does not
+// need a host, and the live receipt is obtained by dispatching the fleet workflow at this branch.
+fn child_name_parsing_holds() -> Bool {
+  let three = cgroup_child_names(stdout: "a\nb\nc\n")
+  let empty_is_a_counted_zero = cgroup_child_names(stdout: "")
+  let ragged = cgroup_child_names(stdout: "  a  \n\n  b\n")
+  count(three) == 3 && count(empty_is_a_counted_zero) == 0 && count(ragged) == 2
+}
+
+// A CHILD OF THE MANAGED SLICE IS MANAGED BY VIRTUE OF WHERE IT WAS FOUND, and a flat scope is
+// unclassifiable rather than guessed into the legacy count. This pair is the producer's whole
+// classification argument, and it needs no docker naming convention to hold.
+fn placement_classification_needs_no_naming_authority() -> Bool {
+  let managed = managed_placements(identities: ["x", "y"])
+  let legacy = legacy_placements(identities: ["z"])
+  let all_managed = all(managed, p => placement_is_managed(p: p))
+  let none_guessed = all(legacy, p => placement_is_unclassifiable(p: p))
+  count(managed) == 2 && count(legacy) == 1 && all_managed && none_guessed
+}
+
+fn session_demand_producer_pure_half_holds() -> Bool {
+  child_name_parsing_holds() && placement_classification_needs_no_naming_authority()
 }

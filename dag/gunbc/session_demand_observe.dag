@@ -1,0 +1,155 @@
+module gunbc.session_demand_observe
+
+import std.algebra { trim }
+import std.types { Bool, List, NonEmptyStr, String }
+import product.placement_supply { HostIdentity }
+import extdeps.linux.cgroup_v2 {
+  cgroup_v2_mount_point, cgroup_v2_child_path, cgroup_v2_slice_path,
+}
+import extdeps.linux.cgroup_v2_memory {
+  MemoryCurrent, MemoryPeak, MemoryMax,
+  cgroup_memory_interface_file_name,
+  parse_cgroup_memory_count, parse_cgroup_memory_limit,
+  CgroupMemoryCountUnparseable,
+}
+import gunbc.host_effect { HostEffectTransport }
+import gunbc.host_operation_exec {
+  HostOperationObserved, HostOperationRefused, host_operation_exec,
+  CgroupListChildren, CgroupReadInterfaceFile,
+}
+import gunbc.oomd_install { gunbc_oomd_sessions_slice }
+import gunbc.session_demand {
+  SessionContainerInventory,
+  SessionContainerInventoryObserved,
+  SessionContainerInventoryUnavailable,
+  SessionPlacement, ManagedSession, SessionPlacementUnclassifiable,
+  SessionMemoryDemand, ParentSliceDemand,
+}
+
+// THE MANAGED SET NEEDS NO NAMING AUTHORITY, and that is what makes this producer writable today.
+// A child of the managed slice IS a managed session BY VIRTUE OF WHERE IT WAS FOUND -- the cgroup
+// hierarchy is the classifier, so no docker-scope naming convention has to be invented to read it.
+//
+// The LEGACY side is the half that genuinely needs an attribution authority: a flat scope under
+// system.slice may be an agent session container or an unrelated container, and this observation
+// cannot tell them apart. Those become SessionPlacementUnclassifiable, which makes the census
+// refuse rather than guess -- correct fail-closed behaviour, and on a fully-converged host the
+// legacy set is empty so the census completes. Inventing a naming rule to make it complete on a
+// mixed host would be exactly the fabrication this carrier exists to prevent.
+data session_demand_legacy_attribution_note: String = "The legacy arm is deliberately unclassifiable rather than pattern-matched. A flat docker scope under system.slice cannot be attributed to an agent session from cgroup structure alone, and no authority in this repository models docker scope naming. Until one does, a host carrying flat scopes refuses its census instead of reporting a population it guessed."
+
+data session_demand_collector_revision: NonEmptyStr = "session-demand-observe-v1"
+
+fn system_slice_path() -> NonEmptyStr {
+  cgroup_v2_child_path(parent: cgroup_v2_mount_point, child: "system.slice")
+}
+
+fn managed_slice_path() -> NonEmptyStr {
+  cgroup_v2_slice_path(slice: gunbc_oomd_sessions_slice)
+}
+
+// AN EMPTY LISTING IS A COUNTED ZERO, NOT A FAILURE. The find returns success with empty stdout on
+// a leaf cgroup -- verified by execution against a real one, which returned 0 children while a
+// plain listing of the same directory returned 92 interface files. So success-with-no-lines must
+// reach the caller as an observed empty population; treating it as unavailable would be the
+// empty-observation narrow, and treating a FAILED read as empty would be worse.
+fn cgroup_child_names(stdout: String) -> List<NonEmptyStr> {
+  filter(map(split(s: trim(stdout), delimiter: "\n"), l => trim(l) as NonEmptyStr), l => (l as String) != "")
+}
+
+fn observe_cgroup_children(
+  transport: HostEffectTransport,
+  host: HostIdentity,
+  cgroup_path: NonEmptyStr,
+) -> SessionContainerInventory {
+  match host_operation_exec(
+    transport: transport,
+    operation: CgroupListChildren { cgroup_path: cgroup_path },
+  ) {
+    HostOperationObserved { stdout: out, success: ok, stderr: _ } =>
+      if ok {
+        SessionContainerInventoryObserved { host: host, identities: cgroup_child_names(stdout: out) }
+      } else {
+        SessionContainerInventoryUnavailable {
+          host: host,
+          cause: concat("cgroup child enumeration exited unsuccessfully for ", cgroup_path as String),
+        }
+      }
+    HostOperationRefused { operation: _, reason: why } =>
+      SessionContainerInventoryUnavailable {
+        host: host,
+        cause: concat("cgroup child enumeration refused: ", why),
+      }
+  }
+}
+
+// A COUNTER THAT COULD NOT BE READ IS NOT A ZERO. The read's own outcome rides through as
+// CgroupMemoryCountUnparseable rather than being defaulted, because an unreadable counter and an
+// idle container are the same number and opposite facts -- and an aggregate that silently absorbed
+// the first would read as a smaller, more attractive demand than the host actually has.
+fn read_memory_count(
+  transport: HostEffectTransport,
+  cgroup_path: NonEmptyStr,
+  file: NonEmptyStr,
+) -> String {
+  match host_operation_exec(
+    transport: transport,
+    operation: CgroupReadInterfaceFile { cgroup_path: cgroup_path, interface_file: file },
+  ) {
+    HostOperationObserved { stdout: out, success: ok, stderr: _ } =>
+      if ok { out } else { concat("<read failed: ", concat(file as String, ">")) }
+    HostOperationRefused { operation: _, reason: why } => concat("<refused: ", concat(why, ">"))
+  }
+}
+
+fn observe_session_memory_demand(
+  transport: HostEffectTransport,
+  parent: NonEmptyStr,
+  identity: NonEmptyStr,
+) -> SessionMemoryDemand {
+  let cgroup = cgroup_v2_child_path(parent: parent, child: identity)
+  SessionMemoryDemand {
+    identity: identity,
+    cgroup: cgroup,
+    memory_current: parse_cgroup_memory_count(
+      body: read_memory_count(
+        transport: transport,
+        cgroup_path: cgroup,
+        file: cgroup_memory_interface_file_name(f: MemoryCurrent),
+      )
+    ),
+  }
+}
+
+fn observe_parent_slice_demand(
+  transport: HostEffectTransport,
+  parent: NonEmptyStr,
+) -> ParentSliceDemand {
+  ParentSliceDemand {
+    cgroup: parent,
+    memory_current: parse_cgroup_memory_count(
+      body: read_memory_count(transport: transport, cgroup_path: parent, file: cgroup_memory_interface_file_name(f: MemoryCurrent))
+    ),
+    memory_peak: parse_cgroup_memory_count(
+      body: read_memory_count(transport: transport, cgroup_path: parent, file: cgroup_memory_interface_file_name(f: MemoryPeak))
+    ),
+    memory_peak_epoch: "cgroup lifetime since creation or last reset; this observation did not reset it and cannot bound it to its own window",
+    memory_max: parse_cgroup_memory_limit(
+      body: read_memory_count(transport: transport, cgroup_path: parent, file: cgroup_memory_interface_file_name(f: MemoryMax))
+    ),
+  }
+}
+
+fn managed_placements(identities: List<NonEmptyStr>) -> List<SessionPlacement> {
+  map(identities, i => ManagedSession {
+    identity: i,
+    cgroup: cgroup_v2_child_path(parent: managed_slice_path(), child: i),
+  })
+}
+
+fn legacy_placements(identities: List<NonEmptyStr>) -> List<SessionPlacement> {
+  map(identities, i => SessionPlacementUnclassifiable {
+    identity: i,
+    cause: "flat scope under system.slice: cgroup structure alone cannot attribute this container to an agent session, and no authority in this repository models docker scope naming",
+  })
+}
