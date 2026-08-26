@@ -1,0 +1,152 @@
+module gunbc.session_container_projection
+
+import std.types { NonEmptyStr, String, Int }
+import std.measure { ByteSize, byte_size_count, measure_scale_fraction_floor }
+import gunbc.fleet_intent_network {
+  HostIdentity,
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+}
+import gunbc.session_reservation_policy {
+  HostSessionReservationPolicy,
+  SessionReservationAllowance, SessionReservationUnestablished, SessionReservationNotApplicable,
+  session_reservation_policy_for,
+}
+
+// THE PER-CONTAINER CAP AND THE AGGREGATE ARE ONE FACT ASKED AT TWO SCALES, and this module is the
+// authority ctrl reads for both. It exists because ctrl currently derives the per-container cap
+// itself, from a formula whose input is not a fact about the machine the container runs on:
+// nodeResourceStatsFor falls back to `node.totalMemBytes ?? hostTotalmem()`, the ORCHESTRATOR's RAM,
+// and the node registry declares totalMemBytes on no entry. Measured on 2026-08-26 from inside a
+// session container created that day: memory.max = 32023 MiB, which inverts through
+// max(8192, floor(totalMemMib / 4)) to a ~125.09 GiB machine, while the host it runs on reports
+// MemTotal = 502.24 GiB. The cap was an exact measurement of the wrong host.
+
+// A PER-CONTAINER CAP IS A PROMISE ABOUT EVERY CONTAINER THE HOST WILL ADMIT, INCLUDING THE ONES
+// THAT DO NOT EXIST YET, so it can be divided out of an aggregate only by a number that bounds the
+// future. An admitted limit is such a bound. An observed count is not: it is a fact about the
+// present, and dividing by it over-issues the moment one more session starts. The two are kept as
+// separate variants rather than one Int because the field they replace (session_concurrency) is
+// currently read as both, and no ruling has settled which it means.
+type SessionConcurrencyBasis
+  = ConcurrencyAdmitted { limit: Int, operator_reason: NonEmptyStr }
+  | ConcurrencyObserved { count: Int, receipt: NonEmptyStr }
+  | ConcurrencyUnestablished { cause: String }
+
+// NO HOST HAS AN ADMITTED LIMIT TODAY, and this is the honest state rather than a placeholder. The
+// operating-point curve in gunbc.ci_runner_placement carries (cap, concurrency) PAIRS as candidate
+// choices to evaluate, not as a live limit any host enforces, and gunbc.fleet_intent_network
+// declares no admission ceiling. Until an operator rules what the concurrency field means and fixes
+// a limit, every host reports Unestablished and every per-container projection refuses. That is the
+// point of the row: the missing ruling is now a typed, located refusal with a named remedy instead
+// of an absent number someone would otherwise fill in with a plausible one.
+fn session_concurrency_basis_for(host: HostIdentity) -> SessionConcurrencyBasis {
+  ConcurrencyUnestablished {
+    cause: "no admitted session limit is declared for any host: gunbc.ci_runner_placement carries session_concurrency only as a candidate operating point to evaluate, and an evaluated candidate is not a limit the host enforces. Refuse to divide an aggregate by it.",
+  }
+}
+
+// A HOST THAT OWES NO AGGREGATE AND A HOST WHOSE AGGREGATE COULD NOT BE ESTABLISHED ARE DIFFERENT
+// STATES WITH OPPOSITE REMEDIES, and collapsing them is the not-applicable-rendered-as-malformed
+// failure DESIGN names. srv3 and srv4 carry no sessions.slice at all, so there is nothing to
+// measure and nothing owed; srv2 carries one but its population is incomplete, so a measurement is
+// owed and missing. A single "no value" arm would send a reader to fix srv3.
+type SessionAggregateProjection
+  = SessionAggregateProjected { bytes: ByteSize }
+  | SessionAggregateNotOwed { cause: String }
+  | SessionAggregateUnprojectable { cause: String }
+
+fn session_aggregate_projection_for(host: HostIdentity) -> SessionAggregateProjection {
+  match session_reservation_policy_for(host: host) {
+    SessionReservationAllowance { bytes: b, evidence_floor: _, operator_reason: _ } =>
+      SessionAggregateProjected { bytes: b }
+    SessionReservationNotApplicable { evidence: _ } =>
+      SessionAggregateNotOwed {
+        cause: "this host carries no sessions.slice, so it hosts no session containers and owes no aggregate reservation",
+      }
+    SessionReservationUnestablished { evidence: _, cause: why } =>
+      SessionAggregateUnprojectable { cause: why }
+  }
+}
+
+type PerContainerCapProjection
+  = PerContainerCapProjected { bytes: ByteSize, aggregate: ByteSize, admitted: Int }
+  | PerContainerCapNotOwed { cause: String }
+  | PerContainerCapUnderivable { cause: String }
+
+// THE DERIVATION IS FLOOR DIVISION AND THE DIRECTION MATTERS: rounding up would let the admitted
+// population exceed the aggregate it was divided out of, which is the one thing the reservation
+// exists to prevent. A zero-or-negative limit refuses rather than producing an unbounded cap.
+fn derive_per_container_cap(aggregate: ByteSize, limit: Int) -> PerContainerCapProjection {
+  if limit <= 0 {
+    PerContainerCapUnderivable {
+      cause: "admitted session limit is non-positive: refuse a degenerate per-container cap",
+    }
+  } else if byte_size_count(b: aggregate) == 0 {
+    PerContainerCapUnderivable {
+      cause: "aggregate reservation is zero bytes: refuse a degenerate per-container cap",
+    }
+  } else {
+    PerContainerCapProjected {
+      bytes: measure_scale_fraction_floor(m: aggregate, num: 1, den: limit),
+      aggregate: aggregate,
+      admitted: limit,
+    }
+  }
+}
+
+fn per_container_cap_from(a: SessionAggregateProjection, c: SessionConcurrencyBasis) -> PerContainerCapProjection {
+  match a {
+    SessionAggregateNotOwed { cause: why } => PerContainerCapNotOwed { cause: why }
+    SessionAggregateUnprojectable { cause: why } => PerContainerCapUnderivable { cause: why }
+    SessionAggregateProjected { bytes: agg } =>
+      match c {
+        ConcurrencyAdmitted { limit: n, operator_reason: _ } => derive_per_container_cap(aggregate: agg, limit: n)
+        ConcurrencyObserved { count: _, receipt: _ } =>
+          PerContainerCapUnderivable {
+            cause: "session concurrency is an observed count, not an admitted limit: it bounds the present population only, so dividing the aggregate by it over-issues the moment one more session starts",
+          }
+        ConcurrencyUnestablished { cause: why } => PerContainerCapUnderivable { cause: why }
+      }
+  }
+}
+
+fn per_container_cap_for(host: HostIdentity) -> PerContainerCapProjection {
+  per_container_cap_from(
+    a: session_aggregate_projection_for(host: host),
+    c: session_concurrency_basis_for(host: host),
+  )
+}
+
+// THE EMITTED DOCUMENT IS THE SEAM ctrl READS, and it carries the refusals rather than omitting
+// them. A projection that emitted only the values it had would be indistinguishable, on the reading
+// side, from one that had not run: ctrl could not tell "this host owes no cap" from "this host's
+// cap could not be derived" from "gunbc never answered". Each line names its host and its
+// disposition, so the absent number is always accompanied by the reason it is absent.
+fn aggregate_line(host: HostIdentity) -> String {
+  match session_aggregate_projection_for(host: host) {
+    SessionAggregateProjected { bytes: b } =>
+      "aggregate\t{host as String}\tPROJECTED\t{to_string(byte_size_count(b: b))}"
+    SessionAggregateNotOwed { cause: why } => "aggregate\t{host as String}\tNOT_OWED\t{why}"
+    SessionAggregateUnprojectable { cause: why } => "aggregate\t{host as String}\tUNPROJECTABLE\t{why}"
+  }
+}
+
+fn per_container_line(host: HostIdentity) -> String {
+  match per_container_cap_for(host: host) {
+    PerContainerCapProjected { bytes: b, aggregate: agg, admitted: n } =>
+      "per_container\t{host as String}\tPROJECTED\t{to_string(byte_size_count(b: b))}\tfrom {to_string(byte_size_count(b: agg))} over {to_string(n)} admitted"
+    PerContainerCapNotOwed { cause: why } => "per_container\t{host as String}\tNOT_OWED\t{why}"
+    PerContainerCapUnderivable { cause: why } => "per_container\t{host as String}\tUNDERIVABLE\t{why}"
+  }
+}
+
+data projected_hosts: List<HostIdentity> = [
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+]
+
+fn session_container_projection_lines() -> List<String> {
+  concat(
+    map(projected_hosts, h => aggregate_line(host: h)),
+    map(projected_hosts, h => per_container_line(host: h)),
+  )
+}
