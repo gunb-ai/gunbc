@@ -114,3 +114,23 @@ test fn the_sole_declaration_entry_carries_neither_class() -> Bool {
   dra_blocking_count(source: dra_sole_entry_source, wanted: "AmbiguousReference") == 0
     && dra_blocking_count(source: dra_sole_entry_source, wanted: "InternalError") == 0
 }
+
+// THE SECOND RECLASSIFIED ARM, MEASURED (codex review 56224, finding 2). A default whose FORM was
+// never admitted is a different question from an unresolvable data reference: the fold returns the
+// expression as itself, `cli_default_literal_value` finds no literal, and nothing lands in the
+// unresolvable map at all -- so this arm is reached through `Absent`, not through a cause. It used
+// to render as InternalError beside the two causes, which put "the compiler has a bug" on an
+// ordinary authoring mistake.
+//
+// THE FIXTURE IS A BINOP RATHER THAN A CALL, deliberately: `1 + 1` is the smallest expression that
+// is neither a literal nor a reference, so the arm is reached without dragging in name resolution
+// that could refuse first for an unrelated reason and satisfy the assertion by accident.
+data dra_inadmissible_default_entry_source: String = "module dra_probe_inadmissible\n\ntype DraFormNet \{\n  id: Int\n}\n\nfunc dra_form_run(model: String = 1 + 1) -> String\n  uses net: DraFormNet\n\{\n  model\n}\n"
+
+test fn an_inadmissible_default_form_is_reported_as_such() -> Bool {
+  dra_blocking_count(source: dra_inadmissible_default_entry_source, wanted: "ParameterDefaultFormNotAdmitted") == 1
+}
+
+test fn an_inadmissible_default_form_is_no_longer_a_compiler_bug() -> Bool {
+  dra_blocking_count(source: dra_inadmissible_default_entry_source, wanted: "InternalError") == 0
+}
