@@ -157,6 +157,41 @@ test fn a_measurement_that_never_reached_the_emitter_produces_no_population() ->
   }
 }
 
+// THE OWNER SPLIT, RUN IN BOTH DIRECTIONS OVER THE SAME SHAPE. A stage BEFORE the emitter says no
+// population was produced; a stage AFTER it says the population exists and the READER could not
+// recover it. The two arms have opposite owners and opposite repairs, and this is the arm hole 3's
+// live specimen lands in: `dag/std/abi.dag` loses the entry-scope marker to a bounded stderr tail,
+// so the emitter ran fine and only the read failed. Collapsing both into `PopulationUnproduced`
+// would tell a human the compiler produced nothing, which is false about the subject.
+test fn a_read_that_failed_after_the_emitter_ran_names_the_reader_and_not_the_emitter() -> Bool {
+  not_evaluated_cause_for_stage(stage: StageEmitDecode, cause: "scope unconfirmed")
+    == PopulationUnreadable { stage: StageEmitDecode, cause: "scope unconfirmed" }
+    && not_evaluated_cause_for_stage(stage: StageEmit, cause: "the emitter never ran")
+      == PopulationUnproduced { stage: StageEmit, cause: "the emitter never ran" }
+    && not_evaluated_cause_for_stage(stage: StageBinaries, cause: "no binaries")
+      == PopulationUnproduced { stage: StageBinaries, cause: "no binaries" }
+}
+
+// AND NEITHER ARM IS COMPARABLE TO CLEAN. The owner split is a repair to the TEXT a person acts on;
+// it must not become a second route by which a not-evaluated subject stops stopping the line.
+test fn an_unreadable_population_is_still_not_evaluated_and_still_refuses() -> Bool {
+  let readings = [
+    fixture_reading(
+      entry: fixture_alpha,
+      outcome: EmitSubjectNotEvaluated {
+        cause: PopulationUnreadable { stage: StageEmitDecode, cause: "scope unconfirmed" }
+      }
+    ),
+    fixture_reading(entry: fixture_beta, outcome: EmitSubjectClean)
+  ]
+  !fixture_standing_holds(roster: fixture_roster, admissions: [], readings: readings)
+    && !fixture_standing_holds(
+      roster: fixture_roster,
+      admissions: [fixture_admission_for(entry: fixture_alpha)],
+      readings: readings
+    )
+}
+
 // ---------------------------------------------------------------------------------------------
 // THE JOIN: the two ratchet directions.
 // ---------------------------------------------------------------------------------------------
