@@ -401,3 +401,18 @@ data operation_argv_binding_wall_stall: GuaranteeStall = GuaranteeStall {
   population: BoundedPopulation { members: Cons { head: "test.claim.operation_argv_binding_wall_witness.operation_argv_previously_unbindable_operation_now_materializes", tail: Empty {} } },
   next_rung_trigger: "node://adhoc-a3b0e05f-374 lands: the operation-argv binding wall materializes the controlled previously-unbindable operation"
 }
+
+// REQUIRED-FLOOR RUN 32942047138 first executed this ReadsLiveTree carrier after #9284 landed.
+// The direct byte-equality witness and its aggregate both returned false: one underlying fact,
+// namely that the committed .gitattributes no longer equals its emitting authority. This is real
+// generated-artifact drift, not a stale expectation. The floor cut's generated-artifact drift
+// gates are currently absent, so nothing refused the authority/artifact disagreement when it was
+// introduced; this bounded row keeps the two projections attached to the one repair obligation.
+data gitattributes_committed_emit_drift_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the committed .gitattributes differs from the bytes derived by its emitting authority",
+  current: OutsideTheLadder,
+  ceiling: MechanicallyPreventable,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "test.claim.gitattributes_emit_witness.witness_committed_matches_emit_holds", tail: Cons { head: "test.claim.gitattributes_emit_witness.witness_holds", tail: Empty {} } } },
+  next_rung_trigger: "node://adhoc-16f7520a-85f lands: identify the authority edit that introduced the drift, regenerate .gitattributes from that authority, and restore a required generated-artifact drift gate so later authority/artifact disagreement refuses"
+}
