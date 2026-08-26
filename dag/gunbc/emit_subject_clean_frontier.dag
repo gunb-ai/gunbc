@@ -802,6 +802,7 @@ type EmitRatchetVerdict
   | RatchetFrontierStale { entry: String }
   | RatchetNotEvaluated { entry: String, on_frontier: Bool, cause: EmitNotEvaluatedCause }
   | RatchetSubjectUnmeasured { entry: String, on_frontier: Bool }
+  | RatchetSubjectNotSelected { entry: String, on_frontier: Bool }
 
 fn emit_ratchet_verdict_entry(v: EmitRatchetVerdict) -> String {
   match v {
@@ -811,6 +812,7 @@ fn emit_ratchet_verdict_entry(v: EmitRatchetVerdict) -> String {
     RatchetFrontierStale { entry: e } => e
     RatchetNotEvaluated { entry: e, on_frontier: _, cause: _ } => e
     RatchetSubjectUnmeasured { entry: e, on_frontier: _ } => e
+    RatchetSubjectNotSelected { entry: e, on_frontier: _ } => e
   }
 }
 
@@ -850,6 +852,7 @@ fn emit_ratchet_verdict_standing(v: EmitRatchetVerdict) -> VerdictStanding {
     RatchetFrontierStale { entry: _ } => VerdictEstablishedAndRefused
     RatchetNotEvaluated { entry: _, on_frontier: _, cause: _ } => VerdictUnestablished
     RatchetSubjectUnmeasured { entry: _, on_frontier: _ } => VerdictUnestablished
+    RatchetSubjectNotSelected { entry: _, on_frontier: _ } => VerdictUnestablished
   }
 }
 
@@ -891,7 +894,12 @@ fn emit_ratchet_verdict_row(v: EmitRatchetVerdict) -> String {
     RatchetSubjectUnmeasured { entry: e, on_frontier: f } =>
       concat(
         concat(concat("UNMEASURED\t", e), concat("\ton_frontier\t", to_string(f))),
-        "\tthe fold was handed no measurement for this roster subject — a partial run cannot answer a closed-universe claim"
+        "\tthe instrument was asked about this subject and produced no reading for it — a deficit in the run, not its scope"
+      )
+    RatchetSubjectNotSelected { entry: e, on_frontier: f } =>
+      concat(
+        concat(concat("NOT-SELECTED\t", e), concat("\ton_frontier\t", to_string(f))),
+        "\tthis run measured a subset and never asked about this subject — scope rather than a deficit, and still not a verdict"
       )
   }
 }
@@ -952,9 +960,56 @@ fn lookup_subject_reading(readings: List<EmitSubjectReading>, entry: String) -> 
   )
 }
 
-fn emit_ratchet_verdict_for(entry: String, on_frontier: Bool, readings: List<EmitSubjectReading>) -> EmitRatchetVerdict {
+// ---------------------------------------------------------------------------------------------
+// THE SELECTION, WHICH IS WHY "NO VERDICT" IS TWO FACTS AND NOT ONE.
+//
+// A roster subject can arrive at the fold with no reading for two reasons that share nothing but
+// their silence. Either the run ASKED about it and the instrument produced nothing -- a deficit in
+// the run -- or the run never asked, because `entries` named a subset. The owners are opposite:
+// the first is an instrument to fix, the second is a run to widen, and a reader handed one
+// UNMEASURED count cannot tell which they are looking at.
+//
+// This module already draws exactly this distinction correctly one axis over: an admission row
+// naming a subject the roster lacks is reported as an ORPHAN rather than as a missing measurement,
+// because the two have opposite owners. The selection axis is the same shape and did not get the
+// same treatment, so it is given one here.
+//
+// THE CARRIER IS A COPRODUCT AND NOT A LIST, deliberately. A bare `List<String>` would make the
+// empty list mean both a subset naming nothing and no subsetting at all -- the state-space
+// conflation this type exists to remove, reintroduced in the type that removes it.
+type SubjectSelection
+  = SelectionWholeRoster
+  | SelectionSubset { entries: List<String> }
+
+fn subject_was_selected(selection: SubjectSelection, entry: String) -> Bool {
+  match selection {
+    SelectionWholeRoster => true
+    SelectionSubset { entries: es } => string_list_contains(xs: es, wanted: entry)
+  }
+}
+
+// The subjects an instrument should be invoked over, which is the SAME value the classification
+// above reads. A caller deriving this list independently of the selection is how the two drift.
+fn subject_selection_entries(selection: SubjectSelection, roster: List<String>) -> List<String> {
+  match selection {
+    SelectionWholeRoster => roster
+    SelectionSubset { entries: es } => es
+  }
+}
+
+fn emit_ratchet_verdict_for(
+  entry: String,
+  on_frontier: Bool,
+  selection: SubjectSelection,
+  readings: List<EmitSubjectReading>
+) -> EmitRatchetVerdict {
   match lookup_subject_reading(readings: readings, entry: entry) {
-    SubjectReadingAbsent => RatchetSubjectUnmeasured { entry: entry, on_frontier: on_frontier }
+    SubjectReadingAbsent =>
+      if subject_was_selected(selection: selection, entry: entry) {
+        RatchetSubjectUnmeasured { entry: entry, on_frontier: on_frontier }
+      } else {
+        RatchetSubjectNotSelected { entry: entry, on_frontier: on_frontier }
+      }
     SubjectReadingFound { reading: reading } =>
       emit_ratchet_verdict_of_outcome(
         entry: entry,
@@ -982,6 +1037,7 @@ type EmitSubjectCleanRatchet {
 fn fold_emit_subject_clean_ratchet_over_readings(
   universe: RatchetUniverse,
   admissions: List<EmitDebtAdmission>,
+  selection: SubjectSelection,
   readings: List<EmitSubjectReading>
 ) -> EmitSubjectCleanRatchet {
   let keys = map(admissions, a => emit_debt_admission_entry(admission: a))
@@ -995,6 +1051,7 @@ fn fold_emit_subject_clean_ratchet_over_readings(
         emit_ratchet_verdict_for(
           entry: entry,
           on_frontier: string_list_contains(xs: keys, wanted: entry),
+          selection: selection,
           readings: all_readings
         )
     ),
@@ -1020,11 +1077,13 @@ fn fold_emit_subject_clean_ratchet_over_readings(
 fn fold_emit_subject_clean_ratchet(
   universe: RatchetUniverse,
   admissions: List<EmitDebtAdmission>,
+  selection: SubjectSelection,
   measurements: List<EmissionMeasurement>
 ) -> EmitSubjectCleanRatchet {
   fold_emit_subject_clean_ratchet_over_readings(
     universe: universe,
     admissions: admissions,
+    selection: selection,
     readings: map(measurements, m => emit_subject_reading(m: m))
   )
 }

@@ -57,6 +57,7 @@ fn fixture_fold_of(
   fold_emit_subject_clean_ratchet_over_readings(
     universe: IndexOnlyUniverse { policy: fixture_policy(), entries: roster },
     admissions: admissions,
+    selection: SelectionWholeRoster,
     readings: readings
   )
 }
@@ -105,6 +106,7 @@ fn fixture_dual_fold(
       inventory: inventory
     },
     admissions: [],
+    selection: SelectionWholeRoster,
     readings: readings
   )
 }
@@ -269,7 +271,7 @@ test fn a_partial_run_refuses_and_names_the_subjects_it_did_not_measure() -> Boo
   let readings = [fixture_reading(entry: fixture_alpha, outcome: EmitSubjectClean)]
   !fixture_standing_holds(roster: fixture_roster, admissions: [], readings: readings)
     && fixture_failing_rows(roster: fixture_roster, admissions: [], readings: readings)
-      == ["UNMEASURED\tdag/fixture/beta.dag\ton_frontier\tfalse\tthe fold was handed no measurement for this roster subject — a partial run cannot answer a closed-universe claim"]
+      == ["UNMEASURED\tdag/fixture/beta.dag\ton_frontier\tfalse\tthe instrument was asked about this subject and produced no reading for it — a deficit in the run, not its scope"]
 }
 
 // RED: an admission row naming a subject the discovered roster does not contain is a row to delete,
@@ -451,6 +453,7 @@ test fn a_measurement_cannot_overwrite_an_unclassified_files_classification() ->
       inventory: [fixture_alpha, fixture_beta, hidden]
     },
     admissions: [],
+    selection: SelectionWholeRoster,
     readings: concat(fixture_both_clean(), [fixture_reading(entry: hidden, outcome: EmitSubjectClean)])
   )
   count(
@@ -495,6 +498,7 @@ fn fixture_empty_dual_fold() -> EmitSubjectCleanRatchet {
   fold_emit_subject_clean_ratchet_over_readings(
     universe: DualUniverse { policy: fixture_policy(), entries: [], inventory: [] },
     admissions: [],
+    selection: SelectionWholeRoster,
     readings: []
   )
 }
@@ -767,13 +771,67 @@ test fn the_ratchet_runner_has_no_executing_consumer_today() -> Bool {
 // by measuring them against each other, which is exactly how it came up in review. Routing both
 // through `emit_ratchet_verdict_standing` makes the divergence a named class, and this claim pins
 // the two properties that make the split load-bearing rather than decorative.
+
+// ---------------------------------------------------------------------------------------------
+// THE SELECTION SPLIT: ONE SILENCE, TWO OWNERS.
+//
+// A roster subject with no reading used to render as UNMEASURED whether the run had asked about it
+// or not. The two facts have opposite remedies -- fix the instrument, or widen the run -- so a
+// reader handed one count could not tell which they were looking at. The pair below is the whole
+// evidence for the split, and it is a ONE-FIELD control: the roster, the admissions and the
+// readings are IDENTICAL across both claims and only the selection differs. A green that survived
+// collapsing the two arms would therefore have to be an accident of the selection alone.
+// ---------------------------------------------------------------------------------------------
+
+fn fixture_beta_verdict_under(selection: SubjectSelection) -> List<EmitRatchetVerdict> {
+  filter(
+    fold_emit_subject_clean_ratchet_over_readings(
+      universe: IndexOnlyUniverse { policy: fixture_policy(), entries: fixture_roster },
+      admissions: [],
+      selection: selection,
+      readings: [fixture_reading(entry: fixture_alpha, outcome: EmitSubjectClean)]
+    ).verdicts,
+    v => emit_ratchet_verdict_entry(v: v) == fixture_beta
+  )
+}
+
+// RED: a subject the run never asked about must not be reported as one the instrument failed on.
+// If the classifier stops consulting the selection, this arm collapses into the one below.
+test fn a_subject_the_run_never_selected_is_scope_rather_than_a_deficit() -> Bool {
+  fixture_beta_verdict_under(selection: SelectionSubset { entries: [fixture_alpha] })
+    == [RatchetSubjectNotSelected { entry: fixture_beta, on_frontier: false }]
+}
+
+// RED: the same silence, from a run that DID ask, is a deficit and keeps its old name. This is the
+// control that makes the claim above discriminating rather than a rename.
+test fn a_subject_the_run_selected_and_could_not_measure_is_still_a_deficit() -> Bool {
+  fixture_beta_verdict_under(selection: SelectionWholeRoster)
+    == [RatchetSubjectUnmeasured { entry: fixture_beta, on_frontier: false }]
+}
+
+// NEITHER IS A VERDICT. The split names two owners; it does not promote scope into evidence, and a
+// gate must still refuse over both. If the new arm were ever classified as established, a subset
+// run would start answering a closed-universe question it never asked.
+test fn neither_silence_establishes_a_verdict() -> Bool {
+  count(
+    filter(
+      [
+        RatchetSubjectNotSelected { entry: fixture_beta, on_frontier: false },
+        RatchetSubjectUnmeasured { entry: fixture_beta, on_frontier: false }
+      ],
+      v => emit_ratchet_verdict_evaluated(v: v) || emit_ratchet_verdict_holds(v: v)
+    )
+  ) == 0
+}
+
 data every_verdict_shape: List<EmitRatchetVerdict> = [
   RatchetCleanHeld { entry: fixture_alpha },
   RatchetDebtHeld { entry: fixture_alpha, cause: BlockingDiagnostics { blocking: 1 } },
   RatchetRegressed { entry: fixture_alpha, cause: BlockingDiagnostics { blocking: 1 } },
   RatchetFrontierStale { entry: fixture_alpha },
   RatchetNotEvaluated { entry: fixture_alpha, on_frontier: false, cause: ExtentUnestablished },
-  RatchetSubjectUnmeasured { entry: fixture_alpha, on_frontier: false }
+  RatchetSubjectUnmeasured { entry: fixture_alpha, on_frontier: false },
+  RatchetSubjectNotSelected { entry: fixture_alpha, on_frontier: false }
 ]
 
 // A HELD VERDICT IS ALWAYS AN EVALUATED ONE -- the ratchet cannot hold over a subject nobody
