@@ -32,8 +32,13 @@ import gunbc.floor_attempt_standing {
   AttemptStandsUnestablished,
   floor_evaluation_mechanism_name,
   floor_evaluation_attribution_name,
+  MechanismEstablished,
+  MechanismUnestablished,
+  WorkflowCancelled,
+  RunnerLost,
   floor_mechanism_unestablished_name,
   floor_mechanism_workflow_cancelled_name,
+  floor_mechanism_runner_lost_name,
   floor_attribution_unestablished_name
 }
 import gunbc.witness_floor_workflow {
@@ -242,14 +247,19 @@ test fn w_RED_the_attempt_receipt_labels_are_one_authority() -> Bool {
 }
 
 
-// THE MECHANISM AXIS IS ESTABLISHED IN EXACTLY ONE CASE, AND THE PAIR IS WHAT MAKES THAT A CLAIM.
+// A CANCELLED LANE ESTABLISHES NEITHER AXIS, AND THIS ROW REPLACES ONE THAT ASSERTED THE OPPOSITE.
 //
-// A cancelled lane establishes MECHANISM and still leaves ATTRIBUTION open, because cancellation
-// says only that this attempt stopped and never why -- a newer push, an operator, a lost runner
-// and a workflow timeout all produce it. Asserting the mechanism without asserting that the
-// attribution stayed open would let a later change silently upgrade the second axis off the
-// first, which is exactly the collapse the two axes exist to prevent.
-test fn w_RED_a_cancelled_lane_establishes_mechanism_but_never_attribution() -> Bool {
+// Its earlier form asserted `MechanismEstablished { WorkflowCancelled }` for a cancelled lane and
+// went green over a fabrication. Measured across 172 jobs in 80 runs, 27 of 27 jobs that never
+// acquired a runner -- `runner_id=0`, `runner_name=""`, `steps=[]` -- reported `cancelled`, on
+// PUSH events where supersession is impossible by construction. The word `cancelled` therefore
+// does not say the workflow cancelled it; it collapses a job that ran and was stopped with a job
+// that never started, two causes with opposite remedies.
+//
+// THE EVIDENCE CONJUNCT IS LOAD-BEARING RATHER THAN DECORATIVE. Without it this row would stay
+// green over a derivation that had stopped distinguishing lane spellings at all, which is a
+// different defect with the same rendering.
+test fn w_RED_a_cancelled_lane_establishes_neither_axis() -> Bool {
   match floor_rendered_verdict(
     standing: FloorHeadCurrent { measured: "aaaaaaa" },
     build: LaneSucceeded,
@@ -257,13 +267,30 @@ test fn w_RED_a_cancelled_lane_establishes_mechanism_but_never_attribution() -> 
   ) {
     AttemptStandsUnestablished { standing: _, build: _, floor: _, interruption: i } =>
       floor_evaluation_mechanism_name(mechanism: i.mechanism)
-        == floor_mechanism_workflow_cancelled_name
+        == floor_mechanism_unestablished_name
         && floor_evaluation_attribution_name(attribution: i.attribution)
           == floor_attribution_unestablished_name
+        && i.evidence == "cancelled"
     AttemptStandsRed { standing: _, build: _, floor: _, interruption: _ } => false
     AttemptStandsGreen { standing: _ } => false
     AttemptSuperseded { measured: _, current: _ } => false
   }
+}
+
+// THE ESTABLISHED-MECHANISM VOCABULARY IS EXERCISED FROM A FIXTURE, so removing the one
+// derivation that produced it does not leave `MechanismEstablished` an unreachable decoration.
+//
+// This is the same distinction the superseded arm turns on: an arm whose red cannot be produced
+// ANYWHERE is a decoration and should not exist; an arm whose red is authorable and merely
+// unoccupied is a guard being quiet. `MechanismEstablished` is the second, and what would occupy
+// it is the assignment-standing axis named on `floor_lane_interruption`.
+test fn w_RED_the_established_mechanism_vocabulary_still_renders() -> Bool {
+  floor_evaluation_mechanism_name(mechanism: MechanismEstablished { kind: WorkflowCancelled })
+    == floor_mechanism_workflow_cancelled_name
+    && floor_evaluation_mechanism_name(mechanism: MechanismEstablished { kind: RunnerLost })
+      == floor_mechanism_runner_lost_name
+    && floor_evaluation_mechanism_name(mechanism: MechanismUnestablished)
+      == floor_mechanism_unestablished_name
 }
 
 // A FAILED LANE ESTABLISHES NEITHER AXIS, AND THIS ROW IS BUILT TO GO RED WHEN THAT CHANGES.
@@ -301,12 +328,20 @@ test fn w_RED_a_failed_lane_carries_no_established_mechanism() -> Bool {
 // BOTH AXES REACH THE EMITTED GATE, so the population of unestablished mechanisms is countable
 // from the runs that produce it rather than only from this model. Without this row the axes could
 // be modelled perfectly and rendered nowhere, which is the inert half DESIGN 6 names.
+//
+// THE THIRD CONJUNCT IS A NEGATIVE AND IT IS THE FLIP. No emitted arm may render
+// `workflow-cancelled`, because nothing the aggregator reads establishes that mechanism -- 27 of
+// 27 never-assigned jobs report `cancelled` on push events where supersession cannot occur. The
+// day an assignment-standing axis lands and the gate legitimately renders an established
+// mechanism, this row goes RED, routing whoever lands it back to `floor_lane_interruption` to
+// retire the measurement recorded there. Same construction as the head axis and the subject
+// receipt: a claim that re-derives itself rather than a note asking someone to remember.
 test fn w_RED_the_emitted_gate_renders_both_interruption_axes() -> Bool {
   match expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
       string_contains(s: yml, pattern: "mechanism=")
         && string_contains(s: yml, pattern: "attribution=")
-        && string_contains(s: yml, pattern: floor_mechanism_workflow_cancelled_name)
+        && string_contains(s: yml, pattern: floor_mechanism_workflow_cancelled_name) == false
     WitnessFloorGenerationRefused => false
   }
 }

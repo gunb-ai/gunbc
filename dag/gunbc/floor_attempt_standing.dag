@@ -397,13 +397,47 @@ fn floor_standing_attempt_verdict(
 // population stays countable from the runs that produce it -- a state nobody measures is a state
 // that never gets promoted. The instrument is the required run's own log line, named rather than
 // transcribed.
+// NO LANE RESULT STRING ESTABLISHES A MECHANISM, INCLUDING `cancelled`, AND THIS ARM IS A
+// CORRECTION MEASURED AFTER THE FIRST CUT OF THIS MODULE RATHER THAN A CAUTION.
+//
+// The first cut answered `MechanismEstablished { WorkflowCancelled }` for a cancelled lane, on
+// the reasoning that the word `cancelled` at least says the workflow cancelled it. THAT IS
+// FALSE, and the measurement is decisive (smart-ram-730, 172 jobs across 80 recent runs):
+//
+//   runner_name EMPTY  n=27   ALL cancelled, 24 of them at 181-182s
+//   runner_name SET    n=145  50 success / 48 cancelled / 47 failure, ZERO in that window
+//
+// Every job in the first group has `runner_id=0`, `runner_name=""` and `steps=[]`: it never
+// acquired a runner and never executed a step. They are PUSH events on main, where
+// cancel-in-progress is a pull_request predicate and the concurrency group keys on `run_id`, so
+// SUPERSESSION IS IMPOSSIBLE BY CONSTRUCTION -- and the first cut reported
+// `mechanism=workflow-cancelled` for every one of them.
+//
+// A FABRICATED ATTRIBUTION IS WORSE THAN THE `unestablished` IT OVERWRITES. A non-answer sends
+// the reader to look; a confident wrong answer sends them to look in the WRONG PLACE, which is
+// the exact cost this module exists to remove. So the cancelled arm returns the same
+// unestablished interruption as every other spelling, and MECHANISM IS NOW ESTABLISHED BY
+// NOTHING THE AGGREGATOR CURRENTLY READS.
+//
+// THIS IS THE TOTAL-AT-THE-LEVEL-EXAMINED SHAPE, IN THE MODULE THAT ARGUES AGAINST IT.
+// `FloorLaneTerminal` is exhaustive over lane RESULT strings and blind to whether the job was
+// ever ASSIGNED. No arm was missing, nothing failed to compile, and two causes with opposite
+// remedies were collapsed -- a job that ran and was stopped, and a job that never started.
+//
+// `MechanismEstablished` IS NOT NOW A DECORATION, and the distinction is the one DESIGN 4b
+// draws: its red is authorable from a FIXTURE, which is where
+// `w_RED_the_established_mechanism_vocabulary_still_renders` exercises it. It is an unoccupied
+// guard, not an unreachable one, and what would occupy it is the trigger below.
+//
+// NEXT-RUNG TRIGGER: an ASSIGNMENT STANDING axis -- NeverAssigned versus Assigned, read ahead of
+// lane terminality. KEY IT ON `runner_id` / `runner_name` / `steps`, NEVER ON ELAPSED TIME. The
+// 181s boundary above is measured but its owner is unknown; GitHub documents a 60-second
+// pickup-requeue, so three failed windows plus bookkeeping is plausible and unproven. A clock can
+// move while the semantic state stays identical, and a check keyed to 3:01 would go quiet for the
+// same defect.
 fn floor_lane_interruption(terminal: FloorLaneTerminal) -> EvaluationInterruption {
   match terminal {
-    LaneCancelled => EvaluationInterruption {
-      mechanism: MechanismEstablished { kind: WorkflowCancelled },
-      attribution: AttributionUnestablished,
-      evidence: floor_lane_terminal_name(terminal: terminal)
-    }
+    LaneCancelled => floor_unestablished_interruption(terminal: terminal)
     LaneSucceeded => floor_unestablished_interruption(terminal: terminal)
     LaneFailed => floor_unestablished_interruption(terminal: terminal)
     LaneSkipped => floor_unestablished_interruption(terminal: terminal)

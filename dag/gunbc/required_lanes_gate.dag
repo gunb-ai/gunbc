@@ -20,9 +20,7 @@ import gunbc.floor_attempt_standing {
   floor_attempt_receipt_standing_label,
   floor_lane_result_success,
   floor_lane_result_failure,
-  floor_lane_result_cancelled,
   floor_mechanism_unestablished_name,
-  floor_mechanism_workflow_cancelled_name,
   floor_attribution_unestablished_name,
   floor_head_standing_not_applicable,
   floor_head_standing_unobserved,
@@ -221,42 +219,30 @@ fn required_lanes_verdict_stmts(
 
 // THE INTERRUPTION AXES, RENDERED FROM WHAT THE AGGREGATOR HOLDS AND NOTHING MORE.
 //
-// Two `needs.*.result` words establish the MECHANISM in exactly one case -- a lane the workflow
-// cancelled -- and the ATTRIBUTION in none. `gunbc.floor_attempt_standing` owns that derivation;
-// this is its shell realization, and it must stay as weak as the model: an attribution guessed
-// here from a conclusion word would be the fabricated plausible output the model exists to refuse.
+// Two `needs.*.result` words establish NEITHER AXIS, and the earlier cut of this function which
+// answered `workflow-cancelled` for a cancelled lane was measured wrong: 27 of 27 never-assigned
+// jobs -- `runner_id=0`, `runner_name=""`, `steps=[]` -- reported cancelled on PUSH events where
+// supersession is impossible by construction. `gunbc.floor_attempt_standing`
+// `floor_lane_interruption` carries the measurement and the assignment-standing trigger that
+// would occupy the established arm.
+//
+// SO BOTH ASSIGNMENTS ARE CONSTANT, AND THAT IS THE POINT RATHER THAN AN OVERSIGHT. This function
+// is the shell realization of a derivation that currently establishes nothing, and it must stay
+// exactly as weak as the model: a mechanism guessed here from a conclusion word is the fabricated
+// plausible output the model exists to refuse, and it is WORSE than the non-answer it overwrites
+// because a confident wrong answer sends the reader to look in the wrong place.
 //
 // THE UNESTABLISHED SPELLING IS PRINTED RATHER THAN OMITTED, and that is the point of the pair.
 // A blocking run that says `mechanism=unestablished attribution=unestablished` is a countable
 // deficit whose population can be read off the runs; a blocking run that says nothing about
 // either is an untyped infra bucket that never ranks for promotion.
 fn required_lanes_interruption_stmts(
-  build_var: String,
-  floor_var: String,
   mechanism_var: String,
   attribution_var: String
 ) -> List<Node> {
   [
     bash_build_assign_lit(name: mechanism_var, text: floor_mechanism_unestablished_name),
-    bash_build_assign_lit(name: attribution_var, text: floor_attribution_unestablished_name),
-    bash_build_if_from_stmts(
-      cond: bash_build_or_else(
-        left: required_lane_var_equals_lit_test(
-          var_name: build_var,
-          text: floor_lane_result_cancelled
-        ),
-        right: required_lane_var_equals_lit_test(
-          var_name: floor_var,
-          text: floor_lane_result_cancelled
-        )
-      ),
-      then_stmts: [
-        bash_build_assign_lit(
-          name: mechanism_var,
-          text: floor_mechanism_workflow_cancelled_name
-        )
-      ]
-    )
+    bash_build_assign_lit(name: attribution_var, text: floor_attribution_unestablished_name)
   ]
 }
 
@@ -434,8 +420,6 @@ fn required_lanes_gate_stmts(
   let through_interruption_axes = list_append(
     left: through_lane_axis,
     right: required_lanes_interruption_stmts(
-      build_var: build_var,
-      floor_var: floor_var,
       mechanism_var: mechanism_var,
       attribution_var: attribution_var
     )

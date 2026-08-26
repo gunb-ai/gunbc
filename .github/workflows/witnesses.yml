@@ -136,7 +136,6 @@ jobs:
           if '[' "$BUILD" '=' 'failure' ']' || '[' "$FLOOR" '=' 'failure' ']'; then VERDICT='stands-red'; fi
           MECHANISM='unestablished'
           ATTRIBUTION='unestablished'
-          if '[' "$BUILD" '=' 'cancelled' ']' || '[' "$FLOOR" '=' 'cancelled' ']'; then MECHANISM='workflow-cancelled'; fi
           'echo' 'required lanes: build='"$BUILD"' floor='"$FLOOR"' verdict='"$VERDICT"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"
           if '[' "$VERDICT" '=' 'stands-red' ']'; then 'echo' '::error::a required lane concluded failure; that alone does not establish whether its subject was evaluated, so read the log before assuming a defect in the diff (build='"$BUILD"' floor='"$FLOOR"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"') - open that job'\''s log' >&2; exit 1; fi
           if '[' "$VERDICT" '=' 'stands-unestablished' ']'; then 'echo' '::error::a required lane produced no conclusion of its own, so this head'\''s floor verdict is unobservable rather than failed; rerun it (build='"$BUILD"' floor='"$FLOOR"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"') - open that job'\''s log' >&2; exit 1; fi
