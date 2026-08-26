@@ -1,0 +1,262 @@
+module product.fan_tach_health
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.measure { RevolutionsPerMinute }
+import gunbc.fleet_fan_tach_expectation {
+  ChassisBayHeader,
+  FanHeaderExpectationRow,
+  FanHeaderRole,
+  HostFanTachExpectation,
+  ProcessorCoolerHeader,
+  TachExpected,
+  TachNotExpected,
+}
+import gunbc.fleet_fan_tach_observation {
+  FanTachObservationRow,
+  FanTachReading,
+  HostFanTachObservation,
+  TachReadZero,
+  TachRotating,
+  TachValueUnavailable,
+}
+
+// THE JOIN, AND IT IS DRIVEN BY THE EXPECTATION RATHER THAN BY THE OBSERVATIONS.
+//
+// That direction is the whole safety property. Folding over the observations - which an earlier
+// revision did - means a header the collector simply OMITTED produces no verdict at all: the
+// judged denominator silently shrinks to whatever the collector happened to return, and the
+// module whose entire purpose is to notice a missing reading fails open on a missing reading.
+// It looked safe only because the witness hand-authored an explicit absent row for every gap,
+// which is not an ingestion contract, it is the author remembering.
+//
+// So: every EXPECTED header must find exactly one observation or produce a typed gap, and every
+// OBSERVATION must find exactly one declared header or produce a typed gap. Duplicates on either
+// side refuse outright rather than being silently resolved by first-match, which is what both
+// lookup folds used to do.
+
+// WHY ABSENCE IS SPLIT. Rotation that was expected and did not happen is ONE verdict with TWO
+// distinguishable causes, and the difference decides who looks at it: a rotor reading zero is
+// evidence about a fan, while a sensor publishing nothing may be a missing Redfish object, a
+// failed publication, or a header the BMC declines to report - which is evidence about the
+// telemetry path.
+type FanRotationAbsence
+  = RotorReadZero
+  | TachValueNotPublished
+
+// NOTE WHAT IS ABSENT FROM THIS COPRODUCT: there is no FanFailed arm.
+//
+// A tach that does not report rotation is consistent with a stopped fan, a disconnected fan, a
+// missing tach conductor, a failed splitter or connector, a sensor publication failure, a stale
+// Redfish object, and a simply-wrong expectation. An earlier revision collapsed all seven into
+// one verdict named for the first. Header grain can conclude that expected rotation was not
+// observed; concluding that a FAN FAILED needs a like-for-like comparison and a physical
+// inspection, and belongs to whoever does those.
+type FanTachVerdict
+  = RotationObserved { header: NonEmptyStr, speed: RevolutionsPerMinute }
+  | RotationCorrectlyAbsent { header: NonEmptyStr }
+  | ExpectedRotationNotObserved {
+      header: NonEmptyStr,
+      role: FanHeaderRole,
+      absence: FanRotationAbsence,
+    }
+  | UnexpectedRotation { header: NonEmptyStr, speed: RevolutionsPerMinute }
+  | ExpectedHeaderObservationMissing { header: NonEmptyStr, role: FanHeaderRole }
+  | ObservationForUndeclaredHeader { header: NonEmptyStr }
+
+type FanTachRefusalCause
+  = DuplicateExpectedHeader { header: NonEmptyStr }
+  | DuplicateObservedHeader { header: NonEmptyStr }
+  | HostIdentityMismatch
+
+type FanTachAssessment
+  = FanTachAssessed { verdicts: List<FanTachVerdict> }
+  | FanTachRefused { cause: FanTachRefusalCause }
+
+fn count_header_in(headers: List<NonEmptyStr>, header: NonEmptyStr) -> Int {
+  fold(headers, init: 0, f: (acc, h) => if h == header { acc + 1 } else { acc })
+}
+
+fn first_duplicate(headers: List<NonEmptyStr>) -> NonEmptyStr? {
+  fold(
+    headers,
+    init: none,
+    f: (acc, h) =>
+      match acc {
+        Present { value } => Present { value: value }
+        none => if count_header_in(headers: headers, header: h) > 1 { Present { value: h } } else { none }
+      },
+  )
+}
+
+fn observation_for(
+  observation: HostFanTachObservation,
+  header: NonEmptyStr,
+) -> FanTachObservationRow? {
+  fold(
+    observation.rows,
+    init: none,
+    f: (acc, row) =>
+      match acc {
+        Present { value } => Present { value: value }
+        none => if row.header == header { Present { value: row } } else { none }
+      },
+  )
+}
+
+fn expectation_for(
+  expectation: HostFanTachExpectation,
+  header: NonEmptyStr,
+) -> FanHeaderExpectationRow? {
+  fold(
+    expectation.headers,
+    init: none,
+    f: (acc, row) =>
+      match acc {
+        Present { value } => Present { value: value }
+        none => if row.header == header { Present { value: row } } else { none }
+      },
+  )
+}
+
+fn verdict_for_expected(
+  header: NonEmptyStr,
+  role: FanHeaderRole,
+  observation: HostFanTachObservation,
+) -> FanTachVerdict {
+  match observation_for(observation: observation, header: header) {
+    none => ExpectedHeaderObservationMissing { header: header, role: role }
+    Present { value: row } =>
+      match row.reading {
+        TachRotating { speed } => RotationObserved { header: header, speed: speed }
+        TachReadZero =>
+          ExpectedRotationNotObserved { header: header, role: role, absence: RotorReadZero }
+        TachValueUnavailable =>
+          ExpectedRotationNotObserved {
+            header: header,
+            role: role,
+            absence: TachValueNotPublished,
+          }
+      }
+  }
+}
+
+fn verdict_for_unexpected(
+  header: NonEmptyStr,
+  observation: HostFanTachObservation,
+) -> FanTachVerdict {
+  match observation_for(observation: observation, header: header) {
+    none => RotationCorrectlyAbsent { header: header }
+    Present { value: row } =>
+      match row.reading {
+        TachRotating { speed } => UnexpectedRotation { header: header, speed: speed }
+        TachReadZero => RotationCorrectlyAbsent { header: header }
+        TachValueUnavailable => RotationCorrectlyAbsent { header: header }
+      }
+  }
+}
+
+fn assess_fan_tach(
+  expectation: HostFanTachExpectation,
+  observation: HostFanTachObservation,
+) -> FanTachAssessment {
+  if expectation.host != observation.host {
+    FanTachRefused { cause: HostIdentityMismatch }
+  } else {
+    match first_duplicate(headers: map(expectation.headers, row => row.header)) {
+      Present { value: header } =>
+        FanTachRefused { cause: DuplicateExpectedHeader { header: header } }
+      none =>
+        match first_duplicate(headers: map(observation.rows, row => row.header)) {
+          Present { value: header } =>
+            FanTachRefused { cause: DuplicateObservedHeader { header: header } }
+          none =>
+            FanTachAssessed {
+              verdicts: flat_map(
+                [
+                  map(
+                    expectation.headers,
+                    row =>
+                      match row.expectation {
+                        TachExpected { role } =>
+                          verdict_for_expected(
+                            header: row.header,
+                            role: role,
+                            observation: observation,
+                          )
+                        TachNotExpected =>
+                          verdict_for_unexpected(header: row.header, observation: observation)
+                      },
+                  ),
+                  map(
+                    filter(
+                      observation.rows,
+                      row =>
+                        match expectation_for(expectation: expectation, header: row.header) {
+                          Present { value } => false
+                          none => true
+                        },
+                    ),
+                    row => ObservationForUndeclaredHeader { header: row.header },
+                  ),
+                ],
+                group => group,
+              ),
+            }
+        }
+    }
+  }
+}
+
+// COUNTS ARE SPLIT BY OWNER, NOT COLLAPSED INTO ONE NUMBER. An earlier revision summed rotation
+// anomalies, expectation drift and authority gaps into a single failure_count while its own
+// annotation correctly said the three have different owners - a hardware investigation, a stale
+// inventory, and an incomplete authority. A combined number is a display summary at best; as the
+// module's semantic output it re-does the conflation one level up.
+
+fn rotation_anomaly_count(verdicts: List<FanTachVerdict>) -> Int {
+  fold(
+    verdicts,
+    init: 0,
+    f: (acc, v) =>
+      match v {
+        ExpectedRotationNotObserved { header, role, absence } => acc + 1
+        other => acc
+      },
+  )
+}
+
+fn expectation_drift_count(verdicts: List<FanTachVerdict>) -> Int {
+  fold(
+    verdicts,
+    init: 0,
+    f: (acc, v) =>
+      match v {
+        UnexpectedRotation { header, speed } => acc + 1
+        other => acc
+      },
+  )
+}
+
+fn authority_gap_count(verdicts: List<FanTachVerdict>) -> Int {
+  fold(
+    verdicts,
+    init: 0,
+    f: (acc, v) =>
+      match v {
+        ObservationForUndeclaredHeader { header } => acc + 1
+        other => acc
+      },
+  )
+}
+
+fn observation_gap_count(verdicts: List<FanTachVerdict>) -> Int {
+  fold(
+    verdicts,
+    init: 0,
+    f: (acc, v) =>
+      match v {
+        ExpectedHeaderObservationMissing { header, role } => acc + 1
+        other => acc
+      },
+  )
+}

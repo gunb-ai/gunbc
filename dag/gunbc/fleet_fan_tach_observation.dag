@@ -1,0 +1,97 @@
+module gunbc.fleet_fan_tach_observation
+
+import std.types { List, NonEmptyStr }
+import std.measure { RevolutionsPerMinute, rpm }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network {
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+  operator_host_srv4,
+}
+
+// WHAT THE TACHOMETER SAID, AND NOTHING ABOUT WHAT IT MEANS. This module is deliberately free of
+// judgement: it cannot conclude a fault, because concluding a fault requires an expectation it
+// does not import.
+//
+// TachReadZero and TachValueUnavailable are SEPARATE ARMS and collapsing them is the conflation
+// this whole area exists to repair one level down. A sensor publishing the number 0 has been
+// read and is reporting a stopped rotor. A sensor publishing nothing at all may be a missing
+// Redfish object, a failed publication, or a header the BMC declines to report - the reading was
+// never taken. Those two have different next steps, and only the first is evidence about a fan.
+type FanTachReading
+  = TachRotating { speed: RevolutionsPerMinute }
+  | TachReadZero
+  | TachValueUnavailable
+
+type FanTachObservationRow {
+  header: NonEmptyStr
+  reading: FanTachReading
+}
+
+type HostFanTachObservation {
+  host: HostIdentity
+  rows: List<FanTachObservationRow>
+}
+
+fn rotating(header: NonEmptyStr, speed: RevolutionsPerMinute) -> FanTachObservationRow {
+  FanTachObservationRow { header: header, reading: TachRotating { speed: speed } }
+}
+
+fn unavailable(header: NonEmptyStr) -> FanTachObservationRow {
+  FanTachObservationRow { header: header, reading: TachValueUnavailable }
+}
+
+// LIVE READS, 2026-08-26, via the Redfish Thermal surface rather than the BMC's raw hwmon files.
+// The surface choice is load-bearing: raw hwmon tach reads drop out intermittently on healthy
+// hosts, so a conclusion drawn from them would manufacture faults. Five reads per header per
+// host; the rows below are the consistent result.
+
+// srv1 - FAN4 and FAN5 published no value across the sample. This is the finding the whole
+// module exists to make legible, and note that it is recorded here as UNAVAILABLE, which is what
+// the sensor did, NOT as a failed fan, which is a conclusion this layer may not reach.
+data srv1_fan_tach_observation: HostFanTachObservation = HostFanTachObservation {
+  host: operator_host_srv1,
+  rows: [
+    rotating(header: "FAN1", speed: rpm(962)),
+    rotating(header: "FAN2", speed: rpm(998)),
+    rotating(header: "FAN3", speed: rpm(974)),
+    unavailable(header: "FAN4"),
+    unavailable(header: "FAN5"),
+  ],
+}
+
+data srv2_fan_tach_observation: HostFanTachObservation = HostFanTachObservation {
+  host: operator_host_srv2,
+  rows: [
+    rotating(header: "FAN1", speed: rpm(985)),
+    rotating(header: "FAN2", speed: rpm(991)),
+    rotating(header: "FAN3", speed: rpm(978)),
+    rotating(header: "FAN4", speed: rpm(969)),
+    rotating(header: "FAN5", speed: rpm(996)),
+  ],
+}
+
+// srv3 - FAN2 publishes nothing, and nothing is expected there. Same reading as srv1's FAN4,
+// opposite meaning; the join is what tells them apart.
+data srv3_fan_tach_observation: HostFanTachObservation = HostFanTachObservation {
+  host: operator_host_srv3,
+  rows: [
+    rotating(header: "FAN1", speed: rpm(6033)),
+    unavailable(header: "FAN2"),
+    rotating(header: "FAN3", speed: rpm(1583)),
+    rotating(header: "FAN4", speed: rpm(1040)),
+    rotating(header: "FAN5", speed: rpm(1549)),
+  ],
+}
+
+data srv4_fan_tach_observation: HostFanTachObservation = HostFanTachObservation {
+  host: operator_host_srv4,
+  rows: [
+    rotating(header: "FAN1", speed: rpm(5975)),
+    rotating(header: "FAN2", speed: rpm(1563)),
+    rotating(header: "FAN3", speed: rpm(1547)),
+    rotating(header: "FAN4", speed: rpm(1555)),
+    unavailable(header: "FAN5"),
+  ],
+}
