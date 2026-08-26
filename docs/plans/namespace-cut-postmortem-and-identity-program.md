@@ -1710,9 +1710,38 @@ So the split is clean, and it falls exactly along the line that clause draws:
 - **A per-file measurement needs a per-module progress receipt, and none exists.**
   Every per-file instrument in this program shares §11.2l's hazard: a row from a
   module that never reached the stage issuing its asks is indistinguishable from a
-  real low-demand row (`total=1` vs a genuine single-ask module). The requirement
-  is that a row without a receipt is **dropped, never averaged**. Specified, **not
-  built** — stated here so it is not assumed done.
+  real low-demand row (`total=1` vs a genuine single-ask module).
+
+  **"Dropped, never averaged" was this document's first rule and it is correct
+  only at the ARITHMETIC boundary — as a terminal observation model it recreates
+  the conflation one layer out.** Dropping the row answers two different questions
+  with one absence: *is this subject in the population?* and *was it observed?*
+  Both become "no row". The rule is therefore restated:
+
+  > **Every subject produces one typed observation or one typed
+  > non-observation. Only observations proven complete for the measured phase
+  > enter arithmetic. A non-observation stays in the reported subject partition
+  > and makes any aggregate claiming total coverage unavailable. It is never
+  > zero-filled, averaged, or silently omitted. Partial reports carry the exact
+  > observed and unobserved identity sets and are not comparable across differing
+  > denominators.**
+
+  So "dropped" gets exactly one safe meaning: **dropped from the numeric fold,
+  retained in the subject partition.** An incomplete report has no
+  population-wide score at all — not a smaller one.
+
+  **This does not revive the demand oracle.** A progress receipt stops a
+  non-observation impersonating a low number; it does not touch the circularity
+  (candidate → loaded population → progress → issuable lookups → "demand").
+  A starving candidate is not *cheap*, it is **unscorable**. And intersecting on
+  modules that completed in both arms is not a repair: **the intersection deletes
+  exactly the modules on which the candidates diverged**, buying a stable
+  denominator by discarding the evidence that it was unstable. The replacement
+  for dependency demand is progress-independent structure — occurrence → exact
+  accepted declaration → exact provider edge — not how far an attempted typecheck
+  got.
+
+  Specified, **not built** — stated here so it is not assumed done.
 
 - ~~`undefined variable 'v2'` × 95~~ — **CLOSED, and it was never a distinct
   defect** (`crisp-crab-430`, 2026-08-25, four arms by execution). It is the
