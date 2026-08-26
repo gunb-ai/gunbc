@@ -1,0 +1,24 @@
+module v2.test.fixture.tail_construct.f0_port_reading
+
+
+type PortReading
+  = PortPureLiteral
+  | PortBareName { name: Symbol }
+  | PortComputedExpression { mentions: List<Symbol> }
+
+fn port_reading(arg_capture: Node) -> PortReading {
+  let mentions = collect_value_identifiers(n: arg_capture)
+  let idents = symbol_list_length(xs: mentions)
+  if idents == 0 {
+    PortPureLiteral
+  } else {
+    if idents == 1 {
+      match arg_value_symbol(arg_capture: arg_capture) {
+        Present { value: sym } => PortBareName { name: sym }
+        Absent => PortComputedExpression { mentions: mentions }
+      }
+    } else {
+      PortComputedExpression { mentions: mentions }
+    }
+  }
+}
