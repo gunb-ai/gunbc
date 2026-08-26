@@ -35,6 +35,12 @@ import extdeps.languages.json.emit {
   json_string,
 }
 
+import gunbc.scm.ancestry {
+  CommitAncestry,
+  RootCommit,
+  DescendsFrom,
+}
+
 import gunbc.scm.target_reference {
   TargetReferenceRefusal,
   TargetContainedAt,
@@ -111,9 +117,24 @@ type RepositoryCommitRecord {
   message: String
 }
 
+// ANCESTRY IS A COMMIT REFERENCE, NOT A NODE REFERENCE, and that is this module's own ruling reused
+// rather than a fresh choice. The annotation on `checked_out` records why it resolves against the
+// COMMIT LIST and not the object table: a node reference admits documents naming an arbitrary
+// interior object -- a child three levels down -- as the thing being pointed at, and nothing refuses,
+// because nothing asks the question. A parent has exactly that property. `root` may be a node
+// reference because a commit's root IS a node; a parent may not, because a parent is a COMMIT, and
+// spelling it as a node reference would readmit the precise state that ruling made unwritable.
+//
+// THE POSITION IN THE ARRAY IS A STORAGE LOCATOR, NEVER AN ORDERING FACT, and the distinction is the
+// one gunbc.scm.ancestry exists to protect. The wire reference means "the commit at this position in
+// this document" -- it NAMES which commit, and adjacency between two positions still means nothing.
+// Encoding the parent as a position is not the position-implies-ancestry defect; deriving a parent
+// FROM a position would be, and nothing here does that: a commit with no `ancestry` member refuses
+// rather than defaulting to its neighbour.
 type RepositoryCommit {
   root: ObjectId
   message: String
+  ancestry: CommitAncestry
 }
 
 type RepositoryEnvelope {
@@ -155,6 +176,7 @@ type RepositoryEncodeRefusal
   = RepositoryEncodeUncontainedTarget { target: ObjectId }
   | RepositoryCommitRootNotInStore { root: ObjectId }
   | RepositoryCheckoutNotInCommits { selected: ObjectId }
+  | RepositoryCommitParentNotInCommits { parent: ObjectId }
 
 // The decode side keeps `String` references for now, and that is a REMAINING conflation rather than
 // a resolved one: an image-local position is still spelled as bare text here, and commit_closure_json_v2's whole
@@ -167,6 +189,7 @@ type RepositoryDecodeRefusal
   | RepositoryIdentityRuleUnrecognized { found: String }
   | RepositoryCommitRootReferenceUnresolved { reference: String }
   | RepositoryCheckoutReferenceUnresolved { reference: String }
+  | RepositoryCommitParentReferenceUnresolved { reference: String }
   | RepositoryUnexpectedMember { context: RepositoryMemberContext, key: String }
   | RepositoryTargetReferenceRefused { cause: TargetReferenceRefusal }
 
@@ -296,17 +319,32 @@ fn encode_optional_reference(commits: List<RepositoryCommit>, selected: ObjectId
   }
 }
 
-fn encode_commit_record(acc: EncodeAcc, commit: RepositoryCommit) -> JsonValue {
+fn encode_commit_record(acc: EncodeAcc, commits: List<RepositoryCommit>, commit: RepositoryCommit) -> JsonValue {
   json_object(
     members: [
       json_kv(key: "root", value: encoded_root_reference(acc: acc, root: commit.root)),
       json_kv(key: "message", value: json_string(s: commit.message)),
+      json_kv(key: "ancestry", value: encode_ancestry(commits: commits, ancestry: commit.ancestry)),
     ]
   )
 }
 
+// A ROOT COMMIT IS JsonNull, AN UNRESOLVABLE PARENT IS THE EMPTY REFERENCE, and those are two states
+// rather than one for the same reason `checked_out` splits them: the empty string is already what an
+// unknown reference yields and what decode rejects, so spelling "this commit begins the history" that
+// way would fuse the ordinary first commit with a dangling parent. That is the structural-root
+// argument from gunbc.scm.ancestry carried onto the wire, where it would otherwise be quietly lost --
+// a coproduct arm is worth nothing if the serialization collapses it back to a nothing-value.
+fn encode_ancestry(commits: List<RepositoryCommit>, ancestry: CommitAncestry) -> JsonValue {
+  match ancestry {
+    RootCommit => JsonNull
+    DescendsFrom { parent: parent } =>
+      json_string(s: commit_reference_of(commits: commits, selected: parent))
+  }
+}
+
 fn encode_commit_records(acc: EncodeAcc, commits: List<RepositoryCommit>) -> List<JsonValue> {
-  map(commits, c => encode_commit_record(acc: acc, commit: c))
+  map(commits, c => encode_commit_record(acc: acc, commits: commits, commit: c))
 }
 
 // THE CODEC IS NAMED FOR THE EXACT WIRE VERSION IT UNDERSTANDS, and `encode_repository` is the
@@ -390,7 +428,12 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
           match unresolved_checkout_selection(commits: repo.commits, selected: repo.checked_out) {
             Present { value: selected } =>
               RepositoryEncodeRefused { cause: RepositoryCheckoutNotInCommits { selected: selected } }
-            Absent => RepositoryEncoded { value: encode_repository(repo: repo) }
+            Absent =>
+              match unresolved_commit_parent(commits: repo.commits) {
+                Present { value: parent } =>
+                  RepositoryEncodeRefused { cause: RepositoryCommitParentNotInCommits { parent: parent } }
+                Absent => RepositoryEncoded { value: encode_repository(repo: repo) }
+              }
           }
       }
   }
@@ -422,6 +465,32 @@ fn unresolved_commit_root_step(acc: EncodeAcc, found: ObjectId?, commit: Reposit
   }
 }
 
+// A PARENT NAMING A COMMIT THIS REPOSITORY DOES NOT HOLD IS ADJUDICATED BEFORE THE WRITE, for the
+// same reason the checkout is: encode_repository cannot refuse, so its only honest output is the
+// empty reference decode later rejects -- which surfaces to whoever LOADS the document rather than to
+// whoever caused it. A broken ancestry link is exactly the fact a reader must be able to trust.
+//
+// It answers with A parent, not THE FIRST one, matching an_uncontained_target: the refusal needs one
+// actionable example and nothing downstream depends on which, so naming an order would freeze an
+// incidental traversal into the interface.
+fn unresolved_commit_parent(commits: List<RepositoryCommit>) -> ObjectId? {
+  fold(commits, init: none, f: fn(acc, c) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match c.ancestry {
+          RootCommit => none
+          DescendsFrom { parent: parent } =>
+            if commit_reference_of(commits: commits, selected: parent) == "" {
+              Present { value: parent }
+            } else {
+              none
+            }
+        }
+    }
+  })
+}
+
 fn unresolved_checkout_selection(commits: List<RepositoryCommit>, selected: ObjectId?) -> ObjectId? {
   match selected {
     Absent => none
@@ -450,8 +519,116 @@ fn unresolved_checkout_selection(commits: List<RepositoryCommit>, selected: Obje
 // scm_env_the_root_signature_distinguishes_order is the claim that would go red if the reverse were
 // dropped or applied twice.
 type CommitDecodeAcc {
+  commits: List<PendingCommit>
+  refusal: RepositoryDecodeRefusal?
+}
+
+// DECODING A COMMIT IS TWO PHASES BECAUSE THE WIRE FACT IS NOT RESOLVABLE WHEN IT IS READ, and this
+// type is that intermediate state rather than a parallel representation of a commit.
+//
+// A parent reference is a position in the commits array, and the fold that reads commit k has not
+// necessarily read the commit that position names -- nothing requires a parent to appear earlier in
+// the array, and requiring it would put a storage-order constraint on a relation that has none. So
+// phase one reads what the document SAYS and phase two resolves it once every position exists.
+//
+// `parent_reference` being absent means the document said RootCommit (JsonNull). It is NOT "we could
+// not read it": an unreadable member refuses in phase one and never reaches here, so this Optional
+// carries one meaning rather than two.
+type PendingCommit {
+  root: ObjectId
+  message: String
+  parent_reference: String?
+}
+
+type PendingRootLookup {
+  index: Int
+  found: ObjectId?
+}
+
+// The inverse of commit_reference_of over the PENDING list, walking the same ordinary index counter
+// the encoder does, so the two cannot drift -- the pairing commit_at_reference already establishes
+// for the checkout, applied one phase earlier because a parent must resolve before a RepositoryCommit
+// can be built at all.
+fn pending_root_at_reference(pending: List<PendingCommit>, reference: String) -> ObjectId? {
+  match fold(
+    pending,
+    init: PendingRootLookup { index: 0, found: none },
+    f: fn(acc, c) {
+      match acc.found {
+        Present { value: _ } => PendingRootLookup { index: acc.index + 1, found: acc.found }
+        Absent =>
+          if position_reference(n: acc.index) == reference {
+            PendingRootLookup { index: acc.index + 1, found: Present { value: c.root } }
+          } else {
+            PendingRootLookup { index: acc.index + 1, found: none }
+          }
+      }
+    }
+  ) {
+    PendingRootLookup { index: _, found: found } => found
+  }
+}
+
+type ResolvedCommitAcc {
   commits: List<RepositoryCommit>
   refusal: RepositoryDecodeRefusal?
+}
+
+// A DANGLING PARENT REFUSES RATHER THAN DEGRADING TO A ROOT COMMIT. Those are the two states
+// gunbc.scm.ancestry made structurally distinct, and answering the first for the second here would
+// undo that at the only boundary where it matters: a document whose ancestry link is broken would
+// load as a healthy repository with an extra beginning, and the damage would be indistinguishable
+// from ordinary history for every reader after it.
+fn resolve_pending_commits(pending: List<PendingCommit>) -> ResolvedCommitAcc {
+  match fold(
+    pending,
+    init: ResolvedCommitAcc { commits: [], refusal: none },
+    f: fn(acc, c) { resolve_pending_step(pending: pending, acc: acc, c: c) }
+  ) {
+    ResolvedCommitAcc { commits: reversed, refusal: refusal } =>
+      ResolvedCommitAcc { commits: reverse(reversed), refusal: refusal }
+  }
+}
+
+fn resolve_pending_step(
+  pending: List<PendingCommit>,
+  acc: ResolvedCommitAcc,
+  c: PendingCommit
+) -> ResolvedCommitAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match c.parent_reference {
+        Absent =>
+          ResolvedCommitAcc {
+            commits: concat(
+              [RepositoryCommit { root: c.root, message: c.message, ancestry: RootCommit }],
+              acc.commits
+            ),
+            refusal: acc.refusal,
+          }
+        Present { value: reference } =>
+          match pending_root_at_reference(pending: pending, reference: reference) {
+            Absent =>
+              ResolvedCommitAcc {
+                commits: acc.commits,
+                refusal: Present { value: RepositoryCommitParentReferenceUnresolved { reference: reference } },
+              }
+            Present { value: parent } =>
+              ResolvedCommitAcc {
+                commits: concat(
+                  [RepositoryCommit {
+                    root: c.root,
+                    message: c.message,
+                    ancestry: DescendsFrom { parent: parent },
+                  }],
+                  acc.commits
+                ),
+                refusal: acc.refusal,
+              }
+          }
+      }
+  }
 }
 
 // A commit record's member set is closed for the same reason the envelope's is: a writer that states
@@ -463,7 +640,7 @@ fn decode_commit_step(positions: DecodePositions, acc: CommitDecodeAcc, value: J
     Absent =>
       match repository_member_set_refusal(
         v: value,
-        allowed: ["root", "message"],
+        allowed: ["root", "message", "ancestry"],
         context: RepositoryCommitMembers
       ) {
         Present { value: c } =>
@@ -501,6 +678,35 @@ fn decode_commit_root(positions: DecodePositions, root_value: JsonValue) -> Comm
   }
 }
 
+type PendingParentRead
+  = PendingParentRead { reference: String? }
+  | PendingParentRefused { cause: RepositoryDecodeRefusal }
+
+// A MISSING `ancestry` MEMBER REFUSES; IT DOES NOT DEFAULT TO A ROOT COMMIT. Defaulting would make
+// every commit in a document that predates this member read as a beginning of history, which is a
+// well-formed repository that is not the one that was written -- the silent-reinterpretation failure
+// the identity-rule tag exists to prevent, arriving through the schema axis instead.
+//
+// The member is REQUIRED rather than optional because no document exists to be compatible with: the
+// only consumer of this encoder is a witness, rebuilt from source every run, so there is no durable
+// artifact whose absence of this key has to be tolerated. Were one to exist, this would be a second
+// format arm rather than a widened v1 body.
+fn read_pending_parent_reference(value: JsonValue) -> PendingParentRead {
+  match read_member_value(v: value, key: "ancestry") {
+    MemberLookupFailed { cause: c } =>
+      PendingParentRefused { cause: RepositoryMemberReadRefused { cause: c } }
+    MemberValue { value: found } =>
+      match found {
+        JsonNull => PendingParentRead { reference: none }
+        JsonString { value: reference } => PendingParentRead { reference: Present { value: reference } }
+        _ =>
+          PendingParentRefused {
+            cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "ancestry" } }
+          }
+      }
+  }
+}
+
 fn decode_commit_members(positions: DecodePositions, acc: CommitDecodeAcc, value: JsonValue) -> CommitDecodeAcc {
   match acc.refusal {
     Present { value: _ } => acc
@@ -517,9 +723,17 @@ fn decode_commit_members(positions: DecodePositions, acc: CommitDecodeAcc, value
                 MemberFailed { cause: c } =>
                   CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryMemberReadRefused { cause: c } } }
                 MemberString { value: message } =>
-                  CommitDecodeAcc {
-                    commits: concat([RepositoryCommit { root: root, message: message }], acc.commits),
-                    refusal: acc.refusal,
+                  match read_pending_parent_reference(value: value) {
+                    PendingParentRefused { cause: c } =>
+                      CommitDecodeAcc { commits: acc.commits, refusal: Present { value: c } }
+                    PendingParentRead { reference: reference } =>
+                      CommitDecodeAcc {
+                        commits: concat(
+                          [PendingCommit { root: root, message: message, parent_reference: reference }],
+                          acc.commits
+                        ),
+                        refusal: acc.refusal,
+                      }
                   }
                 _ =>
                   CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "message" } } } }
@@ -609,9 +823,16 @@ fn decode_repository_body(v: JsonValue) -> RepositoryDecodeOutcome {
                       match commit_refusal {
                         Present { value: c } => RepositoryDecodeRefused { cause: c }
                         Absent =>
-                          decode_repository_checkout(
-                            v: v, store: store, positions: positions, commits: reverse(reversed_commits)
-                          )
+                          match resolve_pending_commits(pending: reverse(reversed_commits)) {
+                            ResolvedCommitAcc { commits: commits, refusal: resolve_refusal } =>
+                              match resolve_refusal {
+                                Present { value: c } => RepositoryDecodeRefused { cause: c }
+                                Absent =>
+                                  decode_repository_checkout(
+                                    v: v, store: store, positions: positions, commits: commits
+                                  )
+                              }
+                          }
                       }
                   }
                 _ => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "commits" } } }
