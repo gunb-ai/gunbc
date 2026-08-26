@@ -3016,6 +3016,15 @@ every module in the set progressed further in the same arm**, which is exactly
 what the totals show. A signature consistent with one mechanism was scored as
 discriminating against the other.
 
+The duller explanation is the better one, and it was reached independently by
+the instrument's own author: **if a module barely ran under the narrow arm, its
+demand is nearly a subset of the wide arm's for the trivial reason that almost
+nothing was asked.** One-directional growth falls out of near-zero baselines with
+no eligibility story at all. Hypothesis 3 fit the asymmetry more *elegantly* than
+progression did, and was promoted on that strength — **elegance of fit is not
+evidence**, and it is the specific way a mechanism gets adopted before it is
+tested.
+
 **THE TOTALS ARE THE FINDING, AND THEY ARE SHARPER THAN THE VERDICT LINE.**
 `v2.std.integer` issues **1** lookup under the narrow arm and **95** under the
 wide one; `std.measure` 8 → 164; `extdeps.git` 6 → 97. A module issuing one
