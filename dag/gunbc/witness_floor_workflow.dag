@@ -1045,65 +1045,21 @@ fn build_lane_job() -> Job {
 // precondition paragraph records, and the reason a bare `needs.*.result` comparison would not
 // have worked here either).
 //
-// IT IS `always()` AND NOT `!cancelled()`, WHICH IS THE ONE PLACE IN THIS FILE THAT DEPARTS
-// FROM THE HOUSE GUARD -- stated explicitly, because a reader who knows the convention will
-// otherwise correct it back and reopen the hole. Every other guard here is about whether a STEP
-// should run inside a job that is already running, and there `!cancelled()` is right: a
-// cancelled run should stop. This condition decides something else -- whether the REQUIRED
-// CONTEXT EXISTS AT ALL -- and under `!cancelled()` a cancelled run leaves the aggregator
-// skipped, so the context is reported as skipped rather than as a verdict.
+// SUPERSESSION IS NOT A FAILED LANE VERDICT. The workflow concurrency authority above permits a
+// newer pull-request push to cancel the older run. Under `always()` that cancellation still armed
+// this job; the shell then applied `cancelled != success`, exited 1, and overwrote the workflow's
+// truthful SUPERSEDED conclusion with a fabricated FAILED aggregate. Every push-over-push thus
+// emitted a CI-failing alert about a head whose work had intentionally moved on.
 //
-// That is the same question one layer out, and it is a question about GITHUB rather than about
-// this repository: does a skipped or cancelled required check block a merge? NOBODY HERE HAS
-// EXECUTED THAT, and the right response is not to go and measure it -- it is to make the
-// outcome not depend on it. Under `always()` the job runs unconditionally, always reads both
-// results, and always reports success or failure ON ITS OWN TERMS, so SKIPPED disappears from
-// the required context entirely. That is construction over validation (§5): the ambiguous state
-// becomes unrepresentable rather than tested, and a third-party behaviour becomes a property of
-// our own file.
-//
-// WHAT IT COSTS, named rather than glossed: a lawfully superseded run now reports this context
-// RED instead of cancelled, because a cancelled lane is not `success`. Measured on run
-// 32883390033, where a fleet event ended both lanes and this job duly published `failure`.
-//
-// THE STRONGEST ARGUMENT AGAINST THIS CHOICE IS RECORDED HERE RATHER THAN ANSWERED AWAY, so
-// that the next person who wants `!cancelled()` finds the case already made instead of
-// rediscovering it (raised by a peer session, 2026-08-25, from GitHub's own documented
-// semantics rather than from a measurement). The objection: `always()` is the one condition that
-// survives workflow cancellation, `cancel-in-progress` is armed on every pull_request, so this
-// fires on the MODAL event in the repository -- and it destroys the cancelled/failed distinction
-// at the RECORD level rather than at the reader's, where nothing can recover it afterwards. That
-// ambiguity cost a peer session hours in one day, diagnosing 38 lawful supersessions as a
-// false-red epidemic.
-//
-// THAT OBJECTION IS RECORDED WITH ITS ANSWER ATTACHED, because half of it standing alone is what
-// would send a future reader back to `!cancelled()` -- and the answer is in this job's own step.
-// THE CONCLUSION LOSES THE DISTINCTION; THE ANNOTATION PRESERVES IT. The step echoes
-// `required lanes: build=$BUILD floor=$FLOOR` and repeats both values inside its `::error::`, so
-// on every single occurrence, permanently and machine-readably, the log says WHICH state each
-// lane was in. A red whose cause is printed in its own error annotation is not the ambiguity the
-// objection warns about: the hours lost that day were lost because `cancelled` and `failure` were
-// indistinguishable at the reader with NOTHING UNDERNEATH to recover, and here there is always
-// something underneath, one line away. The loss is real at conclusion grain and repaired at the
-// grain anyone actually diagnoses from. (Withdrawn to this weight by the session that raised it,
-// after reading the step body.)
-//
-// The house-style half does not survive either, and it is worth saying why rather than just
-// noting the departure: counting `!cancelled()` occurrences infers a rule from shapes, while
-// what each guard DECIDES is the fact. Every other one decides whether a step runs inside a job
-// that is already running; this one decides whether the required context exists at all.
-//
-// WHY IT IS NOT TAKEN: THE ASYMMETRY IS ABOUT WHICH HEAD PAYS. Checks are tracked per head SHA,
-// so a superseded run's red lands on a head that by construction will never be merged -- the
-// push that superseded it created the head that will. `always()` is therefore NOISY ON ABANDONED
-// HEADS. `!cancelled()` moves the cost onto the LIVE one: a lane killed with no replacement run
-// coming -- observed twice on 2026-08-25, once with `runner_name` empty and zero steps, once with
-// both lanes ended at 18:43 and no push involved -- leaves this context SKIPPED on the head that
-// is still the merge candidate, and whether a skipped required check blocks a merge is exactly
-// the unmeasured GitHub behaviour the paragraph above exists to stop depending on. Quiet-and-
-// unknown on a live head is worse than loud-and-definite on a dead one.
+// `!cancelled()` preserves the workflow-level state at the boundary where it is still available:
+// a superseded workflow does not run an aggregate verdict at all. This is deliberately NOT a
+// relaxation of the lane gate. On every non-cancelled workflow the job still runs after failed
+// or skipped needs and the script still admits exactly `success`; failure, skip, abandonment and
+// every unknown lane result remain loud refusals. The distinction is by owner: workflow
+// cancellation answers whether this attempt was superseded, while `needs.*.result` answers
+// whether a live attempt's required lanes proved the revision.
 fn required_lanes_aggregate_job_condition() -> String {
-  "always()"
+  witness_step_status_guard_expression()
 }
 //
 // THE STEP-LEVEL `always()` STAYS, and it guards a different thing rather than restating this
