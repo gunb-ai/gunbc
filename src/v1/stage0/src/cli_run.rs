@@ -47,12 +47,17 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
+#[path = "declaration_index.rs"]
+pub mod declaration_index;
 pub(crate) mod floor_discovery_snapshot;
 pub(crate) mod materialization_provider_consumer;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 #[path = "required_regen_host.rs"]
 mod required_regen_host;
+
+#[path = "partition_crate_boundary_host.rs"]
+mod partition_crate_boundary_host;
 pub(crate) mod shared_fill;
 pub(crate) mod terminal_ledger_publish;
 pub(crate) mod test_module_hygiene_bridge;
@@ -1950,12 +1955,77 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
             );
         }
     };
-    // Aggregate on the full key INCLUDING severity: one class can legitimately occur at both
-    // severities, and folding those together would hide exactly the blocking→advisory demotion
-    // this surface exists to keep visible.
+    CompileDiagnosticCensus::Observed(compile_diagnostic_census_rows(&result.diagnostics))
+}
+
+/// One supplied module of a [`compile_dag_multi_module_fixture`] manifest: the path the compile
+/// sees and the exact bytes at it. Both are AUTHORED BY THE FIXTURE — nothing here is read from
+/// the checkout, which is the whole reason this instrument can answer a question about name
+/// resolution that a corpus-resolved compile cannot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MultiModuleFixtureSource {
+    pub path: String,
+    pub content: String,
+}
+
+/// Outcome of [`compile_dag_multi_module_fixture`]. THE THREE ARMS HAVE THREE DIFFERENT OWNERS
+/// and that is why they are three arms: `InstrumentRefused` is the harness's own fault (a
+/// malformed manifest, an entry naming no supplied module, a panic), `CompileRefused` is the
+/// SUBJECT's fault and carries the compiler's own judgment, and `CompileCompleted` is the subject
+/// passing. Collapsing the first two hands a broken harness the compiler's message — the same
+/// not-applicable-versus-malformed conflation DESIGN records as a recurring failure mode, applied
+/// to the instrument itself.
+///
+/// EXECUTION PROVENANCE IS STRUCTURAL, not a field a caller must remember to read. `Completed`
+/// is constructed at exactly one place — after `emit_resolved_for_target` returned and after the
+/// blocking population was counted — so an unreached or killed compile has no spelling in which
+/// it renders as zero diagnostics. That is the positive-artifact rule moved into the type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MultiModuleCompileFixtureOutcome {
+    InstrumentRefused {
+        cause: String,
+    },
+    CompileRefused {
+        module_count: i64,
+        diagnostics: Vec<CompileDiagnosticCensusRow>,
+        source_digest: String,
+        compiler_digest: String,
+    },
+    CompileCompleted {
+        module_count: i64,
+        emitted_files: Vec<String>,
+        diagnostics: Vec<CompileDiagnosticCensusRow>,
+        source_digest: String,
+        compiler_digest: String,
+    },
+}
+
+/// Structural digest of the supplied manifest — path and content of every module, in the order
+/// the caller supplied them, so a reordering is a different subject and a whitespace edit is a
+/// different subject. Same fnv1a64 authority every other identity key in the seed consumes
+/// (`v1_rt::atom_identity_hash` / `hash_combine`; `std.content_hash` is the modeled surface).
+fn multi_module_fixture_source_digest(sources: &[MultiModuleFixtureSource], entry: &str) -> String {
+    use crate::v1_rt::{atom_identity_hash, hash_combine};
+    let mut h = atom_identity_hash("multi-module-compile-fixture-v1".to_string());
+    h = hash_combine(h, atom_identity_hash(entry.to_string()));
+    for s in sources {
+        h = hash_combine(h, atom_identity_hash(s.path.clone()));
+        h = hash_combine(h, atom_identity_hash(s.content.clone()));
+    }
+    h
+}
+
+/// Aggregate a compile's diagnostics on the full `(class, name, severity)` key. Severity is part
+/// of the key rather than folded away because one class can legitimately occur at both
+/// severities, and folding those together would hide exactly the blocking→advisory demotion these
+/// surfaces exist to keep visible. ONE fold serves both instruments — the census and the
+/// multi-module fixture — so they cannot drift into two diagnostic vocabularies (§3).
+fn compile_diagnostic_census_rows(
+    diagnostics: &im::Vector<Rc<ErrorNode>>,
+) -> Vec<CompileDiagnosticCensusRow> {
     let mut order: Vec<(String, String, bool)> = Vec::new();
     let mut counts: HashMap<(String, String, bool), i64> = HashMap::new();
-    for d in result.diagnostics.iter() {
+    for d in diagnostics.iter() {
         let (class, name) = compile_clean_diagnostic_histogram_key(d);
         let blocking = compile_clean_diagnostic_is_hard(d);
         let key = (class, name, blocking);
@@ -1965,17 +2035,148 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
         }
         *entry += 1;
     }
-    CompileDiagnosticCensus::Observed(
-        order
-            .into_iter()
-            .map(|key| CompileDiagnosticCensusRow {
-                diagnostic_class: key.0.clone(),
-                subject_name: key.1.clone(),
-                blocking: key.2,
-                count: counts.get(&key).copied().unwrap_or(0),
+    order
+        .into_iter()
+        .map(|key| CompileDiagnosticCensusRow {
+            diagnostic_class: key.0.clone(),
+            subject_name: key.1.clone(),
+            blocking: key.2,
+            count: counts.get(&key).copied().unwrap_or(0),
+        })
+        .collect()
+}
+
+/// Host realization backing the `compile_dag_multi_module_fixture` builtin: compile a
+/// CALLER-AUTHORED SET of `.dag` modules through the v1 pipeline to the Rust render target, with
+/// NO corpus roots, NO module index, and no filesystem read of any kind.
+///
+/// WHY THIS EXISTS BESIDE [`compile_dag_diagnostic_census`] RATHER THAN INSIDE IT. The census
+/// takes ONE synthetic module and resolves its imports against
+/// [`build_module_path_index_from_witness_roots`], which walks the live checkout. That makes it
+/// unable to answer any question whose subject is the RELATIONSHIP BETWEEN TWO MODULES — a
+/// cross-module name collision, an import that must not bind, a spelling held by both a local
+/// declaration and a corpus one — because the corpus is always in the pool and the second module
+/// can never be authored. Three lanes hit that wall independently before this instrument existed:
+/// invalid fixtures had to be relocated out of the corpus for want of it, an ambiguity arm was
+/// measured and deleted for want of it, and this repository's own DESIGN names the missing
+/// multi-module compile fixture as the next-rung trigger for the acyclicity class.
+///
+/// CORPUS ISOLATION IS BY CONSTRUCTION, not by a flag. The supplied manifest IS the source vector
+/// handed to `compile_to_resolved_with_options`; there is no code path here that consults a module
+/// index, so a fixture module may reuse a corpus module's spelling and bind its OWN declaration.
+/// That is the property control 5 of the witness pins, and it is what makes the instrument usable
+/// for resolution questions at all.
+///
+/// SCOPE, stated so a receipt cannot claim coverage it does not have (DESIGN §4b): the v1 pipeline
+/// to the Rust render target over an authored multi-module subject. It observes nothing about the
+/// interpreter's disposition of the same program, nothing about other emission targets, and
+/// nothing about corpus-grain prevalence. Unlike the census it does NOT arm
+/// `with_type_ref_hit_ne_bind_measure`: the census arms it to sharpen masked type refs against a
+/// corpus pool this instrument does not have, so arming it here would be a knob with no subject.
+pub fn compile_dag_multi_module_fixture(
+    paths: &[String],
+    contents: &[String],
+    entry: &str,
+) -> MultiModuleCompileFixtureOutcome {
+    if paths.len() != contents.len() {
+        return MultiModuleCompileFixtureOutcome::InstrumentRefused {
+            cause: format!(
+                "compile_dag_multi_module_fixture: manifest is {} paths against {} contents; \
+                 a source is a (path, content) pair and a ragged manifest names no subject",
+                paths.len(),
+                contents.len()
+            ),
+        };
+    }
+    if paths.is_empty() {
+        return MultiModuleCompileFixtureOutcome::InstrumentRefused {
+            cause: "compile_dag_multi_module_fixture: empty manifest — an empty subject compiles \
+                    clean vacuously, which is could-not-measure wearing the subject's verdict"
+                .to_string(),
+        };
+    }
+    let sources: Vec<MultiModuleFixtureSource> = paths
+        .iter()
+        .zip(contents.iter())
+        .map(|(p, c)| MultiModuleFixtureSource {
+            path: p.clone(),
+            content: c.clone(),
+        })
+        .collect();
+    let mut seen: HashSet<&str> = HashSet::new();
+    for s in sources.iter() {
+        if s.path.trim().is_empty() {
+            return MultiModuleCompileFixtureOutcome::InstrumentRefused {
+                cause: "compile_dag_multi_module_fixture: a supplied source has an empty path"
+                    .to_string(),
+            };
+        }
+        if !seen.insert(s.path.as_str()) {
+            return MultiModuleCompileFixtureOutcome::InstrumentRefused {
+                cause: format!(
+                    "compile_dag_multi_module_fixture: path '{}' supplied twice; which bytes are \
+                     at that path is then undecidable and the digest would name neither",
+                    s.path
+                ),
+            };
+        }
+    }
+    if !sources.iter().any(|s| s.path == entry) {
+        return MultiModuleCompileFixtureOutcome::InstrumentRefused {
+            cause: format!(
+                "compile_dag_multi_module_fixture: entry '{entry}' names no supplied source"
+            ),
+        };
+    }
+    let source_digest = multi_module_fixture_source_digest(&sources, entry);
+    let compiler_digest = crate::resolved_graph_cache::transform_content_digest();
+    let files: Vec<Rc<v1_compiler_compile::SourceFile>> = sources
+        .iter()
+        .map(|s| {
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: s.path.clone(),
+                content: s.content.clone(),
             })
-            .collect(),
-    )
+        })
+        .collect();
+    let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(files.into()));
+        let module_count = match resolved.graph.clone() {
+            Some(g) => g.modules.len() as i64,
+            None => 0,
+        };
+        let result = v1_compiler_compile::emit_resolved_for_target(
+            resolved,
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        (module_count, result)
+    }));
+    let (module_count, result) = match compiled {
+        Ok(r) => r,
+        Err(_) => {
+            return MultiModuleCompileFixtureOutcome::InstrumentRefused {
+                cause: "compile_dag_multi_module_fixture: the compile panicked before producing \
+                        diagnostics"
+                    .to_string(),
+            };
+        }
+    };
+    let rows = compile_diagnostic_census_rows(&result.diagnostics);
+    if rows.iter().any(|r| r.blocking) {
+        return MultiModuleCompileFixtureOutcome::CompileRefused {
+            module_count,
+            diagnostics: rows,
+            source_digest,
+            compiler_digest,
+        };
+    }
+    MultiModuleCompileFixtureOutcome::CompileCompleted {
+        module_count,
+        emitted_files: result.files.iter().map(|f| f.path.clone()).collect(),
+        diagnostics: rows,
+        source_digest,
+        compiler_digest,
+    }
 }
 
 /// One symbol's binding observation on a declared-import-closure-only compile.
@@ -17733,8 +17934,19 @@ pub const DAG_PARSE_SWEEP_ROOTS: [&str; 3] = ["src/v1", "dag", "src/v2"];
 /// on a root sees the top-level modules and nothing below them, so a walk that finds no
 /// files in a directory it never opened is indistinguishable from a clean one.
 ///
-/// Returns the count of parse-clean files, or every error found — never a partial success.
-pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<usize, Vec<String>> {
+/// What one sweep produced: the parse-clean count, and the per-module declaration index
+/// built from the SAME parse trees rather than by a second walk.
+///
+/// The index rides here rather than being derived by its own corpus pass because that is
+/// the entire point of DESIGN's two next-rung triggers: the modules are parsed anyway, so
+/// one module's facts come from one module's source, at the moment it is read.
+pub struct DagParseSweep {
+    pub parse_clean: usize,
+    pub index: declaration_index::DeclarationIndex,
+}
+
+/// Returns the sweep result, or every error found — never a partial success.
+pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseSweep, Vec<String>> {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
@@ -17809,6 +18021,9 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<usize, Ve
 
     let errors: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let count = Arc::new(AtomicUsize::new(0));
+    // THE INDEX IS BUILT BY INSERTION FROM THIS WALK, never by a walk of its own.
+    let records: Arc<Mutex<Vec<declaration_index::ModuleDeclarationRecord>>> =
+        Arc::new(Mutex::new(Vec::new()));
 
     // Each file gets its own `Rc<HashMap>` — no shared parse state — so parsing is
     // embarrassingly parallel. Thread panics propagate via scope (fail-closed).
@@ -17816,6 +18031,7 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<usize, Ve
         for path in &dag_paths {
             let errors = Arc::clone(&errors);
             let count = Arc::clone(&count);
+            let records = Arc::clone(&records);
             let path = path.clone();
             scope.spawn(move || {
                 let content = match std::fs::read_to_string(&path) {
@@ -17855,6 +18071,33 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<usize, Ve
                 ));
                 if fill.diagnostics.is_empty() {
                     count.fetch_add(1, Ordering::Relaxed);
+                    // ONE RECORD PER MODULE, FROM THE PARSE THAT JUST RAN. Only a
+                    // parse-clean file contributes: a file whose tree did not parse has
+                    // already stopped the line above, and deriving declarations from a
+                    // failed parse would report a module's surface as smaller than it is.
+                    let rel = path
+                        .strip_prefix(workspace)
+                        .unwrap_or(&path)
+                        .to_string_lossy()
+                        .into_owned();
+                    let source_indices: std::rc::Rc<
+                        im::HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>,
+                    > = std::rc::Rc::new(
+                        fill.newline_indices
+                            .iter()
+                            .fold(im::HashMap::new(), |acc, i| {
+                                acc.update(i.file.clone(), i.clone())
+                            }),
+                    );
+                    let mut built = Vec::new();
+                    for module in fill.modules.iter() {
+                        built.push(declaration_index::record_from_module(
+                            module,
+                            &source_indices,
+                            &rel,
+                        ));
+                    }
+                    records.lock().expect("record lock").extend(built);
                 } else {
                     // THE SPAN IS CARRIED, NOT DROPPED. Every `CompilerDiagnostic` answers
                     // `diagnostic_to_span`, and an annotation refusal carries the origin of the
@@ -17899,9 +18142,25 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<usize, Ve
     if !errors.is_empty() {
         return Err(errors);
     }
-    Ok(Arc::try_unwrap(count)
-        .expect("parse count arc is uniquely held after scope")
-        .into_inner())
+    let records = Arc::try_unwrap(records)
+        .expect("record arc is uniquely held after scope")
+        .into_inner()
+        .expect("record lock");
+    let mut index = declaration_index::DeclarationIndex::default();
+    // Sorted by module path first, so a duplicate declaration names the same pair of
+    // files whatever order the threads finished in — a refusal that moves between runs
+    // is a refusal nobody can act on.
+    let mut records = records;
+    records.sort_by(|a, b| (&a.module_path, &a.rel_path).cmp(&(&b.module_path, &b.rel_path)));
+    for record in records {
+        declaration_index::index_insert(&mut index, record);
+    }
+    Ok(DagParseSweep {
+        parse_clean: Arc::try_unwrap(count)
+            .expect("parse count arc is uniquely held after scope")
+            .into_inner(),
+        index,
+    })
 }
 
 /// WHY THE OUTPUT POLICY CANNOT BE INSTALLED, AS A TYPED CAUSE.
@@ -47656,6 +47915,16 @@ pub fn run_required_regen_fixed_point(
 /// producer the regen path uses -- so the bytes a behavioural receipt compiles are the bytes
 /// regen compared. A second emit here would be a second producer of the candidate itself.
 pub use required_regen_host::emitted_generated_sources;
+
+/// The derived stage0 partition's crate boundary files, produced from the authority.
+///
+/// Re-exported here rather than reached directly so every required phase addresses the
+/// producer through one surface, the way the regen path does.
+pub use partition_crate_boundary_host::{
+    compile_partition_crates, partition_package_names, run_partition_crate_boundary,
+    BoundaryFileDisposition, PartitionCompileOutcome, PartitionCrateBoundaryOutcome,
+    RenderedBoundaryFile, PARTITION_CRATE_PRODUCING_COMMAND,
+};
 
 /// The authority's own declared module path, for consumers outside this module.
 ///

@@ -75,104 +75,17 @@ data gating_answer_note: String = "DOES known_red_runtime_errored GATE, AND SHOU
 
 data closure_dependent_evidence: String = "PASSES under a narrow claim_batch --hermetic closure; produces no verdict on the floor's whole-corpus subject"
 
-data closure_dependent_rows: List<ClassifiedNonVerdictRow> = [
-  ClassifiedNonVerdictRow {
-    identity: non_verdict_row_identity(module_path: "test.claim.srv3_subsumption", function: "comment_only_drift_is_one_change_not_remove_add"),
-    cause: ClosureDependentResolution,
-    standing: AssertsARedThatDoesNotExist,
-    measured_evidence: closure_dependent_evidence
-  },
-  ClassifiedNonVerdictRow {
-    identity: non_verdict_row_identity(module_path: "test.claim.srv3_subsumption", function: "reconcile_would_teardown_only_if_ownership_claimed_it"),
-    cause: ClosureDependentResolution,
-    standing: AssertsARedThatDoesNotExist,
-    measured_evidence: closure_dependent_evidence
-  },
-  ClassifiedNonVerdictRow {
-    identity: non_verdict_row_identity(module_path: "test.claim.srv3_subsumption", function: "srv3_and_srv4_disagree_on_convergence"),
-    cause: ClosureDependentResolution,
-    standing: AssertsARedThatDoesNotExist,
-    measured_evidence: closure_dependent_evidence
-  },
-  ClassifiedNonVerdictRow {
-    identity: non_verdict_row_identity(module_path: "test.claim.srv3_subsumption", function: "srv3_reconcile_adds_exactly_the_missing_fleet_key"),
-    cause: ClosureDependentResolution,
-    standing: AssertsARedThatDoesNotExist,
-    measured_evidence: closure_dependent_evidence
-  },
-  ClassifiedNonVerdictRow {
-    identity: non_verdict_row_identity(module_path: "test.claim.srv3_subsumption", function: "srv3_reconcile_refuses_both_unowned_keys_never_teardown"),
-    cause: ClosureDependentResolution,
-    standing: AssertsARedThatDoesNotExist,
-    measured_evidence: closure_dependent_evidence
-  },
-  ClassifiedNonVerdictRow {
-    identity: non_verdict_row_identity(module_path: "test.claim.srv3_subsumption", function: "srv4_reconcile_is_converged_empty_plan"),
-    cause: ClosureDependentResolution,
-    standing: AssertsARedThatDoesNotExist,
-    measured_evidence: closure_dependent_evidence
-  },
-  ClassifiedNonVerdictRow {
-    identity: non_verdict_row_identity(module_path: "v2.test.claim.staging", function: "cached_stage_hit_skips_stage"),
-    cause: ClosureDependentResolution,
-    standing: AssertsARedThatDoesNotExist,
-    measured_evidence: "PASSES narrow; on the floor throws `cannot access field 'raw' on Int` -- an error text shared with nothing else in the population and a cause shared with the eight rows above it"
-  },
-  ClassifiedNonVerdictRow {
-    identity: non_verdict_row_identity(module_path: "v2.test.claim.staging", function: "cached_stage_miss_runs_stage"),
-    cause: ClosureDependentResolution,
-    standing: AssertsARedThatDoesNotExist,
-    measured_evidence: closure_dependent_evidence
-  },
-  ClassifiedNonVerdictRow {
-    identity: non_verdict_row_identity(module_path: "v2.test.emit.produced_decl_support_preserved", function: "produced_decl_support_survives_augmentation"),
-    cause: ClosureDependentResolution,
-    standing: AssertsARedThatDoesNotExist,
-    measured_evidence: "PASSES narrow; on the floor throws `call contract mismatch calling 'render': missing required argument 'proto'`. Its `render` is PATTERN-BOUND out of ProducedDeclWired and std.layout declares a free `fn render(doc, proto)`, so this row is the shadowing class in its loud, different-arity face"
-  }
-]
+data closure_dependent_repaid_note: String = "EMPTY, AND THAT IS A REPAYMENT RECEIPT AND A MEASURED JOIN RATHER THAN A MISSING MEASUREMENT. This list held NINE ClosureDependentResolution / AssertsARedThatDoesNotExist rows -- six test.claim.srv3_subsumption, two v2.test.claim.staging, and v2.test.emit.produced_decl_support_preserved. All nine now ANSWER and PASS on the required floor, so they left this carrier and left floor_expected_red in the same change. THE JOIN THIS CARRIER DECLARED AS INFERENCE IS NOW MEASURED, and that is the substantive result rather than the bookkeeping: unjoined_inference_note stated that closure-dependence was measured for these rows, that the local-binding-shadow defect was measured on its own grid, and that the claim THESE NINE lose their verdict TO THAT DEFECT was inference with no colliding name identified for the six srv3 rows or the two staging rows. It named its own instrument -- fix the resolver and re-run, at which point recovery measures the join and non-recovery isolates a second cause. The resolver is fixed (a lexical binding holding a named top-level function now shadows the free function sharing its spelling; the gate named Value::Closure only and so missed Value::Fn) and ALL NINE RECOVERED. Non-recovery would have isolated a second cause; there is none. The one row that already carried a named colliding symbol, produced_decl_support_preserved, is the confirmation rather than the whole result: its `render` is pattern-bound out of ProducedDeclWired against std.layout's free `fn render(doc, proto)`, the loud different-arity face, and it recovered alongside the eight whose colliding name was never identified. The list stays declared rather than deleted because the CAUSE remains constructible -- a lexical binding holding a NON-CALLABLE value still falls through to a same-named free function, enrolled as its own expected-red row with a census-then-widen trigger -- and an emptied arm with its reason recorded is a different fact from an arm that never existed."
 
-data closure_independent_rows: List<ClassifiedNonVerdictRow> = [
-  ClassifiedNonVerdictRow {
-    identity: non_verdict_row_identity(module_path: "v2.test.manual.bootstrap_footprint_anchor", function: "bootstrap_footprint_canonical_holds"),
-    cause: ClosureIndependent { subject: "Atom.identity is DECLARED Symbol in v2.std.node and carries Int character CODE POINTS, put there by semantic_decl_string_to_bundle_node folding a String; content_hash's atom fold routes that into atom_identity_hash, which requires a string" },
-    standing: HonestDebtWithStatedTrigger,
-    measured_evidence: "throws under BOTH a narrow closure and the floor; with the intrinsic's refusal widened to print its argument it reports `TMPDEBUG got 1 arg(s): [Int(10)]`"
-  },
-  ClassifiedNonVerdictRow {
-    identity: non_verdict_row_identity(module_path: "v2.test.manual.bootstrap_footprint_anchor", function: "bootstrap_footprint_non_canonical_violates"),
-    cause: ClosureIndependent { subject: "same Int-in-a-Symbol-field path; every bootstrap_footprint input hashes a closure embedding rust_target_model().bundle" },
-    standing: HonestDebtWithStatedTrigger,
-    measured_evidence: "throws under both closures"
-  },
-  ClassifiedNonVerdictRow {
-    identity: non_verdict_row_identity(module_path: "v2.test.manual.bootstrap_footprint_anchor", function: "bootstrap_footprint_bad_content_hash_violates"),
-    cause: ClosureIndependent { subject: "same Int-in-a-Symbol-field path" },
-    standing: HonestDebtWithStatedTrigger,
-    measured_evidence: "throws under both closures"
-  },
-  ClassifiedNonVerdictRow {
-    identity: non_verdict_row_identity(module_path: "v2.test.manual.bootstrap_footprint_anchor", function: "bootstrap_footprint_bad_runtime_same_identity_violates"),
-    cause: ClosureIndependent { subject: "same Int-in-a-Symbol-field path" },
-    standing: HonestDebtWithStatedTrigger,
-    measured_evidence: "throws under both closures"
-  }
-]
+data closure_dependent_rows: List<ClassifiedNonVerdictRow> = []
 
-data unmeasured_rows: List<ClassifiedNonVerdictRow> = [
-  ClassifiedNonVerdictRow {
-    identity: non_verdict_row_identity(module_path: "test.claim.host_phase_status", function: "witness_reconcile_covers_upsert_teardown_and_noop"),
-    cause: Unmeasured { obstacle: host_phase_unmeasured_note },
-    standing: StandingUnmeasured,
-    measured_evidence: "no small-closure arm exists: claim_batch refuses the narrow run with `no declaration named host_phase_reconcile in this execution's loaded index`"
-  },
-  ClassifiedNonVerdictRow {
-    identity: non_verdict_row_identity(module_path: "test.claim.host_phase_status", function: "witness_remaining_work_counts_every_unfinished_cell"),
-    cause: Unmeasured { obstacle: host_phase_unmeasured_note },
-    standing: StandingUnmeasured,
-    measured_evidence: "no small-closure arm exists: claim_batch refuses the narrow run with `no declaration named fleet_subsumption_enrollments in this execution's loaded index`"
-  }
-]
+data closure_independent_repaid_note: String = "EMPTY, AND THAT IS A REPAYMENT RECEIPT RATHER THAN A MISSING MEASUREMENT. This list held the four v2.test.manual.bootstrap_footprint_anchor identities, the only ClosureIndependent / HonestDebtWithStatedTrigger rows in the population. Their cause was a Symbol-declared field holding Int code points: semantic_decl_string_to_bundle_node folded a String into character atoms carrying raw code points, and canonical_hash_of_connective routed that field into content_hash_atom -> atom_identity_hash, which requires a string, so the hash threw before any assertion ran. Repaired at the PRODUCER by giving character atoms a string identity through from_code_point, with code_point as its inverse on the two decoders. All four now ANSWER: three PASS and bootstrap_footprint_canonical_holds FAILS honestly, so the four left this roster and the three passing ones left floor_expected_red in the same change. The list stays declared rather than deleted because the CAUSE remains constructible -- nothing prevents another producer putting a non-Symbol into Atom.identity -- and an emptied arm with its reason recorded is a different fact from an arm that never existed."
+
+data closure_independent_rows: List<ClassifiedNonVerdictRow> = []
+
+data unmeasured_repaid_note: String = "EMPTY, AND IT WAS REPAID WITHOUT EVER BEING MEASURED, which is a different receipt from the two above and is worth keeping distinct. This list held the two test.claim.host_phase_status identities. They were classified StandingUnmeasured on an honest obstacle: their witness carries ONE import and resolves everything else from the pool, so no narrow closure can even resolve them and there was no small-closure arm to compare against -- host_phase_unmeasured_note records that, and records the refusal to assign them the neighbouring cause merely because they shared an error message. THAT RESTRAINT WAS CORRECT AND IT WAS ALSO NOT NEEDED IN THE END: both now ANSWER and PASS on the required floor after the local-binding-shadow repair, alongside the nine rows that WERE measured as closure-dependent. So the shared cause was real; what was missing was an instrument able to show it, and the repair supplied one that the A/B could not. This is NOT a retroactive classification -- the rows are gone and nothing here claims they were ClosureDependentResolution -- it is the weaker and true statement that a repair aimed elsewhere recovered them too. The list stays declared because the obstacle remains constructible: a witness resolving from the pool rather than from declared imports still has no narrow arm."
+
+data unmeasured_rows: List<ClassifiedNonVerdictRow> = []
 
 data no_classified_non_verdict_rows: List<ClassifiedNonVerdictRow> = []
 

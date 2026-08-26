@@ -12012,7 +12012,7 @@ fn emit_file_channel_expr(channel: FileResultChannel, is_optional: Bool) -> Stri
 // one-tuple. The `from` key was read off the FIELD at binding time WITHOUT
 // unwrapping the product -- unwrapping collapses a one-field product to the
 // field's own type and loses the key, which would answer a declared
-// `success: Bool from "write_success"` with the content channel and emit a String
+// `success: Bool from "read_success"` with the content channel and emit a String
 // against a bool.
 fn emit_file_return(result_fields: List<FileResultField>) -> String {
   let field_exprs = result_fields |> map(f => emit_file_channel_expr(channel: f.channel, is_optional: f.optional))
@@ -12385,6 +12385,7 @@ type WorkflowFunc {
   uses: List<Node>
   service_names: List<String>
   resolved_defaults: Map<String, String>
+  unresolvable_default_data_references: Map<String, UnresolvableDataReference>
   read_only_params: Set<String>
   source_indices: Map<String, NewlineIndex>
 }
@@ -12402,23 +12403,99 @@ fn extract_literal_string(expr: Node) -> String? {
   }
 }
 
-// ONLY DATA BODIES, and the name of this index is the reason. It previously admitted EVERY item
+// EXACT DECLARATION IDENTITY FOR A DATA REFERENCE. This index previously admitted EVERY item
 // carrying a body -- functions included -- keyed by BARE authored name across the whole corpus, so
 // one module's `fn owner` and another's `data owner` collided on the key `owner` and the last fold
-// won. Measured on main: that collision was the ENTIRE blocking population of a whole-corpus emit,
-// while the byte-identical `repo` default folded cleanly because no other item is spelled `repo`.
+// won. Restricting it to data bodies fixed the kind half of that collision and left the key itself
+// standing, so two DATA declarations sharing a spelling still resolved by last-wins: measured live,
+// `gunbc.tools.review` and `gunbc.tools.review_codex` each declare `data default_model` and each
+// reference it as a workflow CLI default, so one map answer had to serve two consumers wanting
+// different values and exactly one review tool would have emitted the other's model.
 //
-// WHAT THIS DOES NOT FIX: the key is still a bare name, so two DATA declarations sharing a
-// spelling still resolve by last-wins. A collision refusal is not attempted -- one spelling is
-// authored over a thousand times -- and the real repair is an exact declaration identity rather
-// than a name. Tracked as the next rung on this row rather than left as prose.
-fn build_data_body_index(modules: List<TypedModule>) -> Map<String, Node> {
-  modules |> fold(init: empty_map(), f: (acc, tm) =>
-    tm.items |> fold(init: acc, f: (inner, i) =>
+// THE KEY NOW CARRIES THE DECLARING MODULE, so a colliding key cannot be constructed: two modules'
+// same-named data items occupy different buckets. Resolution follows the author's imports and
+// NOTHING ELSE -- own module first (a local `data` shadows an import, which is what makes both
+// review tools' references unambiguous despite the shared spelling), then the visibility walk in
+// `data_decl_visible_modules`. There is no corpus-wide fallback: a declaration the referrer's
+// imports cannot reach can no longer answer for it, whatever its spelling.
+//
+// A NAME ANSWERED BY MORE THAN ONE VISIBLE DECLARATION RESOLVES TO NEITHER, and refuses with its
+// own located diagnostic naming the spelling and every module that answers to it -- not with the
+// generic `must be a string, int, float, bool literal, or data reference` sentence, which is what
+// `no visible declaration` means and is a different repair.
+//
+// NEXT RUNG (DESIGN 4b(2)): this recomputes visibility from the module's own import list, which is
+// a second, narrow resolver beside `03_resolve`. It retires when the ExprVar node carries its
+// resolved declaration site, at which point the walk and its depth bound both delete and emission
+// reads the binding resolution already computed.
+type DataImportEdge {
+  module_path: String
+  is_all: Bool
+  specific_names: List<String>
+}
+
+type DataDeclIndex {
+  by_module: Map<String, Map<String, Node>>
+  imports_by_module: Map<String, List<DataImportEdge>>
+  source_indices_by_module: Map<String, Map<String, NewlineIndex>>
+}
+
+// FOUR ANSWERS, NOT ONE. `no data declaration is visible under this name`, `two visible
+// declarations answer to this name`, and `the visibility walk ran out of budget before it could
+// tell` are different states with different owners and opposite repairs -- a typo or a missing
+// import, a genuine ambiguity the author must disambiguate, and a compiler limit that is nobody's
+// authoring mistake. Collapsing them hands the second and third the first one's message, which is
+// the same conflation the bare key produced one level up. The budget arm has zero live exposure --
+// no corpus import chain is anywhere near the bound -- but a walk that stopped early reporting
+// `not there` would be an absorbing answer, and reporting it as its own state costs one variant.
+type DataRefResolution
+  = DataRefResolved { module_path: String, body: Node }
+  | DataRefAmbiguous { modules: List<String> }
+  | DataRefVisibilityBudgetExhausted
+  | DataRefAbsent
+
+fn empty_data_decl_index() -> DataDeclIndex {
+  DataDeclIndex {
+    by_module: empty_map(),
+    imports_by_module: empty_map(),
+    source_indices_by_module: empty_map()
+  }
+}
+
+fn data_import_edges(module: Node, source_indices: Map<String, NewlineIndex>) -> List<DataImportEdge> {
+  module_imports(n: module) |> map(imp => DataImportEdge {
+    module_path: authored_name_at(source_indices: source_indices, node: imp),
+    is_all: import_is_all(n: imp),
+    specific_names: import_specific_names_at(n: imp, source_indices: source_indices)
+  })
+}
+
+fn record_data_decl(index: DataDeclIndex, module_path: String, name: String, body: Node) -> DataDeclIndex {
+  let bucket = match map_get(index.by_module, module_path) {
+    Present { value: m } => m
+    Absent => empty_map()
+  }
+  DataDeclIndex {
+    by_module: map_insert(index.by_module, module_path, map_insert(bucket, name, body)),
+    imports_by_module: index.imports_by_module,
+    source_indices_by_module: index.source_indices_by_module
+  }
+}
+
+fn build_data_decl_index(modules: List<TypedModule>) -> DataDeclIndex {
+  modules |> fold(init: empty_data_decl_index(), f: (acc, tm) =>
+    let si = tm.type_env.source_indices
+    let module_path = authored_name_at(source_indices: si, node: tm.module)
+    let seeded = DataDeclIndex {
+      by_module: acc.by_module,
+      imports_by_module: map_insert(acc.imports_by_module, module_path, data_import_edges(module: tm.module, source_indices: si)),
+      source_indices_by_module: map_insert(acc.source_indices_by_module, module_path, si)
+    }
+    tm.items |> fold(init: seeded, f: (inner, i) =>
       if item_kind(item: i) != DataItem { inner }
       else {
         match i.body {
-          Present { value: b } => map_insert(inner, authored_name_at(source_indices: tm.type_env.source_indices, node: i), b)
+          Present { value: b } => record_data_decl(index: inner, module_path: module_path, name: authored_name_at(source_indices: si, node: i), body: b)
           Absent => inner
         }
       }
@@ -12426,61 +12503,241 @@ fn build_data_body_index(modules: List<TypedModule>) -> Map<String, Node> {
   )
 }
 
+fn data_decl_in_module(index: DataDeclIndex, module_path: String, name: String) -> Node? {
+  match map_get(index.by_module, module_path) {
+    Present { value: m } => map_get(m, name)
+    Absent => none
+  }
+}
+
+fn data_decl_module_edges(index: DataDeclIndex, module_path: String) -> List<DataImportEdge> {
+  match map_get(index.imports_by_module, module_path) {
+    Present { value: e } => e
+    Absent => []
+  }
+}
+
+fn data_import_admits_name(edge: DataImportEdge, name: String) -> Bool {
+  edge.is_all || (edge.specific_names |> any(n => n == name))
+}
+
+// An all-import makes a name VISIBLE in the importing module without re-exporting it onward
+// (`03_resolve` `get_exported_names` contributes only specifically-imported names), so the two
+// predicates are genuinely different questions and are separate functions rather than one with a
+// flag.
+fn data_import_reexports_name(edge: DataImportEdge, name: String) -> Bool {
+  if edge.is_all { false } else { data_import_admits_name(edge: edge, name: name) }
+}
+
+data data_reference_visibility_depth_limit: Int = 16
+
+// WHAT THE WALK REACHED, AND WHETHER IT FINISHED. Two facts, because a truncated walk that
+// returned one module is not the same evidence as a complete walk that returned one module -- the
+// truncated one may have had a second declaration behind the bound, so treating them alike would
+// resolve an ambiguity by running out of budget.
+type DataDeclReach {
+  modules: List<String>
+  budget_exhausted: Bool
+}
+
+fn empty_data_decl_reach() -> DataDeclReach {
+  DataDeclReach { modules: [], budget_exhausted: false }
+}
+
+fn merge_data_decl_reach(left: DataDeclReach, right: DataDeclReach) -> DataDeclReach {
+  DataDeclReach {
+    modules: concat(left.modules, right.modules),
+    budget_exhausted: left.budget_exhausted || right.budget_exhausted
+  }
+}
+
+// WHAT A MODULE RE-EXPORTS, and this is read off `03_resolve` `get_exported_names` rather than
+// guessed: a module's exported names are its own items, its coproduct variants, and the names it
+// imported SPECIFICALLY -- an all-import contributes nothing onward. So a declaration can reach a
+// referrer through a chain of specific-name imports, and this walk is that chain, not a corpus
+// scan. The distinction matters because the alternative -- admitting a name because the spelling
+// happens to be unique corpus-wide -- would make a declaration the referrer's imports cannot see
+// answer for it anyway, which is the bare-name fallback in different clothes.
+//
+// The bound is not decoration even though the import graph is acyclic: `03_resolve` reports a
+// cycle as a diagnostic and emission still runs, so an unbounded walk here would recurse forever
+// on a graph the pipeline had already refused. Exceeding it is REPORTED, never absorbed.
+fn data_decl_reexporting_modules(index: DataDeclIndex, module_path: String, name: String, depth: Int) -> DataDeclReach {
+  if depth > data_reference_visibility_depth_limit { DataDeclReach { modules: [], budget_exhausted: true } }
+  else {
+    match data_decl_in_module(index: index, module_path: module_path, name: name) {
+      Present { value: _ } => DataDeclReach { modules: [module_path], budget_exhausted: false }
+      Absent =>
+        data_decl_module_edges(index: index, module_path: module_path)
+          |> filter(e => data_import_reexports_name(edge: e, name: name))
+          |> fold(init: empty_data_decl_reach(), f: (acc, e) =>
+               merge_data_decl_reach(left: acc, right: data_decl_reexporting_modules(index: index, module_path: e.module_path, name: name, depth: depth + 1)))
+    }
+  }
+}
+
+// THE MODULES THIS REFERENCE COULD BIND. Own declaration first -- a local `data` shadows anything
+// imported, which is what makes the two review tools' `default_model` references unambiguous
+// despite the shared spelling. Otherwise every import edge that ADMITS the name (an all-import
+// included, since an all-import is visibility into the module it names even though it re-exports
+// nothing onward), followed into what that module re-exports.
+fn data_decl_visible_modules(index: DataDeclIndex, module_path: String, name: String) -> DataDeclReach {
+  match data_decl_in_module(index: index, module_path: module_path, name: name) {
+    Present { value: _ } => DataDeclReach { modules: [module_path], budget_exhausted: false }
+    Absent =>
+      let reached = data_decl_module_edges(index: index, module_path: module_path)
+        |> filter(e => data_import_admits_name(edge: e, name: name))
+        |> fold(init: empty_data_decl_reach(), f: (acc, e) =>
+             merge_data_decl_reach(left: acc, right: data_decl_reexporting_modules(index: index, module_path: e.module_path, name: name, depth: 1)))
+      DataDeclReach { modules: unique_strings(items: reached.modules), budget_exhausted: reached.budget_exhausted }
+  }
+}
+
+// THE BUDGET ARM IS TESTED FIRST, and the order is the whole of its safety: a truncated walk that
+// happened to reach exactly one module must not resolve, because the declaration that would have
+// made it ambiguous may be the one behind the bound.
+fn resolve_data_reference(index: DataDeclIndex, module_path: String, name: String) -> DataRefResolution {
+  let reach = data_decl_visible_modules(index: index, module_path: module_path, name: name)
+  if reach.budget_exhausted { DataRefVisibilityBudgetExhausted }
+  else if (reach.modules |> count) > 1 { DataRefAmbiguous { modules: reach.modules } }
+  else {
+    match reach.modules |> first {
+      Present { value: mp } =>
+        match data_decl_in_module(index: index, module_path: mp, name: name) {
+          Present { value: b } => DataRefResolved { module_path: mp, body: b }
+          Absent => DataRefAbsent
+        }
+      Absent => DataRefAbsent
+    }
+  }
+}
+
+fn data_decl_source_indices(index: DataDeclIndex, module_path: String, fallback: Map<String, NewlineIndex>) -> Map<String, NewlineIndex> {
+  match map_get(index.source_indices_by_module, module_path) {
+    Present { value: si } => si
+    Absent => fallback
+  }
+}
+
 data workflow_default_fold_depth_limit: Int = 8
 
 // ONE AUTHORITY FOR A DATA REFERENCE. The ExprVar arm used to ask the registry whether a name is
 // a data item and then ask the body index for its body -- two corpus-wide maps keyed by
 // UNQUALIFIED name, either of which a same-named item in an unrelated module could win -- so the
-// kind gate and the body could be answered by DIFFERENT declarations. build_data_body_index above
-// now admits data bodies only, which makes presence in it the evidence the registry gate was
-// being asked for, and the arm consults it alone.
-fn fold_constant_default_expr(expr: Node, registry: Map<String, ItemInfo>, data_body_index: Map<String, Node>, source_indices: Map<String, NewlineIndex>, depth: Int) -> Node? {
-  if depth > workflow_default_fold_depth_limit { none }
+// kind gate and the body could be answered by DIFFERENT declarations. The index above admits data
+// bodies only, which makes presence in it the evidence the registry gate was being asked for, and
+// the arm consults it alone. It now consults it AT A DECLARATION, not at a spelling: the fold
+// carries the module the expression was authored in, and following a reference re-bases the module
+// and the source indices onto the DECLARING module, so a nested reference inside an imported body
+// resolves in that body's own scope rather than the referrer's.
+// A CONSTANT FOLDED TO ITS DECLARING MODULE, OR THE REASON IT WAS NOT. The module travels with
+// the expression because a folded body is authored somewhere else: a record literal reached
+// through an imported data item carries ITS module's field names and ITS module's nested
+// references, and resolving those in the REFERRER's module would re-open the same
+// wrong-declaration answer one hop further down. The ambiguous arm is separate from the
+// not-constant arm for the reason `DataRefResolution` gives: they reach the author as different
+// sentences because they have different repairs.
+type ConstantFold
+  = ConstantFolded { module_path: String, expr: Node }
+  | ConstantFoldAmbiguousDataReference { name: String, modules: List<String> }
+  | ConstantFoldVisibilityBudgetExhausted { name: String }
+  | ConstantFoldUnresolved
+
+fn fold_constant_default_expr(expr: Node, index: DataDeclIndex, module_path: String, source_indices: Map<String, NewlineIndex>, depth: Int) -> ConstantFold {
+  if depth > workflow_default_fold_depth_limit { ConstantFoldUnresolved }
   else {
     match expr.expr_data {
       ExprVar { binding_kind: _ } =>
         let var_name = authored_name_at(source_indices: source_indices, node: expr)
-        match map_get(data_body_index, var_name) {
-          Present { value: body } => fold_constant_default_expr(expr: body, registry: registry, data_body_index: data_body_index, source_indices: source_indices, depth: depth + 1)
-          Absent => none
+        match resolve_data_reference(index: index, module_path: module_path, name: var_name) {
+          DataRefResolved { module_path: decl_module, body: body } =>
+            fold_constant_default_expr(expr: body, index: index, module_path: decl_module, source_indices: data_decl_source_indices(index: index, module_path: decl_module, fallback: source_indices), depth: depth + 1)
+          DataRefAmbiguous { modules: mods } => ConstantFoldAmbiguousDataReference { name: var_name, modules: mods }
+          DataRefVisibilityBudgetExhausted => ConstantFoldVisibilityBudgetExhausted { name: var_name }
+          DataRefAbsent => ConstantFoldUnresolved
         }
       ExprFieldAccess { summary: _ } =>
-        match fold_constant_default_expr(expr: field_access_base(texpr: expr), registry: registry, data_body_index: data_body_index, source_indices: source_indices, depth: depth + 1) {
-          Present { value: base } =>
-            match record_lit_named_field_value_optional(record_expr: base, field: field_access_field_at(texpr: expr, source_indices: source_indices), source_indices: source_indices) {
-              Present { value: field_value } => fold_constant_default_expr(expr: field_value, registry: registry, data_body_index: data_body_index, source_indices: source_indices, depth: depth + 1)
-              Absent => none
+        match fold_constant_default_expr(expr: field_access_base(texpr: expr), index: index, module_path: module_path, source_indices: source_indices, depth: depth + 1) {
+          ConstantFolded { module_path: base_module, expr: base } =>
+            let base_indices = data_decl_source_indices(index: index, module_path: base_module, fallback: source_indices)
+            match record_lit_named_field_value_optional(record_expr: base, field: field_access_field_at(texpr: expr, source_indices: source_indices), source_indices: base_indices) {
+              Present { value: field_value } => fold_constant_default_expr(expr: field_value, index: index, module_path: base_module, source_indices: base_indices, depth: depth + 1)
+              Absent => ConstantFoldUnresolved
             }
-          Absent => none
+          ConstantFoldAmbiguousDataReference { name: n, modules: mods } => ConstantFoldAmbiguousDataReference { name: n, modules: mods }
+          ConstantFoldVisibilityBudgetExhausted { name: n } => ConstantFoldVisibilityBudgetExhausted { name: n }
+          ConstantFoldUnresolved => ConstantFoldUnresolved
         }
-      _ => Present { value: expr }
+      _ => ConstantFolded { module_path: module_path, expr: expr }
     }
   }
 }
 
-fn resolve_param_default(param: Node, registry: Map<String, ItemInfo>, data_body_index: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> String? {
+// WHY THE REFUSAL CARRIES A CAUSE RATHER THAN A MODULE LIST. Two of the three states that stop a
+// data reference from folding are reportable at the parameter, and they are not the same sentence:
+// an ambiguity names the declarations the author must choose between, and an exhausted visibility
+// walk names no declarations at all because it never finished looking. A list that is empty for
+// one reason and populated for another is the `Bool` with nowhere to put `not asked`.
+type DataReferenceUnresolvableCause
+  = DataReferenceAmbiguous { modules: List<String> }
+  | DataReferenceVisibilityBudgetExhausted
+
+type UnresolvableDataReference {
+  name: String
+  cause: DataReferenceUnresolvableCause
+}
+
+// One pass over a workflow's params yields both outcomes. Two folds, each re-running the
+// resolution, would have paid the whole visibility walk twice per parameter to answer two halves
+// of one question.
+type WorkflowParamDefaults {
+  resolved: Map<String, String>
+  ambiguous: Map<String, UnresolvableDataReference>
+}
+
+type ParamDefaultResolution
+  = ParamDefaultLiteral { value: String }
+  | ParamDefaultAmbiguousDataReference { name: String, modules: List<String> }
+  | ParamDefaultVisibilityBudgetExhausted { name: String }
+  | ParamDefaultUnresolved
+
+fn resolve_param_default(param: Node, index: DataDeclIndex, module_path: String, source_indices: Map<String, NewlineIndex>) -> ParamDefaultResolution {
   match param_node_default_value(n: param) {
     Present { value: dv } =>
-      match fold_constant_default_expr(expr: dv, registry: registry, data_body_index: data_body_index, source_indices: source_indices, depth: 0) {
-        Present { value: folded } => extract_literal_string(expr: folded)
-        Absent => none
+      match fold_constant_default_expr(expr: dv, index: index, module_path: module_path, source_indices: source_indices, depth: 0) {
+        ConstantFolded { module_path: _, expr: folded } =>
+          match extract_literal_string(expr: folded) {
+            Present { value: lit } => ParamDefaultLiteral { value: lit }
+            Absent => ParamDefaultUnresolved
+          }
+        ConstantFoldAmbiguousDataReference { name: n, modules: mods } => ParamDefaultAmbiguousDataReference { name: n, modules: mods }
+        ConstantFoldVisibilityBudgetExhausted { name: n } => ParamDefaultVisibilityBudgetExhausted { name: n }
+        ConstantFoldUnresolved => ParamDefaultUnresolved
       }
-    Absent => none
+    Absent => ParamDefaultUnresolved
   }
 }
 
-fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemInfo>, data_body_index: Map<String, Node>, source_indices: Map<String, NewlineIndex>, read_only_params_index: Map<String, Set<String>>) -> WorkflowFunc {
+fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemInfo>, index: DataDeclIndex, source_indices: Map<String, NewlineIndex>, read_only_params_index: Map<String, Set<String>>) -> WorkflowFunc {
   let item_name = authored_name_at(source_indices: source_indices, node: item)
   let svc_names = match lookup_item(registry: registry, name: item_name) {
     Present { value: info } => info.service_names
     Absent => []
   }
-  let defaults = item.params |> fold(init: empty_map(), f: (acc, p) =>
-    match resolve_param_default(param: p, registry: registry, data_body_index: data_body_index, source_indices: source_indices) {
-      Present { value: lit } => map_insert(acc, param_node_name_at(n: p, source_indices: source_indices), lit)
-      Absent => acc
+  let param_defaults = item.params |> fold(init: WorkflowParamDefaults { resolved: empty_map(), ambiguous: empty_map() }, f: (acc, p) =>
+    let param_name = param_node_name_at(n: p, source_indices: source_indices)
+    match resolve_param_default(param: p, index: index, module_path: module_name, source_indices: source_indices) {
+      ParamDefaultLiteral { value: lit } =>
+        WorkflowParamDefaults { resolved: map_insert(acc.resolved, param_name, lit), ambiguous: acc.ambiguous }
+      ParamDefaultAmbiguousDataReference { name: n, modules: mods } =>
+        WorkflowParamDefaults { resolved: acc.resolved, ambiguous: map_insert(acc.ambiguous, param_name, UnresolvableDataReference { name: n, cause: DataReferenceAmbiguous { modules: mods } }) }
+      ParamDefaultVisibilityBudgetExhausted { name: n } =>
+        WorkflowParamDefaults { resolved: acc.resolved, ambiguous: map_insert(acc.ambiguous, param_name, UnresolvableDataReference { name: n, cause: DataReferenceVisibilityBudgetExhausted }) }
+      ParamDefaultUnresolved => acc
     }
   )
+  let defaults = param_defaults.resolved
+  let ambiguous = param_defaults.ambiguous
   let qualified = concat(module_name, ".", item_name)
   let ro_params = match map_get(read_only_params_index, qualified) {
     Present { value: m } => m
@@ -12494,6 +12751,7 @@ fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemI
     uses: item.uses,
     service_names: svc_names,
     resolved_defaults: defaults,
+    unresolvable_default_data_references: ambiguous,
     read_only_params: ro_params,
     source_indices: source_indices
   }
@@ -12512,11 +12770,11 @@ fn is_workflow_item(item: Node, registry: Map<String, ItemInfo>, source_indices:
 }
 
 fn collect_workflow_funcs(modules: List<TypedModule>, registry: Map<String, ItemInfo>, read_only_params_index: Map<String, Set<String>>) -> List<WorkflowFunc> {
-  let data_body_index = build_data_body_index(modules: modules)
+  let index = build_data_decl_index(modules: modules)
   modules |> flat_map(tm =>
     tm.items
       |> filter(item => is_workflow_item(item: item, registry: registry, source_indices: tm.type_env.source_indices))
-      |> map(item => to_workflow_func(item: item, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module), registry: registry, data_body_index: data_body_index, source_indices: tm.type_env.source_indices, read_only_params_index: read_only_params_index))
+      |> map(item => to_workflow_func(item: item, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module), registry: registry, index: index, source_indices: tm.type_env.source_indices, read_only_params_index: read_only_params_index))
   )
 }
 
@@ -12548,10 +12806,29 @@ fn validate_workflow_param_defaults(workflow_funcs: List<WorkflowFunc>) -> List<
             }
           }
           if resolved { [] }
-          else { [make_error_node(diagnostic: InternalError { message: concat(
-              "workflow CLI default for parameter `", param_name,
-              "` must be a string, int, float, bool literal, or data reference"
-            ), span: param.span }, module_name: wf.module_name)] }
+          else {
+            match map_get(wf.unresolvable_default_data_references, param_name) {
+              Present { value: unresolvable } =>
+                match unresolvable.cause {
+                  DataReferenceAmbiguous { modules: mods } => [make_error_node(diagnostic: InternalError { message: concat(
+                      "workflow CLI default for parameter `", param_name,
+                      "` names `", unresolvable.name,
+                      "`, which more than one visible data declaration answers to (",
+                      mods |> join(separator: ", "),
+                      "); qualify the reference or narrow the import"
+                    ), span: param.span }, module_name: wf.module_name)]
+                  DataReferenceVisibilityBudgetExhausted => [make_error_node(diagnostic: InternalError { message: concat(
+                      "workflow CLI default for parameter `", param_name,
+                      "` names `", unresolvable.name,
+                      "`, whose visible declarations could not be enumerated: the import re-export walk exceeded its depth bound, so this is a compiler limit and not an authoring error"
+                    ), span: param.span }, module_name: wf.module_name)]
+                }
+              Absent => [make_error_node(diagnostic: InternalError { message: concat(
+                  "workflow CLI default for parameter `", param_name,
+                  "` must be a string, int, float, bool literal, or data reference"
+                ), span: param.span }, module_name: wf.module_name)]
+            }
+          }
         Absent => []
       }
     )

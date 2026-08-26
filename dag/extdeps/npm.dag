@@ -31,7 +31,10 @@ import extdeps.languages.json.emit {
   JsonKeyValue,
 }
 import extdeps.languages.json.parse {
-  parse_json,
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_document_gap_text,
   json_object_unique_member,
   JsonMemberFound,
   JsonMemberAbsent,
@@ -784,12 +787,12 @@ fn npm_decode_registry_lock_node(
 }
 
 fn npm_decode_package_lock_text(text: String) -> NpmPackageLockParse {
-  match parse_json(s: text) {
-    Absent =>
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: gap } =>
       NpmPackageLockParseRefused {
-        cause: "package-lock JSON parse refused" as NonEmptyStr,
+        cause: concat("the package-lock document is ", json_document_gap_text(gap: gap)) as NonEmptyStr,
       }
-    Present { value: doc } =>
+    JsonDocumentParsed { value: doc } =>
       match json_object_unique_member(v: doc, key: "lockfileVersion") {
         JsonMemberFound { value: ver_v } =>
           match ver_v {

@@ -58,7 +58,7 @@ import v2.std.diagnostic {
   node_locus,
   outcome_accepted,
   outcome_rejected,
-  port_locus
+  invariant_port_locus
 }
 import v2.std.node {
   Atom,
@@ -140,7 +140,7 @@ fn semantic_decl_string_to_bundle_node(s: String) -> Node {
         children: [
           target_model_named_edge(
             name: ^free_monoid_field_head,
-            target: target_model_type_atom_node(identity: c)
+            target: target_model_type_atom_node(identity: from_code_point(cp: c))
           ),
           target_model_named_edge(
             name: ^free_monoid_field_tail,
@@ -173,7 +173,7 @@ fn semantic_decl_string_from_bundle_node(bundle: Node) -> Outcome<String> {
                   bind_outcome(
                     o: semantic_decl_string_from_bundle_node(bundle: tail),
                     f: fn(rest) {
-                      outcome_accepted(value: concat(rest, from_code_point(cp: c)))
+                      outcome_accepted(value: concat(rest, c))
                     }
                   )
                 _ =>
@@ -484,7 +484,7 @@ fn semantic_decl_binding_spellings_from_rows(
 fn semantic_decl_binding_spelling_not_found_diagnostic(binding: Symbol) -> Diagnostic {
   Diagnostic {
     reason: ^semantic_decl_binding_spelling_not_found,
-    at: port_locus(port: binding),
+    at: invariant_port_locus(port: binding, invariant: ^semantic_decl_binding_spelling_not_found),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

@@ -34,7 +34,7 @@ import v2.std.diagnostic {
   Unavailable,
   diagnostics_singleton,
   node_locus,
-  port_locus
+  invariant_port_locus
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -704,7 +704,7 @@ test fn tcc_cache_locus_variant_domain_claim_hash_differs() -> Bool {
       expected_rejection: diagnostics_singleton(
         d: Diagnostic {
           reason: ^tcc_cache_expected_diag_a,
-          at: port_locus(port: ^tcc_cache_root_sym),
+          at: invariant_port_locus(port: ^tcc_cache_root_sym, invariant: ^tcc_cache_expected_diag_a),
           correction: Unavailable { reason: AmbiguousIntent }
         }
       )
