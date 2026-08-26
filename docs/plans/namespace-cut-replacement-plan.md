@@ -31,9 +31,12 @@ Standing census on the branch (2026-08-15): **5,531 hard diagnostics · 280 dist
   already built, approved, regenerated and executing, and swapping it for an
   equal-strength fixture over a population of one is the churn §6 warns about as
   loudly as it warns about scaffolds. **The condition of that override is this
-  entry.** It is in the deletion list rather than carrying a "temporary" note so
-  that Step 5 removes it *by the census* — a row someone must execute — instead
-  of leaving residue that survives because nobody remembers to look for it. A
+  entry.** It is in **this step's** deletion list rather than carrying a
+  "temporary" note, so the grammar deletion removes it *by the census* — a row
+  someone must execute — instead of leaving residue that survives because nobody
+  remembers to look for it. (This step is numbered 1 in the file as it stands and
+  becomes **Step 5** once gunbc#9267's reordering lands; the entry is attached to
+  the step, not to its number, so the renumbering cannot orphan it.) A
   dissolution trigger that depends on memory is the self-authorized dissolution
   DESIGN names as a failure mode.
 
