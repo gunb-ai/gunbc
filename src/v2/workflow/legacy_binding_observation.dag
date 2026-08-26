@@ -1,8 +1,8 @@
 module v2.workflow.legacy_binding_observation
 
-import std.types { String, Bool, Int, List, Map }
+import std.types { String, Bool, Int, List, Map, NonEmptyStr }
 import v2.std.optional { Present, Absent }
-import std.content_hash { Fnv1a64Structural }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural }
 import std.decl_ref { DeclarationRef }
 import std.occurrence_identity {
   OccurrenceId,
@@ -182,4 +182,57 @@ fn legacy_subject_applicability(
   } else {
     LegacySubjectApplicable
   }
+}
+
+// THE SUBJECT'S CONTENT ADDRESS, AND WHY IT IS DERIVED RATHER THAN STORED.
+//
+// A stored digest beside the seven fields would be a second representation of the same fact, free
+// to disagree with them -- and the disagreement would be undetectable, because nothing would
+// recompute it. So the identity is a fold over the fields themselves: change any field and the
+// address changes, by construction rather than by anyone remembering to update it.
+//
+// THE TWO NON-DIGEST FIELDS ARE FOLDED THROUGH THEIR RENDERINGS, which is a projection and not a
+// second authority: the policy coproduct and the resolver reference are named by their own
+// declarations, and this function reads those names rather than re-deciding what they mean. The
+// renderings are total matches, so a new policy arm or a changed reference shape fails to compile
+// here rather than silently hashing to the same address as before.
+fn legacy_resolution_policy_label(policy: LegacyResolutionPolicy) -> String {
+  match policy {
+    ImportScopedPolicy => "import_scoped"
+    NamespaceOnlyPolicy => "namespace_only"
+  }
+}
+
+fn legacy_subject_identity(subject: LegacyBindingObservationSubject) -> Fnv1a64Structural {
+  let resolver = content_hash_combine_structural(
+    left: content_hash_atom(value: subject.resolver_identity.module_path),
+    right: content_hash_atom(value: subject.resolver_identity.decl_name)
+  )
+  let policy = content_hash_atom(value: legacy_resolution_policy_label(policy: subject.resolver_policy) as NonEmptyStr)
+  let sources = content_hash_combine_structural(
+    left: subject.semantic_source_digest,
+    right: subject.source_set_digest
+  )
+  let build = content_hash_combine_structural(left: subject.compiler_artifact_digest, right: resolver)
+  let populations = content_hash_combine_structural(
+    left: subject.occurrence_transport_digest,
+    right: subject.declaration_index_digest
+  )
+  content_hash_combine_structural(
+    left: content_hash_combine_structural(left: sources, right: build),
+    right: content_hash_combine_structural(left: policy, right: populations)
+  )
+}
+
+// AN OCCURRENCE ID IS LAWFUL AS AN IDENTITY INSIDE ONE SUBJECT AND UNLAWFUL ACROSS TWO, so a
+// reference that travels between subjects carries the scope it was minted in.
+//
+// The allocator is a monotone counter consumed in traversal order, so an ordinal names an
+// occurrence exactly within the compile that allocated it. Pairing it with the subject's content
+// address does not derive the occurrence's identity -- the parser minted that -- it SCOPES THE
+// ALLOCATOR DOMAIN, which is applicability rather than identity. That distinction is what makes an
+// indexable relation admissible where a cross-compile key is not.
+type SubjectOccurrenceRef {
+  subject_identity: Fnv1a64Structural
+  occurrence: OccurrenceId
 }
