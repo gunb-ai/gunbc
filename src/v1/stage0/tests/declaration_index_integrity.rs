@@ -478,8 +478,8 @@ fn lens_with_construction_justification_stays_clean() {
 // THE DEBT CONTRACT'S OWN DISCRIMINATING PAIR, AND WHY IT LIVES BEHIND A ROSTER PARAMETER.
 //
 // `review 55817` found that folding the debt arm into `index_findings` made every fixture in
-// this file receive 41 findings it did not plant — the production roster joined against a
-// tree of `probe.*` modules, where all 41 rows are trivially absent. That falsified the
+// this file receive 42 findings it did not plant — the production roster joined against a
+// tree of `probe.*` modules, where all 42 rows are trivially absent. That falsified the
 // §4b evidence in place: the planted-red and positive-control assertions could not pass.
 //
 // The repair splits the arm out into `corpus_findings`, whose denominator is this repository,
@@ -508,7 +508,13 @@ fn a_debt_row_whose_citation_still_refuses_is_live() {
         "probe.authority",
         "no_such_declaration",
     );
-    let roster = [("probe.citer", "probe.authority", "no_such_declaration", "")];
+    let roster = [(
+        "probe.citer",
+        "probe_citation",
+        "probe.authority",
+        "no_such_declaration",
+        "",
+    )];
     assert_eq!(
         citation_debt_findings_against(&sweep.index, &roster),
         Vec::new(),
@@ -535,7 +541,13 @@ fn a_debt_row_whose_citation_stopped_refusing_is_spent_and_refuses() {
     author(&dir, "authority.dag", AUTHORITY);
     // Nothing cites the roster's target, so the row is spent.
     let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
-    let roster = [("probe.citer", "probe.authority", "no_such_declaration", "")];
+    let roster = [(
+        "probe.citer",
+        "probe_citation",
+        "probe.authority",
+        "no_such_declaration",
+        "",
+    )];
     let spent = citation_debt_findings_against(&sweep.index, &roster);
     assert_eq!(spent.len(), 1, "the spent row must refuse, got {spent:?}");
     assert_eq!(
@@ -644,7 +656,7 @@ fn corpus_findings_is_wired_to_the_production_suppression_roster() {
         &dir,
         "citer.dag",
         "module std.encoding\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
-         data probe_citation: DeclarationRef = DeclarationRef {\n\
+         data utf8_decode_bytes_host_realization_marker: DeclarationRef = DeclarationRef {\n\
          \u{20}\u{20}module_path: \"std.bytes\",\n\
          \u{20}\u{20}decl_name: \"builtin_function_registry\",\n\
          \u{20}\u{20}field: WholeDeclaration,\n}\n",
@@ -717,6 +729,7 @@ fn a_planted_control_that_still_refuses_is_healthy() {
     );
     let roster = [(
         "probe.citer",
+        "probe_citation",
         "probe.authority",
         "deliberately_absent_RED",
         "",
@@ -757,6 +770,7 @@ fn a_planted_control_that_resolves_has_lost_its_power_and_refuses() {
     );
     let roster = [(
         "probe.citer",
+        "probe_citation",
         "probe.authority",
         "deliberately_absent_RED",
         "",
@@ -807,7 +821,13 @@ fn a_roster_row_on_the_wrong_identity_desynchronizes_both_arms() {
     );
 
     // THE MISMATCH: the row names the same declaration with NO field, the citation has one.
-    let mismatched = [("probe.citer", "probe.authority", "absent_declaration", "")];
+    let mismatched = [(
+        "probe.citer",
+        "probe_citation",
+        "probe.authority",
+        "absent_declaration",
+        "",
+    )];
     let unsuppressed = cited_symbol_findings_against(&sweep.index, &mismatched);
     let spent = citation_debt_findings_against(&sweep.index, &mismatched);
     assert_eq!(
@@ -833,6 +853,7 @@ fn a_roster_row_on_the_wrong_identity_desynchronizes_both_arms() {
     // THE REPAIR: the row on the citation's real identity silences both arms at once.
     let matched = [(
         "probe.citer",
+        "probe_citation",
         "probe.authority",
         "absent_declaration",
         "price",
@@ -935,6 +956,7 @@ fn a_fixture_citation_exemption_suppresses_only_its_own_identity() {
     // exemption is keyed on the citation, so it cannot cover a sibling in the same module.
     let roster = [(
         "probe.witness",
+        "planted",
         "probe.authority",
         "deliberately_absent",
         "",
@@ -978,7 +1000,13 @@ fn a_fixture_exemption_whose_citation_resolves_is_spent_and_refuses() {
         Vec::new(),
         "PLANT MALFORMED: `real_declaration` must resolve for this to be a SPENT row"
     );
-    let roster = [("probe.witness", "probe.authority", "real_declaration", "")];
+    let roster = [(
+        "probe.witness",
+        "cite",
+        "probe.authority",
+        "real_declaration",
+        "",
+    )];
     let spent = citation_debt_findings_named(&sweep.index, &roster, "FIXTURE_CARRIER_EXEMPTIONS");
     assert_eq!(
         spent.len(),
@@ -1025,7 +1053,7 @@ fn a_new_citation_of_an_enrolled_target_from_another_module_still_refuses() {
         &dir,
         "enrolled.dag",
         "module std.encoding\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
-         data enrolled_citation: DeclarationRef = DeclarationRef {\n\
+         data utf8_decode_bytes_host_realization_marker: DeclarationRef = DeclarationRef {\n\
          \u{20}\u{20}module_path: \"std.bytes\",\n\
          \u{20}\u{20}decl_name: \"builtin_function_registry\",\n\
          \u{20}\u{20}field: WholeDeclaration,\n}\n",
@@ -1102,7 +1130,13 @@ fn a_roster_row_exempts_its_own_citer_and_no_other() {
         "probe.authority",
         "no_such_declaration",
     );
-    let roster = [("probe.citer", "probe.authority", "no_such_declaration", "")];
+    let roster = [(
+        "probe.citer",
+        "cite",
+        "probe.authority",
+        "no_such_declaration",
+        "",
+    )];
     let findings = cited_symbol_findings_against(&sweep.index, &roster);
     assert_eq!(
         findings.len(),
@@ -1119,5 +1153,84 @@ fn a_roster_row_exempts_its_own_citer_and_no_other() {
         citation_debt_findings_against(&sweep.index, &roster),
         Vec::new(),
         "the staleness arm must key on the same site the suppression arm does"
+    );
+}
+
+// THE RESIDUE THIS BRANCH FIRST DISCLOSED AND THEN CLOSED (review 56227).
+//
+// The citing MODULE alone was not a site: two citations of one target inside one module shared
+// a row, so a new dangling citation authored BESIDE an enrolled one stayed suppressed — the
+// same fail-open the module grain closed, one level in, and the reviewer was right that a
+// disclosed residue is not a closed one when the identity that closes it is available.
+//
+// It was available. `record_from_module` already iterates top-level items to build `declared`,
+// so the enclosing declaration's name costs one string at extraction and is a NAME rather than
+// an offset — reachable from the containment tree, and therefore not the positional citation
+// DESIGN §3 forbids.
+//
+// The fixture is the reviewer's scenario exactly: one module, one enrolled citation, and a
+// second dangling citation of the SAME target in a DIFFERENT declaration. Under the module
+// grain this test reports zero findings, which is the state it exists to forbid.
+#[test]
+fn a_second_citation_of_an_enrolled_target_in_another_declaration_still_refuses() {
+    let dir = scratch_root("decl_grain_sibling");
+    author(&dir, "authority.dag", AUTHORITY);
+    author(
+        &dir,
+        "citer.dag",
+        "module probe.citer\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data enrolled: DeclarationRef = DeclarationRef {\n\
+         \u{20}\u{20}module_path: \"probe.authority\",\n\
+         \u{20}\u{20}decl_name: \"no_such_declaration\",\n\
+         \u{20}\u{20}field: WholeDeclaration,\n}\n\n\
+         data authored_later: DeclarationRef = DeclarationRef {\n\
+         \u{20}\u{20}module_path: \"probe.authority\",\n\
+         \u{20}\u{20}decl_name: \"no_such_declaration\",\n\
+         \u{20}\u{20}field: WholeDeclaration,\n}\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    // PRECONDITION: both citations are indexed, and each is attributed to its OWN declaration.
+    // Without this, one finding below could be one citation the extractor missed.
+    let record = plant(&sweep.index, "probe.citer");
+    let homes: Vec<&str> = record
+        .cited
+        .iter()
+        .map(|c| c.in_declaration.as_str())
+        .collect();
+    assert_eq!(
+        homes,
+        vec!["enrolled", "authored_later"],
+        "PLANT MALFORMED: each citation must be attributed to the declaration that carries it"
+    );
+    assert_eq!(
+        cited_symbol_findings_against(&sweep.index, &[]).len(),
+        2,
+        "unenrolled, both citations must refuse"
+    );
+
+    let roster = [(
+        "probe.citer",
+        "enrolled",
+        "probe.authority",
+        "no_such_declaration",
+        "",
+    )];
+    let findings = cited_symbol_findings_against(&sweep.index, &roster);
+    assert_eq!(
+        findings.len(),
+        1,
+        "the sibling citation must still refuse — a row exempts one declaration's citation, not \
+         the module's, got {findings:?}"
+    );
+    assert_eq!(
+        findings[0].kind,
+        DeclarationIntegrityKind::CitedDeclarationAbsent
+    );
+    // And the row is LIVE, not spent, so the staleness arm reads the same declaration-grained
+    // identity the suppression arm does.
+    assert_eq!(
+        citation_debt_findings_against(&sweep.index, &roster),
+        Vec::new(),
+        "both inverse arms must key on the declaration too, or they desynchronize"
     );
 }
