@@ -3202,16 +3202,40 @@ pub(crate) fn brace_delta(line: &str) -> i32 {
 
 type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
 
+/// THE PANICKING WRAPPER, RETAINED FOR CALLERS WHOSE INPUTS ARE ALREADY
+/// INVARIANT-ESTABLISHED. New callers on a user-supplied path must use
+/// `try_build_module_index` -- a missing root, an unreadable directory or a non-UTF-8
+/// source is an ORDINARY, USER-CAUSED condition and owes a typed located refusal, not a
+/// panic four frames down (DESIGN §5).
 fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
+    try_build_module_index(source_roots).unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// The fallible core. Every filesystem condition and every corpus-authority violation
+/// returns a located `Err` instead of unwinding.
+fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, String> {
     let mut index = ModuleSourceIndex::new();
     for (root_idx, root) in source_roots.iter().enumerate() {
         let anchored_root = anchor_source_root(root);
         let root_path = std::path::Path::new(&anchored_root);
+        if !root_path.exists() {
+            return Err(format!(
+                "source root does not exist: {root} (anchored to {})",
+                root_path.display()
+            ));
+        }
+        if !root_path.is_dir() {
+            return Err(format!(
+                "source root is not a directory: {root} (anchored to {}) -- --source-root names \
+                 a directory to walk, not a file",
+                root_path.display()
+            ));
+        }
         let mut dag_files = Vec::new();
-        collect_dag_files(root_path, &mut dag_files);
+        collect_dag_files_result(root_path, &mut dag_files)?;
         for path in dag_files {
             let content = std::fs::read_to_string(&path)
-                .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+                .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
             if let Some(module_path) = extract_module_path(&content) {
                 let rel_path = module_index_path_key(&path);
                 let rel_forward = rel_path.clone();
@@ -3224,14 +3248,11 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
                         if root_idx > 0 {
                             continue;
                         }
-                        panic!(
-                            "{}",
-                            module_path_collision_panic_message(
-                                &module_path,
-                                &existing.path,
-                                &rel_path,
-                            )
-                        );
+                        return Err(module_path_collision_panic_message(
+                            &module_path,
+                            &existing.path,
+                            &rel_path,
+                        ));
                     }
                     continue;
                 }
@@ -3245,22 +3266,28 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
             }
         }
     }
-    index
+    Ok(index)
 }
 
 /// `primary-precedence` pool indexing: the first root is authoritative; later roots
 /// fill only modules not already present (matches `gunbc compile --dependency-pool-index
 /// primary-precedence` in `dag_compile_clean_transport`).
 fn build_module_index_primary_precedence(source_roots: &[String]) -> ModuleSourceIndex {
+    try_build_module_index_primary_precedence(source_roots).unwrap_or_else(|e| panic!("{e}"))
+}
+
+fn try_build_module_index_primary_precedence(
+    source_roots: &[String],
+) -> Result<ModuleSourceIndex, String> {
     let mut index = ModuleSourceIndex::new();
     if source_roots.is_empty() {
-        return index;
+        return Ok(index);
     }
-    index_source_root_into_module_index(&source_roots[0], &mut index, false);
+    try_index_source_root_into_module_index(&source_roots[0], &mut index, false)?;
     for root in &source_roots[1..] {
-        index_source_root_into_module_index(root, &mut index, true);
+        try_index_source_root_into_module_index(root, &mut index, true)?;
     }
-    index
+    Ok(index)
 }
 
 fn index_source_root_into_module_index(
@@ -3268,16 +3295,31 @@ fn index_source_root_into_module_index(
     index: &mut ModuleSourceIndex,
     pool_fill_only: bool,
 ) {
+    try_index_source_root_into_module_index(root, index, pool_fill_only)
+        .unwrap_or_else(|e| panic!("{e}"))
+}
+
+fn try_index_source_root_into_module_index(
+    root: &str,
+    index: &mut ModuleSourceIndex,
+    pool_fill_only: bool,
+) -> Result<(), String> {
     let root_path = std::path::Path::new(root);
     if !root_path.exists() {
-        panic!("source root does not exist: {}", root);
+        return Err(format!("source root does not exist: {root}"));
+    }
+    if !root_path.is_dir() {
+        return Err(format!(
+            "source root is not a directory: {root} -- --source-root names a directory to \
+             walk, not a file"
+        ));
     }
     let mut dag_files = Vec::new();
-    collect_dag_files(root_path, &mut dag_files);
+    collect_dag_files_result(root_path, &mut dag_files)?;
     let mut within_root: HashMap<String, String> = HashMap::new();
     for path in dag_files {
         let content = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+            .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
         if let Some(module_path) = extract_module_path(&content) {
             let rel_path = path.to_string_lossy().to_string();
             if pool_fill_only {
@@ -3286,17 +3328,17 @@ fn index_source_root_into_module_index(
                 }
             } else if let Some(existing) = index.get(&module_path) {
                 if existing.path != rel_path {
-                    panic!(
+                    return Err(format!(
                         "module-path collision: module '{}' is declared by both '{}' and '{}' — one module, one authority (DESIGN §3); silent last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01) — de-fork or rename one side",
                         module_path, existing.path, rel_path
-                    );
+                    ));
                 }
             }
             if let Some(existing_path) = within_root.get(&module_path) {
-                panic!(
+                return Err(format!(
                     "duplicate module path '{}' within source root '{}': declared in both '{}' and '{}'",
                     module_path, root, existing_path, rel_path
-                );
+                ));
             }
             within_root.insert(module_path.clone(), rel_path.clone());
             index.insert(
@@ -3308,6 +3350,7 @@ fn index_source_root_into_module_index(
             );
         }
     }
+    Ok(())
 }
 
 fn load_compile_clean_entry_sources(
@@ -5341,6 +5384,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         }
         CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
         CompilerDiagnostic::AmbiguousReference { .. } => "AmbiguousReference",
+        CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { .. } => {
+            "DataReferenceVisibilityBudgetExceeded"
+        }
+        CompilerDiagnostic::ParameterDefaultFormNotAdmitted { .. } => {
+            "ParameterDefaultFormNotAdmitted"
+        }
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { .. } => {
             "AmbiguousAnonymousRecordLiteral"
         }
@@ -5399,6 +5448,8 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position, .. } => position.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
+        CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { name, .. } => name.clone(),
+        CompilerDiagnostic::ParameterDefaultFormNotAdmitted { parameter, .. } => parameter.clone(),
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { candidates, .. } => {
             candidates.iter().cloned().collect::<Vec<_>>().join("|")
         }
@@ -7571,6 +7622,187 @@ mod entry_admission_tests {
         }
     }
 
+    /// SOURCE DISCOVERY REFUSES; IT DOES NOT PANIC.
+    ///
+    /// Every arm below was a `panic!` on the compile transaction's own path until this
+    /// change. A missing root, a file named where a directory belongs, an unreadable
+    /// source -- these are ORDINARY USER-CAUSED conditions, and DESIGN §5 owes them a
+    /// typed located refusal rather than `rc=101` with no phase and no cause.
+    ///
+    /// THE RED IS AUTHORABLE AND WAS OBSERVED BEFORE IT WAS WRITTEN: #9242's atomicity
+    /// test panicked with exactly `source root does not exist` because its fixture was
+    /// not yet committed. These arms would each have unwound the same way.
+    ///
+    /// A `#[should_panic]` test would assert the OLD behaviour; these assert the new one,
+    /// so they go red both if the panic returns AND if the refusal loses its phase.
+    #[test]
+    fn a_missing_source_root_refuses_at_source_discovery_instead_of_panicking() {
+        let run = compile_emission(&CompileRequest {
+            subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            source_roots: vec![ws("fixtures/definitely-not-a-real-root")],
+            primary_precedence: true,
+            render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
+        });
+        let (phase, cause) = match &run.disposition {
+            CompileDisposition::NotExecuted {
+                earlier_phase,
+                cause,
+            } => (earlier_phase.clone(), cause.clone()),
+            other => panic!("expected NotExecuted, got {other:?}"),
+        };
+        assert_eq!(phase, "source-discovery", "cause: {cause}");
+        assert!(
+            cause.contains("source root does not exist"),
+            "the refusal must name the condition, not merely fail: {cause}"
+        );
+    }
+
+    /// THE GUARD'S OWN DISCRIMINATING RED, and it is a different claim from the three above.
+    /// Those establish that the refusal is TYPED AND LOCATED. This one establishes that the
+    /// refusal does not leave thread-local telemetry ARMED behind it -- the leak review 56292
+    /// found on two new arms, and that already existed on `subject-read` before this change.
+    ///
+    /// IT GOES RED WITHOUT THE GUARD. Delete the `Drop` impl, or return before `take()`, and
+    /// `resolution_silent_pick_is_enabled` is still true here: the enable at the top of the
+    /// transaction ran, the early return skipped every hand-written `disable`, and the flag
+    /// outlives the transaction that armed it. That is the state this assertion forbids, and
+    /// it was reachable on `origin/main`.
+    #[test]
+    fn a_refused_transaction_leaves_no_telemetry_armed() {
+        assert!(
+            !crate::v1_rt::resolution_silent_pick_is_enabled(),
+            "precondition: the flag must be clear before the transaction arms it, or this test \
+             cannot tell an armed leak from an inherited one"
+        );
+        let run = compile_emission(&CompileRequest {
+            subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            source_roots: vec![ws("fixtures/definitely-not-a-real-root")],
+            primary_precedence: true,
+            render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
+        });
+        assert!(
+            matches!(run.disposition, CompileDisposition::NotExecuted { .. }),
+            "the arm under test is the REFUSAL path; a completed compile would exercise \
+             `take()` instead and prove nothing about early return"
+        );
+        assert!(
+            !crate::v1_rt::resolution_silent_pick_is_enabled(),
+            "the refused transaction left resolution-silent-pick telemetry ARMED; the session \
+             guard's Drop did not run or was bypassed"
+        );
+    }
+
+    /// NESTING IS REFUSED BEFORE THE DESTRUCTIVE RESET, AND THIS TEST IS ABOUT THE *BEFORE*.
+    ///
+    /// A fixture asserting only that a second arm panics is not enough, and that is what the
+    /// first version of this test was. The assertion could sit AFTER
+    /// `resolution_silent_pick_enable`'s reset and such a test would still pass -- loudly
+    /// refusing re-entry while having already destroyed the enclosing transaction's counters.
+    /// Panicking and preserving are two different claims and only the second is the one worth
+    /// having.
+    ///
+    /// So this asserts the enclosing session SURVIVES the rejected attempt: observations taken
+    /// before and after the refusal must BOTH still be in the telemetry that `take` returns.
+    /// It goes red if the wall is moved after the reset, which the panic-only form does not.
+    ///
+    /// WHAT THIS DOES NOT COVER, stated because the wall's placement is a real limit and not an
+    /// oversight: `v1_rt::resolution_silent_pick_enable` is `pub`, so a direct caller of the raw
+    /// primitive still bypasses this and destroys an outer population. Closing that means putting
+    /// the assertion in the primitive itself, ahead of its reset -- and the primitive is
+    /// generated, so its authority is `src/v1/runtime_rust.dag` and the change carries the regen
+    /// chain with it. That is this class's next-rung trigger, not something this test hides.
+    #[test]
+    fn a_rejected_nested_session_leaves_the_enclosing_transaction_intact() {
+        fn observe(name: &str) {
+            crate::v1_rt::resolution_silent_pick_record_global_bare_lcp_pick(
+                "fixture.env".to_string(),
+                name.to_string(),
+                2,
+                "fixture.chosen".to_string(),
+            );
+        }
+
+        let outer = SilentPickSession::enable();
+        observe("before_the_rejected_attempt");
+
+        let nested = std::panic::catch_unwind(SilentPickSession::enable);
+        assert!(
+            nested.is_err(),
+            "arming a second session inside an armed one must refuse; it silently reset the \
+             enclosing transaction's telemetry instead"
+        );
+
+        assert!(
+            crate::v1_rt::resolution_silent_pick_is_enabled(),
+            "the rejected attempt disarmed the enclosing session"
+        );
+        observe("after_the_rejected_attempt");
+
+        let telemetry = outer.take();
+        let seen: std::vec::Vec<&str> = telemetry
+            .global_bare_lcp_picks
+            .iter()
+            .map(|site| site.name.as_str())
+            .collect();
+        assert_eq!(
+            seen,
+            vec!["before_the_rejected_attempt", "after_the_rejected_attempt"],
+            "the enclosing transaction's observations did not survive the rejected nested \
+             attempt; the refusal happened AFTER the destructive reset, not before it"
+        );
+
+        assert!(
+            !crate::v1_rt::resolution_silent_pick_is_enabled(),
+            "`take` must return the session to inactive"
+        );
+        let fresh = SilentPickSession::enable().take();
+        assert!(
+            fresh.global_bare_lcp_picks.is_empty(),
+            "a fresh session inherited the previous transaction's observations"
+        );
+    }
+
+    /// A FILE WHERE A DIRECTORY BELONGS IS ITS OWN STATE, not "missing". Collapsing the two
+    /// would tell an author to create a path that already exists.
+    #[test]
+    fn a_file_named_as_a_source_root_refuses_and_says_it_is_not_a_directory() {
+        let run = compile_emission(&CompileRequest {
+            subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            source_roots: vec![ws("fixtures/v2_emission_gate/green/subject.dag")],
+            primary_precedence: true,
+            render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
+        });
+        let (phase, cause) = match &run.disposition {
+            CompileDisposition::NotExecuted {
+                earlier_phase,
+                cause,
+            } => (earlier_phase.clone(), cause.clone()),
+            other => panic!("expected NotExecuted, got {other:?}"),
+        };
+        assert_eq!(phase, "source-discovery", "cause: {cause}");
+        assert!(
+            cause.contains("not a directory"),
+            "a file root must be distinguished from a missing one: {cause}"
+        );
+    }
+
+    /// THE POSITIVE CONTROL. Without it, both refusals above would still pass if discovery
+    /// had simply stopped working for every input.
+    #[test]
+    fn a_valid_source_root_still_completes_through_the_fallible_route() {
+        let run = compile_emission(&CompileRequest {
+            subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            source_roots: vec![ws("fixtures/v2_emission_gate/green")],
+            primary_precedence: true,
+            render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
+        });
+        assert!(
+            matches!(run.disposition, CompileDisposition::Completed { .. }),
+            "the fallible route must still compile a good tree: {:?}",
+            run.disposition.tag()
+        );
+    }
+
     /// THE ALL-OR-NOTHING PROPERTY, WITH A RED THAT IS ACTUALLY AUTHORABLE.
     ///
     /// The CLI writes a tree only after the AGGREGATE disposition is `Completed`, so one
@@ -7775,6 +8007,72 @@ mod entry_admission_tests {
             "an absent file and a file outside the root are different facts"
         );
         assert!(cause.contains("does not exist"), "{cause}");
+    }
+}
+
+// ARMING A THREAD-LOCAL ACROSS A FALLIBLE TRANSACTION IS A LEAK WAITING FOR THE NEXT AUTHOR.
+// `resolution_silent_pick_enable` sets a thread-local that stays set until someone calls
+// `disable`, and the compile transaction it wraps has SIX early returns between the two.
+// Keeping them paired by hand is a discipline, and the discipline had ALREADY FAILED before
+// this guard existed: the `subject-read` arm returns without disabling on `origin/main`, and
+// review 56292 caught two more that this PR added. Three leaks, two authors, one pattern.
+//
+// So the pairing is made structural rather than remembered (DESIGN §5, construction over
+// validation): arming returns a guard, every exit path drops it, and `take` is the one way to
+// consume the telemetry on the success path. An arm that forgets to disable is now unwritable
+// -- there is nothing to forget.
+struct SilentPickSession {
+    armed: bool,
+}
+
+impl SilentPickSession {
+    // NESTING IS REFUSED HERE RATHER THAN ACCOMMODATED, and the reason is a property of the
+    // primitive rather than a preference about guards.
+    //
+    // The ordinary law for a thread-local guard is that `Drop` restores the value the guard found
+    // on entry, never a blind `false` -- and this repository already has that idiom in
+    // `v1_rt::with_type_ref_hit_ne_bind_measure`, which does prev/set/restore. It is correct
+    // there because that flag is NON-DESTRUCTIVE.
+    //
+    // `resolution_silent_pick_enable` is destructive: its FIRST statement resets the telemetry to
+    // default. So by the time an inner session could restore an outer session's flag, the outer
+    // session's accumulated counters are already gone. A save-and-restore guard would then leave
+    // the flag `true` over silently zeroed telemetry -- an outer transaction reporting "no silent
+    // picks observed" when what actually happened is that its observations were discarded. That is
+    // a fabricated plausible output, and it is strictly worse than the state it replaces.
+    //
+    // So the double-arm is made LOUD instead. This is a programming-error invariant, not an
+    // input-derived condition: no input to the compile transaction can reach it, only a code edit
+    // that arms the flag around a call to `compile_emission`. Nesting is not reachable in
+    // production today -- `main.rs`'s other `resolution_silent_pick_enable` is the legacy
+    // `--source-dir` arm, which sits DOWNSTREAM of the `--source-root` transaction's
+    // `std::process::exit(0)` rather than around it -- but it is authorable in a fixture, which is
+    // the reachability test that decides whether a wall is a wall or a decoration.
+    fn enable() -> Self {
+        assert!(
+            !crate::v1_rt::resolution_silent_pick_is_enabled(),
+            "resolution-silent-pick telemetry was already armed when this compile transaction \
+             tried to arm it; `resolution_silent_pick_enable` RESETS the counters, so proceeding \
+             would silently discard the enclosing transaction's observations and report the \
+             emptied result as its own"
+        );
+        crate::v1_rt::resolution_silent_pick_enable();
+        Self { armed: true }
+    }
+
+    // Consumes the session AND the telemetry together, so the success path cannot both read
+    // the counters and leave the flag set.
+    fn take(mut self) -> crate::v1_rt::SilentPickTelemetry {
+        self.armed = false;
+        crate::v1_rt::resolution_silent_pick_disable()
+    }
+}
+
+impl Drop for SilentPickSession {
+    fn drop(&mut self) {
+        if self.armed {
+            let _ = crate::v1_rt::resolution_silent_pick_disable();
+        }
     }
 }
 
@@ -8232,25 +8530,47 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
         }
     }
 
-    crate::v1_rt::resolution_silent_pick_enable();
+    let silent_pick_session = SilentPickSession::enable();
     // ONE INDEX BUILD, NOT TWO. The closure loader and the census fill both need the
     // module index, and calling `load_sources_for_entry_with_pool_index` and then building
     // a second index for the census parsed ~3,800 modules twice per invocation (review
     // 55167). Building it here and handing the SAME index to both also removes the
     // possibility that the closure and the census are computed against different
     // populations, which is a correctness property and not only a cost one.
+    // SOURCE DISCOVERY IS FALLIBLE ON THIS PATH AND ONLY ON THIS PATH. A missing root, a
+    // file where a directory was named, an unreadable directory, a non-UTF-8 source, or a
+    // module-path collision are ORDINARY USER-CAUSED conditions -- they owe a typed located
+    // refusal, not a panic four frames down in the index walk (DESIGN §5, fail-closed).
+    //
+    // FOUND BY EXECUTION, NOT BY READING: the atomicity test in #9242 panicked with
+    // `source root does not exist: fixtures/atomic_materialization` because its fixture was
+    // not yet committed -- an ordinary authoring mistake that produced `rc=101`, no phase and
+    // no located cause. Review had independently claimed this site; the panic is the receipt.
+    //
+    // THE PANICKING WRAPPERS SURVIVE for callers whose inputs are already
+    // invariant-established; this is the one route that takes a path straight from a CLI
+    // argument, so it is the one that must refuse instead.
     let index: Rc<MultiEntryIndex> = if primary_precedence {
-        Rc::new(build_multi_entry_index_primary_precedence(source_roots))
+        match try_build_multi_entry_index_primary_precedence(source_roots) {
+            Ok(idx) => Rc::new(idx),
+            Err(cause) => {
+                return compile_not_executed(&request.subject, started, "source-discovery", cause)
+            }
+        }
     } else {
         // Strict routes through the process-shared index, so a second `--entry` compile in
         // one process is a cache hit rather than a rebuild.
-        process_shared_index(source_roots)
+        match try_process_shared_index(source_roots) {
+            Ok(idx) => idx,
+            Err(cause) => {
+                return compile_not_executed(&request.subject, started, "source-discovery", cause)
+            }
+        }
     };
     let closure = match &request.subject {
         CompileSubject::Entry(path) => match load_sources_for_entry_with_pool(&index, path) {
             Ok(closure) => closure,
             Err(e) => {
-                let _ = crate::v1_rt::resolution_silent_pick_disable();
                 return compile_not_executed(
                     &request.subject,
                     started,
@@ -8323,7 +8643,6 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
             report_moduleless_dag_entry_skips(&moduleless);
 
             if entry_sources.is_empty() {
-                let _ = crate::v1_rt::resolution_silent_pick_disable();
                 return compile_not_executed(
                     &request.subject,
                     started,
@@ -8366,7 +8685,6 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
             match extend_sources_to_both_closure_fixpoint(import_closure, &index) {
                 Ok(closure) => closure,
                 Err(e) => {
-                    let _ = crate::v1_rt::resolution_silent_pick_disable();
                     return compile_not_executed(
                         &request.subject,
                         started,
@@ -8421,7 +8739,7 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
             result: v1_compiler_compile::emit_resolved_for_target(resolved.clone(), target.clone()),
         })
         .collect();
-    let silent_pick = crate::v1_rt::resolution_silent_pick_disable();
+    let silent_pick = silent_pick_session.take();
 
     // THE REFUSAL IS OVER EVERY TARGET, NOT THE FIRST. Emission is per target, so a target
     // that emits nothing or emits a blocking diagnostic must stop the line even when an
@@ -10737,6 +11055,13 @@ fn canonical_shared_index_roots(source_roots: &[String]) -> Vec<String> {
 /// identity. The divergence census walls that site with parent-owned `Rc` identity;
 /// the class-wide next rung is canonical `SourceFile` identity at construction.
 pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
+    try_process_shared_index(source_roots).unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// Fallible twin of `process_shared_index`. The MEMO IS ONLY WRITTEN ON SUCCESS -- a failed
+/// discovery must not install a partial index that every later caller in the process would
+/// then read as complete.
+pub fn try_process_shared_index(source_roots: &[String]) -> Result<Rc<MultiEntryIndex>, String> {
     let roots = canonical_shared_index_roots(source_roots);
     let roots_key = roots.join("\u{1f}");
     let existing = PROCESS_RESOLVE_INDEX.with(|s| {
@@ -10749,10 +11074,14 @@ pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
         })
     });
     if let Some(idx) = existing {
-        return idx;
+        return Ok(idx);
     }
     let build_started = std::time::Instant::now();
-    let idx = Rc::new(build_multi_entry_index(&roots));
+    let idx = Rc::new(new_multi_entry_index_shell(
+        try_build_module_index(&roots)?,
+        &roots,
+        None,
+    ));
     discovery_phase_totals::add(
         &discovery_phase_totals::SHARED_INDEX_BUILD_MS,
         build_started.elapsed(),
@@ -10760,7 +11089,7 @@ pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
     PROCESS_RESOLVE_INDEX.with(|s| {
         *s.borrow_mut() = Some((roots_key, idx.clone()));
     });
-    idx
+    Ok(idx)
 }
 
 pub fn resolve_entry_graph_shared(
@@ -11837,6 +12166,17 @@ fn build_multi_entry_index_primary_precedence(source_roots: &[String]) -> MultiE
         source_roots,
         None,
     )
+}
+
+/// Fallible twin of the above, for the compile transaction. See `try_build_module_index`.
+fn try_build_multi_entry_index_primary_precedence(
+    source_roots: &[String],
+) -> Result<MultiEntryIndex, String> {
+    Ok(new_multi_entry_index_shell(
+        try_build_module_index_primary_precedence(source_roots)?,
+        source_roots,
+        None,
+    ))
 }
 
 pub fn build_multi_entry_index_with_shared_caches(
@@ -44550,18 +44890,6 @@ pub enum RequiredFloorDisposition {
     /// matches a `long_home_prefixes()` entry. Carries the exact prefix that matched, which the
     /// former bare `long_declined` counter discarded.
     DeclinedLongModule { matched_prefix: String },
-    /// Declined because the module's AUTHORED name matches a `fixture_home_prefixes()` entry:
-    /// a `test fn` that is a plan-driven FIXTURE MEMBER rather than a witness.
-    ///
-    /// Not a cost decline and not a capability decline. These sites are the SPECIMENS that
-    /// `claim_executor --plan-entry .../walk_plan_stage/plan.dag --plan-function <recipe>`
-    /// drives; the recipe is the witness and it already executes them. Two of them are red by
-    /// construction (a body of literal `false`, and a self-call whose depth refusal IS the
-    /// observed subject) and can never green, and one of the rest writes the very marker path
-    /// another recipe asserts must stay absent — so the fold running them is not merely useless
-    /// but corrupting. See `v2.workflow.required_floor` `fixture_home_prefixes` for the full
-    /// argument and the dissolution condition.
-    DeclinedFixtureMember { matched_prefix: String },
     /// Declined because the module declares `LiveTreeDisposition = ReadsLiveTree`.
     ///
     /// STAGED FOR DELETION, and the reason is measured rather than intended — see
@@ -44729,10 +45057,6 @@ pub struct RequiredFloorOutcome {
     /// A cost quarantine on a different axis from execution, and it is REPORTED rather than
     /// silently subtracted: these identities have no executing consumer anywhere in the tree.
     pub declined_long_module: usize,
-    /// Discovered sites declined because the module's AUTHORED name matches a fixture-home
-    /// prefix. Unlike the two neighbours, these identities DO have an executing consumer —
-    /// the plan recipes that drive them — so this count is not a coverage gap.
-    pub declined_fixture_member: usize,
     /// Discovered sites declined because the module declares `ReadsLiveTree`.
     ///
     /// REPORTED IN THE HEADLINE, which is the change this carries: the population was
@@ -46011,18 +46335,9 @@ pub fn run_required_floor(
         &hermetic,
         "v2.workflow.required_floor.long_home_prefixes",
     )?;
-    // ONE DECODE, TWO ROSTERS. The fixture-home prefixes are read through the same helper as
-    // the long-home prefixes because they are the same kind of fact — an authored module-name
-    // prefix the floor declines on — and a second hand-rolled decode beside it would be a
-    // second authority for how such a roster is read.
-    let fixture_home_prefixes = floor_decode_module_prefix_roster(
-        &hermetic,
-        "v2.workflow.required_floor.fixture_home_prefixes",
-    )?;
     let mut claims: Vec<RequiredFloorClaim> = Vec::new();
     let mut planned_identities: HashSet<String> = HashSet::new();
     let mut long_declined = 0usize;
-    let mut fixture_declined = 0usize;
     let mut live_declined = 0usize;
     let mut sites_offered = 0usize;
     let mut disposition_rows: Vec<RequiredFloorDispositionRow> = Vec::new();
@@ -46034,9 +46349,6 @@ pub fn run_required_floor(
         let long_home = matched_prefix.is_some();
         // Diagnostic only -- computed once per file and never consulted by the admission
         // branching below. See `LongHomeStorageAgreement`'s doc comment.
-        let fixture_prefix = fixture_home_prefixes
-            .iter()
-            .find(|prefix| file.module_path.starts_with(prefix.as_str()));
         let path_is_long = is_long_home_path(&file.path);
         let storage_agreement = long_home_storage_agreement(path_is_long, long_home);
         for function in &file.functions {
@@ -46054,20 +46366,6 @@ pub fn run_required_floor(
                         matched_prefix: matched_prefix
                             .expect("long_home is true only when matched_prefix is Some")
                             .clone(),
-                    },
-                });
-                continue;
-            }
-            // FIXTURE HOME BEFORE LIVE TREE, and the order is load-bearing rather than
-            // arbitrary: a fixture member that also reads the live tree must report the reason
-            // it will never be a floor claim, not the reason it could not run today. The first
-            // is permanent and owned; the second is a staged prediction.
-            if let Some(prefix) = fixture_prefix {
-                fixture_declined += 1;
-                disposition_rows.push(RequiredFloorDispositionRow {
-                    identity,
-                    disposition: RequiredFloorDisposition::DeclinedFixtureMember {
-                        matched_prefix: prefix.clone(),
                     },
                 });
                 continue;
@@ -46127,10 +46425,10 @@ pub fn run_required_floor(
     // it is the construction's own statement of what it guarantees, and it fails loudly the
     // first time an edit adds a third arm that quietly swallows rows, which is precisely how
     // the live-tree decline arrived and stayed invisible.
-    if sites_offered != claims.len() + long_declined + fixture_declined + live_declined {
+    if sites_offered != claims.len() + long_declined + live_declined {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=SitePartitionInexact offered={sites_offered} \
-             routed={} declined_long={long_declined} declined_fixture={fixture_declined} \
+             routed={} declined_long={long_declined} \
              declined_live={live_declined} — every \
              discovered site must be either routed to a claim or declined with a stated \
              disposition; a gap here is a roster that narrowed without saying so",
@@ -46139,13 +46437,12 @@ pub fn run_required_floor(
     }
     eprintln!(
         "[floor-phase] phase=site-projection state=completed wall_ms={} sites={} files={} \
-         claims={} declined_long={} declined_fixture={} declined_live={}",
+         claims={} declined_long={} declined_live={}",
         projection_started.elapsed().as_millis(),
         sites_offered,
         files.len(),
         claims.len(),
         long_declined,
-        fixture_declined,
         live_declined
     );
 
@@ -46510,7 +46807,6 @@ pub fn run_required_floor(
         modules_excluded: prepared.modules_excluded,
         sites_offered,
         declined_long_module: long_declined,
-        declined_fixture_member: fixture_declined,
         declined_live_tree: live_declined,
         claims_planned,
         claims_executed: 0,
@@ -47831,15 +48127,13 @@ fn required_floor_disposition_label(disposition: &RequiredFloorDisposition) -> &
     match disposition {
         RequiredFloorDisposition::Planned => "planned",
         RequiredFloorDisposition::DeclinedLongModule { .. } => "declined_long_module",
-        RequiredFloorDisposition::DeclinedFixtureMember { .. } => "declined_fixture_member",
         RequiredFloorDisposition::DeclinedLiveTree => "declined_live_tree",
     }
 }
 
 fn required_floor_disposition_matched_prefix(disposition: &RequiredFloorDisposition) -> &str {
     match disposition {
-        RequiredFloorDisposition::DeclinedLongModule { matched_prefix }
-        | RequiredFloorDisposition::DeclinedFixtureMember { matched_prefix } => matched_prefix,
+        RequiredFloorDisposition::DeclinedLongModule { matched_prefix } => matched_prefix,
         RequiredFloorDisposition::Planned | RequiredFloorDisposition::DeclinedLiveTree => "",
     }
 }
@@ -47916,23 +48210,20 @@ fn write_required_floor_disposition_tsv(
         .map_err(|e| format!("write_required_floor_disposition_tsv: create {path}: {e}"))?;
     let mut planned = 0usize;
     let mut declined_long = 0usize;
-    let mut declined_fixture = 0usize;
     let mut declined_live = 0usize;
     for row in rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
             RequiredFloorDisposition::DeclinedLongModule { .. } => declined_long += 1,
-            RequiredFloorDisposition::DeclinedFixtureMember { .. } => declined_fixture += 1,
             RequiredFloorDisposition::DeclinedLiveTree => declined_live += 1,
         }
     }
     writeln!(
         file,
-        "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_fixture_member={}\tdeclined_live_tree={}",
+        "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_live_tree={}",
         rows.len(),
         planned,
         declined_long,
-        declined_fixture,
         declined_live
     )
     .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
@@ -48137,12 +48428,6 @@ mod required_floor_disposition_and_storage_agreement_law {
                 },
             },
             RequiredFloorDispositionRow {
-                identity: "v2.test.fixture.walk_plan_stage.x.d".to_string(),
-                disposition: RequiredFloorDisposition::DeclinedFixtureMember {
-                    matched_prefix: "v2.test.fixture.walk_plan_stage.".to_string(),
-                },
-            },
-            RequiredFloorDispositionRow {
                 identity: "m.three.c".to_string(),
                 disposition: RequiredFloorDisposition::DeclinedLiveTree,
             },
@@ -48153,12 +48438,11 @@ mod required_floor_disposition_and_storage_agreement_law {
         let _ = std::fs::remove_dir_all(&dir);
 
         let lines: Vec<&str> = content.lines().collect();
-        assert_eq!(lines.len(), 6, "summary + header + 4 rows: {lines:?}");
+        assert_eq!(lines.len(), 5, "summary + header + 3 rows: {lines:?}");
         assert!(lines[0].starts_with("# summary"));
-        assert!(lines[0].contains("total=4"));
+        assert!(lines[0].contains("total=3"));
         assert!(lines[0].contains("planned=1"));
         assert!(lines[0].contains("declined_long_module=1"));
-        assert!(lines[0].contains("declined_fixture_member=1"));
         assert!(lines[0].contains("declined_live_tree=1"));
         assert_eq!(lines[1], "identity\tdisposition\tmatched_prefix");
         assert_eq!(lines[2], "m.one.a\tplanned\t");
@@ -48166,13 +48450,7 @@ mod required_floor_disposition_and_storage_agreement_law {
             lines[3],
             "test.claim.long.two.b\tdeclined_long_module\ttest.claim.long."
         );
-        // THE FIXTURE ARM CARRIES ITS MATCHED PREFIX, exactly as the long arm does. A decline
-        // that cannot say WHICH prefix admitted it is a count, not a receipt.
-        assert_eq!(
-            lines[4],
-            "v2.test.fixture.walk_plan_stage.x.d\tdeclined_fixture_member\tv2.test.fixture.walk_plan_stage."
-        );
-        assert_eq!(lines[5], "m.three.c\tdeclined_live_tree\t");
+        assert_eq!(lines[4], "m.three.c\tdeclined_live_tree\t");
     }
 
     #[test]

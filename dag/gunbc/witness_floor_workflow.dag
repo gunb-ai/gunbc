@@ -27,6 +27,7 @@ import gunbc.toolchain_home_standing {
 import gunbc.toolchain_workflow_steps {
   toolchain_home_isolation_step,
   toolchain_pin_rustup_default_step,
+  hostile_legacy_writer_discriminator_step,
 }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
@@ -775,6 +776,11 @@ fn prepared_bound_steps(build_script: String) -> List<WitnessFloorBoundStep> {
       step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
     },
     WitnessFloorBoundStep {
+      step: hostile_legacy_writer_discriminator_step(),
+      role: capability_neutral,
+      step_name: "Discriminate private homes from a hostile legacy writer",
+    },
+    WitnessFloorBoundStep {
       step: witness_floor_build_step(build_script: build_script),
       role: consumes_only(capabilities: [CargoCapability]),
       step_name: "Build the witness fold",
@@ -1152,6 +1158,43 @@ fn build_lane_job() -> Job {
 // mechanism and an attribution does not send anyone into a diff. What is left is a red on a head
 // nobody will merge, which is the cheap half of the original complaint.
 
+// RETIRING gunbc#9339's CANCELLED-LANE EXCLUSION, AND SAYING SO RATHER THAN DELETING IT QUIETLY.
+//
+// That change landed while this one was in review and added
+// `&& needs.build.result != 'cancelled' && needs.floor.result != 'cancelled'` here, under a
+// declared DESIGN 4b(3) rung drop, carried on a `required_lanes_aggregate_cancellation_rung_drop`
+// row that this change deletes along with the exclusion it declared. It was the
+// right interim: with only two lane-result words in hand it could not separate the modal lawful
+// supersession from an abandoned live attempt, so it removed the false alert at the only
+// distinction available and DECLARED the resulting fail-open on `CurrentHeadUnestablished`
+// instead of hiding it.
+//
+// ITS OWN RESTORATION TRIGGER NAMES THIS CONSTRUCTION BY NAME -- "the operator-ranked
+// floor-current-head-binding: FloorAttemptSubject carries pull_request, measured_head, run_id;
+// FloorHeadStanding is Current, Superseded or Unobservable independently of FloorLaneTerminal".
+// So the exclusion and its declaration are removed here as a dissolution on climb (DESIGN 4b(4)),
+// with the production machinery deleted and the evidence kept: the consolidation witnesses that
+// pinned the exclusion are re-pointed at `always()` in the same change rather than dropped.
+//
+// WHAT IS HONESTLY RESTORED AND WHAT IS NOT, because taking the trigger's name is not the same as
+// discharging it. RESTORED: the fail-open. A cancelled lane on a live head reaches this gate
+// again and blocks as `stands-unestablished`, which is the half the interim declared it was
+// giving up. NOT DISCHARGED: the supersession OBSERVATION. Nothing here acquires the pull
+// request's current head, so a lawfully superseded run pays a red exactly as it did before the
+// interim -- the noise the interim was chartered to remove comes back. That is the operator's
+// ruling, not this file's choice: NOISE IS A COST, FAIL-OPEN IS A DEFECT. The remaining half of
+// #9339's trigger survives unretired as
+// `gunbc.floor_attempt_standing` `floor_attempt_standing_acquisition_trigger`, which is the same
+// obligation under the carrier that can actually hold it.
+//
+// WHY THE EXCLUSION IS NOT MERELY WEAKER BUT ACTIVELY WRONG ON TODAY'S EVIDENCE, measured on this
+// PR's own branch after #9339 landed: cancellation here is a BACKGROUND RATE, not a supersession
+// signal. Twelve cancelled jobs across 45 minutes of one afternoon, elapsed 7s to 3062s,
+// uncorrelated with duration and with any instant; seven floor jobs ran LONGER than the cancelled
+// ones and passed. Two of those cancellations were live heads with no replacement run -- exactly
+// the cell #9339 declared it was leaving uncovered -- and under its exclusion both would have left
+// the required context skipped on a head that was still the merge candidate. The exclusion treats
+// `cancelled` as evidence of supersession; the measurement says it is evidence of nothing.
 fn required_lanes_aggregate_job_condition() -> String {
   "always()"
 }

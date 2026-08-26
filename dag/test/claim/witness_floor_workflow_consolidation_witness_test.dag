@@ -207,8 +207,8 @@ test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
   }
 }
 
-// THE GATE RUNS AT ALL, AND THEN REFUSES. Two claims, and the first one is the one that was
-// missing -- this row's earlier form asserted only the second and went green over the defect.
+// THE GATE RUNS FOR EVERY ATTEMPT, INCLUDING A CANCELLED ONE, AND THEN REFUSES A NON-SUCCESS
+// LANE.
 //
 // THE DEFECT IT MISSED, kept here because the row is only trustworthy if its own blind spot is
 // on the record. It asserted `if: always()` appeared SOMEWHERE in the file. It did -- on the
@@ -226,21 +226,41 @@ test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
 // spaces cannot be satisfied by the step's condition, which is the exact substitution that
 // produced the green above.
 //
+// THE NEGATIVE CLAUSE IS NEW AND IT IS THE LOAD-BEARING ONE. gunbc#9339 landed a job-level
+// exclusion of cancelled lanes here -- `always() && needs.build.result != 'cancelled' && ...` --
+// under a declared rung drop whose own restoration trigger named this construction. That
+// exclusion is dissolved in the same change that lands this clause, and DESIGN 4b(4) says the
+// EVIDENCE stays enrolled when the production machinery beside it goes: so this witness is
+// RE-POINTED rather than deleted, and becomes the regression control that the exclusion does not
+// return. Asserting the presence of `always()` alone would not do that -- the excluded form
+// CONTAINS `always()` as a substring, so a presence-only probe goes green over exactly the shape
+// it exists to refuse. Pinning the absence of `!= 'cancelled'` is what makes it discriminating,
+// and the trailing newline in the positive pattern is what stops it matching the longer form.
+//
 // THE THIRD AND FOURTH CLAUSES ARE THE REFUSAL ITSELF. A job that runs and reports success
 // regardless would satisfy the first two, so the nonzero exit and the strict inequality against
 // `success` are what turn a read of two results into a verdict -- and the strictness is
+// load-bearing in its own right: `cancelled` and `skipped` are not `success`, so a lane that
+// never produced a verdict refuses here rather than passing.
+//
 // (THE COMPARISON'S SPELLING CHANGED WITH ITS PRODUCER, NOT ITS MEANING. The gate is now built
 // as Nodes in `gunbc.required_lanes_gate` and serialized through the bash grammar rows, which
 // quote every word, so the emitted text is `'!=' 'success'` rather than `!= "success"`. The
 // clause is re-pointed at the serializer's spelling rather than relaxed to a substring both
 // forms share: a pattern loose enough to survive any producer is a pattern that stops
-// discriminating, which is exactly how the job-level guard defect below went green.)
-// load-bearing in its own right: `cancelled` and `skipped` are not `success`, so a lane that
-// never produced a verdict refuses here rather than passing.
-test fn w_RED_the_gate_runs_and_refuses_on_a_failed_lane() -> Bool {
+// discriminating, which is exactly how the job-level guard defect above went green.)
+//
+// THIS IS EMITTED-SHAPE EVIDENCE, NOT A BEHAVIOURAL GITHUB RECEIPT, and the caveat survives the
+// re-pointing unchanged. It proves the job condition and the live-attempt refusal are present at
+// their distinct YAML grains. It does not prove what GitHub does with a required context on a
+// cancelled run, nor what branch protection does with a skipped one.
+// `gunbc.floor_attempt_standing` `floor_attempt_standing_acquisition_trigger` carries the half
+// that is still unobserved; a string_contains witness must not be cited as having closed it.
+test fn w_RED_aggregate_runs_on_a_cancelled_lane_and_refuses_a_failed_one() -> Bool {
   match expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
-      string_contains(s: yml, pattern: "\n    if: always()")
+      string_contains(s: yml, pattern: "\n    if: always()\n")
+        && !string_contains(s: yml, pattern: "!= 'cancelled'")
         && string_contains(s: yml, pattern: "\n        if: always()")
         && string_contains(s: yml, pattern: "exit 1")
         && string_contains(s: yml, pattern: "'!=' 'success'")
