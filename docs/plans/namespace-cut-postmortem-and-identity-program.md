@@ -5215,3 +5215,68 @@ and for a reason that transfers:
 > so state the first from the armchair, and never state the second without opening the file.
 
 Which is this document's own *name-the-instrument* rule, turned on its authors.
+
+### 11.2ad RULED — the lawful lineage carrier, and the distinction that makes a subject-scoped `OccurrenceId` admissible after all
+
+Refines §11.2ac rather than replacing it: correspondence is still minted by the transform, and this
+section supplies the carrier's shape plus one distinction §11.2ac stated too bluntly.
+
+**THE CARRIER.** The cross-edit relation **is the edge**, never a property comparison:
+
+```dag
+type SubjectOccurrenceRef { subject: ProjectionSubjectIdentity, occurrence: OccurrenceId }
+
+type ProjectionOccurrenceLineage
+  = OccurrenceCarriedForward   { source, projected }
+  | ReferenceFullyQualified    { source, projected_terminal, inserted_segments: List<…> }
+  | ProjectionSyntaxInserted   { projected, caused_by }
+  | SourceSyntaxRetired        { source, reason }
+```
+
+```
+source occurrence ──ProjectionOccurrenceLineage──▶ projected occurrence      LAWFUL
+source property == projected property                                        FORBIDDEN
+```
+
+The transformer creates the edge directly and **never asks whether `old_id == new_id`, whether names
+match, whether spans overlap, or whether nodes look alike.**
+
+**THE DISTINCTION §11.2ac GOT TOO BLUNT — A SUBJECT-SCOPED OCCURRENCE ID *IS* ADMISSIBLE.** This lane
+told the consumer the delta join "keys on nothing." That is right about the *relation* and wrong as a
+blanket rule, and the correction matters because it decides whether the lineage map is indexable:
+
+> `OccurrenceId` remains valid as the identity of an occurrence **inside exact subject `B`**. It is
+> invalid only as a supposedly stable identifier **across a second parse**.
+
+So `Map<SubjectOccurrenceRef(B, old_id), ProjectionOccurrenceLineage>` is **lawful**: `old_id` was
+parser-minted, and the subject identity merely **scopes its allocator domain**. The subject digest is
+not deriving the occurrence's identity — **it prevents an ordinal from one subject being applied to
+another. That is applicability, not occurrence minting.** The projected endpoint is likewise
+`SubjectOccurrenceRef(P(B), new_id)`, minted in the projected subject's own allocator scope.
+
+**AND THE INSERTED-QUALIFIER ARM IS BETTER THAN THE ONE THIS LANE APPROVED.** §11.2ac accepted
+"targets with **no source**" as the first-class insertion arm. `ProjectionSyntaxInserted` carries
+**`caused_by`** instead — an inserted qualifier segment is not *sourceless*, it is **caused** by the
+reference being qualified. That is strictly more information at no cost, and it forecloses a later
+reader concluding that inserted syntax is unattributable. Two explicit allocator scopes
+(`allocator_B`, `allocator_P`) with every projected occurrence minted fresh is preferred **precisely
+because it makes accidental cross-subject equality useless** — the shared-allocator trap (§11.2ab)
+closed by construction rather than by warning.
+
+**THE ALTERNATIVE WHEN Y REQUIRES PARSING** — an **attributed token stream** carrying token text,
+role, explicit projected occurrence identity, and source lineage, with the parser **consuming** the
+attribution rather than inferring identity from byte range, spelling or span. Raw bytes and
+attribution are generated together from one projection result; the attribution is derived and
+ephemeral, never committed source syntax. **A normal raw-text parse performed later cannot recreate
+the correspondence — it is a production acceptance run, not the migration comparator.**
+
+**ONE TENSION, NAMED RATHER THAN SMOOTHED.** This ruling says *"E.1 must become a same-transaction
+operation"*, while §11.2ac recorded the consumer's correction that same-transaction is a **scheduling**
+property — neither necessary nor sufficient — and that the real constraint is graph-level versus
+text-level. **Both survive, because they answer different questions**, and the ruling's own alternative
+shows how: a serialized attributed stream can be consumed later, so provenance need not be confined
+to one transaction; what *cannot* happen later is **recovering** correspondence from bytes. So
+*same-transaction* correctly describes the preferred implementation and *graph-level* correctly states
+the constraint. Where they would conflict — an artifact that serializes lineage and is joined days
+later — **§11.2ac governs and that artifact is admissible**, because the lineage travelled with it
+rather than being rediscovered.
