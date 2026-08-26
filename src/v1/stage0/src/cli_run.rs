@@ -177,7 +177,15 @@ pub fn report_moduleless_dag_entry_skips(skipped_paths: &[String]) {
 fn moduleless_dag_entry_paths_under_root(root_prefix: &str) -> Result<Vec<String>, String> {
     let root_abs = process_workspace_root().join(root_prefix);
     let mut paths = Vec::new();
-    collect_dag_files(&root_abs, &mut paths);
+    // THE FALLIBLE WALK, NOT THE PANICKING WRAPPER. `collect_dag_files` is
+    // `collect_dag_files_result(..).unwrap_or_else(|e| panic!(..))`, so a missing root, a root
+    // that is a regular file, or any `read_dir` failure bypassed `CompileDisposition` entirely
+    // and left the process with an untyped panic where a located refusal belongs. Fixing the
+    // per-FILE read while leaving the DIRECTORY walk panicking would have been half a repair
+    // wearing the whole one's name.
+    collect_dag_files_result(&root_abs, &mut paths).map_err(|cause| {
+        format!("cannot walk {root_prefix} while taking the module-less population: {cause}")
+    })?;
     let mut entry_files: Vec<(String, String)> = Vec::new();
     for path in paths {
         let content = std::fs::read_to_string(&path).map_err(|error| {
@@ -7367,6 +7375,69 @@ mod entry_admission_tests {
         );
     }
 
+    /// THE ENTRY ARM CARRIES THE MARKER `gunbc.emit_diagnostic_observation` CONSUMES, and the
+    /// primary-root arm does NOT. Both halves matter: the first keeps that instrument able to
+    /// confirm an entry-scoped measurement, and the second keeps it REFUSING a whole-root
+    /// population reported as one entry's -- which is the substitution the marker exists to
+    /// prevent, so a receipt that carried it on both arms would be worse than one that carried
+    /// it on neither.
+    ///
+    /// This arm exists because the marker was deleted by a rewording in this PR. It was an
+    /// adjective inside a progress sentence, so nothing could notice; the consumer that had
+    /// landed on main in the meantime would simply have started answering
+    /// `EmitScopeUnconfirmed` for every per-entry measurement.
+    #[test]
+    fn the_scope_receipt_marks_the_entry_arm_and_only_the_entry_arm() {
+        let entry = CompileSubject::Entry("dag/std/logic.dag".to_string()).scope_receipt();
+        assert!(
+            entry.render().contains(EMIT_ENTRY_SCOPE_MARKER),
+            "the entry arm must carry the marker the .dag decoder matches on: {}",
+            entry.render()
+        );
+        assert!(
+            entry.render().contains("dag/std/logic.dag"),
+            "and must name the entry it measured: {}",
+            entry.render()
+        );
+        let root = CompileSubject::PrimaryRoot("src/v2".to_string()).scope_receipt();
+        assert!(
+            !root.render().contains(EMIT_ENTRY_SCOPE_MARKER),
+            "a whole-root compile must NOT claim an entry-scoped closure: {}",
+            root.render()
+        );
+        assert!(
+            root.render().contains("src/v2"),
+            "but must still state what it measured: {}",
+            root.render()
+        );
+    }
+
+    /// TARGET ADMISSION PRECEDES SUBJECT DISCOVERY, proven with a subject that cannot be
+    /// discovered: if the duplicate-target refusal came later, this would refuse at
+    /// `entry-read` for the missing file instead, and the arm would be reporting the wrong
+    /// wall.
+    #[test]
+    fn a_duplicate_target_refuses_before_the_subject_is_even_read() {
+        let run = compile_emission(&CompileRequest {
+            subject: CompileSubject::Entry("dag/definitely_not_a_real_entry_file.dag".to_string()),
+            source_roots: vec!["dag".to_string()],
+            primary_precedence: false,
+            render_targets: vec![
+                crate::v1_compiler_artifact::RenderTarget::Rust,
+                crate::v1_compiler_artifact::RenderTarget::Rust,
+            ],
+        });
+        let (phase, cause) = cause_of(&run);
+        assert_eq!(
+            phase, "target-admission",
+            "a duplicate target must refuse before subject discovery, not after"
+        );
+        assert!(
+            cause.contains("rust") && cause.contains("more than once"),
+            "the refusal must name the duplicated target: {cause}"
+        );
+    }
+
     #[test]
     fn a_missing_entry_keeps_its_own_distinct_refusal() {
         let run = compile_entry_emission(
@@ -7445,7 +7516,59 @@ pub enum CompileSubject {
     PrimaryRoot(String),
 }
 
+/// THE EXACT TEXT `gunbc.emit_diagnostic_observation` `emit_entry_scope_marker` MATCHES ON.
+///
+/// It is a literal here and a `data` row there, which is two spellings of one fact -- unavoidable
+/// today, because that authority is `.dag` and this seed cannot read it, and named rather than
+/// left implicit so the pair is greppable. The `.dag` side is the authority; if it changes, this
+/// mirror is what has to move.
+///
+/// WHY IT IS LOAD-BEARING RATHER THAN COSMETIC: that decoder returns `EmitScopeUnconfirmed` when
+/// the marker is ABSENT, specifically so a whole-root compile cannot be reported as one entry's
+/// measurement. This PR deleted the marker while consolidating the two CLI pipelines into one
+/// generic line -- a change that reads as prose cleanup and silently disarms a consumer that
+/// landed on main afterwards (#9190).
+pub const EMIT_ENTRY_SCOPE_MARKER: &str = "reference-derived closure";
+
+/// WHAT A COMPILE MEASURED, AS A VALUE DERIVED FROM THE SUBJECT.
+///
+/// The scope used to be an adjective inside a progress sentence, which is why it could be lost by
+/// rewording. Deriving it from `CompileSubject` means the receipt cannot disagree with the run,
+/// and the `PrimaryRoot` arm now STATES what it measured instead of being silent -- a consumer
+/// reading a primary-root line no longer has to infer the scope from argv or from file counts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CompileScopeReceipt {
+    EntryReferenceClosure { entry: String },
+    PrimaryRootPopulation { root: String },
+}
+
+impl CompileScopeReceipt {
+    pub fn render(&self) -> String {
+        match self {
+            CompileScopeReceipt::EntryReferenceClosure { entry } => {
+                format!("{EMIT_ENTRY_SCOPE_MARKER} entry={entry}")
+            }
+            CompileScopeReceipt::PrimaryRootPopulation { root } => {
+                format!("primary-root population root={root}")
+            }
+        }
+    }
+}
+
 impl CompileSubject {
+    /// The scope receipt for this subject. Total over the coproduct, so a new subject cannot be
+    /// added without deciding what it measures.
+    pub fn scope_receipt(&self) -> CompileScopeReceipt {
+        match self {
+            CompileSubject::Entry(path) => CompileScopeReceipt::EntryReferenceClosure {
+                entry: path.clone(),
+            },
+            CompileSubject::PrimaryRoot(root) => {
+                CompileScopeReceipt::PrimaryRootPopulation { root: root.clone() }
+            }
+        }
+    }
+
     /// The subject as it appears in a refusal and in the measurement line. It used to be
     /// hardcoded `"v2 self-compile"` inside the shared refusal message, so a user compiling
     /// their own fixture was told a compile they never ran had failed.

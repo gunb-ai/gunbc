@@ -360,8 +360,10 @@ fn main() {
                     }
                     cli_run::CompileDisposition::Refused { phase, cause } => {
                         eprintln!(
-                            "resolved {} sources, {} indexed modules in the name census only",
-                            run.closure_modules, run.census_modules
+                            "resolved {} sources ({}), {} indexed modules in the name census only",
+                            run.closure_modules,
+                            run.subject.scope_receipt().render(),
+                            run.census_modules
                         );
                         // The tree is NOT written on a refusal: writing a partial tree the
                         // compiler has disowned is a fabricated plausible output (DESIGN §5).
@@ -373,8 +375,10 @@ fn main() {
                     }
                     cli_run::CompileDisposition::Completed { emitted_count } => {
                         eprintln!(
-                            "resolved {} sources, {} indexed modules in the name census only",
-                            run.closure_modules, run.census_modules
+                            "resolved {} sources ({}), {} indexed modules in the name census only",
+                            run.closure_modules,
+                            run.subject.scope_receipt().render(),
+                            run.census_modules
                         );
                         // NOTHING IS MATERIALIZED UNTIL EVERY TARGET HAS COMPLETED. The
                         // disposition above is over the whole emission set, so reaching here
