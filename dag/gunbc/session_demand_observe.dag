@@ -30,7 +30,12 @@ import gunbc.session_demand {
   SessionContainerInventoryUnavailable,
   SessionPlacement, ManagedSession, SessionPlacementUnclassifiable,
   SessionMemoryDemand, ParentSliceDemand,
+  session_placement_census, census_membership_signal, session_demand_membership_gate,
+  SessionPlacementCensusComplete, SessionPlacementCensusIncomplete,
+  SessionDemandObservationUnavailable, SessionDemandPopulationIncomplete,
+  NoConcurrentSessionDemandObserved, SessionDemandObserved,
 }
+import gunbc.oomd_install { session_membership_standing }
 
 // THE MANAGED SET NEEDS NO NAMING AUTHORITY, and that is what makes this producer writable today.
 // A child of the managed slice IS a managed session BY VIRTUE OF WHERE IT WAS FOUND -- the cgroup
@@ -145,6 +150,16 @@ fn observe_parent_slice_demand(
     memory_max: parse_cgroup_memory_limit(
       body: read_memory_count(transport: transport, cgroup_path: parent, file: cgroup_memory_interface_file_name(f: MemoryMax))
     ),
+  }
+}
+
+// The identities an inventory established, or none when it could not be read. An unavailable
+// inventory contributes NO identities rather than an empty population, and the entry refuses on it
+// separately -- the two must not both render as "nothing found".
+fn inventory_identities(i: SessionContainerInventory) -> List<NonEmptyStr> {
+  match i {
+    SessionContainerInventoryObserved { host: _, identities: ids } => ids
+    SessionContainerInventoryUnavailable { host: _, cause: _ } => []
   }
 }
 
@@ -270,7 +285,38 @@ func session_demand_observe_ci_wet() -> ProcessExit {
         SessionContainerInventoryUnavailable { host: _, cause: why } =>
           join(["system_slice_children\tUNAVAILABLE\t", why, "\n"], "")
       }
-      let body = join([header, parent_slice_lines(p: slice), managed_body, legacy_body], "")
+      // THE CLASSIFICATION IS EXERCISED, NOT JUST THE ENUMERATION. A receipt that printed rows and
+      // stopped would leave the census and the membership gate unexecuted on real hosts, so the
+      // one thing the cut claims -- that a COMPLETE observation can be established -- would rest on
+      // fixtures. Running it here makes a converged host and a mixed host produce visibly different
+      // verdicts from the same code path.
+      let placements = concat(
+        managed_placements(identities: inventory_identities(i: managed)),
+        legacy_placements(identities: inventory_identities(i: legacy))
+      )
+      let census = session_placement_census(placements: placements)
+      let verdict = match census {
+        SessionPlacementCensusIncomplete { unclassifiable: us } =>
+          join(["census\tINCOMPLETE\t", to_string(count(us)), " unattributable flat docker scope(s); no aggregate may be established over this host\n"], "")
+        SessionPlacementCensusComplete { placements: ps } =>
+          match census_membership_signal(c: census) {
+            Absent => "census\tCOMPLETE\tbut no membership signal could be projected\n"
+            Present { value: sig } =>
+              match session_demand_membership_gate(host: host, m: session_membership_standing(m: sig)) {
+                Absent => join(["census\tCOMPLETE\tAllSessionsManaged over ", to_string(count(ps)), " session(s); an aggregate may be established\n"], "")
+                Present { value: o } => match o {
+                  SessionDemandPopulationIncomplete { host: _, membership: _, cause: why } =>
+                    join(["census\tCOMPLETE\tbut membership refuses the aggregate: ", why, "\n"], "")
+                  NoConcurrentSessionDemandObserved { host: _ } =>
+                    "census\tCOMPLETE\tNoConcurrentSessionDemandObserved: the read ran and counted zero sessions\n"
+                  SessionDemandObservationUnavailable { host: _, cause: why } =>
+                    join(["census\tUNAVAILABLE\t", why, "\n"], "")
+                  SessionDemandObserved { receipt: _ } => "census\tOBSERVED\n"
+                }
+              }
+          }
+      }
+      let body = join([header, parent_slice_lines(p: slice), managed_body, legacy_body, verdict], "")
       let w = Filesystem.Write(path: session_demand_observe_receipt_path, content: body)
       if w.success == false {
         exit_failure(reason: join(["session-demand receipt write failed: ", w.error], ""))
