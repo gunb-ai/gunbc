@@ -126,11 +126,6 @@ fn slb_comparison_observation() -> BehavioralComparisonObservation {
     ]
   )
 
-  // THE DRIVER'S DIRECTORY IS CREATED BEFORE THE DRIVER IS WRITTEN, which this transport did not do
-  // and its sibling kernel always has (self_host_curated_seed_linked_harness src_dir). Without it the
-  // write lands nowhere, cargo reports `can't find bin \`witness\`` and BOTH witness runs exit 127 --
-  // measured 2026-08-26, the first wet execution of this receipt since the falsifier was deleted.
-  let src_dir = shell.Mkdir.Parents(path: concat(out_dir.path, "/src"))
   let manifest = Filesystem.Write(path: concat(out_dir.path, "/Cargo.toml"), content: slb_cargo_toml(root: root.path))
   let main_rs = Filesystem.Write(path: concat(out_dir.path, "/src/main.rs"), content: slb_driver_main_source)
 
@@ -151,7 +146,6 @@ fn slb_comparison_observation() -> BehavioralComparisonObservation {
   let staged = logic_read.success
     && scratch_src.success && scratch_src_std.success && logic_written.success
     && out_dir.success && gunbc_built && emit.success
-    && src_dir.success
     && manifest.success && main_rs.success
     && cleanup_src.success && cleanup_out.success
 
