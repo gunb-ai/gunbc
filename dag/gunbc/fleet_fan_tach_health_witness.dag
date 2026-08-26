@@ -1,0 +1,222 @@
+module gunbc.fleet_fan_tach_health_witness
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.measure { rpm }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.fleet_fan_tach_expectation {
+  ChassisBayHeader,
+  FanHeaderExpectationRow,
+  HostFanTachExpectation,
+  ProcessorCoolerHeader,
+  TachExpected,
+  TachNotExpected,
+  chassis_tach_expected,
+  expected_tach_headers,
+  srv1_fan_tach_expectation,
+  srv3_fan_tach_expectation,
+  srv4_fan_tach_expectation,
+}
+import gunbc.fleet_fan_tach_observation {
+  FanTachObservationRow,
+  HostFanTachObservation,
+  TachRotating,
+  rotating,
+  srv1_fan_tach_observation,
+  srv3_fan_tach_observation,
+  srv4_fan_tach_observation,
+}
+import product.fan_tach_health {
+  DuplicateExpectedHeader,
+  DuplicateObservedHeader,
+  ExpectedHeaderObservationMissing,
+  ExpectedRotationNotObserved,
+  FanTachAssessed,
+  FanTachRefused,
+  ObservationForUndeclaredHeader,
+  RotationCorrectlyAbsent,
+  RotationObserved,
+  TachValueNotPublished,
+  UnexpectedRotation,
+  assess_fan_tach,
+  authority_gap_count,
+  expectation_drift_count,
+  observation_gap_count,
+  rotation_anomaly_count,
+}
+
+fn verdicts_of(
+  expectation: HostFanTachExpectation,
+  observation: HostFanTachObservation,
+) -> List<NonEmptyStr> {
+  match assess_fan_tach(expectation: expectation, observation: observation) {
+    FanTachRefused { cause } => []
+    FanTachAssessed { verdicts } =>
+      map(
+        verdicts,
+        v =>
+          match v {
+            RotationObserved { header, speed } => "spin"
+            RotationCorrectlyAbsent { header } => "nominal-absent"
+            ExpectedRotationNotObserved { header, role, absence } => "no-rotation"
+            UnexpectedRotation { header, speed } => "drift"
+            ExpectedHeaderObservationMissing { header, role } => "obs-gap"
+            ObservationForUndeclaredHeader { header } => "authority-gap"
+          },
+      )
+  }
+}
+
+fn count_of(tags: List<NonEmptyStr>, tag: NonEmptyStr) -> Int {
+  fold(tags, init: 0, f: (acc, t) => if t == tag { acc + 1 } else { acc })
+}
+
+// THE CENTRAL DISCRIMINATION, AND THE TWO INPUTS ARE BYTE-IDENTICAL.
+// srv1/FAN4 and srv3/FAN2 both publish no tach value. One is a stopped fan on an endpoint where
+// rotation is expected; one is an endpoint where nothing is expected. Only the expectation
+// separates them, which is the reason this module exists.
+fn identical_readings_get_opposite_verdicts() -> Bool {
+  let a = verdicts_of(
+    expectation: srv1_fan_tach_expectation,
+    observation: srv1_fan_tach_observation,
+  )
+  let b = verdicts_of(
+    expectation: srv3_fan_tach_expectation,
+    observation: srv3_fan_tach_observation,
+  )
+  count_of(tags: a, tag: "no-rotation") == 2
+    && count_of(tags: a, tag: "nominal-absent") == 0
+    && count_of(tags: b, tag: "no-rotation") == 0
+    && count_of(tags: b, tag: "nominal-absent") == 1
+}
+
+// EQUAL CARDINALITY, DIFFERENT ENDPOINTS. Any check that compares counts passes on both hosts
+// while the configuration is wrong for one of them.
+fn srv3_srv4_differ_by_identity_not_count() -> Bool {
+  let a = expected_tach_headers(expectation: srv3_fan_tach_expectation)
+  let b = expected_tach_headers(expectation: srv4_fan_tach_expectation)
+  a.length() == 4 && b.length() == 4 && a != b
+}
+
+// THE FAIL-OPEN CONTROL. Drop srv1/FAN4's observation row entirely - the shape a collector
+// produces when it omits a sensor object rather than reporting it absent. The expectation-driven
+// fold must still judge FAN4; an observation-driven fold returns nothing for it and looks clean.
+data srv1_observation_missing_fan4: HostFanTachObservation = HostFanTachObservation {
+  host: srv1_fan_tach_observation.host,
+  rows: filter(srv1_fan_tach_observation.rows, row => row.header != "FAN4"),
+}
+
+fn missing_observation_row_is_caught() -> Bool {
+  let tags = verdicts_of(
+    expectation: srv1_fan_tach_expectation,
+    observation: srv1_observation_missing_fan4,
+  )
+  count_of(tags: tags, tag: "obs-gap") == 1 && tags.length() == 5
+}
+
+data srv3_observation_duplicate_fan3: HostFanTachObservation = HostFanTachObservation {
+  host: srv3_fan_tach_observation.host,
+  rows: flat_map(
+    [srv3_fan_tach_observation.rows, [rotating(header: "FAN3", speed: rpm(1583))]],
+    g => g,
+  ),
+}
+
+data srv3_expectation_duplicate_fan3: HostFanTachExpectation = HostFanTachExpectation {
+  host: srv3_fan_tach_expectation.host,
+  headers: flat_map(
+    [srv3_fan_tach_expectation.headers, [chassis_tach_expected(header: "FAN3")]],
+    g => g,
+  ),
+}
+
+// DUPLICATES REFUSE RATHER THAN RESOLVING BY FIRST MATCH.
+fn duplicates_refuse() -> Bool {
+  let dup_obs = match assess_fan_tach(
+    expectation: srv3_fan_tach_expectation,
+    observation: srv3_observation_duplicate_fan3,
+  ) {
+    FanTachRefused { cause: DuplicateObservedHeader { header } } => header == "FAN3"
+    other => false
+  }
+  let dup_exp = match assess_fan_tach(
+    expectation: srv3_expectation_duplicate_fan3,
+    observation: srv3_fan_tach_observation,
+  ) {
+    FanTachRefused { cause: DuplicateExpectedHeader { header } } => header == "FAN3"
+    other => false
+  }
+  dup_obs && dup_exp
+}
+
+// POSITIVE TACH ON AN UNEXPECTED ENDPOINT IS EXPECTATION DRIFT, NOT A FAN FAULT. Someone fitted
+// a fan nobody recorded; the remedy is the inventory, not a hardware ticket.
+data srv3_observation_fan2_spinning: HostFanTachObservation = HostFanTachObservation {
+  host: srv3_fan_tach_observation.host,
+  rows: map(
+    srv3_fan_tach_observation.rows,
+    row => if row.header == "FAN2" { rotating(header: "FAN2", speed: rpm(1500)) } else { row },
+  ),
+}
+
+fn unexpected_rotation_is_drift_not_failure() -> Bool {
+  let tags = verdicts_of(
+    expectation: srv3_fan_tach_expectation,
+    observation: srv3_observation_fan2_spinning,
+  )
+  count_of(tags: tags, tag: "drift") == 1 && count_of(tags: tags, tag: "no-rotation") == 0
+}
+
+// AN OBSERVATION FOR A HEADER NO AUTHORITY DECLARES IS AN AUTHORITY GAP, not a silent drop.
+data srv4_expectation_missing_fan4: HostFanTachExpectation = HostFanTachExpectation {
+  host: srv4_fan_tach_expectation.host,
+  headers: filter(srv4_fan_tach_expectation.headers, row => row.header != "FAN4"),
+}
+
+fn undeclared_header_is_authority_gap() -> Bool {
+  let tags = verdicts_of(
+    expectation: srv4_expectation_missing_fan4,
+    observation: srv4_fan_tach_observation,
+  )
+  count_of(tags: tags, tag: "authority-gap") == 1
+}
+
+// THE OWNERS STAY SEPARATE. One input carrying all four conditions must produce four distinct
+// counts, not one total.
+fn counts_stay_separated() -> Bool {
+  match assess_fan_tach(
+    expectation: srv4_expectation_missing_fan4,
+    observation: srv4_fan_tach_observation,
+  ) {
+    FanTachRefused { cause } => false
+    FanTachAssessed { verdicts } =>
+      rotation_anomaly_count(verdicts: verdicts) == 0
+        && expectation_drift_count(verdicts: verdicts) == 0
+        && authority_gap_count(verdicts: verdicts) == 1
+        && observation_gap_count(verdicts: verdicts) == 0
+  }
+}
+
+fn healthy_host_is_clean() -> Bool {
+  let tags = verdicts_of(
+    expectation: srv4_fan_tach_expectation,
+    observation: srv4_fan_tach_observation,
+  )
+  count_of(tags: tags, tag: "spin") == 4
+    && count_of(tags: tags, tag: "nominal-absent") == 1
+    && tags.length() == 5
+}
+
+fn fan_tach_health_witness() -> ProcessExit {
+  if identical_readings_get_opposite_verdicts()
+    && srv3_srv4_differ_by_identity_not_count()
+    && missing_observation_row_is_caught()
+    && duplicates_refuse()
+    && unexpected_rotation_is_drift_not_failure()
+    && undeclared_header_is_authority_gap()
+    && counts_stay_separated()
+    && healthy_host_is_clean() {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "fan tach health witness: expectation-driven join, duplicate refusal, or owner-separated counts changed")
+  }
+}
