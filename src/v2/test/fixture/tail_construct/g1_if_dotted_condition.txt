@@ -1,0 +1,15 @@
+module v2.test.fixture.tail_construct.g1_if_dotted_condition
+
+
+type PortReading
+  = PortPureLiteral
+  | PortBareName { name: Symbol }
+  | PortComputedExpression { mentions: List<Symbol> }
+
+fn port_reading(cfg: Node) -> Int {
+  if cfg.enabled {
+    1
+  } else {
+    0
+  }
+}

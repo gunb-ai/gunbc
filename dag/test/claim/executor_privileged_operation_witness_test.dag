@@ -34,14 +34,28 @@ test fn witness_rendered_grants_carry_no_wildcard() -> Bool {
   !string_contains(s: body, pattern: "*") && !string_contains(s: body, pattern: "?")
 }
 
-// THE POPULATION IS DERIVED FROM THE SLOT ROSTER, so every managed slot contributes exactly the two
+// THE POPULATION IS DERIVED FROM THE SLOT ROSTER, so every managed slot contributes exactly the
 // operations the provisioner runs against it. A slot added to the roster brings its own
 // authorization; one removed takes it away. RED: hand-listing binaries instead of folding the
 // roster decouples the count from the roster and this goes false.
+//
+// THE PER-SLOT FACTOR IS FOUR, AND IT WAS TWO UNTIL ACTIVATION BECAME A GRANTED OPERATION. A slot
+// now contributes its two DIRECTORY operations -- remove the tree, install it owned -- and its two
+// SERVICE TRANSITIONS, enable and start, which gunbc.runner_service_activation keeps separate so no
+// derived sudoers line matches the fused `enable --now`. The +4 tail is unchanged and is the
+// host-wide remainder: the converge state directory, the runner base directory, the runner cache
+// directory, and daemon-reload.
+//
+// THE FACTOR IS ASSERTED IN TWO PIECES RATHER THAN AS ONE PRODUCT, because `slots * 4` alone would
+// stay green if the two halves drifted in opposite directions -- four directory operations and no
+// transitions counts the same as two and two. Splitting them means each half has to be right.
 test fn witness_population_tracks_the_slot_roster() -> Bool {
   let slots = desired_runner_slot_members(deploy: srv3_runner_host_deploy).length()
+  let activation = runner_slot_activation_operations(deploy: srv3_runner_host_deploy).length()
   runner_host_privileged_operations(deploy: srv3_runner_host_deploy).length()
-    == (slots * 2) + 4
+    == (slots * 4) + 4
+    && activation == slots * 2
+    && slots > 0
 }
 
 // THE JOIN, ASSERTED THROUGH THE PRODUCTION PATH. This is the witness the module exists for: the

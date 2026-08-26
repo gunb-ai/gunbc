@@ -53,6 +53,7 @@ import extdeps.languages.rust.capabilities {
   payload_coproduct_derive_traits,
   record_derive_traits_copy,
   record_derive_traits_heap,
+  rust_traits_for_construction_contract,
   rust_capability_shape_table,
   symbol_wrapped_ord_carrier_derive_traits
 }
@@ -914,12 +915,27 @@ fn v1_set_struct_partial_eq_impl(
   )
 }
 
+// THE ONE PLACE THE STRUCT CONSTRUCTION CONTRACT IS APPLIED. Every struct-derive site
+// in this module routes its base roster through these two functions, so "what does a
+// confined-construction record derive" is answered once rather than at each arm.
+// `deserialize_forbidden` arrives as a fact derived from declarations -- the type's own
+// `sole_constructor` property, or its reaching a carrier that carries one -- so no type
+// NAME is in scope here for a spelling roster to be written against.
+fn v1_record_derive_traits_heap_for_construction(deserialize_forbidden: Bool) -> List<RustCapability> {
+  rust_traits_for_construction_contract(traits: record_derive_traits_heap(), deserialize_forbidden: deserialize_forbidden)
+}
+
+fn v1_record_derive_traits_copy_for_construction(deserialize_forbidden: Bool) -> List<RustCapability> {
+  rust_traits_for_construction_contract(traits: record_derive_traits_copy(), deserialize_forbidden: deserialize_forbidden)
+}
+
 fn v1_emit_struct_derives(
   name: String,
   children: List<Node>,
   shared_types: Set<String>,
   has_fn_fields: Bool,
   map_key_required: Bool,
+  deserialize_forbidden: Bool,
   source_indices: Map<String, NewlineIndex>
 ) -> String {
   if has_fn_fields {
@@ -938,9 +954,9 @@ fn v1_emit_struct_derives(
     }
   } else {
     if set_contains(shared_types, name) {
-      rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(base: record_derive_traits_heap(), map_key_required: map_key_required))
+      rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(base: v1_record_derive_traits_heap_for_construction(deserialize_forbidden: deserialize_forbidden), map_key_required: map_key_required))
     } else {
-      rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(base: record_derive_traits_copy(), map_key_required: map_key_required))
+      rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(base: v1_record_derive_traits_copy_for_construction(deserialize_forbidden: deserialize_forbidden), map_key_required: map_key_required))
     }
   }
 }
@@ -966,6 +982,7 @@ fn v1_emit_enum_derives(
   children: List<Node>,
   has_fn_fields: Bool,
   map_key_required: Bool,
+  deserialize_forbidden: Bool,
   generic_param_names: List<String>,
   source_indices: Map<String, NewlineIndex>
 ) -> String {
@@ -985,7 +1002,7 @@ fn v1_emit_enum_derives(
   if (fm_params |> count) > 0 {
     return concat(
       v1_freemonoid_unroutable_row_refusal(),
-      rust_trait_derive_attr_from_traits(v1_freemonoid_filter_hand_written(traits: payload_coproduct_derive_traits())),
+      rust_trait_derive_attr_from_traits(v1_freemonoid_filter_hand_written(traits: rust_traits_for_construction_contract(traits: payload_coproduct_derive_traits(), deserialize_forbidden: deserialize_forbidden))),
       "\n",
       v1_freemonoid_serde_bound_attr(generic_param_names: generic_param_names, fm_params: fm_params)
     )
@@ -998,8 +1015,8 @@ fn v1_emit_enum_derives(
     )
   }
   let shape = v1_repr_grounding_derive_elem_shape_from_coproduct_children(children: children, source_indices: source_indices)
-  let nullary_traits = v1_with_map_key_requirement(base: nullary_coproduct_derive_traits(), map_key_required: map_key_required)
-  let payload_traits = v1_with_map_key_requirement(base: payload_coproduct_derive_traits(), map_key_required: map_key_required)
+  let nullary_traits = rust_traits_for_construction_contract(traits: v1_with_map_key_requirement(base: nullary_coproduct_derive_traits(), map_key_required: map_key_required), deserialize_forbidden: deserialize_forbidden)
+  let payload_traits = rust_traits_for_construction_contract(traits: v1_with_map_key_requirement(base: payload_coproduct_derive_traits(), map_key_required: map_key_required), deserialize_forbidden: deserialize_forbidden)
   let set_row_refusal = if (set_params |> count) > 0 { v1_set_unroutable_row_refusal() } else { "" }
   match shape {
     ReprDeriveElemNullaryEnumCopy =>
@@ -2079,6 +2096,7 @@ fn v1_emit_struct_from_capability_table(
   generic_param_names: List<String>,
   source_indices: Map<String, NewlineIndex>,
   carrier_param_needs_clone: Bool,
+  deserialize_forbidden: Bool,
   type_decl_items: Map<String, Node>
 ) -> StructCapabilityEmit {
   let field_type_exprs = children |> map(f => child_type_node(ch: f))
@@ -2090,7 +2108,7 @@ fn v1_emit_struct_from_capability_table(
     v1_freemonoid_element_params(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs, source_indices: source_indices)
   }
   if (fm_params |> count) > 0 {
-    let base = if set_contains(shared_types, name) { record_derive_traits_heap() } else { record_derive_traits_copy() }
+    let base = if set_contains(shared_types, name) { v1_record_derive_traits_heap_for_construction(deserialize_forbidden: deserialize_forbidden) } else { v1_record_derive_traits_copy_for_construction(deserialize_forbidden: deserialize_forbidden) }
     let derive_attr = concat(
       v1_freemonoid_unroutable_row_refusal(),
       rust_trait_derive_attr_from_traits(v1_freemonoid_filter_hand_written(traits: base)),
@@ -2113,7 +2131,7 @@ fn v1_emit_struct_from_capability_table(
       v1_item_ord_propagated_param_names(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs, type_decl_items: type_decl_items, source_indices: source_indices)
     }
     if (ord_propagated_params |> count) > 0 {
-      let base = if set_contains(shared_types, name) { record_derive_traits_heap() } else { record_derive_traits_copy() }
+      let base = if set_contains(shared_types, name) { v1_record_derive_traits_heap_for_construction(deserialize_forbidden: deserialize_forbidden) } else { v1_record_derive_traits_copy_for_construction(deserialize_forbidden: deserialize_forbidden) }
       let set_row_refusal = v1_set_unroutable_row_refusal()
       let derived_traits = v1_set_filter_hand_written(traits: base)
       let derive_attr = concat(
@@ -2135,6 +2153,7 @@ fn v1_emit_struct_from_capability_table(
         shared_types: shared_types,
         has_fn_fields: has_fn_fields,
         map_key_required: map_key_required,
+        deserialize_forbidden: deserialize_forbidden,
         source_indices: source_indices
       )
       let impl_bodies = if repr_grounding_group_completion_carrier(module_path: module_path, name: name)
