@@ -29,7 +29,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // stronger statement and the one the migration is for. A newly authored
 // `data x_dissolve_on: String = "..."` anywhere under either root reds this; proven by
 // planting exactly that declaration in an isolated worktree and observing FAIL.
-test fn no_raw_lifecycle_string_survivors_remain() -> Bool {
+fn no_raw_lifecycle_string_survivors_remain() -> Bool {
   no_raw_lifecycle_string_survivors()
 }
 

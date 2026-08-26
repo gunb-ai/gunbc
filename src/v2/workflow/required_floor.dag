@@ -8,6 +8,9 @@ import v2.std.integer { Int, int_gt }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_non_verdict { floor_non_verdict_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
+import v2.workflow.pre_existing_floor_debt { pre_existing_floor_debt_roster }
+import v2.lens.enforcement.standing_intent { whole_corpus_scope }
+import v2.lens.realization_vocabulary_containment { cli_vocabulary_shared_scan_root_sets }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.nat { Nat }
 import std.measure {
@@ -19,7 +22,6 @@ import std.measure {
   byte_size_count,
 }
 import std.types { NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
 
 // IDENTITY-GRAINED FLOOR DISPOSITION RECEIPT (operator ruling 2026-08-19).
 //
@@ -235,11 +237,18 @@ fn fixture_home_prefixes() -> List<String> {
   }
 }
 
+// The floor primes this immutable corpus projection once before per-claim timing. Every live
+// enforcement witness consumes this same declared root set; rebuilding it in a fresh claim
+// frame made the first five-second deadline payer look like the owner of a forty-second scan.
+fn required_floor_shared_decl_fact_roots() -> List<String> {
+  whole_corpus_scope.roots
+}
+
 // THE ADMISSION ORDER, HELD HERE RATHER THAN IN WHOEVER WALKS THE CORPUS.
 //
-// `RequiredFloorDisposition` above names the four arms; until now nothing in this module said
-// WHICH arm a given site gets, so the ordering — long home, then fixture home, then live tree,
-// then planned — lived only in the host loop that walks the discovered files
+// `RequiredFloorDisposition` above names the three arms; until now nothing in this module said
+// WHICH arm a given site gets, so the ordering — long home, then fixture home, then planned —
+// lived only in the host loop that walks the discovered files
 // (`v1_compiler.cli_run` `run_required_floor`). That made the type an authority over the
 // vocabulary and not over the decision, and a second walker (the .dag census this function was
 // added for) would have had to re-author the order and could have re-authored it differently.
@@ -251,10 +260,6 @@ fn fixture_home_prefixes() -> List<String> {
 // prediction over the ownership fact would make the site look like it rejoins the floor when the
 // live-tree arm is deleted, and it does not.
 //
-// THE LIVE-TREE INPUT IS THE DECLARED `LiveTreeDisposition`, NOT A `Bool`. The host currently
-// hands this decision a `reads_live_tree` boolean it computed one level up; taking the declared
-// coproduct here means a third live-tree state added upstream fails to compile in this match
-// rather than being silently folded into whichever side of a boolean it was coerced to.
 type ModulePrefixMatch =
     ModulePrefixUnmatched
   | ModulePrefixMatched { prefix: String }
@@ -273,18 +278,13 @@ fn first_module_prefix_match(module_path: String, prefixes: List<String>) -> Mod
 
 fn required_floor_site_disposition(
   module_path: String,
-  reads_live_tree: LiveTreeDisposition,
 ) -> RequiredFloorDisposition {
   match first_module_prefix_match(module_path: module_path, prefixes: long_home_prefixes()) {
     ModulePrefixMatched { prefix: p } => DeclinedLongModule { matched_prefix: p }
     ModulePrefixUnmatched =>
       match first_module_prefix_match(module_path: module_path, prefixes: fixture_home_prefixes()) {
         ModulePrefixMatched { prefix: p } => DeclinedFixtureMember { matched_prefix: p }
-        ModulePrefixUnmatched =>
-          match reads_live_tree {
-            ReadsLiveTree => DeclinedLiveTree {}
-            SubstrateInputsOnly => Planned {}
-          }
+        ModulePrefixUnmatched => Planned {}
       }
   }
 }

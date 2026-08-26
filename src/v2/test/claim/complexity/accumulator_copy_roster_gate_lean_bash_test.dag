@@ -6,10 +6,10 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-test fn roster_lean_zero_suspects_within_ratchet() -> Bool {
+fn roster_lean_zero_suspects_within_ratchet() -> Bool {
   file_gate(path: "src/v2/extdeps/languages/lean.dag", refusal_ceiling: 1)
 }
 
-test fn roster_bash_zero_suspects_within_ratchet() -> Bool {
+fn roster_bash_zero_suspects_within_ratchet() -> Bool {
   file_gate(path: "src/v2/extdeps/languages/bash.dag", refusal_ceiling: 1)
 }

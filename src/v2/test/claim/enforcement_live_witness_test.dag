@@ -3,11 +3,11 @@ module v2.test.claim.enforcement_live_witness
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-test fn enforcement_consistency_gate_holds() -> Bool {
+fn enforcement_consistency_gate_holds() -> Bool {
   enforcement_consistency_live() && all_intents_admissible(intents: standing_intent_registry)
 }
 
-test fn complexity_repo_wide_verdict_matches_roadmap() -> Bool {
+fn complexity_repo_wide_verdict_matches_roadmap() -> Bool {
   let v = complexity_repo_wide_verdict_live()
   leg_holds(l: v.claimed)
     && leg_fails(l: v.scope_covered)
@@ -192,14 +192,14 @@ fn facts_contain_qualified_name(facts: List<DeclFact>, name: String) -> Bool {
   })
 }
 
-test fn per_root_sentinels_hold_in_one_walk() -> Bool {
+fn per_root_sentinels_hold_in_one_walk() -> Bool {
   let facts = enforcement_corpus_facts()
   facts_contain_qualified_name(facts: facts, name: "gunbc.commit_workflow.commit_gate_roster")
     && facts_contain_qualified_name(facts: facts, name: "v1.compiler.infer.build_type_env")
     && facts_contain_qualified_name(facts: facts, name: "lens.cost.cost_lens")
 }
 
-test fn live_corpus_is_currently_all_body_unavailable() -> Bool {
+fn live_corpus_is_currently_all_body_unavailable() -> Bool {
   let facts = enforcement_corpus_facts()
   (fn_item_count_of(facts: facts) > 500)
     && (body_unavailable_count_of(facts: facts) == fn_item_count_of(facts: facts))
@@ -212,12 +212,12 @@ test fn unbound_contracts_remain_enumerable() -> Bool {
     && lens_contract_is_unbound(c: lens_contract_effect_reach)
 }
 
-test fn bound_contracts_derive_live_receipts() -> Bool {
+fn bound_contracts_derive_live_receipts() -> Bool {
   !lens_contract_is_unbound(c: lens_contract_cost)
     && !lens_contract_is_unbound(c: lens_contract_vacuity)
     && length(xs: coverage_receipts_live()) == (length(xs: lens_contract_registry) - unbound_contract_count())
 }
 
-test fn unbound_contracts_omit_semantic_receipts() -> Bool {
+fn unbound_contracts_omit_semantic_receipts() -> Bool {
   length(xs: coverage_receipts_live()) < length(xs: lens_contract_registry)
 }

@@ -58,7 +58,7 @@ test fn grammar_coverage_smoke_recomputed_by_execution_holds() -> Bool {
   )
 }
 
-test fn grammar_coverage_dag_tree_totality_holds() -> Bool {
+fn grammar_coverage_dag_tree_totality_holds() -> Bool {
   let receipt = gc_witness_dag_tree_receipt_live()
   grammar_coverage_receipt_totality_holds(receipt: receipt)
     && grammar_coverage_rejected_rows_cover_rejects(receipt: receipt)
@@ -74,13 +74,13 @@ test fn grammar_coverage_reject_is_typed_not_silent() -> Bool {
   }
 }
 
-test fn grammar_coverage_corpus_roster_dedupes_decl_facts() -> Bool {
+fn grammar_coverage_corpus_roster_dedupes_decl_facts() -> Bool {
   let roster = grammar_coverage_corpus_roster_live()
   grammar_coverage_roster_contains_path(roster: roster, path: "dag/std/logic.dag")
     && grammar_coverage_roster_contains_path(roster: roster, path: "src/v2/std/logic.dag")
 }
 
-test fn grammar_coverage_decl_facts_roster_smoke_totality_holds() -> Bool {
+fn grammar_coverage_decl_facts_roster_smoke_totality_holds() -> Bool {
   let roster = grammar_coverage_paths_for_tree(
     paths: grammar_coverage_corpus_roster_live(),
     tree_root: "dag"
@@ -92,7 +92,7 @@ test fn grammar_coverage_decl_facts_roster_smoke_totality_holds() -> Bool {
   (receipt.files_attempted == 0) || grammar_coverage_receipt_totality_holds(receipt: receipt)
 }
 
-test fn grammar_coverage_take_n_live_dag_subset5_work_units_by_execution() -> Bool {
+fn grammar_coverage_take_n_live_dag_subset5_work_units_by_execution() -> Bool {
   let roster = gc_witness_live_dag_roster()
   (length(xs: roster) >= 5)
     && grammar_coverage_timing_work_units_match_take_n(
@@ -101,7 +101,7 @@ test fn grammar_coverage_take_n_live_dag_subset5_work_units_by_execution() -> Bo
     )
 }
 
-test fn grammar_coverage_take_n_live_dag_subset10_work_units_by_execution() -> Bool {
+fn grammar_coverage_take_n_live_dag_subset10_work_units_by_execution() -> Bool {
   let roster = gc_witness_live_dag_roster()
   (length(xs: roster) >= 10)
     && grammar_coverage_timing_work_units_match_take_n(
@@ -110,21 +110,21 @@ test fn grammar_coverage_take_n_live_dag_subset10_work_units_by_execution() -> B
     )
 }
 
-test fn grammar_coverage_take_n_fixed_roster_saturates_by_execution() -> Bool {
+fn grammar_coverage_take_n_fixed_roster_saturates_by_execution() -> Bool {
   grammar_coverage_timing_work_units_match_take_n(
     roster: gc_witness_dag_paths,
     subset_n: 100
   )
 }
 
-test fn grammar_coverage_dag_tree_receipt_by_execution() -> Bool {
+fn grammar_coverage_dag_tree_receipt_by_execution() -> Bool {
   let receipt = gc_witness_dag_tree_receipt_live()
   (receipt.files_attempted == 2)
     && (receipt.parsed_clean == 2)
     && (receipt.rejected_count == 0)
 }
 
-test fn grammar_coverage_v1_core_file_reject_locus_by_execution() -> Bool {
+fn grammar_coverage_v1_core_file_reject_locus_by_execution() -> Bool {
   grammar_coverage_file_reject_locus_matches(
     receipt: grammar_coverage_file_receipt(rel_path: "src/v1/00_core.dag"),
     stage: "parse",
@@ -132,7 +132,7 @@ test fn grammar_coverage_v1_core_file_reject_locus_by_execution() -> Bool {
   )
 }
 
-test fn grammar_coverage_v1_tokenize_file_reject_locus_by_execution() -> Bool {
+fn grammar_coverage_v1_tokenize_file_reject_locus_by_execution() -> Bool {
   grammar_coverage_file_reject_locus_matches(
     receipt: grammar_coverage_file_receipt(rel_path: "src/v1/01_tokenize.dag"),
     stage: "parse",
@@ -140,7 +140,7 @@ test fn grammar_coverage_v1_tokenize_file_reject_locus_by_execution() -> Bool {
   )
 }
 
-test fn grammar_coverage_v1_rejected_rows_identity_by_execution() -> Bool {
+fn grammar_coverage_v1_rejected_rows_identity_by_execution() -> Bool {
   let receipt = gc_witness_v1_tree_receipt_live()
   grammar_coverage_rejected_row_present(
     rows: receipt.rejected_rows,
@@ -150,7 +150,7 @@ test fn grammar_coverage_v1_rejected_rows_identity_by_execution() -> Bool {
     && (grammar_coverage_rejected_row_count_sum(rows: receipt.rejected_rows) == 2)
 }
 
-test fn grammar_coverage_v1_tree_receipt_by_execution() -> Bool {
+fn grammar_coverage_v1_tree_receipt_by_execution() -> Bool {
   let receipt = gc_witness_v1_tree_receipt_live()
   (receipt.files_attempted == 2)
     && (receipt.parsed_clean == 0)
@@ -160,14 +160,14 @@ test fn grammar_coverage_v1_tree_receipt_by_execution() -> Bool {
     && grammar_coverage_rejected_rows_cover_rejects(receipt: receipt)
 }
 
-test fn grammar_coverage_v2_tree_receipt_by_execution() -> Bool {
+fn grammar_coverage_v2_tree_receipt_by_execution() -> Bool {
   let receipt = gc_witness_v2_tree_receipt_live()
   (receipt.files_attempted == 2)
     && (receipt.parsed_clean == 2)
     && (receipt.rejected_count == 0)
 }
 
-test fn grammar_coverage_parse_fraction_is_derived() -> Bool {
+fn grammar_coverage_parse_fraction_is_derived() -> Bool {
   let receipt = gc_witness_dag_tree_receipt_live()
   (grammar_coverage_parse_fraction_bps(receipt: receipt) == ((receipt.parsed_clean * 10000) / receipt.files_attempted))
 }

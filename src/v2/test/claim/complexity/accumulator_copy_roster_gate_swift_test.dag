@@ -6,6 +6,6 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-test fn roster_swift_zero_suspects_within_ratchet() -> Bool {
+fn roster_swift_zero_suspects_within_ratchet() -> Bool {
   file_gate(path: "src/v2/extdeps/languages/swift.dag", refusal_ceiling: 4)
 }

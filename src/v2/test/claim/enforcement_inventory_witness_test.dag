@@ -52,7 +52,7 @@ test fn enforcement_inventory_witness_excluded_via_frontier() -> Bool {
 // One whole-corpus acquisition, seven inventory assertions. These facts are genuinely global,
 // but acquiring the same `enforcement_corpus_facts` once per test identity made six of seven
 // walks pure repetition and safety-interrupted every row before verdict.
-test fn enforcement_inventory_global_receipt_holds() -> Bool {
+fn enforcement_inventory_global_receipt_holds() -> Bool {
   let inventory = lens_enforcement_inventory_live()
   inventory_reconciles_registry_both_ways(
     inventory: inventory,

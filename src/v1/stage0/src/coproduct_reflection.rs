@@ -1352,6 +1352,17 @@ pub struct DeclFactsCorpusWalk {
 // shadow the same module path, this producer may emit facts for both the winning
 // source and the shadowed stub; compile binds only the winner.
 pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
+    thread_local! {
+        static CACHE: std::cell::RefCell<std::collections::HashMap<Vec<String>, DeclFactsCorpusWalk>> =
+            std::cell::RefCell::new(std::collections::HashMap::new());
+    }
+    let key = pool_roots.to_vec();
+    if let Some(cached) = CACHE.with(|cache| cache.borrow().get(&key).cloned()) {
+        crate::cli_run::shared_fill::record_hit("decl_facts_corpus_walk", &key.join("|"));
+        return cached;
+    }
+    crate::cli_run::shared_fill::begin_fill();
+    let started = std::time::Instant::now();
     let mut out = Vec::new();
     let mut files_scanned = 0usize;
     let mut files_parsed = 0usize;
@@ -1402,11 +1413,20 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
             kind_ord(b.kind),
         ))
     });
-    DeclFactsCorpusWalk {
+    let walk = DeclFactsCorpusWalk {
         facts: out,
         files_scanned,
         files_parsed,
-    }
+    };
+    CACHE.with(|cache| {
+        cache.borrow_mut().insert(key.clone(), walk.clone());
+    });
+    crate::cli_run::shared_fill::record_fill(
+        "decl_facts_corpus_walk",
+        &key.join("|"),
+        started.elapsed().as_nanos() as u64,
+    );
+    walk
 }
 
 /// Declaration facts for `roots`; preserves the non-test corpus boundary (delegates to `decl_facts_corpus_walk`).

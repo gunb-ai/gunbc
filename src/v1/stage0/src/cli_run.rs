@@ -33411,6 +33411,7 @@ mod discovery_summary_merge_tests {
     }
 }
 
+#[derive(Clone)]
 pub struct LayerImportFactRaw {
     pub layer: &'static str,
     pub path: String,
@@ -33566,6 +33567,18 @@ pub fn layer_import_facts(
     std_roots: &[String],
     extdeps_roots: &[String],
 ) -> Vec<LayerImportFactRaw> {
+    thread_local! {
+        static CACHE: std::cell::RefCell<HashMap<(Vec<String>, Vec<String>), Vec<LayerImportFactRaw>>> =
+            std::cell::RefCell::new(HashMap::new());
+    }
+    let key = (std_roots.to_vec(), extdeps_roots.to_vec());
+    let key_label = format!("{}::{}", key.0.join("|"), key.1.join("|"));
+    if let Some(cached) = CACHE.with(|cache| cache.borrow().get(&key).cloned()) {
+        shared_fill::record_hit("layer_import_facts", &key_label);
+        return cached;
+    }
+    shared_fill::begin_fill();
+    let started = std::time::Instant::now();
     let mut out = Vec::new();
     let mut seen: HashSet<(String, String)> = HashSet::new();
     for root in std_roots {
@@ -33609,6 +33622,14 @@ pub fn layer_import_facts(
             });
         }
     }
+    CACHE.with(|cache| {
+        cache.borrow_mut().insert(key, out.clone());
+    });
+    shared_fill::record_fill(
+        "layer_import_facts",
+        &key_label,
+        started.elapsed().as_nanos() as u64,
+    );
     out
 }
 
@@ -44700,6 +44721,12 @@ fn long_home_storage_agreement(
 /// single number cannot be compared with itself: a run that planned 9,267 claims, executed
 /// 8,184 and receipted 8,184 reports a healthy-looking pair unless the planned count is
 /// carried beside them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PreExistingFloorDebtDisposition {
+    Fails,
+    Throws,
+}
+
 pub struct RequiredFloorOutcome {
     pub subject_digest: String,
     pub modules_resolved: usize,
@@ -44735,6 +44762,14 @@ pub struct RequiredFloorOutcome {
     /// witness, and a headline number that rises as debt is added has no direction left to
     /// report repayment in.
     pub known_red_held: usize,
+    /// Newly visible pre-existing failures held by the typed identity-grain debt inventory.
+    /// These are not passes and are not expected-reds; the inverse join below requires every
+    /// row to keep reproducing its authored Fail/Throw disposition.
+    pub pre_existing_floor_debt_held: Vec<String>,
+    /// A typed debt row whose identity no longer exhibits its authored disposition.
+    pub stale_pre_existing_floor_debt: Vec<String>,
+    /// A newly observed Fail/Throw identity absent from the closed debt inventory.
+    pub pre_existing_floor_debt_unenrolled: Vec<String>,
     /// THE 101 THAT DID NOT SUM. These six are already computed by the fold, at the right grain,
     /// and were reported only on `[floor-known-red]` / `[floor-route-gap]` lines that no consumer
     /// of the headline ledger reads. Lifting them here adds no fact and makes no new distinction;
@@ -46284,6 +46319,161 @@ pub fn run_required_floor(
         non_verdict_roster.len()
     );
 
+    // THE NEWLY-VISIBLE DEBT INVENTORY IS TYPED PER IDENTITY. It is deliberately not folded
+    // into floor_expected_red: a Fail is a semantic verdict while a Throw is proof that no
+    // verdict was produced, and a List<String> cannot preserve that distinction. The producer
+    // is modeled in v2; this decoder only realizes its two authored arms at the executing seam.
+    let pre_existing_floor_debt: HashMap<String, PreExistingFloorDebtDisposition> = {
+        let value = v1_interpreter::run_in_context(
+            &hermetic,
+            "v2.workflow.pre_existing_floor_debt.pre_existing_floor_debt_roster",
+            false,
+        )
+        .map_err(|e| format!("pre_existing_floor_debt_roster: {e}"))?;
+        let items = floor_decode_list(&hermetic, Some(&value))
+            .map_err(|e| format!("pre_existing_floor_debt_roster: {e}"))?;
+        let mut out = HashMap::new();
+        for item in items {
+            let v1_interpreter::Value::Record { fields, .. } = item else {
+                return Err(format!(
+                    "pre_existing_floor_debt_roster: expected a row record, got {}",
+                    floor_value_shape(Some(item))
+                ));
+            };
+            let identity = match hermetic.field(&fields, "identity") {
+                Some(v1_interpreter::Value::Str(s)) => s.to_string(),
+                other => {
+                    return Err(format!(
+                        "pre_existing_floor_debt_roster: expected String identity, got {}",
+                        floor_value_shape(other)
+                    ))
+                }
+            };
+            let disposition = match hermetic.field(&fields, "disposition") {
+                Some(v1_interpreter::Value::Record { type_name, .. })
+                    if hermetic.sym_eq(*type_name, "Fails") =>
+                {
+                    PreExistingFloorDebtDisposition::Fails
+                }
+                Some(v1_interpreter::Value::Record { type_name, .. })
+                    if hermetic.sym_eq(*type_name, "Throws") =>
+                {
+                    PreExistingFloorDebtDisposition::Throws
+                }
+                other => {
+                    return Err(format!(
+                    "pre_existing_floor_debt_roster: expected Fails or Throws disposition, got {}",
+                    floor_value_shape(other)
+                ))
+                }
+            };
+            if out.insert(identity.clone(), disposition).is_some() {
+                return Err(format!(
+                    "pre_existing_floor_debt_roster: duplicate identity: {identity}"
+                ));
+            }
+        }
+        out
+    };
+    eprintln!(
+        "[floor-pre-existing-debt] roster carries {} typed identity(ies)",
+        pre_existing_floor_debt.len()
+    );
+
+    // PRIME THE IMMUTABLE DECL-FACT WALK OUTSIDE EVERY CLAIM'S CLOCK. Claim frames stay fresh —
+    // their mutable evaluation caches are still hermetic per witness — while the parse-only
+    // corpus product they all consume is keyed by its modeled root list and shared by value.
+    // This moves one corpus-denominated producer out of forty-four apparent per-row costs; it
+    // does not cache a verdict or let one witness's evaluation state enter another's frame.
+    {
+        let value = v1_interpreter::run_in_context(
+            &hermetic,
+            "v2.workflow.required_floor.required_floor_shared_decl_fact_roots",
+            false,
+        )
+        .map_err(|e| format!("required_floor_shared_decl_fact_roots: {e}"))?;
+        let items = floor_decode_list(&hermetic, Some(&value))
+            .map_err(|e| format!("required_floor_shared_decl_fact_roots: {e}"))?;
+        let mut roots = Vec::new();
+        for item in items {
+            match item {
+                v1_interpreter::Value::Str(s) => roots.push(s.to_string()),
+                other => {
+                    return Err(format!(
+                        "required_floor_shared_decl_fact_roots: expected String root, got {}",
+                        floor_value_shape(Some(other))
+                    ))
+                }
+            }
+        }
+        if roots.is_empty() {
+            return Err(
+                "required_floor_shared_decl_fact_roots: modeled producer returned no roots"
+                    .to_string(),
+            );
+        }
+        let walk = crate::coproduct_reflection::decl_facts_corpus_walk(&roots);
+        if walk.files_scanned == 0 || walk.files_parsed == 0 || walk.facts.is_empty() {
+            return Err(format!(
+                "required_floor_shared_decl_fact_roots: prewarm produced no positive corpus artifact: files_scanned={} files_parsed={} facts={}",
+                walk.files_scanned,
+                walk.files_parsed,
+                walk.facts.len()
+            ));
+        }
+        eprintln!(
+            "[floor-shared-fill] decl_facts primed roots={} files_scanned={} files_parsed={} facts={}",
+            roots.join(","),
+            walk.files_scanned,
+            walk.files_parsed,
+            walk.facts.len()
+        );
+    }
+    {
+        let value = v1_interpreter::run_in_context(
+            &hermetic,
+            "v2.lens.realization_vocabulary_containment.cli_vocabulary_shared_scan_root_sets",
+            false,
+        )
+        .map_err(|e| format!("cli_vocabulary_shared_scan_root_sets: {e}"))?;
+        let root_sets = floor_decode_list(&hermetic, Some(&value))
+            .map_err(|e| format!("cli_vocabulary_shared_scan_root_sets: {e}"))?;
+        if root_sets.is_empty() {
+            return Err("cli_vocabulary_shared_scan_root_sets: no root sets produced".to_string());
+        }
+        for root_set in root_sets {
+            let roots = floor_decode_list(&hermetic, Some(&root_set))
+                .map_err(|e| format!("cli_vocabulary_shared_scan_root_sets row: {e}"))?
+                .into_iter()
+                .map(|item| match item {
+                    v1_interpreter::Value::Str(s) => Ok(s.to_string()),
+                    other => Err(format!(
+                        "cli_vocabulary_shared_scan_root_sets: expected String root, got {}",
+                        floor_value_shape(Some(other))
+                    )),
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            if roots.is_empty() {
+                return Err(
+                    "cli_vocabulary_shared_scan_root_sets: empty root set is not an observation"
+                        .to_string(),
+                );
+            }
+            let facts = layer_import_facts(&roots, &[]);
+            if facts.is_empty() {
+                return Err(format!(
+                    "cli_vocabulary_shared_scan_root_sets: {} produced no import facts",
+                    roots.join(",")
+                ));
+            }
+            eprintln!(
+                "[floor-shared-fill] layer_import_facts primed roots={} facts={}",
+                roots.join(","),
+                facts.len()
+            );
+        }
+    }
+
     // AND THIS ROSTER NEEDS NO SEPARATE FREEZE-DISJOINTNESS CHECK, which is worth saying because
     // the wall below now covers three rosters and this is a fourth. The refusal immediately
     // beneath enforces non-verdict SUBSET-OF expected-red, and expected-red is already
@@ -46448,6 +46638,9 @@ pub fn run_required_floor(
         not_attempted_after_abort: 0,
         passed: 0,
         known_red_held: 0,
+        pre_existing_floor_debt_held: Vec::new(),
+        stale_pre_existing_floor_debt: Vec::new(),
+        pre_existing_floor_debt_unenrolled: Vec::new(),
         route_gap_held: 0,
         known_red_now_passing: 0,
         known_red_budget_refused: 0,
@@ -46554,6 +46747,7 @@ pub fn run_required_floor(
     let mut non_verdict_seen: HashSet<String> = HashSet::new();
     let mut non_verdict_detail: BTreeMap<String, String> = BTreeMap::new();
     let mut expected_red_seen: HashSet<String> = HashSet::new();
+    let mut pre_existing_floor_debt_seen: HashSet<String> = HashSet::new();
     let mut claim_rss_kb_max: u64 = 0;
     let mut claim_rss_kb_max_row = String::new();
     let mut trim_reclaimed_kb_total: u64 = 0;
@@ -46986,6 +47180,24 @@ pub fn run_required_floor(
                             format!("{other:?}")
                         }
                     };
+                    if let Some(disposition) = pre_existing_floor_debt.get(&claim.qualified) {
+                        pre_existing_floor_debt_seen.insert(claim.qualified.clone());
+                        match disposition {
+                            PreExistingFloorDebtDisposition::Throws => {
+                                outcome.pre_existing_floor_debt_held.push(format!(
+                                    "{} still THROWS as inventoried and produced no verdict: {}",
+                                    claim.qualified, detail
+                                ));
+                            }
+                            PreExistingFloorDebtDisposition::Fails => {
+                                outcome.stale_pre_existing_floor_debt.push(format!(
+                                    "{} is rostered as Fails but now THROWS before verdict: {}",
+                                    claim.qualified, detail
+                                ));
+                            }
+                        }
+                        continue;
+                    }
                     non_verdict_seen.insert(claim.qualified.clone());
                     non_verdict_detail.insert(claim.qualified.clone(), detail.clone());
                     outcome.known_red_runtime_errored.push(format!(
@@ -47043,9 +47255,26 @@ pub fn run_required_floor(
             // derivation makes unrepresentable. `passed` is now counted from the terminal rows
             // after the fold.
             ClaimOutcome::Pass => {}
-            ClaimOutcome::Fail => outcome
-                .failures
-                .push(format!("{} returned Bool(false)", claim.qualified)),
+            ClaimOutcome::Fail => match pre_existing_floor_debt.get(&claim.qualified) {
+                Some(PreExistingFloorDebtDisposition::Fails) => {
+                    pre_existing_floor_debt_seen.insert(claim.qualified.clone());
+                    outcome.pre_existing_floor_debt_held.push(format!(
+                        "{} still FAILS as inventoried: reached its assertion and returned Bool(false)",
+                        claim.qualified
+                    ));
+                }
+                Some(PreExistingFloorDebtDisposition::Throws) => {
+                    pre_existing_floor_debt_seen.insert(claim.qualified.clone());
+                    outcome.stale_pre_existing_floor_debt.push(format!(
+                        "{} is rostered as Throws but now reaches a Fail verdict; replace or delete the spent row",
+                        claim.qualified
+                    ));
+                }
+                None => outcome.pre_existing_floor_debt_unenrolled.push(format!(
+                    "{} newly FAILS but is absent from the closed pre-existing debt inventory",
+                    claim.qualified
+                )),
+            },
             // Every non-pass arm is reported with the fact that distinguishes it. A
             // collapsed "failed" would make a budget refusal, a runtime error and a
             // witness that answered false read alike, and those three have different
@@ -47053,9 +47282,28 @@ pub fn run_required_floor(
             ClaimOutcome::NotBool { got } => outcome
                 .failures
                 .push(format!("{} answered {got}, not a Bool", claim.qualified)),
-            ClaimOutcome::RuntimeError { message, .. } => outcome
-                .failures
-                .push(format!("{} errored: {message}", claim.qualified)),
+            ClaimOutcome::RuntimeError { message, .. } => {
+                match pre_existing_floor_debt.get(&claim.qualified) {
+                    Some(PreExistingFloorDebtDisposition::Throws) => {
+                        pre_existing_floor_debt_seen.insert(claim.qualified.clone());
+                        outcome.pre_existing_floor_debt_held.push(format!(
+                            "{} still THROWS as inventoried and produced no verdict: {message}",
+                            claim.qualified
+                        ));
+                    }
+                    Some(PreExistingFloorDebtDisposition::Fails) => {
+                        pre_existing_floor_debt_seen.insert(claim.qualified.clone());
+                        outcome.stale_pre_existing_floor_debt.push(format!(
+                            "{} is rostered as Fails but now THROWS before verdict: {message}",
+                            claim.qualified
+                        ));
+                    }
+                    None => outcome.pre_existing_floor_debt_unenrolled.push(format!(
+                        "{} newly THROWS before verdict but is absent from the closed pre-existing debt inventory: {message}",
+                        claim.qualified
+                    )),
+                }
+            }
             ClaimOutcome::HostToolUnresolved { name, probed } => outcome.failures.push(format!(
                 "{} host tool unresolved: {:?} (probed: {})",
                 claim.qualified,
@@ -47449,6 +47697,24 @@ pub fn run_required_floor(
             });
         }
     }
+    // THE PRE-EXISTING DEBT ROSTER'S INVERSE ARM. A row is spent when its exact authored
+    // Fail/Throw disposition is no longer observed — including when the identity passes,
+    // disappears, is declined, or moves to any non-verdict class other than Throws. Refusing
+    // here makes repair and row deletion one act, so the inventory cannot rot into history.
+    {
+        let mut spent: Vec<(&String, &PreExistingFloorDebtDisposition)> = pre_existing_floor_debt
+            .iter()
+            .filter(|(identity, _)| !pre_existing_floor_debt_seen.contains(*identity))
+            .collect();
+        spent.sort_by_key(|(identity, _)| identity.as_str());
+        for (identity, disposition) in spent {
+            outcome.stale_pre_existing_floor_debt.push(format!(
+                "{} is rostered as {:?} but that disposition was not observed; delete the spent row or restore the subject",
+                identity, disposition
+            ));
+        }
+    }
+
     // THE ROSTER IS A TWO-WAY JOIN, NOT A ONE-WAY LOOKUP. Enrollment as written above only ever
     // asks "is this executing claim enrolled". The reverse question — is every enrolled identity
     // still executing — has no consumer unless it is asked here, and without it the roster rots

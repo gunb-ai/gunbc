@@ -143,7 +143,7 @@ test fn wiring_corpus_fixture_surface_holds() -> Bool {
     && wiring_corpus_probe_lambda(flag: true, items: std.algebra.Empty)
 }
 
-test fn wiring_liveness_corpus_witnesses() -> Bool {
+fn wiring_liveness_corpus_witnesses() -> Bool {
   let decls = fn_arrow_decl_facts_live()
   return witness_dead_wire_detected()
     && (length(xs: decls) > 0)

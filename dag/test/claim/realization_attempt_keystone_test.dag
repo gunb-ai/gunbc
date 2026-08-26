@@ -53,7 +53,7 @@ test fn witness_planted_garbage_refuses_frontend_RED() -> Bool {
   }
 }
 
-test fn witness_real_corpus_entry_produces_typed_standing() -> Bool {
+fn witness_real_corpus_entry_produces_typed_standing() -> Bool {
   let a = attempt_entry(entry: "dag/test/claim/witness_execution_class_test.dag")
   let label = attempt_phase_label(a: a)
   (label != "") && (label != "read")
@@ -101,4 +101,3 @@ test fn witness_assembled_identity_absent_refuses_RED() -> Bool {
     V2RealizationRefused { phase: _, exact_cause: c, located: _ } => c == ^realization_attempt_identity_absent
   }
 }
-

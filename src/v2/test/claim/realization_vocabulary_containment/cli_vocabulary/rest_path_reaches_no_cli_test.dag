@@ -33,10 +33,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // The REST/BMC transport population. Both directories, because the boundary claim
 // is about the transport layer as a whole rather than one file.
-data rest_path_scan_roots: List<String> = [
-  "dag/extdeps/bmc",
-  "dag/extdeps/transports"
-]
+data rest_path_scan_roots: List<String> = v2.lens.realization_vocabulary_containment.cli_vocab_rest_path_scan_roots
 
 // THE ONE ADMITTED EDGE, named at exact identity grain. This is not a category or a
 // path prefix: it is one importer reaching one vocabulary module, so a SECOND
@@ -140,9 +137,7 @@ data cli_vocab_definition_edges: List<String> = [
 // ROOT: all of dag/extdeps. Widens past bmc/ and transports/ to every cited
 // upstream module. Lands with exactly one admitted edge -- the fan control jq
 // edge already named above -- and the jq definition site on the edge roster.
-data extdeps_scan_roots: List<String> = [
-  "dag/extdeps"
-]
+data extdeps_scan_roots: List<String> = v2.lens.realization_vocabulary_containment.cli_vocab_extdeps_scan_roots
 
 test fn extdeps_reaches_no_cli_construction_vocabulary() -> Bool {
   vocab_leak_count_live_in(
@@ -157,12 +152,7 @@ test fn extdeps_reaches_no_cli_construction_vocabulary() -> Bool {
 // with no admissions at all: std, the compiler stages, the lenses and the workflow
 // layer construct no process invocation whatsoever. If any of these ever needs a
 // CLI surface, that is an architectural event and it should red here first.
-data substrate_scan_roots: List<String> = [
-  "src/v2/std",
-  "src/v2/compiler",
-  "src/v2/lens",
-  "src/v2/workflow"
-]
+data substrate_scan_roots: List<String> = v2.lens.realization_vocabulary_containment.cli_vocab_substrate_scan_roots
 
 test fn compiler_substrate_reaches_no_cli_construction_vocabulary() -> Bool {
   vocab_leak_count_live_in(
@@ -265,9 +255,7 @@ data transport_consumer_admitted_edges: List<RealizationVocabImportEdge> = [
   }
 ]
 
-data gunbc_scan_roots: List<String> = [
-  "dag/gunbc"
-]
+data gunbc_scan_roots: List<String> = v2.lens.realization_vocabulary_containment.cli_vocab_gunbc_scan_roots
 
 test fn gunbc_consumers_reach_transport_vocabulary_only_by_named_admission() -> Bool {
   vocab_leak_count_live_in(
@@ -311,7 +299,7 @@ data witness_exercise_edges: List<String> = [
 
 test fn test_corpus_reaches_cli_vocabulary_only_as_declared_exercise() -> Bool {
   vocab_leak_count_live_in(
-    scan_roots: ["dag/test"],
+    scan_roots: v2.lens.realization_vocabulary_containment.cli_vocab_test_scan_roots,
     vocab: cli_process_vocabulary(),
     edge_prefixes: witness_exercise_edges,
     exempt_edges: no_admitted_cli_edges

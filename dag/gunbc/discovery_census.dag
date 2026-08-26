@@ -12,7 +12,7 @@ import gunbc.build_target {
 }
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
-  Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedLiveTree,
+  Planned, DeclinedLongModule, DeclinedFixtureMember,
   required_floor_site_disposition,
 }
 import v2.std.live_tree { LiveTreeDisposition }
@@ -197,8 +197,7 @@ fn census_fold_site(state: CensusFoldState, site: DiscoveredSite) -> CensusFoldS
             CensusRow {
               label: l,
               disposition: required_floor_site_disposition(
-                module_path: site.module_path,
-                reads_live_tree: site.reads_live_tree
+                module_path: site.module_path
               )
             }
           ], state.rows_reversed),
@@ -245,8 +244,6 @@ fn census_partition_step(acc: CensusPartition, row: CensusRow) -> CensusPartitio
     DeclinedLongModule { matched_prefix: _ } =>
       CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
     DeclinedFixtureMember { matched_prefix: _ } =>
-      CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
-    DeclinedLiveTree =>
       CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
   }
 }
@@ -312,7 +309,6 @@ type CensusCounts {
   planned: Int
   declined_long_module: Int
   declined_fixture_member: Int
-  declined_live_tree: Int
 }
 
 fn census_counts_zero() -> CensusCounts {
@@ -320,8 +316,7 @@ fn census_counts_zero() -> CensusCounts {
     offered: 0,
     planned: 0,
     declined_long_module: 0,
-    declined_fixture_member: 0,
-    declined_live_tree: 0
+    declined_fixture_member: 0
   }
 }
 
@@ -332,32 +327,21 @@ fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> Censu
         offered: counts.offered + 1,
         planned: counts.planned + 1,
         declined_long_module: counts.declined_long_module,
-        declined_fixture_member: counts.declined_fixture_member,
-        declined_live_tree: counts.declined_live_tree
+        declined_fixture_member: counts.declined_fixture_member
       }
     DeclinedLongModule { matched_prefix: _ } =>
       CensusCounts {
         offered: counts.offered + 1,
         planned: counts.planned,
         declined_long_module: counts.declined_long_module + 1,
-        declined_fixture_member: counts.declined_fixture_member,
-        declined_live_tree: counts.declined_live_tree
+        declined_fixture_member: counts.declined_fixture_member
       }
     DeclinedFixtureMember { matched_prefix: _ } =>
       CensusCounts {
         offered: counts.offered + 1,
         planned: counts.planned,
         declined_long_module: counts.declined_long_module,
-        declined_fixture_member: counts.declined_fixture_member + 1,
-        declined_live_tree: counts.declined_live_tree
-      }
-    DeclinedLiveTree =>
-      CensusCounts {
-        offered: counts.offered + 1,
-        planned: counts.planned,
-        declined_long_module: counts.declined_long_module,
-        declined_fixture_member: counts.declined_fixture_member,
-        declined_live_tree: counts.declined_live_tree + 1
+        declined_fixture_member: counts.declined_fixture_member + 1
       }
   }
 }

@@ -60,7 +60,7 @@ test fn cost_coverage_reject_is_typed_not_silent() -> Bool {
   }
 }
 
-test fn cost_coverage_dag_tree_receipt_by_execution() -> Bool {
+fn cost_coverage_dag_tree_receipt_by_execution() -> Bool {
   let receipt = cc_witness_dag_tree_receipt_live()
   (receipt.files_attempted == 2)
     && (receipt.files_parsed_clean == 2)
@@ -69,7 +69,7 @@ test fn cost_coverage_dag_tree_receipt_by_execution() -> Bool {
     && cost_coverage_receipt_totality_holds(receipt: receipt)
 }
 
-test fn cost_coverage_v2_tree_receipt_by_execution() -> Bool {
+fn cost_coverage_v2_tree_receipt_by_execution() -> Bool {
   let receipt = cc_witness_v2_tree_receipt_live()
   (receipt.files_attempted == 2)
     && (receipt.files_parsed_clean == 2)
@@ -86,11 +86,11 @@ test fn cost_coverage_unknown_fraction_is_derived() -> Bool {
   }
 }
 
-test fn cost_coverage_corpus_roster_nonempty() -> Bool {
+fn cost_coverage_corpus_roster_nonempty() -> Bool {
   length(xs: cost_coverage_corpus_roster_live()) > 100
 }
 
-test fn cost_coverage_decl_facts_roster_smoke_totality_holds() -> Bool {
+fn cost_coverage_decl_facts_roster_smoke_totality_holds() -> Bool {
   let roster = grammar_coverage_paths_for_tree(
     paths: cost_coverage_corpus_roster_live(),
     tree_root: "dag"

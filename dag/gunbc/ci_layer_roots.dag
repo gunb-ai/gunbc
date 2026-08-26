@@ -1457,6 +1457,24 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     dissolution: unbound_dissolution(description: "witness realization lands the census natively or the interpreted walk drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row")
   },
   SubstrateLongLaneRow {
+    entry: "src/v2/lens/no_dual_representation_test.dag",
+    function: "no_dual_representation_test_coverage_honesty_holds",
+    reason: "corpus-breadth module-declaration projection exceeded the required-floor safety ceiling on run 32931996754; fixture discrimination remains in v2.lens.no_dual_representation_test.scan",
+    dissolution: unbound_dissolution(description: "the live module projection is filtered or shared so this identity completes below the per-PR fast-lane budget, then it re-enrolls and this row deletes")
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/lens/no_dual_representation_test.dag",
+    function: "no_dual_representation_test_clean_holds",
+    reason: "same corpus-breadth module-declaration projection as the coverage-honesty sibling; one immutable scan, distinct verdict",
+    dissolution: unbound_dissolution(description: "same as no_dual_representation_test_coverage_honesty_holds")
+  },
+  SubstrateLongLaneRow {
+    entry: "src/v2/lens/wiring_liveness_corpus_test.dag",
+    function: "wiring_liveness_corpus_witnesses",
+    reason: "corpus-wide fn-arrow projection exceeded the required-floor safety ceiling on run 32931996754; wiring_corpus_fixture_surface_holds keeps the mechanism fixture on the per-PR floor",
+    dissolution: unbound_dissolution(description: "the fn-arrow projection is filtered or shared so this identity completes below the per-PR fast-lane budget, then it re-enrolls and this row deletes")
+  },
+  SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/wave1_gate1_d_mvp_subsumption_witness_test.dag",
     function: "wave1_gate1_d_census_subsumption_witness_holds",
     reason: "134526ms measured witness wall on a cold run (27x a 5s fast-lane budget, test-decomposition-wcf-cut.md Class C, merry-ibex-306 2026-07-25): the fn builds 10 ingested_fixture_arrows fixtures through a real tokenize->parse_module->normalize->resolve pass each, across two aggregator checks (well-formedness, behavior-kind) — genuine corpus breadth, not a fixture-shaped defect. The mechanism-only sibling (self_host/wave1_gate1_d_mvp_subsumption_witness_test.dag table_fixture check_fns, measured eval_self=0.000ms) is already covered by the source-root *_test.dag discovery walk (gunbc.commit_workflow wave1_gate1_d_census_class_c_split_note) — no explicit per-PR roster row for it",

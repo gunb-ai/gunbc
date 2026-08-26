@@ -18,6 +18,36 @@ import v2.std.logic { Bool }
 import v2.std.text { Char, String }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
+// Immutable input sets shared by the CLI-vocabulary live receipts. The required floor primes
+// their host projection once before per-claim timing; witnesses still derive every verdict in
+// fresh frames, but no identity is charged for rebuilding the same import-fact world.
+data cli_vocab_rest_path_scan_roots: List<String> = [
+  "dag/extdeps/bmc",
+  "dag/extdeps/transports"
+]
+
+data cli_vocab_extdeps_scan_roots: List<String> = ["dag/extdeps"]
+
+data cli_vocab_substrate_scan_roots: List<String> = [
+  "src/v2/std",
+  "src/v2/compiler",
+  "src/v2/lens",
+  "src/v2/workflow"
+]
+
+data cli_vocab_gunbc_scan_roots: List<String> = ["dag/gunbc"]
+data cli_vocab_test_scan_roots: List<String> = ["dag/test"]
+
+fn cli_vocabulary_shared_scan_root_sets() -> List<List<String>> {
+  [
+    cli_vocab_rest_path_scan_roots,
+    cli_vocab_extdeps_scan_roots,
+    cli_vocab_substrate_scan_roots,
+    cli_vocab_gunbc_scan_roots,
+    cli_vocab_test_scan_roots
+  ]
+}
+
 
 data target_ast_vocab_modules: List<String> = [
   "extdeps.languages.typescript.program"

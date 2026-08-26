@@ -27,7 +27,7 @@ import gunbc.discovery_census {
 }
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
-  Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedLiveTree,
+  Planned, DeclinedLongModule, DeclinedFixtureMember,
   required_floor_site_disposition,
 }
 import v2.workflow.floor_terminal_ledger { ClaimDisposition, Passed }
@@ -187,31 +187,24 @@ test fn w_empty_module_path_and_empty_function_refuse_apart() -> Bool {
 // THE DISPOSITION, AND ITS ORDER
 // ---------------------------------------------------------------------------------------------
 
-// THE FIXTURE MEMBER READS THE LIVE TREE AND MUST STILL REPORT `DeclinedFixtureMember`. Swap the
-// two decline tests and this arm becomes `DeclinedLiveTree` — a staged prediction standing where
-// a permanent ownership fact belongs, so the site would look like it rejoins the floor when the
-// live-tree arm is deleted. It does not.
-test fn w_fixture_home_dominates_live_tree() -> Bool {
+// The fixture home's permanent ownership fact still dominates every execution-input detail.
+test fn w_fixture_home_declines_by_authored_module() -> Bool {
   match required_floor_site_disposition(
-    module_path: "v2.test.fixture.walk_plan_stage.common",
-    reads_live_tree: ReadsLiveTree {}
+    module_path: "v2.test.fixture.walk_plan_stage.common"
   ) {
     DeclinedFixtureMember { matched_prefix: p } => p == "v2.test.fixture.walk_plan_stage."
     Planned => false
     DeclinedLongModule { matched_prefix: _ } => false
-    DeclinedLiveTree => false
   }
 }
 
 test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
   match required_floor_site_disposition(
-    module_path: "test.claim.long.slow_witness",
-    reads_live_tree: SubstrateInputsOnly {}
+    module_path: "test.claim.long.slow_witness"
   ) {
     DeclinedLongModule { matched_prefix: p } => p == "test.claim.long."
     Planned => false
     DeclinedFixtureMember { matched_prefix: _ } => false
-    DeclinedLiveTree => false
   }
 }
 
@@ -220,23 +213,19 @@ test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
 // control beside the decline above: without it the decline could pass under a `contains` test.
 test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
   match required_floor_site_disposition(
-    module_path: "test.claim.not_test_claim_long.witness",
-    reads_live_tree: SubstrateInputsOnly {}
+    module_path: "test.claim.not_test_claim_long.witness"
   ) {
     Planned => true
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
-    DeclinedLiveTree => false
   }
 }
 
-test fn w_live_tree_site_declines_when_no_home_matched() -> Bool {
+test fn w_live_tree_site_plans_when_no_home_matched() -> Bool {
   match required_floor_site_disposition(
-    module_path: "test.claim.reads_tree_witness",
-    reads_live_tree: ReadsLiveTree {}
+    module_path: "test.claim.reads_tree_witness"
   ) {
-    DeclinedLiveTree => true
-    Planned => false
+    Planned => true
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
   }
@@ -246,19 +235,18 @@ test fn w_live_tree_site_declines_when_no_home_matched() -> Bool {
 // THE PARTITION
 // ---------------------------------------------------------------------------------------------
 
-// THE FOUR ARMS SUM TO THE OFFERED POPULATION. The production fold has no partition check
+// THE THREE ARMS SUM TO THE OFFERED POPULATION. The production fold has no partition check
 // because a row holds exactly one disposition and the counting match has no wildcard, so this is
 // the executing evidence for that construction rather than a second wall beside it.
 test fn w_counts_partition_the_offered_population() -> Bool {
   let counts = census_counts(rows: census_rows_of(sites: mixed_sites()))
   (counts.offered == 5)
-    && (counts.planned == 2)
+    && (counts.planned == 3)
     && (counts.declined_long_module == 1)
     && (counts.declined_fixture_member == 1)
-    && (counts.declined_live_tree == 1)
     && (counts.offered ==
         counts.planned + counts.declined_long_module
-          + counts.declined_fixture_member + counts.declined_live_tree)
+          + counts.declined_fixture_member)
 }
 
 // EVERY DISCOVERED SITE GETS A ROW, DECLINED OR NOT. A census that dropped the declines would

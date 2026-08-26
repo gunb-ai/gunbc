@@ -1404,7 +1404,8 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     // src/v2/workflow/required_floor.dag, not something to decide inside an eprintln!.
     eprintln!(
         "required-floor: planned={} executed={} not_attempted={} terminal={} passed={} \
-         known_red_held={} failed={} stale_quarantine={} \
+         known_red_held={} pre_existing_debt_held={} failed={} \
+         pre_existing_debt_unenrolled={} stale_pre_existing_debt={} stale_quarantine={} \
          interrupted_before_verdict={} completed_over_cost_requirement={} \
          host_tool_unresolved={} route_gap_unenrolled={} route_gap_held={} \
          stale_route_gap={} known_red_now_passing={} known_red_budget_refused={} \
@@ -1417,7 +1418,10 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
         outcome.receipt_identities,
         outcome.passed,
         outcome.known_red_held,
+        outcome.pre_existing_floor_debt_held.len(),
         outcome.failures.len(),
+        outcome.pre_existing_floor_debt_unenrolled.len(),
+        outcome.stale_pre_existing_floor_debt.len(),
         outcome.stale_quarantine.len(),
         outcome.interrupted_before_verdict.len(),
         outcome.completed_over_cost_requirement.len(),
@@ -1452,6 +1456,15 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     );
     for failure in &outcome.failures {
         eprintln!("required-floor: FAIL {failure}");
+    }
+    for held in &outcome.pre_existing_floor_debt_held {
+        eprintln!("required-floor: PRE-EXISTING-DEBT-HELD {held}");
+    }
+    for unenrolled in &outcome.pre_existing_floor_debt_unenrolled {
+        eprintln!("required-floor: PRE-EXISTING-DEBT-UNENROLLED {unenrolled}");
+    }
+    for stale in &outcome.stale_pre_existing_floor_debt {
+        eprintln!("required-floor: STALE-PRE-EXISTING-DEBT {stale}");
     }
     // SEVEN CAUSES, SEVEN COUNTS, ONE STOPPED LINE. All seven refuse the run, and
     // they are reported apart because their remedies differ: a FAIL is a defect to
@@ -1538,7 +1551,7 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
 
 /// Whether the floor outcome permits a green run.
 ///
-/// NINE CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
+/// ELEVEN CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
 /// caller, because a mode that forgot one of them would green a run the other refused. (The
 /// count is stated because a reader checks it; it was five before main added `route_gap` and
 /// `stale_route_gap`, and the sentence went on saying five through the merge that added them.
@@ -1562,8 +1575,15 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
 /// `stale_route_gap` and the expected-red staleness join already require. This shipped as
 /// report-only for one commit under the argument that refusing "punishes the fix"; it does not
 /// — it requires the fix to be complete, and the diagnostic names every row to delete.
+///
+/// THE TENTH AND ELEVENTH ARE THE TYPED PRE-EXISTING-DEBT JOIN'S TWO DIRECTIONS. An identity
+/// absent from the closed inventory is growth; an inventoried identity that no longer exhibits
+/// its authored Fail/Throw disposition is spent or has changed class. Neither can green by
+/// preserving the aggregate count.
 fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloorOutcome) -> bool {
     outcome.failures.is_empty()
+        && outcome.pre_existing_floor_debt_unenrolled.is_empty()
+        && outcome.stale_pre_existing_floor_debt.is_empty()
         && outcome.non_verdict_unenrolled.is_empty()
         && outcome.stale_non_verdict.is_empty()
         && outcome.stale_quarantine.is_empty()

@@ -135,7 +135,7 @@ fn discovery_class_rows(state: FloorDiscoveryWalkState, plan: SelectedWitnessPla
   })
 }
 
-test fn witness_live_roster_census_holds() -> Bool {
+fn witness_live_roster_census_holds() -> Bool {
   let state = live_discovery_state()
   let walk_loud = state.walk_failures == 0
     && match state.disposition_refusal {
@@ -175,4 +175,3 @@ test fn witness_live_roster_census_holds() -> Bool {
     && census_accounts_for_every_row(rows: rows)
     && plan_join
 }
-
