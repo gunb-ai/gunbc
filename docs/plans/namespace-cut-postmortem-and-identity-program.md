@@ -1534,6 +1534,42 @@ So the split is clean, and it falls exactly along the line that clause draws:
   large for a session — cannot be used at all. Carried upward as its own item;
   not the measuring lane's to fix from inside a blocked measurement.
 
+- **THE CONFLATION IS IN THE COMPILER, NOT THE INSTRUMENT — `TypecheckModuleResult`
+  cannot say whether the module was checked** (`cool-swift-307`, 2026-08-26;
+  verified independently here by source read). The type carries `typed` /
+  `diagnostics` / `binding_forks` and nothing that states progress, and
+  `typecheck_module`'s `if env_errors |> count > 0` arm returns a `TypedModule`
+  with `items: []` and `item_registry: empty_map()`, never reaching
+  `analyze_item`. So **a module that completed with no items and a module
+  abandoned before item checking render identically to every consumer** — 8
+  `.items` reads in `04_infer` alone, 89 across `src/v1/*.dag`.
+
+  **This is the same defect §11.2l measured, not an analogous one.** The oracle
+  could not distinguish `total_arm1=1` from a genuine single-ask module *because
+  the stage it was observing does not distinguish them either*. The instrument
+  was faithfully reporting a conflation already present in the compiler, which
+  inverts how §11.2l reads: the oracle was not badly built.
+
+  It also **corrects the requirement in the row below**. A progress receipt bolted
+  onto the probe would be a second representation of a fact the producer already
+  knows, and would leave all 89 in-tree consumers as blind as they are now — so
+  the honest home is `TypecheckModuleResult` itself, distinguishing *Completed*
+  from *AbandonedBeforeItems* with the early return naming which.
+
+  Stated at the grain that survives a hostile read: **the carrier does not state
+  it**, rather than the information being destroyed. The abandoned arm does carry
+  env error diagnostics, so a consumer could try to infer abandonment from "items
+  empty and error diagnostics present" — unreliably, since a completed module
+  with item-level errors looks the same. The defect is that **consumers must
+  infer a fact the producer knows**.
+
+  **NOT AUTHORIZED, AWAITING AN OPERATOR RULING.** `04_infer` is a load-bearing
+  pipeline stage in a frozen seed and the v1 admission test is PURPOSE. The
+  argument that it passes is real — a self-host program cannot measure its own
+  stages through a carrier that cannot say whether a stage ran — but that is a
+  freeze-admission judgment this document does not hold, and it is recorded here
+  as an argument, not a verdict.
+
 - **A per-file measurement needs a per-module progress receipt, and none exists.**
   Every per-file instrument in this program shares §11.2l's hazard: a row from a
   module that never reached the stage issuing its asks is indistinguishable from a
