@@ -4065,3 +4065,120 @@ similar-looking thing existed'"* — and the correction arrived because the stro
 plainly enough to be checkable. A hedged filing would have been unfalsifiable and would have
 survived. **Stating the strong version of a claim you intend to file, and naming it as the strong
 version, is what makes it refutable in time.**
+
+### 11.2t RULED — E.0 is the only confirmed *unowned* critical path; it is greenfield at seven layers; and the corpus census I commissioned is countermanded
+
+Filed 2026-08-26. This section supersedes the ownership and long-pole rows in §11.2r's wave
+fragment, and it countermands a dispatch this lane issued twenty minutes before the ruling arrived.
+
+**THE RANKING, AND WHAT IT REFUSES TO CLAIM.** Three candidates were put up for "long pole to M5":
+
+| Track | Standing |
+|---|---|
+| **C.1Y** strict candidate resolver | Owned; developable now on qualified fixtures; **not a place for a second owner** |
+| **B.3** parser-owned occurrences | Real substrate exists; completeness and production integration **unmeasured** |
+| **E.0/E.1** legacy observation + projection | **No owner. Greenfield. Unquestionably on the critical path.** |
+
+The ruling deliberately stops short of the comparison everyone wants: **E is the highest-priority
+dispatch because it is the only confirmed unowned critical path — *not* because it is proven longer
+than B.3.** B.3 may be the larger technical obstacle and nobody has run the measurement that would
+say. Ranking them without that receipt would be the denominator error one level up, and this lane's
+own selection bias is named in the ruling as the reason: **E.0 was inspected because it was already
+suspected**, which leaves the mechanical result about E.0 intact and limits the comparative
+inference about B.3 to nothing.
+
+**WHY C.1Y WAS NOT DISPATCHED, UPHELD.** It was the one item §11.2r marked immediately startable,
+and a free lane was deliberately not routed to it. Upheld: a second author in the strict resolver
+yields two candidate implementations, two fixture interpretations, and a merge-order question over
+**the very authority this program exists to make singular**. The bounded fill that lane received
+instead is legitimate *once* — and becomes the wrong call if it receives another after #9330.
+
+**E.0 IS GREENFIELD AT SEVEN LAYERS, AND THE NEAR-MISS IS A TRAP.** `std.reference_binding_observation`
+looks like `O_X(B)` and is not (§11.2p's inspection, confirmed independently against its
+constructors). Reusable and real: exact occurrence identities and transports, typed
+`Bound`/`Unbound`/`Ambiguous`, typed candidate-production and transport refusals, declaration
+exposure and authored order, cross-file occurrence-ID rekeying, `DeclarationRef`, accepted-binding
+→ provider projections. Missing entirely: **subject identity · the denominator · the X tap ·
+population completeness · content-addressed artifact production · past-tense semantics ·
+applicability refusal.**
+
+> **The trap:** wrapping the existing carrier in a subject digest would still be wrong. Its
+> resolution is produced by the **structural candidate machinery**, not by legacy resolver X — so
+> the result would be a subject-bound observation **of the wrong producer**, labelled `O_X(B)`.
+> That is authority substitution, not reuse, and every part of it would check out under review.
+
+One correction to §11.2p's inventory, accepted: only the **first four** scenario arms have paired
+production-refusal variants; `RepeatedMentionDependencyObservation` and
+`UnrelatedLoadedFileObservation` are standalone. The conclusion is unaffected — the roster is still
+closed and still extended by editing the coproduct — and the fixture half is now *confirmed* rather
+than suspected: the production-observation module authors **four source strings** and exports the
+fixed list `namespace_structural_binding_observations_a_through_d()`. The denominator for those arms
+is unquestionably authored scenarios.
+
+**THE TIMING CONSTRAINT WAS STATED WRONG BY THIS LANE AND IS NOW AN ADMISSION.** §11.2r's reading —
+that `O_X(B)` must be *minted* before C.1X deletes the fallback — would have produced **development
+provenance**: a green over yesterday's `B` preserved and presented as the cut's old side, which
+§11.2q forbids. The correct split is tense, not schedule:
+
+```
+NOW                 implement and enroll the O_X PRODUCER
+AT THE FINAL BASE   mint O_X(B_final)
+```
+
+Since the producer does not exist, its existence is a **hard prerequisite of F**, and this is a
+named admission rather than a scheduling note:
+
+> **F may not begin its authority-changing portion, and C.1X may not be deleted, unless the
+> legacy-observation producer is executable on the exact held base and `O_X(B_final)` is produced
+> completely with its subject applicability green.**
+
+F's opening acts stay observational and abortable — hold base, mint `O_X(B_final)`, derive
+`P(B_final)`, mint `O_Y(P(B_final))`, compare — and only then is canonical source altered or X
+deleted. Failure at any observational step aborts before anything is written.
+
+**THE CORPUS CENSUS IS COUNTERMANDED, AND THE REASON THAT MATTERS IS NOT THE §3 ONE.** This lane
+dispatched a standalone corpus-grain counting instrument. Ruled against: it would create *another
+denominator and another population authority* beside the exact subjects E must already construct —
+the §3 fork this program exists to close. But the sharper reason is on the commissioning side.
+**The number was commissioned to decide one thing** — whether the projection is a bounded pass or
+the long pole — **and the ruling answered that question without it**, at 600 and at 6000 alike. The
+instrument would have returned a real figure that could not have changed any held decision, and it
+would have been filed. **A measurement whose consumer was never checked** is this document's own
+failure mode committed at the dispatch layer rather than the measurement layer.
+
+Two denominators, which must not be conflated and neither of which is a static count:
+
+```
+authoring population     every semantic reference occurrence in subject B      → E.0 owns
+entry closure population the subset whose bindings induce edges from entry E   → derived per entry
+```
+
+A "widest single entry" is neither. The **first valid corpus-grain denominator is the exact
+occurrence identity set inside `O_X(B)`** — and the cutover receipt cites observation and delta
+artifact **digests**, never a transcribed count, per the repository's name-the-instrument rule.
+
+**OWNERSHIP, AS TYPED ARTIFACT EXCHANGE RATHER THAN SHARED CODE.**
+
+```
+cool-swift-307   B.3 · C.1Y · the narrow X tap:  OccurrenceId → LegacyBindingOutcome
+crisp-crab-430   subject identity → occurrence denominator → content-addressed artifact
+                 → totality/applicability → P(B) → correspondence → delta join
+
+seam:  LegacyBindingObservation ┊ ProjectedSubject + OccurrenceCorrespondenceReceipt
+       ┊ CandidateBindingObservation ┊ BindingDeltaReport
+```
+
+Nobody shares implementation ownership. The X tap must **observe** X — never reconstruct it from
+diagnostics, emitted text, final node shape, or the structural Y resolver; where an X path no longer
+retains enough identity to yield a `DeclarationRef`, that row is a typed production refusal, and
+**that refusal population is itself a finding**.
+
+**AND B.3 GETS A READINESS RECEIPT, NOT A COMPETING LANE** — identity-grain over one exact ordinary
+compile subject, exact occurrence identities or typed refusals rather than counts: does parsing
+produce every reference and binder occurrence; do independently parsed files assemble without
+occurrence collisions; does every declaration receive the right exposure; does every qualified
+reference receive a typed candidate outcome; can an accepted terminal declaration project to its
+provider; can those edges reach a closure fixed point; which reference categories remain
+unsupported. The known **match-arm gap** belongs in it: the parser walk itself notes that match-arm
+bodies are siblings of pattern binders today, unlike lets, so lexical containment is wrong for that
+shape. **Until that receipt exists, B.3 and E are not ranked.**
