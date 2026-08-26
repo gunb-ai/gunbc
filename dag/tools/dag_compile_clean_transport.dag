@@ -5,6 +5,7 @@ import extdeps.filesystem.filesystem_io
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
+import gunbc.ci_gate { GateReceipt }
 import gunbc.ci_layer_roots { compile_clean_source_roots }
 import gunbc.output_policy { ExpectFailure, ExpectSuccess }
 import std.logic { Bool }
@@ -78,8 +79,10 @@ fn run_clean_tree_compile_typed() -> Bool {
   }
 }
 
-fn run_clean_tree_compile() -> Bool {
-  consume_floor_compile_clean_gate_verdict()
+data run_clean_tree_compile_receipt_note: String = "The name is unchanged and the return type is not: this used to answer Bool via consume_floor_compile_clean_gate_verdict, which folded five host states into false and the scope disposition's skip into true. The builtin behind it is now spelled install_or_consume_floor_compile_clean_gate_receipt, and that spelling carries a fact the old one hid -- under the executor's lazy-install arm the FIRST call here RUNS THE WHOLE-TREE COMPILE. The predecessor was spelled consume_ and documented as reading the receipt only, so nothing at this call site said that a boolean read could cost a whole-tree compile."
+
+fn run_clean_tree_compile() -> GateReceipt {
+  install_or_consume_floor_compile_clean_gate_receipt()
 }
 
 data perturb_module_source: String = "module test.perturb_compile_clean_red\nfn probe() -> String? {\n  match Present { value: \"x\" } {\n    Some { value: s } => Some { value: s }\n    None => none\n  }\n}"

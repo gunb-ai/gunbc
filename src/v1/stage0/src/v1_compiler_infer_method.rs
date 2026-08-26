@@ -8,15 +8,16 @@ pub use crate::v1_compiler_infer_types::{
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::Required;
-pub use crate::v1_std_core::CompilerDiagnostic;
 use crate::v1_std_core::CompilerDiagnostic::*;
 use crate::v1_std_core::Connective::NoConnective;
 use crate::v1_std_core::ExprData::NoExprData;
 use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
+use crate::v1_std_core::UnaryOpKind::*;
 pub use crate::v1_std_core::{
     bool_type, hash_type, int_type, no_span, string_type, unit_type, with_optional_cardinality,
 };
 pub use crate::v1_std_core::{Cardinality, Connective, ErrorNode, ExprData, InferredNode, Node};
+pub use crate::v1_std_core::{CompilerDiagnostic, UnaryOpKind};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -131,6 +132,15 @@ pub fn compile_dag_multi_module_fixture_row_note() -> String {
     thread_local! {
         static CACHED: String = {
             "THE MULTI-MODULE COMPILE FIXTURE, and why it is a row rather than an argument to the census row above. compile_dag_diagnostic_census compiles ONE synthetic module and resolves its imports against build_module_path_index_from_witness_roots, which walks the live checkout - so it cannot express any subject whose content is the RELATIONSHIP BETWEEN TWO MODULES, because the second module cannot be authored and the corpus is always in the pool. This row registers a builtin whose subject is a caller-authored MANIFEST of modules compiled with no module index and no corpus roots at all. Registered as a type variable rather than a kernel record for the same reason its sibling is: the result is a COPRODUCT with three arms whose owners differ - the harness refusing, the subject refusing, and the subject passing. DISSOLUTION: inherits compile_dag_diagnostic_census_row_note PrimitiveDefinition identity-join trigger exactly - do not mint a fresh trigger.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn gate_receipt_rows_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE TWO CI-GATE ROWS ANSWER A COPRODUCT, and the reason is the same one compile_dag_diagnostic_census_row_note gives one row up. Their predecessors were three rows -- consume_floor_compile_clean_gate_verdict as bool_type, consume_floor_compile_clean_gate_failure_detail as string_type, consume_generated_artifact_drift_gate_failure_detail as string_type -- and the Bool folded FIVE host states into false (lock poisoned, install failed, no in-run receipt, the receipt's typed Refused arm, and a real failed compile) while folding the scope disposition's Skipped into true. The String companions were second builtins over the SAME process global, so a caller reconstructed one fact from two correlated reads, and the generated-artifact one fabricated prose for the state the Bool had already erased. gunbc.ci_gate GateReceipt is the single carrier: GateObserved holds the verdict WITH its located detail, GateNotApplicable is the scope disposition answering, GateNotRun is could-not-measure. Registered as a type variable rather than a kernel record for the reason its two siblings are -- the result is a coproduct, so make_kernel_record_type is the wrong idiom. THE NAME CARRIES A FACT THE OLD ONE HID: install_or_consume MAY RUN A WHOLE-TREE COMPILE. Under the executor's lazy-install arm the first consume installs the receipt, which is that compile; the predecessor was spelled consume_ and documented as reading the receipt only, so a .dag reader had no way to see the cost. DISSOLUTION: inherits compile_dag_diagnostic_census_row_note's PrimitiveDefinition identity-join trigger exactly -- do not mint a fresh trigger.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -401,13 +411,8 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "consume_floor_compile_clean_gate_verdict".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "consume_floor_compile_clean_gate_failure_detail".to_string(),
-            string_type(),
+            "install_or_consume_floor_compile_clean_gate_receipt".to_string(),
+            type_variable_node("gate_receipt_result".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -416,8 +421,13 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "consume_generated_artifact_drift_gate_failure_detail".to_string(),
-            string_type(),
+            "record_generated_artifact_drift_gate_clean".to_string(),
+            unit_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "consume_generated_artifact_drift_gate_receipt".to_string(),
+            type_variable_node("gate_receipt_result".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
