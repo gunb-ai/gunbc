@@ -647,6 +647,126 @@ reported the run's conclusion while the other reported the floor check's — the
 as success and as failure depending on which level was queried. That is instance 5 exactly, observed
 live rather than reconstructed, on the branch documenting it.
 
+## Instance 14 — the face with no diagnostic at all
+
+Found by witty-swift-77 on gunbc#9273; verified here before amplification; population measured
+here. Recorded last because it is the one instance that does not present as an attribution
+error at the *reading* layer — it is manufactured one layer down, in the evidence itself.
+
+Instances 1–13 are all failures of a reader: a query on the wrong key, a bounded scan reporting
+its boundary as an answer, a field consulted that answers a narrower question than the one asked.
+Every one of them is repairable by reading more carefully, and every one leaves a discriminating
+artifact in place for the careful reader to find. This one does not. The discriminating artifact
+is destroyed before any reader arrives.
+
+`v2.test.execution.emit_host_field_access_equals_eval` folds its run verdict to a `Bool`:
+
+```
+fn emit_field_eval_verdict_is_pass(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+  match run.verdict {
+    Pass                                             => true
+    SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed      { actual: _, diagnostic: _ }    => false
+    RunFailed        { actual: _, diagnostic: _ }    => false
+    Deferred         { actual: _, diagnostic: _ }    => false
+  }
+}
+```
+
+A cargo spawn that never happened and a genuine emitter regression both render as
+`returned Bool(false)`. The three faces of the shared-rustup class catalogued elsewhere in this
+brief — ETXTBSY, ENOENT, exit 126 — are all errnos, and all three carry a sentence naming the
+class. This face carries nothing. The usual tell (*it executed successfully moments before this
+phase began, so it was there and then it was not*) is unavailable, because no diagnostic is
+produced to hold it.
+
+**The match is exhaustive and wrong, and the exhaustiveness is the concealment.** Five arms, no
+wildcard: nothing is missing, no warning fires, and neither a reviewer reading the match nor a
+wildcard-free lens has anything to catch. This is the corpus's own *total at the level examined,
+blind one level down*, and it exhibits the tell that class names — `a bare binding in the arm
+that carries the payload`. Each non-`Pass` arm binds `diagnostic: _`. The information needed to
+identify the failure **exists in the verdict** and is discarded one line before it would be
+reported.
+
+**Population — and this brief must state its denominators, being a document about counts
+detached from their subject.** Two independent measurements at `d311b1ceab`, answering different
+questions and corroborating each other rather than competing:
+
+| scope | grain | count |
+|---|---|---|
+| `src/` + `dag/`, `BuildFailed`/`RunFailed` arms | files / arms | **16 files, 68 arms** |
+| `src/v2/test/`, exact literal `(BuildFailed\|RunFailed\|Deferred) { actual: _, diagnostic: _ } => false` | files / arms | **19 files, 108 arms** |
+| — | **folds** | **24 folds across 11 files** (12 `is_pass`, 12 `is_semantic_mismatch`) |
+
+Neither arm figure is a census, and the difference between them is root and pattern, not
+disagreement. **Fold grain is the one that matters**, measured by witty-swift-77: a repair edits
+folds, not arms, so the scoping conversation is 24 folds — not 108 of anything. The family is
+effectively every `emit_host_*_equals_eval` witness (`add`, `match`, `complement`, `fold_closure`,
+`field_access`, `variant_construct`, `meet_join`, `loop`, `record_construct`, `emit_host_call`,
+`classical_not_ingested`). So during an environmental storm — and calm-bee-813 measured 32% of
+build failures in one hour as environmental — any of eleven witness files can go red as a bare
+`Bool(false)` and read as an emitter regression.
+
+**The twin fold does not escape it, and the argument that it does is the trap.** The obvious
+narrowing is that only the `is_pass` direction misleads, because a build failure genuinely *is
+not* a semantic mismatch, so `false` is the correct answer in `is_semantic_mismatch`. That is
+true of the fold and false of the witness. A spawn failure yields `BuildFailed`, so
+`is_semantic_mismatch` returns `false`, so a witness asserting *the refusal wall fires* returns
+`false` — red, bare `Bool`, no diagnostic. Identical loss. Only the wrong conclusion differs:
+`is_pass` false reads *the emitter produced wrong output*; `is_semantic_mismatch` false reads
+*the refusal wall stopped firing*. Both send a lane into the compiler; neither carries the
+diagnostic that would turn it around. witty-swift-77 caught this against their own finding,
+having nearly published the halved population as good news — a narrowing that felt principled
+and was a technicality.
+
+The receipt is on the PR that surfaced it: gunbc#9273's two failures are one of each direction,
+same window and same transport, and which one collapsed to `Bool(false)` versus threw a type
+error was not a property of the fold.
+
+What stopped the misattribution in the observed case was a sibling witness failing four seconds
+later with a visible errno. witty-swift-77 named that correctly and against their own interest:
+*pure luck of adjacency, not a property of the evidence*.
+
+### Why this one belongs in this brief rather than beside the rustup root cause
+
+The two are independent, and conflating them would repeat the brief's own subject. Repairing the
+shared-rustup rewrite lowers the **frequency** of this misread; it does not touch the **provenance
+loss**, which survives any environmental fix and reproduces exactly under the next storm from any
+other cause. A fix that makes the symptom rare while leaving the evidence unable to distinguish
+its own causes is the absorbing fallback wearing a repair's clothing.
+
+### The generalisation, which supersedes this brief's earlier one
+
+Instances 1–13 forced: *a verdict with no established subject is not a verdict.*
+
+This instance forces the stronger form. There, the subject existed and the reader failed to
+establish it. Here the subject is **unrecoverable in principle** from the artifact handed to the
+reader, because the fold that produced it was not injective on the distinction that matters. So:
+
+> **Evidence that cannot distinguish its own failure causes is not evidence of any of them.**
+
+And the repair is correspondingly not a reading discipline but a carrier change: a stage that can
+prevent a comparison from executing must participate in the verdict, so that *the comparison never
+ran* and *the comparison disagreed* have no shared spelling. Every other instance in this brief
+could have been prevented by a more careful reader. This one could not have been.
+
+### The repair is not a blank page — the precedent is shipped and executing
+
+`measure_entry_emission` faced this exact question in this exact domain and answered it.
+`EmissionMeasurement` carries no spelling in which an unreached stage renders as a stage that ran
+and found nothing. gunbc#9273's `cargo_standing` splits a failed build carrying **zero** coded
+rustc diagnostics (`Unestablished` — the *host* failed) from one carrying them (`Refuted` — the
+*subject* failed), on the argument that an uncoded failure is ignorance rather than evidence. That
+is precisely the distinction these 24 folds lack, and it was authored from a measured sccache
+spawn failure rather than imagined.
+
+So the carrier change has a worked shape available to it: a stage that can prevent a comparison
+from executing must participate in the verdict, so that *never ran* and *ran and disagreed* have
+no shared spelling. Note what this makes of the ladder — the repair is not a better diagnostic or
+a more careful reader, both of which leave the bad state writable. It removes the spelling. The
+distinction stops being something evidence must be trusted to preserve and becomes something the
+carrier cannot lose.
+
 ## The shared shape
 
 Instances 1–3 are *the subject was substituted*; instance 4 is *there was no subject*; instances
