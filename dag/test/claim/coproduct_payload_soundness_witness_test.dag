@@ -295,6 +295,29 @@ test fn dcp_unresolved_name_in_coproduct_field_still_refuses() -> Bool {
 // where the disjointness with `kernel_value_declared_type_mismatch` actually lives, and
 // `dcp_primitive_in_coproduct_field_still_refuses` above is the row that says so if it ever moves.
 //
+// WHAT THESE THREE ROWS CANNOT TELL YOU, AND IT IS NOT A PROPERTY OF THIS CHANGE. Every assertion
+// in this file reads `compile_dag_rust_emit_check`, which collapses the whole compile to a Bool --
+// `v1.compiler.infer_method`'s own registry note says so in line: a probe refusing for ANY hard
+// reason, a typo in the fixture source included, reads as the wall firing. So a NEGATIVE row here is
+// satisfied by causes unrelated to what it asserts, which is exactly the shape gunbc#9260 instance 15
+// names: a control that cannot flip for the right reason.
+//
+// FOR THE DISCRIMINATING RED ABOVE THAT IS ANSWERED, and not by the row -- by the PAIR. It FAILED
+// before the narrowing and PASSED after, with the two compiler files reverted to main for the BEFORE
+// arm and nothing else changed, so the cause of the flip is the wall and cannot be the fixture: a
+// typo would have failed both arms. A row that moves under exactly one edit is evidence about that
+// edit whatever its instrument collapses.
+//
+// FOR THE TWO CONTROLS IT IS NOT ANSWERED. `bcp_primitive_where_bool_required_still_refuses` passes
+// in both arms, so nothing separates "the kernel wall fired" from "this fixture failed to compile for
+// some other reason". THAT IS A REAL WEAKNESS AND IT IS NOT REPAIRED HERE, because it is not this
+// change's to repair: it belongs to the harness every one of the ten rows in this file shares, and the
+// seven that predate this change have it identically. The corpus already ships the stronger
+// instrument -- `gunbc.compile_diagnostic_census` with `census_blocking_count_for_class`, used by
+// `test.claim.direct_call_argument_type_witness_test` -- so migrating this file is a known, available
+// move over a population of ten, not a gap needing a new mechanism. Naming it here rather than
+// silently inheriting it is the whole of what this paragraph does.
+//
 // dissolve-on: none. DESIGN section 4b(4) -- the evidence stays enrolled when the wall lands.
 
 fn bcp_foreign_into_bool_fixture_source() -> String {
