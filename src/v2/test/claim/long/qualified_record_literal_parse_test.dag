@@ -12,7 +12,10 @@ data qrl_subject: Symbol = ^qualified_record_literal_probe_subject
 
 fn qrl_cause(source_text: String) -> Symbol {
   let lm = dag_language_model()
-  let at = port_locus(port: ^parse_stage_locus_port)
+  let at = invariant_port_locus(
+    port: ^parse_stage_locus_port,
+    invariant: ^qualified_record_literal_parse_test_grammar_contract
+  )
   match lm.grammar {
     VoidGrammar => ^language_grammar_unavailable
     ModeledGrammar { root: root } =>
