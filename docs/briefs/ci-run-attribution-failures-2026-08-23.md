@@ -335,6 +335,25 @@ match. In their words: *that zero is a claim about my instrument, not about the 
 bound need not be a `per_page` limit; a filter expression is a bound, and an empty result from
 one establishes nothing until the filter itself is checked against a known-present line.
 
+**A third receipt, two days later, adds the form that is hardest to see: a bound that is a
+*window over correct output*.** Re-checking whether a lockfile drift still stood, a lane ran
+`grep -A 12` against the package block and got zero. The block is longer than twelve lines. The
+command's output was entirely correct; the tool answered exactly what was asked; the *question*
+carried a bound that the answer could not mention. A `per_page` and a filter at least look like
+bounds — `-A 12`, `head -n`, a `sed` range, a truncated log tail do not, because they read as
+*how much output I want* rather than *how much of the subject I am willing to see*. The drift was
+still there, confirmed by a full-block scan.
+
+**And the detector that caught it was not the check above — it was surprise.** In that lane's own
+words, they were about to report *already fixed on main* and stopped only because the answer was
+unexpected. That is worth recording precisely because it is **not a method**. Surprise fires only
+when you already hold a belief strong enough to be violated, which is exactly the case where you
+needed the check least; the dangerous instances are the ones that confirm what you expected, and
+those produce no surprise at all. So the receipt does not soften instance 8's rule — it shows
+what stands in for the rule when the rule is skipped, and how thin it is. Re-deriving through a
+second bound is the method; noticing that a zero felt wrong is luck that happened to be
+available.
+
 ## Instance 9 — a failed job's log is unreadable while a sibling lane still runs (2026-08-26)
 
 Observed directly while diagnosing a build-lane failure: the `build` job was
