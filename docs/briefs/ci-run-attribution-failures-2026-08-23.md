@@ -1,6 +1,6 @@
-# The run did not measure what you think: nine failures in reading CI (2026-08-23, extended 2026-08-26)
+# The run did not measure what you think: ten failures in reading CI (2026-08-23, extended 2026-08-26)
 
-**Subject:** attributing a CI result to a change. **Deliverable:** one class, nine measured
+**Subject:** attributing a CI result to a change. **Deliverable:** one class, ten measured
 instances, and the check that closes each. **No repair is proposed here.**
 
 > **Every run id cited below is attempt 1**, verified 2026-08-26. This matters and is not
@@ -309,11 +309,40 @@ another**.
 **Check:** read `status`/`conclusion` per job immediately; wait for the run to terminate before
 reading the log; do not substitute the step name for the log.
 
+
+## Instance 10 — discarding a LIVE instrument as stale (2026-08-26)
+
+Every instance above is a variant of *trusting an instrument that did not measure what you
+think*. This is its mirror, and it is worse.
+
+A lane dispatched a measurement, then **killed it as obsolete** on the grounds that it was built
+on a superseded patch set. It completed anyway — and the reasoning was wrong. The change they
+believed invalidated it (hoisting a conjunct out of a branch arm) touches only the
+`CarrierRefused` path; their plant reaches `Rendered`. **The measurement never traversed the
+edited path**, so it was valid the whole time. It was also the only instrument that answered the
+open question, and it was nearly thrown away.
+
+**The two errors are not symmetric in cost.** Trusting a stale instrument produces a *wrong
+answer*, which review can catch — every instance in this document was caught. Discarding a live
+one produces *no answer*, and there is nothing left for review to look at. **The second failure
+is silent by construction**, which is exactly the property that makes the empty-observation
+narrow worse than the absorbing fallback.
+
+There is also a standing pressure toward it: a document like this one trains suspicion of
+instruments, and suspicion applied indiscriminately kills good measurements. Discipline about
+*not trusting stale instruments* is not the same virtue as discipline about *establishing
+staleness*.
+
+**Check:** before discarding a measurement as stale, **name the path the change actually touches
+and establish that your measurement traverses it.** One sentence. If it does not traverse the
+changed path, the measurement is live regardless of when it was dispatched.
+
 ## The shared shape
 
 Instances 1–3 are *the subject was substituted*; instance 4 is *there was no subject*; instances
 5–8 are *the subject was fine and the field or query you read was not the one holding the
-answer*; instance 9 is *the answer exists and is withheld*. All are the same underlying error — **treating a run as a measurement of a change without
+answer*; instance 9 is *the answer exists and is withheld*; instance 10 is *the answer existed
+and was thrown away*. All are the same underlying error — **treating a run as a measurement of a change without
 establishing that it measured that change** — and all are cheap to close:
 
 | establish | command |
