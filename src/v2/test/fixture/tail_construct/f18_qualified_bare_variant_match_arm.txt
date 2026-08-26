@@ -1,0 +1,14 @@
+module v2.test.fixture.tail_construct.f18_qualified_bare_variant_match_arm
+
+
+type PortReading
+  = PortPureLiteral
+  | PortBareName { name: Symbol }
+  | PortComputedExpression { mentions: List<Symbol> }
+
+fn port_reading(arg_capture: Node, mentions: List<Symbol>) -> PortReading {
+  match arg_value_symbol(arg_capture: arg_capture) {
+    Present { value: sym } => v2.test.fixture.tail_construct.f18_qualified_bare_variant_match_arm.PortPureLiteral
+    Absent => PortComputedExpression { mentions: mentions }
+  }
+}
