@@ -11731,30 +11731,41 @@ fn eval_toolchain_home_interference_probe_builtin(ctx: &InterpContext) -> Value 
         std::fs::copy("/bin/true", &reader_probe)
             .map_err(|e| format!("install safe probe: {e}"))?;
 
-        let barrier = Arc::new(Barrier::new(3));
-        let spawn_reader = |probe: std::path::PathBuf, barrier: Arc<Barrier>| {
-            std::thread::spawn(move || {
-                barrier.wait();
-                Command::new(probe)
-                    .status()
-                    .map(|s| s.success())
-                    .map_err(|e| e.to_string())
-            })
-        };
-        let a = spawn_reader(reader_probe.clone(), barrier.clone());
-        let b = spawn_reader(reader_probe.clone(), barrier.clone());
-        let writer_barrier = barrier.clone();
+        // The first hostile replacement makes the discriminator deterministic. The second runs
+        // inside the same start/finish interval as both tool executions, so this fixture also
+        // exercises concurrent filesystem mutation rather than merely naming concurrency.
+        let start = Arc::new(Barrier::new(3));
+        let finish = Arc::new(Barrier::new(3));
+        let spawn_reader =
+            |probe: std::path::PathBuf, start: Arc<Barrier>, finish: Arc<Barrier>| {
+                std::thread::spawn(move || {
+                    start.wait();
+                    let result = Command::new(probe)
+                        .status()
+                        .map(|s| s.success())
+                        .map_err(|e| e.to_string());
+                    finish.wait();
+                    result
+                })
+            };
+        let a = spawn_reader(reader_probe.clone(), start.clone(), finish.clone());
+        let b = spawn_reader(reader_probe.clone(), start.clone(), finish.clone());
+        let writer_start = start.clone();
+        let writer_finish = finish.clone();
         let writer = std::thread::spawn(move || -> Result<(), String> {
-            let replaced = (|| -> Result<(), String> {
+            let replace = |phase: &str| -> Result<(), String> {
                 let replacement = legacy_probe.with_extension("replacement");
                 std::fs::copy("/bin/false", &replacement)
-                    .map_err(|e| format!("stage hostile probe: {e}"))?;
+                    .map_err(|e| format!("stage hostile probe {phase}: {e}"))?;
                 std::fs::rename(&replacement, &legacy_probe)
-                    .map_err(|e| format!("replace probe: {e}"))?;
+                    .map_err(|e| format!("replace probe {phase}: {e}"))?;
                 Ok(())
-            })();
-            writer_barrier.wait();
-            replaced
+            };
+            let initial = replace("before-readers");
+            writer_start.wait();
+            let concurrent = initial.and_then(|_| replace("during-reader-interval"));
+            writer_finish.wait();
+            concurrent
         });
         writer.join().map_err(|_| "writer panicked".to_string())??;
         let ar = a.join().map_err(|_| "reader-a panicked".to_string())??;
