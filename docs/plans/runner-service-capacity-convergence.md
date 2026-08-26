@@ -40,13 +40,62 @@ re-provisioning. Replacement could only be induced by turning an existing member
 installed artifact -- so it cannot express *same slot, same unit, same registration, different
 release*, which is exactly the state that hurt.
 
-### 2. The install path cannot activate
+### 2. The install path cannot activate — INTENT LANDED, NOTHING ACTIVATES YET
 
-The emitted `apply.sh` carries `daemon-reload` and `disable`. Enable count 0, start count 0.
+The emitted `apply.sh` carried `daemon-reload` and `disable`. Enable count 0, start count 0.
 
 And the two are separate transitions that must not be re-fused: `enable` is durable boot intent,
 `start` is immediate activity. Both consume the activation admission, because enabling authorizes a
 future reboot to start the broker under readiness conditions that may no longer hold.
+
+**What landed.** `gunbc.runner_service_activation` models the two transitions, admits each one
+separately against `admit_runner_activation`, and derives the emitted lines from
+`gunbc.executor_privileged_operation`'s new `SystemdEnableUnit` / `SystemdStartUnit` — so the
+sudoers grant and the executed command are one argv, and the fused `enable --now` the hand loop ran
+has no grant on any executor host. `fleet_converge_plan` carries an activation family beside the
+slot family, with its own line in `plan.txt` and its own refusal count.
+
+**What did NOT change, and this is the part to read before quoting a green apply as converged
+capacity.** The admission is unreachable in production, and two blockers sit **in series**:
+first, no host observation transaction exists, so every production caller supplies
+`ActivationReadinessUnobserved` and the admission is never asked; behind that,
+`admit_runner_activation` requires a `HostCompilePoolReady` whose producer answers
+`PoolNotDeclaredInTopology` fleet-wide under `CompilePoolInRunnerSlots`. Flipping the placement
+changes nothing observable while the first stands — the pool receipt is a field *inside* a readiness
+value that is never `Observed`. So both transitions refuse on every host today, `apply.sh` prints a
+typed located refusal for each, and serving capacity still does not rise from apply alone.
+
+That state is declared as a typed `GuaranteeStall` row — `runner_activation_reachable_green_stall`
+— rather than left in prose, for the reason §4b gives: a gate whose only reachable state is refusal
+has to say so, or a reader cannot tell a permanent structural refusal from a transient one. The row
+names the observation transaction as the immediate blocker and the placement behind it, in that
+order, because naming only the second produces a plan that does the fleet-wide topology work and
+measures no change.
+
+**Unreachable in production is not inert.** §4b judges reachability against what a *fixture* may
+author, and `test.claim.runner_service_activation` authors `ActivationReadinessObserved` and drives
+the admitted enable/start path with it — so the emission has an authorable, exercised RED at the
+fixture boundary.
+
+**What the item actually bought,** stated without inflation: an invisible hand loop became a named,
+counted, located refusal. `enable count 0` was indistinguishable from a host with no activation
+work; `activation-refusals=2` with its cause is not.
+
+**The host boundary is mitigated, not structural, and the safety row says so.** The grants install
+the raw `systemctl enable <unit>` / `systemctl start <unit>` verbs for `ghrunner`, so the grantee can
+run them directly, outside the admission entirely. Three claims must be kept apart: *enable and start
+are separately authorized* is structural (no derived sudoers line matches `enable --now`); *this
+emitter cannot activate without readiness* is structural inside the modeled call graph; *the host
+cannot activate without readiness* is **false**. `runner_activation_safety_guarantee` records
+`Mitigatable` with the next-rung trigger — the job user stops holding the verbs, via a root-owned
+helper that validates a receipt or a root-owned convergence service. A narrower sudoers match cannot
+climb it: any grant that lets the sanctioned path run the command lets the grantee run it too.
+
+**Next.** The host observation transaction — the shared blocker this document already names — and
+only then the placement flip, with a width decision attached and re-derived per host from live
+`nproc`/`MemTotal` rather than from `gunbc_jobserver_token_override_note`, which is stale for srv1.
+Until both land, capacity increases remain manual, and the refusal in `apply.sh` is the place that
+says so.
 
 ### 3. Provider admissibility is unmodeled
 
@@ -162,4 +211,5 @@ its 13-row truth table and mutation receipt. Split out for having no production 
 this document's shared blocker.
 
 **Open:** incarnation-sensitive membership; the host observation transaction; provider admissibility;
-serving/restartable counts.
+serving/restartable counts; the compile-pool placement flip that gives the activation admission a
+reachable green.
