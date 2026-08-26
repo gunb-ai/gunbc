@@ -1,6 +1,6 @@
 module gunbc.emit_subject_clean_frontier
 
-import std.types { Bool, Int, String, NonEmptyStr }
+import std.types { Bool, Int, String, NonEmptyStr, CommitSha }
 import std.materialization_ladder { string_list_contains }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.dissolution { DissolutionCondition }
@@ -34,8 +34,22 @@ import gunbc.emit_diagnostic_observation {
   emit_blocking_count,
   emit_population_extent_text
 }
+import extdeps.crypto.hash { Digest }
+import extdeps.github.actions_environment {
+  ActionsRunCoordinate,
+  ActionsRunCoordinateObserved,
+  ActionsRunCoordinateMissing,
+  ActionsRunCoordinateEmpty
+}
 import tools.emission_entry_instrument {
   EmissionMeasurement,
+  EmissionMeasurementSubject,
+  WorkingTreeStanding,
+  WorkingTreeClean,
+  WorkingTreeDirty,
+  EmissionAssemblyMode,
+  SeedLinkedAssembly,
+  working_tree_standing_text,
   EmissionSubjectUnestablished,
   EmissionUnreached,
   EmissionEmitRefused,
@@ -1361,6 +1375,200 @@ fn emit_ratchet_enrolment_admission_text(admission: EmitRatchetEnrolmentAdmissio
 // carrier's strongest property was a change detector that reds on a wording edit and greens on any
 // prose containing the phrase. Storing the admission makes the same question structural, and the
 // rendering becomes what it should have been -- a projection, derived at the edge, never the record.
+// =============================================================================================
+// THE OBSERVATION CONTEXT: WHAT RUN PRODUCED THIS, ASSERTED ONCE AND BORNE OUT BY THE POPULATION.
+//
+// A ratchet report that names no run is not citable, and a pricing receipt attached to an
+// under-specified execution is six precise numbers about nothing. So the observation carries the
+// coordinates of the run that produced it.
+//
+// NOTHING IS MINTED HERE, AND THAT IS THE WHOLE POINT. Every coordinate already has an authority:
+// CommitSha and Digest come through tools.emission_entry_instrument's EmissionMeasurementSubject,
+// which reuses extdeps.git.inspect and extdeps.crypto.hash and says so; the run coordinates come
+// from extdeps.github.actions_environment, beside GITHUB_SHA, because they are facts the RUNNER
+// supplies and the reference defines. Adding a source-head field to this module would have been a
+// second authority for provenance inside the carrier whose purpose is provenance.
+//
+// AND THE COORDINATES ARE NOT PART OF THE SUBJECT IDENTITY. Putting source revision inside
+// EmitSubjectKey would mint a new logical subject on every commit, which silently retires all
+// prior debt -- a ratchet whose subjects churn every commit ratchets nothing. The context sits
+// BESIDE the subject, never inside it.
+// =============================================================================================
+
+type ObservationComponent
+  = SourceRevisionComponent
+  | WorkingTreeComponent
+  | CompilerComponent
+  | AssemblerComponent
+  | AssemblyModeComponent
+
+data every_observation_component: List<ObservationComponent> = [
+  SourceRevisionComponent,
+  WorkingTreeComponent,
+  CompilerComponent,
+  AssemblerComponent,
+  AssemblyModeComponent
+]
+
+fn observation_component_name(component: ObservationComponent) -> String {
+  match component {
+    SourceRevisionComponent => "source_revision"
+    WorkingTreeComponent => "working_tree"
+    CompilerComponent => "compiler"
+    AssemblerComponent => "assembler"
+    AssemblyModeComponent => "assembly_mode"
+  }
+}
+
+fn assembly_mode_text(mode: EmissionAssemblyMode) -> String {
+  match mode {
+    SeedLinkedAssembly { std_bridge_dir: d } => concat("seed-linked:", d)
+  }
+}
+
+fn subject_component_value(subject: EmissionMeasurementSubject, component: ObservationComponent) -> String {
+  match component {
+    SourceRevisionComponent => subject.source_revision as String
+    WorkingTreeComponent => working_tree_standing_text(standing: subject.working_tree)
+    CompilerComponent => subject.compiler.hex as String
+    AssemblerComponent => subject.assembler.hex as String
+    AssemblyModeComponent => assembly_mode_text(mode: subject.assembly_mode)
+  }
+}
+
+// The accumulator grows only on a value not already seen, so its length is the number of DISTINCT
+// values rather than the number of subjects -- a handful at most, and one in the case that matters.
+// This is not the copied-accumulator cost shape: there is no filter-shaped alternative to a
+// deduplication, and the growth term is the answer's own size.
+fn distinct_component_values(
+  subjects: List<EmissionMeasurementSubject>,
+  component: ObservationComponent
+) -> List<String> {
+  fold(
+    subjects,
+    init: [],
+    f: (acc, subject) =>
+      if string_list_contains(
+        xs: acc,
+        wanted: subject_component_value(subject: subject, component: component)
+      ) {
+        acc
+      } else {
+        concat(acc, [subject_component_value(subject: subject, component: component)])
+      }
+  )
+}
+
+type ComponentAgreement
+  = ComponentsAgree
+  | ComponentDiverges { component: ObservationComponent, values: List<String> }
+
+// FIRST DIVERGENCE WINS, in the declared component order, so the reported component is stable
+// across runs rather than a function of which subject happened to be measured first.
+fn component_agreement(subjects: List<EmissionMeasurementSubject>) -> ComponentAgreement {
+  fold(
+    every_observation_component,
+    init: ComponentsAgree,
+    f: (acc, component) =>
+      match acc {
+        ComponentDiverges { component: _, values: _ } => acc
+        ComponentsAgree =>
+          if count(distinct_component_values(subjects: subjects, component: component)) > 1 {
+            ComponentDiverges {
+              component: component,
+              values: distinct_component_values(subjects: subjects, component: component)
+            }
+          } else {
+            acc
+          }
+      }
+  )
+}
+
+type EmitObservationContext {
+  source_revision: CommitSha
+  working_tree: WorkingTreeStanding
+  compiler: Digest
+  assembler: Digest
+  run_identity: ActionsRunCoordinate
+  run_attempt: ActionsRunCoordinate
+  runner_binding: ActionsRunCoordinate
+}
+
+// THE BINDING IS A COPRODUCT AND A DIVERGENT ONE CARRIES NO CONTEXT, which is the guarantee that
+// used to be bought with a refusal. A consumer cannot read a context that was never true of the
+// whole population because, where the population does not agree, THERE IS NO CONTEXT TO READ.
+//
+// AND THE POPULATION SURVIVES. Refusing the fold on disagreement would discard every good
+// measurement to avoid publishing one false binding; those two are separable and only the second
+// is mandatory. The divergence is a typed value naming WHICH component diverged and what the
+// distinct values were, so its frequency is countable and a commit landing mid-run stays
+// distinguishable from a compiler rebuilt between subjects -- different owners, different remedies.
+type ObservationBinding
+  = BindingEstablished { context: EmitObservationContext }
+  | BindingDivergent { component: ObservationComponent, values: List<String> }
+  | BindingAbsent
+
+fn observation_binding(
+  subjects: List<EmissionMeasurementSubject>,
+  run_identity: ActionsRunCoordinate,
+  run_attempt: ActionsRunCoordinate,
+  runner_binding: ActionsRunCoordinate
+) -> ObservationBinding {
+  match component_agreement(subjects: subjects) {
+    ComponentDiverges { component: c, values: vs } => BindingDivergent { component: c, values: vs }
+    ComponentsAgree =>
+      fold(
+        subjects,
+        init: BindingAbsent,
+        f: (acc, subject) =>
+          match acc {
+            BindingEstablished { context: _ } => acc
+            BindingDivergent { component: _, values: _ } => acc
+            BindingAbsent =>
+              BindingEstablished {
+                context: EmitObservationContext {
+                  source_revision: subject.source_revision,
+                  working_tree: subject.working_tree,
+                  compiler: subject.compiler,
+                  assembler: subject.assembler,
+                  run_identity: run_identity,
+                  run_attempt: run_attempt,
+                  runner_binding: runner_binding
+                }
+              }
+          }
+      )
+  }
+}
+
+fn run_coordinate_text(coordinate: ActionsRunCoordinate) -> String {
+  match coordinate {
+    ActionsRunCoordinateObserved { value: v } => v
+    ActionsRunCoordinateMissing { variable: n } => concat("UNSET:", n)
+    ActionsRunCoordinateEmpty { variable: n } => concat("EMPTY:", n)
+  }
+}
+
+fn observation_binding_text(binding: ObservationBinding) -> String {
+  match binding {
+    BindingEstablished { context: ctx } =>
+      concat(
+        concat(concat("bound\trevision\t", ctx.source_revision as String), concat("\ttree\t", working_tree_standing_text(standing: ctx.working_tree))),
+        concat(
+          concat(concat("\tcompiler\t", ctx.compiler.hex as String), concat("\trun\t", run_coordinate_text(coordinate: ctx.run_identity))),
+          concat(concat("\tattempt\t", run_coordinate_text(coordinate: ctx.run_attempt)), concat("\trunner\t", run_coordinate_text(coordinate: ctx.runner_binding)))
+        )
+      )
+    BindingDivergent { component: c, values: vs } =>
+      concat(
+        concat("UNBOUND\tdivergent\t", observation_component_name(component: c)),
+        concat("\tvalues\t", to_string(count(vs)))
+      )
+    BindingAbsent => "UNBOUND\tno measurement carried a subject"
+  }
+}
+
 type EmitRatchetObservation
   = ObservationTaken { roster: RosterIdentity, standing: EmitRatchetStanding }
   | ObservationNotTaken { admission: EmitRatchetEnrolmentAdmission }
