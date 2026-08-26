@@ -39,6 +39,8 @@ import gunbc.scm.ancestry {
   CommitAncestry,
   RootCommit,
   DescendsFrom,
+  RepositoryCommitRef,
+  repository_commit_ref_eq,
   CommitAncestryLookup,
   AncestryKnown,
   AncestryUnknownCommit,
@@ -185,8 +187,8 @@ type RepositoryEncodeRefusal
   = RepositoryEncodeUncontainedTarget { target: ObjectId }
   | RepositoryCommitRootNotInStore { root: ObjectId }
   | RepositoryCheckoutNotInCommits { selected: ObjectId }
-  | RepositoryCommitParentNotInCommits { parent: ObjectId }
-  | RepositoryCommitAncestryCyclic { detected_from: ObjectId }
+  | RepositoryCommitParentNotInCommits { parent: RepositoryCommitRef }
+  | RepositoryCommitAncestryCyclic { detected_from: RepositoryCommitRef }
 
 // The decode side keeps `String` references for now, and that is a REMAINING conflation rather than
 // a resolved one: an image-local position is still spelled as bare text here, and commit_closure_json_v2's whole
@@ -200,7 +202,7 @@ type RepositoryDecodeRefusal
   | RepositoryCommitRootReferenceUnresolved { reference: String }
   | RepositoryCheckoutReferenceUnresolved { reference: String }
   | RepositoryCommitParentReferenceUnresolved { reference: String }
-  | RepositoryDecodedAncestryCyclic { detected_from: ObjectId }
+  | RepositoryDecodedAncestryCyclic { detected_from: RepositoryCommitRef }
   | RepositoryUnexpectedMember { context: RepositoryMemberContext, key: String }
   | RepositoryTargetReferenceRefused { cause: TargetReferenceRefusal }
 
@@ -335,7 +337,7 @@ fn encode_commit_record(acc: EncodeAcc, commits: List<RepositoryCommit>, commit:
     members: [
       json_kv(key: "root", value: encoded_root_reference(acc: acc, root: commit.root)),
       json_kv(key: "message", value: json_string(s: commit.message)),
-      json_kv(key: "ancestry", value: encode_ancestry(commits: commits, ancestry: commit.ancestry)),
+      json_kv(key: "ancestry", value: encode_ancestry(ancestry: commit.ancestry)),
     ]
   )
 }
@@ -346,11 +348,18 @@ fn encode_commit_record(acc: EncodeAcc, commits: List<RepositoryCommit>, commit:
 // way would fuse the ordinary first commit with a dangling parent. That is the structural-root
 // argument from gunbc.scm.ancestry carried onto the wire, where it would otherwise be quietly lost --
 // a coproduct arm is worth nothing if the serialization collapses it back to a nothing-value.
-fn encode_ancestry(commits: List<RepositoryCommit>, ancestry: CommitAncestry) -> JsonValue {
+// THE ENCODER NO LONGER SEARCHES FOR THE PARENT, and that deletion is the whole repair.
+//
+// It previously took the parent's ObjectId and walked the commit list for a row carrying that root,
+// taking the FIRST match. Because two rows may legitimately share a root, that search could not
+// answer the question it was asked: it returned the first OCCURRENCE of the parent's program, which
+// on any revert is a different record than the parent. The commits argument is gone with it -- a
+// reference needs no population to resolve against at encode time, so the parameter that made the
+// search possible does not exist to be misused.
+fn encode_ancestry(ancestry: CommitAncestry) -> JsonValue {
   match ancestry {
     RootCommit => JsonNull
-    DescendsFrom { parent: parent } =>
-      json_string(s: commit_reference_of(commits: commits, selected: parent))
+    DescendsFrom { parent: parent } => json_string(s: parent.reference)
   }
 }
 
@@ -489,7 +498,7 @@ fn unresolved_commit_root_step(acc: EncodeAcc, found: ObjectId?, commit: Reposit
 // It answers with A parent, not THE FIRST one, matching an_uncontained_target: the refusal needs one
 // actionable example and nothing downstream depends on which, so naming an order would freeze an
 // incidental traversal into the interface.
-fn unresolved_commit_parent(commits: List<RepositoryCommit>) -> ObjectId? {
+fn unresolved_commit_parent(commits: List<RepositoryCommit>) -> RepositoryCommitRef? {
   fold(commits, init: none, f: fn(acc, c) {
     match acc {
       Present { value: _ } => acc
@@ -497,10 +506,9 @@ fn unresolved_commit_parent(commits: List<RepositoryCommit>) -> ObjectId? {
         match c.ancestry {
           RootCommit => none
           DescendsFrom { parent: parent } =>
-            if commit_reference_of(commits: commits, selected: parent) == "" {
-              Present { value: parent }
-            } else {
-              none
+            match commit_at_reference(commits: commits, reference: parent.reference) {
+              Absent => Present { value: parent }
+              Present { value: _ } => none
             }
         }
     }
@@ -523,35 +531,52 @@ fn unresolved_commit_parent(commits: List<RepositoryCommit>) -> ObjectId? {
 // give, and the walk itself is the only acyclicity authority. It is on a persistence boundary
 // crossed once per write rather than in a fold, so the shape is declared here instead of being
 // silently accepted; it dissolves when the commit list is keyed rather than positional.
-fn repository_ancestry_lookup(commits: List<RepositoryCommit>, wanted: ObjectId) -> CommitAncestryLookup {
-  fold(commits, init: AncestryUnknownCommit, f: fn(acc, c) {
-    match acc {
-      AncestryKnown { ancestry: _ } => acc
-      AncestryUnknownCommit =>
-        if object_id_eq(left: c.root, right: wanted) {
-          AncestryKnown { ancestry: c.ancestry }
-        } else {
-          AncestryUnknownCommit
-        }
-    }
-  })
+// KEYED ON THE ROW, NOT THE PROGRAM. The previous form folded for the first row whose ROOT matched,
+// so on a history containing a revert it answered with the wrong record's ancestry -- and answered
+// confidently, since a first match is a successful lookup. Resolving through commit_at_reference
+// means there is nothing to be first among: a reference denotes one row or none.
+fn repository_ancestry_lookup(
+  commits: List<RepositoryCommit>,
+  wanted: RepositoryCommitRef,
+) -> CommitAncestryLookup {
+  match commit_at_reference(commits: commits, reference: wanted.reference) {
+    Absent => AncestryUnknownCommit
+    Present { value: c } => AncestryKnown { ancestry: c.ancestry }
+  }
 }
 
-fn commit_roots(commits: List<RepositoryCommit>) -> List<ObjectId> {
-  map(commits, c => c.root)
+// THE POPULATION THE WALK RANGES OVER IS ROWS. `commit_roots` returned programs, which collapsed two
+// occurrences of one program into a single member -- so a history of three records containing a
+// revert presented as two, and the walk's step budget shrank with it.
+fn commit_references(commits: List<RepositoryCommit>) -> List<RepositoryCommitRef> {
+  index_references(index: 0, remaining: commits)
+}
+
+fn index_references(index: Int, remaining: List<RepositoryCommit>) -> List<RepositoryCommitRef> {
+  fold(remaining, init: IndexRefAcc { index: index, refs: [] }, f: fn(acc, _c) {
+    IndexRefAcc {
+      index: acc.index + 1,
+      refs: concat(acc.refs, [RepositoryCommitRef { reference: position_reference(n: acc.index) }]),
+    }
+  }).refs
+}
+
+type IndexRefAcc {
+  index: Int
+  refs: List<RepositoryCommitRef>
 }
 
 // Answers A commit a cycle was detected from, not THE first one, matching an_uncontained_target: the
 // refusal needs one actionable example and nothing downstream depends on which, so naming an order
 // would freeze an incidental traversal into the interface.
-fn a_cyclic_commit(commits: List<RepositoryCommit>) -> ObjectId? {
-  let history = commit_roots(commits: commits)
-  fold(commits, init: none, f: fn(acc, c) {
+fn a_cyclic_commit(commits: List<RepositoryCommit>) -> RepositoryCommitRef? {
+  let history = commit_references(commits: commits)
+  fold(history, init: none, f: fn(acc, start) {
     match acc {
       Present { value: _ } => acc
       Absent =>
         match ancestry_walk(
-          start: c.root,
+          start: start,
           history: history,
           lookup: fn(id) { repository_ancestry_lookup(commits: commits, wanted: id) },
         ) {
@@ -613,33 +638,36 @@ type PendingCommit {
   parent_reference: String?
 }
 
-type PendingRootLookup {
-  index: Int
-  found: ObjectId?
-}
-
 // The inverse of commit_reference_of over the PENDING list, walking the same ordinary index counter
 // the encoder does, so the two cannot drift -- the pairing commit_at_reference already establishes
 // for the checkout, applied one phase earlier because a parent must resolve before a RepositoryCommit
 // can be built at all.
-fn pending_root_at_reference(pending: List<PendingCommit>, reference: String) -> ObjectId? {
-  match fold(
+// IT ANSWERS WHETHER THE REFERENCE DENOTES A ROW, WHICH IS THE ONLY QUESTION ASKED OF IT.
+//
+// It previously returned the referenced row's ROOT, and the caller discarded that value -- it needed
+// existence, not identity. Returning a program from a row-existence check is what made it natural to
+// then STORE that program as the parent, which is the defect this change removes; a Bool cannot be
+// misused that way. The walk over the same index counter is unchanged.
+fn pending_contains_reference(pending: List<PendingCommit>, reference: String) -> Bool {
+  fold(
     pending,
-    init: PendingRootLookup { index: 0, found: none },
-    f: fn(acc, c) {
-      match acc.found {
-        Present { value: _ } => PendingRootLookup { index: acc.index + 1, found: acc.found }
-        Absent =>
-          if position_reference(n: acc.index) == reference {
-            PendingRootLookup { index: acc.index + 1, found: Present { value: c.root } }
-          } else {
-            PendingRootLookup { index: acc.index + 1, found: none }
-          }
+    init: PendingRefScan { index: 0, found: false },
+    f: fn(acc, _c) {
+      if acc.found {
+        PendingRefScan { index: acc.index + 1, found: true }
+      } else {
+        PendingRefScan {
+          index: acc.index + 1,
+          found: position_reference(n: acc.index) == reference,
+        }
       }
     }
-  ) {
-    PendingRootLookup { index: _, found: found } => found
-  }
+  ).found
+}
+
+type PendingRefScan {
+  index: Int
+  found: Bool
 }
 
 type ResolvedCommitAcc {
@@ -681,19 +709,20 @@ fn resolve_pending_step(
             refusal: acc.refusal,
           }
         Present { value: reference } =>
-          match pending_root_at_reference(pending: pending, reference: reference) {
-            Absent =>
+          if !pending_contains_reference(pending: pending, reference: reference) {
               ResolvedCommitAcc {
                 commits: acc.commits,
                 refusal: Present { value: RepositoryCommitParentReferenceUnresolved { reference: reference } },
               }
-            Present { value: parent } =>
+          } else {
               ResolvedCommitAcc {
                 commits: concat(
                   [RepositoryCommit {
                     root: c.root,
                     message: c.message,
-                    ancestry: DescendsFrom { parent: parent },
+                    ancestry: DescendsFrom {
+                      parent: RepositoryCommitRef { reference: reference },
+                    },
                   }],
                   acc.commits
                 ),
