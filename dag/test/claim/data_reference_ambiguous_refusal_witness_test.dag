@@ -1,5 +1,10 @@
 module test.claim.data_reference_ambiguous_refusal_witness_test
 
+import std.types { String, Bool, Int }
+import v2.std.optional { Present, Absent }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+
 // EXECUTING evidence for the ONE arm that data_reference_declaration_identity_witness_test
 // measured and could not enroll: a workflow parameter default naming a spelling that MORE THAN
 // ONE visible declaration answers to refuses, by name, instead of silently taking one.
@@ -59,4 +64,53 @@ test fn a_solely_visible_data_reference_still_folds_into_the_cli_default() -> Bo
     ["endpoint", "default_value = \"dri-shared-endpoint\""],
     []
   )
+}
+
+// THE CLASS-SPECIFIC ARM, ADDED ABOVE THE CLASS-AGNOSTIC ONE RATHER THAN REPLACING IT.
+//
+// The refusal arm above asserts THAT the compile refused, deliberately not WHICH diagnostic, so
+// that InternalError was never cemented as the contract. That is why it could not serve as
+// coverage for the reclassification: it is green before the repair and green after it, and a
+// probe whose verdict cannot move is a decoration. It stays enrolled as the refusal control --
+// dissolution on climb deletes redundant production machinery, never the evidence -- and the
+// discriminating assertion is added here.
+//
+// WHY A SECOND HARNESS RATHER THAN A STRONGER ASSERTION ON THE FIRST. compile_dag_rust_emit_check
+// returns Bool: it can say a compile refused and cannot say why, so an assertion written against
+// it would have measured no change and read as the repair not working.
+// compile_dag_diagnostic_census names the class, which is the fact under test.
+//
+// THE PAIR IS WHAT DISCRIMINATES, in both directions. AmbiguousReference == 1 alone would be
+// satisfied by an emitter that reported the ambiguity AND kept the InternalError beside it, which
+// is a rename rather than a reclassification; InternalError == 0 alone would be satisfied by an
+// emitter that stopped refusing altogether, which is strictly worse than the defect. Only both
+// together say the cause the module argued for four types deep survives its last expression.
+//
+// NOT-RUNNABLE IS NOT ZERO. Absent answers -1 for the reason the sibling callable-ambiguity
+// witness records: a census that could not run has observed nothing, and rendering that as "no
+// diagnostics of this class" would let a broken harness satisfy the InternalError == 0 half while
+// making the AmbiguousReference half unsatisfiable -- the empty-observation narrow. -1 is neither
+// the 0 a green asserts nor the positive count a red asserts.
+fn dra_blocking_count(source: String, wanted: String) -> Int {
+  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(source), wanted: wanted) {
+    Present { value: n } => n
+    Absent => 0 - 1
+  }
+}
+
+test fn the_ambiguity_is_reported_as_an_ambiguous_reference() -> Bool {
+  dra_blocking_count(source: dra_ambiguous_entry_source, wanted: "AmbiguousReference") == 1
+}
+
+test fn the_ambiguity_is_no_longer_reported_as_a_compiler_bug() -> Bool {
+  dra_blocking_count(source: dra_ambiguous_entry_source, wanted: "InternalError") == 0
+}
+
+// THE CONTROL FOR THE PAIR ABOVE. The sole-declaration entry compiles clean, so a harness that
+// answered "1 AmbiguousReference" for every source, or "0 InternalError" because it never ran,
+// fails here. This is the same discrimination the emit-check control provides, asked of the
+// census instead.
+test fn the_sole_declaration_entry_carries_neither_class() -> Bool {
+  dra_blocking_count(source: dra_sole_entry_source, wanted: "AmbiguousReference") == 0
+    && dra_blocking_count(source: dra_sole_entry_source, wanted: "InternalError") == 0
 }

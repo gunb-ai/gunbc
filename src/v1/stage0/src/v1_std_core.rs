@@ -554,6 +554,15 @@ pub enum CompilerDiagnostic {
         candidates: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
+    DataReferenceVisibilityBudgetExceeded {
+        name: String,
+        span: Rc<SourceSpan>,
+    },
+    ParameterDefaultFormNotAdmitted {
+        parameter: String,
+        admitted: Rc<Vec<String>>,
+        span: Rc<SourceSpan>,
+    },
     AmbiguousAnonymousRecordLiteral {
         candidates: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
@@ -711,6 +720,8 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnlistedImportUse { span: s, .. } => s.clone(),
         CompilerDiagnostic::AmbiguousReference { span: s, .. } => s.clone(),
+        CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ParameterDefaultFormNotAdmitted { span: s, .. } => s.clone(),
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallPositionalSurplus { span: s, .. } => s.clone(),
@@ -765,6 +776,8 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position: pos, reason: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("declared-type inhabitance is undecidable at the ".to_string(), pos.clone()), " (".to_string()), r.clone()), "): the modeled facts do not settle whether the produced value inhabits its declared type, so no verdict is asserted in either direction".to_string()),
     CompilerDiagnostic::UnlistedImportUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted import use '".to_string(), n.clone()), "' (referenced but not in any import's name list)".to_string()),
     CompilerDiagnostic::AmbiguousReference { name: n, candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous reference '".to_string(), n.clone()), "': ".to_string()), ((cs.clone().len() as i64)).to_string()), " candidates: ".to_string()), cs.clone().join(&", ".to_string())), " — qualify by containment path, alias, or rename".to_string()),
+    CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { name: n, .. } => v1_rt::concat(v1_rt::concat("visible declarations of '".to_string(), n.clone()), "' could not be enumerated: the import re-export walk exceeded its depth bound, so no verdict is asserted about how many declarations answer to the name".to_string()),
+    CompilerDiagnostic::ParameterDefaultFormNotAdmitted { parameter: p, admitted: forms, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("default value for parameter '".to_string(), p.clone()), "' is not an admitted form (admitted: ".to_string()), forms.clone().join(&", ".to_string())), ")".to_string()),
     CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous anonymous record literal shape matches ".to_string(), ((cs.clone().len() as i64)).to_string()), " structs: ".to_string()), cs.clone().join(&", ".to_string())), " — add a nominal type".to_string()),
     CompilerDiagnostic::CallArgumentNameUnknown { callee: c, argument: a, declared: ds, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': no parameter named '".to_string()), a.clone()), "' (declared: [".to_string()), ds.clone().join(&", ".to_string())), "])".to_string()),
     CompilerDiagnostic::CallPositionalSurplus { callee: c, supplied: s, capacity: cap, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': too many positional arguments: ".to_string()), (s.clone()).to_string()), " supplied, ".to_string()), (cap.clone()).to_string()), " positional parameter(s) declared".to_string()),
