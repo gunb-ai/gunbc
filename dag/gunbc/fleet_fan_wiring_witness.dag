@@ -10,23 +10,25 @@ import gunbc.fleet_fan_tach_expectation {
 import gunbc.fleet_fan_wiring {
   FanHeaderIdentity,
   FanHeaderWiring,
-  AssemblyCatalogued,
-  AssemblyNamedNotCatalogued,
-  DerivedFromDeclaredAssembly,
-  FanModelEvidence,
-  FanModelExact,
+  AssemblyBundledFanSpecification,
+  FanModelDerivedFromAssembly,
+  FanModelLabelObserved,
+  FanModelOperatorDeclaredPart,
   FanModelUnobserved,
   InstalledFanModelStanding,
-  LabelObserved,
-  OperatorDeclaredPart,
   PhysicalInventoryConfirmed,
   PhysicalInventoryRefused,
-  PhysicalLabelNotObserved,
+  PhysicalLabelNotObservedAssemblyDerived,
+  PhysicalLabelNotObservedDeclaredPart,
   PhysicalModelUnobserved,
+  TachCarriedByDrivenFan,
+  TachReadbackEndpointsEstablished,
+  TachReadbackEndpointsRefused,
   catalog_selection_admits,
   dynatron_df126025bu_pwmh_ref,
-  noctua_cooler_derivation,
+  dynatron_w1_bundled_fan,
   physical_inventory_confirmation,
+  tach_readback_endpoint_derivation,
   HostFanWiring,
   TachNotCarried,
   TachSourceUnobserved,
@@ -39,7 +41,8 @@ import gunbc.fleet_fan_wiring {
   srv1_fan_wiring,
   srv3_fan_wiring,
   srv4_fan_wiring,
-  tach_readback_endpoints,
+  represented_fan_count_for_header,
+  srv1_fan_wiring,
 }
 
 fn endpoint_headers(endpoints: List<FanHeaderIdentity>) -> List<NonEmptyStr> {
@@ -56,10 +59,12 @@ fn srv3_srv4_differ_by_identity_not_count() -> Bool {
   srv3.length() == srv4.length() && srv3 != srv4
 }
 
-// A SPLITTER HEADER IS ACTUATED BUT NOT OBSERVED, and both halves of that are the point. Two
-// physical fans behind one header derive ONE control endpoint and, when the splitter suppresses
-// the return signal, ZERO tach endpoints - while the fan count is still 2. Three numbers that a
-// single header list would have collapsed into one.
+// A HEADER WHOSE RETURN SIGNAL IS SUPPRESSED IS ACTUATED BUT NOT OBSERVED. This fixture is NOT
+// srv1 as built and the name used to imply it was: the supplied Noctua NA-YC1 omits the RPM
+// conductor on one branch precisely so the other still reports, so a real NA-YC1 header KEEPS its
+// readback. What this variant models is the other realization -- a splitter that returns nothing
+// -- where two physical fans derive ONE control endpoint and ZERO tach endpoints while the fan
+// count is still 2. Three numbers a single header list would have collapsed into one.
 data srv1_splitter_variant: HostFanWiring = HostFanWiring {
   host: srv1_fan_wiring.host,
   headers: map(
@@ -78,12 +83,33 @@ data srv1_splitter_variant: HostFanWiring = HostFanWiring {
   ),
 }
 
-fn splitter_actuated_but_unobserved() -> Bool {
+fn tach_suppressed_header_is_actuated_but_unobserved() -> Bool {
   let control = control_endpoints(wiring: srv1_splitter_variant)
-  let tach = tach_readback_endpoints(wiring: srv1_splitter_variant)
+  let tach = match tach_readback_endpoint_derivation(wiring: srv1_splitter_variant) {
+    TachReadbackEndpointsEstablished { endpoints } => endpoints.length()
+    TachReadbackEndpointsRefused { unobserved_headers } => 0 - 1
+  }
   control.length() == 5
-    && tach.length() == 4
+    && tach == 4
     && installed_fan_count(wiring: srv1_splitter_variant) == 6
+}
+
+// A SPLITTER COSTS TACH COVERAGE, NOT THE TACH ENDPOINT. srv1's FAN1 drives two rotors and
+// reports one, which is the NA-YC1 as specified -- so the header stays a readback endpoint and
+// what is lost is that the second rotor is unrepresented. Reading the endpoint as covering both
+// is how a stopped rotor behind a splitter goes unnoticed while its sibling keeps the signal
+// alive; the two counts are what make that difference sayable at all.
+fn splitter_reports_fewer_rotors_than_it_drives() -> Bool {
+  let driven = fold(
+    filter(srv1_fan_wiring.headers, binding => binding.header == "FAN1"),
+    init: 0,
+    f: (acc, binding) => acc + binding.driven_fan_count,
+  )
+  let represented = represented_fan_count_for_header(
+    wiring: srv1_fan_wiring,
+    header: "FAN1",
+  )
+  driven == 2 && represented == 1
 }
 
 // AN UNKNOWN MODEL MUST NOT COST A CONTROL ENDPOINT. Every chassis fan on srv3 stands at
@@ -181,47 +207,64 @@ data srv3_wiring_with_unobserved_tach: HostFanWiring = HostFanWiring {
   ),
 }
 
+// The uncarried variant is the discriminator for the pair below: same header, the OTHER wiring
+// fact, so the two arms differ in exactly one thing.
+data srv3_wiring_with_uncarried_tach: HostFanWiring = HostFanWiring {
+  host: srv3_fan_wiring.host,
+  headers: map(
+    srv3_fan_wiring.headers,
+    binding =>
+      if binding.header == "FAN3" {
+        FanHeaderWiring {
+          header: binding.header,
+          driven_fan_count: binding.driven_fan_count,
+          model: binding.model,
+          tach_source: TachNotCarried,
+        }
+      } else {
+        binding
+      },
+  ),
+}
+
+// AN UNOBSERVED TACH COSTS NO CONTROL ENDPOINT. Whether the board hears a fan is a separate
+// question from whether the board drives it, and folding them would silently drop a machine's
+// fan control because nobody inspected a signal path.
 fn unobserved_tach_is_not_an_expected_readback() -> Bool {
-  let control = control_endpoints(wiring: srv3_wiring_with_unobserved_tach)
-  let tach = tach_readback_endpoints(wiring: srv3_wiring_with_unobserved_tach)
-  control.length() == 4 && tach.length() == 3
+  control_endpoints(wiring: srv3_wiring_with_unobserved_tach).length() == 4
 }
 
 // THE EVIDENCE AXIS DECIDES AN OUTCOME, and the pair is what makes that a claim rather than a
-// hope. One binding, one catalog row, one field changed: LabelObserved confirms the physical
-// inventory, and every weaker evidence arm refuses it. If the axis were decorative both calls
-// would agree, so this conjunct goes red the moment physical_inventory_confirmation stops
-// reading the field.
+// hope. One catalog, three ways of knowing it: only a label somebody read confirms the physical
+// inventory. If the axis were decorative all three would agree, so this goes red the moment
+// physical_inventory_confirmation stops discriminating the arms.
 fn label_evidence_gates_physical_inventory() -> Bool {
-  let observed: InstalledFanModelStanding = FanModelExact {
+  let observed: InstalledFanModelStanding = FanModelLabelObserved {
     catalog: dynatron_df126025bu_pwmh_ref,
-    evidence: LabelObserved,
   }
-  let derived: InstalledFanModelStanding = FanModelExact {
+  let declared: InstalledFanModelStanding = FanModelOperatorDeclaredPart {
     catalog: dynatron_df126025bu_pwmh_ref,
-    evidence: noctua_cooler_derivation,
   }
-  let declared: InstalledFanModelStanding = FanModelExact {
-    catalog: dynatron_df126025bu_pwmh_ref,
-    evidence: OperatorDeclaredPart,
+  let derived: InstalledFanModelStanding = FanModelDerivedFromAssembly {
+    specification: dynatron_w1_bundled_fan,
   }
   let confirmed = match physical_inventory_confirmation(standing: observed) {
     PhysicalInventoryConfirmed { catalog } => true
     PhysicalInventoryRefused { cause } => false
   }
-  let derived_refuses = match physical_inventory_confirmation(standing: derived) {
-    PhysicalInventoryRefused { cause } =>
-      match cause {
-        PhysicalLabelNotObserved { evidence } => true
-        PhysicalModelUnobserved => false
-      }
-    PhysicalInventoryConfirmed { catalog } => false
-  }
   let declared_refuses = match physical_inventory_confirmation(standing: declared) {
     PhysicalInventoryRefused { cause } =>
       match cause {
-        PhysicalLabelNotObserved { evidence } => true
-        PhysicalModelUnobserved => false
+        PhysicalLabelNotObservedDeclaredPart => true
+        other => false
+      }
+    PhysicalInventoryConfirmed { catalog } => false
+  }
+  let derived_refuses = match physical_inventory_confirmation(standing: derived) {
+    PhysicalInventoryRefused { cause } =>
+      match cause {
+        PhysicalLabelNotObservedAssemblyDerived { specification } => true
+        other => false
       }
     PhysicalInventoryConfirmed { catalog } => false
   }
@@ -229,41 +272,69 @@ fn label_evidence_gates_physical_inventory() -> Bool {
     PhysicalInventoryRefused { cause } =>
       match cause {
         PhysicalModelUnobserved => true
-        PhysicalLabelNotObserved { evidence } => false
+        other => false
       }
     PhysicalInventoryConfirmed { catalog } => false
   }
-  confirmed && derived_refuses && declared_refuses && unobserved_refuses
+  confirmed && declared_refuses && derived_refuses && unobserved_refuses
 }
 
 // THE TWO CONSUMERS MOVE INDEPENDENTLY. Weakening evidence must change the inventory answer and
 // NOT the catalog-selection answer -- a curve or a spare needs the part, not the inspection.
-// Without this half the previous conjunct is satisfied by a mechanism that refuses everything
-// weaker across the board, which would be a blanket rather than a boundary.
+// Without this half the conjunct above is satisfied by a mechanism that refuses everything weaker
+// across the board, which is a blanket rather than a boundary.
 fn weaker_evidence_still_selects_a_catalog() -> Bool {
   catalog_selection_admits(
-    standing: FanModelExact {
-      catalog: dynatron_df126025bu_pwmh_ref,
-      evidence: noctua_cooler_derivation,
-    },
+    standing: FanModelDerivedFromAssembly { specification: dynatron_w1_bundled_fan },
   )
     && catalog_selection_admits(
-      standing: FanModelExact {
-        catalog: dynatron_df126025bu_pwmh_ref,
-        evidence: LabelObserved,
-      },
+      standing: FanModelLabelObserved { catalog: dynatron_df126025bu_pwmh_ref },
     )
     && !catalog_selection_admits(standing: FanModelUnobserved)
+}
+
+// AN UNOBSERVED SIGNAL PATH REFUSES THE READBACK POPULATION RATHER THAN SHRINKING IT, and this
+// conjunct replaces one that asserted the opposite. The earlier form checked that flipping one
+// known header to TachSourceUnobserved took the endpoint list from four to three, which enshrined
+// the unknown-as-absence narrow as the contract. The refusal now NAMES the unresolved header, so
+// a consumer needing the exact OpenBMC readback set cannot mistake an incomplete answer for a
+// complete one.
+fn unobserved_tach_refuses_the_readback_population() -> Bool {
+  let refused = match tach_readback_endpoint_derivation(wiring: srv3_wiring_with_unobserved_tach) {
+    TachReadbackEndpointsRefused { unobserved_headers } =>
+      unobserved_headers.length() == 1
+    TachReadbackEndpointsEstablished { endpoints } => false
+  }
+  let established = match tach_readback_endpoint_derivation(wiring: srv3_fan_wiring) {
+    TachReadbackEndpointsEstablished { endpoints } => endpoints.length() == 4
+    TachReadbackEndpointsRefused { unobserved_headers } => false
+  }
+  refused && established
+}
+
+// EVIDENCE LOSS IS A CHANGE OF ANSWER, WHICH IS THE DIRECTION THE OLD CONTROL RAN BACKWARDS.
+// TachSourceUnobserved and TachNotCarried used to produce the same endpoint list, so mutating one
+// into the other changed nothing and the mutation proved nothing. They now answer differently:
+// a header known not to carry tach leaves an ESTABLISHED population, and an unresolved one
+// refuses it.
+fn unobserved_and_not_carried_answer_differently() -> Bool {
+  match tach_readback_endpoint_derivation(wiring: srv3_wiring_with_uncarried_tach) {
+    TachReadbackEndpointsEstablished { endpoints } => endpoints.length() == 3
+    TachReadbackEndpointsRefused { unobserved_headers } => false
+  }
 }
 
 fn fan_wiring_witness() -> ProcessExit {
   if srv3_srv4_differ_by_identity_not_count()
     && unobserved_tach_is_not_an_expected_readback()
-    && splitter_actuated_but_unobserved()
+    && tach_suppressed_header_is_actuated_but_unobserved()
+    && splitter_reports_fewer_rotors_than_it_drives()
     && unknown_model_still_derives_control()
     && coverage_refuses_both_directions()
     && all_hosts_cover()
     && label_evidence_gates_physical_inventory()
+    && unobserved_tach_refuses_the_readback_population()
+    && unobserved_and_not_carried_answer_differently()
     && weaker_evidence_still_selects_a_catalog() {
     ExitSuccess
   } else {
