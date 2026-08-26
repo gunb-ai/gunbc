@@ -16,6 +16,12 @@ import v2.workflow.floor_terminal_ledger {
   ObservationUnrepresentable,
   ObservedVerdict,
   Returned,
+  KnownRedHeld,
+  NotAttempted,
+  NotAttemptedAfterAbort,
+  Panicked,
+  PanickedBeforeVerdict,
+  Passed,
   RouteGap,
   RuntimeErrored,
   claim_disposition
@@ -176,6 +182,21 @@ fn every_shape() -> List<ClaimTerminalRow> {
       identity: ident(f: "route_gap"),
       expectation: ExpectedToHold,
       terminal: RouteGap { route: "shell" }
+    },
+    ClaimTerminalRow {
+      identity: ident(f: "panicked"),
+      expectation: ExpectedToHold,
+      terminal: Panicked { payload: "index out of bounds: the len is 0 but the index is 0" }
+    },
+    ClaimTerminalRow {
+      identity: ident(f: "panicked_while_enrolled_expected_red"),
+      expectation: ExpectedRed,
+      terminal: Panicked { payload: "called `Option::unwrap()` on a `None` value" }
+    },
+    ClaimTerminalRow {
+      identity: ident(f: "not_attempted_after_the_abort"),
+      expectation: ExpectedToHold,
+      terminal: NotAttempted { halted_by: "example.unwound" }
     }
   ]
 }
@@ -215,8 +236,68 @@ test fn the_disposition_survives_the_round_trip_for_every_terminal_shape() -> Bo
   let rows = every_shape()
   let readback = readback_rows_of(text: rendered_text(rows: rows))
   readback.length() == rows.length()
-    && rows.length() == 12
+    && rows.length() == 15
     && filter(rows, r => !disposition_survives(row: r)).length() == 0
+}
+
+// AN UNWIND IS NOT A VERDICT, AND NEITHER EXPECTATION MAY LAUNDER IT INTO ONE.
+//
+// The round trip above establishes that a `Panicked` row survives the file. This asserts what the
+// row MEANS on both sides of the expectation axis, which is the pair that a collapsed arm would
+// have got wrong in opposite directions: unenrolled, a panic must not read as `Passed`; enrolled
+// as expected-red, it must not read as `KnownRedHeld`. `Held` asserts the claim RAN AND FAILED as
+// predicted, and a claim whose host unwound produced no verdict to agree with -- the same rule
+// this floor already applies to a runtime error, a budget interruption, an unresolved host tool
+// and a route gap. The RED is authorable in both directions here: swap either arm of
+// `claim_disposition` to `Passed` or `KnownRedHeld` and exactly one conjunct below goes false.
+test fn a_panicked_claim_is_neither_a_pass_nor_a_held_red() -> Bool {
+  let unenrolled = ClaimTerminalRow {
+    identity: ident(f: "unwound"),
+    expectation: ExpectedToHold,
+    terminal: Panicked { payload: "attempt to subtract with overflow" }
+  }
+  let enrolled = ClaimTerminalRow {
+    identity: ident(f: "unwound_while_enrolled"),
+    expectation: ExpectedRed,
+    terminal: Panicked { payload: "attempt to subtract with overflow" }
+  }
+  claim_disposition(row: unenrolled) == PanickedBeforeVerdict
+    && claim_disposition(row: enrolled) == PanickedBeforeVerdict
+    && claim_disposition(row: unenrolled) != Passed
+    && claim_disposition(row: enrolled) != KnownRedHeld
+}
+
+// A CLAIM THE FOLD NEVER REACHED IS NOT A CLAIM THAT PASSED, AND NOT ONE THE FLOOR DECLINED.
+//
+// This is the arm that keeps a stopped fold from publishing as a short ledger. Every planned
+// identity behind the unwind gets a row naming the identity that stopped the line, so the reader
+// joins on the population it planned rather than on the prefix that ran. The RED: collapse this
+// arm into any other disposition and the first conjunct goes false; drop `halted_by` from the
+// detail field and the last one does, which is what makes the consequence traceable to its cause
+// in the published file rather than only in a log line the artifact does not carry.
+test fn a_claim_the_abort_never_reached_names_what_stopped_the_line() -> Bool {
+  let row = ClaimTerminalRow {
+    identity: ident(f: "behind_the_unwind"),
+    expectation: ExpectedToHold,
+    terminal: NotAttempted { halted_by: "example.unwound" }
+  }
+  claim_disposition(row: row) == NotAttemptedAfterAbort
+    && claim_disposition(row: row) != Passed
+    && render_terminal_tag(terminal: NotAttempted { halted_by: "example.unwound" }) == "not-attempted"
+    && render_terminal_detail(terminal: NotAttempted { halted_by: "example.unwound" })
+      == "example.unwound"
+}
+
+// THE PAYLOAD IS THE DETAIL FIELD, NOT THE TAG. A panic's message is the only thing that names
+// WHERE the host came apart, so collapsing it into the tag would make every unwind in the corpus
+// render as one indistinguishable row -- the state-space conflation the tag/detail split exists
+// to prevent, arriving through the newest arm.
+test fn a_panic_renders_as_its_own_tag_carrying_the_payload_as_detail() -> Bool {
+  let terminal = Panicked { payload: "index out of bounds: the len is 0 but the index is 0" }
+  render_terminal_tag(terminal: terminal) == "panicked"
+    && render_terminal_detail(terminal: terminal)
+      == "index out of bounds: the len is 0 but the index is 0"
+    && render_disposition(disposition: PanickedBeforeVerdict) == "panicked-before-verdict"
 }
 
 // A COUNT CANNOT SEE AN EDITED ROW, AND THE DIGEST CAN. Same shape as the ledger's own

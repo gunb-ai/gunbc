@@ -5,10 +5,14 @@ use self::CliArmRealization::*;
 use self::CliOptionArity::*;
 use self::CliOptionValue::*;
 use self::CliSurfaceEmission::*;
+use self::CliVersionIdentity::*;
+pub use crate::std_dissolution::unbound_dissolution;
+pub use crate::std_dissolution::DissolutionCondition;
+use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_measure::millisecond_count;
 pub use crate::std_measure::Millisecond;
 use crate::std_types::Bool::*;
-pub use crate::std_types::{Bool, List, Port};
+pub use crate::std_types::{Bool, CommitSha, List, Port};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -52,6 +56,21 @@ pub enum CliSurfaceEmission {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
+pub enum CliVersionIdentity {
+    CliCleanSourceCommit { commit: CommitSha },
+    CliDirtySourceCommit { commit: CommitSha },
+}
+impl CliVersionIdentity {
+    pub fn commit(&self) -> CommitSha {
+        match self {
+            CliVersionIdentity::CliCleanSourceCommit { commit: __val, .. } => __val.clone(),
+            CliVersionIdentity::CliDirtySourceCommit { commit: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
 pub enum CliArmRealization {
     CliDelegatesToHostFn { symbol: String },
     CliRetainedHostKernel,
@@ -84,6 +103,39 @@ pub fn gunbc_cli_binary_name() -> String {
 
 pub fn gunbc_cli_about() -> String {
     "A causal compiler: write .dag, get Rust/Python/Go.".to_string()
+}
+
+pub fn gunbc_cli_version_identity(
+    source_commit: String,
+    source_dirty: bool,
+) -> Rc<CliVersionIdentity> {
+    if source_dirty.clone() {
+        Rc::new(CliVersionIdentity::CliDirtySourceCommit {
+            commit: source_commit.clone(),
+        })
+    } else {
+        Rc::new(CliVersionIdentity::CliCleanSourceCommit {
+            commit: source_commit.clone(),
+        })
+    }
+}
+
+pub fn gunbc_cli_version_text(identity: Rc<CliVersionIdentity>) -> String {
+    match (*identity.clone()).clone() {
+        CliVersionIdentity::CliCleanSourceCommit { commit: commit, .. } => commit.clone(),
+        CliVersionIdentity::CliDirtySourceCommit { commit: commit, .. } => {
+            v1_rt::concat(commit.clone(), "-dirty".to_string())
+        }
+    }
+}
+
+pub fn gunbc_cli_build_identity_seed_dissolve_trigger() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            unbound_dissolution("🟡 dissolve-on: the GUNBC_BUILD_IDENTITY observation block in src/v1/stage0/build.rs — exactly one removable seed unit. DISSOLVES WHEN the v1-zero-hand-maintained-rust ROADMAP lane (gunbc.roadmap_authority roadmap_nodes) emits the build-time Git observation from gunbc.cli_dispatch_surface, at which point git_output and the identity block delete together rather than leaving a second producer. Checkable until deletion: GUNBC_BUILD_IDENTITY has exactly one cargo:rustc-env producer in src/v1/stage0/build.rs and gunbc_cli_version_text is its sole formatting authority.".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
 }
 
 pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
