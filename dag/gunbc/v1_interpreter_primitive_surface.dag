@@ -97,9 +97,9 @@ fn v1_interpreter_declared_arms() -> List<InterpreterPrimitiveDispatchArm> {
       enumeration: DeclaredHere { dissolution: unbound_dissolution(description: "eval_method_call's lookup short-circuit is an if-guard rather than a match arm, so it has no token authority to expand from. It dissolves when the short-circuit is either deleted in favour of the algebra arm it shadows, or rewritten as an arm of a v1_method_short_circuit_arms macro in the shape the other five sites now use.") },
     },
     InterpreterPrimitiveDispatchArm {
-      arm: InterpreterPrimitiveArmId { identity: "service_dispatch.Filesystem.Read" },
+      arm: InterpreterPrimitiveArmId { identity: "service_dispatch.Filesystem.checkout_input" },
       form: ServiceDispatch,
-      authored_spelling: "Filesystem.Read",
+      authored_spelling: "Filesystem.Read|List",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_service_call",
       dispatch_emit_site: EvalServiceCallCarveOutSite,

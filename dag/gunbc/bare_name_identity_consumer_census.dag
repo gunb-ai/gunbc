@@ -197,16 +197,6 @@ data bare_name_identity_consumers: List<BareNameConsumer> = [
     call_site_count: 2,
   },
   {
-    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_nominal_identity_carrier_type_eligible"),
-    fact_sought: "whether a zero-parameter declaration realizes as a nominal newtype over String",
-    keys_on: "nothing -- the parameter is accepted and discarded",
-    identity: AvailableAtSite { holder_expression: "decl_identity_file(item: item) at the two declaration arms; authored_name_at's node at the annotation arm", adjacent_consulting_call: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_scalar_checkpoint_grounding_base") },
-    outcome: SilentDefaultNoAnswer { what_is_emitted: "nothing: every caller takes the else arm" },
-    reach: UnreachableByConstantBody { body_answer: "the body is the literal false, so no input reaches an answer -- a total-function fact, not an inference from usage, and stronger than any emitted-output diff could establish" },
-    sibling: SiblingPresentButOrdered { sibling: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_scalar_checkpoint_grounding_base"), precedence: "the eligibility test guards a branch ahead of the identity-keyed grounding call, so the first row added to it inherits that precedence and becomes a live member with no further edit" },
-    call_site_count: 5,
-  },
-  {
     site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "build_qualified_item_registry"),
     fact_sought: "which module provides a qualified module.leaf value reference",
     keys_on: "the exact module.leaf key -- qualified, not bare, and recorded here as the CONTRAST row",
