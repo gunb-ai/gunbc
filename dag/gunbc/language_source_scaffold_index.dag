@@ -175,6 +175,11 @@ data runtime_rust_string_ops_row: LanguageSourceScaffoldRow = LanguageSourceScaf
   disposition: runtime_rust_host_intrinsic_kernel_trigger
 }
 
+data runtime_rust_string_carrier_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+  carrier_module: "v1.compiler.runtime_rust", blob_decl: "rt_string_carrier",
+  disposition: runtime_rust_host_intrinsic_kernel_trigger
+}
+
 data runtime_rust_collection_ops_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
   carrier_module: "v1.compiler.runtime_rust", blob_decl: "rt_collection_ops",
   disposition: runtime_rust_host_intrinsic_kernel_trigger
@@ -482,6 +487,7 @@ data language_source_scaffold_roster: List<LanguageSourceScaffoldRow> = [
   runtime_rust_work_counter_row,
   runtime_rust_concat_trait_row,
   runtime_rust_string_ops_row,
+  runtime_rust_string_carrier_row,
   runtime_rust_collection_ops_row,
   runtime_rust_string_carrier_row,
   runtime_rust_scanner_ops_row,

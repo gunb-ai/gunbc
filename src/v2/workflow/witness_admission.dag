@@ -33,7 +33,6 @@ import gunbc.explicit_witness_admission {
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_entries,
   falsifier_native_cache_cold_roster,
-  falsifier_self_host_wet_cadence_is_active,
   falsifier_self_host_wet_known_red_entries
 }
 import std.realization_schedule {
@@ -108,17 +107,15 @@ fn path_matches_any_substring(path: String, subs: List<String>) -> Bool {
   any(xs: subs, predicate: fn(sub) { path_contains_substring(path: path, sub: sub) })
 }
 
+data consumer_for_explicit_rosters_cadence_fork_removed_note: String = "THE FORK THIS FUNCTION CARRIED WAS A FAIL-OPEN, NOT A STALE VALUE (2026-08-26, dashboard node adhoc-a660c665-d46). The first arm read `if falsifier_self_host_wet_cadence_is_active() { FalsifierSelfHostWet } else { OfflineLocalRecipe }`. Both arms are answers to the question this function asks -- WHICH POLICY CLAIMS THIS ROW -- but the flag they switched on answered a different question entirely: does that policy currently execute. Mixing them made the classification move when the schedule moved, and it moved in the wrong direction: FalsifierSelfHostWet has no scheduled route, so it derives DeclaredCadenceUnrealized and reads as uncovered, while OfflineLocalRecipe has a route by definition and reads as COVERED. A dark lane therefore promoted its own rows to covered. That is DESIGN section 5's absorbing fallback -- a failure arm that widens instead of refusing -- and it is why the flag was deleted at its root rather than set to its honest value (v2.compiler.self_host.wet_receipt_enrollment falsifier_self_host_wet_cadence_flag_deleted_note). Membership on the roster now decides the cadence, full stop; whether that cadence runs is decided once, in std.witness_admission witness_cadence_has_scheduled_route, and read here only by witness_execution_standing_for_row."
+
 fn consumer_for_explicit_rosters(entry: String, function: String) -> WitnessConsumerCadence {
   if schedule_contains_entry(
     xs: falsifier_self_host_wet_entries(),
     entry: entry,
     function: function
   ) {
-    if falsifier_self_host_wet_cadence_is_active() {
-      FalsifierSelfHostWet
-    } else {
-      OfflineLocalRecipe
-    }
+    FalsifierSelfHostWet
   } else if schedule_contains_entry(
     xs: falsifier_native_cache_cold_roster(),
     entry: entry,
@@ -195,7 +192,7 @@ fn witness_consumer_cadence_for_row(
 
 data witness_path_policy_admission_wall_note: String = "THE ARM THIS WALL CLOSED, and why it needed a wall rather than a stronger reconciliation. witness_consumer_cadence_for_row answers WHICH policy claims a row; this function answers whether that policy is an admissible answer, and until 2026-08-04 it conflated the two by refusing only NoConsumer. So OfflineLocalRecipe — the verdict a broad directory pattern produces — was accepted unconditionally, and moving a file under such a directory both removed it from per-PR discovery and satisfied admission. The exact-admission authority already forbids exactly this shape: explicit_witness_admission_cadence_executes refuses OfflineLocalRecipe on an admission row so that an admission cannot execute nowhere. The path side now meets the same bar, with the frozen legacy population (gunbc.witness_deferral_freeze) as the only exemption and that exemption itself joined by identity in both directions.
 
-READING ORDER IS LOAD-BEARING. The explicit rosters are consulted FIRST and are total for the rows they cover, so this path-policy fold decides only rows no roster claims — the same precedence witness_row_excluded_two_kinds_note states for exclusion. One consequence is deliberate and is NOT closed here: consumer_for_explicit_rosters maps a falsifier_self_host_wet row to OfflineLocalRecipe while falsifier_self_host_wet_cadence_active is false, and that reaches WitnessHasExecutingConsumer through the explicit arm rather than through this path-policy fold — the falsifier-cadence coverage misclassification is closed at witness_execution_standing_for_row (DeclaredCadenceUnrealized, dashboard node adhoc-1eb1a9f9-ad9), not here; it is adjacent scope, named here so it is not mistaken for covered."
+READING ORDER IS LOAD-BEARING. The explicit rosters are consulted FIRST and are total for the rows they cover, so this path-policy fold decides only rows no roster claims — the same precedence witness_row_excluded_two_kinds_note states for exclusion. One consequence used to be deliberate and NOT closed here, and it is now closed at its root: consumer_for_explicit_rosters mapped a falsifier_self_host_wet row to OfflineLocalRecipe whenever falsifier_self_host_wet_cadence_active was false, which reached WitnessHasExecutingConsumer through the explicit arm rather than through this path-policy fold. That fork and the flag behind it are DELETED (2026-08-26, dashboard node adhoc-a660c665-d46; consumer_for_explicit_rosters_cadence_fork_removed_note), so a roster row now classifies as FalsifierSelfHostWet unconditionally and its coverage standing is decided only by witness_execution_standing_for_row, which derives DeclaredCadenceUnrealized for it. The sentence is kept rather than dropped because the escape it names is the one a reader would otherwise re-derive from the old shape."
 
 fn witness_path_policy_execution_standing_in(
   entry: String,
@@ -491,21 +488,19 @@ fn witness_exclusion_explicit_roster_rows_consistent_holds() -> Bool {
   )
 }
 
+data witness_exclusion_falsifier_rows_consistent_unconditional_note: String = "THE SKIP ARM IS GONE, AND IT WAS THE MORE DANGEROUS HALF OF THE DELETED CADENCE FLAG. This check asserts a ROSTER CONSISTENCY property -- every exclusion row classified FalsifierSelfHostWet is actually covered by an entry on falsifier_self_host_wet_entries() -- and that property is about two rosters agreeing with each other. Whether anything EXECUTES those rosters is a different question with a different authority (std.witness_admission witness_cadence_has_scheduled_route). Until 2026-08-26 the check opened with `if !falsifier_self_host_wet_cadence_is_active() { true }`, so a dark lane made it return true over every row without examining any: a check whose RED becomes unreachable exactly when the lane it guards stops running is a decoration, and DESIGN section 4b rates that worse than absent because it is still cited as coverage. The flag stood at true, so the real check was running and removing the arm changes no result measured today; what it removes is the state in which this function silently stops checking."
+
 fn witness_exclusion_falsifier_rows_consistent_holds() -> Bool {
-  if !falsifier_self_host_wet_cadence_is_active() {
-    true
-  } else {
-    !any(
-      xs: witness_exclusion_frontier,
-      predicate: fn(row) {
-        witness_exclusion_row_is_falsifier_wet(row: row)
-          && !schedule_entries_cover_pattern(
-            xs: falsifier_self_host_wet_entries(),
-            pattern: row.pattern
-          )
-      }
-    )
-  }
+  !any(
+    xs: witness_exclusion_frontier,
+    predicate: fn(row) {
+      witness_exclusion_row_is_falsifier_wet(row: row)
+        && !schedule_entries_cover_pattern(
+          xs: falsifier_self_host_wet_entries(),
+          pattern: row.pattern
+        )
+    }
+  )
 }
 
 fn witness_whole_tree_resolve_exclusion_concat_authority_holds() -> Bool {
