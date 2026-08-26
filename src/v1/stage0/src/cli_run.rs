@@ -5341,6 +5341,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         }
         CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
         CompilerDiagnostic::AmbiguousReference { .. } => "AmbiguousReference",
+        CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { .. } => {
+            "DataReferenceVisibilityBudgetExceeded"
+        }
+        CompilerDiagnostic::ParameterDefaultFormNotAdmitted { .. } => {
+            "ParameterDefaultFormNotAdmitted"
+        }
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { .. } => {
             "AmbiguousAnonymousRecordLiteral"
         }
@@ -5399,6 +5405,8 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position, .. } => position.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
+        CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { name, .. } => name.clone(),
+        CompilerDiagnostic::ParameterDefaultFormNotAdmitted { parameter, .. } => parameter.clone(),
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { candidates, .. } => {
             candidates.iter().cloned().collect::<Vec<_>>().join("|")
         }
