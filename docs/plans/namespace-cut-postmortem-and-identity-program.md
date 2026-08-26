@@ -3487,6 +3487,53 @@ The census is therefore a **disposition vocabulary over the delta**, not a count
 | `ImportClosureCarrier` | no direct member used, but an occurrence or subject depends on the imported closure | **refused** until an exact reference-derived edge replaces it |
 | `ReferencePreservingReplacement` | the import-derived edge is gone; a reference-derived edge reaches the same declaration identity | admitted mechanically |
 
+**THE DISPOSITIONS ARE JUDGED AT BINDING GRAIN, NOT MODULE-SET GRAIN, AND THIS
+IS THE PART THE VOCABULARY ALONE DOES NOT CARRY** (side-chat ruling,
+2026-08-26). The acceptance condition for `ReferencePreservingReplacement` is
+exact declaration identity:
+
+```
+old_declaration == new_declaration
+```
+
+and **not** *the old provider module is still somewhere in the closure*. The
+weaker form passes precisely when a **different** occurrence keeps the provider
+loaded while the affected occurrence **silently rebinds** to something else — the
+old target gone, the module-set delta empty, nothing to report. So the primary
+evidence is an occurrence-binding delta; the module-set delta is a projection of
+it, never a substitute.
+
+**And attribution runs backwards from the binding, not forwards from the
+syntax.** Two import lines may both put `P` into the old subject, so removing
+either **alone** looks harmless while removing **both** strands the occurrence.
+A per-import verdict therefore cannot be computed per import: classify the
+**stranded binding** first, then project responsibility onto the set of import
+lines that carried it —
+
+```
+ImportClosureCarrier {
+  provider: ModuleId
+  carrier_imports: NonEmptySet<ImportOccurrenceId>
+  stranded_occurrences: NonEmptySet<OccurrenceId>
+}
+```
+
+Doing it the other way round repeats the lexical census's error one layer up:
+**assigning semantic causality to the visible syntax unit rather than to the
+relation that actually changed.** That is the same mistake twice — first
+counting members because members are what an import line shows, then blaming an
+import line because it is what a diff shows.
+
+**Where there is genuinely no occurrence, there is no replacement edge**, and the
+disposition is one of exactly two things: nothing required the module
+(`ImportOnlyNoEffect`, it vanishes), or a **different semantic contract**
+requires availability — packaging, capability, runtime registry — which gets its
+own named carrier with a real consumer. It must **not** default to a generic
+`PreloadModule(P)`, which is the old import behaviour under a new name. And if
+such edges do enlarge the same compile subject, the closure stops being *the
+transitive closure of exact reference edges* and must name both edge families
+rather than hiding one inside a coproduct arm.
+
 **The planning consequence inverts what the raw number suggests.** This is not a
 prerequisite burndown requiring 6187 hand deletions: genuine dead edges disappear
 **automatically** under the delta wall, and only hidden closure carriers block. So
