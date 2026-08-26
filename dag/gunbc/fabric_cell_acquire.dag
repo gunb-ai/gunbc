@@ -75,11 +75,20 @@ data fabric_cell_slice_unit_pattern: NonEmptyStr = "fabric-cell-*.slice" as NonE
 // "No such file" is a heuristic standing where a declared operation was available, and DESIGN
 // section 4 rules a heuristic never necessary in a closed system.
 //
-// THE FOURTH STATE IS THE ONE A `Bool` CANNOT HOLD AT ALL. A regular file sitting where a cell root
-// belongs is not an absence -- reporting it as one would license an ADD that cannot succeed, and
-// the failure would surface at apply time as a mkdir refusal rather than here as an observation.
-// It is not a listing either. It is a host in a state nobody intended, which is exactly what an
-// observer exists to report.
+// THE FOURTH STATE IS THE ONE A `Bool` CANNOT HOLD AT ALL. A path occupied by something that is not
+// a directory is not an absence -- reporting it as one would license an ADD that cannot succeed,
+// and the failure would surface at apply time as a mkdir refusal rather than here as an
+// observation. It is not a listing either. It is a host in a state nobody intended, which is
+// exactly what an observer exists to report.
+//
+// "NOT A DIRECTORY" IS NOT "IS A REGULAR FILE", AND THE FIRST CUT OF THIS MODULE CONFLATED THEM.
+// It asked `test -f` after `test -d` and called everything else absent, so a socket, a FIFO, a
+// device node or a symbolic link -- none of which satisfy either test -- reported a path that
+// cannot be created as one that is free to create. `test -e` answers the question those two were
+// being asked to approximate. It closes every case but one, because it FOLLOWS symbolic links: a
+// link whose target is gone answers false while the link itself still holds the name and still
+// defeats mkdir, so `test -L` is asked as well. The composition is the presence question stated
+// exactly, rather than two proxies for it.
 type FabricCellDirectoryObservation
   = DirectoryListed { entries: List<String> }
   | DirectoryNotPresent
@@ -190,8 +199,12 @@ fn fabric_cell_directory_address_probe(
 func fabric_cell_observe_directory(path: String) -> FabricCellDirectoryObservation {
   let dir = shell.Test.IsDirectory(path: path as FilePath)
   if !dir.is_directory {
-    let file = shell.Test.IsFile(path: path as FilePath)
-    if file.is_file {
+    let present = shell.Test.Exists(path: path as FilePath)
+    if present.exists {
+      return PathOccupiedByNonDirectory { path: path }
+    }
+    let link = shell.Test.IsSymlink(path: path as FilePath)
+    if link.is_symlink {
       return PathOccupiedByNonDirectory { path: path }
     }
     return DirectoryNotPresent
@@ -287,6 +300,7 @@ fn fabric_cell_unit_name_field(line: String) -> String {
 // it happened to probe, which is the blindness the observe module's own header rules out.
 func fabric_cell_probe_wet(host: HostIdentity) -> FabricCellHostProbe {
   let root = fabric_cell_observe_directory(path: fabric_cell_base_dir)
+  let slices = fabric_cell_observe_slice_namespace()
   let slots = fabric_cell_expected_slots(host: host)
   FabricCellHostProbe {
     host: host,
@@ -298,7 +312,7 @@ func fabric_cell_probe_wet(host: HostIdentity) -> FabricCellHostProbe {
         },
         FabricCellNamespaceProbeEntry {
           namespace: FabricCellSliceNamespace,
-          probe: fabric_cell_observe_slice_namespace(),
+          probe: slices,
         },
       ],
       map(
@@ -311,22 +325,34 @@ func fabric_cell_probe_wet(host: HostIdentity) -> FabricCellHostProbe {
         },
       ),
     ),
-    addresses: flat_map(slots, s => fabric_cell_slot_address_probes(slot: s)),
+    addresses: flat_map(slots, s => fabric_cell_slot_address_probes(slot: s, slices: slices)),
   }
 }
 
-// A STATE READ IS PERFORMED ONLY WHERE THE PARENT SAID THE ENTRY IS THERE, and that is the
+// A STATE READ IS PERFORMED ONLY WHERE THE ENUMERATION SAID THE ENTRY IS THERE, and that is the
 // contradiction law obeyed at acquisition time rather than repaired afterwards. Supplying a state
 // probe for an address whose namespace does not hold it is exactly the impossible host the observer
 // refuses -- absent from its listing and simultaneously read -- so this fold does not produce one.
-func fabric_cell_slot_address_probes(slot: RunnerSlotIdentity) -> List<FabricCellAddressProbeEntry> {
-  let root_dir = fabric_cell_observe_directory(path: fabric_cell_root_path(slot: slot))
+//
+// THE BOUNDARY WAS THE EXCEPTION AND IT WAS THE DANGEROUS ONE. The first cut of this function
+// obeyed that rule for the two directory addresses and issued `systemctl show` for the slice
+// UNCONDITIONALLY, which is worse than an inconsistency: `systemctl show` on a unit that does not
+// exist EXITS ZERO AND PRINTS DEFAULTS, so an unprovisioned slice returned a successful read of
+// values no host is carrying. The observer then saw an address absent from its namespace with a
+// state supplied, refused it as a contradiction, and the cell could never be planned -- the exact
+// "first real observation of an unprovisioned host blocked instead of planning" failure
+// gunbc.fabric_cell_observe records in its own header. A success exit is not evidence that a unit
+// exists, so the enumeration decides whether to ask at all.
+func fabric_cell_slot_address_probes(
+  slot: RunnerSlotIdentity,
+  slices: FabricCellNamespaceProbe,
+) -> List<FabricCellAddressProbeEntry> {
   concat(
     fabric_cell_directory_address_entries(
       slot: slot,
       address: FabricCellRootAddress,
       path: fabric_cell_root_path(slot: slot),
-      observation: root_dir,
+      observation: fabric_cell_observe_directory(path: fabric_cell_root_path(slot: slot)),
     ),
     concat(
       fabric_cell_directory_address_entries(
@@ -335,16 +361,80 @@ func fabric_cell_slot_address_probes(slot: RunnerSlotIdentity) -> List<FabricCel
         path: fabric_cell_attempt_root_path(slot: slot),
         observation: fabric_cell_observe_directory(path: fabric_cell_attempt_root_path(slot: slot)),
       ),
+      fabric_cell_boundary_address_entries(slot: slot, slices: slices),
+    ),
+  )
+}
+
+// THE SLICE ENUMERATION DECIDES WHETHER THE BOUNDARY IS ASKED, AND THE THREE ANSWERS ARE NOT TWO.
+// An enumeration that HOLDS the slice is the only state in which a state read is a question about
+// something -- so it is the only state that issues one. An enumeration that RAN and does not hold
+// it establishes absence, and absence is the namespace's answer: no entry, exactly as an absent
+// directory contributes none. An enumeration that REFUSED establishes nothing at all, and the
+// address must refuse with it rather than inherit the absence of an answer.
+// THE DECISION IS ITS OWN NAMED FACT, SEPARATE FROM ACTING ON IT, AND THAT SEPARATION IS WHAT
+// MAKES IT TESTABLE WITHOUT A HOST. An earlier cut of this pair decided and asked in one function,
+// so the row asserting "an absent slice is not asked" had to reach the arm that DOES ask in order
+// to establish the contrast -- and that arm performs a host effect. Under the hermetic runner it
+// passed against systemd's declared MOCK, which is a witness asserting a law about acquisition
+// against authored data: exactly the vacuous pass this file's own header rules out. Splitting the
+// decision out means both rows are pure, no mock participates, and the effect happens strictly
+// downstream of a fact that has already been established.
+type FabricCellBoundaryStanding
+  = BoundaryAsk
+  | BoundaryAbsentNoAsk
+  | BoundaryUnknownRefuse { cause: String }
+
+fn fabric_cell_boundary_standing(
+  slot: RunnerSlotIdentity,
+  slices: FabricCellNamespaceProbe,
+) -> FabricCellBoundaryStanding {
+  match slices {
+    NamespaceObservedAbsent => BoundaryAbsentNoAsk
+    NamespaceEnumerationRefused { cause: c } =>
+      BoundaryUnknownRefuse {
+        cause: join([
+          "the slice namespace was not enumerated, so whether this boundary exists is unknown: ", c,
+        ], ""),
+      }
+    NamespaceEnumerated { entries: es } =>
+      if fabric_cell_entries_hold_name(entries: es, name: fabric_cell_slice_name(slot: slot)) {
+        BoundaryAsk
+      } else {
+        BoundaryAbsentNoAsk
+      }
+  }
+}
+
+func fabric_cell_boundary_address_entries(
+  slot: RunnerSlotIdentity,
+  slices: FabricCellNamespaceProbe,
+) -> List<FabricCellAddressProbeEntry> {
+  match fabric_cell_boundary_standing(slot: slot, slices: slices) {
+    BoundaryAbsentNoAsk => []
+    BoundaryUnknownRefuse { cause: c } =>
       [FabricCellAddressProbeEntry {
         slot: slot,
         address: FabricCellResourceBoundaryAddress,
-        probe: fabric_cell_boundary_address_probe(
-          slot: slot,
-          reading: fabric_cell_read_boundary(slot: slot),
-        ),
-      }],
+        probe: AddressStateReadRefused { cause: c },
+      }]
+    BoundaryAsk => [fabric_cell_boundary_probe_entry(slot: slot)]
+  }
+}
+
+fn fabric_cell_entries_hold_name(entries: List<String>, name: String) -> Bool {
+  fold(entries, init: false, f: (acc, e) => acc || e == name)
+}
+
+func fabric_cell_boundary_probe_entry(slot: RunnerSlotIdentity) -> FabricCellAddressProbeEntry {
+  FabricCellAddressProbeEntry {
+    slot: slot,
+    address: FabricCellResourceBoundaryAddress,
+    probe: fabric_cell_boundary_address_probe(
+      slot: slot,
+      reading: fabric_cell_read_boundary(slot: slot),
     ),
-  )
+  }
 }
 
 // AN ABSENT DIRECTORY CONTRIBUTES NO ENTRY AT ALL, WHICH IS THE POINT OF RETURNING A LIST. The

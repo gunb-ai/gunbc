@@ -35,6 +35,11 @@ import gunbc.fabric_cell_acquire {
   fabric_cell_unit_name_field,
   fabric_cell_directory_address_probe,
   fabric_cell_directory_address_entries,
+  fabric_cell_boundary_standing,
+  FabricCellBoundaryStanding,
+  BoundaryAsk,
+  BoundaryAbsentNoAsk,
+  BoundaryUnknownRefuse,
   fabric_cell_boundary_address_probe,
   FabricCellBoundaryReading,
   BoundaryValuesRead,
@@ -219,6 +224,68 @@ test fn witness_acquire_directory_state_is_its_path() -> Bool {
 // about is the SPELLING: feed the acquisition layer exactly what a converged host would report and
 // the two composition functions must agree. A fork in either one still reds it; a change to the
 // magnitudes moves both sides together, which is the point of there being one authority.
+// LAW 10 -- A SLICE THE ENUMERATION DOES NOT HOLD IS NOT ASKED FOR ITS STATE, AND THIS IS THE ROW
+// THAT WOULD HAVE CAUGHT THE DEFECT THE FIRST CUT SHIPPED. That cut issued `systemctl show` for
+// every expected slot unconditionally. `systemctl show` on a unit that does not exist EXITS ZERO
+// AND PRINTS DEFAULTS, so an unprovisioned slice came back as a successful read of values no host
+// carries; the observer then saw an address absent from its namespace with a state supplied,
+// refused it as a contradiction, and the cell could never be planned. A success exit is not
+// evidence that a unit exists.
+//
+// THE THIRD ANSWER IS NOT THE SECOND. An enumeration that RAN and does not hold the slice
+// establishes absence, so no entry -- absence is the namespace's answer. An enumeration that
+// REFUSED establishes nothing, so the address refuses with it rather than inheriting an absence
+// nobody observed. Collapsing those two would make an unreadable systemd plan as if it were an
+// empty one.
+test fn witness_acquire_absent_slice_is_not_asked_for_its_state() -> Bool {
+  standing_is_no_ask(st: fabric_cell_boundary_standing(
+    slot: witness_slot(),
+    slices: NamespaceEnumerated { entries: [] },
+  ))
+    && standing_is_no_ask(st: fabric_cell_boundary_standing(
+        slot: witness_slot(),
+        slices: NamespaceObservedAbsent,
+      ))
+    && standing_is_refuse(st: fabric_cell_boundary_standing(
+        slot: witness_slot(),
+        slices: NamespaceEnumerationRefused { cause: "systemctl list-units refused" },
+      ))
+}
+
+// LAW 11 -- AND A SLICE THE ENUMERATION DOES HOLD IS ASKED. Without this the previous row is
+// satisfied by an acquisition layer that never reads a boundary at all, which would make every
+// provisioned cell read as absent and replan its slice forever.
+test fn witness_acquire_present_slice_is_asked_for_its_state() -> Bool {
+  standing_is_ask(st: fabric_cell_boundary_standing(
+    slot: witness_slot(),
+    slices: NamespaceEnumerated { entries: [fabric_cell_slice_name(slot: witness_slot())] },
+  ))
+}
+
+fn standing_is_ask(st: FabricCellBoundaryStanding) -> Bool {
+  match st {
+    BoundaryAsk => true
+    BoundaryAbsentNoAsk => false
+    BoundaryUnknownRefuse { cause: _ } => false
+  }
+}
+
+fn standing_is_no_ask(st: FabricCellBoundaryStanding) -> Bool {
+  match st {
+    BoundaryAbsentNoAsk => true
+    BoundaryAsk => false
+    BoundaryUnknownRefuse { cause: _ } => false
+  }
+}
+
+fn standing_is_refuse(st: FabricCellBoundaryStanding) -> Bool {
+  match st {
+    BoundaryUnknownRefuse { cause: _ } => true
+    BoundaryAsk => false
+    BoundaryAbsentNoAsk => false
+  }
+}
+
 fn converged_boundary_values() -> FabricCellBoundaryReading {
   let desired = gunbc_runner_slot_desired()
   BoundaryValuesRead {
