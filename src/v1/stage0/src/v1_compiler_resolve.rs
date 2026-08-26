@@ -284,6 +284,19 @@ pub fn resolve_module_imports(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ModuleResolveResult> {
     {
+        let local_definition_names = Rc::new({
+            let mut __result = Vec::new();
+            for item in module_items(module.clone()).iter().cloned() {
+                __result.push(get_item_name(item.clone(), source_indices.clone()));
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        .fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, n: String| v1_rt::rc_map_insert(acc, n.clone(), true),
+        );
         let results = Rc::new({
             let mut __result = Vec::new();
             for imp in module_imports(module.clone()).iter().cloned() {
@@ -293,6 +306,7 @@ pub fn resolve_module_imports(
                     authored_name_at(source_indices.clone(), module.clone()),
                     export_sets.clone(),
                     source_indices.clone(),
+                    local_definition_names.clone(),
                 ));
             }
             __result
@@ -343,6 +357,7 @@ pub fn resolve_import(
     importing_module: String,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    local_definition_names: Rc<HashMap<String, bool>>,
 ) -> Rc<ImportResolveResult> {
     {
         let import_path = authored_name_at(source_indices.clone(), import.clone());
@@ -374,6 +389,39 @@ pub fn resolve_import(
                 let exported_set = match v1_rt::map_get(&export_sets, import_path.clone()) {
                     Some(set) => set.clone(),
                     None => v1_rt::rc_empty_map::<String, bool>(),
+                };
+                let shadow_diags = if import_is_all(import.clone()) {
+                    Rc::new(vec![])
+                } else {
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for child in Rc::new({
+                            let mut __result = Vec::new();
+                            for child in import.children.clone().iter().cloned() {
+                                if v1_rt::map_has(
+                                    &local_definition_names,
+                                    authored_name_at(source_indices.clone(), child.clone()),
+                                ) {
+                                    __result.push(child);
+                                }
+                            }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        {
+                            __result.push(make_error_node(
+                                Rc::new(CompilerDiagnostic::ImportShadowedByLocalDefinition {
+                                    name: authored_name_at(source_indices.clone(), child.clone()),
+                                    module_path: import_path.clone(),
+                                    importing_module: importing_module.clone(),
+                                    span: child.span.clone(),
+                                }),
+                                importing_module.clone(),
+                            ));
+                        }
+                        __result
+                    })
                 };
                 let name_diags = if import_is_all(import.clone()) {
                     Rc::new(vec![])
@@ -419,7 +467,7 @@ pub fn resolve_import(
                         ),
                         target_module: Some(target_mod.clone()),
                     }),
-                    diagnostics: name_diags.clone(),
+                    diagnostics: v1_rt::concat(name_diags.clone(), shadow_diags.clone()),
                 })
             }
         }

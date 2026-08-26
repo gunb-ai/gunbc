@@ -39,17 +39,74 @@ import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_
 
 data witness_layer_roots: List<String> = ["dag", "src/v2"]
 
-// The v2 entry roster a v2-emission phase compiles. dag/std/abi.dag is deliberately the
-// SMALLEST entry in the tree (a four-module reference closure, nine emitted files) and
-// not the compiler's own 03_ingest, because an --entry compile is scoped in what it
-// EMITS and whole-tree in what it PARSES: every indexed module outside the closure enters
-// the name census, so the census parse reaches all of dag and src/v2 whichever entry is
-// named. Measured on 2026-08-23: abi 135s / 3,847 census modules, 03_ingest 349s. The
-// 2026-08-23 break that escaped every required phase -- a trailing annotation block under
-// dag/test/manual -- refuses on the small entry, so the large entry's extra 214s buys
-// emission coverage of the compiler's own closure rather than coverage of the class that
-// actually escaped. Widening this list is a row; it is a cost decision, not a Rust edit.
-data required_v2_emission_entries: List<String> = ["dag/std/abi.dag"]
+// The v2 entry roster a v2-emission phase compiles.
+//
+// THE COST DECISION THIS ROW RECORDS HAS BEEN RE-TAKEN AND CAME OUT THE OTHER WAY (operator
+// ruling, 2026-08-25: "basically i would put regen + v2 full compile in one job, and
+// witnesses into another one"). The paragraph this replaces chose `dag/std/abi.dag` -- the
+// SMALLEST entry in the tree, a four-module reference closure -- and its reasoning was
+// sound on the facts it had. An --entry compile is scoped in what it EMITS and whole-tree in
+// what it PARSES, so the census parse reaches all of dag and src/v2 whichever entry is named;
+// the 2026-08-23 break that motivated the phase (a trailing annotation block under
+// dag/test/manual) therefore refuses on the small entry too, and the large entry's extra time
+// bought emission coverage of the compiler's own closure rather than coverage of the class
+// that had escaped. Against a SERIAL required run, paying minutes for coverage of a different
+// class was the wrong trade.
+//
+// WHAT CHANGED IS NOT THE ARGUMENT BUT ITS DENOMINATOR. The required run is now two parallel
+// jobs (`gunbc.witness_floor_workflow`), and this phase sits in the `build` lane beside regen,
+// opposite a witnesses lane that costs ~30-40 minutes. The build lane's cost is therefore free
+// up to the floor's duration, and the extra minutes buy exactly what the old paragraph said
+// they buy and declined: emission coverage of the v2 compiler's own closure -- the thing this
+// repository is FOR. A cost objection whose cost went to zero is not an objection any more.
+//
+// WHY 00_compile AND NOT 03_ingest. It is the root of the v2 pipeline, so its closure is the
+// widest one entry names.
+//
+// **THAT IS NOT THE SAME AS "ALL THE COMPILER FILES", AND THE DIFFERENCE IS MEASURED RATHER
+// THAN ESTIMATED.** Of the 42 modules under `src/v2/compiler/`, this entry's emitted closure
+// contains 24; eighteen are absent, including `ingest`, `emit_module`, `emit_host`,
+// `emit_produced`, `emit_semantic_decl`, `program_partition` and `self_host`. Counting the
+// `self_host/` subtree the compiler namespace is 69 modules, so the shortfall is larger still.
+// The instrument is the emission itself: emit this entry and join the emitted file names
+// against the module line of every `src/v2/compiler/**.dag`.
+//
+// It is named here because "full v2 compile" invites the reading that the phase covers the
+// compiler, and it does not -- it covers the pipeline root's reference-derived closure, which
+// is a strictly smaller thing. A STATIC IMPORT-CLOSURE ESTIMATE CANNOT SUBSTITUTE FOR THAT
+// MEASUREMENT and reports zero coverage for this entry, because this corpus resolves most
+// cross-module references without `import` lines; only the compiler's own reference-derived
+// closure is the truth.
+//
+// WIDENING THE SUBJECT TO EVERY COMPILER FILE IS AN OPERATOR ASK ON A SEPARATE CLOCK
+// (2026-08-25: "the intention is to v2 build ALL of the .dag compiler files, and then ratchet
+// THAT count in CI"). It is not taken in this row, because a covering entry set cannot be
+// derived from the import graph for the reason just given, and the alternative -- a whole-tree
+// emission -- has a cost that has to be measured before it is enrolled in a required lane.
+// This row records what the phase covers TODAY so that the widening is a change to a known
+// number rather than to an assumed one. The producer is unchanged
+// (`cli_run::compile_entry_emission`, primary-precedence, RenderTarget::Rust -- the phase has
+// always pinned those and the split does not touch them), so this is a change of SUBJECT and
+// of nothing else.
+//
+// WHAT THE OLD ENTRY COVERED THAT THIS ONE DOES NOT, measured rather than assumed, because
+// "the bigger entry obviously subsumes the smaller" is exactly the kind of claim that turns
+// out to be off by one. Emitting both closures and differencing the emitted file sets, the
+// v2 compiler root covers all but ONE of the small entry's files: `src/std_abi.rs`, the
+// emission of `dag/std/abi.dag` itself. That single file is the whole of the coverage this
+// row gives up, and it is given up deliberately -- the phase exists to catch v2 emission
+// breaks, `std/abi` is not v2, and carrying the old entry alongside would re-emit eight
+// already-covered files to keep the ninth (DESIGN §2). Named here rather than left for a
+// reader to infer that the subsumption was total.
+//
+// THE INSTRUMENT, not its output (DESIGN, the 2026-08-24 measurement ruling): both the
+// duration and the file-set difference above are re-derived by
+// `gunbc compile --source-root dag --source-root src/v2 --target rust
+// --dependency-pool-index primary-precedence --entry <entry>` over the two entries, which is
+// the same producer the phase itself calls. No figure from that run is transcribed here.
+//
+// STILL A ROW. Widening or narrowing this list remains a cost decision, not a Rust edit.
+data required_v2_emission_entries: List<String> = ["src/v2/compiler/00_compile.dag"]
 
 // ENROLMENT AUTHORITY: this phase is required in --required-ci on an operator ruling
 // relayed through the requesting session on 2026-08-23, at a measured +135s. The row
@@ -168,7 +225,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
     pattern: "long/cited_symbol_resolution_witness_test.dag",
     classification: OfflineLocalRecipe,
-    reason: "G1 feature:cited-symbol-resolution (operator 2026-08-03): sixteen witnesses in dag/test/claim/long/cited_symbol_resolution_witness_test.dag pay compile_clean_source_roots decl_facts + module_declaration_facts scans — corpus-scale census witnesses measured ~20-47s eval each (enrolled_population_refusal_proves_gate_not_vacuous ~143s); excluded at test/claim/long/ dir grain, not per-PR discovery. Local recipe: claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/long/cited_symbol_resolution_witness_test.dag --functions cited_symbol_hand_authored_binds_all_resolve,cited_symbol_hand_authored_census_is_zero_refusals,cited_symbol_resolution_lens_is_green_on_live_corpus,doc_graph_works_refs_all_resolve,cited_symbol_post7688_production_census_is_zero_violations,cited_symbol_refusal_count_red_on_dangling_fixture,cited_symbol_planted_doc_graph_controls_all_refuse,cited_symbol_enrolled_population_refusal_proves_gate_not_vacuous,cited_symbol_planted_ambiguous_control_refuses_via_resolver,cited_symbol_production_census_ambiguous_count_is_zero,cited_symbol_resolves_node_kind_authority,cited_symbol_resolves_decl_ref_constructor,cited_symbol_refuses_module_absent,cited_symbol_refuses_declaration_absent,cited_symbol_refuses_ambiguous_binding,cited_symbol_refuses_named_field_absent",
+    reason: "G1 feature:cited-symbol-resolution (operator 2026-08-03): eighteen witnesses in dag/test/claim/long/cited_symbol_resolution_witness_test.dag pay compile_clean_source_roots decl_facts + module_declaration_facts scans — corpus-scale census witnesses measured ~20-47s eval each (the enrolled-population refusal row, renamed 2026-08-25 to enrolled_population_refusal_is_exactly_the_declared_exemption, ~143s); excluded at test/claim/long/ dir grain, not per-PR discovery. Local recipe: claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/long/cited_symbol_resolution_witness_test.dag --functions cited_symbol_hand_authored_binds_all_resolve,cited_symbol_hand_authored_census_is_zero_refusals,cited_symbol_resolution_lens_is_green_on_live_corpus,doc_graph_works_refs_all_resolve,cited_symbol_post7688_production_census_is_zero_violations,cited_symbol_refusal_count_red_on_dangling_fixture,cited_symbol_planted_controls_all_refuse,cited_symbol_planted_controls_are_the_three_declared_identities,cited_symbol_planted_controls_refuse_in_the_arm_they_name,cited_symbol_enrolled_population_refusal_is_exactly_the_declared_exemption,cited_symbol_planted_ambiguous_control_refuses_via_resolver,cited_symbol_production_census_ambiguous_count_is_zero,cited_symbol_resolves_node_kind_authority,cited_symbol_resolves_decl_ref_constructor,cited_symbol_refuses_module_absent,cited_symbol_refuses_declaration_absent,cited_symbol_refuses_ambiguous_binding,cited_symbol_refuses_named_field_absent",
     dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume test/claim/long/ dir grain (long_lane_exclusion_note trigger), or falsifier_substrate_long_lane enrolls rows with measured eval under gunbc_ci_fast_lane_witness_eval_budget; row deletes when per-PR discovery runs them")
   },
   WitnessExclusionRow {

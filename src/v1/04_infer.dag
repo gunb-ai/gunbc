@@ -97,6 +97,7 @@ import v1.compiler.infer_method {
   builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
+import v1.compiler.coercion { decl_file_realizes_natively, type_reference_decl_file }
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
@@ -928,15 +929,111 @@ fn conformance_ground_type(n: Node, source_indices: Map<String, NewlineIndex>) -
     || conformance_ground_element_collection(n: n, source_indices: source_indices)
 }
 
-data conformance_unjudged_live_hole_note: String = "PROVEN LIVE HOLE, AND THE REASON THE UNJUDGED ADVISORY IS EXCLUDED FROM THIS PR (codex reviews 45647, 45767). The branch now returns [] for the unjudged case, matching origin/main exactly, so this PR neither closes nor worsens the class; it lands with the identity capability instead. The record below is kept because the witness and the five measured attempts are what that lane starts from. The unjudged branch is not merely unmeasured — a program that is simply WRONG reaches emission through it. Executed witness: `type R \{ x: Int \}` `type S \{ y: String \}` `fn wrong_record() -> R \{ S \{ y: \"a\" \} \}` compiles EXIT 0 and EMITS TWO FILES, on this branch and on origin/main alike. Two structurally unrelated named records is not a representation gap; it is the conformance half of #7479. It was briefly reported as a counted advisory here, and that is precisely what was removed: counting it protects nothing, and a number beside a wrong program is the fabricated success DESIGN 5 forbids, one level up. THE FIX WAS ATTEMPTED AND IS NOT LANDED, and the measurements are recorded because they are the real cost of the next attempt rather than a reason to stop looking. Three successive narrowings of a refuse-when-both-sides-are-named-structured rule were each run against the whole corpus: (1) both sides structured and named -> 90 refusals of CORRECT code, dominated by the two-representation optionality class (24 Node(Optional) vs Primitive(Node), plus Coproduct(X) vs Coproduct(Optional)); (2) narrowed to inhabited named RECORDS with kernel scope names excluded -> 15; (3) additionally guarding the raw nodes -> 27, and the population had by then shifted to a NEW class, produced sides that are let-BINDING names (module_emit_scope, scope_after_expr, lookup_item) rather than types. The count moving 90 -> 15 -> 27 rather than monotonically down is the finding: each guard displaces the false-positive population instead of shrinking it, which is the exemption-accumulation this wall refuses elsewhere, and shipping any of the three would red correct code. So the arm is NOT landed, and with no arm to land the residue is left exactly where main leaves it rather than dressed up as partial coverage. The blocking obstacle is named and is not vague: the produced-side node reaching this branch is not reliably a TYPE — it can be a nominal reference, a kernel encoding of cardinality or absence, an anonymous literal, or a let-binding identity — so no predicate over its shape can separate a real mismatch from a representation gap until produced-side type identity is established upstream. A FOURTH attempt isolated the obstacle exactly, and it is the reason the other three moved the population instead of shrinking it: guarding on `both sides are Conj whose authored name RESOLVES via lookup_type_by_name to a record declaration` still refused 14 seed sites, and every one had a LET-BINDING name on the produced side (module_emit_scope, scope_after_expr, lookup_item, service_fallback_transport). lookup_type_by_name resolves those because bindings and types inhabit ONE name environment, so the guard cannot tell a type identity from a binding identity — which is the stated obstacle, now demonstrated rather than inferred. A FIFTH attempt tested the one discriminator that looked left — requiring the resolved declaration to NAME ITSELF, on the theory that a type declares its own name while a binding resolves to a type named differently — and it returned the IDENTICAL 14 sites, because lookup_type_by_name on a binding returns a node carrying the BINDING's name, not its type's. The name environment does not merely conflate the two lookups; the resolved node itself carries no separable type identity. No predicate over the produced node's shape or name can close this class. Dissolve-on: feature:conformance-produced-type-identity — the produced node carries a resolved type identity rather than a shape to be guessed at, at which point the refusal arm is one predicate over two identities and this row deletes. THE PERMISSION IS NOT THIS PATH'S AND THAT WAS MEASURED, NOT ASSERTED: the identical program built against origin/main compiles EXIT 0, emits 2 files and reports ZERO diagnostics, and this branch now does the same, because the unjudged branch returns the same empty list main returns. So the conformance path neither newly permits the emission nor closes it. THE COUNTED-ADVISORY MIDDLE GROUND WAS TRIED AND REJECTED, and the rejection is the useful part of this row: an advisory made the fail-open visible without making it stop, and review held that visibility is not protection when the program is PROVABLY wrong rather than merely unproven (codex reviews 45647, 45695, 45711, 45767, 45777). Agreed on execution — the R/S witness above emitted two files under the advisory. So the class is left at main's behavior and named here with its trigger, and what ships is the method-existence wall, which does refuse and does emit nothing. That is a judgment about sequencing, not a claim that the hole is acceptable: a declared boundary with an executed witness, an owner-facing trigger and a measured cost, and deliberately NOT a success path with a number beside it."
+// A PLAIN KERNEL VALUE WHERE A DECLARED STRUCTURED TYPE IS REQUIRED, at any position that carries a
+// declared type -- not only the record-literal field the wall below it already guards.
+//
+// This is the ordinary floor invariant DESIGN section 4b names beside name resolution and
+// exact-bijection binding: values inhabit declared types. It is a DIFFERENT class from the
+// coproduct-payload-where-parent wall next door, where the offending value is one of the declared
+// coproduct's own payload types; here the value is an `Int`, a `String` or a `Bool` standing where
+// a record or coproduct is declared. The census that found it measured SEVEN of the fourteen
+// grammar-admitted declared-type positions accepting that value silently.
+//
+// NO SECOND RELATION IS MINTED FOR IT (DESIGN section 3). kernel_value_declared_type_mismatch is
+// already the corpus authority for exactly this judgment -- it is what makes a record-literal field
+// refuse `KH \{ subject: 5 \}` today -- and it already carries the discriminations that keep the
+// judgment honest: a kernel that CASTS to the formal is admitted (dag_can_cast), a structural
+// carrier standing for the kernel is admitted, and a single-child refinement over the kernel (the
+// brand-alias shape) is admitted. What was missing was never the relation; it was that only ONE of
+// the fourteen positions consulted it. This function is the peeling prologue the field seam
+// performs before consulting it, lifted so every position performs the same one.
+//
+// THE POSITIONS THIS RELATION IS NOW CONSULTED AT, and they are the ones that already carry a
+// declared type into inference rather than a new walk: a fn body against its declared return, an
+// early `return` against that same declaration, a module-scope `data` annotation, and an annotated
+// `let`. The annotated `let` is wired in the ExprLet arm of infer_expr_body, which had no
+// conformance judgment at all before this change.
+//
+// OPTIONALITY IS EXCLUDED on both sides, the exclusion its neighbours state and for the same
+// reason: optionality lives in two representations here (a cardinality marker and the nominal
+// `Optional` coproduct), so a difference across them is a representation gap rather than a
+// mismatch, and refusing it would be the fabricated refusal DESIGN section 5 forbids exactly as it
+// forbids a fabricated success.
+fn declared_type_kernel_inhabitance_mismatch(declared: Node, produced: Node, scope: InferScope) -> Bool {
+  if declared.return_cardinality == CardOptional || produced.return_cardinality == CardOptional {
+    false
+  } else {
+    let declared_required = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: declared)) {
+      Present { value: resolved } => resolved
+      Absent => with_required_cardinality(n: declared)
+    }
+    kernel_value_declared_type_mismatch(
+      formal: peel_nominal_alias_identity(n: declared_required, env: scope.type_env, module_name: scope.module_name),
+      actual: peel_nominal_alias_identity(n: produced, env: scope.type_env, module_name: scope.module_name),
+      type_env: scope.type_env,
+      source_indices: scope.type_env.source_indices)
+  }
+}
 
-data conformance_expansion_depth_note: String = "MEASUREMENT RECEIPT FOR THE NEXT LANE, NOT A DESCRIPTION OF LIVE CODE — the expansion-peeling comparison it records was deleted together with the unjudged advisory it fed (codex review 45767), and this row is kept because the measurement is what the next attempt starts from rather than re-derives. A declared type and a produced type routinely arrive at DIFFERENT EXPANSION DEPTHS: the declaration side is a nominal reference to T while the body side is T's already-expanded body, so comparing them as they arrive reads one type as two. Measured over the whole corpus that was the majority of the unjudged residue — 203 Node, 173 Outcome, 46 Witness, 43 Optional, 38 PipelineStep and a long tail, each a reference and its own body — which is why the frontier first read 3005 and then 1566 once each side was resolved through lookup_type_for and peeled through peel_where_refinement_base, the SAME peel the method wall uses (DESIGN section 3: one authority, two consumers, not a second one minted here). Reporting those as unjudged was not a conservative silence but a WRONG COUNT, and an inflated frontier buries the residue that genuinely cannot be decided under pairs that were never in doubt. THE COMPARISON MUST BE THE STRUCTURAL RELATION, NOT A RENDERED SHAPE STRING, and the first version of this got that wrong in a way worth keeping on the record: it compared node_type_shape output, which collapses every anonymous product to the literal text Product(<anon>) and every named product to its OUTER NAME ONLY, discarding fields, variants and their types. So two structurally different records compared EQUAL and were stamped proven-conforming — the exact fail-open this wall exists to delete, reintroduced while removing a different one, and by the same mechanism as the earlier 1.0/0.0 seam: a projection that looks like evidence used where a proof was required (codex review 45600). A display projection is for MESSAGES; a judgment must consume the structural relation. That constraint outlives the deleted code and binds whoever rebuilds it: node_type_compatible recurses into container elements and compares canonical template names, so identity is established rather than rendered, but its known imprecision is only safe where a mismatch costs a count rather than a refusal — it reports MISMATCH for the four classes of correct code enumerated in declared_type_conformance_note, so wiring it to a refusal without first establishing produced-side type identity (feature:conformance-produced-type-identity) reds correct code. That is the trap the five measured attempts in conformance_unjudged_live_hole_note fell into."
+// ONE element peel, and exactly one. A `List<KOuter>` declaration whose value is `[5]` reaches this
+// judgment as a container pair, so the kernel sits one level below the declared name and the check
+// above sees a container on the declared side and never fires. Peeling one level covers the
+// container position the census measured; a NESTED container (`List<List<KOuter>>`) is not judged,
+// which is a narrowing stated rather than implied. It is written out rather than self-recursed
+// because the measured depth is one, and an unbounded recursion here would owe a descent proof for
+// a frontier nobody has measured.
+fn declared_type_kernel_inhabitance_mismatch_at_element(
+  declared: Node,
+  produced: Node,
+  scope: InferScope
+) -> Bool {
+  let si = scope.type_env.source_indices
+  let both_element_collections = node_is_element_collection(n: declared, source_indices: si)
+    && node_is_element_collection(n: produced, source_indices: si)
+    && node_is_keyed_collection(n: declared, source_indices: si) == false
+    && node_is_keyed_collection(n: produced, source_indices: si) == false
+  if both_element_collections == false {
+    false
+  } else {
+    match declared.children |> first {
+      Absent => false
+      Present { value: dl } =>
+        match produced.children |> first {
+          Absent => false
+          Present { value: pr } =>
+            declared_type_kernel_inhabitance_mismatch(
+              declared: child_type_node(ch: dl),
+              produced: child_type_node(ch: pr),
+              scope: scope)
+        }
+    }
+  }
+}
+
+fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
+  declared: Node,
+  produced: Node,
+  scope: InferScope
+) -> Bool {
+  declared_type_kernel_inhabitance_mismatch(declared: declared, produced: produced, scope: scope)
+    || declared_type_kernel_inhabitance_mismatch_at_element(
+      declared: declared, produced: produced, scope: scope)
+}
 
 fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
   let si = scope.type_env.source_indices
   let both_ground = conformance_ground_type(n: declared, source_indices: si)
     && conformance_ground_type(n: produced, source_indices: si)
-  if !both_ground { [] }
+  if declared_type_kernel_inhabitance_mismatch_here_or_at_element(
+      declared: declared, produced: produced, scope: scope) {
+    [type_mismatch_error(
+      expected: node_type_shape(n: declared, source_indices: si),
+      got: node_type_shape(n: produced, source_indices: si),
+      span: span,
+      module_name: scope.module_name
+    )]
+  }
+  else if !both_ground { [] }
   else if node_type_compatible(left: declared, right: produced, source_indices: si) { [] }
   else {
     [type_mismatch_error(
@@ -2139,6 +2236,14 @@ fn type_name_transparently_aliases_to(
 // the confusion instead of inferring it from an absence, so a refusal here always names a
 // spelling the author can point at: the wrapping arm is in the same declaration.
 //
+// THAT REASONING BOUNDS THE PAYLOAD ARM, AND IT DOES NOT BOUND THE WALL. A SECOND ARM WAS ADDED --
+// foreign_concrete_coproduct_where_parent_required, below -- for the case where the actual is a
+// wholly different coproduct rather than one of this one's payloads. It is not the general field-type
+// wall this paragraph declines to build: it does not refuse ANY actual, it refuses only an actual
+// that POSITIVELY RESOLVES to its own concrete coproduct declaration whose arms disagree with this
+// one's. The four representation gaps named above are excluded by construction there and the reasons
+// are written out on that function.
+//
 // NAME IDENTITY IS BORROWED, NOT REBUILT. A first measured version of this wall refused the direct
 // shape (`CppHolder { subject: cpp_inner() }`) and stayed SILENT on the production specimen this
 // lane was given as its acceptance target -- `v2.std.materialize` storing `content_hash(n)` into a
@@ -2182,6 +2287,96 @@ fn coproduct_variant_payload_admits_type_name(
   )
 }
 
+// A FOREIGN CONCRETE COPRODUCT WHERE THIS COPRODUCT IS DECLARED -- the second arm of the same wall,
+// established the same way and admitted on the same argument.
+//
+// The payload arm above refuses an actual that is one of the FORMAL'S OWN variant payload types. It
+// says nothing about an actual that is a wholly DIFFERENT coproduct, and the field seam judged that
+// by nothing: measured by execution on the pre-arm binary, a field declared `DcpAlpha` initialised
+// from a fn returning `DcpBeta` compiled with 0 diagnostics, exactly as the payload shape did before
+// #8876. The live specimen is gunbc#9215's: `decode_commit_members` wrapped a `MemberReadRefusal`
+// into `RepositoryDecodeClosureDocRefusal`, whose field is declared `ClosureDocRefusal`, and the
+// correct arm sat three lines away in the same match.
+//
+// WHY THIS IS THE CONFORMANCE NOTE'S OWN ARGUMENT AND NOT AN EXEMPTION TO IT.
+// declared_type_conformance_note widened from a ground kernel scalar to a ground element collection
+// on the grounds that no alias, brand, coproduct, anonymous-literal or cardinality representation
+// stands between the two sides, so a name difference IS a real difference. Two RESOLVED nominal
+// coproducts meet that same test, and each of the note's four measured false-positive classes is
+// excluded by construction rather than carved out: (1) optionality is excluded on both sides by the
+// caller's cardinality guard and by the `Optional` carrier exclusion; (2) a brand alias does not
+// resolve to a `Disj` declaration, so it never reaches this arm, and a TRANSPARENT alias of the same
+// coproduct is settled by `transparent_alias_identity_agrees` before it; (3) an anonymous record
+// literal has no authored name, and this arm requires both sides to resolve BY NAME to a
+// declaration; (4) cardinality is read from the nodes the seam already holds, not rebuilt.
+//
+// AND EXPANSION DEPTH -- the class that inflated the conformance frontier from 1566 to 3005, one
+// type compared against itself at two depths -- is refused POSITIVELY rather than assumed away:
+// `coproduct_variant_name_sets_differ` requires the two declarations to disagree about their own
+// arms. Two spellings of one coproduct have identical variant sets and are silently admitted here,
+// whatever their names or depths. That is what makes this arm establishment rather than inference
+// from an absence, and it is the same discipline the payload arm uses when it requires the actual to
+// BE one of the formal's declared payload types.
+//
+// KERNEL NAMES ARE EXCLUDED ON BOTH SIDES, and that is a DISJOINTNESS condition between walls, not a
+// carve-out. `dag/std/types.dag` declares `type Bool = True | False`, so `Bool` is simultaneously a
+// kernel type and a declared coproduct, and `dag/std/bit.dag` declares `type Bit = Bool`. Kernel
+// scalars are already `kernel_value_declared_type_mismatch`'s judgment at this very seam; letting
+// this arm judge them too would be two authorities for one fact, and the disagreement would surface
+// as a refusal on correct code. The exclusion is applied to the alias REPRESENTATIVE as well as the
+// authored name, because `Bit` is the one alias in the corpus that names a coproduct.
+//
+// COST. Two map lookups and a walk bounded by the two declarations' own arm counts. Nothing is
+// re-derived from normalized structure and nothing is denominated in the corpus.
+fn coproduct_variant_name_sets_differ(
+  left: Node,
+  right: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  let counts_differ = (left.children |> count) != (right.children |> count)
+  let left_has_unmatched = left.children |> any(v =>
+    has_child_named(n: right, name: authored_name_at(source_indices: source_indices, node: v), source_indices: source_indices) == false)
+  counts_differ || left_has_unmatched
+}
+
+fn coproduct_name_is_kernel_or_optional_carrier(name: String) -> Bool {
+  let last = qualified_last_segment(name: name)
+  last == "" || last == "Optional" || is_kernel_type(name: last)
+}
+
+fn foreign_concrete_coproduct_where_parent_required(
+  formal_decl: Node,
+  formal_name: String,
+  actual_name: String,
+  actual_rep: String,
+  scope: InferScope
+) -> Bool {
+  let source_indices = scope.type_env.source_indices
+  if coproduct_name_is_kernel_or_optional_carrier(name: formal_name)
+    || coproduct_name_is_kernel_or_optional_carrier(name: actual_name)
+    || (actual_rep != "" && coproduct_name_is_kernel_or_optional_carrier(name: actual_rep)) {
+    false
+  } else {
+    match lookup_type_by_name(env: scope.type_env, name: actual_name) {
+      Absent => false
+      Present { value: actual_decl } =>
+        let actual_is_concrete_coproduct = actual_decl.connective == Disj
+          && (actual_decl.params |> count) == 0
+          && (actual_decl.children |> count) > 0
+        let actual_decl_name = authored_name_at(source_indices: source_indices, node: actual_decl)
+        let resolved_name_is_kernel = actual_decl_name != ""
+          && coproduct_name_is_kernel_or_optional_carrier(name: actual_decl_name)
+        let formal_is_variant_of_actual = has_child_named(
+          n: actual_decl, name: qualified_last_segment(name: formal_name), source_indices: source_indices)
+        actual_is_concrete_coproduct
+          && resolved_name_is_kernel == false
+          && formal_is_variant_of_actual == false
+          && coproduct_variant_name_sets_differ(
+            left: formal_decl, right: actual_decl, source_indices: source_indices)
+    }
+  }
+}
+
 // The wall's decision procedure, over the record-literal field seam's own formal/actual pair.
 //
 // TWO EXCLUSIONS ARE LOAD-BEARING AND NEITHER IS INCIDENTAL. `Optional` is the language's own
@@ -2192,6 +2387,238 @@ fn coproduct_variant_payload_admits_type_name(
 // makes "the actual is one of this coproduct's payload types" undecidable from the declaration
 // alone; refusing there would be a fabricated refusal, which DESIGN section 5 forbids exactly as it
 // forbids a fabricated success.
+// ONE OBLIGATION, ONE AUTHORITY. The grammar has fourteen type positions and twelve of them
+// can receive a source value. Before this carrier each position that judged anything judged it
+// with its own local chain of else-if predicates, which is one rule in N representations: a
+// position added later inherits nothing, and a rule fixed at one position stays broken at the
+// rest. A DeclaredTypeObligation names WHERE the obligation arose, WHAT was declared and WHAT
+// was produced; declared_type_inhabitance is the single relation that decides; the position
+// travels with the obligation so the diagnostic can locate the refusal without the decision
+// procedure forking per position.
+// TWO OF THE TWELVE ARE WIRED. THE OTHER TEN ARE DECLARED HERE AND PRODUCE NOTHING YET, AND
+// THAT IS STATED AS A COUNT RATHER THAN LEFT TO BE DISCOVERED FROM THE ABSENCE OF CALLERS.
+// Measured by construction site, not by reading: PositionDirectCallArgument and
+// PositionListElement are the only two members CONSTRUCTED anywhere -- every other member
+// occurs solely in declared_type_position_label's match, which renders a name and judges
+// nothing. So this coproduct is today an OBLIGATION VOCABULARY, of which two positions have a
+// producer.
+//
+// WHY THAT IS NOT AN UNDECIDABLE ARM AND MUST NEVER BE FILED AS ONE: an unwired position is a
+// MISSING OBLIGATION PRODUCER, not a fact the model cannot settle. It is absent from the census
+// rather than present with a verdict -- so it produces no diagnostic, blocking or advisory, and
+// nothing in the corpus is red on its account. Recording these as expected-red rows would be
+// exactly the rung inflation 4b names, since there is no red to expect; and recording them as
+// InhabitanceUndecidable would report "we did not look" as "it cannot be decided", which is the
+// same inflation aimed at this relation's own self-description.
+//
+// NEXT-RUNG TRIGGER, one per position and all the same shape: a producer at that grammar seam
+// that builds a DeclaredTypeObligation and hands it to declared_type_obligation_diags. The
+// decision procedure is already shared and position-agnostic, so wiring one is authoring a
+// construction site, never extending this relation -- which is the whole point of the carrier
+// and is why the residual ten cost a call each rather than a rule each.
+//
+// THE TEN AWAITING A PRODUCER: PositionRecordLiteralField, PositionMapValue,
+// PositionDataInitializer, PositionDeclaredReturn, PositionLetAnnotation, PositionVariantPayload,
+// PositionGenericTypeArgument, PositionCastTarget, PositionParameterDefault,
+// PositionCallableReturn. Wiring any of them is a separate change with its own evidence: a
+// discriminating RED at that seam plus an accepted positive control, per 4b(1). Until then this
+// carrier's honest claim is TWO POSITIONS JUDGED, ten declared -- and any statement that it
+// judges "every grammar type position" is false.
+type DeclaredTypePosition
+  = PositionRecordLiteralField
+  | PositionListElement
+  | PositionMapValue
+  | PositionDataInitializer
+  | PositionDeclaredReturn
+  | PositionLetAnnotation
+  | PositionVariantPayload
+  | PositionGenericTypeArgument
+  | PositionCastTarget
+  | PositionParameterDefault
+  | PositionCallableReturn
+  | PositionDirectCallArgument
+
+type DeclaredTypeObligation {
+  position: DeclaredTypePosition
+  declared: Node
+  produced: Node
+  span: SourceSpan
+}
+
+// UNDECIDABLE IS A PROPERTY OF THE FACTS, NEVER OF THE WIRING. Each reason names something the
+// modeled facts genuinely cannot settle at this seam. A position that has not been wired yet is
+// NOT undecidable -- it is a missing obligation producer, and it is absent from the census
+// rather than present with a verdict. Reading "we did not look" as "it cannot be decided" is
+// the rung inflation DESIGN 4b names, applied to this relation's own self-description.
+type InhabitanceUndecidableReason
+  = UndecidableGenericFormal
+  | UndecidableOptionalCarrier
+  | UndecidableFormalUnresolved
+  | UndecidableProducedIdentityErased
+
+type InhabitanceRefusalReason
+  = RefusedPayloadAtParent
+  | RefusedKernelAtStructured
+
+type InhabitanceVerdict
+  = Inhabits
+  | InhabitanceRefused { reason: InhabitanceRefusalReason }
+  | InhabitanceUndecidable { reason: InhabitanceUndecidableReason }
+
+fn declared_type_position_label(position: DeclaredTypePosition) -> String {
+  match position {
+    PositionRecordLiteralField => "record literal field"
+    PositionListElement => "list element"
+    PositionMapValue => "map value"
+    PositionDataInitializer => "data initializer"
+    PositionDeclaredReturn => "declared return"
+    PositionLetAnnotation => "let annotation"
+    PositionVariantPayload => "variant payload"
+    PositionGenericTypeArgument => "generic type argument"
+    PositionCastTarget => "cast target"
+    PositionParameterDefault => "parameter default"
+    PositionCallableReturn => "callable return"
+    PositionDirectCallArgument => "direct call argument"
+  }
+}
+
+// THE SINGLE DECISION PROCEDURE. It CONSUMES the established predicates rather than restating
+// them: coproduct_payload_where_parent_required already peels transparent aliases through
+// transparent_alias_identity_agrees, so alias identity is decided in exactly one place in the
+// tree and this relation inherits it instead of re-deriving a second answer.
+fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferScope) -> InhabitanceVerdict {
+  let declared = obligation.declared
+  let produced = obligation.produced
+  let source_indices = scope.type_env.source_indices
+  let declared_name = authored_name_at(source_indices: source_indices, node: declared)
+  let produced_name = authored_name_at(source_indices: source_indices, node: produced)
+  let either_optional = declared.return_cardinality == CardOptional || produced.return_cardinality == CardOptional
+  let declared_is_generic = (declared.params |> count) > 0
+  if either_optional {
+    InhabitanceUndecidable { reason: UndecidableOptionalCarrier }
+  } else if declared_is_generic {
+    InhabitanceUndecidable { reason: UndecidableGenericFormal }
+  } else if declared_name == "" {
+    InhabitanceUndecidable { reason: UndecidableFormalUnresolved }
+  } else if produced_name == "" {
+    InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
+  } else if declared_realizes_as_kernel_numeric(
+      declared: declared, produced: produced, source_indices: source_indices) {
+    Inhabits
+  } else if kernel_value_declared_type_mismatch(
+      formal: declared, actual: produced,
+      type_env: scope.type_env, source_indices: source_indices) {
+    InhabitanceRefused { reason: RefusedKernelAtStructured }
+  } else if coproduct_payload_where_parent_required(formal: declared, actual: produced, scope: scope) {
+    InhabitanceRefused { reason: RefusedPayloadAtParent }
+  } else {
+    Inhabits
+  }
+}
+
+// The obligation carries its own position, so ONE emitter locates every refusal. A per-position
+// diagnostic function would be the N-representation problem moved one layer down.
+// WHY A KERNEL LITERAL AT AN ALGEBRAICALLY-DECLARED NUMERIC IS ADMITTED, AND WHY THIS IS
+// CONSULTING AN AUTHORITY RATHER THAN WIDENING AN ARM. std.nat declares
+// `type Nat = CommutativeSemiring<Magnitude>` and std.integer declares
+// `type Int = AbelianGroup<GroupCompletion<Nat>>`: the canonical form of both is an algebraic
+// STRUCTURE while their values are authored as kernel integer literals. Read structurally that
+// is kernel-at-structured and the relation refused it -- measured, 33 of 50 sites at the
+// direct-call seam, every one correct code.
+//
+// The corpus does not leave this to convention. v1.compiler.coercion
+// numeric_realization_declaring_modules records that exactly these declaring modules realize
+// natively, and decl_file_realizes_natively answers it. So the class was never undecidable, it
+// was UNCONSULTED -- which is why nothing here is counted: a residue would record a deficit
+// that does not exist.
+//
+// THREE PROPERTIES THIS RELIES ON, none of them incidental:
+//   IDENTITY, NOT SPELLING. The authority is keyed on the resolved declaring module.
+//   numeric_realization_identity_note names the exact hazard: std.nat.Nat realizes natively
+//   while v2.std.nat.Nat is the Peano coproduct Zero|Succ and must NOT, so a bare-name rule
+//   admits the wrong one. The enrolled RED for that pair is the regression control.
+//   FAIL-CLOSED ON UNKNOWN IDENTITY. decl_file_realizes_natively answers false for the empty
+//   string, and the empty string is what an unestablished identity yields. No fallback is
+//   added here, so a site that cannot establish identity keeps refusing.
+//   A CONJUNCTION, NOT A CARVE-OUT. The produced value must ALSO be a kernel numeric, so a
+//   String literal at a Nat-declared position stays refused.
+//
+// SOURCE-LEVEL, NOT EMISSION. decl_file_realizes_natively takes only decl_file; the neighbouring
+// lookup_checkpoint takes a RenderTarget and would have made an emission fact answer a
+// source-level question, which is why it is deliberately not the surface used here.
+// INTERIM, AND THE ROW THAT DISSOLVES IT IS v2.workflow.floor_expected_red chunk_14.
+// This decides that a kernel numeral inhabits Nat by asking whether Nat's DECLARING MODULE is
+// kernel-backed -- a REALIZATION fact answering a TYPING question. It fails closed on unknown
+// identity and is measured behaviour-preserving against main, so it is not unsound; it is
+// UNDER-SPECIFIC, and it grants literal syntax module-wide permission to inhabit anything whose
+// implementation eventually mentions a numeric carrier. The durable model is an
+// expected-type-directed literal introduction judgment -- a type admits a numeral because it
+// SUPPLIES one, not because its module realizes natively. Do not build on this predicate.
+fn declared_realizes_as_kernel_numeric(
+  declared: Node,
+  produced: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  let produced_name = authored_name_at(source_indices: source_indices, node: produced)
+  let produced_is_kernel_numeric = produced_name == "Int" || produced_name == "Float"
+  if produced_is_kernel_numeric == false {
+    false
+  } else {
+    decl_file_realizes_natively(decl_file: type_reference_decl_file(n: declared))
+  }
+}
+
+// THE UNDECIDABLE ARM IS COUNTED, NOT SILENT, AND NOT A REFUSAL. It used to read
+// `InhabitanceUndecidable { reason: _ } => []`, which is total over the verdict and blind one
+// level down: the four reasons are declared precisely because they are different facts, and the
+// wildcard gave all four the SAME rendering as Inhabits -- an undecidable seam and a decided-good
+// seam left the relation as the identical empty list, so nothing downstream could tell a value
+// that was judged from one that was never judgeable. That is the fail-open fabrication DESIGN
+// section 5 forbids, and its cost is the one section 5 names: the deficit's frequency was zero by
+// construction, so no reason could ever rank for the modeling that would settle it.
+//
+// WHY ADVISORY AND NOT A REFUSAL. Refusing here would fabricate a verdict in the other direction:
+// the facts do not settle inhabitance, so asserting non-inhabitance is exactly as invented as
+// asserting inhabitance. Undecidable is a property of the facts, never of the wiring, and the
+// honest report is that no verdict was reached -- located, per-reason, and countable, so the four
+// populations are observable and prioritizable. DeclaredTypeInhabitanceUndecided is registered
+// non-blocking in v1.00_core is_interpreter_blocking_diagnostic and advisory in
+// is_discovery_corpus_advisory_typecheck_diagnostic, so this makes the residue visible without
+// reddening a corpus whose seams were never judged before this carrier existed either.
+fn inhabitance_undecidable_reason_label(reason: InhabitanceUndecidableReason) -> String {
+  match reason {
+    UndecidableGenericFormal => "generic formal: the declared position's payload types can be type variables, so membership is not decidable from the declaration alone"
+    UndecidableOptionalCarrier => "optional carrier: the language's own cardinality carrier, where a T standing in an Optional<T> position is the declared spelling rather than a payload escape"
+    UndecidableFormalUnresolved => "formal unresolved: the declared type did not resolve to a declaration, so there is nothing to judge inhabitance against"
+    UndecidableProducedIdentityErased => "produced identity erased: the produced value's type identity is not recoverable at this seam"
+  }
+}
+
+fn declared_type_obligation_diags(obligation: DeclaredTypeObligation, scope: InferScope) -> List<ErrorNode> {
+  match declared_type_inhabitance(obligation: obligation, scope: scope) {
+    Inhabits => []
+    InhabitanceUndecidable { reason: r } =>
+      [make_error_node(
+        diagnostic: DeclaredTypeInhabitanceUndecided {
+          position: declared_type_position_label(position: obligation.position),
+          reason: inhabitance_undecidable_reason_label(reason: r),
+          span: obligation.span
+        },
+        module_name: scope.module_name
+      )]
+    InhabitanceRefused { reason: _ } =>
+      [make_error_node(
+        diagnostic: DeclaredTypeNotInhabited {
+          position: declared_type_position_label(position: obligation.position),
+          expected: node_type_shape(n: obligation.declared, source_indices: scope.type_env.source_indices),
+          got: node_type_shape(n: obligation.produced, source_indices: scope.type_env.source_indices),
+          span: obligation.span
+        },
+        module_name: scope.module_name
+      )]
+  }
+}
+
 fn coproduct_payload_where_parent_required(
   formal: Node,
   actual: Node,
@@ -2236,6 +2663,12 @@ fn coproduct_payload_where_parent_required(
               type_env: scope.type_env,
               module_name: scope.module_name,
               source_indices: source_indices)
+              || foreign_concrete_coproduct_where_parent_required(
+                formal_decl: decl,
+                formal_name: formal_name,
+                actual_name: actual_name,
+                actual_rep: actual_rep,
+                scope: scope)
           }
         Absent => false
       }
@@ -2412,6 +2845,58 @@ fn direct_call_structured_record_literal_resolved_type_mismatch(
   }
 }
 
+data call_argument_formal_selection_note: String = "SINGLE AUTHORITY (DESIGN §3) for one question: which declared formal does a call argument bind to. The question was answered in TWO places with DIFFERENT rules, and the divergence produced wrong emitted types with no diagnostic anywhere. build_call_application_plan matched an argument to a formal by AUTHORED LABEL, falling back to position -- the same rule the interpreter's call_function_inner uses. The ExprCall inference fold, which chooses the EXPECTED type each argument is inferred under, selected purely by SOURCE POSITION and read the argument's label only to tag the result node. So a call passing named arguments in a different order than declared handed each argument its NEIGHBOUR's formal, while the type check -- running the other rule -- correctly paired them and reported nothing. Measured live: src/v1/05_emit.dag:2993 calls emit_typed_match_unified with all seven arguments named and source_indices ahead of recurse, so the recurse lambda was inferred against render_pattern's fn(MatchPattern) -> String; it emitted |node: Rc<MatchPattern>, d| and the stage0 build failed E0308 + E0282, from a call the compiler had declared clean. THE FIX IS NOT A SECOND COPY OF THE NAME-FIRST SEARCH. Pasting the rule into the fold would leave two implementations that agree today and drift later, which is the same §3 failure one layer down. This selector is the rule, held once; the fold consumes it directly, and the plan builder consumes it INVERTED -- a formal's argument is the argument that selects that formal's index -- so neither side can encode a rule the other does not. It returns the formal's INDEX as well as its node precisely so that inversion needs no second search. It is deliberately PRE-TYPE: it reads authored labels only, needs no substitution and no inferred types, so it is available before recursive argument inference begins and call_subst still accumulates in authored source order, leaving generic unification order untouched. Unknown and duplicate labels stay owned by direct_call_shape_wall_note's walls; this selector decides correspondence, never admission. THE LABEL TEST IS call_param_caller_labels, NOT EXACT EQUALITY, and the distinction is the underscore idiom: a parameter declared _ctx is addressable by callers as ctx, so exact equality missed it and fell through to the positional arm -- measured, ignore_ctx(n: 1, ctx: []) against fn ignore_ctx(_ctx: List<Int>, n: Int) kept the fabricated empty-list refusal until this was corrected. call_param_caller_labels is used rather than call_arg_label_matches_param because the two answer different questions: that predicate governs ADMISSION and returns true for a bare _ against ANY label, which is correct for asking whether a label names a declared parameter and catastrophic for asking WHICH parameter a label selects -- an anonymous parameter would claim the first label it saw. call_param_caller_labels answers the selection question directly, yielding [] for a bare _ so it can never be selected by name, so the hazard is closed by the authority chosen rather than by a guard beside it. INJECTIVITY, AND WHY IT DOES NOT SUBSUME THE RUNTIME-KEY WALL. The relation this selector defines must be a partial bijection: functional -- one argument selects one formal -- falls out of the selector's shape, but INJECTIVE -- one formal receives at most one argument -- does not, and its absence was silent wrongness below the floor. Measured on both compilers before the fix: f(a: 1, _a: 2, b: 3) against fn f(_a: Int, b: Int) compiled CLEAN and emitted f(2, 3), dropping the argument a: 1 with no diagnostic anywhere, because a and _a are two caller spellings of ONE formal and nothing asked whether two arguments had chosen the same one. formal_identity_duplicate_diags closes that: an argument whose selected formal index was already claimed by an EARLIER argument is refused. THE TWO WALLS PARTITION BY CAUSE AND MUST NOT BE MERGED. duplicate_label_diags asks whether two arguments produce the same RUNTIME BINDING KEY, via call_arg_bound_param_at's running counter over positionally-eligible names, and it also catches collisions this selector cannot see; it stays separate by operator ruling. This wall asks whether two arguments select the same SEMANTIC FORMAL. The questions coincide on exactly one input shape -- two arguments carrying the SAME authored label -- and there the key wall already owns the refusal, so this wall is guarded to fire only when the two labels DIFFER. Without that guard both fired and f(a: 1, a: 2, b: 3) produced TWO byte-identical diagnostics, measured; suppressing on identical labels is not a courtesy to the reader but the statement of which wall owns which cause."
+
+type CallArgumentFormalSelection = CallArgumentFormalSelected { formal_index: Int, formal: Node } | CallArgumentFormalUnavailable
+
+fn call_argument_label_selects_formal_index(label: String, formal_index: Int, value_params: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match value_params |> enumerate |> filter(candidate => call_param_caller_labels(param_name: authored_name_at(source_indices: source_indices, node: candidate.second)) |> any(caller_label => caller_label == label)) |> first {
+    Present { value: named } => named.first == formal_index
+    Absent => false
+  }
+}
+
+fn call_formal_claimed_by_a_label(formal_index: Int, arguments: List<Node>, value_params: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  arguments |> any(other =>
+    match arg_name_at(n: other, source_indices: source_indices) {
+      Present { value: label } => call_argument_label_selects_formal_index(label: label, formal_index: formal_index, value_params: value_params, source_indices: source_indices)
+      Absent => false
+    })
+}
+
+fn call_argument_positional_rank(arguments: List<Node>, argument_index: Int, source_indices: Map<String, NewlineIndex>) -> Int {
+  arguments |> enumerate |> filter(other =>
+    other.first < argument_index
+      && match arg_name_at(n: other.second, source_indices: source_indices) {
+           Present { value: _ } => false
+           Absent => true
+         }) |> count
+}
+
+fn call_argument_formal_at_position(arguments: List<Node>, value_params: List<Node>, argument_index: Int, source_indices: Map<String, NewlineIndex>) -> CallArgumentFormalSelection {
+  match value_params |> enumerate |> filter(candidate => !call_formal_claimed_by_a_label(formal_index: candidate.first, arguments: arguments, value_params: value_params, source_indices: source_indices)) |> skip(call_argument_positional_rank(arguments: arguments, argument_index: argument_index, source_indices: source_indices)) |> first {
+    Present { value: positional } => CallArgumentFormalSelected { formal_index: positional.first, formal: positional.second }
+    Absent => CallArgumentFormalUnavailable
+  }
+}
+
+fn select_formal_for_call_argument(argument: Node, argument_index: Int, arguments: List<Node>, value_params: List<Node>, source_indices: Map<String, NewlineIndex>) -> CallArgumentFormalSelection {
+  match arg_name_at(n: argument, source_indices: source_indices) {
+    Present { value: label } => match value_params |> enumerate |> filter(candidate => call_param_caller_labels(param_name: authored_name_at(source_indices: source_indices, node: candidate.second)) |> any(caller_label => caller_label == label)) |> first {
+      Present { value: named } => CallArgumentFormalSelected { formal_index: named.first, formal: named.second }
+      Absent => call_argument_formal_at_position(arguments: arguments, value_params: value_params, argument_index: argument_index, source_indices: source_indices)
+    }
+    Absent => call_argument_formal_at_position(arguments: arguments, value_params: value_params, argument_index: argument_index, source_indices: source_indices)
+  }
+}
+
+fn call_argument_selects_formal_index(argument: Node, argument_index: Int, formal_index: Int, arguments: List<Node>, value_params: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match select_formal_for_call_argument(argument: argument, argument_index: argument_index, arguments: arguments, value_params: value_params, source_indices: source_indices) {
+    CallArgumentFormalSelected { formal_index: selected, formal: _ } => selected == formal_index
+    CallArgumentFormalUnavailable => false
+  }
+}
+
 type CallFormalApplication {
   index: Int
   param_name: String
@@ -2441,9 +2926,9 @@ fn build_call_application_plan(
         param_name: param_name,
         formal_subst: formal_subst,
         formal: peel_nominal_alias_identity(n: formal_subst, env: type_env, module_name: module_name),
-        matched_arg: match typed_args |> filter(ta => arg_has_name(arg: ta, name: param_name, source_indices: source_indices)) |> first {
-          Present { value: named_ta } => Present { value: named_ta }
-          Absent => typed_args |> skip(pair.first) |> first
+        matched_arg: match typed_args |> enumerate |> filter(candidate => call_argument_selects_formal_index(argument: candidate.second, argument_index: candidate.first, formal_index: pair.first, arguments: typed_args, value_params: value_params, source_indices: source_indices)) |> first {
+          Present { value: bound } => Present { value: bound.second }
+          Absent => none
         }
       }
   )
@@ -2479,6 +2964,30 @@ fn direct_call_structured_application_mismatch_diags(
           } else {
             []
           }
+        Absent => []
+      }
+  )
+}
+
+fn direct_call_argument_inhabitance_diags(
+  plan: List<CallFormalApplication>,
+  scope: InferScope
+) -> List<ErrorNode> {
+  flat_map(
+    plan,
+    app =>
+      match app.matched_arg {
+        Present { value: ta } =>
+          let actual_expr = arg_value(n: ta)
+          declared_type_obligation_diags(
+            obligation: DeclaredTypeObligation {
+              position: PositionDirectCallArgument,
+              declared: app.formal_subst,
+              produced: resolved_type(n: actual_expr),
+              span: actual_expr.span
+            },
+            scope: scope
+          )
         Absent => []
       }
   )
@@ -2713,6 +3222,24 @@ fn direct_call_shape_diags(func_name: String, sig_params: List<Node>, typed_args
         } else { [] }
       Absent => []
     })
+  let formal_identity_duplicate_diags = typed_args |> enumerate |> flat_map(pair =>
+    match select_formal_for_call_argument(argument: pair.second, argument_index: pair.first, arguments: typed_args, value_params: sig_params, source_indices: source_indices) {
+      CallArgumentFormalSelected { formal_index: mine, formal: chosen } =>
+        let my_label = arg_name_at(n: pair.second, source_indices: source_indices)
+        let earlier_same_formal = typed_args |> enumerate |> any(other =>
+               other.first < pair.first
+                 && !(arg_name_at(n: other.second, source_indices: source_indices) == my_label)
+                 && match select_formal_for_call_argument(argument: other.second, argument_index: other.first, arguments: typed_args, value_params: sig_params, source_indices: source_indices) {
+                      CallArgumentFormalSelected { formal_index: theirs, formal: _ } => theirs == mine
+                      CallArgumentFormalUnavailable => false
+                    })
+        if earlier_same_formal {
+          [make_error_node(
+            diagnostic: CallArgumentDuplicate { callee: func_name, argument: authored_name_at(source_indices: source_indices, node: chosen), span: pair.second.span },
+            module_name: module_name)]
+        } else { [] }
+      CallArgumentFormalUnavailable => []
+    })
   let arity_scan = scan_call_shape_arity(
     sig_params: sig_params,
     typed_args: typed_args,
@@ -2732,7 +3259,7 @@ fn direct_call_shape_diags(func_name: String, sig_params: List<Node>, typed_args
         module_name: module_name)]
     Absent => []
   }
-  concat(concat(unknown_label_diags, surplus_diags), concat(duplicate_label_diags, deficit_diags))
+  concat(concat(concat(unknown_label_diags, surplus_diags), concat(duplicate_label_diags, deficit_diags)), formal_identity_duplicate_diags)
 }
 
 fn function_value_call_named_arg_diags(
@@ -3964,12 +4491,12 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         let generic_names = call_sig_split.generic_names
         let final_state = fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: empty_map() }, f: (st, pair) =>
           let a = pair.second
-          let formal_lookup = value_params |> skip(pair.first) |> first
-          let formal_raw = match formal_lookup {
-            Present { value: p } => param_node_type_expr(n: p)
-            Absent => type_variable_node(id: "callable_param")
+          let formal_selection = select_formal_for_call_argument(argument: a, argument_index: pair.first, arguments: call_args, value_params: value_params, source_indices: scope.type_env.source_indices)
+          let formal_raw = match formal_selection {
+            CallArgumentFormalSelected { formal_index: _, formal: p } => param_node_type_expr(n: p)
+            CallArgumentFormalUnavailable => type_variable_node(id: "callable_param")
           }
-          let has_formal = match formal_lookup { Present { value: _ } => true  Absent => false }
+          let has_formal = match formal_selection { CallArgumentFormalSelected { formal_index: _, formal: _ } => true  CallArgumentFormalUnavailable => false }
           let formal_param_type = substitute_generics(n: formal_raw, subst: st.subst, source_indices: scope.type_env.source_indices)
           let expected = if has_formal { Present { value: formal_param_type } } else { none }
           let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
@@ -4035,6 +4562,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           plan: call_application_plan,
           scope: scope
         )
+        let inhabitance_arg_diags = direct_call_argument_inhabitance_diags(
+          plan: call_application_plan,
+          scope: scope
+        )
         InferResult {
           typed: make_named_expr_node(
             name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
@@ -4043,7 +4574,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             span: span,
             name_span: node_name_span(n: texpr)
           ),
-          diagnostics: concat(arg_diags, concat(arg_shape_diags, concat(arg_compat_diags, structured_arg_diags)))
+          diagnostics: concat(arg_diags, concat(arg_shape_diags, concat(arg_compat_diags, concat(structured_arg_diags, inhabitance_arg_diags))))
         }
       } else {
         let first_arg_type = match typed_args |> first {
@@ -4678,8 +5209,15 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       }
       let val_result = infer_expr(texpr: val_expr, scope: scope, expected: val_expected)
       let val_typed = val_result.typed
-      let val_diags = val_result.diagnostics
       let val_type = resolved_type(n: val_typed)
+      let val_annotation_diags = if texpr.type_annotation != none && is_type_expr_annotation(n: texpr.type_annotation.value) {
+        declared_type_conformance_diags(
+          declared: texpr.type_annotation.value,
+          produced: val_type,
+          span: val_expr.span,
+          scope: scope)
+      } else { [] }
+      let val_diags = concat(val_result.diagnostics, val_annotation_diags)
       if body_expr == none {
         let let_texpr = make_named_expr_node(name: let_name, expr_data: ExprLet, children: [val_typed], inferred: Present { value: Resolved { node: val_type } }, span: span, name_span: node_name_span(n: texpr))
         InferResult {
@@ -4715,7 +5253,22 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       }
       let elem_results = elements |> map(e => infer_list_literal_element(element: e, expected: elem_expected, scope: scope))
       let typed_elements = elem_results |> map(r => r.typed)
-      let elem_diags = flat_map(elem_results, r => r.diagnostics)
+      let elem_inhabitance_diags = match elem_expected {
+        Present { value: declared_elem } =>
+          flat_map(typed_elements, te =>
+            declared_type_obligation_diags(
+              obligation: DeclaredTypeObligation {
+                position: PositionListElement,
+                declared: declared_elem,
+                produced: resolved_type(n: te),
+                span: te.span
+              },
+              scope: scope
+            )
+          )
+        Absent => []
+      }
+      let elem_diags = concat(flat_map(elem_results, r => r.diagnostics), elem_inhabitance_diags)
       let elem_type_node = if count(elem_results) > 0 {
         match first(elem_results) {
           Present { value: r } => resolved_type(n: r.typed)

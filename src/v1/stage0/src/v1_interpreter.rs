@@ -7812,12 +7812,12 @@ fn resolve_env_var_token(ctx: &InterpContext, var_name: &str) -> Option<String> 
     }
 }
 
-/// Decide whether a hermetic `Filesystem.Read` of `requested` is checkout-input access
+/// Decide whether a hermetic readonly `Filesystem` operation on `requested` is checkout-input access
 /// under `root`: the canonicalized path must sit under the canonicalized root with no
 /// `.git` or `target` component below it (branch state and build artifacts are not
 /// commit-deterministic, so they are host state, not input). Err carries the typed
 /// refusal cause; the caller never widens a failure into a canned response.
-fn hermetic_checkout_read_disposition_under(
+fn hermetic_checkout_input_disposition_under(
     root: &std::path::Path,
     requested: &str,
 ) -> Result<(), String> {
@@ -7855,10 +7855,10 @@ fn hermetic_checkout_read_disposition_under(
 
 /// The runner contract binds the process cwd to the checkout root (claim_batch and
 /// claim_executor both run from the repo root), so cwd IS the injected input root.
-fn hermetic_checkout_read_disposition(requested: &str) -> Result<(), String> {
+fn hermetic_checkout_input_disposition(requested: &str) -> Result<(), String> {
     let cwd =
         std::env::current_dir().map_err(|e| format!("checkout root (cwd) unresolvable: {e}"))?;
-    hermetic_checkout_read_disposition_under(&cwd, requested)
+    hermetic_checkout_input_disposition_under(&cwd, requested)
 }
 
 fn eval_service_call(
@@ -7897,15 +7897,15 @@ fn eval_service_call(
             .map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
 
     if ctx.execution_mode.is_hermetic() {
-        // Checkout-read carve-out: the repo checkout is the run's injected input (the
-        // commit IS the input), so a read-only Filesystem.Read of a path proven under
+        // Checkout-input carve-out: the repo checkout is the run's injected input (the
+        // commit IS the input), so a readonly Filesystem.Read or Filesystem.List of a path proven under
         // the checkout root stays a REAL read in hermetic mode — it is input access,
         // not a host effect. Everything else about the arm is fail-closed: an
         // out-of-root path, a `.git`/`target` component (branch state and build
         // artifacts are not commit-deterministic), or an unresolvable path each
         // refuse with a typed diagnostic — never a canned response.
-        if service_name == "Filesystem" && op_name == "Read" {
-            // Single-authority split (§3): a Filesystem.Read whose path the disposition
+        if service_name == "Filesystem" && matches!(op_name, "Read" | "List") {
+            // Single-authority split (§3): a readonly Filesystem operation whose path the disposition
             // CONFIRMS is a committed checkout input reads directly — the commit is the run's
             // deterministic input, so this is input access, not a host effect, and it needs no
             // fixture. Everything the disposition cannot confirm — a recorded fixture's
@@ -7922,7 +7922,7 @@ fn eval_service_call(
                     Value::Str(s) => Some(s.to_string()),
                     _ => None,
                 })
-                .map(|requested| hermetic_checkout_read_disposition(&requested).is_ok())
+                .map(|requested| hermetic_checkout_input_disposition(&requested).is_ok())
                 .unwrap_or(false);
             if confirmed_checkout_input {
                 return dispatch_service_wet(
@@ -8796,6 +8796,41 @@ fn compile_diagnostic_census_value(
         crate::cli_run::CompileDiagnosticCensus::NotRunnable(cause) => Value::Variant {
             type_name: ctx.sym("CompileDiagnosticCensus"),
             variant_name: ctx.sym("CensusNotRunnable"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
+        },
+    }
+}
+
+/// Projects a host gate receipt into the `gunbc.ci_gate` `GateReceipt` coproduct.
+/// The arms stay distinct all the way to the substrate for the same reason
+/// `compile_diagnostic_census_value`'s do: `GateNotRun` must never arrive as a clean
+/// verdict, because could-not-measure and the subject passing are different facts with
+/// different owners, and a `Bool` at this seam made them the same value.
+fn gate_receipt_value(receipt: crate::cli_run::GateReceipt, ctx: &InterpContext) -> Value {
+    let observed = |outcome: Value| Value::Variant {
+        type_name: ctx.sym("GateReceipt"),
+        variant_name: ctx.sym("GateObserved"),
+        fields: Rc::new(sorted_fields(vec![(ctx.sym("outcome"), outcome)])),
+    };
+    match receipt {
+        crate::cli_run::GateReceipt::Clean => observed(Value::Variant {
+            type_name: ctx.sym("GateOutcome"),
+            variant_name: ctx.sym("GateClean"),
+            fields: Rc::new(vec![]),
+        }),
+        crate::cli_run::GateReceipt::Failed { detail } => observed(Value::Variant {
+            type_name: ctx.sym("GateOutcome"),
+            variant_name: ctx.sym("GateFailed"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("detail"), str_value(detail))])),
+        }),
+        crate::cli_run::GateReceipt::NotApplicable { reason } => Value::Variant {
+            type_name: ctx.sym("GateReceipt"),
+            variant_name: ctx.sym("GateNotApplicable"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("reason"), str_value(reason))])),
+        },
+        crate::cli_run::GateReceipt::NotRun { cause } => Value::Variant {
+            type_name: ctx.sym("GateReceipt"),
+            variant_name: ctx.sym("GateNotRun"),
             fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
         },
     }
@@ -13861,12 +13896,9 @@ macro_rules! v1_builtin_arms {
             arm "free_call.witness_layer_roots_compile_clean_emit_check" { "witness_layer_roots_compile_clean_emit_check" } => Ok(Some(Value::Bool(
                 crate::cli_run::witness_layer_roots_compile_clean_emit_check(),
             ))),
-            arm "free_call.consume_floor_compile_clean_gate_verdict" { "consume_floor_compile_clean_gate_verdict" } => Ok(Some(Value::Bool(
-                crate::cli_run::consume_floor_compile_clean_gate_verdict(),
-            ))),
-
-            arm "free_call.consume_floor_compile_clean_gate_failure_detail" { "consume_floor_compile_clean_gate_failure_detail" } => Ok(Some(str_value(
-                crate::cli_run::consume_floor_compile_clean_gate_failure_detail(),
+            arm "free_call.install_or_consume_floor_compile_clean_gate_receipt" { "install_or_consume_floor_compile_clean_gate_receipt" } => Ok(Some(gate_receipt_value(
+                crate::cli_run::install_or_consume_floor_compile_clean_gate_receipt(),
+                $ctx,
             ))),
 
             arm "free_call.record_generated_artifact_drift_gate_failure_detail" { "record_generated_artifact_drift_gate_failure_detail" } => {
@@ -13876,8 +13908,14 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Unit))
             },
 
-            arm "free_call.consume_generated_artifact_drift_gate_failure_detail" { "consume_generated_artifact_drift_gate_failure_detail" } => Ok(Some(str_value(
-                crate::cli_run::consume_generated_artifact_drift_gate_failure_detail(),
+            arm "free_call.record_generated_artifact_drift_gate_clean" { "record_generated_artifact_drift_gate_clean" } => {
+                crate::cli_run::record_generated_artifact_drift_gate_clean();
+                Ok(Some(Value::Unit))
+            },
+
+            arm "free_call.consume_generated_artifact_drift_gate_receipt" { "consume_generated_artifact_drift_gate_receipt" } => Ok(Some(gate_receipt_value(
+                crate::cli_run::consume_generated_artifact_drift_gate_receipt(),
+                $ctx,
             ))),
 
             arm "free_call.witness_compile_clean_cli_floor_verdicts_agree" { "witness_compile_clean_cli_floor_verdicts_agree" } => Ok(Some(Value::Bool(
@@ -14762,7 +14800,7 @@ pub fn eval_profile_reset() {
 /// (v2 02_parse.dag) calls `length` on the full token stream every parse
 /// attempt; without this fast path that is an O(n) clone per attempt, an
 /// O(n^2) tax the compiled (Rust-emitted) realization never pays. Method-call
-/// `.length()` on native `Value::Str` routes through `string_length_ascii_aware`
+/// `.length()` on native `Value::Str` routes through `v1_rt::string_length`
 /// so it does not flatten strings into per-codepoint `Value`s (LIST-CARRIER-0 /
 /// materialize OOM). Free-call `length`/`string_length` already avoided
 /// `free_monoid_to_vec` on `Str` via `chars().count()`; this arm closes the
@@ -14787,7 +14825,7 @@ pub(crate) fn native_len(val: &Value) -> Option<i64> {
         // NEXT-RUNG TRIGGER: a workload that repeatedly length-queries the same non-ASCII
         // string. If that appears, the amortization argument inverts and a carried count
         // becomes correct.
-        Value::Str(s) => Some(v1_rt::string_length_ascii_aware(&s, s.is_ascii())),
+        Value::Str(s) => Some(v1_rt::string_length(s)),
         _ => None,
     }
 }
@@ -15484,7 +15522,7 @@ mod dispatch_rest_decision_tests {
 
 #[cfg(test)]
 mod shell_completion_trace_tests {
-    use super::hermetic_checkout_read_disposition_under;
+    use super::hermetic_checkout_input_disposition_under;
     use super::neutralize_workflow_commands;
     use super::render_shell_effect_begin_line_mirror;
     use super::render_shell_effect_done_line_mirror;
@@ -15662,13 +15700,17 @@ mod shell_completion_trace_tests {
     }
 
     #[test]
-    fn hermetic_checkout_read_admits_relative_path_under_root() {
+    fn hermetic_checkout_input_admits_file_and_directory_under_root() {
         let dir =
             std::env::temp_dir().join(format!("hermetic-carveout-admit-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("dag/std")).unwrap();
         std::fs::write(dir.join("dag/std/x.dag"), "module x\n").unwrap();
         assert_eq!(
-            hermetic_checkout_read_disposition_under(&dir, "dag/std/x.dag"),
+            hermetic_checkout_input_disposition_under(&dir, "dag/std/x.dag"),
+            Ok(())
+        );
+        assert_eq!(
+            hermetic_checkout_input_disposition_under(&dir, "dag/std"),
             Ok(())
         );
         std::fs::remove_dir_all(&dir).ok();
@@ -15679,12 +15721,12 @@ mod shell_completion_trace_tests {
         let dir =
             std::env::temp_dir().join(format!("hermetic-carveout-escape-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let escape = hermetic_checkout_read_disposition_under(&dir, "../outside.txt");
+        let escape = hermetic_checkout_input_disposition_under(&dir, "../outside.txt");
         assert!(
             escape.is_err(),
             "`..` traversal must refuse, got {escape:?}"
         );
-        let absolute = hermetic_checkout_read_disposition_under(&dir, "/etc/hostname");
+        let absolute = hermetic_checkout_input_disposition_under(&dir, "/etc/hostname");
         assert!(
             absolute.is_err(),
             "absolute out-of-root path must refuse, got {absolute:?}"
@@ -15700,13 +15742,13 @@ mod shell_completion_trace_tests {
         std::fs::create_dir_all(dir.join("target")).unwrap();
         std::fs::write(dir.join(".git/HEAD"), "ref: x\n").unwrap();
         std::fs::write(dir.join("target/receipt.txt"), "r\n").unwrap();
-        let git = hermetic_checkout_read_disposition_under(&dir, ".git/HEAD");
+        let git = hermetic_checkout_input_disposition_under(&dir, ".git/HEAD");
         assert!(
             git.err()
                 .is_some_and(|e| e.contains("not commit-deterministic")),
             ".git read must refuse as non-commit-deterministic"
         );
-        let target = hermetic_checkout_read_disposition_under(&dir, "target/receipt.txt");
+        let target = hermetic_checkout_input_disposition_under(&dir, "target/receipt.txt");
         assert!(
             target
                 .err()

@@ -21,7 +21,6 @@ import gunbc.doc_graph_roots {
   hand_authored_doc_binds,
   hand_authored_binds_to_keyed_rows,
   hand_authored_bind_key_eq,
-  hand_authored_bind_is_cited_symbol_resolution_control,
   HandAuthoredDocBind, PlanDoc,
   HandAuthoredDocBindsBuilt,
   HandAuthoredDocBindsDuplicateKey,
@@ -169,35 +168,23 @@ test fn doc_graph_universe_is_nonempty() -> Bool {
   return doc_graph_doc_count() > 0
 }
 
-// Structural, not textual. These three rows are permanent discriminating
-// evidence for feature:cited-symbol-resolution: a climb deletes production
-// machinery and KEEPS the evidence (DESIGN 4b(4)). They previously carried
-// PlanRetiresWhen with a description saying "never retires" -- the coproduct
-// contradicting its own payload. Asserting the arm catches that directly;
-// grepping the description for the word "permanent" would not.
-test fn cited_symbol_discriminating_controls_have_no_retirement() -> Bool {
+// EVERY hand-authored document bind retires, with no exempt sub-population.
+// The paired witnesses that stood here -- one asserting three slug-matched rows
+// carried PlanHasNoRetirement, one asserting the rest did not -- had a subject
+// that has dissolved: the three cited-symbol discriminating controls are machine
+// evidence rather than documents and moved to v2.lens.cited_symbol_resolution as
+// cited_symbol_planted_controls on 2026-08-25 (operator ruling), taking the
+// slug-matched exemption with them. The rule is now stated over the whole
+// population, which is strictly stronger than the two-sided form it replaces:
+// re-authoring a non-retiring bind here reds, and there is no filter it can hide
+// behind. PlanHasNoRetirement itself is untouched -- gunbc.plan still represents
+// a plan carrying no retirement metadata, and keeps its own control for that arm.
+test fn hand_authored_doc_binds_all_carry_a_retirement() -> Bool {
   match hand_authored_doc_binds_population() {
     HandAuthoredDocBindsDuplicateKey { key: _, first: _, duplicate: _ } => false
     HandAuthoredDocBindsBuilt { binds: binds } =>
       all(
-        filter(binds, b => hand_authored_bind_is_cited_symbol_resolution_control(b: b)),
-        b => match b.dissolution {
-          PlanHasNoRetirement => true
-          PlanRetiresWhen { condition: _ } => false
-        }
-      )
-  }
-}
-
-// Positive control on the same projection: production rows DO retire, so the
-// witness above cannot pass by the filter being empty or by every row lacking a
-// retirement.
-test fn production_doc_binds_all_carry_a_retirement() -> Bool {
-  match hand_authored_doc_binds_population() {
-    HandAuthoredDocBindsDuplicateKey { key: _, first: _, duplicate: _ } => false
-    HandAuthoredDocBindsBuilt { binds: binds } =>
-      all(
-        filter(binds, b => !hand_authored_bind_is_cited_symbol_resolution_control(b: b)),
+        binds,
         b => match b.dissolution {
           PlanRetiresWhen { condition: _ } => true
           PlanHasNoRetirement => false

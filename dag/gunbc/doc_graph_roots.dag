@@ -25,7 +25,7 @@ import std.keyed_roster {
   keyed_roster_build,
 }
 
-data doc_graph_roots_note: String = "The single authority for doc-graph roots. Registered plans derive theirs (a PlanArtifact registration IS the document binding); hand-authored docs declare typed HandAuthoredDocBind rows — symbolic identity (home + slug, the same key space as Plan.slug; the file path is a derived storage projection, never stored), the .dag work the doc binds to, and its PlanRetirement. Most rows retire: the condition names the change that deletes the row. Some do NOT -- the cited-symbol-resolution discriminating controls (hand_authored_bind_is_cited_symbol_resolution_control) are permanent evidence and carry PlanHasNoRetirement, because a climb deletes production machinery and keeps the discriminating evidence (DESIGN 4b(4)). A permanent row stating 'never retires' inside an unbound condition would be a model contradiction: the coproduct would say retires-when while the payload said never. No prose 'bind:' scan remains: an unbound doc is an orphan, loudly; a hand-authored slug colliding with a registered plan slug is a red (the row outlived its migration)."
+data doc_graph_roots_note: String = "The single authority for doc-graph roots. Registered plans derive theirs (a PlanArtifact registration IS the document binding); hand-authored docs declare typed HandAuthoredDocBind rows — symbolic identity (home + slug, the same key space as Plan.slug; the file path is a derived storage projection, never stored), the .dag work the doc binds to, and its PlanRetirement. EVERY ROW RETIRES: the condition names the change that deletes the row. It was not always so -- three cited-symbol-resolution discriminating controls sat here carrying PlanHasNoRetirement, and a slug-matched predicate subtracted them again from document production. They were never documents: they are machine discriminators for v2.lens.cited_symbol_resolution, and after the 2026-08-24 bankruptcy deleted docs/probes they were document binds naming no document. They moved to that lens as a typed control carrier on 2026-08-25 (operator ruling), so the exemption, the predicate and the non-retiring arm all left with them. A bind that does not retire now has no home here. No prose 'bind:' scan remains: an unbound doc is an orphan, loudly; a hand-authored slug colliding with a registered plan slug is a red (the row outlived its migration)."
 
 fn plan_doc_graph_roots() -> List<String> {
   map(all_plans, p => plan_path(p: p))
@@ -59,29 +59,11 @@ fn hand_authored_works_refs_all_carry_symbols() -> Bool {
   }
 }
 
-fn hand_authored_bind_is_cited_symbol_resolution_control(b: HandAuthoredDocBind) -> Bool {
-  b.slug == "g1-cited-symbol-control-declaration-absent"
-    || b.slug == "g1-cited-symbol-control-module-absent"
-    || b.slug == "g1-cited-symbol-control-field-absent"
-}
-
-fn hand_authored_production_doc_binds() -> List<HandAuthoredDocBind> {
-  match hand_authored_doc_binds_population() {
-    HandAuthoredDocBindsBuilt { binds: binds } =>
-      filter(binds, b => !hand_authored_bind_is_cited_symbol_resolution_control(b: b))
-    HandAuthoredDocBindsDuplicateKey { key: _, first: _, duplicate: _ } => []
-  }
-}
-
 fn hand_authored_doc_declaration_refs() -> List<DeclarationRef> {
   list_flat_map(xs: hand_authored_doc_binds(), f: fn(b) { hand_authored_bind_works(b: b) })
 }
 
-fn hand_authored_all_production_doc_works() -> List<DeclarationRef> {
-  list_flat_map(xs: hand_authored_production_doc_binds(), f: fn(b) { hand_authored_bind_works(b: b) })
-}
-
-data outside_index_works_note: String = "FOUR DOCUMENTS BIND TO THE WITNESS THAT IS THEIR EVIDENCE, AND NO RESOLVER CAN REACH IT. v2.std.decl_index decl_facts does not index declarations in test .dag files — deliberately, and gunbc.ci_layer_roots records that exclusion in the row explaining why a second walk must not repeat it — so a reference into a witness module refuses as DeclarationRefDeclarationAbsent no matter how correct it is. These four references are correct: the declarations exist, and the citation is the honest one to make, because the witness IS what the document binds to.\n\nMEASURED, WITH A POSITIVE CONTROL, so this is a cause and not an assumption (2026-08-21, BuildBuddy). All four files report indexed_in_decl_facts=false and module_declared=true, while src/v2/lens/cited_symbol_resolution.dag and dag/gunbc/doc_graph_roots.dag — the controls — report true and true. The src/v2 root is therefore walked; the exclusion is on the TEST file, not the root, which is why the src/v2/test row belongs to the same class as the three under dag/test/claim rather than to a second one.\n\nWHAT THIS IS NOT: an exemption list. The rows carry std.decl_ref CitationIndexCoverage — one axis, the same one gunbc.lambda_argument_typing_gate and gunbc.list_membership_operation_gap carry, not a second shape — and the population is COUNTED rather than silently subtracted. The dodge this admits in principle, marking a resolvable reference outside-index to escape a red, is refused by execution rather than by review: v2.lens.cited_symbol_resolution's report REFUSES a row marked outside-index that actually resolves, and refuses a count disagreement, and that report runs on every CI run as claim_executor --required-cited-symbol, its own required check in the cited-symbol job of .github/workflows/witnesses.yml (NOT a --required-ci phase; that mode stays at three). A marking that lies fails the run that made it.\n\nDISSOLVE-ON: decl_facts covers test modules, or a witness-declaration index becomes reachable from the resolver — at which point these rows delete and the four references join the ordinary citable population."
+data outside_index_works_note: String = "FOUR DOCUMENTS BIND TO THE WITNESS THAT IS THEIR EVIDENCE, AND NO RESOLVER CAN REACH IT. v2.std.decl_index decl_facts does not index declarations in test .dag files — deliberately, and gunbc.ci_layer_roots records that exclusion in the row explaining why a second walk must not repeat it — so a reference into a witness module refuses as DeclarationRefDeclarationAbsent no matter how correct it is. These four references are correct: the declarations exist, and the citation is the honest one to make, because the witness IS what the document binds to.\n\nMEASURED, WITH A POSITIVE CONTROL, so this is a cause and not an assumption (2026-08-21, BuildBuddy). All four files report indexed_in_decl_facts=false and module_declared=true, while src/v2/lens/cited_symbol_resolution.dag and dag/gunbc/doc_graph_roots.dag — the controls — report true and true. The src/v2 root is therefore walked; the exclusion is on the TEST file, not the root, which is why the src/v2/test row belongs to the same class as the three under dag/test/claim rather than to a second one.\n\nWHAT THIS IS NOT: an exemption list. The rows carry std.decl_ref CitationIndexCoverage — one axis, the same one gunbc.lambda_argument_typing_gate and gunbc.list_membership_operation_gap carry, not a second shape — and the population is COUNTED rather than silently subtracted. The dodge this admits in principle, marking a resolvable reference outside-index to escape a red, is refused by execution rather than by review: v2.lens.cited_symbol_resolution's report REFUSES a row marked outside-index that actually resolves, and refuses a count disagreement, and that report REFUSES BY EXECUTION rather than by review whenever it is run. WHAT IT IS NOT RUN BY, corrected 2026-08-25: nothing on a push. This sentence read \"runs on every CI run as claim_executor --required-cited-symbol, its own required check in the cited-symbol job of .github/workflows/witnesses.yml\", and that was true when written and false from 2026-08-23, when the operator directive deleted the cited-symbol job. The flag still exists and no workflow invokes it; DESIGN carries the drop to mitigatable. A marking that lies fails the run that made it -- and no run is made.\n\nDISSOLVE-ON: decl_facts covers test modules, or a witness-declaration index becomes reachable from the resolver — at which point these rows delete and the four references join the ordinary citable population."
 
 type OutsideIndexWork {
   reference: DeclarationRef,
@@ -126,14 +108,7 @@ fn declaration_ref_is_outside_index(r: DeclarationRef) -> Bool {
 }
 
 fn hand_authored_production_doc_declaration_refs() -> List<DeclarationRef> {
-  filter(hand_authored_all_production_doc_works(), r => !declaration_ref_is_outside_index(r: r))
-}
-
-fn hand_authored_cited_symbol_control_declaration_refs() -> List<DeclarationRef> {
-  list_flat_map(
-    xs: filter(hand_authored_doc_binds(), b => hand_authored_bind_is_cited_symbol_resolution_control(b: b)),
-    f: fn(b) { hand_authored_bind_works(b: b) }
-  )
+  filter(hand_authored_doc_declaration_refs(), r => !declaration_ref_is_outside_index(r: r))
 }
 
 fn hand_authored_works_resolution_pool_roots() -> List<String> {
@@ -1635,27 +1610,6 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "test.claim.claude_sdk_parser_drop_live_witness", decl_name: "witness_wet_receipt_control_response_parser_drop_holds", field: WholeDeclaration },
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "gunbc.claude_agent_sdk_press enrolls the paired probe as a typed witness subsuming this hand runner (run-paired-probe.mjs dissolve-on header); then this bind deletes with the md") },
-  },
-  HandAuthoredDocBind {
-    home: ProbeDoc,
-    slug: "g1-cited-symbol-control-declaration-absent",
-    primary_work: DeclarationRef { module_path: "v2.std.node", decl_name: "G1_planted_declaration_absent_control_RED", field: WholeDeclaration },
-    additional_works: [],
-    dissolution: PlanHasNoRetirement,
-  },
-  HandAuthoredDocBind {
-    home: ProbeDoc,
-    slug: "g1-cited-symbol-control-module-absent",
-    primary_work: DeclarationRef { module_path: "synthetic.g1_planted_module_absent_control_RED", decl_name: "any", field: WholeDeclaration },
-    additional_works: [],
-    dissolution: PlanHasNoRetirement,
-  },
-  HandAuthoredDocBind {
-    home: ProbeDoc,
-    slug: "g1-cited-symbol-control-field-absent",
-    primary_work: DeclarationRef { module_path: "v2.std.node", decl_name: "NodeKind", field: NamedField { field_name: "G1_planted_field_absent_control_RED" } },
-    additional_works: [],
-    dissolution: PlanHasNoRetirement,
   },
   HandAuthoredDocBind {
     home: PlanDoc,

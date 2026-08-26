@@ -23,11 +23,12 @@ import gunbc.scm.load_standing {
   standing_may_supersede_generation, standing_loaded,
 }
 import gunbc.scm.json_member { MemberReadSubjectNotObject }
+import gunbc.scm.target_reference { TargetReferenceNotOneArm }
 import gunbc.scm.commit_closure_json_v2 {
   ClosureDocRefusal, ClosureDocFormatUnrecognized, ClosureDocObjectCollision,
   ClosureDocMemberReadRefused, ClosureDocUnknownKindTag,
   ClosureDocUnexpectedMember, ClosureDocEnvelopeMembers, ClosureDocEdgeTargetUnresolved,
-  ClosureDocTargetNotOneArm,
+  ClosureDocTargetReferenceRefused,
   closure_document_load_standing, loaded_closure_standing,
 }
 
@@ -133,7 +134,9 @@ test fn an_unresolved_position_is_malformed_not_fetchable() -> Bool {
     b: LoadDocumentMalformed
   )
     && standing_eq(
-      a: closure_document_load_standing(cause: ClosureDocTargetNotOneArm { found: 2 }),
+      a: closure_document_load_standing(
+        cause: ClosureDocTargetReferenceRefused { cause: TargetReferenceNotOneArm { found: 2 } }
+      ),
       b: LoadDocumentMalformed
     )
 }

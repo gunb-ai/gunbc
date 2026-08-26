@@ -1,0 +1,18 @@
+module test.fixture.borrowed_census_collision_entry
+
+// DECLARED RUNG DROP (DESIGN 4b(3)). Previous rung: the required floor automatically ingested
+// these fixtures and refused them on every run; run 32910237875 verified both the ambiguous
+// collision diagnostic and the distinct not-found diagnostic. Temporary rung: these eight
+// re-runnable fixture modules live outside the Accepted dag/src-v2 corpus and have no scheduled
+// consumer. Reason: gunbc.compile_diagnostic_census accepts one synthetic module and cannot
+// express this two-declarer subject. Bounded population: borrowed_census_collision_one,
+// borrowed_census_collision_two, borrowed_census_collision_caller,
+// borrowed_census_collision_entry, borrowed_census_unique_provider,
+// borrowed_census_unique_caller, borrowed_census_unique_entry, and
+// borrowed_census_missing_entry. Restoration trigger: the DESIGN-named multi-module compile
+// fixture lands and enrolls all three arms; then these inputs move under it and this declaration
+// deletes. Failed-floor receipt: the prior comment said these files were not floor-enrolled, but
+// no mechanism implemented that intent; annotations do not change admission.
+import test.fixture.borrowed_census_collision_one
+import test.fixture.borrowed_census_collision_two
+import test.fixture.borrowed_census_collision_caller

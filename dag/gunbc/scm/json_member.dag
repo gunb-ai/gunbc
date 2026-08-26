@@ -32,6 +32,7 @@ import extdeps.languages.json.emit {
   JsonString,
   JsonArray,
   JsonObject,
+  JsonKeyValue,
 }
 
 // FOUR DISTINCT FACTS, NEVER AN ABSENT VALUE. json_object_unique_member already separates a missing
@@ -94,5 +95,49 @@ fn read_string_member(v: JsonValue, key: String) -> MemberRead {
     MemberFailed { cause: c } => MemberFailed { cause: c }
     MemberArray { elements: _ } => MemberFailed { cause: MemberReadWrongShape { key: key } }
     MemberObject { value: _ } => MemberFailed { cause: MemberReadWrongShape { key: key } }
+  }
+}
+
+// THE ALLOWED-KEY SET IS A MEMBER-READ QUESTION, so it is homed beside the member reader rather
+// than inside any one format. Two formats now ask it -- the closure document about its envelope and
+// record shapes, the target reference about its two arms -- and each wraps the answer in its OWN
+// refusal with its OWN context. What is shared is only "which key in this object is not in the
+// allowed set"; what is NOT shared is what that means, which is why this returns the key and never a
+// refusal. Duplicating the walk instead would put one traversal under two authorities, which is the
+// split this module was extracted to end.
+fn member_key_allowed(allowed: List<String>, key: String) -> Bool {
+  fold(allowed, init: false, f: fn(acc, a) { acc || a == key })
+}
+
+fn unexpected_member_step(found: String?, m: JsonKeyValue, allowed: List<String>) -> String? {
+  match found {
+    Present { value: _ } => found
+    Absent =>
+      if member_key_allowed(allowed: allowed, key: m.key) {
+        none
+      } else {
+        Present { value: m.key }
+      }
+  }
+}
+
+// A non-object subject answers `none` here, and that is not a fail-open: every caller reads a
+// required member from the same subject, and read_member refuses a non-object subject outright.
+// Answering an unexpected-member refusal for something that is not an object at all would report the
+// wrong cause for the wrong defect.
+//
+// The non-object arms are enumerated rather than collapsed to `_`, so a new JsonValue shape has to
+// state its own answer here instead of silently inheriting `none`.
+fn unexpected_member_key(v: JsonValue, allowed: List<String>) -> String? {
+  match v {
+    JsonObject { members: ms } =>
+      fold(ms, init: none, f: fn(found, m) {
+        unexpected_member_step(found: found, m: m, allowed: allowed)
+      })
+    JsonNull => none
+    JsonBool { value: _ } => none
+    JsonNumber { lexeme: _ } => none
+    JsonString { value: _ } => none
+    JsonArray { elements: _ } => none
   }
 }

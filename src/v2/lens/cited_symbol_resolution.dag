@@ -1,7 +1,6 @@
 module v2.lens.cited_symbol_resolution
 
 import gunbc.doc_graph_roots {
-  hand_authored_cited_symbol_control_declaration_refs,
   hand_authored_outside_index_declaration_refs,
   hand_authored_doc_declaration_refs,
   hand_authored_production_doc_declaration_refs,
@@ -10,7 +9,7 @@ import gunbc.doc_graph_roots {
 import gunbc.documentary_refs { generated_document_declaration_refs }
 import gunbc.lambda_argument_typing_gate { lambda_typing_gate_declaration_refs }
 import gunbc.list_membership_operation_gap { list_membership_gap_declaration_refs }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, NamedField, WholeDeclaration }
 import std.disposition { SubstrateMandatoryTag }
 import v2.lens.common.construction_justification {
   ConstructionJustification,
@@ -31,10 +30,76 @@ import v2.std.decl_ref_resolution {
   DeclarationRefFieldAbsent,
 }
 
-data cited_symbol_resolution_law: String = "feature:cited-symbol-resolution — every typed DeclarationRef enrolled in hand_authored_production_doc_declaration_refs (HandAuthoredDocBind primary_work + additional_works, excluding permanent g1-cited-symbol-control-* probe rows) resolves to exactly one decl_facts row over a declared module, or refuses with a typed five-arm result. Population is structural, not corpus text scan. Permanent planted controls in hand_authored_cited_symbol_control_declaration_refs stay enrolled for mutation witnesses — they never retire when production goes green (operator ruling 2026-08-03, DESIGN 4b(4)). Resolution semantics live in v2.std.decl_ref_resolution.resolve_declaration_ref over decl_facts + module_declaration_facts — single authority, no per-kind fork. dissolve-on: substrate refuses unwritable DeclarationRef at construction; enrollment widens to every structural DeclarationRef carrier when the Node-tree reader lands."
+data cited_symbol_resolution_law: String = "feature:cited-symbol-resolution — every typed DeclarationRef enrolled in hand_authored_production_doc_declaration_refs (HandAuthoredDocBind primary_work + additional_works) resolves to exactly one decl_facts row over a declared module, or refuses with a typed five-arm result. Population is structural, not corpus text scan. The permanent planted controls live HERE, in cited_symbol_planted_controls, one typed variant per refusal arm — they are machine evidence for this lens, not documents, and they never retire when production goes green (operator ruling 2026-08-03, DESIGN 4b(4)). Resolution semantics live in v2.std.decl_ref_resolution.resolve_declaration_ref over decl_facts + module_declaration_facts — single authority, no per-kind fork. dissolve-on: substrate refuses unwritable DeclarationRef at construction; enrollment widens to every structural DeclarationRef carrier when the Node-tree reader lands."
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+}
+
+data cited_symbol_planted_control_home_note: String = "THESE THREE CONTROLS WERE MODELLED AS DOCUMENTS UNTIL 2026-08-25, AND THAT IS WHY THEY MOVED. They lived in gunbc.doc_graph_roots as HandAuthoredDocBind rows homed at docs/probes/g1-cited-symbol-control-*.md with PlanHasNoRetirement, and the document-production projection had to carry a slug-matched filter (hand_authored_bind_is_cited_symbol_resolution_control) to subtract them again. The 2026-08-24 measurement bankruptcy (d3bebd0072) deleted docs/probes wholesale, so from that day the three rows declared a home that does not exist -- a document bind naming no document, kept alive only by the exemption written to work around it. They are machine discriminators for this lens, so their home is this lens (operator ruling 2026-08-25: rehome to a dedicated typed control carrier, delete the orphan doc binds atomically afterward, do not restore the probe documents).\n\nWHAT THE TYPE BUYS OVER THREE BARE REFS: the variant NAMES the refusal arm the reference must produce, so cited_symbol_planted_control_arm_disagreements can check that each control fails in the SPECIFIC way its variant claims. Three refs that merely fail to resolve are three copies of one control; three refs that fail in three different arms are three controls. The identity is carried on the row rather than derived from position, so a count check cannot pass by one identity being replaced by a duplicate of another.\n\nWHAT THIS DOES NOT DO: it does not restore enforcement. The cited-symbol census was removed from CI on 2026-08-23 by operator directive -- --required-cited-symbol still exists as a flag and no workflow invokes it, and DESIGN carries that as a declared rung drop to mitigatable. This carrier preserves the EVIDENCE across the move; nothing here runs on a push."
+
+type CitedSymbolPlantedControl
+  = CitedSymbolDeclarationAbsentControl { identity: String, reference: DeclarationRef }
+  | CitedSymbolModuleAbsentControl { identity: String, reference: DeclarationRef }
+  | CitedSymbolFieldAbsentControl { identity: String, reference: DeclarationRef }
+
+data cited_symbol_planted_controls: List<CitedSymbolPlantedControl> = [
+  CitedSymbolDeclarationAbsentControl {
+    identity: "g1-cited-symbol-control-declaration-absent",
+    reference: DeclarationRef {
+      module_path: "v2.std.node",
+      decl_name: "G1_planted_declaration_absent_control_RED",
+      field: WholeDeclaration,
+    },
+  },
+  CitedSymbolModuleAbsentControl {
+    identity: "g1-cited-symbol-control-module-absent",
+    reference: DeclarationRef {
+      module_path: "synthetic.g1_planted_module_absent_control_RED",
+      decl_name: "any",
+      field: WholeDeclaration,
+    },
+  },
+  CitedSymbolFieldAbsentControl {
+    identity: "g1-cited-symbol-control-field-absent",
+    reference: DeclarationRef {
+      module_path: "v2.std.node",
+      decl_name: "NodeKind",
+      field: NamedField { field_name: "G1_planted_field_absent_control_RED" },
+    },
+  },
+]
+
+fn cited_symbol_planted_control_identity(c: CitedSymbolPlantedControl) -> String {
+  match c {
+    CitedSymbolDeclarationAbsentControl { identity: i, reference: _ } => i
+    CitedSymbolModuleAbsentControl { identity: i, reference: _ } => i
+    CitedSymbolFieldAbsentControl { identity: i, reference: _ } => i
+  }
+}
+
+fn cited_symbol_planted_control_reference(c: CitedSymbolPlantedControl) -> DeclarationRef {
+  match c {
+    CitedSymbolDeclarationAbsentControl { identity: _, reference: r } => r
+    CitedSymbolModuleAbsentControl { identity: _, reference: r } => r
+    CitedSymbolFieldAbsentControl { identity: _, reference: r } => r
+  }
+}
+
+fn cited_symbol_planted_control_expected_arm(c: CitedSymbolPlantedControl) -> String {
+  match c {
+    CitedSymbolDeclarationAbsentControl { identity: _, reference: _ } => "DECLARATION-ABSENT"
+    CitedSymbolModuleAbsentControl { identity: _, reference: _ } => "MODULE-ABSENT"
+    CitedSymbolFieldAbsentControl { identity: _, reference: _ } => "FIELD-ABSENT"
+  }
+}
+
+fn cited_symbol_planted_control_identities() -> List<String> {
+  map(cited_symbol_planted_controls, c => cited_symbol_planted_control_identity(c: c))
+}
+
+fn cited_symbol_planted_control_declaration_refs() -> List<DeclarationRef> {
+  map(cited_symbol_planted_controls, c => cited_symbol_planted_control_reference(c: c))
 }
 
 data cited_symbol_planted_ambiguous_control_ref: DeclarationRef = DeclarationRef {
@@ -60,7 +125,7 @@ data cited_symbol_planted_ambiguous_control_facts: List<DeclFact> = [
   },
 ]
 
-data cited_symbol_population_widened_note: String = "THE DENOMINATOR NOW INCLUDES GENERATED-DOCUMENT REFERENCES, and that widening is the entire mechanism change. Before it, this lens counted hand-authored binds only, so a system named inside gunbc.design_document could be renamed or deleted and every required check stayed green while the same system named in a hand-authored document reddened -- one class of documentary reference enforced, an adjacent one silently exempt. The population widened rather than a second resolver being written: v2.std.decl_ref_resolution stays the single authority for what resolving a reference means, because a second algorithm that agrees today is a fork that disagrees later.\n\nWHAT WIDENS AND WHAT DOES NOT: production references from both sources are counted here. The permanent g1-cited-symbol-control-* probe rows stay excluded exactly as before, because they are planted to refuse and folding them in would make this count nonzero by construction."
+data cited_symbol_population_widened_note: String = "THE DENOMINATOR NOW INCLUDES GENERATED-DOCUMENT REFERENCES, and that widening is the entire mechanism change. Before it, this lens counted hand-authored binds only, so a system named inside gunbc.design_document could be renamed or deleted and every required check stayed green while the same system named in a hand-authored document reddened -- one class of documentary reference enforced, an adjacent one silently exempt. The population widened rather than a second resolver being written: v2.std.decl_ref_resolution stays the single authority for what resolving a reference means, because a second algorithm that agrees today is a fork that disagrees later.\n\nWHAT WIDENS AND WHAT DOES NOT: production references from both sources are counted here. The permanent planted controls stay outside this count exactly as before, because they are planted to refuse and folding them in would make this count nonzero by construction. They are no longer excluded by a slug-matched filter over a document population -- they are their own typed carrier below, so exclusion is now the absence of an edge rather than a subtraction someone must remember to perform."
 
 data cited_symbol_roster_registry_widening_note: String = "THE DENOMINATOR NOW ALSO INCLUDES gunbc.roster_registry, and this widening was bought by a live defect rather than proposed for symmetry. A RosterRegistration carries typed DeclarationRefs — the roster it names, and for a ByDerivation row the predicate it claims computes membership — and nothing resolved either of them. gunbc.stage0_emit_plan_generated generated_stage0_files stayed registered ByDerivation from gunbc.stage0_emit_plan generated_stage0_files_from_emission_plan for as long as that module has been deleted; the registry's own lens stayed green throughout, because it checks the membership SHAPE and a ByDerivation arm is a standard shape whatever its payload names. That is the DESIGN section 3 stale-citation class living inside a structural carrier instead of inside prose, which is why the remedy is enrollment here and not more review diligence: the reference is an ordinary reference the substrate can already resolve.\n\nWHY THIS IS THE LAW'S OWN NEXT STEP RATHER THAN A NEW SCOPE: cited_symbol_resolution_law dissolves on 'enrollment widens to every structural DeclarationRef carrier'. The registry is such a carrier, so it enrolls under the existing resolver — v2.std.decl_ref_resolution stays the single authority for what resolving a reference means, and no second algorithm is written. WHAT DOES NOT WIDEN: the synthetic refs in v2.test.claim.roster_registry_test are constructed inside test functions and are not members of the live roster_registry data, so they never reach this population; the permanent planted controls stay excluded exactly as before."
 
@@ -97,15 +162,61 @@ fn cited_symbol_enrolled_refusal_count() -> Int {
 fn cited_symbol_planted_control_refusal_count() -> Int {
   let pool = hand_authored_works_resolution_pool_roots()
   cited_declaration_ref_refusal_count(
-    refs: hand_authored_cited_symbol_control_declaration_refs(),
+    refs: cited_symbol_planted_control_declaration_refs(),
     facts: decl_facts(pool_roots: pool),
     modules: module_declaration_facts_live(pool_roots: pool)
   )
 }
 
-data cited_symbol_required_check_note: String = "THE LENS EXECUTES ON EVERY CI RUN AS ITS OWN REQUIRED CHECK, NOT AS A WITNESS, AND THE REASON IS STRUCTURAL RATHER THAN BUDGETARY. Until 2026-08-21 the live-corpus claim was carried only by cited_symbol_resolution_lens_is_green_on_live_corpus in dag/test/claim/long/, whose whole file is classified OfflineLocalRecipe — so nothing executed it, and it was RED on unmodified main with 27 refusing production references while every required check stayed green. The refusals were real: the floor cut, the regen cut and the falsifier deletion each removed a module while its citations stayed authored, which is precisely the DESIGN section 3 stale-citation class this lens exists to make decidable.\n\nWHY NOT THE REQUIRED FLOOR. run_required_floor admits an identity only if its module is outside the long home AND the entry does not read the live tree; the second arm is the fatal one here, because reading the live corpus IS this census's subject — decl_facts and module_declaration_facts over compile_clean_source_roots. Relocating the file moves the identity from DeclinedLongModule to DeclinedLiveTree and never to Planned (measured at identity grain in test.claim.transport_script_wall_compile_red). No amount of making it cheaper changes that, so the floor was never the route.\n\nWHAT THE ROUTE IS. claim_executor --required-cited-symbol, its own top-level mode, invoked by the cited-symbol JOB in .github/workflows/witnesses.yml — a GitHub check-run is a job rather than a step, so a separately named required check must be a second job. It is NOT a phase of --required-ci: the operator narrowed that mode to three phases on 2026-08-21 (#8791) and this rework leaves that invocation byte-unchanged. An earlier revision of this note said phase, and it was true when written; the separate-check ruling falsified it, and a stale mechanism claim inside the carrier whose lens exists to catch stale citations is the failure this file is named for. Being a mode rather than a claim is what puts it outside both the per-claim safety deadline and the floor's live-tree arm. The sixteen witnesses stay where they are: they are the discriminating mechanism evidence (planted controls, five-arm refusals, the ambiguity fixture), and DESIGN 4b(4) keeps them enrolled rather than retiring them when production goes green."
+fn cited_symbol_planted_control_arm_agrees(
+  c: CitedSymbolPlantedControl,
+  facts: List<DeclFact>,
+  modules: List<ModuleDeclarationFact>
+) -> Bool {
+  cited_symbol_reference_refusal_arm(
+    ref: cited_symbol_planted_control_reference(c: c),
+    facts: facts,
+    modules: modules
+  ) == cited_symbol_planted_control_expected_arm(c: c)
+}
 
-data cited_symbol_outside_index_guard_note: String = "THE GUARD AGAINST THE ONE DODGE THE OUTSIDE-INDEX DISPOSITION ADMITS, AND IT EXECUTES RATHER THAN BEING REVIEWED. gunbc.doc_graph_roots marks four references as outside the declaration index because decl_facts does not index test modules; a counted, typed disposition is the sanctioned remedy, but nothing in the marking itself stops an author from marking a RESOLVABLE reference outside-index to escape a red — at which point the population silently shrinks and the census reports green over a reference nobody checked.\n\nSo the report below refuses such a row by execution: a reference marked outside-index that actually RESOLVES comes back as OUTSIDE-INDEX-RESOLVES and fails the phase. A count assertion alone would not catch it (wise-boar-649 measured exactly that: their counting witness stayed green under a two-way swap while the refusal-checking witness went red), and a count is implied here anyway — under the roster shape the only way the marked population can shrink is a row that resolves, so a second count row would be a second representation of one fact.\n\nWHY IT IS HERE AND NOT IN A WITNESS: every witness carrying this lens's live-corpus claim sits in a file classified OfflineLocalRecipe and executes nowhere, which is the defect this change exists to close. In the phase it runs on every CI run."
+fn cited_symbol_planted_control_disagreement_row(
+  c: CitedSymbolPlantedControl,
+  facts: List<DeclFact>,
+  modules: List<ModuleDeclarationFact>
+) -> String {
+  concat(
+    cited_symbol_planted_control_identity(c: c),
+    concat(
+      concat(" expected ", cited_symbol_planted_control_expected_arm(c: c)),
+      concat(
+        " got ",
+        cited_symbol_reference_refusal_arm(
+          ref: cited_symbol_planted_control_reference(c: c),
+          facts: facts,
+          modules: modules
+        )
+      )
+    )
+  )
+}
+
+fn cited_symbol_planted_control_arm_disagreements() -> List<String> {
+  let pool = hand_authored_works_resolution_pool_roots()
+  let facts = decl_facts(pool_roots: pool)
+  let modules = module_declaration_facts_live(pool_roots: pool)
+  map(
+    filter(
+      cited_symbol_planted_controls,
+      c => !cited_symbol_planted_control_arm_agrees(c: c, facts: facts, modules: modules)
+    ),
+    c => cited_symbol_planted_control_disagreement_row(c: c, facts: facts, modules: modules)
+  )
+}
+
+data cited_symbol_required_check_note: String = "THE LENS NO LONGER EXECUTES ON ANY CI RUN, AND THE REST OF THIS ROW IS THE ACCOUNT OF THE CHECK IT USED TO BE. Corrected 2026-08-25: on 2026-08-23 an operator directive deleted the cited-symbol JOB from .github/workflows/witnesses.yml. --required-cited-symbol survives as a flag that no workflow invokes, and DESIGN carries that as a declared rung drop from mechanically preventable to mitigatable -- the rule is review diligence now. Everything below describes why the check took the shape it took, in the past tense it has earned; a reader must not take it as evidence that anything guards this class on a push, which is the rung inflation DESIGN 4b(1) calls worse than sitting low.\n\nTHE LENS EXECUTED ON EVERY CI RUN AS ITS OWN REQUIRED CHECK, NOT AS A WITNESS, AND THE REASON WAS STRUCTURAL RATHER THAN BUDGETARY. Until 2026-08-21 the live-corpus claim was carried only by cited_symbol_resolution_lens_is_green_on_live_corpus in dag/test/claim/long/, whose whole file is classified OfflineLocalRecipe — so nothing executed it, and it was RED on unmodified main with 27 refusing production references while every required check stayed green. The refusals were real: the floor cut, the regen cut and the falsifier deletion each removed a module while its citations stayed authored, which is precisely the DESIGN section 3 stale-citation class this lens exists to make decidable.\n\nWHY NOT THE REQUIRED FLOOR. run_required_floor admits an identity only if its module is outside the long home AND the entry does not read the live tree; the second arm is the fatal one here, because reading the live corpus IS this census's subject — decl_facts and module_declaration_facts over compile_clean_source_roots. Relocating the file moves the identity from DeclinedLongModule to DeclinedLiveTree and never to Planned (measured at identity grain in test.claim.transport_script_wall_compile_red). No amount of making it cheaper changes that, so the floor was never the route.\n\nWHAT THE ROUTE IS. claim_executor --required-cited-symbol, its own top-level mode, invoked by the cited-symbol JOB in .github/workflows/witnesses.yml — a GitHub check-run is a job rather than a step, so a separately named required check must be a second job. It is NOT a phase of --required-ci: the operator narrowed that mode to three phases on 2026-08-21 (#8791) and this rework leaves that invocation byte-unchanged. An earlier revision of this note said phase, and it was true when written; the separate-check ruling falsified it, and a stale mechanism claim inside the carrier whose lens exists to catch stale citations is the failure this file is named for. Being a mode rather than a claim is what puts it outside both the per-claim safety deadline and the floor's live-tree arm. The sixteen witnesses stay where they are: they are the discriminating mechanism evidence (planted controls, five-arm refusals, the ambiguity fixture), and DESIGN 4b(4) keeps them enrolled rather than retiring them when production goes green."
+
+data cited_symbol_outside_index_guard_note: String = "THE GUARD AGAINST THE ONE DODGE THE OUTSIDE-INDEX DISPOSITION ADMITS, AND IT EXECUTES RATHER THAN BEING REVIEWED. gunbc.doc_graph_roots marks four references as outside the declaration index because decl_facts does not index test modules; a counted, typed disposition is the sanctioned remedy, but nothing in the marking itself stops an author from marking a RESOLVABLE reference outside-index to escape a red — at which point the population silently shrinks and the census reports green over a reference nobody checked.\n\nSo the report below refuses such a row by execution: a reference marked outside-index that actually RESOLVES comes back as OUTSIDE-INDEX-RESOLVES and fails the phase. A count assertion alone would not catch it (wise-boar-649 measured exactly that: their counting witness stayed green under a two-way swap while the refusal-checking witness went red), and a count is implied here anyway — under the roster shape the only way the marked population can shrink is a row that resolves, so a second count row would be a second representation of one fact.\n\nWHY IT IS HERE AND NOT IN A WITNESS: every witness carrying this lens's live-corpus claim sits in a file classified OfflineLocalRecipe and executes nowhere, which is the defect the phase existed to close. THE PHASE IS GONE (2026-08-23, operator directive; see cited_symbol_required_check_note), so the guard is authored, executable on demand, and run by nothing -- the dodge it refuses is refused only when someone runs it."
 
 data cited_symbol_denominator_note: String = "A GREEN MUST NAME ITS DENOMINATOR. The report below returns an empty list both when every authored reference resolves and when there are no references to check, and those are different states with different remedies — the second is an instrument failure wearing the first one's clothes. So the phase prints the population it checked beside its verdict, and a reader who sees checked=0 knows the census measured nothing rather than reading it as coverage."
 
