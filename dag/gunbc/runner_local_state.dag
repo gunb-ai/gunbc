@@ -1,6 +1,6 @@
 module gunbc.runner_local_state
 
-import std.types { String, NonEmptyStr, Bool, List }
+import std.types { String, NonEmptyStr, Bool, List, Timestamp }
 import std.nat { Nat }
 import std.disposition { Disposition, SingleAuthority }
 import extdeps.systemd {
@@ -270,9 +270,16 @@ fn busy_standing_of_workers(workers: List<ProcessIdentity>) -> RunnerSlotBusySta
 // SO THE ARMS ARE LOCAL EVIDENCE ONLY. ProviderStandingUnobserved is what a reader gets when the
 // provider's own view is wanted and unavailable, which is the honest answer today for every
 // question about assignment.
+// THE OBSERVATION TIME IS A Timestamp AND NOT A RAW STRING, which is a smaller point than it looks.
+// std.types names this concept, gunbc.runner_connectivity_recovery already carries its observations
+// on it, and that module's scaffold row records the corpus-wide state honestly: Timestamp is String
+// today and comparisons are equality-only until a parsed observation clock lands. Spelling this
+// field NonEmptyStr would have put it OUTSIDE that scaffold -- a second raw carrier for a concept
+// the corpus names -- so it would not migrate when the parser arrives, and a reviewer reading the
+// scaffold row would reasonably believe it covered a field it does not reach.
 type RunnerProviderStanding
   = ProviderStandingUnobserved { cause: NonEmptyStr }
-  | SessionValid { session_observed_at: NonEmptyStr }
+  | SessionValid { session_observed_at: Timestamp }
   | SessionSignatureInvalid { evidence: NonEmptyStr }
   | SessionCredentialsMissing { evidence: NonEmptyStr }
 
