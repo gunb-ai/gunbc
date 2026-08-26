@@ -87,16 +87,6 @@ fn lbd_observation_of(subject: LegacyBindingObservationSubject, ids: List<Int>) 
   }
 }
 
-fn lbd_observation(ids: List<Int>) -> LegacyBindingObservation<LbdTestOutcome> {
-  LegacyBindingObservation {
-    subject: lbd_subject(),
-    rows: ids |> map(id => LegacyBindingObservationRow {
-      occurrence: OccurrenceId { value: id },
-      outcome: LbdObserved
-    })
-  }
-}
-
 fn lbd_base_ref(id: Int) -> SubjectOccurrenceRef {
   SubjectOccurrenceRef {
     subject_identity: legacy_subject_identity(subject: lbd_subject()),
@@ -241,8 +231,8 @@ test fn a_provenance_naming_an_occurrence_outside_either_denominator_refuses() -
 // that could not be made is not a comparison that agreed.
 test fn the_delta_refuses_rather_than_comparing_over_an_incomplete_provenance() -> Bool {
   match legacy_binding_delta(
-    base_observation: lbd_observation(ids: [10, 20, 30]),
-    projected_observation: lbd_observation(ids: [11, 21]),
+    base_observation: lbd_observation_of(subject: lbd_subject(), ids: [10, 20, 30]),
+    projected_observation: lbd_observation_of(subject: lbd_projected_subject(), ids: [11, 21]),
     provenance: ProjectionProvenance { entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21)] }
   ) {
     DeltaProvenanceRefused { totality: _ } => true
@@ -252,8 +242,8 @@ test fn the_delta_refuses_rather_than_comparing_over_an_incomplete_provenance() 
 
 test fn the_delta_computes_over_a_total_provenance() -> Bool {
   match legacy_binding_delta(
-    base_observation: lbd_observation(ids: [10, 20]),
-    projected_observation: lbd_observation(ids: [11, 21, 41]),
+    base_observation: lbd_observation_of(subject: lbd_subject(), ids: [10, 20]),
+    projected_observation: lbd_observation_of(subject: lbd_projected_subject(), ids: [11, 21, 41]),
     provenance: ProjectionProvenance { entries: [lbd_pair(source: 10, target: 11), lbd_pair(source: 20, target: 21), lbd_insertion(target: 41, caused_by: 10)] }
   ) {
     DeltaComputed { pairs: pairs } => (pairs |> count) == 3
