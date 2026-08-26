@@ -58,7 +58,7 @@ fn lbd_subject() -> LegacyBindingObservationSubject {
     semantic_source_digest: structural_content_hash(digest: "1111111111111111"),
     source_set_digest: structural_content_hash(digest: "2222222222222222"),
     compiler_artifact_digest: structural_content_hash(digest: "3333333333333333"),
-    resolver_identity: decl_ref(module_path: "v1.compiler.lookup", decl_name: "lookup_binding_by_name"),
+    resolver_identity: decl_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name"),
     resolver_policy: ImportScopedPolicy,
     occurrence_transport_digest: structural_content_hash(digest: "4444444444444444"),
     declaration_index_digest: structural_content_hash(digest: "5555555555555555")
@@ -70,7 +70,7 @@ fn lbd_projected_subject() -> LegacyBindingObservationSubject {
     semantic_source_digest: structural_content_hash(digest: "9999999999999999"),
     source_set_digest: structural_content_hash(digest: "2222222222222222"),
     compiler_artifact_digest: structural_content_hash(digest: "3333333333333333"),
-    resolver_identity: decl_ref(module_path: "v1.compiler.lookup", decl_name: "lookup_binding_by_name"),
+    resolver_identity: decl_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name"),
     resolver_policy: NamespaceOnlyPolicy,
     occurrence_transport_digest: structural_content_hash(digest: "4444444444444444"),
     declaration_index_digest: structural_content_hash(digest: "5555555555555555")

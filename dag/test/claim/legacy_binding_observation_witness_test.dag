@@ -49,7 +49,7 @@ fn lbo_digest(label: String) -> Fnv1a64Structural {
 }
 
 fn lbo_resolver() -> DeclarationRef {
-  decl_ref(module_path: "v1.compiler.lookup", decl_name: "lookup_binding_by_name")
+  decl_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name")
 }
 
 fn lbo_base_subject() -> LegacyBindingObservationSubject {
@@ -130,7 +130,7 @@ test fn a_moved_resolver_module_refuses() -> Bool {
     semantic_source_digest: base.semantic_source_digest,
     source_set_digest: base.source_set_digest,
     compiler_artifact_digest: base.compiler_artifact_digest,
-    resolver_identity: decl_ref(module_path: "v1.compiler.env", decl_name: "lookup_binding_by_name"),
+    resolver_identity: decl_ref(module_path: "v1.compiler.infer_lookup", decl_name: "lookup_func_sig"),
     resolver_policy: base.resolver_policy,
     occurrence_transport_digest: base.occurrence_transport_digest,
     declaration_index_digest: base.declaration_index_digest
@@ -143,7 +143,7 @@ test fn a_moved_resolver_declaration_refuses() -> Bool {
     semantic_source_digest: base.semantic_source_digest,
     source_set_digest: base.source_set_digest,
     compiler_artifact_digest: base.compiler_artifact_digest,
-    resolver_identity: decl_ref(module_path: "v1.compiler.lookup", decl_name: "global_bare_lookup"),
+    resolver_identity: decl_ref(module_path: "v1.compiler.infer_env", decl_name: "global_bare_lookup"),
     resolver_policy: base.resolver_policy,
     occurrence_transport_digest: base.occurrence_transport_digest,
     declaration_index_digest: base.declaration_index_digest
