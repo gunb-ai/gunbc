@@ -46334,12 +46334,48 @@ pub fn run_required_floor(
     // row — and separating them would ask the reader to learn two names for it. An identity
     // that executed and did not gap, and an identity that did not execute at all (renamed,
     // deleted, or declined), are distinguished in the message rather than in the mechanism.
+    // EVERY REVERSE JOIN BELOW IS SUSPENDED WHEN THE FOLD HALTED, AND THIS IS THE ONE PREDICATE
+    // THAT DECIDES IT. A reverse join asks "is every enrolled identity still executing", and it
+    // answers by subtracting what was OBSERVED from the roster. That subtraction is sound only
+    // when the observation ran over the whole routed roster. After a halting panic it ran over a
+    // PREFIX, so an enrolled identity in the unrun suffix is not stale — it is NOT-ATTEMPTED, and
+    // this run has exactly one row for it saying so. Answering "stale, delete the row" over a
+    // truncated denominator is the empty-observation narrow DESIGN names: ⊥-as-ignorance
+    // ("nothing observed it") rendered as ⊥-as-answer ("nothing exercises it"), and its remedy —
+    // delete the roster row — is the opposite of the correct one.
+    //
+    // THIS DOES NOT FAIL OPEN, and the ordering is the reason it does not. The panic itself is
+    // already in `outcome.failures`, and `required_floor_outcome_is_clean` is false whenever that
+    // is non-empty, so the run refuses either way; what changes is WHICH refusal it carries and
+    // whether the ledger is reached. Before this predicate the truncated join returned `Err`
+    // ahead of publication, so a halted run refused with `ExpectedRedIdentityDidNotExecute` —
+    // naming rows that are fine — and published NO ledger, which is precisely the artifact the
+    // halt exists to produce. The line still stops; the stopped-line audit now survives it.
+    let reverse_joins_answerable = halted_by.is_none();
+    if !reverse_joins_answerable {
+        eprintln!(
+            "[floor-halt] reverse roster joins SUSPENDED: the fold halted at {}, so the observed \
+             population is a prefix of the routed roster and staleness is not decidable over it. \
+             expected_red_roster={} route_gap_roster={} non_verdict_roster={} not_attempted={}. \
+             The run refuses on the panic; every unrun enrolled identity carries a not-attempted \
+             terminal row rather than a staleness verdict.",
+            halted_by.as_deref().unwrap_or(""),
+            expected_red_roster.len(),
+            route_gap_roster.len(),
+            non_verdict_roster.len(),
+            outcome.not_attempted_after_abort
+        );
+    }
     // ONE DECISION POINT, TAKEN AFTER THE FOLD, over the two identity sets. The arms above only
     // RECORD what they observed; nothing there decides admission, so there is no second place
     // where the rule could drift from the one written in
     // `v2.workflow.floor_non_verdict_admission`.
     {
         let admission = non_verdict_admission(&non_verdict_seen, &non_verdict_roster);
+        // `added` STAYS ARMED ON A HALT, and the asymmetry with `repaid` below is the whole
+        // content of the predicate. `added` is a FORWARD observation — this identity RAN and
+        // produced no verdict — so it is decidable over the prefix and suppressing it would hide
+        // an observed failure. `repaid` is the reverse question, and it is not.
         for identity in &admission.added {
             let detail = non_verdict_detail
                 .get(identity)
@@ -46357,7 +46393,7 @@ pub fn run_required_floor(
         // REFUSED, NOT MERELY REPORTED. A repaid row left standing is a live exemption: the
         // identity is fixed today, and if it regresses tomorrow it is already rostered and the
         // wall admits it. So repayment and roster deletion are one act.
-        for identity in &admission.repaid {
+        for identity in admission.repaid.iter().filter(|_| reverse_joins_answerable) {
             let ran = receipted.contains(identity.as_str());
             outcome.stale_non_verdict.push(if ran {
                 format!(
@@ -46379,7 +46415,7 @@ pub fn run_required_floor(
     {
         let mut stale: Vec<&String> = route_gap_roster
             .iter()
-            .filter(|q| !route_gap_seen.contains(*q))
+            .filter(|q| reverse_joins_answerable && !route_gap_seen.contains(*q))
             .collect();
         stale.sort();
         for identity in stale {
@@ -46414,7 +46450,7 @@ pub fn run_required_floor(
     let expected_red_missing: Vec<&String> = {
         let mut missing: Vec<&String> = expected_red_roster
             .iter()
-            .filter(|q| !expected_red_seen.contains(*q))
+            .filter(|q| reverse_joins_answerable && !expected_red_seen.contains(*q))
             .collect();
         missing.sort();
         missing
@@ -46442,7 +46478,14 @@ pub fn run_required_floor(
     // not be added quietly, and it is why this invariant is worth more than the six names in it.
     // The three-outcome roster join relaxes this to still_red | now_passes | not_evaluated and
     // is the authority for pruning — not the failure-log subset.
+    // THE PARTITION SUM IS SUSPENDED ON A HALT FOR THE SAME REASON, and it is a stronger case
+    // than the joins above rather than a weaker one: the sum's premise is stated in its own
+    // comment — "with the reverse join above, every enrolled identity was observed exactly once".
+    // A halted fold observes a prefix, so the premise is false by construction and the arms
+    // cannot sum to the roster. Left armed it would refuse with `ExpectedRedPartitionInexact`,
+    // ahead of publication, over an inexactness the halt guarantees.
     if !roster_join_only
+        && reverse_joins_answerable
         && known_red_held
             + known_red_now_passing
             + known_red_budget_refused
