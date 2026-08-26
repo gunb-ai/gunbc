@@ -7649,6 +7649,41 @@ mod entry_admission_tests {
         );
     }
 
+    /// THE GUARD'S OWN DISCRIMINATING RED, and it is a different claim from the three above.
+    /// Those establish that the refusal is TYPED AND LOCATED. This one establishes that the
+    /// refusal does not leave thread-local telemetry ARMED behind it -- the leak review 56292
+    /// found on two new arms, and that already existed on `subject-read` before this change.
+    ///
+    /// IT GOES RED WITHOUT THE GUARD. Delete the `Drop` impl, or return before `take()`, and
+    /// `resolution_silent_pick_is_enabled` is still true here: the enable at the top of the
+    /// transaction ran, the early return skipped every hand-written `disable`, and the flag
+    /// outlives the transaction that armed it. That is the state this assertion forbids, and
+    /// it was reachable on `origin/main`.
+    #[test]
+    fn a_refused_transaction_leaves_no_telemetry_armed() {
+        assert!(
+            !crate::v1_rt::resolution_silent_pick_is_enabled(),
+            "precondition: the flag must be clear before the transaction arms it, or this test \
+             cannot tell an armed leak from an inherited one"
+        );
+        let run = compile_emission(&CompileRequest {
+            subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            source_roots: vec![ws("fixtures/definitely-not-a-real-root")],
+            primary_precedence: true,
+            render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
+        });
+        assert!(
+            matches!(run.disposition, CompileDisposition::NotExecuted { .. }),
+            "the arm under test is the REFUSAL path; a completed compile would exercise \
+             `take()` instead and prove nothing about early return"
+        );
+        assert!(
+            !crate::v1_rt::resolution_silent_pick_is_enabled(),
+            "the refused transaction left resolution-silent-pick telemetry ARMED; the session \
+             guard's Drop did not run or was bypassed"
+        );
+    }
+
     /// A FILE WHERE A DIRECTORY BELONGS IS ITS OWN STATE, not "missing". Collapsing the two
     /// would tell an author to create a path that already exists.
     #[test]
