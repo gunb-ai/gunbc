@@ -2,7 +2,12 @@ module gunbc.session_demand_observe
 
 import std.algebra { trim }
 import std.types { Bool, List, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.measure { byte_size_count }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import product.placement_supply { HostIdentity }
+import v2.std.optional { Present, Absent }
 import extdeps.linux.cgroup_v2 {
   cgroup_v2_mount_point, cgroup_v2_child_path, cgroup_v2_slice_path,
 }
@@ -10,12 +15,13 @@ import extdeps.linux.cgroup_v2_memory {
   MemoryCurrent, MemoryPeak, MemoryMax,
   cgroup_memory_interface_file_name,
   parse_cgroup_memory_count, parse_cgroup_memory_limit,
-  CgroupMemoryCountUnparseable,
+  CgroupMemoryCount, CgroupMemoryCountUnparseable, CgroupMemoryCountValue,
+  CgroupMemoryLimited, CgroupMemoryUnlimited, CgroupMemoryLimitUnparseable, CgroupMemoryLimitValue,
 }
-import gunbc.host_effect { HostEffectTransport }
+import gunbc.host_effect { HostEffectTransport, LocalShell }
 import gunbc.host_operation_exec {
   HostOperationObserved, HostOperationRefused, host_operation_exec,
-  CgroupListChildren, CgroupReadInterfaceFile,
+  CgroupListChildren, CgroupReadInterfaceFile, HostnameReadShort,
 }
 import gunbc.oomd_install { gunbc_oomd_sessions_slice }
 import gunbc.session_demand {
@@ -152,4 +158,105 @@ fn legacy_placements(identities: List<NonEmptyStr>) -> List<SessionPlacement> {
     identity: i,
     cause: "flat scope under system.slice: cgroup structure alone cannot attribute this container to an agent session, and no authority in this repository models docker scope naming",
   })
+}
+
+// THE CI ENTRY. It runs on a runner PINNED to the target host, so LocalShell reads that host's own
+// cgroups -- no ssh, no new credential surface, and no fleet key. Every read it performs is a
+// find/cat against /sys/fs/cgroup; it mutates nothing.
+data session_demand_observe_receipt_path: String = "target/session-demand-observe-receipt.txt"
+
+// THE HOST IS OBSERVED, NOT SUPPLIED. Taking the host from the dispatch input would let the receipt
+// name a machine it did not read; HostnameReadShort is already a modeled operation, so the receipt
+// binds to the host that actually answered.
+fn observed_host_identity(transport: HostEffectTransport) -> HostIdentity? {
+  match host_operation_exec(transport: transport, operation: HostnameReadShort) {
+    HostOperationObserved { stdout: out, success: ok, stderr: _ } =>
+      if ok && trim(out) != "" { Present { value: trim(out) as HostIdentity } } else { none }
+    HostOperationRefused { operation: _, reason: _ } => none
+  }
+}
+
+fn count_value_word(v: CgroupMemoryCountValue) -> String {
+  match v {
+    CgroupMemoryCount { bytes: b } => to_string(byte_size_count(b: b))
+    CgroupMemoryCountUnparseable { body: raw } => concat("UNREADABLE(", concat(trim(raw), ")"))
+  }
+}
+
+fn limit_value_word(v: CgroupMemoryLimitValue) -> String {
+  match v {
+    CgroupMemoryLimited { bytes: b } => to_string(byte_size_count(b: b))
+    CgroupMemoryUnlimited => "max"
+    CgroupMemoryLimitUnparseable { body: raw } => concat("UNREADABLE(", concat(trim(raw), ")"))
+  }
+}
+
+fn session_demand_line(d: SessionMemoryDemand) -> String {
+  join(["session\t", d.identity as String, "\t", d.cgroup as String, "\t", count_value_word(v: d.memory_current), "\n"], "")
+}
+
+fn parent_slice_lines(p: ParentSliceDemand) -> String {
+  join([
+    "parent_slice\t", p.cgroup as String, "\n",
+    "parent_memory_current\t", count_value_word(v: p.memory_current), "\n",
+    "parent_memory_peak\t", count_value_word(v: p.memory_peak), "\n",
+    "parent_memory_peak_epoch\t", p.memory_peak_epoch, "\n",
+    "parent_memory_max\t", limit_value_word(v: p.memory_max), "\n",
+  ], "")
+}
+
+// THE RECEIPT RECORDS WHAT WAS READ AND WHERE, INCLUDING THE EMPTY CASES. A host with no sessions
+// emits a receipt with zero session rows and says so, which is a counted zero; a host whose
+// enumeration refused emits the refusal cause instead. The two are different lines, never the same
+// absence.
+func session_demand_observe_ci_wet() -> ProcessExit {
+  let transport = LocalShell
+  let started = clock_now_probed_at_or_unknown()
+  match observed_host_identity(transport: transport) {
+    Absent =>
+      exit_failure(reason: "session_demand_observe_ci_wet: could not read the host's own name, so no receipt can be bound to a host")
+    Present { value: host } => {
+      let managed_parent = managed_slice_path()
+      let managed = observe_cgroup_children(transport: transport, host: host, cgroup_path: managed_parent)
+      let legacy = observe_cgroup_children(transport: transport, host: host, cgroup_path: system_slice_path())
+      let slice = observe_parent_slice_demand(transport: transport, parent: managed_parent)
+      let header = join([
+        "collector\t", session_demand_collector_revision as String, "\n",
+        "host\t", host as String, "\n",
+        "observation_started\t", started as String, "\n",
+        "observation_completed\t", clock_now_probed_at_or_unknown() as String, "\n",
+      ], "")
+      let managed_body = match managed {
+        SessionContainerInventoryObserved { host: _, identities: ids } =>
+          join([
+            join(["managed_population\t", to_string(count(ids)), "\n"], ""),
+            join(map(ids, i => session_demand_line(
+              d: observe_session_memory_demand(transport: transport, parent: managed_parent, identity: i)
+            )), ""),
+          ], "")
+        SessionContainerInventoryUnavailable { host: _, cause: why } =>
+          join(["managed_population\tUNAVAILABLE\t", why, "\n"], "")
+      }
+      let legacy_body = match legacy {
+        SessionContainerInventoryObserved { host: _, identities: ids } =>
+          join([
+            join(["system_slice_children\t", to_string(count(ids)), "\n"], ""),
+            join(map(ids, i => join(["system_slice_child\t", i as String, "\n"], "")), ""),
+          ], "")
+        SessionContainerInventoryUnavailable { host: _, cause: why } =>
+          join(["system_slice_children\tUNAVAILABLE\t", why, "\n"], "")
+      }
+      let body = join([header, parent_slice_lines(p: slice), managed_body, legacy_body], "")
+      let w = Filesystem.Write(path: session_demand_observe_receipt_path, content: body)
+      if w.success == false {
+        exit_failure(reason: join(["session-demand receipt write failed: ", w.error], ""))
+      } else {
+        match managed {
+          SessionContainerInventoryUnavailable { host: _, cause: why } =>
+            exit_failure(reason: join(["session_demand_observe_ci_wet: the managed slice could not be enumerated, so no population was established: ", why, "\n", body], ""))
+          SessionContainerInventoryObserved { host: _, identities: _ } => ExitSuccess
+        }
+      }
+    }
+  }
 }
