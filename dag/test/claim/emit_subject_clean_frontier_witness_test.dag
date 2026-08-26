@@ -803,6 +803,8 @@ test fn an_established_verdict_that_refuses_is_what_separates_the_two_questions(
         v => emit_ratchet_verdict_standing(v: v) == VerdictEstablishedAndRefused
       )
     ) == 2
+}
+
 fn membership_with_candidates(candidates: List<String>, closure: List<String>) -> SubjectMembership {
   SubjectMembership {
     resolution_candidates: MembershipObserved { members: candidates },

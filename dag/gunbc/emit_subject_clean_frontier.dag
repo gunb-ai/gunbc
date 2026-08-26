@@ -1431,6 +1431,8 @@ fn emit_ratchet_runner_execution_standing(cadence: WitnessConsumerCadence) -> Wi
       entry: emit_ratchet_runner_entry,
       function: emit_ratchet_runner_observe_function
     }
+  }
+}
 
 // ---------------------------------------------------------------------------------------------
 // A MEASUREMENT OVER A SUBJECT WHOSE BOUNDARY DID NOT HOLD IS NOT A MEASUREMENT OF THAT SUBJECT.
