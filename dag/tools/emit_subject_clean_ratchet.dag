@@ -1,6 +1,6 @@
 module tools.emit_subject_clean_ratchet
 
-import std.types { String }
+import std.types { String, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.ci_layer_roots { witness_layer_roots }
@@ -9,7 +9,24 @@ import tools.dag_compile_clean_shard_roster {
   CompileCleanShardEntryPathsDuplicatePath,
   compile_clean_shard_entry_paths
 }
-import tools.emission_entry_instrument { EmissionMeasurement, measure_entry_emission }
+import tools.emission_entry_instrument {
+  EmissionMeasurement,
+  EmissionMeasurementSubject,
+  EmissionSubjectCarried,
+  SubjectCarried,
+  SubjectNotCarried,
+  emission_measurement_subject,
+  measure_entry_emission
+}
+import extdeps.github.actions_environment {
+  ActionsRunCoordinate,
+  ActionsRunCoordinateObserved,
+  ActionsRunCoordinateMissing,
+  ActionsRunCoordinateEmpty,
+  github_run_id_variable_name,
+  github_run_attempt_variable_name,
+  github_runner_name_variable_name
+}
 import extdeps.shell
 import gunbc.emit_subject_clean_frontier {
   RatchetUniverse,
@@ -40,6 +57,10 @@ import gunbc.emit_subject_clean_frontier {
   emit_ratchet_standing,
   emit_ratchet_observation,
   emit_ratchet_observation_text,
+  ObservationBinding,
+  BindingAbsent,
+  observation_binding,
+  observation_binding_text,
   emit_ratchet_enrolment_admission,
   emit_ratchet_enrolment_admission_text,
   fold_emit_subject_clean_ratchet
@@ -162,23 +183,76 @@ fn measure_selected(selection: List<String>) -> List<EmissionMeasurement> {
 // classifies against are derived from the same value rather than computed twice from `entries` --
 // two derivations could disagree, and a disagreement here would render as an UNMEASURED subject
 // the run had in fact measured, which is the precise confusion the selection carrier removes.
+// THE MEASUREMENTS ARE RETAINED, not discarded at the fold. The fold reduces each measurement to
+// a reading of entry and outcome, which is all a verdict needs -- but the provenance of the run
+// lives on the measurement's SUBJECT, and reducing first threw it away. The subjects and the
+// verdicts now come from ONE measurement pass, so the binding cannot describe a different run
+// from the one the verdicts came from.
+type RatchetRun {
+  ratchet: EmitSubjectCleanRatchet
+  subjects: List<EmissionMeasurementSubject>
+  selection: SubjectSelection
+}
+
+fn measured_subjects(measurements: List<EmissionMeasurement>) -> List<EmissionMeasurementSubject> {
+  fold(
+    measurements,
+    init: [],
+    f: (acc, m) =>
+      match emission_measurement_subject(m: m) {
+        SubjectNotCarried { entry: _ } => acc
+        SubjectCarried { subject: sub } => concat(acc, [sub])
+      }
+  )
+}
+
 fn run_emit_subject_clean_ratchet(
   entries: String,
   roster: List<String>,
   inventory: List<String>
-) -> EmitSubjectCleanRatchet {
+) -> RatchetRun {
   let selection = subject_selection(entries: entries, roster: roster)
-  fold_emit_subject_clean_ratchet(
-    universe: DualUniverse {
-      policy: emit_subject_clean_roster_policy,
-      entries: roster,
-      inventory: inventory
-    },
-    admissions: emit_subject_clean_admissions,
-    selection: selection,
-    measurements: measure_selected(
-      selection: subject_selection_entries(selection: selection, roster: roster)
-    )
+  let measurements = measure_selected(
+    selection: subject_selection_entries(selection: selection, roster: roster)
+  )
+  RatchetRun {
+    ratchet: fold_emit_subject_clean_ratchet(
+      universe: DualUniverse {
+        policy: emit_subject_clean_roster_policy,
+        entries: roster,
+        inventory: inventory
+      },
+      admissions: emit_subject_clean_admissions,
+      selection: selection,
+      measurements: measurements
+    ),
+    subjects: measured_subjects(measurements: measurements),
+    selection: selection
+  }
+}
+
+// The run coordinates are read from the environment the RUNNER supplies, never derived from the
+// repository -- a coordinate derived from the thing under test cannot fail and would be reflection
+// evidence standing where a control belongs. Missing and present-but-empty stay separate arms.
+fn run_coordinate(variable: String) -> ActionsRunCoordinate {
+  let reading = shell.Env.Get(name: variable as NonEmptyStr)
+  match reading.value {
+    Absent => ActionsRunCoordinateMissing { variable: variable }
+    Present { value: v } =>
+      if v == "" {
+        ActionsRunCoordinateEmpty { variable: variable }
+      } else {
+        ActionsRunCoordinateObserved { value: v }
+      }
+  }
+}
+
+fn current_observation_binding(subjects: List<EmissionMeasurementSubject>) -> ObservationBinding {
+  observation_binding(
+    subjects: subjects,
+    run_identity: run_coordinate(variable: github_run_id_variable_name),
+    run_attempt: run_coordinate(variable: github_run_attempt_variable_name),
+    runner_binding: run_coordinate(variable: github_runner_name_variable_name)
   )
 }
 
@@ -192,7 +266,7 @@ fn run_emit_subject_clean_ratchet(
 // still knowable. Below this line every consumer holds a fold or a typed cause, never a silence.
 // ---------------------------------------------------------------------------------------------
 type RatchetRunAttempt
-  = RatchetRunFolded { ratchet: EmitSubjectCleanRatchet }
+  = RatchetRunFolded { run: RatchetRun }
   | RatchetRunUnattempted { cause: String }
 
 fn attempt_emit_subject_clean_ratchet(entries: String) -> RatchetRunAttempt {
@@ -213,7 +287,7 @@ fn attempt_emit_subject_clean_ratchet(entries: String) -> RatchetRunAttempt {
           }
         ModuleInventoryFiles { paths: inventory } =>
           RatchetRunFolded {
-            ratchet: run_emit_subject_clean_ratchet(
+            run: run_emit_subject_clean_ratchet(
               entries: entries,
               roster: roster,
               inventory: inventory
@@ -223,8 +297,18 @@ fn attempt_emit_subject_clean_ratchet(entries: String) -> RatchetRunAttempt {
   }
 }
 
-fn write_ratchet_report(report: String, r: EmitSubjectCleanRatchet) -> Bool {
-  Filesystem.Write(path: report, content: emit_ratchet_report_text(r: r)).success
+// THE REPORT NAMES ITS OWN RUN. Writing the rows without the binding would produce an artifact
+// that cannot say which revision, compiler or workflow attempt produced it -- citable only by
+// whoever still remembers, which is not citable at all.
+fn write_ratchet_report(report: String, run: RatchetRun) -> Bool {
+  Filesystem.Write(
+    path: report,
+    content: emit_ratchet_report_text(
+      binding: current_observation_binding(subjects: run.subjects),
+      selection: run.selection,
+      r: run.ratchet
+    )
+  ).success
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -259,8 +343,8 @@ fn observe(entries: String, report: String) -> ProcessExit {
     match attempt_emit_subject_clean_ratchet(entries: entries) {
       RatchetRunUnattempted { cause: c } =>
         exit_failure(reason: concat("observe: the observation was not taken — ", c))
-      RatchetRunFolded { ratchet: r } =>
-        if !write_ratchet_report(report: report, r: r) {
+      RatchetRunFolded { run: run } =>
+        if !write_ratchet_report(report: report, run: run) {
           exit_failure(
             reason: concat(
               "observe: the observation was taken and could not be written to ",
@@ -268,9 +352,19 @@ fn observe(entries: String, report: String) -> ProcessExit {
             )
           )
         } else {
-          match emit_ratchet_observation(r: r) {
-            ObservationTaken { roster: _, standing: _ } => ExitSuccess
-            ObservationNotTaken { admission: a } =>
+          match emit_ratchet_observation(
+            binding: current_observation_binding(subjects: run.subjects),
+            selection: run.selection,
+            r: run.ratchet
+          ) {
+            ObservationTaken {
+              binding: _,
+              selection: _,
+              roster: _,
+              unevaluated_subjects: _,
+              standing: _
+            } => ExitSuccess
+            ObservationNotTaken { binding: _, admission: a } =>
               exit_failure(
                 reason: concat(
                   "observe: the observation was not taken — ",
@@ -290,12 +384,12 @@ fn check(entries: String, report: String) -> ProcessExit {
     match attempt_emit_subject_clean_ratchet(entries: entries) {
       RatchetRunUnattempted { cause: c } =>
         exit_failure(reason: concat("check: ", c))
-      RatchetRunFolded { ratchet: r } =>
-        if !write_ratchet_report(report: report, r: r) {
+      RatchetRunFolded { run: run } =>
+        if !write_ratchet_report(report: report, run: run) {
           exit_failure(reason: concat("check: could not write the standing to ", report))
         } else {
-          match emit_ratchet_enrolment_admission(enrolment: EnrolledAsGate, r: r) {
-            EnrolmentPermitted { enrolment: _ } => check_standing(r: r, report: report)
+          match emit_ratchet_enrolment_admission(enrolment: EnrolledAsGate, r: run.ratchet) {
+            EnrolmentPermitted { enrolment: _ } => check_standing(r: run.ratchet, report: report)
             EnrolmentRefusedNoUniverse { enrolment: e } =>
               exit_failure(
                 reason: concat(

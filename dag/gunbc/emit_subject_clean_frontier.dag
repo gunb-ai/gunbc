@@ -1569,30 +1569,58 @@ fn observation_binding_text(binding: ObservationBinding) -> String {
   }
 }
 
+// A TAKEN OBSERVATION CARRIES ITS BINDING AND ITS SELECTION, so a reader never has to join the
+// standing to a run by hand. A NOT-TAKEN one carries the binding and NO STANDING: a run that could
+// not measure has no spelling in which it renders as a measurement.
 type EmitRatchetObservation
-  = ObservationTaken { roster: RosterIdentity, standing: EmitRatchetStanding }
-  | ObservationNotTaken { admission: EmitRatchetEnrolmentAdmission }
+  = ObservationTaken {
+      binding: ObservationBinding
+      selection: SubjectSelection
+      roster: RosterIdentity
+      unevaluated_subjects: List<String>
+      standing: EmitRatchetStanding
+    }
+  | ObservationNotTaken {
+      binding: ObservationBinding
+      admission: EmitRatchetEnrolmentAdmission
+    }
 
-fn emit_ratchet_observation(r: EmitSubjectCleanRatchet) -> EmitRatchetObservation {
+fn emit_ratchet_observation(
+  binding: ObservationBinding,
+  selection: SubjectSelection,
+  r: EmitSubjectCleanRatchet
+) -> EmitRatchetObservation {
   let admission = emit_ratchet_enrolment_admission(enrolment: EnrolledAsObservation, r: r)
   match admission {
     EnrolmentPermitted { enrolment: _ } =>
-      ObservationTaken { roster: r.roster, standing: emit_ratchet_standing(r: r) }
+      ObservationTaken {
+        binding: binding,
+        selection: selection,
+        roster: r.roster,
+        unevaluated_subjects: ratchet_unevaluated_subjects(r: r),
+        standing: emit_ratchet_standing(r: r)
+      }
     EnrolmentRefusedNoUniverse { enrolment: e } =>
-      ObservationNotTaken { admission: EnrolmentRefusedNoUniverse { enrolment: e } }
+      ObservationNotTaken { binding: binding, admission: EnrolmentRefusedNoUniverse { enrolment: e } }
     EnrolmentRefusedDenominator { enrolment: e, missing: m } =>
-      ObservationNotTaken { admission: EnrolmentRefusedDenominator { enrolment: e, missing: m } }
+      ObservationNotTaken { binding: binding, admission: EnrolmentRefusedDenominator { enrolment: e, missing: m } }
     EnrolmentRefusedUnevaluated { enrolment: e, subjects: ss } =>
-      ObservationNotTaken { admission: EnrolmentRefusedUnevaluated { enrolment: e, subjects: ss } }
+      ObservationNotTaken { binding: binding, admission: EnrolmentRefusedUnevaluated { enrolment: e, subjects: ss } }
   }
 }
 
 fn emit_ratchet_observation_text(observation: EmitRatchetObservation) -> String {
   match observation {
-    ObservationTaken { roster: _, standing: s } =>
-      concat("taken — ", emit_ratchet_standing_text(standing: s))
-    ObservationNotTaken { admission: a } =>
-      concat("NOT TAKEN — ", emit_ratchet_enrolment_admission_text(admission: a))
+    ObservationTaken { binding: b, selection: _, roster: _, unevaluated_subjects: _, standing: s } =>
+      concat(
+        concat("taken — ", emit_ratchet_standing_text(standing: s)),
+        concat("\t", observation_binding_text(binding: b))
+      )
+    ObservationNotTaken { binding: b, admission: a } =>
+      concat(
+        concat("NOT TAKEN — ", emit_ratchet_enrolment_admission_text(admission: a)),
+        concat("\t", observation_binding_text(binding: b))
+      )
   }
 }
 
@@ -1603,7 +1631,11 @@ fn emit_ratchet_observation_text(observation: EmitRatchetObservation) -> String 
 // reachable on this report only THROUGH the observation, whose not-taken arm holds no standing to
 // print. The gate admission is printed beside it because a reader of an observation report must be
 // able to see, on the artifact itself, that it is not a gate verdict.
-fn emit_ratchet_report_rows(r: EmitSubjectCleanRatchet) -> List<String> {
+fn emit_ratchet_report_rows(
+  binding: ObservationBinding,
+  selection: SubjectSelection,
+  r: EmitSubjectCleanRatchet
+) -> List<String> {
   concat(
     concat(
       roster_identity_rows(identity: r.roster),
@@ -1611,7 +1643,9 @@ fn emit_ratchet_report_rows(r: EmitSubjectCleanRatchet) -> List<String> {
         concat("admission_rows\t", to_string(r.admission_count)),
         concat(
           "observation\t",
-          emit_ratchet_observation_text(observation: emit_ratchet_observation(r: r))
+          emit_ratchet_observation_text(
+            observation: emit_ratchet_observation(binding: binding, selection: selection, r: r)
+          )
         ),
         concat(
           "enrolment_gate\t",
@@ -1628,8 +1662,12 @@ fn emit_ratchet_report_rows(r: EmitSubjectCleanRatchet) -> List<String> {
   )
 }
 
-fn emit_ratchet_report_text(r: EmitSubjectCleanRatchet) -> String {
-  concat(join(emit_ratchet_report_rows(r: r), "\n"), "\n")
+fn emit_ratchet_report_text(
+  binding: ObservationBinding,
+  selection: SubjectSelection,
+  r: EmitSubjectCleanRatchet
+) -> String {
+  concat(join(emit_ratchet_report_rows(binding: binding, selection: selection, r: r), "\n"), "\n")
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1684,6 +1722,135 @@ data emit_subject_clean_admissions: List<EmitDebtAdmission> = []
 // the claim naming today's answer goes RED, and it is that red -- not a paragraph -- that forces
 // this block to be rewritten.
 // ---------------------------------------------------------------------------------------------
+// =============================================================================================
+// PERSISTENCE AND PRICING: AN UNATTACHED RESULT HAS NO SPELLING.
+//
+// The mandated pricing run reports six dimensions, and every one of them is a claim about a
+// specific execution. A receipt that carries the numbers without the execution is the failure this
+// whole carrier exists to prevent, one level up -- six precise figures attached to nothing.
+//
+// SO THE RECEIPT IS NOT A RECORD SOMEONE FILLS IN. It is DERIVED from a taken observation and a
+// persisted report, and there is no constructor that takes the dimensions alone. Report size comes
+// from the persisted artifact rather than from anything computed before serialization, because the
+// question is how many bytes were actually written.
+// =============================================================================================
+
+type EmitObservationPersistence
+  = ObservationPersisted { report_artifact: String, report_digest: Digest, report_bytes: Int }
+  | ObservationPersistenceRefused { cause: String }
+
+fn observation_persistence_text(persistence: EmitObservationPersistence) -> String {
+  match persistence {
+    ObservationPersisted { report_artifact: a, report_digest: d, report_bytes: b } =>
+      concat(
+        concat(concat("persisted\t", a), concat("\tsha256\t", d.hex as String)),
+        concat("\tbytes\t", to_string(b))
+      )
+    ObservationPersistenceRefused { cause: c } => concat("NOT PERSISTED\t", c)
+  }
+}
+
+type EmitPricingDimensions {
+  wall_ms: Int
+  cpu_ms: Int
+  peak_rss_bytes: Int
+  roster_size: Int
+  unevaluated_subject_count: Int
+  report_bytes: Int
+}
+
+// Every refusal names WHICH precondition failed rather than answering "not priceable". The causes
+// have different owners: a divergent binding is a run to repeat under a stable tree, a dirty tree
+// is a checkout to clean, an unbound coordinate is an execution outside Actions, and a persistence
+// failure is a disk or path problem. One cause would have collapsed four remedies.
+type PricingRefusalCause
+  = PricingObservationNotTaken
+  | PricingBindingDivergent { component: ObservationComponent, values: List<String> }
+  | PricingBindingAbsent
+  | PricingWorkingTreeDirty
+  | PricingRunCoordinateUnbound { coordinate: String }
+  | PricingReportNotPersisted { cause: String }
+
+type EmitPricingReceipt
+  = PricingReceiptBound { context: EmitObservationContext, dimensions: EmitPricingDimensions }
+  | PricingReceiptRefused { cause: PricingRefusalCause }
+
+// A pricing receipt over a DIRTY tree is a measurement of something no one can check out again, so
+// it refuses rather than being published with a caveat. Same for a coordinate the runner never
+// supplied: a receipt that cannot say which run produced it is not citable, which is the only
+// property it was built to have.
+type PricingContextStanding
+  = PricingContextUsable
+  | PricingContextRefused { cause: PricingRefusalCause }
+
+fn pricing_context_refusal(context: EmitObservationContext) -> PricingContextStanding {
+  match context.working_tree {
+    WorkingTreeDirty => PricingContextRefused { cause: PricingWorkingTreeDirty }
+    WorkingTreeClean =>
+      match context.run_identity {
+        ActionsRunCoordinateMissing { variable: n } =>
+          PricingContextRefused { cause: PricingRunCoordinateUnbound { coordinate: n } }
+        ActionsRunCoordinateEmpty { variable: n } =>
+          PricingContextRefused { cause: PricingRunCoordinateUnbound { coordinate: n } }
+        ActionsRunCoordinateObserved { value: _ } =>
+          match context.run_attempt {
+            ActionsRunCoordinateMissing { variable: n } =>
+              PricingContextRefused { cause: PricingRunCoordinateUnbound { coordinate: n } }
+            ActionsRunCoordinateEmpty { variable: n } =>
+              PricingContextRefused { cause: PricingRunCoordinateUnbound { coordinate: n } }
+            ActionsRunCoordinateObserved { value: _ } => PricingContextUsable
+          }
+      }
+  }
+}
+
+fn emit_pricing_receipt(
+  observation: EmitRatchetObservation,
+  persistence: EmitObservationPersistence,
+  wall_ms: Int,
+  cpu_ms: Int,
+  peak_rss_bytes: Int
+) -> EmitPricingReceipt {
+  match observation {
+    ObservationNotTaken { binding: _, admission: _ } =>
+      PricingReceiptRefused { cause: PricingObservationNotTaken }
+    ObservationTaken { binding: b, selection: _, roster: roster, unevaluated_subjects: un, standing: _ } =>
+      match b {
+        BindingAbsent => PricingReceiptRefused { cause: PricingBindingAbsent }
+        BindingDivergent { component: c, values: vs } =>
+          PricingReceiptRefused { cause: PricingBindingDivergent { component: c, values: vs } }
+        BindingEstablished { context: ctx } =>
+          match pricing_context_refusal(context: ctx) {
+            PricingContextRefused { cause: cause } => PricingReceiptRefused { cause: cause }
+            PricingContextUsable =>
+              match persistence {
+                ObservationPersistenceRefused { cause: c } =>
+                  PricingReceiptRefused { cause: PricingReportNotPersisted { cause: c } }
+                ObservationPersisted { report_artifact: _, report_digest: _, report_bytes: bytes } =>
+                  PricingReceiptBound {
+                    context: ctx,
+                    dimensions: EmitPricingDimensions {
+                      wall_ms: wall_ms,
+                      cpu_ms: cpu_ms,
+                      peak_rss_bytes: peak_rss_bytes,
+                      roster_size: roster_subject_count(roster: roster),
+                      unevaluated_subject_count: count(un),
+                      report_bytes: bytes
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn roster_subject_count(roster: RosterIdentity) -> Int {
+  match roster {
+    RosterIdentified { policy: _, denominators: _, subject_count: n, digest: _ } => n
+    RosterEmpty { policy: _, denominators: _ } => 0
+  }
+}
+
 data emit_ratchet_runner_entry: String = "dag/tools/emit_subject_clean_ratchet.dag"
 
 data emit_ratchet_runner_observe_function: String = "observe"
