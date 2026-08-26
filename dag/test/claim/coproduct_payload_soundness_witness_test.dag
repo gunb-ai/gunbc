@@ -318,6 +318,14 @@ test fn dcp_unresolved_name_in_coproduct_field_still_refuses() -> Bool {
 // move over a population of ten, not a gap needing a new mechanism. Naming it here rather than
 // silently inheriting it is the whole of what this paragraph does.
 //
+// AND THE POPULATION IS NOT TEN, WHICH IS WHY THIS PARAGRAPH DOES NOT ALSO REPAIR IT. Counted by
+// gunbc#9260's owner rather than by this lane -- their measurement, restated here with its source
+// named and not adopted as mine: 82 files consume `compile_dag_rust_emit_check`, and 6 already use
+// the typed replacement. So the ten rows in this file are one file of eighty-two, the destination
+// ships and has adopters, and a migration of that size is a lane rather than a paragraph in a wall
+// repair. What this file owes is the disclosure, which is above; what it must not do is fix its own
+// ten and leave a reader counting one green file as evidence about the other eighty-one.
+//
 // dissolve-on: none. DESIGN section 4b(4) -- the evidence stays enrolled when the wall lands.
 
 fn bcp_foreign_into_bool_fixture_source() -> String {
