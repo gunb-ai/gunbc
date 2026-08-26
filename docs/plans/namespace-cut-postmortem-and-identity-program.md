@@ -725,8 +725,10 @@ exactly this and required-regen refused before comparing any bytes.
 ceases to be a parameter anywhere in `std.keyed_roster`, `std.key_relation`,
 `std.change`. `Map<String, _>` remains spellable only where the domain genuinely
 is free text — **and that carve-out is 0.35% of the compiler population, not a
-comfortable residue.** `neat-fox-901`'s census (→ [keying-census.md](keying-census.md),
-gunbc#9202) measures 8 `FreeText` sites in 2272, all of them in `extdeps/`,
+comfortable residue.** `neat-fox-901`'s census — carried on
+[gunbc#9202](https://github.com/gunb-ai/gunbc/pull/9202), **closed unmerged**, so
+`keying-census.md` exists only on `session/neat-fox-901` and is reachable through that
+PR's diff, never through this tree — measures 8 `FreeText` sites in 2272, all of them in `extdeps/`,
 against 838 `ResourceLocator` and 817 `SubjectKey`-as-text. An earlier revision
 of this sentence read as though free text were a broad escape hatch; on
 measurement it is a rounding error, and the sentence is corrected rather than
@@ -1853,7 +1855,9 @@ So the split is clean, and it falls exactly along the line that clause draws:
   and are unclassified — `DeclarationRef` vs `RustItemDeclarationRef` among them
   is plausibly this document's class.
 - ~~The FreeText denominator~~ — **ANSWERED**: 8 of 2272, 0.35%
-  (→ [keying-census.md](keying-census.md)). Carried into T1 and Track D above.
+  (`neat-fox-901`'s census, [gunbc#9202](https://github.com/gunb-ai/gunbc/pull/9202),
+  closed unmerged — reachable in that PR's diff, not in this tree). Carried into T1
+  and Track D above.
   What remains open on it is the census's own declared bound: it is
   **text-derived, not Node-derived**, so it cannot see a key type reached through
   an alias, a generic instantiation or a re-export, and it classifies by binding
@@ -4434,3 +4438,45 @@ single authority, by the lane that had been ruling on it elsewhere all day. **A 
 outward and never run inward is not a standard, it is a preference you apply to other people** — and
 it took an approving, explicitly non-blocking review to surface it, which is the argument for reading
 those rather than filing them.
+
+### 11.2w FOUND — a relative-path citation to a markdown artifact is broken **by construction** in this repository
+
+Filed on `review 56251`, which reported `keying-census.md` as cited-but-absent at two sites and was
+correct. The repair is small; **the reason it happened is a standing defect in how this program
+cites, and it is the third instance of the citation class in one day.**
+
+**WHAT THE REVIEW FOUND, AND WHAT IT COULD NOT SEE.** `keying-census.md` is absent from `origin/main`
+and from this head — `git ls-tree` and `git ls-files` both empty, exactly as reported. It is not
+imaginary: it was authored in `2819ef98f1` and lives on `origin/session/neat-fox-901`. But that
+branch's PR, **gunbc#9202, is CLOSED and unmerged**, so the file will not arrive. The citation was
+not merely premature; it named a path that no future state of this tree reaches.
+
+**AND THE CAUSE IS STRUCTURAL, NOT AN OVERSIGHT.** The operator's standing rule is that markdown PRs
+are **not merged** — they stay open, or are closed, and are read through the PR. This document is
+itself governed by that rule and says so. It follows immediately, and nobody drew the inference:
+
+> **Any citation to a markdown artifact by relative path is broken by construction here**, because
+> the mechanism that would make the path resolve — merging the markdown — is the exact thing the
+> repository forbids. The link is not *at risk* of rotting; it never worked and never could.
+
+That is a sharper failure than §3's ordinary positional decay. A positional citation is *correct
+when written* and falsified later by an edit; this one is **false at the moment of authorship**, in
+a way that looks identical to a working link in every renderer and passes every reviewer who does
+not run `ls`. Both citations here were authored that way and both survived until a review executed
+the check.
+
+**THE FIX, WHICH IS A PATTERN AND NOT A LINE EDIT.** Cite the **PR**, state its **lifecycle**, and
+carry the **figures inline** — which both sites already did, and which is why nothing downstream was
+wrong: the numbers (8 of 2272, 0.35%, against 838 `ResourceLocator` and 817 `SubjectKey`-as-text)
+were never *derived through* the dead link, only attributed to it. A reader now learns where the
+artifact is, that it is closed, and what it measured, without needing it to resolve.
+
+**THE THIRD INSTANCE TODAY, AND THE THREE ARE NOT ONE PROBLEM.** §11.2v audited this file's
+`file:line` pointers and found one real violation among seven. §11.2u(a) recorded a `.dag` module
+citing `parser_sibling_match_arm_pattern_binder_holds_note`, a symbol deleted in #8486. This is the
+third, and its mechanism is distinct from both: not a position that decayed, not a symbol that was
+deleted, but **a path that could never have resolved**. They share only the shape a reader sees —
+*a citation that looks fine and points at nothing* — which is why the standing repair is the same
+one DESIGN already names and none of the three is covered by: **check citations where the module is
+ingested, from its own source.** Three independent mechanisms producing one indistinguishable symptom
+is the argument for a mechanism rather than more diligence.
