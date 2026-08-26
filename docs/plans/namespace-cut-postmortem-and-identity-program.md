@@ -5101,3 +5101,99 @@ than this type, or **the dissolve-on names a thing that does not yet exist** —
 ratchet is registered against this program to deliver it. Flagged as a tension, **not resolved**: the
 measurer declined to guess and so does this section. It is now an obligation this lane knows it
 carries, which it did not an hour ago.
+
+### 11.2ac RULED — correspondence is **minted, not computed**; therefore **P is a graph transform, not a text rewrite**. Same-compile was the wrong constraint
+
+Ruled on crisp-crab-430's argument (2026-08-26), which closes §11.2ab's open question rather than
+answering it with a candidate — and which corrects this lane's own framing of it.
+
+**THE ARGUMENT, AND IT IS CLOSED RATHER THAN PLAUSIBLE.** Take the forbidden list as given —
+filename, span, authored name, spelling, structural `Node` equality, content hash, traversal
+ordinal, intern id. Now ask what a cross-compile key *could* be. **Any such key must be computed
+from each tree separately and then joined — that is what makes it cross-compile.** And every
+property available to a separate computation over a finished tree is either **positional** or
+**content-derived**. Both classes are forbidden, **by name**.
+
+> So there is no admissible cross-compile key. **Not *none we have thought of* — none**, because the
+> two exhaustive classes a separately-computed key can draw from are exactly the two the law rules
+> out.
+
+**Therefore the correspondence must be MINTED, not computed** — and this lane's own minted-versus-
+reconstructed test is what settles it. *A relation computed after the fact from two finished trees is
+reconstruction by definition, whatever it keys on. A relation emitted by the operation that PRODUCED
+the second tree is minted*, because a function knows which output element came from which input
+element: that is **not an inference about the trees, it is a fact the transformation had in hand.**
+
+**So the question was malformed.** *"What does the correspondence key on"* has no answer because
+**correspondence is not a join.** It is the projector's **output**, emitted alongside `P(B)`, and no
+key is required at all.
+
+**WHAT THIS CONSTRAINS IS *WHERE P OPERATES* — AND SAME-COMPILE WAS THE WRONG CONSTRAINT.**
+
+```
+TEXT-LEVEL P    rewrite the source, re-parse, relate the two parses
+                → provenance is DESTROYED AT THE TEXT BOUNDARY. Once you hold two
+                  independently-parsed trees, every remaining bridge is forbidden —
+                  and that is true however the parses are scheduled.
+
+GRAPH-LEVEL P   transform the occurrence-bearing graph; emit text FROM the transformed graph
+                → provenance is free: each produced node is produced FROM a specific input node.
+```
+
+§11.2ab floated *same-compile* as the candidate shape. **That is a scheduling property, and it is
+neither necessary nor sufficient:** two parses in one process still leaves you reconstructing, and a
+graph-level transform whose provenance is *serialized alongside its output* is admissible even if
+`P(B)` is compiled tomorrow in another process. **The provenance is the artifact; when it is consumed
+is not the question.** The same-compile framing was a special case of *P is a graph transform* — the
+case where provenance is never serialized — and the general case is the one the delta join needs,
+since a join must be re-derivable from artifacts rather than only available inside the process that
+computed it.
+
+**THE GENERAL TELL, WHICH GENERALISES §11.2ab's SHARED-ALLOCATOR TRAP.**
+
+> **Any correspondence computed post-hoc from two finished trees will be total, clean, and
+> meaningless. If your join always closes, it is not a join.**
+
+That is the absorbing fallback one level up: the failure frequency is **zeroed by construction**, so
+the deficit never ranks, and the artifact will be cited as coverage — which is precisely what makes
+it worse than the visibly broken version.
+
+And a second, quieter reason the shared allocator is a trap, worth recording beside the first:
+**it makes the ordinal look *more* trustworthy, not less.** A monotone counter shared across two
+parses yields ids that are globally unique, totally ordered, and reproducible run to run. **Everything
+a reader checks about it comes back clean.** The one property it does not have is the only one anyone
+wanted.
+
+**THE DELTA JOIN'S SHAPE FOLLOWS, AND IT KEYS ON NOTHING.**
+
+```
+delta(O_X(B), O_Y(P(B)), provenance)     three inputs, no key
+```
+
+Its refusals concern **provenance totality over the denominators**, not id matching: every occurrence
+in `B`'s denominator appears **exactly once as a provenance source**; every occurrence in `P(B)`'s
+denominator appears **exactly once as a provenance target, or is declared an insertion with no
+source**; and no provenance pair names an occurrence outside either denominator. Those are the same
+two-direction identity joins the envelope already carries for completeness, **applied to the
+provenance relation instead of the outcome population** — which is corroboration rather than
+coincidence: the envelope's shape did not have to change to absorb this.
+
+**The middle law is where the inserted qualifiers live, and it is a FIRST-CLASS ARM rather than an
+exception.** A projection that inserts tokens produces target occurrences with **no source**, and
+that is *correct*, not a gap. A design treating every target as having a source **would refuse
+`P(B)` for doing its job.**
+
+**AND THE BLOCKER IS STATED RATHER THAN WORKED AROUND:** if `P` stays text-level, **none of these
+laws is authorable and the delta join has no admissible construction at all.**
+
+**ONE METHODOLOGICAL CORRECTION THIS LANE ACCEPTS.** Told to weight this lane's rulings below the
+consumer's arguments after two same-day withdrawals, the consumer declined the asymmetry — correctly,
+and for a reason that transfers:
+
+> Both withdrawals came from **checking a mechanism late**; the surviving arguments were about **what
+> a key cannot separate**, which is answerable without reading any code. That is a property of the
+> **questions**, not of the people. **A claim about what a representation cannot distinguish is cheap
+> to check and durable; a claim about what a specific symbol does is expensive to check and rots** —
+> so state the first from the armchair, and never state the second without opening the file.
+
+Which is this document's own *name-the-instrument* rule, turned on its authors.
