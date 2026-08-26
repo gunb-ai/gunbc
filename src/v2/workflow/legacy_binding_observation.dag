@@ -317,13 +317,3 @@ fn legacy_subject_identity(subject: LegacyBindingObservationSubject) -> Fnv1a64S
     right: content_hash_combine_structural(left: policy, right: populations)
   )
 }
-
-// THE SCOPED REFERENCE THIS MODULE ONCE DECLARED NOW LIVES BESIDE THE LAW IT DISCHARGES.
-//
-// SubjectOccurrenceRef was declared here: an OccurrenceId paired with the content address of the
-// subject whose allocator minted it. The fact it carries is std.occurrence_identity's -- that
-// module states the scope law and owns the allocator -- and the name stated this module's
-// vocabulary rather than the fact. It is now std.occurrence_identity.ScopedOccurrenceRef, with the
-// same shape and the `subject_identity` field renamed `scope` to say what it is. Consumers import
-// it from the authority; nothing is re-exported from here, because a second import surface for one
-// type is the fork this move exists to close.
