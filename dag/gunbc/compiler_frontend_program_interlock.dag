@@ -22,7 +22,8 @@ import std.types { NonEmptyStr, List }
 // order gets a different plan whichever direction they collapse it in.
 type ProgramMilestone
   = SelfHostWholeCorpusPopulationDerived
-  | SelfHostCargoRatchetEnrolled
+  | SelfHostCargoPhaseEnrolled
+  | SelfHostRatchetEnrolled
   | NamespaceWaveAdmissionEnrolled
   | NamespaceFirstSemanticWave
   | NamespaceTerminalEndState
@@ -31,7 +32,8 @@ type ProgramMilestone
 fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
   match m {
     SelfHostWholeCorpusPopulationDerived => "self-host S2: the exact whole-corpus population re-derived" as NonEmptyStr
-    SelfHostCargoRatchetEnrolled => "self-host S3+S4: required cargo-executing phase with a discriminating red, and the identity-grain debt ratchet, both enrolled" as NonEmptyStr
+    SelfHostCargoPhaseEnrolled => "self-host S3: required cargo-executing CI phase, enrolled with a discriminating red" as NonEmptyStr
+    SelfHostRatchetEnrolled => "self-host S4: the identity-grain debt ratchet, enrolled against S2's population" as NonEmptyStr
     NamespaceWaveAdmissionEnrolled => "namespace: required wave-admission wall over closure, subject-membership and occurrence-binding deltas" as NonEmptyStr
     NamespaceFirstSemanticWave => "namespace: first semantic wave (Step 1, deletion of the import-name universe)" as NonEmptyStr
     NamespaceTerminalEndState => "namespace: terminal end state (Steps 1-5 complete, import grammar retired)" as NonEmptyStr
@@ -41,7 +43,7 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
 
 // WHY THE S2 CENSUS IS ITS OWN VARIANT RATHER THAN A WORD INSIDE ANOTHER ONE.
 // The ruling gates the first namespace wave on S2 + S3 + S4. An earlier revision
-// carried S3 and S4 in SelfHostCargoRatchetEnrolled and left S2 implicit in the
+// carried S3 and S4 in a single composite variant and left S2 implicit in the
 // phrase "proof envelope" -- which is a real gap and not a naming preference:
 // the closed variant makes an omitted MILESTONE fail to compile, but it cannot
 // make an omitted FACT fail to compile when that fact is hiding inside a
@@ -53,6 +55,25 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
 // element, because a composite element is a place for a fact to hide from the
 // very check that makes the construction worth having.
 //
+// THE SAME RULE THEN CAUGHT A SECOND INSTANCE IN THIS FILE, which is why the
+// paragraph above is stated as a rule and not as one repair. S3 and S4 were
+// still fused in one variant, and their prerequisites DIFFER: S3 (enrol a
+// cargo-executing phase) needs nothing, while S4 (enrol the ratchet against
+// S2's population) cannot precede S2. A fused variant must therefore state
+// either the minimum -- permitting S4 before the population it ratchets
+// against exists -- or the maximum, falsely blocking S3. It stated the
+// minimum. Adding S2 to the fused variant would have closed the permissive
+// half by introducing the false-blocking half, so the repair is the SPLIT:
+// two facts with two prerequisite sets are two elements (review 56376,
+// 2026-08-26).
+//
+// PREREQUISITES ARE DIRECT EDGES, not the transitive closure. S2 is not
+// repeated on NamespaceFirstSemanticWave because S4 already carries it; one
+// edge per fact, and the closure is derived rather than restated (DESIGN
+// section 2). Restating it would mean a later correction to S4's
+// prerequisites could leave a stale duplicate standing here, which is the
+// second-representation failure this document names.
+//
 // THE PRECEDENCE RELATION AS A TOTAL FUNCTION, not a list of edges. A list is
 // satisfied by omission -- a milestone nobody wrote an edge for silently has no
 // prerequisites, and the failure is invisible. An exhaustive match over a closed
@@ -62,9 +83,10 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
 fn milestone_prerequisites(m: ProgramMilestone) -> List<ProgramMilestone> {
   match m {
     SelfHostWholeCorpusPopulationDerived => []
-    SelfHostCargoRatchetEnrolled => []
+    SelfHostCargoPhaseEnrolled => []
+    SelfHostRatchetEnrolled => [SelfHostWholeCorpusPopulationDerived, SelfHostCargoPhaseEnrolled]
     NamespaceWaveAdmissionEnrolled => []
-    NamespaceFirstSemanticWave => [SelfHostWholeCorpusPopulationDerived, SelfHostCargoRatchetEnrolled, NamespaceWaveAdmissionEnrolled]
+    NamespaceFirstSemanticWave => [SelfHostRatchetEnrolled, NamespaceWaveAdmissionEnrolled]
     NamespaceTerminalEndState => [NamespaceFirstSemanticWave]
     SelfHostSeedRetirement => [NamespaceTerminalEndState]
   }
