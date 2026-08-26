@@ -1526,135 +1526,42 @@ So the split is clean, and it falls exactly along the line that clause draws:
   becomes an edge with no naming occurrence — a refusal constructible on a fixed
   small subject, with no whole-corpus run.
 
-- **The affected-set budget check refuses at ANY partition size, because it
-  compares against a fixed whole-tree constant rather than the subject.** Surfaced
-  by the blocked B.3 measurement, but the blast radius is much larger than one
-  oracle: a bound that does not scale with its subject makes **every** partitioned
-  measurement unavailable, so partitioning — the standard response to a run too
-  large for a session — cannot be used at all. Carried upward as its own item;
-  not the measuring lane's to fix from inside a blocked measurement.
+- **RETRACTED — "the affected-set budget check refuses at any partition size."**
+  This row previously asserted that a budget check compares against a fixed
+  whole-tree constant rather than its subject, making every partitioned
+  measurement unavailable. **It was relayed from a lane report and never
+  verified**, including by this document's author, who requested the invocation
+  and refusal text only after an operator challenged it — *"what is the affected
+  set budget check? i thought we deleted all of that."*
 
-- **THE CONFLATION IS IN THE COMPILER, NOT THE INSTRUMENT — `TypecheckModuleResult`
-  cannot say whether the module was checked** (`cool-swift-307`, 2026-08-26;
-  verified independently here by source read). The type carries `typed` /
-  `diagnostics` / `binding_forks` and nothing that states progress, and
-  `typecheck_module`'s `if env_errors |> count > 0` arm returns a `TypedModule`
-  with `items: []` and `item_registry: empty_map()`, never reaching
-  `analyze_item`. So **a module that completed with no items and a module
-  abandoned before item checking render identically to every consumer** — 8
-  `.items` reads in `04_infer` alone, 89 across `src/v1/*.dag`.
+  The challenge is well-founded. Affected-set selection was **deleted 2026-08-15**
+  and the tree says so about itself: `realization_schedule`
+  `scoped_witness_worker_note` (*"deleted 2026-08-15 with affected-set
+  selection"*), `dag_compile_clean_scope` `scope_disposition_witness_roster_note`,
+  `floor_component_receipt_witness_test` `receipt_round_trip_note`. Two cold
+  searches found no live budget check of the shape claimed.
 
-  **THE ARM IS REACHED — established by call graph, and the two fixtures that
-  tried to show it by execution could not.** The first authored an unresolvable
-  *import* and refused at `exit=1`; but `UnresolvedImport` is minted at
-  `v1.03_resolve`, upstream of `typecheck_module`, and none of `build_type_env`'s
-  three diagnostic sources is it. The second authored an unresolvable *type name*
-  at four positions — parameter type, return type, `data` declaration, record
-  field — each refusing with `unresolved type`, against a positive control
-  (module line only) at `exit=0` with zero diagnostics. **That is still not an
-  observation of the arm**: a located refusal at `exit=1` renders identically
-  whether `typecheck_module` took its early return or an earlier stage refused,
-  so changing *which* stage the fixture stops at gains no ability to *see* which
-  stage stopped it.
+  **The one live budget that exists inverts the claim.**
+  `std.realization_schedule` `walk_population_budget_note`: `WalkPlan` carries an
+  `Optional<Millisecond>` budget **per population** (`Absent` = authored
+  unboundedness), and a breach constructs `WalkPopulationBudgetRefusal`. That is a
+  per-population *wall-clock* bound — not a whole-tree constant, and a smaller
+  partition should take *less* wall time, which is the opposite of what was
+  asserted.
 
-  What settles it is the call graph, not the exit code:
+  **Status: UNSUBSTANTIATED, pending a receipt** — exact invocation, verbatim
+  refusal with both numbers, the symbol holding the constant, and the revision it
+  was hit on (a stale worktree returns true answers about a tree that no longer
+  exists). The lesson is the row's real content: **a trusted source is not a
+  verified claim**, and the framing that made it travel — *a lane hitting it reads
+  it as their own budget problem and goes looking for a bigger host* — is struck
+  with it, because a good framing attached to an unverified mechanism is exactly
+  what carries the mechanism.
 
-  ```
-  build_type_env            → resolve_env_bindings
-  resolve_env_bindings      → topo_resolve_types
-  topo_resolve_types        → resolve_node          (both fold arms)
-  resolve_node              → resolve_node_bounded  (the only body)
-  resolve_node_bounded      → bare_name_miss_diagnostic
-  bare_name_miss_diagnostic → UnresolvedType
-  ```
-
-  with those diagnostics returning through `EnvResolveResult` into
-  `build_type_env`'s `resolved_diags`. So an unresolvable type name in a module's
-  own bindings yields `env_errors > 0` and the early return is taken. Two mints
-  are eliminated rather than assumed away: the `UnresolvedType` in
-  `build_type_env`'s namespace-alias arm (the fixtures author no aliases), and
-  `resolve_node_bounded`'s *first* `bare_name_miss_diagnostic` call — which sits
-  in the lookup-**hit** arm behind the `type_ref_hit_ne_bind_measure_active` host
-  bracket and, per `type_ref_hit_ne_bind_measure_resolve_note`, is off in
-  production. The fixtures take the **miss** arm, reached after `is_kernel_type`,
-  type-variable, error-node and unit-variant-phantom lookups all decline.
-
-  **What is NOT claimed: `typecheck_module`'s return was never observed
-  directly** — the arm's selection rests on source and call graph, not execution.
-  And the reason it stayed unobserved is worth stating rather than leaving to be
-  deduced: **the cheapest direct witness is a probe on the very function the
-  ruling would authorize modifying.** Mildly circular, and smaller than it was,
-  since the call graph now carries what the probe would have shown.
-
-  **This is the same defect §11.2l measured, not an analogous one.** The oracle
-  could not distinguish `total_arm1=1` from a genuine single-ask module *because
-  the stage it was observing does not distinguish them either*. The instrument
-  was faithfully reporting a conflation already present in the compiler, which
-  inverts how §11.2l reads: the oracle was not badly built.
-
-  It also **corrects the requirement in the row below**. A progress receipt bolted
-  onto the probe would be a second representation of a fact the producer already
-  knows, and would leave all 89 in-tree consumers as blind as they are now — so
-  the honest home is `TypecheckModuleResult` itself, distinguishing *Completed*
-  from *AbandonedBeforeItems* with the early return naming which.
-
-  Stated at the grain that survives a hostile read: **the carrier does not state
-  it**, rather than the information being destroyed. The abandoned arm does carry
-  env error diagnostics, so a consumer could try to infer abandonment from "items
-  empty and error diagnostics present" — unreliably, since a completed module
-  with item-level errors looks the same. The defect is that **consumers must
-  infer a fact the producer knows**.
-
-  **NOT AUTHORIZED, AND THE ROUTED QUESTION IS NARROWER THAN "may we touch v1".**
-  `gunbc.v1_maintenance_standing` was read rather than assumed. The purpose test
-  (2026-08-20) is satisfied on the axis its own precedent pair uses — the noun
-  repair was admitted because it was *exhibited today* inside the v2 program's
-  measuring instrument; the argv fabrication was refused because it exhibits
-  nothing. This case is on the admitted side of that axis, with a named victim.
-
-  **But one refused class is live, and refusals dominate every admission.**
-  `v1_maintenance_rung_note` states the measurement for it: *"PublicSurfaceGrowth
-  is a diff over the emitted seed's exported declarations."* Widening
-  `TypecheckModuleResult` is a change in exactly that diff. So the decidable
-  question — and the only one that needs an operator — is: **does
-  PublicSurfaceGrowth mean a NEW exported declaration, or ANY change to the
-  exported surface?** The noun repair clears under both readings (it was one
-  string), so the precedent does not discriminate, which is why the question has
-  never had to be answered.
-
-  **The premise was checked by execution rather than inferred** (`warm-hawk-909`,
-  confirmed here): `pub struct TypecheckModuleResult` at
-  `v1_compiler_infer.rs:20786` in the emitted seed, **23** references across its
-  `.rs` files. The type does cross the exported boundary, so the surface diff is
-  measured, not assumed.
-
-  **AND THE SERDE BOUNDARY IS NAMED HERE SO THE NEXT LANE DOES NOT RE-DERIVE IT
-  IN EITHER DIRECTION.** `shared_typecheck_store.rs` carries a *"Cross-worker
-  serde contract"* moving `TypecheckModuleResult` as bytes via
-  `encode_typed_snapshot` / `decode_typed_snapshot`, which reads as a second
-  refused class (a compatibility obligation) that would dominate even under the
-  permissive reading. **It does not hold.** The same file scopes it: the store
-  crosses worker *threads* when explicitly armed, in one process, in one run, and
-  calls itself *"the interim serde byte transport"* with its own `dissolve-on`
-  marker. Encode and decode are always the same binary, so a snapshot written
-  before the change and read after cannot occur. The contract it actually
-  declares is representation-independence — authored **names** rather than
-  per-worker `InternTable` indices — which a new field does not violate. **So the
-  routed question stays ONE class, not two**; recorded because an objection that
-  does not survive its own file makes a refusal look stronger than it is.
-
-  **No construction fix avoids the class, and the reason is structural rather
-  than exhaustive search** (`warm-hawk-909`'s phrasing, which is better than the
-  original here): **the fact that needs stating is *about the result*, and the
-  result is what crosses the boundary — so any carrier honest enough to state it
-  is by construction on the far side.** The rename that saved the noun repair has
-  no analogue, because there is nothing misnamed here, only something unstated. If the strict reading holds, **this defect is unfixable under the
-  freeze as currently read**, which is a legitimate outcome rather than a gap:
-  the §9 rows stand and the measurement discipline below carries the weight
-  without touching the seed. Recorded as an argument, not a verdict; the
-  permissive reading is not advocated here, because reinterpreting a refused
-  class is how a freeze repeals by drift — the standing danger that carrier names
-  in its own words.
+  **What does NOT depend on it:** B.3's circularity was established by the 7-module
+  table and the pre-registered discriminator, not by any refusal, and the
+  replacement question (M2 per-edge naming) needs a fixed small subject. The row
+  above no longer claims B.3 is blocked on infrastructure.
 
 - **A per-file measurement needs a per-module progress receipt, and none exists.**
   Every per-file instrument in this program shares §11.2l's hazard: a row from a
