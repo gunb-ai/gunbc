@@ -231,7 +231,7 @@ fn discovery_census(sites: List<DiscoveredSite>) -> SiteCensus {
 // without the other, so the roster and its exclusions cannot drift apart.
 //
 // It also removes the `Bool` over a closed coproduct (review 55984): the partition descends over
-// `RequiredFloorDisposition` here, wildcard-free, so a fifth arm must be classified rather than
+// `RequiredFloorDisposition` here, wildcard-free, so a third arm must be classified rather than
 // silently absorbed into the declined side by a predicate that answered `false`.
 type CensusPartition {
   planned: List<CensusRow>
@@ -293,12 +293,12 @@ fn required_aggregate_from_census(census: SiteCensus) -> RequiredAggregateDeriva
 
 // THE COUNTS ARE DERIVED AND THE PARTITION IS EXACT BY CONSTRUCTION, so there is no
 // partition-exactness check here. Each row holds exactly one disposition and the fold below
-// matches it with no wildcard, so `offered` is the sum of the four arms because there is nowhere
+// matches it with no wildcard, so `offered` is the sum of the two arms because there is nowhere
 // else for a row to go — a check restating that would be validation standing where construction
 // already holds (DESIGN §5). The floor's own host-side partition check exists because THERE the
 // counters are incremented independently and can drift; here they cannot.
 //
-// A FIFTH DISPOSITION ARM MUST FAIL TO COMPILE IN THIS FOLD. That is the reason the match is
+// A THIRD DISPOSITION ARM MUST FAIL TO COMPILE IN THIS FOLD. That is the reason the match is
 // written out rather than counted as "planned and everything else": a new decline reason
 // silently joining the non-planned remainder would leave the census reporting a population it no
 // longer distinguishes.

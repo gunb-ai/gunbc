@@ -229,7 +229,7 @@ fn required_floor_site_disposition(
 // rest of this branch dissolved three of (review 55984). Its only consumer filtered a roster with
 // it, keeping the routed side and discarding the declined one, which is the fact the census
 // exists to carry. `gunbc.discovery_census` `census_partition` now descends over these arms in one
-// pass and returns both sides, so a fifth arm must be classified rather than absorbed into
+// pass and returns both sides, so a third arm must be classified rather than absorbed into
 // `false`, and the roster cannot be produced without its exclusions.
 
 
