@@ -1,0 +1,176 @@
+module test.claim.target_binding_witness
+
+import extdeps.bazel.label { Label, PackagePath, TargetName }
+import gunbc.target_binding {
+  TargetBinding,
+  TargetBindingIndexBuild, TargetBindingIndexReady, TargetBindingIndexRefused,
+  TargetBindingLookup, TargetProducerBound, KnownTargetBindingMissing, TargetUnknown,
+  TargetBindingIndexRefusal, DuplicateTargetBinding,
+  build_target_binding_index, target_binding_lookup,
+  BehavioralReceiptPlanProducer, HeadsReadingDifferentialProducer,
+  BehavioralReceiptPlanStanding, BehavioralReceiptPlanCompleted,
+  BehavioralReceiptPlanNoSubject, BehavioralReceiptPlanRefused,
+  BehavioralReceiptDiverged,
+  HeadsReadingDifferentialStanding, HeadsReadingDifferentialCompleted,
+  HeadsReadingDifferentialRefused, HeadsReadingDifferentialObservation,
+}
+import gunbc.build_target {
+  BuildTarget, TestRule,
+  TargetStanding, TargetCompleted,
+  TestStanding, TestMeasuredByHeadsReadingDifferential,
+  StandingVerdict, StandingSatisfied, StandingUnsatisfied,
+  StandingCause, TestProducerOutsideRequiredAggregate,
+  target_standing_verdict,
+}
+import std.types { Bool }
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+fn instrument_label() -> Label {
+  Label {
+    package: PackagePath { segments: ["tools", "claim_executor"] }
+    target: TargetName { name: "heads_reading_differential" }
+  }
+}
+
+// THE SAME TARGET MAY BE JOINED TO A DIFFERENT PRODUCER WITHOUT CHANGING ITS IDENTITY OR EDGES.
+// The BuildTarget construction has no producer-shaped field; the relation carries that fact.
+test fn target_binding_is_peer_to_build_target() -> Bool {
+  let target = BuildTarget {
+    label: instrument_label()
+    kind: TestRule {}
+    dependencies: []
+  }
+  let differential = TargetBinding {
+    target: target.label
+    producer: HeadsReadingDifferentialProducer {}
+  }
+  let plan = TargetBinding {
+    target: target.label
+    producer: BehavioralReceiptPlanProducer {}
+  }
+  (differential.target == plan.target) && (differential.producer != plan.producer)
+}
+
+fn one_target_index(bindings: List<TargetBinding>) -> TargetBindingIndexBuild {
+  build_target_binding_index(targets: [instrument_label()], bindings: bindings)
+}
+
+// LOOKUP DISTINGUISHES A TARGET THE REGISTRY DOES NOT KNOW FROM A KNOWN TARGET WHOSE PRODUCER
+// BINDING IS MISSING. Removing one binding therefore refuses that exact target; it cannot turn
+// into an absent target or an empty successful run.
+test fn keyed_lookup_distinguishes_bound_missing_and_unknown() -> Bool {
+  let binding = TargetBinding {
+    target: instrument_label()
+    producer: HeadsReadingDifferentialProducer {}
+  }
+  let bound = match one_target_index(bindings: [binding]) {
+    TargetBindingIndexRefused { cause: _ } => false
+    TargetBindingIndexReady { index: i } => match target_binding_lookup(index: i, target: instrument_label()) {
+      TargetProducerBound { binding: b } => b == binding
+      KnownTargetBindingMissing { target: _ } => false
+      TargetUnknown { target: _ } => false
+    }
+  }
+  let missing = match one_target_index(bindings: []) {
+    TargetBindingIndexRefused { cause: _ } => false
+    TargetBindingIndexReady { index: i } => match target_binding_lookup(index: i, target: instrument_label()) {
+      KnownTargetBindingMissing { target: t } => t == instrument_label()
+      TargetProducerBound { binding: _ } => false
+      TargetUnknown { target: _ } => false
+    }
+  }
+  let other = Label {
+    package: PackagePath { segments: ["tools", "claim_executor"] }
+    target: TargetName { name: "unknown" }
+  }
+  let unknown = match one_target_index(bindings: []) {
+    TargetBindingIndexRefused { cause: _ } => false
+    TargetBindingIndexReady { index: i } => match target_binding_lookup(index: i, target: other) {
+      TargetUnknown { target: t } => t == other
+      TargetProducerBound { binding: _ } => false
+      KnownTargetBindingMissing { target: _ } => false
+    }
+  }
+  bound && missing && unknown
+}
+
+// UNIQUENESS IS AN INDEX-CONSTRUCTION WALL, not whichever row a first-match scan happened to
+// reach. Two producers for one label refuse with the duplicated target named.
+test fn duplicate_target_binding_refuses_before_lookup() -> Bool {
+  let a = TargetBinding { target: instrument_label(), producer: HeadsReadingDifferentialProducer {} }
+  let b = TargetBinding { target: instrument_label(), producer: BehavioralReceiptPlanProducer {} }
+  match one_target_index(bindings: [a, b]) {
+    TargetBindingIndexReady { index: _ } => false
+    TargetBindingIndexRefused { cause: c } => c == DuplicateTargetBinding { target: instrument_label() }
+  }
+}
+
+// COMPLETED NEGATIVE, NO-SUBJECT, AND PRODUCER REFUSAL ARE SEPARATE STATES. A bool-shaped result
+// could not distinguish them: all currently make the CLI nonzero, for three different remedies.
+test fn behavioral_receipt_plan_keeps_completion_subject_and_observation_apart() -> Bool {
+  let negative: BehavioralReceiptPlanStanding = BehavioralReceiptPlanCompleted {
+    observation: BehavioralReceiptDiverged {}
+  }
+  let absent: BehavioralReceiptPlanStanding = BehavioralReceiptPlanNoSubject { head: "abc123" }
+  let refused: BehavioralReceiptPlanStanding = BehavioralReceiptPlanRefused {
+    detail: "merge base unreadable"
+  }
+  (negative != absent) && (absent != refused) && (negative != refused)
+}
+
+fn differential_observation(divergent: List<String>) -> HeadsReadingDifferentialObservation {
+  HeadsReadingDifferentialObservation {
+    modules_compared: 2
+    divergent: divergent
+    narrowed: []
+    regressed: []
+    both_refused: []
+  }
+}
+
+// A COMPLETED MEASUREMENT THAT FOUND DIVERGENCE IS NOT A MEASUREMENT THAT NEVER REACHED ITS
+// SUBJECT. The completed arm retains every reported population rather than collapsing them into
+// the CLI's exit status.
+test fn heads_reading_completion_is_distinct_from_divergence_and_refusal() -> Bool {
+  let agreement: HeadsReadingDifferentialStanding = HeadsReadingDifferentialCompleted {
+    observation: differential_observation(divergent: [])
+  }
+  let divergence: HeadsReadingDifferentialStanding = HeadsReadingDifferentialCompleted {
+    observation: differential_observation(divergent: ["dag/example.dag"])
+  }
+  let refused: HeadsReadingDifferentialStanding = HeadsReadingDifferentialRefused {
+    detail: "source root unreadable"
+  }
+  (agreement != divergence) && (divergence != refused) && (agreement != refused)
+}
+
+fn required_verdict_for(s: HeadsReadingDifferentialStanding) -> StandingVerdict {
+  target_standing_verdict(s: TargetStanding {
+    target: instrument_label()
+    build: TargetCompleted { success: true }
+    test: TestMeasuredByHeadsReadingDifferential { standing: s }
+  })
+}
+
+fn refuses_as_outside_required(v: StandingVerdict) -> Bool {
+  match v {
+    StandingSatisfied => false
+    StandingUnsatisfied { cause: c } => c == TestProducerOutsideRequiredAggregate {
+      producer: HeadsReadingDifferentialProducer {}
+    }
+  }
+}
+
+// //:required HAS NO POLICY FOR THIS INSTRUMENT. Both completed observations and a producer
+// refusal stop with the same typed scope cause; the aggregate does not silently turn divergence
+// into a generic failed test or agreement into a pass.
+test fn required_policy_does_not_interpret_heads_reading_observations() -> Bool {
+  refuses_as_outside_required(v: required_verdict_for(s: HeadsReadingDifferentialCompleted {
+    observation: differential_observation(divergent: [])
+  })) && refuses_as_outside_required(v: required_verdict_for(s: HeadsReadingDifferentialCompleted {
+    observation: differential_observation(divergent: ["dag/example.dag"])
+  })) && refuses_as_outside_required(v: required_verdict_for(s: HeadsReadingDifferentialRefused {
+    detail: "source root unreadable"
+  }))
+}

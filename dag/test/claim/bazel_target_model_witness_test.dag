@@ -42,6 +42,7 @@ import gunbc.build_target {
   AggregateFinding, DependencyUnsatisfied, DependencyStandingAbsent,
   AggregateStanding, AggregateSatisfied, AggregateNoDependencies, AggregateRefused,
   required_aggregate_standing,
+  BlazeTestStatusExport, BlazeTestStatusExported,
   blaze_test_status_of_claim_disposition, blaze_test_status_of_test_standing,
 }
 import std.types { String, Bool }
@@ -470,7 +471,7 @@ test fn w_export_reports_the_observation_not_the_policy() -> Bool {
 test fn w_export_maps_budget_and_unreached_arms_apart() -> Bool {
   (blaze_test_status_of_claim_disposition(d: BudgetRefusedBeforeVerdict {}) == TestStatusTimeout {})
     && (blaze_test_status_of_claim_disposition(d: RouteGapBeforeVerdict {}) == TestStatusIncomplete {})
-    && (blaze_test_status_of_test_standing(t: NotATestTarget {}) == TestStatusNoStatus {})
-    && (blaze_test_status_of_test_standing(t: TestReportedByBazel { status: TestStatusFlaky {} }) == TestStatusFlaky {})
-    && (blaze_test_status_of_test_standing(t: TestRunByFloor { disposition: Passed {} }) == TestStatusPassed {})
+    && (blaze_test_status_of_test_standing(t: NotATestTarget {}) == BlazeTestStatusExported { status: TestStatusNoStatus {} })
+    && (blaze_test_status_of_test_standing(t: TestReportedByBazel { status: TestStatusFlaky {} }) == BlazeTestStatusExported { status: TestStatusFlaky {} })
+    && (blaze_test_status_of_test_standing(t: TestRunByFloor { disposition: Passed {} }) == BlazeTestStatusExported { status: TestStatusPassed {} })
 }

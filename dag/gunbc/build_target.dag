@@ -15,6 +15,15 @@ import v2.workflow.floor_terminal_ledger {
   PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict,
   RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, ObservationUnreadableBeforeVerdict,
 }
+import gunbc.target_binding {
+  TargetProducer,
+  BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
+  BehavioralReceiptSelftestProducer, HeadsReadingDifferentialProducer,
+  BehavioralReceiptPlanStanding,
+  BehavioralReceiptCensusStanding,
+  BehavioralReceiptSelftestStanding,
+  HeadsReadingDifferentialStanding,
+}
 import std.types { String, Bool, NonEmptyStr }
 import std.integer { Int }
 
@@ -123,6 +132,10 @@ type TestStanding
   = NotATestTarget
   | TestRunByFloor { disposition: ClaimDisposition }
   | TestReportedByBazel { status: BlazeTestStatus }
+  | TestMeasuredByBehavioralReceiptPlan { standing: BehavioralReceiptPlanStanding }
+  | TestMeasuredByBehavioralReceiptCensus { standing: BehavioralReceiptCensusStanding }
+  | TestMeasuredByBehavioralReceiptSelftest { standing: BehavioralReceiptSelftestStanding }
+  | TestMeasuredByHeadsReadingDifferential { standing: HeadsReadingDifferentialStanding }
 
 type TargetStanding {
   target: Label
@@ -143,6 +156,7 @@ type StandingCause
   | BuildWasAborted { reason: AbortReason }
   | FloorDispositionUnsatisfied { disposition: ClaimDisposition }
   | BazelTestStatusUnsatisfied { status: BlazeTestStatus }
+  | TestProducerOutsideRequiredAggregate { producer: TargetProducer }
 
 type StandingVerdict
   = StandingSatisfied
@@ -233,11 +247,26 @@ fn build_standing_verdict(b: BuildStanding) -> StandingVerdict {
   }
 }
 
+// The four instrument producers are not members of //:required. Reaching aggregate policy with
+// one is therefore a typed wiring refusal; it does not reinterpret the producer's observation as
+// a pass or failure and does not invent a blocking policy for the instrument.
 fn test_standing_verdict(t: TestStanding) -> StandingVerdict {
   match t {
     NotATestTarget => StandingSatisfied {}
     TestRunByFloor { disposition: d } => claim_disposition_verdict(d: d)
     TestReportedByBazel { status: s } => blaze_test_status_verdict(s: s)
+    TestMeasuredByBehavioralReceiptPlan { standing: _ } => StandingUnsatisfied {
+      cause: TestProducerOutsideRequiredAggregate { producer: BehavioralReceiptPlanProducer {} }
+    }
+    TestMeasuredByBehavioralReceiptCensus { standing: _ } => StandingUnsatisfied {
+      cause: TestProducerOutsideRequiredAggregate { producer: BehavioralReceiptCensusProducer {} }
+    }
+    TestMeasuredByBehavioralReceiptSelftest { standing: _ } => StandingUnsatisfied {
+      cause: TestProducerOutsideRequiredAggregate { producer: BehavioralReceiptSelftestProducer {} }
+    }
+    TestMeasuredByHeadsReadingDifferential { standing: _ } => StandingUnsatisfied {
+      cause: TestProducerOutsideRequiredAggregate { producer: HeadsReadingDifferentialProducer {} }
+    }
   }
 }
 
@@ -390,10 +419,31 @@ fn blaze_test_status_of_claim_disposition(d: ClaimDisposition) -> BlazeTestStatu
   }
 }
 
-fn blaze_test_status_of_test_standing(t: TestStanding) -> BlazeTestStatus {
+type BlazeTestStatusExport
+  = BlazeTestStatusExported { status: BlazeTestStatus }
+  | TestStandingNotExportable { producer: TargetProducer }
+
+// A producer-specific instrument observation has no honest BlazeTestStatus. Refusing the export
+// preserves the same boundary as the carrier: a differential that completed and found divergence
+// is not Bazel FAILED, and a differential that did not complete is not NO_STATUS.
+fn blaze_test_status_of_test_standing(t: TestStanding) -> BlazeTestStatusExport {
   match t {
-    NotATestTarget => TestStatusNoStatus {}
-    TestReportedByBazel { status: s } => s
-    TestRunByFloor { disposition: d } => blaze_test_status_of_claim_disposition(d: d)
+    NotATestTarget => BlazeTestStatusExported { status: TestStatusNoStatus {} }
+    TestReportedByBazel { status: s } => BlazeTestStatusExported { status: s }
+    TestRunByFloor { disposition: d } => BlazeTestStatusExported {
+      status: blaze_test_status_of_claim_disposition(d: d)
+    }
+    TestMeasuredByBehavioralReceiptPlan { standing: _ } => TestStandingNotExportable {
+      producer: BehavioralReceiptPlanProducer {}
+    }
+    TestMeasuredByBehavioralReceiptCensus { standing: _ } => TestStandingNotExportable {
+      producer: BehavioralReceiptCensusProducer {}
+    }
+    TestMeasuredByBehavioralReceiptSelftest { standing: _ } => TestStandingNotExportable {
+      producer: BehavioralReceiptSelftestProducer {}
+    }
+    TestMeasuredByHeadsReadingDifferential { standing: _ } => TestStandingNotExportable {
+      producer: HeadsReadingDifferentialProducer {}
+    }
   }
 }
