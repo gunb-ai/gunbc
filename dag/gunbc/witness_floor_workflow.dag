@@ -1,7 +1,9 @@
 module gunbc.witness_floor_workflow
 
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
-import gunbc.roadmap_execution_contract { CargoCapability, RustfmtCapability }
+import gunbc.roadmap_execution_contract {
+  CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
+}
 import gunbc.repo_self_build { repo_self_build_command }
 import gunbc.workflow_capability_closure {
   CapabilityAnnotatedStep,
@@ -15,6 +17,10 @@ import gunbc.workflow_capability_closure {
 import v2.std.algebra { list_map }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import gunbc.toolchain_workflow_steps {
+  toolchain_home_isolation_step,
+  toolchain_pin_rustup_default_step,
+}
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   upload_artifact_action,
@@ -503,13 +509,16 @@ fn witness_toolchain_environment_probe_script() -> String {
         concat(
           "which -a cargo rustc rustup || echo \"which cargo/rustc/rustup: absent from PATH\"\n",
           concat(
-            "ls -l \"$\{CARGO_HOME:-$HOME/.cargo}/bin\" || echo \"cargo bin dir: absent\"\n",
+            "if [ -z \"$\{CARGO_HOME:-}\" ] || [ -z \"$\{RUSTUP_HOME:-}\" ]; then\n  echo \"::error::ToolchainHomesNotIsolated CARGO_HOME=$\{CARGO_HOME:-unset} RUSTUP_HOME=$\{RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run\" >&2\n  exit 1\nfi\n",
+            concat(
+            "ls -l \"$CARGO_HOME/bin\" || echo \"cargo bin dir: absent\"\n",
             concat(
               "rustup which rustfmt || echo \"rustup which rustfmt: no answer\"\n",
               concat(
                 "rustup toolchain list || echo \"rustup toolchain list: no answer\"\n",
                 "rustup default || echo \"rustup default: no answer\"\n"
               )
+            )
             )
           )
         )
@@ -720,9 +729,28 @@ fn prepared_bound_steps() -> List<WitnessFloorBoundStep> {
       step_name: "Checkout",
     },
     WitnessFloorBoundStep {
+      step: toolchain_home_isolation_step(),
+      role: capability_neutral,
+      step_name: "Isolate toolchain homes",
+    },
+    WitnessFloorBoundStep {
       step: witness_floor_toolchain_step(),
-      role: provides_only(capabilities: [CargoCapability, RustfmtCapability]),
+      // THE SAME ACTION PROVIDES THE SAME CAPABILITIES WHEREVER IT RUNS. This declared only
+      // [Cargo, Rustfmt] while gunbc.fleet_workflow_steps ci_setup_rust_step declares
+      // [Cargo, Rustc, Rustfmt, Rustup] for the identical setup_rust_action -- one action with two
+      // capability stories, which is the DESIGN 3 fork. It went unnoticed because nothing in this
+      // workflow consumed Rustup until the pin step below did, and then the closure refused. The
+      // under-declaration is corrected rather than the consumer weakened: the action really does
+      // install rustup and rustc.
+      role: provides_only(capabilities: [
+        CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
+      ]),
       step_name: "Install Rust toolchain",
+    },
+    WitnessFloorBoundStep {
+      step: toolchain_pin_rustup_default_step(),
+      role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
+      step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
     },
     WitnessFloorBoundStep {
       step: witness_floor_build_step(),

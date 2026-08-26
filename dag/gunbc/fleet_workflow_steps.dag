@@ -35,10 +35,10 @@ import gunbc.ci_compile_jobs { compile_jobs_count_or_serial }
 import gunbc.ci_runner_target { ci_runner_target_ram_speed_budget, selected_ci_runner_target }
 import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
+import gunbc.toolchain_workflow_steps { toolchain_pin_rustup_default_step }
 import v2.workflow.ci_workflow_run_emit {
   ci_isolate_toolchain_script,
   ci_native_cache_root_script,
-  ci_pin_rustup_default_script,
 }
 import v2.workflow.ci_release_build_emit { ci_release_build_script }
 import gunbc.ci_spec {
@@ -138,7 +138,7 @@ fn ci_prelude_bound_steps_with_checkout(
           step_name: "Derive native-cache root",
         },
         FleetPreludeBoundStep {
-          step: ci_pin_rustup_default_step(),
+          step: toolchain_pin_rustup_default_step(),
           role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
           step_name: "Pin rustup default",
         },
@@ -190,19 +190,6 @@ fn ci_setup_rust_step() -> Step {
   }
 }
 
-fn ci_pin_rustup_default_step() -> Step {
-  RunStep {
-    name: Present { value: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)" },
-    id: none,
-    run: ci_pin_rustup_default_script(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
 
 fn ci_cache_cargo_step() -> Step {
   UsesStep {
