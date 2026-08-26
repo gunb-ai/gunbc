@@ -1,11 +1,11 @@
 module test.claim.target_binding_witness
 
-import extdeps.bazel.label { Label, PackagePath, TargetName }
+import extdeps.bazel.label { Label, PackagePath, TargetName, render_label, label_eq }
 import gunbc.target_binding {
   TargetBinding,
   TargetBindingIndexBuild, TargetBindingIndexReady, TargetBindingIndexRefused,
   TargetBindingLookup, TargetProducerBound, KnownTargetBindingMissing, TargetUnknown,
-  TargetBindingIndexRefusal, DuplicateTargetBinding,
+  TargetBindingIndexRefusal, TargetLabelNotCanonical, DuplicateTargetBinding,
   build_target_binding_index, target_binding_lookup,
   BehavioralReceiptPlanProducer, HeadsReadingDifferentialProducer,
   BehavioralReceiptPlanStanding, BehavioralReceiptPlanCompleted,
@@ -106,6 +106,36 @@ test fn duplicate_target_binding_refuses_before_lookup() -> Bool {
     TargetBindingIndexReady { index: _ } => false
     TargetBindingIndexRefused { cause: c } => c == DuplicateTargetBinding { target: instrument_label() }
   }
+}
+
+// THE COLLISION IS AUTHORED AT THE FIXTURE BOUNDARY. The known target is canonical; the binding
+// target forges one package segment containing `/`. Both render as //a/b:c, and label_eq itself
+// says they are equal because its package comparison renders before comparing. Structural
+// round-trip admission must therefore refuse the BINDING target specifically; otherwise
+// BindingNamesUnknownTarget is defeated and the unknown label is admitted as the known target.
+test fn rendered_key_collision_refuses_as_noncanonical_before_indexing() -> Bool {
+  let known = Label {
+    package: PackagePath { segments: ["a", "b"] }
+    target: TargetName { name: "c" }
+  }
+  let forged_binding_target = Label {
+    package: PackagePath { segments: ["a/b"] }
+    target: TargetName { name: "c" }
+  }
+  (render_label(l: known) == render_label(l: forged_binding_target))
+    && label_eq(a: known, b: forged_binding_target)
+    && match build_target_binding_index(
+         targets: [known],
+         bindings: [TargetBinding {
+           target: forged_binding_target
+           producer: HeadsReadingDifferentialProducer {}
+         }]
+       ) {
+         TargetBindingIndexReady { index: _ } => false
+         TargetBindingIndexRefused { cause: c } => c == TargetLabelNotCanonical {
+           target: forged_binding_target
+         }
+       }
 }
 
 // COMPLETED NEGATIVE, NO-SUBJECT, AND PRODUCER REFUSAL ARE SEPARATE STATES. A bool-shaped result

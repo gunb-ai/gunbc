@@ -1,6 +1,9 @@
 module gunbc.target_binding
 
-import extdeps.bazel.label { Label, render_label }
+import extdeps.bazel.label {
+  Label, RootPackage, PackagePath, LabelParsed, LabelRefused,
+  render_label, parse_label,
+}
 import v2.std.optional { Optional, Present, Absent }
 import std.types { String }
 import std.integer { Int }
@@ -32,7 +35,8 @@ type TargetBindingIndex {
 }
 
 type TargetBindingIndexRefusal
-  = DuplicateTargetIdentity { target: Label }
+  = TargetLabelNotCanonical { target: Label }
+  | DuplicateTargetIdentity { target: Label }
   | DuplicateTargetBinding { target: Label }
   | BindingNamesUnknownTarget { target: Label }
 
@@ -45,22 +49,58 @@ type TargetBindingIndexAcc {
   refusal: Optional<TargetBindingIndexRefusal>
 }
 
+// Label is presently a freely constructible upstream record, so an authored value can sit outside
+// the cited label grammar. render_label is injective only over labels that survive its documented
+// parse(render(label)) round trip; index admission establishes that precondition before the String
+// becomes a key. Without this wall, PackagePath(["a:b"])+TargetName("c") and
+// PackagePath(["a"])+TargetName("b:c") silently alias at lookup even though label_eq rejects them.
+fn target_label_structural_eq(a: Label, b: Label) -> Bool {
+  let packages_equal = match a.package {
+    RootPackage => match b.package {
+      RootPackage => true
+      PackagePath { segments: _ } => false
+    }
+    PackagePath { segments: a_segments } => match b.package {
+      RootPackage => false
+      PackagePath { segments: b_segments } => a_segments == b_segments
+    }
+  }
+  packages_equal && (a.target.name == b.target.name)
+}
+
+fn target_label_is_canonical(target: Label) -> Bool {
+  match parse_label(text: render_label(l: target)) {
+    // label_eq is deliberately NOT used here: its package comparison renders both packages, so
+    // PackagePath(["a", "b"]) and PackagePath(["a/b"]) compare equal there. Admission needs
+    // injectivity of the rendered map key and therefore compares the actual segment lists.
+    LabelParsed { label: parsed } => target_label_structural_eq(a: target, b: parsed)
+    LabelRefused { cause: _ } => false
+  }
+}
+
 fn index_target(acc: TargetBindingIndexAcc, target: Label) -> TargetBindingIndexAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
-      let key = render_label(l: target)
-      match map_get(acc.index.targets_by_identity, key) {
-        Present { value: _ } => TargetBindingIndexAcc {
+      if !target_label_is_canonical(target: target) {
+        TargetBindingIndexAcc {
           index: acc.index
-          refusal: Present { value: DuplicateTargetIdentity { target: target } }
+          refusal: Present { value: TargetLabelNotCanonical { target: target } }
         }
-        Absent => TargetBindingIndexAcc {
-          index: TargetBindingIndex {
-            targets_by_identity: map_insert(acc.index.targets_by_identity, key, target)
-            bindings_by_identity: acc.index.bindings_by_identity
+      } else {
+        let key = render_label(l: target)
+        match map_get(acc.index.targets_by_identity, key) {
+          Present { value: _ } => TargetBindingIndexAcc {
+            index: acc.index
+            refusal: Present { value: DuplicateTargetIdentity { target: target } }
           }
-          refusal: Absent {}
+          Absent => TargetBindingIndexAcc {
+            index: TargetBindingIndex {
+              targets_by_identity: map_insert(acc.index.targets_by_identity, key, target)
+              bindings_by_identity: acc.index.bindings_by_identity
+            }
+            refusal: Absent {}
+          }
         }
       }
   }
@@ -70,26 +110,33 @@ fn index_binding(acc: TargetBindingIndexAcc, binding: TargetBinding) -> TargetBi
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
-      let key = render_label(l: binding.target)
-      match map_get(acc.index.targets_by_identity, key) {
-        Absent => TargetBindingIndexAcc {
+      if !target_label_is_canonical(target: binding.target) {
+        TargetBindingIndexAcc {
           index: acc.index
-          refusal: Present { value: BindingNamesUnknownTarget { target: binding.target } }
+          refusal: Present { value: TargetLabelNotCanonical { target: binding.target } }
         }
-        Present { value: _ } =>
-          match map_get(acc.index.bindings_by_identity, key) {
-            Present { value: _ } => TargetBindingIndexAcc {
-              index: acc.index
-              refusal: Present { value: DuplicateTargetBinding { target: binding.target } }
-            }
-            Absent => TargetBindingIndexAcc {
-              index: TargetBindingIndex {
-                targets_by_identity: acc.index.targets_by_identity
-                bindings_by_identity: map_insert(acc.index.bindings_by_identity, key, binding)
-              }
-              refusal: Absent {}
-            }
+      } else {
+        let key = render_label(l: binding.target)
+        match map_get(acc.index.targets_by_identity, key) {
+          Absent => TargetBindingIndexAcc {
+            index: acc.index
+            refusal: Present { value: BindingNamesUnknownTarget { target: binding.target } }
           }
+          Present { value: _ } =>
+            match map_get(acc.index.bindings_by_identity, key) {
+              Present { value: _ } => TargetBindingIndexAcc {
+                index: acc.index
+                refusal: Present { value: DuplicateTargetBinding { target: binding.target } }
+              }
+              Absent => TargetBindingIndexAcc {
+                index: TargetBindingIndex {
+                  targets_by_identity: acc.index.targets_by_identity
+                  bindings_by_identity: map_insert(acc.index.bindings_by_identity, key, binding)
+                }
+                refusal: Absent {}
+              }
+            }
+        }
       }
   }
 }
