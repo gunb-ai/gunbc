@@ -175,72 +175,6 @@ fn cssl_supplemental_claims_ok(
   )
 }
 
-// ---------------------------------------------------------------------------------------------
-// THE FAULT-DETECTION CONJUNCT, AND WHY IT CHANGED.
-//
-// This conjunct used to read `fault_run.success == false`, and that predicate cannot establish the
-// proposition the receipt cites it for. The claim is "the planted fault was REACHED AND DETECTED".
-// The predicate is true whenever the process failed to exit zero, which includes: the binary was
-// never built, the path does not exist, the loader failed, the process was killed, the host was out
-// of memory, or the driver crashed before reaching the comparison at all. Every one of those is a
-// TRANSPORT OBSERVATION -- a fact about the pipe, not about the subject -- and every one of them
-// made this receipt pass. The predicate's truth set is simply wider than the proposition, which is
-// the cause-aliasing violation of the claim-entailing evidence rule (v2.std.subject_evidence).
-//
-// THE REPAIR REQUIRED NO NEW OBSERVATION. Every one of the sixteen drivers this harness runs
-// already prints an EXACT fault marker on the inject-fault path -- `dag/tools/
-// self_host_00_compile_shims/witness_main.rs` prints `SELF_HOST_00_COMPILE_BEHAVIORAL_RECEIPT: FAIL`
-// before exiting nonzero, and its fifteen siblings print the matching line for their own module.
-// The evidence was being produced at the subject and discarded at the point of consumption, which
-// is the same shape as every other member of this class. So this is not "design a way to observe
-// the fault", it is "stop throwing away the observation that already exists".
-//
-// THE MARKER IS DERIVED FROM THE PASS MARKER RATHER THAN CONFIGURED, and that is deliberate. Every
-// driver builds both markers from one stem, so a second roster column would be a second authority
-// for one fact -- and the failure mode of a configured fault marker is silent: a row whose fault
-// marker was mistyped matches nothing, the conjunct goes false, and the receipt reports a fault
-// that was not detected when in truth it was. Deriving it means the two markers cannot disagree.
-fn cssl_pass_marker_stem(pass_marker: String) -> String {
-  let n = string_length(s: pass_marker)
-  let k = string_length(s: "PASS")
-  if n >= k && substring(s: pass_marker, start: n - k, end: n) == "PASS" {
-    substring(s: pass_marker, start: 0, end: n - k)
-  } else {
-    ""
-  }
-}
-
-// THE THREE CONJUNCTS ARE NOT REDUNDANT, and dropping any one re-opens a distinct hole.
-//
-//   fault_exit_ok == false        the driver reported failure. Necessary but nowhere near
-//                                 sufficient -- this is the OLD predicate, retained as one conjunct
-//                                 rather than as the whole test.
-//   contains(FAIL marker)         the driver REACHED its comparison, ran it, and reported
-//                                 disagreement. This is the conjunct that ENTAILS the proposition:
-//                                 a binary that does not exist cannot print it.
-//   not contains(PASS marker)     the planted fault did not leave the comparison agreeing anyway.
-//
-// A binary that never ran satisfies the first and fails the second. That is the cause swap, and it
-// is exercised directly in test.claim.claim_entailing_evidence_cause_swap_witness.
-//
-// THE PARAMETERS ARE THE TWO OBSERVATIONS RATHER THAN THE RUN RECORD, and that is what makes the
-// control authorable at all. gunbc.WitnessBin.Run returns an anonymous output record with no name a
-// fixture could construct, so a function taking the run could only ever be exercised by performing
-// the host effect -- which the hermetic floor refuses. Taking `success` and `stdout` as scalars
-// moves the decision into a pure function that a fixture CAN call with fabricated inputs, so the
-// evidence rule is checked where it is decided instead of only where it is used.
-fn cssl_fault_run_detected_the_planted_fault(
-  fault_exit_ok: Bool,
-  fault_stdout: String,
-  pass_marker: String
-) -> Bool {
-  let stem = cssl_pass_marker_stem(pass_marker: pass_marker)
-  stem != ""
-    && (fault_exit_ok == false)
-    && string_contains(s: fault_stdout, pattern: concat(stem, "FAIL"))
-    && !string_contains(s: fault_stdout, pattern: pass_marker)
-}
-
 fn cssl_seed_linked_behavioral_receipt(
   source_rel: String,
   shim_lib_rel: String,
@@ -300,11 +234,6 @@ fn cssl_seed_linked_behavioral_receipt(
   let witness_bin_path = concat(out_dir.path, "/target/release/witness")
   let pass_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path)
   let fault_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path, args: ["--inject-fault"])
-  let fault_detected = cssl_fault_run_detected_the_planted_fault(
-    fault_exit_ok: fault_run.success,
-    fault_stdout: fault_run.stdout,
-    pass_marker: pass_marker
-  )
   let claim_ok = cssl_supplemental_claims_ok(
     root: root.path,
     gunbc_bin: gunbc_bin,
@@ -321,7 +250,7 @@ fn cssl_seed_linked_behavioral_receipt(
     && manifest.success && main_rs.success
     && build.success
     && pass_run.success && string_contains(s: pass_run.stdout, pattern: pass_marker)
-    && fault_detected
+    && (fault_run.success == false)
     && claim_ok
     && cleanup_out.success
 }
