@@ -3314,6 +3314,57 @@ closure that is neither candidate's — a deliberately over-broad one — which 
 the run that was reported as refused by a budget check — **that claim is
 RETRACTED and unsubstantiated (see §9); the circularity stands without it.**
 
+### 11.2m A fork arrives as an implementation detail inside an authority — and an arm's justification must survive a reader checking it
+
+Two rules settled 2026-08-26 across the citation and candidacy seams. Both are
+sharper forms of rules this document already carried, and both were reached by
+one lane's argument being replaced by another lane's measurement.
+
+**(1) THE §3 TEST IS NOT "IS THIS A NEW AUTHORITY".** The risk was framed as
+*someone builds a second checker*; the real risk is *someone builds a second
+extractor that quietly answers a question the first already decided*. Worked
+case: a documentary-citation extractor beside `#9211`'s `DeclarationRef`
+extractor is legitimate — two syntax extractors, one semantic resolution
+authority — **but only if it inherits resolution semantics whole.** `#9211`
+deliberately keeps `reexported` apart from `declared`, because *a citation naming
+a re-export names the wrong authority*. An extractor that resolves against its
+own notion of what a module exports forks §3 **as a resolution detail**, not as a
+rival checker, and nothing announces it.
+
+So the operative test on any second producer: **enumerate what the new path
+DECIDES that the old path also decides; require inheritance on every one; let the
+new path contribute only its genuinely new fact.** At that seam the new fact is
+exactly one — `role`, which a `DeclarationRef` literal carries structurally and a
+documentary tree does not. An extractor that drops `role` and infers it
+downstream by convention is the original defect one layer out.
+
+**(2) AN ARM MUST CITE EVIDENCE THAT SURVIVES INSPECTION.** A proposed
+`Ambiguous` arm on the candidacy census was justified architecturally — *preserve
+the distinction*. The stronger and correct warrant is that **the resolver
+destroys the cause today**: `module_path_owner_binding_decide` computes the
+ambiguity and names the owners, and `global_bare_unique_chain_candidate` binds
+and drops them, returning `Absent` for *both* `ModulePathBindingMiss` and
+`ModulePathBindingAmbiguous`. Downstream, *no provider* and *several providers*
+are one value. **The arm restores a distinction the code erases rather than
+preserving one it makes** — and the implementer consumes what that decision
+function already computes instead of recomputing a candidate set.
+
+**But the arm may not be justified by citing that site**, because a reader who
+checks it finds `Absent` on both branches and concludes the arm has no producer.
+It cites the **executed discriminator**: both declaring modules in the closure
+refuse `ambiguous reference: 2 candidates`; one left census-only binds silently
+at zero diagnostics; one added line is the whole difference.
+
+**(3) THE COROLLARY THAT SAVED A HOLD.** A ruling was about to be held pending a
+fixture answering whether an ambiguous bare name pulls one provider, refuses, or
+last-write-wins. **A source read could never have answered it — the source
+conflates the exact case one would read for.** And the two halves separate: for
+the *sequencing* argument existence of the mechanism suffices, since every
+outcome still extends the closure or still leaves the bound unenforceable; for
+the *semantic* arms it is load-bearing and only execution settles it. **Holding
+for evidence that cannot exist in the form requested looks like rigor and is a
+stall.**
+
 ### 11.3 The dispatch protocol
 
 Every dispatch across a lane boundary carries five lines, and a dispatch without them is refused rather than interpreted:
