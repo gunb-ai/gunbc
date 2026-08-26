@@ -522,8 +522,6 @@ fn floor_route_gap_expectation_chunk_01() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.external_model_scope_live_cover_witness.red_cover_walker_refuses_missing_root", operation: "Filesystem.List", ground: UnpublishedMockCase {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.external_model_scope_live_cover_witness.frontier_cover_of_live_extdeps_tree_holds", operation: "Filesystem.List", ground: UnpublishedMockCase {} },
-    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.external_model_scope_live_cover_witness.manifest_rows_all_predate_freeze_sha", operation: "DiffNameStatus", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.fleet_revision_relation_wet_matrix.an_ancestor_current_is_a_forward_advance", operation: "MergeBase", ground: NoMockResponse {} },
@@ -641,8 +639,6 @@ fn floor_route_gap_expectation_chunk_03() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.stage0_rust_maintenance_census_report_live_witness.maintenance_census_report_positive_control_derives_from_current_head", operation: "git.Inspect.HeadCommit", ground: UnpublishedMockCase {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.v1_source_audit_witness_test.regen_stage0_write_and_verify_share_compile_refusal", operation: "Read", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "gunbc.test.claim.witness_execution_class_live_census_test.witness_live_roster_census_holds", operation: "Filesystem.List", ground: UnpublishedMockCase {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.manual.git_upstream_model_execution.witness_git_cli_fixture_hashes_projects_and_independently_reads_back", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
