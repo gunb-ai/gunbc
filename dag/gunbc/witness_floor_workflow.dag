@@ -1090,9 +1090,30 @@ fn build_lane_job() -> Job {
 // THE COST OF `always()` IS UNCHANGED AND IS STILL PAID: a lawfully superseded run reports this
 // context red, because a cancelled lane is not `success`. Measured on run 32883390033, where a
 // fleet event ended both lanes and this job duly published `failure`. That red now says
-// `verdict=stands-unestablished` and names the measured head it belongs to, which is strictly
-// more than it said before -- but it is still a red on an abandoned head, and only the
-// acquisition removes it.
+// `verdict=stands-unestablished`, carries mechanism and attribution, and names the measured head
+// it belongs to, which is strictly more than it said before -- but it is still a red on an
+// abandoned head, and only the head acquisition removes it.
+//
+// WHY THAT COST IS ACCEPTED RATHER THAN TRADED AWAY, AND IT IS THE ASYMMETRY OF WHICH HEAD PAYS.
+// This argument is carried over from the interim's own authority (gunbc#9302, closed in favour of
+// this construction) because it survives the change of mechanism intact and is the deciding fact
+// rather than a preference. Checks are tracked per head SHA, so a superseded run's red lands on a
+// head that BY CONSTRUCTION will never be merged -- the push that superseded it created the head
+// that will, and that head has its own run. `always()` is therefore NOISY ON ABANDONED HEADS. The
+// alternative moves the cost onto the LIVE one: a lane killed with no replacement run coming --
+// observed twice on 2026-08-25, once with `runner_name` empty and zero steps, once with both lanes
+// ended at 18:43 and no push involved -- leaves this context SKIPPED on the head that is still the
+// merge candidate.
+//
+// NOISE IS A COST; FAIL-OPEN IS A DEFECT (operator ruling relayed by smart-ram-730, 2026-08-26,
+// deciding between the two shapes). A loud wrong-looking red gets investigated and corrected. A
+// silent skip on an unverified live head does not, and it is the one failure mode nobody sees.
+//
+// AND THE NOISE IS MATERIALLY REDUCED WITHOUT THE ACQUISITION, which is what makes this a bearable
+// trade rather than a pious one. The harm the interim was chartered against was people
+// investigating FALSE SUBJECT FAILURES, and a run reporting `stands-unestablished` with a
+// mechanism and an attribution does not send anyone into a diff. What is left is a red on a head
+// nobody will merge, which is the cheap half of the original complaint.
 
 fn required_lanes_aggregate_job_condition() -> String {
   "always()"
