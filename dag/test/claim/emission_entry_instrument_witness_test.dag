@@ -167,6 +167,62 @@ fn emit_read_of_truncated(lines: List<String>) -> EmitDiagnosticRead {
   read_emit_diagnostics(stderr: stream_of(lines: lines), stderr_truncated: true)
 }
 
+// THE DISCRIMINATING CONTROL FOR THE TRUNCATION ARM, and it is the one the reds alone cannot give.
+//
+// The two truncation claims below establish that a truncated capture REFUSES. They do not establish
+// that truncation is what fires the arm rather than SIZE -- and a refusal that fired on large
+// outputs would refuse every talkative subject whether or not anything was lost, which is the same
+// unmeasurable corpus for a different reason. The arm keys on the host's own `truncated` flag and
+// reads no length anywhere, so the control asserts exactly that: a stream LARGER THAN THE WINDOW,
+// reported COMPLETE, reads its population normally.
+//
+// THE SIZE IS ASSERTED, NOT ASSUMED. `a_large_complete_capture_fixture_exceeds_the_window` pins the
+// fixture above 16 KiB, so a later edit that shrinks the corpus cannot quietly turn the control
+// into a small-input test that passes for the wrong reason -- the guard goes red instead.
+data emit_capture_window_bytes: Int = 16384
+
+data emit_large_population_count: Int = 400
+
+fn emit_large_complete_stream() -> String {
+  concat(
+    concat(emit_scope_line, "\n"),
+    concat(
+      repeat_string(s: concat(emit_advisory_line, "\n"), n: emit_large_population_count),
+      concat(
+        concat("compiled: 177 files emitted, ", to_string(emit_large_population_count)),
+        concat(
+          concat("\n0 blocking error(s), ", to_string(emit_large_population_count)),
+          " advisory diagnostic(s) (policy: gunbc.compile_clean_diagnostic_policy)\n"
+        )
+      )
+    )
+  )
+}
+
+test fn a_large_complete_capture_fixture_exceeds_the_window() -> Bool {
+  emit_large_complete_stream().length() > emit_capture_window_bytes
+}
+
+// THE CONTROL ITSELF: over the window, reported complete, read in full. If the arm keyed on size
+// this would refuse; it reports all 400 members instead.
+test fn a_large_but_complete_capture_is_read_and_not_refused_for_its_size() -> Bool {
+  match read_emit_diagnostics(stderr: emit_large_complete_stream(), stderr_truncated: false) {
+    EmitDiagnosticsRead { diagnostics: ds, emitted_files: _, declared_total: n } =>
+      count(ds) == emit_large_population_count && n == emit_large_population_count
+    read => false
+  }
+}
+
+// AND THE SAME BYTES WITH THE FLAG SET STILL REFUSE, which is what makes the pair a discriminator
+// rather than two unrelated readings: identical input, one bit different, opposite verdicts. Only
+// the host's truncation report can account for the difference, because nothing else changed.
+test fn the_same_large_stream_refuses_when_the_host_reports_it_truncated() -> Bool {
+  match read_emit_diagnostics(stderr: emit_large_complete_stream(), stderr_truncated: true) {
+    EmitOutputTruncated => true
+    read => false
+  }
+}
+
 fn emit_rows(lines: List<String>) -> List<String> {
   match emit_read_of(lines: lines) {
     EmitDiagnosticsRead { diagnostics: ds, emitted_files: _, declared_total: _ } =>
