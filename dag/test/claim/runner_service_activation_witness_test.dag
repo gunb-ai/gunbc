@@ -23,7 +23,7 @@ import gunbc.runner_host_deploy {
 }
 import gunbc.runner_host_grants { runner_host_privileged_operations, runner_slot_activation_operations }
 import gunbc.runner_slot_provision { desired_runner_slot_members }
-import gunbc.runner_lifecycle { runner_unit_name_for_instance }
+import gunbc.runner_unit { runner_unit_name_of_registration }
 import gunbc.runner_activation { BuildCacheInstanceReady, HostCompilePoolReady }
 import gunbc.build_cache_instance {
   BuildCacheInstance, ProcessIdentity, ci_cache_instance,
