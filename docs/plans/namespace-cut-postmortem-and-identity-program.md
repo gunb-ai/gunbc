@@ -1526,42 +1526,45 @@ So the split is clean, and it falls exactly along the line that clause draws:
   becomes an edge with no naming occurrence — a refusal constructible on a fixed
   small subject, with no whole-corpus run.
 
-- **RETRACTED — "the affected-set budget check refuses at any partition size."**
-  This row previously asserted that a budget check compares against a fixed
-  whole-tree constant rather than its subject, making every partitioned
-  measurement unavailable. **It was relayed from a lane report and never
-  verified**, including by this document's author, who requested the invocation
-  and refusal text only after an operator challenged it — *"what is the affected
-  set budget check? i thought we deleted all of that."*
+- **CORRECTED — it is not the affected-set check; it is a whole-corpus compile
+  memory admission with NO SUBJECT PARAMETER.** This row first asserted that "the
+  affected-set budget check" refuses at any partition size. That was relayed from
+  a lane report and never verified, and an operator challenged it directly —
+  *"what is the affected set budget check? i thought we deleted all of that."*
+  **The operator was right on the substance**: affected-set selection was deleted
+  2026-08-15, and the carrier that actually refused contains zero occurrences of
+  "affected set" or "selection".
 
-  The challenge is well-founded. Affected-set selection was **deleted 2026-08-15**
-  and the tree says so about itself: `realization_schedule`
-  `scoped_witness_worker_note` (*"deleted 2026-08-15 with affected-set
-  selection"*), `dag_compile_clean_scope` `scope_disposition_witness_roster_note`,
-  `floor_component_receipt_witness_test` `receipt_round_trip_note`. Two cold
-  searches found no live budget check of the shape claimed.
+  Verified in the live tree: `gunbc.whole_corpus_compile_admission`,
+  `whole_corpus_compile_measured_peak_demand` returning `byte_size(7516192768)`,
+  admitted by `whole_corpus_compile_admission_at_budget(bytes: ByteSize, source:
+  HostBudgetSource)`. The refusal names its own carrier, its source
+  (`/proc/meminfo MemAvailable`) and its two CI receipts, and it fires on a
+  single-source-root compile because whole-corpus mode is what you enter by
+  omitting `--entry`.
 
-  **The one live budget that exists inverts the claim.**
-  `std.realization_schedule` `walk_population_budget_note`: `WalkPlan` carries an
-  `Optional<Millisecond>` budget **per population** (`Absent` = authored
-  unboundedness), and a breach constructs `WalkPopulationBudgetRefusal`. That is a
-  per-population *wall-clock* bound — not a whole-tree constant, and a smaller
-  partition should take *less* wall time, which is the opposite of what was
-  asserted.
+  **The verified claim is sharper than the retracted one: the admission function
+  has no subject in its signature at all.** It takes a budget and a source label.
+  There is no parameter through which a smaller corpus could be cheaper, so
+  partitioning cannot pass it at any size — structurally, not incidentally.
 
-  **Status: UNSUBSTANTIATED, pending a receipt** — exact invocation, verbatim
-  refusal with both numbers, the symbol holding the constant, and the revision it
-  was hit on (a stale worktree returns true answers about a tree that no longer
-  exists). The lesson is the row's real content: **a trusted source is not a
-  verified claim**, and the framing that made it travel — *a lane hitting it reads
-  it as their own budget problem and goes looking for a bigger host* — is struck
-  with it, because a good framing attached to an unverified mechanism is exactly
-  what carries the mechanism.
+  **And the refusal itself is GOOD, which is why this is a question and not a
+  defect finding.** Typed, located, naming source, carrier, receipts and remedy,
+  and it exists because the prior behaviour was to start the run and be SIGKILLed
+  — a silent exit-137 zero, the absorbing fallback closed properly. Under §5 it is
+  a policy budget grounded in named CI receipts, a legitimate oracle rather than a
+  tree-copied pin. **The only open question is whether the admission should take
+  the subject it is admitting.**
 
-  **What does NOT depend on it:** B.3's circularity was established by the 7-module
-  table and the pre-registered discriminator, not by any refusal, and the
-  replacement question (M2 per-edge naming) needs a fixed small subject. The row
-  above no longer claims B.3 is blocked on infrastructure.
+  **The failure that produced the bad row had two halves and neither is
+  sufficient alone.** The lane called it *"the budget check"* inside a thread
+  discussing affected-set selection all evening — an underspecified name doing
+  the work of a wrong one; neither party ever wrote "affected-set budget check"
+  and it reached the operator as one anyway, assembled from context. The other
+  half: it was relayed upward as a name rather than as a carrier, without asking
+  for the invocation or the refusal text. **A trusted source is not a verified
+  claim.** The verified version cost six greps and one log read, all available
+  while the original sentence was being written.
 
 - **A per-file measurement needs a per-module progress receipt, and none exists.**
   Every per-file instrument in this program shares §11.2l's hazard: a row from a
