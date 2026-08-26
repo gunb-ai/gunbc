@@ -1,8 +1,7 @@
 module gunbc.target_binding
 
 import extdeps.bazel.label {
-  Label, RootPackage, PackagePath, LabelParsed, LabelRefused,
-  render_label, parse_label,
+  Label, render_label, target_label_is_canonical,
 }
 import v2.std.optional { Optional, Present, Absent }
 import std.types { String }
@@ -47,35 +46,6 @@ type TargetBindingIndexBuild
 type TargetBindingIndexAcc {
   index: TargetBindingIndex
   refusal: Optional<TargetBindingIndexRefusal>
-}
-
-// Label is presently a freely constructible upstream record, so an authored value can sit outside
-// the cited label grammar. render_label is injective only over labels that survive its documented
-// parse(render(label)) round trip; index admission establishes that precondition before the String
-// becomes a key. Without this wall, PackagePath(["a:b"])+TargetName("c") and
-// PackagePath(["a"])+TargetName("b:c") silently alias at lookup even though label_eq rejects them.
-fn target_label_structural_eq(a: Label, b: Label) -> Bool {
-  let packages_equal = match a.package {
-    RootPackage => match b.package {
-      RootPackage => true
-      PackagePath { segments: _ } => false
-    }
-    PackagePath { segments: a_segments } => match b.package {
-      RootPackage => false
-      PackagePath { segments: b_segments } => a_segments == b_segments
-    }
-  }
-  packages_equal && (a.target.name == b.target.name)
-}
-
-fn target_label_is_canonical(target: Label) -> Bool {
-  match parse_label(text: render_label(l: target)) {
-    // label_eq is deliberately NOT used here: its package comparison renders both packages, so
-    // PackagePath(["a", "b"]) and PackagePath(["a/b"]) compare equal there. Admission needs
-    // injectivity of the rendered map key and therefore compares the actual segment lists.
-    LabelParsed { label: parsed } => target_label_structural_eq(a: target, b: parsed)
-    LabelRefused { cause: _ } => false
-  }
 }
 
 fn index_target(acc: TargetBindingIndexAcc, target: Label) -> TargetBindingIndexAcc {
