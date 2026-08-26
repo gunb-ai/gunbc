@@ -106,31 +106,32 @@ fn slb_cargo_toml(root: String) -> String {
 // Catching the fault now requires the driver to REPORT the divergence it was made to
 // find, over the declared corpus. A nonzero exit with no such report is unavailable,
 // not caught.
+//
+// THE SCRATCH SOURCE ROOT STAGES UNDER target/, NOT /tmp, AND BOTH HALVES ARE LOAD-BEARING.
+//
+// The compile in this function is scoped with --entry, and entry-admission REFUSES an entry outside the
+// workspace root: "a fixture written elsewhere, such as /tmp, cannot be keyed into the module
+// graph -- write it under a source root and delete it afterwards". Without --entry the compile
+// is the WHOLE-CORPUS path, which a current compiler refuses against a memory budget
+// (WholeCorpusCompileBudgetBelowMeasuredDemand, measured rc=1 with zero files emitted on a
+// 7.0 GiB runner). So a /tmp scratch root left BOTH admission paths refusing, which is why this
+// receipt could not execute at all.
+//
+// target/ is gitignored (.gitignore:7 `/target/`) and under the workspace root, so it satisfies
+// entry-admission WITHOUT the working tree ever going dirty. That second property is not
+// hygiene: WorkingTreeDirty is a MODELLED state that refuses a pricing receipt
+// (tools.emission_entry_instrument WorkingTreeStanding), so a transport staging into tracked
+// paths would make any concurrent pricing or emission run refuse for a reason unrelated to what
+// it was measuring. Staging under an ignored path makes that interaction unrepresentable rather
+// than unlikely -- and when a run dies mid-flight, as these repeatedly did while this was being
+// diagnosed, the residue is invisible to git instead of inherited by whoever works next.
+//
+// DirWithTemplate rather than a fixed path: concurrent receipts must not share a scratch root,
+// which is the one property Mktemp.Dir was providing and a hardcoded directory would lose.
 fn slb_comparison_observation() -> BehavioralComparisonObservation {
   let root = git.Inspect.Toplevel()
   let logic_read = Filesystem.Read(path: slb_repo_path(root: root.path, rel: slb_logic_source_rel))
 
-  // THE SCRATCH SOURCE ROOT STAGES UNDER target/, NOT /tmp, AND BOTH HALVES ARE LOAD-BEARING.
-  //
-  // The compile below is scoped with --entry, and entry-admission REFUSES an entry outside the
-  // workspace root: "a fixture written elsewhere, such as /tmp, cannot be keyed into the module
-  // graph -- write it under a source root and delete it afterwards". Without --entry the compile
-  // is the WHOLE-CORPUS path, which a current compiler refuses against a memory budget
-  // (WholeCorpusCompileBudgetBelowMeasuredDemand, measured rc=1 with zero files emitted on a
-  // 7.0 GiB runner). So a /tmp scratch root left BOTH admission paths refusing, which is why this
-  // receipt could not execute at all.
-  //
-  // target/ is gitignored (.gitignore:7 `/target/`) and under the workspace root, so it satisfies
-  // entry-admission WITHOUT the working tree ever going dirty. That second property is not
-  // hygiene: WorkingTreeDirty is a MODELLED state that refuses a pricing receipt
-  // (tools.emission_entry_instrument WorkingTreeStanding), so a transport staging into tracked
-  // paths would make any concurrent pricing or emission run refuse for a reason unrelated to what
-  // it was measuring. Staging under an ignored path makes that interaction unrepresentable rather
-  // than unlikely -- and when a run dies mid-flight, as these repeatedly did while this was being
-  // diagnosed, the residue is invisible to git instead of inherited by whoever works next.
-  //
-  // DirWithTemplate rather than a fixed path: concurrent receipts must not share a scratch root,
-  // which is the one property Mktemp.Dir was providing and a hardcoded directory would lose.
   let stage_root = shell.Mkdir.Parents(path: concat(root.path, "/target/wet-stage"))
   let scratch_src = shell.Mktemp.DirWithTemplate(
     template: concat(root.path, "/target/wet-stage/logic-XXXXXX")
