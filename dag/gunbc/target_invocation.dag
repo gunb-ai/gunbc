@@ -3,6 +3,7 @@ module gunbc.target_invocation
 import extdeps.bazel.label {
   Label,
   LabelParse, LabelParsed, LabelRefused, LabelRefusal,
+  LabelCanonicalityCause, RenderedLabelRefused, RenderedLabelStructureMismatch,
   parse_label, render_label,
 }
 import gunbc.target_binding {
@@ -50,7 +51,7 @@ import std.integer { Int }
 type TargetInvocationRefusal
   = OperandNotALabel { operand: String, cause: LabelRefusal }
   | InvocationRegistryRefused { cause: TargetBindingIndexRefusal }
-  | InvocationLabelNotCanonical { target: Label }
+  | InvocationLabelNotCanonical { target: Label, cause: LabelCanonicalityCause }
   | TargetIsUnknown { target: Label }
   | TargetHasNoProducer { target: Label }
 
@@ -71,8 +72,8 @@ fn route_target_invocation_in(index: TargetBindingIndex, target: Label) -> Targe
       TargetInvocationRouteRefused { cause: TargetIsUnknown { target: t } }
     KnownTargetBindingMissing { target: t } =>
       TargetInvocationRouteRefused { cause: TargetHasNoProducer { target: t } }
-    TargetLookupLabelNotCanonical { target: t } =>
-      TargetInvocationRouteRefused { cause: InvocationLabelNotCanonical { target: t } }
+    TargetLookupLabelNotCanonical { target: t, cause: c } =>
+      TargetInvocationRouteRefused { cause: InvocationLabelNotCanonical { target: t, cause: c } }
   }
 }
 
@@ -135,6 +136,34 @@ fn invocation_exit_status(t: InvocationTermination) -> Int {
   }
 }
 
+// THE CANONICALITY CAUSE REACHES THE USER, WHICH IS THE POINT OF CARRYING IT AT ALL.
+//
+// `extdeps.bazel.label` splits a non-canonical label into two facts with two different repairs: a
+// rendering that does not parse at all, and one that parses to a DIFFERENT structure than the
+// value held -- typically a `PackagePath` authored as one segment containing a `/` where the
+// grammar builds two. Retaining that distinction through the registry (gunbc#9323) and then
+// dropping it here would have made the split real and invisible at the only surface a caller of
+// this verb touches, which is the one place it was ever going to be read.
+//
+// THE INNER `LabelRefusal` IS CARRIED BUT NOT DECOMPOSED HERE, AND THE OMISSION IS DELIBERATE.
+// That vocabulary belongs to the label authority and has no renderer there today; writing one in
+// this module would be a second site deciding what `DotSegment` or `TargetPattern` says to a
+// human -- the §3 fork, arriving through a rendering rather than through a type. The typed cause
+// stays intact on the refusal for any consumer that wants to descend, and this text names the
+// CLASS of repair, which is what distinguishes the two arms. A renderer landing in
+// `extdeps.bazel.label` is what this arm should call.
+fn label_canonicality_cause_rendered(c: LabelCanonicalityCause) -> String {
+  match c {
+    RenderedLabelRefused { cause: _ } =>
+      "\n  cause: the label's own rendering does not parse back; fix the label text"
+    RenderedLabelStructureMismatch { reparsed: r } =>
+      concat(
+        "\n  cause: its rendering parses to a different structure: ",
+        concat(render_label(l: r), " -- the package segments were not built by the grammar")
+      )
+  }
+}
+
 // A REFUSED ROUTE TERMINATES AS REFUSED, AND THE RENDERING NAMES THE CAUSE.
 fn invocation_refusal_rendered(cause: TargetInvocationRefusal) -> String {
   match cause {
@@ -142,8 +171,11 @@ fn invocation_refusal_rendered(cause: TargetInvocationRefusal) -> String {
       concat("gunbc test: operand is not an absolute label: ", o)
     InvocationRegistryRefused { cause: _ } =>
       "gunbc test: the target registry refused to build"
-    InvocationLabelNotCanonical { target: t } =>
-      concat("gunbc test: label is not canonical: ", render_label(l: t))
+    InvocationLabelNotCanonical { target: t, cause: c } =>
+      concat(
+        concat("gunbc test: label is not canonical: ", render_label(l: t)),
+        label_canonicality_cause_rendered(c: c)
+      )
     TargetIsUnknown { target: t } =>
       concat("gunbc test: no such target: ", render_label(l: t))
     TargetHasNoProducer { target: t } =>

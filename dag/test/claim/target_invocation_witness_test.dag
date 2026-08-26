@@ -3,10 +3,15 @@ module test.claim.target_invocation_witness
 import extdeps.bazel.label {
   Label, PackagePath, TargetName,
   LabelRefusal, TargetPattern, MissingRepositoryRootPrefix,
-  render_label, label_eq, label_is_canonical,
+  render_label, label_eq,
+  LabelCanonicality, LabelCanonical, LabelNonCanonical, label_canonicality,
+  LabelCanonicalityCause, RenderedLabelRefused, RenderedLabelStructureMismatch,
 }
 import gunbc.target_binding {
   TargetBinding,
+  TargetBindingIndex,
+  TargetBindingIndexBuild, TargetBindingIndexReady, TargetBindingIndexRefused,
+  build_target_binding_index,
   TargetProducer, HeadsReadingDifferentialProducer, BehavioralReceiptPlanProducer,
   HeadsReadingDifferentialStanding,
   HeadsReadingDifferentialCompleted, HeadsReadingDifferentialSubjectUnreached,
@@ -18,11 +23,12 @@ import gunbc.target_invocation {
   TargetInvocationRoute, TargetInvocationRouted, TargetInvocationRouteRefused,
   TargetInvocationRefusal,
   OperandNotALabel, InvocationRegistryRefused, InvocationLabelNotCanonical,
+  invocation_refusal_rendered,
   TargetIsUnknown, TargetHasNoProducer,
   InvocationTermination,
   InvocationObservationHeld, InvocationObservationDidNotHold,
   InvocationSubjectUnreached, InvocationRefused,
-  route_target_invocation, invocation_exit_status,
+  route_target_invocation, route_target_invocation_in, invocation_exit_status,
 }
 import gunbc.instrument_targets {
   heads_reading_differential_label,
@@ -94,7 +100,7 @@ test fn a_well_formed_label_naming_no_registered_target_refuses() -> Bool {
           render_label(l: t) == "//gunbc/instruments:no-such-instrument"
         OperandNotALabel { operand: _, cause: _ } => false
         InvocationRegistryRefused { cause: _ } => false
-        InvocationLabelNotCanonical { target: _ } => false
+        InvocationLabelNotCanonical { target: _, cause: _ } => false
         TargetHasNoProducer { target: _ } => false
       }
   }
@@ -258,7 +264,10 @@ test fn the_instrument_target_and_its_binding_are_the_same_identity() -> Bool {
   let t = heads_reading_differential_target()
   let b = heads_reading_differential_binding()
   label_eq(a: t.label, b: b.target)
-    && label_is_canonical(label: t.label)
+    && (match label_canonicality(label: t.label) {
+         LabelCanonical => true
+         LabelNonCanonical { cause: _ } => false
+       })
     && (render_label(l: t.label) == differential_operand())
     && ((instrument_targets() |> count) == 1)
     && ((instrument_bindings() |> count) == 1)
@@ -365,5 +374,78 @@ test fn an_invented_population_routes_through_the_same_fold() -> Bool {
   ) {
     TargetInvocationRouteRefused { cause: _ } => false
     TargetInvocationRouted { binding: b } => b.producer == BehavioralReceiptPlanProducer {}
+  }
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// THE CANONICALITY CAUSE SURVIVES THIS LAYER
+// ---------------------------------------------------------------------------------------------
+
+// A NON-CANONICAL LABEL BUILT THE ONE WAY A HAND-AUTHORED VALUE ACTUALLY GOES WRONG: a package
+// authored as ONE segment containing a `/`, where `parse_label` builds TWO. It renders to the same
+// text as the canonical form, so `render_label` round-trips through the rendering while the
+// STRUCTURE differs -- which is exactly what `label_structural_eq` catches and `package_eq` does
+// not.
+// THE INDEX IS BUILT THROUGH ITS SOLE CONSTRUCTOR, which is the only way it CAN be built: gunbc#9323
+// sealed `TargetBindingIndex`, so a witness cannot forge one with hand-written maps to reach the
+// lookup directly. The refused arm answers `false` rather than being ignored -- a witness whose
+// setup silently failed would assert nothing while passing.
+fn differential_index_build() -> TargetBindingIndexBuild {
+  build_target_binding_index(targets: instrument_targets(), bindings: instrument_bindings())
+}
+
+fn structurally_non_canonical_label() -> Label {
+  Label {
+    package: PackagePath { segments: ["gunbc/instruments"] }
+    target: TargetName { name: "heads-reading-differential" }
+  }
+}
+
+// THE CAUSE REACHES THE ROUTE'S REFUSAL RATHER THAN DYING AT THE REGISTRY BOUNDARY.
+//
+// gunbc#9323 made `TargetLookupLabelNotCanonical` carry a `LabelCanonicalityCause`. This asserts
+// the seam one layer up does not re-collapse it: the route's own refusal must name the STRUCTURE
+// MISMATCH arm specifically, not merely report that something was non-canonical. Written because
+// the collapse was live in this module until that fix arrived, and nothing downstream would have
+// noticed -- the value was typed, and simply never carried.
+test fn the_canonicality_cause_survives_into_the_routes_refusal() -> Bool {
+  match differential_index_build() {
+    TargetBindingIndexRefused { cause: _ } => false
+    TargetBindingIndexReady { index: idx } =>
+    match route_target_invocation_in(
+      index: idx,
+      target: structurally_non_canonical_label()
+    ) {
+      TargetInvocationRouted { binding: _ } => false
+      TargetInvocationRouteRefused { cause: c } =>
+      match c {
+        InvocationLabelNotCanonical { target: _, cause: lc } =>
+          match lc {
+            RenderedLabelStructureMismatch { reparsed: r } =>
+              label_eq(a: r, b: heads_reading_differential_label())
+            RenderedLabelRefused { cause: _ } => false
+          }
+        _ => false
+      }
+    }
+  }
+}
+
+// AND IT REACHES THE TEXT A HUMAN READS. A typed cause nothing renders is a cause that exists for
+// programs and not for the person running the verb, which is the half of this repair that would
+// have been easiest to leave undone.
+test fn the_canonicality_cause_reaches_the_rendered_refusal() -> Bool {
+  match differential_index_build() {
+    TargetBindingIndexRefused { cause: _ } => false
+    TargetBindingIndexReady { index: idx } =>
+      match route_target_invocation_in(
+        index: idx,
+        target: structurally_non_canonical_label()
+      ) {
+        TargetInvocationRouted { binding: _ } => false
+        TargetInvocationRouteRefused { cause: c } =>
+          string_contains(s: invocation_refusal_rendered(cause: c), pattern: "different structure")
+      }
   }
 }
