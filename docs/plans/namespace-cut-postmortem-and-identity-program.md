@@ -5053,7 +5053,34 @@ O_Y(P(B_final))     Y's decisions over the PROJECTED source — a DIFFERENT sour
 ```
 
 **The "total occurrence correspondence" E.1 owes cannot be keyed on `OccurrenceId`**, because the two
-sides are separate compiles and the integers do not denote across them. That is a hard constraint on
+sides are separate compiles and the integers do not denote across them.
+
+**AND THE MECHANISM IS SHARPER THAN INSTABILITY — IT IS SPECIFICALLY FATAL TO *THIS* OPERATION.**
+Verified at source: `alloc_occurrence_id` is a **plain monotone counter**
+(`id: { value: alloc.next_id }`, `alloc: { next_id: alloc.next_id + 1 }`), consumed by
+`stamp_parsed_node` in DFS traversal order. **So an `OccurrenceId` is a traversal-order ordinal** — it
+does not merely differ between allocator scopes, it *encodes position in the walk*, and inserting or
+removing one stamped node shifts every id allocated after it.
+
+**`P(B)` differs from `B` by inserted qualifier tokens.** The projection's edit *is* the operation
+that perturbs the ordinal. So the correspondence is not approximately broken or broken at the
+margins — **it is broken from the first inserted qualifier onward**, and everything downstream of it
+in the walk.
+
+**AND THE OBVIOUS REPAIR FAILS SILENTLY, WHICH IS WHY IT IS RECORDED BESIDE THE CONSTRAINT RATHER
+THAN AFTER IT.** Threading **one allocator across both parses** looks principled — it is literally
+what the scope law says a production source graph does — and it is about one line. **It removes the
+collision without establishing the correspondence.** `B`'s occurrence and its `P(B)` counterpart
+still receive different ordinals; they become **guaranteed-distinct rather than accidentally-equal**,
+which is *worse for a reader*: under separate allocators a collision is at least visible, while under
+one allocator the join comes back clean, complete, and entirely meaningless. **Noisily wrong becomes
+silently wrong.**
+
+**One candidate consequence, flagged and NOT ruled:** if no cross-compile key is admissible, the
+projection may have to be a **same-compile operation** — `P(B)` derived and its correspondence
+established within the single parse that produced `B` — rather than a parse-both-and-join operation.
+That is a fundamentally different E.1. It is named here so it is not discovered after the two-compile
+version is built, not because it has been decided. That is a hard constraint on
 E.1's central artifact which no section of this document had stated, and it was found by asking a
 producer question.
 
