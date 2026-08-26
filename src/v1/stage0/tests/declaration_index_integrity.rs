@@ -508,7 +508,7 @@ fn a_debt_row_whose_citation_still_refuses_is_live() {
         "probe.authority",
         "no_such_declaration",
     );
-    let roster = [("probe.authority", "no_such_declaration", "")];
+    let roster = [("probe.citer", "probe.authority", "no_such_declaration", "")];
     assert_eq!(
         citation_debt_findings_against(&sweep.index, &roster),
         Vec::new(),
@@ -535,7 +535,7 @@ fn a_debt_row_whose_citation_stopped_refusing_is_spent_and_refuses() {
     author(&dir, "authority.dag", AUTHORITY);
     // Nothing cites the roster's target, so the row is spent.
     let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
-    let roster = [("probe.authority", "no_such_declaration", "")];
+    let roster = [("probe.citer", "probe.authority", "no_such_declaration", "")];
     let spent = citation_debt_findings_against(&sweep.index, &roster);
     assert_eq!(spent.len(), 1, "the spent row must refuse, got {spent:?}");
     assert_eq!(
@@ -621,12 +621,17 @@ fn the_production_roster_does_not_reach_an_arbitrary_tree() {
 // evidenced at the fixture boundary and silently disableable at the only seam that matters —
 // pass `&[]` there instead of the production roster and nothing fails.
 //
-// The discriminating pair is authorable because a fixture may DECLARE a module the production
-// roster names. `std.bytes` `builtin_function_registry` is a real row of
+// The discriminating pair is authorable because a fixture may reproduce a production SITE.
+// `std.encoding` citing `std.bytes` `builtin_function_registry` is a real row of
 // `PRE_EXISTING_CITATION_DEBT`, so a fixture that declares `std.bytes` WITHOUT that
-// declaration, and cites it, must be refused by `index_findings` (empty roster: judge
-// everything) and suppressed by `corpus_findings` (production roster: enrolled). The two
-// answers over ONE tree are what prove the wiring rather than the fold.
+// declaration and cites it FROM A MODULE CALLING ITSELF `std.encoding` must be refused by
+// `index_findings` (empty roster: judge everything) and suppressed by `corpus_findings`
+// (production roster: enrolled). The two answers over ONE tree are what prove the wiring
+// rather than the fold.
+//
+// THE CITING MODULE IS PART OF THE FIXTURE NOW, and that is not incidental: a row exempts a
+// SITE, so naming the target alone no longer reaches the production roster. The companion
+// test below plants the same target from a different citer and requires it to REFUSE.
 #[test]
 fn corpus_findings_is_wired_to_the_production_suppression_roster() {
     let dir = scratch_root("seam_suppression");
@@ -638,7 +643,7 @@ fn corpus_findings_is_wired_to_the_production_suppression_roster() {
     author(
         &dir,
         "citer.dag",
-        "module probe.citer\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+        "module std.encoding\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
          data probe_citation: DeclarationRef = DeclarationRef {\n\
          \u{20}\u{20}module_path: \"std.bytes\",\n\
          \u{20}\u{20}decl_name: \"builtin_function_registry\",\n\
@@ -650,7 +655,7 @@ fn corpus_findings_is_wired_to_the_production_suppression_roster() {
     // "suppressed" reading below could just be a citation nobody extracted.
     plant_cites(
         &sweep.index,
-        "probe.citer",
+        "std.encoding",
         "std.bytes",
         "builtin_function_registry",
     );
@@ -710,7 +715,12 @@ fn a_planted_control_that_still_refuses_is_healthy() {
         "probe.authority",
         "deliberately_absent_RED",
     );
-    let roster = [("probe.authority", "deliberately_absent_RED", "")];
+    let roster = [(
+        "probe.citer",
+        "probe.authority",
+        "deliberately_absent_RED",
+        "",
+    )];
     assert_eq!(
         planted_control_findings_against(&sweep.index, &roster),
         Vec::new(),
@@ -745,7 +755,12 @@ fn a_planted_control_that_resolves_has_lost_its_power_and_refuses() {
         "probe.authority",
         "deliberately_absent_RED",
     );
-    let roster = [("probe.authority", "deliberately_absent_RED", "")];
+    let roster = [(
+        "probe.citer",
+        "probe.authority",
+        "deliberately_absent_RED",
+        "",
+    )];
     let lost = planted_control_findings_against(&sweep.index, &roster);
     assert_eq!(lost.len(), 1, "the spent control must refuse, got {lost:?}");
     assert_eq!(
@@ -792,7 +807,7 @@ fn a_roster_row_on_the_wrong_identity_desynchronizes_both_arms() {
     );
 
     // THE MISMATCH: the row names the same declaration with NO field, the citation has one.
-    let mismatched = [("probe.authority", "absent_declaration", "")];
+    let mismatched = [("probe.citer", "probe.authority", "absent_declaration", "")];
     let unsuppressed = cited_symbol_findings_against(&sweep.index, &mismatched);
     let spent = citation_debt_findings_against(&sweep.index, &mismatched);
     assert_eq!(
@@ -816,7 +831,12 @@ fn a_roster_row_on_the_wrong_identity_desynchronizes_both_arms() {
     );
 
     // THE REPAIR: the row on the citation's real identity silences both arms at once.
-    let matched = [("probe.authority", "absent_declaration", "price")];
+    let matched = [(
+        "probe.citer",
+        "probe.authority",
+        "absent_declaration",
+        "price",
+    )];
     assert_eq!(
         cited_symbol_findings_against(&sweep.index, &matched),
         Vec::new(),
@@ -913,7 +933,12 @@ fn a_fixture_citation_exemption_suppresses_only_its_own_identity() {
     );
     // Exempting ONE leaves the OTHER refusing. This is the whole content of the repair: the
     // exemption is keyed on the citation, so it cannot cover a sibling in the same module.
-    let roster = [("probe.authority", "deliberately_absent", "")];
+    let roster = [(
+        "probe.witness",
+        "probe.authority",
+        "deliberately_absent",
+        "",
+    )];
     let findings = cited_symbol_findings_against(&sweep.index, &roster);
     assert_eq!(
         findings.len(),
@@ -953,7 +978,7 @@ fn a_fixture_exemption_whose_citation_resolves_is_spent_and_refuses() {
         Vec::new(),
         "PLANT MALFORMED: `real_declaration` must resolve for this to be a SPENT row"
     );
-    let roster = [("probe.authority", "real_declaration", "")];
+    let roster = [("probe.witness", "probe.authority", "real_declaration", "")];
     let spent = citation_debt_findings_named(&sweep.index, &roster, "FIXTURE_CARRIER_EXEMPTIONS");
     assert_eq!(
         spent.len(),
@@ -968,5 +993,131 @@ fn a_fixture_exemption_whose_citation_resolves_is_spent_and_refuses() {
         spent[0].message.contains("FIXTURE_CARRIER_EXEMPTIONS"),
         "the diagnostic must name the roster holding the row, got {:?}",
         spent[0].message
+    );
+}
+
+// THE CLASS THIS CHANGE CLOSES, AND THE ONLY TEST THAT DISTINGUISHES SITE GRAIN FROM TARGET
+// GRAIN.
+//
+// Every roster row used to name a TARGET — `(module, decl, field)` — so one row suppressed
+// every citation of that target, corpus-wide and for as long as the row stood. Measured on the
+// live tree, the 70 rows covered 75 refusing sites and six targets were already cited from more
+// than one module (`gunbc.host_effect` `host_effect_apply` from three, `std.bytes`
+// `builtin_function_registry` from three). The consequence is the one this test plants: a patch
+// could author a BRAND NEW dangling citation to any enrolled target, from any module, and the
+// wall would silently decline to judge it — citation rot admitted by the mechanism built to
+// refuse it, and decidable from the patch alone.
+//
+// The fixture reproduces one production row exactly (`std.encoding` -> `std.bytes`
+// `builtin_function_registry`) and plants a SECOND citation of the same target from
+// `probe.newcomer`. Under the production roster the enrolled site is suppressed and the new one
+// must refuse. Revert the roster to target grain and this test goes green with zero findings,
+// which is precisely the state it exists to forbid.
+#[test]
+fn a_new_citation_of_an_enrolled_target_from_another_module_still_refuses() {
+    let dir = scratch_root("site_grain_newcomer");
+    author(
+        &dir,
+        "bytes.dag",
+        "module std.bytes\n\ndata something_else: Bool = true\n",
+    );
+    author(
+        &dir,
+        "enrolled.dag",
+        "module std.encoding\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data enrolled_citation: DeclarationRef = DeclarationRef {\n\
+         \u{20}\u{20}module_path: \"std.bytes\",\n\
+         \u{20}\u{20}decl_name: \"builtin_function_registry\",\n\
+         \u{20}\u{20}field: WholeDeclaration,\n}\n",
+    );
+    author(
+        &dir,
+        "newcomer.dag",
+        "module probe.newcomer\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data fresh_citation: DeclarationRef = DeclarationRef {\n\
+         \u{20}\u{20}module_path: \"std.bytes\",\n\
+         \u{20}\u{20}decl_name: \"builtin_function_registry\",\n\
+         \u{20}\u{20}field: WholeDeclaration,\n}\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    // PRECONDITIONS: both citations are indexed, and the target really is absent — otherwise
+    // "one finding" below could be a citation nobody extracted rather than a wall that fired.
+    plant_cites(
+        &sweep.index,
+        "std.encoding",
+        "std.bytes",
+        "builtin_function_registry",
+    );
+    plant_cites(
+        &sweep.index,
+        "probe.newcomer",
+        "std.bytes",
+        "builtin_function_registry",
+    );
+    assert_eq!(
+        cited_symbol_findings_against(&sweep.index, &[]).len(),
+        2,
+        "unenrolled, both citations must refuse; otherwise the enrolled case proves nothing"
+    );
+
+    let found: Vec<_> = corpus_findings(&sweep.index)
+        .into_iter()
+        .filter(|f| f.kind == DeclarationIntegrityKind::CitedDeclarationAbsent)
+        .collect();
+    assert_eq!(
+        found.len(),
+        1,
+        "the enrolled SITE is suppressed and the new one is not, got {found:?}"
+    );
+    assert!(
+        found[0].message.contains("probe.newcomer"),
+        "the surviving finding must be the UNENROLLED citer, got {:?}",
+        found[0].message
+    );
+}
+
+// THE SAME DISTINCTION AT THE ARM BOUNDARY, so the site grain is not an accident of one
+// production row. A roster row exempting `probe.citer` may not shield an identical citation
+// authored in `probe.other`.
+#[test]
+fn a_roster_row_exempts_its_own_citer_and_no_other() {
+    let dir = scratch_root("site_grain_arm");
+    author(&dir, "authority.dag", AUTHORITY);
+    for (basename, module) in [("citer.dag", "probe.citer"), ("other.dag", "probe.other")] {
+        let source = format!(
+            "module {module}\n\nimport std.decl_ref {{ DeclarationRef, WholeDeclaration }}\n\ndata cite: DeclarationRef = DeclarationRef {{\n  module_path: \"probe.authority\",\n  decl_name: \"no_such_declaration\",\n  field: WholeDeclaration,\n}}\n"
+        );
+        author(&dir, basename, &source);
+    }
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    plant_cites(
+        &sweep.index,
+        "probe.citer",
+        "probe.authority",
+        "no_such_declaration",
+    );
+    plant_cites(
+        &sweep.index,
+        "probe.other",
+        "probe.authority",
+        "no_such_declaration",
+    );
+    let roster = [("probe.citer", "probe.authority", "no_such_declaration", "")];
+    let findings = cited_symbol_findings_against(&sweep.index, &roster);
+    assert_eq!(
+        findings.len(),
+        1,
+        "the row exempts one site, not the target, got {findings:?}"
+    );
+    assert!(
+        findings[0].message.contains("probe.other"),
+        "the surviving finding must be the unenrolled citer, got {:?}",
+        findings[0].message
+    );
+    // And the row is LIVE, not spent — its own citation still refuses.
+    assert_eq!(
+        citation_debt_findings_against(&sweep.index, &roster),
+        Vec::new(),
+        "the staleness arm must key on the same site the suppression arm does"
     );
 }

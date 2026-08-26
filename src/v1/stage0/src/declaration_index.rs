@@ -46,6 +46,36 @@
 //! module paths are looked up, and a module path is unique or it is a duplicate the
 //! index reports.
 //!
+//! WHY EVERY ROSTER ROW NAMES ITS CITING MODULE, AND NOT ONLY ITS TARGET.
+//! The three suppression rosters below used to be keyed `(module, decl, field)` — the TARGET
+//! of the citation. One row therefore exempted EVERY citation of that target, corpus-wide, for
+//! as long as the row stood. That is not a narrower wall, it is an open one in a direction
+//! nothing could observe: a patch could author a BRAND NEW dangling `DeclarationRef` naming any
+//! enrolled target, from any module, and the wall would silently decline to judge it. The
+//! violation is decidable from that patch alone — the site is new, and no row named it — so the
+//! class was rot admitted by the mechanism built to refuse rot.
+//!
+//! IT WAS OCCUPIED, NOT MERELY REACHABLE, which is what settled the grain rather than the
+//! argument. Measured over the live corpus, the 70 enrolled rows covered 75 refusing sites, and
+//! six targets were already cited from more than one module: `gunbc.host_effect`
+//! `host_effect_apply` from three (`extdeps.github.actions_runner`,
+//! `gunbc.executor_privileged_operation`, `gunbc.runner_slot_provision`), `std.bytes`
+//! `builtin_function_registry` from three, and four more from two apiece. Every one of those
+//! extra sites was being suppressed by a row authored about a different module.
+//!
+//! So a row is `(citing_module, module, decl, field)` and it exempts THE SITE THAT AUTHORED IT.
+//! Both inverse arms read that same identity, because a suppression arm and a staleness arm
+//! keyed differently is the desynchronization `corpus_findings` already carries a receipt for.
+//!
+//! WHAT THIS STILL DOES NOT REACH, stated rather than left to be found: the citing module is the
+//! finest identity available from an ingestion record that copies spans out of a discarded parse
+//! tree, so TWO IDENTICAL CITATIONS IN ONE MODULE share one row — measured, one such pair exists
+//! (`citations_pre_existing_debt` counts 39 occurrences over 38 rows). A byte offset would
+//! separate them and would be exactly the positional citation DESIGN §3 forbids: it rots on any
+//! edit above the line. The residue is one module authoring a second dangling citation of a
+//! target it already cites; the next rung is a declaration-grained site, which needs the
+//! enclosing declaration name threaded through the citation walk.
+//!
 //! It is also not the compiler's own name resolution. `v1.03_resolve` already refuses
 //! `MissingExport` for an import member inside a COMPILE CLOSURE; this index answers the
 //! same question over the whole authored corpus, which is where the difference lives —
@@ -548,9 +578,8 @@ pub fn index_population(index: &DeclarationIndex) -> DeclarationIndexPopulation 
         citations_pre_existing_debt: index
             .modules
             .values()
-            .filter(|r| !r.is_fixture_carrier)
-            .flat_map(|r| r.cited.iter())
-            .filter(|c| citation_in_roster(c, PRE_EXISTING_CITATION_DEBT))
+            .flat_map(|r| r.cited.iter().map(move |c| (r, c)))
+            .filter(|(r, c)| citation_in_roster(&r.module_path, c, PRE_EXISTING_CITATION_DEBT))
             .count(),
         citations_in_fixtures: index
             .modules
@@ -708,14 +737,14 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
     out
 }
 
-/// THE PRE-EXISTING CITATION DEBT, ENUMERATED AT IDENTITY GRAIN.
+/// THE PRE-EXISTING CITATION DEBT, ENUMERATED AT SITE GRAIN.
 ///
 /// WHY A ROSTER EXISTS AT ALL. Nothing has checked an authored citation since 2026-08-23,
 /// when the operator removed the `cited-symbol` job (DESIGN records that drop and states its
 /// future exposure as unbounded). This wall's first execution therefore lands on a corpus
 /// that has been accumulating the exact class §3's rule names, and every row below is a REAL
 /// DEFECT: a citation naming a declaration that does not exist. Measured on the live tree,
-/// they are 38 distinct targets across 46 sites.
+/// they are 38 sites, each named by the module that authored it.
 ///
 /// WHY THEY ARE NOT REPAIRED HERE. The repair for a citation is a judgement about what its
 /// author MEANT, and guessing it is how a stale citation becomes a confidently wrong one.
@@ -811,212 +840,458 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// MEANT is the judgement §5 warns turns a stale citation into a confidently wrong one. The
 /// next rung is a witness declaring its planted controls as typed rows, at which point the
 /// deliberate half becomes derivable and only the genuine half survives here as debt.
-const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str)] = &[
+const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str)] = &[
     (
-        "dag.test.claim.witness_purpose_taxonomy_witness",
-        "witness_purpose_taxonomy_witness_note",
-        "",
-    ),
-    (
-        "extdeps.languages.nonexistent.subject",
-        "nonexistent_language",
-        "",
-    ),
-    ("extdeps.network.mac", "already_deleted_frontier_unit", ""),
-    ("extdeps.network.mac", "parse_mac_addres", ""),
-    ("extdeps.network.max", "parse_mac_address", ""),
-    ("gunbc.capability_binding", "x", ""),
-    (
-        "gunbc.publication_policy",
-        "G1_planted_instance_gap_producer_control_RED",
-        "",
-    ),
-    (
+        "test.claim.altra_placement_witness",
         "product.altra_motherboard.minimal_design",
         "some_other_board",
         "",
     ),
-    ("std.disposition", "Disposition", "marker"),
-    ("std.primitive_identity", "missing_handler", ""),
-    ("synthetic.g1_module_absent_RED", "any", ""),
-    ("synthetic.mod", "HostConfig", ""),
-    ("synthetic.mod", "HostConfig", "memory_swap"),
     (
+        "test.claim.annotation_carrier",
+        "extdeps.network.mac",
+        "already_deleted_frontier_unit",
+        "",
+    ),
+    (
+        "test.claim.annotation_carrier",
+        "extdeps.network.mac",
+        "parse_mac_addres",
+        "",
+    ),
+    (
+        "test.claim.annotation_carrier",
+        "extdeps.network.mac",
+        "parse_mac_address",
+        "",
+    ),
+    (
+        "test.claim.annotation_carrier",
+        "extdeps.network.max",
+        "parse_mac_address",
+        "",
+    ),
+    (
+        "test.claim.capability_binding_witness",
+        "gunbc.capability_binding",
+        "x",
+        "",
+    ),
+    (
+        "test.claim.dissolution_census_mechanism_witness_test",
         "test.claim.dissolution_census_mechanism_witness_test",
         "absent_subject_row",
         "",
     ),
     (
         "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness_test",
         "planted_bound_target",
         "",
     ),
     (
+        "test.claim.dissolution_census_mechanism_witness_test",
         "test.claim.dissolution_census_mechanism_witness_test",
         "planted_retires_target",
         "",
     ),
     (
         "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness_test",
         "planted_unbound_target",
         "",
     ),
     (
         "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness_test",
         "present_subject_row",
         "",
     ),
     (
-        "test.claim.repository_census_observation_witness",
-        "census_witness_classifier",
-        "rows",
-    ),
-    ("test.fixture", "planted", ""),
-    (
-        "test.fixture.decl_facts_reflection.specimens",
-        "named_field_anchor",
-        "dissolves_to",
-    ),
-    (
+        "test.claim.dissolution_census_mechanism_witness_test",
         "test.fixture.dissolution_live_discriminator.subject",
         "absent_subject_declaration",
         "",
     ),
     (
-        "test.fixture.scaffold_disposition_census.pool.specimens",
-        "no_such_declaration_G1_dangling_bind_control_RED",
-        "",
-    ),
-    ("v1.compiler.complexity", "Derived", ""),
-    (
-        "v1.compiler.complexity",
-        "this_declaration_does_not_exist_in_the_seed",
+        "test.claim.keyed_roster_witness",
+        "synthetic.mod",
+        "HostConfig",
         "",
     ),
     (
-        "v1.compiler.this_module_does_not_exist",
-        "classify_complexity",
+        "test.claim.keyed_roster_witness",
+        "synthetic.mod",
+        "HostConfig",
+        "memory_swap",
+    ),
+    (
+        "test.claim.language_target_subject_registration",
+        "extdeps.languages.nonexistent.subject",
+        "nonexistent_language",
         "",
     ),
     (
+        "test.claim.long.cited_symbol_resolution_witness_test",
+        "gunbc.publication_policy",
+        "G1_planted_instance_gap_producer_control_RED",
+        "",
+    ),
+    (
+        "test.claim.long.cited_symbol_resolution_witness_test",
+        "synthetic.g1_module_absent_RED",
+        "any",
+        "",
+    ),
+    (
+        "test.claim.long.cited_symbol_resolution_witness_test",
         "v2.compiler.parse",
         "G1_planted_instance_gap_caller_control_RED",
         "",
     ),
-    ("v2.std.node", "NoSuchDecl_G1_RED", ""),
-    ("v2.std.node", "NodeKind", "NoSuchField_G1_RED"),
-    ("v2.std.node", "g1_ambiguous", ""),
     (
+        "test.claim.long.cited_symbol_resolution_witness_test",
+        "v2.std.node",
+        "g1_ambiguous",
+        "",
+    ),
+    (
+        "test.claim.long.cited_symbol_resolution_witness_test",
+        "v2.std.node",
+        "NodeKind",
+        "NoSuchField_G1_RED",
+    ),
+    (
+        "test.claim.long.cited_symbol_resolution_witness_test",
+        "v2.std.node",
+        "NoSuchDecl_G1_RED",
+        "",
+    ),
+    (
+        "test.claim.primitive_identity_join_witness_test",
+        "std.primitive_identity",
+        "missing_handler",
+        "",
+    ),
+    (
+        "test.claim.primitive_projection_authority_witness_test",
+        "test.fixture",
+        "planted",
+        "",
+    ),
+    (
+        "test.claim.repository_census_observation_witness",
+        "test.claim.repository_census_observation_witness",
+        "census_witness_classifier",
+        "rows",
+    ),
+    (
+        "test.claim.witness_purpose_taxonomy_witness",
+        "dag.test.claim.witness_purpose_taxonomy_witness",
+        "witness_purpose_taxonomy_witness_note",
+        "",
+    ),
+    (
+        "test.fixture.decl_facts_reflection.specimens",
+        "test.fixture.decl_facts_reflection.specimens",
+        "named_field_anchor",
+        "dissolves_to",
+    ),
+    (
+        "test.fixture.scaffold_disposition_census.pool.specimens",
+        "test.fixture.scaffold_disposition_census.pool.specimens",
+        "no_such_declaration_G1_dangling_bind_control_RED",
+        "",
+    ),
+    (
+        "v2.test.lens_cost.valuation",
         "v2.test.lens_cost.valuation",
         "unmodelled_effect_specimen",
         "",
     ),
+    (
+        "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+        "extdeps.llm.anthropic",
+        "AnthropicTextBlock",
+        "cache_control",
+    ),
+    (
+        "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+        "gunbc.ci_floor_measurement",
+        "gunbc_ci_managed_host_quiescent_meminfo_read",
+        "",
+    ),
+    (
+        "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+        "std.bytes",
+        "builtin_function_registry",
+        "",
+    ),
+    (
+        "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+        "std.disposition",
+        "Disposition",
+        "marker",
+    ),
+    (
+        "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+        "tools.rust_stage0_gates",
+        "per_unit_test_selector",
+        "",
+    ),
 ];
 
-const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str)] = &[
-    ("extdeps.cloud.gcp.secret_manager", "AccessVersion", ""),
-    ("extdeps.cloud.gcp.secret_manager", "AddVersion", ""),
-    ("extdeps.docker.container_inspect", "Inspect", ""),
+const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str)] = &[
     (
+        "extdeps.docker.container_inspect",
+        "extdeps.docker.container_inspect",
+        "Inspect",
+        "",
+    ),
+    (
+        "extdeps.docker.container_stats",
         "extdeps.docker.container_stats",
         "ContainerStats",
         "cpu_percent",
     ),
-    ("extdeps.docker.container_stats", "Stats", ""),
     (
+        "extdeps.docker.container_stats",
+        "extdeps.docker.container_stats",
+        "Stats",
+        "",
+    ),
+    (
+        "extdeps.github.actions_runner",
+        "gunbc.host_effect",
+        "host_effect_apply",
+        "",
+    ),
+    (
+        "extdeps.git.publication_transport",
         "extdeps.git.publication_transport",
         "PublicationTransport",
         "",
     ),
     (
         "extdeps.llm.anthropic",
+        "extdeps.llm.anthropic",
         "AnthropicImageBlock",
         "cache_control",
     ),
     (
         "extdeps.llm.anthropic",
+        "extdeps.llm.anthropic",
         "AnthropicTextBlock",
         "cache_control",
     ),
-    ("extdeps.llm.anthropic", "AnthropicTextBlock", "citations"),
     (
+        "extdeps.llm.anthropic",
+        "extdeps.llm.anthropic",
+        "AnthropicTextBlock",
+        "citations",
+    ),
+    (
+        "extdeps.llm.anthropic",
         "extdeps.llm.anthropic",
         "AnthropicToolReferenceBlock",
         "cache_control",
     ),
-    ("extdeps.llm.anthropic", "CacheControl", "ttl"),
-    ("extdeps.mediawiki", "extdeps_external_authority_anchor", ""),
-    ("extdeps.network.ipv6", "parse_ipv6_address", ""),
-    ("extdeps.network.mac", "parse_mac_address", ""),
-    ("extdeps.tcgplayer.store", "UpdateSkuPrice", "price"),
     (
+        "extdeps.llm.anthropic",
+        "extdeps.llm.anthropic",
+        "CacheControl",
+        "ttl",
+    ),
+    (
+        "extdeps.network.ipv6",
+        "extdeps.network.ipv6",
+        "parse_ipv6_address",
+        "",
+    ),
+    (
+        "extdeps.tcgplayer.store",
+        "extdeps.tcgplayer.store",
+        "UpdateSkuPrice",
+        "price",
+    ),
+    (
+        "gunbc.ci_floor_measurement",
         "gunbc.ci_floor_measurement",
         "gunbc_ci_legacy_host_modeled_residents",
         "",
     ),
     (
         "gunbc.ci_floor_measurement",
+        "gunbc.ci_floor_measurement",
         "gunbc_ci_managed_host_quiescent_meminfo_read",
         "",
     ),
     (
+        "gunbc.ci_heal_credential",
+        "gunbc.ci_workflow",
+        "ci_heal_generated_artifacts_job",
+        "",
+    ),
+    (
+        "gunbc.ci_heal_credential",
+        "gunbc.ci_workflow",
+        "ci_workflow",
+        "",
+    ),
+    (
+        "gunbc.claude_setup_token_enrollment",
+        "extdeps.cloud.gcp.secret_manager",
+        "AccessVersion",
+        "",
+    ),
+    (
+        "gunbc.claude_setup_token_enrollment",
+        "extdeps.cloud.gcp.secret_manager",
+        "AddVersion",
+        "",
+    ),
+    (
+        "gunbc.executor_privileged_operation",
+        "gunbc.host_effect",
+        "host_effect_apply",
+        "",
+    ),
+    (
+        "gunbc.fabric_capacity_class_gap",
         "gunbc.ci_runner_placement",
         "ci_runner_placement_authority",
         "",
     ),
-    ("gunbc.ci_workflow", "ci_heal_generated_artifacts_job", ""),
-    ("gunbc.ci_workflow", "ci_workflow", ""),
-    ("gunbc.fleet_host_budget", "fleet_host_budget_authority", ""),
     (
+        "gunbc.fabric_capacity_class_gap",
+        "gunbc.fleet_host_budget",
+        "fleet_host_budget_authority",
+        "",
+    ),
+    (
+        "gunbc.fabric_capacity_class_gap",
+        "product.fabric.supply",
+        "Offer",
+        "",
+    ),
+    (
+        "gunbc.host_budget_source",
         "gunbc.host_budget_source",
         "host_budget_source_emitted_into_stage0",
         "",
     ),
-    ("gunbc.host_effect", "host_effect_apply", ""),
-    ("gunbc.roadmap_authority", "roadmap_document", ""),
-    ("gunbc.runner_lifecycle", "EnsureRunnerJitWrapper", ""),
     (
+        "gunbc.language_source_scaffold_index",
+        "v2.test.workflow.claim_witness_corpus_ci_runner",
+        "ClaimWitnessCorpusClaimRunRow",
+        "",
+    ),
+    (
+        "gunbc.runner_connectivity_repair_plan",
+        "gunbc.runner_lifecycle",
+        "EnsureRunnerJitWrapper",
+        "",
+    ),
+    (
+        "gunbc.runner_slot_provision",
+        "gunbc.host_effect",
+        "host_effect_apply",
+        "",
+    ),
+    (
+        "gunbc.self_host_promotion_obligations",
+        "v2.compiler.self_host.emitter_producer_provenance",
+        "v2_self_hosted_promotions",
+        "",
+    ),
+    (
+        "gunbc.srv3_os_install_actuate_scope",
+        "gunbc.roadmap_authority",
+        "roadmap_document",
+        "",
+    ),
+    (
+        "gunbc.tailscale_acl_phase2_credential",
         "gunbc.tailscale_acl_phase2_credential",
         "tailscale_acl_upsert_wet",
         "",
     ),
     (
         "product.build_selection",
+        "product.build_selection",
         "build_constructible_ceiling_axis",
         "",
     ),
-    ("product.build_selection", "build_incremental_cash_axis", ""),
-    ("product.build_selection", "build_memory_bandwidth_axis", ""),
-    ("product.build_selection", "build_memory_capacity_axis", ""),
-    ("product.build_selection", "build_wall_power_axis", ""),
-    ("product.fabric.supply", "Offer", ""),
-    ("std.bytes", "builtin_function_registry", ""),
-    ("tools.rust_stage0_gates", "per_unit_test_selector", ""),
-    ("v1.compiler.05_emit", "emit_literal", ""),
-    ("v1.compiler.infer_emit_info", "type_summary_reaches_fn", ""),
     (
-        "v2.compiler.self_host.emitter_producer_provenance",
-        "v2_self_hosted_promotions",
+        "product.build_selection",
+        "product.build_selection",
+        "build_incremental_cash_axis",
         "",
     ),
     (
-        "v2.test.workflow.claim_witness_corpus_ci_runner",
-        "ClaimWitnessCorpusClaimRunRow",
+        "product.build_selection",
+        "product.build_selection",
+        "build_memory_bandwidth_axis",
+        "",
+    ),
+    (
+        "product.build_selection",
+        "product.build_selection",
+        "build_memory_capacity_axis",
+        "",
+    ),
+    (
+        "product.build_selection",
+        "product.build_selection",
+        "build_wall_power_axis",
+        "",
+    ),
+    ("std.bytes", "std.bytes", "builtin_function_registry", ""),
+    (
+        "std.citation",
+        "extdeps.mediawiki",
+        "extdeps_external_authority_anchor",
+        "",
+    ),
+    ("std.encoding", "std.bytes", "builtin_function_registry", ""),
+    (
+        "tools.rust_stage0_gates",
+        "tools.rust_stage0_gates",
+        "per_unit_test_selector",
         "",
     ),
 ];
 
 /// Whether a citation names one of the enumerated pre-existing targets.
-/// Whether a citation is enrolled in `roster`, at identity grain.
+/// Whether a citation is enrolled in `roster`, at SITE grain — the citing module included.
+/// See the module header for why the target alone is not an identity a roster may key on.
 ///
 /// The roster is a parameter for the reason both callers now state: an enrolled-debt roster
 /// is a fact about ONE corpus, and a predicate that reads it from module scope makes its own
 /// behaviour unauthorable by any fixture.
-fn citation_in_roster(cited: &CitedSymbol, roster: &[(&str, &str, &str)]) -> bool {
-    let field = cited.field.as_deref().unwrap_or("");
-    roster.iter().any(|(module, decl, f)| {
-        *module == cited.module_path && *decl == cited.decl_name && *f == field
-    })
+fn citation_in_roster(
+    citing_module: &str,
+    cited: &CitedSymbol,
+    roster: &[(&str, &str, &str, &str)],
+) -> bool {
+    roster
+        .iter()
+        .any(|row| *row == citation_site(citing_module, cited))
+}
+
+/// A citation's SITE identity — who cites, and what is cited. Every roster row is one of
+/// these, and the first field is the whole content of this change: a row exempts the site
+/// that authored it, never the target it names.
+fn citation_site<'a>(
+    citing_module: &'a str,
+    cited: &'a CitedSymbol,
+) -> (&'a str, &'a str, &'a str, &'a str) {
+    (
+        citing_module,
+        cited.module_path.as_str(),
+        cited.decl_name.as_str(),
+        cited.field.as_deref().unwrap_or(""),
+    )
 }
 
 /// THE CONTRACT'S OWN REFUSAL — a roster row that no longer reproduces.
@@ -1075,15 +1350,27 @@ pub fn citation_debt_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// how the claim was caught. A false statement inside the carrier built to stop false
 /// statements is the specimen this whole change exists to make impossible, and it is recorded
 /// here rather than quietly corrected.
-const PLANTED_CONTROL_CITATIONS: &[(&str, &str, &str)] = &[
-    ("synthetic.g1_planted_module_absent_control_RED", "any", ""),
+const PLANTED_CONTROL_CITATIONS: &[(&str, &str, &str, &str)] = &[
     (
+        "v2.lens.cited_symbol_resolution",
+        "synthetic.g1_planted_module_absent_control_RED",
+        "any",
+        "",
+    ),
+    (
+        "v2.lens.cited_symbol_resolution",
+        "v2.std.node",
+        "G1_planted_ambiguous_control_RED",
+        "",
+    ),
+    (
+        "v2.lens.cited_symbol_resolution",
         "v2.std.node",
         "G1_planted_declaration_absent_control_RED",
         "",
     ),
-    ("v2.std.node", "G1_planted_ambiguous_control_RED", ""),
     (
+        "v2.lens.cited_symbol_resolution",
         "v2.std.node",
         "NodeKind",
         "G1_planted_field_absent_control_RED",
@@ -1098,33 +1385,20 @@ pub fn planted_control_findings(index: &DeclarationIndex) -> Vec<DeclarationInte
 
 pub fn planted_control_findings_against(
     index: &DeclarationIndex,
-    roster: &[(&str, &str, &str)],
+    roster: &[(&str, &str, &str, &str)],
 ) -> Vec<DeclarationIntegrityFinding> {
-    let mut still_refusing: BTreeSet<(String, String, String)> = BTreeSet::new();
-    for record in index.modules.values() {
-        for cited in &record.cited {
-            if citation_resolution_refusal(index, record, cited).is_some() {
-                still_refusing.insert((
-                    cited.module_path.clone(),
-                    cited.decl_name.clone(),
-                    cited.field.clone().unwrap_or_default(),
-                ));
-            }
-        }
-    }
+    let still_refusing = refusing_sites(index);
     roster
         .iter()
-        .filter(|(module, decl, field)| {
-            !still_refusing.contains(&(module.to_string(), decl.to_string(), field.to_string()))
-        })
-        .map(|(module, decl, field)| DeclarationIntegrityFinding {
+        .filter(|row| !still_refusing.contains(&site_owned(row)))
+        .map(|(citer, module, decl, field)| DeclarationIntegrityFinding {
             kind: DeclarationIntegrityKind::PlantedControlNoLongerRefuses,
             rel_path: "src/v1/stage0/src/declaration_index.rs".to_string(),
             offset: None,
             message: format!(
-                "PLANTED_CONTROL_CITATIONS lists `{module}` `{decl}`{} as a control that must \
-                 NOT resolve, and it no longer refuses — the control has lost its \
-                 discriminating power and the mechanism it proves is now unevidenced",
+                "PLANTED_CONTROL_CITATIONS lists `{citer}` citing `{module}` `{decl}`{} as a \
+                 control that must NOT resolve, and it no longer refuses — the control has \
+                 lost its discriminating power and the mechanism it proves is now unevidenced",
                 if field.is_empty() {
                     String::new()
                 } else {
@@ -1147,7 +1421,7 @@ pub fn planted_control_findings_against(
 /// while the roster is baked in.
 pub fn citation_debt_findings_against(
     index: &DeclarationIndex,
-    roster: &[(&str, &str, &str)],
+    roster: &[(&str, &str, &str, &str)],
 ) -> Vec<DeclarationIntegrityFinding> {
     citation_debt_findings_named(index, roster, "PRE_EXISTING_CITATION_DEBT")
 }
@@ -1157,34 +1431,21 @@ pub fn citation_debt_findings_against(
 /// file that does not contain the row.
 pub fn citation_debt_findings_named(
     index: &DeclarationIndex,
-    roster: &[(&str, &str, &str)],
+    roster: &[(&str, &str, &str, &str)],
     roster_name: &str,
 ) -> Vec<DeclarationIntegrityFinding> {
-    let mut live: BTreeSet<(String, String, String)> = BTreeSet::new();
-    for record in index.modules.values() {
-        for cited in &record.cited {
-            if citation_resolution_refusal(index, record, cited).is_some() {
-                live.insert((
-                    cited.module_path.clone(),
-                    cited.decl_name.clone(),
-                    cited.field.clone().unwrap_or_default(),
-                ));
-            }
-        }
-    }
+    let live = refusing_sites(index);
     roster
         .iter()
-        .filter(|(module, decl, field)| {
-            !live.contains(&(module.to_string(), decl.to_string(), field.to_string()))
-        })
-        .map(|(module, decl, field)| DeclarationIntegrityFinding {
+        .filter(|row| !live.contains(&site_owned(row)))
+        .map(|(citer, module, decl, field)| DeclarationIntegrityFinding {
             kind: DeclarationIntegrityKind::CitationDebtRowStale,
             rel_path: "src/v1/stage0/src/declaration_index.rs".to_string(),
             offset: None,
             message: format!(
-                "{roster_name} still lists `{module}` `{decl}`{} — that citation \
-                 no longer refuses, so the row is spent and must be deleted; the roster only \
-                 shrinks",
+                "{roster_name} still lists `{citer}` citing `{module}` `{decl}`{} — that \
+                 citation no longer refuses, so the row is spent and must be deleted; the \
+                 roster only shrinks",
                 if field.is_empty() {
                     String::new()
                 } else {
@@ -1240,12 +1501,12 @@ pub fn cited_symbol_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegri
 /// roster names and requires the same tree to be refused unenrolled and suppressed enrolled.
 pub fn cited_symbol_findings_against(
     index: &DeclarationIndex,
-    roster: &[(&str, &str, &str)],
+    roster: &[(&str, &str, &str, &str)],
 ) -> Vec<DeclarationIntegrityFinding> {
     let mut out = Vec::new();
     for record in index.modules.values() {
         for cited in &record.cited {
-            if citation_in_roster(cited, roster) {
+            if citation_in_roster(&record.module_path, cited, roster) {
                 continue;
             }
             if let Some(finding) = citation_resolution_refusal(index, record, cited) {
@@ -1463,5 +1724,33 @@ pub fn render_finding(
         integrity_kind_label(&finding.kind),
         located,
         finding.message
+    )
+}
+
+/// Every citation SITE in the corpus that currently refuses, as owned identities.
+///
+/// ONE SET, BOTH INVERSE ARMS. The debt arm and the planted-control arm read it in opposite
+/// directions and must read the SAME subject set — the desynchronization receipt on
+/// `corpus_findings` is what happens when two locally-correct arms disagree about one
+/// citation, and two separately-built sets are the easiest way to reintroduce it.
+fn refusing_sites(index: &DeclarationIndex) -> BTreeSet<(String, String, String, String)> {
+    let mut out = BTreeSet::new();
+    for record in index.modules.values() {
+        for cited in &record.cited {
+            if citation_resolution_refusal(index, record, cited).is_some() {
+                let (a, b, c, d) = citation_site(&record.module_path, cited);
+                out.insert((a.to_string(), b.to_string(), c.to_string(), d.to_string()));
+            }
+        }
+    }
+    out
+}
+
+fn site_owned(row: &(&str, &str, &str, &str)) -> (String, String, String, String) {
+    (
+        row.0.to_string(),
+        row.1.to_string(),
+        row.2.to_string(),
+        row.3.to_string(),
     )
 }
