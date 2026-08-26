@@ -2,7 +2,7 @@ module v2.workflow.legacy_binding_observation
 
 import std.types { String, Bool, Int, List, Map, NonEmptyStr }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_field_eq }
 import std.occurrence_identity {
   OccurrenceId,
   ReferenceOccurrence,
@@ -167,6 +167,13 @@ type LegacySubjectApplicability
   = LegacySubjectApplicable
   | LegacySubjectDiverged { field: String }
 
+// THE FIELD ARM CONSUMES std.decl_ref's OWN EQUALITY RATHER THAN A BARE `!=`, and the reason is a
+// question a reviewer asked rather than a preference. DeclField's authority module ships
+// decl_field_eq; if a bare coproduct `!=` were structurally correct here then that helper would be
+// redundant and its own module would have the problem, and if it is not then this arm would have
+// been wrong. Either way, two answers to one question existed and only one of them lives beside the
+// type. LegacyResolutionPolicy is different and stays a bare comparison: this module declares it,
+// so there is no second authority to consume.
 fn legacy_subject_applicability(
   left: LegacyBindingObservationSubject,
   right: LegacyBindingObservationSubject
@@ -181,7 +188,7 @@ fn legacy_subject_applicability(
     LegacySubjectDiverged { field: "resolver_identity.module_path" }
   } else if left.resolver_identity.decl_name != right.resolver_identity.decl_name {
     LegacySubjectDiverged { field: "resolver_identity.decl_name" }
-  } else if left.resolver_identity.field != right.resolver_identity.field {
+  } else if !decl_field_eq(a: left.resolver_identity.field, b: right.resolver_identity.field) {
     LegacySubjectDiverged { field: "resolver_identity.field" }
   } else if left.resolver_policy != right.resolver_policy {
     LegacySubjectDiverged { field: "resolver_policy" }

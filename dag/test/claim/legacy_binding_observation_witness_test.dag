@@ -6,6 +6,7 @@ import std.content_hash { Fnv1a64Structural, structural_content_hash }
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
 import std.occurrence_identity { OccurrenceId }
 import v2.workflow.legacy_binding_observation {
+  LegacyResolutionPolicy,
   LegacyBindingObservation,
   LegacyBindingObservationRow,
   LegacyBindingObservationSubject,
@@ -319,4 +320,126 @@ test fn a_moved_resolver_field_also_moves_the_content_address() -> Bool {
     declaration_index_digest: base.declaration_index_digest
   }
   legacy_subject_identity(subject: base).digest != legacy_subject_identity(subject: other).digest
+}
+
+// THE INJECTIVITY WITNESS, PER FIELD OVER ALL NINE INPUTS.
+//
+// The applicability arms are per-field on the stated grounds that a comparison reading eight of nine
+// fields must be impossible to write. That argument applies with equal force to the ADDRESS, and on
+// the first cut of this module it was not applied: the fold read seven of the nine inputs, and
+// nothing here would have noticed. Two reviews found it from opposite ends within minutes of each
+// other -- which is the honest reason these arms exist, and the reason a covered function's sibling
+// being uncovered is worth treating as a defect rather than as missing polish.
+//
+// NINE INPUTS, NOT EIGHT: the resolver reference contributes three (module path, declaration name,
+// field), so the identity fold has one more input than the subject has fields.
+fn lbo_address_moves(other: LegacyBindingObservationSubject) -> Bool {
+  legacy_subject_identity(subject: lbo_base_subject()).digest != legacy_subject_identity(subject: other).digest
+}
+
+fn lbo_with_semantic_source(d: Fnv1a64Structural) -> LegacyBindingObservationSubject {
+  let b = lbo_base_subject()
+  LegacyBindingObservationSubject {
+    semantic_source_digest: d,
+    source_set_digest: b.source_set_digest,
+    compiler_artifact_digest: b.compiler_artifact_digest,
+    resolver_identity: b.resolver_identity,
+    resolver_policy: b.resolver_policy,
+    occurrence_transport_digest: b.occurrence_transport_digest,
+    declaration_index_digest: b.declaration_index_digest
+  }
+}
+
+fn lbo_with_source_set(d: Fnv1a64Structural) -> LegacyBindingObservationSubject {
+  let b = lbo_base_subject()
+  LegacyBindingObservationSubject {
+    semantic_source_digest: b.semantic_source_digest,
+    source_set_digest: d,
+    compiler_artifact_digest: b.compiler_artifact_digest,
+    resolver_identity: b.resolver_identity,
+    resolver_policy: b.resolver_policy,
+    occurrence_transport_digest: b.occurrence_transport_digest,
+    declaration_index_digest: b.declaration_index_digest
+  }
+}
+
+fn lbo_with_artifact(d: Fnv1a64Structural) -> LegacyBindingObservationSubject {
+  let b = lbo_base_subject()
+  LegacyBindingObservationSubject {
+    semantic_source_digest: b.semantic_source_digest,
+    source_set_digest: b.source_set_digest,
+    compiler_artifact_digest: d,
+    resolver_identity: b.resolver_identity,
+    resolver_policy: b.resolver_policy,
+    occurrence_transport_digest: b.occurrence_transport_digest,
+    declaration_index_digest: b.declaration_index_digest
+  }
+}
+
+fn lbo_with_transport(d: Fnv1a64Structural) -> LegacyBindingObservationSubject {
+  let b = lbo_base_subject()
+  LegacyBindingObservationSubject {
+    semantic_source_digest: b.semantic_source_digest,
+    source_set_digest: b.source_set_digest,
+    compiler_artifact_digest: b.compiler_artifact_digest,
+    resolver_identity: b.resolver_identity,
+    resolver_policy: b.resolver_policy,
+    occurrence_transport_digest: d,
+    declaration_index_digest: b.declaration_index_digest
+  }
+}
+
+fn lbo_with_decl_index(d: Fnv1a64Structural) -> LegacyBindingObservationSubject {
+  let b = lbo_base_subject()
+  LegacyBindingObservationSubject {
+    semantic_source_digest: b.semantic_source_digest,
+    source_set_digest: b.source_set_digest,
+    compiler_artifact_digest: b.compiler_artifact_digest,
+    resolver_identity: b.resolver_identity,
+    resolver_policy: b.resolver_policy,
+    occurrence_transport_digest: b.occurrence_transport_digest,
+    declaration_index_digest: d
+  }
+}
+
+fn lbo_with_resolver(reference: DeclarationRef) -> LegacyBindingObservationSubject {
+  let b = lbo_base_subject()
+  LegacyBindingObservationSubject {
+    semantic_source_digest: b.semantic_source_digest,
+    source_set_digest: b.source_set_digest,
+    compiler_artifact_digest: b.compiler_artifact_digest,
+    resolver_identity: reference,
+    resolver_policy: b.resolver_policy,
+    occurrence_transport_digest: b.occurrence_transport_digest,
+    declaration_index_digest: b.declaration_index_digest
+  }
+}
+
+fn lbo_with_policy(policy: LegacyResolutionPolicy) -> LegacyBindingObservationSubject {
+  let b = lbo_base_subject()
+  LegacyBindingObservationSubject {
+    semantic_source_digest: b.semantic_source_digest,
+    source_set_digest: b.source_set_digest,
+    compiler_artifact_digest: b.compiler_artifact_digest,
+    resolver_identity: b.resolver_identity,
+    resolver_policy: policy,
+    occurrence_transport_digest: b.occurrence_transport_digest,
+    declaration_index_digest: b.declaration_index_digest
+  }
+}
+
+test fn the_content_address_is_stable_for_an_unchanged_subject() -> Bool {
+  legacy_subject_identity(subject: lbo_base_subject()).digest == legacy_subject_identity(subject: lbo_base_subject()).digest
+}
+
+test fn every_identity_input_moves_the_content_address() -> Bool {
+  lbo_address_moves(other: lbo_with_semantic_source(d: lbo_digest(label: "aaaaaaaaaaaaaaaa")))
+    && lbo_address_moves(other: lbo_with_source_set(d: lbo_digest(label: "bbbbbbbbbbbbbbbb")))
+    && lbo_address_moves(other: lbo_with_artifact(d: lbo_digest(label: "cccccccccccccccc")))
+    && lbo_address_moves(other: lbo_with_transport(d: lbo_digest(label: "dddddddddddddddd")))
+    && lbo_address_moves(other: lbo_with_decl_index(d: lbo_digest(label: "eeeeeeeeeeeeeeee")))
+    && lbo_address_moves(other: lbo_with_resolver(reference: decl_ref(module_path: "v1.compiler.infer_lookup", decl_name: "lookup_binding_by_name")))
+    && lbo_address_moves(other: lbo_with_resolver(reference: decl_ref(module_path: "v1.compiler.infer_env", decl_name: "global_bare_lookup")))
+    && lbo_address_moves(other: lbo_with_resolver(reference: decl_field_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name", field_name: "resolved")))
+    && lbo_address_moves(other: lbo_with_policy(policy: NamespaceOnlyPolicy))
 }
