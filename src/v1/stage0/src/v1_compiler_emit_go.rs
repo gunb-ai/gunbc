@@ -1171,7 +1171,9 @@ pub fn emit_go_fn_def(
                     registry.clone(),
                     body_scope.clone(),
                     1,
-                    |pat| emit_unified_pattern(pat.clone(), RenderTarget::Go, si.clone()),
+                    |pat: Rc<MatchPattern>| {
+                        emit_unified_pattern(pat.clone(), RenderTarget::Go, si.clone())
+                    },
                 );
                 v1_rt::concat(
                     v1_rt::concat(
@@ -1402,7 +1404,7 @@ pub fn emit_go_typed_expr(
         scope.clone(),
         depth.clone(),
         fuel.clone(),
-        |pat| {
+        |pat: Rc<MatchPattern>| {
             emit_unified_pattern(
                 pat.clone(),
                 RenderTarget::Go,
@@ -1424,9 +1426,13 @@ pub fn emit_go_transport_body(
         source_indices.clone(),
         depth.clone(),
         RenderTarget::Go,
-        |n, t, d, si| emit_go_rest_call(n.clone(), t.clone(), d.clone(), si.clone()),
-        |n, t, d, si| emit_go_shell_call(n.clone(), t.clone(), d.clone(), si.clone()),
-        |n, d| emit_go_local_call(n.clone(), d.clone()),
+        |n: String, t: Rc<Node>, d: i64, si: Rc<HashMap<String, Rc<NewlineIndex>>>| {
+            emit_go_rest_call(n.clone(), t.clone(), d.clone(), si.clone())
+        },
+        |n: String, t: Rc<Node>, d: i64, si: Rc<HashMap<String, Rc<NewlineIndex>>>| {
+            emit_go_shell_call(n.clone(), t.clone(), d.clone(), si.clone())
+        },
+        |n: String, d: i64| emit_go_local_call(n.clone(), d.clone()),
     )
 }
 
@@ -1440,10 +1446,16 @@ pub fn emit_go_service_def(
         RenderTarget::Go,
         registry.clone(),
         env.clone(),
-        |name, transport, ops, si| {
+        |name: String,
+         transport: Rc<Node>,
+         ops: Rc<Vec<Rc<Node>>>,
+         si: Rc<HashMap<String, Rc<NewlineIndex>>>| {
             emit_go_service_struct(name.clone(), transport.clone(), ops.clone(), si.clone())
         },
-        |bound, op_name, si, depth| {
+        |bound: Rc<BoundOperation>,
+         op_name: String,
+         si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+         depth: i64| {
             emit_go_transport_body(bound.clone(), op_name.clone(), si.clone(), depth.clone())
         },
     )

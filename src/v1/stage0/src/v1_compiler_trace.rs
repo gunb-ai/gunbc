@@ -296,5 +296,5 @@ pub fn remap_location(source_map: Rc<SourceMap>, generated_line: i64) -> Option<
     })
     .last()
     .cloned()
-    .map(|m| m.source_span.clone())
+    .map(|m: Option<Rc<SpanMapping>>| m.source_span.clone())
 }

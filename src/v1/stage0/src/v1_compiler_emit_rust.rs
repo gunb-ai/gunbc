@@ -8,6 +8,7 @@ use self::DataRefResolution::*;
 use self::DataReferenceUnresolvableCause::*;
 use self::IterOwnedReceiverCloneDisposition::*;
 use self::ParamDefaultResolution::*;
+use self::UnavailableLambdaParamPolicy::*;
 pub use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
 pub use crate::extdeps_languages_rust_capabilities::phantom_opaque_carrier_derive_traits;
 pub use crate::extdeps_languages_rust_emit::HigherOrderMethodSpec;
@@ -20660,7 +20661,7 @@ pub fn emit_rust_expr_cast(
             cast_expr(expr.clone()),
             cast_target(expr.clone()),
             RenderTarget::Rust,
-            |child| {
+            |child: Rc<Node>| {
                 emit_typed_expr(
                     child.clone(),
                     registry.clone(),
@@ -20817,8 +20818,8 @@ pub fn emit_typed_expr(
             texpr.clone(),
             RenderTarget::Rust,
             scope.type_env.clone().source_indices.clone(),
-            |result| result.clone(),
-            |child| {
+            |result: String| result.clone(),
+            |child: Rc<Node>| {
                 emit_typed_expr(
                     child.clone(),
                     registry.clone(),
@@ -20829,7 +20830,7 @@ pub fn emit_typed_expr(
                     (fuel.clone() - 1),
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_rust_expr_var(
                     expr.clone(),
                     registry.clone(),
@@ -20839,7 +20840,7 @@ pub fn emit_typed_expr(
                     scope.module_name.clone(),
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_rust_expr_field_access(
                     expr.clone(),
                     registry.clone(),
@@ -20849,7 +20850,7 @@ pub fn emit_typed_expr(
                     emit_info.clone(),
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_rust_expr_call(
                     expr.clone(),
                     registry.clone(),
@@ -20859,7 +20860,7 @@ pub fn emit_typed_expr(
                     emit_info.clone(),
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_rust_expr_method_call(
                     expr.clone(),
                     registry.clone(),
@@ -20869,7 +20870,7 @@ pub fn emit_typed_expr(
                     emit_info.clone(),
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_rust_expr_match(
                     expr.clone(),
                     registry.clone(),
@@ -20879,7 +20880,7 @@ pub fn emit_typed_expr(
                     emit_info.clone(),
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_rust_expr_if(
                     expr.clone(),
                     registry.clone(),
@@ -20889,7 +20890,7 @@ pub fn emit_typed_expr(
                     emit_info.clone(),
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_rust_expr_let(
                     expr.clone(),
                     registry.clone(),
@@ -20899,7 +20900,7 @@ pub fn emit_typed_expr(
                     emit_info.clone(),
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_rust_expr_record_lit(
                     expr.clone(),
                     registry.clone(),
@@ -20909,7 +20910,7 @@ pub fn emit_typed_expr(
                     emit_info.clone(),
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_rust_expr_string_interp(
                     expr.clone(),
                     registry.clone(),
@@ -20919,7 +20920,7 @@ pub fn emit_typed_expr(
                     emit_info.clone(),
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_rust_expr_block(
                     expr.clone(),
                     registry.clone(),
@@ -20929,7 +20930,7 @@ pub fn emit_typed_expr(
                     emit_info.clone(),
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_rust_expr_cast(
                     expr.clone(),
                     registry.clone(),
@@ -20939,7 +20940,7 @@ pub fn emit_typed_expr(
                     emit_info.clone(),
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_rust_expr_for_each(
                     expr.clone(),
                     registry.clone(),
@@ -20949,7 +20950,7 @@ pub fn emit_typed_expr(
                     emit_info.clone(),
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_rust_expr_index(
                     expr.clone(),
                     registry.clone(),
@@ -20959,7 +20960,7 @@ pub fn emit_typed_expr(
                     emit_info.clone(),
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_rust_expr_slice(
                     expr.clone(),
                     registry.clone(),
@@ -20969,7 +20970,7 @@ pub fn emit_typed_expr(
                     emit_info.clone(),
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_rust_expr_bin_op(
                     expr.clone(),
                     registry.clone(),
@@ -20979,7 +20980,7 @@ pub fn emit_typed_expr(
                     emit_info.clone(),
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_rust_lambda_params_typed(
                     expr.clone(),
                     scope.clone(),
@@ -22465,6 +22466,59 @@ pub fn lambda_scope_from_children(
     })
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum UnavailableLambdaParamPolicy {
+    PreserveUntyped,
+    RenderFallback,
+}
+
+pub fn lambda_param_strs_preserving_unavailable(
+    params: Rc<Vec<String>>,
+    param_nodes: Rc<Vec<Rc<Node>>>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    type_env: Rc<TypeEnv>,
+) -> Rc<Vec<String>> {
+    lambda_param_type_strs(
+        params.clone(),
+        param_nodes.clone(),
+        Rc::new(vec![]),
+        shared_types.clone(),
+        source_indices.clone(),
+        emit_info.clone(),
+        false,
+        type_env.clone(),
+        UnavailableLambdaParamPolicy::PreserveUntyped,
+    )
+}
+
+pub fn lambda_param_strs_using_fallback(
+    params: Rc<Vec<String>>,
+    param_nodes: Rc<Vec<Rc<Node>>>,
+    fallback_types: Rc<Vec<String>>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    fold_acc_uses_fallback: bool,
+    type_env: Rc<TypeEnv>,
+) -> Rc<Vec<String>> {
+    lambda_param_type_strs(
+        params.clone(),
+        param_nodes.clone(),
+        fallback_types.clone(),
+        shared_types.clone(),
+        source_indices.clone(),
+        emit_info.clone(),
+        fold_acc_uses_fallback.clone(),
+        type_env.clone(),
+        UnavailableLambdaParamPolicy::RenderFallback,
+    )
+}
+
 pub fn lambda_param_type_strs(
     params: Rc<Vec<String>>,
     param_nodes: Rc<Vec<Rc<Node>>>,
@@ -22474,7 +22528,7 @@ pub fn lambda_param_type_strs(
     emit_info: Rc<EmitGraphInfo>,
     fold_acc_uses_fallback: bool,
     type_env: Rc<TypeEnv>,
-    unavailable_stays_untyped: bool,
+    unavailable_policy: UnavailableLambdaParamPolicy,
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
@@ -22560,20 +22614,17 @@ pub fn lambda_param_type_strs(
                         ident.clone(),
                         ty.clone(),
                     ),
-                    None => {
-                        if unavailable_stays_untyped.clone() {
-                            apply_type_template1(
-                                spec.annotations.clone().lambda_param_untyped.clone(),
-                                ident.clone(),
-                            )
-                        } else {
-                            apply_type_template2(
-                                spec.annotations.clone().lambda_param_typed.clone(),
-                                ident.clone(),
-                                fallback_type.clone(),
-                            )
-                        }
-                    }
+                    None => match unavailable_policy.clone() {
+                        UnavailableLambdaParamPolicy::PreserveUntyped => apply_type_template1(
+                            spec.annotations.clone().lambda_param_untyped.clone(),
+                            ident.clone(),
+                        ),
+                        UnavailableLambdaParamPolicy::RenderFallback => apply_type_template2(
+                            spec.annotations.clone().lambda_param_typed.clone(),
+                            ident.clone(),
+                            fallback_type.clone(),
+                        ),
+                    },
                 }
             });
         }
@@ -22601,16 +22652,13 @@ pub fn emit_rust_lambda_params_typed(
                 .skip(1 as usize)
                 .collect::<Vec<_>>(),
         );
-        let param_strs = lambda_param_type_strs(
+        let param_strs = lambda_param_strs_preserving_unavailable(
             ps.clone(),
             pn.clone(),
-            Rc::new(vec![]),
             shared_types.clone(),
             scope.type_env.clone().source_indices.clone(),
             emit_info.clone(),
-            false,
             scope.type_env.clone(),
-            true,
         );
         param_strs.clone().join(&", ".to_string())
     }
@@ -22641,7 +22689,7 @@ pub fn emit_typed_collection_lambda(
                     .skip(1 as usize)
                     .collect::<Vec<_>>(),
             );
-            let param_strs = lambda_param_type_strs(
+            let param_strs = lambda_param_strs_using_fallback(
                 ps.clone(),
                 pn.clone(),
                 Rc::new(vec![elem_type_str.clone()]),
@@ -22650,7 +22698,6 @@ pub fn emit_typed_collection_lambda(
                 emit_info.clone(),
                 false,
                 scope.type_env.clone(),
-                false,
             );
             let params_str = param_strs.clone().join(&", ".to_string());
             let lambda_scope = lambda_scope_from_children(scope.clone(), ps.clone(), pn.clone());
@@ -22739,7 +22786,7 @@ pub fn emit_typed_fold_lambda(
                 }
                 __result
             });
-            let param_strs_raw = lambda_param_type_strs(
+            let param_strs_raw = lambda_param_strs_using_fallback(
                 ps.clone(),
                 pn.clone(),
                 fallback_types.clone(),
@@ -22748,7 +22795,6 @@ pub fn emit_typed_fold_lambda(
                 emit_info.clone(),
                 true,
                 scope.type_env.clone(),
-                false,
             );
             let param_strs = if elem_borrowed.clone() {
                 Rc::new({
@@ -25772,7 +25818,7 @@ pub fn emit_typed_if(
             depth.clone(),
             RenderTarget::Rust,
             scope.type_env.clone().source_indices.clone(),
-            |node, d| {
+            |node: Rc<Node>, d: i64| {
                 emit_typed_expr(
                     node.clone(),
                     registry.clone(),
@@ -25812,7 +25858,7 @@ pub fn emit_typed_let(
             val_str.clone(),
             body.clone(),
             RenderTarget::Rust,
-            |bd, sc| {
+            |bd: Rc<Node>, sc: Rc<InferScope>| {
                 emit_typed_expr(
                     bd.clone(),
                     registry.clone(),
@@ -28798,7 +28844,7 @@ pub fn emit_typed_tco_expr(
             depth: depth.clone(),
         }),
         fn_name.clone(),
-        |input| {
+        |input: Rc<TcoReassignInput>| {
             emit_typed_tco_reassign(
                 input.args.clone(),
                 params.clone(),
@@ -28809,7 +28855,7 @@ pub fn emit_typed_tco_expr(
                 emit_info.clone(),
             )
         },
-        |frame| {
+        |frame: Rc<TcoFrame>| {
             emit_rust_tco_non_self_call(
                 frame.clone(),
                 registry.clone(),
@@ -28817,7 +28863,7 @@ pub fn emit_typed_tco_expr(
                 emit_info.clone(),
             )
         },
-        |frame| {
+        |frame: Rc<TcoFrame>| {
             emit_rust_tco_if(
                 frame.clone(),
                 fn_name.clone(),
@@ -28827,7 +28873,7 @@ pub fn emit_typed_tco_expr(
                 emit_info.clone(),
             )
         },
-        |frame| {
+        |frame: Rc<TcoFrame>| {
             emit_rust_tco_match(
                 frame.clone(),
                 fn_name.clone(),
@@ -28837,7 +28883,7 @@ pub fn emit_typed_tco_expr(
                 emit_info.clone(),
             )
         },
-        |frame| {
+        |frame: Rc<TcoFrame>| {
             emit_rust_tco_let(
                 frame.clone(),
                 fn_name.clone(),
@@ -28847,7 +28893,7 @@ pub fn emit_typed_tco_expr(
                 emit_info.clone(),
             )
         },
-        |frame| {
+        |frame: Rc<TcoFrame>| {
             emit_rust_tco_block(
                 frame.clone(),
                 fn_name.clone(),
@@ -28857,7 +28903,7 @@ pub fn emit_typed_tco_expr(
                 emit_info.clone(),
             )
         },
-        |frame| {
+        |frame: Rc<TcoFrame>| {
             emit_rust_tco_default_return(
                 frame.clone(),
                 registry.clone(),
@@ -34899,3 +34945,7 @@ pub struct AliasDeclArityAbsent;
 pub struct AliasDeclArityZeroParam;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AliasDeclArityHasParams;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PreserveUntyped;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RenderFallback;

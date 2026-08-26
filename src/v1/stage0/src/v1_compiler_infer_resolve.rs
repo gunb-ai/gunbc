@@ -2309,7 +2309,7 @@ pub fn resolve_expr_types(
                     }),
                 };
                 Rc::new(ExprResolveResult {
-                    expr: map_children(texpr.clone(), |child| r.expr.clone()),
+                    expr: map_children(texpr.clone(), |child: Rc<Node>| r.expr.clone()),
                     diagnostics: r.diagnostics.clone(),
                 })
             }

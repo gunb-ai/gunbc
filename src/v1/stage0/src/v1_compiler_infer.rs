@@ -8326,7 +8326,7 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                         recv_rt.clone(),
                         method_name.clone(),
                         scope.type_env.clone().source_indices.clone(),
-                        |n| {
+                        |n: Rc<Node>| {
                             expand_type_for_field_access(
                                 n.clone(),
                                 scope.type_env.clone(),
@@ -14413,7 +14413,7 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                         })
                     }
                 } else {
-                    map_children(body.clone(), |child| {
+                    map_children(body.clone(), |child: Rc<Node>| {
                         annotate_descent(child.clone(), ctx.clone())
                     })
                 }
@@ -14426,7 +14426,7 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                         ctx.type_env.clone().source_indices.clone(),
                     ),
                 );
-                map_children(body.clone(), |child| {
+                map_children(body.clone(), |child: Rc<Node>| {
                     annotate_descent(child.clone(), lam_ctx.clone())
                 })
             }
@@ -14503,7 +14503,7 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                     ident: None,
                 })
             }
-            _ => map_children(body.clone(), |child| {
+            _ => map_children(body.clone(), |child: Rc<Node>| {
                 annotate_descent(child.clone(), ctx.clone())
             }),
         }

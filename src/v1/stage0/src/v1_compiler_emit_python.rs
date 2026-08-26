@@ -902,7 +902,9 @@ pub fn emit_py_fn_def(
                     registry.clone(),
                     body_scope.clone(),
                     (depth.clone() + 1),
-                    |pat| emit_unified_pattern(pat.clone(), RenderTarget::Python, si.clone()),
+                    |pat: Rc<MatchPattern>| {
+                        emit_unified_pattern(pat.clone(), RenderTarget::Python, si.clone())
+                    },
                 );
                 let kw = language_spec(RenderTarget::Python)
                     .items
@@ -1133,7 +1135,7 @@ pub fn emit_py_typed_expr(
         scope.clone(),
         depth.clone(),
         fuel.clone(),
-        |pat| {
+        |pat: Rc<MatchPattern>| {
             emit_unified_pattern(
                 pat.clone(),
                 RenderTarget::Python,
@@ -1155,9 +1157,13 @@ pub fn emit_py_transport_body(
         source_indices.clone(),
         depth.clone(),
         RenderTarget::Python,
-        |n, t, d, si| emit_py_rest_call(n.clone(), t.clone(), si.clone()),
-        |n, t, d, si| emit_py_shell_call(n.clone(), t.clone(), si.clone()),
-        |n, d| emit_py_local_call(n.clone()),
+        |n: String, t: Rc<Node>, d: i64, si: Rc<HashMap<String, Rc<NewlineIndex>>>| {
+            emit_py_rest_call(n.clone(), t.clone(), si.clone())
+        },
+        |n: String, t: Rc<Node>, d: i64, si: Rc<HashMap<String, Rc<NewlineIndex>>>| {
+            emit_py_shell_call(n.clone(), t.clone(), si.clone())
+        },
+        |n: String, d: i64| emit_py_local_call(n.clone()),
     )
 }
 
@@ -1171,8 +1177,16 @@ pub fn emit_py_service_def(
         RenderTarget::Python,
         registry.clone(),
         env.clone(),
-        |name, transport, ops, si| emit_py_service_init(transport.clone(), ops.clone(), si.clone()),
-        |bound, op_name, si, depth| {
+        |name: String,
+         transport: Rc<Node>,
+         ops: Rc<Vec<Rc<Node>>>,
+         si: Rc<HashMap<String, Rc<NewlineIndex>>>| {
+            emit_py_service_init(transport.clone(), ops.clone(), si.clone())
+        },
+        |bound: Rc<BoundOperation>,
+         op_name: String,
+         si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+         depth: i64| {
             emit_py_transport_body(bound.clone(), op_name.clone(), si.clone(), depth.clone())
         },
     )

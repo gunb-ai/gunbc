@@ -3360,33 +3360,35 @@ pub fn emit_unified_tco_expr(
         emit_shared_tco_expr(
             frame.clone(),
             fn_name.clone(),
-            |input| {
+            |input: Rc<TcoReassignInput>| {
                 emit_typed_tco_reassign_shared(
                     input.args.clone(),
                     params.clone(),
                     target.clone(),
-                    |child| recurse_expr(child.clone(), input.scope.clone(), input.depth.clone()),
+                    |child: Rc<Node>| {
+                        recurse_expr(child.clone(), input.scope.clone(), input.depth.clone())
+                    },
                     input.scope.clone().type_env.clone().source_indices.clone(),
                 )
             },
-            |frame| {
+            |frame: Rc<TcoFrame>| {
                 shared_tco_non_self_call(
                     frame.clone(),
                     target.clone(),
                     spec.clone(),
-                    |f, args, scope, depth| {
+                    |f: String, args: Rc<Vec<Rc<Node>>>, scope: Rc<InferScope>, depth: i64| {
                         emit_typed_call_unified(
                             f.clone(),
                             args.clone(),
                             target.clone(),
                             registry.clone(),
                             scope.clone(),
-                            |n| recurse_expr(n.clone(), scope.clone(), depth.clone()),
+                            |n: Rc<Node>| recurse_expr(n.clone(), scope.clone(), depth.clone()),
                         )
                     },
                 )
             },
-            |frame| {
+            |frame: Rc<TcoFrame>| {
                 shared_tco_if(
                     frame.clone(),
                     fn_name.clone(),
@@ -3394,7 +3396,7 @@ pub fn emit_unified_tco_expr(
                     target.clone(),
                     spec.clone(),
                     recurse_expr.clone(),
-                    |expr, scope, depth| {
+                    |expr: Rc<Node>, scope: Rc<InferScope>, depth: i64| {
                         unified_tco_recurse(
                             expr.clone(),
                             scope.clone(),
@@ -3411,14 +3413,14 @@ pub fn emit_unified_tco_expr(
                 )
             },
             render_match.clone(),
-            |frame| {
+            |frame: Rc<TcoFrame>| {
                 shared_tco_let(
                     frame.clone(),
                     fn_name.clone(),
                     params.clone(),
                     target.clone(),
                     recurse_expr.clone(),
-                    |expr, scope, depth| {
+                    |expr: Rc<Node>, scope: Rc<InferScope>, depth: i64| {
                         unified_tco_recurse(
                             expr.clone(),
                             scope.clone(),
@@ -3434,7 +3436,7 @@ pub fn emit_unified_tco_expr(
                     },
                 )
             },
-            |frame| {
+            |frame: Rc<TcoFrame>| {
                 shared_tco_block(
                     frame.clone(),
                     fn_name.clone(),
@@ -3442,7 +3444,7 @@ pub fn emit_unified_tco_expr(
                     target.clone(),
                     spec.clone(),
                     render_init_stmts.clone(),
-                    |expr, scope, depth| {
+                    |expr: Rc<Node>, scope: Rc<InferScope>, depth: i64| {
                         unified_tco_recurse(
                             expr.clone(),
                             scope.clone(),
@@ -3458,7 +3460,9 @@ pub fn emit_unified_tco_expr(
                     },
                 )
             },
-            |frame| shared_tco_default_return(frame.clone(), spec.clone(), recurse_expr.clone()),
+            |frame: Rc<TcoFrame>| {
+                shared_tco_default_return(frame.clone(), spec.clone(), recurse_expr.clone())
+            },
         )
     }
 }
@@ -3521,7 +3525,7 @@ pub fn emit_unified_init_block_stmts(
             scope.clone(),
             depth.clone(),
             prepend.clone(),
-            |stmt, sc, d| {
+            |stmt: Rc<Node>, sc: Rc<InferScope>, d: i64| {
                 emit_unified_typed_expr(
                     stmt.clone(),
                     target.clone(),
@@ -3568,7 +3572,7 @@ pub fn emit_tco_match_go(
                         params.clone(),
                         RenderTarget::Go,
                         registry.clone(),
-                        |expr, sc, d| {
+                        |expr: Rc<Node>, sc: Rc<InferScope>, d: i64| {
                             emit_unified_typed_expr(
                                 expr.clone(),
                                 RenderTarget::Go,
@@ -3579,7 +3583,7 @@ pub fn emit_tco_match_go(
                                 render_pattern.clone(),
                             )
                         },
-                        |frame| {
+                        |frame: Rc<TcoFrame>| {
                             emit_unified_tco_match(
                                 frame.clone(),
                                 fn_name.clone(),
@@ -3593,7 +3597,7 @@ pub fn emit_tco_match_go(
                         render_init_stmts.clone(),
                     );
                     let body_str = emit_match_arm_body_stmt(RenderTarget::Go, tco_body.clone());
-                    let guard_str = emit_arm_guard(arm.clone(), RenderTarget::Go, |g| {
+                    let guard_str = emit_arm_guard(arm.clone(), RenderTarget::Go, |g: Rc<Node>| {
                         emit_unified_typed_expr(
                             g.clone(),
                             RenderTarget::Go,
@@ -3748,7 +3752,7 @@ pub fn emit_unified_tco_match_arm(
             depth.clone()
         };
         let body_depth = (case_depth.clone() + 1);
-        let guard_str = emit_arm_guard(arm.clone(), target.clone(), |g| {
+        let guard_str = emit_arm_guard(arm.clone(), target.clone(), |g: Rc<Node>| {
             emit_unified_typed_expr(
                 g.clone(),
                 target.clone(),
@@ -3771,7 +3775,7 @@ pub fn emit_unified_tco_match_arm(
                 params.clone(),
                 target.clone(),
                 registry.clone(),
-                |expr, scope, depth| {
+                |expr: Rc<Node>, scope: Rc<InferScope>, depth: i64| {
                     emit_unified_typed_expr(
                         expr.clone(),
                         target.clone(),
@@ -3782,7 +3786,7 @@ pub fn emit_unified_tco_match_arm(
                         render_pattern.clone(),
                     )
                 },
-                |frame| {
+                |frame: Rc<TcoFrame>| {
                     emit_unified_tco_match(
                         frame.clone(),
                         fn_name.clone(),
@@ -3826,7 +3830,7 @@ pub fn emit_tco_unified(
         registry.clone(),
         scope.clone(),
         depth.clone(),
-        |expr, scope, depth| {
+        |expr: Rc<Node>, scope: Rc<InferScope>, depth: i64| {
             emit_unified_typed_expr(
                 expr.clone(),
                 target.clone(),
@@ -3837,7 +3841,7 @@ pub fn emit_tco_unified(
                 render_pattern.clone(),
             )
         },
-        |frame| {
+        |frame: Rc<TcoFrame>| {
             emit_unified_tco_match(
                 frame.clone(),
                 fn_name.clone(),
@@ -3845,7 +3849,7 @@ pub fn emit_tco_unified(
                 target.clone(),
                 registry.clone(),
                 render_pattern.clone(),
-                |stmts, scope, depth| {
+                |stmts: Rc<Vec<Rc<Node>>>, scope: Rc<InferScope>, depth: i64| {
                     emit_unified_init_block_stmts(
                         stmts.clone(),
                         Rc::new(vec![]),
@@ -3858,7 +3862,7 @@ pub fn emit_tco_unified(
                 },
             )
         },
-        |stmts, scope, depth| {
+        |stmts: Rc<Vec<Rc<Node>>>, scope: Rc<InferScope>, depth: i64| {
             emit_unified_init_block_stmts(
                 stmts.clone(),
                 Rc::new(vec![]),
@@ -3901,7 +3905,9 @@ pub fn emit_unified_typed_func_body(
                     scope.clone(),
                     depth.clone(),
                     1024,
-                    |pat| emit_unified_pattern(pat.clone(), target.clone(), si.clone()),
+                    |pat: Rc<MatchPattern>| {
+                        emit_unified_pattern(pat.clone(), target.clone(), si.clone())
+                    },
                 );
                 let let_line = v1_rt::concat(
                     prefix.clone(),
@@ -3943,7 +3949,9 @@ pub fn emit_unified_typed_func_body(
                             depth.clone(),
                             target.clone(),
                             registry.clone(),
-                            |pat| emit_unified_pattern(pat.clone(), target.clone(), si.clone()),
+                            |pat: Rc<MatchPattern>| {
+                                emit_unified_pattern(pat.clone(), target.clone(), si.clone())
+                            },
                         );
                         let last_stmt = ss.clone().last().cloned();
                         let last_str = match last_stmt.clone() {
@@ -3957,7 +3965,7 @@ pub fn emit_unified_typed_func_body(
                                         init_state.scope.clone(),
                                         depth.clone(),
                                         1024,
-                                        |pat| {
+                                        |pat: Rc<MatchPattern>| {
                                             emit_unified_pattern(
                                                 pat.clone(),
                                                 target.clone(),
@@ -3995,7 +4003,9 @@ pub fn emit_unified_typed_func_body(
                     scope.clone(),
                     depth.clone(),
                     1024,
-                    |pat| emit_unified_pattern(pat.clone(), target.clone(), si.clone()),
+                    |pat: Rc<MatchPattern>| {
+                        emit_unified_pattern(pat.clone(), target.clone(), si.clone())
+                    },
                 ),
                 MatchValueForm::MatchExpression => v1_rt::concat(
                     v1_rt::concat(
@@ -4007,7 +4017,9 @@ pub fn emit_unified_typed_func_body(
                             scope.clone(),
                             depth.clone(),
                             1024,
-                            |pat| emit_unified_pattern(pat.clone(), target.clone(), si.clone()),
+                            |pat: Rc<MatchPattern>| {
+                                emit_unified_pattern(pat.clone(), target.clone(), si.clone())
+                            },
                         ),
                     ),
                     es.return_suffix.clone(),
@@ -4023,7 +4035,9 @@ pub fn emit_unified_typed_func_body(
                         scope.clone(),
                         depth.clone(),
                         1024,
-                        |pat| emit_unified_pattern(pat.clone(), target.clone(), si.clone()),
+                        |pat: Rc<MatchPattern>| {
+                            emit_unified_pattern(pat.clone(), target.clone(), si.clone())
+                        },
                     ),
                 ),
                 es.return_suffix.clone(),
@@ -6540,7 +6554,7 @@ pub fn emit_typed_match_go(
                         RenderTarget::Go,
                         recurse(arm_body(arm.clone()), body_depth.clone()),
                     );
-                    let guard_str = emit_arm_guard(arm.clone(), RenderTarget::Go, |g| {
+                    let guard_str = emit_arm_guard(arm.clone(), RenderTarget::Go, |g: Rc<Node>| {
                         recurse(g.clone(), depth.clone())
                     });
                     emit_match_arm_line(
@@ -6615,9 +6629,10 @@ pub fn emit_typed_match_unified(
                             target.clone(),
                             recurse(arm_body(arm.clone()), body_depth.clone()),
                         );
-                        let guard_str = emit_arm_guard(arm.clone(), target.clone(), |g| {
-                            recurse(g.clone(), depth.clone())
-                        });
+                        let guard_str =
+                            emit_arm_guard(arm.clone(), target.clone(), |g: Rc<Node>| {
+                                recurse(g.clone(), depth.clone())
+                            });
                         emit_match_arm_line(
                             arm.clone(),
                             target.clone(),
@@ -6707,8 +6722,8 @@ pub fn emit_unified_typed_expr(
             texpr.clone(),
             target.clone(),
             si.clone(),
-            |result| result.clone(),
-            |child| {
+            |result: String| result.clone(),
+            |child: Rc<Node>| {
                 emit_unified_typed_expr(
                     child.clone(),
                     target.clone(),
@@ -6719,8 +6734,8 @@ pub fn emit_unified_typed_expr(
                     render_pattern.clone(),
                 )
             },
-            |expr| emit_expr_var_shared(expr.clone(), target.clone(), si.clone()),
-            |expr| {
+            |expr: Rc<Node>| emit_expr_var_shared(expr.clone(), target.clone(), si.clone()),
+            |expr: Rc<Node>| {
                 let fa_si = scope.type_env.clone().source_indices.clone();
                 if is_typed_service_call_receiver(expr.clone(), fa_si.clone()) {
                     match extract_typed_service_name(expr.clone(), fa_si.clone()) {
@@ -6763,14 +6778,14 @@ pub fn emit_unified_typed_expr(
                     }
                 }
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_typed_call_unified(
                     expr_call_func_at(expr.clone(), si.clone()),
                     expr.children.clone(),
                     target.clone(),
                     registry.clone(),
                     scope.clone(),
-                    |n| {
+                    |n: Rc<Node>| {
                         emit_unified_typed_expr(
                             n.clone(),
                             target.clone(),
@@ -6783,7 +6798,7 @@ pub fn emit_unified_typed_expr(
                     },
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_typed_method_call_unified(
                     method_receiver(expr.clone()),
                     expr_method_name_at(expr.clone(), si.clone()),
@@ -6793,7 +6808,7 @@ pub fn emit_unified_typed_expr(
                     registry.clone(),
                     scope.clone(),
                     depth.clone(),
-                    |n| {
+                    |n: Rc<Node>| {
                         emit_unified_typed_expr(
                             n.clone(),
                             target.clone(),
@@ -6806,7 +6821,7 @@ pub fn emit_unified_typed_expr(
                     },
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 let scrut_str = emit_unified_typed_expr(
                     match_scrutinee(expr.clone()),
                     target.clone(),
@@ -6821,7 +6836,7 @@ pub fn emit_unified_typed_expr(
                     match_arm_nodes(expr.clone()),
                     target.clone(),
                     depth.clone(),
-                    |node, d| {
+                    |node: Rc<Node>, d: i64| {
                         emit_unified_typed_expr(
                             node.clone(),
                             target.clone(),
@@ -6836,7 +6851,7 @@ pub fn emit_unified_typed_expr(
                     si.clone(),
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 let cond_str = emit_unified_typed_expr(
                     if_condition(expr.clone()),
                     target.clone(),
@@ -6858,7 +6873,7 @@ pub fn emit_unified_typed_expr(
                     depth.clone(),
                     target.clone(),
                     si.clone(),
-                    |node, d| {
+                    |node: Rc<Node>, d: i64| {
                         emit_unified_typed_expr(
                             node.clone(),
                             target.clone(),
@@ -6871,7 +6886,7 @@ pub fn emit_unified_typed_expr(
                     },
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 let val_str = emit_unified_typed_expr(
                     let_value(expr.clone()),
                     target.clone(),
@@ -6886,7 +6901,7 @@ pub fn emit_unified_typed_expr(
                     val_str.clone(),
                     let_body(expr.clone()),
                     target.clone(),
-                    |bd, sc| {
+                    |bd: Rc<Node>, sc: Rc<InferScope>| {
                         emit_unified_typed_expr(
                             bd.clone(),
                             target.clone(),
@@ -6901,13 +6916,13 @@ pub fn emit_unified_typed_expr(
                     let_value(expr.clone()),
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_typed_record_lit_unified(
                     record_lit_type_name_at(expr.clone(), si.clone()),
                     expr.children.clone(),
                     target.clone(),
                     si.clone(),
-                    |n| {
+                    |n: Rc<Node>| {
                         emit_unified_typed_expr(
                             n.clone(),
                             target.clone(),
@@ -6920,11 +6935,11 @@ pub fn emit_unified_typed_expr(
                     },
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_typed_string_interp_unified(
                     extract_string_interp_parts(expr.clone()),
                     target.clone(),
-                    |e| {
+                    |e: Rc<Node>| {
                         emit_unified_typed_expr(
                             e.clone(),
                             target.clone(),
@@ -6937,12 +6952,12 @@ pub fn emit_unified_typed_expr(
                     },
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_typed_block_join(
                     expr.children.clone(),
                     scope.clone(),
                     depth.clone(),
-                    |remaining, sc, d| {
+                    |remaining: Rc<Vec<Rc<Node>>>, sc: Rc<InferScope>, d: i64| {
                         let prepend = if spec.block_syntax.clone().significant_whitespace.clone() {
                             false
                         } else {
@@ -6954,7 +6969,7 @@ pub fn emit_unified_typed_expr(
                             sc.clone(),
                             d.clone(),
                             prepend.clone(),
-                            |stmt, s, dd| {
+                            |stmt: Rc<Node>, s: Rc<InferScope>, dd: i64| {
                                 emit_unified_typed_expr(
                                     stmt.clone(),
                                     target.clone(),
@@ -6969,12 +6984,12 @@ pub fn emit_unified_typed_expr(
                     },
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_typed_cast_shared(
                     cast_expr(expr.clone()),
                     cast_target(expr.clone()),
                     target.clone(),
-                    |child| {
+                    |child: Rc<Node>| {
                         emit_unified_typed_expr(
                             child.clone(),
                             target.clone(),
@@ -6988,7 +7003,7 @@ pub fn emit_unified_typed_expr(
                     si.clone(),
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_typed_for_each_shared(
                     foreach_variable_at(expr.clone(), si.clone()),
                     foreach_collection(expr.clone()),
@@ -6996,7 +7011,7 @@ pub fn emit_unified_typed_expr(
                     target.clone(),
                     depth.clone(),
                     si.clone(),
-                    |child, s, d| {
+                    |child: Rc<Node>, s: Rc<InferScope>, d: i64| {
                         emit_unified_typed_expr(
                             child.clone(),
                             target.clone(),
@@ -7010,12 +7025,12 @@ pub fn emit_unified_typed_expr(
                     scope.clone(),
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_typed_index_shared(
                     index_base(expr.clone()),
                     index_expr(expr.clone()),
                     target.clone(),
-                    |child| {
+                    |child: Rc<Node>| {
                         emit_unified_typed_expr(
                             child.clone(),
                             target.clone(),
@@ -7029,13 +7044,13 @@ pub fn emit_unified_typed_expr(
                     si.clone(),
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_typed_slice_shared(
                     slice_base(expr.clone()),
                     slice_start(expr.clone()),
                     slice_end(expr.clone()),
                     target.clone(),
-                    |child| {
+                    |child: Rc<Node>| {
                         emit_unified_typed_expr(
                             child.clone(),
                             target.clone(),
@@ -7049,12 +7064,12 @@ pub fn emit_unified_typed_expr(
                     si.clone(),
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_default_bin_op(
                     expr.clone(),
                     target.clone(),
                     si.clone(),
-                    |child| {
+                    |child: Rc<Node>| {
                         emit_unified_typed_expr(
                             child.clone(),
                             target.clone(),
@@ -7065,10 +7080,10 @@ pub fn emit_unified_typed_expr(
                             render_pattern.clone(),
                         )
                     },
-                    |result| result.clone(),
+                    |result: String| result.clone(),
                 )
             },
-            |expr| {
+            |expr: Rc<Node>| {
                 emit_lambda_params(
                     lambda_param_names_at(expr.clone(), si.clone()),
                     target.clone(),
