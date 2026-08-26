@@ -757,3 +757,50 @@ test fn the_ratchet_runner_has_no_executing_consumer_today() -> Bool {
       DeclaredCadenceUnrealized { cadence: _, entry: _, function: _ } => false
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// THE TWO VERDICT QUESTIONS ARE PROJECTIONS OF ONE CLASSIFICATION, and the relation between them is
+// asserted rather than left to be rediscovered by comparing two functions arm by arm.
+//
+// WHY THIS ROW EXISTS AT ALL: the divergence between `holds` and `evaluated` was previously an
+// EMERGENT fact -- two independent matches that happened to disagree on two arms, discoverable only
+// by measuring them against each other, which is exactly how it came up in review. Routing both
+// through `emit_ratchet_verdict_standing` makes the divergence a named class, and this claim pins
+// the two properties that make the split load-bearing rather than decorative.
+data every_verdict_shape: List<EmitRatchetVerdict> = [
+  RatchetCleanHeld { entry: fixture_alpha },
+  RatchetDebtHeld { entry: fixture_alpha, cause: BlockingDiagnostics { blocking: 1 } },
+  RatchetRegressed { entry: fixture_alpha, cause: BlockingDiagnostics { blocking: 1 } },
+  RatchetFrontierStale { entry: fixture_alpha },
+  RatchetNotEvaluated { entry: fixture_alpha, on_frontier: false, cause: ExtentUnestablished },
+  RatchetSubjectUnmeasured { entry: fixture_alpha, on_frontier: false }
+]
+
+// A HELD VERDICT IS ALWAYS AN EVALUATED ONE -- the ratchet cannot hold over a subject nobody
+// measured. If this ever fails, some arm is reporting a verdict it never established.
+test fn holding_a_verdict_entails_having_established_it() -> Bool {
+  count(
+    filter(
+      every_verdict_shape,
+      v => emit_ratchet_verdict_holds(v: v) && !emit_ratchet_verdict_evaluated(v: v)
+    )
+  ) == 0
+}
+
+// AND THE CONVERSE MUST NOT HOLD, which is the half that makes the two questions distinct rather
+// than one question spelled twice. An ESTABLISHED-AND-REFUSED verdict is evaluated and does not
+// hold; if this set were empty the split would be a decoration and `evaluated` could be deleted.
+test fn an_established_verdict_that_refuses_is_what_separates_the_two_questions() -> Bool {
+  count(
+    filter(
+      every_verdict_shape,
+      v => emit_ratchet_verdict_evaluated(v: v) && !emit_ratchet_verdict_holds(v: v)
+    )
+  ) == 2
+    && count(
+      filter(
+        every_verdict_shape,
+        v => emit_ratchet_verdict_standing(v: v) == VerdictEstablishedAndRefused
+      )
+    ) == 2
+}

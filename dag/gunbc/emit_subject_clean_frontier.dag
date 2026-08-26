@@ -800,14 +800,54 @@ fn emit_ratchet_verdict_entry(v: EmitRatchetVerdict) -> String {
   }
 }
 
-fn emit_ratchet_verdict_holds(v: EmitRatchetVerdict) -> Bool {
+// ---------------------------------------------------------------------------------------------
+// THE CANONICAL CLASSIFICATION, and it is the ONE place that reads the verdict vocabulary's shape.
+//
+// Two questions are asked of a verdict -- did the ratchet HOLD, and was the subject EVALUATED AT ALL
+// -- and they were answered by two independent total matches. Review 56204 is right that this
+// duplicates the coproduct's shape knowledge across two authorities, and right that distinct
+// semantics do not exempt it: both facts can be true at once, which is what neither of my earlier
+// answers said. Two matches over six variants is two places to edit when a variant lands, and the
+// compiler forcing both to be total does not make them one authority.
+//
+// SO THE FIX IS NOT TO DELETE A PREDICATE BUT TO GIVE BOTH ONE SOURCE. The three-way classification
+// below is the real semantic axis, and naming it turns the disagreement the two predicates exhibited
+// into a CONSTRUCT rather than an emergent difference someone has to measure to discover:
+//
+//   VerdictHeld                 the fold established a verdict and the ratchet holds
+//   VerdictEstablishedAndRefused the fold established a verdict and then REFUSED it -- a regression
+//                               is a subject measured and found dirty, a stale frontier row is a
+//                               subject measured and found CLEAN while its admission row disagrees
+//   VerdictUnestablished        no verdict about this subject exists at all
+//
+// That middle class IS the population where the two questions diverge: holds=false, evaluated=true.
+// It previously had to be discovered by comparing two functions arm by arm; now it has a name, and
+// a new verdict variant fails to compile in exactly one place instead of two.
+type VerdictStanding
+  = VerdictHeld
+  | VerdictEstablishedAndRefused
+  | VerdictUnestablished
+
+fn emit_ratchet_verdict_standing(v: EmitRatchetVerdict) -> VerdictStanding {
   match v {
-    RatchetCleanHeld { entry: _ } => true
-    RatchetDebtHeld { entry: _, cause: _ } => true
-    RatchetRegressed { entry: _, cause: _ } => false
-    RatchetFrontierStale { entry: _ } => false
-    RatchetNotEvaluated { entry: _, on_frontier: _, cause: _ } => false
-    RatchetSubjectUnmeasured { entry: _, on_frontier: _ } => false
+    RatchetCleanHeld { entry: _ } => VerdictHeld
+    RatchetDebtHeld { entry: _, cause: _ } => VerdictHeld
+    RatchetRegressed { entry: _, cause: _ } => VerdictEstablishedAndRefused
+    RatchetFrontierStale { entry: _ } => VerdictEstablishedAndRefused
+    RatchetNotEvaluated { entry: _, on_frontier: _, cause: _ } => VerdictUnestablished
+    RatchetSubjectUnmeasured { entry: _, on_frontier: _ } => VerdictUnestablished
+  }
+}
+
+// BOTH PREDICATES ARE NOW PROJECTIONS OVER THE CLASSIFICATION, never over the storage shape. They
+// stay predicates because `filter` takes a `Bool`, but that is now a question about the CONSUMER's
+// interface rather than a reason to duplicate variant knowledge -- which is the distinction the
+// earlier defence of them missed.
+fn emit_ratchet_verdict_holds(v: EmitRatchetVerdict) -> Bool {
+  match emit_ratchet_verdict_standing(v: v) {
+    VerdictHeld => true
+    VerdictEstablishedAndRefused => false
+    VerdictUnestablished => false
   }
 }
 
@@ -1126,41 +1166,16 @@ fn ratchet_denominators(r: EmitSubjectCleanRatchet) -> RosterDenominators {
   }
 }
 
-// WHETHER A VERDICT ESTABLISHED ANYTHING, asked as its own total question rather than inline. The
-// two arms that answer NO are the two the whole not-evaluated wall exists for, and stating the
-// predicate separately is what lets the selection below be a filter instead of an accumulator.
-//
-// THIS ONE IS A PREDICATE AND STAYS ONE, for two reasons that do not apply to the roster above.
-// `filter` takes a `Bool` by construction, so dissolving this into a direct match means going back
-// to a fold that appends -- the quadratic accumulator this very change removed. And it is NOT a
-// second accessor for an existing answer: `emit_ratchet_verdict_holds` beside it answers a DIFFERENT
-// question over the same coproduct, and the disagreement is measurable rather than argued --
-//
-//   variant                    holds    evaluated
-//   RatchetCleanHeld           true     true
-//   RatchetDebtHeld            true     true
-//   RatchetRegressed           FALSE    TRUE       <-- disagree
-//   RatchetFrontierStale       FALSE    TRUE       <-- disagree
-//   RatchetNotEvaluated        false    false
-//   RatchetSubjectUnmeasured   false    false
-//
-// TWO ARMS DISAGREE, AND THAT IS STRONGER THAN ONE. A single disagreeing variant could be dismissed
-// as an accident of how that one case is treated; two disagreeing in the SAME DIRECTION show the
-// functions are answering different questions by construction. Both are cases where the fold DID
-// establish a verdict and then refused it -- a regression is a subject measured and found dirty, a
-// stale frontier row is a subject measured and found CLEAN while its admission row says otherwise.
-// Neither is a subject nobody could measure. Collapsing the two questions would make an evaluated
-// failure indistinguishable from an unevaluated subject, which is the state-space conflation this
-// entire carrier exists to refuse -- committed inside the machinery that refuses it.
-// (Two-arm measurement: smart-ram-730, 2026-08-26, independently re-derived against this branch.)
+// WHETHER A VERDICT ESTABLISHED ANYTHING -- the second projection over the same classification, and
+// the one the not-evaluated wall turns on. `VerdictEstablishedAndRefused` answering TRUE here while
+// answering FALSE in `holds` is the whole content of the split: an evaluated failure must never be
+// indistinguishable from a subject nobody could measure, which is the state-space conflation this
+// carrier exists to refuse.
 fn emit_ratchet_verdict_evaluated(v: EmitRatchetVerdict) -> Bool {
-  match v {
-    RatchetCleanHeld { entry: _ } => true
-    RatchetDebtHeld { entry: _, cause: _ } => true
-    RatchetRegressed { entry: _, cause: _ } => true
-    RatchetFrontierStale { entry: _ } => true
-    RatchetNotEvaluated { entry: _, on_frontier: _, cause: _ } => false
-    RatchetSubjectUnmeasured { entry: _, on_frontier: _ } => false
+  match emit_ratchet_verdict_standing(v: v) {
+    VerdictHeld => true
+    VerdictEstablishedAndRefused => true
+    VerdictUnestablished => false
   }
 }
 
