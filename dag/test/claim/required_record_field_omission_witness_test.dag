@@ -1,17 +1,15 @@
 module test.claim.required_record_field_omission_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data required_record_field_omission_witness_note: String = "Construction control for the v1 NodeOccurrenceIdentity carrier. The negative and positive sources differ only in whether the required `identity` field is supplied. The negative must be refused by the production compile path; the positive prevents a parser, resolver, or harness failure shared by both sources from satisfying that assertion vacuously. This establishes the structural mechanism the carrier relies on before the carrier changes Node: omitting a required record field cannot compile, while supplying every required field can."
+data required_record_field_omission_witness_note: String = "Construction control for the v1 NodeOccurrenceIdentity carrier. The negative and positive sources differ only in whether the required `identity` field is supplied. The negative observes exactly one blocking MissingField row whose subject is identity; a bare false is insufficient because it cannot separate this wall from an unrelated earlier failure. The positive production compile prevents a parser, resolver, or harness failure shared by both sources from satisfying the assertion vacuously. compile_dag_diagnostic_census reads the live checkout while resolving its synthetic source, so this carrier declares ReadsLiveTree truthfully and is declined by the required floor today; direct execution is the honest rung until the floor's DeclinedLiveTree arm retires."
 
-fn required_record_field_omitted_compiles() -> Bool {
-  compile_dag_rust_emit_check(
-    "module required_field_red\ntype Pair { identity: Int, label: String }\ndata pair: Pair = Pair { label: \"red\" }\n",
-    "src/required_field_red.rs",
-    [],
-    []
+fn required_record_field_omission_census() -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(
+    "module required_field_red\ntype Pair { identity: Int, label: String }\ndata pair: Pair = Pair { label: \"red\" }\n"
   )
 }
 
@@ -25,7 +23,19 @@ fn required_record_fields_supplied_compile() -> Bool {
 }
 
 test fn omitted_required_record_field_refuses() -> Bool {
-  !required_record_field_omitted_compiles()
+  match required_record_field_omission_census() {
+    CensusObserved { rows: rows } =>
+      match first(rows) {
+        Present { value: row } =>
+          count(rows) == 1
+            && row.diagnostic_class == "MissingField"
+            && row.subject_name == "identity"
+            && row.blocking
+            && row.count == 1
+        Absent => false
+      }
+    CensusNotRunnable { cause: _ } => false
+  }
 }
 
 test fn complete_required_record_literal_accepts() -> Bool {
