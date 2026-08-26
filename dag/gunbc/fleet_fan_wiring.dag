@@ -52,8 +52,25 @@ import gunbc.fleet_intent_network {
 // PWM, and still contributes its control endpoint. Requiring a catalog row to enter the
 // population would have forced a fabricated row for the 2U chassis fans, whose model nobody has
 // read off the part - the fabricated-plausible-output failure, paid in inventory.
+// HOW WE KNOW IS A SECOND FACT, and folding it into the binding is the same conflation this
+// module exists to undo one level up. A part someone READ OFF THE LABEL and a part someone TOLD
+// US ABOUT are both bindings and license different things: a declared model may be used to pick
+// a curve or a spare, and may not be cited as the physical inventory of a machine nobody opened.
+// The two also fail differently -- a label is misread, a declaration is remembered wrong or
+// describes what was ordered rather than what went in -- so the remedy differs too: re-read the
+// label, or ask again.
+//
+// AND A PACKAGE SKU IS NOT A MODEL. "P8 PWM PST (5 Pack)" names a procurement package, and
+// ACFAN00154A is that package's identifier, not the identifier of each fan inside it; likewise
+// "P8 PWM PST" and "P8 PWM PST CO" are different products and the CO variant is not implied by
+// the base name. A catalog row for the package would put a quantity-5 fact where a per-header
+// part belongs.
+type FanModelEvidence
+  = LabelObserved
+  | OperatorDeclared
+
 type InstalledFanModelStanding
-  = FanModelExact { catalog: DeclarationRef }
+  = FanModelExact { catalog: DeclarationRef, evidence: FanModelEvidence }
   | FanModelUnobserved
 
 // WHETHER A TACH SIGNAL REACHES THE BOARD FROM THIS HEADER, which is a WIRING fact and not a
@@ -229,7 +246,7 @@ data srv1_fan_wiring: HostFanWiring = HostFanWiring {
     FanHeaderWiring {
       header: "FAN1",
       driven_fan_count: 2,
-      model: FanModelExact { catalog: noctua_nf_a9_hs_pwm_ref },
+      model: FanModelExact { catalog: noctua_nf_a9_hs_pwm_ref, evidence: OperatorDeclared },
       tach_source: TachCarriedByDrivenFan,
     },
     chassis_bay_wiring(header: "FAN2"),
@@ -245,7 +262,7 @@ data srv2_fan_wiring: HostFanWiring = HostFanWiring {
     FanHeaderWiring {
       header: "FAN1",
       driven_fan_count: 2,
-      model: FanModelExact { catalog: noctua_nf_a9_hs_pwm_ref },
+      model: FanModelExact { catalog: noctua_nf_a9_hs_pwm_ref, evidence: OperatorDeclared },
       tach_source: TachCarriedByDrivenFan,
     },
     chassis_bay_wiring(header: "FAN2"),
@@ -265,7 +282,7 @@ data srv3_fan_wiring: HostFanWiring = HostFanWiring {
     FanHeaderWiring {
       header: "FAN1",
       driven_fan_count: 1,
-      model: FanModelExact { catalog: dynatron_df126025bu_pwmh_ref },
+      model: FanModelExact { catalog: dynatron_df126025bu_pwmh_ref, evidence: OperatorDeclared },
       tach_source: TachCarriedByDrivenFan,
     },
     chassis_bay_wiring(header: "FAN3"),
@@ -280,7 +297,7 @@ data srv4_fan_wiring: HostFanWiring = HostFanWiring {
     FanHeaderWiring {
       header: "FAN1",
       driven_fan_count: 1,
-      model: FanModelExact { catalog: dynatron_df126025bu_pwmh_ref },
+      model: FanModelExact { catalog: dynatron_df126025bu_pwmh_ref, evidence: OperatorDeclared },
       tach_source: TachCarriedByDrivenFan,
     },
     chassis_bay_wiring(header: "FAN2"),
