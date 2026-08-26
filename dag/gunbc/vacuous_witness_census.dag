@@ -1,0 +1,281 @@
+module gunbc.vacuous_witness_census
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.types { String }
+
+data vacuous_witness_census_note: String = "CENSUS OF WITNESSES THAT CANNOT RETURN FALSE (2026-08-26). A check whose RED is unauthorable is not a weak wall but a DECORATION -- permanently green by construction, carrying no information, and WORSE THAN ABSENT because it is cited as coverage (DESIGN 4b). This carrier records the measured population at identity grain. It records findings only; no witness is repaired, deleted or re-routed by this change, and the repairs are separately owned.\n\nWHAT MAKES A ROW VACUOUS. Each subject is a zero-argument Bool function whose entire body compares, or matches, a field of a record returned by a zero-argument callee whose body is a SINGLE UNCONDITIONAL RECORD CONSTRUCTOR. Substituting the constructor reduces the body to a comparison of a term with itself. The reader test that decides it: THE EDIT A READER WOULD REACH FOR MOVES BOTH SIDES AT ONCE -- changing the compared authority changes the constructor field with it -- so each row is stated as a claim about a VALUE and can fail only on a claim about WIRING.\n\nWHY THESE ARE REPAIRABLE RATHER THAN REMOVABLE. Every row has a real property behind it; the check is vacuous because it asserts against its own input instead of against something independently produced. The recurring origin is a FOOTHOLD CHECK: written when its subject had no second instance, so there was nothing else to compare against. That is why the repair is to compare against an independent producer, and why deletion is the wrong default.\n\nEXECUTION IS PART OF THE FINDING, NOT A DETAIL. A dormant vacuous row claims no coverage because it does not run. An executing one is cited every required run. The two carry different severities and different priorities, so the disposition is modeled rather than described. NOTE THE ROUTING HAZARD THIS CREATES: a split that routes everything hermetic in a module ACTIVATES whatever dormant vacuous rows sit in it, converting a decoration into a cited one. A recoverable assertion is therefore not automatically worth routing.\n\nTHE DETECTOR THAT PRODUCED THIS IS NARROW AND ITS LIMITS ARE ENUMERATED BELOW rather than hedged in prose. Measured over the discovered-but-declined population, it classified 4 of 3703 recoverable assertions; the remaining 3699 are outside its reach. So this roster is a FLOOR on the vacuous population and gives no upper bound. A shape that scrapes match arms for a uniform true was BUILT AND WITHDRAWN before publication: it returns true wherever it returns, which is not the same as cannot return false, the gap being refusal and non-termination -- a single-arm match over a multi-variant coproduct reds on any other variant, an exhaustive both-arms-true match reds on a crash, and nested matches carry real assertions a scraper never reaches. Its 11 hits are not recorded here because they are live checks.\n\nTHE DENOMINATOR DEPENDS ON WHICH QUERY WAS RUN, and both are named in vacuous_census_queries rather than left implicit. The two DORMANT rows are reached by DIFFERENT queries: the recoverable-assertion screen finds one of them and cannot see the other, because that other module sits outside every discovery scan dir while its consumer declares ReadsLiveTree. NEITHER QUERY IS THE POPULATION. A census whose denominator varies with the query is sound only if it says so; treating either list as complete yields a different answer and is the empty-observation shape DESIGN names."
+
+type SelfReferenceShape
+  = ConstructorFieldRestatesAuthority
+  | ConstructorFieldRestatesLiteral
+
+type RedAuthorability
+  = RedAuthorableByEditingSubject
+  | RedUnauthorableAnywhere
+
+type OracleStatus
+  = NoIndependentOracleInCorpus
+  | IndependentOracleExists { producer: DeclarationRef }
+  | OracleRequiresExternalObservation
+
+type VacuousExecution
+  = ExecutingInRequiredFloor
+  | DormantDeclined
+  | UnverifiedCandidate
+
+type ComparedTerm
+  = ComparedDeclaration { declaration: DeclarationRef }
+  | ComparedLiteral { rendered: String }
+
+type VacuousWitnessRow {
+  subject: DeclarationRef
+  constructor: DeclarationRef
+  field_name: String
+  compared_against: ComparedTerm
+  shape: SelfReferenceShape
+  red_authorability: RedAuthorability
+  oracle_status: OracleStatus
+  execution: VacuousExecution
+  intended_property: String
+  introduced_in: String
+  dissolution: DissolutionCondition
+}
+
+type CensusQuery {
+  query_name: String
+  discovered_population: String
+  rows_reached: String
+}
+
+type DetectorReachDirection
+  = OverDetects
+  | UnderDetects
+
+type DetectorReachLimit {
+  limit_name: String
+  direction: DetectorReachDirection
+}
+
+data vacuous_witness_rows: List<VacuousWitnessRow> = [
+  VacuousWitnessRow {
+    subject: DeclarationRef {
+      module_path: "tools.dag_compile_clean_partition",
+      decl_name: "witness_partition_entry_roots_are_witness_layer_roots",
+      field: WholeDeclaration
+    },
+    constructor: DeclarationRef {
+      module_path: "tools.dag_compile_clean_partition",
+      decl_name: "compile_clean_partition_boundary",
+      field: WholeDeclaration
+    },
+    field_name: "entry_roots",
+    compared_against: ComparedDeclaration {
+      declaration: DeclarationRef {
+        module_path: "gunbc.ci_layer_roots",
+        decl_name: "witness_layer_roots",
+        field: WholeDeclaration
+      }
+    },
+    shape: ConstructorFieldRestatesAuthority,
+    red_authorability: RedAuthorableByEditingSubject,
+    oracle_status: NoIndependentOracleInCorpus,
+    execution: ExecutingInRequiredFloor,
+    intended_property: "the partition boundary AGREES WITH THE DISCOVERY CHAIN, rather than restating the constant it was built from",
+    introduced_in: "gunbc#7122, 2026-07-23",
+    dissolution: unbound_dissolution(description: "the discovery chain hands its provenance along with its roster, so the boundary has an independently produced population to be compared against; until that derivation exists there is nothing non-vacuous to compare with, which is why it degenerated")
+  },
+  VacuousWitnessRow {
+    subject: DeclarationRef {
+      module_path: "tools.dag_compile_clean_partition",
+      decl_name: "witness_partition_pool_roots_are_compile_clean_source_roots",
+      field: WholeDeclaration
+    },
+    constructor: DeclarationRef {
+      module_path: "tools.dag_compile_clean_partition",
+      decl_name: "compile_clean_partition_boundary",
+      field: WholeDeclaration
+    },
+    field_name: "pool_roots",
+    compared_against: ComparedDeclaration {
+      declaration: DeclarationRef {
+        module_path: "gunbc.ci_layer_roots",
+        decl_name: "compile_clean_source_roots",
+        field: WholeDeclaration
+      }
+    },
+    shape: ConstructorFieldRestatesAuthority,
+    red_authorability: RedAuthorableByEditingSubject,
+    oracle_status: NoIndependentOracleInCorpus,
+    execution: ExecutingInRequiredFloor,
+    intended_property: "the partition pool roots agree with the compiled source roots as independently derived, rather than restating the call that initialised the field",
+    introduced_in: "gunbc#6259, 2026-07-05",
+    dissolution: unbound_dissolution(description: "same trigger as the entry_roots row above -- these two are the ONLY conjuncts of test.claim.dag_compile_clean_shard_a_witness compile_clean_partition_boundary_matches_compile_clean_source_roots, so that entire executing test function is vacuous and the two rows dissolve together")
+  },
+  VacuousWitnessRow {
+    subject: DeclarationRef {
+      module_path: "test.claim.srv3_bmc_credential_resolve_witness",
+      decl_name: "srv3_credential_intent_grounds_bmc_srv3_admin_secret_ref",
+      field: WholeDeclaration
+    },
+    constructor: DeclarationRef {
+      module_path: "gunbc.srv3_bmc_credential_resolve",
+      decl_name: "srv3_os_install_actuate_credential_intent",
+      field: WholeDeclaration
+    },
+    field_name: "rotated_secret_ref",
+    compared_against: ComparedDeclaration {
+      declaration: DeclarationRef {
+        module_path: "gunbc.srv3_bmc_credential_resolve",
+        decl_name: "bmc_srv3_admin_secret_ref",
+        field: WholeDeclaration
+      }
+    },
+    shape: ConstructorFieldRestatesAuthority,
+    red_authorability: RedAuthorableByEditingSubject,
+    oracle_status: NoIndependentOracleInCorpus,
+    execution: ExecutingInRequiredFloor,
+    intended_property: "the credential intent RESOLVES to the correct secret, rather than the constructor field equalling the constant that built it",
+    introduced_in: "f987c32e6b, 2026-07-02",
+    dissolution: unbound_dissolution(description: "the check compares the resolved credential against an independently produced resolution rather than against its own initialiser")
+  },
+  VacuousWitnessRow {
+    subject: DeclarationRef {
+      module_path: "v2.test.manual.medium_node_instantiation",
+      decl_name: "medium_node_carried_is_expected",
+      field: WholeDeclaration
+    },
+    constructor: DeclarationRef {
+      module_path: "v2.test.manual.medium_node_instantiation",
+      decl_name: "medium_node_lossless",
+      field: WholeDeclaration
+    },
+    field_name: "carried",
+    compared_against: ComparedDeclaration {
+      declaration: DeclarationRef {
+        module_path: "v2.extdeps.runtimes.v2_evaluator",
+        decl_name: "v2_eval_bool_literal_pin",
+        field: WholeDeclaration
+      }
+    },
+    shape: ConstructorFieldRestatesAuthority,
+    red_authorability: RedAuthorableByEditingSubject,
+    oracle_status: NoIndependentOracleInCorpus,
+    execution: ExecutingInRequiredFloor,
+    intended_property: "a Medium of Node round-trips LOSSLESSLY through an actual ingest and emit, rather than a hardcoded constructor restating its own argument",
+    introduced_in: "gunbc#5217, 2026-06-18",
+    dissolution: unbound_dissolution(description: "the witness asserts over a real round-trip whose output is independently produced; the foothold PR that introduced it had no second instance to compare against, and one now exists")
+  },
+  VacuousWitnessRow {
+    subject: DeclarationRef {
+      module_path: "v2.test.manual.medium_node_instantiation",
+      decl_name: "medium_node_fidelity_is_lossless",
+      field: WholeDeclaration
+    },
+    constructor: DeclarationRef {
+      module_path: "v2.test.manual.medium_node_instantiation",
+      decl_name: "medium_node_lossless",
+      field: WholeDeclaration
+    },
+    field_name: "fidelity",
+    compared_against: ComparedLiteral { rendered: "Lossless" },
+    shape: ConstructorFieldRestatesLiteral,
+    red_authorability: RedAuthorableByEditingSubject,
+    oracle_status: NoIndependentOracleInCorpus,
+    execution: ExecutingInRequiredFloor,
+    intended_property: "a round-trip that LOSES information reports Lossy; today the Lossy arm returns false and no construction in the corpus reaches it, so the arm is unreachable rather than merely unexercised",
+    introduced_in: "gunbc#5217, 2026-06-18",
+    dissolution: unbound_dissolution(description: "the fidelity under test is produced by a real round-trip that can yield Lossy, making the false arm reachable; this is the sharpest specimen in the roster because reddening it requires constructing a Lossy Medium and nothing does")
+  },
+  VacuousWitnessRow {
+    subject: DeclarationRef {
+      module_path: "tools.dag_compile_clean_shard_roster",
+      decl_name: "witness_shard_roster_boundary_is_witness_layer_roots",
+      field: WholeDeclaration
+    },
+    constructor: DeclarationRef {
+      module_path: "tools.dag_compile_clean_partition",
+      decl_name: "compile_clean_partition_boundary",
+      field: WholeDeclaration
+    },
+    field_name: "entry_roots",
+    compared_against: ComparedDeclaration {
+      declaration: DeclarationRef {
+        module_path: "gunbc.ci_layer_roots",
+        decl_name: "witness_layer_roots",
+        field: WholeDeclaration
+      }
+    },
+    shape: ConstructorFieldRestatesAuthority,
+    red_authorability: RedAuthorableByEditingSubject,
+    oracle_status: NoIndependentOracleInCorpus,
+    execution: DormantDeclined,
+    intended_property: "same property as the entry_roots row above; this is a byte-identical twin under a different name, whose only consumer declares ReadsLiveTree and is therefore declined",
+    introduced_in: "gunbc#7122, 2026-07-23",
+    dissolution: unbound_dissolution(description: "THE TWO CLASSES INTERSECT HERE and the repairs point opposite ways: this is the FIRST CONJUNCT of test.claim.dag_compile_clean_shard_totality_witness compile_clean_shard_roster_is_well_formed, so a routing split that recovers that witness would ENROL a tautology. The conjunct must be excluded from any such split, and the exclusion recorded where the next reader looks, because once excluded it has zero consumers and its NAME still describes a property someone may want")
+  },
+  VacuousWitnessRow {
+    subject: DeclarationRef {
+      module_path: "test.claim.occurrence_identity_witness",
+      decl_name: "occurrence_identity_initial_allocator_starts_at_zero_holds",
+      field: WholeDeclaration
+    },
+    constructor: DeclarationRef {
+      module_path: "std.occurrence_identity",
+      decl_name: "occurrence_id_allocator_initial",
+      field: WholeDeclaration
+    },
+    field_name: "next_id",
+    compared_against: ComparedLiteral { rendered: "0" },
+    shape: ConstructorFieldRestatesAuthority,
+    red_authorability: RedAuthorableByEditingSubject,
+    oracle_status: NoIndependentOracleInCorpus,
+    execution: DormantDeclined,
+    intended_property: "allocation BEHAVIOUR starts at zero and advances, which an allocate-then-observe sequence would show; the current form restates the literal in the constructor",
+    introduced_in: "unrecovered -- predates the deepened clone window",
+    dissolution: unbound_dissolution(description: "the witness observes an allocation sequence rather than the initial constructor field. Its module declares NO disposition, so fail-closed makes it ReadsLiveTree and it is declined; a split that adds a disposition would activate it")
+  },
+  VacuousWitnessRow {
+    subject: DeclarationRef {
+      module_path: "v2.test.self_host.frontier_probe_empty_ingest",
+      decl_name: "empty_ingest_keeps_the_module_path_it_was_asked_about_holds",
+      field: WholeDeclaration
+    },
+    constructor: DeclarationRef {
+      module_path: "v2.test.self_host.frontier_probe_empty_ingest",
+      decl_name: "empty_ingest_receipt",
+      field: WholeDeclaration
+    },
+    field_name: "module_path",
+    compared_against: ComparedLiteral { rendered: "src/v2/compiler/03_resolve.dag" },
+    shape: ConstructorFieldRestatesAuthority,
+    red_authorability: RedAuthorableByEditingSubject,
+    oracle_status: NoIndependentOracleInCorpus,
+    execution: UnverifiedCandidate,
+    intended_property: "the receipt carries the module path it was asked about; probably true by pass-through, but the callee BRANCHES and the detector reached this row by matching a CALL ARGUMENT as though it were a record field initialiser -- two syntaxes it cannot distinguish",
+    introduced_in: "unrecovered",
+    dissolution: unbound_dissolution(description: "the row is either confirmed by reading both branches of the branching callee and moved to a decided execution state, or withdrawn. It is recorded as UNVERIFIED rather than counted, because it was reached by a conflation and is dormant in any case -- its path is outside every discovery scan dir and its module declares no disposition")
+  }
+]
+
+data vacuous_census_queries: List<CensusQuery> = [
+  CensusQuery {
+    query_name: "corpus-wide shape scan -- every Bool declaration under dag and src/v2, regardless of module disposition or discovery",
+    discovered_population: "all modules; no disposition filter",
+    rows_reached: "every row in vacuous_witness_rows, including the two dormant ones and the unverified candidate"
+  },
+  CensusQuery {
+    query_name: "recoverable-assertion screen -- modules under a discovery scan dir whose disposition is not SubstrateInputsOnly and none of whose test functions reaches a host effect",
+    discovered_population: "399 modules, 3703 recoverable assertions",
+    rows_reached: "ONE dormant row only: test.claim.occurrence_identity_witness. The tools.dag_compile_clean_shard_roster row is NOT reached, because its module sits outside the discovery scan dirs while its consumer declares ReadsLiveTree"
+  }
+]
+
+data vacuous_detector_reach_limits: List<DetectorReachLimit> = [
+  DetectorReachLimit { limit_name: "a conjunction of calls -- reached only as a fixpoint over already-confirmed conjuncts, so a conjunction of individually unscreened rows is invisible", direction: UnderDetects },
+  DetectorReachLimit { limit_name: "a parameterised helper -- any tautology routed through a callee taking arguments is outside the detector entirely", direction: UnderDetects },
+  DetectorReachLimit { limit_name: "a branching constructor -- treated as unscreened, because a field can differ per path and the comparison is then refutable", direction: UnderDetects },
+  DetectorReachLimit { limit_name: "a call or field access on the compared side -- an earlier revision required a bare identifier and missed a whole conjunct of an executing test function", direction: UnderDetects },
+  DetectorReachLimit { limit_name: "a call argument spelled like a record field initialiser -- the detector cannot distinguish the two syntaxes and admits the first as though it were the second", direction: OverDetects },
+  DetectorReachLimit { limit_name: "a uniform true across match arms -- returns true wherever it returns, which is not cannot return false; withdrawn before publication", direction: OverDetects }
+]
