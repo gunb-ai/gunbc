@@ -1,6 +1,6 @@
 module test.claim.clone_bound_callable_field_witness
 
-import std.types { String, Bool }
+import std.types { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -37,7 +37,7 @@ fn a_plain_field_carries_the_declared_types_bounds() -> Bool {
 
 fn a_callable_argument_carries_the_declared_types_bounds() -> Bool {
   compile_dag_rust_emit_check(
-    "module probe_callable_arg\n\nimport std.types { Bool }\n\ntype ArgRow<K, V> {\n  k: K\n  v: V\n}\n\ntype ArgHolder<K, V> {\n  ready: fn(ArgRow<K, V>) -> Bool\n}\n",
+    "module probe_callable_arg\n\ntype ArgFlag = ArgOn | ArgOff\n\ntype ArgRow<K, V> {\n  k: K\n  v: V\n}\n\ntype ArgHolder<K, V> {\n  ready: fn(ArgRow<K, V>) -> ArgFlag\n}\n",
     "src/probe_callable_arg.rs",
     ["pub struct ArgHolder<K: Clone, V: Clone>"],
     ["compile_error"]
@@ -50,7 +50,7 @@ fn a_callable_argument_carries_the_declared_types_bounds() -> Bool {
 // the corpus red. This arm is what forbids that half-repair.
 fn a_callable_return_carries_the_declared_types_bounds() -> Bool {
   compile_dag_rust_emit_check(
-    "module probe_callable_ret\n\nimport std.types { Bool }\n\ntype RetRow<K, V> {\n  k: K\n  v: V\n}\n\ntype RetHolder<K, V> {\n  build: fn(Bool) -> RetRow<K, V>\n}\n",
+    "module probe_callable_ret\n\ntype RetFlag = RetOn | RetOff\n\ntype RetRow<K, V> {\n  k: K\n  v: V\n}\n\ntype RetHolder<K, V> {\n  build: fn(RetFlag) -> RetRow<K, V>\n}\n",
     "src/probe_callable_ret.rs",
     ["pub struct RetHolder<K: Clone, V: Clone>"],
     ["compile_error"]
@@ -64,7 +64,7 @@ fn a_callable_return_carries_the_declared_types_bounds() -> Bool {
 // tightens the emitted signature and refuses callers instantiating with a non-Clone type.
 fn a_callable_over_unbounded_parameters_stays_bare() -> Bool {
   compile_dag_rust_emit_check(
-    "module probe_callable_bare\n\nimport std.types { Bool }\n\ntype BareHolder<K> {\n  decide: fn(K) -> Bool\n}\n",
+    "module probe_callable_bare\n\ntype BareFlag = BareOn | BareOff\n\ntype BareHolder<K> {\n  decide: fn(K) -> BareFlag\n}\n",
     "src/probe_callable_bare.rs",
     ["pub struct BareHolder<K>"],
     ["pub struct BareHolder<K: Clone>"]
