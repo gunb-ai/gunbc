@@ -19,6 +19,7 @@ use crate::v1_compiler_emit::{extract_string_interp_parts, has_mock_prefix};
 use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_rt;
+use crate::v1_rt::RcStr;
 use crate::v1_rt::{
     rc_empty_set as empty_set, rc_set_insert as set_insert, rc_set_union as set_union, set_contains,
 };
@@ -587,7 +588,7 @@ pub enum Value {
     Bool(bool),
     Int(i64),
     Float(f64),
-    Str(Rc<str>),
+    Str(RcStr),
     List(Rc<RrbVector<Value>>),
     Map(Rc<HamtMap<CanonKey, Value>>),
     Set(Rc<OrdSet<String>>),
@@ -616,7 +617,7 @@ pub(crate) fn list_value(items: impl Into<RrbVector<Value>>) -> Value {
 }
 
 pub fn str_value(s: impl AsRef<str>) -> Value {
-    Value::Str(Rc::from(s.as_ref()))
+    Value::Str(RcStr::new(Rc::from(s.as_ref())))
 }
 
 /// Project an observed child-process status onto `std.process_termination` `ProcessTermination`.
@@ -1335,7 +1336,7 @@ fn portable_value_from_ctx(ctx: &InterpContext, value: &Value) -> Option<Portabl
         Value::Bool(b) => PortableValue::Bool(*b),
         Value::Int(i) => PortableValue::Int(*i),
         Value::Float(f) => PortableValue::Float(*f),
-        Value::Str(s) => PortableValue::Str(s.clone()),
+        Value::Str(s) => PortableValue::Str(s.rc()),
         Value::List(items) => {
             let mut out = Vec::with_capacity(items.len());
             for item in items.iter() {
@@ -1390,7 +1391,7 @@ fn value_from_portable_ctx(ctx: &InterpContext, portable: &PortableValue) -> Val
         PortableValue::Bool(b) => Value::Bool(*b),
         PortableValue::Int(i) => Value::Int(*i),
         PortableValue::Float(f) => Value::Float(*f),
-        PortableValue::Str(s) => Value::Str(s.clone()),
+        PortableValue::Str(s) => Value::Str(RcStr::new(Rc::clone(s))),
         PortableValue::List(items) => list_value(
             items
                 .iter()
@@ -1528,6 +1529,7 @@ fn store_cross_claim_pure_memo(
 
 #[cfg(test)]
 mod cross_claim_memo_tests {
+    use crate::v1_rt::RcStr;
     use std::rc::Rc;
 
     use im::{vector as im_vec, HashMap};
@@ -1592,7 +1594,7 @@ mod cross_claim_memo_tests {
         let result = Value::Variant {
             type_name: ctx_a.sym("PreparedModeledGrammar"),
             variant_name: ctx_a.sym("GrammarFirstAnalysis"),
-            fields: Rc::new(vec![(ctx_a.sym("stage"), Value::Str(Rc::from("first")))]),
+            fields: Rc::new(vec![(ctx_a.sym("stage"), Value::Str(RcStr::from("first")))]),
         };
 
         store_cross_claim_pure_memo(&ctx_a, &fn_node, "prepare_grammar", &args, &result);
@@ -1660,7 +1662,7 @@ mod cross_claim_memo_tests {
                 fields: Rc::new(vec![]),
             },
         )];
-        let result_a = Value::Str(Rc::from("result-for-TypeFoo"));
+        let result_a = Value::Str(RcStr::from("result-for-TypeFoo"));
         store_cross_claim_pure_memo(&ctx_a, &fn_node, "prepare_grammar", &args_a, &result_a);
 
         let args_c = [(
@@ -1709,7 +1711,7 @@ mod cross_claim_memo_tests {
                 fields: Rc::new(vec![(field_a, Value::Int(1))]),
             },
         )];
-        let result_a = Value::Str(Rc::from("result-for-alpha"));
+        let result_a = Value::Str(RcStr::from("result-for-alpha"));
         store_cross_claim_pure_memo(&ctx_a, &fn_node, "prepare_grammar", &args_a, &result_a);
 
         let args_c = [(
@@ -1746,12 +1748,12 @@ mod cross_claim_memo_tests {
             None,
             no_span(),
         );
-        let result = Value::Str(Rc::from("ok"));
+        let result = Value::Str(RcStr::from("ok"));
 
         super::with_active_context(&ctx, || {
             let mut entries: HashMap<super::CanonKey, Value> = HashMap::new();
             let key =
-                super::CanonKey::new(Value::Str(Rc::from("a"))).expect("Str is a valid map key");
+                super::CanonKey::new(Value::Str(RcStr::from("a"))).expect("Str is a valid map key");
             entries.insert(key, Value::Int(1));
             let args = [(None, super::map_value(entries))];
 
@@ -1786,7 +1788,7 @@ mod cross_claim_memo_tests {
             None,
             no_span(),
         );
-        let result = Value::Str(Rc::from("ok"));
+        let result = Value::Str(RcStr::from("ok"));
 
         super::with_active_context(&ctx, || {
             let list_type = ctx.sym("List");
@@ -4209,6 +4211,7 @@ mod argv_representation_ambiguity_tests {
     //! meaning. Only the runtime representation differs. The native list expands to two argv words;
     //! the monoid-encoded form used to collapse to the single word "mainHEAD" and now refuses.
     //! Delete the refusal and `monoid_encoded_string_sequence_refuses` fails with one argv word.
+    use crate::v1_rt::RcStr;
     use std::rc::Rc;
 
     use im::{vector as im_vec, HashMap};
@@ -4243,7 +4246,7 @@ mod argv_representation_ambiguity_tests {
                 type_name: ctx.sym("FreeMonoid"),
                 variant_name: ctx.sym("Cons"),
                 fields: Rc::new(vec![
-                    (ctx.sym("head"), Value::Str(Rc::from(*s))),
+                    (ctx.sym("head"), Value::Str(RcStr::from(*s))),
                     (ctx.sym("tail"), cur),
                 ]),
             };
@@ -4259,8 +4262,8 @@ mod argv_representation_ambiguity_tests {
             push_shell_argv_tokens(
                 &mut argv,
                 list_value(vec![
-                    Value::Str(Rc::from("main")),
-                    Value::Str(Rc::from("HEAD")),
+                    Value::Str(RcStr::from("main")),
+                    Value::Str(RcStr::from("HEAD")),
                 ]),
             )
             .expect("a native list is unambiguous and must expand");
@@ -6940,6 +6943,7 @@ mod cast_identity_empty_kernel_tests {
     //! the shape `expr_child_at`'s fallback produces for a cast missing its target child --
     //! makes `cast_identity_result` return `None`, so `eval_cast` falls through to its typed
     //! `TypeError` arm instead of fabricating an answer.
+    use crate::v1_rt::RcStr;
     use std::rc::Rc;
 
     use im::{vector as im_vec, HashMap};
@@ -6971,7 +6975,7 @@ mod cast_identity_empty_kernel_tests {
             "malformed node: missing cast target".to_string(),
             no_span(),
         );
-        let val = Value::Str(Rc::from("payload"));
+        let val = Value::Str(RcStr::from("payload"));
         let result = cast_identity_result(&val, &ctx, "", malformed_target, "");
         assert_eq!(
             result, None,
@@ -6996,9 +7000,9 @@ mod cast_identity_empty_kernel_tests {
             name: "String".to_string(),
             ..(*string_target).clone()
         });
-        let val = Value::Str(Rc::from("payload"));
+        let val = Value::Str(RcStr::from("payload"));
         let result = cast_identity_result(&val, &ctx, "", string_target, "");
-        assert_eq!(result, Some(Value::Str(Rc::from("payload"))));
+        assert_eq!(result, Some(Value::Str(RcStr::from("payload"))));
     }
 }
 
@@ -7032,7 +7036,7 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             Value::Int(n) => Ok(str_value(n.to_string())),
             Value::Float(n) => Ok(str_value(n.to_string())),
             Value::Bool(b) => Ok(str_value(b.to_string())),
-            Value::Str(s) => Ok(Value::Str(Rc::clone(&s))),
+            Value::Str(s) => Ok(Value::Str(s.clone())),
             // Corpus wire/debug casts for structured values — not the blanket Display
             // fallback that silently stringified List/Map (§5 fabricated plausible output).
             Value::Variant { .. } | Value::Record { .. } => Ok(str_value(format!("{}", val))),
@@ -7076,11 +7080,15 @@ fn eval_index(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
             raw_map_lookup(base, key, env, ctx).map(RawMapLookup::into_raw)
         }
         (Value::Str(s), Value::Int(i)) => {
-            let i = *i as usize;
-            Ok(s.chars()
-                .nth(i)
-                .map(|c| str_value(c.to_string()))
-                .unwrap_or(Value::Null))
+            if *i < 0 {
+                return Ok(Value::Null);
+            }
+            let ch = s.char_at(*i);
+            if ch.is_empty() {
+                Ok(Value::Null)
+            } else {
+                Ok(str_value(ch))
+            }
         }
         _ => Err(InterpError::TypeError {
             msg: format!(
@@ -7108,10 +7116,16 @@ fn eval_slice(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
             Ok(list_value(work.slice(s..e)))
         }
         (Value::Str(str_val), Value::Int(s), Value::Int(e)) => {
-            let s = *s as usize;
-            let e = *e as usize;
-            let sliced: String = str_val.chars().skip(s).take(e.saturating_sub(s)).collect();
-            Ok(str_value(sliced))
+            if *s >= 0 && *e >= 0 {
+                Ok(str_value(str_val.substring(*s, *e)))
+            } else {
+                // Negative indices wrap under the pre-carrier `as usize` cast; preserved
+                // verbatim off the carrier path, which clamps to 0.
+                let s = *s as usize;
+                let e = *e as usize;
+                let sliced: String = str_val.chars().skip(s).take(e.saturating_sub(s)).collect();
+                Ok(str_value(sliced))
+            }
         }
         _ => Err(InterpError::TypeError {
             msg: format!(
@@ -7598,17 +7612,25 @@ macro_rules! v1_algebra_method_arms {
             },
 
             arm "method_call.substring" { "substring" } => {
-                let s = expect_string(&$receiver, "substring")?;
+                let s = expect_value_str(Some(&$receiver), "substring")?;
                 match $args {
                     [start, end] => {
-                        let s_idx = expect_int(Some(start), "substring start")? as usize;
-                        let e_idx = expect_int(Some(end), "substring end")? as usize;
-                        let sliced: String = s
-                            .chars()
-                            .skip(s_idx)
-                            .take(e_idx.saturating_sub(s_idx))
-                            .collect();
-                        Ok(str_value(sliced))
+                        let s_idx = expect_int(Some(start), "substring start")?;
+                        let e_idx = expect_int(Some(end), "substring end")?;
+                        if s_idx >= 0 && e_idx >= 0 {
+                            Ok(str_value(s.substring(s_idx, e_idx)))
+                        } else {
+                            // Negative indices wrap under the pre-carrier `as usize` cast;
+                            // preserved verbatim off the carrier path, which clamps to 0.
+                            let s_idx = s_idx as usize;
+                            let e_idx = e_idx as usize;
+                            let sliced: String = s
+                                .chars()
+                                .skip(s_idx)
+                                .take(e_idx.saturating_sub(s_idx))
+                                .collect();
+                            Ok(str_value(sliced))
+                        }
                     }
                     _ => Err(InterpError::TypeError {
                         msg: "substring requires (start, end) arguments".to_string(),
@@ -7617,12 +7639,17 @@ macro_rules! v1_algebra_method_arms {
             },
 
             arm "method_call.char_at" { "char_at" } => {
-                let s = expect_string(&$receiver, "char_at")?;
+                let s = expect_value_str(Some(&$receiver), "char_at")?;
                 let idx = expect_int($args.first(), "char_at")?;
-                Ok(s.chars()
-                    .nth(idx as usize)
-                    .map(|c| str_value(c.to_string()))
-                    .unwrap_or(Value::Null))
+                if idx < 0 {
+                    return Ok(Value::Null);
+                }
+                let ch = s.char_at(idx);
+                if ch.is_empty() {
+                    Ok(Value::Null)
+                } else {
+                    Ok(str_value(ch))
+                }
             },
 
             arm "method_call.index_by" { "index_by" } => list_method_with_closure(
@@ -8543,7 +8570,7 @@ fn operation_input_binding_entry(
         } => {
             if *variant_name == ctx.sym("InputText") {
                 match fields_get(fields, ctx.sym("text")).cloned() {
-                    Some(Value::Str(text)) => Value::Str(Rc::clone(&text)),
+                    Some(Value::Str(text)) => Value::Str(text.clone()),
                     _ => {
                         return Err(ArgvRefusalCause::BindingMalformed(format!(
                             "InputText for `{name}` carries no String text"
@@ -12966,21 +12993,25 @@ macro_rules! v1_builtin_arms {
             },
 
             arm "free_call.string_length" { "string_length" } => {
-                let s = expect_str($positional.first().copied(), "string_length")?;
-                Ok(Some(Value::Int(s.chars().count() as i64)))
+                let s = expect_value_str($positional.first().copied(), "string_length")?;
+                Ok(Some(Value::Int(s.string_length())))
             },
 
             arm "free_call.substring" { "substring" } => {
-                let s = expect_str($positional.first().copied(), "substring")?;
+                // `v1_rt::substring` clamps negative start/end to 0, and `RcStr::substring`
+                // clamps identically, so routing through the carrier preserves this arm exactly.
+                let s = expect_value_str($positional.first().copied(), "substring")?;
                 let start = expect_int($positional.get(1).copied(), "substring start")?;
                 let end = expect_int($positional.get(2).copied(), "substring end")?;
-                Ok(Some(str_value(v1_rt::substring(&s, start, end))))
+                Ok(Some(str_value(s.substring(start, end))))
             },
 
             arm "free_call.char_at" { "char_at" } => {
-                let s = expect_str($positional.first().copied(), "char_at")?;
+                // `v1_rt::char_at` clamps a negative pos to 0, and `RcStr::char_at` clamps
+                // identically, so routing through the carrier preserves this arm exactly.
+                let s = expect_value_str($positional.first().copied(), "char_at")?;
                 let pos = expect_int($positional.get(1).copied(), "char_at pos")?;
-                Ok(Some(str_value(v1_rt::char_at(&s, pos))))
+                Ok(Some(str_value(s.char_at(pos))))
             },
 
             arm "free_call.string_contains" { "string_contains" } => {
@@ -13001,7 +13032,7 @@ macro_rules! v1_builtin_arms {
             },
 
             arm "free_call.length" { "length" } => match $positional.first() {
-                Some(Value::Str(s)) => Ok(Some(Value::Int(s.chars().count() as i64))),
+                Some(Value::Str(s)) => Ok(Some(Value::Int(s.string_length()))),
                 Some(v) => match native_len(v) {
                     Some(n) => Ok(Some(Value::Int(n))),
                     None => match free_monoid_to_vec(v) {
@@ -14787,7 +14818,7 @@ pub(crate) fn native_len(val: &Value) -> Option<i64> {
         // NEXT-RUNG TRIGGER: a workload that repeatedly length-queries the same non-ASCII
         // string. If that appears, the amortization argument inverts and a carried count
         // becomes correct.
-        Value::Str(s) => Some(v1_rt::string_length(s)),
+        Value::Str(s) => Some(s.string_length()),
         _ => None,
     }
 }
@@ -15089,6 +15120,25 @@ fn expect_string(val: &Value, context: &str) -> InterpResult<String> {
         Value::Str(s) => Ok(s.to_string()),
         _ => Err(InterpError::TypeError {
             msg: format!("{} expects a string, got {}", context, val.type_label()),
+        }),
+    }
+}
+
+/// Like `expect_str`, but returns the `Value::Str` carrier itself instead of an owned
+/// copy: the caller gets the `&str` view AND the carried ASCII fact, and pays no O(n)
+/// `.to_string()` for a read-only use (STRING-INDEX-0).
+fn expect_value_str<'a>(val: Option<&'a Value>, context: &str) -> InterpResult<&'a RcStr> {
+    match val {
+        Some(Value::Str(s)) => Ok(s),
+        Some(v) => Err(InterpError::TypeError {
+            msg: format!(
+                "{} expects a string argument, got {}",
+                context,
+                v.type_label()
+            ),
+        }),
+        None => Err(InterpError::TypeError {
+            msg: format!("{} requires a string argument", context),
         }),
     }
 }
@@ -16702,6 +16752,90 @@ mod process_termination_tests {
     }
 }
 
+/// Discriminating controls for the `RcStr` string carrier (STRING-INDEX-0).
+///
+/// The carrier's whole point is that `char_at`/`substring`/`string_length` read a
+/// PRECOMPUTED ascii flag instead of testing the string per call. That makes exactly one
+/// new way to be wrong: taking the byte path over text where byte index is not code-point
+/// index. These tests are the RED for that: they compare every carrier method against the
+/// free `v1_rt` function it shadows -- the pre-carrier semantics -- over multibyte text at
+/// every index, so a carrier that trusted a wrong flag, or that took the byte path
+/// unconditionally, disagrees at the first non-ASCII code point.
+///
+/// The flag itself is unforgeable rather than checked: `RcStr`'s field is private and its
+/// only producer is `RcStr::new`, so "carrier says ASCII, string is not" has no
+/// constructor to write a test against (DESIGN §4b -- structurally impossible, so no probe
+/// can author its RED).
+#[cfg(test)]
+mod rc_str_carrier_tests {
+    use super::*;
+
+    const ASCII: &str = "hello world";
+    // 5 bytes, 4 code points: a byte-offset implementation disagrees from index 2 on.
+    const MIXED: &str = "ab\u{e9}c";
+
+    fn carrier(s: &str) -> RcStr {
+        RcStr::new(Rc::from(s))
+    }
+
+    #[test]
+    fn carrier_records_ascii_ness_of_its_own_content() {
+        assert!(carrier(ASCII).is_ascii());
+        assert!(!carrier(MIXED).is_ascii());
+        assert!(carrier("").is_ascii());
+    }
+
+    #[test]
+    fn carrier_char_at_agrees_with_the_free_function_it_shadows() {
+        for s in [ASCII, MIXED] {
+            let c = carrier(s);
+            for pos in 0..(s.len() as i64 + 2) {
+                assert_eq!(
+                    c.char_at(pos),
+                    v1_rt::char_at(s, pos),
+                    "char_at disagrees at {pos} on {s:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn carrier_substring_agrees_with_the_free_function_it_shadows() {
+        for s in [ASCII, MIXED] {
+            let c = carrier(s);
+            let n = s.len() as i64 + 2;
+            for start in 0..n {
+                for end in 0..n {
+                    assert_eq!(
+                        c.substring(start, end),
+                        v1_rt::substring(s, start, end),
+                        "substring disagrees at {start}..{end} on {s:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn carrier_string_length_agrees_with_the_free_function_it_shadows() {
+        for s in [ASCII, MIXED, ""] {
+            assert_eq!(carrier(s).string_length(), v1_rt::string_length(s));
+        }
+    }
+
+    #[test]
+    fn carrier_indexes_code_points_not_bytes_on_multibyte_text() {
+        // The receipt behind the differential above, stated absolutely so it survives a
+        // change to the free functions: MIXED is 5 bytes and 4 code points.
+        let c = carrier(MIXED);
+        assert_eq!(c.string_length(), 4);
+        assert_eq!(c.char_at(2), "\u{e9}");
+        assert_eq!(c.char_at(3), "c");
+        assert_eq!(c.char_at(4), "");
+        assert_eq!(c.substring(0, 3), "ab\u{e9}");
+    }
+}
+
 /// Semantic parity receipts for `Value::Str(Rc<str>)` — shared-allocation invariant
 /// (clone shares `Rc` allocation; buffer immutable under sharing; equality/hash by
 /// content), plus map/set keys, display, and CanonKey surfaces.
@@ -16722,7 +16856,7 @@ mod value_str_rc_semantic_parity_tests {
         assert_ne!(a, c);
         if let (Value::Str(ra), Value::Str(rb)) = (&a, &b) {
             assert!(
-                !Rc::ptr_eq(ra, rb),
+                !RcStr::ptr_eq(ra, rb),
                 "distinct Rc allocations must still compare equal by content"
             );
         }
@@ -16776,7 +16910,7 @@ mod value_str_rc_semantic_parity_tests {
         let cloned = v.clone();
         if let (Value::Str(a), Value::Str(b)) = (&v, &cloned) {
             assert!(
-                Rc::ptr_eq(a, b),
+                RcStr::ptr_eq(a, b),
                 "Value::Str clone must share the same Rc allocation (not deep-copy); \
                  content-equality tests alone would stay green if clone reintroduced String copy"
             );
@@ -16795,9 +16929,9 @@ mod value_str_rc_semantic_parity_tests {
         let Value::Str(b) = &cloned else {
             panic!("expected Str");
         };
-        assert!(Rc::ptr_eq(a, b));
-        let mut lone = Rc::clone(a);
-        let mut peer = Rc::clone(b);
+        assert!(RcStr::ptr_eq(a, b));
+        let mut lone = a.rc();
+        let mut peer = b.rc();
         assert!(
             Rc::get_mut(&mut lone).is_none(),
             "shared Rc<str> must refuse in-place mutation while another handle exists"
