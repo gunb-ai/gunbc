@@ -200,6 +200,10 @@ type StandingVerdict
 // witness passed, so nothing is broken in the tree — what is broken is the ROSTER, which still
 // enrols it as expected-red. Admitting it would let a stale enrolment survive indefinitely,
 // because the only signal it ever produces is this one.
+// `PanickedBeforeVerdict` and `NotAttemptedAfterAbort` are both UNSATISFIED, for the same reason
+// read in opposite directions: one claim executed and died, the other never executed at all, and
+// neither is a claim that satisfied its standing. Admitting an unattempted claim as satisfied
+// would be the fail-open — it would let an aborted run report a standing it never tested.
 fn claim_disposition_verdict(d: ClaimDisposition) -> StandingVerdict {
   match d {
     Passed => StandingSatisfied {}
@@ -224,6 +228,10 @@ fn claim_disposition_verdict(d: ClaimDisposition) -> StandingVerdict {
       StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: NotAttemptedAfterAbort {} } }
     ObservationUnreadableBeforeVerdict =>
       StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: ObservationUnreadableBeforeVerdict {} } }
+    PanickedBeforeVerdict =>
+      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: PanickedBeforeVerdict {} } }
+    NotAttemptedAfterAbort =>
+      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: NotAttemptedAfterAbort {} } }
   }
 }
 
@@ -428,6 +436,14 @@ fn required_gate_decision(a: AggregateStanding) -> RequiredGateDecision {
 //   remedies differ, so this collapse would be a defect in a carrier; it is admissible in an
 //   export because the distinguishing fact stays on the `TestStanding` the export was computed
 //   from, one dereference away, and the export is never fed back into a decision.
+// The two abort-side arms are placed by the partition this match already draws — DID THE CLAIM
+// RUN — and not by severity. `PanickedBeforeVerdict` is `RuntimeErroredBeforeVerdict`'s neighbour:
+// the claim executed and died, so `FAILED`. `NotAttemptedAfterAbort` is `RouteGapBeforeVerdict`'s:
+// the claim never executed, so `INCOMPLETE`. `INCOMPLETE` here is the HONEST arm rather than the
+// soft one — rendering a claim that never ran as `FAILED` asserts that an assertion failed when no
+// assertion ever executed, which is exactly the execution-provenance loss DESIGN forbids, since a
+// stage refused before it ran must not inhabit the same carrier as a stage that ran and found a
+// defect.
 fn blaze_test_status_of_claim_disposition(d: ClaimDisposition) -> BlazeTestStatus {
   match d {
     Passed => TestStatusPassed {}
@@ -443,6 +459,8 @@ fn blaze_test_status_of_claim_disposition(d: ClaimDisposition) -> BlazeTestStatu
     PanickedBeforeVerdict => TestStatusFailed {}
     NotAttemptedAfterAbort => TestStatusHaltedBeforeTesting {}
     ObservationUnreadableBeforeVerdict => TestStatusIncomplete {}
+    PanickedBeforeVerdict => TestStatusFailed {}
+    NotAttemptedAfterAbort => TestStatusIncomplete {}
   }
 }
 
