@@ -691,27 +691,22 @@ fn run() -> Result<ExitCode, ExitCode> {
                     for run in &runs {
                         eprintln!("{}", run.measurement_line("required-ci: v2-emission"));
                         match &run.disposition {
-                            v1_compiler::cli_run::EntryEmissionDisposition::Completed {
-                                ..
-                            } => {}
-                            v1_compiler::cli_run::EntryEmissionDisposition::Refused {
-                                phase,
-                                cause,
-                            } => {
+                            v1_compiler::cli_run::CompileDisposition::Completed { .. } => {}
+                            v1_compiler::cli_run::CompileDisposition::Refused { phase, cause } => {
                                 not_completed += 1;
                                 eprintln!(
-                                    "required-ci: v2-emission EmissionRefused entry={} phase={phase} cause={cause}",
-                                    run.entry
+                                    "required-ci: v2-emission EmissionRefused {} phase={phase} cause={cause}",
+                                    run.subject.receipt()
                                 );
                             }
-                            v1_compiler::cli_run::EntryEmissionDisposition::NotExecuted {
+                            v1_compiler::cli_run::CompileDisposition::NotExecuted {
                                 earlier_phase,
                                 cause,
                             } => {
                                 not_completed += 1;
                                 eprintln!(
-                                    "required-ci: v2-emission EmissionNotExecuted entry={} earlier_phase={earlier_phase} cause={cause}",
-                                    run.entry
+                                    "required-ci: v2-emission EmissionNotExecuted {} earlier_phase={earlier_phase} cause={cause}",
+                                    run.subject.receipt()
                                 );
                             }
                         }
@@ -786,25 +781,22 @@ fn run() -> Result<ExitCode, ExitCode> {
                     // of nothing by anything that reads one line at a time.
                     eprintln!("{}", run.measurement_line("required-v2-emission"));
                     match &run.disposition {
-                        v1_compiler::cli_run::EntryEmissionDisposition::Completed { .. } => {}
-                        v1_compiler::cli_run::EntryEmissionDisposition::Refused {
-                            phase,
-                            cause,
-                        } => {
+                        v1_compiler::cli_run::CompileDisposition::Completed { .. } => {}
+                        v1_compiler::cli_run::CompileDisposition::Refused { phase, cause } => {
                             not_completed += 1;
                             eprintln!(
-                                "required-v2-emission: EmissionRefused entry={} phase={phase} cause={cause}",
-                                run.entry
+                                "required-v2-emission: EmissionRefused {} phase={phase} cause={cause}",
+                                run.subject.receipt()
                             );
                         }
-                        v1_compiler::cli_run::EntryEmissionDisposition::NotExecuted {
+                        v1_compiler::cli_run::CompileDisposition::NotExecuted {
                             earlier_phase,
                             cause,
                         } => {
                             not_completed += 1;
                             eprintln!(
-                                "required-v2-emission: EmissionNotExecuted entry={} earlier_phase={earlier_phase} cause={cause}",
-                                run.entry
+                                "required-v2-emission: EmissionNotExecuted {} earlier_phase={earlier_phase} cause={cause}",
+                                run.subject.receipt()
                             );
                         }
                     }
