@@ -1,0 +1,112 @@
+module v2.std.subject_evidence
+
+import v2.std.logic { Bool }
+
+// CLAIM-ENTAILING EVIDENCE. An evidence standing may establish a proposition P only when EVERY
+// execution path that constructs that standing proves the subject reached the relevant phase AND
+// entails P:
+//
+//     E(execution)  =>  subject_phase_reached(execution)  AND  P(execution)
+//
+// The quantifier is the whole content. One path that constructs the standing without the subject
+// having run invalidates the evidence, however sound every other path is.
+//
+// TWO MECHANICALLY DIFFERENT VIOLATIONS THIS CARRIER CLOSES, and they need different eyes -- a
+// search that finds one will not find the other.
+//
+//   A. OUTCOME COLLAPSE. A coproduct with distinct causes folded to one Bool. The tell is a
+//      discarded payload on a non-pass arm: `BuildFailed { diagnostic: _ } => false` throws away
+//      the fact that decides whether the assertion EXECUTED, and a semantic counterexample then
+//      shares one value with a comparison that never happened.
+//
+//   B. PREDICATE CAUSE ALIASING. No coproduct, nothing discarded, still invalid. `run.success ==
+//      false` is true when a planted fault was detected AND when the binary never existed, the
+//      process never spawned, or the host failed. The predicate's truth set is simply wider than
+//      the proposition it is cited to prove.
+//
+//   B is why a lens over discarded payloads is insufficient as the remedy: A collapses a coproduct,
+//   B never had one. Construction is what closes both -- there is no spelling of this type in which
+//   a transport observation inhabits the completed arm.
+//
+// RULED INSUFFICIENT AS EVIDENCE, and named here so the list is reachable from the carrier rather
+// than only from a message: `run.success == false`, `exit_code != 0`, `output absent`. These are
+// TRANSPORT OBSERVATIONS. They report on the pipe, not on the subject.
+//
+// WHY THE OUTER SPLIT IS OWNER-SHAPED RATHER THAN PHASE-SHAPED. The two no-verdict arms differ in
+// WHOSE deficit produced the absence, which is the distinction that decides who repairs it:
+// EvidenceInstrumentRefused is the harness failing to pose the question at all (a fixture that
+// would not construct, a probe whose subject could not be assembled); EvidenceSubjectUnreached is
+// the instrument working correctly and the SUBJECT not arriving at the phase the claim is about.
+// gunbc.emit_subject_clean_frontier made exactly this correction on its own side when every
+// unreached measurement was rendering as `PopulationUnproduced` -- asserting the emitter produced
+// nothing, when for a talkative subject the emitter produced a population perfectly well and the
+// READER's buffer was too small. Collapsing the two arms here would re-open that defect one level up.
+//
+// WHY THE CAUSE IS A TYPE PARAMETER AND NOT A FIELD PAIR. The ruling asks a no-verdict standing to
+// name the EXACT phase and cause. A `{ phase, cause }` record admits a phase from one stage beside a
+// cause from another -- the states are independently writable, so nothing stops a Build phase
+// carrying a Run diagnostic. Handing the consumer ONE type that names both makes the mismatch
+// unrepresentable rather than merely wrong (DESIGN 4b: construction over validation). It is also
+// what keeps this from becoming the giant universal error enum the ruling forbids: each consumer
+// supplies its own closed vocabulary, so a new phase in one consumer is invisible to every other.
+//
+// WHAT THIS TYPE DELIBERATELY DOES NOT DO: it carries no verdict of its own. Whether a completed
+// outcome LICENSES a claim is the domain's question, answered by the domain's own outcome type, and
+// folding the two would make one carrier answer for two authorities.
+type SubjectEvidence<NoVerdict, Outcome>
+  = EvidenceInstrumentRefused { cause: NoVerdict }
+  | EvidenceSubjectUnreached { cause: NoVerdict }
+  | EvidenceSubjectCompleted { outcome: Outcome }
+
+// THE COMPARISON OUTCOME, kept as a SEPARATE type from the standing above rather than as three flat
+// variants beside it. That separation is what makes one standing shape serve both an equivalence
+// comparison and a fault-injection detection: the standing answers `did the subject run`, the
+// outcome answers `and what did it say`. Fusing them would mint a second standing per domain.
+//
+// BehaviorDivergent CARRIES ITS DIFFERENCE. A divergence with no recoverable difference is a Bool
+// wearing a variant's name, and the difference is free at the point of construction and
+// unrecoverable afterwards.
+//
+// BehaviorEquivalent CARRIES NOTHING, and that is a deliberate refusal rather than an omission. The
+// obvious symmetry would give it a `receipt` field, but the producers that exist have no receipt to
+// put there -- `v2.std.verdict` `Pass` is a payload-free variant -- so the field would be filled
+// with a placeholder at every construction site. A receipt nobody produced is the fabricated
+// plausible output this repository forbids, and it is worse here than elsewhere because the whole
+// point of this module is that a carrier must not be able to assert what was never observed. A
+// later consumer that genuinely holds an agreement receipt adds the parameter then, with a producer
+// behind it.
+
+type BehavioralComparison<Difference>
+  = BehaviorEquivalent
+  | BehaviorDivergent { difference: Difference }
+
+// THE ONLY SANCTIONED PROJECTION TO Bool, and it exists so that the collapse happens at ONE audited
+// site instead of once per consumer. A no-verdict standing answers `false` here -- not because
+// false means the claim was refuted, but because a claim is not established by an execution that
+// did not happen. Callers that need to distinguish the two match the coproduct directly; this is
+// for the terminal `test fn` boundary, which can only return Bool.
+fn subject_evidence_establishes<NoVerdict, Outcome>(
+  evidence: SubjectEvidence<NoVerdict, Outcome>,
+  licenses: fn(Outcome) -> Bool
+) -> Bool {
+  match evidence {
+    EvidenceSubjectCompleted { outcome: o } => licenses(o)
+    EvidenceInstrumentRefused { cause: _ } => false
+    EvidenceSubjectUnreached { cause: _ } => false
+  }
+}
+
+// THE CAUSE-SWAP DISCRIMINATOR. This is what a control asserts against, and it is deliberately NOT
+// the negation of the function above. `subject_evidence_establishes` answering false is satisfied
+// by a genuine refutation AND by an execution that never happened -- the very aliasing this module
+// exists to remove, so a control written against it would prove nothing. This answers the narrower
+// question the control actually needs: was a verdict produced at all.
+fn subject_evidence_produced_a_verdict<NoVerdict, Outcome>(
+  evidence: SubjectEvidence<NoVerdict, Outcome>
+) -> Bool {
+  match evidence {
+    EvidenceSubjectCompleted { outcome: _ } => true
+    EvidenceInstrumentRefused { cause: _ } => false
+    EvidenceSubjectUnreached { cause: _ } => false
+  }
+}
