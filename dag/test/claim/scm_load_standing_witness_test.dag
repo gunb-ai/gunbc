@@ -27,8 +27,11 @@ import gunbc.scm.supersession {
   HeadSlot, SupersessionApplied, SupersessionRefused,
   observe_generation, supersede_head_slot, supersession_applied,
 }
-import gunbc.scm.json_member { MemberReadSubjectNotObject }
-import gunbc.scm.target_reference { TargetReferenceNotOneArm }
+import gunbc.scm.json_member {
+  MemberReadRefusal, MemberReadSubjectNotObject, MemberReadMissing,
+  MemberReadDuplicated, MemberReadWrongShape,
+}
+import gunbc.scm.target_reference { TargetReferenceNotOneArm, TargetReferenceMemberReadRefused }
 import gunbc.scm.object_table_json {
   ObjectTableUnknownKindTag,
   ObjectTableEdgeTargetUnresolved,
@@ -37,6 +40,8 @@ import gunbc.scm.object_table_json {
 }
 import gunbc.scm.repository_envelope {
   RepositoryFormatUnrecognized,
+  RepositoryTargetReferenceRefused,
+  RepositoryMemberReadRefused,
   RepositoryIdentityRuleUnrecognized,
   RepositoryUnexpectedMember,
   RepositoryEnvelopeMembers,
@@ -255,4 +260,51 @@ test fn an_unimplemented_identity_rule_is_a_protocol_gap_not_damage() -> Bool {
     && standing_eq(a: unresolved, b: LoadDocumentMalformed)
     && !ls_permits(standing: rule)
     && ls_permits(standing: member)
+}
+
+
+// A MEMBER-READ CAUSE REACHES EACH CLASSIFIER BY TWO ROUTES, AND BOTH MUST ANSWER. Both formats
+// wrapped the identical MemberReadRefusal population twice -- once undecorated on their own
+// member-read arm, once nested inside a target-reference refusal -- and descended only the first,
+// binding the target-reference payload bare. Each of the four causes is driven through BOTH routes
+// at BOTH classifiers here, so the nested position is executed rather than merely exhaustive; the
+// paired protocol-gap clause is what keeps a collapse-everything classifier from satisfying it.
+fn ls_member_cause_is_malformed_everywhere(cause: MemberReadRefusal) -> Bool {
+  standing_eq(
+    a: closure_document_load_standing(cause: ClosureDocMemberReadRefused { cause: cause }),
+    b: LoadDocumentMalformed
+  )
+    && standing_eq(
+      a: closure_document_load_standing(
+        cause: ClosureDocTargetReferenceRefused {
+          cause: TargetReferenceMemberReadRefused { cause: cause }
+        }
+      ),
+      b: LoadDocumentMalformed
+    )
+    && standing_eq(
+      a: repository_envelope_load_standing(cause: RepositoryMemberReadRefused { cause: cause }),
+      b: LoadDocumentMalformed
+    )
+    && standing_eq(
+      a: repository_envelope_load_standing(
+        cause: RepositoryTargetReferenceRefused {
+          cause: TargetReferenceMemberReadRefused { cause: cause }
+        }
+      ),
+      b: LoadDocumentMalformed
+    )
+}
+
+test fn a_member_read_cause_is_malformed_by_either_route_at_both_classifiers() -> Bool {
+  ls_member_cause_is_malformed_everywhere(cause: MemberReadSubjectNotObject)
+    && ls_member_cause_is_malformed_everywhere(cause: MemberReadMissing { key: "at" })
+    && ls_member_cause_is_malformed_everywhere(cause: MemberReadDuplicated { key: "at" })
+    && ls_member_cause_is_malformed_everywhere(cause: MemberReadWrongShape { key: "at" })
+    && !standing_eq(
+      a: repository_envelope_load_standing(
+        cause: RepositoryIdentityRuleUnrecognized { found: "blake3-structural-v2" }
+      ),
+      b: LoadDocumentMalformed
+    )
 }
