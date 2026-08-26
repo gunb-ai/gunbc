@@ -6,7 +6,7 @@ module gunbc.scm.target_reference
 //
 // The split is the repair. Three operations decode this same syntax: an edge inside an object
 // record, a closure document's root, and a repository commit's root. Previously one shared decoder
-// resolved the position for all three and reported failure as ClosureDocEdgeTargetUnresolved, so a
+// resolved the position for all three and reported failure as ObjectTableEdgeTargetUnresolved (gunbc.scm.object_table_json), so a
 // closure root naming a position nobody defined was reported as an EDGE target unresolved -- an edge
 // that does not exist, inside an object that was never named. The repository then compensated with an
 // adapter that translated that edge cause back into a commit-root cause, recovering by context what

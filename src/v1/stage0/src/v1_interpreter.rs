@@ -8801,6 +8801,41 @@ fn compile_diagnostic_census_value(
     }
 }
 
+/// Projects a host gate receipt into the `gunbc.ci_gate` `GateReceipt` coproduct.
+/// The arms stay distinct all the way to the substrate for the same reason
+/// `compile_diagnostic_census_value`'s do: `GateNotRun` must never arrive as a clean
+/// verdict, because could-not-measure and the subject passing are different facts with
+/// different owners, and a `Bool` at this seam made them the same value.
+fn gate_receipt_value(receipt: crate::cli_run::GateReceipt, ctx: &InterpContext) -> Value {
+    let observed = |outcome: Value| Value::Variant {
+        type_name: ctx.sym("GateReceipt"),
+        variant_name: ctx.sym("GateObserved"),
+        fields: Rc::new(sorted_fields(vec![(ctx.sym("outcome"), outcome)])),
+    };
+    match receipt {
+        crate::cli_run::GateReceipt::Clean => observed(Value::Variant {
+            type_name: ctx.sym("GateOutcome"),
+            variant_name: ctx.sym("GateClean"),
+            fields: Rc::new(vec![]),
+        }),
+        crate::cli_run::GateReceipt::Failed { detail } => observed(Value::Variant {
+            type_name: ctx.sym("GateOutcome"),
+            variant_name: ctx.sym("GateFailed"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("detail"), str_value(detail))])),
+        }),
+        crate::cli_run::GateReceipt::NotApplicable { reason } => Value::Variant {
+            type_name: ctx.sym("GateReceipt"),
+            variant_name: ctx.sym("GateNotApplicable"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("reason"), str_value(reason))])),
+        },
+        crate::cli_run::GateReceipt::NotRun { cause } => Value::Variant {
+            type_name: ctx.sym("GateReceipt"),
+            variant_name: ctx.sym("GateNotRun"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
+        },
+    }
+}
+
 fn unlisted_import_binding_source_value(
     source: crate::cli_run::UnlistedImportBindingSource,
     ctx: &InterpContext,
@@ -13861,12 +13896,9 @@ macro_rules! v1_builtin_arms {
             arm "free_call.witness_layer_roots_compile_clean_emit_check" { "witness_layer_roots_compile_clean_emit_check" } => Ok(Some(Value::Bool(
                 crate::cli_run::witness_layer_roots_compile_clean_emit_check(),
             ))),
-            arm "free_call.consume_floor_compile_clean_gate_verdict" { "consume_floor_compile_clean_gate_verdict" } => Ok(Some(Value::Bool(
-                crate::cli_run::consume_floor_compile_clean_gate_verdict(),
-            ))),
-
-            arm "free_call.consume_floor_compile_clean_gate_failure_detail" { "consume_floor_compile_clean_gate_failure_detail" } => Ok(Some(str_value(
-                crate::cli_run::consume_floor_compile_clean_gate_failure_detail(),
+            arm "free_call.install_or_consume_floor_compile_clean_gate_receipt" { "install_or_consume_floor_compile_clean_gate_receipt" } => Ok(Some(gate_receipt_value(
+                crate::cli_run::install_or_consume_floor_compile_clean_gate_receipt(),
+                $ctx,
             ))),
 
             arm "free_call.record_generated_artifact_drift_gate_failure_detail" { "record_generated_artifact_drift_gate_failure_detail" } => {
@@ -13876,8 +13908,14 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Unit))
             },
 
-            arm "free_call.consume_generated_artifact_drift_gate_failure_detail" { "consume_generated_artifact_drift_gate_failure_detail" } => Ok(Some(str_value(
-                crate::cli_run::consume_generated_artifact_drift_gate_failure_detail(),
+            arm "free_call.record_generated_artifact_drift_gate_clean" { "record_generated_artifact_drift_gate_clean" } => {
+                crate::cli_run::record_generated_artifact_drift_gate_clean();
+                Ok(Some(Value::Unit))
+            },
+
+            arm "free_call.consume_generated_artifact_drift_gate_receipt" { "consume_generated_artifact_drift_gate_receipt" } => Ok(Some(gate_receipt_value(
+                crate::cli_run::consume_generated_artifact_drift_gate_receipt(),
+                $ctx,
             ))),
 
             arm "free_call.witness_compile_clean_cli_floor_verdicts_agree" { "witness_compile_clean_cli_floor_verdicts_agree" } => Ok(Some(Value::Bool(
