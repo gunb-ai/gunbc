@@ -163,8 +163,8 @@ type ClosureDocRefusal
 // else -- no decode path can reach it. It nevertheless sat in ClosureDocRefusal, which the LOAD
 // classifier matches exhaustively, so closure_document_load_standing was forced to assign a standing
 // to a state the loader cannot produce. It answered LoadDocumentMalformed, and malformed is the ONE
-// standing standing_may_supersede_generation permits to overwrite a newer document. An encode-only
-// state therefore had a route to "may supersede".
+// standing that permits overwriting a newer document (gunbc.scm.supersession
+// standing_permission_refusal). An encode-only state therefore had a route to "may supersede".
 //
 // That is a closed match over a dishonest domain: exhaustiveness is satisfied, the compiler is
 // content, and the arm is answering for something that cannot occur. Splitting the type does not
@@ -986,7 +986,8 @@ fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
 // one remedy today, so the collapsed form is total, compiles, and looks complete -- and a NEW
 // member-read mode would then inherit LoadDocumentMalformed in silence. Malformed is the SOLE
 // standing that permits superseding a newer generation, so an inherited arm sits one step from a
-// reader overwriting a writer's valid document. Descending makes the next mode fail to compile
+// reader overwriting a writer's valid document -- one step and no longer the last one, since
+// gunbc.scm.supersession additionally binds actuation to the generation the evidence was read from. Descending makes the next mode fail to compile
 // here, where whoever adds it can see what it would cost.
 fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
   match cause {

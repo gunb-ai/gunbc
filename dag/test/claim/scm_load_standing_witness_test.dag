@@ -20,7 +20,12 @@ import gunbc.scm.object_store {
 import gunbc.scm.load_standing {
   LoadStanding, LoadComplete, LoadPartial, LoadUnsupportedProtocol,
   LoadDocumentMalformed, LoadIdentityCollision,
-  standing_may_supersede_generation, standing_loaded,
+  standing_loaded,
+}
+import std.decl_ref { DeclarationRef }
+import gunbc.scm.supersession {
+  HeadSlot, SupersessionApplied, SupersessionRefused,
+  observe_generation, supersede_head_slot, supersession_applied,
 }
 import gunbc.scm.json_member { MemberReadSubjectNotObject }
 import gunbc.scm.target_reference { TargetReferenceNotOneArm }
@@ -65,6 +70,47 @@ fn ls_grafted() -> ObjectStore {
   }
 }
 
+
+// THE PERMISSION ARM IS NO LONGER A PREDICATE, so these witnesses drive the real actuator and read
+// its verdict. Everything but the standing is held at its admitting value -- same slot, evidence
+// examined exactly the generation the slot holds, proposal different from it -- so the only variable
+// left is the standing, which is what the three tests below vary. A helper that also varied the
+// generation would report false for the wrong reason (DESIGN: a control that does not flip).
+fn ls_slot() -> HeadSlot {
+  HeadSlot { slot: "head", generation: ls_full().root }
+}
+
+fn ls_other_generation() -> ObjectId {
+  ls_child_identity()
+}
+
+fn ls_child_identity() -> ObjectId {
+  match store_node(store: empty_store(), n: ls_child()) {
+    Stored { store: _, identity: i } => i
+    LocatorCollision { identity: i, existing: _, incoming: _ } => i
+  }
+}
+
+fn ls_permits(standing: LoadStanding) -> Bool {
+  let slot = ls_slot()
+  supersession_applied(
+    outcome: supersede_head_slot(
+      slot: slot,
+      evidence: observe_generation(
+        slot: slot,
+        examined_root: slot.generation,
+        schema_identity: "gunbc-scm-commit-closure-v2",
+        standing: standing,
+        authority: decl_ref(
+          module_path: "test.claim.scm_load_standing_witness",
+          decl_name: "ls_permits",
+        ),
+      ),
+      proposed_generation: ls_other_generation(),
+    )
+  )
+}
+
 fn standing_eq(a: LoadStanding, b: LoadStanding) -> Bool {
   standing_tag(s: a) == standing_tag(s: b)
 }
@@ -97,17 +143,17 @@ test fn an_incomplete_closure_loads_partial_and_a_complete_one_does_not() -> Boo
 // wrong before, and it is the one most likely to be got wrong now by treating "not everything" as
 // "damaged".
 test fn a_partial_load_is_never_supersedable() -> Bool {
-  !standing_may_supersede_generation(standing: LoadPartial)
-    && !standing_may_supersede_generation(standing: LoadComplete)
+  !ls_permits(standing: LoadPartial)
+    && !ls_permits(standing: LoadComplete)
 }
 
 // MALFORMED IS THE SOLE SUPERSEDABLE STANDING, and the three refusals are refused for three
 // different reasons rather than by one rule. If this were the empty set the negative tests above
 // would pass vacuously.
 test fn malformed_is_the_only_standing_that_permits_replacement() -> Bool {
-  standing_may_supersede_generation(standing: LoadDocumentMalformed)
-    && !standing_may_supersede_generation(standing: LoadUnsupportedProtocol)
-    && !standing_may_supersede_generation(standing: LoadIdentityCollision)
+  ls_permits(standing: LoadDocumentMalformed)
+    && !ls_permits(standing: LoadUnsupportedProtocol)
+    && !ls_permits(standing: LoadIdentityCollision)
     && !standing_loaded(standing: LoadDocumentMalformed)
 }
 
@@ -153,6 +199,6 @@ test fn an_honest_collision_is_its_own_standing_and_never_supersedes() -> Bool {
   )
   standing_eq(a: collision, b: LoadIdentityCollision)
     && standing_eq(a: malformed, b: LoadDocumentMalformed)
-    && !standing_may_supersede_generation(standing: collision)
-    && standing_may_supersede_generation(standing: malformed)
+    && !ls_permits(standing: collision)
+    && ls_permits(standing: malformed)
 }
