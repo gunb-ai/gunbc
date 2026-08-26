@@ -1,6 +1,9 @@
 module gunbc.build_target
 
-import extdeps.bazel.label { Label, RootPackage, TargetName, render_label, label_eq }
+import extdeps.bazel.label {
+  Label, RootPackage, TargetName, render_label, label_eq,
+  target_label_is_canonical,
+}
 import extdeps.bazel.test_status {
   BlazeTestStatus,
   TestStatusNoStatus, TestStatusPassed, TestStatusTimeout,
@@ -23,7 +26,6 @@ import gunbc.target_binding {
   BehavioralReceiptCensusStanding,
   BehavioralReceiptSelftestStanding,
   HeadsReadingDifferentialStanding,
-  target_label_is_canonical,
 }
 import v2.std.optional { Optional, Present, Absent }
 import std.types { String, Bool, NonEmptyStr }
@@ -350,8 +352,11 @@ type AggregateStanding
 // `PackagePath(["a", "b"]) + "c"` and `PackagePath(["a/b"]) + "c"` render the same String, and
 // `label_eq` calls them equal too because its package comparison renders before it compares.
 // `target_label_is_canonical` is the one authority for that precondition and is REUSED from
-// `gunbc.target_binding` rather than copied: a second canonicality predicate would be a §3
-// nickname for the first, and the two would drift the moment either was refined.
+// `extdeps.bazel.label` rather than copied: canonicality is a property of the cited label grammar
+// — `render_label`'s own header already documents `parse(render(l)) == l` as what it guarantees —
+// so it is stated once beside that grammar and read here. A second canonicality predicate in a
+// consumer would be a §3 nickname for the first, and the two would drift the moment either was
+// refined.
 type TargetStandingIndex {
   standings_by_identity: Map<String, TargetStanding>
 }
