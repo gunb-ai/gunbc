@@ -216,6 +216,20 @@ type RepositoryEncodeRefusal
 // a resolved one: an image-local position is still spelled as bare text here, and commit_closure_json_v2's whole
 // reference vocabulary would have to be typed for this to be honest. Naming it here so the next
 // reader finds a declared gap instead of re-deriving it.
+//
+// `RepositoryEnvelope.checked_out` BELONGS TO THAT SAME REMAINING VOCABULARY, and it is named here
+// rather than left for a reader to trip over: it is a `String?` naming a history ROW, which is
+// exactly what `RepositoryCommitRef` was minted for, so the two spellings now sit side by side in
+// one module. Nobody authored that duplicate -- it was created by INTEGRATION, when the row-keyed
+// ancestry recut landed beside a checkout selection that had independently stopped being a root.
+//
+// TYPING `checked_out` ALONE WOULD BE THE WRONG REPAIR, and that is why this is a declared gap
+// instead of a small fix. It would convert one leaf of the vocabulary while the decode-side
+// references above stay bare, which relocates the fork rather than removing it and leaves an
+// intermediate state where a reader has to know which half was converted -- the leaves-upward
+// migration DESIGN's replacement doctrine refuses. The root is the reference vocabulary AS A WHOLE:
+// `checked_out`, the decode-side reference arms, and every other bare-text spelling of a row
+// reference, migrated in one motion, one authority transition.
 type RepositoryDecodeRefusal
   = RepositoryDecodeClosureDocRefusal { cause: ClosureDocRefusal }
   | RepositoryMemberReadRefused { cause: MemberReadRefusal }
