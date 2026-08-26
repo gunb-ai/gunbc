@@ -21,12 +21,11 @@ use crate::gunbc_cli_dispatch_surface::CliOptionArity::{CliAtMostOne, CliRepeate
 use crate::gunbc_cli_dispatch_surface::CliOptionValue::{
     CliMillisecondValue, CliPortValue, CliTextValue, CliToggleValue,
 };
-use crate::gunbc_cli_dispatch_surface::CliVersionIdentity::CliSourceCommit;
 pub use crate::gunbc_cli_dispatch_surface::{
-    cli_subcommand_emitted_options, gunbc_cli_emitted_subcommands, gunbc_cli_version_identity,
+    cli_subcommand_emitted_options, gunbc_cli_emitted_subcommands,
 };
 pub use crate::gunbc_cli_dispatch_surface::{
-    CliOptionArity, CliOptionRow, CliOptionValue, CliSubcommandRow, CliVersionIdentity,
+    CliOptionArity, CliOptionRow, CliOptionValue, CliSubcommandRow,
 };
 pub use crate::gunbc_rust_decl_type_overlay::rust_decl_type_container_overlay_is_admitted;
 pub use crate::gunbc_stage0_crate_layout_generated::generated_pub_mod_block;
@@ -33957,10 +33956,16 @@ pub fn emit_main_rs(
         } else {
             "".to_string()
         };
+        let cli_version_attr = if has_pipeline.clone() {
+            ", version = env!(\"GUNBC_BUILD_IDENTITY\")".to_string()
+        } else {
+            "".to_string()
+        };
         let cli_struct = emit_cli_struct(
             workflow_funcs.clone(),
             binary_name.clone(),
             cli_about.clone(),
+            cli_version_attr.clone(),
         );
         let subcommand_enum = emit_subcommand_enum(workflow_funcs.clone(), has_pipeline.clone());
         let pipeline_fns = if has_pipeline.clone() {
@@ -34076,6 +34081,7 @@ pub fn emit_cli_struct(
     workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
     binary_name: String,
     about: String,
+    version_attr: String,
 ) -> String {
     {
         let about_attr = if (about.clone() != "".to_string()) {
@@ -34085,11 +34091,6 @@ pub fn emit_cli_struct(
             )
         } else {
             "".to_string()
-        };
-        let version_attr = match gunbc_cli_version_identity() {
-            CliVersionIdentity::CliSourceCommit => {
-                ", version = env!(\"GUNBC_BUILD_COMMIT\")".to_string()
-            }
         };
         v1_rt::concat(
             v1_rt::concat(

@@ -18,7 +18,7 @@ use v1_compiler::v1_std_core::{
 #[command(
     name = "gunbc",
     about = "A causal compiler: write .dag, get Rust/Python/Go.",
-    version = env!("GUNBC_BUILD_COMMIT")
+    version = env!("GUNBC_BUILD_IDENTITY")
 )]
 struct Cli {
     #[command(subcommand)]
@@ -874,12 +874,25 @@ mod tests {
     fn version_surface_reports_the_exact_source_commit() {
         assert_eq!(
             Cli::command().get_version(),
-            Some(env!("GUNBC_BUILD_COMMIT"))
+            Some(env!("GUNBC_BUILD_IDENTITY"))
         );
-        assert_eq!(env!("GUNBC_BUILD_COMMIT").len(), 40);
-        assert!(env!("GUNBC_BUILD_COMMIT")
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit()));
+        let identity = env!("GUNBC_BUILD_IDENTITY");
+        let commit = identity.strip_suffix("-dirty").unwrap_or(identity);
+        assert_eq!(commit.len(), 40);
+        assert!(commit.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        assert!(identity == commit || identity == format!("{commit}-dirty"));
+    }
+
+    #[test]
+    fn emitted_non_gunbc_cli_has_no_gunbc_build_environment_dependency() {
+        let rendered = v1_compiler::v1_compiler_emit_rust::emit_cli_struct(
+            std::rc::Rc::new(im::vector![]),
+            "user-program".to_string(),
+            "".to_string(),
+            "".to_string(),
+        );
+        assert!(!rendered.contains("GUNBC_BUILD_IDENTITY"));
+        assert!(!rendered.contains("version ="));
     }
 
     #[test]
