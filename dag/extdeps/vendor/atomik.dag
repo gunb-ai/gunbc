@@ -1,0 +1,47 @@
+module extdeps.vendor.atomik
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.atomikclimbingholds.com"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.atomik",
+      decl_name: "atomik_trading_name",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// There is deliberately NO `atomik: Vendor<Hardware>` declaration in this module.
+//
+// The first version had one, carrying legal_name: "Atomik Climbing Holds" with a note underneath
+// explaining that this is a storefront brand and that the registered entity is unknown. That
+// arrangement is the defect, not the fix. A field named legal_name that holds a value its own note
+// says is not a legal name will be read by every consumer as a legal name; the note travels only
+// to humans who open this file, while the value travels everywhere. It is the same shape as a
+// board row carrying OpenBmc beside a note admitting the firmware family was never observed.
+//
+// So the vendor identity is modeled at the strength it actually has. When a filing, invoice or
+// terms page establishes the registered company, a Vendor row can be added here and the trading
+// name becomes an alias of it. Until then no consumer can accidentally spend a legal entity that
+// nobody read, because there is none to spend.
+type VendorIdentityStanding
+  = RegisteredEntityObserved { legal_name: NonEmptyStr, authority: ExternalAuthority }
+  | TradingNameOnly { observed_name: NonEmptyStr, obligation: NonEmptyStr }
+
+data atomik_trading_name: VendorIdentityStanding = TradingNameOnly {
+  observed_name: "Atomik Climbing Holds",
+  obligation: "Read a filing, invoice, or terms-of-sale page to establish the registered company behind this storefront. A purchase order, a warranty claim and a liability question all need the registered entity, and none of them can be answered from a storefront banner.",
+}

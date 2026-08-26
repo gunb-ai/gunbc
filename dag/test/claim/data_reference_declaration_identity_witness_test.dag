@@ -32,8 +32,17 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 // consumer. Peeling at this site would collapse two declarations that share a leaf, which is
 // precisely the defect above.
 //
-// WHAT IS NOT ENROLLED HERE, and why, so the absence is a declared boundary rather than a gap
-// someone finds later. The repair also gives the AMBIGUOUS case its own located refusal: a
+// WHAT IS NOT ENROLLED HERE -- CLOSED, and the paragraph is kept rather than deleted because it
+// is the record of why the gap existed and of what closed it. The arm below is now ENROLLED, in
+// test.claim.data_reference_ambiguous_refusal_witness_test, and this file's four assertions are
+// unchanged. The trigger this paragraph named turned out to need no new harness: the invalid
+// program does not have to be a corpus member, because compile_dag_rust_emit_check compiles ONE
+// AUTHORED SOURCE against imports resolved from the tree -- so the two DECLARATIONS stay corpus
+// modules (the same alpha and beta below, valid on their own) and only the AMBIGUOUS REFERENCE
+// lives in a virtual entry, which whole-corpus emission never sees. What follows is the original
+// reasoning, correct on its own terms about a corpus-member fixture:
+//
+// The repair also gives the AMBIGUOUS case its own located refusal: a
 // module importing both halves sees two different declarations answering to `dri_model`, and
 // neither is correct, so it refuses by name instead of silently taking one. That refusal was
 // measured by execution --
@@ -45,9 +54,10 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 // located at the parameter, one hard diagnostic, emission refused -- but its fixture is an
 // INVALID program, and the only harness that can hold one here is a real corpus module, which
 // would make whole-corpus emission refuse forever over a test. So the fixture was measured and
-// removed rather than committed. NEXT-RUNG TRIGGER: a multi-module compile fixture that is not
-// a corpus member (the harness DESIGN already names as missing), at which point that arm
-// enrolls beside these four.
+// removed rather than committed. NEXT-RUNG TRIGGER (DISCHARGED): a multi-module compile fixture
+// that is not a corpus member -- discharged by the split above rather than by the whole-harness
+// DESIGN names as missing, which is still missing and still wanted for the cases where the
+// DECLARATIONS themselves must be invalid. This arm needed only the references to be.
 //
 // THE FIXTURES. Three real modules under dag/test/fixture: alpha and beta each declare
 // `data dri_model` with DIFFERENT values and each reference it as a workflow CLI default;

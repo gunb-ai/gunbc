@@ -1,0 +1,36 @@
+module tools.bare_name_fork_check
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.bare_name_fork_lens {
+  BareNameForkStanding,
+  BareNameForkVerdict,
+  bare_name_fork_standing,
+  bare_name_fork_verdict,
+  bare_name_fork_verdict_holds,
+  bare_name_fork_report
+}
+
+// THE ENTRY POINT. One subject module, invoked deliberately, never a tax on anything else.
+//
+// IT IS DELIBERATELY NOT WIRED INTO FLOOR WITNESS DISCOVERY. Two corpus-wide censuses were deleted
+// from there in August for precisely this cost shape: the unit of computation was the whole corpus
+// and the unit of fact was one module's declarations, so every consumer that wanted a witness roster
+// and nothing else paid for a whole-corpus module graph. This lens has the same shape, and putting it
+// where those were would repeat a cost the repository has already measured and rejected.
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/tools/bare_name_fork_check.dag --function check --arg subject=<rel path>
+//
+// The exit is a refusal on a fork AND on an unread subject: a lens whose only failure mode is
+// "found something" reads clean whenever it could not read at all.
+fn check(subject: String) -> ProcessExit {
+  let verdict = bare_name_fork_verdict(
+    standing: bare_name_fork_standing(subject_rel_path: subject, pool_roots: witness_layer_roots)
+  )
+  if bare_name_fork_verdict_holds(verdict: verdict) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: join(bare_name_fork_report(verdict: verdict), "\n"))
+  }
+}

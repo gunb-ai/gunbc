@@ -96,9 +96,34 @@ import v2.workflow.required_floor {
 // Stringing it during transport would have made the ledger strictly less informative than the
 // producer, which is the opposite of the obligation. `BudgetRefused` carries the existing
 // `ClaimSafetyOutcome` rather than a second spelling of it.
+// A PANIC IS NOT A RUNTIME ERROR, AND IT WAS THE ONE TERMINAL THIS VOCABULARY COULD NOT SPELL.
+// `RuntimeErrored` carries an `InterpError` the evaluator RAISED and the runner CAUGHT -- a value
+// the seed holds in hand. A host panic is the evaluator failing to produce any value at all, and
+// until it had an arm here the seed had nowhere to put it: measured 2026-08-26 by injecting a
+// panic into witness evaluation, the process aborted with exit 101, the identity got no verdict
+// and no row, and the terminal ledger, the expected-red roster join and the disposition TSV --
+// all written after the fold -- were never written. That is loud, so it is not a fail-open; it is
+// a terminal the artifact cannot describe, which is the reason it gets an arm rather than being
+// folded into `RuntimeErrored`. Folding it there would say the evaluator raised something it did
+// not, and the two have different remedies: a raised error is a witness or a subject defect, an
+// unwind is a defect in the host beneath both.
+//
+// AND THE CLAIMS BEHIND THE ONE THAT UNWOUND NEED A TERMINAL TOO, which is the half that is easy
+// to miss while opening the vocabulary for the panic itself. The line stops at the unwind
+// (DESIGN section 5's factory model: a deficit stops the line, and a fold that continued would
+// measure every later row in a process that unwound through an unknown place -- an unstated
+// precondition no row can express, which is the execution-provenance conflation this repository
+// keeps finding). Stopping leaves a population that was PLANNED AND NEVER ATTEMPTED, and that is
+// a third state: not a claim that ran, and not a claim the floor declined at admission. Without
+// its own arm, `stopped at claim 400 of 10439` and `10039 rows quietly missing from the ledger`
+// publish as the same artifact. `halted_by` carries the identity whose unwind stopped the line,
+// so the ledger names the cause beside every consequence rather than leaving a reader to infer it
+// from a gap.
 type ClaimAttemptTerminal
   = Returned { observation: ClaimObservation }
   | RuntimeErrored { message: String }
+  | Panicked { payload: String }
+  | NotAttempted { halted_by: String }
   | BudgetRefused { safety: ClaimSafetyOutcome }
   | HostToolUnresolved { name: String, probed: List<String> }
   | RouteGap { route: String }
@@ -270,6 +295,8 @@ type ClaimDisposition
   | HostToolUnresolvedBeforeVerdict
   | RouteGapBeforeVerdict
   | RuntimeErroredBeforeVerdict
+  | PanickedBeforeVerdict
+  | NotAttemptedAfterAbort
   | ObservationUnreadableBeforeVerdict
 
 // THE MODEL HAD THE DISTINCTION; THIS PROJECTION DROPPED IT. `ClaimSafetyOutcome` already
@@ -294,6 +321,8 @@ fn claim_disposition(row: ClaimTerminalRow) -> ClaimDisposition {
         CompletedWithinSafetyLimits => BudgetTerminalWithoutSafetyCause
       }
     RuntimeErrored { message: _ } => RuntimeErroredBeforeVerdict
+    Panicked { payload: _ } => PanickedBeforeVerdict
+    NotAttempted { halted_by: _ } => NotAttemptedAfterAbort
     HostToolUnresolved { name: _, probed: _ } => HostToolUnresolvedBeforeVerdict
     RouteGap { route: _ } => RouteGapBeforeVerdict
     Returned { observation: o } =>

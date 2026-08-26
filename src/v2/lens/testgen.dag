@@ -10,7 +10,8 @@ import v2.std.diagnostic {
   Diagnostic,
   Locus,
   NodeLocus,
-  PortLocus,
+  InvariantPortLocus,
+  SourcePortLocus,
   LocusAnchor,
   Extent,
   Correction,
@@ -965,14 +966,42 @@ fn witness_validity_locus_node(l: Locus) -> Outcome<Node> {
 },
         diagnostics: None
       }
-    PortLocus { anchor: a } =>
+    SourcePortLocus { anchor: a, file: f, extent: e } =>
+      bind_outcome(o: witness_validity_extent_node(e: e), f: fn(en) {
+        Accepted {
+          value: Node {
+            kind: TypeNode { connective: Conj },
+            children: [
+              Edge {
+                label: Named { name: ^witness_validity_locus_tag_source_port },
+                target: witness_validity_symbol_atom_node(s: a.at)
+              },
+              Edge {
+                label: Named { name: ^witness_validity_locus_source_port_file },
+                target: witness_validity_symbol_atom_node(s: f)
+              },
+              Edge {
+                label: Named { name: ^witness_validity_locus_source_port_extent },
+                target: en
+              }
+            ],
+            occurrence_id: SyntheticOccurrence
+},
+          diagnostics: None
+        }
+      })
+    InvariantPortLocus { anchor: a, invariant: invariant } =>
       Accepted {
         value: Node {
           kind: TypeNode { connective: Conj },
           children: [
             Edge {
-              label: Named { name: ^witness_validity_locus_tag_port },
+              label: Named { name: ^witness_validity_locus_tag_invariant_port },
               target: witness_validity_symbol_atom_node(s: a.at)
+            },
+            Edge {
+              label: Named { name: ^witness_validity_locus_invariant },
+              target: witness_validity_symbol_atom_node(s: invariant)
             }
           ],
           occurrence_id: SyntheticOccurrence
