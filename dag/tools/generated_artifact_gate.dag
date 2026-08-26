@@ -3,6 +3,7 @@ module tools.generated_artifact_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.ci_gate { gate_receipt_failure_detail }
 import gunbc.generated_artifact {
   GeneratedArtifact,
   committed_generated_artifacts,
@@ -38,7 +39,9 @@ func run_generated_artifact_drift_gate_body() -> ProcessExit {
       " — it is a GENERATED projection of its .dag authority; do not hand-edit, regenerate via main_wet on dag/tools/generated_artifact_gate.dag"
     )
   }
-  if !all_ok {
+  if all_ok {
+    record_generated_artifact_drift_gate_clean()
+  } else {
     record_generated_artifact_drift_gate_failure_detail(detail: reason)
   }
   return if all_ok {
@@ -56,7 +59,7 @@ func run_generated_artifact_drift_gate() -> ProcessExit {
   run_generated_artifact_drift_gate_body()
 }
 
-data generated_artifact_drift_failure_receipt_note: String = "The loudness half: the floor witness collapses this gate's ProcessExit to Bool via tools.ci_gates.exit_ok, so a generated-artifact drift red reported only returned Bool(false) without the located path. The gate body records the reason from its single observe_generated_artifact_population pass; the failure-receipt companion consumes that retained detail instead of re-observing."
+data generated_artifact_drift_failure_receipt_note: String = "The loudness half: the floor witness collapses this gate's ProcessExit to Bool via tools.ci_gates.exit_ok, so a generated-artifact drift red reported only returned Bool(false) without the located path. The gate body records the reason from its single observe_generated_artifact_population pass; the failure-receipt companion consumes that retained detail instead of re-observing. THE BODY NOW RECORDS THE CLEAN SIDE TOO, and that is the whole point of the change rather than a tidy-up. Before it, only the FAILING side wrote, so the global's unset state carried two facts at once -- the body ran and found no drift, and the body never ran in this process -- and the companion papered the second over with the fabricated prose 'gate body did not run in this process' handed back as if it were a drift detail. Nothing downstream could tell an unguarded run from a clean one, which is DESIGN's execution-provenance rule exactly: a stage that can prevent an observation from executing must participate in the observation carrier, so refused-before-observing cannot inhabit the same state as observed-nothing. Recording the clean side is what makes GateNotRun mean only the thing it says."
 
 fn generated_artifact_drift_failure_reason(exit: ProcessExit) -> String {
   match exit {
@@ -66,7 +69,7 @@ fn generated_artifact_drift_failure_reason(exit: ProcessExit) -> String {
 }
 
 func generated_artifact_drift_failure_receipt() -> String {
-  consume_generated_artifact_drift_gate_failure_detail()
+  gate_receipt_failure_detail(r: consume_generated_artifact_drift_gate_receipt())
 }
 
 func main_wet() -> ProcessExit {
