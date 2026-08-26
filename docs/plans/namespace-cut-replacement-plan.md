@@ -1,34 +1,6 @@
 # Namespace cut (NAMESPACE-Y): delete the import concept, resolve by containment
 
-> **CENSUS RECEIPT (2026-08-25).** Generation 3 executed steps 0-5 on
-> `integration/namespace-cut` (gunbc#8282), which is now frozen. **This plan is not
-> superseded as to its ROOT or its CENSUS** — its 2026-08-15 ruling called for
-> exactly what happened on that branch, and the defects it surfaced are the
-> concealment census running. (It IS superseded on ORDER; see the next
-> paragraph, which is the one an executor reads for sequencing.) What the census
-> returned, with a terminal shape and landing order per class:
-> [namespace-cut-postmortem-and-identity-program.md](namespace-cut-postmortem-and-identity-program.md).
-> **THE 2026-08-15 ORDERING IS SUPERSEDED ON ORDER (operator, 2026-08-25): the
-> grammar deletion is the LAST step, not the first.** The ROOT is unchanged —
-> grammar, parse surface and import-name universe are all still inside it, and
-> delete-first as a doctrine is untouched — but the order in which that root is
-> cut was reversed by a later ruling from the same authority, which also ruled
-> the cut "doesn't have to be atomic technically". Every sentence below that
-> states or implies grammar-first is read subject to this paragraph. Neither this
-> plan nor the postmortem may claim the two rulings agree; the postmortem's §7a
-> carries the reversal in full.
->
-> Two further amendments it argues for: the
-> census output lands on **main** rather than being fixed forward on the branch
-> (the branch will not merge, so fixes on it are throwaway work per DESIGN section 6),
-> and the re-cut runs in a temporary worktree rather than a maintained PR (222
-> merges of main into the branch, against roughly 380 commits of its own work).
-> The **target qualification spelling** — this plan's full qualification vs
-> namespace-resolution-design's shortest unique suffix, whose *sequencing* this
-> plan quarries but whose *terminal shapes* it keeps as evidence — is reopened
-> there as an operator decision.
-
-Doctrine: DESIGN §3 *replacement migrations cut over at the root* (delete-first; the deletion is the census — bounded by the three silent populations measured across the five parallel cuts, recorded once in [floor-cut-replacement-plan.md](floor-cut-replacement-plan.md) under *What the census does not do*; they apply to this cut identically). Vehicle: integration branch `integration/namespace-cut`, forked from main `64ebefa74`; standing cutover PR gunbc#8282 (draft — the one merge main receives). Executing session: crisp-crab-430; doctrine/coordination: tidy-pike-117. Operator ruling (2026-08-15): delete all the grammar/import up front, then solve each problem as it is revealed — expecting the deletion to also reveal problems import was standing up (the concealment census). **SUPERSEDED ON ORDER 2026-08-25 (see the receipt above): grammar deletion is last.** The concealment-census expectation survives unchanged — what moved is when the grammar is cut, not what cutting it reveals. **Step gating:** each major step closes only when the operator is satisfied with its performance — the executing session stops at the boundary and presents, never rolls into the next step on its own judgment; within a step, the fix-forward loop runs continuously. **Existing designs** covering this region (namespace-resolution-design, the layering repoint design, and kin) are quarry — terminal shapes and mechanisms are evidence; their sequencing never defers the deletion (operator ruling, 2026-08-15; the 2026-08-25 reordering above is the same authority moving the grammar step, not a quarried design deferring it — the distinction this clause exists to enforce).
+Doctrine: DESIGN §3 *replacement migrations cut over at the root* (delete-first; the deletion is the census — bounded by the three silent populations measured across the five parallel cuts, recorded once in [floor-cut-replacement-plan.md](floor-cut-replacement-plan.md) under *What the census does not do*; they apply to this cut identically). Vehicle: integration branch `integration/namespace-cut`, forked from main `64ebefa74`; standing cutover PR gunbc#8282 (draft — the one merge main receives). Executing session: crisp-crab-430; doctrine/coordination: tidy-pike-117. Operator ruling (2026-08-15): delete all the grammar/import up front, then solve each problem as it is revealed — expecting the deletion to also reveal problems import was standing up (the concealment census). **Step gating:** each major step closes only when the operator is satisfied with its performance — the executing session stops at the boundary and presents, never rolls into the next step on its own judgment; within a step, the fix-forward loop runs continuously. **Existing designs** covering this region (namespace-resolution-design, the layering repoint design, and kin) are quarry — terminal shapes and mechanisms are evidence; their sequencing never defers the deletion (operator ruling, 2026-08-15).
 
 ## The cut, stated in .dag terms
 
