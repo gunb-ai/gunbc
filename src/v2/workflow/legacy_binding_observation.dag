@@ -189,11 +189,39 @@ type LegacyObservationAdmission<O>
   = ObservationAdmitted { admitted: CompleteLegacyObservation<O> }
   | ObservationRefused { completeness: LegacyObservationCompleteness }
 
+// AND THE DENOMINATOR IS THE SUBJECT'S, WHICH THE FIRST CUT OF THIS BOUNDARY DID NOT ESTABLISH.
+//
+// The admission used to take `expected: List<Int>`. Nothing bound that list to the subject, so the
+// join was complete RELATIVE TO WHAT IT WAS HANDED: a caller passing a conveniently shortened
+// population, or one derived from a different transport, got LegacyObservationComplete and every
+// downstream law then ran over a denominator nobody had proven. That is the same wrong-population
+// class the laws themselves are about, one level up -- the law correct, the set unproven -- and it
+// is exactly what an approving review misread as already closed, which is why the parameter is gone
+// rather than documented. The admission now takes the transport and derives the population itself,
+// so the shortened list has no spelling at this boundary.
+//
+// WHAT THIS DOES NOT ESTABLISH, stated because the remaining half is the one a reader will assume:
+// that the transport handed in IS this subject's. `LegacyBindingObservationSubject` carries an
+// `occurrence_transport_digest`, and agreement between it and the transport is what would close it
+// -- but `std.occurrence_identity` declares no digest over `ValidatedOccurrenceTransport`, so the
+// comparison has nothing to compute. Minting that digest here would put a fact about the transport
+// outside the transport's own authority, which is the §3 violation this lane keeps finding
+// elsewhere. NEXT-RUNG TRIGGER for this half: a content digest over ValidatedOccurrenceTransport in
+// std.occurrence_identity, at which point the admission takes both and refuses on disagreement.
+//
+// legacy_observation_completeness stays public and stays list-taking on purpose. It is the pure
+// membership-and-multiplicity join, separately testable against hand-authored populations, and the
+// arms that exercise ITS laws should not have to author a transport to do so. The distinction is
+// that it answers a question, while the admission MINTS A CARRIER -- and only the minting boundary
+// needs the population's provenance.
 fn admit_complete_observation<O>(
   observation: LegacyBindingObservation<O>,
-  expected: List<Int>
+  transport: ValidatedOccurrenceTransport
 ) -> LegacyObservationAdmission<O> {
-  match legacy_observation_completeness(observation: observation, expected: expected) {
+  match legacy_observation_completeness(
+    observation: observation,
+    expected: expected_reference_occurrence_ids(transport: transport)
+  ) {
     LegacyObservationComplete => ObservationAdmitted {
       admitted: CompleteLegacyObservation { observation: observation }
     }

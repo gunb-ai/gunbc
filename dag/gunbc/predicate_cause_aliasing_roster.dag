@@ -1,0 +1,294 @@
+module gunbc.predicate_cause_aliasing_roster
+
+// THE CLASS-B REMAINDER, ENUMERATED BY IDENTITY.
+//
+// v2.std.subject_evidence names two mechanically different violations. Class A -- a coproduct with
+// distinct causes folded to one Bool, tell being a discarded payload on a non-pass arm -- was
+// enumerated and migrated by its own lane. This roster carries CLASS B: functions returning Bool that
+// conjoin host-effect success bits, where nothing is discarded and the predicate's truth set is simply
+// wider than the proposition it is cited to prove.
+//
+// WHY BY MODULE AND SYMBOL AND NOT BY COUNT. A merge-blocking assertion against a number measured on
+// the current tree is the oracle DESIGN section 5 forbids: automating its update collapses it to
+// measure() == measure(), and the manual update was the whole content. Rows are identities, so a
+// migrated site is removed by NAME and the roster can only shrink. The size of this list is prose and
+// is deliberately not asserted anywhere.
+//
+// WHAT IS NOT CLAIMED, AND IT IS THE MOST IMPORTANT SENTENCE HERE. Nothing checks these rows. There is
+// no lens reading whether a named symbol still conjoins success bits, so a row that has been migrated
+// and not removed, and a site newly authored in this shape, are both invisible. This roster sits at
+// MITIGATABLE -- review diligence -- and calling it a wall would be the rung inflation DESIGN section
+// 4b names as worse than sitting low.
+//
+// NEXT-RUNG TRIGGER, AND THE SEAM ALREADY EXISTS AND EXECUTES. The declaration index landed for the
+// cited-symbol wall inside the parse phase of the required run, deriving one record per module from a
+// parse that already happens. A reader over that index that flags a Bool-returning declaration
+// conjoining two or more host-effect success reads would make this class mechanically preventable at
+// that same seam, from each module's own source, with no corpus walk. This trigger is therefore
+// concrete rather than aspirational: what is missing is the reader, not the seam. Until it exists
+// these are obligations, not guarantees.
+//
+// THREE SITES ARE ABSENT FROM THIS LIST ON PURPOSE and are recorded so the absence is not read as
+// completeness. tools.self_host_curated_seed_linked_harness cssl_seed_linked_behavioral_receipt was
+// migrated by the class-A lane, whose repair replaced a single fault_run.success bit with an exact
+// marker observation. tools.emit_host_transport run_rust_smoke and run_python_smoke are migrated in a
+// separate change already in review, which lifted their comparison out of the shell transport first.
+
+import std.logic { Bool }
+import std.types { String }
+import v2.std.algebra { fold_list }
+import v2.std.collection { List }
+
+type AliasedPredicateSite {
+  module_path: String
+  symbol: String
+  proposition: String
+  aliased_causes: String
+}
+
+data class_b_remaining_sites: List<AliasedPredicateSite> = [
+  AliasedPredicateSite {
+    module_path: "gunbc.roadmap_dashboard_instance_apply",
+    symbol: "dashboard_source_anchor_matches",
+    proposition: "the dashboard source anchor matches its declared authority",
+    aliased_causes: "the anchor differs; the read that would have compared it never happened"
+  },
+  AliasedPredicateSite {
+    module_path: "test.claim.commit_writer_heal_admission_real_execution_witness_test",
+    symbol: "seed_witness_repository",
+    proposition: "a witness repository was seeded with the intended state",
+    aliased_causes: "six conjoined effects, any one of which renders as the same false"
+  },
+  AliasedPredicateSite {
+    module_path: "test.claim.commit_writer_heal_admission_real_execution_witness_test",
+    symbol: "with_witness_repo",
+    proposition: "the body ran against a prepared repository",
+    aliased_causes: "preparation failed; the body itself refused"
+  },
+  AliasedPredicateSite {
+    module_path: "test.claim.filesystem_write_closure_scale_witness",
+    symbol: "witness_filesystem_write_survives_name_collision",
+    proposition: "a write survives a colliding name",
+    aliased_causes: "the collision was mishandled; the write never ran"
+  },
+  AliasedPredicateSite {
+    module_path: "test.claim.filesystem_write_witness",
+    symbol: "witness_write_then_read_roundtrip",
+    proposition: "what was written reads back identically",
+    aliased_causes: "the round trip differed; either endpoint never executed"
+  },
+  AliasedPredicateSite {
+    module_path: "test.claim.filesystem_write_witness",
+    symbol: "witness_write_truncates",
+    proposition: "a write truncates existing content",
+    aliased_causes: "truncation did not happen; the setup write never happened"
+  },
+  AliasedPredicateSite {
+    module_path: "test.claim.generated_artifact_merge_driver_real_execution_witness_test",
+    symbol: "seed_witness_repository",
+    proposition: "a repository was seeded for the merge-driver receipt",
+    aliased_causes: "nine conjuncts over six effects, indistinguishable at the return type"
+  },
+  AliasedPredicateSite {
+    module_path: "test.claim.proc_self_cgroup_real_execution_witness_test",
+    symbol: "run_membership_assign_observed",
+    proposition: "cgroup membership was observed after assignment",
+    aliased_causes: "membership was wrong; the assignment or the observation did not run"
+  },
+  AliasedPredicateSite {
+    module_path: "test.claim.proc_self_cgroup_real_execution_witness_test",
+    symbol: "run_membership_assign_shell_fails",
+    proposition: "the assignment shell refuses as expected",
+    aliased_causes: "an expect-fail arm, so a harness failure SATISFIES it -- the fail-open shape"
+  },
+  AliasedPredicateSite {
+    module_path: "tools.build_step_transport",
+    symbol: "corruption_probe_with_content",
+    proposition: "a corrupted artifact is detected by the verification path",
+    aliased_causes: "detection failed; the probe was never written or never made executable"
+  },
+  AliasedPredicateSite {
+    module_path: "tools.build_step_transport",
+    symbol: "witness_readiness_absent_refuses_located",
+    proposition: "an absent artifact refuses with a located reason",
+    aliased_causes: "an expect-refusal arm; harness failure satisfies it"
+  },
+  AliasedPredicateSite {
+    module_path: "tools.build_step_transport",
+    symbol: "witness_readiness_empty_artifact_refuses_located",
+    proposition: "an empty artifact refuses with a located reason",
+    aliased_causes: "an expect-refusal arm; harness failure satisfies it"
+  },
+  AliasedPredicateSite {
+    module_path: "tools.build_step_transport",
+    symbol: "witness_readiness_nonempty_executable_is_ready",
+    proposition: "a nonempty executable artifact is ready",
+    aliased_causes: "readiness was wrong; the artifact was never staged"
+  },
+  AliasedPredicateSite {
+    module_path: "tools.build_step_transport",
+    symbol: "witness_readiness_not_executable_refuses_located",
+    proposition: "a non-executable artifact refuses with a located reason",
+    aliased_causes: "an expect-refusal arm; harness failure satisfies it"
+  },
+  AliasedPredicateSite {
+    module_path: "tools.dag_compile_clean_shard_transport",
+    symbol: "single_module_shard_compile_typed",
+    proposition: "a single-module shard compiles clean",
+    aliased_causes: "the module was unclean; the compile never ran"
+  },
+  AliasedPredicateSite {
+    module_path: "tools.dag_compile_clean_transport",
+    symbol: "dcc_perturb_compile_with_args",
+    proposition: "a perturbed compile refuses",
+    aliased_causes: "an expect-refusal arm; harness failure satisfies it"
+  },
+  AliasedPredicateSite {
+    module_path: "tools.direct_rust_door_transport",
+    symbol: "run_direct_rust_door_emit_write_compile_smoke",
+    proposition: "the emitted artifact writes and compiles",
+    aliased_causes: "class A and class B in one function: a Rejected arm discards its diagnostics INSIDE a success conjunction"
+  },
+  AliasedPredicateSite {
+    module_path: "v2.workflow.compiler_closure_ingest_transport",
+    symbol: "run_compiler_closure_ingest_gate_ready",
+    proposition: "the closure-ingest claims hold",
+    aliased_causes: "nested guards already separate the causes in control flow, and every else-arm returns a bare false"
+  }
+]
+
+// THIS MODULE HAS A CONSUMER, AND THAT IS NOT A FORMALITY. An unimported carrier is typechecked by no
+// closure and asserted by nothing -- the orphan shape where a module is CITED as an authority while
+// nothing compiles it. A roster of outstanding obligations is exactly the kind of file that rots that
+// way, so it carries its own witness.
+//
+// The assertion is deliberately narrow: every row names a module, a symbol and a proposition, and the
+// roster is not empty. It does NOT check that the named sites still alias -- nothing does, which is
+// the gap declared at the top of this file. Emptying the roster to make an obligation disappear goes
+// red here; migrating a site and deleting its row does not, which is the direction the contract is
+// supposed to allow.
+fn aliased_predicate_site_is_named(row: AliasedPredicateSite) -> Bool {
+  row.module_path != "" && row.symbol != "" && row.proposition != "" && row.aliased_causes != ""
+}
+
+test fn every_roster_row_names_its_site() -> Bool {
+  fold_list(
+    xs: class_b_remaining_sites,
+    empty: true,
+    cons: fn(ok, row) { ok && aliased_predicate_site_is_named(row: row) }
+  )
+}
+
+test fn the_roster_is_not_empty_while_the_class_is_open() -> Bool {
+  fold_list(xs: class_b_remaining_sites, empty: false, cons: fn(_acc, _row) { true })
+}
+
+
+// ================================================================================================
+// THE NEGATIVE-CONTROL CENSUS, WHICH IS A DIFFERENT QUERY AND NOT A SUBSET OF THE ONE ABOVE.
+//
+// A search for PREDICATE CAUSE ALIASING and a search for EXPECTING-RED ARMS ASSERTING A BARE FALSE
+// return different populations. An arm can be perfectly unaliased along its intended path and still
+// have this defect, because the aliasing enters through the BENCH rather than through the predicate.
+// The rows above came from the aliasing query; these came from a second, separate one, and the
+// distinction is recorded because a reader who assumes one covers the other will under-search exactly
+// the more dangerous half.
+//
+// WHY THE MORE DANGEROUS HALF. In a positive arm a broken bench makes the assertion FAIL: loud,
+// visible, someone investigates. In a NEGATIVE arm the polarity inverts and a broken bench makes it
+// SUCCEED. The defect is then not merely undetected, it is actively reported as coverage, and it stays
+// silent for exactly as long as the bench stays broken. tools.namespace_import_closure_behavioral_
+// transport was found this way -- its red arm asserted `red_arm == false`, which a failed mktemp, a
+// failed fixture write, a failed out-dir mkdir, or a gunbc that never spawned all satisfied.
+//
+// THE GENERAL RULE, stated so the next author gets it right by construction rather than by finding
+// this list: A NEGATIVE CONTROL MUST ASSERT THAT THE MECHANISM PRODUCED A VERDICT, AND SEPARATELY THAT
+// THE VERDICT WAS THE REFUSAL. Never that some Bool is false. v2.std.subject_evidence supplies both
+// halves -- subject_evidence_produced_a_verdict and a licensing predicate that declines -- and the
+// carrier's own note says why the second is deliberately not the negation of the first.
+//
+// SCOPE OF THIS CENSUS, stated because an unqualified list reads as the class. It covers discovered
+// `test fn` arms reaching a host effect whose assertion is a bare equality against false or a bare
+// negation, with no companion verdict-production assertion. It does NOT cover the same shape inside
+// ordinary transport functions -- four such sites are already carried as rows above -- and it does not
+// cover an arm whose bare falsity is written some third way. Being a floor rather than a census is the
+// same limit the list above carries and for the same reason: nothing checks it.
+type NegativeControlSite {
+  module_path: String
+  symbol: String
+}
+
+data bare_false_negative_controls: List<NegativeControlSite> = [
+  NegativeControlSite {
+    module_path: "test.claim.codex_app_server_press_wet_witness_test",
+    symbol: "press_account_trip_yields_standing_or_typed_refusal_never_turn_started_holds"
+  },
+  NegativeControlSite {
+    module_path: "test.claim.codex_package_delivery_wet_witness_test",
+    symbol: "acquire_required_codex_tarball_sha512_matches_lock"
+  },
+  NegativeControlSite {
+    module_path: "test.claim.codex_package_delivery_wet_witness_test",
+    symbol: "acquire_exact_target_pair_admits_wrapper_and_platform"
+  },
+  NegativeControlSite {
+    module_path: "test.claim.codex_supervised_turn_wet_witness_test",
+    symbol: "wet_acquire_wrapper_artifact_only"
+  },
+  NegativeControlSite {
+    module_path: "test.claim.codex_supervised_turn_wet_witness_test",
+    symbol: "wet_acquire_platform_artifact_only"
+  },
+  NegativeControlSite {
+    module_path: "test.claim.codex_supervised_turn_wet_witness_test",
+    symbol: "supervised_turn_materialized_bundle_writes_terminal_receipt"
+  },
+  NegativeControlSite {
+    module_path: "test.claim.http_client_get_real_execution_witness_test",
+    symbol: "http_client_get_missing_target_red_control_by_real_execution"
+  },
+  NegativeControlSite {
+    module_path: "test.claim.live_deploy.emit_test",
+    symbol: "fleet_converge_timer_not_installed_by_deploy_apply"
+  },
+  NegativeControlSite {
+    module_path: "test.claim.run_verdict_exit_status_witness_test",
+    symbol: "run_success_verdict_reaches_zero_exit"
+  },
+  NegativeControlSite {
+    module_path: "test.claim.typed_witness_invocation_test",
+    symbol: "typed_is_executable_negative_red_control_holds"
+  },
+  NegativeControlSite {
+    module_path: "test.claim.typed_witness_invocation_test",
+    symbol: "typed_witness_bin_run_nonzero_red_control_holds"
+  },
+  NegativeControlSite {
+    module_path: "test.claim.typed_witness_invocation_test",
+    symbol: "typed_witness_bin_run_loud_failure_red_control_holds"
+  },
+  NegativeControlSite {
+    module_path: "test.claim.typed_witness_invocation_test",
+    symbol: "typed_is_nonempty_zero_byte_red_control_holds"
+  },
+  NegativeControlSite {
+    module_path: "test.claim.typed_witness_invocation_test",
+    symbol: "typed_claim_batch_pooled_run_red_control_holds"
+  },
+  NegativeControlSite {
+    module_path: "test.claim.typed_witness_invocation_test",
+    symbol: "typed_claim_executor_verify_build_artifacts_red_control_holds"
+  }
+]
+
+fn negative_control_site_is_named(row: NegativeControlSite) -> Bool {
+  row.module_path != "" && row.symbol != ""
+}
+
+test fn every_negative_control_row_names_its_site() -> Bool {
+  fold_list(
+    xs: bare_false_negative_controls,
+    empty: true,
+    cons: fn(ok, row) { ok && negative_control_site_is_named(row: row) }
+  )
+}
