@@ -29,6 +29,7 @@ import extdeps.uri { Uri }
 import gunbc.bmc_intent {
   BmcControlPlaneIntent,
 }
+import gunbc.bmc_fan_alignment_standing { HostBmcFanAlignmentStanding }
 import gunbc.fleet_fan_tach_expectation {
   expected_tach_headers,
   host_fan_tach_expectation,
@@ -51,7 +52,7 @@ import gunbc.bmc_fan_projection {
   BmcFanProjectionLiveDigestMatches,
   BmcFanProjectionLiveDigestRefused,
   bmc_fan_policy_drift_assessment,
-  fleet_bmc_fan_policy_projection_apply_suitability,
+  bmc_fan_policy_projection_apply_suitability,
   bmc_fan_policy_projection_durability_admission,
   bmc_fan_policy_projection_durability_capability,
   bmc_fan_policy_projection_live_digest_suitability,
@@ -391,6 +392,7 @@ fn bmc_fan_config_persistence_apply_suitability(
 }
 
 fn bmc_fan_policy_apply_suitability(
+  standings: List<HostBmcFanAlignmentStanding>,
   host: HostIdentity,
   board: BaseboardModel,
   intent: BmcControlPlaneIntent,
@@ -417,12 +419,13 @@ fn bmc_fan_policy_apply_suitability(
         cause: FanPolicyInstalledTachTopologyDiffersFromIntent,
       }
     } else {
-      match fleet_bmc_fan_policy_projection_apply_suitability(
+      match bmc_fan_policy_projection_apply_suitability(
         capability: projection,
         board: board,
         desired_curve: intent.fan_policy.curve,
         observation: observation,
         host: host,
+        standings: standings,
       ) {
         BmcFanProjectionApplyRefused { cause: cause } =>
           FanPolicySuitabilityRefused {
@@ -788,6 +791,7 @@ fn bmc_fan_firmware_blocks_realizer(
 }
 
 fn bmc_fan_policy_qualify_with_projection(
+  standings: List<HostBmcFanAlignmentStanding>,
   host: HostIdentity,
   board: BaseboardModel,
   intent: BmcControlPlaneIntent,
@@ -809,6 +813,7 @@ fn bmc_fan_policy_qualify_with_projection(
                   }
                 Present { value: projector } =>
                   match bmc_fan_policy_apply_suitability(
+                    standings: standings,
                     host: host,
                     board: board,
                     intent: intent,
@@ -884,7 +889,19 @@ fn bmc_fan_policy_qualify_with_projection(
               }
 }
 
+// THE ROSTER IS A PARAMETER HERE AND CLOSED AT THE WET EDGE, which is a correction to where I
+// first put the closure. Closing it inside the projection seam meant every fixture exercising a
+// DOWNSTREAM distinction -- durability linkage, topology drift, live digest -- was answered by
+// the alignment gate instead, because srv4's real standing refuses. Nine such tests went red, and
+// they were not wrong: the pipeline's order had changed under them and they could no longer reach
+// the subject they were written for.
+//
+// A confinement belongs at the boundary where production actually enters, not mid-pipeline where
+// it also excludes every fixture. bmc_fan_converge_with_credential and
+// bmc_fan_observe_only_with_credential pass the fleet roster and take no roster argument
+// themselves; a fixture supplies its own and reaches the arm it is testing.
 fn bmc_fan_policy_classification(
+  standings: List<HostBmcFanAlignmentStanding>,
   host: HostIdentity,
   board: BaseboardModel,
   intent: BmcControlPlaneIntent,
@@ -918,6 +935,7 @@ fn bmc_fan_policy_classification(
         }
       } else {
         bmc_fan_policy_qualify_with_projection(
+          standings: standings,
           host: host,
           board: board,
           intent: intent,

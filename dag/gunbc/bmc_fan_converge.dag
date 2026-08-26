@@ -102,6 +102,7 @@ import gunbc.auth.secret_ref_credential {
   SecretCredentialWireDecodeRefused,
   fetch_secret_ref_credential,
 }
+import gunbc.bmc_fan_alignment_standing { fleet_bmc_fan_alignment_standings }
 import gunbc.bmc_converge {
   BmcFanPolicyApplyPlan,
   bmc_fan_policy_classification,
@@ -1523,6 +1524,7 @@ fn bmc_fan_observe_only_with_credential(
       exit_failure(reason: reason)
     BmcFanLiveObserved { observation: observed } => {
       let classified = bmc_fan_policy_classification(
+        standings: fleet_bmc_fan_alignment_standings,
         host: target.host.identity,
         board: target.board,
         intent: fleet_bmc_valid_state,
@@ -1598,6 +1600,7 @@ fn bmc_fan_converge_with_credential(
       exit_failure(reason: reason)
     BmcFanLiveObserved { observation: observed } => {
       let classified = bmc_fan_policy_classification(
+        standings: fleet_bmc_fan_alignment_standings,
         host: target.host.identity,
         board: target.board,
         intent: fleet_bmc_valid_state,
