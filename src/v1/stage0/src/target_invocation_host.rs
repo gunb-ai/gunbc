@@ -163,8 +163,7 @@ pub enum TargetProducer {
 }
 
 /// `gunbc.instrument_targets` `instrument_targets` / `instrument_bindings`, as the pairs the
-/// index is built from. One entry, deliberately: the seam is generic, so the remaining three
-/// instruments are rows rather than a second lane's worth of dispatch.
+/// index is built from. All four modeled instruments are rows on the same generic seam.
 /// `gunbc.instrument_targets` `heads_reading_differential_source_roots`. The subject is the
 /// instrument's own fact and not a CLI option, so an invocation cannot quietly measure a different
 /// corpus while reporting this target's standing.

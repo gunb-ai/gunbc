@@ -31,10 +31,9 @@ import std.types { String, Bool }
 //
 // `gunbc.target_binding` declares the carriers and the witness beside it authors examples; neither
 // declares an addressable target that exists in this repository. This module does, and the
-// population is deliberately ONE. Landing four instruments at once would have made a first failure
-// ambiguous between dispatch, subject reachability and output policy; the seam it proves is
-// generic, so the remaining three are rows added here — a `BuildTarget`, a `TargetBinding`, and one
-// classifier — and never an edit to `gunbc.target_invocation`.
+// population began with one target so the dispatch seam could be proven independently. The three
+// behavioral instruments now complete the already-modeled producer population as ordinary target
+// and binding rows; `gunbc.target_invocation` remains unchanged.
 //
 // THE INSTRUMENTS ARE OUTSIDE `//:required` AND NOTHING HERE ADDS THEM TO IT. That is not a
 // promise kept by diligence: `//:required`'s dependencies are DERIVED by
