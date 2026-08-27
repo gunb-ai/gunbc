@@ -189,15 +189,82 @@ pub fn cargo_verdict_stderr_tail(verdict: &CargoVerdict) -> &str {
 /// fault` is unwritable here rather than merely unselected -- construction over validation, and
 /// there is no fallback arm to accept the bad case (DESIGN 5). Its absence is a typed refusal
 /// naming the entry (`MutationSubjectRefusal`), never a silent substitution.
-#[derive(Debug, Clone)]
-pub struct MutationSubject {
-    /// PRIVATE so that the only route to a subject is `mutation_subject`, which derives this
-    /// from the entry. A public field would re-open the substitution one struct literal away.
-    rust_module: String,
+///
+/// THE PRIVACY BOUNDARY IS NAMED, BECAUSE RUST'S IS MODULE-SCOPED AND NOT FUNCTION-SCOPED. A
+/// private field on a struct declared beside its constructor is a wall against OTHER modules and
+/// mere convention within this one -- the sole-constructor finding this repository already
+/// records, which is that such a wall governs WHO constructs and says nothing inside the
+/// declaring module. So the carrier and its one constructor live in the submodule below and
+/// everything else in this file is OUTSIDE that boundary: `MutationSubject { rust_module: ... }`
+/// written anywhere else here does not compile, rather than compiling and being discouraged by a
+/// comment. That is the difference between structurally impossible and review diligence, and it
+/// is one `mod` block.
+pub use entry_own_subject::{mutation_subject, MutationSubject};
+
+mod entry_own_subject {
+    use super::MutationSubjectRefusal;
+    use std::path::Path;
+
+    #[derive(Debug, Clone)]
+    pub struct MutationSubject {
+        /// PRIVATE, and the module wrapping it is what makes that mean something: the only route
+        /// to a value of this type from anywhere in the file is `mutation_subject`, which derives
+        /// the name from the ENTRY and cannot be handed any other module.
+        rust_module: String,
+    }
+
+    impl MutationSubject {
+        pub fn rust_module(&self) -> &str {
+            self.rust_module.as_str()
+        }
+    }
+
+    /// THE FAULT GOES INTO THE ENTRY'S OWN EMITTED MODULE, OR NOWHERE.
+    ///
+    /// There is no member-preferring arm and no fallback: the module name is DERIVED from the
+    /// entry, so the selector has nothing to select. What it decides is only whether that one
+    /// module is present, and absence is returned as a typed refusal naming the entry rather than
+    /// substituted for. The substitution is what this function used to do, and it is what made
+    /// every verdict on the roster a statement about the shared core (see `MutationSubject`).
+    pub fn mutation_subject(
+        crate_dir: &Path,
+        entry_module: &str,
+    ) -> Result<MutationSubject, MutationSubjectRefusal> {
+        let lib_rs = crate_dir.join("src/lib.rs");
+        let declared = match super::closure_modules(&lib_rs) {
+            Ok(modules) => modules,
+            Err(detail) => {
+                return Err(MutationSubjectRefusal::ClosureManifestUnreadable {
+                    lib_rs: lib_rs.display().to_string(),
+                    detail,
+                })
+            }
+        };
+        // DECLARED AND WRITTEN ARE TWO FACTS AND BOTH ARE REQUIRED. A `pub mod` line with no file
+        // behind it does not compile, and a file no `pub mod` line reaches is not in the closure
+        // at all -- so checking only one of them would admit a subject that is not actually part
+        // of what cargo compiled, and the fault would then prove nothing about the closure.
+        if !declared.iter().any(|m| m == entry_module) {
+            return Err(MutationSubjectRefusal::EntryModuleNotDeclared {
+                entry_module: entry_module.to_string(),
+                declared,
+            });
+        }
+        let path = crate_dir.join(format!("src/{entry_module}.rs"));
+        if !path.is_file() {
+            return Err(MutationSubjectRefusal::EntryModuleFileMissing {
+                entry_module: entry_module.to_string(),
+                path: path.display().to_string(),
+            });
+        }
+        Ok(MutationSubject {
+            rust_module: entry_module.to_string(),
+        })
+    }
 }
 
 pub fn mutation_subject_rust_module(subject: &MutationSubject) -> &str {
-    subject.rust_module.as_str()
+    subject.rust_module()
 }
 
 /// The SUBJECT KIND, printed rather than inferred. There is one kind and the log still says it,
@@ -589,49 +656,6 @@ fn closure_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
                 .map(|m| m.trim().to_string())
         })
         .collect())
-}
-
-/// THE FAULT GOES INTO THE ENTRY'S OWN EMITTED MODULE, OR NOWHERE.
-///
-/// There is no member-preferring arm and no fallback: the module name is DERIVED from the entry,
-/// so the selector has nothing to select. What it decides is only whether that one module is
-/// present, and absence is returned as a typed refusal naming the entry rather than substituted
-/// for. The substitution is what this function used to do, and it is what made every verdict on
-/// the roster a statement about the shared core (see `MutationSubject`).
-fn mutation_subject(
-    crate_dir: &Path,
-    entry_module: &str,
-) -> Result<MutationSubject, MutationSubjectRefusal> {
-    let lib_rs = crate_dir.join("src/lib.rs");
-    let declared = match closure_modules(&lib_rs) {
-        Ok(modules) => modules,
-        Err(detail) => {
-            return Err(MutationSubjectRefusal::ClosureManifestUnreadable {
-                lib_rs: lib_rs.display().to_string(),
-                detail,
-            })
-        }
-    };
-    // DECLARED AND WRITTEN ARE TWO FACTS AND BOTH ARE REQUIRED. A `pub mod` line with no file
-    // behind it does not compile, and a file no `pub mod` line reaches is not in the closure at
-    // all -- so checking only one of them would admit a subject that is not actually part of
-    // what cargo compiled, and the fault would then prove nothing about the emitted closure.
-    if !declared.iter().any(|m| m == entry_module) {
-        return Err(MutationSubjectRefusal::EntryModuleNotDeclared {
-            entry_module: entry_module.to_string(),
-            declared,
-        });
-    }
-    let path = crate_dir.join(format!("src/{entry_module}.rs"));
-    if !path.is_file() {
-        return Err(MutationSubjectRefusal::EntryModuleFileMissing {
-            entry_module: entry_module.to_string(),
-            path: path.display().to_string(),
-        });
-    }
-    Ok(MutationSubject {
-        rust_module: entry_module.to_string(),
-    })
 }
 
 /// THE DISCRIMINATING RED, ESTABLISHED BY MUTATION AND RESTORED BEFORE THE PHASE REPORTS.
@@ -1487,18 +1511,27 @@ mod tests {
                 emit_compile_outcome_summary(&outcome)
             );
         }
+        // THE SUBJECT IS OBTAINED THE ONLY WAY IT CAN BE: through `mutation_subject`, over a
+        // real tree. An earlier revision of this test wrote `MutationSubject { rust_module: .. }`
+        // directly, and moving the carrier behind a privacy boundary turned that line into a
+        // COMPILE ERROR (`E0451: field rust_module is private`) rather than a comment nobody
+        // reads. That refusal is the executed evidence that the wall is structural inside this
+        // file and not merely conventional -- Rust privacy is module-scoped, so a private field
+        // declared beside its constructor would have left this literal compiling.
+        let dir = probe_tree("passing_subject", "pub mod std_logic;\n", &["std_logic"]);
+        let subject = mutation_subject(&dir, "std_logic").expect("the entry's own module");
         let discriminated = EmitCompileOutcome::Measured {
             entry: "e.dag".to_string(),
             crate_dir: "/tmp/x".to_string(),
             emitted_files: 1,
             baseline: green,
             mutation: MutationVerdict::Discriminated {
-                subject: MutationSubject {
-                    rust_module: "std_logic".to_string(),
-                },
+                subject,
                 red_line: "error[E0308]".to_string(),
             },
         };
         assert!(emit_compile_outcome_passed(&discriminated));
+        assert!(emit_compile_outcome_summary(&discriminated).contains("subject=EntryOwnModule"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

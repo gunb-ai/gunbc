@@ -6,7 +6,6 @@ use std::process::{Command, ExitCode};
 use std::rc::Rc;
 use v1_compiler::cli_run::namespace_wave_admission::git_stdout;
 #[cfg(test)]
-use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::PhaseProfile;
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
