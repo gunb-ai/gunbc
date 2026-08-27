@@ -31,6 +31,59 @@ data effect_reach_host_sink_callee_symbols_v0: List<String> = [
   "Exec.Run"
 ]
 
+// THE DERIVATION'S DETECTION CEILING, declared here beside the roster it is computed from
+// rather than in the consumer that reads it, because the ceiling is a property of THIS
+// classification and not of any one caller. Filed as the DESIGN section 4b row the ladder
+// requires of a newly discovered error class.
+//
+// INVALID STATE: an entry whose evaluation reads the live tree is classified LocalEffect, so
+// affected-set selection may predict-skip it on a diff that does not bound its inputs -- the
+// empty-observation narrow (a witness silently uncovered, not merely a run made expensive).
+//
+// DISTINGUISHING FACT: host-reading is decided by conjoining TWO INDEPENDENT EXISTENTIALS over
+// the import closure -- some module declares a repository path literal, AND some module carries
+// a host-sink call shape from effect_reach_host_sink_callee_symbols_v0. Neither term witnesses
+// the other. A closure that performs a real read and names no path derives NOT-live, and two
+// modules that never call each other supply the two halves between them. Two further terms
+// bound it independently of the conjunction: the roster carries no *_facts_live, Mktemp, Write
+// or IsExecutable symbol, and the closure is built from import adjacency, so a module that
+// reaches its dependencies by bare-name census sees only its own text.
+//
+// RUNG FOUND AT: mitigatable. The failure is contained because the declared answer is taken
+// FIRST (v1_compiler.cli_run reads_live_tree_effective) and the derivation only ever runs on a
+// row that already claims SubstrateInputsOnly.
+//
+// CEILING WITH REASON: this classification cannot climb past mitigatable, because file-grain
+// text over an import closure is not the question -- whether a host effect is REACHED from a
+// witness body is a call-reachability fact, and no roster of substrings decides it.
+//
+// NEXT-RUNG TRIGGER, NAMING THE CAPABILITY AND NOT AN ARTIFACT: call-reachability-grade
+// classification of live reads -- an fn-arrow DependencyView over lowered bodies that answers,
+// per witness function, whether a host-effect operation is reachable from it. That capability
+// is planned at docs/plans/live-read-witness-classification-design.md, and a partial instrument
+// contributing to it does not retire this row; the row retires when a witness function's live
+// read is decided by reachability rather than by text.
+//
+// EVIDENCE, EXECUTING: v1_compiler.cli_run
+// effect_reach_conjunction_loses_a_closure_that_reads_with_no_path_literal, a planted two-entry
+// pair differing by one import edge whose only content is a path-literal row. The positive
+// control derives host-reading; the sink-only entry does not. The pair is authored rather than
+// measured over the corpus so that the red is a property of the derivation and cannot be
+// dissolved by corpus drift.
+//
+// AND THE ROW STATES THAT THE CLASS IS CURRENTLY UNENFORCED, which is a different and larger
+// fact than any property of this classifier. The mitigation above bounds what happens when the
+// derivation is CONSULTED; nothing at all bounds a row that declares SubstrateInputsOnly
+// falsely, because the cadence that would have caught it no longer runs. A reader who takes
+// this derivation as the backstop has read a quarter of one.
+//
+// WHAT THIS ROW DOES NOT SAY: that the derivation should be widened. Under-approximation here is
+// a declared fail-open on the SKIP axis, where a missed live reader costs a witness that runs
+// when it could have been skipped. What the ceiling forbids is the OTHER use -- treating the
+// derivation as a substitute for the authored disposition, which v2.std.live_tree's own note
+// now records as refuted rather than open.
+data effect_reach_detection_ceiling: String = "Closure-grain text classification: host-reading requires a repository path literal and a host-sink call shape to occur INDEPENDENTLY in one import closure, so a real read with no path literal derives LocalEffect and two modules that never call each other supply the two halves between them. A second bound is independent of the conjunction and no repair to either term raises it: the closure is built from IMPORT adjacency, so a module that reaches its dependencies by bare-name census reach has an empty closure and the classification can only ever see the entry file's own text. Rung mitigatable; ceiling mitigatable because reachability is not decidable from substrings over a file set; next-rung trigger is call-reachability-grade live-read classification per witness function (docs/plans/live-read-witness-classification-design.md). Executing evidence: v1_compiler.cli_run effect_reach_conjunction_loses_a_closure_that_reads_with_no_path_literal over dag/test/fixture/effect_reach_conjunction. THE CLASS HAS NO ENFORCING CONSUMER TODAY, and that is the fact a reader most needs from this row: a witness entry may declare SubstrateInputsOnly while reading live state, v2.std.live_tree named the nightly affected-set falsifier as what would catch it, and that cadence was deleted by the 2026-08-15 floor cut and sits on DESIGN's unguarded list awaiting its own re-add. THIS DERIVATION IS NOT THAT BACKSTOP. It is consulted only for a row already claiming SubstrateInputsOnly, and on the population where ground truth exists it agrees with a quarter of the authors who declared a live read, so it would not reliably contradict a false row. A lying declaration therefore buys a predict-skip that nothing observes; this row exists so the next reader does not mistake a partial classifier for the wall."
+
 data effect_reach_gunbc_entry_argv_markers_v0: List<String> = [
   "--entry"
 ]
