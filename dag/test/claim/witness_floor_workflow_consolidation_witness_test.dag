@@ -5,6 +5,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id }
 import gunbc.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
 import gunbc.required_lanes_gate { required_lanes_gate_unrenderable_stmts }
+import gunbc.fleet_converge_workflow { fleet_converge_workflow }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
 import v2.std.diagnostic { Outcome }
 import extdeps.languages.yaml.gha_workflow { pr_activity_string }
@@ -178,6 +179,30 @@ test fn w_the_required_workflow_carries_both_lanes() -> Bool {
         && string_contains(s: yml, pattern: concat("  ", concat(witness_floor_workflow_job_id, ":")))
     WitnessFloorGenerationRefused { reason: _ } => false
   }
+}
+
+// A REQUIRED CONTEXT IS A JOB NAME AND NOTHING ELSE, SO THE LANE NAMES MUST BE UNIQUE ACROSS
+// EVERY WORKFLOW THIS REPOSITORY EMITS.
+//
+// GitHub matches a required status check by CONTEXT, and the context is the job's name --
+// which workflow the job belongs to is not part of it. So two workflows publishing a job
+// called `build` publish ONE context name, and a rule naming it is answered by whichever
+// green arrives. That is why the lane jobs cannot be enforced directly under bare lane words,
+// and it is not hypothetical: `gunbc.fleet_converge_workflow` declares a job whose id is
+// exactly `build`, which is the collision this row measures.
+//
+// THE JOIN IS AGAINST THE OTHER WORKFLOW'S OWN AUTHORITY rather than a spelled string, so the
+// row keeps discriminating if that workflow renames its jobs. The RED is authorable in the
+// direction that matters: restoring `build_lane_job_id` to the lane word collides with
+// fleet-converge's `build` again, and this row goes red where nothing else in this file would
+// notice -- every other clause here reads the job ids from their declarations, so all of them
+// stay green under a rename that reintroduces the collision.
+test fn w_RED_lane_contexts_collide_with_no_other_emitted_workflow() -> Bool {
+  !any(fleet_converge_workflow.jobs, j => j.id == build_lane_job_id)
+    && !any(fleet_converge_workflow.jobs, j => j.id == floor_lane_job_id)
+    && build_lane_job_id != floor_lane_job_id
+    && build_lane_job_id != witness_floor_workflow_job_id
+    && floor_lane_job_id != witness_floor_workflow_job_id
 }
 
 // NEITHER LANE WAITS ON THE OTHER, WHICH IS THE ENTIRE CONTENT OF "PARALLEL" -- and the

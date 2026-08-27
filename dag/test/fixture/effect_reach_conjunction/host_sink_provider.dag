@@ -1,0 +1,10 @@
+module test.fixture.effect_reach_conjunction.host_sink_provider
+
+// The host-effect half of the fixture, and it carries no path literal of its own. The two
+// terms the derivation conjoins are deliberately split across separate modules here because
+// that is how they sit in the live corpus: the operation that reaches the tree and the row
+// that names a path are rarely authored in one file.
+fn effect_reach_fixture_reads_a_host_path(target: String) -> Bool {
+  let outcome = Filesystem.Read(path: target)
+  outcome.success
+}

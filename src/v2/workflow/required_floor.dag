@@ -72,6 +72,71 @@ type RequiredFloorDisposition =
   | DeclinedLongModule { matched_prefix: String }
   | DeclinedFixtureMember { matched_prefix: String }
 
+// ROSTER GROWTH IS BUDGET-BOUND AT THIS ADMISSION AUTHORITY.
+//
+// The required witnesses lane has no measured memory margin on the runner shape it consumes:
+// main reaches the runner's memory limiter, and gunbc#8982's unchanged-head rerun was cancelled
+// under sustained reclaim pressure after admission added a selected population. This is not a
+// correctness veto on those identities and it is not a numeric roster ceiling. A new identity
+// needs a named payment before admission grows; whether the payment is runner capacity, bounded
+// result retention, or staged growth is deliberately left undecided here.
+//
+// THE ATTRIBUTION IS CONFOUNDED, AND THE TYPE KEEPS IT THAT WAY. The observed change both grew
+// the roster and admitted the former declined-live population. That population was selected
+// because it reads the live tree and is not established to have the retention shape of an
+// average already-routed row. The receipt therefore cannot answer whether count alone reaches
+// the limiter or whether the selected population retains disproportionately. A proposal may not
+// turn either hypothesis into policy without a new instrument that separates them.
+//
+// THE INSTRUMENT IS NAMED, NOT TRANSCRIBED. Re-run the pull-request witnesses lane named below
+// and read its cgroup heartbeat and terminal ledger. No RSS value, pressure counter, partial
+// outcome count, or row ceiling is copied into this carrier. In particular, a cancelled fold's
+// visible outcomes are lower bounds from a truncated fold, never a terminal ledger.
+type RequiredFloorGrowthPayment =
+    MoreRunnerMemory
+  | BoundedTerminalResultRetention
+  | GrowthStagedAgainstMeasuredHeadroom
+
+type RequiredFloorGrowthAttribution =
+  CountAndSelectedLiveTreePopulationConfounded {}
+
+type RequiredFloorGrowthInstrument = RequiredCiWitnessesLane {
+  workflow_run: String,
+  invocation: String
+}
+
+type RequiredFloorLimiterStanding =
+    NoMeasuredMarginAtRunnerLimiter
+  | RequiredFloorMarginMeasured { instrument: String }
+
+type RequiredFloorGrowthBudgetStanding = RequiredFloorGrowthBudgetBound {
+  limiter: RequiredFloorLimiterStanding,
+  attribution: RequiredFloorGrowthAttribution,
+  candidate_payments: List<RequiredFloorGrowthPayment>,
+  instrument: RequiredFloorGrowthInstrument,
+  dissolution: DissolutionCondition
+}
+
+data required_floor_growth_budget_standing: RequiredFloorGrowthBudgetStanding = RequiredFloorGrowthBudgetBound {
+    limiter: NoMeasuredMarginAtRunnerLimiter {},
+    attribution: CountAndSelectedLiveTreePopulationConfounded {},
+    candidate_payments: Cons {
+      head: MoreRunnerMemory {},
+      tail: Cons {
+        head: BoundedTerminalResultRetention {},
+        tail: Cons {
+          head: GrowthStagedAgainstMeasuredHeadroom {},
+          tail: Empty {}
+        }
+      }
+    },
+    instrument: RequiredCiWitnessesLane {
+      workflow_run: "gunb-ai/gunbc actions run 33026738418",
+      invocation: "claim_executor --required-ci --source-root dag --source-root src/v2 --required-lane witnesses"
+    },
+    dissolution: unbound_dissolution(description: "a dated required-lane receipt demonstrates margin for the admitted population, or admission structurally consumes a declared payment before roster growth")
+}
+
 // LONG-HOME STORAGE HYGIENE — A DIAGNOSTIC, NEVER AN ADMISSION INPUT.
 //
 // Two independent boolean facts about one file: does its PATH sit under a directory this repo

@@ -69,6 +69,9 @@ pub mod target_invocation_host;
 
 #[path = "partition_crate_boundary_host.rs"]
 mod partition_crate_boundary_host;
+
+#[path = "emitted_closure_compile_host.rs"]
+mod emitted_closure_compile_host;
 pub(crate) mod shared_fill;
 pub(crate) mod terminal_ledger_publish;
 pub(crate) mod test_module_hygiene_bridge;
@@ -3746,6 +3749,7 @@ pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
         && matches!(
             d.diagnostic.as_ref(),
             crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse { .. }
+                | crate::v1_std_core::CompilerDiagnostic::UnlistedVariantValueUse { .. }
                 | crate::v1_std_core::CompilerDiagnostic::ComplexityUnknown { .. }
                 | crate::v1_std_core::CompilerDiagnostic::WhereRefinementUnenforced { .. }
                 // A non-blocking variant that is absent from this list is counted by
@@ -5416,6 +5420,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => {
             "ServiceConfigReferenceJudgmentDeferred"
         }
+        CompilerDiagnostic::UnlistedVariantValueUse { .. } => "UnlistedVariantValueUse",
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -5458,6 +5463,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::DeclaredTypeNotInhabited { position, .. } => position.clone(),
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position, .. } => position.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
+        CompilerDiagnostic::UnlistedVariantValueUse { name, .. } => name.clone(),
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
         CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { name, .. } => name.clone(),
         CompilerDiagnostic::ParameterDefaultFormNotAdmitted { parameter, .. } => parameter.clone(),
@@ -26198,10 +26204,24 @@ fn call_floor_row_precompute_would_skip(
 // (a live read hidden behind an import was invisible to entry-text scanning): the
 // entry's own row asserts the fact for the whole evaluation, wherever the read hides.
 // A row that DECLARES SubstrateInputsOnly while actually reading live state is not
-// re-checked by any text scan — the nightly affected-set falsifier (predict-only cold
-// run) is the enforcement; a lying row surfaces as a counted divergence within one
-// cadence window. Call-reachability-grade classification (fn-arrow DependencyView over
-// lowered bodies) remains the later lane that re-derives these declarations.
+// re-checked by any text scan, AND IT IS NOW RE-CHECKED BY NOTHING AT ALL. This comment
+// named the nightly affected-set falsifier (predict-only cold run) as the enforcement,
+// promising that a lying row surfaces as a counted divergence within one cadence window.
+// THAT CADENCE IS GONE: `falsifier.yml` was deleted by the 2026-08-15 floor cut and sits
+// on DESIGN's unguarded list awaiting its own re-add, so the sentence was true when
+// written and became false when the workflow died, with nothing to notice. One claim in
+// three places — here, `v2.std.live_tree` `live_tree_disposition_note`, and that module's
+// `live_tree_disposition_stamp_provenance` — all three corrected together, because a claim
+// with three homes corrected in one still has two authorities (DESIGN §3).
+//
+// WHAT IS LEFT IS NOT A WEAKER WALL, IT IS NO WALL. `reads_live_tree_effective` consults
+// this declaration FIRST and falls through to `effect_reach_derived_reads_live_tree_for_entry`
+// only for a row already claiming SubstrateInputsOnly, so that derivation is the sole thing
+// standing behind a false claim — and it is a partial classifier, not an enforcement:
+// `v2.std.effect_reach` `effect_reach_detection_ceiling` files its three bounds and its
+// evidence. A lying declaration therefore buys a predict-skip that nothing observes.
+// Call-reachability-grade classification (fn-arrow DependencyView over lowered bodies) is
+// the capability that would restore an enforcement here, and it remains unbuilt.
 fn parse_entry_live_tree_disposition(entry: &str, content: &str) -> Result<bool, String> {
     let mut declared: Option<bool> = None;
     for line in content.lines() {
@@ -31545,6 +31565,52 @@ mod node_frontier_plumbing_controls {
         );
     }
 
+    /// THE DERIVATION'S CEILING, MADE EXECUTABLE. `v2.std.effect_reach` classifies a closure as
+    /// host-reading only when TWO INDEPENDENT EXISTENTIALS both hold somewhere in it: some module
+    /// declares a repository path literal, AND some module contains a host-sink call shape. They
+    /// are evaluated over the closure separately, so neither is a statement about the other — the
+    /// conjunction is not reachability, and it is not a conservative bound in either direction.
+    ///
+    /// WHY THIS PAIR AND NOT A CORPUS COUNT. A count over the live tree is a fact about today's
+    /// corpus and rots (DESIGN §5's oracle rule); this fixture authors both sides, so the red is a
+    /// property of the derivation and survives any amount of corpus drift. The two entries differ
+    /// by exactly one import edge whose only content is a path-literal row, and the read they
+    /// perform is byte-identical — so the disagreement can only be the conjunction.
+    ///
+    /// WHAT IT DOES NOT CLAIM. This is not an argument that the derivation should be widened here:
+    /// its own doc records under-approximation as a deliberate fail-open on the SKIP axis, where a
+    /// missed live reader costs a skipped witness rather than a wrong answer. What the pair
+    /// establishes is narrower and is the thing that was being assumed away: the derivation cannot
+    /// stand in for the authored declaration, so `parse_entry_live_tree_disposition`'s fail-closed
+    /// undeclared default is load-bearing rather than redundant with it.
+    #[test]
+    fn effect_reach_conjunction_loses_a_closure_that_reads_with_no_path_literal() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = vec![ws
+            .join("dag/test/fixture/effect_reach_conjunction")
+            .to_string_lossy()
+            .into_owned()];
+        let facts = super::build_module_graph_facts_live(&roots);
+        let sink_only = "dag/test/fixture/effect_reach_conjunction/sink_only_entry.dag";
+        let sink_and_path = "dag/test/fixture/effect_reach_conjunction/sink_and_path_entry.dag";
+        // POSITIVE CONTROL FIRST: without it a `false` below proves only that the fixture never
+        // reached the derivation at all.
+        assert!(
+            super::effect_reach_derived_reads_live_tree_for_entry(sink_and_path, &facts),
+            "positive control: a closure carrying BOTH terms must derive host-reading, or this \
+             fixture is not reaching the derivation and the red below is meaningless"
+        );
+        assert!(
+            !super::effect_reach_derived_reads_live_tree_for_entry(sink_only, &facts),
+            "THE CEILING: a closure whose only host reach is a real `Filesystem.Read` derives \
+             NOT-live because no module in it carries a repository path literal. This assertion \
+             is expecting-red by construction — it flips the day the derivation stops conjoining \
+             a storage fact with a reachability one, and at that point it becomes the regression \
+             control for the repair rather than being deleted (DESIGN §4b(4))"
+        );
+    }
+
     // Phase 0 monotone-toward-RUN (bridge b): effect_reach_touched is additive touch
     // evidence — it may block skip on literal match but absence must not enable skip
     // beyond today's rules for a hermetic entry.
@@ -32361,6 +32427,20 @@ fn emit_source_root_entry_admission_data(admission: &SourceRootEntryAdmission) -
     )
 }
 
+/// The fnv1a64 digest of one NUL-delimited material string, rendered as `fnv1a64:<hex>`.
+///
+/// Extracted from `source_root_ingest_content_hash_fnv1a64` rather than copied beside it: a second
+/// site spelling out the same two constants would be one concept with two authorities, and the
+/// two would then be free to disagree about a digest two carriers are expected to compare.
+pub fn fnv1a64_digest_of_material(material: &str) -> String {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in material.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("fnv1a64:{hash:016x}")
+}
+
 pub fn source_root_ingest_content_hash_fnv1a64(records: &[SourceRootReadRecord]) -> String {
     let mut material = String::new();
     for rec in records {
@@ -32369,12 +32449,7 @@ pub fn source_root_ingest_content_hash_fnv1a64(records: &[SourceRootReadRecord])
         material.push_str(&rec.source);
         material.push('\0');
     }
-    let mut hash = 0xcbf29ce484222325u64;
-    for byte in material.as_bytes() {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    format!("fnv1a64:{hash:016x}")
+    fnv1a64_digest_of_material(&material)
 }
 
 fn path_matches_any_subpath(path: &str, subpaths: &[String]) -> bool {
@@ -48678,6 +48753,20 @@ pub use partition_crate_boundary_host::{
     compile_partition_crates, partition_package_names, run_partition_crate_boundary,
     BoundaryFileDisposition, PartitionCompileOutcome, PartitionCrateBoundaryOutcome,
     RenderedBoundaryFile, PARTITION_CRATE_PRODUCING_COMMAND,
+};
+
+/// The emitted-closure compile phase: one entry's closure emitted, written as a crate, and
+/// compiled — with the discriminating red the phase establishes on itself every run.
+///
+/// Re-exported here for the same reason the two above are: every required phase addresses its
+/// producer through one surface.
+pub use emitted_closure_compile_host::{
+    cargo_verdict_stderr_tail, emit_compile_modules_reached, emit_compile_outcome_passed,
+    emit_compile_outcome_summary, emit_compile_report, emit_compile_selection,
+    emit_compile_selection_not_selected_digest, emit_compile_selection_selected_digest,
+    emit_compile_selection_universe_digest, required_emit_compile_entries,
+    retain_not_selected_identities, run_required_emit_compile, CargoVerdict, EmitCompileOutcome,
+    EmitCompileSelection, MutationVerdict,
 };
 
 /// The authority's own declared module path, for consumers outside this module.
