@@ -3761,18 +3761,31 @@ fn reference_derived_candidate_disposition(name: String, this_module_name: Strin
 // ONLY CandidateExportProofFailed BECOMES A DIAGNOSTIC, AND THAT IS A MEASUREMENT RESULT RATHER THAN
 // A DESIGN PREFERENCE. Both arms were instrumented and run over the regen seed closure (the census
 // invocation is recorded on the carrier note). Export-proof-failed returned ZERO. Registry-absent
-// returned 473 rows over 63 distinct names across 110 modules, and reading those names shows the
-// population is not what the arm's name suggests: the top of it is Vec 88, bool 73, Option 50, i64
-// 48, empty_map 33, with BTreeSet, Fn, fn, u8, serde_json, `_` and `-` behind them. Those are RUST
-// TARGET-LANGUAGE tokens, proposed by the candidate walk's emitted-source arm, which tokenizes the
-// module's own emitted Rust and offers every identifier in it. No `.dag` provider can ever supply
-// `bool`, so registry-absent is the correct disposition and a DIAGNOSTIC would be a false report in
-// every one of those rows -- printed on every build, in every module, forever.
+// returned 473 rows over 63 distinct names across 110 modules -- and that population is MIXED, which
+// an earlier revision of this comment got wrong by generalising from the head of a sorted list:
 //
-// So registry-absent stays a census column and does not become a diagnostic. Its next-rung trigger is
-// NOT a burndown: it is that the candidate walk stop proposing target-language vocabulary, at which
-// point the arm's population becomes the `.dag` names it was always meant to name and the diagnostic
-// can be added without changing anything else here.
+//   (a) EXTINGUISHED    Vec 88, bool 73, i64 48, BTreeSet -- no .dag declaration exists or can. The
+//                       producer is collect_item_realized_surface_names, rust_identifier_tokens over
+//                       render_rust_type, which emits target-language SPELLINGS by construction;
+//                       reference_is_host_realized_builtin misses them because it is keyed on .dag
+//                       vocabulary, so Vec and BTreeSet -- the Rust spellings of List and Set --
+//                       slip a filter built to remove exactly this.
+//   (b) OUT-OF-CLOSURE  empty_map 33, Optional 25, Present 47, Absent 13 -- REAL .dag declarations
+//                       in v2.std.collection and v2.std.optional whose providers were not selected
+//                       into the measured closure. Movable, and precisely the closure-conditioned
+//                       class this change exists to surface.
+//
+// The proportion between them is UNMEASURED. Class (b) is present because the census invocation's
+// --source-root flags are NOT the regen SUBJECT: regen_input_sources is rooted at SeedV1 and
+// DagCorpus and excludes src/v2 entirely, because stage0 IS the v1 seed and a seed reaching into
+// src/v2 would depend on the successor it bootstraps toward. So registry-absent is ENTRY-RELATIVE,
+// not a fixed target, and a reader treating the count as stable has made the denominator error.
+//
+// The arm stays unwired anyway, and the reason is (a) rather than the whole population: a diagnostic
+// there would be permanently false on every class-(a) row, printed on every build in every module,
+// and that is worse than shipping nothing because IT TRAINS READERS TO IGNORE THE CHANNEL -- an
+// absent diagnostic is at least honest about its coverage. The trigger for wiring it is that class
+// (a) LEAVE the arm; the residue is then class (b), which is worth reporting.
 //
 // A PREDICTION WAS REFUTED HERE AND IT IS RECORDED BECAUSE IT WAS DECISION-RELEVANT. Registry-absent
 // was expected to overlap heavily with UnlistedImportUse -- both said to mean "referenced but never
