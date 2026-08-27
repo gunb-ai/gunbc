@@ -199,6 +199,26 @@ data constructor_binding_channel_fixtures: List<FixtureModule> = [
 // by nothing -- and its next-rung trigger is a compile surface that admits a closure of several
 // named .dag sources as one subject, at which point case1 and case4 become an enrollable
 // discriminating pair and case5 a permanent regression control.
+// A CONTROL WHOSE SUBJECT CANNOT CONTAIN THE CHANGE IS NOT A CONTROL, and this is written down
+// because the next person will reach for the instrument it names as evidence, exactly as this lane
+// did. `claim_executor --required-regen` re-emits the v1 seed and compares bytes, and a
+// `first_generation_equal=true` from it is routinely read as "emission did not move". It cannot mean
+// that for the v2 corpus. `v1.compiler.emit_rust` `reference_derived_use_lines_note` records that
+// import-bearing HostNative modules -- which is what the whole v1 seed is -- receive `[]` from the
+// reference-derived use-line walk. So the seed is insulated from that walk by construction, and a
+// change that alters what the walk synthesizes for v2 namespace modules produces a green regen every
+// time. Established while measuring a change that could have moved v2 emission: the regen was green
+// and proved nothing about the population at risk.
+//
+// The general form, stated separately from the specimen because the specimen will be repaired and
+// the law will not: an instrument establishes a negative only over subjects that could have carried
+// the effect. Naming the instrument is not enough -- its SUBJECT has to be checked against the
+// class being denied.
+data regen_cannot_see_v2_corpus_emission_change: DeclarationRef = decl_ref(
+  module_path: "v1.compiler.emit_rust",
+  decl_name: "reference_derived_use_lines_note",
+)
+
 data constructor_binding_channel_evidence_standing: String = "Measured once at 9917d4a9b3 on a BuildBuddy runner; not enrolled, not re-measured. Rung: mitigatable. Next-rung trigger: a multi-source compile fixture surface."
 
 // THE TWO REPAIRS THIS ESTABLISHES AND DELIBERATELY DOES NOT MAKE. Both sit in v1's infer stage,
@@ -218,7 +238,7 @@ data constructor_binding_channel_next_rungs: List<NextRung> = [
     why_not_here: "it is a diagnostic-vocabulary change in v1.compiler.infer, and the refusal it replaces is the wall this carrier just established; changing it under a brief to MEASURE it would leave the measurement describing a tree that no longer exists",
   },
   {
-    what: "an unlisted-use observation for BARE NULLARY variant value references, parallel to the type channel's 'unlisted import use'. THE SCOPE IS NARROW ON PURPOSE AND THE BROAD FORM IS FALSE: v1.compiler.emit_rust collect_value_ref_names has four arms, and only ExprVar carrying a VariantValueBinding falls to its `_ => []`. ExprCall harvests unconditionally by authored name and ExprRecordLit harvests through record_lit_ref_names, so a payload-carrying constructor written Foo { .. } or Foo(x) IS already visible to the reference-derived use-line producer, and pattern positions are handled upstream with their own ambiguity refusal. What is invisible is the bare nullary arm -- Absent, Empty, NoConnective, the unit arm of nearly every coproduct in this corpus. Read at 9917d4a9b3 in this tree, after a manager relay claiming the broader scope was corrected",
+    what: "LANDED as gunbc#9423, recorded here rather than deleted because the row's reasoning is what the repair had to satisfy: an unlisted-use observation for BARE NULLARY variant value references, parallel to the type channel's 'unlisted import use' -- but on ITS OWN diagnostic constructor, UnlistedVariantValueUse, never by reusing UnlistedImportUse. Reusing it was tried and withdrawn: v1.compiler.emit_rust group_unlisted_type_names folds typed.diagnostics selecting UnlistedImportUse by constructor alone, and typed.diagnostics carries infer_diags, so the observation would have fed reference_derived_use_lines and CHANGED WHAT PRODUCTION SYNTHESIZES -- which a standing hold forbids until the pre-cut population is counted. A distinct constructor makes byte-identical emission a property of the shape rather than a diff someone re-runs. THE SCOPE IS NARROW ON PURPOSE AND THE BROAD FORM IS FALSE: v1.compiler.emit_rust collect_value_ref_names has four arms, and only ExprVar carrying a VariantValueBinding falls to its `_ => []`. ExprCall harvests unconditionally by authored name and ExprRecordLit harvests through record_lit_ref_names, so a payload-carrying constructor written Foo { .. } or Foo(x) IS already visible to the reference-derived use-line producer, and pattern positions are handled upstream with their own ambiguity refusal. What is invisible is the bare nullary arm -- Absent, Empty, NoConnective, the unit arm of nearly every coproduct in this corpus. Read at 9917d4a9b3 in this tree, after a manager relay claiming the broader scope was corrected",
     evidence_row: "case4 against case1, plus the four arms of collect_value_ref_names read directly",
     why_not_here: "a repair belongs in its own change rather than smuggled into the measurement that motivates it. The narrowing does not soften the consequence: an incomplete census is incomplete whatever the size of the hole, so while one constructor form contributes no observation, a complete content-addressed census of the use-line repair population cannot be built on current instrumentation",
   },
