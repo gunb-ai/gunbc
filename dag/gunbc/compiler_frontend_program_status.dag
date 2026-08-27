@@ -46,7 +46,7 @@ import v2.compiler.self_host.stage0_crate_layout { emitter_produced_divergent_re
 // Its standing is DERIVED from a population the corpus itself carries, or it is NotDerivable.
 //
 // NotDerivable IS A RESULT, not a failure to report. A milestone nobody can currently answer names
-// a missing instrument, and naming eleven of them is the report that cannot be obtained today. The
+// a missing instrument, and naming twelve of them is the report that cannot be obtained today. The
 // state this file must never produce is a milestone that reads pending when in truth nothing could
 // ever answer it, or one that reads clear because a pull request merged. A MERGED PR IS NOT A
 // MILESTONE, and no arm below consults one.
@@ -85,7 +85,7 @@ fn observe_outstanding(subject: NonEmptyStr, outstanding: List<String>) -> Miles
 // the question this carrier could not answer in its first cut. Reporting twelve NotDerivable rows
 // each carrying its own prose tells a reader that twelve things are unanswerable; it cannot tell
 // them whether that is TWELVE problems or THREE. Those are different programs: if one missing
-// measurement unblocks five milestones it is the highest-leverage item here and nothing named it,
+// measurement is awaited by five milestones it is the highest-leverage item here and nothing named it,
 // and if the twelve need twelve instruments that is a much worse world someone has to know about.
 // A shared fact gets a shared carrier (DESIGN section 3), and the grouping is then DERIVED rather
 // than counted by hand.
@@ -379,11 +379,34 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
 // on a precondition nobody has measured. The prerequisites are the interlock's DIRECT edges, so
 // this walks one level; the transitive reading is obtained by asking about the prerequisites in
 // turn, and is deliberately not restated here (DESIGN section 2).
+//
+// StartabilityNotDerivable CARRIES BOTH POPULATIONS, and the first cut of this type did not.
+// It computed the outstanding prerequisites, then discarded them whenever an unanswerable one was
+// also present. The admission PRIORITY was right and stays right -- unknown evidence fails closed,
+// so a mixed milestone is not authorized to start. What was wrong was treating an admission verdict
+// as a planning report: a KNOWN outstanding prerequisite is already proof that "every prerequisite
+// is clear" is false, and an additional unknown one means the COMPLETE blocker set is not derivable,
+// never that the observed blocker stopped existing. Three live milestones are mixed today, so the
+// discarded half was not hypothetical -- it was three of the fourteen rows this carrier exists to
+// report. The defect is the one DESIGN names as the answer usually living in a DISCARDED PAYLOAD:
+// `blocking` was bound on the line above the arm that dropped it.
+//
+// The consequence it produced is the reason this is recorded at length rather than just fixed. A
+// reader of the previous shape saw "blocked on work in flight: 0" and concluded that nothing in the
+// program waits on another lane. That is FALSE and this carrier asserted it. Zero BlockedOnPrereq
+// means only zero OUTSTANDING-ONLY cases; it never meant zero outstanding dependencies. Preserving
+// both lists is what makes the true reading -- observability DOMINATES admission while labour
+// dependencies COEXIST -- the one the report can state.
+//
+// WHAT THIS CARRIER STILL MAY NOT SAY, since the repair invites the next overclaim: it reports that
+// prerequisite work is OUTSTANDING. It cannot say whether anyone currently owns or is executing
+// that work. Neither this module nor the interlock carries ownership, so "waits on another lane"
+// remains outside its authority in both directions.
 // ---------------------------------------------------------------------------------------------
 type Startability
   = StartablePrerequisitesClear
   | BlockedOnPrerequisites { blocking: List<String> }
-  | StartabilityNotDerivable { unanswerable: List<String> }
+  | StartabilityNotDerivable { unanswerable: List<String>, blocking: List<String> }
 
 fn prerequisite_names_by_class(m: ProgramMilestone, want: MilestoneStandingClass) -> List<String> {
   fold(milestone_prerequisites(m: m), init: [], f: fn(acc, p) {
@@ -396,11 +419,16 @@ fn prerequisite_names_by_class(m: ProgramMilestone, want: MilestoneStandingClass
   })
 }
 
-fn milestone_startability(m: ProgramMilestone) -> Startability {
-  let unanswerable = prerequisite_names_by_class(m: m, want: ClassNotDerivable)
-  let blocking = prerequisite_names_by_class(m: m, want: ClassOutstanding)
+// THE CLASSIFICATION IS PARAMETERIZED ON ITS TWO POPULATIONS rather than reading the graph, for
+// the same reason standing_census is: over the live graph alone, three of this function's four
+// outcomes have no authorable input. BLOCKED-KNOWN-ONLY in particular is inhabited by no milestone
+// today, so a witness restricted to the live roster could never exhibit it -- and a check whose RED
+// cannot be produced is the decoration DESIGN 4b rules worse than absent. Split this way the RED is
+// authorable at the FIXTURE boundary, which is the boundary that decides (4b), so all four arms
+// carry executing evidence.
+fn startability_from_populations(unanswerable: List<String>, blocking: List<String>) -> Startability {
   if count(unanswerable) > 0 {
-    StartabilityNotDerivable { unanswerable: unanswerable }
+    StartabilityNotDerivable { unanswerable: unanswerable, blocking: blocking }
   } else {
     if count(blocking) > 0 {
       BlockedOnPrerequisites { blocking: blocking }
@@ -410,13 +438,42 @@ fn milestone_startability(m: ProgramMilestone) -> Startability {
   }
 }
 
+fn milestone_startability(m: ProgramMilestone) -> Startability {
+  startability_from_populations(
+    unanswerable: prerequisite_names_by_class(m: m, want: ClassNotDerivable),
+    blocking: prerequisite_names_by_class(m: m, want: ClassOutstanding))
+}
+
+// The four-way DIRECT-PREREQUISITE partition, and it is four rather than three because the
+// coproduct's third arm carries two independent facts. Rendering only the coproduct's arity would
+// mechanically reproduce the information loss the arm above was just repaired to stop: a summary
+// printing "not derivable 8" hides that three of those eight are ALREADY BLOCKED on a named,
+// observed prerequisite and only five are genuinely unknown. The match is exhaustive over
+// Startability AND descends into the arm that carries the distinction -- the pairing DESIGN names
+// as total-at-the-level-examined-and-blind-one-level-down, which an exhaustive outer match cannot
+// show you is missing.
+fn startability_class_label(s: Startability) -> String {
+  match s {
+    StartablePrerequisitesClear => "STARTABLE"
+    BlockedOnPrerequisites { blocking: _ } => "BLOCKED-KNOWN-ONLY"
+    StartabilityNotDerivable { unanswerable: _, blocking } =>
+      if count(blocking) == 0 { "NOT-DERIVABLE-ONLY" } else { "BLOCKED-AND-NOT-FULLY-DERIVABLE" }
+  }
+}
+
 fn startability_label(s: Startability) -> String {
   match s {
     StartablePrerequisitesClear => "startable"
     BlockedOnPrerequisites { blocking } =>
       concat("blocked on ", join_names(names: blocking))
-    StartabilityNotDerivable { unanswerable } =>
-      concat("startability not derivable -- unanswerable prerequisite: ", join_names(names: unanswerable))
+    StartabilityNotDerivable { unanswerable, blocking } =>
+      if count(blocking) == 0 {
+        concat("startability not derivable -- unanswerable prerequisite: ", join_names(names: unanswerable))
+      } else {
+        concat("startability not derivable -- unanswerable prerequisite: ",
+        concat(join_names(names: unanswerable),
+        concat("; AND ALREADY BLOCKED ON: ", join_names(names: blocking))))
+      }
   }
 }
 
@@ -561,8 +618,9 @@ type StandingCensus {
   outstanding: Int
   not_derivable: Int
   startable: Int
-  blocked: Int
-  startability_not_derivable: Int
+  blocked_known_only: Int
+  not_derivable_only: Int
+  blocked_and_not_fully_derivable: Int
 }
 
 fn standing_census(ms: List<ProgramMilestone>) -> StandingCensus {
@@ -571,9 +629,10 @@ fn standing_census(ms: List<ProgramMilestone>) -> StandingCensus {
     clear: count(ms |> filter(m => standing_class_label(c: standing_class(s: milestone_status(m: m))) == "CLEAR")),
     outstanding: count(ms |> filter(m => standing_class_label(c: standing_class(s: milestone_status(m: m))) == "OUTSTANDING")),
     not_derivable: count(ms |> filter(m => standing_class_label(c: standing_class(s: milestone_status(m: m))) == "NOT-DERIVABLE")),
-    startable: count(ms |> filter(m => startability_label(s: milestone_startability(m: m)) == "startable")),
-    blocked: count(ms |> filter(m => starts_with(s: startability_label(s: milestone_startability(m: m)), prefix: "blocked on"))),
-    startability_not_derivable: count(ms |> filter(m => starts_with(s: startability_label(s: milestone_startability(m: m)), prefix: "startability not derivable"))),
+    startable: count(ms |> filter(m => startability_class_label(s: milestone_startability(m: m)) == "STARTABLE")),
+    blocked_known_only: count(ms |> filter(m => startability_class_label(s: milestone_startability(m: m)) == "BLOCKED-KNOWN-ONLY")),
+    not_derivable_only: count(ms |> filter(m => startability_class_label(s: milestone_startability(m: m)) == "NOT-DERIVABLE-ONLY")),
+    blocked_and_not_fully_derivable: count(ms |> filter(m => startability_class_label(s: milestone_startability(m: m)) == "BLOCKED-AND-NOT-FULLY-DERIVABLE")),
   }
 }
 
@@ -584,12 +643,13 @@ fn program_standing_census() -> StandingCensus {
 fn census_line(c: StandingCensus) -> String {
   concat("milestones ",
   concat(to_string(n: c.milestones),
-  concat(" -- clear ", concat(to_string(n: c.clear),
-  concat(", outstanding ", concat(to_string(n: c.outstanding),
-  concat(", not-derivable ", concat(to_string(n: c.not_derivable),
-  concat("\nstartability -- startable ", concat(to_string(n: c.startable),
-  concat(", blocked on work in flight ", concat(to_string(n: c.blocked),
-  concat(", not derivable ", to_string(n: c.startability_not_derivable))))))))))))))
+  concat("\n\nstanding\n  clear ", concat(to_string(n: c.clear),
+  concat("\n  outstanding ", concat(to_string(n: c.outstanding),
+  concat("\n  not-derivable ", concat(to_string(n: c.not_derivable),
+  concat("\n\ndirect prerequisites\n  startable ", concat(to_string(n: c.startable),
+  concat("\n  blocked, all blockers known ", concat(to_string(n: c.blocked_known_only),
+  concat("\n  startability not derivable, no known blocker ", concat(to_string(n: c.not_derivable_only),
+  concat("\n  BLOCKED AND blocker set not fully derivable ", to_string(n: c.blocked_and_not_fully_derivable))))))))))))))))
 }
 
 fn instrument_report_line(i: MissingInstrument) -> String {
@@ -602,7 +662,7 @@ fn instrument_report_line(i: MissingInstrument) -> String {
   concat("] ",
   concat(missing_instrument_label(i: i),
   concat("\n    ", concat(instrument_obstacle_detail(o: obstacle),
-  concat("\n    unblocks: ", join_names(names: waiting))))))))))
+  concat("\n    awaited by: ", join_names(names: waiting))))))))))
 }
 
 fn report() -> String {
@@ -612,7 +672,7 @@ fn report() -> String {
     fold(program_milestones, init: "", f: fn(acc, m) {
       concat(acc, concat(milestone_report_line(m: m), "\n"))
     }),
-  concat("\nmissing instruments, by how many milestones each would answer\n\n",
+  concat("\nmissing instruments, by how many milestones AWAIT each\n\n",
     fold(all_missing_instruments, init: "", f: fn(acc, i) {
       concat(acc, concat(instrument_report_line(i: i), "\n"))
     })

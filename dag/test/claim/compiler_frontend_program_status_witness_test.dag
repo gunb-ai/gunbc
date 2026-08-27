@@ -7,6 +7,10 @@ import gunbc.compiler_frontend_program_interlock {
   SelfHostWholeCorpusPopulationDerived,
   SelfHostRatchetObservationEnrolled,
   SelfHostEmitterProducesEveryRetainedArtifact,
+  SelfHostRatchetGateEnrolled,
+  SelfHostCorpusEmitsCleanly,
+  SelfHostSuccessorPromotionAdmitted,
+  SelfHostSeedRetirement,
   NamespaceFirstSemanticWave,
   milestone_label,
 }
@@ -38,6 +42,8 @@ import gunbc.compiler_frontend_program_status {
   ratchet_observation_outstanding,
   milestone_status,
   milestone_startability,
+  startability_from_populations,
+  startability_class_label,
   program_milestones,
   report,
 }
@@ -126,7 +132,7 @@ test fn an_unanswerable_prerequisite_makes_startability_unanswerable() -> Bool {
   match milestone_startability(m: NamespaceFirstSemanticWave) {
     StartablePrerequisitesClear => false
     BlockedOnPrerequisites { blocking: _ } => false
-    StartabilityNotDerivable { unanswerable } => count(unanswerable) > 0
+    StartabilityNotDerivable { unanswerable, blocking: _ } => count(unanswerable) > 0
   }
 }
 
@@ -136,7 +142,7 @@ test fn a_milestone_with_no_prerequisites_is_startable() -> Bool {
   match milestone_startability(m: SelfHostWholeCorpusPopulationDerived) {
     StartablePrerequisitesClear => true
     BlockedOnPrerequisites { blocking: _ } => false
-    StartabilityNotDerivable { unanswerable: _ } => false
+    StartabilityNotDerivable { unanswerable: _, blocking: _ } => false
   }
 }
 
@@ -150,7 +156,9 @@ test fn no_milestone_reads_clear_today() -> Bool {
 // THE ROSTER IS A COUNTED SECOND REPRESENTATION, and this claim is stated at exactly the strength
 // it has rather than one step above it. `program_milestones` is authored beside the interlock's
 // closed variant because `.dag` offers no way to enumerate a coproduct's inhabitants, so it can
-// drift: adding a fourteenth variant to the interlock does NOT red here. What this arm does hold is
+// drift: adding a FIFTEENTH variant to the interlock does NOT red here (the fourteenth exists --
+// SelfHostSuccessorPromotionAdmitted is it, added by this program, so the old wording named a
+// variant that had already landed). What this arm does hold is
 // that the roster carries fourteen DISTINCT milestones -- a duplicated entry, which would silently
 // double a row in the report and inflate any population read off it, reds. The missing wall is a
 // derived enumeration, and it is this module's own next-rung trigger for the roster.
@@ -167,14 +175,38 @@ test fn the_report_renders() -> Bool {
 }
 
 // THE LEVERAGE JOIN IS DERIVED, AND THESE TWO ARMS ARE WHAT KEEP IT FROM BEING A HAND COUNT.
-// Today two instruments answer three milestones each and six answer one each -- so the twelve
+// Today two instruments are awaited by three milestones each and six by one each -- so the twelve
 // unanswerable milestones are EIGHT problems, not one and not twelve. Asserting the exact
 // membership rather than the totals is the identity join DESIGN's oracle rule demands: a count
 // equality would go green the moment two milestones moved in opposite directions.
-test fn the_whole_corpus_board_unblocks_exactly_its_three_milestones() -> Bool {
+//
+// THE RELATION IS `AWAITED BY`, NOT `UNBLOCKS`, and the distinction is not wording. This fold tests
+// whether an instrument appears anywhere in a milestone's required-instrument list, which is a
+// membership question. SelfHostRatchetGateEnrolled requires the whole-corpus board AND the separate
+// gate-enrolment fact, so NEITHER alone makes it derivable: the requirement is a hyperedge and
+// projecting it into per-instrument rows attributes the whole effect to each conjunct. Calling the
+// result "unblocks" would let a leverage count direct dispatch toward an instrument that, delivered
+// alone, moves nothing. Counted honestly: the board independently answers two milestones and is
+// co-required for a third; the gate-enrolment fact independently answers NONE and is only
+// co-required. Deriving singleton sufficiency is a stronger carrier and is not claimed here.
+test fn the_whole_corpus_board_is_awaited_by_exactly_these_three() -> Bool {
   let waiting = milestones_awaiting(i: WholeCorpusEmissionBoard)
   count(waiting) == 3
     && any(waiting, l => l == milestone_label(m: SelfHostWholeCorpusPopulationDerived))
+    && any(waiting, l => l == milestone_label(m: SelfHostRatchetGateEnrolled))
+    && any(waiting, l => l == milestone_label(m: SelfHostCorpusEmitsCleanly))
+}
+
+// THE SUBSTITUTION CONTROL. The two three-milestone instruments have DISJOINT memberships, so an
+// exchange between them preserves both counts and both cardinalities while making both sets wrong.
+// Asserting each set's exact identities plus this disjointness is what a count -- or a count plus a
+// single anchor identity, which is what this arm checked in its first cut -- cannot see.
+test fn the_two_three_milestone_instruments_do_not_share_a_milestone() -> Bool {
+  let board = milestones_awaiting(i: WholeCorpusEmissionBoard)
+  let roster = milestones_awaiting(i: NamespaceStepSubjectRoster)
+  count(roster) == 3
+    && any(roster, l => l == milestone_label(m: NamespaceFirstSemanticWave))
+    && all(board, l => count(roster |> filter(other => other == l)) == 0)
 }
 
 // THE DISCRIMINATING ARM FOR THE SAME JOIN: an instrument that answers ONE milestone must not
@@ -234,8 +266,9 @@ test fn the_census_counts_a_controlled_population_exactly() -> Bool {
     && c.outstanding == 1
     && c.not_derivable == 1
     && c.startable == 2
-    && c.blocked == 0
-    && c.startability_not_derivable == 0
+    && c.blocked_known_only == 0
+    && c.not_derivable_only == 0
+    && c.blocked_and_not_fully_derivable == 0
 }
 
 // THE DISCRIMINATING ARM: a population whose members ARE unanswerable must not report them as
@@ -245,8 +278,9 @@ test fn the_census_separates_unanswerable_startability() -> Bool {
   let c = standing_census(ms: [NamespaceFirstSemanticWave])
   c.milestones == 1
     && c.startable == 0
-    && c.blocked == 0
-    && c.startability_not_derivable == 1
+    && c.blocked_known_only == 0
+    && c.not_derivable_only == 1
+    && c.blocked_and_not_fully_derivable == 0
 }
 
 // THE CENSUS PARTITIONS ITS POPULATION EXACTLY, on both axes, over the LIVE roster. This is the arm
@@ -258,5 +292,67 @@ test fn the_live_census_partitions_on_both_axes() -> Bool {
   let c = program_standing_census()
   c.milestones == count(program_milestones)
     && c.clear + c.outstanding + c.not_derivable == c.milestones
-    && c.startable + c.blocked + c.startability_not_derivable == c.milestones
+    && c.startable + c.blocked_known_only + c.not_derivable_only
+         + c.blocked_and_not_fully_derivable == c.milestones
+}
+
+// THE FOUR DIRECT-PREREQUISITE STATES, EACH EXHIBITED AT CONTROLLED-FIXTURE GRAIN. Three of these
+// four have no authorable input over the live roster -- BLOCKED-KNOWN-ONLY is inhabited by no
+// milestone in the program today -- so before startability_from_populations was split out of
+// milestone_startability, no witness could exhibit them at all. That is why the split exists: the
+// RED must be authorable somewhere the check can run, and the fixture boundary is the boundary that
+// decides (DESIGN 4b). Authoring all four together is also what makes them discriminating as a set,
+// since a classifier collapsing any two would fail exactly one of these lines.
+test fn the_four_direct_prerequisite_states_are_each_exhibited() -> Bool {
+  startability_class_label(s: startability_from_populations(unanswerable: [], blocking: []))
+      == "STARTABLE"
+    && startability_class_label(s: startability_from_populations(unanswerable: [], blocking: ["p"]))
+      == "BLOCKED-KNOWN-ONLY"
+    && startability_class_label(s: startability_from_populations(unanswerable: ["u"], blocking: []))
+      == "NOT-DERIVABLE-ONLY"
+    && startability_class_label(s: startability_from_populations(unanswerable: ["u"], blocking: ["p"]))
+      == "BLOCKED-AND-NOT-FULLY-DERIVABLE"
+}
+
+// AN OUTSTANDING-ONLY PREREQUISITE RETURNS THE EXACT BLOCKING IDENTITY, not merely a count. This is
+// the positive control for BlockedOnPrerequisites, the arm the live graph cannot currently reach.
+test fn an_outstanding_only_prerequisite_names_its_blocker() -> Bool {
+  match startability_from_populations(unanswerable: [], blocking: ["the emitter milestone"]) {
+    StartablePrerequisitesClear => false
+    BlockedOnPrerequisites { blocking } =>
+      count(blocking) == 1 && any(blocking, b => b == "the emitter milestone")
+    StartabilityNotDerivable { unanswerable: _, blocking: _ } => false
+  }
+}
+
+// THE ARM THIS FILE EXISTS TO PROTECT, and the one whose absence let a false program reading reach
+// three audiences. A MIXED prerequisite set must keep BOTH identities: admission stays fail-closed
+// (the verdict is NotDerivable, never Blocked), and the observed blocker survives in the payload
+// rather than being discarded because an unknown sat beside it. The previous shape passed every
+// other arm in this file while dropping `blocking` on the floor.
+test fn a_mixed_prerequisite_set_preserves_both_identities() -> Bool {
+  match startability_from_populations(unanswerable: ["unmeasured corpus"], blocking: ["the emitter milestone"]) {
+    StartablePrerequisitesClear => false
+    BlockedOnPrerequisites { blocking: _ } => false
+    StartabilityNotDerivable { unanswerable, blocking } =>
+      count(unanswerable) == 1
+        && any(unanswerable, u => u == "unmeasured corpus")
+        && count(blocking) == 1
+        && any(blocking, b => b == "the emitter milestone")
+  }
+}
+
+// THE LIVE MIXED POPULATION IS THREE, AND THEY ARE NAMED. This is the identity join over the live
+// graph for the class above: each of these three has a prerequisite that is OUTSTANDING and known,
+// beside one that is unanswerable. It reds if any of them silently loses its blocker again, which a
+// partition-law arm alone cannot see -- the sum stays 14 either way.
+test fn the_three_live_mixed_milestones_each_keep_a_known_blocker() -> Bool {
+  all([SelfHostRatchetGateEnrolled, SelfHostSuccessorPromotionAdmitted, SelfHostSeedRetirement],
+    m => match milestone_startability(m: m) {
+      StartablePrerequisitesClear => false
+      BlockedOnPrerequisites { blocking: _ } => false
+      StartabilityNotDerivable { unanswerable, blocking } =>
+        count(unanswerable) > 0 && count(blocking) > 0
+    })
+    && program_standing_census().blocked_and_not_fully_derivable == 3
 }
