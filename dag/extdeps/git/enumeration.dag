@@ -33,19 +33,6 @@ type GitRefSetObservation
   | GitRefSetReadRefused { exit_code: Int, stderr: String }
   | GitRefSetUndecodable { record_index: Int, raw_record: String, reason: String }
 
-// THE DECODER VALIDATES THE ORDER AND DOES NOT IMPOSE IT, and that is the load-bearing choice in
-// this file rather than a stylistic one. git.Core.ForEachRefIn pins --sort=refname in its transport.
-// A decoder that SORTED its rows would make that pin decorative: deleting --sort=refname from the
-// argv would leave every test in this lane green, because the decoder would have quietly repaired
-// the very property the flag exists to provide. That is the permanently-green check DESIGN section
-// 4b names as worse than absent, since it would be cited as coverage for a flag nothing tests.
-//
-// Requiring STRICTLY increasing refnames instead makes the flag falsifiable: remove it and the
-// corpus order git falls back to reds here. Strict rather than non-decreasing because refnames are
-// unique in a repository, so an equal adjacent pair is a duplicate ref and not a tie -- and a
-// duplicate is exactly what a set-identity consumer must not silently absorb.
-data git_ref_set_order_is_validated_not_imposed: Bool = true
-
 type GitRefDecodeState {
   observation: GitRefSetObservation
   record_index: Int
@@ -66,12 +53,23 @@ fn git_ref_set_undecodable(state: GitRefDecodeState, record: String, reason: Str
 
 fn git_ref_decode_admit(state: GitRefDecodeState, refs: List<GitRefIdentity>, identity: GitRefIdentity) -> GitRefDecodeState {
   GitRefDecodeState {
-    observation: GitRefSetObserved { refs: append(refs, items: [identity]) },
+    observation: GitRefSetObserved { refs: Cons { head: identity, tail: refs } },
     record_index: state.record_index + 1,
     previous_refname: Present { value: identity.refname },
   }
 }
 
+// THE DECODER VALIDATES THE ORDER AND DOES NOT IMPOSE IT, and that is the load-bearing choice in
+// this file rather than a stylistic one. git.Core.ForEachRefIn pins --sort=refname in its transport.
+// A decoder that SORTED its rows would make that pin decorative: deleting --sort=refname from the
+// argv would leave every test in this lane green, because the decoder would have quietly repaired
+// the very property the flag exists to provide. That is the permanently-green check DESIGN section
+// 4b names as worse than absent, since it would be cited as coverage for a flag nothing tests.
+//
+// Requiring STRICTLY increasing refnames instead makes the flag falsifiable: remove it and the
+// corpus order git falls back to reds here. Strict rather than non-decreasing because refnames are
+// unique in a repository, so an equal adjacent pair is a duplicate ref and not a tie -- and a
+// duplicate is exactly what a set-identity consumer must not silently absorb.
 fn git_ref_decode_ordered_admit(
   state: GitRefDecodeState,
   refs: List<GitRefIdentity>,
@@ -192,6 +190,20 @@ fn git_ref_set_records(raw: String) -> List<String> {
   }
 }
 
+// The fold accumulates by cons and therefore holds refs in reverse, so the accepted arm is turned
+// exactly once here. DESIGN section 6 bare-minimum-cost: a tail-append inside the step would be a
+// quadratic fold shape, which is always fixed regardless of the realized number of refs. The two
+// refusal arms carry no list and pass through unchanged.
+fn git_ref_set_observation_in_order(observation: GitRefSetObservation) -> GitRefSetObservation {
+  match observation {
+    GitRefSetObserved { refs: refs } => GitRefSetObserved { refs: reverse(refs) }
+    GitRefSetReadRefused { exit_code: exit_code, stderr: stderr } =>
+      GitRefSetReadRefused { exit_code: exit_code, stderr: stderr }
+    GitRefSetUndecodable { record_index: record_index, raw_record: raw_record, reason: reason } =>
+      GitRefSetUndecodable { record_index: record_index, raw_record: raw_record, reason: reason }
+  }
+}
+
 fn git_ref_set_observation_of(
   raw: String,
   exit_code: Int,
@@ -200,7 +212,7 @@ fn git_ref_set_observation_of(
   if exit_code != 0 {
     GitRefSetReadRefused { exit_code: exit_code, stderr: stderr }
   } else {
-    fold(
+    git_ref_set_observation_in_order(observation: fold(
       git_ref_set_records(raw: raw),
       init: GitRefDecodeState {
         observation: GitRefSetObserved { refs: [] },
@@ -208,6 +220,6 @@ fn git_ref_set_observation_of(
         previous_refname: none,
       },
       f: (state, record) => git_ref_decode_step(state: state, record: record),
-    ).observation
+    ).observation)
   }
 }

@@ -85,6 +85,27 @@ test fn ascending_ref_names_are_accepted() -> Bool {
   count(observed_refs(observation: git_ref_set_observation_of(raw: raw, exit_code: 0, stderr: ""))) == 2
 }
 
+fn refname_at(refs: List<GitRefIdentity>, index: Int) -> String {
+  match refs.skip(n: index).first() {
+    Present { value: identity } => identity.refname
+    Absent => ""
+  }
+}
+
+// The decoder accumulates by cons and turns the list exactly once at the end, so the accepted refs
+// must come back in git's EMITTED order rather than reversed. Nothing else in this lane can see
+// that: every other accepting witness asserts a COUNT, which is invariant under reversal. Without
+// this control the final reverse would be unwitnessed machinery -- specification without execution.
+test fn accepted_refs_preserve_the_emitted_order() -> Bool {
+  let raw = concat(
+    concat(ref_record(name: "refs/heads/alpha", oid: a_oid, symref: ""), "\n"),
+    concat(ref_record(name: "refs/heads/zebra", oid: b_oid, symref: ""), "\n"),
+  )
+  let refs = observed_refs(observation: git_ref_set_observation_of(raw: raw, exit_code: 0, stderr: ""))
+  refname_at(refs: refs, index: 0) == "refs/heads/alpha"
+    && refname_at(refs: refs, index: 1) == "refs/heads/zebra"
+}
+
 // Strict rather than non-decreasing: a repeated ref name is a duplicate, not a tie.
 test fn duplicate_ref_name_refuses() -> Bool {
   let raw = concat(
