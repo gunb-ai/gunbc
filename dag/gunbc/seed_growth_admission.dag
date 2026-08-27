@@ -26,6 +26,14 @@ import gunbc.rust_item_host_observation {
   projected_refused_keys,
   projected_uncitable_keys
 }
+import gunbc.capability_origin {
+  AdmissionEvidence,
+  AuthorizedTemporarySeedBridge,
+  CapabilityOrigin,
+  ModeledCapability,
+  NoNewCapability,
+  origin_refusals
+}
 import gunbc.rust_item_identity { RustItemIdentity, rust_item_identity_key }
 import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.stage0_rust_host_observation { stage0_rust_observation_seed_growth_justification }
@@ -77,13 +85,22 @@ type SeedGrowthAdmissionVerdict
 // function without creating one new Rust item. Under that reading the forward freeze is reopened
 // through the largest functions in the seed and the whole construction is decorative, refusing only
 // the additions nobody needed to hide. So the arm states where the capability came from:
-// NoNewCapability (the edit originates none) or CapabilityAlreadyModeled (the capability exists in
-// the substrate and this is its realization). There is deliberately no third value naming a
-// capability originated in Rust, because that is the state the freeze forbids; it is unrepresentable
-// here rather than checked, which is the construction direction DESIGN section 5 asks for.
-type CapabilityOrigin
-  = NoNewCapability
-  | CapabilityAlreadyModeled
+// NoNewCapability (the edit originates none) or ModeledCapability carrying where the model came
+// from. There is deliberately no value naming a capability originated in Rust, because that is the
+// state the freeze forbids; it is unrepresentable rather than checked, which is the construction
+// direction DESIGN section 5 asks for.
+//
+// THE VOCABULARY MOVED TO gunbc.capability_origin AND GREW A PAYLOAD, AND THE PAYLOAD IS THE
+// CORRECTION. CapabilityAlreadyModeled stood here and was payload-free, so it could be satisfied by
+// inspecting the final candidate -- which cannot distinguish a model that existed before its
+// realization from a model added beside the realization that inspired it, and that distinction is
+// the entire question the arm exists to ask. It now names its authority and, when the authority is
+// itself new in this change, the independent ground that makes it prior.
+//
+// THE SAME RELATION GOVERNS ADDITIONS, which is the half an admission wall loses first: a newly
+// added item can carry a perfectly good justification row and still have been retro-modeled in the
+// same change, so seed_growth_admit_change asks both questions of every addition rather than
+// treating roster membership as sufficient.
 
 type SeedGrowthChangeDisposition
   = SeedBridgeAuthorized
@@ -226,7 +243,9 @@ fn seed_growth_added_projections(added_items: List<RustItemIdentity>) -> List<It
 // same addition through observations whose deleted populations differ and requires one verdict.
 fn seed_growth_admit_change(
   change: RustItemChangeObservation,
-  live: LiveHandRustObservation
+  live: LiveHandRustObservation,
+  bridges: List<AuthorizedTemporarySeedBridge>,
+  evidence: AdmissionEvidence
 ) -> SeedGrowthAdmissionVerdict {
   match change {
     RustItemChangeUnattributed { repo_path: path, line: line, detail: detail } =>
@@ -267,6 +286,11 @@ fn seed_growth_admit_change(
         SeedGrowthAdmissionRefused {
           unjustified_additions: unjustified,
           detail: "hand Rust item(s) lack SeedGrowthJustification row"
+        }
+      } else if length(xs: origin_refusals(bridges: bridges, evidence: evidence, added: projected_declaration_refs(projections: projections))) > 0 {
+        SeedGrowthAdmissionRefused {
+          unjustified_additions: origin_refusals(bridges: bridges, evidence: evidence, added: projected_declaration_refs(projections: projections)),
+          detail: "added hand Rust item(s) did not establish that the capability they realize was modeled independently of them"
         }
       } else {
         match live {

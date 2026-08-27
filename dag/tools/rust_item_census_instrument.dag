@@ -16,6 +16,7 @@ import gunbc.rust_item_host_observation {
 }
 import gunbc.rust_item_identity { RustItemIdentity, rust_item_identity_key }
 import gunbc.rust_item_scan { RustFileScan, RustFileScanned }
+import gunbc.capability_origin { no_admission_evidence }
 import gunbc.seed_growth_admission {
   SeedGrowthAdmissionComplete,
   SeedGrowthAdmissionRefused,
@@ -185,7 +186,7 @@ fn census(report: String) -> ProcessExit {
   } else {
     let change = current_rust_item_change_observation()
     let live = observe_current_live_hand_rust()
-    let verdict = seed_growth_admit_change(change: change, live: live)
+    let verdict = seed_growth_admit_change(change: change, live: live, bridges: [], evidence: no_admission_evidence())
     let write = Filesystem.Write(path: report, content: census_report_text(change: change, live: live, verdict: verdict))
     if !write.success {
       exit_failure(reason: concat("census: could not write the report to ", report))

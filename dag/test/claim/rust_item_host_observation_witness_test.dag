@@ -27,7 +27,23 @@ import gunbc.seed_growth_admission {
   SeedGrowthAdmissionRefused,
   seed_growth_admit_change
 }
-import std.types { Bool, Int, List, String }
+import gunbc.capability_origin {
+  AuthorizedTemporarySeedBridge,
+  CapabilityIntroducedInModelEpoch,
+  CapabilityPresentOnBase,
+  ExistingCapabilityMigration,
+  AdmissionEvidence,
+  AuthorityHoldsInModelEpoch,
+  AuthoredAgainstModelContract,
+  GeneratedByRealization,
+  ModelEpochSubject,
+  ModelOnlyContentIdentity,
+  RealizationMutationRefused,
+  RealizationMutationUnnoticed,
+  no_admission_evidence
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import v2.std.algebra { any, length, list_map }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -237,10 +253,245 @@ test fn a_generated_path_change_is_classified_and_never_scanned_for_items() -> B
 test fn an_unjustified_addition_refuses_and_names_the_item() -> Bool {
   match seed_growth_admit_change(
     change: change_of(head_content: head_with_unjustified_addition, new_ranges: [LineRange { start: 6, count: 4 }]),
-    live: live_of(head_content: head_with_unjustified_addition)
+    live: live_of(head_content: head_with_unjustified_addition),
+    bridges: [],
+    evidence: no_admission_evidence()
   ) {
     SeedGrowthAdmissionRefused { unjustified_additions: unjustified, detail: _ } =>
       any(xs: unjustified, predicate: fn(k) { string_contains(s: k, pattern: "totally_unjustified_probe") })
+    SeedGrowthAdmissionComplete {
+      justified_items: _,
+      modified_items_requiring_disposition: _,
+      stale_justifications: _,
+      duplicate_justifications: _,
+      uncitable_items: _
+    } => false
+  }
+}
+
+// THE ORIGIN RELATION'S FIXTURES. The item the roster already justifies, stated three ways: with a
+// bridge whose capability was already on base (prior by construction, no probe needed), with a
+// bridge whose capability was introduced in this very change (prior only if a probe says the model
+// epoch holds without the Rust), and with no bridge at all.
+data justified_addition_item: DeclarationRef = DeclarationRef {
+  module_path: "v1_compiler.cli_run" as NonEmptyStr,
+  decl_name: "parse_stage0_cargo_manifest_bin_paths" as NonEmptyStr,
+  field: WholeDeclaration
+}
+
+data justified_addition_authority: DeclarationRef = DeclarationRef {
+  module_path: "gunbc.stage0_rust_host_observation" as NonEmptyStr,
+  decl_name: "stage0_rust_observation_seed_growth_justification" as NonEmptyStr,
+  field: WholeDeclaration
+}
+
+data justified_addition_bridge: AuthorizedTemporarySeedBridge = AuthorizedTemporarySeedBridge {
+  item: justified_addition_item,
+  dag_authority: justified_addition_authority,
+  origin: CapabilityPresentOnBase { authority: justified_addition_authority },
+  realization_role: "host observation of a committed manifest",
+  owning_lane: "loyal-ram-883",
+  deletion_trigger: "the manifest read becomes a modeled filesystem operation",
+  current_boundary: "reads one committed file at a path the authority names"
+}
+
+data retro_modeled_addition_bridge: AuthorizedTemporarySeedBridge = AuthorizedTemporarySeedBridge {
+  item: justified_addition_item,
+  dag_authority: justified_addition_authority,
+  origin: CapabilityIntroducedInModelEpoch {
+    authority: justified_addition_authority,
+    model_epoch: ModelOnlyContentIdentity { content_hash: "e1-model-only-fixture" },
+    ground: ExistingCapabilityMigration {
+      predecessor: justified_addition_authority,
+      preserved_contract: justified_addition_authority
+    }
+  },
+  realization_role: "host observation of a committed manifest",
+  owning_lane: "loyal-ram-883",
+  deletion_trigger: "the manifest read becomes a modeled filesystem operation",
+  current_boundary: "reads one committed file at a path the authority names"
+}
+
+// A CAPABILITY INTRODUCED IN THIS CHANGE IS NOT PRIOR UNTIL A PROBE SAYS SO, AND AN ABSENT PROBE IS
+// NOT A NEUTRAL ANSWER. This is the arm that makes the origin relation more than a field: the
+// bridge is well formed, its ground is a real migration, the roster names the item, and the
+// addition still refuses -- because nothing executed the test that would establish the model held
+// without the Rust beside it. A probe that did not run rendering as a passed one is the
+// execution-provenance loss the design document names, and here it has no spelling.
+test fn a_capability_modeled_in_the_same_change_refuses_until_a_probe_runs() -> Bool {
+  match seed_growth_admit_change(
+    change: change_of(head_content: head_with_justified_addition, new_ranges: [LineRange { start: 6, count: 4 }]),
+    live: live_of(head_content: head_with_justified_addition),
+    bridges: [retro_modeled_addition_bridge],
+    evidence: no_admission_evidence()
+  ) {
+    SeedGrowthAdmissionRefused { unjustified_additions: refusals, detail: _ } =>
+      any(xs: refusals, predicate: fn(k) { string_contains(s: k, pattern: "origin test did not execute") })
+    SeedGrowthAdmissionComplete {
+      justified_items: _,
+      modified_items_requiring_disposition: _,
+      stale_justifications: _,
+      duplicate_justifications: _,
+      uncitable_items: _
+    } => false
+  }
+}
+
+// ROSTER MEMBERSHIP IS NOT SUFFICIENT, and this arm is the difference between the two tests. The
+// same addition the positive control admits refuses when no bridge states its capability origin:
+// the SeedGrowthJustification row is identical in both runs, so what separates them is the origin
+// relation and nothing else.
+test fn a_roster_named_addition_still_refuses_when_no_bridge_states_its_origin() -> Bool {
+  match seed_growth_admit_change(
+    change: change_of(head_content: head_with_justified_addition, new_ranges: [LineRange { start: 6, count: 4 }]),
+    live: live_of(head_content: head_with_justified_addition),
+    bridges: [],
+    evidence: no_admission_evidence()
+  ) {
+    SeedGrowthAdmissionRefused { unjustified_additions: refusals, detail: _ } =>
+      any(xs: refusals, predicate: fn(k) { string_contains(s: k, pattern: "no AuthorizedTemporarySeedBridge") })
+    SeedGrowthAdmissionComplete {
+      justified_items: _,
+      modified_items_requiring_disposition: _,
+      stale_justifications: _,
+      duplicate_justifications: _,
+      uncitable_items: _
+    } => false
+  }
+}
+
+// THE CONFORMANCE EVIDENCE. A realization mutation that the predicted evidence REFUSED, with
+// fixtures authored against the model contract rather than recorded from the implementation.
+data model_epoch_fixture: ModelEpochSubject = ModelEpochSubject {
+  base_revision: "base-rev",
+  head_revision: "head-rev",
+  epoch_ref: ModelOnlyContentIdentity { content_hash: "e1-model-only-fixture" },
+  excluded_hand_item_keys: []
+}
+
+data conforming_evidence: AdmissionEvidence = AdmissionEvidence {
+  observed_base_revision: "base-rev",
+  observed_head_revision: "head-rev",
+  model_epoch_probes: [],
+  conformance_probes: [
+    RealizationMutationRefused {
+      authority: justified_addition_authority,
+      epoch: model_epoch_fixture,
+      fixture_provenance: AuthoredAgainstModelContract { contract: justified_addition_authority }
+    }
+  ]
+}
+
+// THE CIRCULAR-GREEN FIXTURE: the mutation went red, and the fixtures were recorded from the very
+// implementation they check. Redness is necessary and provenance is what makes it evidence.
+data realization_derived_evidence: AdmissionEvidence = AdmissionEvidence {
+  observed_base_revision: "base-rev",
+  observed_head_revision: "head-rev",
+  model_epoch_probes: [],
+  conformance_probes: [
+    RealizationMutationRefused {
+      authority: justified_addition_authority,
+      epoch: model_epoch_fixture,
+      fixture_provenance: GeneratedByRealization { detail: "expected outputs captured from the new host function" }
+    }
+  ]
+}
+
+// THE MUTATION NOTHING NOTICED: the model agrees with the Rust and constrains nothing.
+data unconstrained_evidence: AdmissionEvidence = AdmissionEvidence {
+  observed_base_revision: "base-rev",
+  observed_head_revision: "head-rev",
+  model_epoch_probes: [],
+  conformance_probes: [
+    RealizationMutationUnnoticed {
+      authority: justified_addition_authority,
+      epoch: model_epoch_fixture,
+      detail: "every predicted observation stayed green under a mutated realization"
+    }
+  ]
+}
+
+// AN EXPIRED EPOCH: the probe was taken against a base the change was never proposed against, which
+// is the reversed-diff class stated as evidence rather than as advice.
+data expired_epoch_evidence: AdmissionEvidence = AdmissionEvidence {
+  observed_base_revision: "base-rev",
+  observed_head_revision: "head-rev",
+  model_epoch_probes: [
+    AuthorityHoldsInModelEpoch {
+      authority: justified_addition_authority,
+      epoch: ModelEpochSubject {
+        base_revision: "some-other-base",
+        head_revision: "head-rev",
+        epoch_ref: ModelOnlyContentIdentity { content_hash: "e1-model-only-fixture" },
+        excluded_hand_item_keys: []
+      }
+    }
+  ],
+  conformance_probes: [
+    RealizationMutationRefused {
+      authority: justified_addition_authority,
+      epoch: model_epoch_fixture,
+      fixture_provenance: AuthoredAgainstModelContract { contract: justified_addition_authority }
+    }
+  ]
+}
+
+// FIXTURES RECORDED FROM THE REALIZATION REFUSE EVEN THOUGH THE MUTATION WENT RED. This is the arm
+// that separates "the model constrains the Rust" from "the fixtures follow the Rust": a fixture
+// pinned to an implementation breaks under any change to it, so redness alone proves nothing about
+// where the expectation came from.
+test fn conformance_fixtures_generated_by_the_realization_refuse_despite_a_red_mutation() -> Bool {
+  match seed_growth_admit_change(
+    change: change_of(head_content: head_with_justified_addition, new_ranges: [LineRange { start: 6, count: 4 }]),
+    live: live_of(head_content: head_with_justified_addition),
+    bridges: [justified_addition_bridge],
+    evidence: realization_derived_evidence
+  ) {
+    SeedGrowthAdmissionRefused { unjustified_additions: refusals, detail: _ } =>
+      any(xs: refusals, predicate: fn(k) { string_contains(s: k, pattern: "generated by the realization") })
+    SeedGrowthAdmissionComplete {
+      justified_items: _,
+      modified_items_requiring_disposition: _,
+      stale_justifications: _,
+      duplicate_justifications: _,
+      uncitable_items: _
+    } => false
+  }
+}
+
+// A MUTATION NOTHING NOTICED IS NOT A PASS. The model agreeing with the Rust is the state this test
+// exists to distinguish from the model predicting it.
+test fn a_realization_mutation_no_evidence_noticed_refuses() -> Bool {
+  match seed_growth_admit_change(
+    change: change_of(head_content: head_with_justified_addition, new_ranges: [LineRange { start: 6, count: 4 }]),
+    live: live_of(head_content: head_with_justified_addition),
+    bridges: [justified_addition_bridge],
+    evidence: unconstrained_evidence
+  ) {
+    SeedGrowthAdmissionRefused { unjustified_additions: refusals, detail: _ } =>
+      any(xs: refusals, predicate: fn(k) { string_contains(s: k, pattern: "does not constrain") })
+    SeedGrowthAdmissionComplete {
+      justified_items: _,
+      modified_items_requiring_disposition: _,
+      stale_justifications: _,
+      duplicate_justifications: _,
+      uncitable_items: _
+    } => false
+  }
+}
+
+// EVIDENCE TAKEN AGAINST A DIFFERENT BASE IS EVIDENCE ABOUT A DIFFERENT CHANGE. A probe whose epoch
+// names a base the admitting observer did not observe expires, and an expired epoch is not a weaker
+// form of a current one -- E1 is reconstructed rather than re-cited.
+test fn a_probe_taken_against_another_base_expires_rather_than_admitting() -> Bool {
+  match seed_growth_admit_change(
+    change: change_of(head_content: head_with_justified_addition, new_ranges: [LineRange { start: 6, count: 4 }]),
+    live: live_of(head_content: head_with_justified_addition),
+    bridges: [retro_modeled_addition_bridge],
+    evidence: expired_epoch_evidence
+  ) {
+    SeedGrowthAdmissionRefused { unjustified_additions: refusals, detail: _ } =>
+      any(xs: refusals, predicate: fn(k) { string_contains(s: k, pattern: "epoch has expired") })
     SeedGrowthAdmissionComplete {
       justified_items: _,
       modified_items_requiring_disposition: _,
@@ -256,7 +507,9 @@ test fn an_unjustified_addition_refuses_and_names_the_item() -> Bool {
 test fn an_addition_the_roster_already_names_is_admitted() -> Bool {
   match seed_growth_admit_change(
     change: change_of(head_content: head_with_justified_addition, new_ranges: [LineRange { start: 6, count: 4 }]),
-    live: live_of(head_content: head_with_justified_addition)
+    live: live_of(head_content: head_with_justified_addition),
+    bridges: [justified_addition_bridge],
+    evidence: conforming_evidence
   ) {
     SeedGrowthAdmissionComplete {
       justified_items: justified,
@@ -281,7 +534,9 @@ test fn an_addition_the_roster_already_names_is_admitted() -> Bool {
 test fn a_modified_item_is_reported_by_name_for_disposition() -> Bool {
   match seed_growth_admit_change(
     change: change_of(head_content: head_with_modified_existing_item, new_ranges: [LineRange { start: 4, count: 1 }]),
-    live: live_of(head_content: head_with_modified_existing_item)
+    live: live_of(head_content: head_with_modified_existing_item),
+    bridges: [],
+    evidence: no_admission_evidence()
   ) {
     SeedGrowthAdmissionComplete {
       justified_items: _,
@@ -322,7 +577,7 @@ test fn seed_growth_deletions_offset_nothing() -> Bool {
       }
     ]
   )
-  match seed_growth_admit_change(change: with_deletion, live: live_of(head_content: head_with_unjustified_addition)) {
+  match seed_growth_admit_change(change: with_deletion, live: live_of(head_content: head_with_unjustified_addition), bridges: [], evidence: no_admission_evidence()) {
     SeedGrowthAdmissionRefused { unjustified_additions: unjustified, detail: _ } =>
       any(xs: unjustified, predicate: fn(k) { string_contains(s: k, pattern: "totally_unjustified_probe") })
     SeedGrowthAdmissionComplete {
@@ -340,6 +595,8 @@ test fn seed_growth_deletions_offset_nothing() -> Bool {
 // reader reads as coverage.
 test fn an_unobservable_change_cannot_produce_a_complete_verdict() -> Bool {
   match seed_growth_admit_change(
+    bridges: [],
+    evidence: no_admission_evidence(),
     change: RustItemChangeHostRefused { detail: "git refused" },
     live: live_of(head_content: base_cli_run)
   ) {
