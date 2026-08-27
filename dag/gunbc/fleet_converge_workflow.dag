@@ -222,10 +222,13 @@ fn fleet_converge_apply_step() -> Step {
 }
 
 // THE DASHBOARD DEPLOY IS ITS OWN JOB, AND THE REASON IS A REQUIREMENT ITS OWN CARRIER STATES.
-// gunbc.fleet_workflow_steps srv1_dashboard_deploy_serialization_note: blue/green selection is
-// observe-then-mutate, so two deploys may not overlap -- both could observe blue active, then the
-// first flips green while the second restarts what has become the active green slot, recreating the
-// outage. The note specifies JOB-GRAIN concurrency, and a mode-gated STEP inside the shared converge
+// gunbc.fleet_workflow_steps srv1_dashboard_deploy_concurrency_group carries it: two candidate
+// transactions converging ONE instance in place interleave writes to the same tree, binary, unit,
+// process and readiness subject, so each transaction's readback can observe the other's artifacts.
+// (An earlier revision of this paragraph gave blue/green slot selection as that reason. Blue/green
+// was deleted at the root on 2026-08-19 and the citation was stale on arrival; the group's own
+// annotation now carries the current mechanism and the record of the correction.)
+// That requirement is JOB-GRAIN concurrency, and a mode-gated STEP inside the shared converge
 // job structurally cannot carry it: `concurrency` is a job key, so a step would have inherited that
 // job's `concurrency: none`. Landing the deploy as a step would therefore have restored the
 // operation without the serialization the operation requires. That group had no consumer at all
@@ -259,8 +262,12 @@ fn fleet_converge_dashboard_deploy_step() -> Step {
 // QueueNotMax RATHER THAN QueueMax, and the two are not interchangeable here. QueueMax permits many
 // pending entries, so a burst of dispatches would deploy each queued revision in turn -- installing
 // revisions already superseded before they were installed. QueueNotMax holds at most one pending and
-// REPLACES it with the newest arrival, which is what srv1_dashboard_deploy_serialization_note
-// describes: an older pending deployment gives way to the newest main revision. cancel_in_progress
+// REPLACES it with the newest arrival, which is what srv1_dashboard_deploy_concurrency_group's
+// annotation describes: an older pending deployment gives way to the newest arrival. NOTE the
+// weaker claim -- "newest arrival", not "newest main revision". While the trigger is
+// workflow_dispatch over a caller-selected ref, the newest arrival is whatever was dispatched last
+// and need not be main at all, so the stronger sentence would assert an ordering nothing
+// establishes. cancel_in_progress
 // is false in both readings and that is the half that matters most -- a queued deploy must never
 // interrupt the one currently holding the host mutation window, which is the state that produces a
 // half-applied cutover.
