@@ -968,11 +968,6 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         role: capability_neutral,
         step_name: "Upload the floor's per-claim cost receipt",
       },
-      WitnessFloorBoundStep {
-        step: witness_floor_all_binary_targets_step(),
-        role: capability_neutral,
-        step_name: "Every v1-compiler binary target compiles",
-      },
     ],
   )
 }
@@ -1007,13 +1002,43 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
 // strictly stronger, so there is no tradeoff to split: check would have bought less for more.
 // Re-derive with a fresh CARGO_TARGET_DIR, the two-bin build, then this command.
 //
-// PLACEMENT IS THE LOAD-BEARING PART AND IT IS LAST ON PURPOSE. Ahead of the fold this step
-// would be a preparation mask: an auxiliary target failing to compile would stop the job before
-// the floor ran, and the planned/executed/terminal ledger -- every semantic measurement this
-// job exists to publish -- would vanish behind an unrelated compile error. It therefore runs
-// AFTER the fold and after the roster uploads, guarded only by `!cancelled()` so a red floor
-// still reaches it. Either standing may red the workflow; neither may stop the other from
-// publishing its evidence.
+// PLACEMENT IS THE LOAD-BEARING PART, AND IT MOVED FROM THE FLOOR LANE TO THE BUILD LANE.
+// The original argument was about ORDER WITHIN THE FLOOR JOB and it still holds where it was
+// aimed: ahead of the fold this step would be a preparation mask, because an auxiliary target
+// failing to compile would stop the job before the floor ran and the planned/executed/terminal
+// ledger -- every semantic measurement that job exists to publish -- would vanish behind an
+// unrelated compile error. What that argument never asked is WHICH LANE, and the answer it
+// silently assumed was wrong twice over.
+//
+// FIRST, THE FACT WAS ALREADY ESTABLISHED IN THE OTHER LANE. `build_lane_build_script` is
+// `repo_self_build_all_bins_command()` -- `--bins`, every declared bin target -- so the build
+// lane's PRELUDE already compiles and links the whole binary population before that lane runs
+// a single phase. The floor lane's copy was therefore a second authority for one fact (DESIGN
+// section 3), and the two never disagreed because they could not: same package, same profile,
+// same targets.
+//
+// SECOND, THE DUPLICATE WAS THE ONE ON THE CRITICAL PATH. The floor lane is the longer of the
+// two, so this step's cost was pure addition to the required check's wall clock -- measured
+// 3m13s on main run 33093831916, paid from a target dir warmed only by the floor's two-bin
+// build. In the build lane it lands after a `--bins` prelude that has already built every
+// target it names, which is the 12s marginal case the BUILD-RATHER-THAN-CHECK note above
+// measured. The redundancy did not become free by moving; it became parallel, and parallel to
+// a lane that finishes earlier.
+//
+// WHY MOVED AND NOT DELETED. The two populations above are still two populations, and the
+// build lane's prelude answers the second only INCIDENTALLY -- it builds every bin because
+// that is a cheap way to produce claim_executor and gunbc, not because anything declares the
+// binary population as a standing. Deleting this step would leave that standing resting on a
+// prelude's convenience, so a later narrowing of the prelude to the two bins it actually needs
+// would remove the coverage with nothing red to say so. The step survives as the named
+// standing with its own step id, its own verdict and its own execution provenance; what
+// changed is only which job pays for it.
+//
+// THE ANTI-MASK PROPERTY SURVIVES BY CONSTRUCTION RATHER THAN BY ORDERING. In the floor lane
+// it was preserved by putting this step last; in the build lane there is no floor ledger for
+// it to mask at all, and the two lanes carry no `needs` edge on each other, so a red here
+// cannot stop the floor from publishing its receipts. It keeps `!cancelled()` so a red build
+// lane still reaches it.
 //
 // WHAT IT ESTABLISHES: every declared v1-compiler binary target compiles and links under the
 // release profile. WHAT IT DOES NOT: that any of them RUNS correctly, and nothing about test
@@ -1033,11 +1058,14 @@ fn witness_floor_all_binary_targets_step() -> Step {
 }
 
 // THE BUILD LANE'S BOUND STEPS. Preparation is `prepared_bound_steps` -- the SAME rows the
-// witnesses job uses -- and this job appends only the two that distinguish it: the environment
-// recorder (regen spawns rustfmt, so the probe is wanted exactly where that spawn happens) and
-// the lane's run step. No TSV uploads: the three receipt files are written by the FLOOR, so a
-// build-lane job naming them would demand files this lane never produces and `if-no-files-found:
-// error` would redden it for a receipt that was never its to write.
+// witnesses job uses -- and this job appends the three that distinguish it: the environment
+// recorder (regen spawns rustfmt, so the probe is wanted exactly where that spawn happens), the
+// lane's run step, and the binary-population standing that used to close the floor lane (see
+// `witness_floor_all_binary_targets_step` for why it moved: this lane's prelude already builds
+// every bin, so the standing is near-free here and was 3m13s of critical path there). No TSV
+// uploads: the three receipt files are written by the FLOOR, so a build-lane job naming them
+// would demand files this lane never produces and `if-no-files-found: error` would redden it
+// for a receipt that was never its to write.
 fn build_lane_bound_steps() -> List<WitnessFloorBoundStep> {
   append(
     prepared_bound_steps(build_script: build_lane_build_script()),
@@ -1051,6 +1079,11 @@ fn build_lane_bound_steps() -> List<WitnessFloorBoundStep> {
         step: build_lane_run_step(),
         role: consumes_only(capabilities: [RustfmtCapability]),
         step_name: "Required CI: build lane (phases named by the run, not by this label)",
+      },
+      WitnessFloorBoundStep {
+        step: witness_floor_all_binary_targets_step(),
+        role: capability_neutral,
+        step_name: "Every v1-compiler binary target compiles",
       },
     ],
   )
