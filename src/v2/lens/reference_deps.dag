@@ -42,8 +42,7 @@ data reference_deps_dissolution_note: String = "B2 reference edges from parsed-t
 // slow parsed-closure query from time spent before that deciding stage began. It is NOT a lower
 // bound on query cost. The exact subject is retained because a future reached-stage receipt can
 // rerun it without reconstructing what was asked.
-type ParsedReferenceClosureDecidingStageReach
-  = ReachUnproven
+type ParsedReferenceClosureDecidingStageReachUnproven {}
 
 type ParsedReferenceClosureNoResultObservation {
   entries: List<String>
@@ -53,7 +52,7 @@ type ParsedReferenceClosureNoResultObservation {
   deadline: Millisecond
   build_included: Bool
   preparation_completed: Bool
-  deciding_stage_reach: ParsedReferenceClosureDecidingStageReach
+  deciding_stage_reach: ParsedReferenceClosureDecidingStageReachUnproven
 }
 
 data parsed_reference_closure_two_entry_no_result_observation: ParsedReferenceClosureNoResultObservation = ParsedReferenceClosureNoResultObservation {
@@ -64,7 +63,7 @@ data parsed_reference_closure_two_entry_no_result_observation: ParsedReferenceCl
   deadline: millisecond(count: 900000),
   build_included: false,
   preparation_completed: true,
-  deciding_stage_reach: ReachUnproven
+  deciding_stage_reach: ParsedReferenceClosureDecidingStageReachUnproven {}
 }
 
 data reference_deps_file_anchor: Symbol = ^reference_deps_file_anchor
