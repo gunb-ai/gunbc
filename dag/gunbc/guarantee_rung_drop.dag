@@ -296,21 +296,17 @@ data next_rung_trigger_enforcement_stall: GuaranteeStall = GuaranteeStall {
 // ranking -- the deficit frequency driven to zero by construction, which is precisely the shape
 // DESIGN section 5 names. It is replaced here by a measurement, which does not get unblocked.
 data field_type_removal_false_unused_stall: GuaranteeStall = GuaranteeStall {
-  subject: "namespace wave admission reports UnusedSubjectMembershipRemoved for an import whose only use is a DECLARED FIELD TYPE, because 02_parse field_to_child_node parks the declared type in the inferred slot with a fabricated Resolved stamp and declaration_index for_each_node deliberately skips inferred -- so the reference exists in the tree and no authored-name reader can reach it",
+  subject: "namespace wave admission reports UnusedSubjectMembershipRemoved for an import whose only use is a DECLARED FIELD TYPE. The fact needed to answer correctly IS PRODUCED: v1.02_parse stamp_parsed_inferred stamps a Resolved inferred node with ParsedOccurrenceReference { category: TypeOccurrence }, so the declared type is an exact type occurrence carrying parser-minted identity, containment and an authored-name projection. It is then DISCARDED before any consumer sees it -- ParsedNodeStampResult returns the node UNCHANGED and the stamps live only in the threaded ParseContext, so declaration_index builds referenced from a Node-tree walk that no longer holds them",
   current: OutsideTheLadder,
-  ceiling: StructurallyImpossible,
-  blocker: AwaitsOneGrounding {
-    grounding: "an undecided DIRECTION, stated rather than cited because no authority answers it: does the declared field type move OUT of inferred into type_annotation, which changes a parse-level contract every downstream consumer reads, or does an authored-name channel read inferred SELECTIVELY, or does a third shape respect a constraint not visible from the consumer side. The class cannot climb until that is decided, because each answer lands a different contract in the v1 seed and picking wrong is more expensive than the defect. It is AwaitsOneGrounding rather than ClimbableButUnbuilt for the reason the import-eligibility row above states: the work is not merely unstarted but UNSPECIFIABLE, and filing it as unbuilt would send someone to build at a moment when the shape is not decided"
-  },
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
   population: BoundedPopulation {
     members: [
-      "v1.02_parse field_to_child_node -- the single producer that fabricates the Resolved stamp",
-      "v1.02_parse variant_to_child_node -- caller, variant payload fields",
-      "v1.02_parse outputs_to_inferred -- caller, declared outputs",
-      "v1.02_parse parse_type_after_kw -- caller, type declaration bodies",
-      "v1.02_parse parse_type_body_from_prefix -- caller, type bodies from a prefix",
-      "v1.02_parse parse_type_expr -- caller, type expressions"
+      "v1_compiler.declaration_index record_from_module -- builds referenced from a Node-tree walk instead of ingesting the parser-issued occurrence transport",
+      "v1_compiler.declaration_index for_each_node -- the walk itself, which cannot reach a fact the tree does not carry",
+      "v1_compiler.namespace_wave_admission membership_bound_through -- reads referenced and so inherits the gap",
+      "v1_compiler.namespace_wave_admission membership_declared -- the add-side judgment over the same set"
     ]
   },
-  next_rung_trigger: "THE TRIGGER IS THE CAPABILITY, NOT AN ARTIFACT THAT WOULD CONTRIBUTE TO ONE: a declared field type is reachable from an authored-name reader over the Node tree, so that membership_bound_through in namespace_wave_admission answers correctly WITHOUT being told about field types specifically. Not satisfied by a reader that special-cases the inferred slot for this one consumer -- that leaves every other authored-name walker blind and converts one blind position into a per-consumer exemption roster. The RED is authorable at the fixture boundary and has been AUTHORED AND EXECUTED: a module importing a coproduct used in exactly one position, a declared field type in a variant payload, has that import dropped while the reference remains, and the gate answers dispositions=[UnusedSubjectMembershipRemoved] -- a verdict that the still-referenced import is dead. That measurement is this class's forcing function and it does not expire when a blocked lane is unblocked"
+  next_rung_trigger: "THE TRIGGER IS THE CAPABILITY: the removal and binding judgments consume the parser-issued authored-reference transport, WITHOUT traversing Node.inferred, WITHOUT moving the declared type into type_annotation, and WITHOUT reconstructing identity from an authored name or a span. Each of those three is a way to reach the right answer through a channel that is not the producer, and each buys a per-consumer exemption rather than a climb. The RED is authorable at the fixture boundary and has been AUTHORED AND EXECUTED: a module importing a coproduct used in exactly one position -- a declared field type in a variant payload -- has that import dropped while the reference remains, and the gate answers dispositions=[UnusedSubjectMembershipRemoved], a verdict that a still-referenced import is dead. That executed measurement is this class's forcing function and does not expire. The ceiling is StructurallyGuaranteed rather than StructurallyImpossible deliberately: the disposition is a COMPUTED verdict derived from the transport, and a verdict can be miscomputed. Unwritability would require a carrier in which a removal judgment has no spelling that ignores the transport, which this one does not provide, so claiming the top rung here would be the inflation 4b(1) forbids"
 }
