@@ -26152,10 +26152,24 @@ fn call_floor_row_precompute_would_skip(
 // (a live read hidden behind an import was invisible to entry-text scanning): the
 // entry's own row asserts the fact for the whole evaluation, wherever the read hides.
 // A row that DECLARES SubstrateInputsOnly while actually reading live state is not
-// re-checked by any text scan — the nightly affected-set falsifier (predict-only cold
-// run) is the enforcement; a lying row surfaces as a counted divergence within one
-// cadence window. Call-reachability-grade classification (fn-arrow DependencyView over
-// lowered bodies) remains the later lane that re-derives these declarations.
+// re-checked by any text scan, AND IT IS NOW RE-CHECKED BY NOTHING AT ALL. This comment
+// named the nightly affected-set falsifier (predict-only cold run) as the enforcement,
+// promising that a lying row surfaces as a counted divergence within one cadence window.
+// THAT CADENCE IS GONE: `falsifier.yml` was deleted by the 2026-08-15 floor cut and sits
+// on DESIGN's unguarded list awaiting its own re-add, so the sentence was true when
+// written and became false when the workflow died, with nothing to notice. One claim in
+// three places — here, `v2.std.live_tree` `live_tree_disposition_note`, and that module's
+// `live_tree_disposition_stamp_provenance` — all three corrected together, because a claim
+// with three homes corrected in one still has two authorities (DESIGN §3).
+//
+// WHAT IS LEFT IS NOT A WEAKER WALL, IT IS NO WALL. `reads_live_tree_effective` consults
+// this declaration FIRST and falls through to `effect_reach_derived_reads_live_tree_for_entry`
+// only for a row already claiming SubstrateInputsOnly, so that derivation is the sole thing
+// standing behind a false claim — and it is a partial classifier, not an enforcement:
+// `v2.std.effect_reach` `effect_reach_detection_ceiling` files its three bounds and its
+// evidence. A lying declaration therefore buys a predict-skip that nothing observes.
+// Call-reachability-grade classification (fn-arrow DependencyView over lowered bodies) is
+// the capability that would restore an enforcement here, and it remains unbuilt.
 fn parse_entry_live_tree_disposition(entry: &str, content: &str) -> Result<bool, String> {
     let mut declared: Option<bool> = None;
     for line in content.lines() {
