@@ -1,5 +1,6 @@
 module v2.test.emit.rust_field_access_emit
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.dag {
@@ -42,8 +43,7 @@ import v2.std.node {
   Edge,
   Node,
   Positional,
-  SyntheticOccurrence,
-  Transform
+  Transform,
 }
 import v2.std.witness { Violates, Witness }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -69,7 +69,7 @@ fn rust_field_access_emit_wrong_field_body() -> Node {
         target: dag_type_atom_node(identity: ^dag_binding_pick_lit_one)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

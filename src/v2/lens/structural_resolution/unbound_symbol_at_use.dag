@@ -8,7 +8,7 @@ fn sr_unbound_claim_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -19,7 +19,7 @@ data sr_unbound_decl: Node = Node {
   children: [
     Edge { label: Named { name: ^dependency_binds_to_edge }, target: sr_unbound_use }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data sr_unbound_dependency: DependencyView = DependencyView {

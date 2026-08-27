@@ -1,4 +1,5 @@
 module v2.extdeps.languages.go
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.language_model { LanguageModel }
 
 import v2.std.grammar {
@@ -62,7 +63,7 @@ import v2.std.grounding {
   PerLanguageFactBundleKey,
   PerLanguageFactBundleRegistry
 }
-import v2.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
 import v2.std.compilers.target_model {
   ProducedDeclUnwired, ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node, target_model_emit_transforms_empty}
 import v2.std.compilers.target_model {
@@ -402,7 +403,7 @@ fn go_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -498,7 +499,7 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
           target: go_inhabitant_atom(id: std_projection)
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
     GoUnsignedIntegerPrimitiveFacts {
       surface_spelling,
@@ -535,7 +536,7 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
           target: go_inhabitant_atom(id: std_projection)
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
   }
 }
@@ -561,7 +562,7 @@ fn go_float_facts_node(facts: GoFloatPrimitiveFacts) -> Node {
         target: go_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -586,7 +587,7 @@ fn go_complex_facts_node(facts: GoComplexPrimitiveFacts) -> Node {
         target: go_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -607,7 +608,7 @@ fn go_bool_facts_node(facts: GoBoolPrimitiveFacts) -> Node {
         target: go_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -628,7 +629,7 @@ fn go_string_facts_node(facts: GoStringPrimitiveFacts) -> Node {
         target: go_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1195,7 +1196,7 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
           target: go_inhabitant_atom(id: std_projection)
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
     GoUnsignedIntegerPrimitiveFacts {
       surface_spelling: _,
@@ -1232,7 +1233,7 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
           target: go_inhabitant_atom(id: std_projection)
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
   }
 }
@@ -1254,7 +1255,7 @@ fn go_float_algebra_witness_node(facts: GoFloatPrimitiveFacts) -> Node {
         target: go_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1271,7 +1272,7 @@ fn go_bool_algebra_witness_node() -> Node {
         target: go_inhabitant_atom(id: go_facts_bool.std_projection)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1292,7 +1293,7 @@ fn go_string_algebra_witness_node(facts: GoStringPrimitiveFacts) -> Node {
         target: go_inhabitant_atom(id: facts.std_projection)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1417,7 +1418,7 @@ fn go_int_inhabitant_node() -> Node {
       go_named_edge(name: ^inhabitant_field_atom, target: go_inhabitant_atom(id: ^go_inhabitant_int)),
       go_named_edge(name: ^go_inhabitant_field_facts, target: go_integer_facts_node(facts: go_facts_int))
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1458,11 +1459,11 @@ fn go_int_additive_numeric_inhabitant_node() -> Node {
               target: go_inhabitant_atom(id: go_facts_int_additive_numeric.std_projection)
             )
           ],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1503,11 +1504,11 @@ fn go_int64_additive_numeric_inhabitant_node() -> Node {
               target: go_inhabitant_atom(id: go_facts_int64.std_projection)
             )
           ],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1519,7 +1520,7 @@ fn go_int64_falsifier_emitted_add_fn_node() -> Node {
       Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() },
       Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1531,7 +1532,7 @@ fn go_declared_inhabitants_root() -> Node {
       Edge { label: Positional, target: go_int_additive_numeric_inhabitant_node() },
       Edge { label: Positional, target: go_int64_additive_numeric_inhabitant_node() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1587,7 +1588,7 @@ fn go_add_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: go_coercion_candidate_edges(),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1605,7 +1606,7 @@ fn go_int64_selection_policy_node() -> Node {
         target: go_integer_facts_node(facts: go_facts_int64)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -1618,7 +1619,7 @@ fn go_emitted_add_fn_node() -> Node {
       Edge { label: Positional, target: go_int_inhabitant_node() },
       Edge { label: Positional, target: go_int_inhabitant_node() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1647,7 +1648,7 @@ fn go_serialize_source_children() -> List<Edge> {
 
 fn go_serialize_source_node() -> Node {
   Node { kind: TypeNode { connective: Conj }, children: go_serialize_source_children(),
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1739,7 +1740,7 @@ fn go_grammar_relation_row_node(row: GoGrammarRelationRow) -> Node {
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1749,7 +1750,7 @@ fn go_translation_rules_node() -> Node {
     children: [
       go_named_edge(name: ^go_relation_rule_fn_add, target: go_grammar_relation_row_node(row: go_grammar_relation_row()))
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1781,7 +1782,7 @@ fn go_emit_host_runtime_primitive_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^go_emit_host_runtime_primitive_symbol } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -1824,7 +1825,7 @@ fn go_target_model_bundle_core() -> Node {
       go_named_edge(name: ^target_model_edge_translation_rules, target: go_translation_rules_node()),
       go_named_edge(name: ^target_model_edge_serialize_source, target: go_serialize_source_node())
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1899,7 +1900,7 @@ fn go_target_model_node() -> Node {
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1931,7 +1932,7 @@ fn go_target_model_node_with_selection_policy(selection: Node) -> Node {
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

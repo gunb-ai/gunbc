@@ -3,6 +3,7 @@
 
 use self::AdmitCallersEntry::*;
 use self::CallSemantics::*;
+use self::CallTargetIdentity::*;
 use self::Cardinality::*;
 use self::CompilerDiagnostic::*;
 use self::Connective::*;
@@ -227,14 +228,34 @@ impl VarBindingKind {
     }
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum CallTargetIdentity {
+    RuntimePrimitiveCall {
+        primitive_name: String,
+    },
+    SourceDeclarationCall {
+        owner_module_path: String,
+        decl_name: String,
+    },
+    CallableTargetUndetermined,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CallSemantics {
-    PlainCallSemantics,
-    LookupCallSemantics,
+    PlainCallSemantics { target: Rc<CallTargetIdentity> },
+    LookupCallSemantics { target: Rc<CallTargetIdentity> },
     FunctionValueCallSemantics,
+}
+impl CallSemantics {
+    pub fn target(&self) -> Rc<CallTargetIdentity> {
+        match self {
+            CallSemantics::PlainCallSemantics { target: __val, .. } => __val.clone(),
+            CallSemantics::LookupCallSemantics { target: __val, .. } => __val.clone(),
+            CallSemantics::FunctionValueCallSemantics => panic!("no target on unit variant"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -283,7 +304,7 @@ pub enum ExprData {
         summary: Option<Rc<FieldSummary>>,
     },
     ExprCall {
-        call_semantics: Option<CallSemantics>,
+        call_semantics: Option<Rc<CallSemantics>>,
         descent_evidence: Option<Rc<Vec<Rc<SubValueRelation>>>>,
     },
     ExprMethodCall {
@@ -468,6 +489,11 @@ pub enum CompilerDiagnostic {
         name: String,
         span: Rc<SourceSpan>,
     },
+    DuplicateDeclaration {
+        module_name: String,
+        name: String,
+        span: Rc<SourceSpan>,
+    },
     MissingAnnotation {
         fn_name: String,
         what: String,
@@ -569,6 +595,11 @@ pub enum CompilerDiagnostic {
     },
     AmbiguousAnonymousRecordLiteral {
         candidates: Rc<Vec<String>>,
+        span: Rc<SourceSpan>,
+    },
+    ModuleFilenameCollision {
+        filename: String,
+        modules: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
     CallArgumentNameUnknown {
@@ -705,6 +736,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::NonExhaustiveMatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::CircularDependency { span: s, .. } => s.clone(),
         CompilerDiagnostic::DuplicateModule { span: s, .. } => s.clone(),
+        CompilerDiagnostic::DuplicateDeclaration { span: s, .. } => s.clone(),
         CompilerDiagnostic::MissingAnnotation { span: s, .. } => s.clone(),
         CompilerDiagnostic::ParseError { span: s, .. } => s.clone(),
         CompilerDiagnostic::InternalError { span: s, .. } => s.clone(),
@@ -716,7 +748,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::OptionalCastNotEliminated { span: s, .. } => s.clone(),
         CompilerDiagnostic::BareNoneNotAdmittedByFieldType { span: s, .. } => s.clone(),
         CompilerDiagnostic::SourceAnnotationRefused { refusal: r, .. } => {
-            annotation_attachment_refusal_origin(r.clone())
+            crate::std_source_annotation::annotation_attachment_refusal_origin(r.clone())
         }
         CompilerDiagnostic::ConstructorCallAdmissionRefused { span: s, .. } => s.clone(),
         CompilerDiagnostic::AdmitCallersEntryNotDeclRef { span: s, .. } => s.clone(),
@@ -728,6 +760,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { span: s, .. } => s.clone(),
         CompilerDiagnostic::ParameterDefaultFormNotAdmitted { span: s, .. } => s.clone(),
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ModuleFilenameCollision { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallPositionalSurplus { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallArgumentDuplicate { span: s, .. } => s.clone(),
@@ -764,6 +797,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::NonExhaustiveMatch { missing: ms, .. } => v1_rt::concat("non-exhaustive match: missing variant(s) ".to_string(), ms.clone().join(&", ".to_string())),
     CompilerDiagnostic::CircularDependency { modules: ms, .. } => v1_rt::concat("circular dependency detected: ".to_string(), ms.clone().join(&" -> ".to_string())),
     CompilerDiagnostic::DuplicateModule { name: n, .. } => v1_rt::concat(v1_rt::concat("duplicate module declaration: '".to_string(), n.clone()), "'".to_string()),
+    CompilerDiagnostic::DuplicateDeclaration { module_name: m, name: n, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("duplicate declaration '".to_string(), n.clone()), "' in module '".to_string()), m.clone()), "' -- a second declaration of one name silently replaced the first".to_string()),
     CompilerDiagnostic::MissingAnnotation { fn_name: f, what: w, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("function '".to_string(), f.clone()), "' requires ".to_string()), w.clone()), " annotation".to_string()),
     CompilerDiagnostic::ParseError { message: m, .. } => m.clone(),
     CompilerDiagnostic::InternalError { message: m, .. } => m.clone(),
@@ -774,7 +808,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::SoleConstructorViolation { type_name: t, .. } => v1_rt::concat(v1_rt::concat("sole_constructor type '".to_string(), t.clone()), "' cannot be constructed outside its defining module".to_string()),
     CompilerDiagnostic::OptionalCastNotEliminated { source_type: st, target_type: tt, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("cannot cast optional '".to_string(), st.clone()), "' to '".to_string()), tt.clone()), "': a cast does not eliminate the absence, it re-types the wrapper — match on Present/Absent first".to_string()),
     CompilerDiagnostic::BareNoneNotAdmittedByFieldType { field: f, type_name: t, declared_type: dt, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("bare 'None' cannot inhabit field '".to_string(), f.clone()), "' of '".to_string()), t.clone()), "': declared type '".to_string()), dt.clone()), "' carries no absence — it is not optional and declares no 'None' variant".to_string()),
-    CompilerDiagnostic::SourceAnnotationRefused { refusal: r, .. } => annotation_attachment_refusal_message(r.clone()),
+    CompilerDiagnostic::SourceAnnotationRefused { refusal: r, .. } => crate::std_source_annotation::annotation_attachment_refusal_message(r.clone()),
     CompilerDiagnostic::ConstructorCallAdmissionRefused { constructor_module_path: cm, constructor_decl_name: cn, caller_module_path: caller_m, caller_decl_name: caller_n, permitted_callers: permitted, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("constructor call admission refused: '".to_string(), cm.clone()), ".".to_string()), cn.clone()), "' refuses call from '".to_string()), caller_m.clone()), ".".to_string()), caller_n.clone()), "' — permitted callers: [".to_string()), permitted.clone().join(&", ".to_string())), "]".to_string()),
     CompilerDiagnostic::AdmitCallersEntryNotDeclRef { constructor_decl_name: cn, .. } => v1_rt::concat(v1_rt::concat("admit_callers entry on '".to_string(), cn.clone()), "' is not a decl_ref(module_path: \"...\", decl_name: \"...\") call: an entry that cannot be interpreted would otherwise be dropped, silently shrinking the permitted-caller roster below what was authored".to_string()),
     CompilerDiagnostic::DeclaredTypeNotInhabited { position: pos, expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("value does not inhabit its declared type at the ".to_string(), pos.clone()), ": declared '".to_string()), e.clone()), "', produced '".to_string()), g.clone()), "'".to_string()),
@@ -785,6 +819,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { name: n, .. } => v1_rt::concat(v1_rt::concat("visible declarations of '".to_string(), n.clone()), "' could not be enumerated: the import re-export walk exceeded its depth bound, so no verdict is asserted about how many declarations answer to the name".to_string()),
     CompilerDiagnostic::ParameterDefaultFormNotAdmitted { parameter: p, admitted: forms, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("default value for parameter '".to_string(), p.clone()), "' is not an admitted form (admitted: ".to_string()), forms.clone().join(&", ".to_string())), ")".to_string()),
     CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous anonymous record literal shape matches ".to_string(), ((cs.clone().len() as i64)).to_string()), " structs: ".to_string()), cs.clone().join(&", ".to_string())), " — add a nominal type".to_string()),
+    CompilerDiagnostic::ModuleFilenameCollision { filename: f, modules: ms, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("module filename collision: ".to_string(), ((ms.clone().len() as i64)).to_string()), " modules render one emitted file name '".to_string()), f.clone()), "': ".to_string()), ms.clone().join(&", ".to_string())), " — module_to_filename maps '.' to '_', so these names are indistinguishable at the emitted path; rename one module segment".to_string()),
     CompilerDiagnostic::CallArgumentNameUnknown { callee: c, argument: a, declared: ds, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': no parameter named '".to_string()), a.clone()), "' (declared: [".to_string()), ds.clone().join(&", ".to_string())), "])".to_string()),
     CompilerDiagnostic::CallPositionalSurplus { callee: c, supplied: s, capacity: cap, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': too many positional arguments: ".to_string()), (s.clone()).to_string()), " supplied, ".to_string()), (cap.clone()).to_string()), " positional parameter(s) declared".to_string()),
     CompilerDiagnostic::CallArgumentDuplicate { callee: c, argument: a, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': argument '".to_string()), a.clone()), "' supplied more than once".to_string()),
@@ -809,7 +844,7 @@ pub fn is_where_refinement_unenforced_advisory_reason(reason: String) -> bool {
 pub fn compiler_diagnostic_seed_projection_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "HAND-RUST GATE receipt for the CompilerDiagnostic seed projection (codex reviews 45469, 45481). Adding a variant to this coproduct forces arms in two TOTAL matches in the hand-maintained seed transport, cli_run.rs's compile_clean_diagnostic_histogram_key and its method-name extractor; without them the seed does not compile, so the arms are the mechanical consequence of the .dag change, not host-side capability someone chose to write in Rust. THIS IS A DIFFERENT CLASS FROM THE GATE'S USUAL SUBJECT and the distinction is the whole receipt: the gate's other explicit deferrals — the emit-surface retirement rows — are DECISION SURFACES that could live in .dag and are deferred for a stated reason, so they owe a dissolution schedule of their own. This clause used to name cli_run::selection_control_input_sources alongside them; that symbol was DELETED with affected-set selection (2026-08-15), so the deferral it recorded was discharged by deletion rather than by a schedule, and the citation was left naming nothing — the DESIGN section 3 stale-citation class, inside a receipt whose own argument is that an unverifiable figure rots silently. An exhaustiveness arm owes none, because it cannot live anywhere but the seed's projection of the coproduct, and it disappears exactly when the seed does. CHECKABLE RECEIPT for the FIVE variants this lane adds (MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded). It read SIX until the unjudged conformance advisory was excluded from this PR (codex review 45767); DeclaredTypeConformanceUnjudged and its arms are gone with it, which is why the figures below moved again. Two commands, and the receipt is exactly their output — EACH FIGURE NAMES THE COMMAND THAT PRODUCES IT, because a number with no command behind it cannot be checked and rots silently. (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 747 at origin/main and 747 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 23 added / 0 removed, and `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line is inside an existing fn and none declares one. The 23 lines are the five diagnostic arms plus the advisory-classification entries described next. THE NUMBERS IN A RECEIPT MUST TRACK THE DIFF THEY CERTIFY: this row read five variants and 13 lines after a sixth variant landed (codex review 45501), and then read a fn census of 742 that NO command reproduced — 501 bare `fn` and 245 `pub fn` on either side, never 742 — so the figure certifying that hand-Rust had not grown was itself unverifiable. A receipt whose number cannot be re-derived is indistinguishable from one that is wrong. Re-derive all three figures from the commands above whenever this coproduct changes, rather than carrying them forward. THE ADVISORY CLASSIFICATION IS PART OF THIS RECEIPT AND WAS THE DEFECT IT ALMOST HID: compile_clean_diagnostic_is_advisory is a CLOSED ALLOWLIST, not the complement of is_hard, so the two non-blocking variants this lane adds were counted by NEITHER predicate — rendered to the terminal while the gate reported zero of them. The residue was described as counted while nothing in the repository counted it, and the population figures quoted in review came from a grep over log text rather than from any mechanism (found by executing the gate before and after and seeing its advisory total sit unchanged at 4590 while the printed population halved). Adding a non-blocking variant to the coproduct therefore obliges a matching entry in that allowlist, or the frontier it represents is invisible to the gate that is supposed to bound it. Lane: compiler-static-failure-closure (v1-method-existence-wall / v1-declared-type-conformance-wall). Dissolves with the seed itself, ROADMAP hand-MAINTAINED to zero at v2 self-host; no separate trigger, because there is no separable work to schedule. Not migration debt and not a delete candidate. SECOND LANE, SECOND EXPANSION (review 55680, finding 2). ImportShadowedByLocalDefinition is a SIXTH variant, added by a different lane for the import-shadow wall, and it forces one arm in each of the same two total matches. The five-variant figures above were measured against THAT lane's base and do not reproduce here -- (a) alone now answers 884 rather than 747 -- which is the rot this receipt exists to make visible: a figure survives its own truth by naming a command nobody re-runs. RE-MEASURED ON THIS HEAD, same three commands: (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 884 at origin/main and 884 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 4 added / 0 removed. (c) `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line sits inside an existing fn and none declares one. The 4 lines are this variant's two arms, one per total match, as rustfmt renders them. NO HOST CAPABILITY IS ADDED: both arms are the mechanical consequence of the .dag coproduct gaining a member, and they disappear exactly when the seed does. THIRD LANE, THIRD EXPANSION (codex review 56224, finding 1). DataReferenceVisibilityBudgetExceeded and ParameterDefaultFormNotAdmitted are a SEVENTH and EIGHTH variant, added by the typed-data-reference-refusal lane so that the three terminal arms of v1.compiler.emit_rust validate_workflow_param_defaults stop rendering three distinct causes as InternalError. Each forces one arm in each of the same two total matches. THE PRIOR LANE'S FIGURES DO NOT REPRODUCE HERE AND ARE NOT AMENDED: 884 was that lane's base, this lane's base is 890, and a receipt that edited the earlier number in place would destroy the evidence that a figure moves per lane -- which is the entire argument this row makes. RE-MEASURED ON THIS HEAD, same three commands: (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 890 at origin/main and 890 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 8 added / 0 removed. (c) `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line sits inside an existing fn and none declares one. The 8 lines are this lane's FOUR arms -- two variants, one arm each in both total matches -- as rustfmt renders them across braced blocks. WHY EIGHT LINES FOR FOUR ARMS AND NOT FOUR: three of the four arms exceed the line width once the variant name is spelled, so rustfmt renders them as braced blocks; the count is a property of the formatter, not of added capability, which is exactly why (c) is measured beside it rather than inferred from (b). THE THIRTEEN LINES IN v1_std_core.rs ARE NOT PART OF THIS RECEIPT AND MUST NOT BE ADDED TO IT: that file is the GENERATED mirror of this module, emitted by required-regen from the .dag authority above, so its growth is authored here in .dag and is not hand-Rust surface. Counting it would be the same category error as counting compiler_tests.rs, which the plan projection already rules out for the same reason. NEITHER NEW VARIANT IS NON-BLOCKING, so the advisory-allowlist obligation this row records does not fire: is_interpreter_blocking_diagnostic answers true by default and neither variant is listed as an exception, which is correct -- both replace a blocking InternalError at a refusal site, and the witness measures the ambiguity arm as one BLOCKING AmbiguousReference row rather than an advisory one.".to_string()
+            "HAND-RUST GATE receipt for the CompilerDiagnostic seed projection (codex reviews 45469, 45481). Adding a variant to this coproduct forces arms in two TOTAL matches in the hand-maintained seed transport, cli_run.rs's compile_clean_diagnostic_histogram_key and its method-name extractor; without them the seed does not compile, so the arms are the mechanical consequence of the .dag change, not host-side capability someone chose to write in Rust. THIS IS A DIFFERENT CLASS FROM THE GATE'S USUAL SUBJECT and the distinction is the whole receipt: the gate's other explicit deferrals — the emit-surface retirement rows — are DECISION SURFACES that could live in .dag and are deferred for a stated reason, so they owe a dissolution schedule of their own. This clause used to name cli_run::selection_control_input_sources alongside them; that symbol was DELETED with affected-set selection (2026-08-15), so the deferral it recorded was discharged by deletion rather than by a schedule, and the citation was left naming nothing — the DESIGN section 3 stale-citation class, inside a receipt whose own argument is that an unverifiable figure rots silently. An exhaustiveness arm owes none, because it cannot live anywhere but the seed's projection of the coproduct, and it disappears exactly when the seed does. CHECKABLE RECEIPT for the FIVE variants this lane adds (MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded). It read SIX until the unjudged conformance advisory was excluded from this PR (codex review 45767); DeclaredTypeConformanceUnjudged and its arms are gone with it, which is why the figures below moved again. Two commands, and the receipt is exactly their output — EACH FIGURE NAMES THE COMMAND THAT PRODUCES IT, because a number with no command behind it cannot be checked and rots silently. (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 747 at origin/main and 747 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 23 added / 0 removed, and `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line is inside an existing fn and none declares one. The 23 lines are the five diagnostic arms plus the advisory-classification entries described next. THE NUMBERS IN A RECEIPT MUST TRACK THE DIFF THEY CERTIFY: this row read five variants and 13 lines after a sixth variant landed (codex review 45501), and then read a fn census of 742 that NO command reproduced — 501 bare `fn` and 245 `pub fn` on either side, never 742 — so the figure certifying that hand-Rust had not grown was itself unverifiable. A receipt whose number cannot be re-derived is indistinguishable from one that is wrong. Re-derive all three figures from the commands above whenever this coproduct changes, rather than carrying them forward. THE ADVISORY CLASSIFICATION IS PART OF THIS RECEIPT AND WAS THE DEFECT IT ALMOST HID: compile_clean_diagnostic_is_advisory is a CLOSED ALLOWLIST, not the complement of is_hard, so the two non-blocking variants this lane adds were counted by NEITHER predicate — rendered to the terminal while the gate reported zero of them. The residue was described as counted while nothing in the repository counted it, and the population figures quoted in review came from a grep over log text rather than from any mechanism (found by executing the gate before and after and seeing its advisory total sit unchanged at 4590 while the printed population halved). Adding a non-blocking variant to the coproduct therefore obliges a matching entry in that allowlist, or the frontier it represents is invisible to the gate that is supposed to bound it. Lane: compiler-static-failure-closure (v1-method-existence-wall / v1-declared-type-conformance-wall). Dissolves with the seed itself, ROADMAP hand-MAINTAINED to zero at v2 self-host; no separate trigger, because there is no separable work to schedule. Not migration debt and not a delete candidate. SECOND LANE, SECOND EXPANSION (review 55680, finding 2). ImportShadowedByLocalDefinition is a SIXTH variant, added by a different lane for the import-shadow wall, and it forces one arm in each of the same two total matches. The five-variant figures above were measured against THAT lane's base and do not reproduce here -- (a) alone now answers 884 rather than 747 -- which is the rot this receipt exists to make visible: a figure survives its own truth by naming a command nobody re-runs. RE-MEASURED ON THIS HEAD, same three commands: (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 884 at origin/main and 884 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 4 added / 0 removed. (c) `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line sits inside an existing fn and none declares one. The 4 lines are this variant's two arms, one per total match, as rustfmt renders them. NO HOST CAPABILITY IS ADDED: both arms are the mechanical consequence of the .dag coproduct gaining a member, and they disappear exactly when the seed does. THIRD LANE, THIRD EXPANSION (codex review 56224, finding 1). DataReferenceVisibilityBudgetExceeded and ParameterDefaultFormNotAdmitted are a SEVENTH and EIGHTH variant, added by the typed-data-reference-refusal lane so that the three terminal arms of v1.compiler.emit_rust validate_workflow_param_defaults stop rendering three distinct causes as InternalError. Each forces one arm in each of the same two total matches. THE PRIOR LANE'S FIGURES DO NOT REPRODUCE HERE AND ARE NOT AMENDED: 884 was that lane's base, this lane's base is 890, and a receipt that edited the earlier number in place would destroy the evidence that a figure moves per lane -- which is the entire argument this row makes. RE-MEASURED ON THIS HEAD, same three commands: (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 890 at origin/main and 890 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 8 added / 0 removed. (c) `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line sits inside an existing fn and none declares one. The 8 lines are this lane's FOUR arms -- two variants, one arm each in both total matches -- as rustfmt renders them across braced blocks. WHY EIGHT LINES FOR FOUR ARMS AND NOT FOUR: three of the four arms exceed the line width once the variant name is spelled, so rustfmt renders them as braced blocks; the count is a property of the formatter, not of added capability, which is exactly why (c) is measured beside it rather than inferred from (b). THE THIRTEEN LINES IN v1_std_core.rs ARE NOT PART OF THIS RECEIPT AND MUST NOT BE ADDED TO IT: that file is the GENERATED mirror of this module, emitted by required-regen from the .dag authority above, so its growth is authored here in .dag and is not hand-Rust surface. Counting it would be the same category error as counting compiler_tests.rs, which the plan projection already rules out for the same reason. FOURTH LANE, FOURTH EXPANSION (duplicate-declaration wall, 2026-08-27). DuplicateDeclaration is a NINTH variant, added so that v1.compiler.resolve check_duplicate_declarations can refuse a module declaring one name twice -- a state the compiler previously ACCEPTED with zero diagnostics while the symbol index silently kept the last declaration. It forces one arm in each of the same two total matches. THE PRIOR LANE'S FIGURES DO NOT REPRODUCE HERE AND ARE NOT AMENDED: 890 was that lane's base, this lane's base is 895. THIS LANE CHANGES THE RECEIPT'S NAMED COMMANDS, AND THE REASON IS THIS ROW'S OWN ARGUMENT TURNED ON ITSELF (codex review 56644). Every prior lane wrote `origin/main` as the comparison base. A DIFF HAS TWO SIDES AND ONLY ONE OF THEM IS THIS BRANCH: origin/main moves under other people's merges, so a receipt keyed to the MOVING ref reports a figure that changes without anyone touching the change it certifies. Measured here rather than argued: this lane's diff was 2 added / 0 removed when authored, and hours later the same `git diff --numstat origin/main` command answered 6 added / 64 removed -- the 64 removals being main's work, not this branch's, and the figure now describing a diff nobody authored. That is exactly the rot this row exists to make visible, arriving through the ref rather than through the number, which is why it survived three lanes: each author re-measured honestly and the command was already wrong. THE REPAIR IS A STABLE BASE: every figure below is measured against `$(git merge-base origin/main HEAD)`, which is this branch's own fork point and does not move, and the base commit is NAMED so the reading is reproducible after a later merge -- ddb7f533e4. RE-MEASURED ON THIS HEAD against that base: (a) `git show $(git merge-base origin/main HEAD):src/v1/stage0/src/cli_run.rs | grep -cE '^(pub )?fn '` is 895 and `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 895, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat $(git merge-base origin/main HEAD) -- src/v1/stage0/src/cli_run.rs` is 2 added / 0 removed. (c) `git diff $(git merge-base origin/main HEAD) -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line sits inside an existing fn and none declares one. The 2 lines are this variant's two arms, one per total match, each short enough that rustfmt renders it on one line -- which is why the per-arm line count differs from the prior lane's and is measured rather than inherited. THE EARLIER LANES' FIGURES ARE NOT RE-BASED OR AMENDED: they were correct against the main they named at the time, and rewriting them would destroy the evidence that a receipt keyed to a moving ref decays, which is the whole finding here. What changes is the command the NEXT lane runs. THE NEW VARIANT IS BLOCKING and carries no arm in is_error_diagnostic or is_interpreter_blocking_diagnostic: both answer true by default and it is listed as an exception in neither, which is the intended reading -- a duplicate declaration must stop the line, since every realization downstream of it is built on whichever definition happened to survive. NEITHER NEW VARIANT IS NON-BLOCKING, so the advisory-allowlist obligation this row records does not fire: is_interpreter_blocking_diagnostic answers true by default and neither variant is listed as an exception, which is correct -- both replace a blocking InternalError at a refusal site, and the witness measures the ambiguity arm as one BLOCKING AmbiguousReference row rather than an advisory one. FOURTH LANE, FOURTH EXPANSION (codex review 56887). ModuleFilenameCollision is a NINTH variant, added by the module-filename-collision lane so that two modules whose names differ only by a dot-versus-underscore refuse at emit instead of overwriting one emitted file silently. It forces one arm in each of the same two total matches. THE PRIOR LANE'S FIGURES DO NOT REPRODUCE HERE AND ARE NOT AMENDED, for the reason the third lane already gives: 890 was that lane's base, this lane's base is 896, and editing an earlier number in place would destroy the evidence that a figure moves per lane. RE-MEASURED ON THIS HEAD against origin/main 9538523a3c, same three commands: (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 896 at origin/main and 896 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 2 added / 0 removed. (c) `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so both added lines sit inside existing fns and neither declares one. The 2 lines are this lane's TWO arms, one per total match; both render on a single line, which is why this lane's line count is 2 where the third lane's four arms cost 8 -- the difference is rustfmt's wrapping of longer variant names, not added capability. THE VARIANT IS BLOCKING, so the advisory-allowlist obligation this row records does not fire: is_interpreter_blocking_diagnostic answers true by default and ModuleFilenameCollision is not listed as an exception, which is correct -- a collision silently overwrites an emitted file, and an advisory would be the fail-open the diagnostic exists to close. DISSOLUTION: this lane mints NO separate trigger and inherits the one this row already carries -- the arms are the mechanical consequence of the .dag coproduct gaining a member, they cannot live anywhere but the seed's projection of it, and they disappear exactly when the seed does, at the ROADMAP row v1-zero-hand-maintained-rust.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -4190,7 +4225,8 @@ pub fn empty_intern_table() -> Rc<InternTable> {
         strings: Rc::new(vec!["".to_string()]),
         index: v1_rt::rc_map_insert(v1_rt::rc_empty_map::<String, i64>(), "".to_string(), 0),
         next_id: 1,
-        authored_token_ordinals: authored_token_ordinal_space_initial(),
+        authored_token_ordinals:
+            crate::std_occurrence_identity::authored_token_ordinal_space_initial(),
     })
 }
 
@@ -4252,13 +4288,16 @@ pub fn merge_intern_tables(tables: Rc<Vec<Rc<InternTable>>>) -> Rc<InternTable> 
     tables.iter().cloned().fold(
         empty_intern_table(),
         |merged: Rc<InternTable>, t: Rc<InternTable>| {
-            let merged_allocator = occurrence_id_allocator_advance_to(
-                merged.authored_token_ordinals.clone().allocator.clone(),
-                t.authored_token_ordinals.clone(),
-            );
+            let merged_allocator =
+                crate::std_occurrence_identity::occurrence_id_allocator_advance_to(
+                    merged.authored_token_ordinals.clone().allocator.clone(),
+                    t.authored_token_ordinals.clone(),
+                );
             let merged = intern_table_with_authored_token_ordinals(
                 merged.clone(),
-                authored_token_ordinal_space_from_allocator(merged_allocator.clone()),
+                crate::std_occurrence_identity::authored_token_ordinal_space_from_allocator(
+                    merged_allocator.clone(),
+                ),
             );
             t.strings.clone().iter().cloned().fold(
                 merged.clone(),
@@ -4400,7 +4439,7 @@ pub enum ContainerSpellingVerdict {
 pub fn known_container_leaf(name: String) -> Option<String> {
     {
         let leaf = qualified_last_segment(name.clone());
-        match container_expected_arity(leaf.clone()) {
+        match crate::std_types::container_expected_arity(leaf.clone()) {
             Some(_) => Some(leaf.clone()),
             None => None,
         }
@@ -4408,7 +4447,7 @@ pub fn known_container_leaf(name: String) -> Option<String> {
 }
 
 pub fn container_spelling_verdict(name: String) -> Rc<ContainerSpellingVerdict> {
-    match container_expected_arity(name.clone()) {
+    match crate::std_types::container_expected_arity(name.clone()) {
         Some(arity) => Rc::new(ContainerSpellingVerdict::ContainerSpellingDeclared {
             arity: arity.clone(),
         }),
@@ -4441,7 +4480,10 @@ pub fn authored_container_spelling_verdict(
     if type_node_name_is_authored(node.clone(), source_indices.clone()) {
         container_spelling_verdict(authored_name_at(source_indices.clone(), node.clone()))
     } else {
-        match container_expected_arity(authored_name_at(source_indices.clone(), node.clone())) {
+        match crate::std_types::container_expected_arity(authored_name_at(
+            source_indices.clone(),
+            node.clone(),
+        )) {
             Some(arity) => Rc::new(ContainerSpellingVerdict::ContainerSpellingDeclared {
                 arity: arity.clone(),
             }),
@@ -4576,12 +4618,6 @@ pub struct TupleSecond;
 pub struct PlainValue;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OptionalValue;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct PlainCallSemantics;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct LookupCallSemantics;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct FunctionValueCallSemantics;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ParseRecoveryError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

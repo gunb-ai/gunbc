@@ -1,5 +1,6 @@
 module v2.test.manual.content_hash_loop_bound_edge_order
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node {
   Atom,
   ComputationNode,
@@ -12,13 +13,12 @@ import v2.std.node {
   Transform,
   TypeNode,
   content_hash,
-  SyntheticOccurrence
 }
 fn content_hash_loop_body_leaf() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^content_hash_loop_body_sym } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -26,7 +26,7 @@ fn content_hash_loop_measure_leaf() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^content_hash_loop_measure_sym } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -36,7 +36,7 @@ fn content_hash_loop_body() -> Node {
     children: [
       Edge { label: Positional, target: content_hash_loop_body_leaf() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -47,7 +47,7 @@ fn content_hash_loop_body_two() -> Node {
       Edge { label: Positional, target: content_hash_loop_body_leaf() },
       Edge { label: Positional, target: content_hash_loop_body_leaf() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -61,7 +61,7 @@ fn content_hash_loop_bound_last() -> Node {
         target: content_hash_loop_measure_leaf()
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -75,7 +75,7 @@ fn content_hash_loop_bound_first() -> Node {
       },
       Edge { label: Positional, target: content_hash_loop_body() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -90,7 +90,7 @@ fn content_hash_loop_bound_middle() -> Node {
       },
       Edge { label: Positional, target: content_hash_loop_body_two() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -105,7 +105,7 @@ fn content_hash_loop_bound_last_two_body() -> Node {
         target: content_hash_loop_measure_leaf()
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -123,7 +123,7 @@ fn content_hash_loop_with_extra_named() -> Node {
         target: content_hash_loop_body_leaf()
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 

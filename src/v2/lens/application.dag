@@ -35,7 +35,6 @@ import v2.std.node {
   TypeNode,
   name_occurrences,
   node_rebuild,
-  SyntheticOccurrence
 }
 import v2.std.node_query {
   find_named_child

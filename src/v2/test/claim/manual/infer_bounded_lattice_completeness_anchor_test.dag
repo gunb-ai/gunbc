@@ -1,5 +1,6 @@
 module v2.test.manual.infer_bounded_lattice_completeness_anchor
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.infer {
   InferredTree,
   infer
@@ -20,13 +21,13 @@ import v2.std.algebra {
 import v2.std.bounded_lattice_completeness { bounded_lattice_instance_completeness }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Arrow, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Arrow, Conj, Edge, Named, Node, Symbol, TypeNode }
 
 fn anchor_atom_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -34,7 +35,7 @@ fn anchor_fn_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -49,7 +50,7 @@ fn anchor_complete_lattice_node() -> Node {
       anchor_named_edge(name: ^lattice_field_meet, target: anchor_fn_node()),
       anchor_named_edge(name: ^lattice_field_join, target: anchor_fn_node())
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -59,7 +60,7 @@ fn anchor_lattice_missing_meet_node() -> Node {
     children: [
       anchor_named_edge(name: ^lattice_field_join, target: anchor_fn_node())
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -70,7 +71,7 @@ data anchor_complete_bounded_lattice_instance: Node = Node {
     anchor_named_edge(name: ^bounded_lattice_field_top, target: anchor_atom_node(s: ^anchor_top_sym)),
     anchor_named_edge(name: ^bounded_lattice_field_bottom, target: anchor_atom_node(s: ^anchor_bottom_sym))
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data anchor_partial_bounded_lattice_instance: Node = Node {
@@ -80,7 +81,7 @@ data anchor_partial_bounded_lattice_instance: Node = Node {
     anchor_named_edge(name: ^bounded_lattice_field_top, target: anchor_atom_node(s: ^anchor_top_sym)),
     anchor_named_edge(name: ^bounded_lattice_field_bottom, target: anchor_atom_node(s: ^anchor_bottom_sym))
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data anchor_partial_missing_lattice_field_instance: Node = Node {
@@ -89,7 +90,7 @@ data anchor_partial_missing_lattice_field_instance: Node = Node {
     anchor_named_edge(name: ^bounded_lattice_field_top, target: anchor_atom_node(s: ^anchor_top_sym)),
     anchor_named_edge(name: ^bounded_lattice_field_bottom, target: anchor_atom_node(s: ^anchor_bottom_sym))
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data anchor_consumer_of_partial: Node = Node {
@@ -100,7 +101,7 @@ data anchor_consumer_of_partial: Node = Node {
       target: anchor_partial_bounded_lattice_instance
     )
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data anchor_module_with_partial_only: Node = Node {
@@ -111,7 +112,7 @@ data anchor_module_with_partial_only: Node = Node {
       target: anchor_partial_bounded_lattice_instance
     )
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data anchor_module_with_partial_and_consumer: Node = Node {
@@ -126,7 +127,7 @@ data anchor_module_with_partial_and_consumer: Node = Node {
       target: anchor_consumer_of_partial
     )
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 test data anchor_non_bl_node_is_not_complete_variant: Bool = match bounded_lattice_instance_completeness(instance: anchor_atom_node(s: ^anchor_top_sym)) {

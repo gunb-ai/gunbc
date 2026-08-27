@@ -136,7 +136,7 @@ fn vacuity_consumer_witness_synthetic_equals_operand() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

@@ -2,7 +2,7 @@
 module gunbc.generated_artifact
 
 import gunbc.os_install { HostAutoinstall, fleet_autoinstall_specs, InstallServerSpec, fleet_install_server_specs }
-import gunbc.plan { Plan, plan_path }
+import gunbc.plan { Plan, plan_path, PlanProjectsCommittedMarkdown, PlanIsAuthorityOnly }
 import gunbc.plan_registry { all_plans }
 import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_script_path }
 
@@ -70,6 +70,11 @@ fn artifact_path(a: GeneratedArtifact) -> String {
   }
 }
 
+// THE PLAN DECIDES ITS OWN ARM, NOT THIS ROW. A plan whose markdown the repository removed on
+// purpose (gunbc.plan PlanIsAuthorityOnly) is still rostered, still generated, and still refused
+// if its generation refuses -- it is simply not expected on disk. Answering CommitRequired for
+// every plan is what let a deleted projection read as an absent one, and once a drift phase
+// adjudicates the population that reads as an obligation to recreate the deleted file.
 fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
   match a {
     GitignoreArtifact => CommitRequired { consumer: GitProtocol }
@@ -82,7 +87,11 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     FleetDesiredAdmissionYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     RoadmapArtifact => CommitRequired { consumer: ProjectDocumentation }
     DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
-    PlanArtifact { plan: _ } => CommitRequired { consumer: ProjectDocumentation }
+    PlanArtifact { plan } =>
+      match plan.projection {
+        PlanProjectsCommittedMarkdown => CommitRequired { consumer: ProjectDocumentation }
+        PlanIsAuthorityOnly { ruling: _ } => NotCommitted
+      }
     RunnerDeployArtifact => NotCommitted
     Stage0CrateLayoutGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CrateLayoutGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }

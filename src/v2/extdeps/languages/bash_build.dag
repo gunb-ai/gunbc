@@ -1,5 +1,6 @@
 module v2.extdeps.languages.bash_build
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.algebra { list_head, HeadFound, HeadAbsent }
 import v2.std.collection { List, Present, list_at_optional }
 import v2.std.node {
@@ -9,8 +10,7 @@ import v2.std.node {
   Node,
   Positional,
   Symbol,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
 
 fn bash_build_word_kinded(kind: Symbol, value: String) -> Node {
@@ -22,7 +22,7 @@ fn bash_build_word_kinded(kind: Symbol, value: String) -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: kind } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       },
       Edge {
@@ -30,11 +30,11 @@ fn bash_build_word_kinded(kind: Symbol, value: String) -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: value } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -55,12 +55,12 @@ fn bash_build_word_compound(kind: Symbol, payload: Node) -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: kind } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       },
       Edge { label: Positional, target: payload }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -76,7 +76,7 @@ fn bash_build_stmt_tag(binding: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: binding } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -86,7 +86,7 @@ fn bash_build_command_words_single(word: Node) -> Node {
     children: [
       Edge { label: Positional, target: word }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -97,7 +97,7 @@ fn bash_build_command_words_pair(left: Node, right: Node) -> Node {
       Edge { label: Positional, target: left },
       Edge { label: Positional, target: right }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -111,7 +111,7 @@ fn bash_build_command(words: Node) -> Node {
       },
       Edge { label: Positional, target: words }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -173,11 +173,11 @@ fn bash_build_exit(code: String) -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: code } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -194,12 +194,12 @@ fn bash_build_assign(name: String, value: Node) -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: name } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       },
       Edge { label: Positional, target: value }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -219,7 +219,7 @@ fn bash_build_binary_stmt(binding: Symbol, left: Node, right: Node) -> Node {
       Edge { label: Positional, target: left },
       Edge { label: Positional, target: right }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -253,7 +253,7 @@ fn bash_build_stmt_list_single(stmt: Node) -> Node {
     children: [
       Edge { label: Positional, target: stmt }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -264,7 +264,7 @@ fn bash_build_stmt_list_pair(left: Node, right: Node) -> Node {
       Edge { label: Positional, target: left },
       Edge { label: Positional, target: right }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -278,7 +278,7 @@ fn bash_build_subshell(body: Node) -> Node {
       },
       Edge { label: Positional, target: body }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -293,7 +293,7 @@ fn bash_build_if(cond: Node, body: Node) -> Node {
       Edge { label: Positional, target: cond },
       Edge { label: Positional, target: body }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -308,7 +308,7 @@ fn bash_build_with_redir(inner: Node, redir: Symbol) -> Node {
       Edge { label: Positional, target: inner },
       Edge { label: Positional, target: bash_build_stmt_tag(binding: redir) }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -327,7 +327,7 @@ fn bash_build_with_redir_to_file(inner: Node, path: Node) -> Node {
       },
       Edge { label: Positional, target: path }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -341,7 +341,7 @@ fn bash_build_negation(inner: Node) -> Node {
       },
       Edge { label: Positional, target: inner }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -430,7 +430,7 @@ fn bash_build_stmt_list_from_nodes(stmts: List<Node>) -> Node {
             target: bash_build_stmt_tag(binding: ^bash_build_refused_empty_stmt_list)
           }
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
   }
 }

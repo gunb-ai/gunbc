@@ -1,5 +1,6 @@
 module v2.test.manual.target_model_atom_lookup_dissolution
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.extdeps.languages.typescript {
   ts_sg2_type_expr_target_model,
   ts_sg2_type_expr_target_model_node,
@@ -14,7 +15,7 @@ import v2.std.passing_candidate_fold {
   OnePassingCandidate
 }
 import v2.std.logic { Bool, bool_node }
-import v2.std.node { Atom, Conj, Edge, Node, Positional, SyntheticOccurrence, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Node, Positional, TypeNode }
 import v2.std.compilers.target_model {
   symbol_kernel_type_node,
   target_atom_realization_lookup_in_catalog,
@@ -26,7 +27,7 @@ fn atom_lookup_dissolution_probe_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^atom_lookup_dissolution_probe } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -93,7 +94,7 @@ test fn atom_catalog_with_malformed_row_skips_accepts_valid() -> Bool {
           )
         }
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     },
     source_carrier: bool_node(),
     host_target_model: ts_sg2_type_expr_target_model()
