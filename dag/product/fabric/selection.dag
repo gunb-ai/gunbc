@@ -17,8 +17,11 @@ import product.fabric.supply {
   IsolationNotProvided, ShapeAxesNotCovered, offer_fungibility_for,
   DemandOfferAffordability, Affordable, AffordableUnderEstimate,
   QuoteExceedsMaximumBuyOrder, QuoteCurrencyMismatch,
+  QuoteNotPriceableWithoutDuration,
   offer_affordability_for, offer_quote_currency, offer_quoted_total_for_grant,
-  GrantDuration, ExactGrantDuration, EstimatedGrantDuration, grant_duration_seconds,
+  QuotedTotal, QuotedTotalDerived, QuotedTotalNeedsDuration,
+  GrantDuration, ExactGrantDuration, EstimatedGrantDuration, UnobservedGrantDuration,
+  grant_duration_bound_seconds,
 }
 
 // SELECTION IS THE FOLD product.fabric.supply DECLINED TO WRITE, AND THIS MODULE IS WHY IT
@@ -267,14 +270,36 @@ fn selection_total(c: SelectionCost) -> MoneyAmountMicro {
 // same distinction one level down with ExactGrantDuration against EstimatedGrantDuration.
 // The basis is derived from the duration arm rather than accepted as an argument, so a caller
 // cannot claim an exact basis over an estimated duration.
+// CommitmentFloorCost is the third basis and it is NOT a worse projection -- it is a
+// different quantity. Under an unobserved duration no total exists to project, so what the
+// fold prices instead is the money the DECISION irreversibly commits: the billing units it
+// cannot unbuy once the work starts. That number is a LOWER BOUND on what will be paid, never
+// an estimate of it, and a consumer that read it as a total would understate every offer.
+//
+// The basis is uniform across one selection because it is derived from ONE duration state, so
+// the ranking never compares a floor against a projection. It is carried out of the fold so
+// that a caller can see which question it just had answered.
 type CostBasis
   = ExactCost
   | ProjectedCost
+  | CommitmentFloorCost
 
-fn cost_basis_for(duration: GrantDuration) -> CostBasis {
+fn cost_basis_for(duration: GrantDuration, horizon: CommitmentHorizon) -> CostBasis {
+  match horizon {
+    SpillPricedForUnobservedDuration { wall: _, billed: _, remainder: _ } => CommitmentFloorCost
+    CoveredByCommitment { wall: _, billed: _, remainder: _ } => bounded_cost_basis(duration: duration)
+    BilledBeyondCommitment { wall: _, billed: _, remainder: _ } => bounded_cost_basis(duration: duration)
+  }
+}
+
+// The unobserved arm is unreachable from here -- the horizon fold above routes it to
+// CommitmentFloorCost before this is called -- so it is answered rather than defaulted, and
+// answered with the basis it would deserve if a route ever appeared.
+fn bounded_cost_basis(duration: GrantDuration) -> CostBasis {
   match duration {
     ExactGrantDuration { seconds: _ } => ExactCost
     EstimatedGrantDuration { seconds: _ } => ProjectedCost
+    UnobservedGrantDuration { obligation: _ } => CommitmentFloorCost
   }
 }
 
@@ -431,13 +456,108 @@ fn covered_interval(commitment: CommitmentState, quote: OfferQuote) -> Second {
   }
 }
 
-fn billable_duration(duration: GrantDuration, commitment: CommitmentState, quote: OfferQuote) -> GrantDuration {
-  let full = second_count(s: grant_duration_seconds(d: duration))
-  let covered = second_count(s: covered_interval(commitment: commitment, quote: quote))
-  let remaining = second(count: saturating_difference(from: full, take: covered))
+// THE COMMITMENT HORIZON -- WHAT INTERVAL THIS DECISION ACTUALLY BUYS, and the reason a
+// paid-through hour is not simply free.
+//
+// A paid interval is free only for work that FITS IN IT. The operator's case is a machine with
+// seven minutes left on a bought hour and a job nobody has timed: starting there cannot be
+// priced at zero, because crossing the boundary buys a WHOLE further hour that cannot be
+// unbought afterwards. Pricing that spill is a decision made deliberately under uncertainty,
+// not a value written into the model where a duration belongs -- the duration stays
+// unobserved and says so, and what the fold computes is the price of the decision.
+//
+// THE THREE ARMS ARE THE THREE ANSWERS, AND THEY HAVE DIFFERENT REMEDIES. Covered means the
+// bound fits inside the remainder and nothing further is billed. BilledBeyondCommitment means
+// a KNOWN bound runs past the remainder -- the remedy is to choose a different offer, and with
+// a remainder of zero it is simply ordinary pay-as-you-go. SpillPricedForUnobservedDuration
+// means the crossing could not be RULED OUT -- the remedy is to measure. Collapsing the last
+// two would tell a broker to go shopping when it should have gone measuring.
+//
+// AND SPILL IS NOT SPECIAL-CASED AWAY FOR CONTINUOUS CAPACITY, IT DOES NOT ARISE THERE. The
+// spilled interval is ONE BILLING QUANTUM, and a continuous offer's quantum is zero, so its
+// spill term is zero by the same arithmetic that gives an hourly supplier 3600 seconds. There
+// is no arm testing for continuity and none is needed; if there were, it would be bolted on.
+//
+// WHAT THIS DELIBERATELY DOES NOT DO: substitute a worst case wherever a duration is missing.
+// The spill price is computed for THIS question -- what does crossing a commitment boundary
+// commit -- and the unobserved state travels onward intact, with the basis it produced saying
+// which arm was taken. A model that answered every unknown with a maximum would always answer,
+// never refuse, and would zero the frequency of its own estimation deficit by construction.
+type CommitmentHorizon
+  = CoveredByCommitment { wall: Second, billed: GrantDuration, remainder: Second }
+  | BilledBeyondCommitment { wall: Second, billed: GrantDuration, remainder: Second }
+  | SpillPricedForUnobservedDuration { wall: Second, billed: GrantDuration, remainder: Second }
+
+fn commitment_horizon(
+  duration: GrantDuration,
+  commitment: CommitmentState,
+  quote: OfferQuote,
+  quantum: Second,
+) -> CommitmentHorizon {
+  let remainder = covered_interval(commitment: commitment, quote: quote)
+  match grant_duration_bound_seconds(d: duration) {
+    Absent =>
+      SpillPricedForUnobservedDuration {
+        wall: second(count: second_count(s: remainder) + second_count(s: quantum)),
+        billed: ExactGrantDuration { seconds: quantum },
+        remainder: remainder,
+      }
+    Present { value: bound } =>
+      bounded_horizon(duration: duration, bound: bound, remainder: remainder)
+  }
+}
+
+// The billed interval is what is left of the bound after the commitment covers what it
+// covers; the quantum rounds THAT up downstream, in the supplier's own pricing fold, which is
+// where rounding already lives.
+fn bounded_horizon(duration: GrantDuration, bound: Second, remainder: Second) -> CommitmentHorizon {
+  let beyond = saturating_difference(
+    from: second_count(s: bound),
+    take: second_count(s: remainder),
+  )
+  if beyond == 0 {
+    CoveredByCommitment {
+      wall: bound,
+      billed: same_evidence_duration(duration: duration, seconds: second(count: 0)),
+      remainder: remainder,
+    }
+  } else {
+    BilledBeyondCommitment {
+      wall: bound,
+      billed: same_evidence_duration(duration: duration, seconds: second(count: beyond)),
+      remainder: remainder,
+    }
+  }
+}
+
+// THE BILLED INTERVAL INHERITS THE EVIDENCE OF THE DURATION IT WAS DERIVED FROM. Subtracting a
+// commitment from an ESTIMATE leaves an estimate: the remainder is exact, the bound was not,
+// and the difference carries the bound's uncertainty. Rebuilding it as Exact would have made
+// the affordability screen report Affordable where it should report AffordableUnderEstimate,
+// which is the estimate's error vanishing the moment it is multiplied -- precisely the failure
+// the two arms exist to prevent. The unobserved arm cannot be reached here, because the caller
+// above routes an unobserved duration to its own horizon before this is called.
+fn same_evidence_duration(duration: GrantDuration, seconds: Second) -> GrantDuration {
   match duration {
-    ExactGrantDuration { seconds: _ } => ExactGrantDuration { seconds: remaining }
-    EstimatedGrantDuration { seconds: _ } => EstimatedGrantDuration { seconds: remaining }
+    ExactGrantDuration { seconds: _ } => ExactGrantDuration { seconds: seconds }
+    EstimatedGrantDuration { seconds: _ } => EstimatedGrantDuration { seconds: seconds }
+    UnobservedGrantDuration { obligation: why } => UnobservedGrantDuration { obligation: why }
+  }
+}
+
+fn horizon_billed(h: CommitmentHorizon) -> GrantDuration {
+  match h {
+    CoveredByCommitment { wall: _, billed: b, remainder: _ } => b
+    BilledBeyondCommitment { wall: _, billed: b, remainder: _ } => b
+    SpillPricedForUnobservedDuration { wall: _, billed: b, remainder: _ } => b
+  }
+}
+
+fn horizon_wall(h: CommitmentHorizon) -> Second {
+  match h {
+    CoveredByCommitment { wall: w, billed: _, remainder: _ } => w
+    BilledBeyondCommitment { wall: w, billed: _, remainder: _ } => w
+    SpillPricedForUnobservedDuration { wall: w, billed: _, remainder: _ } => w
   }
 }
 
@@ -445,7 +565,12 @@ fn billable_duration(duration: GrantDuration, commitment: CommitmentState, quote
 // these, so the rejected population is countable at identity grain and a broker can read WHY
 // each one lost rather than being told that nothing was admissible.
 type OfferCandidacy<P>
-  = OfferPriced { offer: FabricIdentity<P, OfferKey>, cost: SelectionCost, basis: CostBasis }
+  = OfferPriced {
+      offer: FabricIdentity<P, OfferKey>,
+      cost: SelectionCost,
+      basis: CostBasis,
+      horizon: CommitmentHorizon,
+    }
   | OfferNotFungible { offer: FabricIdentity<P, OfferKey>, fungibility: OfferFungibility }
   | OfferUnavailableForGrant {
       offer: FabricIdentity<P, OfferKey>,
@@ -466,7 +591,7 @@ type OfferCandidacy<P>
 
 fn candidacy_offer<P>(c: OfferCandidacy<P>) -> FabricIdentity<P, OfferKey> {
   match c {
-    OfferPriced { offer: o, cost: _, basis: _ } => o
+    OfferPriced { offer: o, cost: _, basis: _, horizon: _ } => o
     OfferNotFungible { offer: o, fungibility: _ } => o
     OfferUnavailableForGrant { offer: o, needed: _, available: _ } => o
     OfferNotPriceable { offer: o, unpriced: _ } => o
@@ -518,47 +643,14 @@ fn price_candidate<P>(
   }
 }
 
+// The commitment horizon is derived FIRST inside this step, because every later question --
+// how long the offer must stay available, what the quote bills, how long the machine runs --
+// is asked about the interval this decision actually buys rather than about the duration a
+// caller happened to name.
 fn price_available_candidate<P>(
   offer: SupplierOffer<P>,
   inputs: DispatchInputs<P>,
   duration: GrantDuration,
-  maximum_buy_order: MoneyAmountMicro,
-  budget_currency: CurrencyCode,
-  delay_valuation: MoneyPerSecond,
-) -> OfferCandidacy<P> {
-  let run_seconds = second_count(s: grant_duration_seconds(d: duration))
-  match inputs.availability {
-    AvailabilityUnobserved { obligation: why } =>
-      OfferNotPriceable {
-        offer: offer.id,
-        unpriced: UnpricedInput { axis: AvailabilityAxis, obligation: why },
-      }
-    AvailableForInterval { delay: d, interval: window, receipt: _ } =>
-      if second_count(s: window) < run_seconds {
-        OfferUnavailableForGrant {
-          offer: offer.id,
-          needed: second(count: run_seconds),
-          available: window,
-        }
-      } else {
-        price_committed_candidate(
-          offer: offer,
-          inputs: inputs,
-          duration: duration,
-          delay_seconds: second_count(s: d),
-          maximum_buy_order: maximum_buy_order,
-          budget_currency: budget_currency,
-          delay_valuation: delay_valuation,
-        )
-      }
-  }
-}
-
-fn price_committed_candidate<P>(
-  offer: SupplierOffer<P>,
-  inputs: DispatchInputs<P>,
-  duration: GrantDuration,
-  delay_seconds: Nat,
   maximum_buy_order: MoneyAmountMicro,
   budget_currency: CurrencyCode,
   delay_valuation: MoneyPerSecond,
@@ -569,20 +661,18 @@ fn price_committed_candidate<P>(
         offer: offer.id,
         unpriced: UnpricedInput { axis: CommitmentAxis, obligation: why },
       }
-    PayAsYouGo => price_screened_candidate(
+    PayAsYouGo => price_over_horizon(
       offer: offer,
       inputs: inputs,
       duration: duration,
-      delay_seconds: delay_seconds,
       maximum_buy_order: maximum_buy_order,
       budget_currency: budget_currency,
       delay_valuation: delay_valuation,
     )
-    PaidThrough { remaining: _, receipt: _ } => price_screened_candidate(
+    PaidThrough { remaining: _, receipt: _ } => price_over_horizon(
       offer: offer,
       inputs: inputs,
       duration: duration,
-      delay_seconds: delay_seconds,
       maximum_buy_order: maximum_buy_order,
       budget_currency: budget_currency,
       delay_valuation: delay_valuation,
@@ -590,37 +680,93 @@ fn price_committed_candidate<P>(
   }
 }
 
-// The affordability screen is supply.dag's own fold, called with the commitment-reduced
-// duration rather than re-derived here. Pricing is a single authority and this module
-// consumes it; a second price computed beside it would be the fork the fabric exists to
-// prevent, and it would be the fork in the one place two answers are indistinguishable
-// until money moves.
+// AVAILABILITY IS CHECKED AGAINST THE HORIZON'S WALL INTERVAL, not against a caller-named
+// duration. Under an unobserved duration the wall is what the decision commits -- the
+// remainder plus one billing unit -- so an offer that cannot hold even that much is refused
+// on capability grounds before any money is compared.
+fn price_over_horizon<P>(
+  offer: SupplierOffer<P>,
+  inputs: DispatchInputs<P>,
+  duration: GrantDuration,
+  maximum_buy_order: MoneyAmountMicro,
+  budget_currency: CurrencyCode,
+  delay_valuation: MoneyPerSecond,
+) -> OfferCandidacy<P> {
+  let horizon = commitment_horizon(
+    duration: duration,
+    commitment: inputs.commitment,
+    quote: offer.quote,
+    quantum: offer.billing_quantum,
+  )
+  let wall = second_count(s: horizon_wall(h: horizon))
+  match inputs.availability {
+    AvailabilityUnobserved { obligation: why } =>
+      OfferNotPriceable {
+        offer: offer.id,
+        unpriced: UnpricedInput { axis: AvailabilityAxis, obligation: why },
+      }
+    AvailableForInterval { delay: d, interval: window, receipt: _ } =>
+      if second_count(s: window) < wall {
+        OfferUnavailableForGrant {
+          offer: offer.id,
+          needed: second(count: wall),
+          available: window,
+        }
+      } else {
+        price_screened_candidate(
+          offer: offer,
+          inputs: inputs,
+          duration: duration,
+          horizon: horizon,
+          delay_seconds: second_count(s: d),
+          maximum_buy_order: maximum_buy_order,
+          budget_currency: budget_currency,
+          delay_valuation: delay_valuation,
+        )
+      }
+  }
+}
+
+// The affordability screen is supply.dag's own fold, called with the horizon's BILLED interval
+// rather than re-derived here. Pricing is a single authority and this module consumes it; a
+// second price computed beside it would be the fork the fabric exists to prevent, and it would
+// be the fork in the one place two answers are indistinguishable until money moves.
+//
+// QuoteNotPriceableWithoutDuration cannot be reached from here, because the horizon has
+// already resolved an unobserved duration into the billing unit the decision commits. It is
+// answered rather than ignored, since the screen is a shared authority and another caller can
+// reach it with a raw unobserved duration.
 fn price_screened_candidate<P>(
   offer: SupplierOffer<P>,
   inputs: DispatchInputs<P>,
   duration: GrantDuration,
+  horizon: CommitmentHorizon,
   delay_seconds: Nat,
   maximum_buy_order: MoneyAmountMicro,
   budget_currency: CurrencyCode,
   delay_valuation: MoneyPerSecond,
 ) -> OfferCandidacy<P> {
-  let billable = billable_duration(duration: duration, commitment: inputs.commitment, quote: offer.quote)
   let affordability = offer_affordability_for(
     offer: offer,
     maximum_buy_order: maximum_buy_order,
     budget_currency: budget_currency,
-    duration: billable,
+    duration: horizon_billed(h: horizon),
   )
   match affordability {
     QuoteCurrencyMismatch { quoted: _, budgeted: _ } =>
       OfferUnaffordable { offer: offer.id, affordability: affordability }
     QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } =>
       OfferUnaffordable { offer: offer.id, affordability: affordability }
+    QuoteNotPriceableWithoutDuration { obligation: why } =>
+      OfferNotPriceable {
+        offer: offer.id,
+        unpriced: UnpricedInput { axis: CommitmentAxis, obligation: why },
+      }
     Affordable => assemble_cost(
       offer: offer,
       inputs: inputs,
       duration: duration,
-      billable: billable,
+      horizon: horizon,
       delay_seconds: delay_seconds,
       maximum_buy_order: maximum_buy_order,
       budget_currency: budget_currency,
@@ -630,7 +776,7 @@ fn price_screened_candidate<P>(
       offer: offer,
       inputs: inputs,
       duration: duration,
-      billable: billable,
+      horizon: horizon,
       delay_seconds: delay_seconds,
       maximum_buy_order: maximum_buy_order,
       budget_currency: budget_currency,
@@ -647,18 +793,13 @@ fn assemble_cost<P>(
   offer: SupplierOffer<P>,
   inputs: DispatchInputs<P>,
   duration: GrantDuration,
-  billable: GrantDuration,
+  horizon: CommitmentHorizon,
   delay_seconds: Nat,
   maximum_buy_order: MoneyAmountMicro,
   budget_currency: CurrencyCode,
   delay_valuation: MoneyPerSecond,
 ) -> OfferCandidacy<P> {
-  let run_seconds = second_count(s: grant_duration_seconds(d: duration))
-  let charge = offer_quoted_total_for_grant(
-    quote: offer.quote,
-    duration: billable,
-    quantum: offer.billing_quantum,
-  )
+  let run_seconds = second_count(s: horizon_wall(h: horizon))
   let start = priced_start(o: inputs.start, budgeted: budget_currency)
   let transition = priced_transition(o: inputs.transition, budgeted: budget_currency)
   let operating = priced_operating(
@@ -672,21 +813,34 @@ fn assemble_cost<P>(
     valuation: delay_valuation,
     budgeted: budget_currency,
   )
-  match first_unpriced(axes: [start, transition, operating, opportunity, delay]) {
-    Present { value: bad } => bad_axis_candidacy(offer: offer.id, bad: bad)
-    Absent => screen_liability(
-      offer: offer.id,
-      cost: SelectionCost {
-        marginal_charge: charge,
-        start: axis_amount(a: start),
-        transition: axis_amount(a: transition),
-        operating: axis_amount(a: operating),
-        opportunity: axis_amount(a: opportunity),
-        valued_delay: axis_amount(a: delay),
-      },
-      basis: cost_basis_for(duration: duration),
-      maximum_buy_order: maximum_buy_order,
-    )
+  match offer_quoted_total_for_grant(
+    quote: offer.quote,
+    duration: horizon_billed(h: horizon),
+    quantum: offer.billing_quantum,
+  ) {
+    QuotedTotalNeedsDuration { obligation: why } =>
+      OfferNotPriceable {
+        offer: offer.id,
+        unpriced: UnpricedInput { axis: CommitmentAxis, obligation: why },
+      }
+    QuotedTotalDerived { amount: charge } =>
+      match first_unpriced(axes: [start, transition, operating, opportunity, delay]) {
+        Present { value: bad } => bad_axis_candidacy(offer: offer.id, bad: bad)
+        Absent => screen_liability(
+          offer: offer.id,
+          cost: SelectionCost {
+            marginal_charge: charge,
+            start: axis_amount(a: start),
+            transition: axis_amount(a: transition),
+            operating: axis_amount(a: operating),
+            opportunity: axis_amount(a: opportunity),
+            valued_delay: axis_amount(a: delay),
+          },
+          basis: cost_basis_for(duration: duration, horizon: horizon),
+          horizon: horizon,
+          maximum_buy_order: maximum_buy_order,
+        )
+      }
   }
 }
 
@@ -697,13 +851,14 @@ fn screen_liability<P>(
   offer: FabricIdentity<P, OfferKey>,
   cost: SelectionCost,
   basis: CostBasis,
+  horizon: CommitmentHorizon,
   maximum_buy_order: MoneyAmountMicro,
 ) -> OfferCandidacy<P> {
   let liability = selection_liability(c: cost)
   if money_amount_micro_count(m: liability) > money_amount_micro_count(m: maximum_buy_order) {
     OfferLiabilityOverBuyOrder { offer: offer, liability: liability, maximum: maximum_buy_order }
   } else {
-    OfferPriced { offer: offer, cost: cost, basis: basis }
+    OfferPriced { offer: offer, cost: cost, basis: basis, horizon: horizon }
   }
 }
 
@@ -753,6 +908,12 @@ fn axis_amount(a: PricedAxis) -> MoneyAmountMicro {
 // frequency of zero by construction. Carrying the losers is what makes "we could not price
 // four of the six offers" a countable fact rather than an invisible one.
 //
+// IT ALSO CARRIES THE HORIZON, so the receipt says WHICH ARM priced the winner: covered by a
+// commitment already paid for, billed beyond one, or spill-priced because the duration could
+// not rule the crossing out. Those have opposite remedies -- choose another offer, or go and
+// measure -- and a decision that reported only its total would leave a reader unable to tell
+// which one it needs.
+//
 // NoAdmissibleOffer is a refusal and never a degraded path. supply.dag is explicit that
 // budget exhausted, every ask above the ceiling, and nothing fungible all end in a typed
 // refusal or a demand that stays pending, and that there is no arm to reach for something
@@ -762,14 +923,23 @@ type SupplySelection<P>
       offer: SupplierOffer<P>,
       cost: SelectionCost,
       basis: CostBasis,
+      horizon: CommitmentHorizon,
       considered: List<OfferCandidacy<P>>,
     }
   | NoAdmissibleOffer { considered: List<OfferCandidacy<P>> }
 
+// The incumbent travels as ONE value rather than as four parallel optionals that could
+// disagree about which offer they describe. Four fields each separately absent has states in
+// which a cost belongs to one offer and a basis to another; this has none.
+type PricedCandidate<P> {
+  candidate: CandidateOffer<P>
+  cost: SelectionCost
+  basis: CostBasis
+  horizon: CommitmentHorizon
+}
+
 type SelectionRanking<P> {
-  best: CandidateOffer<P>?
-  best_cost: SelectionCost?
-  best_basis: CostBasis?
+  best: PricedCandidate<P>?
   considered: List<OfferCandidacy<P>>
 }
 
@@ -780,35 +950,20 @@ type SelectionRanking<P> {
 // OfferKey is branded over NonEmptyStr, which std carries no ordering for. NEXT-RUNG TRIGGER:
 // a string ordering in std, at which point the tie-break becomes the lexicographically
 // smallest key and this note is deleted rather than amended.
-fn rank_candidate<P>(acc: SelectionRanking<P>, candidacy: OfferCandidacy<P>, candidate: CandidateOffer<P>) -> SelectionRanking<P> {
+fn rank_candidate<P>(
+  acc: SelectionRanking<P>,
+  candidacy: OfferCandidacy<P>,
+  candidate: CandidateOffer<P>,
+) -> SelectionRanking<P> {
   let considered = concat(acc.considered, [candidacy])
   match candidacy {
-    OfferPriced { offer: _, cost: c, basis: b } =>
-      match acc.best_cost {
-        Absent =>
-          SelectionRanking {
-            best: Present { value: candidate },
-            best_cost: Present { value: c },
-            best_basis: Present { value: b },
-            considered: considered,
-          }
-        Present { value: incumbent } =>
-          if money_amount_micro_count(m: selection_total(c: c))
-            < money_amount_micro_count(m: selection_total(c: incumbent)) {
-            SelectionRanking {
-              best: Present { value: candidate },
-              best_cost: Present { value: c },
-              best_basis: Present { value: b },
-              considered: considered,
-            }
-          } else {
-            SelectionRanking {
-              best: acc.best,
-              best_cost: acc.best_cost,
-              best_basis: acc.best_basis,
-              considered: considered,
-            }
-          }
+    OfferPriced { offer: _, cost: c, basis: b, horizon: h } =>
+      SelectionRanking {
+        best: better_of(
+          incumbent: acc.best,
+          challenger: PricedCandidate { candidate: candidate, cost: c, basis: b, horizon: h },
+        ),
+        considered: considered,
       }
     OfferNotFungible { offer: _, fungibility: _ } => carry_ranking(acc: acc, considered: considered)
     OfferUnavailableForGrant { offer: _, needed: _, available: _ } => carry_ranking(acc: acc, considered: considered)
@@ -819,24 +974,32 @@ fn rank_candidate<P>(acc: SelectionRanking<P>, candidacy: OfferCandidacy<P>, can
   }
 }
 
-fn carry_ranking<P>(acc: SelectionRanking<P>, considered: List<OfferCandidacy<P>>) -> SelectionRanking<P> {
-  SelectionRanking {
-    best: acc.best,
-    best_cost: acc.best_cost,
-    best_basis: acc.best_basis,
-    considered: considered,
+fn better_of<P>(incumbent: PricedCandidate<P>?, challenger: PricedCandidate<P>) -> PricedCandidate<P>? {
+  match incumbent {
+    Absent => Present { value: challenger }
+    Present { value: held } =>
+      if money_amount_micro_count(m: selection_total(c: challenger.cost))
+        < money_amount_micro_count(m: selection_total(c: held.cost)) {
+        Present { value: challenger }
+      } else {
+        Present { value: held }
+      }
   }
+}
+
+fn carry_ranking<P>(acc: SelectionRanking<P>, considered: List<OfferCandidacy<P>>) -> SelectionRanking<P> {
+  SelectionRanking { best: acc.best, considered: considered }
 }
 
 // THE SELECTOR. Cheapest fungible with delay valuation, which is the one instantiation
 // SupplySelectionPolicy names, over a roster of offers each sealed to the six observations
 // that describe it.
 //
-// Rented supply losing to owned supply is a CONSEQUENCE here and never an arm. Nothing in
-// this fold knows which offers are ours: owned capacity wins while its total is the lowest
-// total, and when it is not -- because it is committed, because its operating cost is real,
-// because the alternative use it displaces is worth more than the rent -- the same
-// arithmetic picks somebody else's machine, with the receipt saying why.
+// WHICH MODE WINS IS A CONSEQUENCE HERE AND NEVER AN ARM. Nothing in this fold knows which
+// offers are ours. Owned capacity wins while its total is the lowest total, and when it is not
+// -- because a rented hour is already paid for and this work fits inside it, because its
+// operating cost is real, because the alternative use it displaces is worth more than the rent
+// -- the same arithmetic picks somebody else's machine, with the receipt saying why.
 fn select_supply<P>(
   requirements: ExecutionRequirements,
   candidates: List<CandidateOffer<P>>,
@@ -847,7 +1010,7 @@ fn select_supply<P>(
 ) -> SupplySelection<P> {
   let ranked = fold(
     candidates,
-    init: SelectionRanking { best: none, best_cost: none, best_basis: none, considered: [] },
+    init: SelectionRanking { best: none, considered: [] },
     f: (acc, candidate) =>
       rank_candidate(
         acc: acc,
@@ -865,19 +1028,12 @@ fn select_supply<P>(
   match ranked.best {
     Absent => NoAdmissibleOffer { considered: ranked.considered }
     Present { value: winner } =>
-      match ranked.best_cost {
-        Absent => NoAdmissibleOffer { considered: ranked.considered }
-        Present { value: c } =>
-          match ranked.best_basis {
-            Absent => NoAdmissibleOffer { considered: ranked.considered }
-            Present { value: b } =>
-              OfferSelected {
-                offer: winner.offer,
-                cost: c,
-                basis: b,
-                considered: ranked.considered,
-              }
-          }
+      OfferSelected {
+        offer: winner.candidate.offer,
+        cost: winner.cost,
+        basis: winner.basis,
+        horizon: winner.horizon,
+        considered: ranked.considered,
       }
   }
 }

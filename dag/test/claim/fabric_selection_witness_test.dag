@@ -18,7 +18,7 @@ import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.supply {
   SupplierOffer, OfferQuote, QuotedPerSecond, QuotedPerHour, ObservedSupply,
-  GrantDuration, ExactGrantDuration,
+  GrantDuration, ExactGrantDuration, UnobservedGrantDuration,
 }
 import product.fabric.selection {
   CandidateOffer, DispatchInputs, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer,
@@ -31,6 +31,9 @@ import product.fabric.selection {
   OfferCandidacy, OfferPriced, OfferNotPriceable, OfferUnavailableForGrant,
   SupplySelection, OfferSelected, NoAdmissibleOffer,
   SelectionCost, selection_total, selection_liability,
+  CostBasis, ExactCost, ProjectedCost, CommitmentFloorCost,
+  CommitmentHorizon, CoveredByCommitment, BilledBeyondCommitment,
+  SpillPricedForUnobservedDuration,
   select_supply, OpportunityCostAxis, AvailabilityAxis, SelectionInputAxis,
 }
 
@@ -208,10 +211,17 @@ fn t_no_delay_valuation() -> MoneyPerSecond {
 }
 
 fn t_select(candidates: List<CandidateOffer<NonEmptyStr>>) -> SupplySelection<NonEmptyStr> {
+  t_select_for(candidates: candidates, duration: t_ninety_seconds())
+}
+
+fn t_select_for(
+  candidates: List<CandidateOffer<NonEmptyStr>>,
+  duration: GrantDuration,
+) -> SupplySelection<NonEmptyStr> {
   select_supply(
     requirements: t_requirements(),
     candidates: candidates,
-    duration: t_ninety_seconds(),
+    duration: duration,
     maximum_buy_order: money_amount_micro(count: 1000000),
     budget_currency: Usd,
     delay_valuation: t_no_delay_valuation(),
@@ -220,14 +230,14 @@ fn t_select(candidates: List<CandidateOffer<NonEmptyStr>>) -> SupplySelection<No
 
 fn selected_key(s: SupplySelection<NonEmptyStr>) -> NonEmptyStr {
   match s {
-    OfferSelected { offer: o, cost: _, basis: _, considered: _ } => (o.id.key as NonEmptyStr)
+    OfferSelected { offer: o, cost: _, basis: _, horizon: _, considered: _ } => (o.id.key as NonEmptyStr)
     NoAdmissibleOffer { considered: _ } => "none"
   }
 }
 
 fn selected_total(s: SupplySelection<NonEmptyStr>) -> Nat {
   match s {
-    OfferSelected { offer: _, cost: c, basis: _, considered: _ } =>
+    OfferSelected { offer: _, cost: c, basis: _, horizon: _, considered: _ } =>
       money_amount_micro_count(m: selection_total(c: c))
     NoAdmissibleOffer { considered: _ } => 0
   }
@@ -235,7 +245,7 @@ fn selected_total(s: SupplySelection<NonEmptyStr>) -> Nat {
 
 fn considered_of(s: SupplySelection<NonEmptyStr>) -> List<OfferCandidacy<NonEmptyStr>> {
   match s {
-    OfferSelected { offer: _, cost: _, basis: _, considered: cs } => cs
+    OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: cs } => cs
     NoAdmissibleOffer { considered: cs } => cs
   }
 }
@@ -244,7 +254,7 @@ fn unpriced_axes(cs: List<OfferCandidacy<NonEmptyStr>>) -> List<SelectionInputAx
   fold(cs, init: [], f: (acc, c) =>
     match c {
       OfferNotPriceable { offer: _, unpriced: u } => concat(acc, [u.axis])
-      OfferPriced { offer: _, cost: _, basis: _ } => acc
+      OfferPriced { offer: _, cost: _, basis: _, horizon: _ } => acc
       OfferNotFungible { offer: _, fungibility: _ } => acc
       OfferUnavailableForGrant { offer: _, needed: _, available: _ } => acc
       OfferWrongCurrency { offer: _, mismatch: _ } => acc
@@ -257,7 +267,7 @@ fn unavailable_count(cs: List<OfferCandidacy<NonEmptyStr>>) -> Nat {
   fold(cs, init: 0, f: (n, c) =>
     match c {
       OfferUnavailableForGrant { offer: _, needed: _, available: _ } => n + 1
-      OfferPriced { offer: _, cost: _, basis: _ } => n
+      OfferPriced { offer: _, cost: _, basis: _, horizon: _ } => n
       OfferNotFungible { offer: _, fungibility: _ } => n
       OfferNotPriceable { offer: _, unpriced: _ } => n
       OfferWrongCurrency { offer: _, mismatch: _ } => n
@@ -429,7 +439,7 @@ test fn nothing_admissible_returns_every_typed_cause_and_selects_nothing() -> Bo
     ))
   match selection {
     NoAdmissibleOffer { considered: cs } => cs.length() == 1
-    OfferSelected { offer: _, cost: _, basis: _, considered: _ } => false
+    OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _ } => false
   }
 }
 
@@ -477,9 +487,188 @@ test fn valued_delay_enters_the_ranking_and_not_the_reservation() -> Bool {
     delay_valuation: MoneyRate { amount: money_amount_micro(count: 5), currency: Usd },
   )
   match selection {
-    OfferSelected { offer: _, cost: c, basis: _, considered: _ } =>
+    OfferSelected { offer: _, cost: c, basis: _, horizon: _, considered: _ } =>
       money_amount_micro_count(m: selection_liability(c: c)) == 9000
         && money_amount_micro_count(m: selection_total(c: c)) == 9300
     NoAdmissibleOffer { considered: _ } => false
   }
+}
+
+// THE UNCERTAINTY FAMILY, AND THE FIRST FOUR MEMBERS ARE ONE OFFER WITH ONE FIELD MOVING.
+//
+// The operator's second ruling is that job duration is NOT KNOWN at selection time and that
+// the unknown must be a modeled state rather than a number. These witnesses hold the rented
+// hourly offer fixed and vary two things independently -- what is known about the duration,
+// and how much of the paid hour is left -- so that the arm the fold takes is visible on each
+// combination rather than inferred from a total.
+
+fn t_unknown_duration() -> GrantDuration {
+  UnobservedGrantDuration {
+    obligation: "This work has never been timed. Record its running time before pricing a rate quote against it.",
+  }
+}
+
+fn t_fifty_minute_job() -> GrantDuration {
+  ExactGrantDuration { seconds: second(count: 3000) }
+}
+
+fn t_rented_with_remainder(remaining: Second) -> List<CandidateOffer<NonEmptyStr>> {
+  t_rented_candidate(
+    availability: AvailableForInterval {
+      delay: second(count: 0),
+      interval: second(count: 86400),
+      receipt: "gunbc.observation.availability-family",
+    },
+    commitment: PaidThrough { remaining: remaining, receipt: "gunbc.observation.remainder" },
+    opportunity: t_idle(),
+  )
+}
+
+fn horizon_of(s: SupplySelection<NonEmptyStr>) -> List<CommitmentHorizon> {
+  match s {
+    OfferSelected { offer: _, cost: _, basis: _, horizon: h, considered: _ } => [h]
+    NoAdmissibleOffer { considered: _ } => []
+  }
+}
+
+fn spill_priced_for_unobserved(hs: List<CommitmentHorizon>) -> Bool {
+  fold(hs, init: false, f: (hit, h) =>
+    match h {
+      SpillPricedForUnobservedDuration { wall: _, billed: _, remainder: _ } => true
+      CoveredByCommitment { wall: _, billed: _, remainder: _ } => hit
+      BilledBeyondCommitment { wall: _, billed: _, remainder: _ } => hit
+    })
+}
+
+fn covered_by_commitment(hs: List<CommitmentHorizon>) -> Bool {
+  fold(hs, init: false, f: (hit, h) =>
+    match h {
+      CoveredByCommitment { wall: _, billed: _, remainder: _ } => true
+      SpillPricedForUnobservedDuration { wall: _, billed: _, remainder: _ } => hit
+      BilledBeyondCommitment { wall: _, billed: _, remainder: _ } => hit
+    })
+}
+
+fn billed_beyond_commitment(hs: List<CommitmentHorizon>) -> Bool {
+  fold(hs, init: false, f: (hit, h) =>
+    match h {
+      BilledBeyondCommitment { wall: _, billed: _, remainder: _ } => true
+      CoveredByCommitment { wall: _, billed: _, remainder: _ } => hit
+      SpillPricedForUnobservedDuration { wall: _, billed: _, remainder: _ } => hit
+    })
+}
+
+fn basis_of(s: SupplySelection<NonEmptyStr>) -> List<CostBasis> {
+  match s {
+    OfferSelected { offer: _, cost: _, basis: b, horizon: _, considered: _ } => [b]
+    NoAdmissibleOffer { considered: _ } => []
+  }
+}
+
+fn is_commitment_floor(bs: List<CostBasis>) -> Bool {
+  fold(bs, init: false, f: (hit, b) =>
+    match b {
+      CommitmentFloorCost => true
+      ExactCost => hit
+      ProjectedCost => hit
+    })
+}
+
+// FAMILY MEMBER ONE -- THE OPERATOR'S CASE. Seven minutes left on the hour and a job nobody
+// has timed. The remainder does NOT make it free: the fold cannot rule out crossing the
+// boundary, and crossing buys a whole further hour that cannot be unbought, so it prices that
+// hour. The arm says WHY -- spill priced because the duration was unobserved, whose remedy is
+// to measure -- rather than reporting a bare total a reader would have to guess at.
+test fn seven_minutes_left_and_an_untimed_job_prices_the_spill_hour() -> Bool {
+  let selection = t_select_for(
+    candidates: t_rented_with_remainder(remaining: second(count: 420)),
+    duration: t_unknown_duration(),
+  )
+  spill_priced_for_unobserved(hs: horizon_of(s: selection))
+    && selected_total(s: selection) == 10000
+    && is_commitment_floor(bs: basis_of(s: selection))
+}
+
+// FAMILY MEMBER TWO -- THE SAME UNTIMED JOB AGAINST FIFTY-FIVE MINUTES, AND IT PRICES
+// IDENTICALLY. THAT IS THE MODEL BEING HONEST, NOT THE MODEL BEING BLUNT.
+//
+// A longer remainder is only worth more if something is known about how long the work runs.
+// With nothing known, both remainders commit exactly one further hour, because neither can
+// rule out the crossing -- so the two really are the same decision and pricing them apart
+// would be inventing information. What separates them is a BOUND, and the two witnesses below
+// show it separating them the moment one exists. The remedy this pair points at is to measure
+// the job, which is precisely what the unobserved arm carries as its obligation.
+test fn an_untimed_job_prices_the_same_against_seven_minutes_and_fifty_five() -> Bool {
+  let short = t_select_for(
+    candidates: t_rented_with_remainder(remaining: second(count: 420)),
+    duration: t_unknown_duration(),
+  )
+  let long = t_select_for(
+    candidates: t_rented_with_remainder(remaining: second(count: 3300)),
+    duration: t_unknown_duration(),
+  )
+  selected_total(s: short) == selected_total(s: long)
+    && spill_priced_for_unobserved(hs: horizon_of(s: long))
+}
+
+// FAMILY MEMBER THREE -- A HARD BOUND THAT FITS. Ninety seconds inside a seven-minute
+// remainder is genuinely free, and the arm says so by name: covered by the commitment. This is
+// the sunk-cost case with its boundary attached.
+test fn a_bounded_job_that_fits_the_remainder_is_covered_and_free() -> Bool {
+  let selection = t_select_for(
+    candidates: t_rented_with_remainder(remaining: second(count: 420)),
+    duration: t_ninety_seconds(),
+  )
+  covered_by_commitment(hs: horizon_of(s: selection))
+    && selected_total(s: selection) == 0
+}
+
+// FAMILY MEMBER FOUR -- A HARD BOUND THAT DOES NOT FIT. Fifty minutes against a seven-minute
+// remainder crosses the boundary and buys the next hour, and the arm is BilledBeyondCommitment
+// rather than the unobserved one. Same price as member one, different cause, opposite remedy:
+// here the answer is to choose a different offer, not to go and measure. A model that
+// collapsed these two would send a broker shopping when it should have sent it measuring.
+test fn a_bounded_job_that_exceeds_the_remainder_is_billed_beyond_it() -> Bool {
+  let selection = t_select_for(
+    candidates: t_rented_with_remainder(remaining: second(count: 420)),
+    duration: t_fifty_minute_job(),
+  )
+  billed_beyond_commitment(hs: horizon_of(s: selection))
+    && selected_total(s: selection) == 10000
+}
+
+// FAMILY MEMBER FIVE -- THE CONTROL. The same untimed job against continuous owned capacity,
+// where spill has no meaning at all. Nothing in the fold tests for continuity: the spilled
+// interval is ONE BILLING QUANTUM and this offer's quantum is zero, so the spill term is zero
+// by the same arithmetic that gives an hourly supplier three thousand six hundred seconds.
+//
+// The arm is still the unobserved one, because the duration is still unobserved -- what the
+// quantum decides is the PRICE of that arm, never whether the arm applies. A construction that
+// needed a special case to keep spill from firing on a continuous offer would be bolted on,
+// and this witness is what would catch it: the arm survives and the number is zero.
+test fn spill_costs_nothing_on_continuous_capacity_without_a_special_case() -> Bool {
+  let selection = t_select_for(
+    candidates: t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()),
+    duration: t_unknown_duration(),
+  )
+  spill_priced_for_unobserved(hs: horizon_of(s: selection))
+    && selected_total(s: selection) == 0
+    && selected_key(s: selection) == "offer-owned-srv1"
+}
+
+// AND THE CROSS-MODE CONSEQUENCE THE FAMILY ADDS UP TO. Untimed work does not belong on seven
+// minutes of somebody else's hour: the rented offer commits an unrecoverable hour it cannot
+// unbuy, our own continuous capacity commits nothing beyond the seconds it actually uses, and
+// the fold picks ours. Compare this with the first witness in the file, where the SAME two
+// offers go the other way because the work was known to fit. Both are true, and a selector
+// needs both.
+test fn untimed_work_does_not_belong_on_a_seven_minute_remainder() -> Bool {
+  let selection = t_select_for(
+    candidates: concat(
+      t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()),
+      t_rented_with_remainder(remaining: second(count: 420)),
+    ),
+    duration: t_unknown_duration(),
+  )
+  selected_key(s: selection) == "offer-owned-srv1"
 }

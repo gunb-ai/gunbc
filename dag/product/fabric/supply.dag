@@ -1,6 +1,6 @@
 module product.fabric.supply
 
-import std.types { Timestamp, Int, List }
+import std.types { Timestamp, Int, List, NonEmptyStr }
 import std.measure {
   ByteSize,
   byte_size_count,
@@ -231,22 +231,53 @@ type OfferFungibility
 // estimate's uncertainty vanish the moment it is multiplied. A caller that
 // only knows an estimate cannot construct ExactGrantDuration and claim
 // otherwise -- the two arms are the wall, not a comment beside a single field.
+// A THIRD ARM, AND IT IS THE ONE THE OTHER TWO CANNOT STAND IN FOR (operator ruling,
+// 2026-08-27): "the unknowns have to be represented properly in the modeling, so we can make
+// actual decisions".
+//
+// How long a job will run is NOT KNOWN at selection time, and the two arms above both carry a
+// Second -- so before this arm existed, a caller with no measurement at all had to pick one of
+// them and write a number down. Whatever it wrote then read downstream as a measurement.
+// "This job takes six minutes" and "nobody has ever timed this job" are different states with
+// different correct decisions, and a carrier that can only spell the first has erased the
+// second at the moment it is most load-bearing: a paid-through interval is free only for work
+// that FITS IN IT, and whether it fits is precisely the question an invented estimate answers
+// falsely.
+//
+// The arm carries the obligation rather than a placeholder duration, so the remedy -- go and
+// measure this -- is attached to the state instead of being lost behind a plausible integer.
 type GrantDuration
   = ExactGrantDuration { seconds: Second }
   | EstimatedGrantDuration { seconds: Second }
+  | UnobservedGrantDuration { obligation: NonEmptyStr }
 
-fn grant_duration_seconds(d: GrantDuration) -> Second {
+// THE ACCESSOR IS PARTIAL AND IS NAMED FOR WHAT IT RETURNS, which is an upper BOUND on the
+// run and not "the duration". It was called grant_duration_seconds and returned a bare
+// Second; both had to change, and the rename is deliberate rather than incidental. A total
+// accessor over a partial fact would have needed something to return for the unobserved arm,
+// and every candidate -- zero, a default, the estimate -- is the fabrication the arm exists to
+// prevent. Keeping the old NAME over the new signature would have let a caller update one
+// line and carry on believing it holds a duration.
+fn grant_duration_bound_seconds(d: GrantDuration) -> Second? {
   match d {
-    ExactGrantDuration { seconds: s } => s
-    EstimatedGrantDuration { seconds: s } => s
+    ExactGrantDuration { seconds: s } => Present { value: s }
+    EstimatedGrantDuration { seconds: s } => Present { value: s }
+    UnobservedGrantDuration { obligation: _ } => none
   }
 }
 
+// QuoteNotPriceableWithoutDuration is NOT a fifth way of being unaffordable. It says the
+// screen could not be RUN, which is a different fact from a demand that cannot pay -- the
+// remedy is a measurement, not a bigger budget -- and it exists because a rate quote and an
+// unobserved duration cannot produce a total at all. A flat per-grant quote does not reach it:
+// that quote prices the grant whole, so it is answerable with no duration whatsoever, and the
+// partition between the two falls out of the quote's own shape rather than a policy choice.
 type DemandOfferAffordability
   = Affordable
   | AffordableUnderEstimate { duration_seconds: Second, projected_total: MoneyAmountMicro }
   | QuoteExceedsMaximumBuyOrder { quoted: MoneyAmountMicro, maximum: MoneyAmountMicro }
   | QuoteCurrencyMismatch { quoted: CurrencyCode, budgeted: CurrencyCode }
+  | QuoteNotPriceableWithoutDuration { obligation: NonEmptyStr }
 
 fn offer_covers_shape(offered: Shape, needed: Shape) -> Bool {
   (unmet_shape_axes(offered: offered, needed: needed) |> count) == 0
@@ -441,20 +472,67 @@ fn billed_seconds(seconds: Nat, quantum_seconds: Nat) -> Nat {
 // unwrapped to counts on the next two lines because what follows is integer
 // ceiling arithmetic over unit counts, and a count scaled by measure_scale_fraction_ceil
 // is a dimensionless multiplier, not a duration.
+// THE RESULT IS A COPRODUCT because one of its inputs is now partial. A rate quote times an
+// unobserved duration is not a number, and the two candidates for returning one anyway --
+// zero, or a silently substituted estimate -- are the fabricated-plausible-output failure in
+// the fold that decides how much money moves. A flat per-grant quote is priced regardless,
+// since duration never entered its arithmetic.
+type QuotedTotal
+  = QuotedTotalDerived { amount: MoneyAmountMicro }
+  | QuotedTotalNeedsDuration { obligation: NonEmptyStr }
+
+fn quoted_total_amount(t: QuotedTotal) -> MoneyAmountMicro? {
+  match t {
+    QuotedTotalDerived { amount: a } => Present { value: a }
+    QuotedTotalNeedsDuration { obligation: _ } => none
+  }
+}
+
 fn offer_quoted_total_for_grant(
   quote: OfferQuote,
   duration: GrantDuration,
   quantum: Second,
-) -> MoneyAmountMicro {
-  let seconds = second_count(s: grant_duration_seconds(d: duration))
-  let billed = billed_seconds(seconds: seconds, quantum_seconds: second_count(s: quantum))
+) -> QuotedTotal {
   match quote {
-    QuotedFlatPerGrant(r) => r.amount
-    QuotedPerSecond(r) => measure_scale_fraction_ceil(m: r.amount, num: billed, den: 1)
+    QuotedFlatPerGrant(r) => QuotedTotalDerived { amount: r.amount }
+    QuotedPerSecond(r) =>
+      rate_total_for_grant(rate: r.amount, den: 1, duration: duration, quantum: quantum)
     QuotedPerMinute(r) =>
-      measure_scale_fraction_ceil(m: r.amount, num: billed, den: seconds_per_minute())
+      rate_total_for_grant(
+        rate: r.amount,
+        den: seconds_per_minute(),
+        duration: duration,
+        quantum: quantum,
+      )
     QuotedPerHour(r) =>
-      measure_scale_fraction_ceil(m: r.amount, num: billed, den: seconds_per_hour())
+      rate_total_for_grant(
+        rate: r.amount,
+        den: seconds_per_hour(),
+        duration: duration,
+        quantum: quantum,
+      )
+  }
+}
+
+fn rate_total_for_grant(
+  rate: MoneyAmountMicro,
+  den: Nat,
+  duration: GrantDuration,
+  quantum: Second,
+) -> QuotedTotal {
+  match grant_duration_bound_seconds(d: duration) {
+    Absent =>
+      QuotedTotalNeedsDuration {
+        obligation: "A rate quote cannot be totalled over an unobserved grant duration. Measure the work's running time, or bound it, before asking this quote for a per-grant total.",
+      }
+    Present { value: s } =>
+      QuotedTotalDerived {
+        amount: measure_scale_fraction_ceil(
+          m: rate,
+          num: billed_seconds(seconds: second_count(s: s), quantum_seconds: second_count(s: quantum)),
+          den: den,
+        ),
+      }
   }
 }
 
@@ -532,21 +610,47 @@ fn offer_affordability_for<P>(
   if offer_quote_currency(q: offer.quote) != budget_currency {
     QuoteCurrencyMismatch { quoted: offer_quote_currency(q: offer.quote), budgeted: budget_currency }
   } else {
-    let projected = offer_quoted_total_for_grant(quote: offer.quote, duration: duration, quantum: offer.billing_quantum)
-    if money_amount_micro_count(m: projected) > money_amount_micro_count(m: maximum_buy_order) {
-      QuoteExceedsMaximumBuyOrder { quoted: projected, maximum: maximum_buy_order }
-    } else {
-      match duration {
-        ExactGrantDuration { seconds: _ } => Affordable
-        EstimatedGrantDuration { seconds: s } => match offer.quote {
-          QuotedFlatPerGrant(_) => Affordable
-          QuotedPerSecond(_) =>
-            AffordableUnderEstimate { duration_seconds: s, projected_total: projected }
-          QuotedPerMinute(_) =>
-            AffordableUnderEstimate { duration_seconds: s, projected_total: projected }
-          QuotedPerHour(_) =>
-            AffordableUnderEstimate { duration_seconds: s, projected_total: projected }
-        }
+    match offer_quoted_total_for_grant(
+      quote: offer.quote,
+      duration: duration,
+      quantum: offer.billing_quantum,
+    ) {
+      QuotedTotalNeedsDuration { obligation: why } =>
+        QuoteNotPriceableWithoutDuration { obligation: why }
+      QuotedTotalDerived { amount: projected } =>
+        screen_projected_total(
+          quote: offer.quote,
+          duration: duration,
+          projected: projected,
+          maximum_buy_order: maximum_buy_order,
+        )
+    }
+  }
+}
+
+// An estimated duration yields a PROJECTED total whose error is inherited from the estimate,
+// so the verdict says so -- except under a flat per-grant quote, where duration never entered
+// the arithmetic and there is nothing for the estimate to have distorted.
+fn screen_projected_total(
+  quote: OfferQuote,
+  duration: GrantDuration,
+  projected: MoneyAmountMicro,
+  maximum_buy_order: MoneyAmountMicro,
+) -> DemandOfferAffordability {
+  if money_amount_micro_count(m: projected) > money_amount_micro_count(m: maximum_buy_order) {
+    QuoteExceedsMaximumBuyOrder { quoted: projected, maximum: maximum_buy_order }
+  } else {
+    match duration {
+      ExactGrantDuration { seconds: _ } => Affordable
+      UnobservedGrantDuration { obligation: _ } => Affordable
+      EstimatedGrantDuration { seconds: s } => match quote {
+        QuotedFlatPerGrant(_) => Affordable
+        QuotedPerSecond(_) =>
+          AffordableUnderEstimate { duration_seconds: s, projected_total: projected }
+        QuotedPerMinute(_) =>
+          AffordableUnderEstimate { duration_seconds: s, projected_total: projected }
+        QuotedPerHour(_) =>
+          AffordableUnderEstimate { duration_seconds: s, projected_total: projected }
       }
     }
   }
