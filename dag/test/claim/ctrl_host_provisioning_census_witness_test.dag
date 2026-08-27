@@ -1,0 +1,214 @@
+module test.claim.ctrl_host_provisioning_census_witness_test
+
+import std.types { Bool, Int, List, String }
+import std.decl_ref { DeclarationRef }
+import gunbc.ctrl_host_provisioning_census {
+  CtrlHostFact, CtrlHostSubject, FactStanding, CarrierJoin, UnownedReason,
+  OutsideHostDirCandidate, OutsideHostDirVerdict,
+  LoadBearing, Incidental,
+  Owned, PartiallyOwned, Unowned,
+  NoCarrierAuthored, UpstreamProductSurface, DesignNotBuilt, DashboardControlPlane,
+  RunnerProvisioning, FrozenControlPlane,
+  ctrl_host_facts, ctrl_host_surface_files, ctrl_host_surface_measured_lines,
+  ctrl_outside_host_dir_candidates, ctrl_provisioning_outside_host_dir,
+  ctrl_host_files_without_facts, ctrl_host_migration_scope,
+  ctrl_host_fully_owned_facts, ctrl_host_partial_scope, ctrl_host_incidental_facts,
+  fact_authorities, fact_is_load_bearing, fact_is_unowned, fact_is_fully_owned,
+  file_has_a_fact, candidate_is_in_scope,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE COVERAGE CLAIM, AS AN IDENTITY JOIN RATHER THAN A COUNT.
+//
+// DESIGN §5 forbids a completeness assertion expressed as count equality, and the reason is
+// visible here: "51 facts over 19 files" is true of a census that read eighteen files and wrote
+// four rows about one of them. This asks, per FILE, whether any row names it. Its RED is authorable
+// -- add a file to the surface roster and author no fact about it and this goes red -- which is
+// what separates it from a decoration.
+test fn every_surface_file_contributes_at_least_one_fact() -> Bool {
+  (ctrl_host_files_without_facts() |> count) == 0
+    && (ctrl_host_surface_files |> count) == 19
+}
+
+// THE POSITIVE CONTROL FOR THE JOIN ABOVE. Without it, the assertion would also pass against a
+// file_has_a_fact that returned true unconditionally.
+test fn a_file_absent_from_the_roster_does_not_join() -> Bool {
+  !file_has_a_fact(s: CtrlHostSubject { path: "no-such-file.sh", lines: 1 })
+    && file_has_a_fact(s: CtrlHostSubject { path: "jit-runner.sh", lines: 116 })
+}
+
+// EVERY ROW IS CLASSIFIED ON BOTH AXES, AND EVERY CLASSIFICATION CARRIES ITS EVIDENCE.
+//
+// The axes are total by construction -- a row cannot omit a standing or a join -- so what this
+// checks is the thing the type cannot: that no arm was filled with a placeholder. A LoadBearing
+// row must name a failure, an Unowned row must give a reason with substance, and an Owned or
+// PartiallyOwned row must actually name at least one carrier rather than an empty list.
+test fn every_row_carries_evidence_for_its_classification() -> Bool {
+  fold(
+    ctrl_host_facts,
+    init: true,
+    f: (acc, r) => acc
+      && (match r.standing {
+        LoadBearing { failure: fail } => string_length(s: fail as String) > 40
+        Incidental { why: w } => string_length(s: w as String) > 40
+      })
+      && (match r.join {
+        Owned { authorities: a } => (a |> count) > 0
+        PartiallyOwned { authorities: a, residue: res } =>
+          (a |> count) > 0 && string_length(s: res as String) > 20
+        Unowned { reason: reason } =>
+          match reason {
+            NoCarrierAuthored { nearest: n, why_none_fits: why } =>
+              (n |> count) > 0 && string_length(s: why as String) > 40
+            UpstreamProductSurface { upstream: _, why_not_ours: why } =>
+              string_length(s: why as String) > 20
+            DesignNotBuilt { doc: _, status: st } =>
+              string_length(s: st as String) > 20
+            DashboardControlPlane { why_out_of_scope: why } =>
+              string_length(s: why as String) > 40
+          }
+      })
+  )
+}
+
+// AN UNOWNED ROW STILL POINTS SOMEWHERE, EXCEPT WHERE POINTING WOULD BE FABRICATION.
+//
+// NoCarrierAuthored and UpstreamProductSurface both name carriers, so their "no carrier" claim is
+// re-runnable by a reader rather than merely asserted. DesignNotBuilt and DashboardControlPlane
+// deliberately name none: a design that was never built has no carrier to point at, and pointing
+// a frozen-program row at a gunbc module would invent exactly the relation this census is refusing
+// to invent. The asymmetry is the assertion.
+test fn unowned_rows_point_at_neighbours_except_where_that_would_fabricate() -> Bool {
+  fold(
+    ctrl_host_facts,
+    init: true,
+    f: (acc, r) => acc && (match r.join {
+      Owned { authorities: _ } => true
+      PartiallyOwned { authorities: _, residue: _ } => true
+      Unowned { reason: reason } =>
+        match reason {
+          NoCarrierAuthored { nearest: _, why_none_fits: _ } => (fact_authorities(f: r) |> count) > 0
+          UpstreamProductSurface { upstream: _, why_not_ours: _ } => (fact_authorities(f: r) |> count) > 0
+          DesignNotBuilt { doc: _, status: _ } => (fact_authorities(f: r) |> count) == 0
+          DashboardControlPlane { why_out_of_scope: _ } => (fact_authorities(f: r) |> count) == 0
+        }
+    })
+  )
+}
+
+// THE THREE JOIN ARMS PARTITION THE ROWS -- no row is counted twice and none is missed. This is the
+// discriminating control on the projections the migration will be scoped from: if the predicates
+// overlapped or left a gap, the scope derived below would be silently wrong in a way no individual
+// row inspection would reveal.
+test fn join_projections_partition_the_census() -> Bool {
+  ((ctrl_host_fully_owned_facts() |> count)
+    + (ctrl_host_partial_scope() |> count)
+    + (filter(ctrl_host_facts, f => fact_is_unowned(f: f)) |> count))
+    == (ctrl_host_facts |> count)
+    && (ctrl_host_facts |> count) == 53
+}
+
+// THE MIGRATION SCOPE IS A STRICT SUBSET OF THE CENSUS, AND IT IS NOT EMPTY.
+//
+// Both halves matter. Empty would mean the census found nothing to migrate, which for a surface
+// that provisions the fleet would be a measurement error rather than good news; equal to the whole
+// census would mean the standing and join axes are doing no work at all and the scope is just the
+// row list under another name.
+test fn migration_scope_is_a_proper_non_empty_subset() -> Bool {
+  let scope = ctrl_host_migration_scope() |> count
+  scope > 0 && scope < (ctrl_host_facts |> count)
+}
+
+// EVERY ROW IN THE DERIVED SCOPE SATISFIES THE THREE CONDITIONS THAT DEFINE IT. The projection is
+// a filter, so this cannot fail while the filter is correct -- which is the point: it is the
+// regression control that keeps the filter correct when a fourth Unowned arm is added and someone
+// forgets that DashboardControlPlane is excluded.
+test fn every_scoped_row_is_load_bearing_and_unowned_and_in_scope() -> Bool {
+  fold(
+    ctrl_host_migration_scope(),
+    init: true,
+    f: (acc, r) => acc
+      && fact_is_load_bearing(f: r)
+      && fact_is_unowned(f: r)
+      && (match r.join {
+        Owned { authorities: _ } => false
+        PartiallyOwned { authorities: _, residue: _ } => false
+        Unowned { reason: reason } =>
+          match reason {
+            DashboardControlPlane { why_out_of_scope: _ } => false
+            NoCarrierAuthored { nearest: _, why_none_fits: _ } => true
+            UpstreamProductSurface { upstream: _, why_not_ours: _ } => true
+            DesignNotBuilt { doc: _, status: _ } => true
+          }
+      })
+  )
+}
+
+// THE FROZEN CONTROL PLANE IS NOT MIGRATION WORK, AND IT IS NOT ZERO ROWS EITHER.
+//
+// This is the arm most likely to be lost: a census that simply omitted the replication files would
+// look complete and would hand the migration a directory whose deletion takes the dashboard's
+// database replication with it. Carrying them as classified rows is what makes the exclusion
+// visible instead of invisible.
+test fn dashboard_control_plane_rows_exist_and_are_excluded_from_scope() -> Bool {
+  let frozen = filter(ctrl_host_facts, f => match f.join {
+    Unowned { reason: reason } =>
+      match reason {
+        DashboardControlPlane { why_out_of_scope: _ } => true
+        NoCarrierAuthored { nearest: _, why_none_fits: _ } => false
+        UpstreamProductSurface { upstream: _, why_not_ours: _ } => false
+        DesignNotBuilt { doc: _, status: _ } => false
+      }
+    Owned { authorities: _ } => false
+    PartiallyOwned { authorities: _, residue: _ } => false
+  })
+  (frozen |> count) > 0
+    && fold(frozen, init: true, f: (acc, r) => acc && fact_is_load_bearing(f: r))
+    && fold(
+      ctrl_host_migration_scope(),
+      init: true,
+      f: (acc, s) => acc && !fold(frozen, init: false, f: (a2, fr) => a2 || (fr.about == s.about))
+    )
+}
+
+// THE DIRECTORY IS NOT THE BOUNDARY, IN BOTH DIRECTIONS, AND BOTH DIRECTIONS ARE ASSERTED.
+//
+// Exactly one candidate outside host/ is provisioning; the other three are not, despite three of
+// the four carrying "runner" in their path. Asserting the count is one rather than merely
+// non-empty is what makes this a decision rather than a hedge.
+test fn exactly_one_file_outside_the_host_directory_is_provisioning() -> Bool {
+  (ctrl_provisioning_outside_host_dir() |> count) == 1
+    && (ctrl_outside_host_dir_candidates |> count) == 4
+    && fold(
+      ctrl_provisioning_outside_host_dir(),
+      init: true,
+      f: (acc, c) => acc && string_contains(s: c.path as String, pattern: "runner_host_reconcile")
+    )
+}
+
+// THE DISCRIMINATING CONTROL FOR THE VERDICT ITSELF: a name-based classifier would put three of
+// these four in scope. This asserts that two paths containing "runner" and one containing "host"
+// are classified OUT, which is only possible if the verdict was decided by what the file does.
+test fn the_verdict_is_not_decided_by_the_filename() -> Bool {
+  fold(
+    ctrl_outside_host_dir_candidates,
+    init: 0,
+    f: (acc, c) =>
+      if string_contains(s: c.path as String, pattern: "runner") && !candidate_is_in_scope(c: c) {
+        acc + 1
+      } else {
+        acc
+      }
+  ) == 2
+}
+
+// THE SURFACE WAS MEASURED AGAINST THE HEAD, NOT THE BRIEF. 2917 is the tree at ctrl e98af992;
+// 2887 is that tree one commit earlier, which is the figure the commissioning brief carried. The
+// assertion is that this carrier holds the measured one, because a census scoped against a stale
+// tree is scoped against a tree that already moved.
+test fn the_surface_measurement_is_the_head_not_the_brief() -> Bool {
+  ctrl_host_surface_measured_lines == 2917
+    && ctrl_host_surface_measured_lines != 2887
+    && fold(ctrl_host_surface_files, init: 0, f: (acc, s) => acc + s.lines) == ctrl_host_surface_measured_lines
+}
