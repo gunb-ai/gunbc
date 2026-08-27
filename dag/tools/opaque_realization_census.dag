@@ -1,0 +1,852 @@
+module tools.opaque_realization_census
+
+import std.types { Bool, Int, String, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.algebra { trim }
+import extdeps.shell
+import extdeps.gunbc
+import extdeps.git
+import extdeps.git.inspect
+import extdeps.filesystem.filesystem_io { Filesystem }
+import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
+
+// THE OPAQUE-REALIZATION CENSUS.
+//
+// A type's REALIZATION -- how a target spells it -- is a fact about the module that DECLARES the
+// type. When the emitter writes that spelling at a USE site instead of the declared NAME, the fact
+// is exported into a scope that never agreed to it, and the spelling is then re-resolved by the
+// consumer's own bindings. Where the consumer binds that spelling to something else, one spelling
+// names two types and the emitted artifact cannot typecheck; where it does not, the same
+// substitution has happened and is merely silent until some consumer imports the name.
+//
+// This module measures that. It is an INSTRUMENT, not a gate and not a board: it emits one entry's
+// closure with the compiler under measurement, reads what that compiler WROTE, and returns a typed
+// population. It stores no counts, and no workflow invokes it.
+//
+// WHY IT READS THE EMITTED ARTIFACT AND NOT THE SOURCE. The defect IS a divergence between what
+// the source authored and what the emitter wrote, so a source-side census cannot see it by
+// construction -- an authored `id: Symbol` is present and correct in every case this census
+// separates. The subject is therefore established from the emitted tree, and the source is
+// consulted for exactly one further question (below) that the emitted tree cannot answer.
+//
+// EXECUTION PROVENANCE IS THE CARRIER'S FIRST JOB, ahead of any count it reports, for the reason
+// DESIGN's execution-provenance-loss row states: a count of zero and an unreached stage must not
+// render identically. So a census that refused before the emitter ran has its own variant naming
+// the stage, and cannot inhabit the same shape as a census that ran and found nothing.
+
+// ---------------------------------------------------------------------------------------------
+// The subject: what a declaring module's emitted file claims about one of its own type names.
+
+// An emitted module's own statement of how it realizes a type it declares. `spelling` empty means
+// the emitter wrote the type under its OWN name (a phantom-carrier struct), which is the shape that
+// cannot be substituted at a use site at all.
+type RealizationClaim {
+  declaring_file: String
+  name: String
+  spelling: String
+}
+
+// One consumer module's `use` of a name another module declares. This is the join key: the census
+// asks, for each such pair, what the consumer's own body actually spells.
+type ConsumerImport {
+  consumer_file: String
+  declaring_file: String
+  name: String
+}
+
+// ---------------------------------------------------------------------------------------------
+// The four dispositions. THREE OF THEM ARE THE MEASURED CLASS AND THE FOURTH IS NOT A CASE OF IT --
+// it is the honest arm for a pair whose consumer never spells either name, which would otherwise be
+// folded into the silent-expansion count and inflate it. Every discovered pair is exactly one of
+// these.
+type UseSiteDisposition
+  // The consumer spells the DECLARED NAME. The realization stayed in its declaring module.
+  = OpaqueNameEmitted {
+      consumer_file: String
+      declaring_file: String
+      name: String
+    }
+  // The consumer spells the REALIZATION, and binds that same spelling to something else. Two types,
+  // one spelling, substitution after resolution -- the arm that produces a type error.
+  | RealizationExpandedColliding {
+      consumer_file: String
+      declaring_file: String
+      name: String
+      spelling: String
+      collides_with: String
+    }
+  // The consumer spells the REALIZATION and does not bind that spelling. The same substitution has
+  // happened; nothing refuses it today. It becomes the colliding arm the day any consumer binds the
+  // spelling, so it is counted as the same defect and never as a clean result.
+  | RealizationExpandedNonColliding {
+      consumer_file: String
+      declaring_file: String
+      name: String
+      spelling: String
+    }
+  // The consumer imports the name and spells NEITHER it nor its realization. There is no use site
+  // here, so there is nothing to have been substituted.
+  | ImportPresentNoUseSite {
+      consumer_file: String
+      declaring_file: String
+      name: String
+      spelling: String
+    }
+
+// ---------------------------------------------------------------------------------------------
+// THE ONE QUESTION THE EMITTED TREE CANNOT ANSWER. `pub type T = R;` in a declaring module is
+// written both for an OPAQUE declaration (`type T` with no body, whose realization is supplied
+// entirely by the target) and for an AUTHORED ALIAS (`type T = ...`, whose realization is derived
+// from a body the author wrote). Those are indistinguishable in the artifact and they are different
+// subjects, so the source declaration is read for this and only this. A source file that cannot be
+// located refuses rather than defaulting to either answer.
+type DeclarationBodyStanding
+  = DeclaredOpaque
+  | DeclaredWithBody
+  | DeclarationSourceUnresolved { attempted: String }
+
+type OpaqueSubjectRow {
+  declaring_file: String
+  source_module: String
+  name: String
+  standing: DeclarationBodyStanding
+}
+
+// ---------------------------------------------------------------------------------------------
+
+type CensusStage
+  = StageWorkspace
+  | StageBinaries
+  | StageEmit
+  | StageArtifactListing
+
+type OpaqueRealizationCensus
+  = CensusUnestablished {
+      entry: String
+      stage: CensusStage
+      cause: String
+    }
+  | CensusTaken {
+      entry: String
+      emitted_file_count: Int
+      dispositions: List<UseSiteDisposition>
+      opaque_subjects: List<OpaqueSubjectRow>
+    }
+
+fn census_stage_text(stage: CensusStage) -> String {
+  match stage {
+    StageWorkspace => "workspace"
+    StageBinaries => "binaries"
+    StageEmit => "emit"
+    StageArtifactListing => "artifact-listing"
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Text reading. These are the only primitives the census needs, and they are written as boundary
+// checks rather than substring searches: `String` occurring inside `NonEmptyString` is not an
+// occurrence of `String`, and a census that counted it would report a use site that is not there.
+
+fn is_identifier_code_point(cp: Int) -> Bool {
+  (cp >= 48 && cp <= 57)
+    || (cp >= 65 && cp <= 90)
+    || (cp >= 97 && cp <= 122)
+    || cp == 95
+}
+
+fn edge_is_boundary(edge: String) -> Bool {
+  if edge == "" {
+    true
+  } else {
+    !is_identifier_code_point(cp: code_point(ch: edge))
+  }
+}
+
+fn first_char(s: String) -> String {
+  if string_length(s: s) == 0 { "" } else { substring(s: s, start: 0, end: 1) }
+}
+
+fn last_char(s: String) -> String {
+  let n = string_length(s: s)
+  if n == 0 { "" } else { substring(s: s, start: n - 1, end: n) }
+}
+
+type TokenScan {
+  started: Bool
+  prev_tail: String
+  found: Bool
+}
+
+// An occurrence of `token` in `text` sits between two consecutive split pieces; it is a real
+// occurrence exactly when neither adjacent character continues an identifier.
+fn mentions_token(text: String, token: String) -> Bool {
+  if token == "" {
+    false
+  } else {
+    fold(
+      split(s: text, delimiter: token),
+      init: TokenScan { started: false, prev_tail: "", found: false },
+      f: (acc, piece) =>
+        if !acc.started {
+          TokenScan { started: true, prev_tail: last_char(s: piece), found: false }
+        } else if acc.found {
+          TokenScan { started: true, prev_tail: last_char(s: piece), found: true }
+        } else {
+          TokenScan {
+            started: true,
+            prev_tail: last_char(s: piece),
+            found: edge_is_boundary(edge: acc.prev_tail)
+              && edge_is_boundary(edge: first_char(s: piece))
+          }
+        }
+    ).found
+  }
+}
+
+fn text_lines(text: String) -> List<String> {
+  split(s: text, delimiter: "\n")
+}
+
+fn after_prefix(line: String, prefix: String) -> String {
+  substring(s: line, start: string_length(s: prefix), end: string_length(s: line))
+}
+
+fn before_delimiter(s: String, delimiter: String) -> String {
+  match split(s: s, delimiter: delimiter) |> first {
+    Present { value: head } => head
+    Absent => s
+  }
+}
+
+fn after_delimiter(s: String, delimiter: String) -> String {
+  let parts = split(s: s, delimiter: delimiter)
+  match parts |> skip(1) |> first {
+    Present { value: rest } => rest
+    Absent => ""
+  }
+}
+
+fn trim_spaces(s: String) -> String {
+  trim(s: s)
+}
+
+// The leading identifier of a realization spelling. `Rc<Vec<String>>` is spelled with `Rc` at the
+// use site, so `Rc` is what a consumer body must mention for the expansion to be observable there.
+fn spelling_head(spelling: String) -> String {
+  let before_args = before_delimiter(s: spelling, delimiter: "<")
+  let segments = split(s: before_args, delimiter: "::")
+  match segments |> reverse |> first {
+    Present { value: leaf } => trim_spaces(s: leaf)
+    Absent => trim_spaces(s: before_args)
+  }
+}
+
+// A spelling that can be SHADOWED is a single bare identifier. `()`, `Vec<u8>` and
+// `serde_json::Value` cannot be re-bound by a consumer's imports, so a collision is unrepresentable
+// for them however many consumers expand them.
+fn spelling_is_bare_identifier(spelling: String) -> Bool {
+  spelling != ""
+    && !string_contains(s: spelling, pattern: "<")
+    && !string_contains(s: spelling, pattern: "::")
+    && !string_contains(s: spelling, pattern: " ")
+    && !string_contains(s: spelling, pattern: "(")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Reading one emitted file.
+
+type EmittedFile {
+  file_key: String
+  source_module: String
+  body: String
+  claims: List<RealizationClaim>
+  imports: List<ConsumerImport>
+  bound_names: List<String>
+}
+
+fn is_use_line(line: String) -> Bool {
+  starts_with(s: line, prefix: "use ") || starts_with(s: line, prefix: "pub use ")
+}
+
+fn emitted_file_key(path: String) -> String {
+  let segments = split(s: path, delimiter: "/")
+  let base = match segments |> reverse |> first {
+    Present { value: b } => b
+    Absent => path
+  }
+  before_delimiter(s: base, delimiter: ".rs")
+}
+
+// The emitted header names the source module the file was generated from. It is the only link back
+// to the authored declaration, and a file without it yields an empty module rather than a guess.
+fn emitted_source_module(lines: List<String>) -> String {
+  fold(
+    lines,
+    init: "",
+    f: (acc, line) =>
+      if acc != "" {
+        acc
+      } else if starts_with(s: line, prefix: "// Source module: ") {
+        trim_spaces(s: after_prefix(line: line, prefix: "// Source module: "))
+      } else {
+        acc
+      }
+  )
+}
+
+// A zero-parameter alias declaration. A parameterized one is excluded: its realization cannot be
+// written at a use site without its arguments, so it is not this class.
+fn alias_claim(file_key: String, line: String) -> RealizationClaim? {
+  if !starts_with(s: line, prefix: "pub type ") {
+    none
+  } else {
+    let rest = after_prefix(line: line, prefix: "pub type ")
+    if !string_contains(s: rest, pattern: " = ") {
+      none
+    } else {
+      let name = trim_spaces(s: before_delimiter(s: rest, delimiter: " = "))
+      let tail = after_delimiter(s: rest, delimiter: " = ")
+      if name == "" || string_contains(s: name, pattern: "<") || !string_contains(s: tail, pattern: ";") {
+        none
+      } else {
+        Present {
+          value: RealizationClaim {
+            declaring_file: file_key,
+            name: name,
+            spelling: trim_spaces(s: before_delimiter(s: tail, delimiter: ";"))
+          }
+        }
+      }
+    }
+  }
+}
+
+fn phantom_claim(file_key: String, line: String) -> RealizationClaim? {
+  if starts_with(s: line, prefix: "pub struct ")
+    && string_contains(s: line, pattern: "(pub std::marker::PhantomData") {
+    let rest = after_prefix(line: line, prefix: "pub struct ")
+    Present {
+      value: RealizationClaim {
+        declaring_file: file_key,
+        name: trim_spaces(s: before_delimiter(s: rest, delimiter: "(")),
+        spelling: ""
+      }
+    }
+  } else {
+    none
+  }
+}
+
+fn line_claims(file_key: String, line: String) -> List<RealizationClaim> {
+  match alias_claim(file_key: file_key, line: line) {
+    Present { value: c } => [c]
+    Absent =>
+      match phantom_claim(file_key: file_key, line: line) {
+        Present { value: c } => [c]
+        Absent => []
+      }
+  }
+}
+
+// Every name this file introduces into its own scope, by declaration. Joined with its imports, this
+// is what decides whether a realization spelling re-binds here.
+fn line_bound_name(line: String) -> String {
+  if starts_with(s: line, prefix: "pub type ") {
+    before_delimiter(s: trim_spaces(s: after_prefix(line: line, prefix: "pub type ")), delimiter: " ")
+  } else if starts_with(s: line, prefix: "pub struct ") {
+    before_delimiter(
+      s: before_delimiter(
+        s: trim_spaces(s: after_prefix(line: line, prefix: "pub struct ")),
+        delimiter: "("
+      ),
+      delimiter: " "
+    )
+  } else if starts_with(s: line, prefix: "pub enum ") {
+    before_delimiter(
+      s: before_delimiter(
+        s: trim_spaces(s: after_prefix(line: line, prefix: "pub enum ")),
+        delimiter: "<"
+      ),
+      delimiter: " "
+    )
+  } else {
+    ""
+  }
+}
+
+// `use crate::<module>::{A, B};` and `use crate::<module>::A;` are the two forms the emitter writes.
+fn use_line_imports(consumer_file: String, line: String) -> List<ConsumerImport> {
+  if !is_use_line(line: line) || !string_contains(s: line, pattern: "crate::") {
+    []
+  } else {
+    let after_crate = after_delimiter(s: line, delimiter: "crate::")
+    if !string_contains(s: after_crate, pattern: "::") {
+      []
+    } else {
+      let declaring = before_delimiter(s: after_crate, delimiter: "::")
+      let tail = after_delimiter(s: after_crate, delimiter: "::")
+      if starts_with(s: tail, prefix: "{") {
+        let inner = before_delimiter(s: after_prefix(line: tail, prefix: "{"), delimiter: "}")
+        fold(
+          split(s: inner, delimiter: ","),
+          init: [],
+          f: (acc, raw) =>
+            let n = trim_spaces(s: raw)
+            if n == "" {
+              acc
+            } else {
+              concat(acc, [ConsumerImport { consumer_file: consumer_file, declaring_file: declaring, name: n }])
+            }
+        )
+      } else {
+        let n = trim_spaces(s: before_delimiter(s: tail, delimiter: ";"))
+        if n == "" || string_contains(s: n, pattern: "*") {
+          []
+        } else {
+          [ConsumerImport { consumer_file: consumer_file, declaring_file: declaring, name: n }]
+        }
+      }
+    }
+  }
+}
+
+// THE BODY EXCLUDES THE USE LINES DELIBERATELY. An import is what puts the name in scope; it is not
+// a use SITE. Counting it as one would make every expansion look preserved.
+fn read_emitted_file(path: String, content: String) -> EmittedFile {
+  let file_key = emitted_file_key(path: path)
+  let lines = text_lines(text: content)
+  EmittedFile {
+    file_key: file_key,
+    source_module: emitted_source_module(lines: lines),
+    body: join(filter(lines, l => !is_use_line(line: l)), "\n"),
+    claims: fold(lines, init: [], f: (acc, l) => concat(acc, line_claims(file_key: file_key, line: l))),
+    imports: fold(lines, init: [], f: (acc, l) => concat(acc, use_line_imports(consumer_file: file_key, line: l))),
+    bound_names: fold(
+      lines,
+      init: [],
+      f: (acc, l) =>
+        let n = line_bound_name(line: l)
+        if n == "" { acc } else { concat(acc, [n]) }
+    )
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Classification.
+
+fn claim_for(claims: List<RealizationClaim>, declaring_file: String, name: String) -> RealizationClaim? {
+  claims
+    |> filter(c => c.declaring_file == declaring_file && c.name == name)
+    |> first
+}
+
+fn consumer_binds(file: EmittedFile, spelling: String, declaring_file: String) -> String {
+  let from_imports = file.imports
+    |> filter(i => i.name == spelling && i.declaring_file != declaring_file)
+    |> first
+  match from_imports {
+    Present { value: i } => i.declaring_file
+    Absent =>
+      if file.bound_names |> any(n => n == spelling) { file.file_key } else { "" }
+  }
+}
+
+fn classify_import(
+  file: EmittedFile,
+  imp: ConsumerImport,
+  claims: List<RealizationClaim>
+) -> UseSiteDisposition? {
+  match claim_for(claims: claims, declaring_file: imp.declaring_file, name: imp.name) {
+    Absent => none
+    Present { value: claim } =>
+      if claim.spelling == "" {
+        Present {
+          value: OpaqueNameEmitted {
+            consumer_file: imp.consumer_file,
+            declaring_file: imp.declaring_file,
+            name: imp.name
+          }
+        }
+      } else if mentions_token(text: file.body, token: imp.name) {
+        Present {
+          value: OpaqueNameEmitted {
+            consumer_file: imp.consumer_file,
+            declaring_file: imp.declaring_file,
+            name: imp.name
+          }
+        }
+      } else if !mentions_token(text: file.body, token: spelling_head(spelling: claim.spelling)) {
+        Present {
+          value: ImportPresentNoUseSite {
+            consumer_file: imp.consumer_file,
+            declaring_file: imp.declaring_file,
+            name: imp.name,
+            spelling: claim.spelling
+          }
+        }
+      } else {
+        let collides = if spelling_is_bare_identifier(spelling: claim.spelling) {
+          consumer_binds(file: file, spelling: claim.spelling, declaring_file: imp.declaring_file)
+        } else {
+          ""
+        }
+        if collides == "" {
+          Present {
+            value: RealizationExpandedNonColliding {
+              consumer_file: imp.consumer_file,
+              declaring_file: imp.declaring_file,
+              name: imp.name,
+              spelling: claim.spelling
+            }
+          }
+        } else {
+          Present {
+            value: RealizationExpandedColliding {
+              consumer_file: imp.consumer_file,
+              declaring_file: imp.declaring_file,
+              name: imp.name,
+              spelling: claim.spelling,
+              collides_with: collides
+            }
+          }
+        }
+      }
+  }
+}
+
+fn classify_file(file: EmittedFile, claims: List<RealizationClaim>) -> List<UseSiteDisposition> {
+  fold(
+    file.imports,
+    init: [],
+    f: (acc, imp) =>
+      match classify_import(file: file, imp: imp, claims: claims) {
+        Present { value: d } => concat(acc, [d])
+        Absent => acc
+      }
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// The source-side opaqueness join, for the one question the artifact cannot answer.
+
+fn module_candidate_paths(source_module: String, roots: List<String>) -> List<String> {
+  let segments = split(s: source_module, delimiter: ".")
+  let direct = join(segments, "/")
+  let dropped = join(segments |> skip(1), "/")
+  fold(
+    roots,
+    init: [],
+    f: (acc, root) =>
+      concat(acc, [
+        concat(root, concat("/", concat(direct, ".dag"))),
+        concat(root, concat("/", concat(dropped, ".dag")))
+      ])
+  )
+}
+
+// A declaration is OPAQUE when its `type X` line carries no body -- no `=` and no `|` on the line.
+// A `type X` whose next non-blank line opens a coproduct has a body; that spelling does not occur in
+// this corpus without the `|` on a following line, so the standing is read from the declaration line
+// and its successor together.
+fn declaration_body_standing_in(content: String, name: String) -> DeclarationBodyStanding? {
+  let header = concat("type ", name)
+  fold(
+    text_lines(text: content),
+    init: none,
+    f: (acc, line) =>
+      match acc {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          if !starts_with(s: line, prefix: header) {
+            none
+          } else {
+            let rest = trim_spaces(s: after_prefix(line: line, prefix: header))
+            if rest == "" {
+              Present { value: DeclaredOpaque }
+            } else if starts_with(s: rest, prefix: "=")
+              || starts_with(s: rest, prefix: "|")
+              || starts_with(s: rest, prefix: "{")
+              || starts_with(s: rest, prefix: "<") {
+              Present { value: DeclaredWithBody }
+            } else {
+              // A modifier such as `nominal_opaque` or `sole_constructor` sits between the name and
+              // the body; the body question is decided by what follows it, on the same line.
+              if string_contains(s: rest, pattern: "=") || string_contains(s: rest, pattern: "|") {
+                Present { value: DeclaredWithBody }
+              } else {
+                Present { value: DeclaredOpaque }
+              }
+            }
+          }
+      }
+  )
+}
+
+fn declaration_body_standing(source_module: String, name: String, roots: List<String>) -> DeclarationBodyStanding {
+  let candidates = module_candidate_paths(source_module: source_module, roots: roots)
+  fold(
+    candidates,
+    init: DeclarationSourceUnresolved { attempted: join(candidates, " ") },
+    f: (acc, path) =>
+      match acc {
+        DeclaredOpaque => acc
+        DeclaredWithBody => acc
+        DeclarationSourceUnresolved { attempted: a } =>
+          let read = Filesystem.Read(path: path)
+          if !read.success {
+            acc
+          } else {
+            match declaration_body_standing_in(content: read.content, name: name) {
+              Present { value: v } => v
+              Absent => acc
+            }
+          }
+      }
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// The run.
+
+fn census_source_roots() -> List<String> {
+  ["dag", "src/v2", "src/v1"]
+}
+
+fn read_emitted_tree(src_dir: String) -> List<EmittedFile> {
+  let found = shell.Find.FilesByNameSorted(root: src_dir, name_glob: "*.rs" as NonEmptyStr)
+  if !found.success {
+    []
+  } else {
+    fold(
+      filter(split(s: found.stdout, delimiter: "\n"), p => p != ""),
+      init: [],
+      f: (acc, path) =>
+        let read = Filesystem.Read(path: path)
+        if !read.success {
+          acc
+        } else {
+          concat(acc, [read_emitted_file(path: path, content: read.content)])
+        }
+    )
+  }
+}
+
+fn all_claims(files: List<EmittedFile>) -> List<RealizationClaim> {
+  fold(files, init: [], f: (acc, f) => concat(acc, f.claims))
+}
+
+// The opaqueness join runs over the DISTINCT declaring names the dispositions actually name, not
+// over the whole claim roster: the question is only asked where an answer changes a count.
+fn opaque_subject_rows(
+  dispositions: List<UseSiteDisposition>,
+  files: List<EmittedFile>,
+  claims: List<RealizationClaim>
+) -> List<OpaqueSubjectRow> {
+  fold(
+    claims,
+    init: [],
+    f: (acc, claim) =>
+      if acc |> any(r => r.declaring_file == claim.declaring_file && r.name == claim.name) {
+        acc
+      } else if !(dispositions |> any(d => disposition_names(d: d) == concat(claim.declaring_file, concat("::", claim.name)))) {
+        acc
+      } else {
+        let source_module = match files |> filter(f => f.file_key == claim.declaring_file) |> first {
+          Present { value: f } => f.source_module
+          Absent => ""
+        }
+        concat(acc, [
+          OpaqueSubjectRow {
+            declaring_file: claim.declaring_file,
+            source_module: source_module,
+            name: claim.name,
+            standing: if source_module == "" {
+              DeclarationSourceUnresolved { attempted: "" }
+            } else {
+              declaration_body_standing(source_module: source_module, name: claim.name, roots: census_source_roots())
+            }
+          }
+        ])
+      }
+  )
+}
+
+fn disposition_names(d: UseSiteDisposition) -> String {
+  match d {
+    OpaqueNameEmitted { consumer_file: _, declaring_file: df, name: n } => concat(df, concat("::", n))
+    RealizationExpandedColliding { consumer_file: _, declaring_file: df, name: n, spelling: _, collides_with: _ } => concat(df, concat("::", n))
+    RealizationExpandedNonColliding { consumer_file: _, declaring_file: df, name: n, spelling: _ } => concat(df, concat("::", n))
+    ImportPresentNoUseSite { consumer_file: _, declaring_file: df, name: n, spelling: _ } => concat(df, concat("::", n))
+  }
+}
+
+fn census_entry_emission(entry: String) -> OpaqueRealizationCensus {
+  let root = git.Inspect.Toplevel()
+  let out_dir = shell.Mktemp.Dir()
+  if !out_dir.success {
+    CensusUnestablished {
+      entry: entry,
+      stage: StageWorkspace,
+      cause: "could not create a temporary directory for the emitted crate"
+    }
+  } else {
+    let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
+    if !gunbc_built {
+      CensusUnestablished {
+        entry: entry,
+        stage: StageBinaries,
+        cause: "the gunbc release binary is not buildable — the census invokes the compiler it is measuring as a subprocess, so an absent binary is a refusal and never a clean measurement"
+      }
+    } else {
+      let emit = gunbc.WitnessBin.Run(
+        workdir: root.path,
+        bin_path: witness_bin_release_path(root: root.path, bin_name: "gunbc"),
+        args: [
+          "compile",
+          "--source-root", "dag",
+          "--source-root", "src/v2",
+          "--entry", entry,
+          "--output-dir", out_dir.path,
+          "--target", "rust",
+          "--dependency-pool-index", "primary-precedence"
+        ]
+      )
+      let files = read_emitted_tree(src_dir: concat(out_dir.path, "/src"))
+      if (files |> count) == 0 {
+        CensusUnestablished {
+          entry: entry,
+          stage: StageArtifactListing,
+          cause: concat(
+            "the emitter produced no readable .rs file for this entry, so no use site could be examined; emitter stderr: ",
+            emit.stderr
+          )
+        }
+      } else {
+        let claims = all_claims(files: files)
+        let dispositions = fold(files, init: [], f: (acc, f) => concat(acc, classify_file(file: f, claims: claims)))
+        CensusTaken {
+          entry: entry,
+          emitted_file_count: files |> count,
+          dispositions: dispositions,
+          opaque_subjects: opaque_subject_rows(dispositions: dispositions, files: files, claims: claims)
+        }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Reporting. The instrument writes its measurement; it does not decide anything about it.
+
+fn disposition_row(d: UseSiteDisposition) -> String {
+  match d {
+    OpaqueNameEmitted { consumer_file: cf, declaring_file: df, name: n } =>
+      concat("name-emitted\t", concat(cf, concat("\t", concat(df, concat("\t", concat(n, "\t"))))))
+    RealizationExpandedColliding { consumer_file: cf, declaring_file: df, name: n, spelling: s, collides_with: cw } =>
+      concat("expanded-colliding\t", concat(cf, concat("\t", concat(df, concat("\t", concat(n, concat("\t", concat(s, concat("\tcollides-with=", cw)))))))))
+    RealizationExpandedNonColliding { consumer_file: cf, declaring_file: df, name: n, spelling: s } =>
+      concat("expanded-non-colliding\t", concat(cf, concat("\t", concat(df, concat("\t", concat(n, concat("\t", s)))))))
+    ImportPresentNoUseSite { consumer_file: cf, declaring_file: df, name: n, spelling: s } =>
+      concat("no-use-site\t", concat(cf, concat("\t", concat(df, concat("\t", concat(n, concat("\t", s)))))))
+  }
+}
+
+fn disposition_is_colliding(d: UseSiteDisposition) -> Bool {
+  match d {
+    RealizationExpandedColliding { consumer_file: _, declaring_file: _, name: _, spelling: _, collides_with: _ } => true
+    OpaqueNameEmitted { consumer_file: _, declaring_file: _, name: _ } => false
+    RealizationExpandedNonColliding { consumer_file: _, declaring_file: _, name: _, spelling: _ } => false
+    ImportPresentNoUseSite { consumer_file: _, declaring_file: _, name: _, spelling: _ } => false
+  }
+}
+
+fn disposition_is_non_colliding(d: UseSiteDisposition) -> Bool {
+  match d {
+    RealizationExpandedNonColliding { consumer_file: _, declaring_file: _, name: _, spelling: _ } => true
+    OpaqueNameEmitted { consumer_file: _, declaring_file: _, name: _ } => false
+    RealizationExpandedColliding { consumer_file: _, declaring_file: _, name: _, spelling: _, collides_with: _ } => false
+    ImportPresentNoUseSite { consumer_file: _, declaring_file: _, name: _, spelling: _ } => false
+  }
+}
+
+fn disposition_is_name_emitted(d: UseSiteDisposition) -> Bool {
+  match d {
+    OpaqueNameEmitted { consumer_file: _, declaring_file: _, name: _ } => true
+    RealizationExpandedColliding { consumer_file: _, declaring_file: _, name: _, spelling: _, collides_with: _ } => false
+    RealizationExpandedNonColliding { consumer_file: _, declaring_file: _, name: _, spelling: _ } => false
+    ImportPresentNoUseSite { consumer_file: _, declaring_file: _, name: _, spelling: _ } => false
+  }
+}
+
+fn disposition_is_no_use_site(d: UseSiteDisposition) -> Bool {
+  match d {
+    ImportPresentNoUseSite { consumer_file: _, declaring_file: _, name: _, spelling: _ } => true
+    OpaqueNameEmitted { consumer_file: _, declaring_file: _, name: _ } => false
+    RealizationExpandedColliding { consumer_file: _, declaring_file: _, name: _, spelling: _, collides_with: _ } => false
+    RealizationExpandedNonColliding { consumer_file: _, declaring_file: _, name: _, spelling: _ } => false
+  }
+}
+
+fn standing_text(s: DeclarationBodyStanding) -> String {
+  match s {
+    DeclaredOpaque => "opaque"
+    DeclaredWithBody => "has-body"
+    DeclarationSourceUnresolved { attempted: a } => concat("source-unresolved(", concat(a, ")"))
+  }
+}
+
+fn opaque_subject_row_text(r: OpaqueSubjectRow) -> String {
+  concat(r.declaring_file, concat("\t", concat(r.name, concat("\t", concat(r.source_module, concat("\t", standing_text(s: r.standing)))))))
+}
+
+fn census_report_text(c: OpaqueRealizationCensus) -> String {
+  match c {
+    CensusUnestablished { entry: e, stage: st, cause: cause } =>
+      concat(
+        "opaque-realization-census UNESTABLISHED\nentry\t", concat(e,
+        concat("\nstage\t", concat(census_stage_text(stage: st),
+        concat("\ncause\t", concat(cause, "\n"))))))
+    CensusTaken { entry: e, emitted_file_count: n, dispositions: ds, opaque_subjects: subs } =>
+      concat(
+        "opaque-realization-census TAKEN\nentry\t", concat(e,
+        concat("\nemitted_files\t", concat(to_string(value: n),
+        concat("\nexpanded_colliding\t", concat(to_string(value: filter(ds, d => disposition_is_colliding(d: d)) |> count),
+        concat("\nexpanded_non_colliding\t", concat(to_string(value: filter(ds, d => disposition_is_non_colliding(d: d)) |> count),
+        concat("\nname_emitted\t", concat(to_string(value: filter(ds, d => disposition_is_name_emitted(d: d)) |> count),
+        concat("\nimport_no_use_site\t", concat(to_string(value: filter(ds, d => disposition_is_no_use_site(d: d)) |> count),
+        concat("\n\n# disposition\tconsumer\tdeclaring\tname\trealization\n",
+        concat(join(map(ds, d => disposition_row(d: d)), "\n"),
+        concat("\n\n# declaring\tname\tsource_module\tdeclaration_standing\n",
+        concat(join(map(subs, r => opaque_subject_row_text(r: r)), "\n"), "\n")))))))))))))))))
+  }
+}
+
+fn census_completed(c: OpaqueRealizationCensus) -> Bool {
+  match c {
+    CensusTaken { entry: _, emitted_file_count: _, dispositions: _, opaque_subjects: _ } => true
+    CensusUnestablished { entry: _, stage: _, cause: _ } => false
+  }
+}
+
+fn measure(entry: String, report: String) -> ProcessExit {
+  if entry == "" {
+    exit_failure(reason: "measure: --arg entry=<repo-relative .dag path> is required")
+  } else if report == "" {
+    exit_failure(reason: "measure: --arg report=<path> is required — the measurement is written, not printed")
+  } else {
+    let c = census_entry_emission(entry: entry)
+    let write = Filesystem.Write(path: report, content: census_report_text(c: c))
+    if !write.success {
+      exit_failure(reason: concat("measure: could not write the report to ", report))
+    } else if census_completed(c: c) {
+      ExitSuccess
+    } else {
+      exit_failure(
+        reason: concat(
+          "measure: the census did not reach the emitted artifact; the report at ",
+          concat(report, " names the stage that refused")
+        )
+      )
+    }
+  }
+}
