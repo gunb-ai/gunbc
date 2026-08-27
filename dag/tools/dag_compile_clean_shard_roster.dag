@@ -100,8 +100,57 @@ fn compile_clean_shard_entry_paths_from(
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// THE DISCOVERER HANDS BACK THE ROOTS IT ACTUALLY USED.
+//
+// A consumer that wants to record WHICH universe it folded over previously had to name the roots
+// itself, from a constant it believed the discoverer also read. That belief is exactly the shape
+// DESIGN §5 calls validation standing where construction was available: the roots the discovery
+// scanned and the roots a consumer printed were two representations of one fact, and nothing but a
+// witness comparing two constants held them together — a witness that goes green when the
+// declaration is edited and the discovery still scans somewhere else.
+//
+// So the roots travel WITH the paths, read ONCE from the partition boundary and used both to scan
+// and to describe. There is no spelling in which a consumer holds a discovered roster and a root
+// list the scan did not use, because it never receives them separately.
+type CompileCleanShardEntryDiscovery
+  = CompileCleanShardEntryDiscovered { roots: List<String>, paths: List<String> }
+  | CompileCleanShardEntryDiscoveryDuplicatePath {
+      roots: List<String>
+      path: String
+      first: CompileCleanModuleDeclFact
+      duplicate: CompileCleanModuleDeclFact
+    }
+
+// THE REFUSAL ARM CARRIES THE ROOTS TOO. A duplicate path is unreadable-roster news that a reader
+// still has to locate, and "which roots were scanned" is the first question asked of it.
+fn compile_clean_shard_entry_discovery() -> CompileCleanShardEntryDiscovery {
+  let roots = compile_clean_partition_boundary().entry_roots
+  match compile_clean_shard_entry_paths_from(
+    decl_facts: module_declaration_facts(pool_roots: roots)
+  ) {
+    CompileCleanShardEntryPathsBuilt { paths: ps } =>
+      CompileCleanShardEntryDiscovered { roots: roots, paths: ps }
+    CompileCleanShardEntryPathsDuplicatePath { path: p, first: f, duplicate: d } =>
+      CompileCleanShardEntryDiscoveryDuplicatePath {
+        roots: roots,
+        path: p,
+        first: f,
+        duplicate: d
+      }
+  }
+}
+
+// THE PATHS-ONLY PROJECTION, for the consumers that do not record a universe. It is DERIVED from
+// the discovery above rather than scanning a second time, so the two can never disagree about what
+// was discovered.
 fn compile_clean_shard_entry_paths() -> CompileCleanShardEntryPaths {
-  compile_clean_shard_entry_paths_from(decl_facts: compile_clean_entry_module_facts())
+  match compile_clean_shard_entry_discovery() {
+    CompileCleanShardEntryDiscovered { roots: _, paths: ps } =>
+      CompileCleanShardEntryPathsBuilt { paths: ps }
+    CompileCleanShardEntryDiscoveryDuplicatePath { roots: _, path: p, first: f, duplicate: d } =>
+      CompileCleanShardEntryPathsDuplicatePath { path: p, first: f, duplicate: d }
+  }
 }
 
 fn list_contains_path(xs: List<String>, target: String) -> Bool {

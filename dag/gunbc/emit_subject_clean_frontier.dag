@@ -357,10 +357,48 @@ fn roster_denominators_text(denominators: RosterDenominators) -> String {
   }
 }
 
+// THE ROOTS, READ BACK OUT. The runner builds its second denominator over the SAME roots the
+// declaration index was scanned under, and it obtains them from here rather than from a constant of
+// its own — so "both denominators describe one route" is a consequence of there being one roots
+// value in the universe, not a claim someone made about two.
+fn roster_discovery_policy_roots(policy: RosterDiscoveryPolicy) -> List<String> {
+  match policy {
+    DeclarationIndexUnderRoots { roots: rs } => rs
+  }
+}
+
 fn roster_discovery_policy_text(policy: RosterDiscoveryPolicy) -> String {
   match policy {
     DeclarationIndexUnderRoots { roots: rs } =>
       concat("parsed declaration index under ", join(rs, ", "))
+  }
+}
+
+// THE ROUTE, RENDERED. The policy names where the subjects came from and the denominators name how
+// many questions were asked of that place; separately they are two rows a reader has to join by
+// hand, and the join is the thing that says whether a file the index could not classify was a
+// subject or was invisible. So the receipt renders the route itself.
+//
+// It is DERIVED from the two fields rather than authored beside them, so there is no spelling in
+// which the rendered route describes a discovery different from the one the identity carries. What
+// it does NOT claim is where the inventory was listed: this carrier holds one roots value and the
+// runner lists over exactly that value, but the roots the inventory walked are the runner's fact and
+// rendering them from here would be the assertion this whole change removed one level up.
+fn roster_route_text(
+  policy: RosterDiscoveryPolicy,
+  denominators: RosterDenominators
+) -> String {
+  match denominators {
+    DeclarationIndexOnly =>
+      concat(
+        concat("scanned ", join(roster_discovery_policy_roots(policy: policy), ", ")),
+        " → parsed declaration index → subjects (no second denominator: a file the index could not classify never became a subject)"
+      )
+    DeclarationIndexAndModuleInventory =>
+      concat(
+        concat("scanned ", join(roster_discovery_policy_roots(policy: policy), ", ")),
+        " → parsed declaration index → subjects, joined against a `*.dag` file inventory so a file the index did not classify arrives as a blocked subject rather than as an absence"
+      )
   }
 }
 
@@ -504,11 +542,13 @@ fn roster_identity_rows(identity: RosterIdentity) -> List<String> {
     RosterEmpty { policy: p, denominators: dn } => [
       concat("roster_policy\t", roster_discovery_policy_text(policy: p)),
       concat("roster_denominators\t", roster_denominators_text(denominators: dn)),
+      concat("roster_route\t", roster_route_text(policy: p, denominators: dn)),
       "roster\t(empty — discovery returned no subject, which is a failure to discover and not a universe)"
     ]
     RosterIdentified { policy: p, denominators: dn, subject_count: n, digest: d } => [
       concat("roster_policy\t", roster_discovery_policy_text(policy: p)),
       concat("roster_denominators\t", roster_denominators_text(denominators: dn)),
+      concat("roster_route\t", roster_route_text(policy: p, denominators: dn)),
       concat("roster_subjects\t", to_string(n)),
       concat("roster_digest\t", d.digest as String)
     ]
