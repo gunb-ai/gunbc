@@ -26158,10 +26158,24 @@ fn call_floor_row_precompute_would_skip(
 // (a live read hidden behind an import was invisible to entry-text scanning): the
 // entry's own row asserts the fact for the whole evaluation, wherever the read hides.
 // A row that DECLARES SubstrateInputsOnly while actually reading live state is not
-// re-checked by any text scan — the nightly affected-set falsifier (predict-only cold
-// run) is the enforcement; a lying row surfaces as a counted divergence within one
-// cadence window. Call-reachability-grade classification (fn-arrow DependencyView over
-// lowered bodies) remains the later lane that re-derives these declarations.
+// re-checked by any text scan, AND IT IS NOW RE-CHECKED BY NOTHING AT ALL. This comment
+// named the nightly affected-set falsifier (predict-only cold run) as the enforcement,
+// promising that a lying row surfaces as a counted divergence within one cadence window.
+// THAT CADENCE IS GONE: `falsifier.yml` was deleted by the 2026-08-15 floor cut and sits
+// on DESIGN's unguarded list awaiting its own re-add, so the sentence was true when
+// written and became false when the workflow died, with nothing to notice. One claim in
+// three places — here, `v2.std.live_tree` `live_tree_disposition_note`, and that module's
+// `live_tree_disposition_stamp_provenance` — all three corrected together, because a claim
+// with three homes corrected in one still has two authorities (DESIGN §3).
+//
+// WHAT IS LEFT IS NOT A WEAKER WALL, IT IS NO WALL. `reads_live_tree_effective` consults
+// this declaration FIRST and falls through to `effect_reach_derived_reads_live_tree_for_entry`
+// only for a row already claiming SubstrateInputsOnly, so that derivation is the sole thing
+// standing behind a false claim — and it is a partial classifier, not an enforcement:
+// `v2.std.effect_reach` `effect_reach_detection_ceiling` files its three bounds and its
+// evidence. A lying declaration therefore buys a predict-skip that nothing observes.
+// Call-reachability-grade classification (fn-arrow DependencyView over lowered bodies) is
+// the capability that would restore an enforcement here, and it remains unbuilt.
 fn parse_entry_live_tree_disposition(entry: &str, content: &str) -> Result<bool, String> {
     let mut declared: Option<bool> = None;
     for line in content.lines() {
@@ -31502,6 +31516,52 @@ mod node_frontier_plumbing_controls {
         assert!(
             rows[0].reads_live_tree,
             "declared ReadsLiveTree must survive apply_effect_reach even when census is empty"
+        );
+    }
+
+    /// THE DERIVATION'S CEILING, MADE EXECUTABLE. `v2.std.effect_reach` classifies a closure as
+    /// host-reading only when TWO INDEPENDENT EXISTENTIALS both hold somewhere in it: some module
+    /// declares a repository path literal, AND some module contains a host-sink call shape. They
+    /// are evaluated over the closure separately, so neither is a statement about the other — the
+    /// conjunction is not reachability, and it is not a conservative bound in either direction.
+    ///
+    /// WHY THIS PAIR AND NOT A CORPUS COUNT. A count over the live tree is a fact about today's
+    /// corpus and rots (DESIGN §5's oracle rule); this fixture authors both sides, so the red is a
+    /// property of the derivation and survives any amount of corpus drift. The two entries differ
+    /// by exactly one import edge whose only content is a path-literal row, and the read they
+    /// perform is byte-identical — so the disagreement can only be the conjunction.
+    ///
+    /// WHAT IT DOES NOT CLAIM. This is not an argument that the derivation should be widened here:
+    /// its own doc records under-approximation as a deliberate fail-open on the SKIP axis, where a
+    /// missed live reader costs a skipped witness rather than a wrong answer. What the pair
+    /// establishes is narrower and is the thing that was being assumed away: the derivation cannot
+    /// stand in for the authored declaration, so `parse_entry_live_tree_disposition`'s fail-closed
+    /// undeclared default is load-bearing rather than redundant with it.
+    #[test]
+    fn effect_reach_conjunction_loses_a_closure_that_reads_with_no_path_literal() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = vec![ws
+            .join("dag/test/fixture/effect_reach_conjunction")
+            .to_string_lossy()
+            .into_owned()];
+        let facts = super::build_module_graph_facts_live(&roots);
+        let sink_only = "dag/test/fixture/effect_reach_conjunction/sink_only_entry.dag";
+        let sink_and_path = "dag/test/fixture/effect_reach_conjunction/sink_and_path_entry.dag";
+        // POSITIVE CONTROL FIRST: without it a `false` below proves only that the fixture never
+        // reached the derivation at all.
+        assert!(
+            super::effect_reach_derived_reads_live_tree_for_entry(sink_and_path, &facts),
+            "positive control: a closure carrying BOTH terms must derive host-reading, or this \
+             fixture is not reaching the derivation and the red below is meaningless"
+        );
+        assert!(
+            !super::effect_reach_derived_reads_live_tree_for_entry(sink_only, &facts),
+            "THE CEILING: a closure whose only host reach is a real `Filesystem.Read` derives \
+             NOT-live because no module in it carries a repository path literal. This assertion \
+             is expecting-red by construction — it flips the day the derivation stops conjoining \
+             a storage fact with a reachability one, and at that point it becomes the regression \
+             control for the repair rather than being deleted (DESIGN §4b(4))"
         );
     }
 

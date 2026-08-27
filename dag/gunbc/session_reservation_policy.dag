@@ -1,0 +1,258 @@
+module gunbc.session_reservation_policy
+
+import std.types { NonEmptyStr, String, Int, Bool }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import gunbc.fleet_intent_network {
+  HostIdentity,
+  operator_host_srv1, operator_host_srv2,
+}
+import gunbc.session_residency {
+  SessionResidencyEvidence,
+  SessionsObservedPresent, SessionsObservedAbsent, SessionsOperatorDeclaredAbsent, SessionsUnobserved,
+  host_session_evidence,
+}
+
+// WHAT WAS OBSERVED AND WHAT WAS CHOSEN ARE TWO FACTS, AND THE OLD CARRIER HAD ONE FIELD FOR BOTH.
+// gunbc_ci_session_reservation_mode declared SessionAggregateMeasured { 21474836480 } -- the
+// MEASURED constructor over a round power of two that its own module note admits has "no derivation
+// from the thirteen measured per-session samples beside it". That is rung inflation in a
+// constructor name (DESIGN 4b): the carrier claims the evidence class it does not hold, and no
+// reader can tell a measurement from a policy literal because the type cannot express the
+// difference.
+//
+// The split follows the precedent this repository already set for the same problem one field over:
+// HostFixedOverhead separates Measured { bytes, provenance } from Allowance { bytes, reason }. This
+// is that shape applied to the session reservation, so it is a reuse rather than a new coinage.
+
+// A PROSE RECEIPT DOES NOT IDENTIFY THE OBSERVATION THAT PRODUCED A NUMBER. The first cut of this
+// module carried the string "gunbc.session_demand_observe session_demand_observe_ci_wet on srv1",
+// which names a FUNCTION and a HOST and no execution: it cannot distinguish one invocation from
+// another, and after the srv2 scope population changes it cannot distinguish one census from a
+// later one either. Given that this whole lane exists because a stale binary produced numbers
+// nobody could attribute, the executing revision is load-bearing rather than decorative -- so the
+// citation is a typed record and the value is authored beside the citation that produced it.
+type SessionDemandReceiptCitation {
+  run_id: NonEmptyStr
+  source_revision: NonEmptyStr
+  collector_schema: NonEmptyStr
+  host: NonEmptyStr
+  observed_at: NonEmptyStr
+  parent_cgroup: NonEmptyStr
+  metric: NonEmptyStr
+}
+
+type SessionAggregateEvidence
+  = SessionAggregateSnapshotObserved { current: ByteSize, citation: SessionDemandReceiptCitation }
+  | SessionAggregateEpochPeakObserved { peak: ByteSize, epoch: String, citation: SessionDemandReceiptCitation }
+  | SessionAggregateSeriesObserved { derived_peak: ByteSize, citation: SessionDemandReceiptCitation }
+  | SessionAggregateDenominatorUnestablished { unattributed_scope_count: Int, cause: String, citation: SessionDemandReceiptCitation }
+  | SessionAggregateUnobserved
+
+// THE SIZING AUTHORITY ANSWERS HOW MUCH AND NEVER WHETHER, and the missing NotApplicable arm is the
+// whole point. An earlier cut of this type carried SessionReservationNotApplicable { evidence:
+// SessionAggregateUnobserved } for srv3 and srv4, which is a second answer to the residency
+// question grounded in an ABSENT AGGREGATE READING -- and an absent reading cannot establish that a
+// host carries no sessions. gunbc.session_residency owns that question and observes it. Here a host
+// with no authored sizing row is simply ReservationSizingAbsent, and the join below decides what
+// that means by reading residency.
+type HostSessionReservationSizing
+  = ReservationAllowance { bytes: ByteSize, evidence_floor: SessionAggregateEvidence, operator_reason: NonEmptyStr }
+  | ReservationUnestablished { evidence: SessionAggregateEvidence, cause: String }
+  | ReservationSizingAbsent
+
+data srv1_session_aggregate_citation: SessionDemandReceiptCitation = SessionDemandReceiptCitation {
+  run_id: "33007869268",
+  source_revision: "04e07455233773f4006f932974fe1bf7435ea4e9",
+  collector_schema: "session-demand-observe-v1",
+  host: "srv1",
+  observed_at: "2026-08-26T20:03:33Z",
+  parent_cgroup: "/sys/fs/cgroup/sessions.slice",
+  metric: "memory.peak",
+}
+
+// srv1's sessions.slice memory.peak read 55216033792 bytes over a COMPLETE census of 18 managed
+// sessions; the allowance is 55834574848. The gap is the ceiling to whole gibibytes and it is
+// POLICY, which is why it is not spelled as a measurement.
+data srv1_session_aggregate_epoch_peak: SessionAggregateEvidence = SessionAggregateEpochPeakObserved {
+  peak: byte_size(55216033792),
+  epoch: "cgroup lifetime since creation or last reset; the observation did not reset it and cannot bound it to its own window, so it is a floor on demand rather than a bound on a window",
+  citation: srv1_session_aggregate_citation,
+}
+
+data srv2_session_aggregate_citation: SessionDemandReceiptCitation = SessionDemandReceiptCitation {
+  run_id: "33007871049",
+  source_revision: "04e07455233773f4006f932974fe1bf7435ea4e9",
+  collector_schema: "session-demand-observe-v1",
+  host: "srv2",
+  observed_at: "2026-08-26T20:03:40Z",
+  parent_cgroup: "/sys/fs/cgroup/sessions.slice",
+  metric: "memory.peak",
+}
+
+// THE CAUSE SAYS WHAT THE PRODUCER ESTABLISHED AND NOT ONE STEP FURTHER. An earlier cut read "one
+// session-shaped scope remains outside sessions.slice; the observed parent peak measures a proper
+// subset". Both halves were wrong. The count is FIVE, not one, as of the cited run. And "proper
+// subset" does not follow from an unattributed scope: an unattributed scope is precisely one whose
+// join to a session identity is UNKNOWN, so it may or may not be session demand, and the standing
+// that prevents claiming it is a session is the same standing that prevents claiming it inflates
+// the denominator. What is established is that the DENOMINATOR IS UNESTABLISHED. The producer's own
+// output already said exactly this; only this module's prose went further than its own evidence.
+data srv2_session_aggregate_denominator: SessionAggregateEvidence = SessionAggregateDenominatorUnestablished {
+  unattributed_scope_count: 5,
+  cause: "five unattributed docker scopes run under system.slice, none established to be an agent session; until each is joined to a session-runtime identity or ruled unrelated, the complete session denominator is unestablished and no whole-host aggregate may be minted from the managed slice alone",
+  citation: srv2_session_aggregate_citation,
+}
+
+// ONLY HOSTS WITH AN AUTHORED SIZING ROW APPEAR HERE. srv3 and srv4 are absent by construction
+// rather than enumerated as not-applicable, because whether they carry sessions is residency's
+// question and this table has no standing to answer it.
+// EVERY AUTHORED ROW PASSES THROUGH THE COVERAGE CHECK ON ITS WAY OUT, so an allowance that sits
+// below its own evidence floor cannot leave this function as an allowance. allowance_covers_its_evidence
+// existed before this and was consumed by ONE fixture assertion against srv1 only -- so the invariant
+// held for the host someone had thought to assert about, and any row added later could hand a lying
+// number straight through host_session_reservation_outcome to SessionReservationCharged. That is
+// DESIGN section 5's validation-standing-where-construction-was-available in its exact form: a check
+// satisfied by editing the declaration while the realization keeps lying.
+//
+// The predicate is unchanged and still has its fixture; what changed is that the PRODUCTION path now
+// consumes it too, and a failing row degrades to ReservationUnestablished naming the violation rather
+// than being charged. The state stays authorable -- this is a wall at the boundary, not an
+// unrepresentable state -- but no consumer downstream can receive it.
+fn session_reservation_sizing_for(host: HostIdentity) -> HostSessionReservationSizing {
+  admit_sizing(s: authored_session_reservation_sizing(host: host))
+}
+
+fn admit_sizing(s: HostSessionReservationSizing) -> HostSessionReservationSizing {
+  match s {
+    ReservationAllowance { bytes: b, evidence_floor: e, operator_reason: r } =>
+      if allowance_covers_its_evidence(s: ReservationAllowance { bytes: b, evidence_floor: e, operator_reason: r }) {
+        ReservationAllowance { bytes: b, evidence_floor: e, operator_reason: r }
+      } else {
+        ReservationUnestablished {
+          evidence: e,
+          cause: "the authored allowance does not cover its own evidence floor, so it is not a reservation any measurement supports: refusing rather than charging a number below the demand it was derived from",
+        }
+      }
+    ReservationUnestablished { evidence: ev, cause: why } => ReservationUnestablished { evidence: ev, cause: why }
+    ReservationSizingAbsent => ReservationSizingAbsent
+  }
+}
+
+fn authored_session_reservation_sizing(host: HostIdentity) -> HostSessionReservationSizing {
+  if (host as String) == (operator_host_srv1 as String) {
+    ReservationAllowance {
+      bytes: byte_size(55834574848),
+      evidence_floor: srv1_session_aggregate_epoch_peak,
+      operator_reason: "temporary ceil-to-whole-gibibytes allowance above the observed epoch peak, pending a bounded concurrent series; the rounding is policy and the 51.42 GiB floor beneath it is the measurement",
+    }
+  } else if (host as String) == (operator_host_srv2 as String) {
+    ReservationUnestablished {
+      evidence: srv2_session_aggregate_denominator,
+      cause: "the complete session denominator on this host is unestablished, so the managed-slice peak cannot be read as a whole-host aggregate and no allowance can be chosen from it",
+    }
+  } else {
+    ReservationSizingAbsent
+  }
+}
+
+// THE JOIN OWNS THE FINAL ANSWER, AND IT IS THE ONLY PLACE BOTH DISAGREEMENT DIRECTIONS ARE
+// OBSERVABLE. The earlier shape inspected the sizing table only on the residency-true branch, so
+// "residency says sessions, policy says not applicable" refused while "residency says no sessions,
+// policy carries an allowance" was silently ignored -- an authored allowance for a session-free
+// host would simply never be read, which is the quieter and more dangerous of the two.
+type HostSessionReservationOutcome
+  = SessionReservationCharged { bytes: ByteSize, evidence_floor: SessionAggregateEvidence }
+  | SessionReservationUnsized { cause: String }
+  | SessionReservationNotApplicable { residency_evidence: SessionResidencyEvidence }
+  | SessionReservationAuthorityDisagreement { cause: String }
+
+fn sizing_against_present_residency(s: HostSessionReservationSizing) -> HostSessionReservationOutcome {
+  match s {
+    ReservationAllowance { bytes: b, evidence_floor: e, operator_reason: _ } =>
+      SessionReservationCharged { bytes: b, evidence_floor: e }
+    ReservationUnestablished { evidence: _, cause: why } => SessionReservationUnsized { cause: why }
+    ReservationSizingAbsent =>
+      SessionReservationUnsized {
+        cause: "residency establishes that interactive sessions live on this host, but no sizing row is authored for it: refuse rather than charge nothing for a population that is known to exist",
+      }
+  }
+}
+
+fn sizing_against_absent_residency(s: HostSessionReservationSizing, ev: SessionResidencyEvidence) -> HostSessionReservationOutcome {
+  match s {
+    ReservationSizingAbsent => SessionReservationNotApplicable { residency_evidence: ev }
+    ReservationAllowance { bytes: _, evidence_floor: _, operator_reason: _ } =>
+      SessionReservationAuthorityDisagreement {
+        cause: "residency establishes no interactive sessions on this host while the sizing table authors an allowance for it: two authorities disagree about whether this host carries sessions at all, and charging or exempting either way would pick a winner rather than surface the contradiction",
+      }
+    ReservationUnestablished { evidence: _, cause: _ } =>
+      SessionReservationAuthorityDisagreement {
+        cause: "residency establishes no interactive sessions on this host while the sizing table carries a row attempting to size one: authoring any sizing row for a session-free host is a contradiction, whether or not that row succeeded in choosing a number",
+      }
+  }
+}
+
+fn host_session_reservation_outcome(host: HostIdentity) -> HostSessionReservationOutcome {
+  let sizing = session_reservation_sizing_for(host: host)
+  match host_session_evidence(host: host) {
+    SessionsObservedPresent { observed_on: _, container_count: _ } =>
+      sizing_against_present_residency(s: sizing)
+    SessionsObservedAbsent { observed_on: _ } =>
+      sizing_against_absent_residency(s: sizing, ev: host_session_evidence(host: host))
+    SessionsOperatorDeclaredAbsent { reason: _ } =>
+      sizing_against_absent_residency(s: sizing, ev: host_session_evidence(host: host))
+    SessionsUnobserved { reason: _ } =>
+      sizing_against_present_residency(s: sizing)
+  }
+}
+
+// AN UNOBSERVED HOST IS JOINED AS IF SESSIONS WERE PRESENT, and that is deliberate rather than a
+// collapse. gunbc.session_residency records the reasoning: the negative arms GRANT capacity, so
+// reading an unobserved host as session-free removes the largest non-runner claim from the
+// conservation sum and overcommits the machine. Routing it through the present-residency join means
+// it charges when a sizing row exists and REFUSES when one does not, which is the fail-closed pair.
+data unobserved_residency_joins_as_present_note: String = "See session_residency unknown_host_defaults_to_hosting_sessions_note for why the unknown arm charges rather than exempts; this module inherits that direction rather than re-deciding it."
+
+// NO CONSUMER SHOULD HAVE TO RECONSTRUCT WHICH KIND OF ABSENCE IT RECEIVED. The Option this
+// replaces returned Absent for BOTH "safely charge nothing" and "refuse the whole derivation" --
+// opposite remedies behind one constructor, the exact conflation step 4A had just repaired one
+// module over.
+type SessionReservationBytesResolution
+  = ReservationBytes { bytes: ByteSize }
+  | ReservationBytesNotApplicable
+  | ReservationBytesUnestablished { cause: String }
+
+fn session_reservation_bytes(host: HostIdentity) -> SessionReservationBytesResolution {
+  match host_session_reservation_outcome(host: host) {
+    SessionReservationCharged { bytes: b, evidence_floor: _ } => ReservationBytes { bytes: b }
+    SessionReservationNotApplicable { residency_evidence: _ } => ReservationBytesNotApplicable
+    SessionReservationUnsized { cause: why } => ReservationBytesUnestablished { cause: why }
+    SessionReservationAuthorityDisagreement { cause: why } => ReservationBytesUnestablished { cause: why }
+  }
+}
+
+fn evidence_floor_bytes(e: SessionAggregateEvidence) -> ByteSize? {
+  match e {
+    SessionAggregateSnapshotObserved { current: c, citation: _ } => Present { value: c }
+    SessionAggregateEpochPeakObserved { peak: p, epoch: _, citation: _ } => Present { value: p }
+    SessionAggregateSeriesObserved { derived_peak: d, citation: _ } => Present { value: d }
+    SessionAggregateDenominatorUnestablished { unattributed_scope_count: _, cause: _, citation: _ } => none
+    SessionAggregateUnobserved => none
+  }
+}
+
+// AN ALLOWANCE BELOW ITS OWN EVIDENCE FLOOR IS A CONTRADICTION, not a conservative choice: it would
+// reserve less than the host has already been observed to use, while carrying the observation that
+// says so. This is the one relation between the two fields that must hold, and it is checked here
+// rather than trusted, because the fields are authored independently.
+fn allowance_covers_its_evidence(s: HostSessionReservationSizing) -> Bool {
+  match s {
+    ReservationAllowance { bytes: b, evidence_floor: e, operator_reason: _ } =>
+      match evidence_floor_bytes(e: e) {
+        Present { value: floor } => byte_size_count(b: b) >= byte_size_count(b: floor)
+        Absent => false
+      }
+    ReservationUnestablished { evidence: _, cause: _ } => true
+    ReservationSizingAbsent => true
+  }
+}
