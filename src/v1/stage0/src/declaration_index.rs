@@ -184,6 +184,22 @@ pub struct ModuleDeclarationRecord {
     pub decl_fields: BTreeMap<String, BTreeSet<String>>,
     pub imports: Vec<ImportClaim>,
     pub cited: Vec<CitedSymbol>,
+    /// Every authored NAME OCCURRENCE in this module's own tree, paired with the top-level
+    /// declaration whose subtree carries it: `(in_declaration, spelling)`.
+    ///
+    /// WHY A NAME OCCURRENCE AND NOT A SEMANTIC REFERENCE. This is derived by walking the
+    /// parsed tree — parse-then-derive, the mechanism DESIGN prescribes after the raw-text
+    /// scanner family was ruled a heuristic — but it is deliberately NOT a resolution: a
+    /// parameter name, a field name and a `let` binder all land here beside a genuine
+    /// reference, because telling them apart is the resolver's job and this index resolves
+    /// nothing across files. The over-collection is SYMMETRIC across two trees, which is the
+    /// only property its one consumer (`namespace_wave_admission`) needs: a spelling that
+    /// denotes nothing on both sides contributes no delta.
+    ///
+    /// Dotted spellings are recorded WHOLE as well as by segment, so a reference to
+    /// `v2.std.node.Hash` is observable as naming the module `v2.std.node` and not only as
+    /// four unrelated segments.
+    pub referenced: BTreeSet<(String, String)>,
     pub declares_construction_justification: bool,
     /// Whether this module is a witness or fixture carrier. See `module_is_fixture_carrier`.
     pub is_fixture_carrier: bool,
@@ -308,6 +324,41 @@ fn for_each_node(node: &Rc<Node>, visit: &mut impl FnMut(&Rc<Node>)) {
             for_each_node(t, visit);
         }
     })
+}
+
+/// The whole dotted spelling a field-access spine authors, or `None` when the node is not
+/// the head of one.
+///
+/// `a.b.c` parses as a receiver `a` under two `ExprFieldAccess` nodes, so the SEGMENTS are
+/// each visible to an ordinary walk and the SPELLING is not. A module reference is a
+/// spelling — `v2.std.node` names a module and `node` alone names nothing — so a reader that
+/// only ever sees segments cannot observe which modules a body reaches. The spine stops at
+/// the first receiver that is not itself a name or another field access, which is what makes
+/// `foo(x).bar` yield nothing rather than a fabricated `foo.bar`.
+fn dotted_chain(
+    node: &Rc<Node>,
+    source_indices: &Rc<im::HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    if !matches!(&*node.expr_data, ExprData::ExprFieldAccess { .. }) {
+        return None;
+    }
+    let field = authored_name_at(source_indices.clone(), node.clone());
+    if field.is_empty() {
+        return None;
+    }
+    let receiver = node.children.first()?;
+    let prefix = match &*receiver.expr_data {
+        ExprData::ExprFieldAccess { .. } => dotted_chain(receiver, source_indices)?,
+        ExprData::ExprVar { .. } => {
+            let name = authored_name_at(source_indices.clone(), receiver.clone());
+            if name.is_empty() {
+                return None;
+            }
+            name
+        }
+        _ => return None,
+    };
+    Some(format!("{prefix}.{field}"))
 }
 
 fn is_record_literal(node: &Rc<Node>) -> bool {
@@ -518,7 +569,22 @@ pub fn record_from_module(
         });
     }
 
+    let mut referenced = BTreeSet::new();
+    for item in module_items(module.clone()).iter() {
+        let in_declaration = authored_name_at(source_indices.clone(), item.clone());
+        for_each_node(item, &mut |node| {
+            let name = authored_name_at(source_indices.clone(), node.clone());
+            if !name.is_empty() {
+                referenced.insert((in_declaration.clone(), name));
+            }
+            if let Some(chain) = dotted_chain(node, source_indices) {
+                referenced.insert((in_declaration.clone(), chain));
+            }
+        });
+    }
+
     ModuleDeclarationRecord {
+        referenced,
         declares_construction_justification: declared.contains(CONSTRUCTION_JUSTIFICATION_DECL),
         is_fixture_carrier: module_is_fixture_carrier(&module_path, rel_path),
         module_path,
