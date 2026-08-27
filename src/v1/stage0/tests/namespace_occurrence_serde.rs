@@ -13,7 +13,7 @@ use v1_compiler::v1_compiler_parse::{parse_with_table_in_occurrence_scope, Parse
 use v1_compiler::v1_compiler_tokenize::tokenize;
 use v1_compiler::v1_std_core::{
     build_newline_index, empty_intern_table, make_expr_node, no_span, with_required_cardinality,
-    ExprData, NewlineIndex, Node,
+    ExprData, InferredNode, MatchPattern, NewlineIndex, Node,
 };
 
 fn parse_source(
@@ -130,6 +130,20 @@ fn node_occurrence_ids(node: &Node, ids: &mut Vec<i64>, synthetic_count: &mut us
     .flatten()
     {
         node_occurrence_ids(optional, ids, synthetic_count);
+    }
+    if let Some(InferredNode::Resolved { node: inferred }) = node.inferred.as_deref() {
+        node_occurrence_ids(inferred, ids, synthetic_count);
+    }
+    match node.match_pattern.as_deref() {
+        Some(MatchPattern::Bind { declaration }) => {
+            node_occurrence_ids(declaration, ids, synthetic_count);
+        }
+        Some(MatchPattern::VariantPattern { field_bindings, .. }) => {
+            for binding in field_bindings.iter() {
+                node_occurrence_ids(binding, ids, synthetic_count);
+            }
+        }
+        Some(MatchPattern::LitPattern { .. } | MatchPattern::Wildcard) | None => {}
     }
 }
 
