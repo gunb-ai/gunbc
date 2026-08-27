@@ -42,7 +42,7 @@ fn srv3_programs() -> List<BmcFanControlProgram> {
   match srv3_program_json {
     ArtifactJsonValueObserved { artifact_path, byte_count, document } =>
       match decode_program(document: document) {
-        ProgramDecoded { program, partitions } => [program]
+        ProgramDecoded { program, partitions, element_partitions } => [program]
         other => []
       }
     other => []
@@ -53,7 +53,7 @@ fn srv4_programs() -> List<BmcFanControlProgram> {
   match srv4_program_json {
     ArtifactJsonValueObserved { artifact_path, byte_count, document } =>
       match decode_program(document: document) {
-        ProgramDecoded { program, partitions } => [program]
+        ProgramDecoded { program, partitions, element_partitions } => [program]
         other => []
       }
     other => []

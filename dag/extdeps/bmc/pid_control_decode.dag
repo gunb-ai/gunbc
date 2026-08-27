@@ -14,7 +14,13 @@ import extdeps.languages.json.number {
   read_json_number_value,
 }
 import extdeps.languages.json.member_conservation {
+  ArrayElementPartition,
   ConservationVerdict,
+  ElementConsumed,
+  ElementDisposition,
+  JsonArrayElementOccurrence,
+  array_element_occurrences,
+  element_conservation_verdict,
   JsonMemberOccurrence,
   MembersConserved,
   MemberConsumed,
@@ -998,6 +1004,8 @@ type ZoneAccumulation
       thermal: List<ThermalDemandController>,
       actuators: List<ActuatorController>,
       partitions: List<ObjectMemberPartition>,
+      element_partitions: List<ArrayElementPartition>,
+      elements: List<ElementDisposition>,
     }
   | ZoneAccumulationRefused { refusal: ProgramRefusal }
 
@@ -1012,12 +1020,13 @@ data zone_consumed_keys: List<NonEmptyStr> = [
 
 fn accumulate_controller(
   state: ZoneAccumulation,
-  entry: JsonValue,
+  occurrence: JsonArrayElementOccurrence,
   path: DocumentPath,
 ) -> ZoneAccumulation {
+  let entry = occurrence.element
   match state {
     ZoneAccumulationRefused { refusal } => ZoneAccumulationRefused { refusal: refusal }
-    ZoneAccumulated { thermal, actuators, partitions } =>
+    ZoneAccumulated { thermal, actuators, partitions, element_partitions, elements } =>
       match string_field(container: entry, path: path, field: "name") {
         StringFieldRefused { refusal } =>
           ZoneAccumulationRefused { refusal: ProgramFieldRefused { refusal: refusal } }
@@ -1048,6 +1057,12 @@ fn accumulate_controller(
                                 thermal: thermal.append(controller),
                                 actuators: actuators,
                                 partitions: partitions.append(entry_partition).append(pid_partition),
+                                element_partitions: element_partitions.append(
+                                  inputs_element_partition(entry: entry, path: path),
+                                ),
+                                elements: elements.append(
+                                  ElementConsumed { occurrence: occurrence, role: "thermal_demand_controller" },
+                                ),
                               }
                           }
                         ActuatorKind =>
@@ -1059,6 +1074,12 @@ fn accumulate_controller(
                                 thermal: thermal,
                                 actuators: actuators.append(controller),
                                 partitions: partitions.append(entry_partition).append(pid_partition),
+                                element_partitions: element_partitions.append(
+                                  inputs_element_partition(entry: entry, path: path),
+                                ),
+                                elements: elements.append(
+                                  ElementConsumed { occurrence: occurrence, role: "actuator_controller" },
+                                ),
                               }
                           }
                       }
@@ -1070,18 +1091,51 @@ fn accumulate_controller(
 }
 
 type ZoneDecode
-  = ZoneDecoded { zone: ProgramZone, partitions: List<ObjectMemberPartition> }
+  = ZoneDecoded {
+      zone: ProgramZone,
+      partitions: List<ObjectMemberPartition>,
+      element_partitions: List<ArrayElementPartition>,
+    }
   | ZoneRefused { refusal: ProgramRefusal }
+
+// A CONTROLLER'S `inputs` ARRAY IS A POPULATION TOO, and every element of it is consumed by the
+// controller that names it. Without this partition a decoder could read two of a three-endpoint
+// actuator's inputs and conserve every object member perfectly -- the CHASSIS controller drives
+// three fans, and dropping one is precisely the wiring error this whole lane started from.
+fn inputs_element_partition(entry: JsonValue, path: DocumentPath) -> ArrayElementPartition {
+  let inputs_path = path_field(parent: path, field: "inputs")
+  let elements = match select_member(container: entry, path: path, field: "inputs") {
+    MemberSelected { value: v } =>
+      match v {
+        JsonArray { elements: xs } => xs
+        other => []
+      }
+    MemberSelectionRefused { refusal } => []
+  }
+  let occurrences = array_element_occurrences(array_path: inputs_path.text, elements: elements)
+  ArrayElementPartition {
+    array_path: inputs_path.text,
+    source: occurrences,
+    dispositions: map(occurrences, occurrence =>
+      ElementConsumed { occurrence: occurrence, role: "controller_input" }),
+  }
+}
 
 fn decode_zone_controllers(entries: List<JsonValue>, path: DocumentPath) -> ZoneAccumulation {
   fold(
-    enumerate(entries),
-    init: ZoneAccumulated { thermal: [], actuators: [], partitions: [] },
-    f: (state, pair) =>
+    array_element_occurrences(array_path: path.text, elements: entries),
+    init: ZoneAccumulated {
+      thermal: [],
+      actuators: [],
+      partitions: [],
+      element_partitions: [],
+      elements: [],
+    },
+    f: (state, occurrence) =>
       accumulate_controller(
         state: state,
-        entry: pair.second,
-        path: path_index(parent: path, index: pair.first),
+        occurrence: occurrence,
+        path: path_index(parent: path, index: occurrence.identity.index),
       ),
   )
 }
@@ -1110,13 +1164,13 @@ fn decode_zone(container: JsonValue, path: DocumentPath) -> ZoneDecode {
                       ZoneRefused { refusal: ProgramFieldRefused { refusal: refusal } }
                     MemberSelected { value: pids } =>
                       match pids {
-                        JsonArray { elements } =>
+                        JsonArray { elements: elements_of_pids } =>
                           match decode_zone_controllers(
-                            entries: elements,
+                            entries: elements_of_pids,
                             path: path_field(parent: path, field: "pids"),
                           ) {
                             ZoneAccumulationRefused { refusal } => ZoneRefused { refusal: refusal }
-                            ZoneAccumulated { thermal, actuators, partitions } =>
+                            ZoneAccumulated { thermal, actuators, partitions, element_partitions, elements } =>
                               ZoneDecoded {
                                 zone: ProgramZone {
                                   id: id,
@@ -1129,6 +1183,16 @@ fn decode_zone(container: JsonValue, path: DocumentPath) -> ZoneDecode {
                                 },
                                 partitions: partitions.append(
                                   object_partition(path: path, container: container, consumed: zone_consumed_keys),
+                                ),
+                                element_partitions: element_partitions.append(
+                                  ArrayElementPartition {
+                                    array_path: path_field(parent: path, field: "pids").text,
+                                    source: array_element_occurrences(
+                                      array_path: path_field(parent: path, field: "pids").text,
+                                      elements: elements_of_pids,
+                                    ),
+                                    dispositions: elements,
+                                  },
                                 ),
                               }
                           }
@@ -1153,24 +1217,34 @@ type ProgramDecode
   = ProgramDecoded {
       program: BmcFanControlProgram,
       partitions: List<ObjectMemberPartition>,
+      element_partitions: List<ArrayElementPartition>,
     }
   | ProgramDecodeRefused { refusal: ProgramRefusal }
   | ProgramMembersNotConserved { verdict: ConservationVerdict }
 
 type SensorAccumulation
-  = SensorsAccumulated { sensors: List<ProgramSensor>, partitions: List<ObjectMemberPartition> }
+  = SensorsAccumulated {
+      sensors: List<ProgramSensor>,
+      partitions: List<ObjectMemberPartition>,
+      elements: List<ElementDisposition>,
+    }
   | SensorsAccumulationRefused { refusal: FieldRefusal }
 
-fn accumulate_sensor(state: SensorAccumulation, entry: JsonValue, path: DocumentPath) -> SensorAccumulation {
+fn accumulate_sensor(
+  state: SensorAccumulation,
+  occurrence: JsonArrayElementOccurrence,
+  path: DocumentPath,
+) -> SensorAccumulation {
   match state {
     SensorsAccumulationRefused { refusal } => SensorsAccumulationRefused { refusal: refusal }
-    SensorsAccumulated { sensors, partitions } =>
-      match decode_sensor(container: entry, path: path) {
+    SensorsAccumulated { sensors, partitions, elements } =>
+      match decode_sensor(container: occurrence.element, path: path) {
         SensorRefused { refusal } => SensorsAccumulationRefused { refusal: refusal }
         SensorDecoded { sensor, partition } =>
           SensorsAccumulated {
             sensors: sensors.append(sensor),
             partitions: partitions.append(partition),
+            elements: elements.append(ElementConsumed { occurrence: occurrence, role: "sensor" }),
           }
       }
   }
@@ -1178,27 +1252,42 @@ fn accumulate_sensor(state: SensorAccumulation, entry: JsonValue, path: Document
 
 fn decode_sensors(entries: List<JsonValue>, path: DocumentPath) -> SensorAccumulation {
   fold(
-    enumerate(entries),
-    init: SensorsAccumulated { sensors: [], partitions: [] },
-    f: (state, pair) =>
-      accumulate_sensor(state: state, entry: pair.second, path: path_index(parent: path, index: pair.first)),
+    array_element_occurrences(array_path: path.text, elements: entries),
+    init: SensorsAccumulated { sensors: [], partitions: [], elements: [] },
+    f: (state, occurrence) =>
+      accumulate_sensor(
+        state: state,
+        occurrence: occurrence,
+        path: path_index(parent: path, index: occurrence.identity.index),
+      ),
   )
 }
 
 type ZonesAccumulation
-  = ZonesAccumulated { zones: List<ProgramZone>, partitions: List<ObjectMemberPartition> }
+  = ZonesAccumulated {
+      zones: List<ProgramZone>,
+      partitions: List<ObjectMemberPartition>,
+      element_partitions: List<ArrayElementPartition>,
+      elements: List<ElementDisposition>,
+    }
   | ZonesAccumulationRefused { refusal: ProgramRefusal }
 
-fn accumulate_zone(state: ZonesAccumulation, entry: JsonValue, path: DocumentPath) -> ZonesAccumulation {
+fn accumulate_zone(
+  state: ZonesAccumulation,
+  occurrence: JsonArrayElementOccurrence,
+  path: DocumentPath,
+) -> ZonesAccumulation {
   match state {
     ZonesAccumulationRefused { refusal } => ZonesAccumulationRefused { refusal: refusal }
-    ZonesAccumulated { zones, partitions } =>
-      match decode_zone(container: entry, path: path) {
+    ZonesAccumulated { zones, partitions, element_partitions, elements } =>
+      match decode_zone(container: occurrence.element, path: path) {
         ZoneRefused { refusal } => ZonesAccumulationRefused { refusal: refusal }
-        ZoneDecoded { zone, partitions: zone_partitions } =>
+        ZoneDecoded { zone, partitions: zone_partitions, element_partitions: zone_elements } =>
           ZonesAccumulated {
             zones: zones.append(zone),
             partitions: flat_map([partitions, zone_partitions], group => group),
+            element_partitions: flat_map([element_partitions, zone_elements], group => group),
+            elements: elements.append(ElementConsumed { occurrence: occurrence, role: "zone" }),
           }
       }
   }
@@ -1206,10 +1295,14 @@ fn accumulate_zone(state: ZonesAccumulation, entry: JsonValue, path: DocumentPat
 
 fn decode_zones(entries: List<JsonValue>, path: DocumentPath) -> ZonesAccumulation {
   fold(
-    enumerate(entries),
-    init: ZonesAccumulated { zones: [], partitions: [] },
-    f: (state, pair) =>
-      accumulate_zone(state: state, entry: pair.second, path: path_index(parent: path, index: pair.first)),
+    array_element_occurrences(array_path: path.text, elements: entries),
+    init: ZonesAccumulated { zones: [], partitions: [], element_partitions: [], elements: [] },
+    f: (state, occurrence) =>
+      accumulate_zone(
+        state: state,
+        occurrence: occurrence,
+        path: path_index(parent: path, index: occurrence.identity.index),
+      ),
   )
 }
 
@@ -1218,15 +1311,23 @@ fn decode_zones(entries: List<JsonValue>, path: DocumentPath) -> ZonesAccumulati
 // field refusal says the document is wrong, and a conservation failure says THIS DECODER is wrong
 // -- it read a member twice, or left one unaccounted, or dispositioned one that was not there.
 // Reporting the second as the first would send a reader to edit a configuration that is fine.
-fn first_unconserved(partitions: List<ObjectMemberPartition>) -> List<ConservationVerdict> {
+fn unconserved(verdicts: List<ConservationVerdict>) -> List<ConservationVerdict> {
   filter(
-    map(partitions, partition => conservation_verdict(partition: partition)),
+    verdicts,
     verdict =>
       match verdict {
         MembersConserved { member_count: _ } => false
         other => true
       },
   )
+}
+
+fn first_unconserved(partitions: List<ObjectMemberPartition>) -> List<ConservationVerdict> {
+  unconserved(verdicts: map(partitions, partition => conservation_verdict(partition: partition)))
+}
+
+fn first_unconserved_array(partitions: List<ArrayElementPartition>) -> List<ConservationVerdict> {
+  unconserved(verdicts: map(partitions, partition => element_conservation_verdict(partition: partition)))
 }
 
 fn decode_program(document: JsonValue) -> ProgramDecode {
@@ -1245,10 +1346,10 @@ fn decode_program(document: JsonValue) -> ProgramDecode {
                   match decode_sensors(entries: sensor_entries, path: path_field(parent: root, field: "sensors")) {
                     SensorsAccumulationRefused { refusal } =>
                       ProgramDecodeRefused { refusal: ProgramSensorRefused { refusal: refusal } }
-                    SensorsAccumulated { sensors, partitions: sensor_partitions } =>
+                    SensorsAccumulated { sensors, partitions: sensor_partitions, elements: sensor_elements } =>
                       match decode_zones(entries: zone_entries, path: path_field(parent: root, field: "zones")) {
                         ZonesAccumulationRefused { refusal } => ProgramDecodeRefused { refusal: refusal }
-                        ZonesAccumulated { zones, partitions: zone_partitions } => {
+                        ZonesAccumulated { zones, partitions: zone_partitions, element_partitions: zone_element_partitions, elements: zone_elements } => {
                           let partitions = flat_map(
                             [
                               sensor_partitions,
@@ -1257,13 +1358,41 @@ fn decode_program(document: JsonValue) -> ProgramDecode {
                             ],
                             group => group,
                           )
+                          let element_partitions = flat_map(
+                            [
+                              zone_element_partitions,
+                              [
+                                ArrayElementPartition {
+                                  array_path: path_field(parent: root, field: "sensors").text,
+                                  source: array_element_occurrences(
+                                    array_path: path_field(parent: root, field: "sensors").text,
+                                    elements: sensor_entries,
+                                  ),
+                                  dispositions: sensor_elements,
+                                },
+                                ArrayElementPartition {
+                                  array_path: path_field(parent: root, field: "zones").text,
+                                  source: array_element_occurrences(
+                                    array_path: path_field(parent: root, field: "zones").text,
+                                    elements: zone_entries,
+                                  ),
+                                  dispositions: zone_elements,
+                                },
+                              ],
+                            ],
+                            group => group,
+                          )
                           let broken = first_unconserved(partitions: partitions)
+                          let broken_arrays = first_unconserved_array(partitions: element_partitions)
                           if broken.length() > 0 {
                             ProgramMembersNotConserved { verdict: broken.first() }
+                          } else if broken_arrays.length() > 0 {
+                            ProgramMembersNotConserved { verdict: broken_arrays.first() }
                           } else {
                             ProgramDecoded {
                               program: BmcFanControlProgram { sensors: sensors, zones: zones },
                               partitions: partitions,
+                              element_partitions: element_partitions,
                             }
                           }
                         }

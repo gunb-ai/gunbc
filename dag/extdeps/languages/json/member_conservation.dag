@@ -255,3 +255,165 @@ fn conservation_holds(partition: ObjectMemberPartition) -> Bool {
     other => false
   }
 }
+
+// ARRAY ELEMENTS NEED THE SAME LAW, AND WITHOUT THIS THE OBJECT WALL ABOVE IS ONLY HALF A WALL. A
+// decoder can conserve every member of every object it CHOSE to decode while skipping one element
+// of a PID array and duplicating another -- the object partitions all balance, because the skipped
+// object simply never produced one. The array is where that is visible.
+//
+// Found in review of gunbc#9491, named there as mandatory before a representability gate: the
+// whole-program denominator has to include the array populations (sensors, zones, each zone's
+// pids, and each controller's inputs), not only the members of the objects inside them.
+//
+// AN ELEMENT'S IDENTITY IS ITS POSITION, exactly as a member's is, and for the same reason: two
+// PID entries can be byte-identical and are still two entries. An unsupported entry must still
+// produce exactly one disposition, which is what makes "source element count equals observation
+// count" an identity result rather than a scalar comparison.
+type JsonElementIdentity {
+  array_path: NonEmptyStr
+  index: Int
+}
+
+type JsonArrayElementOccurrence {
+  identity: JsonElementIdentity
+  element: JsonValue
+}
+
+type ElementDisposition
+  = ElementConsumed { occurrence: JsonArrayElementOccurrence, role: NonEmptyStr }
+  | ElementUnmodeled { occurrence: JsonArrayElementOccurrence }
+  | ElementDefective { occurrence: JsonArrayElementOccurrence, cause: NonEmptyStr }
+
+type ArrayElementPartition {
+  array_path: NonEmptyStr
+  source: List<JsonArrayElementOccurrence>
+  dispositions: List<ElementDisposition>
+}
+
+fn element_disposition_occurrence(disposition: ElementDisposition) -> JsonArrayElementOccurrence {
+  match disposition {
+    ElementConsumed { occurrence, role } => occurrence
+    ElementUnmodeled { occurrence } => occurrence
+    ElementDefective { occurrence, cause } => occurrence
+  }
+}
+
+// INDICES ARE ASSIGNED BY THE ENUMERATION, never by the caller, for the reason ordinals are.
+fn array_element_occurrences(
+  array_path: NonEmptyStr,
+  elements: List<JsonValue>,
+) -> List<JsonArrayElementOccurrence> {
+  map(
+    enumerate(elements),
+    pair =>
+      JsonArrayElementOccurrence {
+        identity: JsonElementIdentity { array_path: array_path, index: pair.first },
+        element: pair.second,
+      },
+  )
+}
+
+fn element_identity_equal(a: JsonElementIdentity, b: JsonElementIdentity) -> Bool {
+  a.array_path == b.array_path && a.index == b.index
+}
+
+fn times_element_dispositioned(dispositions: List<ElementDisposition>, identity: JsonElementIdentity) -> Int {
+  fold(
+    dispositions,
+    init: 0,
+    f: (acc, disposition) =>
+      if element_identity_equal(
+        a: element_disposition_occurrence(disposition: disposition).identity,
+        b: identity,
+      ) {
+        acc + 1
+      } else {
+        acc
+      },
+  )
+}
+
+fn source_contains_element(source: List<JsonArrayElementOccurrence>, identity: JsonElementIdentity) -> Bool {
+  fold(
+    source,
+    init: false,
+    f: (acc, occurrence) => acc || element_identity_equal(a: occurrence.identity, b: identity),
+  )
+}
+
+fn first_element_path_mismatch(
+  array_path: NonEmptyStr,
+  occurrences: List<JsonArrayElementOccurrence>,
+) -> List<JsonArrayElementOccurrence> {
+  filter(occurrences, occurrence => occurrence.identity.array_path != array_path)
+}
+
+// THE VERDICT VOCABULARY IS SHARED WITH THE OBJECT LAW ON PURPOSE. The law is the same law -- every
+// source position accounted for exactly once, nothing accounted for that the source did not
+// contain, and the partition's own label agreeing with its population -- so a second verdict type
+// would be two names for one set of outcomes. The path and position fields carry the array's
+// coordinates here and the object's there; which one a verdict describes is decided by the
+// partition it came from, not by a second vocabulary.
+fn element_conservation_verdict(partition: ArrayElementPartition) -> ConservationVerdict {
+  let stray_source = first_element_path_mismatch(
+    array_path: partition.array_path,
+    occurrences: partition.source,
+  )
+  if stray_source.length() > 0 {
+    PartitionSourcePathMismatch {
+      partition_path: partition.array_path,
+      occurrence_path: stray_source.first().identity.array_path,
+      ordinal: stray_source.first().identity.index,
+    }
+  } else {
+    let lost_or_repeated = fold(
+      partition.source,
+      init: MembersConserved { member_count: partition.source.length() },
+      f: (acc, occurrence) =>
+        match acc {
+          MembersConserved { member_count } => {
+            let n = times_element_dispositioned(
+              dispositions: partition.dispositions,
+              identity: occurrence.identity,
+            )
+            if n == 0 {
+              MemberLost { object_path: partition.array_path, ordinal: occurrence.identity.index }
+            } else if n > 1 {
+              MemberDispositionedTwice {
+                object_path: partition.array_path,
+                ordinal: occurrence.identity.index,
+                times: n,
+              }
+            } else {
+              MembersConserved { member_count: member_count }
+            }
+          }
+          other => acc
+        },
+    )
+    match lost_or_repeated {
+      MembersConserved { member_count } =>
+        fold(
+          partition.dispositions,
+          init: MembersConserved { member_count: member_count },
+          f: (acc, disposition) =>
+            match acc {
+              MembersConserved { member_count: n } => {
+                let identity = element_disposition_occurrence(disposition: disposition).identity
+                if source_contains_element(source: partition.source, identity: identity) {
+                  MembersConserved { member_count: n }
+                } else {
+                  MemberForeignToObject {
+                    object_path: partition.array_path,
+                    occurrence_path: identity.array_path,
+                    ordinal: identity.index,
+                  }
+                }
+              }
+              other => acc
+            },
+        )
+      other => lost_or_repeated
+    }
+  }
+}
