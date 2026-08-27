@@ -50,6 +50,7 @@ use crate::v1_compiler_stage0_crates::{
 };
 
 const REQUIRED_EMIT_COMPILE_ENTRIES_DATA_NAME: &str = "required_emit_compile_entries";
+const PROBE_ROOT_DIR_NAME: &str = "gunbc-emit-compile";
 
 /// The crate name the emitted closure is compiled under — DERIVED PER ENTRY, not shared.
 ///
@@ -384,34 +385,52 @@ fn probe_manifest(workspace: &Path, entry: &str) -> String {
 /// rather than gates.
 ///
 /// `RUNNER_TEMP` is created and torn down per job and owned by the process that needs it, so two
-/// tenants no longer name one path. It changes nothing the shared target directory buys: the
-/// entries of ONE run still share `workspace/target`, and per-entry package names still separate
-/// their fingerprints within it.
-fn probe_root() -> PathBuf {
-    let base = std::env::var("RUNNER_TEMP")
-        .ok()
+/// tenants no longer name one path. Therefore its ABSENCE IS A REFUSAL, not permission to inspect
+/// or write the host-shared system temp directory and hope this particular runner happens to make
+/// it safe. It changes nothing the shared target directory buys: the entries of ONE run still
+/// share `workspace/target`, and per-entry package names still separate their fingerprints within
+/// it.
+fn required_ci_probe_root_from_runner_temp(
+    runner_temp: Option<&std::ffi::OsStr>,
+) -> Result<PathBuf, String> {
+    let base = runner_temp
         .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir);
-    base.join("gunbc-emit-compile")
+        .ok_or_else(|| {
+            "RUNNER_TEMP is unset or empty; the required emit-compile phase refuses rather than \
+             falling back to a host-shared temp directory"
+                .to_string()
+        })?;
+    Ok(PathBuf::from(base).join(PROBE_ROOT_DIR_NAME))
 }
 
-fn probe_crate_dir(entry: &str) -> PathBuf {
+pub fn required_ci_emit_compile_probe_root() -> Result<PathBuf, String> {
+    required_ci_probe_root_from_runner_temp(std::env::var_os("RUNNER_TEMP").as_deref())
+}
+
+pub fn local_emit_compile_probe_root() -> PathBuf {
+    std::env::temp_dir().join(PROBE_ROOT_DIR_NAME)
+}
+
+fn probe_crate_dir(probe_root: &Path, entry: &str) -> PathBuf {
     let slug: String = entry
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
         .collect();
-    probe_root().join(slug)
+    probe_root.join(slug)
 }
 
 /// Write the emitted Rust files plus a manifest, and return the crate directory.
-fn write_probe_crate(run: &CompileRun, entry: &str) -> Result<(PathBuf, usize), String> {
+fn write_probe_crate(
+    run: &CompileRun,
+    probe_root: &Path,
+    entry: &str,
+) -> Result<(PathBuf, usize), String> {
     let emission = run
         .emissions
         .iter()
         .find(|emission| emission.target_name == "rust")
         .ok_or_else(|| "the emission carries no rust target".to_string())?;
-    let dir = probe_crate_dir(entry);
+    let dir = probe_crate_dir(probe_root, entry);
     // A STALE TREE IS NOT A SUBJECT. The previous run's bytes under the same slug would let a
     // module deleted from the closure keep compiling, so the directory is removed rather than
     // written over.
@@ -694,7 +713,11 @@ fn entry_rust_module(entry: &str, workspace: &Path) -> Result<String, String> {
 }
 
 /// One entry, end to end.
-pub fn run_emit_compile_entry(source_roots: &[String], entry: &str) -> EmitCompileOutcome {
+pub fn run_emit_compile_entry(
+    source_roots: &[String],
+    probe_root: &Path,
+    entry: &str,
+) -> EmitCompileOutcome {
     // PROGRESS IS REPORTED AS THE STAGE IS ENTERED, NOT WHEN THE ENTRY FINISHES.
     //
     // This is not decoration. Every stage below is a long host effect -- a whole-index emission,
@@ -732,7 +755,7 @@ pub fn run_emit_compile_entry(source_roots: &[String], entry: &str) -> EmitCompi
         CompileDisposition::Completed { .. } => {}
     }
 
-    let (crate_dir, emitted_files) = match write_probe_crate(&run, entry) {
+    let (crate_dir, emitted_files) = match write_probe_crate(&run, probe_root, entry) {
         Ok(pair) => pair,
         Err(cause) => {
             return EmitCompileOutcome::CrateNotWritten {
@@ -944,6 +967,7 @@ pub fn retain_not_selected_identities(
 pub fn emit_compile_report(
     outcomes: &[EmitCompileOutcome],
     source_roots: &[String],
+    probe_root: &Path,
     prefix: &str,
 ) -> (Vec<String>, Option<String>) {
     let selection = emit_compile_selection(source_roots);
@@ -963,8 +987,9 @@ pub fn emit_compile_report(
     // per-job temp while the retention file was still being written to the host-shared `/tmp`,
     // where it hit the same `EACCES` the reroot existed to escape. Two homes for one fact is the
     // §3 violation, and the tell was visible in the phase's own log as two different paths in
-    // adjacent lines. `probe_root()` is the authority; nothing else composes this name.
-    let retained_dir = probe_root().to_string_lossy().to_string();
+    // adjacent lines. The caller-selected `probe_root` is the authority for this run; nothing
+    // below the mode boundary chooses another root.
+    let retained_dir = probe_root.to_string_lossy().to_string();
     let retention_error = match retain_not_selected_identities(&selection, &retained_dir) {
         Ok(path) => {
             lines.push(format!(
@@ -993,9 +1018,8 @@ pub fn emit_compile_report(
 /// written for the wider case. Under a per-job `RUNNER_TEMP` root two CONCURRENT runs cannot
 /// collide by construction — there is no path they both name — so the lock is no longer the
 /// mechanism preventing interleaving in CI. What it still catches is a previous attempt in THIS
-/// job that died mid-flight, and a local run started beside another when the root falls back to a
-/// shared temp dir. Both are cases where the tree's state is unestablished, which is the thing
-/// worth refusing on.
+/// job that died mid-flight, or two invocations explicitly given the same runner temp. Both are
+/// cases where the tree's state is unestablished, which is the thing worth refusing on.
 ///
 /// The arms deliberately share one probe root and one cargo target directory — that is what makes
 /// the baseline warm and the restore comparable. It also means two runs interleave: one run's
@@ -1017,9 +1041,7 @@ pub fn emit_compile_report(
 fn acquire_probe_root_lock(root: &Path) -> Result<PathBuf, String> {
     std::fs::create_dir_all(root).map_err(|e| {
         format!(
-            "could not create the probe root {} ({e}) — the root is derived from RUNNER_TEMP \
-             when set and the system temp dir otherwise; a host-shared temp dir on a \
-             self-hosted runner can already hold this path owned by another tenant",
+            "could not create the caller-selected probe root {} ({e})",
             root.display()
         )
     })?;
@@ -1044,9 +1066,7 @@ fn acquire_probe_root_lock(root: &Path) -> Result<PathBuf, String> {
         // reader hunting a concurrent run on a runner that had none.
         Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => Err(format!(
             "the probe root {} is not writable by this process ({e}) — this is NOT a concurrent \
-             run; the root itself is wrong. It is derived from RUNNER_TEMP when set and the \
-             system temp dir otherwise, and a host-shared temp dir on a self-hosted runner can \
-             already hold this path owned by another tenant.",
+             run; the caller-selected root itself is wrong.",
             root.display()
         )),
         Err(e) => Err(format!("could not take {}: {e}", lock.display())),
@@ -1055,6 +1075,7 @@ fn acquire_probe_root_lock(root: &Path) -> Result<PathBuf, String> {
 
 pub fn run_required_emit_compile(
     source_roots: &[String],
+    probe_root: &Path,
 ) -> Result<Vec<EmitCompileOutcome>, String> {
     let entries = required_emit_compile_entries();
     if entries.is_empty() {
@@ -1064,7 +1085,7 @@ pub fn run_required_emit_compile(
         );
     }
     // See `acquire_probe_root_lock`: a second concurrent run refuses rather than interleaving.
-    let lock = acquire_probe_root_lock(&probe_root())?;
+    let lock = acquire_probe_root_lock(probe_root)?;
     // A FAILED RESTORE ENDS THE RUN, and it is not merely reported per entry.
     //
     // WHY IT IS TERMINAL RATHER THAN A FINDING SIBLINGS CONTINUE PAST, which is the shape every
@@ -1080,7 +1101,7 @@ pub fn run_required_emit_compile(
     // than a green whose restore arm was never established.
     let mut outcomes = Vec::new();
     for entry in &entries {
-        let outcome = run_emit_compile_entry(source_roots, entry);
+        let outcome = run_emit_compile_entry(source_roots, probe_root, entry);
         let terminal = matches!(
             &outcome,
             EmitCompileOutcome::Measured {
@@ -1215,12 +1236,35 @@ mod tests {
         // The needle is ASSEMBLED rather than written, because a literal one appears in this
         // file the moment it is written down -- the test would then count itself and report two
         // spellings where there is one. Caught by the test failing on its own text.
-        let needle = format!("join({:?})", "gunbc-emit-compile");
+        let dir_name = format!("{}{}", "gunbc-emit-", "compile");
+        let needle = format!("{dir_name:?}");
         let compositions = src.matches(needle.as_str()).count();
         assert_eq!(
             compositions, 1,
-            "the probe root directory name must be composed only by probe_root(); a second \
-             spelling silently keeps the old root when the authority moves"
+            "the probe root directory name must have one authority; a second spelling silently \
+             keeps the old name when the authority moves"
+        );
+    }
+
+    /// A REQUIRED PATH DOES NOT PROBE THE HOST-SHARED FALLBACK.
+    ///
+    /// The safety property is that `RUNNER_TEMP` identifies a per-job directory. Falling back to
+    /// the system temp directory and then checking whether today's path is writable makes safety
+    /// an accidental property of the runner's current filesystem state. The missing and empty
+    /// arms therefore refuse before a path exists to inspect.
+    #[test]
+    fn the_probe_root_does_not_exist_without_runner_temp() {
+        for absent in [None, Some(std::ffi::OsStr::new(""))] {
+            let refusal = required_ci_probe_root_from_runner_temp(absent)
+                .expect_err("an absent runner temp must not produce a fallback path");
+            assert!(refusal.contains("RUNNER_TEMP is unset or empty"));
+            assert!(refusal.contains("refuses rather than falling back"));
+        }
+
+        assert_eq!(
+            required_ci_probe_root_from_runner_temp(Some(std::ffi::OsStr::new("/runner/job")))
+                .expect("a declared runner temp owns the probe root"),
+            PathBuf::from("/runner/job/gunbc-emit-compile")
         );
     }
 

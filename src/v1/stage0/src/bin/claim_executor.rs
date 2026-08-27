@@ -700,8 +700,11 @@ fn run() -> Result<ExitCode, ExitCode> {
                 "required-ci: phase emit-compile (one entry's emitted closure, compiled, \
                  with its own mutation-established red)"
             );
-            match v1_compiler::cli_run::run_required_emit_compile(&source_roots) {
-                Ok(outcomes) => {
+            match v1_compiler::cli_run::required_ci_emit_compile_probe_root().and_then(|root| {
+                v1_compiler::cli_run::run_required_emit_compile(&source_roots, &root)
+                    .map(|outcomes| (outcomes, root))
+            }) {
+                Ok((outcomes, probe_root)) => {
                     let mut not_passed = 0usize;
                     for outcome in &outcomes {
                         eprintln!(
@@ -739,6 +742,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                     let (report, retention_error) = v1_compiler::cli_run::emit_compile_report(
                         &outcomes,
                         &source_roots,
+                        &probe_root,
                         "required-ci: emit-compile",
                     );
                     for line in report {
@@ -917,7 +921,8 @@ fn run() -> Result<ExitCode, ExitCode> {
         } else {
             source_roots.clone()
         };
-        match v1_compiler::cli_run::run_required_emit_compile(&roots) {
+        let probe_root = v1_compiler::cli_run::local_emit_compile_probe_root();
+        match v1_compiler::cli_run::run_required_emit_compile(&roots, &probe_root) {
             Ok(outcomes) => {
                 let mut not_passed = 0usize;
                 for outcome in &outcomes {
@@ -942,6 +947,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 let (report, retention_error) = v1_compiler::cli_run::emit_compile_report(
                     &outcomes,
                     &roots,
+                    &probe_root,
                     "required-emit-compile:",
                 );
                 for line in report {
