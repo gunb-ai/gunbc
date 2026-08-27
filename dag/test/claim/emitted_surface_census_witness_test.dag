@@ -1,0 +1,117 @@
+module test.claim.emitted_surface_census_witness
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+// FIXTURE-BACKED DISCRIMINATION FOR THE ENTRY-CONDITIONED SURFACE REFUSAL.
+//
+// The refusal it exercises is authored against hand-built rows, NOT against the live tree, and
+// that is deliberate rather than a convenience. Reachability is judged against what a fixture may
+// author, never against what the current corpus contains: the live population is expected to fall
+// to zero once the emitter fabrication that produces today's only specimen is repaired, and a wall
+// whose RED can only come from a live violation would become a decoration on that day --
+// permanently green by construction and cited as coverage. Authored rows keep the RED authorable
+// forever.
+//
+// These witnesses do not retire when the live population reaches zero. They flip to permanent
+// regression controls.
+
+fn observation(entry: v2.std.node.Symbol, surface: v2.std.node.Symbol) -> v2.compiler.self_host.emitted_surface_census.EmittedMemberIdentity {
+  v2.compiler.self_host.emitted_surface_census.EmittedMemberIdentity {
+    entry: entry,
+    source_module: ^v2_std_node,
+    member_digest: surface,
+    linkage_surface_digest: surface,
+    instrument_vintage: ^fixture
+  }
+}
+
+fn provider_row_with_two_surfaces() -> v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
+  v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
+    product: v2.compiler.self_host.emitted_surface_census.ProviderModule,
+    source_module: ^v2_std_node,
+    observations: [
+      observation(entry: ^entry_integer, surface: ^surface_with_cardinality),
+      observation(entry: ^entry_node_query, surface: ^surface_without_cardinality)
+    ]
+  }
+}
+
+fn provider_row_with_one_surface() -> v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
+  v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
+    product: v2.compiler.self_host.emitted_surface_census.ProviderModule,
+    source_module: ^v2_std_node,
+    observations: [
+      observation(entry: ^entry_integer, surface: ^surface_agreed),
+      observation(entry: ^entry_coercion, surface: ^surface_agreed)
+    ]
+  }
+}
+
+// The crate root varies legitimately -- its pub mod list IS closure membership.
+fn crate_root_row_with_two_surfaces() -> v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
+  v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
+    product: v2.compiler.self_host.emitted_surface_census.CrateRoot,
+    source_module: ^lib_rs,
+    observations: [
+      observation(entry: ^entry_integer, surface: ^root_surface_45_modules),
+      observation(entry: ^entry_node_query, surface: ^root_surface_18_modules)
+    ]
+  }
+}
+
+// RED: a provider module carrying two linkage surfaces is refused.
+fn witness_two_provider_surfaces_are_refused() -> Bool {
+  v2.compiler.self_host.emitted_surface_census.row_admissible(row: provider_row_with_two_surfaces()) == false
+}
+
+// GREEN control: agreement is admitted. Without this the refusal could be a constant false.
+fn witness_agreed_provider_surface_is_admitted() -> Bool {
+  v2.compiler.self_host.emitted_surface_census.row_admissible(row: provider_row_with_one_surface())
+}
+
+// The typed arm, exercised on rows that are IDENTICAL except for product kind. This is what makes
+// the exemption a decision about product kind rather than an accident of the data.
+fn witness_crate_root_variation_is_admitted() -> Bool {
+  v2.compiler.self_host.emitted_surface_census.row_admissible(row: crate_root_row_with_two_surfaces())
+}
+
+// A single observation cannot vary, so it is admitted -- the empty and singleton arms are not
+// silently refusing.
+fn witness_single_observation_is_admitted() -> Bool {
+  v2.compiler.self_host.emitted_surface_census.row_admissible(
+    row: v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
+      product: v2.compiler.self_host.emitted_surface_census.ProviderModule,
+      source_module: ^v2_std_node,
+      observations: [observation(entry: ^entry_integer, surface: ^surface_agreed)]
+    }
+  )
+}
+
+// The admission is fail-closed at the assembly grain: one refused row rejects the whole assembly.
+fn witness_assembly_rejects_when_any_provider_varies() -> Bool {
+  match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(
+    rows: [crate_root_row_with_two_surfaces(), provider_row_with_two_surfaces()]
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^seed_module_carries_more_than_one_linkage_surface
+  }
+}
+
+// GREEN control at the same grain: an assembly whose only variation is the crate root is accepted.
+fn witness_assembly_accepts_crate_root_variation_alone() -> Bool {
+  match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(
+    rows: [crate_root_row_with_two_surfaces(), provider_row_with_one_surface()]
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emitted_surface_census_witnesses() -> Bool {
+  witness_two_provider_surfaces_are_refused()
+    && witness_agreed_provider_surface_is_admitted()
+    && witness_crate_root_variation_is_admitted()
+    && witness_single_observation_is_admitted()
+    && witness_assembly_rejects_when_any_provider_varies()
+    && witness_assembly_accepts_crate_root_variation_alone()
+}

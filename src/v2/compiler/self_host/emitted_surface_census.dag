@@ -1,0 +1,127 @@
+module v2.compiler.self_host.emitted_surface_census
+
+import std.algebra { Cons, Empty }
+import v2.std.algebra { any, count_where, filter }
+import v2.std.collection { List }
+import v2.std.diagnostic { Diagnostic, Outcome, outcome_accepted, outcome_rejected, textual_whole_file_diagnostic, Correction, Unavailable, NoCorrectionReason, ExternalContractUnknown }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.integer { Int }
+
+// CLOSURE SELECTS PRODUCTS; IT DOES NOT DEFINE PROVIDER INTERFACES.
+//
+// A closure may decide which modules a sealed artifact CONTAINS. A reusable module's export
+// surface is declared by that module's own authority and is invariant under which entry
+// requested it. A seed is a canonical provider for FUTURE closures, not an optimized
+// projection of one PAST closure.
+//
+// This module OBSERVES and REFUSES. It does not decide what a module's canonical surface IS --
+// that is a separate semantic authority, and selecting a winner here would destroy the very
+// variation this census exists to report: once a canonical surface is installed, the semantic
+// authority downstream would be derived from whatever this observation happened to pick.
+
+// WHY THE CRATE ROOT IS A TYPED ARM AND NOT A FILTER.
+//
+// The crate root's `pub mod` list IS closure membership, which the law above expressly permits,
+// so it varies legitimately across entries. A census without this distinction refuses every
+// multi-entry tree on its first run and is switched off. Spelling the carve-out as a skip
+// inside the comparator would make it indistinguishable from an oversight later, and an
+// exemption that looks like an oversight is the surface a future defect hides behind. As a
+// named arm on product kind, the crate root is excluded BY CONSTRUCTION rather than by a
+// predicate someone must keep correct.
+type ProductKind
+  = CrateRoot
+  | ProviderModule
+
+// Identity of one emitted member, at the grain the join actually requires.
+//
+// NOT a basename. Two entry runs naming `v2_std_integer.rs` may be compiling different
+// artifacts, so a pathname match is not an identity match and diagnostics keyed on
+// `code @ basename : line : col` cannot be joined across entries at all.
+type EmittedMemberIdentity {
+  entry: Symbol
+  source_module: Symbol
+  member_digest: Symbol
+  linkage_surface_digest: Symbol
+  instrument_vintage: Symbol
+}
+
+// The OBSERVED union of exports across a sample. This is a migration candidate and nothing more.
+//
+// It may not inhabit a carrier named as the canonical surface: it is sample-dependent, it
+// preserves accidental reexports, and it can introduce collisions between variants that were
+// never compiled together. Its own fields carry the sample and vintage so that a reader cannot
+// mistake it for a declaration.
+type ObservedExportEnvelope {
+  sample: List<Symbol>
+  vintage: Symbol
+  module: Symbol
+  members: List<Symbol>
+}
+
+type SurfaceCensusRow {
+  product: ProductKind
+  source_module: Symbol
+  observations: List<EmittedMemberIdentity>
+}
+
+fn surface_digest_of(observation: EmittedMemberIdentity) -> Symbol {
+  observation.linkage_surface_digest
+}
+
+fn observation_has_other_surface(a: EmittedMemberIdentity, b: EmittedMemberIdentity) -> Bool {
+  surface_digest_of(observation: a) != surface_digest_of(observation: b)
+}
+
+// True when the row's observations do not all agree on one linkage surface.
+//
+// Asked over the row's OWN observations rather than by counting distinct digests globally: a
+// module observed once trivially agrees, and a module observed N times disagrees exactly when
+// some observation differs from the first.
+fn row_surface_varies(row: SurfaceCensusRow) -> Bool {
+  match row.observations {
+    Empty => false
+    Cons { head: first, tail: rest } =>
+      any(xs: rest, predicate: other => observation_has_other_surface(a: first, b: other))
+  }
+}
+
+// The refusal. A provider module carrying more than one linkage surface is not installable.
+//
+// The crate root is admitted by its own arm: its variation is closure membership, which the
+// standing law permits. That is stated as a reason here, not hidden as a skip.
+fn row_admissible(row: SurfaceCensusRow) -> Bool {
+  match row.product {
+    CrateRoot => true
+    ProviderModule => row_surface_varies(row: row) == false
+  }
+}
+
+fn entry_conditioned_surface_diagnostic(row: SurfaceCensusRow) -> Diagnostic {
+  textual_whole_file_diagnostic(
+    reason: ^seed_module_carries_more_than_one_linkage_surface,
+    module_file: row.source_module,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  )
+}
+
+fn refused_rows(rows: List<SurfaceCensusRow>) -> List<SurfaceCensusRow> {
+  filter(xs: rows, predicate: row => row_admissible(row: row) == false)
+}
+
+fn refused_row_count(rows: List<SurfaceCensusRow>) -> Int {
+  count_where(xs: rows, predicate: row => row_admissible(row: row) == false)
+}
+
+// Canonical seed assembly admission.
+//
+// Fail-closed: the first provider module carrying more than one surface refuses the assembly,
+// naming that module. Admission is not a claim that a canonical surface was chosen -- only that
+// no module offered two.
+fn canonical_seed_admission(rows: List<SurfaceCensusRow>) -> Outcome<List<SurfaceCensusRow>> {
+  match refused_rows(rows: rows) {
+    Empty => outcome_accepted(value: rows)
+    Cons { head: first, tail: _ } =>
+      outcome_rejected(d: entry_conditioned_surface_diagnostic(row: first))
+  }
+}
