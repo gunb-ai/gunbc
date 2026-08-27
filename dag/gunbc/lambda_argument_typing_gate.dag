@@ -261,8 +261,11 @@ data lambda_typing_gate_dissolution_trigger: DissolutionCondition = unbound_diss
 // differing files. Two triggers on one row is two answers to when it dies, which is the fork this
 // correction exists to close. The enrollment projection below is main's and is untouched by that.
 
-// ENROLLMENT PROJECTION — the `caller` refs, exposed so `v2.lens.cited_symbol_resolution` can
-// resolve them. This carrier's entire content is citations, so nothing else in it is checkable:
+// ENROLLMENT PROJECTION — the `caller` refs, exposed so a resolver can reach them. It was
+// `v2.lens.cited_symbol_resolution` until that lens was deleted 2026-08-26; the consumers now
+// are `v1_compiler.declaration_index` at ingestion, which resolves every typed-literal citation
+// corpus-wide on every push, and `test.claim.long.carrier_reference_integrity_witness_test`,
+// which holds this carrier's population claims. The projection itself is unchanged. This carrier's entire content is citations, so nothing else in it is checkable:
 // rename `parse_lexeme_digest` and, before this projection existed, every required check stayed
 // green while the row went quietly false. That is the stale-citation class living inside a
 // structural carrier, and enrollment is the remedy the lens's own law already names as its next

@@ -12,7 +12,7 @@ import gunbc.build_target {
 }
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
-  Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedLiveTree,
+  Planned, DeclinedLongModule, DeclinedLiveTree,
   required_floor_site_disposition,
 }
 import v2.std.live_tree { LiveTreeDisposition }
@@ -232,7 +232,7 @@ fn discovery_census(sites: List<DiscoveredSite>) -> SiteCensus {
 // without the other, so the roster and its exclusions cannot drift apart.
 //
 // It also removes the `Bool` over a closed coproduct (review 55984): the partition descends over
-// `RequiredFloorDisposition` here, wildcard-free, so a fifth arm must be classified rather than
+// `RequiredFloorDisposition` here, wildcard-free, so a fourth arm must be classified rather than
 // silently absorbed into the declined side by a predicate that answered `false`.
 type CensusPartition {
   planned: List<CensusRow>
@@ -243,8 +243,6 @@ fn census_partition_step(acc: CensusPartition, row: CensusRow) -> CensusPartitio
   match row.disposition {
     Planned => CensusPartition { planned: concat([row], acc.planned), declined: acc.declined }
     DeclinedLongModule { matched_prefix: _ } =>
-      CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
-    DeclinedFixtureMember { matched_prefix: _ } =>
       CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
     DeclinedLiveTree =>
       CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
@@ -303,7 +301,7 @@ fn required_aggregate_from_census(census: SiteCensus) -> RequiredAggregateDeriva
 // already holds (DESIGN §5). The floor's own host-side partition check exists because THERE the
 // counters are incremented independently and can drift; here they cannot.
 //
-// A FIFTH DISPOSITION ARM MUST FAIL TO COMPILE IN THIS FOLD. That is the reason the match is
+// A FOURTH DISPOSITION ARM MUST FAIL TO COMPILE IN THIS FOLD. That is the reason the match is
 // written out rather than counted as "planned and everything else": a new decline reason
 // silently joining the non-planned remainder would leave the census reporting a population it no
 // longer distinguishes.
@@ -311,7 +309,6 @@ type CensusCounts {
   offered: Int
   planned: Int
   declined_long_module: Int
-  declined_fixture_member: Int
   declined_live_tree: Int
 }
 
@@ -320,7 +317,6 @@ fn census_counts_zero() -> CensusCounts {
     offered: 0,
     planned: 0,
     declined_long_module: 0,
-    declined_fixture_member: 0,
     declined_live_tree: 0
   }
 }
@@ -332,7 +328,6 @@ fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> Censu
         offered: counts.offered + 1,
         planned: counts.planned + 1,
         declined_long_module: counts.declined_long_module,
-        declined_fixture_member: counts.declined_fixture_member,
         declined_live_tree: counts.declined_live_tree
       }
     DeclinedLongModule { matched_prefix: _ } =>
@@ -340,15 +335,6 @@ fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> Censu
         offered: counts.offered + 1,
         planned: counts.planned,
         declined_long_module: counts.declined_long_module + 1,
-        declined_fixture_member: counts.declined_fixture_member,
-        declined_live_tree: counts.declined_live_tree
-      }
-    DeclinedFixtureMember { matched_prefix: _ } =>
-      CensusCounts {
-        offered: counts.offered + 1,
-        planned: counts.planned,
-        declined_long_module: counts.declined_long_module,
-        declined_fixture_member: counts.declined_fixture_member + 1,
         declined_live_tree: counts.declined_live_tree
       }
     DeclinedLiveTree =>
@@ -356,7 +342,6 @@ fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> Censu
         offered: counts.offered + 1,
         planned: counts.planned,
         declined_long_module: counts.declined_long_module,
-        declined_fixture_member: counts.declined_fixture_member,
         declined_live_tree: counts.declined_live_tree + 1
       }
   }

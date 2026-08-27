@@ -1,0 +1,561 @@
+module test.claim.fabric_cell_acquire_witness
+
+import std.types { Bool, String, List, NonEmptyStr, list_length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import std.measure { byte_size_count }
+import gunbc.fabric_cell_converge {
+  FabricCellRootAddress,
+  FabricCellAttemptRootAddress,
+  FabricCellResourceBoundaryAddress,
+  fabric_cell_expected_slots,
+  fabric_cell_desired_state_digest,
+  fabric_cell_root_path,
+  fabric_cell_slice_name,
+}
+import extdeps.systemd { MemoryMax, TasksMax }
+import gunbc.fabric_cell_observe {
+  FabricCellNamespaceProbe,
+  NamespaceEnumerated,
+  NamespaceObservedAbsent,
+  NamespaceEnumerationRefused,
+  FabricCellAddressProbe,
+  AddressStateRead,
+  AddressStateReadRefused,
+}
+import gunbc.fabric_cell_acquire {
+  FabricCellDirectoryObservation,
+  FifoKind,
+  CharacterDeviceKind,
+  BlockDeviceKind,
+  DirectoryListed,
+  DirectoryNotPresent,
+  DirectoryUnreadable,
+  PathOccupiedByNonDirectory,
+  FabricCellPathKind,
+  SocketKind,
+  SymbolicLinkKind,
+  DirectoryKind,
+  RegularFileKind,
+  UnknownKind,
+  fabric_cell_path_kind_of,
+  fabric_cell_path_kind_observation,
+  FabricCellPathKindObservation,
+  PathKindRead,
+  PathKindReadRefused,
+  FabricCellParentStanding,
+  ParentHoldsEntry,
+  ParentLacksEntry,
+  ParentUnobserved,
+  fabric_cell_parent_standing_of,
+  fabric_cell_unread_path_observation,
+  fabric_cell_namespace_probe_of,
+  fabric_cell_listing_entries,
+  fabric_cell_unit_name_field,
+  fabric_cell_directory_address_probe,
+  fabric_cell_directory_address_entries,
+  fabric_cell_boundary_standing,
+  FabricCellBoundaryStanding,
+  BoundaryAsk,
+  BoundaryAbsentNoAsk,
+  BoundaryUnknownRefuse,
+  fabric_cell_boundary_address_probe,
+  FabricCellBoundaryReading,
+  BoundaryValuesRead,
+  BoundaryReadRefused,
+}
+
+// ROUTED, BECAUSE AN UNROUTED WITNESS IS DISCOVERED AND NEVER RUN. Every row here is over the PURE
+// projections of gunbc.fabric_cell_acquire; the host effects in that module are unreachable from a
+// hermetic fixture by construction, and that is the boundary rather than a gap -- a mocked
+// directory listing would assert this file's laws against authored data instead of against the
+// projection, which is the vacuous pass DESIGN section 4b rules worse than absent.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn witness_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 }
+}
+
+fn probe_is_enumerated_as(p: FabricCellNamespaceProbe, entries: List<String>) -> Bool {
+  match p {
+    NamespaceEnumerated { entries: es } => es == entries
+    NamespaceObservedAbsent => false
+    NamespaceEnumerationRefused { cause: _ } => false
+  }
+}
+
+fn probe_is_observed_absent(p: FabricCellNamespaceProbe) -> Bool {
+  match p {
+    NamespaceObservedAbsent => true
+    NamespaceEnumerated { entries: _ } => false
+    NamespaceEnumerationRefused { cause: _ } => false
+  }
+}
+
+fn probe_is_refused(p: FabricCellNamespaceProbe) -> Bool {
+  match p {
+    NamespaceEnumerationRefused { cause: _ } => true
+    NamespaceObservedAbsent => false
+    NamespaceEnumerated { entries: _ } => false
+  }
+}
+
+fn address_probe_is_read_as(p: FabricCellAddressProbe, digest: NonEmptyStr) -> Bool {
+  match p {
+    AddressStateRead { state_digest: d } => (d as String) == (digest as String)
+    AddressStateReadRefused { cause: _ } => false
+  }
+}
+
+fn address_probe_is_refused(p: FabricCellAddressProbe) -> Bool {
+  match p {
+    AddressStateReadRefused { cause: _ } => true
+    AddressStateRead { state_digest: _ } => false
+  }
+}
+
+// LAW 1 -- THE FOUR DIRECTORY STATES REACH FOUR DIFFERENT PROBES, AND THE TWO THAT A `success:
+// Bool` WOULD HAVE MERGED REACH OPPOSITE ONES. A directory that is not there is an OBSERVED
+// ABSENCE, which licenses provisioning; a listing that failed REFUSES, which stops the line. If
+// this row ever goes green with both of them on the same side, an unreadable host is being planned
+// as an empty one.
+test fn witness_acquire_absent_and_unreadable_are_opposite_probes() -> Bool {
+  probe_is_observed_absent(p: fabric_cell_namespace_probe_of(observation: DirectoryNotPresent))
+    && probe_is_refused(
+        p: fabric_cell_namespace_probe_of(
+          observation: DirectoryUnreadable { path: "/opt/fabric-cells", cause: "permission denied" },
+        ),
+      )
+}
+
+// LAW 2 -- A FILE WHERE A DIRECTORY BELONGS IS NEITHER. This is the state a Bool cannot hold at
+// all, and reporting it as absence would license an ADD that cannot succeed -- the failure would
+// then surface at apply time as a mkdir refusal rather than here as an observation.
+test fn witness_acquire_non_directory_refuses_rather_than_reading_as_absent() -> Bool {
+  let p = fabric_cell_namespace_probe_of(
+    observation: PathOccupiedByNonDirectory { path: "/opt/fabric-cells/srv3-06", kind: SocketKind },
+  )
+  probe_is_refused(p: p) && !probe_is_observed_absent(p: p)
+}
+
+// LAW 3 -- AN EMPTY DIRECTORY IS AN ENUMERATION AND NOT AN ABSENCE. Read-and-empty plans every
+// member; unread plans nothing and says so. Collapsing them is the empty-observation narrow, and
+// this row is the acquisition-side control for it.
+test fn witness_acquire_empty_listing_is_an_enumeration() -> Bool {
+  probe_is_enumerated_as(p: fabric_cell_namespace_probe_of(observation: DirectoryListed { entries: [] }), entries: [])
+}
+
+// LAW 4 -- A TRAILING NEWLINE IS NOT AN ENTRY. One entry and a terminating newline is the ordinary
+// shape of a listing, and counting the blank as a second entry would put a cell named "" into the
+// population -- which then reads as an unexpected artifact this host does not declare.
+test fn witness_acquire_listing_blank_lines_are_not_entries() -> Bool {
+  fabric_cell_listing_entries(text: "srv3-06\n") == ["srv3-06"]
+    && fabric_cell_listing_entries(text: "") == []
+    && fabric_cell_listing_entries(text: "\n  \n") == []
+    && fabric_cell_listing_entries(text: "srv3-06\nsrv3-07\n") == ["srv3-06", "srv3-07"]
+}
+
+// LAW 5 -- THE UNIT NAME IS THE FIRST FIELD OF A list-units ROW. Taking the whole line would
+// compare a unit name against a name plus load state plus description, never match, and read as
+// "the slice is absent" -- an empty-observation narrow produced by a parsing slip.
+test fn witness_acquire_unit_name_is_the_first_field() -> Bool {
+  fabric_cell_unit_name_field(line: "fabric-cell-srv3-06.slice loaded active active Fabric cell")
+    == "fabric-cell-srv3-06.slice"
+    && fabric_cell_unit_name_field(line: "  fabric-cell-srv3-06.slice  ") == "fabric-cell-srv3-06.slice"
+}
+
+// LAW 6 -- A PARTIAL BOUNDARY READ IS NOT A BOUNDARY OBSERVATION. Four values and a hole would have
+// to fabricate the fifth or render a digest no host carries. The refusal names which read failed.
+test fn witness_acquire_partial_boundary_read_refuses_rather_than_composing() -> Bool {
+  address_probe_is_refused(
+    p: fabric_cell_boundary_address_probe(
+      slot: witness_slot(),
+      reading: BoundaryReadRefused { cause: "systemctl show TasksMax refused for the cell slice" },
+    ),
+  )
+}
+
+// LAW 7 -- A CONVERGED HOST READS AS CONVERGED, WHICH IS THE ONE THING THE WHOLE ACQUISITION LAYER
+// EXISTS TO MAKE POSSIBLE. It feeds the acquisition layer the values a converged host would report
+// and asserts the resulting digest EQUALS what fabric_cell_desired_state_digest produces.
+//
+// WHAT ITS RED IS, MEASURED RATHER THAN ASSUMED, BECAUSE THE OBVIOUS MUTATION DOES NOT MOVE IT.
+// Changing the shared spelling authority -- renaming a key in fabric_cell_boundary_state_digest_of
+// -- leaves this row GREEN, and that is correct rather than a hole: both sides route through that
+// function, so a change there moves them together, which is the entire point of there being one
+// authority. A row that reddened on it would be asserting the current spelling, not the agreement.
+// The RED this row actually carries is on the ACQUISITION side, and it is executed: transposing
+// memory_high and memory_swap_max where this module composes the reading FAILS it. So the row
+// discriminates exactly the class it is for -- an acquisition layer that assembles the same values
+// into a different string -- and is silent about the class that cannot go wrong.
+test fn witness_acquire_observed_boundary_digest_equals_the_desired_spelling() -> Bool {
+  address_probe_is_read_as(
+    p: fabric_cell_boundary_address_probe(
+      slot: witness_slot(),
+      reading: converged_boundary_values(),
+    ),
+    digest: fabric_cell_desired_state_digest(slot: witness_slot(), address: FabricCellResourceBoundaryAddress),
+  )
+}
+
+// LAW 8 -- AN ABSENT DIRECTORY CONTRIBUTES NO ADDRESS PROBE AT ALL. Supplying one would hand the
+// observer an address that is absent from its namespace and simultaneously read -- the impossible
+// host the contradiction join refuses -- so a fresh host would refuse instead of planning. The
+// present and unreadable cases DO contribute, because there is something to say about them.
+test fn witness_acquire_absent_directory_supplies_no_address_probe() -> Bool {
+  list_length(items: fabric_cell_directory_address_entries(
+    slot: witness_slot(),
+    address: FabricCellRootAddress,
+    path: fabric_cell_root_path(slot: witness_slot()),
+    observation: DirectoryNotPresent,
+  )) == 0
+    && list_length(items: fabric_cell_directory_address_entries(
+        slot: witness_slot(),
+        address: FabricCellRootAddress,
+        path: fabric_cell_root_path(slot: witness_slot()),
+        observation: DirectoryListed { entries: [] },
+      )) == 1
+    && list_length(items: fabric_cell_directory_address_entries(
+        slot: witness_slot(),
+        address: FabricCellRootAddress,
+        path: fabric_cell_root_path(slot: witness_slot()),
+        observation: DirectoryUnreadable { path: "/opt/fabric-cells/srv3-06", cause: "permission denied" },
+      )) == 1
+}
+
+// LAW 9 -- A READABLE DIRECTORY READS ITS OWN PATH, WHICH IS WHAT THE DESIRED SIDE ASKS FOR. The
+// cell root and the attempt root have existence as the whole of their state, so this is the row
+// that makes a provisioned host converge rather than drift forever.
+test fn witness_acquire_directory_state_is_its_path() -> Bool {
+  address_probe_is_read_as(
+    p: fabric_cell_directory_address_probe(
+      path: fabric_cell_root_path(slot: witness_slot()),
+      observation: DirectoryListed { entries: [] },
+    ),
+    digest: fabric_cell_desired_state_digest(slot: witness_slot(), address: FabricCellRootAddress),
+  )
+}
+
+// THE VALUES ARE DERIVED FROM THE DESIRED AUTHORITY, NOT COPIED OUT OF IT AS LITERALS, AND THAT IS
+// WHAT KEEPS LAW 7 A LAW RATHER THAN A CHANGE DETECTOR. Pinning "34359738368" here would assert a
+// second fact nobody asked this row to check -- that the fleet's memory cap is that number -- so a
+// legitimate change to the slot's resource row would red a digest-spelling witness. What the row is
+// about is the SPELLING: feed the acquisition layer exactly what a converged host would report and
+// the two composition functions must agree. A fork in either one still reds it; a change to the
+// magnitudes moves both sides together, which is the point of there being one authority.
+// LAW 10 -- A SLICE THE ENUMERATION DOES NOT HOLD IS NOT ASKED FOR ITS STATE, AND THIS IS THE ROW
+// THAT WOULD HAVE CAUGHT THE DEFECT THE FIRST CUT SHIPPED. That cut issued `systemctl show` for
+// every expected slot unconditionally. `systemctl show` on a unit that does not exist EXITS ZERO
+// AND PRINTS DEFAULTS, so an unprovisioned slice came back as a successful read of values no host
+// carries; the observer then saw an address absent from its namespace with a state supplied,
+// refused it as a contradiction, and the cell could never be planned. A success exit is not
+// evidence that a unit exists.
+//
+// THE THIRD ANSWER IS NOT THE SECOND. An enumeration that RAN and does not hold the slice
+// establishes absence, so no entry -- absence is the namespace's answer. An enumeration that
+// REFUSED establishes nothing, so the address refuses with it rather than inheriting an absence
+// nobody observed. Collapsing those two would make an unreadable systemd plan as if it were an
+// empty one.
+test fn witness_acquire_absent_slice_is_not_asked_for_its_state() -> Bool {
+  standing_is_no_ask(st: fabric_cell_boundary_standing(
+    slot: witness_slot(),
+    slices: NamespaceEnumerated { entries: [] },
+  ))
+    && standing_is_no_ask(st: fabric_cell_boundary_standing(
+        slot: witness_slot(),
+        slices: NamespaceObservedAbsent,
+      ))
+    && standing_is_refuse(st: fabric_cell_boundary_standing(
+        slot: witness_slot(),
+        slices: NamespaceEnumerationRefused { cause: "systemctl list-units refused" },
+      ))
+}
+
+// LAW 11 -- AND A SLICE THE ENUMERATION DOES HOLD IS ASKED. Without this the previous row is
+// satisfied by an acquisition layer that never reads a boundary at all, which would make every
+// provisioned cell read as absent and replan its slice forever.
+test fn witness_acquire_present_slice_is_asked_for_its_state() -> Bool {
+  standing_is_ask(st: fabric_cell_boundary_standing(
+    slot: witness_slot(),
+    slices: NamespaceEnumerated { entries: [fabric_cell_slice_name(slot: witness_slot())] },
+  ))
+}
+
+fn standing_is_ask(st: FabricCellBoundaryStanding) -> Bool {
+  match st {
+    BoundaryAsk => true
+    BoundaryAbsentNoAsk => false
+    BoundaryUnknownRefuse { cause: _ } => false
+  }
+}
+
+fn standing_is_no_ask(st: FabricCellBoundaryStanding) -> Bool {
+  match st {
+    BoundaryAbsentNoAsk => true
+    BoundaryAsk => false
+    BoundaryUnknownRefuse { cause: _ } => false
+  }
+}
+
+fn standing_is_refuse(st: FabricCellBoundaryStanding) -> Bool {
+  match st {
+    BoundaryUnknownRefuse { cause: _ } => true
+    BoundaryAsk => false
+    BoundaryAbsentNoAsk => false
+  }
+}
+
+// LAW 12 -- A METADATA READ THAT FAILED IS NOT AN ABSENCE, AND ONLY THE PARENT SAYS WHICH IT WAS.
+// This is the defect two cuts of this module carried in two different spellings: `test -d` plus
+// `test -f`, then `test -e` plus `test -L`. Both compose booleans that report their OWN failure to
+// observe as a negative answer, so a path whose parent directory cannot be searched reads exactly
+// like a path that is not there -- and those license opposite actions. The kind probe now reports
+// only what it read, and absence comes from the containing enumeration.
+test fn witness_acquire_unread_metadata_is_absence_only_when_the_parent_said_so() -> Bool {
+  observation_is_absent_dir(o: fabric_cell_unread_path_observation(
+    path: "/opt/fabric-cells/srv3-06",
+    parent: ParentLacksEntry,
+    read_cause: "the metadata read did not complete",
+  ))
+    && observation_is_unreadable(o: fabric_cell_unread_path_observation(
+        path: "/opt/fabric-cells/srv3-06",
+        parent: ParentHoldsEntry,
+        read_cause: "the metadata read did not complete",
+      ))
+    && observation_is_unreadable(o: fabric_cell_unread_path_observation(
+        path: "/opt/fabric-cells/srv3-06",
+        parent: ParentUnobserved { cause: "the containing directory /opt could not be listed" },
+        read_cause: "the metadata read did not complete",
+      ))
+}
+
+// LAW 13 -- THE PARENT STANDING IS DERIVED FROM A SUCCESSFUL ENUMERATION AND FROM NOTHING ELSE. A
+// parent that could not be listed, or that is not a directory at all, establishes nothing about
+// what it contains -- so it must not read as "lacks the entry", which is the arm that licenses an
+// ADD.
+test fn witness_acquire_parent_standing_needs_a_successful_enumeration() -> Bool {
+  standing_holds(st: fabric_cell_parent_standing_of(
+    parent: DirectoryListed { entries: ["srv3-06"] },
+    entry: "srv3-06",
+  ))
+    && standing_lacks(st: fabric_cell_parent_standing_of(
+        parent: DirectoryListed { entries: [] },
+        entry: "srv3-06",
+      ))
+    && standing_unobserved(st: fabric_cell_parent_standing_of(
+        parent: DirectoryUnreadable { path: "/opt/fabric-cells", cause: "permission denied" },
+        entry: "srv3-06",
+      ))
+    && standing_unobserved(st: fabric_cell_parent_standing_of(
+        parent: PathOccupiedByNonDirectory { path: "/opt/fabric-cells", kind: SymbolicLinkKind },
+        entry: "srv3-06",
+      ))
+}
+
+// LAW 14 -- THE GNU TYPE WORDS DECODE INTO THE CLOSED VOCABULARY, AND AN UNSEEN WORD IS CARRIED
+// VERBATIM RATHER THAN DEFAULTED. A type this repository has not met is a fact about the host, and
+// silently folding it into one of the known arms would report a device node as a regular file.
+test fn witness_acquire_file_type_words_decode_without_a_silent_default() -> Bool {
+  kind_is_directory(k: fabric_cell_path_kind_of(word: "directory"))
+    && kind_is_regular_file(k: fabric_cell_path_kind_of(word: "regular empty file"))
+    && kind_is_symlink(k: fabric_cell_path_kind_of(word: "symbolic link"))
+    && kind_is_unknown_word(k: fabric_cell_path_kind_of(word: "weird new thing"), word: "weird new thing")
+}
+
+fn observation_is_absent_dir(o: FabricCellDirectoryObservation) -> Bool {
+  match o {
+    DirectoryNotPresent => true
+    DirectoryListed { entries: _ } => false
+    DirectoryUnreadable { path: _, cause: _ } => false
+    PathOccupiedByNonDirectory { path: _, kind: _ } => false
+  }
+}
+
+fn observation_is_unreadable(o: FabricCellDirectoryObservation) -> Bool {
+  match o {
+    DirectoryUnreadable { path: _, cause: _ } => true
+    DirectoryNotPresent => false
+    DirectoryListed { entries: _ } => false
+    PathOccupiedByNonDirectory { path: _, kind: _ } => false
+  }
+}
+
+fn standing_holds(st: FabricCellParentStanding) -> Bool {
+  match st {
+    ParentHoldsEntry => true
+    ParentLacksEntry => false
+    ParentUnobserved { cause: _ } => false
+  }
+}
+
+fn standing_lacks(st: FabricCellParentStanding) -> Bool {
+  match st {
+    ParentLacksEntry => true
+    ParentHoldsEntry => false
+    ParentUnobserved { cause: _ } => false
+  }
+}
+
+fn standing_unobserved(st: FabricCellParentStanding) -> Bool {
+  match st {
+    ParentUnobserved { cause: _ } => true
+    ParentHoldsEntry => false
+    ParentLacksEntry => false
+  }
+}
+
+fn kind_is_directory(k: FabricCellPathKind) -> Bool {
+  match k {
+    DirectoryKind => true
+    RegularFileKind => false
+    SymbolicLinkKind => false
+    SocketKind => false
+    FifoKind => false
+    CharacterDeviceKind => false
+    BlockDeviceKind => false
+    UnknownKind { word: _ } => false
+  }
+}
+
+fn kind_is_regular_file(k: FabricCellPathKind) -> Bool {
+  match k {
+    RegularFileKind => true
+    DirectoryKind => false
+    SymbolicLinkKind => false
+    SocketKind => false
+    FifoKind => false
+    CharacterDeviceKind => false
+    BlockDeviceKind => false
+    UnknownKind { word: _ } => false
+  }
+}
+
+fn kind_is_symlink(k: FabricCellPathKind) -> Bool {
+  match k {
+    SymbolicLinkKind => true
+    DirectoryKind => false
+    RegularFileKind => false
+    SocketKind => false
+    FifoKind => false
+    CharacterDeviceKind => false
+    BlockDeviceKind => false
+    UnknownKind { word: _ } => false
+  }
+}
+
+fn kind_is_unknown_word(k: FabricCellPathKind, word: String) -> Bool {
+  match k {
+    UnknownKind { word: w } => w == word
+    DirectoryKind => false
+    RegularFileKind => false
+    SymbolicLinkKind => false
+    SocketKind => false
+    FifoKind => false
+    CharacterDeviceKind => false
+    BlockDeviceKind => false
+  }
+}
+
+fn converged_boundary_values() -> FabricCellBoundaryReading {
+  let desired = gunbc_runner_slot_desired()
+  BoundaryValuesRead {
+    memory_max: to_string(byte_size_count(b: desired.memory_max)),
+    memory_high: to_string(byte_size_count(b: desired.memory_high)),
+    memory_swap_max: to_string(byte_size_count(b: desired.memory_swap_max)),
+    tasks_max: to_string(desired.tasks_max),
+    cpu_weight: to_string(desired.cpu_weight),
+  }
+}
+
+// LAW 15 -- A COMPLETED CALL THAT PRINTED NOTHING IS NOT A VALUE. `systemctl show` can exit zero
+// and print an empty line, and admitting that as a reading put an empty string into the digest --
+// which then differs from the desired digest, reports MemberChanged, and plans a repair against a
+// property nobody read. It is the same conflation as the exit-zero-with-defaults defect one level
+// down: the operation completed and did not answer the question.
+//
+// THE POSITIVE CONTROLS ARE THE HALF THAT MAKES THIS A LAW. A reader that refused EVERYTHING would
+// satisfy the empty-output row and break every real host, so "0" and "infinity" are asserted read
+// -- "0" because it is falsy-looking and a plausible thing to filter out by accident, "infinity"
+// because it is the value systemd prints for an unset cap and therefore the most common real one.
+test fn witness_acquire_empty_property_output_refuses_rather_than_reading() -> Bool {
+  property_is_refused(o: fabric_cell_boundary_property_observation(success: true, output: "", property: MemoryMax))
+    && property_is_refused(o: fabric_cell_boundary_property_observation(success: true, output: "   ", property: MemoryMax))
+    && property_is_refused(o: fabric_cell_boundary_property_observation(success: false, output: "4096", property: TasksMax))
+    && property_is_read_as(o: fabric_cell_boundary_property_observation(success: true, output: "0", property: MemoryMax), value: "0")
+    && property_is_read_as(o: fabric_cell_boundary_property_observation(success: true, output: "infinity", property: MemoryMax), value: "infinity")
+    && property_is_read_as(o: fabric_cell_boundary_property_observation(success: true, output: " 4096\n", property: TasksMax), value: "4096")
+}
+
+// LAW 16 -- ONE ACQUISITION PROJECTS INTO BOTH VIEWS, so the namespace entry and the address
+// evidence for one cell root cannot disagree. The previous cut observed each cell root twice inside
+// one nominal probe -- once for the child namespace, once in the address fold -- and if the path
+// changed between them the observer received a contradiction its own acquisition layer had
+// manufactured, reported as host drift that never happened. This row reads both projections out of
+// ONE carrier and asserts they describe the same observation.
+test fn witness_acquire_one_acquisition_projects_consistently() -> Bool {
+  let listed = FabricCellSlotAcquisition {
+    slot: witness_slot(),
+    cell_root: DirectoryListed { entries: ["attempts"] },
+    attempt_root: DirectoryListed { entries: [] },
+    boundary: [],
+  }
+  let absent = FabricCellSlotAcquisition {
+    slot: witness_slot(),
+    cell_root: DirectoryNotPresent,
+    attempt_root: DirectoryNotPresent,
+    boundary: [],
+  }
+  probe_is_enumerated_as(p: fabric_cell_acquisition_namespace_entry(acquisition: listed).probe, entries: ["attempts"])
+    && list_length(items: fabric_cell_acquisition_address_entries(acquisition: listed)) == 2
+    && probe_is_observed_absent(p: fabric_cell_acquisition_namespace_entry(acquisition: absent).probe)
+    && list_length(items: fabric_cell_acquisition_address_entries(acquisition: absent)) == 0
+}
+
+fn property_is_refused(o: FabricCellPropertyObservation) -> Bool {
+  match o {
+    PropertyReadRefused { cause: _ } => true
+    PropertyRead { value: _ } => false
+  }
+}
+
+fn property_is_read_as(o: FabricCellPropertyObservation, value: String) -> Bool {
+  match o {
+    PropertyRead { value: v } => (v as String) == value
+    PropertyReadRefused { cause: _ } => false
+  }
+}
+
+// LAW 17 -- A METADATA CALL THAT EXITED ZERO AND PRINTED NOTHING IS UNANSWERED, NOT UNRECOGNIZED.
+// The token decoder in law 14 is total, which is exactly what made this reachable: an empty `%F`
+// is a word it has never met, so it decoded to `UnknownKind { word: "" }` and left as a POSITIVE
+// claim that some unnameable object occupies the path. The two readings send an operator to
+// opposite remedies -- clear the obstruction, versus fix the host read that answered nothing -- so
+// the emptiness is decided BEFORE the decoder rather than inside it. The rows below are a presence
+// test and not a value filter, which is why "0" and "-" are asserted READ: a reader that dropped
+// values it found uninteresting would pass an emptiness assertion and still lose real answers.
+test fn witness_acquire_empty_file_type_refuses_rather_than_naming_a_kind() -> Bool {
+  path_kind_is_refused(o: fabric_cell_path_kind_observation(success: true, output: ""))
+    && path_kind_is_refused(o: fabric_cell_path_kind_observation(success: true, output: "   "))
+    && path_kind_is_refused(o: fabric_cell_path_kind_observation(success: false, output: "directory"))
+    && path_kind_is_read(o: fabric_cell_path_kind_observation(success: true, output: "directory"))
+    && path_kind_is_read(o: fabric_cell_path_kind_observation(success: true, output: "symbolic link"))
+    && path_kind_is_read(o: fabric_cell_path_kind_observation(success: true, output: "socket"))
+    && path_kind_is_read(o: fabric_cell_path_kind_observation(success: true, output: "0"))
+    && path_kind_is_read(o: fabric_cell_path_kind_observation(success: true, output: "weird new thing"))
+}
+
+fn path_kind_is_refused(o: FabricCellPathKindObservation) -> Bool {
+  match o {
+    PathKindReadRefused { cause: _ } => true
+    PathKindRead { kind: _ } => false
+  }
+}
+
+fn path_kind_is_read(o: FabricCellPathKindObservation) -> Bool {
+  match o {
+    PathKindRead { kind: _ } => true
+    PathKindReadRefused { cause: _ } => false
+  }
+}

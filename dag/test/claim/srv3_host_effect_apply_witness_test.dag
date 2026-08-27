@@ -35,6 +35,7 @@ test fn witness_srv3_receipt_emit_apply_converges_in_process() -> Bool {
             && string_contains(s: out, pattern: "line-two")
             && !string_contains(s: out, pattern: "printf")
         ConvergePlanApplied { stdout: _, exit_code: _ } => false
+        ToolchainHomeInterferenceDiscriminated => false
       }
     NotConverged { reason: _, applied: _ } => false
   }

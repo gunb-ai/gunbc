@@ -125,7 +125,7 @@ data fleet_runner_host_deploys: List<RunnerHostDeploy> = [
 // runner_host_installer_command_argv — install-actions-runner.sh has no slot-count parameter
 // (per-host handler only). Width realization lives in gunbc.runner_slot_provision.
 
-data runner_host_prereq_note: String = "Execution-surface prereqs the runner host must satisfy (gunbc.fleet_intent.fleet_intent_execution_surface now declares container_runtime: Docker + toolchains: [sccache], so the surface no longer lies). These two scripts provision that surface on a fresh host BEFORE install-actions-runner.sh: docker_ce (the rootless-docker apt prereq the ctrl installer assumes) then sccache (the pinned binary install-ctrl-sccache.sh assumes on PATH). Each cites its upstream; the shell leaves carry dissolution triggers in their extdeps modules."
+data runner_host_prereq_note: String = "Execution-surface prereqs the runner host must satisfy (gunbc.fleet_intent fleet_intent_execution_surface declares container_engine: the cited Docker Engine row deployed rootless (extdeps.container.docker_engine, extdeps.container.engine) + toolchains: [sccache], so the surface no longer lies). These two scripts provision that surface on a fresh host BEFORE install-actions-runner.sh: docker_ce (the rootless-docker apt prereq the ctrl installer assumes) then sccache (the pinned binary install-ctrl-sccache.sh assumes on PATH). Each cites its upstream; the shell leaves carry dissolution triggers in their extdeps modules."
 
 fn runner_host_docker_provision_script() -> String {
   docker_ce_repo_install_script(repo: docker_ce_apt_repo_noble_arm64, packages: docker_ce_packages)

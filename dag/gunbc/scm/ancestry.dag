@@ -1,0 +1,321 @@
+module gunbc.scm.ancestry
+
+// ANCESTRY: WHICH COMMIT A COMMIT CAME FROM.
+//
+// The model did not have this. Every `parent` in gunbc.scm is TREE-NODE parentage inside the object
+// store -- an edge from a node to its child -- and none of it relates one commit to another. A
+// RepositoryCommit is { root, message }, and `commits` is a flat List, so before this module a
+// repository's history was a SEQUENCE and not a graph. Every operation git states in terms of
+// ancestry -- merge-base, ahead/behind, commits-since, log ranges, and merge itself -- had no
+// referent here at all.
+//
+// IT IS CARRIED, NOT RECOVERED FROM POSITION, and that is forced rather than chosen. Position gives
+// a total order and says nothing about descent: that the commit at index 1 follows the one at index
+// 0 in the list does not make it its child, and reading it that way would assume history is both
+// linear and append-ordered -- neither of which the model establishes. Recovering ancestry from position
+// would therefore not be recovering it; it would be inventing it, and the invention would be
+// invisible because it would agree with position by construction.
+//
+// THIS MODULE LANDS BEFORE ANY PRODUCER, WHICH IS THE CHEAPEST MOMENT IT COULD. RepositoryCommit is
+// constructed in exactly two places on main -- its own type home and a witness -- so no production
+// code has yet baked in the assumption that history is a sequence. That is model-before-implement in
+// the order DESIGN prescribes, not a type built speculatively ahead of its consumer.
+
+import std.types { Bool, List }
+import std.minted_identity { MintedId, minted_id_eq }
+
+// THE ROOT IS A STRUCTURAL STATE, NOT AN EMPTY PARENT.
+//
+// The alternative -- a parent field holding some "nothing" value -- makes "this commit begins the
+// history" and "this commit's parent is missing" the same value, and those have opposite meanings: the
+// first is the ordinary state of every repository's first commit, the second is damage. That is the
+// same conflation `log` refused when it made the empty history its own state rather than an empty
+// row list, and it is refused here for the same reason and one layer deeper.
+//
+// EXACTLY ONE PARENT, AND THIS IS THE DECISION THAT WOULD BE UNWRITABLE LATER, so it is derived from
+// what the model's own merge does rather than from what git does.
+//
+// gunbc.scm.merge `merge` takes ONE target Commit and a LIST OF PROPOSALS, and answers `Merged`
+// carrying ONE commit. A Proposal is a set of authored requirements -- it is not a commit, it has no
+// root, no message and no identity in history. So a merge in THIS model combines one commit with N
+// things that were never commits, and the result has exactly one commit antecedent. Git's second
+// parent exists because git merges two BRANCHES, which are two commits; that shape has no referent
+// here, because nothing in this model can merge two commits at all.
+//
+// So a parent LIST would not be more general, it would be a state with no producer -- an arm nothing
+// can construct, which DESIGN section 4b rules worse than absent because it gets cited as capability
+// the model does not have. WIDENING TRIGGER, stated so the reason is checkable rather than trusted:
+// if `merge` ever takes two Commits rather than one commit and N proposals, this coproduct gains a
+// several-parents arm, and the change is a compile error at every consumer rather than a silent
+// reinterpretation -- which is what makes single-parent a safe decision now rather than an
+// irreversible one.
+// WHICH OCCURRENCE IN THIS HISTORY -- NOT WHICH PROGRAM. This type exists because those are two
+// different questions and the model previously answered both with `ObjectId`.
+//
+// THE BOUNDARY RULE, stated so the next author can place a new lookup without matching it against a
+// list of sites: an `ObjectId` is content-addressed, so it genuinely identifies a PROGRAM, and
+// keying an object by it is correct -- uniqueness is the POINT of that identity, not an assumption
+// about it. A commit record is a program PLUS a message PLUS a position in history, and only the
+// last of those is unique. So `ObjectId` is the right key for objects and the wrong key for commit
+// records, and the question to ask at a new lookup is which of the two you are keying.
+//
+// THE HISTORY THAT DECIDES IT is an ordinary revert, not a corner case:
+//
+//   record 0:  root A,  RootCommit
+//   record 1:  root B,  parent -> record 0
+//   record 2:  root A,  parent -> record 1     (a revert to exactly the program in record 0)
+//
+// Content addressing CORRECTLY gives records 0 and 2 the same root. Root-keyed ancestry then needs
+// A to be simultaneously `RootCommit` and `DescendsFrom{B}`, which is a contradiction at the level
+// of the type -- one key, two irreconcilable values. The repository already admits this: `log`
+// derives references from list POSITION precisely because two commits may share a root and differ
+// only in message.
+//
+// WHAT THE OLD GRAIN DID, and it is why this is a correctness recut rather than a tidy-up: a
+// first-match lookup answers with record 0's `RootCommit`, so a walk from record 2 terminates
+// immediately and reports it as a root. The revert edge and record 1 vanish. Not a refusal -- a
+// well-formed, confident, wrong answer, which is the silent wrongness DESIGN section 5 places
+// outside the ladder entirely.
+//
+// A COMMIT REFERENCE IS A MINTED IDENTITY IN THE COMMIT SUBJECT SPACE, never a list position and
+// never a digest of mutable commit facts. The subject parameter prevents a numeric coincidence with
+// another allocator's ordinal from being compared as the same identity. The value is opaque outside
+// the codec's membership index: log and status carry it but derive no order, recency, or content from
+// its ordinal. This discharges the positional spelling's append-only obligation by removing its
+// subject -- inserting, deleting, or reordering rows cannot retarget an existing reference.
+
+// TWO SUCCESSOR LANES WAITED ON THIS CUT FOR DIFFERENT GROUNDS, even though the dependency event was
+// the same. A commit producer waited on the HAZARD: authoring against positional references before
+// an append-only wall existed would make silent retargeting reachable. Repository reading and its
+// CLI surface carried no such mutation hazard; they waited on the VOCABULARY, because implementing a
+// consumer against a representation already scheduled for replacement would cement the old root.
+// If this cut ever slips or splits, a loader may correctly be called hazard-free and still must wait
+// on the second ground. Conflating those grounds makes that true objection produce the wrong order.
+type RepositoryCommitSubject
+
+type RepositoryCommitRef {
+  identity: MintedId<RepositoryCommitSubject>
+}
+
+fn repository_commit_ref_eq(left: RepositoryCommitRef, right: RepositoryCommitRef) -> Bool {
+  minted_id_eq(left: left.identity, right: right.identity)
+}
+
+type CommitAncestry
+  = RootCommit
+  | DescendsFrom { parent: RepositoryCommitRef }
+
+// AUTHOR AND TIMESTAMP ARE NOT DECIDED HERE, AND ARE EXPLICITLY SEPARATED RATHER THAN LEFT TO RIDE
+// ALONG. They were reported absent beside `parent` by the log verb, and they are absent for a
+// DIFFERENT REASON, which is why they cannot be settled in this change:
+//
+//   PARENT is a STRUCTURAL fact. It relates two things the model already holds, it is decidable
+//   inside the model, and nothing external is consulted to know it. That is why it can land now.
+//
+//   AUTHOR and TIMESTAMP are EXTERNAL OBSERVATIONS -- who ran the command, and what the clock said.
+//   Neither is derivable from the graph, and DESIGN is explicit that external reality is observed,
+//   typed, and admitted or refused, never fabricated. This repository has no modelled clock and no
+//   modelled process identity to observe them WITH, and acquiring either is the same frozen-host
+//   question that gates the store binding and process output.
+//
+// So modelling them here would mean inventing two facts to fill fields, which is the fabricated-
+// plausible-output failure at the exact boundary a commit is supposed to be trustworthy. They are
+// blocked on a ruling; parent was not. Recording that difference is the point of this note.
+
+
+// The history this walk may traverse, supplied as the commit identities the repository holds. It is
+// a PROJECTION of the envelope's own commit list rather than a second authority: nothing here stores
+// history, and a caller that passed a different population would be describing a different
+// repository, not corrupting this one.
+type AncestryStep {
+  at: RepositoryCommitRef
+  ancestry: CommitAncestry
+}
+
+// ONE CARRIER, SO THERE IS NOTHING FOR TWO AUTHORITIES TO DISAGREE ABOUT.
+//
+// The walk previously took a `history` list AND a `lookup` function, and that pairing was the defect:
+// `history` was consumed only as the fold's sequence, its element bound to `_unused`, so it supplied
+// the STEP BUDGET and nothing else while every membership question was answered by `lookup`. Two
+// authorities for one fact (DESIGN section 3), and they were free to disagree:
+//
+//   an EMPTY history folded zero times, so the accumulator's INITIAL value survived as the verdict
+//   and the walk announced a revisit having observed nothing at all;
+//
+//   a start ABSENT from history but known to lookup traced normally, so the arm named
+//   `AncestryStartNotInHistory` was decided by a lookup fact rather than the history fact it names;
+//
+//   a parent ABSENT from history but known to lookup was traversed instead of reaching `BrokenAt`.
+//
+// A membership check before the fold would have closed the first of those and left the third
+// constructible -- it concedes the bad state is writable and guards one instance. The carrier removes
+// those three outright instead: membership, relation and step bound all derive from these rows,
+// because there is no second place to look. That is the whole of what this shape buys, and an earlier
+// revision of this annotation claimed more -- that it made the disagreement UNREPRESENTABLE.
+//
+// IT DOES NOT, AND THE RESIDUAL STATE IS NAMED HERE BECAUSE THIS IS THE CARRIER THE FACT IS ABOUT.
+// Two steps may carry the same `at`, and `history_step_at` resolves by first match, so one carrier
+// can disagree WITH ITSELF under a duplicated key -- the same first-match class this change removed,
+// one level down. Uniqueness is an invariant of whatever BUILDS the carrier, not of the type: it has
+// no producer in production code today, and it stays authorable in a fixture, which is the honest
+// rung (DESIGN section 4b) -- mechanically prevented at each builder rather than structurally
+// impossible. A uniqueness CHECK would be the wrong repair, for exactly the reason this paragraph
+// already gives about membership checks: it would concede the duplicate is writable and guard one
+// instance of it. NEXT-RUNG TRIGGER: an unforgeable-construction wall making one admitted builder the
+// sole constructor of RepositoryHistory, at which point a fixture cannot express the collision.
+type RepositoryHistory {
+  steps: List<AncestryStep>
+}
+
+// The single question the walk asks: is there a row at this reference, and what does it say. It
+// replaces the `lookup` parameter, and it cannot disagree with the step budget because the budget is
+// this same list.
+fn history_step_at(history: RepositoryHistory, at: RepositoryCommitRef) -> AncestryStep? {
+  fold(history.steps, init: none, f: fn(found, step) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        if repository_commit_ref_eq(left: step.at, right: at) {
+          Present { value: step }
+        } else {
+          none
+        }
+    }
+  })
+}
+
+// THREE OUTCOMES, AND THE THIRD IS THE ONE A NAIVE WALK GETS WRONG BY LOOPING FOREVER.
+//
+// AncestryTraced carries the chain from the starting commit back to the root, inclusive and in that
+// order, so a consumer reads descent without re-deriving it.
+//
+// AncestryBrokenAt names a commit whose parent is not in this history. That is damage, and it is
+// distinguished from reaching the root because they are opposite facts: one is a complete history,
+// the other is a truncated one, and a walk that answered "done" for both would report a broken chain
+// as a finished one.
+//
+// AncestryStartNotInHistory is the caller's fact, not the history's, and separating it is the whole
+// reason this arm exists. "The commit you asked me to walk from is not in this history" and "commit
+// c's parent p is missing" have OPPOSITE OWNERS -- the first is a bad argument, the second is a
+// truncated history -- and opposite remedies. Collapsing them additionally forced the walk to invent
+// a `missing_parent`, since an unknown start supplies no parent to name: the fabricated-plausible-
+// output failure at the boundary this module exists to be trustworthy over.
+//
+// IT IS REACHABLE ONLY FROM THE START, BY CONSTRUCTION rather than by convention. The step advances
+// the cursor only after `lookup(parent)` has already answered AncestryKnown, so every cursor after
+// the first is a commit this history holds. The unverified cursor is the starting one and no other.
+//
+// AncestryRevisitsACommit is a REFUSAL, not a truncation. A parent chain that returns to a commit it
+// already visited is a cycle, and DESIGN's substrate is bounded and forward -- cyclic relations are
+// encoded acyclically, never traversed as cyclic values. Detected by exhausting the population: a
+// chain that takes more steps than the history has commits must have revisited one, by pigeonhole,
+// so the refusal is DERIVED from the bound rather than asserted by a visited-set this module would
+// have to keep correct.
+type AncestryWalk
+  = AncestryTraced { chain: List<RepositoryCommitRef> }
+  | AncestryBrokenAt { commit: RepositoryCommitRef, missing_parent: RepositoryCommitRef }
+  | AncestryStartNotInHistory { start: RepositoryCommitRef }
+  | AncestryRevisitsACommit { detected_from: RepositoryCommitRef }
+
+// IT CARRIES THE RESOLVED ROW, NOT A BARE REFERENCE, and that is what removes an arm rather than
+// handling it. With a bare cursor the step had to look the cursor up again every iteration and answer
+// for a not-found case that the walk's own invariant makes impossible -- an arm with no producer,
+// which the previous shape filled with `AncestryStartNotInHistory` even mid-walk, where the cursor is
+// not the start. Holding the row means the only lookup is the PARENT's, whose absence is a real and
+// nameable state.
+type AncestryWalkAcc {
+  chain: List<RepositoryCommitRef>
+  current: AncestryStep
+  done: Bool
+  outcome: AncestryWalk
+}
+
+// THE CHAIN ACCUMULATES BY PREPEND AND IS REVERSED ONCE AT COMPLETION. concat-at-end copies the
+// whole accumulator per step, which makes an n-step walk O(n^2) -- the cost shape DESIGN section 6
+// rules is ALWAYS fixed regardless of the realized n, because "n is small here" is not a time-stable
+// fact: this walk's n is the length of a repository's history, which is exactly the quantity that
+// grows without bound in use.
+//
+// It is worth recording that gunbc.scm.repository_envelope carries an annotation about having
+// committed this same defect and had it caught by review, and this module reintroduced it anyway in
+// a diff that imports that module. The lesson there was that fixing a cost shape at the sites a
+// review names is not the same as not having the defect; the lesson here is that reading the note is
+// not either. The reversal is at the single completion point rather than at each consumer, so the
+// exported chain order -- descendant first -- is unchanged and no caller can observe the fix.
+fn ancestry_walk_step(acc: AncestryWalkAcc, history: RepositoryHistory) -> AncestryWalkAcc {
+  if acc.done {
+    acc
+  } else {
+    match acc.current.ancestry {
+      RootCommit =>
+        AncestryWalkAcc {
+          chain: acc.chain,
+          current: acc.current,
+          done: true,
+          outcome: AncestryTraced { chain: reverse(acc.chain) },
+        }
+      DescendsFrom { parent: parent } =>
+        match history_step_at(history: history, at: parent) {
+          Absent =>
+            AncestryWalkAcc {
+              chain: acc.chain,
+              current: acc.current,
+              done: true,
+              outcome: AncestryBrokenAt { commit: acc.current.at, missing_parent: parent },
+            }
+          Present { value: next } =>
+            AncestryWalkAcc {
+              chain: concat([parent], acc.chain),
+              current: next,
+              done: false,
+              outcome: acc.outcome,
+            }
+        }
+    }
+  }
+}
+
+// The walk is bounded by the population it walks: `history` supplies both the membership test and
+// the step budget, so the fold is total and terminates by construction rather than by a guard this
+// module has to keep correct.
+// THERE IS DELIBERATELY NO BOOLEAN ANCESTOR PREDICATE HERE, and its absence is the point.
+//
+// A `commit_is_ancestor_of` returning Bool answered `false` for FOUR different facts: a completed
+// trace proving the candidate is not an ancestor, a broken parent chain, a start outside the
+// history, and a cycle. Only the first is a negative ANSWER; the other three are failures to
+// establish one. Collapsing them is the not-established-versus-negative conflation DESIGN names,
+// and it is the same shape repaired across the JSON and source-analysis lanes.
+//
+// It is DELETED rather than typed, on consumer count. There is no production consumer -- the walk
+// itself is the surface, and `AncestryWalk` already carries all four states distinctly. Publishing
+// a typed `AncestorJudgment` today would mint an arm with no producer, which DESIGN section 4b
+// rules worse than absent because it gets cited as a capability the model does not have. The same
+// reasoning deleted `ancestry_is_root` from this module.
+//
+// WHEN A REAL CONSUMER ARRIVES -- merge-base, ahead/behind, a publication decision -- it derives its
+// answer from `ancestry_walk` and decides for itself what a broken chain means to IT, which is a
+// judgment this module cannot make on its behalf.
+
+fn ancestry_walk(start: RepositoryCommitRef, history: RepositoryHistory) -> AncestryWalk {
+  match history_step_at(history: history, at: start) {
+    Absent => AncestryStartNotInHistory { start: start }
+    Present { value: first } =>
+      match fold(
+        history.steps,
+        init: AncestryWalkAcc {
+          chain: [start],
+          current: first,
+          done: false,
+          outcome: AncestryRevisitsACommit { detected_from: start },
+        },
+        f: fn(acc, _budget) { ancestry_walk_step(acc: acc, history: history) },
+      ) {
+        AncestryWalkAcc { chain: _, current: _, done: done, outcome: outcome } =>
+          if done {
+            outcome
+          } else {
+            AncestryRevisitsACommit { detected_from: start }
+          }
+      }
+  }
+}

@@ -100,6 +100,10 @@ fn codex_supervised_worker_turn_apply(
           CodexSupervisedTurnRefused {
             reason: "Codex supervised worker turn returned unexpected ConvergePlanApplied evidence" as NonEmptyStr,
           }
+        ToolchainHomeInterferenceDiscriminated =>
+          CodexSupervisedTurnRefused {
+            reason: "Codex supervised worker turn returned unexpected ToolchainHomeInterferenceDiscriminated evidence" as NonEmptyStr,
+          }
       }
     NotConverged { reason: why, applied: _ } =>
       CodexSupervisedTurnRefused { reason: why as NonEmptyStr }

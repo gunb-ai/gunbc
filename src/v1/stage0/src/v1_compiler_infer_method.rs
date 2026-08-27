@@ -299,6 +299,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "toolchain_home_interference_probe".to_string(),
+            type_variable_node("toolchain_interference_probe_result".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "emit_host_run_transport".to_string(),
             type_variable_node("emit_host_run_transport_result".to_string()),
         );

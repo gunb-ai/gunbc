@@ -18,6 +18,7 @@ apply(target: NodeControlPlane, effect: HostEffect, policy: Policy) -> Receipt  
 
    NodeControlPlane = HostOs(node)        # in-band  — transport ∈ {SshShell, LocalShell, SystemdUnit, EmitArtifactThenThinRun}
                     | BmcController(node)  # out-of-band — transport ∈ {RedfishRest}
+                    | RunnerLocalHost      # current foreign executor; admits only typed runner-local effects
    HostEffect       = ShellCommand{script} | RedfishAction{resource, verb, body} | …   # COPRODUCT of effect-kinds
    Policy (§3c)     = OneShotIdempotent | ConvergeToFixpoint
    Receipt          = located/typed core + poll-until-converged task state (NOT just exit-0)
@@ -27,7 +28,7 @@ apply(target: NodeControlPlane, effect: HostEffect, policy: Policy) -> Receipt  
 
 Three refinements proved by driving srv3's BMC live (neat-boar-71), each load-bearing:
 
-- **Target-duality.** A logical node has *two* control planes — in-band host OS (ssh/systemd) and out-of-band BMC (Redfish) — so `apply` targets a **control plane**, not a host address. Pre-OS lifecycle phases (`FactoryDefault → OsInstalled`) are reachable **out-of-band ONLY**: the OS doesn't exist yet, only the BMC does. Both resolve over `fleet_intent` (which already binds `HostIdentity` + `BmcEndpoint` per node).
+- **Target identity.** A logical fleet node has *two* control planes — in-band host OS (ssh/systemd) and out-of-band BMC (Redfish) — while a foreign CI executor is represented separately as `RunnerLocalHost`, never as a fabricated fleet identity. Pre-OS lifecycle phases (`FactoryDefault → OsInstalled`) are reachable **out-of-band ONLY**: the OS doesn't exist yet, only the BMC does. The fleet arms resolve over `fleet_intent` (which already binds `HostIdentity` + `BmcEndpoint` per node); the runner-local arm admits only effects explicitly modeled for the current executor.
 - **`HostEffect` is a coproduct, not a shell string.** A Redfish op is `BootSourceOverride{target:Pxe, enabled:Once}` then `Reset{ForceRestart}` — typed actions, not bash. A stringly `command` field would be the §3 anemic leaf; ssh's shell-string is *one arm*. Dispatch on (control-plane × transport × effect-kind) makes an **incompatible combination (e.g. `RedfishAction` over `SshShell`) a typed mismatch, unwritable by construction** (§5) — not a silent failure.
 - **Async/polled Receipt.** Redfish `Reset` returns before the machine reboots; the real outcome is observed by **polling** (BootSourceOverrideEnabled flips `Once → Disabled` when firmware consumes it). So the Receipt carries poll-until-converged task state. This *reinforces* the policy axis: BMC ops are **intrinsically converge-shaped** even in a "one-shot" call — `ConvergeToFixpoint` is a property of the effect, not just of ssh-vs-drift.
 

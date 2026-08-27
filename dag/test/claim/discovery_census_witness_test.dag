@@ -11,6 +11,7 @@ import gunbc.build_target {
   BuildTarget, target_identity, is_required_aggregate,
   required_aggregate_label,
   AggregateStanding, AggregateSatisfied, AggregateNoDependencies, AggregateRefused,
+  AggregateStandingsUnindexable,
   TargetStanding, BuildStanding, TargetCompleted,
   TestStanding, TestRunByFloor,
   required_aggregate_standing,
@@ -27,7 +28,7 @@ import gunbc.discovery_census {
 }
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
-  Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedLiveTree,
+  Planned, DeclinedLongModule, DeclinedLiveTree,
   required_floor_site_disposition,
 }
 import v2.workflow.floor_terminal_ledger { ClaimDisposition, Passed }
@@ -60,15 +61,16 @@ fn live_tree_site(module_path: String, function: String) -> DiscoveredSite {
   }
 }
 
-// A MIXED POPULATION, ONE SITE PER DISPOSITION ARM. The fixture-home member also READS THE LIVE
-// TREE, which is what makes the admission-order assertion below discriminating rather than
-// incidental: reorder the two declines and this row changes arm.
+// A MIXED POPULATION COVERING EVERY DISPOSITION ARM. It carried a fifth arm until the plan/walk
+// residue cut (2026-08-26) deleted `DeclinedFixtureMember` together with the one fixture family
+// that inhabited it; the site that held it is now a second live-tree read, so the population size
+// and every assertion denominated in it are unchanged and only the arm it lands in moved.
 fn mixed_sites() -> List<DiscoveredSite> {
   [
     hermetic_site(module_path: "test.claim.alpha_witness", function: "w_alpha"),
     hermetic_site(module_path: "test.claim.alpha_witness", function: "w_beta"),
     hermetic_site(module_path: "test.claim.long.slow_witness", function: "w_slow"),
-    live_tree_site(module_path: "v2.test.fixture.walk_plan_stage.common", function: "w_member"),
+    live_tree_site(module_path: "test.claim.reads_tree_other", function: "w_member"),
     live_tree_site(module_path: "test.claim.reads_tree_witness", function: "w_reads")
   ]
 }
@@ -187,22 +189,6 @@ test fn w_empty_module_path_and_empty_function_refuse_apart() -> Bool {
 // THE DISPOSITION, AND ITS ORDER
 // ---------------------------------------------------------------------------------------------
 
-// THE FIXTURE MEMBER READS THE LIVE TREE AND MUST STILL REPORT `DeclinedFixtureMember`. Swap the
-// two decline tests and this arm becomes `DeclinedLiveTree` — a staged prediction standing where
-// a permanent ownership fact belongs, so the site would look like it rejoins the floor when the
-// live-tree arm is deleted. It does not.
-test fn w_fixture_home_dominates_live_tree() -> Bool {
-  match required_floor_site_disposition(
-    module_path: "v2.test.fixture.walk_plan_stage.common",
-    reads_live_tree: ReadsLiveTree {}
-  ) {
-    DeclinedFixtureMember { matched_prefix: p } => p == "v2.test.fixture.walk_plan_stage."
-    Planned => false
-    DeclinedLongModule { matched_prefix: _ } => false
-    DeclinedLiveTree => false
-  }
-}
-
 test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
   match required_floor_site_disposition(
     module_path: "test.claim.long.slow_witness",
@@ -210,7 +196,6 @@ test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
   ) {
     DeclinedLongModule { matched_prefix: p } => p == "test.claim.long."
     Planned => false
-    DeclinedFixtureMember { matched_prefix: _ } => false
     DeclinedLiveTree => false
   }
 }
@@ -225,7 +210,6 @@ test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
   ) {
     Planned => true
     DeclinedLongModule { matched_prefix: _ } => false
-    DeclinedFixtureMember { matched_prefix: _ } => false
     DeclinedLiveTree => false
   }
 }
@@ -238,7 +222,6 @@ test fn w_live_tree_site_declines_when_no_home_matched() -> Bool {
     DeclinedLiveTree => true
     Planned => false
     DeclinedLongModule { matched_prefix: _ } => false
-    DeclinedFixtureMember { matched_prefix: _ } => false
   }
 }
 
@@ -246,7 +229,7 @@ test fn w_live_tree_site_declines_when_no_home_matched() -> Bool {
 // THE PARTITION
 // ---------------------------------------------------------------------------------------------
 
-// THE FOUR ARMS SUM TO THE OFFERED POPULATION. The production fold has no partition check
+// THE THREE ARMS SUM TO THE OFFERED POPULATION. The production fold has no partition check
 // because a row holds exactly one disposition and the counting match has no wildcard, so this is
 // the executing evidence for that construction rather than a second wall beside it.
 test fn w_counts_partition_the_offered_population() -> Bool {
@@ -254,11 +237,9 @@ test fn w_counts_partition_the_offered_population() -> Bool {
   (counts.offered == 5)
     && (counts.planned == 2)
     && (counts.declined_long_module == 1)
-    && (counts.declined_fixture_member == 1)
-    && (counts.declined_live_tree == 1)
+    && (counts.declined_live_tree == 2)
     && (counts.offered ==
-        counts.planned + counts.declined_long_module
-          + counts.declined_fixture_member + counts.declined_live_tree)
+        counts.planned + counts.declined_long_module + counts.declined_live_tree)
 }
 
 // EVERY DISCOVERED SITE GETS A ROW, DECLINED OR NOT. A census that dropped the declines would
@@ -288,7 +269,7 @@ test fn w_declined_sites_are_rows_not_omissions() -> Bool {
   let rendered = fold(rows, init: [], f: fn(acc, row) { concat([render_label(l: row.label)], acc) })
   ((rows |> count) == 5)
     && list_holds(xs: rendered, wanted: "//test/claim/long/slow_witness:w_slow")
-    && list_holds(xs: rendered, wanted: "//v2/test/fixture/walk_plan_stage/common:w_member")
+    && list_holds(xs: rendered, wanted: "//test/claim/reads_tree_other:w_member")
     && list_holds(xs: rendered, wanted: "//test/claim/reads_tree_witness:w_reads")
 }
 
@@ -345,7 +326,7 @@ test fn w_required_aggregate_dependencies_are_exactly_the_planned_subset() -> Bo
         && list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_alpha")
         && list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_beta")
         && !list_holds(xs: rendered, wanted: "//test/claim/long/slow_witness:w_slow")
-        && !list_holds(xs: rendered, wanted: "//v2/test/fixture/walk_plan_stage/common:w_member")
+        && !list_holds(xs: rendered, wanted: "//test/claim/reads_tree_other:w_member")
         && !list_holds(xs: rendered, wanted: "//test/claim/reads_tree_witness:w_reads")
     }
   }
@@ -388,6 +369,7 @@ test fn w_all_declined_derives_an_aggregate_that_blocks() -> Bool {
           }
         AggregateSatisfied { dependency_count: _ } => false
         AggregateRefused { finding_count: _, findings: _ } => false
+        AggregateStandingsUnindexable { cause: _ } => false
       }
   }
 }
@@ -412,6 +394,7 @@ test fn w_derived_aggregate_is_satisfiable_against_standings() -> Bool {
         AggregateSatisfied { dependency_count: n } => n == 2
         AggregateNoDependencies => false
         AggregateRefused { finding_count: _, findings: _ } => false
+        AggregateStandingsUnindexable { cause: _ } => false
       }
     }
   }
