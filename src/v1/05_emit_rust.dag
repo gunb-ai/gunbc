@@ -89,6 +89,7 @@ import v1.compiler.trait_derive_emit {
   v1_generic_params_needing_clone_bound,
   v1_emit_type_params_with_clone_bounds, v1_emit_type_params_with_bounds,
   v1_clone_bounded_type_params, v1_item_clone_bounded_param_names, v1_item_clone_undecided_head,
+  v1_item_wf_propagated_clone_bounded_param_names,
   v1_map_key_required_type_names, v1_item_field_type_exprs, v1_with_map_key_requirement,
   v1_clone_impl_required_type_params,
   v1_trait_derive_refuse,
@@ -5411,6 +5412,49 @@ fn function_type_params_have_collision(type_params: List<Node>) -> Bool {
   (names |> count) > (unique_strings(items: names) |> count)
 }
 
+// The header-bound decision, taken ONCE per item and rendered by whoever needs it. The item
+// header and its supplemental impl headers are one fact -- Rust requires an impl's generics to
+// satisfy the type's own bounds -- so `emit_item_header_clone_param_names` is the single place
+// that answers it and both surfaces read the same list. Splitting `has_fn_fields` without this
+// would have put the two out of step: the header would gain a WF bound the impl header did not,
+// which does not compile.
+fn emit_item_header_clone_param_names(
+  item: Node,
+  item_name: String,
+  has_fn_fields: Bool,
+  generic_param_names: List<String>,
+  emit_info: EmitGraphInfo,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
+  if has_fn_fields {
+    v1_item_wf_propagated_clone_bounded_param_names(
+      item_name: item_name,
+      item: item,
+      generic_param_names: generic_param_names,
+      bounds: emit_info.clone_bounded_type_params,
+      source_indices: source_indices
+    )
+  } else {
+    v1_item_clone_bounded_param_names(
+      item_name: item_name,
+      generic_param_names: generic_param_names,
+      bounds: emit_info.clone_bounded_type_params
+    )
+  }
+}
+
+fn emit_type_params_from_clone_param_names(
+  params: List<Node>,
+  clone_param_names: List<String>,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
+  if (clone_param_names |> count) > 0 {
+    v1_emit_type_params_with_clone_bounds(params: params, clone_param_names: clone_param_names, source_indices: source_indices)
+  } else {
+    emit_type_params(params: params, source_indices: source_indices)
+  }
+}
+
 fn emit_item_type_params_with_clone_bounds(item_name: String, params: List<Node>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
   let generic_param_names = params |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
   let clone_param_names = v1_item_clone_bounded_param_names(
@@ -5499,26 +5543,53 @@ fn emit_item_clone_bound_refusal(item: Node, item_name: String, emit_info: EmitG
 // declared type, and `PartialFunction<K, V>` is itself emitted bare, so it carries no obligation.
 // The exposing population is therefore EMPTY. That is a closed enumeration, not a spot check.
 //
-// WHY THIS IS DEFERRED, and it is NOT that evidence is unavailable: the new arm is provable by a
-// controlled fixture, and the regression risk — re-bounding the 16 derive carriers that correctly
-// stay bare — is testable against the real corpus by regenerating to a fixed point over the live
-// 17. Both are available today. The reason is §6 displaced cost: with the population empty the
-// benefit is ZERO, while the change carries nonzero regression risk against 17 live carriers and
-// consumes the one scarce slot on this file, ahead of work with a live population. It is worth
-// less than what it displaces, today — not unverifiable.
+// THE TRIGGER FIRED, AND THE SPLIT LANDED. This paragraph is rewritten rather than annotated,
+// because the deferral it recorded was priced against an EMPTY exposing population and that
+// premise is now false — leaving it standing in the present tense would tell the next reader the
+// benefit is still zero.
 //
-// NEXT-RUNG TRIGGER: the first carrier with a callable field that ALSO names a
-// well-formedness-bounded declared type (the `AmbiguousBindingCandidates` shape with a callable
-// field added — the callable field is irrelevant to why the bound is owed). The repair is the same
-// move as above: split `has_fn_fields` into the two questions it answers, so the derive half keeps
-// suppressing the header bound and the WF half is never consulted about callable fields at all.
-// EVIDENCE IT OWES, both halves: a controlled fixture for the new arm, PLUS a regen fixed point
-// over the existing 17 callable-field carriers as the regression control. A fixture alone is thin.
+// The trigger read: "the first carrier with a callable field that ALSO names a
+// well-formedness-bounded declared type". `std.interval` IntervalConstructionFold<T, R> is that
+// carrier — its field is `fn(OrderedClosedInterval<T>) -> R`, and OrderedClosedInterval<T: Clone>
+// is bounded from its own bare `low: T`. The emitted header went bare and rustc refused with
+// E0277, which is the same failure this note already records for AmbiguousBindingCandidates<N>,
+// reached through the callable field instead of through `Rc`.
+//
+// The repair is the one this note prescribed and no other: `has_fn_fields` no longer gates the
+// WELL-FORMEDNESS half. `emit_item_header_clone_param_names` takes the header decision once and
+// subtracts, for a callable-field struct, exactly the item's OWN derive-seed contribution — so the
+// derive half keeps suppressing the header bound on `Monoid<T> { identity: T }` while a bound
+// PROPAGATED from a field's declared type survives. A subtraction rather than a second fixpoint,
+// because propagation must still see every other item's seed to have anything to propagate from.
+//
+// ONE CORRECTION TO THE PRESCRIPTION, made because implementing it exposed the error: the clause
+// "the WF half is never consulted about callable fields at all" was written while the WF walk was
+// structurally blind to callables (`v1_type_expr_wf_needs_clone_param` opened on a zero-children
+// test, and a Callable node carries its components on `.params`/`.inferred`, never `.children`).
+// That blindness is what made a callable field LOOK obligation-free. It is not: an arrow realizes
+// as `Rc<dyn Fn(A) -> R>` and naming a bounded declared type at A or R is ill-formed exactly as at
+// a plain field. So the WF half must be consulted about callable fields, and
+// `v1_callable_type_expr_component_type_exprs` is what lets it see them. Suppressing the header
+// bound alone would not have been enough; neither half closes this carrier without the other.
+//
+// EVIDENCE, both halves the note demanded: a controlled fixture
+// (test.claim.clone_bound_callable_field_witness, four arms — argument position, return position,
+// a plain-field positive control, and a converse control requiring that a callable over UNBOUNDED
+// parameters still emits bare), PLUS the regen fixed point over the live callable-field carriers
+// as the regression control that the 16 derive carriers did not gain a header bound.
 fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, List<Node>>, module_items: List<Node>, imports: List<Node>) -> String {
   let item_text = authored_name(env: env, node: item)
   let is_product = is_product_type(n: item)
   if is_product {
     let has_fn_fields = type_has_fn_fields(name: item_text, emit_info: emit_info)
+    let header_clone_param_names = emit_item_header_clone_param_names(
+      item: item,
+      item_name: item_text,
+      has_fn_fields: has_fn_fields,
+      generic_param_names: item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)),
+      emit_info: emit_info,
+      source_indices: env.source_indices
+    )
     let sealed = item_seals_construction(item: item)
     let deserialize_forbidden = item_forbids_deserialize(item: item, emit_info: emit_info, source_indices: env.source_indices)
     let capability_surface = v1_emit_struct_from_capability_table(
@@ -5530,19 +5601,15 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
       map_key_required: set_contains(emit_info.map_key_required_type_names, item_text),
       generic_param_names: item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)),
       source_indices: env.source_indices,
-      carrier_param_needs_clone: v1_carrier_param_needs_clone_bound(
-        item_name: item_text,
-        generic_param_names: item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)),
-        emit_info: emit_info
-      ),
+      carrier_param_needs_clone: (header_clone_param_names |> count) > 0,
       deserialize_forbidden: deserialize_forbidden,
       type_decl_items: emit_info.type_decl_items
     )
-    let type_params = if !has_fn_fields {
-      emit_item_type_params_with_clone_bounds(item_name: item_text, params: item.params, emit_info: emit_info, source_indices: env.source_indices)
-    } else {
-      emit_type_params(params: item.params, source_indices: env.source_indices)
-    }
+    let type_params = emit_type_params_from_clone_param_names(
+      params: item.params,
+      clone_param_names: header_clone_param_names,
+      source_indices: env.source_indices
+    )
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
     let clone_bound_refusal = emit_item_clone_bound_refusal(item: item, item_name: item_text, emit_info: emit_info, source_indices: env.source_indices)
     let struct_text = emit_struct_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, sealed: sealed, deserialize_forbidden: deserialize_forbidden, env: env, emit_info: emit_info)
