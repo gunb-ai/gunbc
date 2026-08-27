@@ -520,6 +520,10 @@ type ContentionRefusal<P>
       contended: FabricIdentity<P, OfferKey>
       mismatched: List<FabricIdentity<P, DemandKey>>
     }
+  | OrderingContingentOnUnreadOpportunityCost {
+      leads_on_rate: FabricIdentity<P, DemandKey>
+      outbid_on_total: List<FabricIdentity<P, DemandKey>>
+    }
 
 fn candidate_occurrences<P>(
   candidates: List<AdmittedDemand<P>>,
@@ -544,44 +548,56 @@ fn duplicated_candidates<P>(
 // an ordinary market outcome -- the capacity goes unsold, and the remedy is
 // more demand or a cheaper offer -- while a refusal means the policy could not
 // decide among demands that did clear it.
-// THE SELECTION SAYS WHEN PREFERRING THE RATE COST TOTAL MARGIN, AND THAT IS
-// WHAT KEEPS THE DECLARED CONTINGENCY FROM BEING A SILENT DEFAULT.
+// A CONTINGENT ORDERING REFUSES. IT DOES NOT SELECT AND ANNOTATE.
 //
-// The zero-quote note above records that rate-preferring is right when a freed
-// remainder can be resold and wrong when it lapses idle, and that the fact
-// deciding it has no carrier. Review 56501 pressed the obvious objection: a
-// fold that DEFAULTS while acknowledging it lacks the deciding fact is
-// producing a possibly-wrong winner with no signal, which is the shape DESIGN
-// section 5 refuses.
+// This clause has been rewritten twice and the history is the argument, so it
+// is kept rather than replaced. The first cut selected by rate and recorded the
+// contingency in prose. Review 56501 objected that a fold defaulting while
+// acknowledging it lacks the deciding fact emits a possibly-wrong winner with
+// no signal; the second cut answered by carrying OrderingStanding on the
+// verdict, so a consumer could SEE that the decision turned on an unread fact.
+// Review 56522 objected that reporting uncertainty is not the same as being
+// fail-closed, and it is right: a consumer may ignore an annotation, and a
+// grant issued off an annotated verdict spends real capacity on a winner this
+// module knows may be the wrong one.
 //
-// THE OBJECTION IS RIGHT ABOUT THE SILENCE AND ITS TWO PROPOSED REMEDIES ARE
-// BOTH UNAVAILABLE, so this is the third. Carrying opportunity cost means
-// reading a fact no carrier states -- it could only arrive as a caller-supplied
-// flag, a requester-stated input on the exact axis priority_class was deleted
-// to remove. Refusing whenever the fact is absent refuses ALWAYS, because it is
-// absent always: the contingency is not special to zero quotes, it applies
-// wherever the rate and total orderings disagree, including the continuous
-// case this policy exists for. A fold that refuses every interesting field is
-// not fail-closed, it is not a fold.
+// THE ARGUMENT THAT SETTLED IT IS SYMMETRY WITH THE AUTHORITY THIS MODULE
+// CONSUMES. product.fabric.supply faced the same choice and made the opposite
+// call to the one this module first made: its own header enumerates what
+// selection would need -- availability interval, the supplier's own tariff,
+// paid-through commitment state, transition costs, and the alternative uses
+// that give an opportunity cost its value -- and concludes that the fold "is
+// honest as a screen and would be a lie as a selector". It stayed a screen. A
+// demand-side fold that ships a selector on the SAME missing fact is not
+// entitled to a different answer.
 //
-// What IS derivable from what the field already carries is whether the question
-// even arises: preferring the rate costs total margin exactly when some
-// candidate's margin strictly exceeds the winner's. That is computed here, from
-// the candidates, with no external fact and no caller input. When it is empty
-// the two orderings agree and no opportunity-cost fact could change the winner
-// -- the verdict is unconditional. When it is not, the verdict names precisely
-// who would have won under total margin, so a consumer sees a contingent
-// decision as contingent and knows what the alternative was.
+// AND MY OWN COUNTER-ARGUMENT WAS FACTUALLY WRONG, which is what unblocked
+// this. I argued that refusing on an absent opportunity cost refuses ALWAYS,
+// because the fact is absent always. The fact is absent always; it only MATTERS
+// when the two orderings disagree, and the detector built for the annotation
+// decides exactly that. Measured on this module's own witnesses: the continuous
+// flagship case -- 110 over 90 seconds against 100 over 300 -- has no candidate
+// with a greater total, so it is UNCONTESTED and still selects. The refusal is
+// narrow by construction, not total.
 //
-// This does not make the choice right; it stops the choice from being invisible,
-// which is what the objection was actually about. NEXT-RUNG TRIGGER is
-// unchanged and is the supply lane's opportunity-cost carrier: when it lands,
-// this field becomes the INPUT to deciding between the two orderings rather
-// than a report that they disagreed.
-type OrderingStanding<P>
-  = OrderingUncontested
-  | OrderingForgoesGreaterTotalMargin { outbid_on_total: List<FabricIdentity<P, DemandKey>> }
-
+// SO THE CONTINGENT VERDICT NOW HAS NO SPELLING. DemandSelected carries no
+// standing field, because it can only be issued when no candidate would have
+// won on totals; the contingent case is a typed refusal naming both answers.
+// That is construction over validation: a consumer cannot ignore an annotation
+// that does not exist.
+//
+// WHAT THE REFUSAL BUYS BEYOND HONESTY, and it is the part that gets the gap
+// closed. A default zeroes the deficit's frequency by construction -- the fold
+// always answers, so nobody counts how often the missing carrier changed the
+// outcome, and it never ranks for building. A typed refusal naming the demands
+// makes that frequency observable, which is what turns "we should model
+// opportunity cost" into a number somebody can act on.
+//
+// NEXT-RUNG TRIGGER, unchanged and now load-bearing rather than decorative: the
+// supply lane's opportunity-cost carrier, including its no-feasible-alternative
+// and UNREAD arms. When it lands, this refusal becomes a decision -- resell the
+// remainder and prefer the rate, or let it lapse and prefer the total -- and
+// the arm retires into an answer rather than being deleted.
 fn candidates_with_greater_total_margin<P>(
   winner: AdmittedDemand<P>,
   field: List<AdmittedDemand<P>>,
@@ -590,17 +606,6 @@ fn candidates_with_greater_total_margin<P>(
     |> filter(c => money_amount_micro_count(m: c.surplus)
                      > money_amount_micro_count(m: winner.surplus))
     |> map(c => admitted_identity(a: c))
-}
-
-fn ordering_standing<P>(
-  winner: AdmittedDemand<P>,
-  field: List<AdmittedDemand<P>>,
-) -> OrderingStanding<P> {
-  match candidates_with_greater_total_margin(winner: winner, field: field) {
-    Empty {} => OrderingUncontested
-    Cons { head: h, tail: t } =>
-      OrderingForgoesGreaterTotalMargin { outbid_on_total: concat([h], t) }
-  }
 }
 
 // THE SELECTION CARRIES THE BASIS OF THE WHOLE FIELD, NOT OF ITS WINNER.
@@ -621,11 +626,7 @@ fn ordering_standing<P>(
 // only place a later reader looks.
 type ContentionOutcome<P>
   = NoAdmissibleDemand
-  | DemandSelected {
-      winner: AdmittedDemand<P>,
-      basis: OccupancyBasis,
-      standing: OrderingStanding<P>,
-    }
+  | DemandSelected { winner: AdmittedDemand<P>, basis: OccupancyBasis }
   | ContentionRefused { refusal: ContentionRefusal<P> }
 
 // The fold is the lattice's own meet over the field, seeded at TOP. An empty
@@ -693,10 +694,16 @@ fn select_from_field<P>(field: List<AdmittedDemand<P>>) -> ContentionOutcome<P> 
           },
         }
       } else {
-        DemandSelected {
-          winner: leader,
-          basis: field_occupancy_basis(field: field),
-          standing: ordering_standing(winner: leader, field: field),
+        match candidates_with_greater_total_margin(winner: leader, field: field) {
+          Cons { head: h, tail: t } =>
+            ContentionRefused {
+              refusal: OrderingContingentOnUnreadOpportunityCost {
+                leads_on_rate: admitted_identity(a: leader),
+                outbid_on_total: concat([h], t),
+              },
+            }
+          Empty {} =>
+            DemandSelected { winner: leader, basis: field_occupancy_basis(field: field) }
         }
       }
     }

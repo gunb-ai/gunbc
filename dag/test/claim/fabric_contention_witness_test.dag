@@ -37,10 +37,9 @@ import product.fabric.contention {
   ContentionOutcome, NoAdmissibleDemand, DemandSelected, ContentionRefused,
   OccupancyBasis, MeasuredOccupancy, ProjectedOccupancy,
   occupancy_basis_meet, occupancy_basis_bounded_lattice,
-  OrderingStanding, OrderingUncontested, OrderingForgoesGreaterTotalMargin,
   admitted_occupancy_basis,
   ContentionRefusal, DemandsIndistinguishable, DuplicateCandidateIdentity,
-  CandidatesJudgedAgainstDifferentOffers,
+  CandidatesJudgedAgainstDifferentOffers, OrderingContingentOnUnreadOpportunityCost,
   admit_demand_for_offer, select_demand_for_offer,
   admitted_surplus, admitted_billed_occupancy, admitted_identity,
 }
@@ -135,7 +134,7 @@ fn id_key(i: FabricIdentity<NonEmptyStr, DemandKey>) -> NonEmptyStr {
 
 fn winner_key(o: ContentionOutcome<NonEmptyStr>) -> NonEmptyStr {
   match o {
-    DemandSelected { winner: w, basis: _, standing: _ } => id_key(i: admitted_identity(a: w))
+    DemandSelected { winner: w, basis: _ } => id_key(i: admitted_identity(a: w))
     NoAdmissibleDemand => "none" as NonEmptyStr
     ContentionRefused { refusal: _ } => "refused" as NonEmptyStr
   }
@@ -238,6 +237,13 @@ test fn an_hourly_quantum_gives_both_bidders_the_same_billed_occupancy() -> Bool
 // Cross-multiplied, the comparison is 110*300 = 33000 against 200*90 = 18000,
 // exactly and without rounding.
 //
+// SINCE THE CONTINGENT CASE NOW REFUSES, THE COMPARATOR'S ANSWER IS READ OFF
+// THE REFUSAL rather than off a winner -- and it is still the discriminating
+// evidence, because the refusal names WHICH candidate leads on rate. A
+// comparator reverted to total margin would name demand-rich-slow there and
+// this goes red exactly as before. The rate machinery did not become
+// unobservable when it stopped selecting here; it moved into the payload.
+//
 // MEASURED, because an earlier revision of this note asserted the wrong number
 // and the measurement is the only reason anyone knows: forcing the comparator
 // back to total margin and re-running the suite turns TWO witnesses red, not
@@ -262,8 +268,18 @@ test fn a_larger_total_margin_loses_to_a_larger_margin_per_billed_second() -> Bo
         Cons { head: r, tail: _ } =>
           money_amount_micro_count(m: admitted_surplus(a: q)) == 110
             && money_amount_micro_count(m: admitted_surplus(a: r)) == 200
-            && winner_key(o: contend(
-                 offer: continuous_offer(), candidates: concat(quick, slow))) == "demand-short"
+            && match contend(offer: continuous_offer(), candidates: concat(quick, slow)) {
+                 ContentionRefused { refusal: rf } =>
+                   match rf {
+                     OrderingContingentOnUnreadOpportunityCost { leads_on_rate: lr, outbid_on_total: _ } =>
+                       id_key(i: lr) == "demand-short"
+                     DemandsIndistinguishable { tied: _ } => false
+                     DuplicateCandidateIdentity { duplicated: _ } => false
+                     CandidatesJudgedAgainstDifferentOffers { contended: _, mismatched: _ } => false
+                   }
+                 DemandSelected { winner: _, basis: _ } => false
+                 NoAdmissibleDemand => false
+               }
         Empty {} => false
       }
     Empty {} => false
@@ -299,12 +315,22 @@ test fn the_same_pair_flips_back_when_the_billed_hour_is_indivisible() -> Bool {
 // every candidate: the margin becomes the bid itself, and a comparator over
 // TOTAL margin would degenerate to whoever posted the larger number regardless
 // of how long they would hold the machine. It does not degenerate here, because
-// the denominator survives -- a free offer is still ranked by bid per second of
-// occupancy, which is the right question about capacity nobody is paying for.
+// the denominator survives -- the occupancy assertions below are what pin that,
+// since a free offer with a collapsed denominator would rank on the bid alone.
 //
-// Discriminating on exactly that: the slow bidder posts 500 against the quick
-// bidder's 200 and still loses, because it would hold a free machine for 300
-// seconds to earn what the other earns in 90.
+// THIS WITNESS ABSORBED A SECOND ONE, and the merge is recorded rather than
+// left to be noticed. a_zero_quote_ranks_by_bid_rate_and_the_larger_total_bid_loses
+// asserted the same field: same offer, same two demands, the same margins and
+// occupancies, and the same rate leader. Two witnesses over one field is the
+// redundancy DESIGN section 2 prices, so its content lives here -- both margins,
+// both billed occupancies, and the rate leader -- rather than in a near-copy.
+// Nothing it asserted was dropped.
+//
+// WHAT IT ASSERTS NOW IS A REFUSAL, because the slow bidder's 500 margin is
+// strictly larger than the quick bidder's 200 on an offer that costs nothing to
+// run: the two orderings disagree, so which should win depends on whether the
+// freed remainder can be resold. The rate comparator is still the discriminating
+// evidence, read off leads_on_rate rather than off a winner.
 fn paid_through_offer() -> SupplierOffer<NonEmptyStr> {
   c_offer(
     key: "offer-paid-through",
@@ -324,53 +350,20 @@ test fn a_free_offer_is_still_ranked_by_bid_per_second_not_by_bid() -> Bool {
         Cons { head: r, tail: _ } =>
           money_amount_micro_count(m: admitted_surplus(a: q)) == 200
             && money_amount_micro_count(m: admitted_surplus(a: r)) == 500
-            && winner_key(o: contend(
-                 offer: paid_through_offer(), candidates: concat(quick, slow))) == "demand-short"
-        Empty {} => false
-      }
-    Empty {} => false
-  }
-}
-
-// WHAT THE ZERO-QUOTE ORDERING ASSERTS, AND THE CONTINGENCY IT RECORDS.
-//
-// The paid-through witness above shows the rate comparator survives a free
-// offer. This one pins the sharper fact: on that offer the two candidate
-// comparators GENUINELY DISAGREE, and the one this policy uses takes the
-// smaller total. The slow bidder's margin is 500 against the quick bidder's 200
-// -- strictly more cash on an offer that costs nothing to run -- and it still
-// loses, because 200/90 beats 500/300 (cross-multiplied, 60000 against 45000).
-//
-// Both halves are asserted deliberately. Winner alone would be satisfied by a
-// comparator that happened to agree; the margins alone would not say which won.
-// Together they record that this is a CHOICE the policy is making rather than
-// an arithmetic accident.
-//
-// AND THE CHOICE IS CONTINGENT ON A FACT THIS MODEL CANNOT STATE. Preferring
-// the rate is right when the freed remainder can be sold to another demand, and
-// wrong when the paid-through hour would otherwise lapse idle -- if nothing else
-// can use it, no alternative use is displaced and the only question is which
-// single demand earns most before it expires, which is total margin. That is an
-// opportunity cost, it needs the feasible-alternative-use carrier supply.dag's
-// own header enumerates among the inputs selection lacks, and until it exists
-// this witness records the open question rather than settling it. When the
-// carrier lands, this becomes the discriminating pair for deciding the
-// zero-quote arm from evidence instead of defaulting it.
-test fn a_zero_quote_ranks_by_bid_rate_and_the_larger_total_bid_loses() -> Bool {
-  let quick = admitted_or_none(a: admit_demand_for_offer(
-    demand: short_demand(), offer: paid_through_offer(), duration: short_duration()))
-  let slow = admitted_or_none(a: admit_demand_for_offer(
-    demand: rich_slow_demand(), offer: paid_through_offer(), duration: long_duration()))
-  match concat(quick, slow) {
-    Cons { head: q, tail: rest } =>
-      match rest {
-        Cons { head: r, tail: _ } =>
-          money_amount_micro_count(m: admitted_surplus(a: r))
-            > money_amount_micro_count(m: admitted_surplus(a: q))
             && second_count(s: admitted_billed_occupancy(a: q)) == 90
             && second_count(s: admitted_billed_occupancy(a: r)) == 300
-            && winner_key(o: contend(
-                 offer: paid_through_offer(), candidates: concat(quick, slow))) == "demand-short"
+            && match contend(offer: paid_through_offer(), candidates: concat(quick, slow)) {
+                 ContentionRefused { refusal: rf } =>
+                   match rf {
+                     OrderingContingentOnUnreadOpportunityCost { leads_on_rate: lr, outbid_on_total: _ } =>
+                       id_key(i: lr) == "demand-short"
+                     DemandsIndistinguishable { tied: _ } => false
+                     DuplicateCandidateIdentity { duplicated: _ } => false
+                     CandidatesJudgedAgainstDifferentOffers { contended: _, mismatched: _ } => false
+                   }
+                 DemandSelected { winner: _, basis: _ } => false
+                 NoAdmissibleDemand => false
+               }
         Empty {} => false
       }
     Empty {} => false
@@ -409,8 +402,9 @@ test fn the_same_demand_admitted_twice_refuses_rather_than_winning_against_itsel
         DuplicateCandidateIdentity { duplicated: d } => (d |> count) == 2
         DemandsIndistinguishable { tied: _ } => false
         CandidatesJudgedAgainstDifferentOffers { contended: _, mismatched: _ } => false
+        OrderingContingentOnUnreadOpportunityCost { leads_on_rate: _, outbid_on_total: _ } => false
       }
-    DemandSelected { winner: _, basis: _, standing: _ } => false
+    DemandSelected { winner: _, basis: _ } => false
     NoAdmissibleDemand => false
   }
 }
@@ -450,8 +444,9 @@ test fn two_indistinguishable_bidders_refuse_instead_of_one_winning_silently() -
         DemandsIndistinguishable { tied: t } => (t |> count) == 2
         DuplicateCandidateIdentity { duplicated: _ } => false
         CandidatesJudgedAgainstDifferentOffers { contended: _, mismatched: _ } => false
+        OrderingContingentOnUnreadOpportunityCost { leads_on_rate: _, outbid_on_total: _ } => false
       }
-    DemandSelected { winner: _, basis: _, standing: _ } => false
+    DemandSelected { winner: _, basis: _ } => false
     NoAdmissibleDemand => false
   }
 }
@@ -525,8 +520,9 @@ test fn a_field_judged_against_two_offers_refuses_rather_than_comparing() -> Boo
         CandidatesJudgedAgainstDifferentOffers { contended: _, mismatched: m } => (m |> count) == 1
         DemandsIndistinguishable { tied: _ } => false
         DuplicateCandidateIdentity { duplicated: _ } => false
+        OrderingContingentOnUnreadOpportunityCost { leads_on_rate: _, outbid_on_total: _ } => false
       }
-    DemandSelected { winner: _, basis: _, standing: _ } => false
+    DemandSelected { winner: _, basis: _ } => false
     NoAdmissibleDemand => false
   }
 }
@@ -538,7 +534,7 @@ test fn a_field_judged_against_two_offers_refuses_rather_than_comparing() -> Boo
 test fn an_empty_field_reports_no_admissible_demand_rather_than_refusing() -> Bool {
   match contend(offer: continuous_offer(), candidates: []) {
     NoAdmissibleDemand => true
-    DemandSelected { winner: _, basis: _, standing: _ } => false
+    DemandSelected { winner: _, basis: _ } => false
     ContentionRefused { refusal: _ } => false
   }
 }
@@ -621,7 +617,7 @@ test fn a_selection_decided_against_a_projected_rival_reports_a_projected_basis(
     demand: long_demand(), offer: continuous_offer(),
     duration: EstimatedGrantDuration { seconds: second(count: 300) }))
   match contend(offer: continuous_offer(), candidates: concat(exact_winner, estimated_rival)) {
-    DemandSelected { winner: w, basis: b, standing: _ } =>
+    DemandSelected { winner: w, basis: b } =>
       id_key(i: admitted_identity(a: w)) == "demand-short"
         && !basis_is_projected(b: admitted_occupancy_basis(a: w))
         && basis_is_projected(b: b)
@@ -634,63 +630,69 @@ test fn a_selection_decided_against_a_projected_rival_reports_a_projected_basis(
 // satisfied by a fold that answers ProjectedOccupancy for every field.
 test fn a_field_of_exact_durations_reports_a_measured_basis() -> Bool {
   match contend(offer: continuous_offer(), candidates: field_against(offer: continuous_offer())) {
-    DemandSelected { winner: _, basis: b, standing: _ } => !basis_is_projected(b: b)
+    DemandSelected { winner: _, basis: b } => !basis_is_projected(b: b)
     NoAdmissibleDemand => false
     ContentionRefused { refusal: _ } => false
   }
 }
 
-// THE CONTINGENCY IS REPORTED, NOT SILENT, AND THIS IS THE PAIR THAT SHOWS IT
-// DISCRIMINATES.
+// THE CONTINGENT ORDERING REFUSES, AND THE UNCONTESTED ONE STILL SELECTS.
+// THAT PAIR IS THE WHOLE CLAIM.
 //
-// Review 56501 objected that defaulting to the rate while acknowledging the
-// deciding fact is absent produces a possibly-wrong winner with no signal. The
-// verdict now says when preferring the rate cost total margin, computed from
-// the candidates rather than from any caller-supplied fact.
+// An earlier cut of these two witnesses asserted that a contingent field
+// SELECTS and annotates the verdict. Review 56522 objected that reporting
+// uncertainty is not fail-closed, and the arm is now a refusal, so the second
+// witness asserts the opposite of what it once did. It is rewritten rather than
+// deleted because the pair is what makes either half informative.
 //
-// UNCONTESTED is the half that makes the other half mean something. On
-// continuous capacity the short job wins on BOTH orderings -- 110 against 100
-// on totals, 110/90 against 100/300 on rate -- so no opportunity-cost fact
-// could change the winner and the verdict is unconditional. A carrier that
-// reported every selection as contingent would be permanently green in the
-// unhelpful direction and would tell a consumer nothing.
-test fn a_winner_that_also_leads_on_total_margin_reports_an_uncontested_ordering() -> Bool {
+// UNCONTESTED STILL SELECTS, and this half refutes the objection I raised
+// against refusing at all -- that it would refuse everything, since the
+// opportunity-cost fact is absent always. It is absent always and it only
+// MATTERS when the orderings disagree. Here they agree: on continuous capacity
+// the short job leads on rate (110/90 against 100/300) AND on total (110
+// against 100), so no opportunity-cost fact could change the winner and the
+// fold answers unconditionally. If refusal ever widened to this case, the
+// policy would have stopped being able to decide anything.
+test fn a_winner_that_also_leads_on_total_margin_is_selected_unconditionally() -> Bool {
   match contend(offer: continuous_offer(), candidates: field_against(offer: continuous_offer())) {
-    DemandSelected { winner: _, basis: _, standing: st } =>
-      match st {
-        OrderingUncontested => true
-        OrderingForgoesGreaterTotalMargin { outbid_on_total: _ } => false
-      }
+    DemandSelected { winner: w, basis: _ } => id_key(i: admitted_identity(a: w)) == "demand-short"
     NoAdmissibleDemand => false
     ContentionRefused { refusal: _ } => false
   }
 }
 
-// AND THE CONTESTED HALF NAMES WHO WOULD HAVE WON ON TOTALS. The quick bidder
-// takes the free offer on 200/90 against 500/300 while the slow bidder's 500
-// margin is strictly larger, so the decision turns on whether the freed
-// remainder can be resold -- a fact nothing in this model states. The verdict
-// says so and names the alternative, which is what a consumer needs to know
-// that a choice was made rather than a defect suffered.
-test fn a_winner_that_forgoes_a_larger_total_names_who_would_have_won_on_totals() -> Bool {
+// AND THE CONTESTED HALF REFUSES, NAMING BOTH ANSWERS. On the free offer the
+// quick bidder leads on rate (200/90 against 500/300) while the slow bidder's
+// 500 margin is strictly larger, so which one should win depends on whether the
+// freed remainder can be resold -- a fact nothing in this model states.
+//
+// The refusal names the rate leader AND who would have taken it on totals,
+// because a caller that can answer the missing question needs both candidates
+// to act on it; a bare "cannot decide" would make the caller re-derive the
+// field this fold already ranked. product.fabric.supply made the same call for
+// the same reason, declining to become a selector on these missing inputs and
+// saying so in its own header.
+test fn a_contingent_ordering_refuses_and_names_both_candidates() -> Bool {
   let quick = admitted_or_none(a: admit_demand_for_offer(
     demand: short_demand(), offer: paid_through_offer(), duration: short_duration()))
   let slow = admitted_or_none(a: admit_demand_for_offer(
     demand: rich_slow_demand(), offer: paid_through_offer(), duration: long_duration()))
   match contend(offer: paid_through_offer(), candidates: concat(quick, slow)) {
-    DemandSelected { winner: w, basis: _, standing: st } =>
-      id_key(i: admitted_identity(a: w)) == "demand-short"
-        && match st {
-             OrderingForgoesGreaterTotalMargin { outbid_on_total: o } =>
-               (o |> count) == 1
-                 && match o {
-                      Cons { head: h, tail: _ } => id_key(i: h) == "demand-rich-slow"
-                      Empty {} => false
-                    }
-             OrderingUncontested => false
-           }
+    ContentionRefused { refusal: r } =>
+      match r {
+        OrderingContingentOnUnreadOpportunityCost { leads_on_rate: lr, outbid_on_total: o } =>
+          id_key(i: lr) == "demand-short"
+            && (o |> count) == 1
+            && match o {
+                 Cons { head: h, tail: _ } => id_key(i: h) == "demand-rich-slow"
+                 Empty {} => false
+               }
+        DemandsIndistinguishable { tied: _ } => false
+        DuplicateCandidateIdentity { duplicated: _ } => false
+        CandidatesJudgedAgainstDifferentOffers { contended: _, mismatched: _ } => false
+      }
+    DemandSelected { winner: _, basis: _ } => false
     NoAdmissibleDemand => false
-    ContentionRefused { refusal: _ } => false
   }
 }
 
