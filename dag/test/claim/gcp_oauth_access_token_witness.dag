@@ -1,6 +1,28 @@
 module test.claim.gcp_oauth_access_token_witness
 
 
+// THIS WITNESS EXECUTES AGAINST `gunbc.auth.credentials` AND RECORDED NO EDGE TO IT.
+// It reached `gcp_oauth_access_token` and both leaf patterns through the flat whole-tree
+// namespace, so the module was depended-upon-but-unimported -- a live consumer, not a prose
+// citation, with nothing in the import graph to show for it. That is the same accidental pool
+// coverage this change repairs in `gunbc.tailscale_acl_phase2_credential`; a witness is the worse
+// place for it, because the thing with no recorded edge is the thing asserting the behaviour.
+//
+// ADDING THE EDGE CANNOT CHANGE WHICH DECLARATION BINDS, and that is measured rather than assumed:
+// each of the four names below is declared in exactly one module across `dag/` and `src/v2`, so the
+// candidate set is a singleton and there is no second arm for an import to reorder. This says
+// nothing about bare-name resolution where a name IS multiply declared; that question does not
+// arise here.
+import gunbc.auth.credentials {
+  gcp_oauth_access_token,
+  gcp_oauth_access_token_via_gcloud,
+  gcp_oauth_access_token_via_adc_refresh,
+  GcpAdcTokenOutcome,
+  GcpAdcTokenReady,
+  GcpAdcReadRefused,
+  GcpAdcDocumentRefused,
+}
+
 data witness_adc_path: std.types.FilePath = "/tmp/gunbc_gcp_oauth_witness_adc.json"
 
 data null_adc_path: std.types.FilePath? = none
