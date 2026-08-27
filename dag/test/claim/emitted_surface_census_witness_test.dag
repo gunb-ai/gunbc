@@ -21,7 +21,8 @@ fn observation(entry: v2.std.node.Symbol, surface: v2.std.node.Symbol) -> v2.com
     source_module: ^v2_std_node,
     member_digest: surface,
     linkage_surface_digest: surface,
-    instrument_vintage: ^fixture
+    instrument_vintage: ^fixture,
+    members: []
   }
 }
 

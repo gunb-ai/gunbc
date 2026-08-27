@@ -44,7 +44,24 @@ type EmittedMemberIdentity {
   member_digest: Symbol
   linkage_surface_digest: Symbol
   instrument_vintage: Symbol
+  members: List<Symbol>
 }
+
+// WHY THE ROW CARRIES BOTH THE DIGEST AND THE MEMBERS, AND WHY THE EMITTER PUBLISHES ONLY THE
+// LATTER.
+//
+// The digest is the comparison key; the members are the evidence. A digest alone is lossy in the
+// one direction that matters: two differing surfaces collide to "differs" with no way back, so a
+// refusal can name the MODULE and never the MEMBER. On the first live specimen the whole finding
+// was WHICH member differed -- a foreign reexport of a name the module itself declares as a
+// coproduct variant -- and a digest-only carrier would have reported that the module varies and
+// stopped there, leaving the fabrication underneath it undiscovered.
+//
+// The emitter must publish the member SET rather than a digest of it for a separate reason: a
+// digest published upstream would make the emitter the authority on the digest ALGORITHM, and this
+// census would become a consumer that can only compare what another party already decided was
+// comparable. Declaring what was decided is the emitter's job; deciding what counts as the same
+// surface is this carrier's.
 
 // The OBSERVED union of exports across a sample. This is a migration candidate and nothing more.
 //
