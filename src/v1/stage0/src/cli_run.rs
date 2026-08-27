@@ -32611,24 +32611,19 @@ fn emit_module_binding_qualified_name(module_path: &str) -> Result<String, Strin
     ))
 }
 
-/// The `OccurrenceId` construction is FULLY QUALIFIED deliberately, and the name is
-/// correspondingly absent from this manifest's `v2.std.node` import list.
+/// THE FIELD THIS EMITS IS AN `OccurrenceId`, NOT A `NodeOccurrenceIdentity` ARM.
 ///
-/// `v2.std.node.OccurrenceId` is a compatibility alias of `std.occurrence_identity.OccurrenceId`
-/// (#7352). Both modules sit in this overlay's compiled pool, so a BARE `OccurrenceId` in a
-/// record-literal position resolves to two candidates and the indexer refuses:
-/// "ambiguous reference 'OccurrenceId' ... qualify by containment path, alias, or rename".
-/// A bare reference in a TYPE position still resolves (v2/std/provenance.dag, v2/std/dependents.dag) —
-/// only construction sites need the qualification, which is why this reads as an inconsistency.
+/// `span_index_record` declares `id: OccurrenceId`, and this generator previously wrapped the
+/// value in `MintedOccurrence { id: ... }` and imported that constructor from `v2.std.node` --
+/// a payload-for-carrier confusion of exactly the class
+/// `dag/test/claim/coproduct_payload_soundness_witness_test.dag` records, pointing the other way.
+/// It stayed invisible because this file is generated: whole-tree compile-clean never sees it,
+/// and the committed manifest stub carries no rows, so the wrapped form was never parsed.
+/// Repaired with the v2 `NodeOccurrenceId` facade cut, which deleted the constructor it named.
 ///
-/// #7352 applied exactly this qualification to the one COMMITTED construction site
-/// (src/v2/test/claim/manual/bind_demand_driven_eval_test.dag) and missed this generator.
-/// The gap stayed invisible because this file is generated: whole-tree compile-clean never
-/// sees it, and its only executing consumer is the module-binding supply gate, which moved
-/// off per-PR CI onto the falsifier cadence — where it then failed for four days.
-///
-/// Dissolve-on: the `node_occurrence_id_v2_facade_dissolve_on` migration deletes the
-/// `v2.std.node` alias; the second candidate disappears and the qualification is free to drop.
+/// The construction stays FULLY QUALIFIED, and the name is correspondingly absent from this
+/// manifest's import list: a bare `OccurrenceId` in a record-literal position has resolved
+/// ambiguously in this overlay's compiled pool before (#7352), and qualifying costs nothing.
 fn emit_module_binding_span_index(span: &SourceSpan, file_symbol: &str) -> String {
     let start = span.start.max(0);
     let end = span.end.max(start);
