@@ -2075,9 +2075,7 @@ pub fn eval_call_memo_frame_exit(ctx: &InterpContext) {
 #[derive(Default, Clone)]
 pub struct MutationCounters {
     pub map_insert_calls: u64,
-    pub map_insert_entries_copied: u64,
     pub map_merge_calls: u64,
-    pub map_merge_entries_copied: u64,
     pub list_push_calls: u64,
     pub list_push_items_copied: u64,
     pub list_concat_calls: u64,
@@ -2090,17 +2088,39 @@ pub struct MutationCounters {
 
 impl fmt::Display for MutationCounters {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let rows: [(&str, u64, u64); 6] = [
-            (
-                "map_insert",
-                self.map_insert_calls,
-                self.map_insert_entries_copied,
-            ),
-            (
-                "map_merge",
-                self.map_merge_calls,
-                self.map_merge_entries_copied,
-            ),
+        // THE MAP OPERATIONS REPORT CALLS AND NOTHING ELSE, AND THE REASON IS THAT
+        // NOTHING EVER INCREMENTED THE OTHER FIELD -- not that the quantity is
+        // undefined. The two fields that used to sit here,
+        // map_insert_entries_copied and map_merge_entries_copied, were declared and
+        // formatted and incremented NOWHERE, so this row rendered a literal 0 with an
+        // `avg 0.0/call` beside it on every run. That is worse than reporting
+        // nothing: a permanently-green number reads as a measurement, and it was read
+        // as one in a cost dispatch that proposed settling a live candidate on its
+        // growth.
+        //
+        // THE ENTRIES-COPIED QUANTITY IS WELL DEFINED HERE, and an earlier revision of
+        // this annotation wrongly said it was not. `rc_map_merge` clones every overlay
+        // entry -- `k.clone()` and `v.clone()` once each, per entry -- so the number is
+        // the overlay's size, and for map_insert it is 1. The persistent HAMT makes the
+        // BASE cheap to share; it does not make the overlay free. Recording the wrong
+        // reason would have foreclosed an open question: "could not be wired" and "was
+        // never wired" differ, and only the second is true. Anyone wanting the number
+        // should know it is linear in the overlay and already derivable from the
+        // inputs, which is a reason not to bother rather than a reason it cannot exist.
+        //
+        // The map rows stay calls-only because fabricating a 0 for a column nobody
+        // computes is the defect above, not because no honest value exists.
+        //
+        // The list and set counters below keep their column: those ops do per-element
+        // work and their increments count it.
+        let calls_only: [(&str, u64); 2] = [
+            ("map_insert", self.map_insert_calls),
+            ("map_merge", self.map_merge_calls),
+        ];
+        for (name, calls) in calls_only {
+            writeln!(f, "  {:<12} {:>12} calls", name, calls)?;
+        }
+        let rows: [(&str, u64, u64); 4] = [
             (
                 "list_push",
                 self.list_push_calls,
