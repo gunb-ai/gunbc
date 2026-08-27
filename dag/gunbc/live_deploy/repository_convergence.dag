@@ -436,6 +436,35 @@ fn observe_repository_state(repo: String) -> RepositoryState {
 // mechanism can give: the CAS itself already refused, nothing was written, and the operation is
 // refusing either way. What the arm decides is which remedy to name, and for a ref that ended where
 // it started, "retry" is the correct one.
+// THE DECISION IS SEPARATED FROM THE OBSERVATION so it can be witnessed. Reading the ref is a host
+// effect and cannot execute in the hermetic fold; deciding WHICH refusal a failed swap represents is
+// a total function of what was read. Fusing them would have left this distinction -- added because a
+// review found the arms conflated -- with no executing evidence of its own, which is the
+// specification-without-execution failure one level in from the defect it repairs.
+//
+// THE OBSERVATION IS OPTIONAL BECAUSE THE READ CAN FAIL, and a failed read is not evidence of a
+// concurrent writer. Absent means "we could not establish what the ref holds", which is a different
+// state from "it holds what we expected" -- both answer BaseRefUpdateRefused, folded deliberately at
+// the point where the remedy is identical and never in the carrier.
+fn base_ref_refusal_from_observation(
+  base_ref: String,
+  expected_old: String,
+  observed: String?,
+  exit_code: Int,
+  stderr: String,
+) -> RepositoryConvergenceOutcome {
+  match observed {
+    Absent =>
+      ConvergenceBaseRefUpdateRefused { base_ref: base_ref, exit_code: exit_code, stderr: stderr }
+    Present { value: now } =>
+      if now == expected_old {
+        ConvergenceBaseRefUpdateRefused { base_ref: base_ref, exit_code: exit_code, stderr: stderr }
+      } else {
+        ConvergenceBaseRefMoved { expected: expected_old, observed: now }
+      }
+  }
+}
+
 fn base_ref_update_refusal_cause(
   repo: String,
   base_ref: String,
@@ -444,16 +473,13 @@ fn base_ref_update_refusal_cause(
   stderr: String,
 ) -> RepositoryConvergenceOutcome {
   let seen = git.Core.RevParseInRepo(repo: repo as FilePath, target: base_ref as GitRef)
-  if seen.exit_code != 0 {
-    ConvergenceBaseRefUpdateRefused { base_ref: base_ref, exit_code: exit_code, stderr: stderr }
-  } else {
-    let now = trim(s: seen.revision)
-    if now == expected_old {
-      ConvergenceBaseRefUpdateRefused { base_ref: base_ref, exit_code: exit_code, stderr: stderr }
-    } else {
-      ConvergenceBaseRefMoved { expected: expected_old, observed: now }
-    }
-  }
+  base_ref_refusal_from_observation(
+    base_ref: base_ref,
+    expected_old: expected_old,
+    observed: if seen.exit_code != 0 { none } else { Present { value: trim(s: seen.revision) } },
+    exit_code: exit_code,
+    stderr: stderr,
+  )
 }
 
 // THE ORDER OF EFFECTS IS THE SAFETY PROPERTY, and each step is refused rather than continued past.

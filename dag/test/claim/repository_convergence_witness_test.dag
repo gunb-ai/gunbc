@@ -14,6 +14,8 @@ import gunbc.live_deploy.repository_convergence {
   ConvergencePreStateUnobservable, ConvergencePostStateUnobservable,
   ConvergenceRefDisappeared, ConvergenceWorktreeDisappeared, ConvergenceWorktreeRebound,
   ConvergenceHeadNotAtCandidate, ConvergenceHeadMovedWithoutReflog,
+  ConvergenceBaseRefMoved, ConvergenceBaseRefUpdateRefused,
+  base_ref_refusal_from_observation,
   repository_convergence_verdict,
   repository_convergence_converged,
 }
@@ -275,3 +277,53 @@ test fn a_head_short_of_the_candidate_refuses() -> Bool {
   }
 }
 
+// A FAILED COMPARE-AND-SWAP IS NOT SELF-DESCRIBING, and these three exist because a review
+// (`review 56941`) found the arms conflated: any nonzero `update-ref` exit was reported as
+// "the base ref moved", so a permissions failure told the operator to re-observe and retry. The
+// remedies differ, so the arms must. Asserted over the DECISION rather than the wet path, because
+// reading a ref is a host effect that cannot execute in the hermetic fold -- and a distinction added
+// to fix a conflation, left with no executing evidence, would be the same failure one level in.
+test fn a_ref_that_left_the_expected_value_reads_as_a_concurrent_move() -> Bool {
+  match base_ref_refusal_from_observation(
+    base_ref: base_ref,
+    expected_old: old_sha,
+    observed: Present { value: new_sha },
+    exit_code: 1,
+    stderr: "cannot lock ref",
+  ) {
+    ConvergenceBaseRefMoved { expected: e, observed: o } => e == old_sha && o == new_sha
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING PAIR. Same nonzero exit, same stderr, and the ref still holds what we expected
+// -- so whatever refused was not a concurrent writer. Fuse the arms and this returns BaseRefMoved,
+// which is the exact defect the split repairs; without this row the split would be untested.
+test fn a_ref_still_at_the_expected_value_is_not_a_concurrent_move() -> Bool {
+  match base_ref_refusal_from_observation(
+    base_ref: base_ref,
+    expected_old: old_sha,
+    observed: Present { value: old_sha },
+    exit_code: 1,
+    stderr: "cannot lock ref: permission denied",
+  ) {
+    ConvergenceBaseRefUpdateRefused { base_ref: r, exit_code: x, stderr: e } =>
+      r == base_ref && x == 1 && string_contains(s: e, pattern: "permission denied")
+    _ => false
+  }
+}
+
+// AN UNREADABLE REF IS NOT EVIDENCE OF ANYTHING. Reporting a move here would be the
+// empty-observation narrow -- a read that could not answer, rendered as the answer.
+test fn a_ref_that_cannot_be_read_is_not_reported_as_moved() -> Bool {
+  match base_ref_refusal_from_observation(
+    base_ref: base_ref,
+    expected_old: old_sha,
+    observed: Absent,
+    exit_code: 128,
+    stderr: "not a git repository",
+  ) {
+    ConvergenceBaseRefUpdateRefused { base_ref: _, exit_code: x, stderr: _ } => x == 128
+    _ => false
+  }
+}
