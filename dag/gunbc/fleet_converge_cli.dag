@@ -43,6 +43,13 @@ import gunbc.host_effect {
 import gunbc.host_effect_realize { host_effect_apply }
 import std.realization_reconcile { Converged, NotConverged }
 import product.placement_supply { HostIdentity }
+import gunbc.ci_runner_placement {
+  HostRunnerDeploymentRefusal,
+  HostRunnerDeploymentRefused, HostRunnerDeploymentDerived,
+  HostNotEnrolledInFleet,
+  runner_deployment_plan, runner_host_deployment_for,
+  host_deployment_refusal_text,
+}
 import gunbc.fleet_intent_network {
   operator_host_srv1,
   operator_host_srv2,
@@ -75,13 +82,57 @@ type ConvergeCliRefusalCause
   | SparkManagedAccessUnmeasured { host: String, dissolves_on: String }
   | ComputeInventoryAbsent { host: String }
   | KnobFrontier { reason: String }
+  | HostDeploymentRefused { host: String, cause: HostRunnerDeploymentRefusal }
+  | ConvergeTargetMissingForDerivedHost { host: String }
 
 fn converge_cli_unknown_host_reason(host: String) -> String {
   concat("gunbc converge: unknown fleet host identity ", host)
 }
 
+// AN ENROLLED HOST WHOSE DEPLOYMENT REFUSED IS NOT AN UNKNOWN HOST, and this module has already
+// split that exact confusion once -- the applicability note above says UnknownHost "now means only
+// an identity outside the fleet". When the runner deployment plan moved to per-host refusal, a host
+// like srv2 stopped appearing among the derived converge targets, and the Absent arm below would
+// have reported a known, enrolled, correctly-refused host as an unknown identity. The two states
+// have opposite remedies: UnknownHost sends a reader to check the spelling, while this one sends
+// them to the reservation that could not be established. The plan's own typed cause is carried
+// through rather than re-described here, so there is one authority for why the host refused.
+//
+// THE CARRIER HOLDS THE PLAN'S OWN TYPED REFUSAL, NOT A RENDERED STRING. An earlier revision stored
+// host_deployment_refusal_text's output here, which made this arm a second representation of a fact the plan
+// already owns: a new HostRunnerDeploymentRefusal variant would have been flattened into prose at
+// the point of capture, and nothing downstream could have discriminated it again. Rendering is
+// deferred to the message edge, so the refusal survives as a value for as long as it is a value.
+fn converge_cli_host_deployment_refused_reason(host: String, cause: HostRunnerDeploymentRefusal) -> String {
+  concat(concat(concat("gunbc converge: ", host), " is enrolled but its runner deployment refused, so no converge target exists for it — "), host_deployment_refusal_text(c: cause))
+}
+
+// A DERIVED HOST WITH NO CONVERGE TARGET IS AN INTERNAL INVARIANT BREAK, NOT A REFUSAL AND NOT AN
+// UNKNOWN HOST. The plan maps every fleet offer, so this arm should be unreachable; if a later
+// regression reaches it, it must not borrow either neighbour's vocabulary -- UnknownHost would deny
+// the subject exists and HostDeploymentRefused would claim the plan declined it on purpose, and
+// both send a reader somewhere the defect is not.
+fn converge_cli_converge_target_missing_reason(host: String) -> String {
+  concat(concat("gunbc converge: ", host), " was derived by the runner deployment plan but no converge target was built for it, which is a defect in the converge policy rather than a refusal of the host")
+}
+
 fn converge_cli_compute_inventory_absent_reason(host: String) -> String {
   concat("gunbc converge: host resolved by fleet converge policy but absent from compute inventory ", host)
+}
+
+// THE FLEET ROSTER DECIDES WHICH ABSENCE THIS IS. A host the plan never heard of refuses as
+// HostNotEnrolledInFleet and is genuinely unknown; any other refusal cause means the host was
+// considered and declined, which is a different fact with a different remedy.
+fn absent_converge_target_cause(host: String) -> ConvergeCliRefusalCause {
+  match runner_host_deployment_for(p: runner_deployment_plan(), host: host as HostIdentity) {
+    HostRunnerDeploymentRefused { refusal: r } =>
+      match r.cause {
+        HostNotEnrolledInFleet => UnknownHost { host: host }
+        _ => HostDeploymentRefused { host: host, cause: r.cause }
+      }
+    HostRunnerDeploymentDerived { deployment: _ } =>
+      ConvergeTargetMissingForDerivedHost { host: host }
+  }
 }
 
 fn converge_cli_refusal_message(cause: ConvergeCliRefusalCause) -> String {
@@ -92,6 +143,8 @@ fn converge_cli_refusal_message(cause: ConvergeCliRefusalCause) -> String {
     SparkManagedAccessUnmeasured { host: h, dissolves_on: trigger } => concat(concat(concat("gunbc converge: ", h), " is enrolled, but its managed automation principal has never been observed — refusing rather than assuming absent. Discharged by: "), trigger)
     ComputeInventoryAbsent { host: h } => converge_cli_compute_inventory_absent_reason(host: h)
     KnobFrontier { reason: why } => why
+    HostDeploymentRefused { host: h, cause: c } => converge_cli_host_deployment_refused_reason(host: h, cause: c)
+    ConvergeTargetMissingForDerivedHost { host: h } => converge_cli_converge_target_missing_reason(host: h)
   }
 }
 
@@ -825,7 +878,7 @@ fn converge_cli_run_host_knobs(host: String) -> ConvergeCliReceipt {
               applied: 0,
               drifted: 0,
               verdict: Absent,
-              reason: Present { value: UnknownHost { host: host } },
+              reason: Present { value: absent_converge_target_cause(host: host) },
             }
           }
       }

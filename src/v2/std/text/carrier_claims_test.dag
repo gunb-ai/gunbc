@@ -1,6 +1,7 @@
 module v2.test.std_text.carrier_claims
 
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup }
+import v2.std.algebra { HeadAbsent, HeadFound, length, list_head, skip }
 import v2.std.logic { Bool }
 import v2.std.text {
   Char,
@@ -11,7 +12,8 @@ import v2.std.text {
   host_string_text,
   host_string_text_value,
   string_head,
-  string_is_empty
+  string_is_empty,
+  string_split
 }
 
 import v2.std.verification {
@@ -71,4 +73,108 @@ test fn text_host_string_field_text_holds() -> Bool {
     CharFound { value } => text_char_eq(a: value, b: text_witness_char_b)
     CharAbsent => false
   }
+}
+
+data text_witness_char_d: Char = 3
+
+fn text_delimiter(c: Char) -> FreeSemigroup<Char> {
+  FreeSemigroup { head: c, tail: Empty }
+}
+
+fn text_pair(first: Char, second: Char) -> String {
+  Cons { head: first, tail: text_single(c: second) }
+}
+
+fn text_field_at(fields: FreeMonoid<String>, index: Int) -> String {
+  match list_head(xs: skip(xs: fields, n: index)) {
+    HeadFound { value: field } => field
+    HeadAbsent => Empty
+  }
+}
+
+fn text_field_is_char(fields: FreeMonoid<String>, index: Int, expected: Char) -> Bool {
+  match string_head(s: text_field_at(fields: fields, index: index)) {
+    CharFound { value } => text_char_eq(a: value, b: expected)
+    CharAbsent => false
+  }
+}
+
+// One field, no delimiter present: the source survives whole.
+test fn text_split_without_delimiter_yields_whole_source_holds() -> Bool {
+  let fields = string_split(
+    source: text_single(c: text_witness_char_a),
+    delimiter: text_delimiter(c: text_witness_char_d)
+  )
+  length(xs: fields) == 1
+    && text_field_is_char(fields: fields, index: 0, expected: text_witness_char_a)
+}
+
+// The discriminating case: a delimiter between two fields must CUT, and the halves must land in
+// source order. A split that dropped the cut, or reversed the fields, goes red here.
+test fn text_split_on_single_char_delimiter_cuts_in_order_holds() -> Bool {
+  let fields = string_split(
+    source: Cons {
+      head: text_witness_char_a,
+      tail: text_pair(first: text_witness_char_d, second: text_witness_char_b)
+    },
+    delimiter: text_delimiter(c: text_witness_char_d)
+  )
+  length(xs: fields) == 2
+    && text_field_is_char(fields: fields, index: 0, expected: text_witness_char_a)
+    && text_field_is_char(fields: fields, index: 1, expected: text_witness_char_b)
+}
+
+// Empty fields are FIELDS, not absences: two adjacent delimiters name three of them, and a
+// trailing delimiter names an empty last one. A filtering split reports 1 here and goes red.
+test fn text_split_preserves_empty_fields_holds() -> Bool {
+  let fields = string_split(
+    source: text_pair(first: text_witness_char_d, second: text_witness_char_d),
+    delimiter: text_delimiter(c: text_witness_char_d)
+  )
+  length(xs: fields) == 3
+    && string_is_empty(s: text_field_at(fields: fields, index: 0))
+    && string_is_empty(s: text_field_at(fields: fields, index: 1))
+    && string_is_empty(s: text_field_at(fields: fields, index: 2))
+}
+
+// The empty source is one empty field, never zero fields.
+test fn text_split_empty_source_is_one_empty_field_holds() -> Bool {
+  let fields = string_split(
+    source: Empty,
+    delimiter: text_delimiter(c: text_witness_char_d)
+  )
+  length(xs: fields) == 1 && string_is_empty(s: text_field_at(fields: fields, index: 0))
+}
+
+// A multi-character delimiter is matched WHOLE: a single `d` inside the source is not a boundary,
+// and the two-character run is. A per-character matcher reports 3 fields here and goes red.
+test fn text_split_matches_multi_char_delimiter_whole_holds() -> Bool {
+  let fields = string_split(
+    source: Cons {
+      head: text_witness_char_a,
+      tail: Cons {
+        head: text_witness_char_d,
+        tail: text_pair(first: text_witness_char_d, second: text_witness_char_b)
+      }
+    },
+    delimiter: FreeSemigroup {
+      head: text_witness_char_d,
+      tail: text_single(c: text_witness_char_d)
+    }
+  )
+  length(xs: fields) == 2
+    && text_field_is_char(fields: fields, index: 0, expected: text_witness_char_a)
+    && text_field_is_char(fields: fields, index: 1, expected: text_witness_char_b)
+}
+
+// A partial delimiter prefix is not a boundary: `d` alone must not cut when the delimiter is `dd`.
+test fn text_split_partial_delimiter_prefix_does_not_cut_holds() -> Bool {
+  let fields = string_split(
+    source: text_pair(first: text_witness_char_a, second: text_witness_char_d),
+    delimiter: FreeSemigroup {
+      head: text_witness_char_d,
+      tail: text_single(c: text_witness_char_d)
+    }
+  )
+  length(xs: fields) == 1
 }

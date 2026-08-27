@@ -637,10 +637,10 @@ pub fn stage0_partition_row_dependencies_outcome(
     }
 }
 
-pub fn stage0_partition_row_features(
-    row: Rc<GeneratedPartitionCrateRow>,
+pub fn stage0_features_for_crate_kind(
+    kind: GeneratedPartitionCrateKind,
 ) -> Rc<Vec<Rc<CargoFeature>>> {
-    match row.kind.clone() {
+    match kind.clone() {
         GeneratedPartitionCrateKind::GeneratedFoundationCrate => {
             Rc::new(vec![Rc::new(CargoFeature {
                 name: "text_lookup_work_counter".to_string(),
@@ -650,6 +650,12 @@ pub fn stage0_partition_row_features(
         GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate => Rc::new(vec![]),
         GeneratedPartitionCrateKind::GeneratedEmitCoreCrate => Rc::new(vec![]),
     }
+}
+
+pub fn stage0_partition_row_features(
+    row: Rc<GeneratedPartitionCrateRow>,
+) -> Rc<Vec<Rc<CargoFeature>>> {
+    stage0_features_for_crate_kind(row.kind.clone())
 }
 
 pub fn stage0_partition_row_to_spec_outcome(
