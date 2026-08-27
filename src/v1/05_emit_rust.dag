@@ -4084,7 +4084,8 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     coproduct_wire_contract_validation_section, items_str, phantom_section, "\n")
   ModuleEmission {
     file: TextFile { path: concat(rust_source_root(), filename, rust_source_ext()), content: content },
-    reference_rows: reference_plan.rows
+    reference_rows: reference_plan.rows,
+    import_refusals: reference_derived_row_diagnostics(rows: reference_plan.rows, module_span: m.span)
   }
 }
 
