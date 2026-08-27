@@ -707,8 +707,22 @@ fn gunbc_ci_multi_principal_probe_invoke() -> String {
 //
 // The mode is set BEFORE the content exists. Both preludes already run `umask 077`, so the redirect
 // creates the file 0600 at creation rather than writing world-readable bytes and narrowing them
-// afterwards; there is no window where the token sits at a wider mode. Each prelude's existing trap
-// removes HDR_FILE on exit alongside the other credential material it already cleans up.
+// afterwards; there is no window where the token sits at a wider mode.
+//
+// THE TRAP IS NOT WHAT RETIRES THE TOKEN IN THE FLEET PRELUDE, and an earlier revision of this
+// annotation said it was: "Each prelude's existing trap removes HDR_FILE on exit alongside the
+// other credential material it already cleans up." That holds for the spark prelude, whose trap
+// stays armed through step exit. It is FALSE for the fleet prelude, which DISARMS its trap
+// (`trap - EXIT`) so the ssh-agent survives into later steps -- and disarms it after removing only
+// KEY_FILE, so the bearer token was left sitting in RUNNER_TEMP for the remainder of the job.
+// Moving the token out of argv and then leaving it on disk is not a repair, it is the same
+// exposure at a different address; found in review of gunbc#9230 (review 56110).
+//
+// THE FIX IS LIFETIME, NOT CLEANUP. HDR_FILE is consumed by exactly one curl, so it is removed on
+// the line after that curl rather than added to a later rm -- the credential ceases to exist at
+// the moment its only consumer is done with it, which is a shorter window than any exit path can
+// offer and does not depend on which trap is armed when the step ends. The trap still covers the
+// failure arm between creation and that removal, where the file genuinely can outlive the shell.
 //
 // WHAT IS NOT CLAIMED: this is a repair at two call sites, not a wall. Nothing refuses the next
 // prelude that interpolates a credential into a command string -- these bodies are hand-authored
@@ -760,6 +774,7 @@ fn gunbc_ci_fleet_key_agent_prelude() -> List<PipelineStep> {
         ], "")
       )
     },
+    Do { run: ci_retry_body_run(command: "rm -f \"$HDR_FILE\"") },
     Do { run: ci_retry_body_run(command: "chmod 600 \"$KEY_FILE\"") },
     Do {
       run: ci_retry_body_run(

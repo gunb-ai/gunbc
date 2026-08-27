@@ -7,7 +7,6 @@ use std::rc::Rc;
 #[cfg(test)]
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::PhaseProfile;
-use v1_compiler::memory_governor::{binding_cap_cgroup_dir, leaf_cgroup_dir, mem_total_bytes};
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
     match args.get(idx) {
@@ -31,81 +30,6 @@ fn require_path_value(args: &[String], idx: usize, flag: &str) -> Result<String,
             Err(ExitCode::from(2))
         }
     }
-}
-
-#[cfg(test)]
-fn classify_witness_expectations(
-    outcomes: &[DiscoveryWitnessOutcome],
-    expected_red: &[(String, String)],
-) -> WitnessExpectationTally {
-    classify_witness_expectations_in(outcomes, expected_red, &[])
-}
-
-/// One read of the whole-tree job footprint and its budget context, taken in a single cgroup walk so
-/// a consumer (placement divisor, compile-jobs derive) can parse usage AND budget from one emitted
-/// line without re-walking. `cap_bytes` is the tightest numeric `memory.max` on the leaf→root walk
-/// (`None` = uncapped / RAM-bound); `host_ram` is the physical-RAM budget that binds when uncapped;
-/// `sccache_under_leaf` classifies the sccache server's cgroup as a descendant (already counted in
-/// `leaf_peak`) vs a sibling (must be subtracted as `host_fixed_overhead`) — the "accounted exactly
-/// once" decision, read from paths rather than guessed.
-struct CgroupMeasurement {
-    leaf_peak: u64,
-    leaf_rel: String,
-    cap_bytes: Option<u64>,
-    host_ram: Option<u64>,
-    pids_current: u64,
-    pids_max: String,
-    sccache_rel: Option<String>,
-    sccache_under_leaf: bool,
-}
-
-fn cgroup_job_measurement() -> Option<CgroupMeasurement> {
-    let leaf = leaf_cgroup_dir()?;
-    let leaf_peak = fs::read_to_string(leaf.join("memory.peak"))
-        .ok()?
-        .trim()
-        .parse::<u64>()
-        .ok()?;
-    let leaf_rel = leaf
-        .strip_prefix("/sys/fs/cgroup")
-        .map(|p| format!("/{}", p.to_string_lossy().trim_start_matches('/')))
-        .unwrap_or_else(|_| leaf.to_string_lossy().into_owned());
-    let cap_bytes = binding_cap_cgroup_dir()
-        .and_then(|d| fs::read_to_string(d.join("memory.max")).ok())
-        .and_then(|s| s.trim().parse::<u64>().ok());
-    let pids_current = fs::read_to_string(leaf.join("pids.current"))
-        .ok()
-        .and_then(|s| s.trim().parse::<u64>().ok())
-        .unwrap_or(0);
-    let pids_max = fs::read_to_string(leaf.join("pids.max"))
-        .ok()
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|| "unknown".to_string());
-    let sccache_rel = sccache_server_cgroup_rel();
-    // Descendant iff sccache's cgroup is the leaf or strictly under it — a PATH-COMPONENT prefix,
-    // not a bare string prefix, so a sibling like `<leaf>-other.service` is NOT misclassified as a
-    // descendant (that would under-count host overhead — the fail-OPEN direction). When the leaf is
-    // the cgroup root (`leaf_r` empty — e.g. a single-cgroup container) everything is a descendant.
-    // On the real fleet the leaf is the runner-service cgroup and sccache is a sibling service
-    // cgroup, so this is `false` (subtract as host_fixed_overhead).
-    let leaf_r = leaf_rel.trim_start_matches('/').to_string();
-    let sccache_under_leaf = sccache_rel
-        .as_deref()
-        .map(|r| {
-            let r = r.trim_start_matches('/');
-            leaf_r.is_empty() || r == leaf_r || r.starts_with(&format!("{leaf_r}/"))
-        })
-        .unwrap_or(false);
-    Some(CgroupMeasurement {
-        leaf_peak,
-        leaf_rel,
-        cap_bytes,
-        host_ram: mem_total_bytes(),
-        pids_current,
-        pids_max,
-        sccache_rel,
-        sccache_under_leaf,
-    })
 }
 
 /// Verify each declared release artifact exists, is executable, and is non-empty — failing CLOSED
@@ -161,87 +85,6 @@ fn verify_build_artifacts(paths: &[String]) -> Result<ExitCode, ExitCode> {
         if paths.len() == 1 { "y" } else { "ies" }
     );
     Ok(ExitCode::SUCCESS)
-}
-
-/// Single authority for the one-line whole-tree cgroup measurement, shared by the floor run and the
-/// standalone `--measure-cgroup-peak` mode so the `ci` and `rust_tests` jobs report an
-/// identically-shaped line. `context` distinguishes the call site.
-fn emit_cgroup_measurement(context: &str) {
-    let emoji = std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true");
-    match cgroup_job_measurement() {
-        Some(m) => {
-            let label = format!("cgroup peak @ {} ({context})", m.leaf_rel);
-            eprintln!(
-                "{}",
-                v1_compiler::cli_run::render_peak_rss_line_mirror(&label, Some(m.leaf_peak), emoji)
-            );
-            // Diagnostic companions (cap/pids/sccache) stay as Ambient detail beside the
-            // Measured peak — not the old raw-byte `[measurement]` dump. Placement still
-            // reads the typed `cgroup_job_measurement` fact, not this prose.
-            let cap = match m.cap_bytes {
-                Some(b) => format!("{b} bytes"),
-                None => "uncapped(RAM-bound)".to_string(),
-            };
-            let host_ram = m
-                .host_ram
-                .map(|b| format!("{b} bytes"))
-                .unwrap_or_else(|| "unknown".to_string());
-            let sccache = match (&m.sccache_rel, m.sccache_under_leaf) {
-                (Some(r), true) => format!("{r} (descendant: counted in memory.peak)"),
-                (Some(r), false) => format!("{r} (sibling: subtract as host_fixed_overhead)"),
-                (None, _) => "not-found (treat as fixed host overhead)".to_string(),
-            };
-            eprintln!(
-                "  memory.max={cap} host_ram={host_ram} pids_current={pc} pids_max={pm} sccache-server-cgroup={sccache}",
-                pc = m.pids_current,
-                pm = m.pids_max
-            );
-        }
-        None => {
-            let label = format!("cgroup peak ({context})");
-            eprintln!(
-                "{}",
-                v1_compiler::cli_run::render_peak_rss_line_mirror_with_cause(
-                    &label,
-                    None,
-                    "no leaf cgroup or memory.peak unreadable; kernel < 5.19?",
-                    emoji,
-                )
-            );
-        }
-    }
-}
-
-/// Best-effort cgroup-v2 relative path of the sccache SERVER daemon (a `sccache` comm), scanned
-/// from `/proc`. Emitted beside the binding-cap ancestor path so the analysis can classify the
-/// "accounted exactly once" case: a path UNDER the ancestor → sccache is inside `memory.peak`
-/// (don't subtract); a SIBLING path → subtract it as `host_fixed_overhead`. Returns `None` when
-/// no sccache server process is found (then it's fixed host overhead by default, fail-closed).
-fn sccache_server_cgroup_rel() -> Option<String> {
-    for entry in fs::read_dir("/proc").ok()?.flatten() {
-        let p = entry.path();
-        let Some(name) = p.file_name().and_then(|n| n.to_str()) else {
-            continue;
-        };
-        if !name.bytes().all(|b| b.is_ascii_digit()) {
-            continue;
-        }
-        if fs::read_to_string(p.join("comm"))
-            .unwrap_or_default()
-            .trim()
-            != "sccache"
-        {
-            continue;
-        }
-        if let Some(rel) = fs::read_to_string(p.join("cgroup")).ok().and_then(|cg| {
-            cg.lines()
-                .find_map(|l| l.strip_prefix("0::"))
-                .map(|s| s.trim().to_string())
-        }) {
-            return Some(rel);
-        }
-    }
-    None
 }
 
 const FLOOR_WORKER_TERMINAL_ENV: &str = "GUNBC_FLOOR_WORKER_TERMINAL_RECEIPT";
@@ -311,14 +154,12 @@ fn write_floor_worker_terminal(outcome: &str, detail: &str) -> Result<(), String
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
-    let mut measure_cgroup_peak = false;
     let mut verify_artifacts: Vec<String> = Vec::new();
     let mut verify_artifacts_mode = false;
     let mut required_floor_mode = false;
     let mut required_ci_mode = false;
     let mut required_ci_lane: Option<RequiredCiLane> = None;
     let mut required_v2_emission_mode = false;
-    let mut required_v2_emission_selftest_mode = false;
     let mut required_regen_mode = false;
     let mut emit_partition_crates_mode = false;
     let mut emit_partition_crates_write = false;
@@ -369,9 +210,6 @@ fn run() -> Result<ExitCode, ExitCode> {
             "--required-v2-emission" => {
                 required_v2_emission_mode = true;
             }
-            "--required-v2-emission-selftest" => {
-                required_v2_emission_selftest_mode = true;
-            }
             "--required-regen" => {
                 required_regen_mode = true;
             }
@@ -404,7 +242,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                 i += 1;
                 regen_receipt_path = require_value(&args, i, "--regen-receipt")?;
             }
-            "--measure-cgroup-peak" => measure_cgroup_peak = true,
             other => {
                 eprintln!("claim_executor: unknown argument: {}", other);
                 return Err(ExitCode::from(2));
@@ -423,52 +260,8 @@ fn run() -> Result<ExitCode, ExitCode> {
         return verify_build_artifacts(&verify_artifacts);
     }
 
-    // Standalone whole-tree cgroup measurement (no plan run): the `rust_tests` job invokes this
-    // after its gate to emit ITS leaf cgroup peak (a separate ephemeral runner cgroup from the `ci`
-    // job's), reusing the same single-authority walk/emit. Short-circuits before the plan-arg
-    // requirements so it needs no `--source-root`/`--plan-entry`.
-    if measure_cgroup_peak {
-        let job = std::env::var("GITHUB_JOB").unwrap_or_else(|_| "standalone".to_string());
-        emit_cgroup_measurement(&format!("job={job} (--measure-cgroup-peak)"));
-        return Ok(ExitCode::SUCCESS);
-    }
-
-    // ── V2 EMISSION: TWO STANDALONE ENTRY POINTS BESIDE THE REQUIRED PHASE ──────
-    //
-    // The v2-emission transaction IS ENROLLED in `--required-ci` as phase 3 (see that
-    // mode below), on an operator ruling relayed through the requesting session
-    // 2026-08-23, at a measured +135s against the floor's ~30-40 minutes. These two
-    // flags are not an opt-in alternative to that phase and must not be read as one:
-    // they exist because running the emission alone, or running only its red/green
-    // evidence, are real local actions -- the same reason the `src/v1` .dag parse sweep
-    // keeps its own bin beside its required phase.
-    //
-    // This comment said "DELIBERATELY NOT ENROLLED" in the revision that ADDED the
-    // enrolment, which is the premise contamination DESIGN warns about rather than a
-    // stale comment: a reader grepping here would conclude the phase is opt-in when it
-    // is required. It is rewritten rather than annotated, because two accounts of one
-    // fact is what produced the contradiction.
-    //
-    // Both flags run the SAME producer the required phase runs
-    // (`cli_run::compile_entry_emission`), so a green here and a green there cannot be
-    // different facts.
-    if required_v2_emission_selftest_mode {
-        let failures = v1_compiler::cli_run::run_required_v2_emission_selftest();
-        for failure in &failures {
-            eprintln!("required-v2-emission-selftest: FAIL {failure}");
-        }
-        return if failures.is_empty() {
-            eprintln!(
-                "required-v2-emission-selftest: OK red fixture refused on the annotation cause, green fixture emitted"
-            );
-            Ok(ExitCode::SUCCESS)
-        } else {
-            Err(ExitCode::from(1))
-        };
-    }
-
     // ORDERED AHEAD OF THE SOURCE-ROOT REQUIREMENT, for the reason `--verify-build-artifacts`
-    // and `--measure-cgroup-peak` are: this mode takes NO roots. It renders from the emitted
+    // is: this mode takes NO roots. It renders from the emitted
     // authority carrier and reads only the files it is adjudicating, so the generic guard below
     // would refuse the only invocation it has -- a mode that could never have run once.
     // MEASURED, NOT REASONED -- the first remote run of this entry point exited 2 with
@@ -742,6 +535,34 @@ fn run() -> Result<ExitCode, ExitCode> {
         // a green here and an emitting board are one fact rather than two.
         if required_ci_phase_selected(RequiredCiPhase::V2Emission, required_ci_lane) {
             eprintln!("required-ci: phase v2-emission (the v2 compiler entry, full closure)");
+
+            // THE PHASE'S DISCRIMINATING EVIDENCE, RUN BEFORE THE PRODUCER IT VOUCHES FOR.
+            //
+            // This selftest was reachable only through a standalone flag no workflow invoked, so
+            // the phase below ran a producer whose REFUSAL had never once been shown to fire. A
+            // green emission then established that the emitter emitted, not that it still refuses
+            // what it must -- specification-without-execution, and DESIGN 4b(4) is explicit that a
+            // class's discriminating RED and positive control stay ENROLLED as the evidence the
+            // rung is real. Unenrolled evidence is not weaker evidence; it is none.
+            //
+            // It runs FIRST because it is cheap (two fixtures, measured under a second) and
+            // because a producer green means nothing if the red fixture stopped refusing.
+            {
+                let failures = v1_compiler::cli_run::run_required_v2_emission_selftest();
+                for failure in &failures {
+                    eprintln!("required-ci: v2-emission-selftest FAIL {failure}");
+                }
+                if failures.is_empty() {
+                    eprintln!(
+                        "required-ci: v2-emission-selftest OK red fixture refused on the annotation cause, green fixture emitted"
+                    );
+                } else {
+                    phase_failures.push(format!(
+                        "v2-emission-selftest ({} evidence failure(s))",
+                        failures.len()
+                    ));
+                }
+            }
             match v1_compiler::cli_run::run_required_v2_emission(&source_roots) {
                 Ok(runs) => {
                     let mut not_completed = 0usize;
@@ -1566,43 +1387,6 @@ fn main() -> ExitCode {
 mod tests {
     use super::*;
 
-    // Process-wide eval-recompute totals are shared across every test in this
-    // binary. Tests that drain or assert on the accumulator must serialize so
-    // one cannot steal another's totals (DESIGN §5 hermetic discriminating tests).
-    static PROCESS_EVAL_RECOMPUTE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    fn with_process_eval_recompute_test_lock<F: FnOnce()>(f: F) {
-        let _guard = PROCESS_EVAL_RECOMPUTE_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
-        let prior_trace = std::env::var_os("GUNBC_RECOMPUTE_TRACE");
-        std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
-        v1_compiler::v1_interpreter::refresh_eval_recompute_trace_enabled_cache_for_tests();
-        let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
-        match prior_trace {
-            Some(value) => std::env::set_var("GUNBC_RECOMPUTE_TRACE", value),
-            None => std::env::remove_var("GUNBC_RECOMPUTE_TRACE"),
-        }
-        v1_compiler::v1_interpreter::refresh_eval_recompute_trace_enabled_cache_for_tests();
-        match run {
-            Ok(()) => {}
-            Err(payload) => std::panic::resume_unwind(payload),
-        }
-    }
-
-    fn with_workspace_root_current_dir<F: FnOnce()>(root: &std::path::Path, f: F) {
-        let prior_cwd = std::env::current_dir().ok();
-        std::env::set_current_dir(root).expect("chdir to workspace root for receipt paths");
-        let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
-        if let Some(cwd) = prior_cwd {
-            let _ = std::env::set_current_dir(cwd);
-        }
-        match run {
-            Ok(()) => {}
-            Err(payload) => std::panic::resume_unwind(payload),
-        }
-    }
-
     fn repo_root_from_manifest() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../..")
@@ -1613,19 +1397,6 @@ mod tests {
     fn dag_source_from_repo(rel: &str) -> String {
         let path = repo_root_from_manifest().join(rel);
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
-    }
-
-    fn dag_string_data_literal(source: &str, data_name: &str) -> String {
-        let marker = format!("data {data_name}: String = \"");
-        let start = source
-            .find(&marker)
-            .unwrap_or_else(|| panic!("string data row {data_name} not found in authority source"))
-            + marker.len();
-        let rest = &source[start..];
-        let end = rest
-            .find('"')
-            .expect("unterminated string literal in authority source");
-        rest[..end].to_string()
     }
 
     fn dag_record_string_field(source: &str, data_name: &str, field: &str) -> String {
@@ -1692,10 +1463,6 @@ mod tests {
             TEST_NATIVE_BUNDLE_OBLIGATION_FUNCTION,
         );
     }
-
-    /// The `<entry>::<function>` a refusal locates itself at — the same shape the
-    /// production caller passes.
-    const TEST_PLAN_SITE: &str = "src/v2/workflow/ci_floor_plan.dag::gunbc_ci_floor_plan";
 
     // --- floor-finalization DISPOSITION visibility (the fix this PR ships) -----------
     //
@@ -1786,12 +1553,6 @@ mod tests {
         );
     }
 
-    fn parse_materialization_receipt_field(body: &str, key: &str) -> Option<u64> {
-        body.lines()
-            .find_map(|line| line.strip_prefix(key))
-            .and_then(|v| v.trim().parse::<u64>().ok())
-    }
-
     // --- build-artifact verification teeth (DESIGN §5 fail-open guard) ---
 
     fn write_exec(dir: &std::path::Path, name: &str, bytes: &[u8]) -> String {
@@ -1854,17 +1615,6 @@ mod tests {
         );
     }
 
-    fn drift_authority_source_roots() -> Vec<String> {
-        let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .ancestors()
-            .nth(3)
-            .expect("workspace root");
-        vec![
-            workspace.join("dag").to_string_lossy().into_owned(),
-            workspace.join("src/v2").to_string_lossy().into_owned(),
-        ]
-    }
-
     // ---- walk-attempt identity ----
     //
     // The refusals below are the point of the feature, so each is asserted as a REFUSAL,
@@ -1891,48 +1641,6 @@ mod tests {
             "the persisted row must retain the phase, state, and detail: {persisted:?}"
         );
     }
-}
-
-#[cfg(test)]
-mod witness_walk_flags_tests {
-    use super::witness_walk_flags;
-
-    /// The scoped-child boundary deletion narrowed the roster walk. This pins that it narrowed
-    /// ONLY the walk: a scoped child still executes rows, so it must still be handed the
-    /// per-witness eval budget. RED if the two questions are ever collapsed back into one flag —
-    /// the collapse is silent at the type level and would weaken a budget wall while reading as a
-    /// pure scope narrowing.
-    #[test]
-    fn witness_walk_flags_split_the_two_questions() {
-        let ordinary = witness_walk_flags(true, false);
-        assert!(ordinary.executes_witness_rows);
-        assert!(
-            ordinary.schedules_discovery,
-            "an ordinary worker carrying witness rows must still derive the roster"
-        );
-
-        let scoped = witness_walk_flags(true, true);
-        assert!(
-            scoped.executes_witness_rows,
-            "a scoped child executes its frozen rows, so it must keep the eval budget"
-        );
-        assert!(
-            !scoped.schedules_discovery,
-            "a scoped child must never re-derive a roster its parent already froze"
-        );
-
-        // No rows at all: neither question is yes, for either role.
-        for is_scoped in [false, true] {
-            let empty = witness_walk_flags(false, is_scoped);
-            assert!(!empty.executes_witness_rows);
-            assert!(!empty.schedules_discovery);
-        }
-    }
-}
-
-#[cfg(test)]
-mod scoped_execution_request_tests {
-    use super::*;
 }
 
 /// Run git in the workspace and return trimmed stdout, or a refusal naming the command.
