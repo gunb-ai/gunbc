@@ -11,41 +11,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data read_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri { scheme: Https, locator: "pubs.opengroup.org/onlinepubs/9799919799/functions/read.html" }
-}
-
-data open_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri { scheme: Https, locator: "pubs.opengroup.org/onlinepubs/9799919799/functions/open.html" }
-}
-
-data rust_read_to_string_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri { scheme: Https, locator: "doc.rust-lang.org/std/fs/fn.read_to_string.html" }
-}
-
-// Shadow vocabulary for the referred Result<String, ReadError> replacement.
-// POSIX names remain intact rather than being renamed locally. InvalidUtf8 is
-// the String-decoding refusal specified by Rust read_to_string. The final arm is
-// explicit because POSIX permits implementation-defined additional errors and
-// Rust io::ErrorKind is non-exhaustive; unknown host conditions must not be
-// fabricated into a known remedy.
-type ReadError
-  = ReadEacces
-  | ReadEagain
-  | ReadEbadf
-  | ReadEbadmsg
-  | ReadEintr
-  | ReadEinval
-  | ReadEio
-  | ReadEisdir
-  | ReadEloop
-  | ReadEnametoolong
-  | ReadEnoent
-  | ReadEnotdir
-  | ReadEoverflow
-  | ReadInvalidUtf8
-  | ReadErrorUnclassified { description: String }
-
 data write_owner_only_realization_note: String = "v1 realization: Unix OpenOptions create_new + mode 0600 at creation (O_EXCL); non-Unix hosts refuse rather than degrading to unmodeled write."
 
 // The operation below carries the transport observation as independent channels: the read

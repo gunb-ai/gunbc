@@ -1,20 +1,20 @@
 module gunbc.filesystem_read_consumer_census
 
 import std.types { List, NonEmptyStr, String }
+import extdeps.filesystem.filesystem_io { filesystem_read_outcome_adoption_standing }
 
-data filesystem_read_direct_consumer_census_instrument: String = "Snapshot revision 045ab627854f336ffb7bc6d0e918bb47b560d587. Re-derive the direct-site population with: rg -n --glob '*.dag' 'Filesystem\\.Read\\(' dag src/v2 fixtures/class_b_trim. Re-derive symbolic enclosing declarations with the same roster passed to: perl -ne 'if(/^\\s*(?:test\\s+)?(?:fn|func)\\s+([A-Za-z0-9_]+)/)\{$f=$1\} if(/Filesystem\\.Read\\(/)\{print qq($ARGV\\t$f\\t$_)\}'. Service-operation bodies require naming the service and operation directly because they are not fn declarations. Compare the derived symbolic identities against filesystem_read_direct_consumer_census; a count alone is not completeness."
+// The extdeps standing is the sole authority for what counts as unconverted and
+// how that population is re-derived. This module adds only the per-site policy
+// disposition; it neither defines a second roster nor carries another instrument.
+data filesystem_read_consumer_census_subject: String = filesystem_read_outcome_adoption_standing
 
-// Pre-cut disposition census for replacing extdeps.filesystem.filesystem_io
-// Filesystem.Read's flat content/success/error product with
-// std.error_primitives.Result<String, ReadError>. Identities are symbolic:
+// Disposition census over the unconverted-consumption subject defined by
+// filesystem_read_outcome_adoption_standing. Identities are symbolic:
 // module + declaration + local binding where one declaration contains multiple
 // reads. No source positions are carried.
 //
-// The old operation maps Read and Delete success through the wire key
-// "write_success". That shared nickname is the observable fork; the product also
-// permits content + false + empty error, false + non-empty content, and every
-// other contradictory combination. These rows decide the terminal meaning at
-// each direct service-operation consumer before the root changes. The five
+// These rows decide the terminal meaning at each unconverted consumer before it
+// routes through filesystem_read_outcome. The five
 // dispositions mean, respectively: every ReadError terminates with the existing
 // refusal/false result; ENOENT alone is expected absence and all other arms
 // refuse; the existing typed refusal preserves the ReadError value; an
@@ -88,7 +88,6 @@ fn filesystem_read_direct_consumer_census() -> List<ReadConsumerRow> {
     read_consumer(site: "extdeps.provisioning.ubuntu_seeded_install_media_remaster.install_media_remaster_sidecar_matches/read", disposition: EveryReadErrorRefuses),
     read_consumer(site: "v2.workflow.floor_discovery_producer.floor_discovery_process_dag_file/read_out", disposition: EveryReadErrorRefuses),
     read_consumer(site: "v2.workflow.floor_discovery_producer.floor_discovery_merge_owned_data_record/read_out", disposition: EveryReadErrorRefuses),
-    read_consumer(site: "v2.test.fixture.walk_plan_stage.barrier_witness_test.walk_plan_stage_barrier_witness_holds/receipt", disposition: EveryReadErrorRefuses),
     read_consumer(site: "gunbc.class_b_import_closure_overlay.class_b_materialize_stripped_entry_overlay/read", disposition: EveryReadErrorRefuses),
     read_consumer(site: "tools.merge_admission_walk.read_tested_subject/read", disposition: EveryReadErrorRefuses),
     read_consumer(site: "tools.merge_admission_walk.read_floor_receipt/read", disposition: EveryReadErrorRefuses),
@@ -117,7 +116,6 @@ fn filesystem_read_direct_consumer_census() -> List<ReadConsumerRow> {
     read_consumer(site: "gunbc.package_delivery.protocol_schema_process_file_for_bundle/raw", disposition: EveryReadErrorRefuses),
     read_consumer(site: "gunbc.package_delivery.finish_bisect_parse_protocol_schema_file/raw", disposition: EveryReadErrorRefuses),
     read_consumer(site: "gunbc.package_delivery.finish_bisect_parse_canonicalize_protocol_schema_file/raw", disposition: EveryReadErrorRefuses),
-    read_consumer(site: "gunbc.ci_yaml_validate.ci_yml_parses/read", disposition: EveryReadErrorRefuses),
     read_consumer(site: "gunbc.roadmap_belt_actuate.belt_oracle_observe_in_worktree/read", disposition: EveryReadErrorRefuses),
     read_consumer(site: "gunbc.roadmap_belt_actuate.belt_claude_preflight_for_instance/r", disposition: EveryReadErrorRefuses),
     read_consumer(site: "gunbc.roadmap_belt_actuate.belt_tick_receipt_read_for_instance/read", disposition: EveryReadErrorRefuses),
@@ -137,5 +135,3 @@ fn filesystem_read_direct_consumer_census() -> List<ReadConsumerRow> {
     read_consumer(site: "test.claim.codex_device_prompt_witness.escape_carrying_rendering_would_yield_an_unpasteable_code/plain", disposition: EveryReadErrorRefuses),
   ]
 }
-
-data filesystem_read_builtin_consumer_cut_note: String = "The filesystem_read builtin has a separate 93-call population across 61 modules. Those sites consume only .content because v1.compiler.infer_method filesystem_read_result_type and v1.runtime_rust rt_filesystem expose a one-field FilesystemReadResult and abort on read failure. They do not branch on the flat service triple. The cut therefore happens at the builtin root: eval_filesystem_read_builtin consumes Filesystem.Read's Result and propagates Err instead of destructuring content/success/error and re-wrapping a new record; builtin callers retain the established abort-on-failure contract unless a caller separately elects typed recovery. Re-listing all 93 call sites here would be a parallel census of an unchanged contract, so this carrier names the root and the mechanically derived population instead."
