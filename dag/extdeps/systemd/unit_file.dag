@@ -110,7 +110,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // them speculatively would be a large closed set that is still incomplete, which is worse than a
 // small one, because incompleteness in a closed enum reads as "this directive is not permitted"
 // rather than "this directive is not modeled yet". Each is a §2-horizontal row: a consumer needing
-// `RestartSec=` adds one variant and one wire row, and nothing else changes.
+// `RestartPreventExitStatus=` adds one variant and one wire row, and nothing else changes.
 
 type SystemdUnitDirective
   = Description { text: NonEmptyStr }
@@ -118,6 +118,7 @@ type SystemdUnitDirective
   | Before { target: NonEmptyStr }
   | Wants { target: NonEmptyStr }
   | Requires { target: NonEmptyStr }
+  | StartLimitIntervalSec { duration: NonEmptyStr }
 
 type SystemdServiceDirective
   = ServiceType { mode: NonEmptyStr }
@@ -134,6 +135,8 @@ type SystemdServiceDirective
   | TimeoutStartSec { duration: NonEmptyStr }
   | ServiceExitType { exit_type: SystemdExitType }
   | ServiceKillMode { mode: SystemdKillMode }
+  | RestartSec { duration: NonEmptyStr }
+  | TimeoutStopSec { duration: NonEmptyStr }
 
 // THE THREE RESOURCE-DISCIPLINE DIRECTIVES, AND WHY THE MIDDLE ONE IS A COPRODUCT AND NOT A STRING.
 //
@@ -154,6 +157,27 @@ type SystemdIoSchedulingClass
   = IoSchedulingRealtime
   | IoSchedulingBestEffort
   | IoSchedulingIdle
+
+// THE THREE RESTART-AND-TEARDOWN TIMING DIRECTIVES, ADDED FOR A SUPERVISED SERVICE THAT IS MEANT TO
+// EXIT AND COME BACK.
+//
+// `StartLimitIntervalSec=` is a [Unit] directive, not a [Service] one, which is why it sits with
+// Description= and After= above rather than beside Restart= below: systemd.unit(5) owns the start
+// rate limiter because every unit type can be rate limited, and the section split this module is
+// built on would be broken by putting it where the restart policy reads more naturally. A unit whose
+// normal operation is to exit after each unit of work and be restarted will trip the default limit
+// (five starts in ten seconds) and be left FAILED, so a service of that shape has to say so.
+//
+// `RestartSec=` is the delay before the restart and `TimeoutStopSec=` is how long a stop is given
+// before systemd escalates to SIGKILL. They are two durations at opposite ends of a unit's life and
+// are two variants for the reason every pair in this module is: one value carrying both would put
+// the difference between "wait before starting again" and "wait before killing" into a position.
+//
+// They take `NonEmptyStr` rather than a modeled duration, following `TimeoutStartSec=`'s established
+// precedent here. systemd's timespan grammar admits bare seconds and suffixed units ("5", "5min"),
+// and modeling it is a real piece of work that no consumer has needed yet -- so this is an unmodeled
+// grammar rather than a closed value set left open, which is the distinction `SystemdIoSchedulingClass`
+// above draws.
 
 // THE TWO DIRECTIVES THAT DECIDE WHEN A SERVICE IS OVER, AND WHAT ITS END REACHES.
 //
@@ -279,6 +303,7 @@ fn systemd_unit_directive_line(directive: SystemdUnitDirective) -> String {
     Before { target: v } => join(["Before=", v as String], "")
     Wants { target: v } => join(["Wants=", v as String], "")
     Requires { target: v } => join(["Requires=", v as String], "")
+    StartLimitIntervalSec { duration: v } => join(["StartLimitIntervalSec=", v as String], "")
   }
 }
 
@@ -299,6 +324,8 @@ fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String 
     TimeoutStartSec { duration: v } => join(["TimeoutStartSec=", v as String], "")
     ServiceExitType { exit_type: v } => join(["ExitType=", systemd_exit_type_wire(exit_type: v)], "")
     ServiceKillMode { mode: v } => join(["KillMode=", systemd_kill_mode_wire(mode: v)], "")
+    RestartSec { duration: v } => join(["RestartSec=", v as String], "")
+    TimeoutStopSec { duration: v } => join(["TimeoutStopSec=", v as String], "")
   }
 }
 
@@ -375,6 +402,15 @@ type SystemdUnitFile
       slice: List<SystemdSliceDirective>,
       install: SystemdInstallSection,
     }
+
+// THE INSTANCE SPECIFIER IS systemd's, SO IT IS SPELLED HERE AND NOWHERE ELSE.
+//
+// A template unit (`foo@.service`) is written once and instantiated per name, and `%i` is what
+// stands for the instance inside it. That is systemd.unit(5) grammar, not a convention a consumer
+// invents, so a product module writing `"%i"` into an `ExecStart=` or a `WorkingDirectory=` would be
+// spelling systemd syntax outside the module that owns it -- the same §3 fork this file exists to
+// close for directive names.
+data systemd_instance_name_specifier: String = "%i"
 
 data systemd_unit_section_header: String = "[Unit]"
 

@@ -100,6 +100,8 @@ type ExpressionSpellings {
   eq_op: String
   interp_open: String
   interp_close: String
+  index_open: String
+  index_close: String
 }
 
 data default_expression_spellings: ExpressionSpellings = {
@@ -113,10 +115,78 @@ data default_expression_spellings: ExpressionSpellings = {
   eq_op: " == ",
   interp_open: "${{ ",
   interp_close: " }}",
+  index_open: "['",
+  index_close: "']",
+}
+
+// THIS WRITER HAS A CANONICAL SPELLING FOR PATH SEGMENTS, AND THE CHOICE IS OURS RATHER THAN
+// THE GRAMMAR'S.
+//
+// The cited authority (docs.github.com, this module's anchor) admits two forms for reaching a
+// property: index notation `['name']`, and property dereference `.name`. Its rule for the second
+// is quoted rather than paraphrased, because an earlier revision of this comment paraphrased it
+// wrongly: "In order to use property dereference syntax, the property name must start with a
+// letter or `_` and contain only alphanumeric characters, `-`, or `_`."
+//
+// SO A HYPHEN IS ADMITTED BY THE DOT FORM, AND AN EARLIER REVISION OF THIS COMMENT SAID THE
+// OPPOSITE. It read that `-` is the subtraction operator, that `needs.a-b.result` "does not name
+// a property at all", and that it evaluates to the empty string. THAT IS FALSE and it was never
+// measured -- it was asserted from recall by one session, deferred to by another, and written
+// into an authority where a reader would have taken it as established. It is corrected in place
+// rather than deleted, because the correction is the more useful record: the two of us AGREEING
+// was produced by deference, not by evidence, and an agreement whose generator is deference is
+// not corroboration.
+//
+// WHAT THE POLICY ACTUALLY IS: index notation for anything outside the narrow dereference
+// production, dot notation otherwise. That is a claim about US, not about GitHub. It is chosen
+// because index notation is explicit, reaches ARBITRARY keys uniformly, and does not depend on
+// the narrower production at all -- so a segment this writer has never seen before cannot be
+// rendered into a form the consumer might read as an operator expression. Both forms are valid
+// for the segments we emit today; this one stays valid for the segments we do not.
+//
+// WHY IT IS MODELED HERE AND NOT AT A CALL SITE. The production is a fact about the upstream
+// language, so a consumer hand-spelling `['...']` for its own case would be a second account of
+// the grammar (DESIGN 3). Choosing the form from the SEGMENT means a caller cannot spell it
+// wrong -- construction rather than a rule callers must remember (DESIGN 5).
+//
+// THE PREDICATE IS NARROWER THAN THE PRODUCTION, DELIBERATELY, and its name says which question
+// it answers. `path_segment_takes_dot_form` is THIS WRITER'S canonical choice; it is not
+// `path_segment_is_valid_with_a_dot`, which would be a different function with `-` admitted. A
+// reader who confuses the two will conclude GitHub rejects something GitHub accepts.
+fn dot_form_code_point(c: Int) -> Bool {
+  (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c == 95)
+}
+
+fn dot_form_leading_code_point(c: Int) -> Bool {
+  (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c == 95)
+}
+
+// THE START CHARACTER IS A SEPARATE RULE FROM THE REST, AND THAT SHAPE IS THE UPSTREAM
+// PRODUCTION'S, NOT A CONVENIENCE. The cited sentence says the name must START WITH a letter or
+// `_` and then CONTAIN ONLY the wider set, so `0a` is excluded by the start rule while every one
+// of its characters is individually admitted. Folding the two into one alphabet would admit it,
+// and this is the one place where the predicate and the production agree exactly rather than the
+// predicate being the narrower canonical choice.
+fn path_segment_takes_dot_form(segment: String) -> Bool {
+  match segment.chars().first() {
+    Absent => false
+    Present { value: lead } =>
+      dot_form_leading_code_point(c: lead)
+        && all(segment.chars(), c => dot_form_code_point(c: c))
+  }
+}
+
+fn render_path_segment_with(segment: String, sp: ExpressionSpellings) -> String {
+  if path_segment_takes_dot_form(segment: segment) {
+    concat(sp.path_sep, segment)
+  } else {
+    join([sp.index_open, segment, sp.index_close], "")
+  }
 }
 
 fn join_path_with(path: List<String>, sp: ExpressionSpellings) -> String {
-  join(path, sp.path_sep)
+  fold(path, init: "", f: (acc, segment) =>
+    concat(acc, render_path_segment_with(segment: segment, sp: sp)))
 }
 
 fn serialize_args_with(args: List<Expression>, sp: ExpressionSpellings) -> String {
@@ -126,7 +196,7 @@ fn serialize_args_with(args: List<Expression>, sp: ExpressionSpellings) -> Strin
 fn serialize_expression_with(expression: Expression, sp: ExpressionSpellings) -> String {
   match expression {
     ContextAccess { context: c, path: p } =>
-      join([context_name(context: c), join_path_with(path: p, sp: sp)], sp.path_sep)
+      concat(context_name(context: c), join_path_with(path: p, sp: sp))
     FunctionCall { function: f, args: a } =>
       join([function_name(function: f), sp.call_open, serialize_args_with(args: a, sp: sp), sp.call_close], "")
     StringLiteral { value: v } =>
@@ -258,8 +328,19 @@ fn parse_function_call_atom(s: String, sp: ExpressionSpellings) -> Expression? {
   }
 }
 
+// THE PARSE READS THE SAME TWO FORMS THE SERIALIZER WRITES, which is what keeps this module one
+// grammar read in both directions (DESIGN 4) rather than an emitter with a narrower reader
+// beside it. Index segments are normalized back to the dot form before splitting, so
+// `needs['a-b'].result` and `needs.a_b.result` both yield an ordinary segment list and a
+// serialize-then-ingest round trip returns the identical value.
+//
+// WHAT THE NORMALIZATION DOES NOT ADMIT, named rather than left to be discovered: a segment
+// whose own text contains the path separator or the index delimiters. No such segment can be
+// produced by the serializer above, so the round trip is total over what this module writes;
+// a hand-authored expression carrying one is outside what this reader claims.
 fn parse_context_access_atom(s: String, sp: ExpressionSpellings) -> Expression? {
-  let segs = split(s: s, delimiter: sp.path_sep)
+  let dotted = replace(replace(s, sp.index_open, sp.path_sep), sp.index_close, "")
+  let segs = split(s: dotted, delimiter: sp.path_sep)
   match context_from_name(name: segs.first()) {
     Absent => none
     Present { value: ctx } => Present { value: ContextAccess { context: ctx, path: segs.skip(n: 1) } }
