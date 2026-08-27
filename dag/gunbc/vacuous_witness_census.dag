@@ -9,6 +9,7 @@ import std.types { String }
 // WHY THESE ARE REPAIRABLE RATHER THAN REMOVABLE. Every row has a real property behind it; the check is vacuous because it asserts against its own input instead of against something independently produced. The recurring origin is a FOOTHOLD CHECK: written when its subject had no second instance, so there was nothing else to compare against. That is why the repair is to compare against an independent producer, and why deletion is the wrong default.
 // EXECUTION IS PART OF THE FINDING, NOT A DETAIL. A dormant vacuous row claims no coverage because it does not run. An executing one is cited every required run. The two carry different severities and different priorities, so the disposition is modeled rather than described. NOTE THE ROUTING HAZARD THIS CREATES: a split that routes everything hermetic in a module ACTIVATES whatever dormant vacuous rows sit in it, converting a decoration into a cited one. A recoverable assertion is therefore not automatically worth routing.
 // THE DETECTOR THAT PRODUCED THIS IS NARROW AND ITS LIMITS ARE ENUMERATED BELOW rather than hedged in prose. Measured over the discovered-but-declined population, it classified 4 of 3703 recoverable assertions; the remaining 3699 are outside its reach. So this roster is a FLOOR on the vacuous population and gives no upper bound. A shape that scrapes match arms for a uniform true was BUILT AND WITHDRAWN before publication: it returns true wherever it returns, which is not the same as cannot return false, the gap being refusal and non-termination -- a single-arm match over a multi-variant coproduct reds on any other variant, an exhaustive both-arms-true match reds on a crash, and nested matches carry real assertions a scraper never reaches. Its 11 hits are not recorded here because they are live checks.
+// VERIFICATION AND EXECUTION ARE DIFFERENT AXES AND THIS CARRIER KEEPS THEM APART. vacuous_witness_rows is an ASSERTED population: every member was hand-verified by reading the constructor. A detector hit whose REACHING is in doubt -- not merely its conclusion -- lives in vacuous_candidate_rows instead, carries the cause it is doubted for, and states what would confirm it. It may not be asserted as vacuous from this carrier while it sits there. Collapsing the two would have let an unverified hit inherit the asserted population's authority, and would separately have LOST whether that hit executes, since a candidate still has an execution standing like any other row.
 // THE DENOMINATOR DEPENDS ON WHICH QUERY WAS RUN, and both are named in vacuous_census_queries rather than left implicit. The two DORMANT rows are reached by DIFFERENT queries: the recoverable-assertion screen finds one of them and cannot see the other, because that other module sits outside every discovery scan dir while its consumer declares ReadsLiveTree. NEITHER QUERY IS THE POPULATION. A census whose denominator varies with the query is sound only if it says so; treating either list as complete yields a different answer and is the empty-observation shape DESIGN names.
 type RedAuthorability
   = RedAuthorableByEditingSubject
@@ -22,7 +23,26 @@ type OracleStatus
 type VacuousExecution
   = ExecutingInRequiredFloor
   | DormantDeclined
-  | UnverifiedCandidate
+
+// One cause is known today, so this is a record and not a coproduct: `type X = Y`
+// with a single arm is a LEAF ALIAS in this grammar, not a one-variant sum. A second
+// arm invented to make the sum well-formed would be a variant with no instance --
+// modelling to the parser. The coproduct lands when a second cause is actually found.
+type ReachedByArgumentFieldConflation {
+  matched_syntax: String
+  intended_syntax: String
+}
+
+type VacuousCandidateRow {
+  subject: DeclarationRef
+  constructor: DeclarationRef
+  field_name: String
+  compared_against: ComparedTerm
+  execution: VacuousExecution
+  refusal_cause: ReachedByArgumentFieldConflation
+  what_would_confirm: String
+  dissolution: DissolutionCondition
+}
 
 type ComparedTerm
   = ComparedDeclaration { declaration: DeclarationRef }
@@ -226,8 +246,11 @@ data vacuous_witness_rows: List<VacuousWitnessRow> = [
     intended_property: "allocation BEHAVIOUR starts at zero and advances, which an allocate-then-observe sequence would show; the current form restates the literal in the constructor",
     introduced_in: "unrecovered -- predates the deepened clone window",
     dissolution: unbound_dissolution(description: "the witness observes an allocation sequence rather than the initial constructor field. Its module declares NO disposition, so fail-closed makes it ReadsLiveTree and it is declined; a split that adds a disposition would activate it")
-  },
-  VacuousWitnessRow {
+  }
+]
+
+data vacuous_candidate_rows: List<VacuousCandidateRow> = [
+  VacuousCandidateRow {
     subject: DeclarationRef {
       module_path: "v2.test.claim.self_host.frontier_probe_empty_ingest",
       decl_name: "empty_ingest_keeps_the_module_path_it_was_asked_about_holds",
@@ -240,12 +263,13 @@ data vacuous_witness_rows: List<VacuousWitnessRow> = [
     },
     field_name: "module_path",
     compared_against: ComparedLiteral { rendered: "src/v2/compiler/03_resolve.dag" },
-    red_authorability: RedAuthorableByEditingSubject,
-    oracle_status: NoIndependentOracleInCorpus,
-    execution: UnverifiedCandidate,
-    intended_property: "the receipt carries the module path it was asked about; probably true by pass-through, but the callee BRANCHES and the detector reached this row by matching a CALL ARGUMENT as though it were a record field initialiser -- two syntaxes it cannot distinguish",
-    introduced_in: "unrecovered",
-    dissolution: unbound_dissolution(description: "the row is either confirmed by reading both branches of the branching callee and moved to a decided execution state, or withdrawn. It is recorded as UNVERIFIED rather than counted, because it was reached by a conflation and is dormant in any case -- its path is outside every discovery scan dir and its module declares no disposition")
+    execution: DormantDeclined,
+    refusal_cause: ReachedByArgumentFieldConflation {
+      matched_syntax: "call argument",
+      intended_syntax: "record field initialiser"
+    },
+    what_would_confirm: "read BOTH branches of the branching callee frontier_probe_emit_from_ingest and establish that module_path passes through unchanged on each; the two syntaxes named in refusal_cause are ones the detector cannot distinguish, so the hit is unverified in its REACHING and not merely unconfirmed in its conclusion",
+    dissolution: unbound_dissolution(description: "the candidate is confirmed by reading both branches and MOVES to vacuous_witness_rows, or it is refuted and this row deletes. It may not be asserted as vacuous from this carrier while it sits here")
   }
 ]
 
@@ -253,7 +277,7 @@ data vacuous_census_queries: List<CensusQuery> = [
   CensusQuery {
     query_name: "corpus-wide shape scan -- every Bool declaration under dag and src/v2, regardless of module disposition or discovery",
     discovered_population: "all modules; no disposition filter",
-    rows_reached: "every row in vacuous_witness_rows, including the two dormant ones and the unverified candidate"
+    rows_reached: "every row in vacuous_witness_rows, including the two dormant ones, plus the single member of vacuous_candidate_rows"
   },
   CensusQuery {
     query_name: "recoverable-assertion screen -- modules under a discovery scan dir whose disposition is not SubstrateInputsOnly and none of whose test functions reaches a host effect",
