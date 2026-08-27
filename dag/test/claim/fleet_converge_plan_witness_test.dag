@@ -74,11 +74,34 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_artifact_hash,
   fleet_converge_observed_baseline_matches,
   fleet_converge_apply_subject_admits,
+  fleet_converge_apply_artifact_admits,
+  fleet_converge_apply_admission_refusal_text,
+  fleet_converge_scope_of_wire,
+  fleet_converge_scope_wire,
+  FleetConvergeApplyAdmission,
+  ApplyAdmitted,
+  ApplySubjectHostMismatch,
+  ApplyScopeUndecodable,
+  ApplyScopeMismatch,
+  ApplyMemberSetMismatch,
+  FleetConvergeScopeDecode,
+  ScopeDecoded,
+  ScopeUndecodable,
   fleet_converge_apply_subject_host_matches,
   fleet_converge_apply_generation_admits,
   fleet_converge_apply_generation_stale,
   fleet_converge_member_set_fingerprint_matches,
   fleet_converge_member_set_fingerprint,
+  FleetConvergeRequest,
+  FleetConvergeScope,
+  FullHost,
+  FabricExecutionCellsOnly,
+  FullHostConverge,
+  FabricExecutionCellsConverge,
+  fleet_converge_request_scope,
+  fleet_converge_scope_matches,
+  fleet_converge_request_host,
+  observed_baseline_text,
   fleet_converge_fabric_cell_lines,
   fleet_converge_fabric_cell_refusal_count,
   timer_retirement_plan,
@@ -204,13 +227,15 @@ test fn observed_baseline_cas_refuses_after_drift() -> Bool {
         content: "[Service]\nMemoryMax=17179869184\n",
       }
       !fleet_converge_observed_baseline_matches(
-        host: witness_host_srv1,
         observed_baseline_hex: artifact.observed_baseline_hex,
-        observed_timers: [],
-        observed_caps: [drifted],
-        observed_spark: [],
-        observed_slots: [],
-        observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        observed: FullHostConverge {
+          host: witness_host_srv1,
+          observed_timers: [],
+          observed_caps: [drifted],
+          observed_spark: [],
+          observed_slots: [],
+          observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        },
       )
     }
     Absent => false
@@ -256,12 +281,14 @@ test fn cross_host_apply_refuses_subject_identity() -> Bool {
     Present { value: artifact } =>
       !fleet_converge_apply_subject_admits(
         planned_subject: artifact.subject,
-        observed_host: witness_host_srv2,
-        observed_timers: [],
-        observed_caps: [observed_cap],
-        observed_spark: [],
-        observed_slots: [],
-        observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        observed: FullHostConverge {
+          host: witness_host_srv2,
+          observed_timers: [],
+          observed_caps: [observed_cap],
+          observed_spark: [],
+          observed_slots: [],
+          observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        },
       )
     Absent => false
   }
@@ -338,12 +365,14 @@ test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
       }
       !fleet_converge_member_set_fingerprint_matches(
         planned_fingerprint_text: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
-        host: witness_host_srv1,
-        observed_timers: [],
-        observed_caps: [drifted],
-        observed_spark: [],
-        observed_slots: [],
-        observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        observed: FullHostConverge {
+          host: witness_host_srv1,
+          observed_timers: [],
+          observed_caps: [drifted],
+          observed_spark: [],
+          observed_slots: [],
+          observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        },
       )
     }
     Absent => false
@@ -649,21 +678,25 @@ test fn slot_drift_breaks_the_member_set_fingerprint() -> Bool {
     Present { value: artifact } =>
       fleet_converge_member_set_fingerprint_matches(
         planned_fingerprint_text: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
-        host: witness_host_srv1,
-        observed_timers: [],
-        observed_caps: [],
-        observed_spark: [],
-        observed_slots: [],
-        observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        observed: FullHostConverge {
+          host: witness_host_srv1,
+          observed_timers: [],
+          observed_caps: [],
+          observed_spark: [],
+          observed_slots: [],
+          observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        },
       )
       && (fleet_converge_member_set_fingerprint_matches(
         planned_fingerprint_text: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
-        host: witness_host_srv1,
-        observed_timers: [],
-        observed_caps: [],
-        observed_spark: [],
-        observed_slots: [runner_slot_member_from_instance_name(instance_name: "srv1-01")],
-        observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        observed: FullHostConverge {
+          host: witness_host_srv1,
+          observed_timers: [],
+          observed_caps: [],
+          observed_spark: [],
+          observed_slots: [runner_slot_member_from_instance_name(instance_name: "srv1-01")],
+          observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        },
       ) == false)
     Absent => false
   }
@@ -913,12 +946,14 @@ fn fabric_cells_observed_empty() -> FabricCellObservationDecision {
 fn fabric_fingerprint_with(population: FabricCellObservationDecision) -> String {
   serialize_content_hash(
     hash: fleet_converge_member_set_fingerprint(
-      host: "srv3" as NonEmptyStr,
-      observed_timers: [],
-      observed_caps: [],
-      observed_spark: [],
-      observed_slots: [],
-      observed_fabric_cells: population,
+      request: FullHostConverge {
+        host: "srv3" as NonEmptyStr,
+        observed_timers: [],
+        observed_caps: [],
+        observed_spark: [],
+        observed_slots: [],
+        observed_fabric_cells: population,
+      },
     ),
   ) as String
 }
@@ -1617,4 +1652,293 @@ test fn witness_fabric_cell_supplied_refusals_render_as_refusals() -> Bool {
   ]
   fabric_refusal_count_of(entries: entries) == 1
     && string_contains(s: fabric_refusal_lines(entries: entries), pattern: "host-mismatched-readback ")
+}
+
+// SCOPE IS PART OF SUBJECT IDENTITY, WHICH IS WHAT STOPS AN APPLY FROM ACTUATING A PLAN NOBODY
+// REVIEWED. A fabric-only request and a full-host request over the same host, observing the SAME
+// fabric population, must not fingerprint alike: the full-host plan additionally answers for
+// timers, caps, spark and slots, and admitting one against the other would let an apply proceed
+// against a member set its reviewer never saw. The full-host arm here is given empty family lists
+// deliberately -- that is the closest a full-host request can come to the fabric-only one, so if
+// any pair could collide it is this one.
+test fn witness_scope_changes_subject_identity() -> Bool {
+  let population = fabric_cell_observation_unobserved(host: operator_host_srv3)
+  let full = FullHostConverge {
+    host: "srv3" as NonEmptyStr,
+    observed_timers: [],
+    observed_caps: [],
+    observed_spark: [],
+    observed_slots: [],
+    observed_fabric_cells: population,
+  }
+  let fabric_only = FabricExecutionCellsConverge {
+    host: "srv3" as NonEmptyStr,
+    observed_fabric_cells: population,
+  }
+  compare_content_hash(
+    left: fleet_converge_member_set_fingerprint(request: full),
+    right: fleet_converge_member_set_fingerprint(request: fabric_only),
+  ) != ContentHashEqual
+    && fleet_converge_plan_subject(request: full).host == fleet_converge_plan_subject(request: fabric_only).host
+}
+
+// THE SCOPE OF A REQUEST IS DERIVED FROM ITS ARM AND NOT CARRIED BESIDE IT, so a request cannot
+// claim one scope while holding another family's observations.
+test fn witness_request_scope_is_its_arm() -> Bool {
+  let population = fabric_cell_observation_unobserved(host: operator_host_srv3)
+  scope_is_full_host(s: fleet_converge_request_scope(request: FullHostConverge {
+    host: "srv3" as NonEmptyStr,
+    observed_timers: [],
+    observed_caps: [],
+    observed_spark: [],
+    observed_slots: [],
+    observed_fabric_cells: population,
+  }))
+    && scope_is_fabric_only(s: fleet_converge_request_scope(request: FabricExecutionCellsConverge {
+        host: "srv3" as NonEmptyStr,
+        observed_fabric_cells: population,
+      }))
+}
+
+// THE SCOPE ROW IS THE ONLY THING SEPARATING THE TWO BASELINES, WHICH IS PRECISELY WHY IT MUST BE
+// IN THE TEXT.
+//
+// AN EARLIER REVISION OF THIS LAW ASSERTED LESS THAN ITS NAME CLAIMED, which is the reason the
+// remainder is now compared rather than counted. It checked equal line counts, one expected scope
+// row in each, and the shared host row -- so a mutation that CHANGED a non-scope row, or swapped
+// one for another, preserved every assertion and the law stayed green. "Only" was in the name and
+// not in the check. The remainder comparison is what makes the name true. Give the full-host request empty families and it renders no timer, cap, spark or
+// slot rows -- exactly what the fabric-only request renders, because it has no such fields. So
+// without the scope row the two texts would be byte-identical and the two subjects would collide:
+// an apply could admit a fabric-only plan against a full-host re-observation. This law asserts the
+// separation is real and that it is carried by the scope row alone.
+test fn witness_scope_row_is_what_separates_the_two_baselines() -> Bool {
+  let population = fabric_cell_observation_unobserved(host: operator_host_srv3)
+  let full_lines = split(
+    observed_baseline_text(request: FullHostConverge {
+      host: "srv3" as NonEmptyStr,
+      observed_timers: [],
+      observed_caps: [],
+      observed_spark: [],
+      observed_slots: [],
+      observed_fabric_cells: population,
+    }),
+    separator: "\n",
+  )
+  let fabric_lines = split(
+    observed_baseline_text(request: FabricExecutionCellsConverge {
+      host: "srv3" as NonEmptyStr,
+      observed_fabric_cells: population,
+    }),
+    separator: "\n",
+  )
+  join(filter(full_lines, l => !line_is_a_scope_row(l: l)), "\n")
+    == join(filter(fabric_lines, l => !line_is_a_scope_row(l: l)), "\n")
+    && list_length(items: filter(full_lines, l => line_is_a_scope_row(l: l))) == 1
+    && list_length(items: filter(fabric_lines, l => line_is_a_scope_row(l: l))) == 1
+    && list_length(items: filter(full_lines, l => l == "scope:full-host")) == 1
+    && list_length(items: filter(fabric_lines, l => l == "scope:fabric-execution-cells-only")) == 1
+    && list_length(items: filter(full_lines, l => l == "host:srv3")) == 1
+}
+
+// THE SCOPE ROWS ARE NORMALISED AWAY BY THIS PREDICATE RATHER THAN BY MATCHING TWO LITERALS AT
+// EACH SITE, so a third scope's row cannot be left behind in the remainder and read as an ordinary
+// difference. It is a helper over the wire spelling authority rather than a second spelling of it.
+fn line_is_a_scope_row(l: String) -> Bool {
+  l == fleet_converge_scope_wire(scope: FullHost)
+    || l == fleet_converge_scope_wire(scope: FabricExecutionCellsOnly)
+}
+
+fn scope_is_full_host(s: FleetConvergeScope) -> Bool {
+  match s {
+    FullHost => true
+    FabricExecutionCellsOnly => false
+  }
+}
+
+fn scope_is_fabric_only(s: FleetConvergeScope) -> Bool {
+  match s {
+    FabricExecutionCellsOnly => true
+    FullHost => false
+  }
+}
+
+// THE SUBJECT CARRIES SCOPE AS A ROUTING FACT, NOT ONLY INSIDE ITS FINGERPRINT. The baseline hash
+// already differs between scopes, so a crossing was refusable before this field existed -- but
+// refusing a crossing and KNOWING WHICH OBSERVERS TO RUN are different jobs, and a digest can only
+// do the first. This law asserts the second: the scope is readable off the subject.
+test fn witness_subject_carries_scope_as_a_readable_fact() -> Bool {
+  let population = fabric_cell_observation_unobserved(host: operator_host_srv3)
+  scope_is_fabric_only(s: fleet_converge_plan_subject(request: FabricExecutionCellsConverge {
+    host: "srv3" as NonEmptyStr,
+    observed_fabric_cells: population,
+  }).scope)
+    && scope_is_full_host(s: fleet_converge_plan_subject(request: FullHostConverge {
+        host: "srv3" as NonEmptyStr,
+        observed_timers: [],
+        observed_caps: [],
+        observed_spark: [],
+        observed_slots: [],
+        observed_fabric_cells: population,
+      }).scope)
+}
+
+// APPLY REFUSES A SCOPE CROSSING, AND REFUSES IT ON THE SCOPE RATHER THAN AS INCIDENTAL DRIFT. A
+// fabric-only plan re-observed as a full host is not a host that changed -- it is a different
+// question being answered -- and the two have different remedies: drift is re-planned, a crossing
+// means the apply was routed wrong. The positive control matters as much as the refusal: the same
+// subject against its OWN scope admits, so this is a scope wall and not a blanket refusal.
+test fn witness_apply_refuses_a_scope_crossing_and_admits_its_own_scope() -> Bool {
+  let population = fabric_cell_observation_unobserved(host: operator_host_srv3)
+  let fabric_request = FabricExecutionCellsConverge {
+    host: "srv3" as NonEmptyStr,
+    observed_fabric_cells: population,
+  }
+  let full_request = FullHostConverge {
+    host: "srv3" as NonEmptyStr,
+    observed_timers: [],
+    observed_caps: [],
+    observed_spark: [],
+    observed_slots: [],
+    observed_fabric_cells: population,
+  }
+  fleet_converge_apply_subject_admits(
+    planned_subject: fleet_converge_plan_subject(request: fabric_request),
+    observed: fabric_request,
+  )
+    && !fleet_converge_apply_subject_admits(
+        planned_subject: fleet_converge_plan_subject(request: fabric_request),
+        observed: full_request,
+      )
+    && !fleet_converge_apply_subject_admits(
+        planned_subject: fleet_converge_plan_subject(request: full_request),
+        observed: fabric_request,
+      )
+}
+
+
+// AN UNRECOGNISED SCOPE WIRE REFUSES INSTEAD OF CHOOSING. This is the row with the largest
+// consequence in the file: had the decode defaulted to FullHost, a truncated or vintage-mismatched
+// scope artifact would silently widen apply from one resource family to every family on the host,
+// and the widened run is indistinguishable from what the pre-scope signature always did -- so the
+// widening would never be reported by anything. Both refusal causes are asserted separately
+// because an empty artifact and an unknown token have different remedies.
+test fn witness_an_undecodable_scope_wire_refuses_and_never_defaults_to_full_host() -> Bool {
+  match fleet_converge_scope_of_wire(wire: "") {
+    ScopeUndecodable { cause: _ } =>
+      match fleet_converge_scope_of_wire(wire: "scope:everything") {
+        ScopeUndecodable { cause: _ } =>
+          match fleet_converge_scope_of_wire(wire: fleet_converge_scope_wire(scope: FullHost)) {
+            ScopeDecoded { scope: _ } =>
+              match fleet_converge_scope_of_wire(
+                wire: fleet_converge_scope_wire(scope: FabricExecutionCellsOnly),
+              ) {
+                ScopeDecoded { scope: _ } => true
+                ScopeUndecodable { cause: _ } => false
+              }
+            ScopeUndecodable { cause: _ } => false
+          }
+        ScopeDecoded { scope: _ } => false
+      }
+    ScopeDecoded { scope: _ } => false
+  }
+}
+
+// THE THREE ADMISSION FAILURES KEEP THEIR OWN IDENTITIES. A Bool would make one message answer for
+// a foreign artifact, an unselected resource family and ordinary drift, whose operator remedies are
+// respectively "you are on the wrong machine", "stop, this would actuate something unplanned" and
+// "rerun plan". The positive control is what makes this a discriminator rather than a refusal wall.
+test fn witness_apply_admission_distinguishes_its_three_refusals() -> Bool {
+  let observed = FabricExecutionCellsConverge {
+    host: operator_host_srv3,
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+  }
+  let good_fp = serialize_content_hash(
+    hash: fleet_converge_member_set_fingerprint(request: observed),
+  ) as String
+  let fabric_wire = fleet_converge_scope_wire(scope: FabricExecutionCellsOnly)
+  match fleet_converge_apply_artifact_admits(
+    planned_host_text: operator_host_srv1 as String,
+    planned_scope_wire: fabric_wire,
+    planned_fingerprint_text: good_fp,
+    observed: observed,
+  ) {
+    ApplySubjectHostMismatch { planned: _, observed: _ } =>
+      match fleet_converge_apply_artifact_admits(
+        planned_host_text: operator_host_srv3 as String,
+        planned_scope_wire: "scope:not-a-scope",
+        planned_fingerprint_text: good_fp,
+        observed: observed,
+      ) {
+        ApplyScopeUndecodable { cause: _ } =>
+          match fleet_converge_apply_artifact_admits(
+            planned_host_text: operator_host_srv3 as String,
+            planned_scope_wire: fleet_converge_scope_wire(scope: FullHost),
+            planned_fingerprint_text: good_fp,
+            observed: observed,
+          ) {
+            ApplyScopeMismatch { planned_wire: _, observed_wire: _ } =>
+              match fleet_converge_apply_artifact_admits(
+                planned_host_text: operator_host_srv3 as String,
+                planned_scope_wire: fabric_wire,
+                planned_fingerprint_text: "0000000000000000",
+                observed: observed,
+              ) {
+                ApplyMemberSetMismatch =>
+                  match fleet_converge_apply_artifact_admits(
+                    planned_host_text: operator_host_srv3 as String,
+                    planned_scope_wire: fabric_wire,
+                    planned_fingerprint_text: good_fp,
+                    observed: observed,
+                  ) {
+                    ApplyAdmitted => true
+                    ApplySubjectHostMismatch { planned: _, observed: _ } => false
+                    ApplyScopeUndecodable { cause: _ } => false
+                    ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
+                    ApplyMemberSetMismatch => false
+                  }
+                ApplyAdmitted => false
+                ApplySubjectHostMismatch { planned: _, observed: _ } => false
+                ApplyScopeUndecodable { cause: _ } => false
+                ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
+              }
+            ApplyAdmitted => false
+            ApplySubjectHostMismatch { planned: _, observed: _ } => false
+            ApplyScopeUndecodable { cause: _ } => false
+            ApplyMemberSetMismatch => false
+          }
+        ApplyAdmitted => false
+        ApplySubjectHostMismatch { planned: _, observed: _ } => false
+        ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
+        ApplyMemberSetMismatch => false
+      }
+    ApplyAdmitted => false
+    ApplyScopeUndecodable { cause: _ } => false
+    ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
+    ApplyMemberSetMismatch => false
+  }
+}
+
+// THE HOST CHECK IS ORDERED FIRST, AND THAT ORDER IS A CLAIM. An artifact from another machine is
+// judged before its scope is decoded, so a foreign artifact carrying a scope this build cannot
+// spell reports the host problem -- the one the operator can act on -- rather than a decode failure
+// that reads as a version skew.
+test fn witness_a_foreign_artifact_reports_its_host_before_its_scope() -> Bool {
+  let observed = FabricExecutionCellsConverge {
+    host: operator_host_srv3,
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+  }
+  match fleet_converge_apply_artifact_admits(
+    planned_host_text: operator_host_srv4 as String,
+    planned_scope_wire: "scope:from-a-future-build",
+    planned_fingerprint_text: "0000000000000000",
+    observed: observed,
+  ) {
+    ApplySubjectHostMismatch { planned: p, observed: o } =>
+      p == (operator_host_srv4 as String) && o == (operator_host_srv3 as String)
+    ApplyAdmitted => false
+    ApplyScopeUndecodable { cause: _ } => false
+    ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
+    ApplyMemberSetMismatch => false
+  }
 }

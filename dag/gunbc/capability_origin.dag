@@ -1,0 +1,492 @@
+module gunbc.capability_origin
+
+import extdeps.external_authority { ExternalAuthority }
+import gunbc.rust_item_identity { RustItemIdentity, rust_item_identity_key }
+import std.decl_ref { DeclarationRef }
+import std.roster_frontier { declaration_ref_display_key }
+import std.types { Bool, List, String }
+import v2.std.algebra { HeadAbsent, HeadFound, filter, fold_list, list_append, list_head, list_map }
+
+// WHERE THE SEMANTICS CAME FROM IS A DIFFERENT QUESTION FROM WHETHER RUST OWNS A DECISION.
+//
+// The leaf test asks whether a hand-Rust item makes a semantic choice the substrate should own. An
+// implementation described back into the model AFTER it was written passes that test perfectly: the
+// .dag authority exists, the Rust defers to it, every arm lines up. What it does not establish is
+// that the model was prior -- and a model authored beside the realization that inspired it is the
+// realization legislating for the substrate with an extra step.
+//
+// So this module carries the ORIGIN relation, and it is a second test beside the leaf test rather
+// than a replacement for it.
+data capability_origin_note: String = "ORIGIN RELATION for hand-authored Rust growth, the second test beside gunbc.seed_growth_admission's leaf test. THE LEAF TEST asks whether Rust owns a semantic decision; THE ORIGIN TEST asks where the semantics came from, and a retro-described implementation passes the leaf test perfectly. THE FIELD THIS REPLACES: CapabilityAlreadyModeled was payload-free, so it could be satisfied by inspecting the final candidate -- which cannot distinguish a model that existed before its realization from a model added beside the realization that inspired it, and that distinction is the whole question. THERE IS DELIBERATELY NO ARM MEANING 'the Rust behaves this way, therefore this is the intended model': that state is unrepresentable here rather than checked (DESIGN section 5, construction over validation). REJECTED AS EVIDENCE, each because it is satisfiable by a retro-described implementation: that the .dag was committed first (sufficient but neither necessary nor conclusive, and erased by squash merge); that the model carries refusal arms the realization does not implement (establishes an implementation gap, not model independence); final-tree agreement; the full candidate compiling; and a comment in the Rust naming the model."
+
+// THE GROUND IS WHAT MAKES A MODEL INTRODUCED IN THIS CHANGE INDEPENDENT OF THE RUST BESIDE IT.
+//
+// A capability already on base needs no ground -- it was there before this change could have
+// inspired it. A capability introduced in the same change does, and it must come from somewhere
+// other than the realization: a predecessor whose contract it preserves, an external contract the
+// repository does not author, or an operator ruling. Nothing else grounds it, and the absence of a
+// fourth arm is the point.
+type CapabilityGround
+  = ExistingCapabilityMigration {
+      predecessor: DeclarationRef,
+      preserved_contract: DeclarationRef
+    }
+  | ExternalContractGround { authority: ExternalAuthority }
+  | OperatorRatifiedModel { ruling: DeclarationRef }
+
+type ModeledCapabilityOrigin
+  = CapabilityPresentOnBase { authority: DeclarationRef }
+  | CapabilityIntroducedInModelEpoch {
+      authority: DeclarationRef,
+      model_epoch: ModelEpochRef,
+      ground: CapabilityGround
+    }
+
+// NoNewCapability STAYS CORRECT and is not a weaker sibling of the modeled arm: an edit that only
+// repairs, narrows, moves or deletes originates nothing, so there is no origin to state and
+// demanding one would make every mechanical edit carry ceremony.
+type CapabilityOrigin
+  = NoNewCapability
+  | ModeledCapability { origin: ModeledCapabilityOrigin }
+
+fn capability_origin_authority(origin: ModeledCapabilityOrigin) -> DeclarationRef {
+  match origin {
+    CapabilityPresentOnBase { authority: authority } => authority
+    CapabilityIntroducedInModelEpoch { authority: authority, model_epoch: _, ground: _ } => authority
+  }
+}
+
+// THE TWO SUBJECTS, AND WHY THEY ARE CONSTRUCTED RATHER THAN OBSERVED.
+//
+// "Which file was typed first" is not usable: it is unknowable from the candidate, it is
+// rewritable, and squash merge erases it. So the instrument constructs two logical subjects from
+// one candidate and asks a question of the first.
+//
+//   E1  model epoch        base + the .dag delta, MINUS every added or modified hand-Rust item
+//   E2  realization epoch  E1 + the authorized native leaves
+//
+// One commit may carry both deltas; nothing here requires two commits, and no author states which
+// epoch they were working in.
+//
+// DELETIONS ARE NOT EXCLUDED FROM E1, and that is a decision rather than an oversight. Excluding a
+// deletion would mean RESTORING the deleted item into the model epoch, which is the opposite of
+// what the exclusion is for: the exclusion removes what could have originated the capability, and a
+// deletion originates nothing. This mirrors the rule one module over that deletions offset nothing.
+// THE EPOCH IS IDENTIFIED, NOT DESCRIBED. An origin arm that names only an authority and a ground
+// is still a claim about the FINAL CANDIDATE -- it says a model exists and where it came from, and
+// says nothing about which tree was actually tested. ModelEpochRef names the exact derived E1
+// population, so the admission join can establish that the cited authority held in a tree that
+// existed before the Rust delta was admitted, rather than in the candidate that contains it.
+type ModelEpochRef
+  = SyntheticTreeIdentity { tree_id: String }
+  | ModelOnlyContentIdentity { content_hash: String }
+
+fn model_epoch_ref_key(ref: ModelEpochRef) -> String {
+  match ref {
+    SyntheticTreeIdentity { tree_id: tree_id } => concat("tree:", tree_id)
+    ModelOnlyContentIdentity { content_hash: content_hash } => concat("content:", content_hash)
+  }
+}
+
+// A CLAIM ABOUT A DELTA REQUIRES AN OBSERVER WHOSE BASE IS THE DELTA'S ACTUAL BASE.
+//
+// This carrier holds BOTH revisions because holding only one makes the failure unrepresentable in
+// the wrong direction: with a base alone, a candidate that has since integrated main reads as
+// congruent; with a head alone, an epoch derived against the wrong base reads as congruent. The
+// pair is what expires.
+//
+// RECEIPT, AND IT IS WHY THIS IS A FIELD RATHER THAN A CONVENTION. A structural finding was raised
+// against gunbc#9426 on 2026-08-27 reporting five scm production modules changed, a witness file
+// deleted and a type removed. Every one of those was main's own work rendered IN REVERSE, because
+// the diff was taken two-dot from CURRENT main to a branch whose base predated it -- main-side
+// additions classified as candidate deletions. Nothing in the report was true and all of it was
+// internally consistent, which is the shape that gets past a reader. So the epoch records the base
+// it was derived against and the join refuses on mismatch: the class becomes unrepresentable rather
+// than discouraged.
+type ModelEpochSubject {
+  base_revision: String,
+  head_revision: String,
+  epoch_ref: ModelEpochRef,
+  excluded_hand_item_keys: List<String>
+}
+
+fn model_epoch_subject(
+  base_revision: String,
+  head_revision: String,
+  epoch_ref: ModelEpochRef,
+  added: List<RustItemIdentity>,
+  modified: List<RustItemIdentity>
+) -> ModelEpochSubject {
+  ModelEpochSubject {
+    base_revision: base_revision,
+    head_revision: head_revision,
+    epoch_ref: epoch_ref,
+    excluded_hand_item_keys: list_append(
+      left: list_map(xs: added, f: fn(item) { rust_item_identity_key(item: item) }),
+      right: list_map(xs: modified, f: fn(item) { rust_item_identity_key(item: item) })
+    )
+  }
+}
+
+// THE EPOCH EXPIRES WHEN EITHER END MOVES. A base that advanced or a branch that integrated main
+// invalidates both E1 and E2, and they are reconstructed rather than re-cited.
+fn epoch_congruent(epoch: ModelEpochSubject, actual_base: String, actual_head: String) -> Bool {
+  epoch.base_revision == actual_base && epoch.head_revision == actual_head
+}
+
+fn realization_epoch_leaf_keys(added: List<RustItemIdentity>) -> List<String> {
+  list_map(xs: added, f: fn(item) { rust_item_identity_key(item: item) })
+}
+
+// THE ORIGIN TEST IS AN EXECUTION, AND THIS CARRIER CANNOT PRETEND IT RAN.
+//
+// The test: remove the hand-Rust delta entirely, build E1, and require that the capability
+// authority still resolves, compiles, executes its semantic witnesses and produces its predicted
+// reds. If producing the model projection REQUIRES the new hand-Rust leaf, the model is not
+// independently prior and that substrate capability separates first.
+//
+// A probe that did not run and a probe that found the authority absent must not render alike, so
+// ProbeNotExecuted is its own arm and never collapses into absence -- an unreached probe reported
+// as a clean answer is the execution-provenance loss DESIGN records.
+type ModelEpochProbeResult
+  = AuthorityHoldsInModelEpoch { authority: DeclarationRef, epoch: ModelEpochSubject }
+  | AuthorityRequiresRealization {
+      authority: DeclarationRef,
+      epoch: ModelEpochSubject,
+      detail: String
+    }
+  | ProbeNotExecuted { authority: DeclarationRef, detail: String }
+
+type OriginTestVerdict
+  = ModelIndependentlyPrior { authority: DeclarationRef }
+  | OriginRefused { authority: DeclarationRef, detail: String }
+
+// A capability already on base is prior by construction and needs no probe: the base predates the
+// change, so nothing in the change could have originated it. Only the introduced arm is probed.
+fn origin_test_verdict(origin: ModeledCapabilityOrigin, probe: ModelEpochProbeResult) -> OriginTestVerdict {
+  match origin {
+    CapabilityPresentOnBase { authority: authority } => ModelIndependentlyPrior { authority: authority }
+    CapabilityIntroducedInModelEpoch { authority: authority, model_epoch: cited_epoch, ground: _ } =>
+      match probe {
+        AuthorityHoldsInModelEpoch { authority: probed, epoch: probed_epoch } =>
+          if model_epoch_ref_key(ref: probed_epoch.epoch_ref) == model_epoch_ref_key(ref: cited_epoch) {
+            ModelIndependentlyPrior { authority: probed }
+          } else {
+            OriginRefused {
+              authority: probed,
+              detail: concat(
+                "the probe tested a different model epoch than the origin arm cites: probed ",
+                concat(
+                  model_epoch_ref_key(ref: probed_epoch.epoch_ref),
+                  concat(", cited ", model_epoch_ref_key(ref: cited_epoch))
+                )
+              )
+            }
+          }
+        AuthorityRequiresRealization { authority: probed, epoch: _, detail: detail } =>
+          OriginRefused {
+            authority: probed,
+            detail: concat("model projection requires the new hand-Rust leaf; that substrate capability separates first: ", detail)
+          }
+        ProbeNotExecuted { authority: probed, detail: detail } =>
+          OriginRefused {
+            authority: probed,
+            detail: concat("origin test did not execute; an unperformed test admits nothing: ", detail)
+          }
+      }
+  }
+}
+
+fn origin_verdict_admits(verdict: OriginTestVerdict) -> Bool {
+  match verdict {
+    ModelIndependentlyPrior { authority: _ } => true
+    OriginRefused { authority: _, detail: _ } => false
+  }
+}
+
+fn origin_verdict_display(verdict: OriginTestVerdict) -> String {
+  match verdict {
+    ModelIndependentlyPrior { authority: authority } => declaration_ref_display_key(ref: authority)
+    OriginRefused { authority: authority, detail: detail } =>
+      concat(declaration_ref_display_key(ref: authority), concat(": ", detail))
+  }
+}
+
+// AN ADDED LEAF CARRIES ITS ORIGIN TOO, AND THIS IS THE HALF AN ADMISSION WALL LOSES FIRST.
+//
+// The modification arm closes the large-existing-function escape: capability added to a
+// two-thousand-line function without minting one new item. But a NEWLY ADDED item can carry a
+// perfectly good justification row and still have been retro-modeled in the same change, so the
+// origin relation participates in the addition arm as well. Everything below is stated once and
+// read twice -- prospectively by the admission join, contemporaneously by the terminal roster join
+// when the final cut lands -- and no parallel list is introduced for either reader.
+type AuthorizedTemporarySeedBridge {
+  item: DeclarationRef,
+  dag_authority: DeclarationRef,
+  origin: ModeledCapabilityOrigin,
+  realization_role: String,
+  owning_lane: String,
+  deletion_trigger: String,
+  current_boundary: String
+}
+
+fn seed_bridge_states_its_origin(bridge: AuthorizedTemporarySeedBridge) -> Bool {
+  declaration_ref_display_key(ref: capability_origin_authority(origin: bridge.origin))
+    == declaration_ref_display_key(ref: bridge.dag_authority)
+}
+
+fn seed_bridge_well_formed(bridge: AuthorizedTemporarySeedBridge) -> Bool {
+  seed_bridge_states_its_origin(bridge: bridge)
+    && bridge.realization_role != ""
+    && bridge.owning_lane != ""
+    && bridge.deletion_trigger != ""
+    && bridge.current_boundary != ""
+}
+
+data capability_origin_rung_note: String = "RUNG, STATED AT THE GRAIN THAT IS HONEST RATHER THAN THE ONE THAT READS BEST. THE VOCABULARY IS STRUCTURAL: no arm of CapabilityGround or ModeledCapabilityOrigin means 'the Rust behaves this way, therefore this is the intended model', so that claim is unwritable here rather than refused by a check; origin_test_verdict has no path from ProbeNotExecuted to an admitting verdict, conformance_verdict has none from ConformanceProbeNotExecuted, and an added item whose bridge is absent refuses rather than falling through -- so an unperformed test cannot render as a passed one anywhere in this carrier. THREE TESTS, NOT ONE, AND THEY ESTABLISH DIFFERENT THINGS: the LEAF test (gunbc.seed_growth_admission) proves Rust owns no semantic decision; the ORIGIN test proves the semantics predate the Rust; the CONFORMANCE test proves the model CONSTRAINS the Rust rather than merely agreeing with it. A retro-described implementation passes the first two and fails the third, because its fixtures were derived from the behavior they check -- which is why FixtureProvenance refuses GeneratedByRealization even when the mutation went red. THE TESTS THEMSELVES ARE NOT EXECUTED BY ANYTHING IN THIS REPOSITORY YET, and calling this carrier a wall would be exactly the inflation DESIGN section 4b(1) names as worse than sitting low. ModelEpochProbeResult and ConformanceProbeResult are the shapes an executing host must supply; no host supplies them, so every real call today lands on the not-executed arms and REFUSES, which is the correct fail-closed reading and not a passing one. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY RATHER THAN AN ARTIFACT THAT WOULD CONTRIBUTE TO ONE: an executable route that (1) materializes the E1 subject from a candidate against its ACTUAL proposed base -- base plus the .dag delta with every added and modified hand-Rust item removed -- (2) resolves and compiles the cited capability authority inside it and runs that authority's semantic controls, and (3) mutates the Rust realization alone and observes the predicted conformance evidence go red while E1 stays green, returning all of it from real builds rather than from an author's assertion. A route that constructs the subject without building it does not retire this row; neither does one that builds a single entry when the authority's controls span several; and neither does one that derives its base from whatever ref the caller happened to have."
+
+// THE PROBE IS LOOKED UP, NEVER SUPPLIED AS A VERDICT, AND THE DIFFERENCE IS THE WHOLE WALL.
+//
+// A caller that could hand in an OriginTestVerdict could hand in an admitting one, which would make
+// this construction a place to write down a conclusion rather than a place to reach one. So the
+// join accepts only ModelEpochProbeResult rows -- what an executing host observed -- and derives
+// every verdict itself. A bridge whose authority no probe row names does not fall through to some
+// neutral answer: it lands on ProbeNotExecuted and refuses.
+fn probe_for_authority(probes: List<ModelEpochProbeResult>, authority: DeclarationRef) -> ModelEpochProbeResult {
+  let wanted = declaration_ref_display_key(ref: authority)
+  let matching = filter(
+    xs: probes,
+    predicate: fn(p) { declaration_ref_display_key(ref: probe_authority(probe: p)) == wanted }
+  )
+  match list_head(xs: matching) {
+    HeadFound { value: p } => p
+    HeadAbsent => ProbeNotExecuted {
+      authority: authority,
+      detail: "no model-epoch probe row names this authority"
+    }
+  }
+}
+
+fn probe_authority(probe: ModelEpochProbeResult) -> DeclarationRef {
+  match probe {
+    AuthorityHoldsInModelEpoch { authority: authority, epoch: _ } => authority
+    AuthorityRequiresRealization { authority: authority, epoch: _, detail: _ } => authority
+    ProbeNotExecuted { authority: authority, detail: _ } => authority
+  }
+}
+
+fn bridge_origin_verdict(bridge: AuthorizedTemporarySeedBridge, evidence: AdmissionEvidence) -> OriginTestVerdict {
+  let authority = capability_origin_authority(origin: bridge.origin)
+  let probe = probe_for_authority(probes: evidence.model_epoch_probes, authority: authority)
+  if !probe_epoch_congruent(probe: probe, evidence: evidence) {
+    OriginRefused {
+      authority: authority,
+      detail: "the model-epoch probe was taken against a different base or head than the change being admitted, so its epoch has expired and E1 must be reconstructed"
+    }
+  } else {
+    origin_test_verdict(origin: bridge.origin, probe: probe)
+  }
+}
+
+fn bridge_for_item(bridges: List<AuthorizedTemporarySeedBridge>, item: DeclarationRef) -> List<AuthorizedTemporarySeedBridge> {
+  let wanted = declaration_ref_display_key(ref: item)
+  filter(
+    xs: bridges,
+    predicate: fn(b) { declaration_ref_display_key(ref: b.item) == wanted }
+  )
+}
+
+// AN ADDED ITEM WITH NO BRIDGE ROW REFUSES HERE TOO, AND THAT IS NOT A DUPLICATE OF THE LEAF TEST.
+// The leaf test asks whether a SeedGrowthJustification row names the item; this asks whether the
+// capability it realizes was independently prior, and then whether the model constrains it. A row
+// can name an item perfectly while the model beside it was written to describe the Rust, so all
+// three questions are asked of every addition.
+fn item_origin_refusal(bridges: List<AuthorizedTemporarySeedBridge>, evidence: AdmissionEvidence, item: DeclarationRef) -> List<String> {
+  match list_head(xs: bridge_for_item(bridges: bridges, item: item)) {
+    HeadAbsent => [
+      concat(
+        declaration_ref_display_key(ref: item),
+        ": no AuthorizedTemporarySeedBridge states this item's capability origin"
+      )
+    ]
+    HeadFound { value: bridge } => {
+      let origin = bridge_origin_verdict(bridge: bridge, evidence: evidence)
+      let conformance = conformance_verdict(
+        probe: conformance_probe_for_authority(
+          probes: evidence.conformance_probes,
+          authority: capability_origin_authority(origin: bridge.origin)
+        )
+      )
+      if !seed_bridge_well_formed(bridge: bridge) {
+        [
+          concat(
+            declaration_ref_display_key(ref: item),
+            ": AuthorizedTemporarySeedBridge is not well formed -- role, lane, deletion trigger, boundary and a stated origin authority matching the .dag authority are all required"
+          )
+        ]
+      } else if !origin_verdict_admits(verdict: origin) {
+        [origin_verdict_display(verdict: origin)]
+      } else if !conformance_verdict_admits(verdict: conformance) {
+        [conformance_verdict_display(verdict: conformance)]
+      } else {
+        [] as List<String>
+      }
+    }
+  }
+}
+
+fn origin_refusals(bridges: List<AuthorizedTemporarySeedBridge>, evidence: AdmissionEvidence, added: List<DeclarationRef>) -> List<String> {
+  fold_list(
+    xs: added,
+    empty: [] as List<String>,
+    cons: fn(acc, item) {
+      list_append(
+        left: acc,
+        right: item_origin_refusal(bridges: bridges, evidence: evidence, item: item)
+      )
+    }
+  )
+}
+
+
+// THE THIRD TEST: DOES THE MODEL CONSTRAIN THE RUST, OR MERELY AGREE WITH IT?
+//
+// The leaf test proves Rust owns no decision. The origin test proves the semantics predate the
+// Rust. Neither separates
+//
+//   model -> expected observation contract -> Rust conformance
+//
+// from
+//
+//   Rust behavior -> matching model fixture -> circular green
+//
+// because a retro-described implementation passes both: its authority resolves, its ground is real,
+// and its fixtures agree with it exactly -- they were derived from the behavior they check. The
+// distinguishing experiment is directional: MUTATE ONLY THE RUST REALIZATION. The predicted
+// conformance evidence must go RED and the model epoch's own semantic tests must stay GREEN. A
+// mutation nothing notices establishes that the fixtures follow the realization.
+type FixtureProvenance
+  = AuthoredAgainstModelContract { contract: DeclarationRef }
+  | GeneratedByRealization { detail: String }
+
+type ConformanceProbeResult
+  = RealizationMutationRefused {
+      authority: DeclarationRef,
+      epoch: ModelEpochSubject,
+      fixture_provenance: FixtureProvenance
+    }
+  | RealizationMutationUnnoticed {
+      authority: DeclarationRef,
+      epoch: ModelEpochSubject,
+      detail: String
+    }
+  | ConformanceProbeNotExecuted { authority: DeclarationRef, detail: String }
+
+type ConformanceVerdict
+  = ModelConstrainsRealization { authority: DeclarationRef }
+  | ConformanceRefused { authority: DeclarationRef, detail: String }
+
+// FIXTURES GENERATED BY THE REALIZATION REFUSE EVEN WHEN THE MUTATION WENT RED, and that arm is not
+// redundant with the mutation arm. A fixture recorded from the new implementation goes red under
+// mutation perfectly well -- it is pinned to the behavior, so any change to the behavior breaks it.
+// What it can never do is establish that the model predicted the behavior. Redness is necessary and
+// provenance is what makes it evidence.
+fn conformance_verdict(probe: ConformanceProbeResult) -> ConformanceVerdict {
+  match probe {
+    RealizationMutationRefused { authority: authority, epoch: _, fixture_provenance: provenance } =>
+      match provenance {
+        AuthoredAgainstModelContract { contract: _ } => ModelConstrainsRealization { authority: authority }
+        GeneratedByRealization { detail: detail } =>
+          ConformanceRefused {
+            authority: authority,
+            detail: concat("conformance fixtures were generated by the realization they check: ", detail)
+          }
+      }
+    RealizationMutationUnnoticed { authority: authority, epoch: _, detail: detail } =>
+      ConformanceRefused {
+        authority: authority,
+        detail: concat("mutating the realization alone changed no predicted evidence, so the model does not constrain it: ", detail)
+      }
+    ConformanceProbeNotExecuted { authority: authority, detail: detail } =>
+      ConformanceRefused {
+        authority: authority,
+        detail: concat("conformance test did not execute; an unperformed test admits nothing: ", detail)
+      }
+  }
+}
+
+fn conformance_probe_authority(probe: ConformanceProbeResult) -> DeclarationRef {
+  match probe {
+    RealizationMutationRefused { authority: authority, epoch: _, fixture_provenance: _ } => authority
+    RealizationMutationUnnoticed { authority: authority, epoch: _, detail: _ } => authority
+    ConformanceProbeNotExecuted { authority: authority, detail: _ } => authority
+  }
+}
+
+fn conformance_probe_for_authority(probes: List<ConformanceProbeResult>, authority: DeclarationRef) -> ConformanceProbeResult {
+  let wanted = declaration_ref_display_key(ref: authority)
+  let matching = filter(
+    xs: probes,
+    predicate: fn(p) { declaration_ref_display_key(ref: conformance_probe_authority(probe: p)) == wanted }
+  )
+  match list_head(xs: matching) {
+    HeadFound { value: p } => p
+    HeadAbsent => ConformanceProbeNotExecuted {
+      authority: authority,
+      detail: "no realization-conformance probe row names this authority"
+    }
+  }
+}
+
+fn conformance_verdict_admits(verdict: ConformanceVerdict) -> Bool {
+  match verdict {
+    ModelConstrainsRealization { authority: _ } => true
+    ConformanceRefused { authority: _, detail: _ } => false
+  }
+}
+
+fn conformance_verdict_display(verdict: ConformanceVerdict) -> String {
+  match verdict {
+    ModelConstrainsRealization { authority: authority } => declaration_ref_display_key(ref: authority)
+    ConformanceRefused { authority: authority, detail: detail } =>
+      concat(declaration_ref_display_key(ref: authority), concat(": ", detail))
+  }
+}
+
+// ONE CARRIER FOR WHAT AN EXECUTING HOST OBSERVED, AND IT CARRIES THE OBSERVER'S OWN BASE.
+//
+// The revisions are here rather than passed beside the evidence because the epoch-congruence check
+// is a question about the observer, not about any one probe: a caller that could supply probes
+// without stating which base it observed could hand in evidence derived against a base the change
+// was never proposed against, which is exactly the reversed-diff class this module records above.
+type AdmissionEvidence {
+  observed_base_revision: String,
+  observed_head_revision: String,
+  model_epoch_probes: List<ModelEpochProbeResult>,
+  conformance_probes: List<ConformanceProbeResult>
+}
+
+fn no_admission_evidence() -> AdmissionEvidence {
+  AdmissionEvidence {
+    observed_base_revision: "",
+    observed_head_revision: "",
+    model_epoch_probes: [],
+    conformance_probes: []
+  }
+}
+
+// EVERY PROBE MUST HAVE BEEN TAKEN AGAINST THE OBSERVER'S OWN BASE AND HEAD. A probe whose epoch
+// names a different pair is evidence about a different change, and an expired epoch is not a weaker
+// form of a current one.
+fn probe_epoch_congruent(probe: ModelEpochProbeResult, evidence: AdmissionEvidence) -> Bool {
+  match probe {
+    AuthorityHoldsInModelEpoch { authority: _, epoch: epoch } =>
+      epoch_congruent(
+        epoch: epoch,
+        actual_base: evidence.observed_base_revision,
+        actual_head: evidence.observed_head_revision
+      )
+    AuthorityRequiresRealization { authority: _, epoch: _, detail: _ } => true
+    ProbeNotExecuted { authority: _, detail: _ } => true
+  }
+}

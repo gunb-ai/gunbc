@@ -97,7 +97,7 @@ test fn witness_scaffold_carries_named_dissolution_trigger() -> Bool {
   }
 }
 
-test fn witness_red_control_never_ready_refuses_at_poll_bound() -> Bool {
+test fn witness_red_control_service_ready_never_ready_refuses_at_poll_bound() -> Bool {
   let refusal = service_not_ready_refusal_at_poll_bound(
     last_probe: "health probe never succeeded",
     unit_diagnosis: UnitDiagnosisCaptured { text: "Active: failed (Result: exit-code) Main PID: 4242 (code=exited, status=1/FAILURE)" }

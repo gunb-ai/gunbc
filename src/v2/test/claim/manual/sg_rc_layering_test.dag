@@ -11,7 +11,7 @@ fn sg_rc_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg_rc_fail_sym } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -64,7 +64,7 @@ fn sg_rc_outcome_node_source_type() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^target_carrier_outcome } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 }
       },
       Edge {
@@ -72,11 +72,11 @@ fn sg_rc_outcome_node_source_type() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^target_carrier_node } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 

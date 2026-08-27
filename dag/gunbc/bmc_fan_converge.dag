@@ -102,6 +102,7 @@ import gunbc.auth.secret_ref_credential {
   SecretCredentialWireDecodeRefused,
   fetch_secret_ref_credential,
 }
+import gunbc.bmc_fan_alignment_standing { fleet_bmc_fan_alignment_standings }
 import gunbc.bmc_converge {
   BmcFanPolicyApplyPlan,
   bmc_fan_policy_classification,
@@ -1523,6 +1524,7 @@ fn bmc_fan_observe_only_with_credential(
       exit_failure(reason: reason)
     BmcFanLiveObserved { observation: observed } => {
       let classified = bmc_fan_policy_classification(
+        standings: fleet_bmc_fan_alignment_standings,
         host: target.host.identity,
         board: target.board,
         intent: fleet_bmc_valid_state,
@@ -1598,6 +1600,7 @@ fn bmc_fan_converge_with_credential(
       exit_failure(reason: reason)
     BmcFanLiveObserved { observation: observed } => {
       let classified = bmc_fan_policy_classification(
+        standings: fleet_bmc_fan_alignment_standings,
         host: target.host.identity,
         board: target.board,
         intent: fleet_bmc_valid_state,
@@ -1732,6 +1735,14 @@ func bmc_fan_run(
   }
 }
 
+// THE OBSERVE ENTRIES ARE READ-ONLY CONVERGENCE CHECKS, NOT RAW TELEMETRY, and the distinction
+// decides whether their exit status is correct. They acquire the live observation and then run
+// bmc_fan_policy_classification, so a Refuse decision -- including an alignment refusal, which on
+// srv4 means the observed program is not representable by the intent -- exits nonzero even though
+// the read itself succeeded. That is the contract these entries implement: they answer "does the
+// host agree with the intent", and an unrepresentable program is a legitimate no. A caller that
+// wants raw fan state regardless of intent wants a different operation, and it does not exist
+// here; naming that is the point of this block, because the two contracts share a verb.
 func srv3_bmc_fan_observe() -> ProcessExit
   uses net: Network
 {

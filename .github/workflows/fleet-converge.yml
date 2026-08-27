@@ -8,9 +8,9 @@ on:
         options: [srv1, srv2, srv3, srv4]
         type: choice
       mode:
-        description: plan shows membership hunks; apply executes a prior plan artifact; spark_linger enables linger on target spark via FleetSsh typed argv from executor; spark_observe is a read-only observation of both Sparks; session_demand_observe is a read-only observation of the dispatched host's own session cgroup population and memory counters
+        description: plan shows membership hunks; apply executes a prior plan artifact; spark_linger enables linger on target spark via FleetSsh typed argv from executor; spark_observe is a read-only observation of both Sparks
         required: true
-        options: [plan, apply, spark_linger, spark_observe, spark_reboot, spark_grants, spark_durability, session_demand_observe]
+        options: [plan, apply, spark_linger, spark_observe, spark_reboot, spark_grants, spark_durability, dashboard_deploy]
         type: choice
       target:
         description: Spark target host for spark_linger mode (srv5 or srv6)
@@ -268,14 +268,6 @@ jobs:
           cat "$ROOT/target/spark-serving-observe-ci-receipt.txt"
         if: github.event.inputs.mode == 'spark_observe'
         timeout-minutes: 60
-      - name: "Session demand observation (read-only: managed slice population, per-session memory.current, parent slice counters)"
-        id: session_demand_observe
-        run: |
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/session_demand_observe.dag --function session_demand_observe_ci_wet
-          cat "$ROOT/target/session-demand-observe-receipt.txt"
-        if: github.event.inputs.mode == 'session_demand_observe'
-        timeout-minutes: 60
       - name: "Spark serving reboot (durability probe: the receipt is the converge that follows)"
         id: spark_reboot
         run: |
@@ -301,3 +293,38 @@ jobs:
           if [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k || true; fi
         if: always()
         timeout-minutes: 5
+  dashboard-deploy:
+    runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
+    needs: [build]
+    timeout-minutes: 50
+    if: github.event.inputs.mode == 'dashboard_deploy'
+    concurrency:
+      group: srv1-dashboard-deploy
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Download release-bins artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-bins
+        timeout-minutes: 10
+      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
+        id: release_bins
+        run: |
+          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          mkdir -p "$ROOT/target/release"
+          tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
+          rm -f "$ROOT/release-bins.tgz"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
+        timeout-minutes: 5
+      - name: Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)
+        id: dashboard_deploy
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function live_deploy_apply_srv1_wet
+          cat "$ROOT/target/live-deploy-srv1-receipt.txt"
+        timeout-minutes: 30

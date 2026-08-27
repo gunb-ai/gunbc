@@ -1,5 +1,12 @@
 module gunbc.live_deploy.apply
 
+import gunbc.live_deploy.deployed_tree_scope {
+  RepositoryTransitionAdmission,
+  RepositoryTransitionAdmitted,
+  LegacyGitFileSyncNotAdmitted,
+  deployed_tree_repository_transition,
+  repository_transition_admission,
+}
 import gunbc.live_deploy.spec {
   DeploymentSpec,
   DeploymentDependencyStep,
@@ -360,7 +367,24 @@ fn live_deploy_reconciliation_exit(r: Reconciliation<HostEffectIntent, HostEffec
 
 data live_deploy_candidate_observed_at_launcher_note: String = "THE ONE OBSERVATION POINT OF THE INVOCATION, AND IT IS HERE BECAUSE HERE IS BEFORE EVERY MUTATION. The preflight has not run, no rsync has touched the host, no unit has been written; the deploying checkout is exactly the tree the job was handed. Observing later — inside the cutover, inside the emitter, inside a readiness retry — would read a tree the deploy itself may have altered, and would give the invocation two revisions that both look right locally.\n\nA REFUSAL HERE STOPS THE LINE BEFORE ANYTHING IS TOUCHED. A deploy that cannot name the release it is installing has nothing to write into ExecStart and nothing to verify the routed process against, so it exits with the typed cause rather than proceeding with a placeholder. This is the cheapest possible place to refuse: nothing has been mutated, so there is no half-applied state to reason about and no rollback to perform."
 
+// THE ADMISSION IS CHECKED AHEAD OF THE CANDIDATE OBSERVATION, not after it, and the ordering is the
+// point rather than an economy. live_deploy_candidate_observed_at_launcher_note calls this position
+// the cheapest place to refuse because nothing has been mutated yet; a realization that cannot
+// produce a valid target state is refusable one step EARLIER still, since it does not depend on
+// which candidate was handed over. Observing first would make the log read as though the candidate
+// were the problem.
+//
+// RETRACT DELIBERATELY DOES NOT CONSULT THIS. Removing a deployment does not perform the repository
+// transition, and a wall that also blocked retraction would strand an operator with a host they
+// could neither converge nor take down -- a refusal with no exit is not fail-closed, it is stuck.
 fn live_deploy_wet_with_access(access: DeployAccess) -> ProcessExit {
+  match repository_transition_admission(realization: deployed_tree_repository_transition) {
+    LegacyGitFileSyncNotAdmitted { reason: why } => exit_failure(reason: why)
+    RepositoryTransitionAdmitted => live_deploy_admitted_wet_with_access(access: access)
+  }
+}
+
+fn live_deploy_admitted_wet_with_access(access: DeployAccess) -> ProcessExit {
   match observe_candidate_release() {
     CandidateUnobservable { cause: why } =>
       exit_failure(reason: candidate_unobservable_detail(cause: why))

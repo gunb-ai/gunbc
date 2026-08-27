@@ -1,9 +1,12 @@
 module test.claim.compiler_frontend_program_status_witness
 
 import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.witness_admission { DiscoverySelection, NoConsumer }
 import gunbc.compiler_frontend_program_interlock {
+  ProgramMilestone,
+  milestone_prerequisites,
   SelfHostWholeCorpusPopulationDerived,
   SelfHostRatchetObservationEnrolled,
   SelfHostEmitterProducesEveryRetainedArtifact,
@@ -11,11 +14,12 @@ import gunbc.compiler_frontend_program_interlock {
   SelfHostCorpusEmitsCleanly,
   NamespaceFixForwardComplete,
   NamespaceGrammarRetired,
-  SelfHostSuccessorPromotionAdmitted,
-  SelfHostSeedRetirement,
   NamespaceFirstSemanticWave,
   milestone_label,
 }
+import gunbc.emit_subject_clean_frontier { emit_ratchet_runner_cadence }
+import v2.compiler.self_host.stage0_crate_layout { emitter_produced_divergent_registrations }
+import gunbc.cli_dispatch_surface { gunbc_cli_emitter_gap }
 import gunbc.compiler_frontend_program_status {
   MilestoneStanding,
   Clear,
@@ -30,6 +34,7 @@ import gunbc.compiler_frontend_program_status {
   NotBuilt,
   RefusedByAuthority,
   missing_instrument_obstacle,
+  instrument_obstacle_label,
   StandingCensus,
   standing_census,
   milestone_row,
@@ -48,6 +53,7 @@ import gunbc.compiler_frontend_program_status {
   ClassOutstanding,
   ClassNotDerivable,
   StandingRow,
+  DerivableOnlyViaPrerequisites,
   StartabilityClass,
   ClassStartable,
   ClassBlockedKnownOnly,
@@ -84,6 +90,16 @@ fn standing_is(s: MilestoneStanding, want: MilestoneStandingClass) -> Bool {
   standing_class_label(c: standing_class(s: s)) == standing_class_label(c: want)
 }
 
+// THIS HELPER CONFLATES TWO STATES, AND ITS ONE REMAINING CALLER IS A CONTROLLED FIXTURE. Clear and
+// NotDerivable both map to the empty list, which is right for rendering and wrong as a premise:
+// "no outstanding members" then means EITHER nothing is outstanding OR the standing could not be
+// derived at all. The live arms no longer read it -- they use standing_agrees_with_population,
+// which is total over MilestoneStanding and answers false on NotDerivable rather than collapsing
+// it -- so the conflation is now confined to a_populated_observation_is_outstanding_not_clear,
+// where this file authors the observation and NotDerivable is unreachable by construction.
+// The earlier wording here described live callers guarding the conflation for two named
+// milestones; those callers are gone, and it is narrowed rather than deleted because the helper
+// still conflates and the next caller needs to know it.
 fn standing_outstanding_members(s: MilestoneStanding) -> List<String> {
   match s {
     Clear { evidence: _ } => []
@@ -110,22 +126,124 @@ test fn a_populated_observation_is_outstanding_not_clear() -> Bool {
     && count(standing_outstanding_members(s: s)) == 1
 }
 
-// THE LIVE CLAIM, at identity grain rather than by count. It reds if the arm stops reading the
-// stage0 divergence roster, if it fabricates Clear, and -- this is the half a count would miss --
-// if the arm is narrowed to read only ONE of the two rosters the divergent row's own restoration
-// trigger names. It reds the day the emitter closes the gap, which is deliberate: that is a
-// change this file must be re-read on, not one it should survive.
-test fn the_emitter_artifact_milestone_reports_both_halves_of_its_population() -> Bool {
-  let s = milestone_status(m: SelfHostEmitterProducesEveryRetainedArtifact)
-  let members = standing_outstanding_members(s: s)
-  standing_is(want: ClassOutstanding, s: s)
-    && any(members, n => n == "stage0-divergent:main")
-    && any(members, n => starts_with(s: n, prefix: "cli-emitter-gap:"))
+// THE TWO-ROSTER UNION, AS A LAW RATHER THAN TODAY'S MEMBERS. This arm previously asserted that
+// specific live members are present ("stage0-divergent:main", a "cli-emitter-gap:" entry) and that
+// the milestone reads OUTSTANDING. Both pin current state: the day the emitter closes either gap
+// the arm reds, and its closing move is to edit the expected members. I kept it deliberately in an
+// earlier commit and argued the red was the COST of the only evidence that the population unions
+// TWO rosters -- reading only the registrations would report Clear the moment that row is deleted
+// while the CLI surface stayed unemitted. That reasoning was right about what the arm was worth and
+// wrong about the only way to get it, which is the same mistake the census fixture made: the union
+// is a LAW over the two sources, and a law does not need today's members to be checkable.
+//
+// Stated as containment of BOTH sources' contributions, it reds exactly when the fold stops reading
+// one of them, and stays green as either roster shrinks -- vacuously so when both are empty, which
+// is the state the program is trying to reach.
+//
+// THE EXPECTED COUNT IS DERIVED FROM THE TWO SOURCES, NOT FROM THE FOLD. An earlier cut of this arm
+// compared the population against emitter_retained_artifact_outstanding() -- the SAME function the
+// carrier calls to build it. The plant still redded, because the two containment clauses below read
+// the rosters directly and carry the arm's real content; but the count clause was measure() against
+// measure(), the self-comparison DESIGN's oracle rule names, and a reader would have taken it for
+// an independent check. Summing the two roster sizes is the independent form and catches the case
+// containment cannot: a fold that ADDS a member neither source contains.
+test fn the_emitter_population_unions_both_of_its_rosters() -> Bool {
+  standing_agrees_with_population(
+    s: milestone_status(m: SelfHostEmitterProducesEveryRetainedArtifact),
+    expected: emitter_expected_members())
 }
 
-// S4a, live. Today the ratchet runner declares NoConsumer, so the milestone is OUTSTANDING.
-test fn the_ratchet_observation_milestone_is_outstanding_today() -> Bool {
-  standing_is(want: ClassOutstanding, s: milestone_status(m: SelfHostRatchetObservationEnrolled))
+// S4a'S WIRING, AS A RELATION RATHER THAN TODAY'S STATE. This arm used to assert that the
+// milestone reads OUTSTANDING, which is a live snapshot: the day the ratchet gains a scheduled
+// route the milestone goes Clear, this reds, and the closing move is to edit or delete it. Same
+// backward-running contract as the anti-inflation witness and the census fixture before it, and
+// the third instance of one shape in this file.
+//
+// What the arm was actually WORTH is the WIRING, which its fixture twin below cannot see: that
+// S4a's standing is derived from the ratchet cadence fold and not from something else. Rewiring
+// the milestone to a different population leaves the fold arm green and reds this one. Stated as
+// an equality between the milestone's members and the fold's own output, it checks exactly that
+// and moves on both sides at once, so progress cannot red it -- including the day both are empty.
+//
+// THE SELF-COMPARISON HERE IS THE CLAIM, NOT AN ORACLE, which is the opposite of the emitter arm
+// above and worth distinguishing rather than applying one rule to both. Comparing the milestone's
+// members against the fold's own output IS the wiring question -- whether milestone_status routes
+// to THIS fold and carries its list through the mint intact -- so there is nothing independent to
+// compare against and nothing is being smuggled in. The emitter arm's count clause was different:
+// it asked about the POPULATION, a question its two sources can answer independently, and re-derived
+// the answer from the producer instead. Executed proof this one discriminates: rewiring S4a off its
+// cadence fold reds it.
+// STANDING AND POPULATION MUST AGREE, WHICH IS STRICTLY MORE THAN "NOT NotDerivable". The previous
+// guard closed ONE of the three states standing_outstanding_members collapses, and paid for it with
+// a string comparison against "NOT-DERIVABLE" -- a textual copy of a label the coproduct already
+// carries. Both problems have one fix: match the coproduct and check the class against the expected
+// population, rather than projecting to a list and comparing lists.
+//
+// The two rows the old form missed are the ones that bite in exactly the future states this PR is
+// meant to survive, because both are invisible once the expected population is empty:
+//   Clear carrying a NON-EMPTY evidence population -- standing_outstanding_members DISCARDS the
+//     evidence on the Clear arm, so hidden members project to [] and the relation passed.
+//   Outstanding carrying an EMPTY population -- malformed, since standing_from_evidence never
+//     produces it, but the variant constructor is directly authorable and it projected to [] too.
+// Neither is reachable through the mint; both are reachable by a defective rewire, which is what
+// the relation exists to catch after S4a clears or both emitter rosters close.
+//
+// This predicate is total over MilestoneStanding, so a new variant fails to compile here rather
+// than silently inheriting whichever arm it resembles.
+fn standing_agrees_with_population(s: MilestoneStanding, expected: List<String>) -> Bool {
+  match s {
+    Clear { evidence } => count(expected) == 0 && count(evidence.outstanding) == 0
+    Outstanding { evidence } =>
+      count(expected) > 0
+        && count(evidence.outstanding) == count(expected)
+        && all(expected, e => any(evidence.outstanding, m => m == e))
+    NotDerivable { why: _, cause: _ } => false
+  }
+}
+
+// THE EMITTER'S EXPECTED POPULATION, RE-DERIVED FROM THE TWO SOURCES. This deliberately restates
+// the fold's shape in the test rather than calling emitter_retained_artifact_outstanding(): an
+// oracle authored from the SOURCES is independent, whereas one obtained from the PRODUCER is the
+// self-comparison the previous commit removed from the count clause.
+fn emitter_expected_members() -> List<String> {
+  concat(
+    emitter_produced_divergent_registrations
+      |> map(row => concat("stage0-divergent:", row.basename)),
+    gunbc_cli_emitter_gap() |> map(name => concat("cli-emitter-gap:", name)))
+}
+
+// THE FOUR-ROW TRUTH TABLE, AUTHORED. Every row is authorable at fixture grain because the variant
+// constructors and the evidence mint are both exported, so all four REDs can be exhibited here
+// rather than argued for in prose (DESIGN 4b: the fixture boundary is the one that decides).
+test fn a_standing_agrees_only_when_its_class_matches_its_population() -> Bool {
+  let empty_evidence = observe_outstanding(subject: "fixture" as NonEmptyStr, outstanding: [])
+  let one_member = observe_outstanding(subject: "fixture" as NonEmptyStr, outstanding: ["m"])
+  standing_agrees_with_population(s: Clear { evidence: empty_evidence }, expected: [])
+    && standing_agrees_with_population(s: Outstanding { evidence: one_member }, expected: ["m"])
+    && !standing_agrees_with_population(s: Clear { evidence: one_member }, expected: [])
+    && !standing_agrees_with_population(s: Outstanding { evidence: empty_evidence }, expected: [])
+}
+
+// AND IT REFUSES NotDerivable -- AUTHORED, because the previous cut of this control was itself the
+// defect it was written to close. It read milestone_status(SelfHostSuccessorPromotionAdmitted),
+// a LIVE milestone that happens to be NotDerivable today; when successor promotion legitimately
+// clears, the helper correctly answers that Clear{[]} agrees with [], the negation reds, and the
+// closing move is to swap in a different live subject. The control for eliminating a live-state
+// oracle was a live-state oracle. Constructed directly, the row is a property of the predicate and
+// no program state can move it.
+test fn a_not_derivable_standing_never_agrees() -> Bool {
+  !standing_agrees_with_population(
+    s: NotDerivable { why: "fixture" as NonEmptyStr, cause: DerivableOnlyViaPrerequisites },
+    expected: [])
+    && !standing_agrees_with_population(
+         s: NotDerivable { why: "fixture" as NonEmptyStr, cause: DerivableOnlyViaPrerequisites },
+         expected: ["m"])
+}
+
+test fn the_ratchet_observation_milestone_is_wired_to_its_fold() -> Bool {
+  standing_agrees_with_population(
+    s: milestone_status(m: SelfHostRatchetObservationEnrolled),
+    expected: ratchet_observation_outstanding(cadence: emit_ratchet_runner_cadence))
 }
 
 // AND THE FUNCTION BEHIND IT IS NOT CONSTANT, which is what keeps the arm above from being a
@@ -135,15 +253,73 @@ test fn the_ratchet_observation_fold_answers_both_ways() -> Bool {
     && count(ratchet_observation_outstanding(cadence: NoConsumer)) == 1
 }
 
-// STARTABILITY IS FAIL-CLOSED. NamespaceFirstSemanticWave depends on SelfHostRatchetGateEnrolled,
-// which is NotDerivable, so its startability must be NotDerivable -- never BlockedOnPrerequisites,
-// which would report a missing instrument as ordinary pending work, and never Startable.
-test fn an_unanswerable_prerequisite_makes_startability_unanswerable() -> Bool {
-  match milestone_startability(m: NamespaceFirstSemanticWave) {
-    StartablePrerequisitesClear => false
-    BlockedOnPrerequisites { blocking: _ } => false
-    StartabilityNotDerivable { unanswerable, blocking: _ } => count(unanswerable) > 0
+// STARTABILITY IS CHECKED AS A WIRING RELATION OVER EVERY MILESTONE, replacing two arms that each
+// pinned today's graph. The first asserted that NamespaceFirstSemanticWave's startability is
+// unanswerable -- true today, red the day its prerequisites become answerable, which is the whole
+// point of the program. The second asserted a named trio and the literal three, and its own red
+// during the S4a rewire plant was the proof: S4a becoming Clear removes a known blocker, and
+// LEGITIMATE S4a enrolment produces exactly the same transition. That second red was not
+// corroboration of the plant, it was the arm snapshotting the present graph.
+//
+// Neither claim needed a live subject. The classifier's four states are already authored at fixture
+// grain through startability_from_populations; what those arms were reaching for is the WIRING --
+// that milestone_startability's answer for each milestone follows from its direct prerequisites'
+// standings. Stated over the WHOLE roster and derived independently by folding
+// milestone_prerequisites and classifying each one, it holds as the program moves, covers all
+// fourteen instead of four, and reds if the classifier stops consulting the graph.
+//
+// The re-derivation deliberately walks milestone_prerequisites + standing_class rather than calling
+// prerequisite_names_by_class, so a defect inside the carrier's own partition helper is visible
+// here rather than cancelling on both sides.
+fn expected_startability(m: ProgramMilestone) -> Startability {
+  let prereqs = milestone_prerequisites(m: m)
+  startability_from_populations(
+    unanswerable: prereqs
+      |> filter(p => standing_class_label(c: standing_class(s: milestone_status(m: p))) == standing_class_label(c: ClassNotDerivable))
+      |> map(p => milestone_label(m: p)),
+    blocking: prereqs
+      |> filter(p => standing_class_label(c: standing_class(s: milestone_status(m: p))) == standing_class_label(c: ClassOutstanding))
+      |> map(p => milestone_label(m: p)))
+}
+
+fn startability_unanswerable_members(s: Startability) -> List<String> {
+  match s {
+    StartablePrerequisitesClear => []
+    BlockedOnPrerequisites { blocking: _ } => []
+    StartabilityNotDerivable { unanswerable, blocking: _ } => unanswerable
   }
+}
+
+fn startability_blocking_members(s: Startability) -> List<String> {
+  match s {
+    StartablePrerequisitesClear => []
+    BlockedOnPrerequisites { blocking } => blocking
+    StartabilityNotDerivable { unanswerable: _, blocking } => blocking
+  }
+}
+
+fn startability_matches(a: Startability, b: Startability) -> Bool {
+  startability_class_label(c: startability_class(s: a))
+      == startability_class_label(c: startability_class(s: b))
+    && count(startability_unanswerable_members(s: a)) == count(startability_unanswerable_members(s: b))
+    && all(startability_unanswerable_members(s: b),
+         x => any(startability_unanswerable_members(s: a), y => y == x))
+    && count(startability_blocking_members(s: a)) == count(startability_blocking_members(s: b))
+    && all(startability_blocking_members(s: b),
+         x => any(startability_blocking_members(s: a), y => y == x))
+}
+
+// THIS ARM ALSO SUBSUMES A DELETED NAMED-TRIO ARM, and that arm's own red during a plant is what
+// condemned it. It asserted three specific mixed milestones plus the literal three. When the S4a
+// rewire plant ran it went red beside the real wiring control and I reported that as corroboration
+// -- the graph relation working. It was not. S4a becoming Clear removes a known blocker, and
+// LEGITIMATE S4a enrolment produces exactly the same transition, so the arm was snapshotting the
+// present graph and I had read its snapshot behaviour as evidence of correctness. The relation
+// below states the same thing over all fourteen milestones instead of three names and a literal,
+// and moves with the program instead of pinning it.
+test fn every_milestone_startability_agrees_with_its_prerequisite_standings() -> Bool {
+  all(program_milestones,
+    m => startability_matches(a: milestone_startability(m: m), b: expected_startability(m: m)))
 }
 
 // THE POSITIVE CONTROL FOR THE SAME FOLD: a milestone with no prerequisites is startable, so the
@@ -264,20 +440,37 @@ test fn every_declared_instrument_is_distinct_and_awaited() -> Bool {
     && all(all_missing_instruments, i => count(milestones_awaiting(i: i)) > 0)
 }
 
-// UNBUILT AND REFUSED ARE DIFFERENT STATES WITH DIFFERENT REMEDIES, and both arms are live today --
-// which is what stops this axis from being a variant nothing ever inhabits. The whole-corpus board
-// is refused by a named authority on host memory; the phase roster is genuinely absent. If the axis
-// ever collapses to one arm across every instrument, this reds and someone re-reads it rather than
-// carrying a distinction the data no longer makes.
-test fn the_obstacle_axis_has_both_arms_inhabited_today() -> Bool {
-  match missing_instrument_obstacle(i: WholeCorpusEmissionBoard) {
-    NotBuilt => false
-    RefusedByAuthority { authority: _, why: _ } =>
-      match missing_instrument_obstacle(i: RequiredCiPhaseRoster) {
-        NotBuilt => true
-        RefusedByAuthority { authority: _, why: _ } => false
-      }
+// UNBUILT AND REFUSED ARE DIFFERENT STATES WITH DIFFERENT REMEDIES, and this arm now exhibits that
+// at FIXTURE grain rather than naming two live instruments that happen to occupy one arm each.
+//
+// The previous form matched missing_instrument_obstacle(WholeCorpusEmissionBoard) expecting
+// RefusedByAuthority and missing_instrument_obstacle(RequiredCiPhaseRoster) expecting NotBuilt. Its
+// annotation claimed the axis is inhabited on both arms and that a collapse to one would red. Two
+// identities cannot carry an axis-wide claim, and worse, the arm is progress-sensitive in both
+// directions: the day the whole-corpus compile stops being refused, or the day the phase roster
+// becomes a substrate carrier and its obstacle changes, this reds and the closing move is to swap
+// in whichever instruments still occupy the arms. That is the sixth instance of the shape this file
+// has been closing, and my claim that the set was closed at three was wrong.
+//
+// What the arm was worth is that the two constructors are REACHABLE and RENDER DISTINGUISHABLY --
+// a variant nothing can inhabit, or two variants that render identically, is the decoration DESIGN
+// 4b rules worse than absent. Both are properties of the type and its renderer, so both are
+// authorable here and no program state can move them. What is deliberately NOT claimed: which live
+// instrument occupies which arm today. That is a fact about the world, it belongs in the report the
+// carrier already renders, and pinning it in a witness is what made the previous form a snapshot.
+//
+// The cited authority in the refused fixture is an arbitrary RESOLVING declaration, carried because
+// a DeclarationRef naming nothing is refused at ingestion and because the assertion never reads it.
+// It is not a claim that instrument_obstacle_label refuses anything.
+test fn the_obstacle_axis_renders_its_two_arms_distinguishably() -> Bool {
+  let unbuilt = NotBuilt
+  let refused = RefusedByAuthority {
+    authority: decl_ref(module_path: "gunbc.compiler_frontend_program_status", decl_name: "instrument_obstacle_label"),
+    why: "fixture" as NonEmptyStr,
   }
+  instrument_obstacle_label(o: unbuilt) != instrument_obstacle_label(o: refused)
+    && instrument_obstacle_label(o: unbuilt) != ""
+    && instrument_obstacle_label(o: refused) != ""
 }
 
 // A REFUSAL NAMES ITS AUTHORITY AS A CITATION, NEVER AS PROSE. This asserts the refusing row cites
@@ -402,19 +595,4 @@ test fn a_mixed_prerequisite_set_preserves_both_identities() -> Bool {
         && count(blocking) == 1
         && any(blocking, b => b == "the emitter milestone")
   }
-}
-
-// THE LIVE MIXED POPULATION IS THREE, AND THEY ARE NAMED. This is the identity join over the live
-// graph for the class above: each of these three has a prerequisite that is OUTSTANDING and known,
-// beside one that is unanswerable. It reds if any of them silently loses its blocker again, which a
-// partition-law arm alone cannot see -- the sum stays 14 either way.
-test fn the_three_live_mixed_milestones_each_keep_a_known_blocker() -> Bool {
-  all([SelfHostRatchetGateEnrolled, SelfHostSuccessorPromotionAdmitted, SelfHostSeedRetirement],
-    m => match milestone_startability(m: m) {
-      StartablePrerequisitesClear => false
-      BlockedOnPrerequisites { blocking: _ } => false
-      StartabilityNotDerivable { unanswerable, blocking } =>
-        count(unanswerable) > 0 && count(blocking) > 0
-    })
-    && program_standing_census().blocked_and_not_fully_derivable == 3
 }

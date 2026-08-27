@@ -1,5 +1,6 @@
 module v2.test.lens_fact_density.hollow_alias_nested_rejected
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.compile {
   Eval,
   validate_then_compile
@@ -7,7 +8,7 @@ import v2.compiler.compile {
 
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v2.test.lens_common.infer_fixture { claim_atom_node }
 import v2.test.lens_application.empty_required_lenses_skip_gate {
   non_empty_diagnostics_contain_reason
@@ -16,7 +17,7 @@ import v2.test.lens_application.empty_required_lenses_skip_gate {
 data hollow_alias_nested_child: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^hollow_alias_nested_el_subject } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data hollow_alias_nested_root: Node = Node {
@@ -27,7 +28,7 @@ data hollow_alias_nested_root: Node = Node {
       target: hollow_alias_nested_child
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data hollow_alias_nested_authority: Node = claim_atom_node(s: ^hollow_alias_nested_el_symbol)

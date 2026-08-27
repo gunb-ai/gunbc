@@ -6,7 +6,7 @@ fn ts_g2_claim_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^ts_g2_claim_fail_symbol } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 

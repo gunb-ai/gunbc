@@ -10,7 +10,6 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_managed_host_fixed_overhead_disposition,
   gunbc_ci_legacy_host_fixed_overhead_disposition,
   gunbc_ci_concurrent_runs_conservative_high_disposition,
-  gunbc_ci_regime2_aggregate_dissolution_marker,
   gunbc_ci_footprint_granularity_disposition,
   gunbc_ci_footprint_bridge_disposition
 }
@@ -296,8 +295,12 @@ test fn redundancy_region_runner_placement_fires_on_measure_present() -> Bool {
   ) == 2
 }
 
+// gunbc_ci_regime2_aggregate_dissolution_marker IS GONE BECAUSE THE THING IT MARKED DISSOLVED.
+// It was the dissolution marker for the fused Regime2 aggregate row in gunbc.ci_floor_measurement;
+// that row is deleted, so the marker has nothing left to mark and could not be retained without
+// naming a disposition that no longer exists. The region drops to one member and the successor
+// count below follows it -- the assertion is not relaxed, its subject is one smaller.
 data redundancy_region_fleet_converge_marks: List<Disposition> = [
-  gunbc_ci_regime2_aggregate_dissolution_marker,
   gunbc_host_converge_runner_sessions_coupling_marker
 ]
 
@@ -329,7 +332,7 @@ test fn redundancy_region_fleet_converge_fires_on_successors_present() -> Bool {
   disposition_redundancy_violation_count(
     dispositions: redundancy_region_fleet_converge_marks,
     present: redundancy_region_fleet_converge_successors_present
-  ) == 2
+  ) == 1
 }
 
 data redundancy_region_deconflation_terminal_marks: List<Disposition> = [

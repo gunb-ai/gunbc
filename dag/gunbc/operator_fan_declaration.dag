@@ -1,0 +1,170 @@
+module gunbc.operator_fan_declaration
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import product.placement_supply { HostIdentity }
+
+// WHAT AN OPERATOR SAID, AS A FACT THE COMPILER CAN READ. This module exists because six wiring
+// rows carried an operator's part declaration with the declarant, the date, the quotation and the
+// scope living only in a comment beside them. Every row was correct, and nothing related them: they
+// were six independently authored facts that happened to agree, so a later author could place the
+// same arm on a seventh row - a 4U bay nobody declared anything about - without fabricating or
+// contradicting any receipt. Only the witness's hand-maintained enumeration would have noticed.
+//
+// DESIGN's rule is that a machine-consumed fact belongs in a typed carrier and an annotation is
+// never evidence a claim holds, because no Accepted program can read one. Declarant, date, scope
+// and exclusions are all machine-consumed here - the scope decides which headers may inhabit the
+// declared arm - so the comment was the wrong carrier for all of it.
+
+// THE QUESTION IS PRESERVED ALONGSIDE THE ANSWER. A declaration's scope is set as much by what was
+// ASKED as by what was said: "yes - those are the fans i'm using" means nothing without the listing
+// it answers, and a later reader who sees only the answer must re-infer the subject. Recording both
+// removes that inference rather than documenting it.
+type OperatorStatement {
+  declarant: NonEmptyStr
+  declared_at: EpochMs
+  prompt: NonEmptyStr
+  quotation: NonEmptyStr
+}
+
+// EXACTLY WHICH HEADERS A DECLARATION REACHES. The scope is enumerated per host rather than stated
+// as a predicate over chassis form factor, because form factor is this repository's inference and
+// the enumeration is the operator's statement. Deriving the scope from a 2U/4U rule would let a
+// later change to that rule silently widen what someone said.
+type DeclarationScopeRow {
+  host: HostIdentity
+  headers: List<NonEmptyStr>
+}
+
+// WHAT THE OPERATOR SAID ABOUT TOPOLOGY, AND ONLY THAT. The two arms are not a spectrum with the
+// stronger one merely unconfirmed - they answer different questions, and the gap between them is
+// where this model previously overreached.
+//
+// NotDaisyChained is what was said: "they are not daisy chained today, nothign is". PWM Sharing
+// Technology chains fan to fan, so this rules that topology out fleet-wide.
+//
+// OneFanPerHeader is what the wiring rows were ASSERTING - a driven count of 1 and one represented
+// rotor per header. It does not follow. A Y-splitter or a powered hub puts two fans on one header
+// without any fan-to-fan chain, and THIS FLEET DEMONSTRABLY CONTAINS ONE: srv1 and srv2 drive FAN1
+// through an NA-YC1 splitter shipped with the NH-D9 AMP-4926. So "nothing is daisy chained" is
+// true of a fleet that has a splitter in it, which settles the question by counter-example from
+// this repository's own rows rather than by argument.
+type DeclaredFanTopology
+  = NotDaisyChained
+  | OneFanPerHeader
+  | FanTopologyUndeclared
+
+// THE EXCLUSION IS A MODEL NAME AND NOT A DeclarationRef, because the excluded variant has no
+// catalog row to point at and deliberately never will. A ref would have to name some existing
+// declaration, and the only candidate is the base P8's own row - so the field would have recorded
+// "this declaration excludes itself", which resolves cleanly and means nothing. Naming what was
+// excluded is the whole content here: "P8 PWM PST CO" is a separate ARCTIC product with a
+// different bearing, and the base name does not imply it.
+type OperatorFanModelDeclaration {
+  statement: OperatorStatement
+  model: DeclarationRef
+  excluded_variant_models: List<NonEmptyStr>
+  scope: List<DeclarationScopeRow>
+  topology: DeclaredFanTopology
+}
+
+// WHETHER A DECLARATION REACHES ONE HEADER, AS A REFUSAL RATHER THAN A BOOLEAN. The out-of-scope
+// arms are separated because they have different owners: a host the declaration never mentioned is
+// a scoping question for whoever binds the row, and a header absent from a host the declaration DID
+// mention is a wiring question - the operator spoke about that machine and this bay was not among
+// the ones named.
+type DeclarationReach
+  = DeclarationCoversHeader
+  | DeclarationSilentOnHost { host: HostIdentity }
+  | DeclarationSilentOnHeader { host: HostIdentity, header: NonEmptyStr }
+
+fn scope_row_for_host(
+  rows: List<DeclarationScopeRow>,
+  host: HostIdentity,
+) -> DeclarationScopeRow? {
+  fold(
+    rows,
+    init: none,
+    f: (acc, row) =>
+      match acc {
+        Present { value } => Present { value: value }
+        none => if row.host == host { Present { value: row } } else { none }
+      },
+  )
+}
+
+fn headers_contain(headers: List<NonEmptyStr>, header: NonEmptyStr) -> Bool {
+  fold(headers, init: false, f: (acc, candidate) => acc || candidate == header)
+}
+
+fn declaration_reach(
+  declaration: OperatorFanModelDeclaration,
+  host: HostIdentity,
+  header: NonEmptyStr,
+) -> DeclarationReach {
+  match scope_row_for_host(rows: declaration.scope, host: host) {
+    none => DeclarationSilentOnHost { host: host }
+    Present { value: row } =>
+      if headers_contain(headers: row.headers, header: header) {
+        DeclarationCoversHeader
+      } else {
+        DeclarationSilentOnHeader { host: host, header: header }
+      }
+  }
+}
+
+fn declared_header_count(declaration: OperatorFanModelDeclaration) -> Int {
+  fold(
+    declaration.scope,
+    init: 0,
+    f: (acc, row) => acc + row.headers.length(),
+  )
+}
+
+// WHETHER THE DECLARATION ESTABLISHES ONE FAN PER HEADER. This is a single function rather than a
+// judgement made at each binding site, so the six rows cannot disagree with each other about what
+// one sentence meant.
+fn declaration_establishes_one_fan_per_header(
+  declaration: OperatorFanModelDeclaration,
+) -> Bool {
+  match declaration.topology {
+    OneFanPerHeader => true
+    NotDaisyChained => false
+    FanTopologyUndeclared => false
+  }
+}
+
+data arctic_p8_pwm_pst_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.fans.arctic",
+  decl_name: "arctic_p8_pwm_pst_catalog",
+  field: WholeDeclaration,
+}
+
+// THE DECLARATION ITSELF. The declarant is the repository operator, speaking in their own session
+// turn rather than relayed through a channel - which is the distinction that held this claim unbound
+// for a day when a review round attributed it to a message nobody could find.
+//
+// THE TIMESTAMP IS DAY-GRAINED AND SAYS SO. declared_at is midnight UTC on the declaration date
+// because the day is what is known; writing the minute the message happened to arrive would put
+// precision in the carrier that the evidence does not carry.
+//
+// THE STATEMENT IS ABOUT USE, NOT PURCHASE, AND THE PROMPT IS WHY THAT IS DECIDABLE. The operator
+// wrote "those are the fans i'm using" and then pasted a purchase listing, so the two readings were
+// live at once. The present-tense "using" is what binds installed headers; the listing establishes
+// the exact model that verb refers to. Both halves are stored, so no later reader has to re-run
+// that inference from a paraphrase.
+data arctic_p8_2u_chassis_declaration: OperatorFanModelDeclaration = OperatorFanModelDeclaration {
+  statement: OperatorStatement {
+    declarant: "repository operator",
+    declared_at: 1787788800000,
+    prompt: "which fan model is installed in the srv3 and srv4 chassis bays",
+    quotation: "yes - those are the fans i'm using ... ARCTIC P8 PWM PST (5 Pack) - PC Fans, 80mm Case Fan with PWM Sharing Technology (PST)",
+  },
+  model: arctic_p8_pwm_pst_ref,
+  excluded_variant_models: ["P8 PWM PST CO"],
+  scope: [
+    DeclarationScopeRow { host: "srv3", headers: ["FAN3", "FAN4", "FAN5"] },
+    DeclarationScopeRow { host: "srv4", headers: ["FAN2", "FAN3", "FAN4"] },
+  ],
+  topology: NotDaisyChained,
+}

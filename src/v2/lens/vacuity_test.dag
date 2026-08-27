@@ -1,5 +1,6 @@
 module v2.test.lens_vacuity.vacuity_test
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.vacuity {
   HelperAlias,
   IndependentTranscription,
@@ -36,8 +37,7 @@ import v2.std.node {
   Atom,
   Node,
   Symbol,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
 import v2.std.verification {
   CompilesClaim,
@@ -67,7 +67,7 @@ fn vacuity_test_atom(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
