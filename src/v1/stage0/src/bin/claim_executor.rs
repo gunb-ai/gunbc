@@ -1551,9 +1551,17 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     // dropped, which is how a roster that narrowed read exactly like one that did
     // not. The three are printed together so the subtraction is visible rather
     // than inferable.
+    // AND THE SENTENCE IS NOW BOUNDED ABOVE, WHICH IT WAS NOT.
+    // "every discovered site is exactly one of these" is a totality claim over SITES, and it was
+    // exact and silent at the same time: a `*_test.dag` entry declaring no `test fn` contributes
+    // no site at all, so it could never appear in any of the four numbers, and the line read as a
+    // coverage guarantee over a denominator that had already dropped it. It cannot now — a barren
+    // entry stops the line in `run_required_floor` before this point — so the guarantee is stated
+    // rather than left for a reader to discover it was never claimed.
     eprintln!(
         "required-floor: offered={} routed={} declined_long={} \
-         declined_live={} — every discovered site is exactly one of these",
+         declined_live={} — every discovered site is exactly one of these, and no `*_test.dag` \
+         entry offered zero sites (BarrenTestSidecar refuses upstream of this line)",
         outcome.sites_offered,
         outcome.claims_planned,
         outcome.declined_long_module,
