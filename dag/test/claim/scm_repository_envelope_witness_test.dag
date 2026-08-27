@@ -133,21 +133,43 @@ fn scm_env_ref(ordinal: Int) -> RepositoryCommitRef {
   RepositoryCommitRef { identity: MintedId { ordinal: ordinal } }
 }
 
+fn scm_env_repository_with_store(store: ObjectStore) -> RepositoryEnvelope {
+  RepositoryEnvelope {
+    store: store,
+    commits: [],
+    commit_allocator: MintedIdAllocator { next_ordinal: 0 },
+    checked_out: none,
+  }
+}
+
+fn scm_env_minted_or(repo: RepositoryEnvelope, root: ObjectId, message: String, parent: RepositoryCommitRef?) -> RepositoryEnvelope {
+  match mint_repository_commit(repository: repo, root: root, message: message, parent: parent) {
+    RepositoryCommitMinted { repository: minted, reference: _ } => minted
+    RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => repo
+    RepositoryCommitMintParentMissing { parent: _ } => repo
+    RepositoryCommitMintRootMissing { root: _ } => repo
+  }
+}
+
 fn scm_env_two_commit_repository() -> RepositoryEnvelope {
   let first = scm_env_put(store: empty_store(), n: scm_env_program_one())
   let second = scm_env_put(store: first.store, n: scm_env_program_two())
+  let first_commit = scm_env_minted_or(
+    repo: scm_env_repository_with_store(store: second.store),
+    root: first.identity,
+    message: "first",
+    parent: none,
+  )
+  let second_commit = scm_env_minted_or(
+    repo: first_commit,
+    root: second.identity,
+    message: "second",
+    parent: Present { value: scm_env_ref(ordinal: 0) },
+  )
   RepositoryEnvelope {
-    store: second.store,
-    commits: [
-      RepositoryCommit { reference: scm_env_ref(ordinal: 0), root: first.identity, message: "first", ancestry: RootCommit },
-      RepositoryCommit {
-        reference: scm_env_ref(ordinal: 1),
-        root: second.identity,
-        message: "second",
-        ancestry: DescendsFrom { parent: scm_env_ref(ordinal: 0) },
-      },
-    ],
-    commit_allocator: MintedIdAllocator { next_ordinal: 2 },
+    store: second_commit.store,
+    commits: second_commit.commits,
+    commit_allocator: second_commit.commit_allocator,
     checked_out: Present { value: scm_env_ref(ordinal: 1) },
   }
 }
@@ -275,12 +297,12 @@ test fn scm_env_the_encoded_counter_distinguishes_a_smaller_repository() -> Bool
   let only = scm_env_put(store: empty_store(), n: scm_env_program_one())
   scm_env_encoded_object_count(
     v: encode_repository(
-      repo: RepositoryEnvelope {
-        store: only.store,
-        commits: [RepositoryCommit { reference: scm_env_ref(ordinal: 0), root: only.identity, message: "only", ancestry: RootCommit }],
-        commit_allocator: MintedIdAllocator { next_ordinal: 1 },
-        checked_out: none,
-      }
+      repo: scm_env_minted_or(
+        repo: scm_env_repository_with_store(store: only.store),
+        root: only.identity,
+        message: "only",
+        parent: none,
+      )
     )
   ) == 2
 }
@@ -414,23 +436,15 @@ test fn scm_env_re_encoding_is_stable() -> Bool {
 // CONTROL for the claim above: byte comparison must be able to say no. Two repositories differing
 // only in a commit MESSAGE -- a log fact that participates in no identity -- must still serialize
 // differently, or the stability claim would hold for a comparison that ignored content.
-fn scm_env_relabel_one(c: RepositoryCommit) -> RepositoryCommit {
-  RepositoryCommit { reference: c.reference, root: c.root, message: concat(c.message, "!"), ancestry: c.ancestry }
-}
-
-fn scm_env_relabel(commits: List<RepositoryCommit>) -> List<RepositoryCommit> {
-  map(commits, c => scm_env_relabel_one(c: c))
+fn scm_env_relabel_commit_json(c: JsonValue) -> JsonValue {
+  scm_env_with(v: c, key: "message", value: json_string(s: "changed"))
 }
 
 test fn scm_env_the_byte_comparison_distinguishes_a_message_change() -> Bool {
   let original = scm_env_two_commit_repository()
-  let relabelled = RepositoryEnvelope {
-    store: original.store,
-    commits: scm_env_relabel(commits: original.commits),
-    commit_allocator: original.commit_allocator,
-    checked_out: original.checked_out,
-  }
-  serialize_json(v: encode_repository(repo: relabelled)) != serialize_json(v: encode_repository(repo: original))
+  let encoded = encode_repository(repo: original)
+  let relabelled = scm_env_commit_members_mapped(v: encoded, f: c => scm_env_relabel_commit_json(c: c))
+  serialize_json(v: relabelled) != serialize_json(v: encoded)
 }
 
 // A CHECKOUT NAMING A VALID OBJECT THAT IS NOT A COMMIT REFUSES.
@@ -500,11 +514,26 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
 // A commit whose root is not in the store at all.
 fn scm_env_absent_root_repository() -> RepositoryEnvelope {
   let orphan = scm_env_put(store: empty_store(), n: scm_env_program_two())
-  RepositoryEnvelope {
-    store: empty_store(),
-    commits: [RepositoryCommit { reference: scm_env_ref(ordinal: 0), root: orphan.identity, message: "dangling", ancestry: RootCommit }],
-    commit_allocator: MintedIdAllocator { next_ordinal: 1 },
-    checked_out: none,
+  let held = scm_env_put(store: empty_store(), n: scm_env_program_one())
+  let valid = scm_env_minted_or(
+    repo: scm_env_repository_with_store(store: held.store),
+    root: held.identity,
+    message: "dangling",
+    parent: none,
+  )
+  let rewritten = scm_env_commit_members_mapped(
+    v: encode_repository(repo: valid),
+    f: c => scm_env_with(
+      v: c,
+      key: "root",
+      value: json_object(members: [
+        json_kv(key: "uncontained", value: json_string(s: orphan.identity.digest as String)),
+      ]),
+    ),
+  )
+  match decode_repository(v: rewritten) {
+    RepositoryDecoded { envelope: e } => e
+    RepositoryDecodeRefused { cause: _ } => empty_repository()
   }
 }
 
@@ -512,9 +541,15 @@ fn scm_env_absent_root_repository() -> RepositoryEnvelope {
 fn scm_env_non_commit_checkout_repository() -> RepositoryEnvelope {
   let first = scm_env_put(store: empty_store(), n: scm_env_program_one())
   let second = scm_env_put(store: first.store, n: scm_env_program_two())
+  let valid = scm_env_minted_or(
+    repo: scm_env_repository_with_store(store: second.store),
+    root: first.identity,
+    message: "first",
+    parent: none,
+  )
   RepositoryEnvelope {
     store: second.store,
-    commits: [RepositoryCommit { reference: scm_env_ref(ordinal: 0), root: first.identity, message: "first", ancestry: RootCommit }],
+    commits: valid.commits,
     commit_allocator: MintedIdAllocator { next_ordinal: 2 },
     checked_out: Present { value: scm_env_ref(ordinal: 1) },
   }
@@ -540,7 +575,12 @@ test fn scm_env_an_uncontained_target_refuses_to_encode_and_names_it() -> Bool {
   }
   let repo = RepositoryEnvelope {
     store: grafted,
-    commits: [RepositoryCommit { reference: scm_env_ref(ordinal: 0), root: full.identity, message: "grafted", ancestry: RootCommit }],
+    commits: scm_env_minted_or(
+      repo: scm_env_repository_with_store(store: full.store),
+      root: full.identity,
+      message: "grafted",
+      parent: none,
+    ).commits,
     commit_allocator: MintedIdAllocator { next_ordinal: 1 },
     checked_out: none,
   }

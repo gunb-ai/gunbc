@@ -13,7 +13,15 @@ import gunbc.scm.object_store {
   LocatorCollision,
 }
 import gunbc.scm.ancestry { RootCommit, DescendsFrom, RepositoryCommitRef }
-import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  RepositoryCommit,
+  RepositoryCommitMinted,
+  RepositoryCommitMintAllocatorInvalid,
+  RepositoryCommitMintRootMissing,
+  RepositoryCommitMintParentMissing,
+  mint_repository_commit,
+}
 import gunbc.scm.log {
   repository_log,
   commit_log_is_fully_held,
@@ -51,18 +59,34 @@ fn log_witness_ref(ordinal: Int) -> RepositoryCommitRef {
   RepositoryCommitRef { identity: MintedId { ordinal: ordinal } }
 }
 
+fn log_witness_empty(store: ObjectStore) -> RepositoryEnvelope {
+  RepositoryEnvelope {
+    store: store,
+    commits: [],
+    commit_allocator: MintedIdAllocator { next_ordinal: 0 },
+    checked_out: none,
+  }
+}
+
+fn log_witness_mint(repo: RepositoryEnvelope, root: ObjectId, message: String, parent: RepositoryCommitRef?) -> RepositoryEnvelope {
+  match mint_repository_commit(repository: repo, root: root, message: message, parent: parent) {
+    RepositoryCommitMinted { repository: minted, reference: _ } => minted
+    RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => repo
+    RepositoryCommitMintRootMissing { root: _ } => repo
+    RepositoryCommitMintParentMissing { parent: _ } => repo
+  }
+}
+
 fn log_witness_two_commit_repository() -> RepositoryEnvelope {
   let a = log_witness_store_one(store: empty_store(), name: ^a)
   let b = log_witness_store_one(store: a.store, name: ^b)
-  RepositoryEnvelope {
-    store: b.store,
-    commits: [
-      RepositoryCommit { reference: log_witness_ref(ordinal: 0), root: a.identity, message: "first", ancestry: RootCommit },
-      RepositoryCommit { reference: log_witness_ref(ordinal: 1), root: b.identity, message: "second", ancestry: DescendsFrom { parent: log_witness_ref(ordinal: 0) } },
-    ],
-    commit_allocator: MintedIdAllocator { next_ordinal: 2 },
-    checked_out: none,
-  }
+  let first = log_witness_mint(repo: log_witness_empty(store: b.store), root: a.identity, message: "first", parent: none)
+  log_witness_mint(
+    repo: first,
+    root: b.identity,
+    message: "second",
+    parent: Present { value: log_witness_ref(ordinal: 0) },
+  )
 }
 
 // A commit whose root was never stored. The envelope's encoder refuses on
@@ -70,13 +94,13 @@ fn log_witness_two_commit_repository() -> RepositoryEnvelope {
 fn log_witness_repository_with_unheld_root() -> RepositoryEnvelope {
   let a = log_witness_store_one(store: empty_store(), name: ^a)
   let orphan = log_witness_store_one(store: empty_store(), name: ^never_stored)
+  let both = log_witness_store_one(store: a.store, name: ^never_stored)
+  let held = log_witness_mint(repo: log_witness_empty(store: both.store), root: a.identity, message: "held", parent: none)
+  let minted = log_witness_mint(repo: held, root: orphan.identity, message: "not held", parent: none)
   RepositoryEnvelope {
     store: a.store,
-    commits: [
-      RepositoryCommit { reference: log_witness_ref(ordinal: 0), root: a.identity, message: "held", ancestry: RootCommit },
-      RepositoryCommit { reference: log_witness_ref(ordinal: 1), root: orphan.identity, message: "not held", ancestry: RootCommit },
-    ],
-    commit_allocator: MintedIdAllocator { next_ordinal: 2 },
+    commits: minted.commits,
+    commit_allocator: minted.commit_allocator,
     checked_out: none,
   }
 }
@@ -135,15 +159,8 @@ test fn row_references_are_the_commits_intrinsic_keys() -> Bool {
 // row carries.
 test fn two_commits_sharing_a_root_still_get_distinct_references() -> Bool {
   let a = log_witness_store_one(store: empty_store(), name: ^shared)
-  let repo = RepositoryEnvelope {
-    store: a.store,
-    commits: [
-      RepositoryCommit { reference: log_witness_ref(ordinal: 0), root: a.identity, message: "relabelled once", ancestry: RootCommit },
-      RepositoryCommit { reference: log_witness_ref(ordinal: 1), root: a.identity, message: "relabelled twice", ancestry: RootCommit },
-    ],
-    commit_allocator: MintedIdAllocator { next_ordinal: 2 },
-    checked_out: none,
-  }
+  let first = log_witness_mint(repo: log_witness_empty(store: a.store), root: a.identity, message: "relabelled once", parent: none)
+  let repo = log_witness_mint(repo: first, root: a.identity, message: "relabelled twice", parent: none)
   log_witness_row_references(log: repository_log(envelope: repo))
     == [log_witness_ref(ordinal: 0), log_witness_ref(ordinal: 1)]
     && log_witness_row_messages(log: repository_log(envelope: repo))

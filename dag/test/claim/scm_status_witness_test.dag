@@ -6,7 +6,14 @@ import v2.std.node { Node, Symbol, TypeNode, Atom, node_synthetic }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.scm.object_store { ObjectStore, ObjectId, empty_store, store_node, Stored, LocatorCollision }
 import gunbc.scm.ancestry { RootCommit, DescendsFrom, RepositoryCommitRef }
-import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  RepositoryCommitMinted,
+  RepositoryCommitMintAllocatorInvalid,
+  RepositoryCommitMintRootMissing,
+  RepositoryCommitMintParentMissing,
+  mint_repository_commit,
+}
 import gunbc.scm.merge { Proposal, Requirement, RequireBinding, RequireBindingAbsent }
 import gunbc.scm.authoring { author_requirement, empty_proposal }
 import gunbc.scm.status {
@@ -31,10 +38,13 @@ fn status_witness_atom(name: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: name } }, children: [])
 }
 
-fn status_witness_stored_id(name: Symbol) -> ObjectId {
+type StatusWitnessStored { store: ObjectStore, identity: ObjectId }
+
+fn status_witness_stored(name: Symbol) -> StatusWitnessStored {
   match store_node(store: empty_store(), n: status_witness_atom(name: name)) {
-    Stored { store: _, identity: identity } => identity
-    LocatorCollision { identity: identity, existing: _, incoming: _ } => identity
+    Stored { store: store, identity: identity } => StatusWitnessStored { store: store, identity: identity }
+    LocatorCollision { identity: identity, existing: _, incoming: _ } =>
+      StatusWitnessStored { store: empty_store(), identity: identity }
   }
 }
 
@@ -52,26 +62,31 @@ fn status_witness_empty_repository() -> RepositoryEnvelope {
 }
 
 fn status_witness_repository_with_checkout() -> RepositoryEnvelope {
-  let root = status_witness_stored_id(name: ^r1)
-  RepositoryEnvelope {
-    store: empty_store(),
-    commits: [RepositoryCommit {
-      reference: status_witness_ref(ordinal: 0), root: root, message: "first", ancestry: RootCommit,
-    }],
-    commit_allocator: MintedIdAllocator { next_ordinal: 1 },
-    checked_out: Present { value: status_witness_ref(ordinal: 0) },
+  let held = status_witness_stored(name: ^r1)
+  let base = RepositoryEnvelope {
+    store: held.store,
+    commits: [],
+    commit_allocator: MintedIdAllocator { next_ordinal: 0 },
+    checked_out: none,
+  }
+  match mint_repository_commit(repository: base, root: held.identity, message: "first", parent: none) {
+    RepositoryCommitMinted { repository: minted, reference: reference } => RepositoryEnvelope {
+      store: minted.store,
+      commits: minted.commits,
+      commit_allocator: minted.commit_allocator,
+      checked_out: Present { value: reference },
+    }
+    RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => base
+    RepositoryCommitMintRootMissing { root: _ } => base
+    RepositoryCommitMintParentMissing { parent: _ } => base
   }
 }
 
 fn status_witness_repository_with_dangling_checkout() -> RepositoryEnvelope {
+  let valid = status_witness_repository_with_checkout()
   RepositoryEnvelope {
-    store: empty_store(),
-    commits: [RepositoryCommit {
-      reference: status_witness_ref(ordinal: 0),
-      root: status_witness_stored_id(name: ^r1),
-      message: "first",
-      ancestry: RootCommit,
-    }],
+    store: valid.store,
+    commits: valid.commits,
     commit_allocator: MintedIdAllocator { next_ordinal: 2 },
     checked_out: Present { value: status_witness_ref(ordinal: 1) },
   }
