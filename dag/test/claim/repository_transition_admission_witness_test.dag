@@ -1,7 +1,6 @@
 module test.claim.repository_transition_admission_witness_test
 
 import std.types { Bool, String }
-import std.logic { and }
 import gunbc.live_deploy.deployed_tree_scope {
   RepositoryTransitionRealization,
   LegacyGitFileSync,
@@ -33,10 +32,8 @@ fn refusal_reason(a: RepositoryTransitionAdmission) -> String {
 // than absent, inverted. Asserting BOTH arms over the same function makes a collapse in either
 // direction red: fuse them and the admitted case fails here.
 test fn the_two_realizations_are_admitted_differently() -> Bool {
-  and(
-    a: !is_admitted(a: repository_transition_admission(realization: LegacyGitFileSync)),
-    b: is_admitted(a: repository_transition_admission(realization: GitNativeConvergence)),
-  )
+  !is_admitted(a: repository_transition_admission(realization: LegacyGitFileSync))
+    && is_admitted(a: repository_transition_admission(realization: GitNativeConvergence))
 }
 
 // THE BOUND REALIZATION IS THE LEGACY ONE TODAY, so a dispatch of the restored dashboard mode
@@ -52,10 +49,8 @@ test fn the_deployment_is_currently_bound_to_the_legacy_realization() -> Bool {
 // operator has to trust; naming the mechanism lets them check it on the host instead.
 test fn the_refusal_names_the_mechanism_rather_than_only_a_verdict() -> Bool {
   let r = refusal_reason(a: repository_transition_admission(realization: LegacyGitFileSync))
-  and(
-    a: string_contains(s: r, pattern: "index excluded"),
-    b: string_contains(s: r, pattern: "Git-native"),
-  )
+  string_contains(s: r, pattern: "index excluded")
+    && string_contains(s: r, pattern: "Git-native")
 }
 
 // AN ADMITTED REALIZATION CARRIES NO REASON, which is the state-space half: the reason field exists
