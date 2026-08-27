@@ -4,7 +4,8 @@ import extdeps.github.github { default_api_base, default_per_page }
 import extdeps.github.errors { GitHubErrorShape }
 import std.types { String, Int, CommitSha, NonEmptyStr, Timestamp, List }
 import std.credentials { EnvVar }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 
 // The GitHub REST commits API area. Modeled here rather than folded into an existing github module
@@ -18,6 +19,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "docs.github.com/en/rest/commits/commits"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.commits",
+      decl_name: "CommitDetail",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 type CommitParentRef {

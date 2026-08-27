@@ -1,7 +1,8 @@
 module extdeps.rustc
 
 import std.types { String, Bool, Int }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -9,6 +10,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "doc.rust-lang.org/rustc/command-line-arguments.html"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.rustc",
+      decl_name: "rustc.Check",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data rustc_stdin_source_note: String = "rustc reads a crate from STANDARD INPUT when the input filename is `-`, which is the cited interface this operation binds. It matters here beyond convenience: the alternative is materializing a candidate's emitted source as a file inside the tree, and the batch executor builds its module index ONCE at startup, so a file appearing mid-run is invisible to that index at best and poisons later entries at worst. Feeding the text through stdin keeps a candidate a value rather than a tree mutation."

@@ -1,7 +1,8 @@
 module extdeps.languages.bash.invocation
 
 import std.types { String, NonEmptyStr }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
 
@@ -10,6 +11,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "www.gnu.org/software/bash/manual/bash.html"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.languages.bash.invocation",
+      decl_name: "bash_program_name",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // BASH IS NOT `sh`, AND THE CALLER PICKED IT DELIBERATELY. extdeps.posix.shell_command_language
