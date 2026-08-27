@@ -42,7 +42,7 @@ import product.fabric.contention {
   admitted_occupancy_basis,
   ContentionRefusal, DemandsIndistinguishable, DuplicateCandidateIdentity,
   CandidatesJudgedAgainstDifferentOffers, OrderingContingentOnUnreadOpportunityCost,
-  admit_demand_for_offer, select_demand_for_offer,
+  admit_demand_for_offer, admit_priced_pair, select_demand_for_offer,
   admitted_buyer_headroom, admitted_billed_occupancy, admitted_identity,
 }
 
@@ -176,6 +176,57 @@ test fn the_same_pair_admits_once_the_duration_is_measured() -> Bool {
     demand: short_demand(),
     offer: hourly_offer(),
     duration: short_duration(),
+  ) {
+    DemandAdmitted { admitted: _ } => true
+    DemandNotRankableWithoutDuration { obligation: _ } => false
+    DemandNotAffordable { refusal: _ } => false
+    QuoteExceedsReservationPrice { quoted: _, reservation: _ } => false
+    GrantOccupiesNoBilledTime { duration: _ } => false
+  }
+}
+
+// THE QUIET GUARD IS CALLED, SO IT CANNOT DECAY INTO A DECORATION.
+//
+// admit_priced_pair carries two refusal arms for an unobserved duration that its
+// only production caller cannot reach, because admit_demand_for_offer screens
+// affordability first. Review of gunbc#9492 confirmed those arms are a healthy
+// guard being quiet rather than a decoration -- the mechanism is live in
+// supply.dag and the join is reachable -- and then made the sharper point: the
+// same argument that saves them makes their evidence ENROLLABLE, and a claim
+// carried only by a comment is a claim no Accepted program can read (DESIGN
+// section 4c).
+//
+// THE STATE NEITHER ARGUMENT COVERED IS DRIFT. Both of us reasoned about the
+// shape as authored. A later refactor that makes the arm genuinely unreachable
+// would break nothing, and the comment asserting reachability would quietly
+// become false -- the decoration state arrived at by decay rather than by
+// construction. This witness IS the second caller the comment says is one edit
+// away, so that decay fails here instead of going unnoticed.
+test fn the_ranked_fold_refuses_an_unobserved_duration_on_its_own_signature() -> Bool {
+  match admit_priced_pair(
+    demand: short_demand(),
+    offer: hourly_offer(),
+    duration: unobserved_duration(),
+    affordability: Affordable,
+  ) {
+    DemandNotRankableWithoutDuration { obligation: _ } => true
+    DemandAdmitted { admitted: _ } => false
+    DemandNotAffordable { refusal: _ } => false
+    QuoteExceedsReservationPrice { quoted: _, reservation: _ } => false
+    GrantOccupiesNoBilledTime { duration: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE FOLD ITSELF, differing in exactly one argument.
+// Without it the refusal above is equally consistent with admit_priced_pair
+// refusing this pair for an unrelated reason, and the witness would pass while
+// proving nothing about the duration.
+test fn the_ranked_fold_admits_the_same_pair_once_the_duration_is_measured() -> Bool {
+  match admit_priced_pair(
+    demand: short_demand(),
+    offer: hourly_offer(),
+    duration: short_duration(),
+    affordability: Affordable,
   ) {
     DemandAdmitted { admitted: _ } => true
     DemandNotRankableWithoutDuration { obligation: _ } => false
