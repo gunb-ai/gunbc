@@ -1,0 +1,329 @@
+module extdeps.bmc.pid_control_decode
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decimal { ExactDecimal }
+import extdeps.languages.json.emit { JsonArray, JsonBool, JsonKeyValue, JsonNull, JsonNumber, JsonObject, JsonString, JsonValue }
+import extdeps.languages.json.number {
+  JsonNumberDigitsUnreadable,
+  JsonNumberExact,
+  JsonNumberOutsideExactFragment,
+  JsonNumberUsesExponent,
+  JsonNumberValueRead,
+  JsonNumberReading,
+  JsonValueIsNotANumber,
+  read_json_number_value,
+}
+import extdeps.bmc.pid_control_program {
+  DemandCurvePoint,
+  decimal_celsius,
+  decimal_percent,
+}
+
+// DECODING A CAPTURED CONFIGURATION ONTO THE NEUTRAL MODEL. Every refusal here is typed and names
+// the path it was found at, because the consumer of a refusal is a person about to change a
+// deployed program and "the document is malformed" tells them nothing about which line to open.
+
+// WHERE, IN THE DOCUMENT'S OWN COORDINATES. A path is authored by the walk rather than by the
+// reader, so a refusal cannot name a location the walk did not visit.
+type DocumentPath {
+  text: NonEmptyStr
+}
+
+fn document_path(text: NonEmptyStr) -> DocumentPath {
+  DocumentPath { text: text }
+}
+
+fn path_field(parent: DocumentPath, field: NonEmptyStr) -> DocumentPath {
+  DocumentPath { text: join([parent.text, ".", field], "") }
+}
+
+fn path_index(parent: DocumentPath, index: Int) -> DocumentPath {
+  DocumentPath { text: join([parent.text, "[", to_string(index), "]"], "") }
+}
+
+fn path_key(parent: DocumentPath, key: String) -> DocumentPath {
+  DocumentPath { text: join([parent.text, "{", key, "}"], "") }
+}
+
+// THE REFUSAL VOCABULARY IS CLOSED AND EACH ARM HAS ITS OWN REPAIR. A missing field means the
+// document is incomplete; a duplicated one means it is ambiguous and the daemon's choice between
+// them is not something this decoder is entitled to make; a wrong-kinded value means the document
+// is wrong; an exponent-form number means the document is outside the fragment this tree reads
+// exactly. Collapsing any pair of those sends a reader to the wrong repair.
+type FieldRefusal
+  = FieldAbsent { path: DocumentPath, field: NonEmptyStr }
+  | FieldDuplicated { path: DocumentPath, field: NonEmptyStr, occurrences: Int }
+  | FieldNotAnObject { path: DocumentPath, field: NonEmptyStr }
+  | FieldNotANumber { path: DocumentPath, field: NonEmptyStr }
+  | FieldNotAString { path: DocumentPath, field: NonEmptyStr }
+  | FieldNotABool { path: DocumentPath, field: NonEmptyStr }
+  | FieldNotAnArray { path: DocumentPath, field: NonEmptyStr }
+  | FieldNumberOutsideExactFragment { path: DocumentPath, field: NonEmptyStr }
+  | FieldValueUnknown { path: DocumentPath, field: NonEmptyStr, value: String }
+
+type DecimalField
+  = DecimalFieldRead { value: ExactDecimal }
+  | DecimalFieldRefused { refusal: FieldRefusal }
+
+fn members_named(value: JsonValue, key: String) -> List<JsonValue> {
+  match value {
+    JsonObject { members: ms } => map(filter(ms, m => m.key == key), m => m.value)
+    JsonNull => []
+    JsonBool { value: _ } => []
+    JsonNumber { lexeme: _ } => []
+    JsonString { value: _ } => []
+    JsonArray { elements: _ } => []
+  }
+}
+
+fn value_is_object(value: JsonValue) -> Bool {
+  match value {
+    JsonObject { members: _ } => true
+    JsonNull => false
+    JsonBool { value: _ } => false
+    JsonNumber { lexeme: _ } => false
+    JsonString { value: _ } => false
+    JsonArray { elements: _ } => false
+  }
+}
+
+// ONE SELECTOR, USED BY EVERY FIELD READ, SO THAT ABSENT AND DUPLICATED CANNOT DIVERGE BETWEEN
+// FIELDS. RFC 8259 permits duplicate names and does not say which wins, so a duplicated field is
+// refused rather than resolved -- last-wins here would let a document carrying two outLim_min
+// values read as whichever the writer put second.
+type SelectedMember
+  = MemberSelected { value: JsonValue }
+  | MemberSelectionRefused { refusal: FieldRefusal }
+
+fn select_member(container: JsonValue, path: DocumentPath, field: NonEmptyStr) -> SelectedMember {
+  if !value_is_object(value: container) {
+    MemberSelectionRefused { refusal: FieldNotAnObject { path: path, field: field } }
+  } else {
+    let hits = members_named(value: container, key: field as String)
+    if hits.length() == 0 {
+      MemberSelectionRefused { refusal: FieldAbsent { path: path, field: field } }
+    } else if hits.length() > 1 {
+      MemberSelectionRefused {
+        refusal: FieldDuplicated { path: path, field: field, occurrences: hits.length() },
+      }
+    } else {
+      MemberSelected { value: hits.first() }
+    }
+  }
+}
+
+fn decimal_of_value(value: JsonValue, path: DocumentPath, field: NonEmptyStr) -> DecimalField {
+  match read_json_number_value(v: value) {
+    JsonValueIsNotANumber => DecimalFieldRefused { refusal: FieldNotANumber { path: path, field: field } }
+    JsonNumberValueRead { reading } =>
+      match reading {
+        JsonNumberExact { value: exact } => DecimalFieldRead { value: exact }
+        JsonNumberOutsideExactFragment { lexeme: _, refusal: _ } =>
+          DecimalFieldRefused {
+            refusal: FieldNumberOutsideExactFragment { path: path, field: field },
+          }
+      }
+  }
+}
+
+fn decimal_field(container: JsonValue, path: DocumentPath, field: NonEmptyStr) -> DecimalField {
+  match select_member(container: container, path: path, field: field) {
+    MemberSelectionRefused { refusal } => DecimalFieldRefused { refusal: refusal }
+    MemberSelected { value } => decimal_of_value(value: value, path: path, field: field)
+  }
+}
+
+// THE CURVE IS THE HARDEST OBJECT IN THE DOCUMENT AND THE ONE MOST WORTH REFUSING PRECISELY. It is
+// stored as TWO objects, `reading` and `output`, each keyed by a decimal index string, and the
+// pairing between them is by key identity and nothing else -- position would be wrong, because
+// object member order is authored and the two objects could disagree on it.
+type CurveSide = ReadingSide | OutputSide
+
+fn curve_side_field(side: CurveSide) -> NonEmptyStr {
+  match side {
+    ReadingSide => "reading"
+    OutputSide => "output"
+  }
+}
+
+// WHY A KEY THAT IS NOT A PLAIN INDEX REFUSES INSTEAD OF BEING SKIPPED. A skipped key is a curve
+// point silently missing from the decoded program, so the model would describe a fan curve the
+// host is not running -- and the missing point would be invisible precisely because the decoder
+// decided it was uninteresting.
+//
+// AND WHY TWO KEYS THAT NORMALISE TO ONE INDEX REFUSE RATHER THAN ONE WINNING. "1" and "01" are
+// different member names in JSON and the same integer here. Picking either is picking a curve the
+// document does not unambiguously state, and the daemon's own choice between them is not knowable
+// from the document.
+type CurveRefusal
+  = CurveSideMissing { path: DocumentPath, side: CurveSide }
+  | CurveSideNotAnObject { path: DocumentPath, side: CurveSide }
+  | CurveSideDuplicated { path: DocumentPath, side: CurveSide, occurrences: Int }
+  | CurveKeyNotAnIndex { path: DocumentPath, side: CurveSide, key: String }
+  | CurveIndexCollision { path: DocumentPath, side: CurveSide, index: Int, first_key: String, second_key: String }
+  | CurveValueNotANumber { path: DocumentPath, side: CurveSide, key: String }
+  | CurveValueOutsideExactFragment { path: DocumentPath, side: CurveSide, key: String }
+  | CurveReadingWithoutOutput { path: DocumentPath, index: Int }
+  | CurveOutputWithoutReading { path: DocumentPath, index: Int }
+
+type IndexedDecimal {
+  index: Int
+  key: String
+  magnitude: ExactDecimal
+}
+
+type CurveSideDecode
+  = CurveSideDecoded { entries: List<IndexedDecimal> }
+  | CurveSideRefused { refusal: CurveRefusal }
+
+fn curve_key_index(key: String) -> Int? {
+  parse_int(s: key)
+}
+
+fn indexed_decimal_entries_with(entries: List<IndexedDecimal>, index: Int) -> List<IndexedDecimal> {
+  filter(entries, entry => entry.index == index)
+}
+
+// COLLISION IS DECIDED AGAINST THE ENTRIES ALREADY ACCEPTED, so the refusal can name BOTH keys.
+// Reporting only the second would leave a reader hunting for the one it collided with.
+fn curve_side_fold(
+  path: DocumentPath,
+  side: CurveSide,
+  members: List<JsonKeyValue>,
+  acc: CurveSideDecode,
+) -> CurveSideDecode {
+  fold(members, init: acc, f: (state, member) => {
+    match state {
+      CurveSideRefused { refusal } => CurveSideRefused { refusal: refusal }
+      CurveSideDecoded { entries } =>
+        match curve_key_index(key: member.key) {
+          Absent =>
+            CurveSideRefused {
+              refusal: CurveKeyNotAnIndex { path: path, side: side, key: member.key },
+            }
+          Present { value: index } => {
+            let clash = indexed_decimal_entries_with(entries: entries, index: index)
+            if clash.length() > 0 {
+              CurveSideRefused {
+                refusal: CurveIndexCollision {
+                  path: path,
+                  side: side,
+                  index: index,
+                  first_key: clash.first().key,
+                  second_key: member.key,
+                },
+              }
+            } else {
+              match decimal_of_value(value: member.value, path: path, field: curve_side_field(side: side)) {
+                DecimalFieldRefused { refusal } =>
+                  match refusal {
+                    FieldNumberOutsideExactFragment { path: p, field: _ } =>
+                      CurveSideRefused {
+                        refusal: CurveValueOutsideExactFragment { path: p, side: side, key: member.key },
+                      }
+                    other =>
+                      CurveSideRefused {
+                        refusal: CurveValueNotANumber { path: path, side: side, key: member.key },
+                      }
+                  }
+                DecimalFieldRead { value } =>
+                  CurveSideDecoded {
+                    entries: entries.append(IndexedDecimal { index: index, key: member.key, magnitude: value }),
+                  }
+              }
+            }
+          }
+        }
+    }
+  })
+}
+
+fn decode_curve_side(container: JsonValue, path: DocumentPath, side: CurveSide) -> CurveSideDecode {
+  let field = curve_side_field(side: side)
+  let hits = members_named(value: container, key: field as String)
+  if hits.length() == 0 {
+    CurveSideRefused { refusal: CurveSideMissing { path: path, side: side } }
+  } else if hits.length() > 1 {
+    CurveSideRefused {
+      refusal: CurveSideDuplicated { path: path, side: side, occurrences: hits.length() },
+    }
+  } else {
+    match hits.first() {
+      JsonObject { members } =>
+        curve_side_fold(
+          path: path_field(parent: path, field: field),
+          side: side,
+          members: members,
+          acc: CurveSideDecoded { entries: [] },
+        )
+      other => CurveSideRefused { refusal: CurveSideNotAnObject { path: path, side: side } }
+    }
+  }
+}
+
+// THE MAGNITUDE FIELD IS NOT NAMED `value`, AND THAT IS FORCED BY AN OPEN SUBSTRATE DEFECT RATHER
+// THAN CHOSEN. Written as `IndexedDecimal { .., value: ExactDecimal }`, every decoded curve output
+// silently carried the ENTRY RECORD instead of its magnitude, and nothing refused -- the failure
+// surfaced only later, as a field lookup for `fraction_digits` on an IndexedDecimal.
+//
+// THE CAUSE, REDUCED TO A MINIMAL EXECUTABLE REPRODUCTION AND MEASURED BOTH WAYS RATHER THAN
+// INFERRED. `list.first()` yields an optional. Field access through it auto-unwraps: for a record
+// `Boxed { tag: Int, value: Int }`, `boxes.first().tag` reads the field and returns 1. But
+// `boxes.first().value` does NOT read the field -- it reads the OPTIONAL's own payload and returns
+// the Boxed record. The two accesses on one expression resolve against two different carriers,
+// decided by the field's name, with no diagnostic at either the type check or the evaluation.
+//
+// This is a floor-level miss, not a subtlety: the comparison `boxes.first().value == 99` places a
+// record against an Int and typechecks clean. It is reported rather than only dodged, per the
+// standing rule that noticing a workaround is the line-stop signal. The rename is that workaround,
+// marked as one, and it dissolves when field access through an optional either resolves the
+// record's field or refuses the ambiguity.
+fn indexed_decimal_value_at(entries: List<IndexedDecimal>, index: Int) -> ExactDecimal {
+  let matched = indexed_decimal_entries_with(entries: entries, index: index)
+  let entry = matched.first()
+  entry.magnitude
+}
+
+type CurveDecode
+  = CurveDecoded { points: List<DemandCurvePoint> }
+  | CurveRefused { refusal: CurveRefusal }
+
+// THE JOIN RUNS IN BOTH DIRECTIONS, for the same reason the member conservation join does: a
+// reading with no output and an output with no reading are different defects, and checking only
+// one direction lets the other through whenever the two objects have equal key counts.
+fn curve_join(path: DocumentPath, readings: List<IndexedDecimal>, outputs: List<IndexedDecimal>) -> CurveDecode {
+  let unpaired_reading = filter(readings, r => indexed_decimal_entries_with(entries: outputs, index: r.index).length() == 0)
+  let unpaired_output = filter(outputs, o => indexed_decimal_entries_with(entries: readings, index: o.index).length() == 0)
+  if unpaired_reading.length() > 0 {
+    CurveRefused { refusal: CurveReadingWithoutOutput { path: path, index: unpaired_reading.first().index } }
+  } else if unpaired_output.length() > 0 {
+    CurveRefused { refusal: CurveOutputWithoutReading { path: path, index: unpaired_output.first().index } }
+  } else {
+    CurveDecoded {
+      points: map(readings, r =>
+        DemandCurvePoint {
+          index: r.index,
+          reading: decimal_celsius(value: r.magnitude),
+          output: decimal_percent(value: indexed_decimal_value_at(entries: outputs, index: r.index)),
+        }
+      ),
+    }
+  }
+}
+
+// THE DECODED CURVE KEEPS THE READING OBJECT'S AUTHORED ORDER AND IS NOT SORTED, AND MONOTONICITY
+// IS NOT CHECKED HERE. A curve whose readings descend is a defective program, but refusing it at
+// the decode would make a badly-configured host unobservable -- the observer's job is to say what
+// is running, including when what is running is wrong. That check belongs on the model, where it
+// can be reported about a program that was successfully read.
+fn decode_curve(container: JsonValue, path: DocumentPath) -> CurveDecode {
+  match decode_curve_side(container: container, path: path, side: ReadingSide) {
+    CurveSideRefused { refusal } => CurveRefused { refusal: refusal }
+    CurveSideDecoded { entries: readings } =>
+      match decode_curve_side(container: container, path: path, side: OutputSide) {
+        CurveSideRefused { refusal } => CurveRefused { refusal: refusal }
+        CurveSideDecoded { entries: outputs } =>
+          curve_join(path: path, readings: readings, outputs: outputs)
+      }
+  }
+}

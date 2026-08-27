@@ -1,0 +1,194 @@
+module gunbc.pid_control_curve_decode_witness
+
+import std.types { Bool, Int, List, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.decimal { exact_decimal_wire }
+import std.measure { measure_count }
+import extdeps.languages.json.emit { JsonValue, json_object }
+import extdeps.languages.json.parse { JsonDocumentParsed, parse_json_document }
+import extdeps.bmc.pid_control_program { DemandCurvePoint }
+import extdeps.bmc.pid_control_decode {
+  CurveDecoded,
+  CurveIndexCollision,
+  CurveKeyNotAnIndex,
+  CurveOutputWithoutReading,
+  CurveReadingWithoutOutput,
+  CurveRefused,
+  CurveSideMissing,
+  CurveValueNotANumber,
+  CurveValueOutsideExactFragment,
+  OutputSide,
+  ReadingSide,
+  decode_curve,
+  document_path,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn parsed(text: String) -> JsonValue {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value } => value
+    other => json_object(members: [])
+  }
+}
+
+// THE CURVE THE FLEET IS ACTUALLY RUNNING, copied from the captured srv3 document. Nine points,
+// authored in ascending order, temperatures against fan demand percentages.
+data deployed_curve_text: String = "\{\"reading\": \{\"0\": 40, \"1\": 55, \"2\": 62, \"3\": 66, \"4\": 70, \"5\": 74, \"6\": 78, \"7\": 82, \"8\": 85\}, \"output\": \{\"0\": 22, \"1\": 30, \"2\": 38, \"3\": 44, \"4\": 52, \"5\": 62, \"6\": 75, \"7\": 88, \"8\": 100\}\}"
+
+fn decoded_points(text: String) -> List<DemandCurvePoint> {
+  match decode_curve(container: parsed(text: text), path: document_path(text: "zones[0].pids[2].pid")) {
+    CurveDecoded { points } => points
+    other => []
+  }
+}
+
+fn point_at(points: List<DemandCurvePoint>, index: Int) -> List<DemandCurvePoint> {
+  filter(points, p => p.index == index)
+}
+
+fn the_deployed_curve_decodes_paired() -> Bool {
+  let points = decoded_points(text: deployed_curve_text)
+  let third = point_at(points: points, index: 3)
+  points.length() == 9
+    && third.length() == 1
+    && exact_decimal_wire(d: measure_count(m: third.first().reading)) == "66"
+    && exact_decimal_wire(d: measure_count(m: third.first().output)) == "44"
+}
+
+// PAIRING IS BY KEY IDENTITY, NOT BY POSITION, and this is the discriminator that proves it: the
+// output object is authored in a different member order from the reading object. Under positional
+// pairing 66 would take 100 rather than 44, which is the difference between a quiet fan and a loud
+// one at the same temperature.
+data reordered_output_curve_text: String = "\{\"reading\": \{\"0\": 40, \"1\": 55, \"2\": 62, \"3\": 66\}, \"output\": \{\"3\": 44, \"2\": 38, \"1\": 30, \"0\": 22\}\}"
+
+fn pairing_survives_a_reordered_output_object() -> Bool {
+  let points = decoded_points(text: reordered_output_curve_text)
+  let third = point_at(points: points, index: 3)
+  let zeroth = point_at(points: points, index: 0)
+  points.length() == 4
+    && third.length() == 1
+    && exact_decimal_wire(d: measure_count(m: third.first().output)) == "44"
+    && zeroth.length() == 1
+    && exact_decimal_wire(d: measure_count(m: zeroth.first().output)) == "22"
+}
+
+// TWO KEYS THAT NORMALISE TO ONE INDEX. "1" and "01" are different member names in JSON and the
+// same integer here, and picking either is picking a curve the document does not state.
+data colliding_curve_text: String = "\{\"reading\": \{\"0\": 40, \"1\": 55, \"01\": 62\}, \"output\": \{\"0\": 22, \"1\": 30, \"01\": 38\}\}"
+
+fn a_normalisation_collision_refuses_naming_both_keys() -> Bool {
+  match decode_curve(container: parsed(text: colliding_curve_text), path: document_path(text: "p")) {
+    CurveRefused { refusal } =>
+      match refusal {
+        CurveIndexCollision { path, side, index, first_key, second_key } =>
+          index == 1 && first_key == "1" && second_key == "01"
+        other => false
+      }
+    other => false
+  }
+}
+
+// A KEY THAT IS NOT AN INDEX AT ALL REFUSES RATHER THAN BEING SKIPPED. A skipped key is a curve
+// point silently missing from the decoded program.
+data annotated_curve_text: String = "\{\"reading\": \{\"0\": 40, \"comment\": 55\}, \"output\": \{\"0\": 22, \"comment\": 30\}\}"
+
+fn a_non_index_key_refuses_by_name() -> Bool {
+  match decode_curve(container: parsed(text: annotated_curve_text), path: document_path(text: "p")) {
+    CurveRefused { refusal } =>
+      match refusal {
+        CurveKeyNotAnIndex { path, side, key } => key == "comment"
+        other => false
+      }
+    other => false
+  }
+}
+
+// THE JOIN RUNS IN BOTH DIRECTIONS, and these two fixtures are what separates a real join from a
+// key-count comparison: each side has a key the other lacks, so the counts agree in the first
+// fixture and the defect is real.
+data reading_without_output_text: String = "\{\"reading\": \{\"0\": 40, \"1\": 55\}, \"output\": \{\"0\": 22, \"2\": 30\}\}"
+
+fn an_unpaired_reading_is_named_with_its_index() -> Bool {
+  let counts_agree = true
+  match decode_curve(container: parsed(text: reading_without_output_text), path: document_path(text: "p")) {
+    CurveRefused { refusal } =>
+      match refusal {
+        CurveReadingWithoutOutput { path, index } => index == 1
+        other => false
+      }
+    other => false
+  }
+}
+
+data output_without_reading_text: String = "\{\"reading\": \{\"0\": 40\}, \"output\": \{\"0\": 22, \"7\": 30\}\}"
+
+fn an_unpaired_output_is_named_with_its_index() -> Bool {
+  match decode_curve(container: parsed(text: output_without_reading_text), path: document_path(text: "p")) {
+    CurveRefused { refusal } =>
+      match refusal {
+        CurveOutputWithoutReading { path, index } => index == 7
+        other => false
+      }
+    other => false
+  }
+}
+
+data quoted_value_curve_text: String = "\{\"reading\": \{\"0\": \"40\"\}, \"output\": \{\"0\": 22\}\}"
+
+fn a_quoted_curve_value_refuses() -> Bool {
+  match decode_curve(container: parsed(text: quoted_value_curve_text), path: document_path(text: "p")) {
+    CurveRefused { refusal } =>
+      match refusal {
+        CurveValueNotANumber { path, side, key } => key == "0"
+        other => false
+      }
+    other => false
+  }
+}
+
+data exponent_value_curve_text: String = "\{\"reading\": \{\"0\": 4e1\}, \"output\": \{\"0\": 22\}\}"
+
+fn an_exponent_curve_value_refuses_as_outside_the_fragment() -> Bool {
+  match decode_curve(container: parsed(text: exponent_value_curve_text), path: document_path(text: "p")) {
+    CurveRefused { refusal } =>
+      match refusal {
+        CurveValueOutsideExactFragment { path, side, key } => key == "0"
+        other => false
+      }
+    other => false
+  }
+}
+
+data missing_output_side_text: String = "\{\"reading\": \{\"0\": 40\}\}"
+
+fn a_missing_side_refuses_and_names_which() -> Bool {
+  match decode_curve(container: parsed(text: missing_output_side_text), path: document_path(text: "p")) {
+    CurveRefused { refusal } =>
+      match refusal {
+        CurveSideMissing { path, side } =>
+          match side {
+            OutputSide => true
+            ReadingSide => false
+          }
+        other => false
+      }
+    other => false
+  }
+}
+
+fn pid_control_curve_decode_witness() -> ProcessExit {
+  if the_deployed_curve_decodes_paired()
+    && pairing_survives_a_reordered_output_object()
+    && a_normalisation_collision_refuses_naming_both_keys()
+    && a_non_index_key_refuses_by_name()
+    && an_unpaired_reading_is_named_with_its_index()
+    && an_unpaired_output_is_named_with_its_index()
+    && a_quoted_curve_value_refuses()
+    && an_exponent_curve_value_refuses_as_outside_the_fragment()
+    && a_missing_side_refuses_and_names_which() {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "phosphor-pid-control curve decode: key-identity pairing, the normalisation-collision refusal, or the two-directional join changed")
+  }
+}
