@@ -1,0 +1,135 @@
+module gunbc.fabric_cell_host_root
+
+import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
+import std.disposition { Disposition, SingleAuthority }
+import v2.std.optional { Optional, Present }
+import product.placement_supply { HostIdentity }
+import gunbc.ownership { Ownership, Owned, Ensured }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fabric_cell_converge { fabric_cell_base_dir }
+import gunbc.fabric_cell_subject {
+  FabricCellResourceSubject,
+  FabricCellHostScope,
+  fabric_cell_subject_ownership,
+}
+import gunbc.membership_reconcile {
+  MembershipPlan,
+  membership_reconcile,
+  membership_plan_admitting_outcome,
+  membership_effects,
+  EffectsOrRefusal,
+  membership_write_count,
+  membership_removal_count,
+  membership_refusal_count,
+}
+
+data fabric_cell_host_root_authority_disposition: Disposition = SingleAuthority
+
+// THE SUBJECT AND ITS OWNERSHIP PROJECTION LIVE IN gunbc.fabric_cell_subject, upstream of both
+// cell families, so that one total match serves the slot-scoped family and this one without either
+// importing the other. See that module for why the subject is not a spelling of FabricCellNamespace.
+
+// THERE IS NO ADDRESS AXIS HERE, AND ITS ABSENCE IS A MEASUREMENT RATHER THAN AN OMISSION. The
+// slot-scoped family carries FabricCellResourceAddress because a slot genuinely has three distinct
+// resources with three distinct remedies. Exactly one host-scoped resource exists: the base
+// directory. An address coproduct with a single inhabitant is structure authored for a second
+// member that does not exist, which section 2 prices as anticipation rather than modeling -- and a
+// one-arm coproduct is not even spellable here, since `type X = Y` is the alias form. When a second
+// host-scoped resource appears, the member gains the axis then, and every fold over it fails to
+// compile until it says what the new resource's state is.
+
+type FabricCellHostMemberAt = NonEmptyStr
+
+type FabricCellHostMember {
+  host: HostIdentity
+  state_digest: NonEmptyStr
+}
+
+fn fabric_cell_host_member_subject(member: FabricCellHostMember) -> FabricCellResourceSubject {
+  FabricCellHostScope { host: member.host }
+}
+
+// THE HOST IS THE WHOLE KEY, because the host is the whole identity: one base directory per
+// machine. A constant discriminator joined beside it would be a second naming scheme for the family
+// the member's own type already settles.
+fn fabric_cell_host_member_key(member: FabricCellHostMember) -> NonEmptyStr {
+  member.host as String as NonEmptyStr
+}
+
+fn fabric_cell_host_member_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  a as String == b as String
+}
+
+fn fabric_cell_host_member_value_eq(a: FabricCellHostMember, b: FabricCellHostMember) -> Bool {
+  a.state_digest as String == b.state_digest as String
+}
+
+// THE OWNERSHIP THE RECONCILE SPINE READS, ROUTED THROUGH THE SUBJECT PROJECTION ABOVE RATHER THAN
+// ANSWERING Ensured DIRECTLY. Answering here would put the teardown decision in two places the
+// moment a second host-scoped resource appears; routing it means the subject stays the single
+// authority for who may remove what.
+fn fabric_cell_host_member_ownership(member: FabricCellHostMember) -> Ownership? {
+  Present { value: fabric_cell_subject_ownership(subject: fabric_cell_host_member_subject(member: member)) }
+}
+
+// THE STATE IS THE DECLARED PATH, WHICH IS THE SAME CHOICE THE SLOT-SCOPED ROOT MAKES.
+// fabric_cell_desired_state_digest answers a root address with its path, so the observed side
+// compares the path it found against the path that was declared, and a base directory that moved
+// reads as drift rather than as two unrelated members.
+fn fabric_cell_host_desired_state_digest() -> NonEmptyStr {
+  fabric_cell_base_dir as NonEmptyStr
+}
+
+// THE DESIRED POPULATION DOES NOT DEPEND ON HOW MANY SLOTS THE HOST SERVES, AND THAT INDEPENDENCE
+// IS THE POINT OF THE SUBJECT. The slot-scoped family folds fabric_execution_slot_identities and
+// yields nothing for a host serving no fabric slots. The base directory is desired on a fabric host
+// whether or not any slot is currently allocated, so a host draining its last slot does not thereby
+// declare its cell root undesired.
+fn fabric_cell_host_desired_members(host: HostIdentity) -> List<FabricCellHostMember> {
+  [FabricCellHostMember { host: host, state_digest: fabric_cell_host_desired_state_digest() }]
+}
+
+fn fabric_cell_host_reconcile(
+  desired: List<FabricCellHostMember>,
+  observed: List<FabricCellHostMember>,
+) -> MembershipPlan<FabricCellHostMember, FabricCellHostMemberAt> {
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: desired,
+      observed: observed,
+      key_of: fabric_cell_host_member_key,
+      key_eq: fabric_cell_host_member_key_eq,
+      value_eq: fabric_cell_host_member_value_eq,
+      ownership_of: fabric_cell_host_member_ownership,
+    ),
+  )
+}
+
+// NO EffectsOrRefusal SURFACE IS EXPOSED HERE, AND THAT IS MEASURED RATHER THAN FORGOTTEN.
+// gunbc.fabric_cell_converge emits no effects at all -- no membership_effects, no EffectsOrRefusal
+// -- and both runner_lifecycle and fleet_converge_plan record in their own words that the fabric
+// family's host-effect realization is absent. An effects surface here would be the first in the
+// subsystem and would have no consumer, which section 6 prices as experimental residue. The plan
+// and the counts below are pure reads over the diff, consumed by witnesses today and by the
+// realizer when it lands.
+
+fn fabric_cell_host_write_count(
+  desired: List<FabricCellHostMember>,
+  observed: List<FabricCellHostMember>,
+) -> Int {
+  membership_write_count(plan: fabric_cell_host_reconcile(desired: desired, observed: observed))
+}
+
+fn fabric_cell_host_removal_count(
+  desired: List<FabricCellHostMember>,
+  observed: List<FabricCellHostMember>,
+) -> Int {
+  membership_removal_count(plan: fabric_cell_host_reconcile(desired: desired, observed: observed))
+}
+
+fn fabric_cell_host_refusal_count(
+  desired: List<FabricCellHostMember>,
+  observed: List<FabricCellHostMember>,
+) -> Int {
+  membership_refusal_count(plan: fabric_cell_host_reconcile(desired: desired, observed: observed))
+}

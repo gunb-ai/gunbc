@@ -44160,6 +44160,8 @@ pub struct PreparedRepository {
     pub modules_excluded: usize,
     /// The witness sites preparation found, already folded. NOT the corpus bytes.
     pub witness_files: Vec<InventoryWitnessFile>,
+    /// Admitted sources carrying zero `test fn` decls. See `PreparedSubject::test_decl_free_paths`.
+    pub test_decl_free_paths: Vec<String>,
 }
 
 /// Shared view of one admitted source. Holds the same `Rc<SourceFile>` preparation already
@@ -44348,6 +44350,14 @@ pub struct PreparedSubject {
     pub sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     pub inventory: Vec<PreparedSourceView>,
     pub witness_files: Vec<InventoryWitnessFile>,
+    /// Admitted sources carrying ZERO `test fn` decls, by repo-relative path.
+    ///
+    /// Preparation records the fact and judges nothing with it. Whether a path in here is a
+    /// VIOLATION is a policy question owned by `v2.workflow.floor_naming_hygiene`
+    /// (`floor_test_sidecar_suffix` / `floor_entry_is_barren_test_sidecar`), and the floor asks
+    /// it once, later, against the constant read from that module — so the rule keeps one home
+    /// and only its consumer moved.
+    pub test_decl_free_paths: Vec<String>,
     pub subject_digest: String,
     pub modules_resolved: usize,
     pub modules_excluded: usize,
@@ -44374,6 +44384,7 @@ pub fn assemble_prepared_subject(
     let index = build_module_index(source_roots);
     let total = index.len();
     let mut witness_files: Vec<InventoryWitnessFile> = Vec::new();
+    let mut test_decl_free_paths: Vec<String> = Vec::new();
     let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::with_capacity(total);
     let mut inventory: Vec<PreparedSourceView> = Vec::with_capacity(total);
     for (module_path, sf) in index.iter() {
@@ -44384,8 +44395,42 @@ pub fn assemble_prepared_subject(
         {
             continue;
         }
-        if let Some(site) = witness_file_from_source(module_path, &sf.path, &sf.content) {
-            witness_files.push(site);
+        // THE DROP THAT MADE A WALL UNREACHABLE, NOW A RECORDED FACT.
+        //
+        // `witness_file_from_source` answers `None` for a file with no `test fn` decl, and this
+        // loop used to discard that answer. Since `run_required_floor` builds its whole roster
+        // from `witness_files`, a `*_test.dag` file declaring no `test fn` was not declined and
+        // not counted — it left the floor's universe entirely, one level ABOVE the
+        // `offered = routed + declined_long + declined_live` partition, which is why that line
+        // can be exact and still say nothing about it.
+        //
+        // The `.dag` producer has carried a wall for exactly this since it was written
+        // (`v2.workflow.floor_naming_hygiene` `floor_entry_is_barren_test_sidecar`, refused as
+        // `BarrenTestSidecar`), and it never fired, because the required floor does not take the
+        // path that reaches it — `invoke_floor_discovery_producer` is reachable only through
+        // `discover_floor_witness_roster`, which `run_required_floor` never calls.
+        //
+        // AND THE RECORDED SET USES THE RULE'S OWN VOCABULARY, NOT THIS SCANNER'S. `test data `
+        // is a test decl to `floor_discovery_scan_test_decl_names`, which is what
+        // `floor_entry_is_barren_test_sidecar` composes, so a file declaring only `test data`
+        // rows is NOT barren under the rule this wall enforces — measured at 3bbd53c05a, 13 such
+        // files exist and refusing them here would have been this wall over-reaching into a
+        // different defect. That different defect is real and is declared, not fixed here:
+        // `witness_file_from_source` recognises `test fn ` and not `test data `, so those rows
+        // are dropped from the floor's roster whether or not their file carries a `test fn`.
+        let site = witness_file_from_source(module_path, &sf.path, &sf.content);
+        let declares_no_test_decl = site.is_none()
+            && !sf
+                .content
+                .lines()
+                .any(|line| line.starts_with("test data "));
+        match site {
+            Some(site) => witness_files.push(site),
+            None => {
+                if declares_no_test_decl {
+                    test_decl_free_paths.push(p.clone());
+                }
+            }
         }
         inventory.push(PreparedSourceView {
             module_path: module_path.clone(),
@@ -44398,12 +44443,14 @@ pub fn assemble_prepared_subject(
     }
     let modules_excluded = total - sources.len();
     witness_files.sort_by(|a, b| a.path.cmp(&b.path));
+    test_decl_free_paths.sort();
     let subject_digest = subject_digest_for_closure(&sources);
     let modules_resolved = total - modules_excluded;
     Ok(PreparedSubject {
         sources,
         inventory,
         witness_files,
+        test_decl_free_paths,
         subject_digest,
         modules_resolved,
         modules_excluded,
@@ -44432,6 +44479,7 @@ pub fn prepare_repository_once(
         sources,
         inventory,
         witness_files,
+        test_decl_free_paths,
         subject_digest,
         modules_resolved,
         modules_excluded,
@@ -44446,6 +44494,7 @@ pub fn prepare_repository_once(
             modules_resolved,
             modules_excluded,
             witness_files,
+            test_decl_free_paths,
         },
         inventory,
     ))
@@ -45794,6 +45843,51 @@ fn floor_required_int(ctx: &v1_interpreter::InterpContext, func: &str) -> Result
     }
 }
 
+/// Read one `String` constant from a `.dag` authority, by qualified name.
+///
+/// The barren-sidecar rule's suffix lives in `v2.workflow.floor_naming_hygiene`
+/// (`floor_test_sidecar_suffix`), and it stays there: re-spelling `"_test.dag"` in Rust would
+/// fork the rule across two representations, which is the defect this whole repair is about.
+fn floor_required_string(
+    ctx: &v1_interpreter::InterpContext,
+    qualified: &str,
+) -> Result<String, String> {
+    match v1_interpreter::run_in_context(ctx, qualified, false) {
+        Ok(v1_interpreter::Value::Str(s)) if !s.is_empty() => Ok(s.to_string()),
+        Ok(other) => Err(format!(
+            "{qualified}: expected a non-empty String, got {}",
+            floor_value_shape(Some(&other))
+        )),
+        Err(e) => Err(format!("{qualified}: {e}")),
+    }
+}
+
+/// The barren witnesses in the prepared subject, judged by the `.dag` rule rather than by a
+/// second Rust spelling of it.
+///
+/// Preparation records every admitted source with no `test fn` decl; this asks
+/// `floor_naming_hygiene`'s own suffix which of them are `*_test.dag` entries — the same
+/// predicate `floor_entry_is_barren_test_sidecar` composes, consumed here because THIS is the
+/// path the required floor takes.
+fn floor_barren_test_sidecars(
+    hermetic: &v1_interpreter::InterpContext,
+    test_decl_free_paths: &[String],
+) -> Result<Vec<String>, String> {
+    let suffix = floor_required_string(
+        hermetic,
+        "v2.workflow.floor_naming_hygiene.floor_test_sidecar_suffix",
+    )?;
+    Ok(test_decl_free_paths
+        .iter()
+        .filter(|path| {
+            path.strip_prefix("./")
+                .unwrap_or(path.as_str())
+                .ends_with(suffix.as_str())
+        })
+        .cloned()
+        .collect())
+}
+
 fn floor_decode_list<'a>(
     ctx: &v1_interpreter::InterpContext,
     v: Option<&'a v1_interpreter::Value>,
@@ -46521,6 +46615,21 @@ pub fn run_required_floor(
         &hermetic,
         "v2.workflow.required_floor.fixture_home_prefixes",
     )?;
+    // THE LINE STOPS BEFORE THE PARTITION IS COMPUTED, because a barren entry is invisible to
+    // the partition by construction — it contributes no SITE, so `offered` cannot report it and
+    // `offered == routed + declined_long + declined_fixture` stays exact while saying nothing about
+    // it. A file that claims the `*_test.dag` place and enrolls nothing is a witness nobody asked
+    // and everybody reads as covered.
+    let barren_test_sidecars =
+        floor_barren_test_sidecars(&hermetic, &prepared.test_decl_free_paths)?;
+    if !barren_test_sidecars.is_empty() {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=BarrenTestSidecar count={} — a `*_test.dag` entry must \
+             declare at least one `test fn`; the required floor enrolls nothing from: {}",
+            barren_test_sidecars.len(),
+            barren_test_sidecars.join(", ")
+        ));
+    }
     let mut claims: Vec<RequiredFloorClaim> = Vec::new();
     let mut planned_identities: HashSet<String> = HashSet::new();
     let mut long_declined = 0usize;
