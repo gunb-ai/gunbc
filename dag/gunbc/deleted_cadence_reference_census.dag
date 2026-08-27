@@ -1,0 +1,346 @@
+module gunbc.deleted_cadence_reference_census
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.witness_admission {
+  WitnessConsumerCadence,
+  FalsifierSelfHostWet,
+  FalsifierRehomedBinWet,
+  FalsifierSubstrateLongLane,
+  witness_cadence_has_scheduled_route,
+}
+import gunbc.guarantee_rung_drop {
+  GuaranteeRungDrop,
+  LostAsPassenger,
+  Mitigatable,
+  OutsideTheLadder,
+}
+import v2.std.algebra { fold_list, any }
+
+// THE CENSUS OF AUTHORITY ROWS THAT CITE A DELETED EXECUTION CADENCE, AND THE ONE
+// QUESTION EVERY ROW MUST ANSWER: WHICH EXACT CONSUMER EXECUTES THIS POPULATION NOW?
+//
+// falsifier.yml was deleted at 611fd02770 (#8283, 2026-08-15, the floor cut). The
+// repository carries three workflows -- fleet-converge, fleet-desired, witnesses -- and
+// none of them runs a predict-only cold comparison. Authority rows written before that
+// cut named the cadence as their enforcement, their audit, their backstop or their
+// dissolution trigger, and every one of those sentences was true when written.
+//
+// WHY THIS IS A SCHEDULED SWEEP RATHER THAN OPPORTUNISTIC REPAIR, and it is the part
+// worth internalising. Measured over the twelve sites below: the two rows that had
+// already been corrected were corrected by an author who was in that file FOR ANOTHER
+// REASON. Nobody swept. So the corpus is corrected BY COLLISION, and the fix rate tracks
+// unrelated traffic through a file -- which means the rows that stay wrong longest are
+// exactly the ones nobody has cause to open, and a quiet authority is usually the
+// load-bearing one. Worse, and this is the mechanism rather than the anecdote: a GOOD
+// correction settles the question and thereby produces the quiet that stops anything
+// noticing when it expires. Correction-by-collision is therefore not a slow version of
+// sweeping, it is anti-correlated with need.
+//
+// WHAT THIS MODULE IS NOT. It is NOT a second authority for whether a cadence executes.
+// That fact has exactly one home -- `std.witness_admission` `witness_cadence_has_scheduled_route`,
+// a closed exhaustive match over the nine cadence arms -- and every claim below is
+// DERIVED from it rather than transcribed beside it. That is the whole difference between
+// this census and a fourth revision of the prose it replaces: all three prior revisions of
+// the priority specimen were transcribed states of the world (closed / never executes /
+// executes on the cadence), each true when written and each stale within weeks. A row
+// that names the instrument becomes true again the moment a lane enrols the population,
+// with no edit -- and, better, REFUSES the moment a route returns while the row still
+// claims nothing runs, which is the direction a transcription can never fail in.
+//
+// THE STRONGEST RECEIPT IN THIS SUBJECT IS A ROW THAT WAS RIGHT, and it is placed first
+// because it is the only one that argues for the sweep itself rather than for its shape.
+// `gunbc.ci_layer_roots` `witness_exclusion_frontier`, in the excluded-store-effects reason,
+// records: "this reason formerly cited falsifier_self_host_wet_cadence_active as false; that
+// flag is deleted, and it in fact read TRUE, so the reason was right about the state and wrong
+// about its evidence."
+//
+// The row said the wet lane is dark. That was TRUE. It cited a flag that was reading TRUE at
+// the time -- an evidence chain pointing the opposite way from the conclusion it was offered
+// for. Nothing that checks CONCLUSIONS can surface that, because the conclusion was correct;
+// the only thing that surfaces it is checking a citation against the thing it names, which is
+// the whole discipline this census enforces, demonstrated on a row in a file this census
+// sweeps. A justification can be simultaneously correct and unsupported, and it decays without
+// anyone touching either end.
+//
+// A CONSEQUENCE FOR THIS VOCABULARY, STATED AS A KNOWN ABSENCE RATHER THAN PATCHED OVER. The
+// four arms below classify a row by what it CLAIMS. A row whose claim is currently TRUE and
+// whose stated evidence is false or absent is none of them -- not a historical receipt, not a
+// lost-cadence row, not an invalidated premise -- and this census does not hunt that class.
+// Naming the gap is the honest move: a fifth arm invented without a measured population would
+// be a decoration, and forcing such a row into one of the four would misreport it.
+//
+// THE STORED ALTERNATIVE WAS TRIED, FORKED, AND DELETED ONE DAY BEFORE THIS CENSUS, which is
+// why deriving is a settled corpus decision rather than this module's preference.
+// `v2.compiler.self_host.wet_receipt_enrollment` `falsifier_self_host_wet_cadence_flag_deleted_note`
+// records a `Bool` that stored this same fact, DISAGREED with the route authority for eleven
+// days without anything refusing, and fed a fork that would have reclassified its rows from
+// uncovered to COVERED had anyone set it to its honest value -- an honesty edit wired to
+// produce coverage inflation. It was cut at the root rather than corrected.
+// `gunbc.ci_layer_roots` `witness_exclusion_row_mentions_wet_lane_dark_state_note` records the
+// follow-on and the hazard this census had to check itself against: a predicate keyed on the
+// deleted symbol could never fire on a real row, and re-pointing it at the surviving authority
+// left the broader net blind to the authority's own CamelCase vocabulary -- caught by a positive
+// control going red, not by review, because a net going blind is silent.
+//
+// THE POLARITY IS DELIBERATE AND IS THE DISCRIMINATING PART. A no-coverage claim
+// (PremiseInvalidated, LostWithDeletedCadence) asserts that its cadence is dark, so it
+// REFUSES if the route returns -- forcing reclassification rather than leaving a stale
+// pessimism standing. A HistoricalReceipt asserts only that something happened once, which
+// a later re-add does not falsify, so it is not gated on the route at all. Collapsing
+// those two into one check would have been total at the level examined and wrong one level
+// down.
+
+data deleted_cadence_identity: String = "the affected-set falsifier cadence, scheduled by .github/workflows/falsifier.yml, deleted at 611fd02770 (#8283, 2026-08-15)"
+
+// The workflow-or-scheduled-entry-point receipt an executing-consumer claim must produce.
+// Five facts, because a claim that a population is covered is only as good as the weakest
+// of them: a command with no workflow is a local recipe, a workflow that no longer exists
+// is a citation, and a population named without a terminal standing is a plan.
+type TerminalExecutionStanding
+  = TerminalVerdictObserved { run_identity: NonEmptyStr }
+  | NeverReachedTerminal
+
+type ExecutingConsumerReceipt {
+  scheduled_entry_point: NonEmptyStr
+  exact_command: NonEmptyStr
+  witness_population: NonEmptyStr
+  entry_point_exists: Bool
+  cadence: WitnessConsumerCadence
+  terminal: TerminalExecutionStanding
+}
+
+type PastExecutionReceipt {
+  cadence: WitnessConsumerCadence
+  run_identity: NonEmptyStr
+  observed_population: NonEmptyStr
+}
+
+type CoverageNotEstablished {
+  lost_with: WitnessConsumerCadence
+  restoration_trigger: NonEmptyStr
+}
+
+// LostWithDeletedCadence carries `lost_with` BESIDE the drop rather than inside it, and the
+// addition is stated rather than smuggled: `GuaranteeRungDrop` is the DESIGN 4b(3) record and
+// has no cadence field, because a rung can fall for reasons that name no cadence at all.
+// Adding one there would have widened a shared authority to serve this census; carrying it
+// here keeps the join local and leaves that carrier alone.
+type DeletedCadenceReferenceStanding
+  = HistoricalReceipt { event: PastExecutionReceipt }
+  | ReboundToExecutingConsumer { consumer: ExecutingConsumerReceipt }
+  | LostWithDeletedCadence { drop: GuaranteeRungDrop, lost_with: WitnessConsumerCadence }
+  | PremiseInvalidated { affected_decision: DeclarationRef, current_coverage: CoverageNotEstablished }
+
+type DeletedCadenceReference {
+  site: DeclarationRef
+  standing: DeletedCadenceReferenceStanding
+}
+
+fn terminal_execution_standing_is_terminal(standing: TerminalExecutionStanding) -> Bool {
+  match standing {
+    TerminalVerdictObserved { run_identity: _ } => true
+    NeverReachedTerminal => false
+  }
+}
+
+fn executing_consumer_receipt_holds(receipt: ExecutingConsumerReceipt) -> Bool {
+  receipt.entry_point_exists
+    && witness_cadence_has_scheduled_route(cadence: receipt.cadence)
+    && terminal_execution_standing_is_terminal(standing: receipt.terminal)
+}
+
+fn deleted_cadence_reference_row_holds(row: DeletedCadenceReference) -> Bool {
+  match row.standing {
+    HistoricalReceipt { event: _ } => true
+    ReboundToExecutingConsumer { consumer: c } => executing_consumer_receipt_holds(receipt: c)
+    LostWithDeletedCadence { drop: _, lost_with: cadence } =>
+      !witness_cadence_has_scheduled_route(cadence: cadence)
+    PremiseInvalidated { affected_decision: _, current_coverage: coverage } =>
+      !witness_cadence_has_scheduled_route(cadence: coverage.lost_with)
+  }
+}
+
+fn deleted_cadence_reference_census_holds(rows: List<DeletedCadenceReference>) -> Bool {
+  fold_list(
+    xs: rows,
+    empty: true,
+    cons: fn(acc, row) { acc && deleted_cadence_reference_row_holds(row: row) },
+  )
+}
+
+data materialization_count_pin_coverage: CoverageNotEstablished = CoverageNotEstablished {
+  lost_with: FalsifierSubstrateLongLane,
+  restoration_trigger: "a consumer that runs the whole corpus cold and compares a full-corpus count against a prior-release baseline exists and is invoked by a workflow" as NonEmptyStr,
+}
+
+data legacy_replacement_probe_coverage: CoverageNotEstablished = CoverageNotEstablished {
+  lost_with: FalsifierSubstrateLongLane,
+  restoration_trigger: "the four dag comment-wall probes are enrolled in a lane a workflow invokes, at which point that lane is named here as an ExecutingConsumerReceipt" as NonEmptyStr,
+}
+
+data cost_locality_backstop_coverage: CoverageNotEstablished = CoverageNotEstablished {
+  lost_with: FalsifierSubstrateLongLane,
+  restoration_trigger: "a scheduled lane exists that runs the integration-class fidelity witnesses the per-PR floor declines" as NonEmptyStr,
+}
+
+data self_host_wet_roster_coverage: CoverageNotEstablished = CoverageNotEstablished {
+  lost_with: FalsifierSelfHostWet,
+  restoration_trigger: "witness_cadence_has_scheduled_route(FalsifierSelfHostWet) returns true, which is the separate operator agreement std.witness_admission witness_cadence_has_scheduled_route_note reserves" as NonEmptyStr,
+}
+
+data bin_wet_template_coverage: CoverageNotEstablished = CoverageNotEstablished {
+  lost_with: FalsifierRehomedBinWet,
+  restoration_trigger: "witness_cadence_has_scheduled_route(FalsifierRehomedBinWet) returns true" as NonEmptyStr,
+}
+
+// The DROP row for the class, filed once rather than per site. Twelve authority rows lost
+// one shared thing -- the executor -- so twelve copies of the same five fields would be
+// twelve places to update when the route returns.
+data deleted_cadence_reference_drop: GuaranteeRungDrop = GuaranteeRungDrop {
+  subject: "authority rows whose stated enforcement, audit or backstop was the affected-set falsifier cadence",
+  previous: Mitigatable,
+  temporary: OutsideTheLadder,
+  reason: LostAsPassenger { carrier: ".github/workflows/falsifier.yml, deleted at 611fd02770 (#8283)" },
+  population: [
+    "gunbc.ci_materialization ci_floor_materialization_receipt_note",
+    "gunbc.legacy_test_behavior_disposition dag_comment_wall_family_closed_loop_note",
+    "v2.lens.witness_cost_locality witness_cost_locality_law",
+    "v2.lens.witness_cost_locality per_pr_admission_law",
+    "gunbc.ci_layer_roots enforcement_coverage_exclusion_note",
+    "gunbc.ci_layer_roots bin_witness_wet_note",
+    "tools.namespace_import_closure_behavioral_transport nic_doc",
+    "v2.compiler.self_host.seed_emitter_behavioral_wet_module_bindings falsifier_self_host_wet_module_bindings_revocation_note",
+    "v2.std.live_tree live_tree_disposition_stamp_provenance",
+    "v1_compiler.cli_run parse_entry_live_tree_disposition",
+  ],
+  restoration_trigger: "a workflow or scheduled entry point exists that runs a predict-only cold comparison over the corpus, at which point each row above is reclassified from PremiseInvalidated to ReboundToExecutingConsumer with that consumer's receipt",
+}
+
+// THE TWELVE SITES. Two more than the ten the drop population names, because two of them
+// are HistoricalReceipt rows and a historical receipt is not a population a re-add restores.
+//
+// TWO SITES ARE CARRIED HERE AND EDITED NOWHERE, deliberately: `v2.std.live_tree`
+// `live_tree_disposition_stamp_provenance` and its near-verbatim host mirror
+// `v1_compiler.cli_run` `parse_entry_live_tree_disposition` are repaired in gunbc#9403,
+// which was open when this census landed. Editing them here would have produced two
+// authors correcting one sentence into a conflict. They are censused rather than skipped
+// because a census that omitted its already-owned rows would report a completeness it
+// does not have.
+fn deleted_cadence_references() -> List<DeletedCadenceReference> {
+  [
+    DeletedCadenceReference {
+      site: decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "falsifier_self_host_wet_note"),
+      standing: HistoricalReceipt {
+        event: PastExecutionReceipt {
+          cadence: FalsifierSelfHostWet,
+          run_identity: "gunbc_falsifier_batches batch 2, scheduled by falsifier.yml until 611fd02770" as NonEmptyStr,
+          observed_population: "falsifier_self_host_wet_entries template rows" as NonEmptyStr,
+        },
+      },
+    },
+    DeletedCadenceReference {
+      site: decl_ref(module_path: "v2.compiler.self_host.wet_receipt_enrollment", decl_name: "falsifier_self_host_wet_cadence_rehome_note"),
+      standing: HistoricalReceipt {
+        event: PastExecutionReceipt {
+          cadence: FalsifierSelfHostWet,
+          run_identity: "gunbc#7199 rehome measurement on srv1-02, 2026-07-25" as NonEmptyStr,
+          observed_population: "namespace_import_closure and self_host_logic template wet receipts" as NonEmptyStr,
+        },
+      },
+    },
+    DeletedCadenceReference {
+      site: decl_ref(module_path: "v2.std.live_tree", decl_name: "live_tree_disposition_stamp_provenance"),
+      standing: PremiseInvalidated {
+        affected_decision: decl_ref(module_path: "v2.std.live_tree", decl_name: "live_tree_disposition_note"),
+        current_coverage: CoverageNotEstablished {
+          lost_with: FalsifierSubstrateLongLane,
+          restoration_trigger: "a predict-only cold comparison exists that surfaces a lying SubstrateInputsOnly stamp as a counted divergence" as NonEmptyStr,
+        },
+      },
+    },
+    DeletedCadenceReference {
+      site: decl_ref(module_path: "v1_compiler.cli_run", decl_name: "parse_entry_live_tree_disposition"),
+      standing: PremiseInvalidated {
+        affected_decision: decl_ref(module_path: "v2.std.live_tree", decl_name: "live_tree_disposition_note"),
+        current_coverage: CoverageNotEstablished {
+          lost_with: FalsifierSubstrateLongLane,
+          restoration_trigger: "a predict-only cold comparison exists that surfaces a lying SubstrateInputsOnly stamp as a counted divergence" as NonEmptyStr,
+        },
+      },
+    },
+    DeletedCadenceReference {
+      site: decl_ref(module_path: "gunbc.ci_materialization", decl_name: "ci_floor_materialization_receipt_note"),
+      standing: PremiseInvalidated {
+        affected_decision: decl_ref(module_path: "gunbc.ci_materialization", decl_name: "ci_floor_materialization_receipt_path"),
+        current_coverage: materialization_count_pin_coverage,
+      },
+    },
+    DeletedCadenceReference {
+      site: decl_ref(module_path: "gunbc.legacy_test_behavior_disposition", decl_name: "dag_comment_wall_family_closed_loop_note"),
+      standing: PremiseInvalidated {
+        affected_decision: decl_ref(module_path: "gunbc.commit_workflow", decl_name: "commit_gate_rust_suite_removed_disposition"),
+        current_coverage: legacy_replacement_probe_coverage,
+      },
+    },
+    DeletedCadenceReference {
+      site: decl_ref(module_path: "v2.lens.witness_cost_locality", decl_name: "witness_cost_locality_law"),
+      standing: PremiseInvalidated {
+        affected_decision: decl_ref(module_path: "v2.lens.witness_cost_locality", decl_name: "per_pr_admission_law"),
+        current_coverage: cost_locality_backstop_coverage,
+      },
+    },
+    DeletedCadenceReference {
+      site: decl_ref(module_path: "v2.lens.witness_cost_locality", decl_name: "per_pr_admission_law"),
+      standing: PremiseInvalidated {
+        affected_decision: decl_ref(module_path: "v2.lens.witness_cost_locality", decl_name: "witness_cost_locality_law"),
+        current_coverage: cost_locality_backstop_coverage,
+      },
+    },
+    DeletedCadenceReference {
+      site: decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "enforcement_coverage_exclusion_note"),
+      standing: PremiseInvalidated {
+        affected_decision: decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "witness_exclusion_frontier"),
+        current_coverage: cost_locality_backstop_coverage,
+      },
+    },
+    DeletedCadenceReference {
+      site: decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "bin_witness_wet_note"),
+      standing: PremiseInvalidated {
+        affected_decision: decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "witness_exclusion_frontier"),
+        current_coverage: bin_wet_template_coverage,
+      },
+    },
+    DeletedCadenceReference {
+      site: decl_ref(module_path: "tools.namespace_import_closure_behavioral_transport", decl_name: "nic_doc"),
+      standing: PremiseInvalidated {
+        affected_decision: decl_ref(module_path: "v2.compiler.self_host.wet_receipt_enrollment", decl_name: "falsifier_self_host_wet_enrollment_note"),
+        current_coverage: self_host_wet_roster_coverage,
+      },
+    },
+    DeletedCadenceReference {
+      site: decl_ref(module_path: "v2.compiler.self_host.seed_emitter_behavioral_wet_module_bindings", decl_name: "falsifier_self_host_wet_module_bindings_revocation_note"),
+      standing: PremiseInvalidated {
+        affected_decision: decl_ref(module_path: "v2.compiler.self_host.wet_receipt_enrollment", decl_name: "falsifier_self_host_wet_enrollment_note"),
+        current_coverage: self_host_wet_roster_coverage,
+      },
+    },
+  ]
+}
+
+fn deleted_cadence_reference_census_live_holds() -> Bool {
+  deleted_cadence_reference_census_holds(rows: deleted_cadence_references())
+}
+
+fn deleted_cadence_reference_is_rebound(row: DeletedCadenceReference) -> Bool {
+  match row.standing {
+    HistoricalReceipt { event: _ } => false
+    ReboundToExecutingConsumer { consumer: _ } => true
+    LostWithDeletedCadence { drop: _, lost_with: _ } => false
+    PremiseInvalidated { affected_decision: _, current_coverage: _ } => false
+  }
+}
+
+fn deleted_cadence_reference_any_rebound() -> Bool {
+  deleted_cadence_references() |> any(row => deleted_cadence_reference_is_rebound(row: row))
+}

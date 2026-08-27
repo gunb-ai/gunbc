@@ -275,7 +275,7 @@ test fn witness_reconcile_good_read_converges() -> Bool {
   reconciliation_converged(r: reconcile_oomd(read: managed_observed_read(), req: test_thresholds()))
 }
 
-test fn witness_absent_read_is_fail_closed() -> Bool {
+test fn witness_oomd_install_absent_read_is_fail_closed() -> Bool {
   !is_enforced(e: gunbc_oomd_install_evidence())
 }
 
