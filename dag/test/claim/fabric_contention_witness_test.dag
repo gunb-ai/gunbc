@@ -27,13 +27,14 @@ import product.fabric.demand {
 }
 import product.fabric.supply {
   SupplierOffer, OfferQuote, QuotedPerSecond, QuotedPerHour, QuotedFlatPerGrant, ObservedSupply,
-  GrantDuration, ExactGrantDuration, EstimatedGrantDuration,
+  GrantDuration, ExactGrantDuration, EstimatedGrantDuration, UnobservedGrantDuration,
   DemandOfferAffordability, Affordable, AffordableUnderEstimate,
   QuoteExceedsMaximumBuyOrder, QuoteCurrencyMismatch,
 }
 import product.fabric.contention {
   AdmittedDemand, DemandAdmission, DemandAdmitted, DemandNotAffordable,
   QuoteExceedsReservationPrice, GrantOccupiesNoBilledTime,
+  DemandNotRankableWithoutDuration,
   ContentionOutcome, NoAdmissibleDemand, DemandSelected, ContentionRefused,
   OccupancyBasis, MeasuredOccupancy, ProjectedOccupancy,
   occupancy_basis_meet, occupancy_basis_bounded_lattice,
@@ -125,6 +126,7 @@ fn admitted_or_none(a: DemandAdmission<NonEmptyStr>) -> List<AdmittedDemand<NonE
     DemandNotAffordable { refusal: _ } => []
     QuoteExceedsReservationPrice { quoted: _, reservation: _ } => []
     GrantOccupiesNoBilledTime { duration: _ } => []
+    DemandNotRankableWithoutDuration { obligation: _ } => []
   }
 }
 
@@ -389,6 +391,7 @@ test fn a_grant_billing_no_time_is_refused_rather_than_ranked_at_zero() -> Bool 
     DemandAdmitted { admitted: _ } => false
     DemandNotAffordable { refusal: _ } => false
     QuoteExceedsReservationPrice { quoted: _, reservation: _ } => false
+    DemandNotRankableWithoutDuration { obligation: _ } => false
   }
 }
 
@@ -484,10 +487,12 @@ test fn a_bid_below_the_bill_cannot_enter_contention_at_all() -> Bool {
         DemandAdmitted { admitted: _ } => false
         DemandNotAffordable { refusal: _ } => false
         GrantOccupiesNoBilledTime { duration: _ } => false
+        DemandNotRankableWithoutDuration { obligation: _ } => false
       }
     DemandNotAffordable { refusal: _ } => false
     QuoteExceedsReservationPrice { quoted: _, reservation: _ } => false
     GrantOccupiesNoBilledTime { duration: _ } => false
+    DemandNotRankableWithoutDuration { obligation: _ } => false
   }
 }
 
@@ -507,6 +512,7 @@ test fn clearing_the_grant_ceiling_is_not_clearing_the_buyers_own_price() -> Boo
     DemandAdmitted { admitted: _ } => false
     DemandNotAffordable { refusal: _ } => false
     GrantOccupiesNoBilledTime { duration: _ } => false
+    DemandNotRankableWithoutDuration { obligation: _ } => false
   }
 }
 
@@ -722,4 +728,103 @@ test fn occupancy_evidence_degrades_to_the_weakest_member() -> Bool {
         && basis_is_projected(b: occupancy_basis_bounded_lattice.bottom)
     ProjectedOccupancy => false
   }
+}
+
+// THE UNMEASURED GRANT. These four are the executing evidence for the arm the
+// occupancy annotation's next-rung trigger prescribed, and the first of them is
+// the one that would have been written wrong: the natural assumption is that an
+// unmeasured duration cannot reach admission at all, so a suite that only proved
+// the refusal exists would not establish that it is ever REACHED.
+fn unmeasured_duration() -> GrantDuration {
+  UnobservedGrantDuration {
+    obligation: "No run of this work has been timed. Measure it, or bound it, before ranking it against a rival.",
+  }
+}
+
+fn refuses_to_rank(a: DemandAdmission<NonEmptyStr>) -> Bool {
+  match a {
+    DemandNotRankableWithoutDuration { obligation: _ } => true
+    DemandAdmitted { admitted: _ } => false
+    DemandNotAffordable { refusal: _ } => false
+    QuoteExceedsReservationPrice { quoted: _, reservation: _ } => false
+    GrantOccupiesNoBilledTime { duration: _ } => false
+  }
+}
+
+fn billed_no_time(a: DemandAdmission<NonEmptyStr>) -> Bool {
+  match a {
+    GrantOccupiesNoBilledTime { duration: _ } => true
+    DemandNotRankableWithoutDuration { obligation: _ } => false
+    DemandAdmitted { admitted: _ } => false
+    DemandNotAffordable { refusal: _ } => false
+    QuoteExceedsReservationPrice { quoted: _, reservation: _ } => false
+  }
+}
+
+// A flat quote prices the grant whole, so supply screens this pair Affordable
+// with no duration whatsoever -- which is exactly how an unmeasured grant
+// reaches admission on a live path. The price is fine; the occupancy
+// denominator is not, and that is what admission turns on.
+test fn an_unmeasured_grant_under_a_flat_quote_refuses_to_rank_rather_than_ranking_it() -> Bool {
+  refuses_to_rank(
+    a: admit_demand_for_offer(
+      demand: short_demand(),
+      offer: flat_offer(),
+      duration: unmeasured_duration(),
+    ),
+  )
+}
+
+// THE DISCRIMINATING PAIR, and it is the whole reason the arm is its own arm. A
+// grant that genuinely bills no time and a grant nobody measured have opposite
+// remedies -- the first is a duration defect in the caller, the second is a
+// missing measurement -- and collapsing them produces a refusal that looks
+// legitimate and names the wrong repair. Same offer, same demand, durations
+// differing only in whether one was observed.
+test fn an_unmeasured_grant_is_not_reported_as_a_grant_that_bills_no_time() -> Bool {
+  let unmeasured = admit_demand_for_offer(
+    demand: short_demand(),
+    offer: continuous_offer(),
+    duration: unmeasured_duration(),
+  )
+  let zero = admit_demand_for_offer(
+    demand: short_demand(),
+    offer: continuous_offer(),
+    duration: ExactGrantDuration { seconds: second(count: 0) },
+  )
+  refuses_to_rank(a: unmeasured) && !billed_no_time(a: unmeasured)
+    && billed_no_time(a: zero) && !refuses_to_rank(a: zero)
+}
+
+// A rate quote cannot even be totalled without a duration, so this pair refuses
+// one stage earlier than the flat one above. It must land on the SAME verdict:
+// two routes, one underlying fact, and a second arm for the second route would
+// be a second name for one concept.
+test fn a_rate_quoted_unmeasured_grant_refuses_by_the_same_verdict_as_a_flat_one() -> Bool {
+  refuses_to_rank(
+    a: admit_demand_for_offer(
+      demand: short_demand(),
+      offer: per_second_offer(),
+      duration: unmeasured_duration(),
+    ),
+  )
+    && refuses_to_rank(
+      a: admit_demand_for_offer(
+        demand: short_demand(),
+        offer: flat_offer(),
+        duration: unmeasured_duration(),
+      ),
+    )
+}
+
+// A measured grant against the same offer still ranks. Without this the three
+// witnesses above are satisfied by a fold that refuses everything.
+test fn measuring_the_grant_is_what_lets_it_rank_at_all() -> Bool {
+  !refuses_to_rank(
+    a: admit_demand_for_offer(
+      demand: short_demand(),
+      offer: flat_offer(),
+      duration: short_duration(),
+    ),
+  )
 }
