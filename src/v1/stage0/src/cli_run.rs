@@ -5379,6 +5379,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::NonExhaustiveMatch { .. } => "NonExhaustiveMatch",
         CompilerDiagnostic::CircularDependency { .. } => "CircularDependency",
         CompilerDiagnostic::DuplicateModule { .. } => "DuplicateModule",
+        CompilerDiagnostic::DuplicateDeclaration { .. } => "DuplicateDeclaration",
         CompilerDiagnostic::MissingAnnotation { .. } => "MissingAnnotation",
         CompilerDiagnostic::ParseError { .. } => "ParseError",
         CompilerDiagnostic::InternalError { .. } => "InternalError",
@@ -5442,6 +5443,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::NonExhaustiveMatch { .. } => "(non-exhaustive)".to_string(),
         CompilerDiagnostic::CircularDependency { .. } => "(cycle)".to_string(),
         CompilerDiagnostic::DuplicateModule { name, .. } => name.clone(),
+        CompilerDiagnostic::DuplicateDeclaration { name, .. } => name.clone(),
         CompilerDiagnostic::MissingAnnotation { fn_name, .. } => fn_name.clone(),
         CompilerDiagnostic::ParseError { message, .. } => truncate_histogram_label(message, 80),
         CompilerDiagnostic::InternalError { message, .. } => {
