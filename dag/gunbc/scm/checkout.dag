@@ -1,8 +1,15 @@
 module gunbc.scm.checkout
 
-import std.types { List }
+import std.types { List, String }
 
 import v2.std.node { Node, Edge, node_synthetic }
+
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  RepositoryCommit,
+  commit_at_reference,
+}
+import gunbc.scm.ancestry { RepositoryCommitRef }
 
 import gunbc.scm.object_store {
   ObjectId,
@@ -104,4 +111,85 @@ fn checkout(store: ObjectStore, commit: Commit) -> CheckoutOutcome {
 // model says must not matter.
 fn commit_of_root(root: ObjectId) -> Commit {
   Commit { root: root }
+}
+
+// ------------------------------------------------------------------------------------------------
+// The checkout verb, at repository grain
+// ------------------------------------------------------------------------------------------------
+
+// TWO GRAINS OF ONE VERB, IN THE MODULE THAT OWNS IT. Above, checkout answers what a commit MEANS --
+// it reconstructs the program from the root closure. Here it answers which intrinsic commit a repository selects.
+// AT. Those are the two halves of the same operation, and putting the second in its own module would
+// have minted a second name for one verb: the module would have had to be called something that is
+// not "checkout" while being exactly checkout, which is the nicknaming DESIGN section 3 forbids.
+// Import direction was checked rather than assumed -- gunbc.scm.repository_envelope reaches
+// object_store, ancestry, target_reference, json_member and the closure carriers, and none of them
+// reach this module, so the edge added here closes no cycle.
+//
+// CHECKOUT HAS NOTHING TO SAY ABOUT ANCESTRY, AND THAT IS DERIVED RATHER THAN OMITTED. The silence
+// is stated here explicitly, because a later reader finding no mention of ancestry in a verb that
+// selects a commit would reasonably read it as an oversight and "fix" it.
+//
+// A commit's program is its ROOT CLOSURE. Ancestry is a chain over COMMITS. Those are two different
+// graphs over two different populations, and the reconstruction above walks only the first: it
+// consults the commit and the store, and nothing else. So no ancestor needs to exist, or be
+// readable, or be consistent, for a checkout to be exactly right.
+//
+// THE CONSEQUENCE IS NOT COSMETIC, AND IT HAS A WITNESS: a commit whose stated parent is missing
+// CHECKS OUT SUCCESSFULLY, while an ancestry walk from that same commit answers AncestryBrokenAt.
+// One repository, one commit, two questions, two DIFFERENT answers -- both correct, because the
+// history is truncated and the program is not. Making checkout refuse there would be inventing a
+// dependency the model does not have, and would mean a damaged history could silently cost a user
+// access to programs that are wholly intact.
+//
+// THE REFUSAL ARMS CARRY NO REPOSITORY, and that is the root-commit discipline applied one layer
+// out. Had a failed checkout answered an envelope with nothing selected, "this checkout did not
+// happen" and "this repository has nothing checked out" would share a representation -- the second
+// being an ordinary state the envelope's own header calls not an error. A caller could not then tell
+// a refused checkout from a fresh repository, which is the state-space conflation this stack has now
+// removed at three layers.
+//
+// NO Bool PREDICATE OVER THIS COPRODUCT IS EXPORTED, and that is deliberate rather than an
+// oversight. A `checkout_succeeded` convenience was written and removed before this landed: its only
+// consumer would have been the witness asserting it works, which makes it an artifact with no final
+// consumer (DESIGN section 6). The same objection was raised against a sibling helper in
+// gunbc.scm.ancestry (review 56207) and resolved the same way. Consumers match the arms, so a fourth
+// arm fails to compile at every site rather than being silently absorbed into a false.
+//
+// THE TWO REFUSALS ARE SEPARATE BECAUSE THEIR OWNERS ARE OPPOSITE. An unresolved reference is the
+// CALLER'S fact -- they named an identity this repository has no commit for. An unreconstructable
+// program is the STORE'S fact -- the repository holds the commit and has lost an object it needs.
+// One is a bad argument, the other is damage, and collapsing them would hand a user "no such commit"
+// for a commit that plainly exists in their log.
+type RepositoryCheckout
+  = RepositoryCheckedOut { repository: RepositoryEnvelope, program: Node }
+  | CheckoutReferenceUnresolved { reference: RepositoryCommitRef }
+  | CheckoutProgramUnreconstructable { reference: RepositoryCommitRef, cause: CheckoutRefusal }
+
+// THIS WRITES NOTHING. It answers a NEW envelope with the selection moved, leaving its argument
+// untouched, so the verb stays a pure transform over facts the repository already holds. Persisting
+// the result is a separate operation at a boundary this module deliberately does not reach.
+//
+// The reference is the same intrinsic commit identity `log` renders and `status`
+// resolves -- so the three verbs name commits the one way, and resolution goes through
+// commit_at_reference rather than a second lookup that could drift from it.
+fn checkout_repository_at(repo: RepositoryEnvelope, reference: RepositoryCommitRef) -> RepositoryCheckout {
+  match commit_at_reference(commits: repo.commits, reference: reference) {
+    Absent => CheckoutReferenceUnresolved { reference: reference }
+    Present { value: selected } =>
+      match checkout(store: repo.store, commit: commit_of_root(root: selected.root)) {
+        CheckoutRefused { cause: cause } =>
+          CheckoutProgramUnreconstructable { reference: reference, cause: cause }
+        CheckedOut { program: program } =>
+          RepositoryCheckedOut {
+            repository: RepositoryEnvelope {
+              store: repo.store,
+              commits: repo.commits,
+              commit_allocator: repo.commit_allocator,
+              checked_out: Present { value: reference },
+            },
+            program: program,
+          }
+      }
+  }
 }
