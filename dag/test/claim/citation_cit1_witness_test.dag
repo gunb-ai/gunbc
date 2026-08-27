@@ -1,12 +1,12 @@
 module test.claim.citation_cit1_witness
 
 import extdeps.standards.rfc_8118 {
-  extdeps_external_authority_anchor,
+  rfc_8118_external_authority_anchor,
   rfc_8118_section_3_locator,
   iso_32000_2_authority,
   rfc_8118_normative_relationship_note,
   citation_cit1_witness_split_note,
-  extdeps_model_scope,
+  rfc_8118_model_scope,
   PdfOpenPage,
   OpenPage,
   OpenZoom,
@@ -70,11 +70,11 @@ data witness_pdf_base_uri: Uri = Uri {
 }
 
 test fn rfc_8118_anchor_cites_current_standard_not_3778() -> Bool {
-  extdeps_model_scope.first_citation.uri.locator == rfc_8118_section_3_locator && string_contains(s: rfc_8118_normative_relationship_note, pattern: "OBSOLETES RFC 3778") && string_contains(s: rfc_8118_normative_relationship_note, pattern: "gunbc.citation.pdf_safe_profile")
+  rfc_8118_model_scope.first_citation.uri.locator == rfc_8118_section_3_locator && string_contains(s: rfc_8118_normative_relationship_note, pattern: "OBSOLETES RFC 3778") && string_contains(s: rfc_8118_normative_relationship_note, pattern: "gunbc.citation.pdf_safe_profile")
 }
 
 test fn iso_32000_2_is_further_citation() -> Bool {
-  extdeps_model_scope.further_citations |> any(c => c.uri.locator == iso_32000_2_authority.uri.locator)
+  rfc_8118_model_scope.further_citations |> any(c => c.uri.locator == iso_32000_2_authority.uri.locator)
 }
 
 test fn rfc_pdf_open_page_admits_positive_one() -> Bool {
@@ -127,7 +127,7 @@ test fn project_navigable_uri_safe_refuses_when_base_carries_fragment() -> Bool 
   match pdf_safe_parameter_sequence(constructions: [pdf_open_page(page: 1)]) {
     SafeSequenceConstructed(_) =>
       match project_navigable_uri_safe(
-        base: extdeps_external_authority_anchor.uri,
+        base: rfc_8118_external_authority_anchor.uri,
         construction: pdf_safe_parameter_sequence(constructions: [pdf_open_page(page: 1)]),
       ) {
         NavigableUriSafeRefused { cause: BaseLocatorAlreadyCarriesFragmentFromRfc { locator: l } } =>
