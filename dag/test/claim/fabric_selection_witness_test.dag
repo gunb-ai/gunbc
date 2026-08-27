@@ -1,6 +1,7 @@
 module test.claim.fabric_selection_witness
 
 import std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.nat { Nat }
 import std.types { NonEmptyStr, List }
 import std.measure {
