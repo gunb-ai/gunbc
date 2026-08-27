@@ -194,7 +194,8 @@ use crate::v1_std_core::CompilerDiagnostic::{
     FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
     MethodExistenceUndecided, MethodNotFound, MissingField, OptionalCastNotEliminated,
     ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred, SoleConstructorViolation,
-    TypeMismatch, UnlistedVariantValueUse, UnresolvedType, VariantCollision,
+    TypeArgumentArityMismatch, TypeMismatch, UnlistedVariantValueUse, UnresolvedType,
+    VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -10325,51 +10326,115 @@ pub fn alias_chain_generic_decl(env: Rc<TypeEnv>, carrier: Rc<Node>, target: Rc<
     }
 }
 
+pub fn alias_chain_type_arg_arity_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WHY THIS SEAM REFUSES INSTEAD OF SUBSTITUTING WHAT FITS (DESIGN sec 5, the absorbing fallback; sec 4b floor band 'applications bind in exact bijection'). alias_chain_type_arg_subst folded the DECLARED parameters against the SUPPLIED type arguments positionally and absorbed every disagreement in both directions at once: with fewer arguments than parameters the fold's Absent arm left the surplus parameters unsubstituted, so the expanded record kept type-variable fields and field access on it was judged against a hole; with more arguments than parameters the surplus arguments were simply never read. Neither state produced a diagnostic, so `Alias<Int>` and `Alias<Int, String>` against a one-parameter Alias compiled identically -- correct and incorrect indistinguishable at the floor band. One of the three call sites did notice: expand_alias_chain_for_field_access computed `dropped_args` at its recursion seam and widened `lossy`, which is the absorbing fallback in its purest form -- the failure arm stood the field-presence wall DOWN rather than refusing, so the deficit's frequency was zero by construction and nothing ranked it for repair. The other two call sites (alias_chain_target_after_args, and the record branch's re-substitution over an unresolved-parameter field) did not check at all. The repair is construction before validation: the subst is now Optional and has NO spelling for a partial map, so a mismatch cannot be handed downstream by any caller; and alias_chain_arity_diagnostics states the refusal ONCE, typed and located, at the seam that owns both the declaration and the application. SCOPE, stated rather than implied: the refused population is exactly the state `dropped_args` already computed -- both counts nonzero and unequal -- so this wall adds no refusal to a shape the code was not already treating as wrong, and a zero-parameter declaration or a zero-argument use is untouched. Container spellings are excluded because their arity has its own authority (container_expected_arity) and its own diagnostic.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn alias_chain_type_arg_arity_mismatch(decl: Rc<Node>, type_args: Rc<Vec<Rc<Node>>>) -> bool {
+    {
+        let declared = (decl.params.clone().len() as i64);
+        let supplied = (type_args.clone().len() as i64);
+        (((declared.clone() > 0) && (supplied.clone() > 0))
+            && (declared.clone() != supplied.clone()))
+    }
+}
+
 pub fn alias_chain_type_arg_subst(
     env: Rc<TypeEnv>,
     carrier: Rc<Node>,
     target: Rc<Node>,
     type_args: Rc<Vec<Rc<Node>>>,
-) -> Rc<HashMap<String, Rc<Node>>> {
+) -> Option<Rc<HashMap<String, Rc<Node>>>> {
     {
         let decl = alias_chain_generic_decl(env.clone(), carrier.clone(), target.clone());
-        Rc::new(
-            decl.params
-                .clone()
+        if alias_chain_type_arg_arity_mismatch(decl.clone(), type_args.clone()) {
+            None
+        } else {
+            Some(
+                Rc::new(
+                    decl.params
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .enumerate()
+                        .map(|(i, v)| (i as i64, v))
+                        .collect::<Vec<_>>(),
+                )
                 .iter()
                 .cloned()
-                .enumerate()
-                .map(|(i, v)| (i as i64, v))
-                .collect::<Vec<_>>(),
-        )
-        .iter()
-        .cloned()
-        .fold(
-            v1_rt::rc_empty_map::<String, Rc<Node>>(),
-            |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
-                let slot = crate::v1_std_core::generic_param_name_at(
-                    pair.1.clone(),
-                    env.source_indices.clone(),
-                );
-                match type_args
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .skip(pair.0.clone() as usize)
-                    .next()
-                {
-                    Some(arg) => v1_rt::rc_map_insert(
-                        acc.clone(),
-                        slot.clone(),
-                        crate::v1_compiler_infer_lookup::resolve_scrutinee_type_node(
-                            env.clone(),
-                            arg.clone(),
-                        ),
-                    ),
-                    None => acc.clone(),
+                .fold(
+                    v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                    |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
+                        let slot = crate::v1_std_core::generic_param_name_at(
+                            pair.1.clone(),
+                            env.source_indices.clone(),
+                        );
+                        match type_args
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(pair.0.clone() as usize)
+                            .next()
+                        {
+                            Some(arg) => v1_rt::rc_map_insert(
+                                acc.clone(),
+                                slot.clone(),
+                                crate::v1_compiler_infer_lookup::resolve_scrutinee_type_node(
+                                    env.clone(),
+                                    arg.clone(),
+                                ),
+                            ),
+                            None => acc.clone(),
+                        }
+                    },
+                ),
+            )
+        }
+    }
+}
+
+pub fn alias_chain_arity_diagnostics(
+    carrier: Rc<Node>,
+    carrier_name: String,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let type_args = carrier.children.clone();
+        if (((carrier_name.clone() == "".to_string()) || ((type_args.clone().len() as i64) == 0))
+            || crate::std_types::is_container_type(carrier_name.clone()))
+        {
+            Rc::new(vec![])
+        } else {
+            match crate::v1_compiler_infer_env::lookup_type_by_name(
+                env.clone(),
+                carrier_name.clone(),
+            ) {
+                Some(target) => {
+                    let decl =
+                        alias_chain_generic_decl(env.clone(), carrier.clone(), target.clone());
+                    if alias_chain_type_arg_arity_mismatch(decl.clone(), type_args.clone()) {
+                        Rc::new(vec![crate::v1_std_core::make_error_node(
+                            Rc::new(CompilerDiagnostic::TypeArgumentArityMismatch {
+                                type_name: carrier_name.clone(),
+                                supplied: (type_args.clone().len() as i64),
+                                declared: (decl.params.clone().len() as i64),
+                                span: carrier.span.clone(),
+                            }),
+                            module_name.clone(),
+                        )])
+                    } else {
+                        Rc::new(vec![])
+                    }
                 }
-            },
-        )
+                None => Rc::new(vec![]),
+            }
+        }
     }
 }
 
@@ -10385,28 +10450,36 @@ pub fn alias_chain_target_after_args(
         } else {
             {
                 let decl = alias_chain_generic_decl(env.clone(), carrier.clone(), target.clone());
-                let subst = alias_chain_type_arg_subst(
+                match alias_chain_type_arg_subst(
                     env.clone(),
                     carrier.clone(),
                     target.clone(),
                     type_args.clone(),
-                );
-                let is_parameterized_alias = (((decl.inferred.clone() != None)
-                    && ((decl.children.clone().len() as i64) == 0))
-                    && (decl.connective.clone() == Connective::NoConnective));
-                if is_parameterized_alias.clone() {
-                    match decl.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved {
-                            node: alias_body, ..
-                        }) => substitute_generics(
-                            alias_body.clone(),
-                            subst.clone(),
-                            env.source_indices.clone(),
-                        ),
-                        _ => target.clone(),
+                ) {
+                    None => target.clone(),
+                    Some(subst) => {
+                        let is_parameterized_alias = (((decl.inferred.clone() != None)
+                            && ((decl.children.clone().len() as i64) == 0))
+                            && (decl.connective.clone() == Connective::NoConnective));
+                        if is_parameterized_alias.clone() {
+                            match decl.inferred.clone().as_deref().cloned() {
+                                Some(InferredNode::Resolved {
+                                    node: alias_body, ..
+                                }) => substitute_generics(
+                                    alias_body.clone(),
+                                    subst.clone(),
+                                    env.source_indices.clone(),
+                                ),
+                                _ => target.clone(),
+                            }
+                        } else {
+                            substitute_generics(
+                                decl.clone(),
+                                subst.clone(),
+                                env.source_indices.clone(),
+                            )
+                        }
                     }
-                } else {
-                    substitute_generics(decl.clone(), subst.clone(), env.source_indices.clone())
                 }
             }
         }
@@ -10425,9 +10498,7 @@ pub fn expand_alias_chain_for_field_access(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
     module_name: String,
-    origin_name: String,
     seen: Rc<HashMap<String, bool>>,
-    lossy: bool,
 ) -> Rc<NodeResolveResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let peel_result = if needs_alias_field_expansion(n.clone(), env.clone()) {
@@ -10445,6 +10516,15 @@ pub fn expand_alias_chain_for_field_access(
         } else {
             crate::v1_std_core::authored_name_at(env.source_indices.clone(), carrier.clone())
         };
+        let own_diags = v1_rt::concat(
+            peel_result.diagnostics.clone(),
+            alias_chain_arity_diagnostics(
+                carrier.clone(),
+                carrier_name.clone(),
+                env.clone(),
+                module_name.clone(),
+            ),
+        );
         let structural = structural_from_expanded_type(
             crate::v1_compiler_infer_lookup::resolve_scrutinee_type_node(
                 env.clone(),
@@ -10464,39 +10544,28 @@ pub fn expand_alias_chain_for_field_access(
                             env.clone(),
                             carrier_name.clone(),
                         ) {
-                            Some(target) => {
-                                let subst = alias_chain_type_arg_subst(
-                                    env.clone(),
-                                    carrier.clone(),
-                                    target.clone(),
-                                    carrier.children.clone(),
-                                );
-                                substitute_generics(
+                            Some(target) => match alias_chain_type_arg_subst(
+                                env.clone(),
+                                carrier.clone(),
+                                target.clone(),
+                                carrier.children.clone(),
+                            ) {
+                                Some(subst) => substitute_generics(
                                     structural.clone(),
                                     subst.clone(),
                                     env.source_indices.clone(),
-                                )
-                            }
+                                ),
+                                None => structural.clone(),
+                            },
                             None => structural.clone(),
                         }
                     } else {
                         structural.clone()
                     };
-                let fail_closed = (lossy.clone()
-                    && record_has_unresolved_param_field(resolved_record.clone(), env.clone()));
-                if fail_closed.clone() {
-                    Rc::new(NodeResolveResult {
-                        resolved: crate::v1_compiler_infer_types::nominal_type_ref(
-                            origin_name.clone(),
-                        ),
-                        diagnostics: peel_result.diagnostics.clone(),
-                    })
-                } else {
-                    Rc::new(NodeResolveResult {
-                        resolved: resolved_record.clone(),
-                        diagnostics: peel_result.diagnostics.clone(),
-                    })
-                }
+                Rc::new(NodeResolveResult {
+                    resolved: resolved_record.clone(),
+                    diagnostics: own_diags.clone(),
+                })
             }
         } else {
             {
@@ -10509,16 +10578,14 @@ pub fn expand_alias_chain_for_field_access(
                             crate::v1_std_core::with_required_cardinality(structural.clone()),
                             env.clone(),
                             module_name.clone(),
-                            origin_name.clone(),
                             seen.clone(),
-                            lossy.clone(),
                         );
                         Rc::new(NodeResolveResult {
                             resolved: crate::v1_std_core::with_optional_cardinality(
                                 expanded_inner.resolved.clone(),
                             ),
                             diagnostics: v1_rt::concat(
-                                peel_result.diagnostics.clone(),
+                                own_diags.clone(),
                                 expanded_inner.diagnostics.clone(),
                             ),
                         })
@@ -10533,7 +10600,7 @@ pub fn expand_alias_chain_for_field_access(
                         if stop.clone() {
                             Rc::new(NodeResolveResult {
                                 resolved: structural.clone(),
-                                diagnostics: peel_result.diagnostics.clone(),
+                                diagnostics: own_diags.clone(),
                             })
                         } else {
                             match crate::v1_compiler_infer_env::lookup_type_by_name(
@@ -10544,19 +10611,7 @@ pub fn expand_alias_chain_for_field_access(
                                     let next_seen =
                                         v1_rt::rc_map_insert(seen.clone(), next_name.clone(), true);
                                     let type_arg_count = (carrier.children.clone().len() as i64);
-                                    let decl = alias_chain_generic_decl(
-                                        env.clone(),
-                                        carrier.clone(),
-                                        target.clone(),
-                                    );
-                                    let param_count = (decl.params.clone().len() as i64);
-                                    let dropped_args = (((type_arg_count.clone() > 0)
-                                        && (param_count.clone() > 0))
-                                        && (param_count.clone() != type_arg_count.clone()));
-                                    let next_lossy = (lossy.clone() || dropped_args.clone());
-                                    let next_n = if ((type_arg_count.clone() > 0)
-                                        && !dropped_args.clone())
-                                    {
+                                    let next_n = if (type_arg_count.clone() > 0) {
                                         alias_chain_target_after_args(
                                             target.clone(),
                                             carrier.clone(),
@@ -10569,21 +10624,19 @@ pub fn expand_alias_chain_for_field_access(
                                         next_n.clone(),
                                         env.clone(),
                                         module_name.clone(),
-                                        origin_name.clone(),
                                         next_seen.clone(),
-                                        next_lossy.clone(),
                                     );
                                     Rc::new(NodeResolveResult {
                                         resolved: expanded_next.resolved.clone(),
                                         diagnostics: v1_rt::concat(
-                                            peel_result.diagnostics.clone(),
+                                            own_diags.clone(),
                                             expanded_next.diagnostics.clone(),
                                         ),
                                     })
                                 }
                                 None => Rc::new(NodeResolveResult {
                                     resolved: structural.clone(),
-                                    diagnostics: peel_result.diagnostics.clone(),
+                                    diagnostics: own_diags.clone(),
                                 }),
                             }
                         }
@@ -10606,18 +10659,12 @@ pub fn expand_type_for_field_access_with_seen(
             diagnostics: Rc::new(vec![]),
         })
     } else {
-        {
-            let origin_name =
-                crate::v1_std_core::authored_name_at(env.source_indices.clone(), n.clone());
-            expand_alias_chain_for_field_access(
-                n.clone(),
-                env.clone(),
-                module_name.clone(),
-                origin_name.clone(),
-                seen.clone(),
-                false,
-            )
-        }
+        expand_alias_chain_for_field_access(
+            n.clone(),
+            env.clone(),
+            module_name.clone(),
+            seen.clone(),
+        )
     }
 }
 
