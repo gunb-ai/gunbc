@@ -9,7 +9,8 @@ import std.observation_completeness {
   ObservationComplete,
   ObservationMissingExpected,
   ObservationForeignObserved,
-  ObservationRepeatedObserved
+  ObservationRepeatedObserved,
+  ObservationRepeatedExpected
 }
 import v2.workflow.legacy_binding_observation {
   LegacyResolutionPolicy,
@@ -267,6 +268,7 @@ test fn an_observation_answering_exactly_the_expected_occurrences_is_complete() 
     ObservationMissingExpected { keys: _ } => false
     ObservationForeignObserved { keys: _ } => false
     ObservationRepeatedObserved { keys: _ } => false
+    ObservationRepeatedExpected { keys: _ } => false
   }
 }
 
@@ -278,6 +280,7 @@ test fn an_observation_missing_one_expected_occurrence_refuses() -> Bool {
     ObservationComplete => false
     ObservationForeignObserved { keys: _ } => false
     ObservationRepeatedObserved { keys: _ } => false
+    ObservationRepeatedExpected { keys: _ } => false
   }
 }
 
@@ -287,6 +290,7 @@ test fn an_observation_answering_for_a_non_subject_occurrence_refuses() -> Bool 
     ObservationComplete => false
     ObservationMissingExpected { keys: _ } => false
     ObservationRepeatedObserved { keys: _ } => false
+    ObservationRepeatedExpected { keys: _ } => false
   }
 }
 
@@ -304,6 +308,7 @@ test fn an_observation_whose_every_row_is_refused_is_still_complete() -> Bool {
     ObservationMissingExpected { keys: _ } => false
     ObservationForeignObserved { keys: _ } => false
     ObservationRepeatedObserved { keys: _ } => false
+    ObservationRepeatedExpected { keys: _ } => false
   }
 }
 
@@ -317,6 +322,7 @@ test fn an_observation_whose_every_row_is_refused_is_still_complete() -> Bool {
 test fn an_observation_answering_twice_for_one_occurrence_refuses() -> Bool {
   match legacy_observation_completeness(observation: lbo_observation(ids: [11, 11, 22, 33]), expected: lbo_expected()) {
     ObservationRepeatedObserved { keys: repeated } => (repeated |> count) == 1
+    ObservationRepeatedExpected { keys: _ } => false
     ObservationComplete => false
     ObservationMissingExpected { keys: _ } => false
     ObservationForeignObserved { keys: _ } => false

@@ -43,7 +43,8 @@ import std.observation_completeness {
   ObservationComplete,
   ObservationMissingExpected,
   ObservationForeignObserved,
-  ObservationRepeatedObserved
+  ObservationRepeatedObserved,
+  ObservationRepeatedExpected
 }
 import v2.workflow.legacy_binding_delta {
   ProjectionProvenance,
@@ -598,6 +599,7 @@ test fn two_row_less_observations_over_nonempty_expected_populations_refuse_befo
       ObservationMissingExpected { keys: missing } => (missing |> count) == 3
       ObservationForeignObserved { keys: _ } => false
       ObservationRepeatedObserved { keys: _ } => false
+      ObservationRepeatedExpected { keys: _ } => false
       ObservationComplete => false
     }
     TotalityComputed { totality: _ } => false
