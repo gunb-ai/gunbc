@@ -438,15 +438,6 @@ pub static NAMESPACE_TRANSITION_ADMISSIONS: LazyLock<Vec<TransitionAdmission>> =
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "owner-qualified-call-target-19",
-        subject: DeltaSubject::Binding {
-            module: "test.claim.citation_cit1_consumer_witness".to_string(),
-            in_declaration: "x86_64_abi_syscall_selector_conforms_not_abi_pdf_locator".to_string(),
-            spelling: "extdeps_external_authority_anchor".to_string(),
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
         label: "owner-qualified-call-target-20",
         subject: DeltaSubject::Binding {
             module: "test.claim.serving_privilege_derivation_witness_test".to_string(),
