@@ -8,8 +8,8 @@
 
 ## 0. Scale receipt (live tree)
 
-- **Live whole file (measured by execution, 2026-07-23):** `wc -l src/v1/stage0/src/cli_run.rs` → **26,773 lines**; `rg -c '^\s*(pub\s+)?(async\s+)?fn\s+' src/v1/stage0/src/cli_run.rs` → **976 fns** (22 `test_*` inline modules; remainder production-scope). The §7 seed is **not** stable — it grew ~6× since the census snapshot.
-- **`seed-shrink-census.md` Chunk F (~4,165 LOC)** names the **dissolution sign-off unit** (CI orchestration → workflow `host_effect_apply`), not a live whole-file count. The other **~22.6k LOC** are the same file's interim seed body: classified by the **16 functional areas in §2** below, and tracked as managed seed growth in ROADMAP **§7 Seed interim** ([`ts-seed-interim`](../../ROADMAP.md) in `dag/gunbc/roadmap_authority.dag`) — host bridges, lens host feeds, floor/discovery machinery absorbed while v2 lanes land.
+- **THIS SECTION CARRIES NO NUMBERS, DELIBERATELY.** It previously transcribed a whole-file line and fn count measured 2026-07-23. Both had gone stale by roughly 83 percent before anyone noticed, because nothing re-derives a number copied into prose. DESIGN's standing rule (2026-08-24) is *name the instrument, never transcribe its output*, and a plan's own scale receipt is the worst place to break it: a reader sequencing work against it budgets against a file that no longer exists at that size. **The instrument:** `git show origin/main:src/v1/stage0/src/cli_run.rs | wc -l` for scale, and the same stream through `grep -cE '^[[:space:]]*(pub )?(async )?fn '` for the fn count. Read them from the tree at the moment you need them. The DIRECTION is the durable fact and it needs no magnitude: the file has GROWN at every measurement taken so far, because v1 lanes absorb host bridges and floor machinery faster than v2 lanes subsume them.
+- **Chunk F in `seed-shrink-census.md` names the dissolution SIGN-OFF UNIT** (CI orchestration to workflow `host_effect_apply`), which is a different subject from the whole file. That distinction is the load-bearing half and it survives; the LOC split that used to accompany it here is deleted for the reason above. The remainder is the file's interim seed body, classified by the functional areas in section 2 and tracked as managed seed growth in ROADMAP **section 7 Seed interim** ([`ts-seed-interim`](../../ROADMAP.md) in `dag/gunbc/roadmap_authority.dag`) -- host bridges, lens host feeds, floor and discovery machinery absorbed while v2 lanes land.
 - **Sign-off order:** Chunk F runs **after** emitter chunks A–E and de-fork G per census §4 — orchestration dissolves once the compiler pipeline and host-effect spine can carry the floor without a hand-written driver.
 
 ## 1. Area map (summary)
@@ -18,16 +18,16 @@
 | --- | --- | --- | --- |
 | Workspace & repo paths | `gunbc.cli_run_workspace_root_scaffold` · `gunbc.cli_run_repo_grant` · [effect-namespace-grants.md](effect-namespace-grants.md) | emit-when | Chunk F → GENERATED `host_effect_apply`; grant presets land |
 | CLI argv & bin dispatch | `gunbc` bins + `src/v2/workflow/*` orchestration rows | seed-kernel-retained | Wave 4 pinned bootstrap (~8–15k LOC) |
-| Corpus discovery & file walk | `gunbc.ci_spec` discovery_scan_dirs · `gunbc.ci_floor_plan` | emit-when | CI native routing (#7069) + witness-realization |
+| Corpus discovery & file walk | `gunbc.ci_spec` discovery_scan_dirs (NOTE: `gunbc.ci_floor_plan` was DELETED by the 2026-08-15 floor cut; discovery now runs inside the required fold, so this row has no plan-node authority to subsume onto and needs re-derivation) | emit-when | CI native routing (#7069) + witness-realization |
 | Resolve / typecheck entry orchestration | v2.compiler pipeline (GENERATED) · [cli-run-reconcile-defork.md](cli-run-reconcile-defork.md) | emit-when | Reconcile-defork Phase 1–3 + closure equivalence receipt |
 | Reconcile & env merge | `v2.compiler` reconcile stage (GENERATED) | already-subsumed | Orchestration wrapper deletes with Chunk F |
 | Typed module cache / memo | `std.materialize` / duplicate-work lattice ([duplicate-work-graph-lens-design.md](duplicate-work-graph-lens-design.md)) | emit-when | ComputationIdentity qualifier lands on materialize spine |
 | Import & module-graph host facts | `v2.lens.module_graph` · `import_resolution_facts` host seam | emit-when | Reconcile-defork Phase 1 repoint + namespace SymbolIndex |
 | Reference / cross-tree edges | `v2.std.cross_tree.resolution` · [namespace-resolution-design.md](namespace-resolution-design.md) | emit-when | Reference-deps B3 + import grammar deletion (B4) |
 | Affected-set & diff provenance | `gunbc.ci_spec` selection · `v2.lens.effect_reach` · [module-identity-storage-binding-design.md](module-identity-storage-binding-design.md) | emit-when | Declared `SourceRef` boundary + provenance ingest |
-| Floor / witness execution | `claim_executor` · `src/v2/workflow/ci_floor_plan.dag` · [witness-realization-plan.md](witness-realization-plan.md) | emit-when | Workflow `host_effect_apply` replaces HAND driver |
+| Floor / witness execution | `v2.workflow.required_floor` policy + `v1_compiler.cli_run` `run_required_floor` (NOTE: `src/v2/workflow/ci_floor_plan.dag` was DELETED by the 2026-08-15 floor cut and `claim_executor` is itself being deleted by the move-off-claim-executor lane, so BOTH former subsumption targets are gone) · [witness-realization-plan.md](witness-realization-plan.md) | emit-when | Workflow `host_effect_apply` replaces HAND driver |
 | Compile-clean shard scope | `tools.dag_compile_clean_scope` · `v2.compiler.compile` | partial | Import-closure authority unified on `module_graph` |
-| Regen oracle & self-host scope | `regen_stage0` (the `v2.compiler.self_host.frontier` half of this scope is deleted with the roster) | delete-with-v1 | Wave 4 real-fixpoint cutover (`5-real-fixpoint`) |
+| Regen oracle & self-host scope | `v2.workflow.required_regen` / `v1_compiler.required_regen_host` (NOTE: the `regen_stage0` binary this row named was DELETED at the root by the regen cut; the fixed point is now answered by `claim_executor --required-regen-fixed-point` and by nothing else, which is itself on the deletion path) | delete-with-v1 | Wave 4 real-fixpoint cutover (`5-real-fixpoint`) |
 | Host builtin bridge (interpreter seam) | `v1_interpreter` builtins · per-lens `*_live` projections | seed-kernel-retained | Node-tree readers dissolve seams (#5364 class); kernel keeps physics |
 | Lens census / hygiene host feeds | `v2.lens.*` tables · `non_fold_residue` · `fact_cardinality` | emit-when | Each lens lands node-tree reader or explicit host row retires |
 | Floor observability & width | `gunbc.floor_materialization` · `dag/std/realization_width.dag` · [realization-measurement-loop.md](realization-measurement-loop.md) | partial | Scheduler emits receipts; HAND timing deletes with floor native routing |
@@ -73,7 +73,7 @@
 
 ### 2.10 Floor / witness execution
 
-**Today:** `run_discovery_corpus`, parallel witness scheduling, governor width — the CI floor runtime. **Subsumes:** `claim_executor` workflow + witness-realization plan. **Disposition:** emit-when. **Trigger:** `host_effect_apply` workflow realization replaces HAND loop ([host-effect-orchestration.md](host-effect-orchestration.md)). **In motion (2026-07-22+):** witness-realization scheduling + host-effect transport lanes (shell→intent Phase 2) and #7090 returning work on floor execution paths.
+**Today:** `run_discovery_corpus`, parallel witness scheduling, governor width — the CI floor runtime. **Subsumes:** the required-floor fold (`v2.workflow.required_floor` policy, `v1_compiler.cli_run` `run_required_floor` host) + witness-realization plan. **Disposition:** emit-when. **STALE-TRIGGER CORRECTION (2026-08-27):** this row named `claim_executor` as the subsuming authority. That inverts the current direction -- `claim_executor` is the thing being DELETED, so it cannot be what this area dissolves onto. **Trigger:** `host_effect_apply` workflow realization replaces HAND loop ([host-effect-orchestration.md](host-effect-orchestration.md)). **In motion (2026-07-22+):** witness-realization scheduling + host-effect transport lanes (shell→intent Phase 2) and #7090 returning work on floor execution paths.
 
 ### 2.11 Compile-clean shard scope
 
@@ -81,7 +81,7 @@
 
 ### 2.12 Regen oracle & self-host scope
 
-**Today:** `regen_input_sources`, regen skip on PR diffs, self-host staleness inputs. **Subsumes:** `regen_stage0` + frontier carrier. **Disposition:** delete-with-v1 — bulk GENERATED cutover, not piecemeal. **Trigger:** `5-real-fixpoint` gate ([v2-self-hosting.md](v2-self-hosting.md) Wave 4).
+**Today:** `regen_input_sources`, regen skip on PR diffs, self-host staleness inputs. **Subsumes:** `v2.workflow.required_regen` + frontier carrier (the `regen_stage0` binary this row named was DELETED at the root by the regen cut). **Disposition:** delete-with-v1 — bulk GENERATED cutover, not piecemeal. **Trigger:** `5-real-fixpoint` gate ([v2-self-hosting.md](v2-self-hosting.md) Wave 4).
 
 ### 2.13 Host builtin bridge
 
