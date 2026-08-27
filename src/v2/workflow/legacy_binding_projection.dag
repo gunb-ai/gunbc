@@ -3,10 +3,9 @@ module v2.workflow.legacy_binding_projection
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.content_hash { Fnv1a64Structural }
 import std.dissolution { DissolutionCondition, UnboundDissolution }
-import std.occurrence_identity { OccurrenceId }
+import std.occurrence_identity { OccurrenceId, ScopedOccurrenceRef }
 import v2.workflow.legacy_binding_observation {
   LegacyBindingObservationSubject,
-  SubjectOccurrenceRef,
   legacy_subject_identity
 }
 import v2.workflow.legacy_binding_delta {
@@ -143,8 +142,8 @@ fn emit_projection_provenance(
   else if (dropped |> count) > 0 { ProjectionDroppedOccurrence { occurrences: dropped } }
   else { ProvenanceEmitted { provenance: ProjectionProvenance { entries: decisions |> flat_map(d => match d {
     CarriedForward { base: b, projected: p } => [ProjectedFromSource {
-      source: SubjectOccurrenceRef { subject_identity: base_identity, occurrence: b },
-      target: SubjectOccurrenceRef { subject_identity: projected_identity, occurrence: p }
+      source: ScopedOccurrenceRef { scope: base_identity, occurrence: b },
+      target: ScopedOccurrenceRef { scope: projected_identity, occurrence: p }
     }]
     DroppedByProjection { base: _ } => []
   }) } } }
