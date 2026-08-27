@@ -1925,6 +1925,73 @@ pub enum CompileDiagnosticCensus {
     NotRunnable(String),
 }
 
+thread_local! {
+    static COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO: std::cell::RefCell<
+        std::collections::HashMap<String, CompileDiagnosticCensus>,
+    > = std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+static COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_HITS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+static COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_MISSES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+/// `(hits, misses)` for the `compile_dag_diagnostic_census` memo across the whole process.
+/// Report-only; no consumer branches on it. Same accounting shape, and the same reason for it,
+/// as [`compile_dag_rust_emit_check_memo_counts`]: a hit count with no denominator is not a
+/// measurement.
+pub fn compile_dag_diagnostic_census_memo_counts() -> (u64, u64) {
+    (
+        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_HITS.load(std::sync::atomic::Ordering::Relaxed),
+        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_MISSES.load(std::sync::atomic::Ordering::Relaxed),
+    )
+}
+
+/// Memoized entry point for the census, mirroring [`compile_dag_rust_emit_check`]'s memo rather
+/// than inventing a second caching discipline beside it (DESIGN §3 — the two builtins compile the
+/// same program through the same pipeline and differ only in what they report, so they must not
+/// disagree about when a compile may be reused).
+///
+/// WHY THIS EXISTS, stated as the measurement that produced it rather than as a general
+/// preference: `compile_dag_rust_emit_check` was memoized and this sibling was not, so a witness
+/// asking two QUESTIONS about one source paid for two full compiles of it. `neither_green_source_
+/// refuses_and_neither_mis_resolves` (`test.claim.callable_candidate_ambiguity_witness`) is the
+/// specimen — four census calls over two distinct sources, so half of its compiles recomputed a
+/// pure function of an input already compiled in the same run. That is the DESIGN §6
+/// bare-minimum-cost class ("a proven cost-shape defect is ALWAYS fixed, regardless of the
+/// realized n"), and its n stopped being small: the row reached 5437ms CPU against the 5000ms
+/// `required_floor_claim_cpu_safety_limit_ms`, which is a FAIL-STOP protecting the executor and
+/// explicitly "never a budget, tolerance, or target" — so the admissible repair is to stop
+/// recomputing, never to raise the line.
+///
+/// PURITY, and it is the whole reason for the guard: the memo is armed ONLY under the floor's
+/// prepared-inventory snapshot and keyed on the source TOGETHER WITH that inventory's content
+/// digest, because `build_module_path_index_from_witness_roots` reads those bytes and the census
+/// is therefore a function of the corpus as well as of the source. Outside the guard there is no
+/// snapshot, so a hit would be a claim about disk that nothing established — DESIGN's
+/// cache-impurity rule (key on declared-input content), and the reason this is not simply a
+/// `HashMap` on the source string.
+pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
+    let Some(inventory_digest) = floor_prepared_inventory_digest() else {
+        return compile_dag_diagnostic_census_uncached(source);
+    };
+    let memo_key = {
+        use crate::v1_rt::{atom_identity_hash, hash_combine};
+        let h = atom_identity_hash(source.to_string());
+        hash_combine(h, atom_identity_hash(inventory_digest))
+    };
+    if let Some(hit) =
+        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| m.borrow().get(&memo_key).cloned())
+    {
+        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        return hit;
+    }
+    COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let census = compile_dag_diagnostic_census_uncached(source);
+    COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| m.borrow_mut().insert(memo_key, census.clone()));
+    census
+}
+
 /// Host realization backing the `compile_dag_diagnostic_census` builtin: compile an in-memory
 /// `.dag` program through the v1 pipeline to the Rust render target (the same pipeline
 /// [`compile_dag_rust_emit_check`] uses), and report the full per-class diagnostic census the
@@ -1946,7 +2013,7 @@ pub enum CompileDiagnosticCensus {
 /// fail-open / `UnlistedImportUse` advisory path. Census receipts therefore must not be read as
 /// production compile-clean behavior for those type positions. It observes nothing about the
 /// interpreter's disposition of the same program and nothing about other emission targets.
-pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
+fn compile_dag_diagnostic_census_uncached(source: &str) -> CompileDiagnosticCensus {
     let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         crate::v1_rt::with_type_ref_hit_ne_bind_measure(|| {
             let module_index = build_module_path_index_from_witness_roots();

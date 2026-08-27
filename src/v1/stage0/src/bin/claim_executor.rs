@@ -1380,6 +1380,15 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
         "required-floor: compile_dag_rust_emit_check_memo hits={memo_hits} \
          misses={memo_misses}"
     );
+    // The sibling census memo, reported on its own line for the reason the emit-check line
+    // carries both halves: a hit count without its denominator is not a measurement. These are
+    // two different memos over two different builtins and must never be summed into one ratio.
+    let (census_hits, census_misses) =
+        v1_compiler::cli_run::compile_dag_diagnostic_census_memo_counts();
+    eprintln!(
+        "required-floor: compile_dag_diagnostic_census_memo hits={census_hits} \
+         misses={census_misses}"
+    );
     for failure in &outcome.failures {
         eprintln!("required-floor: FAIL {failure}");
     }
