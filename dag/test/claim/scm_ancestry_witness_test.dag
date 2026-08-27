@@ -1,6 +1,6 @@
 module test.claim.scm_ancestry_witness
 
-import std.types { Bool, String, List }
+import std.types { Bool, List }
 import std.minted_identity { MintedId }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.scm.ancestry {
@@ -28,13 +28,28 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // A REFERENCE NAMES A HISTORY ROW, so this helper no longer reaches the object store at all. The
 // previous form hashed a synthetic node to mint an ObjectId, which was the wrong grain: it produced
 // the identity of a PROGRAM where the walk needs the identity of a RECORD.
-fn ancestry_witness_ref(name: String) -> RepositoryCommitRef {
+type AncestryWitnessName
+  = AncestryWitnessC0
+  | AncestryWitnessC1
+  | AncestryWitnessC2
+  | AncestryWitnessC3
+  | AncestryWitnessC9
+  | AncestryWitnessR0
+  | AncestryWitnessR1
+  | AncestryWitnessR2
+
+fn ancestry_witness_ref(name: AncestryWitnessName) -> RepositoryCommitRef {
   RepositoryCommitRef { identity: MintedId {
-    ordinal: if name == "c0" || name == "r0" { 0 }
-      else if name == "c1" || name == "r1" { 1 }
-      else if name == "c2" || name == "r2" { 2 }
-      else if name == "c3" || name == "r3" { 3 }
-      else { 99 },
+    ordinal: match name {
+      AncestryWitnessC0 => 0
+      AncestryWitnessC1 => 1
+      AncestryWitnessC2 => 2
+      AncestryWitnessC3 => 3
+      AncestryWitnessC9 => 9
+      AncestryWitnessR0 => 0
+      AncestryWitnessR1 => 1
+      AncestryWitnessR2 => 2
+    },
   } }
 }
 
@@ -84,14 +99,14 @@ fn ancestry_witness_reads_as_root(ancestry: CommitAncestry) -> Bool {
 // A linear history: c0 is the root, c1 descends from c0, c2 from c1.
 fn ancestry_witness_linear() -> RepositoryHistory {
   RepositoryHistory { steps: [
-    AncestryStep { at: ancestry_witness_ref(name: "c0"), ancestry: RootCommit },
+    AncestryStep { at: ancestry_witness_ref(name: AncestryWitnessC0), ancestry: RootCommit },
     AncestryStep {
-      at: ancestry_witness_ref(name: "c1"),
-      ancestry: DescendsFrom { parent: ancestry_witness_ref(name: "c0") },
+      at: ancestry_witness_ref(name: AncestryWitnessC1),
+      ancestry: DescendsFrom { parent: ancestry_witness_ref(name: AncestryWitnessC0) },
     },
     AncestryStep {
-      at: ancestry_witness_ref(name: "c2"),
-      ancestry: DescendsFrom { parent: ancestry_witness_ref(name: "c1") },
+      at: ancestry_witness_ref(name: AncestryWitnessC2),
+      ancestry: DescendsFrom { parent: ancestry_witness_ref(name: AncestryWitnessC1) },
     },
   ] }
 }
@@ -103,19 +118,19 @@ fn ancestry_witness_linear() -> RepositoryHistory {
 // ordinary first commit, the second is damage.
 test fn the_root_commit_is_structurally_a_root_not_a_missing_parent() -> Bool {
   ancestry_witness_reads_as_root(ancestry: RootCommit)
-    && !ancestry_witness_reads_as_root(ancestry: DescendsFrom { parent: ancestry_witness_ref(name: "c0") })
+    && !ancestry_witness_reads_as_root(ancestry: DescendsFrom { parent: ancestry_witness_ref(name: AncestryWitnessC0) })
 }
 
 test fn a_linear_history_traces_from_the_start_back_to_the_root() -> Bool {
   match ancestry_walk(
-    start: ancestry_witness_ref(name: "c2"),
+    start: ancestry_witness_ref(name: AncestryWitnessC2),
     history: ancestry_witness_linear(),
   ) {
     AncestryTraced { chain: chain } =>
       chain == [
-        ancestry_witness_ref(name: "c2"),
-        ancestry_witness_ref(name: "c1"),
-        ancestry_witness_ref(name: "c0"),
+        ancestry_witness_ref(name: AncestryWitnessC2),
+        ancestry_witness_ref(name: AncestryWitnessC1),
+        ancestry_witness_ref(name: AncestryWitnessC0),
       ]
     AncestryBrokenAt { commit: _, missing_parent: _ } => false
     AncestryStartNotInHistory { start: _ } => false
@@ -129,14 +144,14 @@ test fn a_linear_history_traces_from_the_start_back_to_the_root() -> Bool {
 test fn a_parent_outside_the_history_is_broken_not_traced() -> Bool {
   let history = RepositoryHistory { steps: [
     AncestryStep {
-      at: ancestry_witness_ref(name: "c1"),
-      ancestry: DescendsFrom { parent: ancestry_witness_ref(name: "c0") },
+      at: ancestry_witness_ref(name: AncestryWitnessC1),
+      ancestry: DescendsFrom { parent: ancestry_witness_ref(name: AncestryWitnessC0) },
     },
   ] }
-  match ancestry_walk(start: ancestry_witness_ref(name: "c1"), history: history) {
+  match ancestry_walk(start: ancestry_witness_ref(name: AncestryWitnessC1), history: history) {
     AncestryBrokenAt { commit: c, missing_parent: p } =>
-      repository_commit_ref_eq(left: c, right: ancestry_witness_ref(name: "c1"))
-        && repository_commit_ref_eq(left: p, right: ancestry_witness_ref(name: "c0"))
+      repository_commit_ref_eq(left: c, right: ancestry_witness_ref(name: AncestryWitnessC1))
+        && repository_commit_ref_eq(left: p, right: ancestry_witness_ref(name: AncestryWitnessC0))
     AncestryTraced { chain: _ } => false
     AncestryStartNotInHistory { start: _ } => false
     AncestryRevisitsACommit { detected_from: _ } => false
@@ -150,17 +165,17 @@ test fn a_parent_outside_the_history_is_broken_not_traced() -> Bool {
 test fn a_cyclic_parent_chain_is_refused_rather_than_traced() -> Bool {
   let history = RepositoryHistory { steps: [
     AncestryStep {
-      at: ancestry_witness_ref(name: "c0"),
-      ancestry: DescendsFrom { parent: ancestry_witness_ref(name: "c1") },
+      at: ancestry_witness_ref(name: AncestryWitnessC0),
+      ancestry: DescendsFrom { parent: ancestry_witness_ref(name: AncestryWitnessC1) },
     },
     AncestryStep {
-      at: ancestry_witness_ref(name: "c1"),
-      ancestry: DescendsFrom { parent: ancestry_witness_ref(name: "c0") },
+      at: ancestry_witness_ref(name: AncestryWitnessC1),
+      ancestry: DescendsFrom { parent: ancestry_witness_ref(name: AncestryWitnessC0) },
     },
   ] }
-  match ancestry_walk(start: ancestry_witness_ref(name: "c0"), history: history) {
+  match ancestry_walk(start: ancestry_witness_ref(name: AncestryWitnessC0), history: history) {
     AncestryRevisitsACommit { detected_from: d } =>
-      repository_commit_ref_eq(left: d, right: ancestry_witness_ref(name: "c0"))
+      repository_commit_ref_eq(left: d, right: ancestry_witness_ref(name: AncestryWitnessC0))
     AncestryTraced { chain: _ } => false
     AncestryStartNotInHistory { start: _ } => false
     AncestryBrokenAt { commit: _, missing_parent: _ } => false
@@ -178,16 +193,16 @@ test fn a_cyclic_parent_chain_is_refused_rather_than_traced() -> Bool {
 // fixture by construction rather than by an author remembering to copy it.
 fn ancestry_witness_two_roots() -> RepositoryHistory {
   RepositoryHistory { steps: [
-    AncestryStep { at: ancestry_witness_ref(name: "c0"), ancestry: RootCommit },
-    AncestryStep { at: ancestry_witness_ref(name: "c1"), ancestry: RootCommit },
+    AncestryStep { at: ancestry_witness_ref(name: AncestryWitnessC0), ancestry: RootCommit },
+    AncestryStep { at: ancestry_witness_ref(name: AncestryWitnessC1), ancestry: RootCommit },
   ] }
 }
 
 
 test fn adjacent_position_does_not_make_one_commit_an_ancestor_of_another() -> Bool {
   !ancestry_witness_traces_through(
-    candidate: ancestry_witness_ref(name: "c0"),
-    descendant: ancestry_witness_ref(name: "c1"),
+    candidate: ancestry_witness_ref(name: AncestryWitnessC0),
+    descendant: ancestry_witness_ref(name: AncestryWitnessC1),
     history: ancestry_witness_two_roots(),
   )
 }
@@ -204,7 +219,7 @@ test fn adjacent_position_does_not_make_one_commit_an_ancestor_of_another() -> B
 // completes and traces exactly itself. A selective failure on this shape now reddens here.
 test fn the_two_root_fixture_still_traces_a_root_to_itself() -> Bool {
   match ancestry_walk(
-    start: ancestry_witness_ref(name: "c1"),
+    start: ancestry_witness_ref(name: AncestryWitnessC1),
     history: ancestry_witness_two_roots(),
   ) {
     AncestryTraced { chain: chain } => length(chain) == 1
@@ -219,8 +234,8 @@ test fn the_two_root_fixture_still_traces_a_root_to_itself() -> Bool {
 // is about tracing rather than about comparing a commit to its immediate parent.
 test fn a_stated_ancestor_two_generations_back_is_found() -> Bool {
   ancestry_witness_traces_through(
-    candidate: ancestry_witness_ref(name: "c0"),
-    descendant: ancestry_witness_ref(name: "c2"),
+    candidate: ancestry_witness_ref(name: AncestryWitnessC0),
+    descendant: ancestry_witness_ref(name: AncestryWitnessC2),
     history: ancestry_witness_linear(),
   )
 }
@@ -229,8 +244,8 @@ test fn a_stated_ancestor_two_generations_back_is_found() -> Bool {
 // membership test over the whole history -- would answer true here.
 test fn ancestry_has_a_direction_and_a_descendant_is_not_an_ancestor() -> Bool {
   !ancestry_witness_traces_through(
-    candidate: ancestry_witness_ref(name: "c2"),
-    descendant: ancestry_witness_ref(name: "c0"),
+    candidate: ancestry_witness_ref(name: AncestryWitnessC2),
+    descendant: ancestry_witness_ref(name: AncestryWitnessC0),
     history: ancestry_witness_linear(),
   )
 }
@@ -246,11 +261,11 @@ test fn ancestry_has_a_direction_and_a_descendant_is_not_an_ancestor() -> Bool {
 // above -- a real trace and a real truncation -- are what stop that reading.
 test fn a_start_outside_the_history_is_the_callers_fact_not_a_broken_chain() -> Bool {
   let history = RepositoryHistory { steps: [
-    AncestryStep { at: ancestry_witness_ref(name: "c1"), ancestry: RootCommit },
+    AncestryStep { at: ancestry_witness_ref(name: AncestryWitnessC1), ancestry: RootCommit },
   ] }
-  match ancestry_walk(start: ancestry_witness_ref(name: "c9"), history: history) {
+  match ancestry_walk(start: ancestry_witness_ref(name: AncestryWitnessC9), history: history) {
     AncestryStartNotInHistory { start: s } =>
-      repository_commit_ref_eq(left: s, right: ancestry_witness_ref(name: "c9"))
+      repository_commit_ref_eq(left: s, right: ancestry_witness_ref(name: AncestryWitnessC9))
     AncestryTraced { chain: _ } => false
     AncestryBrokenAt { commit: _, missing_parent: _ } => false
     AncestryRevisitsACommit { detected_from: _ } => false
@@ -272,14 +287,14 @@ test fn a_start_outside_the_history_is_the_callers_fact_not_a_broken_chain() -> 
 // specification-without-execution the recut removed.
 fn ancestry_witness_revert() -> RepositoryHistory {
   RepositoryHistory { steps: [
-    AncestryStep { at: ancestry_witness_ref(name: "r0"), ancestry: RootCommit },
+    AncestryStep { at: ancestry_witness_ref(name: AncestryWitnessR0), ancestry: RootCommit },
     AncestryStep {
-      at: ancestry_witness_ref(name: "r1"),
-      ancestry: DescendsFrom { parent: ancestry_witness_ref(name: "r0") },
+      at: ancestry_witness_ref(name: AncestryWitnessR1),
+      ancestry: DescendsFrom { parent: ancestry_witness_ref(name: AncestryWitnessR0) },
     },
     AncestryStep {
-      at: ancestry_witness_ref(name: "r2"),
-      ancestry: DescendsFrom { parent: ancestry_witness_ref(name: "r1") },
+      at: ancestry_witness_ref(name: AncestryWitnessR2),
+      ancestry: DescendsFrom { parent: ancestry_witness_ref(name: AncestryWitnessR1) },
     },
   ] }
 }
@@ -287,7 +302,7 @@ fn ancestry_witness_revert() -> RepositoryHistory {
 
 test fn a_revert_to_an_earlier_program_still_traces_every_record() -> Bool {
   match ancestry_walk(
-    start: ancestry_witness_ref(name: "r2"),
+    start: ancestry_witness_ref(name: AncestryWitnessR2),
     history: ancestry_witness_revert(),
   ) {
     AncestryTraced { chain: chain } => length(chain) == 3
@@ -304,12 +319,12 @@ test fn a_revert_to_an_earlier_program_still_traces_every_record() -> Bool {
 // distinct. This is the assertion that a root-keyed model cannot satisfy at all.
 test fn the_reverted_to_record_is_an_ancestor_and_not_the_revert_itself() -> Bool {
   ancestry_witness_traces_through(
-    candidate: ancestry_witness_ref(name: "r0"),
-    descendant: ancestry_witness_ref(name: "r2"),
+    candidate: ancestry_witness_ref(name: AncestryWitnessR0),
+    descendant: ancestry_witness_ref(name: AncestryWitnessR2),
     history: ancestry_witness_revert(),
   ) && !repository_commit_ref_eq(
-    left: ancestry_witness_ref(name: "r0"),
-    right: ancestry_witness_ref(name: "r2"),
+    left: ancestry_witness_ref(name: AncestryWitnessR0),
+    right: ancestry_witness_ref(name: AncestryWitnessR2),
   )
 }
 
@@ -333,11 +348,11 @@ test fn the_reverted_to_record_is_an_ancestor_and_not_the_revert_itself() -> Boo
 // specification-without-execution one rung up.
 test fn an_empty_history_is_not_a_cycle() -> Bool {
   match ancestry_walk(
-    start: ancestry_witness_ref(name: "c0"),
+    start: ancestry_witness_ref(name: AncestryWitnessC0),
     history: RepositoryHistory { steps: [] },
   ) {
     AncestryStartNotInHistory { start: s } =>
-      repository_commit_ref_eq(left: s, right: ancestry_witness_ref(name: "c0"))
+      repository_commit_ref_eq(left: s, right: ancestry_witness_ref(name: AncestryWitnessC0))
     AncestryRevisitsACommit { detected_from: _ } => false
     AncestryTraced { chain: _ } => false
     AncestryBrokenAt { commit: _, missing_parent: _ } => false
@@ -350,10 +365,10 @@ test fn an_empty_history_is_not_a_cycle() -> Bool {
 test fn a_row_that_is_present_is_found_by_the_same_lookup_the_walk_uses() -> Bool {
   match history_step_at(
     history: ancestry_witness_linear(),
-    at: ancestry_witness_ref(name: "c1"),
+    at: ancestry_witness_ref(name: AncestryWitnessC1),
   ) {
     Present { value: step } =>
-      repository_commit_ref_eq(left: step.at, right: ancestry_witness_ref(name: "c1"))
+      repository_commit_ref_eq(left: step.at, right: ancestry_witness_ref(name: AncestryWitnessC1))
     Absent => false
   }
 }
