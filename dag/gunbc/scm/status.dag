@@ -83,6 +83,14 @@ type RepositoryStatus {
   staged: List<StagedRole>
 }
 
+// THE SELECTION RESOLVES BY REFERENCE, NOT BY ROOT (review 56230). Resolving by root returned the
+// FIRST row carrying it, and `commits` may legitimately hold two rows with one root -- so checking
+// out the second reported the first one's message. A root is not a unique key into this list;
+// the reference is, which is why gunbc.scm.repository_envelope now carries one.
+//
+// CheckedOutCommitMissing names the REFERENCE rather than a root, because when a selection does not
+// resolve there is no commit and therefore no root to name. Reporting one would have meant either
+// inventing it or echoing back a value that denotes nothing here.
 fn status_checkout_of(envelope: RepositoryEnvelope) -> StatusCheckout {
   match envelope.checked_out {
     Absent => NothingCheckedOut

@@ -472,6 +472,11 @@ test fn scm_env_a_checkout_naming_a_non_commit_object_refuses() -> Bool {
 
 // CONTROL: a valid commit reference must still load, or the claim above would hold for a decoder
 // that refused every checkout. "1" is the second commit.
+//
+// ASSERTED AS THE REFERENCE THE DOCUMENT STATED, not as a resolved root. Resolving and comparing
+// roots is exactly the comparison that could not distinguish two commits sharing one -- the defect
+// review 56230 found -- so a root-level assertion here would pass on a decoder that had lost which
+// row was selected.
 test fn scm_env_a_valid_commit_reference_checks_out() -> Bool {
   match decode_repository(
     v: scm_env_with(
@@ -503,7 +508,7 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
       match cause {
         RepositoryEncodeUncontainedTarget { target: _ } => "uncontained_target"
         RepositoryCommitRootNotInStore { root: _ } => "commit_root"
-        RepositoryCheckoutNotInCommits { selected: _ } => "checked_out"
+        RepositoryCheckoutNotInCommits { reference: _ } => "checked_out"
         RepositoryCommitParentNotInCommits { parent: _ } => "commit_parent"
         RepositoryCommitReferenceDuplicated { reference: _ } => "commit_duplicate"
         RepositoryCommitReferenceOutsideAllocator { reference: _, next_ordinal: _ } => "commit_outside_allocator"
@@ -599,7 +604,7 @@ fn scm_env_named_target_is_uncontained(outcome: RepositoryEncodeOutcome, store: 
             acc || object_id_eq(left: id, right: t)
           })
         RepositoryCommitRootNotInStore { root: _ } => false
-        RepositoryCheckoutNotInCommits { selected: _ } => false
+        RepositoryCheckoutNotInCommits { reference: _ } => false
         RepositoryCommitParentNotInCommits { parent: _ } => false
         RepositoryCommitReferenceDuplicated { reference: _ } => false
         RepositoryCommitReferenceOutsideAllocator { reference: _, next_ordinal: _ } => false
