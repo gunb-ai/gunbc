@@ -7829,16 +7829,6 @@ pub fn reference_derived_row_diagnostics(
         for r in rows.iter().cloned() {
             __result.extend(
                 (*match (*r.disposition.clone()).clone() {
-                    ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent => {
-                        Rc::new(vec![make_error_node(
-                            Rc::new(CompilerDiagnostic::ReferenceDerivedImportProviderUnknown {
-                                name: r.name.clone(),
-                                referencing_module: r.module_name.clone(),
-                                span: module_span.clone(),
-                            }),
-                            r.module_name.clone(),
-                        )])
-                    }
                     ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
                         provider_module: p,
                         ..
@@ -7851,7 +7841,18 @@ pub fn reference_derived_row_diagnostics(
                         }),
                         r.module_name.clone(),
                     )]),
-                    _ => Rc::new(vec![]),
+                    ReferenceDerivedCandidateDisposition::CandidateSurvived {
+                        provider_module: _,
+                        ..
+                    } => Rc::new(vec![]),
+                    ReferenceDerivedCandidateDisposition::CandidateOwnModule => Rc::new(vec![]),
+                    ReferenceDerivedCandidateDisposition::CandidateVariantDelegatedToParent {
+                        parent_enum: _,
+                        ..
+                    } => Rc::new(vec![]),
+                    ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent => {
+                        Rc::new(vec![])
+                    }
                 })
                 .iter()
                 .cloned(),

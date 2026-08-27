@@ -244,7 +244,7 @@ pub fn non_variant_name_still_answers_registry_absent() -> bool {
     )) == "registry-absent".to_string())
 }
 
-pub fn only_the_two_failing_arms_produce_diagnostics() -> bool {
+pub fn only_export_proof_failed_produces_a_diagnostic() -> bool {
     {
         let rows = Rc::new(vec![
             Rc::new(ReferenceDerivedCandidateRow {
@@ -283,35 +283,28 @@ pub fn only_the_two_failing_arms_produce_diagnostics() -> bool {
                 ),
             }),
         ]);
-        ((reference_derived_row_diagnostics(rows.clone(), no_span()).len() as i64) == 2)
+        ((reference_derived_row_diagnostics(rows.clone(), no_span()).len() as i64) == 1)
     }
 }
 
-pub fn both_refusal_diagnostics_are_advisory_today() -> bool {
+pub fn the_export_unproven_diagnostic_is_blocking() -> bool {
     {
-        let rows = Rc::new(vec![
-            Rc::new(ReferenceDerivedCandidateRow {
-                module_name: "m".to_string(),
-                name: "c".to_string(),
-                disposition: Rc::new(ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent),
-            }),
-            Rc::new(ReferenceDerivedCandidateRow {
-                module_name: "m".to_string(),
-                name: "d".to_string(),
-                disposition: Rc::new(
-                    ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
-                        provider_module: "p".to_string(),
-                    },
-                ),
-            }),
-        ]);
+        let rows = Rc::new(vec![Rc::new(ReferenceDerivedCandidateRow {
+            module_name: "m".to_string(),
+            name: "d".to_string(),
+            disposition: Rc::new(
+                ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
+                    provider_module: "p".to_string(),
+                },
+            ),
+        })]);
         {
             let mut __all = true;
             for e in reference_derived_row_diagnostics(rows.clone(), no_span())
                 .iter()
                 .cloned()
             {
-                if !(!is_error_diagnostic(e.diagnostic.clone())) {
+                if !(is_error_diagnostic(e.diagnostic.clone())) {
                     __all = false;
                     break;
                 }
@@ -321,52 +314,52 @@ pub fn both_refusal_diagnostics_are_advisory_today() -> bool {
     }
 }
 
-pub fn the_two_refusals_carry_different_remedies() -> bool {
+pub fn registry_absent_not_surfaced_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The RED that keeps registry-absent OUT of the diagnostic stream. Measured over the regen seed closure, that arm returns 473 rows over 63 names dominated by Rust target-language tokens -- Vec, bool, Option, i64, empty_map -- which the candidate walk proposes by tokenizing the module's own emitted Rust and for which no .dag provider can ever exist. Wiring it would print a false report on every build. This test fails the moment someone adds that arm to reference_derived_row_diagnostics, which is the intended wall until the candidate walk stops proposing target-language vocabulary.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn registry_absent_produces_no_diagnostic() -> bool {
     {
-        let rows = Rc::new(vec![
-            Rc::new(ReferenceDerivedCandidateRow {
-                module_name: "m".to_string(),
-                name: "c".to_string(),
-                disposition: Rc::new(ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent),
-            }),
-            Rc::new(ReferenceDerivedCandidateRow {
-                module_name: "m".to_string(),
-                name: "d".to_string(),
-                disposition: Rc::new(
-                    ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
-                        provider_module: "p".to_string(),
-                    },
-                ),
-            }),
-        ]);
-        let msgs = Rc::new({
-            let mut __result = Vec::new();
+        let rows = Rc::new(vec![Rc::new(ReferenceDerivedCandidateRow {
+            module_name: "m".to_string(),
+            name: "bool".to_string(),
+            disposition: Rc::new(ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent),
+        })]);
+        ((reference_derived_row_diagnostics(rows.clone(), no_span()).len() as i64) == 0)
+    }
+}
+
+pub fn the_export_unproven_message_names_its_own_remedy() -> bool {
+    {
+        let rows = Rc::new(vec![Rc::new(ReferenceDerivedCandidateRow {
+            module_name: "m".to_string(),
+            name: "d".to_string(),
+            disposition: Rc::new(
+                ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
+                    provider_module: "p".to_string(),
+                },
+            ),
+        })]);
+        {
+            let mut __all = true;
             for e in reference_derived_row_diagnostics(rows.clone(), no_span())
                 .iter()
                 .cloned()
             {
-                __result.push(diagnostic_to_message(e.diagnostic.clone()));
-            }
-            __result
-        });
-        ({
-            let mut __found = false;
-            for m in msgs.iter().cloned() {
-                if v1_rt::string_contains(&m, "AUTHOR AN IMPORT".to_string()) {
-                    __found = true;
+                if !(v1_rt::string_contains(
+                    &diagnostic_to_message(e.diagnostic.clone()),
+                    "NOT an import".to_string(),
+                )) {
+                    __all = false;
                     break;
                 }
             }
-            __found
-        } && {
-            let mut __found = false;
-            for m in msgs.iter().cloned() {
-                if v1_rt::string_contains(&m, "NOT an import".to_string()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        })
+            __all
+        }
     }
 }
