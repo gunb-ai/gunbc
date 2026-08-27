@@ -134,8 +134,6 @@ fn decision_multiplicity(decisions: List<ProjectionCarryDecision>, base: Int) ->
   decisions |> filter(d => carry_decision_base(decision: d) == base) |> count
 }
 
-// THE REFUSAL VOCABULARY, ONE VARIANT PER REASON THE EMISSION CANNOT BE TRUSTED. Every arm carries
-// the occurrences that caused it, so a refusal is countable and locatable rather than a verdict.
 // A DECLARED INSERTION IS A NODE IDENTITY, NOT AN ORDINAL, and the change of input type is the
 // whole wiring rather than a convenience. An earlier revision took `inserted: List<Int>`, which
 // asked the caller to RESTATE what the projector already knew and left this module free to disagree
@@ -180,13 +178,6 @@ type ProjectionEmission
 // are different facts with different owners, and collapsing them is the not-applicable-versus-
 // malformed conflation.
 //
-// EMISSION IS TOTAL OVER THE BASE POPULATION OR IT REFUSES.
-//
-// `expected_base` is the base observation's expected occurrence population -- the same denominator
-// the observation envelope admits against, passed in rather than re-derived so two derivations of
-// one fact cannot disagree. `inserted` is the projected-side occurrences the projection created
-// with no base source; it exists as a parameter so the caller can be HONEST about them, and the
-// only thing this module can do with a non-empty list is refuse.
 // THE CAUSE-LOST ARM CANNOT NAME AN OCCURRENCE, AND THAT IS A PROPERTY OF THE SUBSTRATE RATHER
 // THAN A SHORTCUT. `OccurrenceSynthetic` has no id by construction -- a node carrying no minted
 // identity is precisely what it means -- so `InsertionCauseLost` carries only a scope, and this
