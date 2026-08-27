@@ -50,7 +50,6 @@ fn demand_id(principal: NonEmptyStr, key: DemandKey) -> FabricIdentity<NonEmptyS
 
 fn terms() -> AdmissionTerms {
   AdmissionTerms {
-    priority_class: "default",
     deadline: none,
     buy: BuyTerms {
       budget_account: "fleet-ci",

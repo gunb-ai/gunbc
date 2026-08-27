@@ -120,6 +120,12 @@ data positional_citation: RecurringFailureMode = RecurringFailureMode {
   evidence: [],
 }
 
+data bound_shaped_closure: RecurringFailureMode = RecurringFailureMode {
+  identity: "bound_shaped_closure" as NonEmptyStr,
+  authored: "**bound-shaped closure** (a requirement is satisfied by a number that is real, and the row it satisfies stops ranking for work. Distinct from prefix-of-the-truth, which is about what a PRODUCER reports: this is about what a CONSUMER concludes from a satisfied clause. Receipt (gunbc#9418): §4b(3) asks a declared drop for a bounded population; a whole-root emit census answers three; the emitter's first gate had returned ahead of every later check, and clearing it showed eight more that had been standing the whole time. Publishing three as THE population would have discharged 4b(3) with an honest measurement and left the class reading as closed — worse than the UNCOUNTED it replaced, because an unmet clause still ranks and a met one does not. The tell is that the satisfying figure comes from a mechanism that STOPS: a first match, an early return, a capped scan, a truncated list. **Recognition rule: before a number discharges a requirement, ask what the producer does AFTER it has enough to answer — if it returns, the number bounds the producer's patience and not the population.**)",
+  evidence: [],
+}
+
 data authority_substitution: RecurringFailureMode = RecurringFailureMode {
   identity: "authority_substitution" as NonEmptyStr,
   authored: "**authority substitution** (fact F lives in carrier A; operation O is governed by carrier B; A is cited as the evidence that O changed; no A→B relation is claimed by either carrier. Nothing asserted is false — the *entailment* is invented, which is why review reads past it: both halves check out and only the arrow between them is missing. It is §3's single-authority rule read in the direction authors actually violate it — not two authorities for one fact, but one authority borrowed to answer for another's. Receipt (gunbc#8865): an expecting-red probe was enrolled in `gunbc.explicit_witness_admission`, which DOCUMENTS a known red, and the PR asserted the required floor therefore held it; the floor gates on `v2.workflow.floor_expected_red` and nothing relates the two, so CI went red on a row its author had recorded as expected. The general tell is a sentence of the form *I registered it in A, so B now does X* where B is never named — and its structural fix is never a broader guard joining every A row to B, since that manufactures exactly the entailment being invented; the guard must carry the narrow predicate, with its exceptions declared.)",
@@ -163,6 +169,7 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   unmarked_workaround,
   self_authorized_dissolution,
   positional_citation,
+  bound_shaped_closure,
   authority_substitution,
   reachability_read_as_occupancy,
   total_at_the_level_examined_blind,

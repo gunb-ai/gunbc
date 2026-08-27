@@ -30,7 +30,7 @@ import v1.std.core {
   is_local_transport, transport_request_body,
   is_kernel_type, is_container_type,
   with_optional_cardinality, with_required_cardinality, join_optional_cardinality, preserve_outer_optional_cardinality,
-  Connective, Conj, Disj, NoConnective,
+  Connective, Conj, Disj, Arrow, NoConnective,
   CardOptional, no_span,
   unit_type, string_type,
   default_ident_span, kernel_span, node_name_span, intern,
@@ -403,7 +403,44 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
     }
   }
   let has_structure = n.connective != NoConnective
-  if has_structure {
+  let n_is_callable_type = match n.connective { Arrow => true  _ => false }
+  if n_is_callable_type {
+    let param_results = n.params |> map(p =>
+      let authored_param_type = param_node_type_expr(n: p)
+      let pr = resolve_node_bounded(n: authored_param_type, env: env, module_name: module_name, depth: depth + 1, masked: masked)
+      ParamResolveResult {
+        param: make_resolved_param_node(
+          name: param_node_name_at(n: p, source_indices: env.source_indices),
+          type_expr: rendered_use_site_type(authored: authored_param_type, resolved: pr.resolved),
+          default_value: param_node_default_value(n: p),
+          properties: concat(p.properties, pr.resolved.properties),
+          span: p.span,
+          name_span: node_name_span(n: p)
+        ),
+        diagnostics: pr.diagnostics
+      }
+    )
+    let resolved_params = map(param_results, pr => pr.param)
+    let param_diags = flat_map(param_results, pr => pr.diagnostics)
+    let return_resolution = match n.inferred {
+      Present { value: Resolved { node: rt } } =>
+        let rr = resolve_node_bounded(n: rt, env: env, module_name: module_name, depth: depth + 1, masked: masked)
+        NodeResolveResult { resolved: rendered_use_site_type(authored: rt, resolved: rr.resolved), diagnostics: rr.diagnostics }
+      _ => NodeResolveResult { resolved: unit_type, diagnostics: [] }
+    }
+    let resolved_inferred = match n.inferred {
+      Present { value: Resolved { node: _ } } => Present { value: Resolved { node: return_resolution.resolved } }
+      _ => n.inferred
+    }
+    let return_diags = match n.inferred {
+      Present { value: Resolved { node: _ } } => return_resolution.diagnostics
+      _ => []
+    }
+    NodeResolveResult {
+      resolved: Node { name: n.name, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: resolved_params, inferred: resolved_inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data },
+      diagnostics: concat(param_diags, return_diags)
+    }
+  } else if has_structure {
     let is_product = n.connective == Conj
     if is_product {
       if n.type_annotation != none {
@@ -689,15 +726,19 @@ fn resolve_field(field: Node, env: TypeEnv, module_name: String) -> FieldResolve
   }
 }
 
+fn rendered_use_site_type(authored: Node, resolved: Node) -> Node {
+  if authored.children |> count > 0 {
+    Node { name: authored.name, span: authored.span, ident_span: authored.ident_span, children: resolved.children, connective: authored.connective, params: authored.params, inferred: Present { value: Resolved { node: resolved } }, return_cardinality: authored.return_cardinality, uses: authored.uses, body: authored.body, transport: authored.transport, properties: resolved.properties, type_annotation: authored.type_annotation, is_self_recursive: authored.is_self_recursive, has_non_tail_self_call: authored.has_non_tail_self_call, match_pattern: authored.match_pattern, expr_data: authored.expr_data }
+  } else {
+    resolved
+  }
+}
+
 fn resolve_param(param: Node, env: TypeEnv, module_name: String) -> ParamResolveResult {
   let authored_type = param_node_type_expr(n: param)
   let type_result = resolve_node(n: authored_type, env: env, module_name: module_name)
   let type_resolved = type_result.resolved
-  let rendered_type = if authored_type.children |> count > 0 {
-    Node { name: authored_type.name, span: authored_type.span, ident_span: authored_type.ident_span, children: type_resolved.children, connective: authored_type.connective, params: authored_type.params, inferred: Present { value: Resolved { node: type_resolved } }, return_cardinality: authored_type.return_cardinality, uses: authored_type.uses, body: authored_type.body, transport: authored_type.transport, properties: type_resolved.properties, type_annotation: authored_type.type_annotation, is_self_recursive: authored_type.is_self_recursive, has_non_tail_self_call: authored_type.has_non_tail_self_call, match_pattern: authored_type.match_pattern, expr_data: authored_type.expr_data }
-  } else {
-    type_resolved
-  }
+  let rendered_type = rendered_use_site_type(authored: authored_type, resolved: type_resolved)
   let type_diags = concat(type_result.diagnostics, missing_generic_args_diagnostics(n: authored_type, env: env, module_name: module_name))
   let default_resolved = match param_node_default_value(n: param) {
     Present { value: default_value } => Present { value: resolve_expr_types(texpr: default_value, env: env, module_name: module_name) }
