@@ -647,24 +647,50 @@ fn session_host_knobs(slice_max: ByteSize, per_session: ByteSize) -> List<Conver
 //
 // The knobs are now derived per host from the reservation that host actually owes.
 //
-// THE TWO EMPTY ARMS DECLINE TO WRITE A CAP THEY CANNOT GROUND, and that is not the silent widen
-// DESIGN forbids: they leave the host's existing configuration untouched rather than substituting a
-// permissive one, and the refusal is already loud one layer up. A host whose reservation is
-// unestablished makes host_session_slice_resolution return SessionSliceUnsized, which makes that
-// host refuse in host_deployment_standing -- so the host never reaches a converge target at all and
-// these arms do not decide its fate. They remain because session_knobs_for is a total function that
-// a caller could reach with any host, and because a host whose reservation is unknown must not be
-// handed a guessed slice_max under any caller. Reachable in principle, quiet on the plan path.
-fn session_knobs_for(host: HostIdentity) -> List<ConvergeKnob> {
+// THE THREE EMPTY ANSWERS WERE ONE EMPTY LIST, AND THEY ARE NOT THE SAME FACT. This function
+// returned [] for a host that legitimately owes no session knobs, for a host whose reservation is
+// UNKNOWN, and for a fleet with no admission ceiling -- three states with three remedies, rendered
+// identically. On the current plan path that was quiet: an unestablished host refuses upstream in
+// host_deployment_standing and never reaches a converge target. But the function is total and
+// public, so the next caller reaching it directly receives an empty knob list and cannot tell
+// "nothing to write here" from "I could not work out what to write" -- the empty-observation narrow
+// DESIGN names, the absorbing fallback's mirror, and strictly worse than a widen because a narrow
+// is silently uncovered rather than merely expensive.
+//
+// The standing is returned instead, so a new caller must decide. The plan path's behaviour is
+// unchanged: it converts the standing back to knobs and a non-derived standing contributes none.
+type SessionKnobStanding
+  = SessionKnobsDerived { knobs: List<ConvergeKnob> }
+  | SessionKnobsNotOwed { cause: String }
+  | SessionKnobsUngrounded { cause: String }
+
+fn session_knob_standing_for(host: HostIdentity) -> SessionKnobStanding {
   match session_reservation_bytes(host: host) {
-    ReservationBytesNotApplicable => []
-    ReservationBytesUnestablished { cause: _ } => []
+    ReservationBytesNotApplicable =>
+      SessionKnobsNotOwed {
+        cause: "this host carries no sessions.slice, so it owes no session knobs and its existing configuration is left untouched",
+      }
+    ReservationBytesUnestablished { cause: why } =>
+      SessionKnobsUngrounded {
+        cause: concat("the session reservation for this host is unestablished, so no slice_max can be grounded: ", why),
+      }
     ReservationBytes { bytes: agg_bytes } =>
       match session_admission_oomd_ceiling(p: gunbc_session_admission_policy) {
-        Absent => []
+        Absent =>
+          SessionKnobsUngrounded {
+            cause: "the fleet admission policy declares no oomd eviction ceiling, so the per-session half of the slice cannot be written",
+          }
         Present { value: ceiling } =>
-          session_host_knobs(slice_max: agg_bytes, per_session: ceiling)
+          SessionKnobsDerived { knobs: session_host_knobs(slice_max: agg_bytes, per_session: ceiling) }
       }
+  }
+}
+
+fn session_knobs_for(host: HostIdentity) -> List<ConvergeKnob> {
+  match session_knob_standing_for(host: host) {
+    SessionKnobsDerived { knobs: ks } => ks
+    SessionKnobsNotOwed { cause: _ } => []
+    SessionKnobsUngrounded { cause: _ } => []
   }
 }
 

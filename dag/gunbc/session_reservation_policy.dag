@@ -106,7 +106,39 @@ data srv2_session_aggregate_denominator: SessionAggregateEvidence = SessionAggre
 // ONLY HOSTS WITH AN AUTHORED SIZING ROW APPEAR HERE. srv3 and srv4 are absent by construction
 // rather than enumerated as not-applicable, because whether they carry sessions is residency's
 // question and this table has no standing to answer it.
+// EVERY AUTHORED ROW PASSES THROUGH THE COVERAGE CHECK ON ITS WAY OUT, so an allowance that sits
+// below its own evidence floor cannot leave this function as an allowance. allowance_covers_its_evidence
+// existed before this and was consumed by ONE fixture assertion against srv1 only -- so the invariant
+// held for the host someone had thought to assert about, and any row added later could hand a lying
+// number straight through host_session_reservation_outcome to SessionReservationCharged. That is
+// DESIGN section 5's validation-standing-where-construction-was-available in its exact form: a check
+// satisfied by editing the declaration while the realization keeps lying.
+//
+// The predicate is unchanged and still has its fixture; what changed is that the PRODUCTION path now
+// consumes it too, and a failing row degrades to ReservationUnestablished naming the violation rather
+// than being charged. The state stays authorable -- this is a wall at the boundary, not an
+// unrepresentable state -- but no consumer downstream can receive it.
 fn session_reservation_sizing_for(host: HostIdentity) -> HostSessionReservationSizing {
+  admit_sizing(s: authored_session_reservation_sizing(host: host))
+}
+
+fn admit_sizing(s: HostSessionReservationSizing) -> HostSessionReservationSizing {
+  match s {
+    ReservationAllowance { bytes: b, evidence_floor: e, operator_reason: r } =>
+      if allowance_covers_its_evidence(s: ReservationAllowance { bytes: b, evidence_floor: e, operator_reason: r }) {
+        ReservationAllowance { bytes: b, evidence_floor: e, operator_reason: r }
+      } else {
+        ReservationUnestablished {
+          evidence: e,
+          cause: "the authored allowance does not cover its own evidence floor, so it is not a reservation any measurement supports: refusing rather than charging a number below the demand it was derived from",
+        }
+      }
+    ReservationUnestablished { evidence: ev, cause: why } => ReservationUnestablished { evidence: ev, cause: why }
+    ReservationSizingAbsent => ReservationSizingAbsent
+  }
+}
+
+fn authored_session_reservation_sizing(host: HostIdentity) -> HostSessionReservationSizing {
   if (host as String) == (operator_host_srv1 as String) {
     ReservationAllowance {
       bytes: byte_size(55834574848),
