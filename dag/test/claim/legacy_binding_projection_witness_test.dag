@@ -187,7 +187,6 @@ fn lbp_emit(
       ObservationAdmitted { admitted: a } => EmissionComputed {
         emission: emit_projection_provenance(
           base_admitted: a,
-          base_subject: lbp_base_subject(),
           projected_subject: lbp_projected_subject(),
           decisions: decisions,
           insertions: insertions
@@ -523,7 +522,7 @@ test fn two_carry_decisions_claiming_one_target_refuse_at_the_producer() -> Bool
     EmitFixtureTransportRefused => false
     EmitAdmissionRefused => false
     EmissionComputed { emission: e } => match e {
-      ProjectionTargetRepeated { occurrences: o } => (o |> any(id => id == 11))
+      ProjectionTargetRepeated { occurrences: o } => (o |> count) == 1 && (o |> any(id => id == 11))
       ProvenanceEmitted { provenance: _ } => false
       ProjectionDecisionMissing { occurrences: _ } => false
       ProjectionDecisionForked { occurrences: _ } => false
@@ -550,7 +549,35 @@ test fn an_insertion_claiming_a_carried_target_refuses() -> Bool {
     EmitFixtureTransportRefused => false
     EmitAdmissionRefused => false
     EmissionComputed { emission: e } => match e {
-      ProjectionTargetRepeated { occurrences: o } => (o |> any(id => id == 11))
+      ProjectionTargetRepeated { occurrences: o } => (o |> count) == 1 && (o |> any(id => id == 11))
+      ProvenanceEmitted { provenance: _ } => false
+      ProjectionDecisionMissing { occurrences: _ } => false
+      ProjectionDecisionForked { occurrences: _ } => false
+      ProjectionDecisionForeign { occurrences: _ } => false
+      ProjectionInsertionCauseLost { scope: _, insertions: _ } => false
+      ProjectionCandidateNotInsertion { occurrences: _ } => false
+      ProjectionDroppedOccurrence { occurrences: _ } => false
+    }
+  }
+}
+
+// AND THE ARM THAT MAKES THE PAYLOAD'S DENOMINATOR VISIBLE. The refusal lists OFFENDING
+// OCCURRENCES, never CLAIMS -- and with two claims on one target those two readings both produce a
+// list of length 2 before deduplication and 1 after, so an arm asserting 1 already separates them.
+// This fixture pushes to THREE claims because the two readings then differ by more than one, which
+// is what makes the assertion legible: a payload counting claims reports 3, a payload counting
+// offenders reports 1, and no arithmetic accident relates them. One occurrence was claimed too
+// often; that is one defect, not three.
+test fn three_claims_on_one_target_report_one_offending_occurrence() -> Bool {
+  match lbp_emit(
+    expected_base: [10, 20, 30],
+    decisions: [lbp_carry(base: 10, projected: 11), lbp_carry(base: 20, projected: 11), lbp_carry(base: 30, projected: 11)],
+    insertions: []
+  ) {
+    EmitFixtureTransportRefused => false
+    EmitAdmissionRefused => false
+    EmissionComputed { emission: e } => match e {
+      ProjectionTargetRepeated { occurrences: o } => (o |> count) == 1 && (o |> any(id => id == 11))
       ProvenanceEmitted { provenance: _ } => false
       ProjectionDecisionMissing { occurrences: _ } => false
       ProjectionDecisionForked { occurrences: _ } => false

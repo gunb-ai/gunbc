@@ -254,6 +254,22 @@ fn target_multiplicity(targets: List<Int>, id: Int) -> Int {
   targets |> filter(other => other == id) |> count
 }
 
+// THE REPEATED-TARGET PAYLOAD IS DEDUPLICATED, AND THE REASON IS THAT ITS DENOMINATOR IS NOT.
+//
+// Every other law here filters a population whose members are already distinct -- the base
+// observation's expected occurrences -- so `filter(multiplicity > 1)` yields each offender once.
+// The target law filters the EMITTED TARGETS, which is precisely the list the duplicates live in,
+// so the same shape would report an occurrence claimed twice as TWO entries and one claimed three
+// times as THREE. The refusal would then be counted by how badly it failed rather than by how many
+// occurrences failed, and a consumer counting rows would read one defect as several.
+//
+// This is the same wrong-population defect the laws themselves are about, one level down inside a
+// payload: the predicate was right and the set it ranged over was the wrong one. Naming the
+// denominator beside the filter is what surfaced it.
+fn unique_ints(ids: List<Int>) -> List<Int> {
+  fold(ids, init: [], f: (acc, id) => if (acc |> any(a => a == id)) { acc } else { concat(acc, [id]) })
+}
+
 // EMISSION IS TOTAL OVER THE BASE POPULATION OR IT REFUSES.
 //
 // THE BASE DENOMINATOR IS THE ADMITTED OBSERVATION'S, NOT A LIST THE CALLER CHOSE. An earlier
@@ -265,12 +281,11 @@ fn target_multiplicity(targets: List<Int>, id: Int) -> Int {
 // typecheck instead of being trusted.
 fn emit_projection_provenance<O>(
   base_admitted: CompleteLegacyObservation<O>,
-  base_subject: LegacyBindingObservationSubject,
   projected_subject: LegacyBindingObservationSubject,
   decisions: List<ProjectionCarryDecision>,
   insertions: List<DeclaredProjectionInsertion>
 ) -> ProjectionEmission {
-  let base_identity = legacy_subject_identity(subject: base_subject)
+  let base_identity = legacy_subject_identity(subject: base_admitted.observation.subject)
   let projected_identity = legacy_subject_identity(subject: projected_subject)
   let expected_base = observed_occurrence_ids(observation: base_admitted.observation)
   let decided = decisions |> map(d => carry_decision_base(decision: d))
@@ -297,7 +312,7 @@ fn emit_projection_provenance<O>(
   let insertion_entries = derivations |> flat_map(d => derivation_entries(derivation: d))
   let entries = concat(carried_entries, insertion_entries)
   let targets = entries |> map(e => entry_target_occurrence(entry: e))
-  let repeated_targets = targets |> filter(id => target_multiplicity(targets: targets, id: id) > 1)
+  let repeated_targets = unique_ints(ids: targets) |> filter(id => target_multiplicity(targets: targets, id: id) > 1)
   if (missing |> count) > 0 { ProjectionDecisionMissing { occurrences: missing } }
   else if (forked |> count) > 0 { ProjectionDecisionForked { occurrences: forked } }
   else if (foreign |> count) > 0 { ProjectionDecisionForeign { occurrences: foreign } }
