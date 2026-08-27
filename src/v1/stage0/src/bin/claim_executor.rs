@@ -1,9 +1,10 @@
 #![allow(clippy::disallowed_macros)]
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 use std::rc::Rc;
+use v1_compiler::cli_run::namespace_wave_admission::git_stdout;
 #[cfg(test)]
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::PhaseProfile;
@@ -382,6 +383,13 @@ fn run() -> Result<ExitCode, ExitCode> {
     if required_ci_mode {
         let mut phase_failures: Vec<String> = Vec::new();
         let mut ran: Vec<&'static str> = Vec::new();
+        // THE ONE PARSE, HELD FOR ITS SECOND CONSUMER. The wave-admission phase below reads
+        // the index the parse phase built rather than acquiring the corpus again; holding it
+        // in an `Option` also keeps `the parse refused` distinguishable from `the parse ran
+        // and found nothing`, which is what the wall's own `NotEvaluated` arm exists to keep
+        // apart one level down.
+        let mut head_index: Option<v1_compiler::cli_run::declaration_index::DeclarationIndex> =
+            None;
 
         // THE ROSTER IS ANNOUNCED BEFORE ANY PHASE RUNS, whole, with each phase's owning lane.
         // A reader of one job's log sees the complete required roster and where the phases this
@@ -421,6 +429,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                         "required-ci: parse OK {} file(s) parse-clean",
                         sweep.parse_clean
                     );
+                    head_index = Some(sweep.index.clone());
                     // THE DECLARATION INTEGRITY CHECKS RIDE THE PARSE THAT JUST RAN.
                     //
                     // They are reported inside this phase rather than as a phase of their own
@@ -471,6 +480,67 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             }
             ran.push("parse");
+        }
+
+        // PHASE — THE NAMESPACE WAVE-ADMISSION WALL.
+        //
+        // WHAT IT GATES AND WHY IT IS REQUIRED. `gunbc.compiler_frontend_program_interlock`
+        // (operator ruling, 2026-08-26) makes the import/namespace plan's disclosed "no CI
+        // mechanism" gap a BLOCKER rather than a disclosure: no change that can alter which
+        // modules enter a subject, or what an occurrence denotes, may merge before this wall
+        // exists, and `milestone_prerequisites` gates `NamespaceFirstSemanticWave` on
+        // `NamespaceWaveAdmissionEnrolled` by name.
+        //
+        // IT REPORTS ITS OWN NON-VERDICTS UNDER THEIR OWN NAMES. `NoSubject` (a push whose
+        // baseline is its own head) and `NotEvaluated` (a baseline that does not resolve) are
+        // printed as themselves and never as an admission -- and only the first of them
+        // passes, because "nothing to compare" and "could not compare" are the two zeros this
+        // repository has already been corrected for once.
+        if required_ci_phase_selected(RequiredCiPhase::NamespaceWaveAdmission, required_ci_lane) {
+            eprintln!("required-ci: phase namespace-wave-admission (closure, subject membership, binding)");
+            match &head_index {
+                // THE PARSE REFUSED, SO THERE IS NO HEAD TO ADJUDICATE AGAINST. This is not
+                // silence: the parse phase has already stopped the line, and adjudicating a
+                // corpus half of which failed to parse would report a smaller delta than the
+                // one that exists.
+                None => {
+                    eprintln!(
+                        "required-ci: namespace-wave-admission NOT RUN — the parse phase did not \
+                         produce an index (it refused, or this lane does not own it)"
+                    );
+                    phase_failures.push("namespace-wave-admission (no head index)".to_string());
+                }
+                Some(index) => {
+                    // THE VOCABULARY JOIN RUNS FIRST, because every verdict below is stated in
+                    // that vocabulary: adjudicating against a superseded disposition set would
+                    // produce answers that look like verdicts and are not.
+                    let vocabulary =
+                        v1_compiler::cli_run::namespace_wave_admission::vocabulary_findings(index);
+                    for finding in &vocabulary {
+                        eprintln!("required-ci: namespace-wave-admission VOCABULARY {finding}");
+                    }
+                    if !vocabulary.is_empty() {
+                        phase_failures.push(format!(
+                            "namespace-wave-admission vocabulary ({} finding(s))",
+                            vocabulary.len()
+                        ));
+                    }
+                    match v1_compiler::cli_run::namespace_wave_admission::run_required_wave_admission(
+                        index,
+                    ) {
+                        Ok(outcome) => {
+                            if let Some(failure) = report_wave_admission_outcome(&outcome) {
+                                phase_failures.push(failure);
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("required-ci: namespace-wave-admission FAIL {e}");
+                            phase_failures.push("namespace-wave-admission".to_string());
+                        }
+                    }
+                }
+            }
+            ran.push("namespace-wave-admission");
         }
 
         // PHASE 2 — regen first generation: the emitted mirrors against what is committed.
@@ -1085,6 +1155,7 @@ impl RequiredCiLane {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RequiredCiPhase {
     Parse,
+    NamespaceWaveAdmission,
     Regen,
     V2Emission,
     PartitionCrates,
@@ -1095,6 +1166,7 @@ impl RequiredCiPhase {
     fn name(self) -> &'static str {
         match self {
             RequiredCiPhase::Parse => "parse",
+            RequiredCiPhase::NamespaceWaveAdmission => "namespace-wave-admission",
             RequiredCiPhase::Regen => "regen",
             RequiredCiPhase::V2Emission => "v2-emission",
             RequiredCiPhase::PartitionCrates => "partition-crates",
@@ -1111,6 +1183,11 @@ impl RequiredCiPhase {
             // lane means the cheapest total refusal over the witness corpus arrives from the
             // job that owns that corpus.
             RequiredCiPhase::Parse => RequiredCiLane::Witnesses,
+            // THE WALL CONSUMES THE PARSE THAT PHASE JUST RAN, so it is in the same lane by
+            // necessity and not by preference: its head index IS the sweep's index, and a
+            // lane boundary between them would mean parsing the corpus twice to answer a
+            // question one parse already reached.
+            RequiredCiPhase::NamespaceWaveAdmission => RequiredCiLane::Witnesses,
             RequiredCiPhase::Regen => RequiredCiLane::Build,
             RequiredCiPhase::V2Emission => RequiredCiLane::Build,
             // A DRIFT COMPARISON OVER DERIVED RUST, so it belongs beside regen and
@@ -1123,8 +1200,9 @@ impl RequiredCiPhase {
     }
 }
 
-const REQUIRED_CI_PHASES: [RequiredCiPhase; 5] = [
+const REQUIRED_CI_PHASES: [RequiredCiPhase; 6] = [
     RequiredCiPhase::Parse,
+    RequiredCiPhase::NamespaceWaveAdmission,
     RequiredCiPhase::Regen,
     RequiredCiPhase::V2Emission,
     RequiredCiPhase::PartitionCrates,
@@ -1143,6 +1221,73 @@ fn required_ci_phase_selected(phase: RequiredCiPhase, lane: Option<RequiredCiLan
     match lane {
         None => true,
         Some(selected) => phase.lane() == selected,
+    }
+}
+
+/// Print one wave-admission run, and return the phase failure it carries, if any.
+///
+/// EVERY GREEN NAMES ITS DENOMINATORS. A run that admitted nothing because it compared
+/// nothing and a run that compared a corpus and found no motion render identically unless the
+/// population is printed beside the verdict, and rendering them alike is the
+/// execution-provenance loss DESIGN names.
+fn report_wave_admission_outcome(
+    outcome: &v1_compiler::cli_run::namespace_wave_admission::WaveAdmissionOutcome,
+) -> Option<String> {
+    use v1_compiler::cli_run::namespace_wave_admission as nwa;
+    match outcome {
+        nwa::WaveAdmissionOutcome::NoSubject { head } => {
+            eprintln!(
+                "required-ci: namespace-wave-admission NO SUBJECT — the merge base against \
+                 origin/main IS {head}, so this run has no diff to adjudicate. Nothing was \
+                 compared and nothing is admitted."
+            );
+            None
+        }
+        nwa::WaveAdmissionOutcome::NotEvaluated { reason } => {
+            eprintln!("required-ci: namespace-wave-admission NotEvaluated — {reason}");
+            Some("namespace-wave-admission (NotEvaluated)".to_string())
+        }
+        nwa::WaveAdmissionOutcome::Adjudicated { base, head, report } => {
+            let p = &report.population;
+            eprintln!(
+                "required-ci: namespace-wave-admission base={base} head={head} \
+                 modules_compared={} modules_added={} modules_removed={} \
+                 membership_edges_head={} binding_rows_compared={} closure_rows_moved={} \
+                 deltas={}",
+                p.modules_compared,
+                p.modules_added,
+                p.modules_removed,
+                p.membership_edges_head,
+                p.binding_rows_compared,
+                p.closure_rows_moved,
+                report.deltas.len(),
+            );
+            for delta in &report.deltas {
+                eprintln!(
+                    "required-ci: namespace-wave-admission {}",
+                    nwa::render_delta(delta)
+                );
+            }
+            for stale in &report.stale_admissions {
+                eprintln!("required-ci: namespace-wave-admission STALE ADMISSION {stale}");
+            }
+            let unadjudicated = nwa::report_unadjudicated(report);
+            // A STALE ADMISSION REFUSES TOO. A row that matches no delta is a permission
+            // standing over nothing, and leaving it means the roster stops being a fact about
+            // the corpus and becomes a list someone forgot to prune.
+            if unadjudicated.is_empty() && report.stale_admissions.is_empty() {
+                eprintln!(
+                    "required-ci: namespace-wave-admission ADMITTED — every delta is \
+                     auto-admitted or named by a transition admission"
+                );
+                return None;
+            }
+            Some(format!(
+                "namespace-wave-admission ({} unadjudicated delta(s), {} stale admission(s))",
+                unadjudicated.len(),
+                report.stale_admissions.len()
+            ))
+        }
     }
 }
 
@@ -1388,7 +1533,7 @@ mod tests {
     use super::*;
 
     fn repo_root_from_manifest() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../..")
             .canonicalize()
             .expect("repo root from CARGO_MANIFEST_DIR")
@@ -1641,27 +1786,6 @@ mod tests {
             "the persisted row must retain the phase, state, and detail: {persisted:?}"
         );
     }
-}
-
-/// Run git in the workspace and return trimmed stdout, or a refusal naming the command.
-///
-/// Kept when the mirror-drift gate was removed: the behavioral receipt resolves its own baseline
-/// through it, so this is a shared helper rather than that gate's private one.
-fn git_stdout(workspace: &Path, args: &[&str]) -> Result<String, String> {
-    let out = Command::new("git")
-        .args(args)
-        .current_dir(workspace)
-        .env("GIT_PAGER", "cat")
-        .output()
-        .map_err(|e| format!("spawn git {}: {e}", args.join(" ")))?;
-    if !out.status.success() {
-        return Err(format!(
-            "git {} failed: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
-    }
-    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
 // ---------------------------------------------------------------------------

@@ -22,7 +22,8 @@ import gunbc.runner_slot_provision {
   observe_runner_slot_members_wet,
 }
 import product.placement_supply { HostIdentity }
-import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
+import gunbc.fabric_cell_observation_admission { admit_fabric_cell_probe }
+import gunbc.fabric_cell_acquire { fabric_cell_probe_wet }
 import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
 import gunbc.fleet_converge_plan {
   TimerRetirementMember,
@@ -162,7 +163,7 @@ func fleet_converge_plan_wet() -> ProcessExit
     observed_caps: observed_caps,
     observed_spark: [],
     observed_slots: observed_slots,
-    observed_fabric_cells: fabric_cell_observation_unobserved(host: host as HostIdentity),
+    observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Absent =>
@@ -293,6 +294,9 @@ func fleet_converge_apply_wet() -> ProcessExit
             } else {
               let observed_timers = observe_timer_members_wet()
               let observed_caps = observe_cap_members_wet()
+              let observed_fabric_cells = admit_fabric_cell_probe(
+                probe: fabric_cell_probe_wet(host: observed_host as HostIdentity),
+              )
               match observe_runner_slot_members_wet() {
                 RunnerSlotsUnobserved { reason: why } =>
                   exit_failure(
@@ -306,7 +310,7 @@ func fleet_converge_apply_wet() -> ProcessExit
                 observed_caps: observed_caps,
                 observed_spark: [],
                 observed_slots: observed_slots,
-                observed_fabric_cells: fabric_cell_observation_unobserved(host: observed_host as HostIdentity),
+                observed_fabric_cells: observed_fabric_cells,
               ) {
                 exit_failure(reason: "fleet_converge_apply: SubjectIdentityMismatch — member set drifted since plan")
               } else if !fleet_converge_observed_baseline_matches(
@@ -316,7 +320,7 @@ func fleet_converge_apply_wet() -> ProcessExit
                 observed_caps: observed_caps,
                 observed_spark: [],
                 observed_slots: observed_slots,
-                observed_fabric_cells: fabric_cell_observation_unobserved(host: observed_host as HostIdentity),
+                observed_fabric_cells: observed_fabric_cells,
               ) {
                 exit_failure(reason: "fleet_converge_apply: ObservedBaselineMismatch — host drifted since plan; rerun plan and review")
               } else if !fleet_converge_plan_bundle_matches(

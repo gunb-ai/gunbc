@@ -3,11 +3,10 @@ module tools.emit_subject_clean_ratchet
 import std.types { String, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.ci_layer_roots { witness_layer_roots }
 import tools.dag_compile_clean_shard_roster {
-  CompileCleanShardEntryPathsBuilt,
-  CompileCleanShardEntryPathsDuplicatePath,
-  compile_clean_shard_entry_paths
+  CompileCleanShardEntryDiscovered,
+  CompileCleanShardEntryDiscoveryDuplicatePath,
+  compile_clean_shard_entry_discovery
 }
 import tools.emission_entry_instrument {
   EmissionMeasurement,
@@ -50,6 +49,7 @@ import gunbc.emit_subject_clean_frontier {
   ObservationNotTaken,
   RosterDiscoveryPolicy,
   DeclarationIndexUnderRoots,
+  roster_discovery_policy_roots,
   SubjectSelection,
   SelectionWholeRoster,
   SelectionSubset,
@@ -82,25 +82,32 @@ import gunbc.emit_subject_clean_frontier {
 // standing REFUSES. That is not a limitation worked around, it is the contract: the ratchet holds
 // only over a roster measured whole, and a subset run reports exactly which subjects were missing.
 
-data emit_subject_clean_roster_policy: RosterDiscoveryPolicy = DeclarationIndexUnderRoots {
-  roots: witness_layer_roots
-}
 
-
-
-// THE ROSTER IS DISCOVERED, NEVER AUTHORED. compile_clean_shard_entry_paths reads the parsed
+// THE ROSTER IS DISCOVERED, NEVER AUTHORED. compile_clean_shard_entry_discovery reads the parsed
 // declaration index under the declared source roots, so the universe is not derived from imports,
 // from successful resolution, or from anything the ratchet is measuring -- a module no import edge
 // reaches is still a subject. A duplicate path is a refusal there and stays a refusal here rather
 // than being deduplicated into a smaller universe.
+//
+// AND THE POLICY IS DERIVED FROM THAT READ RATHER THAN ASSERTED BESIDE IT. This module used to
+// declare `DeclarationIndexUnderRoots { roots: witness_layer_roots }` as a constant and hand it to
+// the fold as the description of a scan it had not watched: two representations of one fact, held
+// together only by a witness comparing two declarations, which stays green when the discovery
+// starts scanning somewhere else. The discoverer now hands its roots back with its paths, so the
+// policy in the universe is the roots that were walked — there is no way to hold one without the
+// other, which is the construction the constant conceded.
 type EmitRatchetRosterRead
-  = EmitRatchetRosterEntries { entries: List<String> }
+  = EmitRatchetRosterEntries { policy: RosterDiscoveryPolicy, entries: List<String> }
   | EmitRatchetRosterUnreadable { cause: String }
 
 fn emit_ratchet_roster() -> EmitRatchetRosterRead {
-  match compile_clean_shard_entry_paths() {
-    CompileCleanShardEntryPathsBuilt { paths: ps } => EmitRatchetRosterEntries { entries: ps }
-    CompileCleanShardEntryPathsDuplicatePath { path: p, first: f, duplicate: d } =>
+  match compile_clean_shard_entry_discovery() {
+    CompileCleanShardEntryDiscovered { roots: rs, paths: ps } =>
+      EmitRatchetRosterEntries {
+        policy: DeclarationIndexUnderRoots { roots: rs },
+        entries: ps
+      }
+    CompileCleanShardEntryDiscoveryDuplicatePath { roots: _, path: p, first: f, duplicate: d } =>
       EmitRatchetRosterUnreadable {
         cause: concat(
           concat("the discovered roster carries ", p),
@@ -149,6 +156,9 @@ fn module_inventory_for_root(root: String) -> ModuleInventoryRead {
   }
 }
 
+// THE ROOTS ARE THE POLICY'S, NEVER A CONSTANT OF THIS MODULE'S OWN. The caller passes what the
+// discoverer handed back, so the two denominators describe one route by construction: a universe
+// carries exactly one policy, and the inventory is listed over the roots that policy names.
 fn module_inventory(roots: List<String>) -> ModuleInventoryRead {
   fold(
     roots,
@@ -210,6 +220,7 @@ fn measured_subjects(measurements: List<EmissionMeasurement>) -> List<EmissionMe
 
 fn run_emit_subject_clean_ratchet(
   entries: String,
+  policy: RosterDiscoveryPolicy,
   roster: List<String>,
   inventory: List<String>
 ) -> RatchetRun {
@@ -220,7 +231,7 @@ fn run_emit_subject_clean_ratchet(
   RatchetRun {
     ratchet: fold_emit_subject_clean_ratchet(
       universe: DualUniverse {
-        policy: emit_subject_clean_roster_policy,
+        policy: policy,
         entries: roster,
         inventory: inventory
       },
@@ -275,8 +286,8 @@ fn attempt_emit_subject_clean_ratchet(entries: String) -> RatchetRunAttempt {
   match emit_ratchet_roster() {
     EmitRatchetRosterUnreadable { cause: c } =>
       RatchetRunUnattempted { cause: concat("the entry roster could not be read — ", c) }
-    EmitRatchetRosterEntries { entries: roster } =>
-      match module_inventory(roots: witness_layer_roots) {
+    EmitRatchetRosterEntries { policy: policy, entries: roster } =>
+      match module_inventory(roots: roster_discovery_policy_roots(policy: policy)) {
         ModuleInventoryUnreadable { root: rt, cause: c } =>
           RatchetRunUnattempted {
             cause: concat(
@@ -291,6 +302,7 @@ fn attempt_emit_subject_clean_ratchet(entries: String) -> RatchetRunAttempt {
           RatchetRunFolded {
             run: run_emit_subject_clean_ratchet(
               entries: entries,
+              policy: policy,
               roster: roster,
               inventory: inventory
             )
