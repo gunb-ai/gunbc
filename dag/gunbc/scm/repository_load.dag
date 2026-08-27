@@ -43,7 +43,12 @@ module gunbc.scm.repository_load
 // names as authority substitution.
 
 import std.types { String }
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io {
+  FilesystemReadOutcome,
+  FilesystemReadSucceeded,
+  FilesystemReadRefused,
+  filesystem_read_outcome,
+}
 import extdeps.languages.json.parse {
   parse_json_document,
   JsonDocumentParse,
@@ -66,25 +71,33 @@ type RepositoryLoad
   | RepositoryDocumentUnparseable { path: String, gap: JsonDocumentGap }
   | RepositoryDocumentRefused { path: String, cause: RepositoryDecodeRefusal }
 
-// THE ONLY HOST EFFECT IN THE READ PATH. `read.success` is consulted rather than inferred from an
-// empty `content`: an EMPTY FILE and an ABSENT FILE both yield empty content, and only the success
-// channel separates them. Deciding on content alone would fuse a legitimate empty document with a
-// missing one -- the same conflation this type's four arms exist to prevent, one level down.
+// THE ONLY HOST EFFECT IN THE READ PATH, AND IT IS FOLDED BEFORE IT IS READ. The scalar transport
+// observation -- content, success, error together -- is handed to `filesystem_read_outcome` rather
+// than projected field by field, so the arms below never see a content/success/error combination
+// that cannot occur. This module would otherwise be one more site against
+// `filesystem_read_outcome_adoption_standing`, whose next-rung trigger is that population reaching
+// zero; a new site is debt this module has no reason to add.
+//
+// IT IS ALSO WHAT THIS TYPE ARGUES FOR, ONE LEVEL DOWN. The distinction the fold preserves is
+// exactly the one the arms preserve: an EMPTY FILE and an ABSENT FILE both yield empty content, and
+// only the success channel separates them. Deciding on content alone would fuse a legitimate empty
+// document with a missing one -- so consuming the raw projections here while the header above
+// argues against conflating channels would have been incoherent, not merely untidy.
 fn load_repository(path: String) -> RepositoryLoad {
   let read = Filesystem.Read(path: path)
-  if !read.success {
-    RepositoryFileUnreadable { path: path, error: read.error }
-  } else {
-    match parse_json_document(s: read.content) {
-      JsonDocumentUnreadable { gap: gap } =>
-        RepositoryDocumentUnparseable { path: path, gap: gap }
-      JsonDocumentParsed { value: v } =>
-        match decode_repository(v: v) {
-          RepositoryDecoded { envelope: envelope } =>
-            RepositoryLoaded { path: path, envelope: envelope }
-          RepositoryDecodeRefused { cause: cause } =>
-            RepositoryDocumentRefused { path: path, cause: cause }
-        }
-    }
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: e } => RepositoryFileUnreadable { path: path, error: e }
+    FilesystemReadSucceeded { content: content } =>
+      match parse_json_document(s: content) {
+        JsonDocumentUnreadable { gap: gap } =>
+          RepositoryDocumentUnparseable { path: path, gap: gap }
+        JsonDocumentParsed { value: v } =>
+          match decode_repository(v: v) {
+            RepositoryDecoded { envelope: envelope } =>
+              RepositoryLoaded { path: path, envelope: envelope }
+            RepositoryDecodeRefused { cause: cause } =>
+              RepositoryDocumentRefused { path: path, cause: cause }
+          }
+      }
   }
 }
