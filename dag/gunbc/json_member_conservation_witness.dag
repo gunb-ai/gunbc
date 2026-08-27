@@ -1,0 +1,142 @@
+module gunbc.json_member_conservation_witness
+
+import std.types { Bool, Int, List, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.languages.json.emit { JsonKeyValue, JsonNumber, JsonString, JsonValue, json_object }
+import extdeps.languages.json.parse { JsonDocumentParsed, parse_json_document }
+import gunbc.json_member_conservation {
+  ConservationVerdict,
+  JsonMemberOccurrence,
+  MemberConsumed,
+  MemberDefective,
+  MemberDispositionedTwice,
+  MemberForeignToObject,
+  MemberLost,
+  MemberUnmodeled,
+  MembersConserved,
+  ObjectMemberPartition,
+  conservation_verdict,
+  occurrences_of_object,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A FAN PID ENTRY WITH A VENDOR EXTENSION THE DECODER DOES NOT MODEL, and a duplicated identity
+// field. Both shapes occur in real OpenBMC configurations and both are legal JSON, which is why the
+// partition has to carry them rather than the parser rejecting them.
+data subject_text: String = "\{\"name\": \"CHASSIS\", \"type\": \"fan\", \"type\": \"stepwise\", \"vendorExtension\": 7\}"
+
+data subject: JsonValue = match parse_json_document(s: subject_text) {
+  JsonDocumentParsed { value } => value
+  other => json_object(members: [])
+}
+
+data subject_occurrences: List<JsonMemberOccurrence> = occurrences_of_object(object_path: "zones[0].pids[1]", value: subject)
+
+fn nth(occurrences: List<JsonMemberOccurrence>, ordinal: Int) -> JsonMemberOccurrence {
+  filter(occurrences, occurrence => occurrence.identity.ordinal == ordinal).first()
+}
+
+// FOUR MEMBERS, FOUR DISPOSITIONS: name consumed, both "type" occurrences carried separately -- one
+// consumed and one defective, because a duplicated identity field is not a harmless unknown -- and
+// the vendor extension retained as unmodelled.
+data honest_partition: ObjectMemberPartition = ObjectMemberPartition {
+  object_path: "zones[0].pids[1]",
+  source: subject_occurrences,
+  dispositions: [
+    MemberConsumed { occurrence: nth(occurrences: subject_occurrences, ordinal: 0), role: "controller_name" },
+    MemberConsumed { occurrence: nth(occurrences: subject_occurrences, ordinal: 1), role: "controller_type" },
+    MemberDefective { occurrence: nth(occurrences: subject_occurrences, ordinal: 2), cause: "identity field duplicated" },
+    MemberUnmodeled { occurrence: nth(occurrences: subject_occurrences, ordinal: 3) },
+  ],
+}
+
+fn the_honest_partition_conserves() -> Bool {
+  match conservation_verdict(partition: honest_partition) {
+    MembersConserved { member_count } => member_count == 4
+    other => false
+  }
+}
+
+// THE SUBSTITUTION A COUNT-BASED CHECK PASSES, WHICH IS WHY THIS MODULE EXISTS. The unmodelled
+// vendor extension at ordinal 3 is dropped, and the member at ordinal 1 is classified twice. Four
+// dispositions for four source members -- every count agrees, one member is unaccounted for, and
+// another is claimed by two branches at once.
+data substituted_partition: ObjectMemberPartition = ObjectMemberPartition {
+  object_path: "zones[0].pids[1]",
+  source: subject_occurrences,
+  dispositions: [
+    MemberConsumed { occurrence: nth(occurrences: subject_occurrences, ordinal: 0), role: "controller_name" },
+    MemberConsumed { occurrence: nth(occurrences: subject_occurrences, ordinal: 1), role: "controller_type" },
+    MemberConsumed { occurrence: nth(occurrences: subject_occurrences, ordinal: 1), role: "controller_type_again" },
+    MemberDefective { occurrence: nth(occurrences: subject_occurrences, ordinal: 2), cause: "identity field duplicated" },
+  ],
+}
+
+fn the_substitution_is_caught_and_named() -> Bool {
+  let counts_agree =
+    substituted_partition.dispositions.length() == substituted_partition.source.length()
+  let caught = match conservation_verdict(partition: substituted_partition) {
+    MemberDispositionedTwice { object_path, ordinal, times } => ordinal == 1 && times == 2
+    other => false
+  }
+  counts_agree && caught
+}
+
+// A MEMBER NOBODY ACCOUNTED FOR. The vendor extension is simply absent from the partition, which is
+// the ordinary silent-drop this wall exists to stop.
+data lossy_partition: ObjectMemberPartition = ObjectMemberPartition {
+  object_path: "zones[0].pids[1]",
+  source: subject_occurrences,
+  dispositions: [
+    MemberConsumed { occurrence: nth(occurrences: subject_occurrences, ordinal: 0), role: "controller_name" },
+    MemberConsumed { occurrence: nth(occurrences: subject_occurrences, ordinal: 1), role: "controller_type" },
+    MemberDefective { occurrence: nth(occurrences: subject_occurrences, ordinal: 2), cause: "identity field duplicated" },
+  ],
+}
+
+fn a_dropped_member_is_named() -> Bool {
+  match conservation_verdict(partition: lossy_partition) {
+    MemberLost { object_path, ordinal } => object_path == "zones[0].pids[1]" && ordinal == 3
+    other => false
+  }
+}
+
+// AN OCCURRENCE FROM A DIFFERENT OBJECT, which is how a partition could otherwise be padded to
+// cover a source member it never read.
+data foreign_partition: ObjectMemberPartition = ObjectMemberPartition {
+  object_path: "zones[0].pids[1]",
+  source: [nth(occurrences: subject_occurrences, ordinal: 0)],
+  dispositions: [
+    MemberConsumed { occurrence: nth(occurrences: subject_occurrences, ordinal: 0), role: "controller_name" },
+    MemberUnmodeled { occurrence: nth(occurrences: subject_occurrences, ordinal: 3) },
+  ],
+}
+
+fn a_foreign_occurrence_is_named() -> Bool {
+  match conservation_verdict(partition: foreign_partition) {
+    MemberForeignToObject { object_path, ordinal } => ordinal == 3
+    other => false
+  }
+}
+
+// DUPLICATE KEYS SURVIVE ENUMERATION AS SEPARATE OCCURRENCES. If they collapsed, the partition
+// would have three source members for a four-member object and the duplicated identity field would
+// be invisible.
+fn duplicate_keys_are_separate_occurrences() -> Bool {
+  subject_occurrences.length() == 4
+    && nth(occurrences: subject_occurrences, ordinal: 1).member.key == "type"
+    && nth(occurrences: subject_occurrences, ordinal: 2).member.key == "type"
+}
+
+fn json_member_conservation_witness() -> ProcessExit {
+  if the_honest_partition_conserves()
+    && the_substitution_is_caught_and_named()
+    && a_dropped_member_is_named()
+    && a_foreign_occurrence_is_named()
+    && duplicate_keys_are_separate_occurrences() {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "JSON member conservation: the identity join, the substitution catch, or duplicate-key occurrence separation changed")
+  }
+}

@@ -1,0 +1,195 @@
+module gunbc.json_member_conservation
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import extdeps.languages.json.emit { JsonArray, JsonBool, JsonKeyValue, JsonNull, JsonNumber, JsonObject, JsonString, JsonValue }
+
+// THE WALL A SEMANTIC DECODER HAS TO PASS, BUILT BEFORE ANY FAN VOCABULARY EXISTS. A decoder over a
+// captured configuration reads the members it understands and returns a typed record. Nothing in
+// that shape prevents it from silently ignoring a member it does not understand, and the result
+// still looks complete: every field the reader asked for is populated, and the one nobody modelled
+// is simply gone. The source JSON still exists elsewhere, so no information was destroyed - but the
+// OBSERVATION claims to describe a program it only partly read, and a later consumer cannot tell
+// whether the decoder saw no residue or dropped it.
+//
+// The remedy is a checked partition: every member occurrence in the source object is accounted for
+// exactly once as consumed, unmodelled, or defective. This module owns that check and knows nothing
+// about fans, PIDs or OpenBMC.
+//
+// WHY IDENTITY AND NOT COUNT, WHICH IS THE WHOLE POINT. A conservation check written as
+// `source.length() == consumed.length() + unmodeled.length() + defective.length()` passes this:
+//
+//   drop the unknown member at ordinal 4
+//   classify the known member at ordinal 2 twice
+//
+// Same total, one member lost, one double-counted, green. Counting is exactly the oracle DESIGN
+// forbids -- a measurement compared against another measurement of the same thing. So the check is
+// an identity join: every source ordinal appears exactly once across the three lists, and nothing
+// appears that the source did not contain.
+
+// AN OCCURRENCE IS A POSITION, NOT A KEY, AND THAT IS FORCED BY THE FORMAT RATHER THAN CHOSEN. This
+// is legal JSON:
+//
+//   { "type": "fan", "type": "stepwise" }
+//
+// Both members have key "type". A residue reported as the string "type" cannot say which of the two
+// was consumed and which was retained, and a decoder that read one and dropped the other would be
+// indistinguishable from one that read both. The ordinal is what separates them.
+type JsonOccurrenceIdentity {
+  object_path: NonEmptyStr
+  ordinal: Int
+}
+
+type JsonMemberOccurrence {
+  identity: JsonOccurrenceIdentity
+  member: JsonKeyValue
+}
+
+// WHY A DEFECTIVE MEMBER IS NOT AN UNMODELLED ONE. They have different owners and opposite repairs.
+// An unmodelled member is a gap in THIS decoder -- the document is fine and the model is behind it.
+// A defective member is a gap in the DOCUMENT against a field the decoder does know -- a duplicated
+// identity field, a value of the wrong JSON kind, a number outside its domain. Collapsing them
+// would let a malformed known field be reported as a vendor extension, which reads as "we do not
+// model that yet" when it actually means "this program is wrong".
+type MemberDisposition
+  = MemberConsumed { occurrence: JsonMemberOccurrence, role: NonEmptyStr }
+  | MemberUnmodeled { occurrence: JsonMemberOccurrence }
+  | MemberDefective { occurrence: JsonMemberOccurrence, cause: NonEmptyStr }
+
+type ObjectMemberPartition {
+  object_path: NonEmptyStr
+  source: List<JsonMemberOccurrence>
+  dispositions: List<MemberDisposition>
+}
+
+// THE VERDICT NAMES WHICH LAW BROKE, because the three failures have different fixes: a lost member
+// means the decoder needs a branch, a repeated one means two branches claim the same member, and a
+// foreign one means a disposition was authored against an object it did not come from.
+type ConservationVerdict
+  = MembersConserved { member_count: Int }
+  | MemberLost { object_path: NonEmptyStr, ordinal: Int }
+  | MemberDispositionedTwice { object_path: NonEmptyStr, ordinal: Int, times: Int }
+  | MemberForeignToObject { object_path: NonEmptyStr, ordinal: Int }
+
+fn disposition_occurrence(disposition: MemberDisposition) -> JsonMemberOccurrence {
+  match disposition {
+    MemberConsumed { occurrence, role } => occurrence
+    MemberUnmodeled { occurrence } => occurrence
+    MemberDefective { occurrence, cause } => occurrence
+  }
+}
+
+// ORDINALS ARE ASSIGNED BY THE ENUMERATION AND NEVER BY THE CALLER, so a decoder cannot invent an
+// occurrence that the source did not contain. Everything downstream refers to members through this
+// list.
+fn object_member_occurrences(
+  object_path: NonEmptyStr,
+  members: List<JsonKeyValue>,
+) -> List<JsonMemberOccurrence> {
+  fold(
+    members,
+    init: [],
+    f: (acc, member) =>
+      flat_map(
+        [
+          acc,
+          [
+            JsonMemberOccurrence {
+              identity: JsonOccurrenceIdentity {
+                object_path: object_path,
+                ordinal: acc.length(),
+              },
+              member: member,
+            },
+          ],
+        ],
+        group => group,
+      ),
+  )
+}
+
+fn occurrences_of_object(object_path: NonEmptyStr, value: JsonValue) -> List<JsonMemberOccurrence> {
+  match value {
+    JsonObject { members } => object_member_occurrences(object_path: object_path, members: members)
+    other => []
+  }
+}
+
+fn times_dispositioned(dispositions: List<MemberDisposition>, ordinal: Int) -> Int {
+  fold(
+    dispositions,
+    init: 0,
+    f: (acc, disposition) =>
+      if disposition_occurrence(disposition: disposition).identity.ordinal == ordinal {
+        acc + 1
+      } else {
+        acc
+      },
+  )
+}
+
+fn source_contains_ordinal(source: List<JsonMemberOccurrence>, ordinal: Int) -> Bool {
+  fold(source, init: false, f: (acc, occurrence) => acc || occurrence.identity.ordinal == ordinal)
+}
+
+// THE JOIN RUNS IN BOTH DIRECTIONS, and one direction alone is not the law. Source-to-dispositions
+// catches a member the decoder never accounted for and a member two branches both claimed;
+// dispositions-to-source catches an occurrence authored against an object it did not come from.
+// Checking only the first would let a decoder pad its partition with occurrences from a sibling
+// object and still report every source member as covered.
+fn conservation_verdict(partition: ObjectMemberPartition) -> ConservationVerdict {
+  let lost_or_repeated = fold(
+    partition.source,
+    init: MembersConserved { member_count: partition.source.length() },
+    f: (acc, occurrence) =>
+      match acc {
+        MembersConserved { member_count } => {
+          let n = times_dispositioned(
+            dispositions: partition.dispositions,
+            ordinal: occurrence.identity.ordinal,
+          )
+          if n == 0 {
+            MemberLost {
+              object_path: partition.object_path,
+              ordinal: occurrence.identity.ordinal,
+            }
+          } else if n > 1 {
+            MemberDispositionedTwice {
+              object_path: partition.object_path,
+              ordinal: occurrence.identity.ordinal,
+              times: n,
+            }
+          } else {
+            MembersConserved { member_count: member_count }
+          }
+        }
+        other => acc
+      },
+  )
+  match lost_or_repeated {
+    MembersConserved { member_count } =>
+      fold(
+        partition.dispositions,
+        init: MembersConserved { member_count: member_count },
+        f: (acc, disposition) =>
+          match acc {
+            MembersConserved { member_count: n } => {
+              let ordinal = disposition_occurrence(disposition: disposition).identity.ordinal
+              if source_contains_ordinal(source: partition.source, ordinal: ordinal) {
+                MembersConserved { member_count: n }
+              } else {
+                MemberForeignToObject { object_path: partition.object_path, ordinal: ordinal }
+              }
+            }
+            other => acc
+          },
+      )
+    other => lost_or_repeated
+  }
+}
+
+fn conservation_holds(partition: ObjectMemberPartition) -> Bool {
+  match conservation_verdict(partition: partition) {
+    MembersConserved { member_count } => true
+    other => false
+  }
+}
