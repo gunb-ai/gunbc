@@ -1,0 +1,75 @@
+module gunbc.scm.repository_save
+
+// WRITING A REPOSITORY TO A PATH, WITH THE ADJUDICATION AHEAD OF THE WRITE.
+//
+// The mirror of `gunbc.scm.repository_load`, and split from it for the reason
+// `extdeps.languages.json` splits `parse` from `emit`: reading and writing are two directions of one
+// grammar, not one operation with a mode flag. They fail differently and they are consumed
+// separately -- a caller that only loads must not link a writer.
+//
+// THIS MODULE EXISTS BECAUSE `encode_repository` CANNOT REFUSE. It returns a JsonValue, so its only
+// honest treatment of an unrepresentable repository is an empty reference that `decode_repository`
+// rejects later. `repository_envelope`'s own header already states the consequence and it is the
+// whole reason this module calls the CHECKED encoder: by the time an unrepresentable repository is
+// caught on load, the bytes are on disk, the write has already reported success, and the corruption
+// surfaces to WHOEVER LOADS IT rather than to whoever caused it. Lifting the adjudication ahead of
+// the write is what keeps the fault with its author.
+//
+// SO THE ORDER IS LOAD-BEARING, NOT INCIDENTAL: encode-checked, THEN write. There is no arm in this
+// type that reports a write for a repository that failed adjudication, because no such call is made
+// -- the refusal returns before `Filesystem.Write` is reached. That is the construction form of the
+// rule (DESIGN section 5), not a check that the write was skipped.
+//
+// THE THREE ARMS HAVE TWO DIFFERENT OWNERS, and the split is the same discipline the load side
+// carries:
+//
+//   save refused by codec  the CALLER's fact about the VALUE. This repository cannot be written by
+//                          any writer to any path: a commit root absent from the store, a checkout
+//                          selecting a commit that is not there. Changing the path does not help.
+//   file unwritable        the HOST's fact about the PATH. The repository is perfectly well-formed;
+//                          the directory is missing, or read-only, or the disk is full. Changing the
+//                          path may well help.
+//
+// Collapsing them would tell a caller to fix their repository when their directory is read-only, or
+// to check their permissions when their repository is internally inconsistent. Opposite remedies,
+// exactly as on the load side.
+//
+// EVERY ARM CARRIES THE PATH, for the same reason the load arms do: a refusal that does not say what
+// it was writing is not located.
+//
+// NOT `WriteOwnerOnly`. A repository document is not a secret, and narrowing its mode here would be
+// a policy fact about deployment smuggled into the persistence operation -- the layer inversion
+// DESIGN section 3 names. A caller with a confidentiality requirement states it; this module does
+// not decide it on their behalf.
+
+import std.types { String, Int }
+import extdeps.filesystem.filesystem_io
+import extdeps.languages.json.emit { serialize_json }
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  RepositoryEncodeOutcome,
+  RepositoryEncoded,
+  RepositoryEncodeRefused,
+  RepositoryEncodeRefusal,
+  encode_repository_checked,
+}
+
+type RepositorySave
+  = RepositorySaved { path: String, bytes_written: Int }
+  | RepositorySaveRefusedByCodec { path: String, cause: RepositoryEncodeRefusal }
+  | RepositoryFileUnwritable { path: String, error: String }
+
+fn save_repository(path: String, repo: RepositoryEnvelope) -> RepositorySave {
+  match encode_repository_checked(repo: repo) {
+    RepositoryEncodeRefused { cause: cause } =>
+      RepositorySaveRefusedByCodec { path: path, cause: cause }
+    RepositoryEncoded { value: v } => {
+      let write = Filesystem.Write(path: path, content: serialize_json(v: v))
+      if !write.success {
+        RepositoryFileUnwritable { path: path, error: write.error }
+      } else {
+        RepositorySaved { path: path, bytes_written: write.bytes_written }
+      }
+    }
+  }
+}
