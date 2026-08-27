@@ -277,6 +277,11 @@ fn seed_growth_admit_change(
       let unjustified = seed_growth_unjustified_additions(
         added: projected_declaration_refs(projections: projections)
       )
+      let origin_refused = origin_refusals(
+        bridges: bridges,
+        evidence: evidence,
+        added: projected_declaration_refs(projections: projections)
+      )
       if length(xs: unmappable) > 0 {
         SeedGrowthAdmissionRefused {
           unjustified_additions: unmappable,
@@ -287,9 +292,9 @@ fn seed_growth_admit_change(
           unjustified_additions: unjustified,
           detail: "hand Rust item(s) lack SeedGrowthJustification row"
         }
-      } else if length(xs: origin_refusals(bridges: bridges, evidence: evidence, added: projected_declaration_refs(projections: projections))) > 0 {
+      } else if length(xs: origin_refused) > 0 {
         SeedGrowthAdmissionRefused {
-          unjustified_additions: origin_refusals(bridges: bridges, evidence: evidence, added: projected_declaration_refs(projections: projections)),
+          unjustified_additions: origin_refused,
           detail: "added hand Rust item(s) did not establish that the capability they realize was modeled independently of them"
         }
       } else {
