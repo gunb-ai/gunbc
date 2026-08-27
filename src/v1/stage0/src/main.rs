@@ -267,17 +267,130 @@ fn parse_render_targets(target: &str) -> Vec<v1_compiler::v1_compiler_artifact::
     targets
 }
 
-fn write_output_files(output_dir: &str, result: &v1_compiler::v1_compiler_compile::PipelineResult) {
-    std::fs::create_dir_all(format!("{}/src", output_dir))
-        .unwrap_or_else(|e| panic!("failed to create output dir: {}", e));
+/// THE OUTPUT WRITER'S OWN REFUSAL VOCABULARY. Three causes, one per host effect the
+/// writer performs, each naming the path it failed on.
+///
+/// The parent-directory arm is the one that had no representation at all: it was
+/// `create_dir_all(parent).ok()`, and the very next statement panicked naming the WRITE, so
+/// a missing parent directory was reported as a write failure and the real cause was not
+/// recoverable from the message -- a silent arm feeding a misleading one, which is the
+/// absorbing failure arm DESIGN §5 forbids.
+///
+/// The form follows `Stage0CargoBinManifestParseRefusal` in `cli_run` (gunbc#9285), which is
+/// this seed's established shape for exactly this repair: a typed refusal with a `Display`,
+/// returned by `Result`, with the process exit taken at the command boundary.
+///
+/// THIS WIDENS main.rs's DECLARED DIVERGENCE FROM ITS EMITTED FORM, AND THE NEXT PERSON TO
+/// CLOSE THAT DIVERGENCE WILL DELETE THIS REPAIR UNLESS THEY READ THIS.
+///
+/// `v1.05_emit_rust` `emit_main_rs` still emits the OLD `write_output_files` verbatim -- the
+/// two `panic!`s and the `.ok()`. That is sanctioned today, not drift: `main.rs` is a
+/// `hand_maintained_stage0_filenames` member, suppressed from the derived generated
+/// population, and `gunbc.emit_diagnostic_observation` names it as this repository's one
+/// declared divergence from its emitted form. So nothing reds, and nothing will.
+///
+/// But `gunbc.plans.seed_debt_bundle_item_2` plans to wire the main-emit path, move `main.rs`
+/// into the generated population and regen. Executing that emits over this function and
+/// silently puts a panic back where this typed refusal now stands. Whoever does it owes
+/// `emit_main_rs` this same repair FIRST, or the regen is a safety regression wearing a
+/// green diff. Two bodies for one function currently carry OPPOSITE failure semantics; this
+/// one is authoritative until that wiring lands.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum OutputWriteRefusal {
+    OutputDirectoryNotCreated {
+        path: String,
+        cause: String,
+    },
+    ParentDirectoryNotCreated {
+        path: String,
+        file: String,
+        cause: String,
+    },
+    FileNotWritten {
+        path: String,
+        cause: String,
+    },
+}
+
+impl std::fmt::Display for OutputWriteRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // The wording deliberately avoids the `refused at {phase}` sentence the compile arms
+        // use. That sentence is the COMPILER disowning its own output; this one is the
+        // filesystem refusing to take output the compiler already stands behind.
+        write!(f, "gunbc compile: output write refused: ")?;
+        match self {
+            Self::OutputDirectoryNotCreated { path, cause } => {
+                write!(f, "could not create output directory {path}: {cause}")
+            }
+            Self::ParentDirectoryNotCreated { path, file, cause } => {
+                write!(
+                    f,
+                    "could not create parent directory {path} for {file}: {cause}"
+                )
+            }
+            Self::FileNotWritten { path, cause } => {
+                write!(f, "could not write {path}: {cause}")
+            }
+        }
+    }
+}
+
+impl OutputWriteRefusal {
+    /// THE BOUNDARY TRANSLATION, so no call site decides a status of its own.
+    ///
+    /// `1` already means "the compile refused, or the arguments were bad". Reusing it would
+    /// re-fuse at the exit status precisely what the typed refusal above splits at the
+    /// message -- and the exit status is what a machine consumer reads. So the writer gets
+    /// its own, `3`, chosen here and nowhere else.
+    fn verdict(self) -> Verdict {
+        Verdict {
+            status: 3,
+            message: Some(self.to_string()),
+        }
+    }
+}
+
+/// WRITING THE TREE IS A HOST EFFECT, NOT A COMPILE PHASE, AND IT NOW HAS A FAILURE CHANNEL.
+///
+/// This returned `()`. Its two reachable failures could therefore only be reported by
+/// `panic!` and its third not at all -- not a lazy choice over an available `Result`, but
+/// the only thing a unit return permits. The consequence at all three call sites was one
+/// observable outcome: exit 101, a Rust panic message, and no `compiled:` summary line,
+/// after a compile that had already SUCCEEDED through emit. Every consumer that reads this
+/// CLI then classifies it as a compile failure -- `gunbc.emit_diagnostic_observation` reads
+/// the absence of that line as "the compile refused and wrote no tree". "Your program is
+/// wrong" and "this disk would not take the output" are different states with opposite
+/// remedies, and the unit return is exactly what made them one symbol.
+fn write_output_files(
+    output_dir: &str,
+    result: &v1_compiler::v1_compiler_compile::PipelineResult,
+) -> Result<(), OutputWriteRefusal> {
+    let src_dir = format!("{}/src", output_dir);
+    if let Err(e) = std::fs::create_dir_all(&src_dir) {
+        return Err(OutputWriteRefusal::OutputDirectoryNotCreated {
+            path: src_dir,
+            cause: e.to_string(),
+        });
+    }
     for file in result.files.iter() {
         let out_path = format!("{}/{}", output_dir, file.path);
         if let Some(parent) = std::path::Path::new(&out_path).parent() {
-            std::fs::create_dir_all(parent).ok();
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                return Err(OutputWriteRefusal::ParentDirectoryNotCreated {
+                    path: parent.display().to_string(),
+                    file: out_path,
+                    cause: e.to_string(),
+                });
+            }
         }
-        std::fs::write(&out_path, &*file.content)
-            .unwrap_or_else(|e| panic!("failed to write {}: {}", file.path, e));
+        if let Err(e) = std::fs::write(&out_path, &*file.content) {
+            return Err(OutputWriteRefusal::FileNotWritten {
+                path: out_path,
+                cause: e.to_string(),
+            });
+        }
     }
+    Ok(())
 }
 
 fn main() {
@@ -406,7 +519,10 @@ fn main() {
                             } else {
                                 output_dir.clone()
                             };
-                            write_output_files(&target_dir, &emission.result);
+                            if let Err(refusal) = write_output_files(&target_dir, &emission.result)
+                            {
+                                refusal.verdict().apply();
+                            }
                             if multi_target {
                                 eprintln!(
                                     "compiled[{}]: {} files emitted, {} diagnostics",
@@ -525,7 +641,9 @@ fn main() {
                     eprintln!("{message}");
                     std::process::exit(1);
                 }
-                write_output_files(&output_dir, &result);
+                if let Err(refusal) = write_output_files(&output_dir, &result) {
+                    refusal.verdict().apply();
+                }
                 eprintln!(
                     "compiled: {} files emitted, {} diagnostics",
                     result.files.len(),
@@ -556,7 +674,9 @@ fn main() {
                         std::process::exit(1);
                     }
                     let target_output_dir = format!("{}/{}", output_dir, name);
-                    write_output_files(&target_output_dir, &result);
+                    if let Err(refusal) = write_output_files(&target_output_dir, &result) {
+                        refusal.verdict().apply();
+                    }
                     eprintln!(
                         "compiled[{}]: {} files emitted, {} diagnostics",
                         name,
@@ -976,6 +1096,12 @@ struct Verdict {
 impl Verdict {
     /// The ONE place a verdict becomes a process status. Nothing else in this file calls
     /// `std::process::exit` for a verb outcome.
+    ///
+    /// `OutputWriteRefusal::verdict` is the second producer, and it is not a verb outcome:
+    /// it is the output writer's refusal, which before this change had no channel at all.
+    /// The carrier is reused rather than a second status-plus-message pair authored beside
+    /// it, so the writer's status is decided where the writer decides to refuse and nowhere
+    /// else.
     fn apply(self) -> ! {
         if let Some(message) = self.message {
             eprintln!("{message}");
@@ -1151,6 +1277,79 @@ fn exit_status_for(class: cli_run::ExitClass, function: &str) -> (i32, Option<St
 #[cfg(test)]
 mod exit_status_tests {
     use super::*;
+
+    /// THE DISCRIMINATING RED FOR THE WRITER/COMPILER CONFLATION.
+    ///
+    /// The claim under test is not "a refusal type exists" -- that probe cannot fail for the
+    /// reason that matters. It is that a writer failure and a compiler refusal are
+    /// DISTINGUISHABLE AT THE EXIT STATUS, which is the thing that was impossible before:
+    /// the writer had no failure channel, so its only outcome was an unwind at 101 with no
+    /// summary line, which every consumer reads as a failed compile.
+    ///
+    /// The edits that make this red, named rather than assumed: changing the status in
+    /// `OutputWriteRefusal::verdict` to 1 (re-fusing the two states at the status a compile
+    /// refusal already exits with), or to 0 (a writer refusal reporting success). Restoring
+    /// the `panic!` makes it fail to compile instead, which is the stronger outcome.
+    #[test]
+    fn a_writer_refusal_does_not_exit_as_a_compile_refusal() {
+        // The status a compile refusal exits with, at every compile arm in `main`.
+        const COMPILE_REFUSAL_STATUS: i32 = 1;
+        for refusal in [
+            OutputWriteRefusal::OutputDirectoryNotCreated {
+                path: "/proc/nope/src".to_string(),
+                cause: "Not a directory".to_string(),
+            },
+            OutputWriteRefusal::ParentDirectoryNotCreated {
+                path: "/proc/nope".to_string(),
+                file: "/proc/nope/src/a.rs".to_string(),
+                cause: "Not a directory".to_string(),
+            },
+            OutputWriteRefusal::FileNotWritten {
+                path: "/proc/nope/src/a.rs".to_string(),
+                cause: "Permission denied".to_string(),
+            },
+        ] {
+            let verdict = refusal.verdict();
+            assert_ne!(
+                verdict.status, COMPILE_REFUSAL_STATUS,
+                "a writer refusal must not exit as a compile refusal"
+            );
+            assert_ne!(verdict.status, 0, "a writer refusal must never exit 0");
+        }
+    }
+
+    /// THE THREE CAUSES STAY THREE. The parent-directory arm is here specifically because it
+    /// had no representation at all -- `.ok()` discarded it and the write arm then reported
+    /// its own name for the failure. This goes red if any arm is collapsed into another's
+    /// wording, which is the state the repair removed.
+    #[test]
+    fn each_writer_cause_names_itself_and_its_path() {
+        assert_eq!(
+            OutputWriteRefusal::OutputDirectoryNotCreated {
+                path: "/out/src".to_string(),
+                cause: "Not a directory".to_string(),
+            }
+            .to_string(),
+            "gunbc compile: output write refused: could not create output directory /out/src: Not a directory"
+        );
+        assert_eq!(
+            OutputWriteRefusal::ParentDirectoryNotCreated {
+                path: "/out/src/deep".to_string(),
+                file: "/out/src/deep/a.rs".to_string(),
+                cause: "Not a directory".to_string(),
+            }
+            .to_string(),
+            "gunbc compile: output write refused: could not create parent directory /out/src/deep for /out/src/deep/a.rs: Not a directory"
+        );
+        assert_eq!(
+            OutputWriteRefusal::FileNotWritten {
+                path: "/out/src/a.rs".to_string(),
+                cause: "Permission denied".to_string(),
+            }
+            .to_string(),
+            "gunbc compile: output write refused: could not write /out/src/a.rs: Permission denied"
+        );
+    }
 
     #[test]
     fn success_is_zero() {
