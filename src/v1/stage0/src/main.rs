@@ -269,6 +269,22 @@ fn parse_render_targets(target: &str) -> Vec<v1_compiler::v1_compiler_artifact::
 /// The form follows `Stage0CargoBinManifestParseRefusal` in `cli_run` (gunbc#9285), which is
 /// this seed's established shape for exactly this repair: a typed refusal with a `Display`,
 /// returned by `Result`, with the process exit taken at the command boundary.
+///
+/// THIS WIDENS main.rs's DECLARED DIVERGENCE FROM ITS EMITTED FORM, AND THE NEXT PERSON TO
+/// CLOSE THAT DIVERGENCE WILL DELETE THIS REPAIR UNLESS THEY READ THIS.
+///
+/// `v1.05_emit_rust` `emit_main_rs` still emits the OLD `write_output_files` verbatim -- the
+/// two `panic!`s and the `.ok()`. That is sanctioned today, not drift: `main.rs` is a
+/// `hand_maintained_stage0_filenames` member, suppressed from the derived generated
+/// population, and `gunbc.emit_diagnostic_observation` names it as this repository's one
+/// declared divergence from its emitted form. So nothing reds, and nothing will.
+///
+/// But `gunbc.plans.seed_debt_bundle_item_2` plans to wire the main-emit path, move `main.rs`
+/// into the generated population and regen. Executing that emits over this function and
+/// silently puts a panic back where this typed refusal now stands. Whoever does it owes
+/// `emit_main_rs` this same repair FIRST, or the regen is a safety regression wearing a
+/// green diff. Two bodies for one function currently carry OPPOSITE failure semantics; this
+/// one is authoritative until that wiring lands.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum OutputWriteRefusal {
     OutputDirectoryNotCreated {
