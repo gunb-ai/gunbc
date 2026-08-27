@@ -69,9 +69,22 @@ data width_is_a_minimum_over_axes_note: String = "A HOST'S WIDTH AT ALLOCATION I
 
 data host_memory_admitted_width_moved_on_measurement_note: String = "THESE FOUR NUMBERS MOVED BECAUSE THE MACHINES DID, and the arithmetic that produces them is unchanged. Each is the largest slot count gunbc.ci_runner_placement's conservation wall passes for that host at the 16 GiB slot, charging that host's fixed overhead, its sessions slice, and the OOMD actuation floor against its OS-USABLE RAM. The 2026-08-22 DIMM upgrade and the /proc/meminfo reads that followed changed the usable-RAM input on three of the four hosts, so the outputs moved with it:\n\n  srv1  5 -> 27   (usable 125 GiB bound -> 502.24 GiB measured 2026-08-23)\n  srv2  5 ->  5   (bound 134217728000 -> measured 134314512384; the upgrade failed training here and was reverted, so the population is unchanged and the width with it)\n  srv3  6 -> 29   (bound -> 502.25 GiB measured 2026-08-22)\n  srv4  6 -> 29   (bound -> 502.25 GiB measured 2026-08-22)\n\nTWENTY-NINE IS NOT A COMMITMENT AND MUST NOT BE READ AS ONE. This function answers what MEMORY admits and nothing else; the committed width is gunbc_runner_slots_per_host, which takes the minimum over memory, CPU and disk and lands on 21 for srv1/srv3/srv4 because 128 cores at 6 per slot is the binding axis now. The CPU axis landed in the SAME change as these literals for exactly that reason -- with no CPU term the minimum degenerates to memory alone and 29 would commit 29. Neither half of that pair is safe to carry without the other.\n\nTHESE ARE STILL AUTHORED LITERALS AND THAT IS STILL DEBT. test.claim.host_allocation_conservation derived_width_reproduces_every_authored_literal re-runs the arithmetic and joins it to each number here, which is validation standing where construction was available (DESIGN 5): the wall concedes the bad state is writable and catches it afterwards. The construction fix is for this function to CALL that derivation rather than restate its result, and it is blocked on an import cycle -- gunbc.ci_floor_measurement imports this module for the slot shape, so this module cannot import the measurement. Breaking it means moving the slot shape to its own authority, which is a separate change across roughly twenty-five files. Correcting these literals does NOT dissolve the second representation; it leaves a corrected copy where an uncorrected one stood."
 
+// srv1 MEMORY-ADMITS 25, NOT 27, ONCE ITS SESSION RESERVATION IS CHARGED (2026-08-27). The 27 was
+// consistent with the ungrounded 20 GiB fleet-wide session figure it was computed against; that
+// figure is deleted and srv1 now carries an evidence-backed 52 GiB allowance, which removes three
+// slots from the derivation (28 uncharged, 25 charged). This row is not a target and never was --
+// gunbc_runner_slot_width_ruling_note states both numbers are "the largest width the wall will
+// pass" -- so leaving 27 beside a wall that passes 25 is the second-representation defect this
+// module exists to prevent, and test.claim.host_allocation_conservation
+// derived_width_reproduces_every_authored_literal is the probe that caught it by recomputing the
+// derivation this literal claims to be.
+//
+// NO COMMITTED WIDTH MOVES. gunbc_runner_slots_per_host takes the minimum over the memory, CPU and
+// disk axes, and srv1's CPU axis binds at 21; min(27,21) and min(25,21) are both 21. The correction
+// restores agreement between the literal and the arithmetic without changing what any host commits.
 fn host_memory_admitted_width(host: HostIdentity) -> Int {
   if (host as String) == (operator_host_srv1 as String) {
-    27
+    25
   } else if (host as String) == (operator_host_srv2 as String) {
     5
   } else if (host as String) == (operator_host_srv3 as String) {

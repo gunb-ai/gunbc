@@ -54,14 +54,23 @@ test fn witness_converge_cli_srv3_routes_to_slice1_not_realize_frontier() -> Boo
     && !converge_cli_routes_to_slice1(host: "srv2")
 }
 
-// THE CAUSE THIS ASSERTS CHANGED WITH THE ARM THAT PRODUCED IT, and the assertion is anchored on
-// the authority rather than on a module name typed as a substring. srv2 used to refuse because
-// gunbc.host_converge_realize found an unimplemented knob target and said so in prose containing
-// its own module name; it now refuses because the converge-side in-process apply is withdrawn
-// outright. Both are fail-closed refusals with applied == 0, and the new one is strictly stronger
-// — it does not depend on which knob targets happen to be unmodelled, so a future implemented
-// target cannot quietly turn this green into an actuation.
-test fn witness_converge_cli_run_srv2_fails_closed_on_knob_frontier() -> Bool {
+// THE CAUSE THIS ASSERTS HAS NOW CHANGED THREE TIMES, AND THE ROW IS KEPT BECAUSE THE INVARIANT
+// UNDER IT HAS NOT. srv2 first refused because gunbc.host_converge_realize found an unimplemented
+// knob target and said so in prose containing its own module name; then because the converge-side
+// in-process apply was withdrawn outright; and now because its runner deployment refuses at the
+// PLAN, so no converge target is built for it at all. Every version is a fail-closed refusal with
+// applied == 0, and each has been strictly stronger than the last: the first depended on which knob
+// targets happened to be unmodelled, the second on the apply path, and this one on whether the
+// host's session reservation could be established.
+//
+// WHAT THIS ROW EXISTS TO CATCH IS THE STATE IT WOULD HAVE SILENTLY BECOME. When the plan moved to
+// per-host refusal, srv2 stopped appearing among the derived converge targets, and the CLI's Absent
+// arm reported it as UnknownHost -- an enrolled, known, correctly-refused host rendered as an
+// identity outside the fleet. That is the conflation this module already split once (see the
+// applicability note in gunbc.fleet_converge_cli), reintroduced one host over. So the assertion
+// pins the CAUSE, not just the refusal: a row asserting only "srv2 fails closed with applied == 0"
+// would have passed against exactly the defect being removed, because UnknownHost fails closed too.
+test fn witness_converge_cli_run_srv2_is_enrolled_but_deployment_refused() -> Bool {
   let host_knobs = converge_cli_run_host_knobs(host: "srv2")
   let r = converge_cli_run(host: "srv2")
   host_knobs.host == "srv2"
@@ -72,24 +81,36 @@ test fn witness_converge_cli_run_srv2_fails_closed_on_knob_frontier() -> Bool {
     && match host_knobs.reason {
       Present { value: cause } =>
         match cause {
-          KnobFrontier { reason: why } => string_contains(s: why, pattern: converge_in_process_apply_withdrawn_reason)
+          ConvergeTargetMissingForDerivedHost { host: _ } => false
+          HostDeploymentRefused { host: h, cause: why } =>
+            h == "srv2"
+              && string_contains(s: refusal_cause_text(c: why), pattern: "session_reservation_unestablished")
+          KnobFrontier { reason: _ } => false
           PolicyUnsound { reason: _ } => false
           UnknownHost { host: _ } => false
           SparkPreEnrollment { host: _ } => false
           SparkManagedAccessUnmeasured { host: _, dissolves_on: _ } => false
           ComputeInventoryAbsent { host: _ } => false
+          ConvergeTargetMissingForDerivedHost { host: _ } => false
+          HostDeploymentRefused { host: _, cause: _ } => false
         }
       _ => false
     }
     && match r.reason {
       Present { value: cause } =>
         match cause {
-          KnobFrontier { reason: why } => string_contains(s: why, pattern: converge_in_process_apply_withdrawn_reason)
+          ConvergeTargetMissingForDerivedHost { host: _ } => false
+          HostDeploymentRefused { host: h, cause: why } =>
+            h == "srv2"
+              && string_contains(s: refusal_cause_text(c: why), pattern: "session_reservation_unestablished")
+          KnobFrontier { reason: _ } => false
           PolicyUnsound { reason: _ } => false
           UnknownHost { host: _ } => false
           SparkPreEnrollment { host: _ } => false
           SparkManagedAccessUnmeasured { host: _, dissolves_on: _ } => false
           ComputeInventoryAbsent { host: _ } => false
+          ConvergeTargetMissingForDerivedHost { host: _ } => false
+          HostDeploymentRefused { host: _, cause: _ } => false
         }
       _ => false
     }
@@ -111,6 +132,8 @@ test fn witness_converge_cli_run_unknown_host_refuses() -> Bool {
           SparkPreEnrollment { host: _ } => false
           SparkManagedAccessUnmeasured { host: _, dissolves_on: _ } => false
           ComputeInventoryAbsent { host: _ } => false
+          ConvergeTargetMissingForDerivedHost { host: _ } => false
+          HostDeploymentRefused { host: _, cause: _ } => false
         }
       _ => false
     }
@@ -123,6 +146,8 @@ test fn witness_converge_cli_unknown_host_and_compute_inventory_absent_are_disti
     UnknownHost { host: _ } =>
       match inventory_absent {
         ComputeInventoryAbsent { host: _ } => true
+        ConvergeTargetMissingForDerivedHost { host: _ } => false
+        HostDeploymentRefused { host: _, cause: _ } => true
         UnknownHost { host: _ } => false
         PolicyUnsound { reason: _ } => false
         KnobFrontier { reason: _ } => false
@@ -130,6 +155,8 @@ test fn witness_converge_cli_unknown_host_and_compute_inventory_absent_are_disti
         SparkManagedAccessUnmeasured { host: _, dissolves_on: _ } => false
       }
     ComputeInventoryAbsent { host: _ } => false
+    ConvergeTargetMissingForDerivedHost { host: _ } => false
+    HostDeploymentRefused { host: _, cause: _ } => false
     PolicyUnsound { reason: _ } => false
     KnobFrontier { reason: _ } => false
     SparkPreEnrollment { host: _ } => false
@@ -151,7 +178,8 @@ test fn witness_converge_cli_refusal_causes_discriminate() -> Bool {
       match unknown.reason {
         Present { value: unknown_cause } =>
           match srv2_cause {
-            KnobFrontier { reason: _ } =>
+            ConvergeTargetMissingForDerivedHost { host: _ } => false
+            HostDeploymentRefused { host: _, cause: _ } =>
               match unknown_cause {
                 UnknownHost { host: _ } => true
                 PolicyUnsound { reason: _ } => false
@@ -159,12 +187,15 @@ test fn witness_converge_cli_refusal_causes_discriminate() -> Bool {
                 SparkPreEnrollment { host: _ } => false
                 SparkManagedAccessUnmeasured { host: _, dissolves_on: _ } => false
                 ComputeInventoryAbsent { host: _ } => false
+                ConvergeTargetMissingForDerivedHost { host: _ } => false
+                HostDeploymentRefused { host: _, cause: _ } => false
               }
             PolicyUnsound { reason: _ } => false
             UnknownHost { host: _ } => false
             SparkPreEnrollment { host: _ } => false
             SparkManagedAccessUnmeasured { host: _, dissolves_on: _ } => false
             ComputeInventoryAbsent { host: _ } => false
+            KnobFrontier { reason: _ } => false
           }
         _ => false
       }

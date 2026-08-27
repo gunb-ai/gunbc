@@ -14,8 +14,8 @@ import gunbc.runner_unit {
 import gunbc.package_delivery { codex_runtime_version_identity_marker }
 import gunbc.ci_runner_placement {
   RunnerDeploymentPlan,
-  PlanDerived,
-  PlanUnsound,
+  HostRunnerDeploymentDerived, HostRunnerDeploymentRefused,
+  RunnerDeploymentPlan,
   RunnerHostDeployment,
   runner_deployment_plan,
   workload_class_cpu_weight,
@@ -23,14 +23,12 @@ import gunbc.ci_runner_placement {
   BatchLatencyTolerant,
   InteractiveLatencySensitive,
 }
-import gunbc.ci_floor_measurement {
-  SessionReservationMode,
-  Regime2AggregateOomd,
-  Regime1WorstCase,
-  SessionReservationModeUnset,
-  SessionAggregateMeasured,
-  SessionAggregateUnmeasured,
-  gunbc_ci_session_reservation_mode,
+import gunbc.session_admission_policy {
+  gunbc_session_admission_policy, session_admission_oomd_ceiling,
+}
+import gunbc.session_reservation_policy {
+  ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished,
+  session_reservation_bytes,
 }
 import gunbc.ci_fleet { fleet_intent_offers }
 import gunbc.fleet_intent_network { operator_host_srv3 }
@@ -640,18 +638,33 @@ fn session_host_knobs(slice_max: ByteSize, per_session: ByteSize) -> List<Conver
   ]
 }
 
-fn session_knobs_by_host(mode: SessionReservationMode) -> List<ConvergeKnob>? {
-  match mode {
-    SessionReservationModeUnset => none
-    Regime1WorstCase { point: _ } => none
-    Regime2AggregateOomd { oomd_eviction_ceiling: ceiling, session_concurrency: _, aggregate_reservation: agg } =>
-      match agg {
-        SessionAggregateUnmeasured => none
-        SessionAggregateMeasured { bytes: agg_bytes } =>
-          Present { value: session_host_knobs(
-            slice_max: agg_bytes,
-            per_session: ceiling
-          ) }
+// ONE KNOB LIST WAS BEING WRITTEN TO EVERY HOST, AND THAT IS THE SHARP END OF THE AUTHORITY FORK.
+// The fleet-wide Regime-2 row carried a single 21474836480-byte aggregate, and this function handed
+// it to map(hosts, ...) below -- so a converge would have set sessions.slice MemoryMax to 20 GiB on
+// every host in the plan. srv1's live sessions.slice cap is 137438953472 and its slice has already
+// peaked at 55216033792, so applying the projection would have driven the cap to roughly 40% of an
+// already-observed peak on a host running 18 sessions. The projection was never applied, which is
+// why this was latent rather than an incident.
+//
+// The knobs are now derived per host from the reservation that host actually owes.
+//
+// THE TWO EMPTY ARMS DECLINE TO WRITE A CAP THEY CANNOT GROUND, and that is not the silent widen
+// DESIGN forbids: they leave the host's existing configuration untouched rather than substituting a
+// permissive one, and the refusal is already loud one layer up. A host whose reservation is
+// unestablished makes host_session_slice_resolution return SessionSliceUnsized, which makes that
+// host refuse in host_deployment_standing -- so the host never reaches a converge target at all and
+// these arms do not decide its fate. They remain because session_knobs_for is a total function that
+// a caller could reach with any host, and because a host whose reservation is unknown must not be
+// handed a guessed slice_max under any caller. Reachable in principle, quiet on the plan path.
+fn session_knobs_for(host: HostIdentity) -> List<ConvergeKnob> {
+  match session_reservation_bytes(host: host) {
+    ReservationBytesNotApplicable => []
+    ReservationBytesUnestablished { cause: _ } => []
+    ReservationBytes { bytes: agg_bytes } =>
+      match session_admission_oomd_ceiling(p: gunbc_session_admission_policy) {
+        Absent => []
+        Present { value: ceiling } =>
+          session_host_knobs(slice_max: agg_bytes, per_session: ceiling)
       }
   }
 }
@@ -681,22 +694,24 @@ fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>) 
   }
 }
 
-fn fleet_converge_policy_from(plan: RunnerDeploymentPlan, mode: SessionReservationMode) -> ConvergePolicy {
-  match plan {
-    PlanUnsound { reason: reason } =>
-      ConvergePolicyUnsound { reason: concat("runner deployment unsound: ", reason) }
-    PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } => {
-      let session_knobs = match session_knobs_by_host(mode: mode) {
-        Present { value: ks } => ks
-        Absent => []
-      }
-      ConvergePolicyDerived {
-        hosts: map(hosts, h => host_converge_of(h: h, session_knobs: session_knobs)),
-      }
-    }
+// CONVERGENCE IS A HOST-TARGETED TRANSACTION, so it selects the hosts that derived rather than
+// refusing the fleet because one host did not. The shape this replaces widened a fleet-level
+// PlanUnsound into ConvergePolicyUnsound before any host was chosen -- so srv2's unestablished
+// reservation would have blocked converging srv1, srv3 and srv4, none of which depend on it.
+//
+// A refused host contributes NO converge target, which is the point: it is not converged, and it is
+// not silently converged with a guessed size either. The refused roster stays readable through
+// fleet_deployment_completion for a consumer that needs to know the fleet is incomplete.
+fn fleet_converge_policy_from(plan: RunnerDeploymentPlan) -> ConvergePolicy {
+  ConvergePolicyDerived {
+    hosts: fold(plan.hosts, init: [], f: (acc, st) => match st {
+      HostRunnerDeploymentDerived { deployment: h } =>
+        concat(acc, [host_converge_of(h: h, session_knobs: session_knobs_for(host: h.identity))])
+      HostRunnerDeploymentRefused { refusal: _ } => acc
+    }),
   }
 }
 
 fn fleet_converge_policy() -> ConvergePolicy {
-  fleet_converge_policy_from(plan: runner_deployment_plan(), mode: gunbc_ci_session_reservation_mode)
+  fleet_converge_policy_from(plan: runner_deployment_plan())
 }
