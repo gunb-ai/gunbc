@@ -1,0 +1,244 @@
+module test.claim.run_disposition_witness_test
+
+import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.github.actions_runs {
+  WorkflowRunRecord,
+  RunSettlementInFlight,
+  run_conclusion_from_wire,
+  run_conclusion_wire,
+  run_settled
+}
+import gunbc.run_disposition {
+  ReplacementUnobserved,
+  ReplacementAbsent,
+  ReplacementObserved,
+  DispositionSuperseded,
+  DispositionExternallyCancelled,
+  DispositionCancelAttributionUnestablished,
+  DispositionVerdictGreen,
+  DispositionVerdictRed,
+  DispositionInFlight,
+  DispositionOtherSettlement,
+  classify_run,
+  disposition_name,
+  disposition_superseded_name,
+  disposition_externally_cancelled_name,
+  disposition_attribution_unestablished_name,
+  disposition_verdict_green_name,
+  disposition_verdict_red_name,
+  disposition_in_flight_name,
+  disposition_other_settlement_name,
+  disposition_reached_verdict,
+  disposition_lost_a_verdict,
+  verdict_loss_judgement_name,
+  verdict_lost_name,
+  verdict_not_lost_name,
+  verdict_loss_unestablished_name,
+  disposition_in_verdict_bearing_denominator,
+  supersession_available_for_event,
+  classifier_rule_rows
+}
+import gunbc.witness_floor_workflow {
+  witness_floor_cancel_in_progress_expression,
+  witness_floor_cancel_in_progress_event
+}
+
+// THESE WITNESSES RUN. The subject is a pure classification over authored fixture records -- no
+// repository read, no host effect, no network -- so the disposition is SubstrateInputsOnly and the
+// floor folds them rather than declining them. That matters here specifically: the defect this
+// module addresses was a measurement nobody could re-derive, and answering it with witnesses that
+// are discovered, counted, and never executed would reproduce the failure one level up.
+data witness_live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn cancelled_run(event: String) -> WorkflowRunRecord {
+  WorkflowRunRecord {
+    run_id: 33037610090,
+    event: event,
+    head_branch: "main",
+    status: "completed",
+    conclusion: "cancelled",
+    created_at_epoch_s: 1000,
+    run_started_at_epoch_s: 1010,
+    updated_at_epoch_s: 4200
+  }
+}
+
+// THE CENTRAL RED, AND THE ONE THAT WOULD CATCH THE SIMPLIFICATION MOST LIKELY TO BE MADE.
+//
+// Both populations produce a replacement run, so a classifier keyed on PRESENCE cannot separate
+// them and would report both as superseded. The two disagree in DIRECTION: a supersession's
+// replacement precedes the cancellation, a retry's follows it. This asserts both sides of the sign
+// against records identical in every other field, so it fails the moment the sign test is dropped,
+// loosened to presence, or given the wrong comparison direction.
+test fn w_RED_a_replacement_created_after_the_cancel_is_never_superseded() -> Bool {
+  let pr = cancelled_run(event: witness_floor_cancel_in_progress_event)
+  let superseded = classify_run(record: pr, replacement: ReplacementObserved { lag_seconds: 27 })
+  let retried = classify_run(record: pr, replacement: ReplacementObserved { lag_seconds: 0 - 27 })
+  disposition_name(disposition: superseded) == disposition_superseded_name
+    && disposition_name(disposition: retried) == disposition_externally_cancelled_name
+    && verdict_loss_judgement_name(judgement: disposition_lost_a_verdict(disposition: superseded)) == verdict_not_lost_name
+    && verdict_loss_judgement_name(judgement: disposition_lost_a_verdict(disposition: retried)) == verdict_lost_name
+}
+
+// AVAILABILITY DOMINATES THE OBSERVATION, WHICH IS A STRICTLY STRONGER STATEMENT THAN ABSENCE.
+//
+// The two main-branch specimens in the measured window are cancelled push runs. A push cannot be
+// superseded, because witnesses.yml enables cancel-in-progress only for pull_request -- so those
+// runs are not merely unexplained, they are structurally incapable of the benign explanation. This
+// asserts that ordering by handing a push run the MOST benign-looking evidence available (a
+// positive-lag replacement) and requiring it to still classify external.
+test fn w_RED_a_push_cancel_is_external_even_with_a_prior_replacement() -> Bool {
+  let push = cancelled_run(event: "push")
+  let d = classify_run(record: push, replacement: ReplacementObserved { lag_seconds: 27 })
+  disposition_name(disposition: d) == disposition_externally_cancelled_name
+    && supersession_available_for_event(event: "push") == false
+    && supersession_available_for_event(event: witness_floor_cancel_in_progress_event) == true
+}
+
+// THE EMPTY-OBSERVATION NARROW: NOT LOOKING IS NOT THE SAME AS FINDING NOTHING.
+//
+// Reading "I could not observe a replacement" as "there was no replacement" would silently
+// reclassify benign supersessions as evictions, so a consumer counting evictions would count the
+// runs it failed to look at. The unestablished arm must also stay OUT of the lost-verdict count --
+// an unknown attribution is not evidence of a loss -- while remaining IN the verdict-bearing
+// denominator, because the run genuinely did not report on its subject.
+test fn w_RED_an_unobserved_replacement_is_not_an_absent_one() -> Bool {
+  let pr = cancelled_run(event: witness_floor_cancel_in_progress_event)
+  let unobserved = classify_run(record: pr, replacement: ReplacementUnobserved { cause: "run list truncated" })
+  let absent = classify_run(record: pr, replacement: ReplacementAbsent)
+  disposition_name(disposition: unobserved) == disposition_attribution_unestablished_name
+    && disposition_name(disposition: absent) == disposition_externally_cancelled_name
+    && verdict_loss_judgement_name(judgement: disposition_lost_a_verdict(disposition: unobserved)) == verdict_loss_unestablished_name
+    && verdict_loss_judgement_name(judgement: disposition_lost_a_verdict(disposition: absent)) == verdict_lost_name
+    && disposition_in_verdict_bearing_denominator(disposition: unobserved) == true
+}
+
+// THE DENOMINATOR IS THE WHOLE ARGUMENT, so it is asserted rather than described.
+//
+// A lawful supersession must be excluded: including it measures how often authors push twice, not
+// how often the fleet answers. That single exclusion is the difference between the 30.8% raw
+// success share and the 59.8% verdict-bearing one, and quoting the first as a fleet health figure
+// is what nearly justified a capacity ask.
+test fn w_RED_supersessions_leave_the_verdict_bearing_denominator() -> Bool {
+  let pr = cancelled_run(event: witness_floor_cancel_in_progress_event)
+  let superseded = classify_run(record: pr, replacement: ReplacementObserved { lag_seconds: 27 })
+  let external = classify_run(record: pr, replacement: ReplacementAbsent)
+  disposition_in_verdict_bearing_denominator(disposition: superseded) == false
+    && disposition_in_verdict_bearing_denominator(disposition: external) == true
+    && disposition_reached_verdict(disposition: superseded) == false
+    && disposition_reached_verdict(disposition: external) == false
+}
+
+// A SUPERSEDED RUN REACHED NO VERDICT AND LOST NOTHING. Those are two different questions and the
+// count that started this merged them. Green and red both reach a verdict and neither loses one.
+test fn w_RED_reaching_a_verdict_and_losing_one_are_two_questions() -> Bool {
+  let green = classify_run(
+    record: WorkflowRunRecord {
+      run_id: 1, event: witness_floor_cancel_in_progress_event, head_branch: "b",
+      status: "completed", conclusion: "success",
+      created_at_epoch_s: 1, run_started_at_epoch_s: 2, updated_at_epoch_s: 3
+    },
+    replacement: ReplacementAbsent
+  )
+  let red = classify_run(
+    record: WorkflowRunRecord {
+      run_id: 2, event: witness_floor_cancel_in_progress_event, head_branch: "b",
+      status: "completed", conclusion: "failure",
+      created_at_epoch_s: 1, run_started_at_epoch_s: 2, updated_at_epoch_s: 3
+    },
+    replacement: ReplacementAbsent
+  )
+  disposition_name(disposition: green) == disposition_verdict_green_name
+    && disposition_name(disposition: red) == disposition_verdict_red_name
+    && disposition_reached_verdict(disposition: green) == true
+    && disposition_reached_verdict(disposition: red) == true
+    && verdict_loss_judgement_name(judgement: disposition_lost_a_verdict(disposition: green)) == verdict_not_lost_name
+    && verdict_loss_judgement_name(judgement: disposition_lost_a_verdict(disposition: red)) == verdict_not_lost_name
+}
+
+// AN IN-FLIGHT RUN IS NOT A CANCELLED ONE, and it is excluded from every denominator. A trailing
+// window that classified in-flight runs would oversample cancels, because cancels conclude in
+// seconds and successes take half an hour -- the deterministic artifact that produced an 84%
+// reading three times in one day.
+test fn w_RED_an_in_flight_run_is_classified_by_status_not_conclusion() -> Bool {
+  let running = classify_run(
+    record: WorkflowRunRecord {
+      run_id: 3, event: witness_floor_cancel_in_progress_event, head_branch: "b",
+      status: "in_progress", conclusion: "",
+      created_at_epoch_s: 1, run_started_at_epoch_s: 2, updated_at_epoch_s: 3
+    },
+    replacement: ReplacementAbsent
+  )
+  disposition_name(disposition: running) == disposition_in_flight_name
+    && disposition_in_verdict_bearing_denominator(disposition: running) == false
+    && disposition_reached_verdict(disposition: running) == false
+    && run_settled(settlement: RunSettlementInFlight) == false
+}
+
+// AN UNRECOGNISED UPSTREAM CONCLUSION KEEPS ITS OWN SPELLING RATHER THAN INHERITING A NEIGHBOUR'S
+// REMEDY. The conclusion vocabulary is closed against what GitHub documents today; a value added
+// later must surface as itself, because silently folding it into `other` with a lost name is how a
+// new upstream state becomes invisible.
+test fn w_RED_an_unknown_conclusion_survives_as_its_own_spelling() -> Bool {
+  let d = classify_run(
+    record: WorkflowRunRecord {
+      run_id: 4, event: witness_floor_cancel_in_progress_event, head_branch: "b",
+      status: "completed", conclusion: "evicted",
+      created_at_epoch_s: 1, run_started_at_epoch_s: 2, updated_at_epoch_s: 3
+    },
+    replacement: ReplacementAbsent
+  )
+  disposition_name(disposition: d) == disposition_other_settlement_name
+    && run_conclusion_wire(conclusion: run_conclusion_from_wire(spelling: "evicted")) == "evicted"
+    && run_conclusion_wire(conclusion: run_conclusion_from_wire(spelling: "timed_out")) == "timed_out"
+}
+
+// THE CLASSIFIER IS BOUND TO THE WORKFLOW THAT ACTUALLY EMITS THE GUARD, not to a restatement of
+// it. This is the only mechanical link available between a GitHub expression string and the event
+// vocabulary it names: the event the classifier keys on must OCCUR in the expression the workflow
+// emits. Editing the workflow to cancel on a different event, without revisiting the classifier,
+// reds here instead of leaving the classifier quietly answering for a configuration that is gone.
+test fn w_RED_the_classifier_event_occurs_in_the_emitted_concurrency_expression() -> Bool {
+  string_contains(s: witness_floor_cancel_in_progress_expression, pattern: witness_floor_cancel_in_progress_event)
+    && string_contains(s: witness_floor_cancel_in_progress_expression, pattern: "github.event_name")
+}
+
+// THE RULE SHIPS WITH THE NUMBERS. A count whose partition rule is not printed beside it is the
+// artifact that produced this whole episode, so the report's rule rows are asserted to exist and to
+// name the sign test and the unobserved/absent split by their actual behaviour.
+test fn w_RED_the_report_carries_its_classifier_rule() -> Bool {
+  let rows = classifier_rule_rows()
+  count(rows) == 5
+    && string_contains(s: join(rows, "\n"), pattern: "lag < 0")
+    && string_contains(s: join(rows, "\n"), pattern: "never external")
+    && string_contains(s: join(rows, "\n"), pattern: witness_floor_cancel_in_progress_event)
+}
+
+// THE REFUSAL ARM HAS LIVE OCCUPANCY, WHICH IS WHY IT IS NOT DECORATION.
+//
+// `startup_failure` is not hypothetical -- it occurs in the measured window, and every rate quoted
+// about this workflow silently dropped it. It is neither a verdict nor a cancellation, and this
+// repository has no grounded reading of whether GitHub's `stale` or `neutral` cost a verdict. So
+// the judgement REFUSES rather than answering, and this asserts the refusal in both directions:
+// a settlement outside the known vocabulary must not be counted as a loss, and must not be counted
+// as a non-loss either. Answering `not-lost` here would undercount lost verdicts, which is the
+// fail-open direction for the one count this module exists to get right.
+test fn w_RED_an_ungrounded_settlement_refuses_the_loss_judgement() -> Bool {
+  let startup = classify_run(
+    record: WorkflowRunRecord {
+      run_id: 5, event: witness_floor_cancel_in_progress_event, head_branch: "b",
+      status: "completed", conclusion: "startup_failure",
+      created_at_epoch_s: 1, run_started_at_epoch_s: 2, updated_at_epoch_s: 3
+    },
+    replacement: ReplacementAbsent
+  )
+  let unattributable = classify_run(
+    record: cancelled_run(event: witness_floor_cancel_in_progress_event),
+    replacement: ReplacementUnobserved { cause: "window truncated" }
+  )
+  verdict_loss_judgement_name(judgement: disposition_lost_a_verdict(disposition: startup)) == verdict_loss_unestablished_name
+    && verdict_loss_judgement_name(judgement: disposition_lost_a_verdict(disposition: unattributable)) == verdict_loss_unestablished_name
+    && verdict_loss_judgement_name(judgement: disposition_lost_a_verdict(disposition: startup)) != verdict_not_lost_name
+    && verdict_loss_judgement_name(judgement: disposition_lost_a_verdict(disposition: startup)) != verdict_lost_name
+}
