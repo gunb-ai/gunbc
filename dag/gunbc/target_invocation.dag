@@ -1,0 +1,184 @@
+module gunbc.target_invocation
+
+import extdeps.bazel.label {
+  Label,
+  LabelParse, LabelParsed, LabelRefused, LabelRefusal,
+  LabelCanonicalityCause, RenderedLabelRefused, RenderedLabelStructureMismatch,
+  parse_label, render_label,
+}
+import gunbc.target_binding {
+  TargetBinding,
+  TargetBindingIndex,
+  TargetBindingIndexBuild, TargetBindingIndexReady, TargetBindingIndexRefused,
+  TargetBindingIndexRefusal,
+  TargetBindingLookup,
+  TargetProducerBound, KnownTargetBindingMissing, TargetUnknown, TargetLookupLabelNotCanonical,
+  build_target_binding_index, target_binding_lookup,
+}
+import std.types { String }
+import std.integer { Int }
+
+// THE ONE ROUTE FROM AN ARGV OPERAND TO A BOUND PRODUCER, AND IT KNOWS NO INSTRUMENT'S NAME.
+//
+// Direct invocation asks a different question from the `//:required` aggregate, and this module
+// exists so the two never answer each other's. The aggregate asks whether a target's standing
+// SATISFIES a required set, and `gunbc.build_target` `test_standing_verdict` deliberately refuses
+// every instrument producer there as out-of-aggregate. A direct `gunbc test <label>` asks what the
+// producer OBSERVED. Routing the direct answer through aggregate policy would report a completed
+// instrument as unsatisfied — correct code applied to the wrong question — and routing it through
+// the Blaze status export would refuse it for the same reason, since that export has no honest
+// upstream member for a producer-specific standing.
+//
+// WHAT IS NOT HERE, DELIBERATELY: any arm naming a producer, an instrument, or a host function.
+// The route ends at the BINDING; which realization runs it is the peripheral dispatch DESIGN
+// section 3 keeps out of the interface, and a coordinator carrying one arm per instrument here
+// would be the N-times fork this seam is built to make unnecessary. Adding a fifth instrument is
+// a row in the population this module folds over, not an edit to this module.
+
+// EVERY WAY THE ROUTE CAN FAIL, EACH WITH ITS OWN CAUSE AND ITS OWN REMEDY.
+//
+// `OperandNotALabel` carries the label grammar's own refusal rather than a message, so a target
+// PATTERN reaches the caller as `TargetPattern` — the remedy is "name one target" — and a
+// relative label reaches it as `MissingRepositoryRootPrefix`, whose remedy is "make it absolute".
+// Collapsing them into one malformed-operand arm would be the state-space conflation this
+// repository keeps finding: one symbol over causes whose repairs differ.
+//
+// `TargetIsUnknown` and `TargetHasNoProducer` are separated for the same reason and the
+// distinction is the sharper one: an unknown label is a typo or an unregistered target, while a
+// KNOWN target with no binding is a registry gap — the target exists, nothing realizes it, and
+// reporting that as "no such target" would send the reader to fix the spelling of a label that is
+// already correct.
+type TargetInvocationRefusal
+  = OperandNotALabel { operand: String, cause: LabelRefusal }
+  | InvocationRegistryRefused { cause: TargetBindingIndexRefusal }
+  | InvocationLabelNotCanonical { target: Label, cause: LabelCanonicalityCause }
+  | TargetIsUnknown { target: Label }
+  | TargetHasNoProducer { target: Label }
+
+type TargetInvocationRoute
+  = TargetInvocationRouted { binding: TargetBinding }
+  | TargetInvocationRouteRefused { cause: TargetInvocationRefusal }
+
+// THE ROUTE IS PARAMETERIZED ON THE POPULATION AND NOT REACHING FOR THE PRODUCTION ROWS.
+//
+// The live rows are bound one module away in `gunbc.instrument_targets`. Folding over them here
+// would leave this function checkable only against a transcription of the rows it already reads,
+// which is the change detector DESIGN's oracle rule rejects; taking them as arguments lets a
+// controlled fixture author an input and an expected outcome independently.
+fn route_target_invocation_in(index: TargetBindingIndex, target: Label) -> TargetInvocationRoute {
+  match target_binding_lookup(index: index, target: target) {
+    TargetProducerBound { binding: b } => TargetInvocationRouted { binding: b }
+    TargetUnknown { target: t } =>
+      TargetInvocationRouteRefused { cause: TargetIsUnknown { target: t } }
+    KnownTargetBindingMissing { target: t } =>
+      TargetInvocationRouteRefused { cause: TargetHasNoProducer { target: t } }
+    TargetLookupLabelNotCanonical { target: t, cause: c } =>
+      TargetInvocationRouteRefused { cause: InvocationLabelNotCanonical { target: t, cause: c } }
+  }
+}
+
+// ADMISSION IS THE CITED GRAMMAR'S DECISION, TAKEN ONCE, AT THE BOUNDARY.
+//
+// `parse_label` is the only thing that decides whether the operand text names a target, so this
+// function contains no string test of its own — no prefix check, no pattern list, no colon count.
+// Every family the label authority excludes refuses here for free and with the cause that
+// authority named, which is what keeps the CLI from growing a second, weaker label grammar that
+// drifts from the one `//:required` is keyed on.
+fn route_target_invocation(
+  operand: String,
+  targets: List<Label>,
+  bindings: List<TargetBinding>
+) -> TargetInvocationRoute {
+  match parse_label(text: operand) {
+    LabelRefused { cause: c } =>
+      TargetInvocationRouteRefused { cause: OperandNotALabel { operand: operand, cause: c } }
+    LabelParsed { label: l } =>
+      match build_target_binding_index(targets: targets, bindings: bindings) {
+        TargetBindingIndexRefused { cause: c } =>
+          TargetInvocationRouteRefused { cause: InvocationRegistryRefused { cause: c } }
+        TargetBindingIndexReady { index: idx } =>
+          route_target_invocation_in(index: idx, target: l)
+      }
+  }
+}
+
+// HOW ONE INVOCATION ENDED, IN A VOCABULARY EVERY PRODUCER CLASSIFIES ITS OWN STANDING INTO.
+//
+// This is the hoist DESIGN records for `gunbc.scm.load_standing` rather than a match over any
+// producer's arms: each producer owns a total function from its native standing into these four
+// states, so a new producer is a new classifier and never a new arm in a consumer that would
+// otherwise collapse causes it does not distinguish. The four are kept apart because their
+// remedies are: repair the tree, wait for nothing (it held), give the producer a subject it can
+// reach, and fix the producer or the invocation.
+//
+// `SubjectUnreached` IS NOT `ObservationDidNotHold`. An instrument handed a source root that does
+// not exist observed nothing, and reporting that as a failing differential would be the
+// fabricated-plausible-output failure — a defect announced where no reading was taken.
+type InvocationTermination
+  = InvocationObservationHeld
+  | InvocationObservationDidNotHold
+  | InvocationSubjectUnreached
+  | InvocationRefused
+
+// THE PROCESS STATUS, DECIDED ONCE AND WILDCARD-FREE.
+//
+// Three statuses rather than two, because a caller that cannot separate "the instrument ran and
+// found a defect" from "the instrument never ran" is handed the same absorbing answer DESIGN
+// section 5 forbids: 1 is an OBSERVATION that did not hold, 2 is the absence of an observation.
+// A fifth termination arm must fail to compile here rather than inherit whichever status a `_`
+// happened to name.
+fn invocation_exit_status(t: InvocationTermination) -> Int {
+  match t {
+    InvocationObservationHeld => 0
+    InvocationObservationDidNotHold => 1
+    InvocationSubjectUnreached => 2
+    InvocationRefused => 2
+  }
+}
+
+// THE CANONICALITY CAUSE REACHES THE USER, WHICH IS THE POINT OF CARRYING IT AT ALL.
+//
+// `extdeps.bazel.label` splits a non-canonical label into two facts with two different repairs: a
+// rendering that does not parse at all, and one that parses to a DIFFERENT structure than the
+// value held -- typically a `PackagePath` authored as one segment containing a `/` where the
+// grammar builds two. Retaining that distinction through the registry (gunbc#9323) and then
+// dropping it here would have made the split real and invisible at the only surface a caller of
+// this verb touches, which is the one place it was ever going to be read.
+//
+// THE INNER `LabelRefusal` IS CARRIED BUT NOT DECOMPOSED HERE, AND THE OMISSION IS DELIBERATE.
+// That vocabulary belongs to the label authority and has no renderer there today; writing one in
+// this module would be a second site deciding what `DotSegment` or `TargetPattern` says to a
+// human -- the §3 fork, arriving through a rendering rather than through a type. The typed cause
+// stays intact on the refusal for any consumer that wants to descend, and this text names the
+// CLASS of repair, which is what distinguishes the two arms. A renderer landing in
+// `extdeps.bazel.label` is what this arm should call.
+fn label_canonicality_cause_rendered(c: LabelCanonicalityCause) -> String {
+  match c {
+    RenderedLabelRefused { cause: _ } =>
+      "\n  cause: the label's own rendering does not parse back; fix the label text"
+    RenderedLabelStructureMismatch { reparsed: r } =>
+      concat(
+        "\n  cause: its rendering parses to a different structure: ",
+        concat(render_label(l: r), " -- the package segments were not built by the grammar")
+      )
+  }
+}
+
+// A REFUSED ROUTE TERMINATES AS REFUSED, AND THE RENDERING NAMES THE CAUSE.
+fn invocation_refusal_rendered(cause: TargetInvocationRefusal) -> String {
+  match cause {
+    OperandNotALabel { operand: o, cause: _ } =>
+      concat("gunbc test: operand is not an absolute label: ", o)
+    InvocationRegistryRefused { cause: _ } =>
+      "gunbc test: the target registry refused to build"
+    InvocationLabelNotCanonical { target: t, cause: c } =>
+      concat(
+        concat("gunbc test: label is not canonical: ", render_label(l: t)),
+        label_canonicality_cause_rendered(c: c)
+      )
+    TargetIsUnknown { target: t } =>
+      concat("gunbc test: no such target: ", render_label(l: t))
+    TargetHasNoProducer { target: t } =>
+      concat("gunbc test: target has no bound producer: ", render_label(l: t))
+  }
+}

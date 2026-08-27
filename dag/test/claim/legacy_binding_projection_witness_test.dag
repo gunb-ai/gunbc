@@ -7,7 +7,6 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import std.occurrence_identity { OccurrenceId }
 import v2.workflow.legacy_binding_observation {
   LegacyBindingObservationSubject,
-  SubjectOccurrenceRef,
   ImportScopedPolicy,
   NamespaceOnlyPolicy,
   legacy_subject_identity
@@ -115,8 +114,8 @@ test fn each_emitted_entry_addresses_its_own_side_of_the_projection() -> Bool {
   ) {
     ProvenanceEmitted { provenance: p } => p.entries |> all(entry => match entry {
       ProjectedFromSource { source: s, target: t } =>
-        s.subject_identity.digest == legacy_subject_identity(subject: lbp_base_subject()).digest
-          && t.subject_identity.digest == legacy_subject_identity(subject: lbp_projected_subject()).digest
+        s.scope.digest == legacy_subject_identity(subject: lbp_base_subject()).digest
+          && t.scope.digest == legacy_subject_identity(subject: lbp_projected_subject()).digest
           && s.occurrence.value == 10
           && t.occurrence.value == 11
       ProjectedAsInsertion { target: _, caused_by: _ } => false
@@ -185,13 +184,27 @@ test fn a_decision_about_a_non_base_occurrence_refuses() -> Bool {
 
 // LAW 4 -- THE CARRIER BOUNDARY, AND THIS ARM IS THE POINT OF THE MODULE'S HONESTY.
 //
-// An insertion is the one thing a qualifying projection genuinely does, and it CANNOT BE EMITTED:
-// ProjectedAsInsertion needs a cause, and std.occurrence_identity NodeOccurrenceIdentity has no arm
-// that carries one. So a caller declaring an inserted occurrence gets a refusal naming it, not a
+// An insertion is the one thing a qualifying projection genuinely does, and THIS MODULE STILL
+// REFUSES TO EMIT ONE. A caller declaring an inserted occurrence gets a refusal naming it, not a
 // fabricated cause and not a silent omission. The refusal is the executing evidence that this
-// module did not design around the absence -- when the third arm lands, THIS ARM FLIPS to a
-// regression control over the emitted insertion rather than retiring.
-test fn a_declared_insertion_refuses_because_no_carrier_can_express_its_cause() -> Bool {
+// module did not design around the absence.
+//
+// WHAT CHANGED, AND WHY THE ARM STAYS. The stated reason for the refusal used to be that
+// std.occurrence_identity NodeOccurrenceIdentity had no arm carrying a cause. That is now FALSE:
+// OccurrenceProjected carries one, and legacy_binding_delta insertion_provenance_entry derives a
+// ProjectedAsInsertion row from it. The CARRIER boundary is closed; the PROJECTOR has not yet been
+// wired across it, so the refusal is no longer a statement about what can be expressed, only about
+// what this module has been taught to do. The flip to a regression control over an emitted
+// insertion belongs to the change that does that wiring, not to the change that opened the carrier
+// -- and this comment is corrected here rather than left standing, because a refusal justified by a
+// reason that has stopped being true is the stale-prose failure inside the honesty argument itself.
+//
+// THE FUNCTION NAME CARRIES THE SAME CLAIM AND WAS CORRECTED WITH IT. It read
+// `..._because_no_carrier_can_express_its_cause`, which asserts the proposition this block just
+// retired. Correcting the annotation and leaving the name would have been the worse half-measure of
+// the two: a reader trusts a name without reading the body, so a false name outranks a true comment
+// sitting directly above it.
+test fn a_declared_insertion_refuses_because_this_projector_is_not_wired_to_the_cause_arm() -> Bool {
   match lbp_emit(
     expected_base: [10],
     decisions: [lbp_carry(base: 10, projected: 11)],

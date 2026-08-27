@@ -1,6 +1,6 @@
 module gunbc.witness_floor_workflow
 
-import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
+import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import gunbc.roadmap_execution_contract {
   CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
 }
@@ -27,13 +27,13 @@ import gunbc.toolchain_home_standing {
 import gunbc.toolchain_workflow_steps {
   toolchain_home_isolation_step,
   toolchain_pin_rustup_default_step,
-  hostile_legacy_writer_discriminator_step,
+  toolchain_home_interference_probe_step,
 }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   upload_artifact_action,
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch,
-  PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview,
+  PullRequestActivity, Opened, Synchronize, Reopened,
   DispatchInput, InputString,
   WorkflowPermissions, PermRead,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressExpression,
@@ -44,9 +44,10 @@ import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.ci_layer_roots { witness_layer_roots }
-import gunbc.fabric_witness_run { witnesses_lane_run_command, build_lane_run_command, required_ci_lane_build }
+import gunbc.fabric_witness_run { witnesses_lane_run_command, build_lane_run_command }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import gunbc.required_lanes_gate { required_lanes_gate_stmts }
+import extdeps.github.expressions { ContextAccess, Github, Needs, interpolate }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
 import v2.std.diagnostic { Outcome }
 import std.types { List, String, Int }
@@ -104,8 +105,16 @@ import std.types { List, String, Int }
 //
 // WHAT WAS WRONG WITH THE FIRST CUT OF THE SPLIT, measured rather than argued (found in review
 // of gunbc#9203, and confirmed against the live ruleset rather than against the workflow): the
-// repository's `passing CI` ruleset is ACTIVE, has NO bypass actors, and names exactly ONE
-// required status check -- `witnesses`. A GitHub required context is produced by the JOB, not
+// repository's `passing CI` ruleset is ACTIVE and names exactly ONE required status check --
+// `witnesses`. THIS CLAUSE PREVIOUSLY ALSO READ `has NO bypass actors`, AND THAT IS NOT A FACT
+// A SESSION CAN STATE: `bypass_actors` and `current_user_can_bypass` are answered RELATIVE TO
+// THE CREDENTIAL ASKING, and this repository's sessions authenticate as an integration rather
+// than a user. Read through a user credential the same ruleset reports a `RepositoryRole`
+// bypass at `bypass_mode=always`. Both readings are correct about different subjects, and the
+// emptier one was taken twice through the same kind of credential and mistaken for
+// corroboration. Nothing in this paragraph rests on it -- every measurement here was taken
+// against runs and check-runs -- so the clause is removed rather than repaired. A GitHub
+// required context is produced by the JOB, not
 // by the workflow, so a second job publishes its own check under its own name and that check is
 // not required. The first cut therefore moved regen and v2-emission into a `build` job whose
 // failure COULD NOT BLOCK A MERGE: the required `witnesses` check would go green over a regen
@@ -122,21 +131,49 @@ import std.types { List, String, Int }
 //
 // WHAT IT COSTS, and it is not the parallelism. The two lane jobs still carry no `needs` edge
 // on each other and still start together; only the aggregator waits, and it does nothing but
-// read two results. The floor job is renamed to `floor` so its log is still findable by lane
-// name, and the aggregator's own output names which lane to open.
+// read two results. Each lane job's log is findable by its lane name, and the aggregator's own
+// output names which lane to open.
 data witness_floor_workflow_job_id: String = "witnesses"
 
-// The witness floor lane's job id. It was `witnesses` until the aggregation job took that name;
-// the check it publishes is not required and is not meant to be -- `witnesses` answers for it.
-data floor_lane_job_id: String = "floor"
+// THE LANE JOB IDS ARE THEIR OWN DECLARATIONS, AND UN-FUSING THEM FROM THE LANE WORDS IS THE
+// WHOLE OF THIS CHANGE.
+//
+// WHY A UNIQUE NAME IS NEEDED AT ALL. A GitHub required status check names a CONTEXT, and a
+// context is the job's name -- which workflow published it is not part of the name. So `build`
+// is not a name this repository owns: `gunbc.fleet_converge_workflow` declares a job whose id
+// is also exactly `build`, and a rule naming `build` names two jobs in two workflows, answered
+// by whichever green arrives. Enforcement cannot be moved onto a lane job until that lane's
+// context is unique across every workflow emitted here.
+//
+// WHY THE NAME IS NOT COMPUTED FROM THE LANE WORD, and this is the modeling content rather
+// than a spelling preference. `build_lane_job_id` was DEFINED AS `required_ci_lane_build`, and
+// that read as single authority because the two strings coincided. They are two facts with
+// different authorities and different consumers: the LANE WORD is a CLI argument this
+// workflow passes to `claim_executor --required-lane`, owned by `gunbc.fabric_witness_run` and
+// consumed by an exhaustive `RequiredCiPhase::lane` match inside the binary; the JOB ID is a
+// GitHub required-context name, owned here and consumed by a repository ruleset that is not a
+// `.dag` fact at all. Their coincidence was the accident, not the authority. Deriving the job
+// id from the lane word -- including by concatenating a prefix onto it -- re-fuses them
+// through a different door and in the dangerous direction: a lane rename, which is an ordinary
+// CLI-vocabulary edit, would silently move a REQUIRED CONTEXT NAME and a check would stop being
+// required with nothing going red. The rows below are therefore spelled, and what protects
+// them is that every reference to a job id in this file is taken FROM these declarations rather
+// than typed, so a rename here moves the `needs` list and the `needs.*.result` expressions with
+// it.
+//
+// WHAT THIS DOES NOT DO: it does not move enforcement. `witnesses` remains the aggregation job
+// and remains the one required context the ruleset names, produced exactly as before, so the
+// gate is unchanged rather than weakened and no window opens. The lane contexts are published
+// and ignored until an operator names them in the ruleset -- a repository setting, and not
+// something any wall in this repository can constrain. Until that edit lands the aggregator is
+// still what gates; after it, the aggregator's role is diagnosis rather than enforcement,
+// because a same-run dependent job is SKIPPED when a lane fails or the run is cancelled at run
+// level, and a SKIPPED required context does not block a merge (measured: `mergeable=MERGEABLE
+// mergeStateStatus=UNSTABLE`), while root jobs carrying no `needs` edge take
+// cancelled/success/failure and are never skipped.
+data floor_lane_job_id: String = "required-witnesses-floor"
 
-// THE BUILD LANE'S JOB ID, and it is the lane word from `gunbc.fabric_witness_run` rather than
-// a second name for the same thing. The job id is what GitHub publishes as the check name and
-// what a required-status-check rule names; spelling it differently from the lane the job passes
-// to the binary would be the §3 fork, and it would fail in the quiet direction -- a check name
-// that no longer matches a branch-protection rule stops being required without anything going
-// red.
-data build_lane_job_id: String = required_ci_lane_build
+data build_lane_job_id: String = "required-witnesses-build"
 
 // The workflow's own name, hoisted to a declaration because a second consumer now joins on
 // it. gunbc.fleet_desired_admission refuses a workflow_run payload whose workflow_name is
@@ -775,14 +812,14 @@ fn prepared_bound_steps(build_script: String) -> List<WitnessFloorBoundStep> {
       step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
     },
     WitnessFloorBoundStep {
-      step: hostile_legacy_writer_discriminator_step(),
-      role: capability_neutral,
-      step_name: "Discriminate private homes from a hostile legacy writer",
-    },
-    WitnessFloorBoundStep {
       step: witness_floor_build_step(build_script: build_script),
       role: consumes_only(capabilities: [CargoCapability]),
       step_name: "Build the witness fold",
+    },
+    WitnessFloorBoundStep {
+      step: toolchain_home_interference_probe_step(),
+      role: capability_neutral,
+      step_name: "Discriminate private homes from a hostile legacy writer",
     },
   ]
 }
@@ -1086,74 +1123,153 @@ fn build_lane_job() -> Job {
 // precondition paragraph records, and the reason a bare `needs.*.result` comparison would not
 // have worked here either).
 //
-// SUPERSESSION IS NOT A FAILED LANE VERDICT. The workflow concurrency authority above permits a
-// newer pull-request push to cancel the older run. Under `always()` that cancellation still armed
-// this job; the shell then applied `cancelled != success`, exited 1, and overwrote the workflow's
-// superseded conclusion with a fabricated FAILED aggregate. Every push-over-push thus emitted a
-// CI-failing alert about a head whose work had intentionally moved on.
+// IT IS `always()` AND NOT `!cancelled()`, WHICH IS THE ONE PLACE IN THIS FILE THAT DEPARTS
+// FROM THE HOUSE GUARD -- stated explicitly, because a reader who knows the convention will
+// otherwise correct it back. Every other guard here decides whether a STEP should run inside a
+// job that is already running, and there `!cancelled()` is right. This condition decides
+// something else -- whether the REQUIRED CONTEXT EXISTS AT ALL -- and under `!cancelled()` a
+// cancelled run leaves the aggregator skipped, so the context reports as skipped rather than as
+// a verdict.
 //
-// CANCELLATION DOES NOT PROVE SUPERSESSION. It says only that this attempt stopped. Two
-// cancellation-without-replacement cases were observed on 2026-08-25: one had an empty
-// runner_name and zero steps, and one ended both lanes at 18:43 with no push involved. Under
-// a cancelled-lane exclusion those live heads leave the required context skipped rather than
-// receiving this gate's loud refusal. The exact GitHub merge-admission treatment of that skipped
-// required context remains unmeasured; this change must not describe it as safe by construction.
-// For a manual cancel, runner eviction, workflow timeout or operator-stopped queue on the CURRENT
-// head, this is specifically fail-open: CurrentHeadUnestablished receives no aggregate context
-// even though it must block. The modal supersession case and this hazardous case share
-// LaneCancelled; only an independent head-standing observation can separate them.
+// THE REASON IT IS `always()` IS NOT THE REASON IT USED TO BE, AND THE CHANGE IS THE WHOLE POINT
+// OF `gunbc.floor_attempt_standing`. The argument this paragraph used to carry was a choice
+// between two bad readings of cancellation -- `always()` treats every cancelled lane as a lane
+// that failed, `!cancelled()` treats every cancelled workflow as a lawful supersession -- and it
+// picked `always()` on the ground that noise on an abandoned head beats silence on a live one.
+// That trade was real, and it was forced only because ONE CONDITION WAS BEING ASKED TO CARRY TWO
+// QUESTIONS.
 //
-// RUNG DROP, DECLARED UNDER DESIGN §4b(3). PREVIOUS RUNG: mechanically preventive -- `always()`
-// made the aggregate context exist and refuse for every stopped lane, including cancellations
-// with no replacement. TEMPORARY RUNG: mitigatable -- superseded pull-request runs no longer
-// fabricate failures, but a cancelled live attempt depends on GitHub's skipped-required-context
-// handling and an operator must rerun it rather than receiving a located aggregate refusal.
-// REASON: the current lane-result input carries cancellation but no replacement-run observation,
-// so it cannot distinguish the modal lawful supersession from an abandoned live attempt; the
-// false failure alert is removed at the only distinction currently available, accepting the
-// explicit CurrentHeadUnestablished fail-open above until the restoration lands. BOUNDED
-// POPULATION: pull_request workflow runs only -- cancel-in-progress is false for push,
-// merge_group and workflow_dispatch, and their concurrency group is unique per run. Within that
-// boundary the two abandoned cases above are the observed population; no count of future
-// cancellations is claimed. RESTORATION TRIGGER: a typed observation joins this run's PR and
-// created_at to a newer run for the same PR. Then the job returns to `always()` and distinguishes
-// replacement-present (superseded: no failure) from replacement-absent (abandoned: refuse) before
-// reading the strict lane gate. This trigger is the operator-ranked `floor-current-head-binding`:
-// FloorAttemptSubject carries pull_request, measured_head, run_id and run_attempt;
-// FloorHeadStanding is Current, Superseded or Unobservable independently of FloorLaneTerminal.
+// It is not forced any more. Head-standing and lane-terminality are two independent axes, and
+// the job condition owns NEITHER of them: it owns only whether this job runs. `always()` is the
+// right answer to THAT question for a reason that has nothing to do with cancellation semantics
+// -- a required context that can be SKIPPED turns mergeability on an unmeasured third-party
+// behaviour, and under `always()` skipped disappears from the context entirely. Construction
+// over validation (DESIGN 5): the ambiguous state becomes unrepresentable rather than tested.
 //
-// This is deliberately NOT a relaxation of the lane gate on a non-cancelled workflow. The job
-// still runs after failed or skipped needs and the script still admits exactly `success`;
-// failure, skip, abandonment and every unknown lane result remain loud refusals there.
-data required_lanes_aggregate_cancellation_rung_drop: String = "Previous rung mechanically preventive; temporary rung mitigatable; reason a cancelled lane lacks replacement identity; population bounded to pull_request cancellation events; restore when a typed same-PR newer-run observation distinguishes superseded from abandoned."
+// WHAT ANSWERS THE CANCELLATION QUESTION IS NOW THE GATE'S OWN BODY, where both axes are visible
+// at once. `cancelled` with a measured head that is no longer the pull request's head is a
+// SUPERSEDED ATTEMPT and does not block; `cancelled` with a measured head that IS still the
+// pull request's head is `stands-unestablished` -- the evidence is missing on a live merge
+// candidate -- and blocks, with an annotation saying it is an infrastructure event rather than a
+// subject defect. Neither `cancelled -> benign` nor `cancelled -> failed` is asserted as a
+// universal reading, which is exactly what both previous shapes did.
+//
+// WHAT IS NOT YET TRUE OF THAT, AND IT IS THE HALF A READER MUST NOT ASSUME: the first arm is
+// not reachable in production today, because nothing in this workflow acquires the pull request's
+// CURRENT head. The gate therefore renders head-standing as `unobserved` on every pull-request
+// run and takes the fail-closed arm. The BLOCKING PREDICATE is therefore unchanged -- block iff
+// either lane is not `success`, exactly as before -- while the annotation and the receipt say
+// considerably more. Which runs block is identical; what they print is not.
+// What changed today is the SPLIT BETWEEN RED AND UNESTABLISHED, which needs no acquisition, and
+// the attempt subject printed on every run, which makes the head join computable offline by
+// anyone who can already read the API. `gunbc.floor_attempt_standing`
+// `floor_attempt_standing_acquisition_trigger` carries what closes the rest and what goes red
+// when it does.
+//
+// THE COST OF `always()` IS UNCHANGED AND IS STILL PAID: a lawfully superseded run reports this
+// context red, because a cancelled lane is not `success`. Measured on run 32883390033, where a
+// fleet event ended both lanes and this job duly published `failure`. That red now says
+// `verdict=stands-unestablished`, carries mechanism and attribution, and names the measured head
+// it belongs to, which is strictly more than it said before -- but it is still a red on an
+// abandoned head, and only the head acquisition removes it.
+//
+// WHY THAT COST IS ACCEPTED RATHER THAN TRADED AWAY, AND IT IS THE ASYMMETRY OF WHICH HEAD PAYS.
+// This argument is carried over from the interim's own authority (gunbc#9302, closed in favour of
+// this construction) because it survives the change of mechanism intact and is the deciding fact
+// rather than a preference. Checks are tracked per head SHA, so a superseded run's red lands on a
+// head that BY CONSTRUCTION will never be merged -- the push that superseded it created the head
+// that will, and that head has its own run. `always()` is therefore NOISY ON ABANDONED HEADS. The
+// alternative moves the cost onto the LIVE one: a lane killed with no replacement run coming --
+// observed twice on 2026-08-25, once with `runner_name` empty and zero steps, once with both lanes
+// ended at 18:43 and no push involved -- leaves this context SKIPPED on the head that is still the
+// merge candidate.
+//
+// NOISE IS A COST; FAIL-OPEN IS A DEFECT (operator ruling relayed by smart-ram-730, 2026-08-26,
+// deciding between the two shapes). A loud wrong-looking red gets investigated and corrected. A
+// silent skip on an unverified live head does not, and it is the one failure mode nobody sees.
+//
+// AND THE NOISE IS MATERIALLY REDUCED WITHOUT THE ACQUISITION, which is what makes this a bearable
+// trade rather than a pious one. The harm the interim was chartered against was people
+// investigating FALSE SUBJECT FAILURES, and a run reporting `stands-unestablished` with a
+// mechanism and an attribution does not send anyone into a diff. What is left is a red on a head
+// nobody will merge, which is the cheap half of the original complaint.
 
-data required_lane_cancelled_result: String = "cancelled"
-
-fn required_lane_result_not_cancelled_condition(job_id: String) -> String {
-  concat("needs.", concat(job_id, concat(".result != '", concat(required_lane_cancelled_result, "'"))))
-}
-
-// `cancelled()` WAS THE WRONG OBSERVATION. Run 32935233342 proved it: floor concluded
-// `cancelled`, the workflow eventually concluded `cancelled`, yet this job's `!cancelled()`
-// condition armed and the aggregate fabricated FAILURE. The needed jobs' result fields are the
-// values the gate actually consumes, so cancellation is excluded from those same fields. The
-// leading status function remains necessary to displace GitHub's implicit success() over needs.
+// RETIRING gunbc#9339's CANCELLED-LANE EXCLUSION, AND SAYING SO RATHER THAN DELETING IT QUIETLY.
+//
+// That change landed while this one was in review and added
+// `&& needs.build.result != 'cancelled' && needs.floor.result != 'cancelled'` here, under a
+// declared DESIGN 4b(3) rung drop, carried on a `required_lanes_aggregate_cancellation_rung_drop`
+// row that this change deletes along with the exclusion it declared. It was the
+// right interim: with only two lane-result words in hand it could not separate the modal lawful
+// supersession from an abandoned live attempt, so it removed the false alert at the only
+// distinction available and DECLARED the resulting fail-open on `CurrentHeadUnestablished`
+// instead of hiding it.
+//
+// ITS OWN RESTORATION TRIGGER NAMES THIS CONSTRUCTION BY NAME -- "the operator-ranked
+// floor-current-head-binding: FloorAttemptSubject carries pull_request, measured_head, run_id;
+// FloorHeadStanding is Current, Superseded or Unobservable independently of FloorLaneTerminal".
+// So the exclusion and its declaration are removed here as a dissolution on climb (DESIGN 4b(4)),
+// with the production machinery deleted and the evidence kept: the consolidation witnesses that
+// pinned the exclusion are re-pointed at `always()` in the same change rather than dropped.
+//
+// WHAT IS HONESTLY RESTORED AND WHAT IS NOT, because taking the trigger's name is not the same as
+// discharging it. RESTORED: the fail-open. A cancelled lane on a live head reaches this gate
+// again and blocks as `stands-unestablished`, which is the half the interim declared it was
+// giving up. NOT DISCHARGED: the supersession OBSERVATION. Nothing here acquires the pull
+// request's current head, so a lawfully superseded run pays a red exactly as it did before the
+// interim -- the noise the interim was chartered to remove comes back. That is the operator's
+// ruling, not this file's choice: NOISE IS A COST, FAIL-OPEN IS A DEFECT. The remaining half of
+// #9339's trigger survives unretired as
+// `gunbc.floor_attempt_standing` `floor_attempt_standing_acquisition_trigger`, which is the same
+// obligation under the carrier that can actually hold it.
+//
+// WHY THE EXCLUSION IS NOT MERELY WEAKER BUT ACTIVELY WRONG ON TODAY'S EVIDENCE, measured on this
+// PR's own branch after #9339 landed: cancellation here is a BACKGROUND RATE, not a supersession
+// signal. Twelve cancelled jobs across 45 minutes of one afternoon, elapsed 7s to 3062s,
+// uncorrelated with duration and with any instant; seven floor jobs ran LONGER than the cancelled
+// ones and passed. Two of those cancellations were live heads with no replacement run -- exactly
+// the cell #9339 declared it was leaving uncovered -- and under its exclusion both would have left
+// the required context skipped on a head that was still the merge candidate. The exclusion treats
+// `cancelled` as evidence of supersession; the measurement says it is evidence of nothing.
 fn required_lanes_aggregate_job_condition() -> String {
-  concat(
-    "always() && ",
-    concat(
-      required_lane_result_not_cancelled_condition(job_id: build_lane_job_id),
-      concat(" && ", required_lane_result_not_cancelled_condition(job_id: floor_lane_job_id))
-    )
-  )
+  "always()"
 }
 //
 // THE STEP-LEVEL `always()` STAYS, and it guards a different thing rather than restating this
 // one. It is about EARLIER STEPS IN THIS JOB: there are none today, so the implicit `success()`
 // would be true anyway, but a step added ahead of it later would silently acquire the power to
 // skip the refusal. Two conditions, two failure modes, neither a second spelling of the other.
+// THE EXPRESSIONS ARE BUILT FROM THE MODELED ACTIONS EXPRESSION GRAMMAR, NOT SPELLED AS TEXT.
+//
+// This function nested `concat` over `"${{ needs."` and `".result }}"`, which is a second
+// spelling of a language `extdeps.github.expressions` already models -- the same medium-as-string
+// violation that moved the gate's shell into `gunbc.required_lanes_gate`, surviving one layer up
+// in the expressions the shell interpolates. `interpolate` over a `ContextAccess` renders the
+// identical text through the authority that owns the spelling, so the interpolation delimiters,
+// the path separator and the context names have one home.
 fn required_lane_result_expression(job_id: String) -> String {
-  concat("${{ needs.", concat(job_id, ".result }}"))
+  interpolate(expression: ContextAccess { context: Needs, path: [job_id, "result"] })
+}
+
+// THE ATTEMPT SUBJECT'S EXPRESSIONS. `github.event.pull_request.*` renders as the empty string on
+// push, merge_group and workflow_dispatch runs, and that emptiness is what the gate reads to
+// decide the head axis is inapplicable rather than unmeasured.
+fn required_lanes_pull_request_expression() -> String {
+  interpolate(expression: ContextAccess { context: Github, path: ["event", "pull_request", "number"] })
+}
+
+fn required_lanes_measured_head_expression() -> String {
+  interpolate(
+    expression: ContextAccess { context: Github, path: ["event", "pull_request", "head", "sha"] }
+  )
+}
+
+fn required_lanes_event_name_expression() -> String {
+  interpolate(expression: ContextAccess { context: Github, path: ["event_name"] })
+}
+
+fn required_lanes_run_id_expression() -> String {
+  interpolate(expression: ContextAccess { context: Github, path: ["run_id"] })
 }
 
 // THE COMPARISON IS `!= "success"` AND NOT A LIST OF BAD STATES, and that is now a measured
@@ -1191,14 +1307,28 @@ fn required_lane_result_expression(job_id: String) -> String {
 // to emit any yaml at all. A `Rejected` fold can therefore never reach a published step.
 data required_lanes_gate_build_var: String = "BUILD"
 data required_lanes_gate_floor_var: String = "FLOOR"
+data required_lanes_gate_pull_request_var: String = "PULL_REQUEST"
+data required_lanes_gate_event_name_var: String = "EVENT_NAME"
+data required_lanes_gate_measured_head_var: String = "MEASURED_HEAD"
+data required_lanes_gate_run_id_var: String = "RUN_ID"
+data required_lanes_gate_standing_var: String = "HEAD_STANDING"
+data required_lanes_gate_verdict_var: String = "VERDICT"
+data required_lanes_gate_mechanism_var: String = "MECHANISM"
+data required_lanes_gate_attribution_var: String = "ATTRIBUTION"
 
 fn required_lanes_aggregate_script_outcome() -> String? {
   match bash_fold_serialize_program(
     stmts: required_lanes_gate_stmts(
       build_var: required_lanes_gate_build_var,
-      build_result_expression: required_lane_result_expression(job_id: build_lane_job_id),
       floor_var: required_lanes_gate_floor_var,
-      floor_result_expression: required_lane_result_expression(job_id: floor_lane_job_id)
+      pull_request_var: required_lanes_gate_pull_request_var,
+      event_name_var: required_lanes_gate_event_name_var,
+      measured_head_var: required_lanes_gate_measured_head_var,
+      run_id_var: required_lanes_gate_run_id_var,
+      standing_var: required_lanes_gate_standing_var,
+      verdict_var: required_lanes_gate_verdict_var,
+      mechanism_var: required_lanes_gate_mechanism_var,
+      attribution_var: required_lanes_gate_attribution_var
     ),
     set_e: false
   ) {
@@ -1232,13 +1362,33 @@ fn required_lanes_aggregate_script() -> String {
   }
 }
 
+// THE SUBJECT VALUES ARE BOUND AS ENVIRONMENT, WHICH IS THE ONLY PLACE AN EXPRESSION AND A
+// SHELL PROGRAM MAY MEET.
+//
+// A `${{ }}` expression is substituted into the workflow document before any shell exists, so
+// it has to reach the emitted yaml verbatim. A yaml scalar does that -- `emit_inline_scalar_text`
+// renders an expression unquoted and unescaped -- while a bash literal word cannot, because
+// quoting it is exactly what the bash serializer is for. `gunbc.required_lanes_gate` therefore
+// takes variable NAMES only and reads them as shell variables; the expressions live here, one
+// row per variable, joined to the gate by the same declarations the gate is handed.
+fn required_lanes_aggregate_step_env() -> List<YamlKeyValue> {
+  [
+    kv(key: required_lanes_gate_build_var, value: yaml_string(s: required_lane_result_expression(job_id: build_lane_job_id))),
+    kv(key: required_lanes_gate_floor_var, value: yaml_string(s: required_lane_result_expression(job_id: floor_lane_job_id))),
+    kv(key: required_lanes_gate_pull_request_var, value: yaml_string(s: required_lanes_pull_request_expression())),
+    kv(key: required_lanes_gate_event_name_var, value: yaml_string(s: required_lanes_event_name_expression())),
+    kv(key: required_lanes_gate_measured_head_var, value: yaml_string(s: required_lanes_measured_head_expression())),
+    kv(key: required_lanes_gate_run_id_var, value: yaml_string(s: required_lanes_run_id_expression()))
+  ]
+}
+
 fn required_lanes_aggregate_step() -> Step {
   RunStep {
     name: Present { value: "Both required lanes must have succeeded" },
     id: none,
     run: required_lanes_aggregate_script(),
     shell: none,
-    env: none,
+    env: Present { value: required_lanes_aggregate_step_env() },
     working_directory: none,
     if_condition: Present { value: "always()" },
     continue_on_error: none,
@@ -1274,7 +1424,7 @@ data witness_floor_workflow: Workflow = {
     Push { branches: [gunbc_default_branch_name], paths: [] },
     PullRequest {
       branches: [gunbc_default_branch_name],
-      types: [Opened, Synchronize, Reopened, ReadyForReview]
+      types: [Opened, Synchronize, Reopened]
     }
   ],
   concurrency: Present {

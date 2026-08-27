@@ -11,6 +11,7 @@ import gunbc.build_target {
   BuildTarget, target_identity, is_required_aggregate,
   required_aggregate_label,
   AggregateStanding, AggregateSatisfied, AggregateNoDependencies, AggregateRefused,
+  AggregateStandingsUnindexable,
   TargetStanding, BuildStanding, TargetCompleted,
   TestStanding, TestRunByFloor,
   required_aggregate_standing,
@@ -360,6 +361,7 @@ test fn w_all_declined_derives_an_aggregate_that_blocks() -> Bool {
           }
         AggregateSatisfied { dependency_count: _ } => false
         AggregateRefused { finding_count: _, findings: _ } => false
+        AggregateStandingsUnindexable { cause: _ } => false
       }
   }
 }
@@ -384,6 +386,7 @@ test fn w_derived_aggregate_is_satisfiable_against_standings() -> Bool {
         AggregateSatisfied { dependency_count: n } => n == 4
         AggregateNoDependencies => false
         AggregateRefused { finding_count: _, findings: _ } => false
+        AggregateStandingsUnindexable { cause: _ } => false
       }
     }
   }

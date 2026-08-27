@@ -165,6 +165,7 @@ jobs:
           trap cleanup EXIT
           printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
           curl -sSf -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/fleet-automation-ssh-key/versions/1:access" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)["payload"]["data"]))' > "$KEY_FILE"
+          rm -f "$HDR_FILE"
           chmod 600 "$KEY_FILE"
           EXPECTED_FP="SHA256:mGT7qJsh36VsVb8OPh3m8br3oHedQHxRukRkW5P0CoQ"
           OBSERVED_FP="$(ssh-keygen -y -f "$KEY_FILE" | ssh-keygen -lf - | awk '{print $2}')"
