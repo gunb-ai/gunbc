@@ -197,8 +197,7 @@ fn census_fold_site(state: CensusFoldState, site: DiscoveredSite) -> CensusFoldS
             CensusRow {
               label: l,
               disposition: required_floor_site_disposition(
-                module_path: site.module_path,
-                reads_live_tree: site.reads_live_tree
+                module_path: site.module_path
               )
             }
           ], state.rows_reversed),

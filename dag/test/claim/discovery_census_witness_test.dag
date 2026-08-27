@@ -187,12 +187,10 @@ test fn w_empty_module_path_and_empty_function_refuse_apart() -> Bool {
 // THE DISPOSITION, AND ITS ORDER
 // ---------------------------------------------------------------------------------------------
 
-// THE FIXTURE MEMBER READS THE LIVE TREE AND STILL REPORTS `DeclinedFixtureMember`; live-tree
-// access no longer changes floor admission, while fixture-home ownership still does.
-test fn w_fixture_home_dominates_live_tree() -> Bool {
+// A fixture member reports the exact prefix whose recipe owns its execution.
+test fn w_fixture_home_declines_with_its_matched_prefix() -> Bool {
   match required_floor_site_disposition(
-    module_path: "v2.test.fixture.walk_plan_stage.common",
-    reads_live_tree: ReadsLiveTree {}
+    module_path: "v2.test.fixture.walk_plan_stage.common"
   ) {
     DeclinedFixtureMember { matched_prefix: p } => p == "v2.test.fixture.walk_plan_stage."
     Planned => false
@@ -202,8 +200,7 @@ test fn w_fixture_home_dominates_live_tree() -> Bool {
 
 test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
   match required_floor_site_disposition(
-    module_path: "test.claim.long.slow_witness",
-    reads_live_tree: SubstrateInputsOnly {}
+    module_path: "test.claim.long.slow_witness"
   ) {
     DeclinedLongModule { matched_prefix: p } => p == "test.claim.long."
     Planned => false
@@ -216,8 +213,7 @@ test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
 // control beside the decline above: without it the decline could pass under a `contains` test.
 test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
   match required_floor_site_disposition(
-    module_path: "test.claim.not_test_claim_long.witness",
-    reads_live_tree: SubstrateInputsOnly {}
+    module_path: "test.claim.not_test_claim_long.witness"
   ) {
     Planned => true
     DeclinedLongModule { matched_prefix: _ } => false
@@ -225,10 +221,9 @@ test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
   }
 }
 
-test fn w_live_tree_site_is_planned_when_no_home_matched() -> Bool {
+test fn w_site_is_planned_when_no_home_matched() -> Bool {
   match required_floor_site_disposition(
-    module_path: "test.claim.reads_tree_witness",
-    reads_live_tree: ReadsLiveTree {}
+    module_path: "test.claim.ordinary_witness"
   ) {
     Planned => true
     DeclinedLongModule { matched_prefix: _ } => false

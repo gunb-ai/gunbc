@@ -1,0 +1,20 @@
+module gunbc.floor_route_gap_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the typed route-gap expectation consumed by the required floor.
+// The modeled authority is v2.workflow.floor_route_gap FloorRouteGapExpectation; these three
+// declarations are its seed-side realization at the interpreter boundary, not a second policy.
+data floor_route_gap_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "FloorRouteGapExpectedGround", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "FloorRouteGapExpectation", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "floor_route_gap_expectation_mismatch", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST IS STILL NEEDED: the required floor executes in the seed, and v1_compiler.cli_run is the boundary that receives v1_interpreter.HermeticEffectGround after a claim executes. v2.workflow.floor_route_gap owns the expectation vocabulary and population; the Rust realization decodes that authority and refuses when the observed operation or closed ground differs, instead of letting an identity-only enrollment absorb changed evidence. A modeled row without this consumer cannot constrain the host terminal ledger.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits work serving the v2 self-host program. The required floor is the instrument guarding that program, and this change strengthens a pre-existing route-gap debt roster from identity-only agreement to operation-and-ground agreement. It adds no language behavior, compatibility route, escape hatch, seed feature, or emitted public surface.\n\nHAND-ITEM DELTA: +3, exactly the closed ground mirror, the decoded expectation record, and the pure mismatch classifier enumerated above. All other Rust edits are inside existing declarations and are ExistingSeedItemModified.\n\nHAND-LOC DELTA AT THIS RECEIPT: src/v1/stage0/src/cli_run.rs +223/-49 and src/v1/stage0/src/bin/claim_executor.rs +5/-5 against origin/main. The latter adds no declaration. The item observation producer is currently absent, so these diff-derived figures remain review evidence rather than a mechanically joined admission.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete the three seed declarations when the self-emitted claim executor executes the required floor and consumes v2.workflow.floor_route_gap FloorRouteGapExpectation directly; the modeled expectation then remains the sole authority and the hand-written decode/classifier disappears with the v1 floor bridge.",
+  current_boundary: "v2.workflow.floor_route_gap FloorRouteGapExpectation -> v1_compiler.cli_run FloorRouteGapExpectation -> v1_compiler.cli_run floor_route_gap_expectation_mismatch -> v1_compiler.cli_run run_required_floor"
+}
