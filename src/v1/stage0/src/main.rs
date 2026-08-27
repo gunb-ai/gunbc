@@ -17,7 +17,8 @@ use v1_compiler::v1_std_core::{
 #[derive(Parser)]
 #[command(
     name = "gunbc",
-    about = "A causal compiler: write .dag, get Rust/Python/Go."
+    about = "A causal compiler: write .dag, get Rust/Python/Go.",
+    version = env!("GUNBC_BUILD_IDENTITY")
 )]
 struct Cli {
     #[command(subcommand)]
@@ -51,7 +52,16 @@ enum Commands {
         #[arg(long)]
         entry: Option<String>,
     },
-    Ci,
+
+    /// Run one target by its absolute label and report the standing its own producer
+    /// answers in. The label is exact: a target PATTERN refuses, and an unbound or
+    /// unknown target refuses rather than reporting a pass.
+    Test {
+        /// Absolute label of exactly one target, e.g.
+        /// `//gunbc/instruments:heads-reading-differential`.
+        #[arg(value_name = "LABEL")]
+        target: String,
+    },
 
     /// Execute a .dag program directly (interpreter)
     Run {
@@ -616,25 +626,29 @@ fn main() {
             &args,
         )
         .apply(),
-        // `ci` is NOT a second verb to wire: the deleted handler was `run` with fixed
-        // arguments, so it is a PARAMETERIZATION of the same seam. Wiring it as its own
-        // path would fork one route into two that must then be kept equal by hand.
-        // The roots come from `cli_run::witness_layer_roots`, which reads the single
-        // `.dag` authority live rather than a literal spelled here.
-        // `ci` passes dry_run: false DELIBERATELY, matching the deleted `handle_ci`,
-        // which took no dry-run parameter and always evaluated Wet. `--dry-run` is a
-        // global flag, so it is ACCEPTED here and ignored — a pre-existing hazard on the
-        // base, not one this seam introduces, and changing it would alter a verb's
-        // semantics under cover of a restoration.
-        Commands::Ci {} => run_verb(
-            &cli_run::witness_layer_roots(),
-            "main",
-            Some("dag/tools/gunbc_ci.dag"),
-            false,
-            false,
-            &[],
-        )
-        .apply(),
+
+        // THE TARGET DISPATCH SEAM, AND THE WHOLE ARM IS A CALL.
+        //
+        // There is deliberately no mode switch here and no arm per instrument: which producer a
+        // label names is decided by the registry in `target_invocation_host`, mirroring
+        // `gunbc.instrument_targets`, and the realization that runs it is selected one level
+        // below that. A second instrument adds a row there and nothing at all here.
+        //
+        // The status is the producer's own termination, not an aggregate verdict: 0 the reading
+        // held, 1 it did not, 2 no reading was taken. `gunbc.build_target`'s
+        // `test_standing_verdict` and the Blaze status export are both deliberately NOT consulted
+        // -- each refuses instrument producers by design, so either would answer a question this
+        // verb is not asking.
+        Commands::Test { target } => {
+            let outcome = cli_run::target_invocation_host::test_verb(&target);
+            Verdict {
+                status: cli_run::target_invocation_host::invocation_exit_status(
+                    outcome.termination,
+                ),
+                message: Some(outcome.message),
+            }
+            .apply()
+        }
 
         // The refusal names a CONDITION, not a branch. An earlier revision said "not
         // available on integration/cli-run-cut", which the merge itself would have
@@ -859,6 +873,8 @@ fn render_one_diagnostic(
 
 #[cfg(test)]
 mod tests {
+    use super::Cli;
+    use clap::CommandFactory;
     // THE TESTS SURVIVE THE FUNCTION AND ARE RE-POINTED AT THE SURVIVING AUTHORITY.
     // They were written against this file's private copy of `extract_module_path`, which the
     // fork closure deleted; the behaviour they pin is `cli_run`'s, so they now assert it there.
@@ -866,6 +882,31 @@ mod tests {
     // implementations, which is exactly what DESIGN §4b(4) forbids: the redundant machinery
     // goes, the discriminating cases stay enrolled.
     use v1_compiler::cli_run::extract_module_path_public as extract_module_path;
+
+    #[test]
+    fn version_surface_reports_the_exact_source_commit() {
+        assert_eq!(
+            Cli::command().get_version(),
+            Some(env!("GUNBC_BUILD_IDENTITY"))
+        );
+        let identity = env!("GUNBC_BUILD_IDENTITY");
+        let commit = identity.strip_suffix("-dirty").unwrap_or(identity);
+        assert_eq!(commit.len(), 40);
+        assert!(commit.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        assert!(identity == commit || identity == format!("{commit}-dirty"));
+    }
+
+    #[test]
+    fn emitted_non_gunbc_cli_has_no_gunbc_build_environment_dependency() {
+        let rendered = v1_compiler::v1_compiler_emit_rust::emit_cli_struct(
+            std::rc::Rc::new(im::vector![]),
+            "user-program".to_string(),
+            "".to_string(),
+            "".to_string(),
+        );
+        assert!(!rendered.contains("GUNBC_BUILD_IDENTITY"));
+        assert!(!rendered.contains("version ="));
+    }
 
     #[test]
     fn extract_module_path_none_for_moduleless_parse_fixture() {

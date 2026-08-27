@@ -98,7 +98,12 @@ test fn witness_privileged_fixture_surfaces_stdout() -> Bool {
     }
   ) {
     Converged { evidence: ev, applied: _ } =>
-      string_contains(s: ev.stdout, pattern: privilege_mutation_marker)
+      match ev {
+        ShellEffectApplied { exit_code: _, stdout: stdout, stderr: _ } =>
+          string_contains(s: stdout, pattern: privilege_mutation_marker)
+        ConvergePlanApplied { exit_code: _, stdout: _ } => false
+        ToolchainHomeInterferenceDiscriminated => false
+      }
     NotConverged { reason: _, applied: _ } => false
   }
 }

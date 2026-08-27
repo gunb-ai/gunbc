@@ -168,8 +168,8 @@ type ClosureDocRefusal
 // else -- no decode path can reach it. It nevertheless sat in ClosureDocRefusal, which the LOAD
 // classifier matches exhaustively, so closure_document_load_standing was forced to assign a standing
 // to a state the loader cannot produce. It answered LoadDocumentMalformed, and malformed is the ONE
-// standing standing_may_supersede_generation permits to overwrite a newer document. An encode-only
-// state therefore had a route to "may supersede".
+// standing that permits overwriting a newer document (gunbc.scm.supersession
+// standing_permission_refusal). An encode-only state therefore had a route to "may supersede".
 //
 // That is a closed match over a dishonest domain: exhaustiveness is satisfied, the compiler is
 // content, and the arm is answering for something that cannot occur. Splitting the type does not
@@ -991,7 +991,8 @@ fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
 // one remedy today, so the collapsed form is total, compiles, and looks complete -- and a NEW
 // member-read mode would then inherit LoadDocumentMalformed in silence. Malformed is the SOLE
 // standing that permits superseding a newer generation, so an inherited arm sits one step from a
-// reader overwriting a writer's valid document. Descending makes the next mode fail to compile
+// reader overwriting a writer's valid document -- one step and no longer the last one, since
+// gunbc.scm.supersession additionally binds actuation to the generation the evidence was read from. Descending makes the next mode fail to compile
 // here, where whoever adds it can see what it would cost.
 // THE OBJECT-TABLE ARM BINDS ITS PAYLOAD AND PASSES IT ON; IT DOES NOT DISCARD IT. A bare binding in
 // the arm carrying the payload is the tell DESIGN names for "total at the level examined, blind one
@@ -1004,6 +1005,12 @@ fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
 // classifier (gunbc.scm.json_member, gunbc.scm.target_reference). They are not inconsistent with the
 // delegating arm above: the object-table module owns a classifier and those two do not, so each cause
 // is classified by whoever owns it.
+//
+// BOTH OF THOSE NESTED MATCHES DESCEND ALL THE WAY, which the target-reference one did not: its
+// TargetReferenceMemberReadRefused arm bound the payload bare and answered one standing for the
+// whole of MemberReadRefusal, while the sibling ClosureDocMemberReadRefused arm enumerated the same
+// four causes. The two arms now agree, so a new member-read cause fails to compile at every position
+// this function reaches it rather than only at the undecorated one.
 fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
   match cause {
     ClosureDocFormatUnrecognized { found: _ } => LoadUnsupportedProtocol
@@ -1019,7 +1026,13 @@ fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
     ClosureDocObjectTableRefused { cause: c } => object_table_load_standing(cause: c)
     ClosureDocTargetReferenceRefused { cause: c } =>
       match c {
-        TargetReferenceMemberReadRefused { cause: _ } => LoadDocumentMalformed
+        TargetReferenceMemberReadRefused { cause: m } =>
+          match m {
+            MemberReadSubjectNotObject => LoadDocumentMalformed
+            MemberReadMissing { key: _ } => LoadDocumentMalformed
+            MemberReadDuplicated { key: _ } => LoadDocumentMalformed
+            MemberReadWrongShape { key: _ } => LoadDocumentMalformed
+          }
         TargetReferenceUnexpectedMember { key: _ } => LoadDocumentMalformed
         TargetReferenceNotOneArm { found: _ } => LoadDocumentMalformed
         TargetReferenceUncontainedDigestInvalid { found: _ } => LoadDocumentMalformed

@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::process::Command;
 
 fn git_output(args: &[&str]) -> Option<String> {
@@ -9,28 +10,60 @@ fn git_output(args: &[&str]) -> Option<String> {
     }
 }
 
-fn main() {
-    // Re-run when this script or the survey bin change so BUILD_DIRTY is recomputed
-    // after local source edits (defense-in-depth — survey time ensure_clean_tree and
-    // verify_build_provenance still gate the run).
-    //
-    // Do NOT declare cargo:rerun-if-changed on .git/HEAD here. Package-relative paths
-    // like `.git/HEAD` do not exist (checkout .git lives at workspace root; worktrees
-    // use a gitdir: pointer file). A missing rerun-if-changed target makes every
-    // subsequent cargo invocation treat the build script as stale, forcing a second
-    // v1-compiler compile when alternating cargo build and cargo test. Pointing at
-    // the real HEAD path would be worse: every commit would invalidate the shared lib.
-    println!("cargo:rerun-if-changed=build.rs");
+fn watch_git_path(path: &str) {
+    if Path::new(path).exists() {
+        println!("cargo:rerun-if-changed={path}");
+    }
+}
 
-    let commit = git_output(&["rev-parse", "HEAD"]).unwrap_or_default();
-    let tree = git_output(&["rev-parse", "HEAD^{tree}"]).unwrap_or_default();
+fn main() {
+    // Re-run when the binary's Rust inputs change so a clean build cannot keep its
+    // identity after those inputs become dirty. Watching the repository root would
+    // include `target/` and make build output invalidate its own build script.
+    //
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=src");
+    println!("cargo:rerun-if-changed=Cargo.toml");
+
+    // Ask Git for its real paths: a linked worktree's `.git` is a pointer file, and a branch's
+    // HEAD file contains only a stable symbolic-ref name. Watch both the worktree HEAD and its
+    // resolved loose ref so every commit invalidates the identity. When the ref is packed, watch
+    // its parent directory as well: the next commit creates the loose ref there. `packed-refs`
+    // covers repacks, and the index covers staged/unstaged transitions whose source bytes do not
+    // change. Existing paths only are enrolled because Cargo treats a missing watched path as
+    // perpetually stale.
+    if let Some(head_path) = git_output(&["rev-parse", "--git-path", "HEAD"]) {
+        watch_git_path(&head_path);
+    }
+    if let Some(head_ref) = git_output(&["symbolic-ref", "-q", "HEAD"]) {
+        if let Some(ref_path) = git_output(&["rev-parse", "--git-path", &head_ref]) {
+            if Path::new(&ref_path).exists() {
+                watch_git_path(&ref_path);
+            } else if let Some(parent) = Path::new(&ref_path).parent().and_then(Path::to_str) {
+                watch_git_path(parent);
+            }
+        }
+    }
+    for git_name in ["packed-refs", "index"] {
+        if let Some(path) = git_output(&["rev-parse", "--git-path", git_name]) {
+            watch_git_path(&path);
+        }
+    }
+
+    let commit = git_output(&["rev-parse", "HEAD"]).expect(
+        "gunbc build cannot observe its source commit: `git rev-parse HEAD` failed or Git is unavailable",
+    );
+    assert!(
+        commit.len() == 40 && commit.bytes().all(|byte| byte.is_ascii_hexdigit()),
+        "gunbc build received a non-40-hex source commit from `git rev-parse HEAD`"
+    );
     let dirty = git_output(&["status", "--porcelain"])
         .map(|s| !s.is_empty())
         .unwrap_or(true);
-    println!("cargo:rustc-env=FRONTIER_PROBE_SURVEY_BUILD_COMMIT={commit}");
-    println!("cargo:rustc-env=FRONTIER_PROBE_SURVEY_BUILD_TREE={tree}");
-    println!(
-        "cargo:rustc-env=FRONTIER_PROBE_SURVEY_BUILD_DIRTY={}",
-        if dirty { "1" } else { "0" }
-    );
+    let identity = if dirty {
+        format!("{commit}-dirty")
+    } else {
+        commit
+    };
+    println!("cargo:rustc-env=GUNBC_BUILD_IDENTITY={identity}");
 }

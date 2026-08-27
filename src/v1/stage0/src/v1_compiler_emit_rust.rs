@@ -174,7 +174,8 @@ use crate::v1_std_core::CallSemantics::{
 };
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    AmbiguousAnonymousRecordLiteral, InternalError, UnlistedImportUse,
+    AmbiguousAnonymousRecordLiteral, AmbiguousReference, DataReferenceVisibilityBudgetExceeded,
+    InternalError, ParameterDefaultFormNotAdmitted, UnlistedImportUse,
 };
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -33711,17 +33712,19 @@ if resolved.clone() {
         } else {
             match v1_rt::map_get(&wf.unresolvable_default_data_references.clone(), param_name.clone()) {
     Some(unresolvable) => match (*unresolvable.cause.clone()).clone() {
-    DataReferenceUnresolvableCause::DataReferenceAmbiguous { modules: mods, .. } => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError {
-    message: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("workflow CLI default for parameter `".to_string(), param_name.clone()), "` names `".to_string()), unresolvable.name.clone()), "`, which more than one visible data declaration answers to (".to_string()), mods.clone().join(&", ".to_string())), "); qualify the reference or narrow the import".to_string()),
+    DataReferenceUnresolvableCause::DataReferenceAmbiguous { modules: mods, .. } => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::AmbiguousReference {
+    name: unresolvable.name.clone(),
+    candidates: mods.clone(),
     span: param.span.clone(),
 }), wf.module_name.clone())]),
-    DataReferenceUnresolvableCause::DataReferenceVisibilityBudgetExhausted => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError {
-    message: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("workflow CLI default for parameter `".to_string(), param_name.clone()), "` names `".to_string()), unresolvable.name.clone()), "`, whose visible declarations could not be enumerated: the import re-export walk exceeded its depth bound, so this is a compiler limit and not an authoring error".to_string()),
+    DataReferenceUnresolvableCause::DataReferenceVisibilityBudgetExhausted => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded {
+    name: unresolvable.name.clone(),
     span: param.span.clone(),
 }), wf.module_name.clone())]),
 },
-    None => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError {
-    message: v1_rt::concat(v1_rt::concat("workflow CLI default for parameter `".to_string(), param_name.clone()), "` must be a string, int, float, bool literal, or data reference".to_string()),
+    None => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ParameterDefaultFormNotAdmitted {
+    parameter: param_name.clone(),
+    admitted: Rc::new(vec!["string literal".to_string(), "int literal".to_string(), "float literal".to_string(), "bool literal".to_string(), "data reference".to_string()]),
     span: param.span.clone(),
 }), wf.module_name.clone())]),
 }
@@ -33956,10 +33959,16 @@ pub fn emit_main_rs(
         } else {
             "".to_string()
         };
+        let cli_version_attr = if has_pipeline.clone() {
+            ", version = env!(\"GUNBC_BUILD_IDENTITY\")".to_string()
+        } else {
+            "".to_string()
+        };
         let cli_struct = emit_cli_struct(
             workflow_funcs.clone(),
             binary_name.clone(),
             cli_about.clone(),
+            cli_version_attr.clone(),
         );
         let subcommand_enum = emit_subcommand_enum(workflow_funcs.clone(), has_pipeline.clone());
         let pipeline_fns = if has_pipeline.clone() {
@@ -34075,6 +34084,7 @@ pub fn emit_cli_struct(
     workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
     binary_name: String,
     about: String,
+    version_attr: String,
 ) -> String {
     {
         let about_attr = if (about.clone() != "".to_string()) {
@@ -34097,14 +34107,17 @@ pub fn emit_cli_struct(
                                             v1_rt::concat(
                                                 v1_rt::concat(
                                                     v1_rt::concat(
-                                                        "#[derive(Parser)]\n".to_string(),
-                                                        "#[command(name = \"".to_string(),
+                                                        v1_rt::concat(
+                                                            "#[derive(Parser)]\n".to_string(),
+                                                            "#[command(name = \"".to_string(),
+                                                        ),
+                                                        binary_name.clone(),
                                                     ),
-                                                    binary_name.clone(),
+                                                    "\"".to_string(),
                                                 ),
-                                                "\"".to_string(),
+                                                about_attr.clone(),
                                             ),
-                                            about_attr.clone(),
+                                            version_attr.clone(),
                                         ),
                                         ")]\n".to_string(),
                                     ),

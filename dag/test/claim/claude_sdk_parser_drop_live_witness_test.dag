@@ -2,7 +2,10 @@ module test.claim.claude_sdk_parser_drop_live_witness
 
 import std.types { Bool }
 import extdeps.llm.claude_agent_sdk_stream {
-  claude_sdk_parser_drop_receipt_holds,
+  claude_sdk_parser_drop_receipt_standing,
+  ParserDropHolds,
+  ParserDropRefuted,
+  ParserDropNotEstablished,
   claude_sdk_parser_drop_receipt_path,
 }
 import extdeps.filesystem.filesystem_io
@@ -10,11 +13,24 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data claude_sdk_parser_drop_live_witness_note: String = "Wet half of audit §4.1 parser-drop evidence, split out of claude_sdk_parser_drop_witness_test.dag so hermetic discovery can run the fixture/RED controls without a lying SubstrateInputsOnly disposition on a filesystem_read witness. Reads the committed probe receipt and re-derives control_response parser-drop through claude_sdk_parser_drop_receipt_holds."
+data claude_sdk_parser_drop_live_witness_note: String = "Wet half of audit §4.1 parser-drop evidence, split out of claude_sdk_parser_drop_witness_test.dag so hermetic discovery can run the fixture/RED controls without a lying SubstrateInputsOnly disposition on a filesystem_read witness. Reads the committed probe receipt and re-derives control_response parser-drop through claude_sdk_parser_drop_receipt_standing, branching on all three standings so a missing artifact is never reported as an upstream fact."
 
 data real_execution_home_doc: String = "This witness drives a real Filesystem.Read effect (extdeps.filesystem.filesystem_io has no mock_response), so the hermetic discovery corpus refuses it by construction. Excluded from discovery (gunbc.ci_layer_roots witness_exclusion_frontier) and re-enrolled as a declared Wet explicit entry (bin_witness_wet_entries), same lane as push_event_witness_wet_test.dag. The subprocess capture that produced the receipt lives in docs/probes/claude_paired_entitlement_probe/ and is not re-run here — only the committed JSON frame is read and checked by the pure predicate."
 
+// THIS IS THE CALLER THE COLLAPSE ACTUALLY ENDANGERED. filesystem_read answers the empty string for
+// a path it cannot read, so under the predecessor Bool a DELETED probe receipt made this witness
+// report that the SDK does not drop control_response -- a live claim about upstream software,
+// manufactured out of our own missing file, and red in a way that would have sent the next reader
+// to the SDK rather than to `git status`.
+//
+// It now distinguishes all three, and the two failing arms are kept SEPARATE rather than folded
+// into one `false`, because they send that reader to different places: refuted means re-run the
+// paired probe against the current SDK, not-established means repair the artifact.
 test fn witness_wet_receipt_control_response_parser_drop_holds() -> Bool {
   let result = filesystem_read(path: claude_sdk_parser_drop_receipt_path)
-  claude_sdk_parser_drop_receipt_holds(text: result.content)
+  match claude_sdk_parser_drop_receipt_standing(text: result.content) {
+    ParserDropHolds => true
+    ParserDropRefuted => false
+    ParserDropNotEstablished { cause: _ } => false
+  }
 }
