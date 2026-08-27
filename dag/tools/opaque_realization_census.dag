@@ -175,18 +175,18 @@ fn tree_provenance_text(p: EmittedTreeProvenance) -> String {
 }
 
 type CensusStage
-  = StageWorkspace
-  | StageBinaries
-  | StageEmit
-  | StageArtifactListing
+  = OpaqueCensusStageScratchDirectory
+  | OpaqueCensusStageCompilerBinary
+  | OpaqueCensusStageEmit
+  | OpaqueCensusStageEmittedTreeRead
 
 type OpaqueRealizationCensus
-  = CensusUnestablished {
+  = OpaqueCensusUnestablished {
       provenance: EmittedTreeProvenance
       stage: CensusStage
       cause: String
     }
-  | CensusTaken {
+  | OpaqueCensusTaken {
       provenance: EmittedTreeProvenance
       emitted_file_count: Int
       dispositions: List<UseSiteDisposition>
@@ -196,10 +196,10 @@ type OpaqueRealizationCensus
 
 fn census_stage_text(stage: CensusStage) -> String {
   match stage {
-    StageWorkspace => "workspace"
-    StageBinaries => "binaries"
-    StageEmit => "emit"
-    StageArtifactListing => "artifact-listing"
+    OpaqueCensusStageScratchDirectory => "workspace"
+    OpaqueCensusStageCompilerBinary => "binaries"
+    OpaqueCensusStageEmit => "emit"
+    OpaqueCensusStageEmittedTreeRead => "artifact-listing"
   }
 }
 
@@ -495,7 +495,7 @@ fn read_emitted_file(path: String, content: String) -> EmittedFile {
 // ---------------------------------------------------------------------------------------------
 // Classification.
 
-fn claim_key(declaring_file: String, name: String) -> String {
+fn realization_claim_key(declaring_file: String, name: String) -> String {
   concat(declaring_file, concat("::", name))
 }
 
@@ -506,12 +506,12 @@ fn claim_index(claims: List<RealizationClaim>) -> Map<String, RealizationClaim> 
   fold(
     claims,
     init: empty_map(),
-    f: (acc, c) => map_insert(acc, claim_key(declaring_file: c.declaring_file, name: c.name), c)
+    f: (acc, c) => map_insert(acc, realization_claim_key(declaring_file: c.declaring_file, name: c.name), c)
   )
 }
 
 fn claim_for(claims: Map<String, RealizationClaim>, declaring_file: String, name: String) -> RealizationClaim? {
-  lookup(claims, claim_key(declaring_file: declaring_file, name: name))
+  lookup(claims, realization_claim_key(declaring_file: declaring_file, name: name))
 }
 
 fn consumer_binds(file: EmittedFile, spelling: String, declaring_file: String) -> String {
@@ -709,7 +709,7 @@ fn opaque_subject_rows(
     f: (acc, claim) =>
       if acc |> any(r => r.declaring_file == claim.declaring_file && r.name == claim.name) {
         acc
-      } else if !(dispositions |> any(d => disposition_subject_key(d: d) == claim_key(declaring_file: claim.declaring_file, name: claim.name))) {
+      } else if !(dispositions |> any(d => disposition_subject_key(d: d) == realization_claim_key(declaring_file: claim.declaring_file, name: claim.name))) {
         acc
       } else {
         let source_module = match files |> filter(f => f.file_key == claim.declaring_file) |> first {
@@ -735,20 +735,20 @@ fn opaque_subject_rows(
 fn disposition_subject_key(d: UseSiteDisposition) -> String {
   match d {
     ProviderDeclarationPreserved { consumer_file: _, declaring_file: df, name: n } =>
-      claim_key(declaring_file: df, name: n)
+      realization_claim_key(declaring_file: df, name: n)
     ProviderInterfaceBypass { consumer_file: _, declaring_file: df, name: n, realization: _, manifestation: _ } =>
-      claim_key(declaring_file: df, name: n)
+      realization_claim_key(declaring_file: df, name: n)
     NoConsumerOccurrence { consumer_file: _, declaring_file: df, name: n, realization: _ } =>
-      claim_key(declaring_file: df, name: n)
+      realization_claim_key(declaring_file: df, name: n)
   }
 }
 
 fn census_emitted_tree(provenance: EmittedTreeProvenance, src_dir: String, emit_detail: String) -> OpaqueRealizationCensus {
   let files = read_emitted_tree(src_dir: src_dir)
   if (files |> count) == 0 {
-    CensusUnestablished {
+    OpaqueCensusUnestablished {
       provenance: provenance,
-      stage: StageArtifactListing,
+      stage: OpaqueCensusStageEmittedTreeRead,
       cause: concat(
         "no readable .rs file was found under the emitted src directory, so no use site could be examined; detail: ",
         emit_detail
@@ -758,7 +758,7 @@ fn census_emitted_tree(provenance: EmittedTreeProvenance, src_dir: String, emit_
     let claims = all_claims(files: files)
     let index = claim_index(claims: claims)
     let dispositions = fold(files, init: [], f: (acc, f) => concat(acc, classify_file(file: f, claims: index)))
-    CensusTaken {
+    OpaqueCensusTaken {
       provenance: provenance,
       emitted_file_count: files |> count,
       dispositions: dispositions,
@@ -781,17 +781,17 @@ fn census_entry_emission(entry: String) -> OpaqueRealizationCensus {
   let root = git.Inspect.Toplevel()
   let out_dir = shell.Mktemp.Dir()
   if !out_dir.success {
-    CensusUnestablished {
+    OpaqueCensusUnestablished {
       provenance: provenance,
-      stage: StageWorkspace,
+      stage: OpaqueCensusStageScratchDirectory,
       cause: "could not create a temporary directory for the emitted crate"
     }
   } else {
     let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
     if !gunbc_built {
-      CensusUnestablished {
+      OpaqueCensusUnestablished {
         provenance: provenance,
-        stage: StageBinaries,
+        stage: OpaqueCensusStageCompilerBinary,
         cause: "the gunbc release binary is not buildable — the census invokes the compiler it is measuring as a subprocess, so an absent binary is a refusal and never a clean measurement"
       }
     } else {
@@ -920,8 +920,8 @@ fn subject_consistency_rows(dispositions: List<UseSiteDisposition>, claims: List
     claims,
     init: [],
     f: (acc, claim) =>
-      let key = claim_key(declaring_file: claim.declaring_file, name: claim.name)
-      if acc |> any(r => claim_key(declaring_file: r.declaring_file, name: r.name) == key) {
+      let key = realization_claim_key(declaring_file: claim.declaring_file, name: claim.name)
+      if acc |> any(r => realization_claim_key(declaring_file: r.declaring_file, name: r.name) == key) {
         acc
       } else {
         let preserved = subject_preserved_count(dispositions: dispositions, key: key)
@@ -976,7 +976,7 @@ fn policy_standing_text(p: ReferenceRealizationPolicyStanding) -> String {
 
 fn census_report_text(c: OpaqueRealizationCensus) -> String {
   match c {
-    CensusUnestablished { provenance: pv, stage: st, cause: cause } =>
+    OpaqueCensusUnestablished { provenance: pv, stage: st, cause: cause } =>
       join([
         "opaque-realization-census UNESTABLISHED",
         concat("provenance\t", tree_provenance_text(p: pv)),
@@ -984,7 +984,7 @@ fn census_report_text(c: OpaqueRealizationCensus) -> String {
         concat("cause\t", cause),
         ""
       ], "\n")
-    CensusTaken { provenance: pv, emitted_file_count: n, dispositions: ds, subject_consistency: cons, opaque_subjects: subs } =>
+    OpaqueCensusTaken { provenance: pv, emitted_file_count: n, dispositions: ds, subject_consistency: cons, opaque_subjects: subs } =>
       join([
         "opaque-realization-census TAKEN",
         concat("provenance\t", tree_provenance_text(p: pv)),
@@ -1011,8 +1011,8 @@ fn census_report_text(c: OpaqueRealizationCensus) -> String {
 
 fn census_completed(c: OpaqueRealizationCensus) -> Bool {
   match c {
-    CensusTaken { provenance: _, emitted_file_count: _, dispositions: _, subject_consistency: _, opaque_subjects: _ } => true
-    CensusUnestablished { provenance: _, stage: _, cause: _ } => false
+    OpaqueCensusTaken { provenance: _, emitted_file_count: _, dispositions: _, subject_consistency: _, opaque_subjects: _ } => true
+    OpaqueCensusUnestablished { provenance: _, stage: _, cause: _ } => false
   }
 }
 
@@ -1032,11 +1032,11 @@ fn write_census(c: OpaqueRealizationCensus, report: String) -> ProcessExit {
   }
 }
 
-fn measure(entry: String, report: String) -> ProcessExit {
+fn measure_entry(entry: String, report: String) -> ProcessExit {
   if entry == "" {
-    exit_failure(reason: "measure: --arg entry=<repo-relative .dag path> is required")
+    exit_failure(reason: "measure_entry: --arg entry=<repo-relative .dag path> is required")
   } else if report == "" {
-    exit_failure(reason: "measure: --arg report=<path> is required — the measurement is written, not printed")
+    exit_failure(reason: "measure_entry: --arg report=<path> is required — the measurement is written, not printed")
   } else {
     write_census(c: census_entry_emission(entry: entry), report: report)
   }
