@@ -3697,6 +3697,24 @@ fn collect_item_realized_surface_names(item: Node, shared_types: Set<String>, so
 // candidate row -- filtered as CandidateOwnModule when local, judged by the registry and the export
 // wall when not -- so the two cases separate where they are decidable instead of being asserted here.
 //
+// THE PARENT MAY BE UNRESOLVABLE, AND THAT IS ITS OWN ARM RATHER THAN A COLLAPSE INTO
+// CandidateRegistryAbsent. Reaching the unresolvable case means: THIS IS KNOWN TO BE A VARIANT and
+// its parent is not established. Registry-absent says something else entirely -- that the bare-name
+// REGISTRY holds no entry -- which is a statement about a different map, reached by a different
+// route, with a different remedy, and a reader auditing it would go looking at the registry where
+// the missing fact does not live. Two states distinguishable at the point of collapse must not be
+// collapsed (found in review by clever-boar-140, who owns the coproduct).
+//
+// Checking its reachability surfaced the sharper half. derive_variant_to_enum inserts the EMPTY
+// STRING as the parent when one variant name appears in two enums -- an ambiguity sentinel -- so the
+// lookup answers Present with a parent that names nothing, and the naive arm would have produced
+// CandidateVariantDelegatedToParent { parent_enum: "" }: a delegation to no one, which is the
+// top-as-ignorance shape wearing the payload that was supposed to make this arm honest. That case is
+// REACHABLE (variant-name collision across coproducts is real enough that the compiler carries a
+// VariantCollision diagnostic for it), unlike the Absent case, which cannot occur while both this
+// predicate and the parent map derive from the same EnumRepr summaries. Both route here, because a
+// quiet guard should still say what it means rather than borrow another arm's name.
+//
 // WHAT IS NOT ESTABLISHED, stated rather than assumed: this delegation is sound only if every parent
 // named by a routed row is ITSELF a candidate. collect_value_ref_names harvests a record literal's
 // parent_enum and expand_variant_payload_struct_imports expands payload structs, but no invariant
@@ -3707,6 +3725,7 @@ type ReferenceDerivedCandidateDisposition
   = CandidateSurvived { provider_module: String }
   | CandidateOwnModule
   | CandidateVariantDelegatedToParent { parent_enum: String }
+  | CandidateVariantParentUnresolved
   | CandidateRegistryAbsent
   | CandidateExportProofFailed { provider_module: String }
 
@@ -3728,8 +3747,10 @@ type ReferenceDerivedCandidateRow {
 fn reference_derived_candidate_disposition(name: String, this_module_name: String, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, type_summaries: Map<String, TypeSummary>, variant_to_enum: Map<String, String>) -> ReferenceDerivedCandidateDisposition {
   if is_known_variant(type_summaries: type_summaries, name: name) {
     match map_get(variant_to_enum, name) {
-      Present { value: parent } => CandidateVariantDelegatedToParent { parent_enum: parent }
-      Absent => CandidateRegistryAbsent
+      Present { value: parent } =>
+        if parent == "" { CandidateVariantParentUnresolved }
+        else { CandidateVariantDelegatedToParent { parent_enum: parent } }
+      Absent => CandidateVariantParentUnresolved
     }
   } else {
   match map_get(registry, name) {
@@ -3824,6 +3845,7 @@ fn reference_derived_row_diagnostics(rows: List<ReferenceDerivedCandidateRow>, m
       CandidateSurvived { provider_module: _ } => []
       CandidateOwnModule => []
       CandidateVariantDelegatedToParent { parent_enum: _ } => []
+      CandidateVariantParentUnresolved => []
       CandidateRegistryAbsent => []
     }
   )
@@ -3844,6 +3866,7 @@ fn reference_derived_disposition_name(disposition: ReferenceDerivedCandidateDisp
     CandidateSurvived { provider_module: _ } => "survived"
     CandidateOwnModule => "own-module"
     CandidateVariantDelegatedToParent { parent_enum: _ } => "variant-delegated-to-parent"
+    CandidateVariantParentUnresolved => "variant-parent-unresolved"
     CandidateRegistryAbsent => "registry-absent"
     CandidateExportProofFailed { provider_module: _ } => "export-proof-failed"
   }
@@ -3884,6 +3907,7 @@ type ReferenceDerivedCensus {
   survived: Int
   own_module: Int
   variant_delegated_to_parent: Int
+  variant_parent_unresolved: Int
   registry_absent: Int
   export_proof_failed: Int
 }
@@ -3894,6 +3918,7 @@ fn reference_derived_census(rows: List<ReferenceDerivedCandidateRow>) -> Referen
     survived: rows |> filter(r => reference_derived_disposition_name(disposition: r.disposition) == "survived") |> count,
     own_module: rows |> filter(r => reference_derived_disposition_name(disposition: r.disposition) == "own-module") |> count,
     variant_delegated_to_parent: rows |> filter(r => reference_derived_disposition_name(disposition: r.disposition) == "variant-delegated-to-parent") |> count,
+    variant_parent_unresolved: rows |> filter(r => reference_derived_disposition_name(disposition: r.disposition) == "variant-parent-unresolved") |> count,
     registry_absent: rows |> filter(r => reference_derived_disposition_name(disposition: r.disposition) == "registry-absent") |> count,
     export_proof_failed: rows |> filter(r => reference_derived_disposition_name(disposition: r.disposition) == "export-proof-failed") |> count
   }
