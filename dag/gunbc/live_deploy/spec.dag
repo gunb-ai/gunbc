@@ -249,6 +249,42 @@ fn deployment_belt_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
 // every constructor is the second representation DESIGN section 2 forbids, and tree-sync carries its
 // env path as a field only because production's name predates the derivation.
 //
+// THE PATH IS DECLARED HERE AND IS BOUND INTO NO UNIT, and that withdrawal is the substance of this
+// row rather than an omission in it. An earlier cut bound this file into BOTH multipurpose units via
+// EnvironmentFileIfPresent, which does deliver the credential and grants far more than it names.
+//
+// WHY IT WAS WITHDRAWN. A service-wide environment source reaches the whole process AND every child
+// of it. The belt spawns providers through `env -C <workdir> <program>` with neither -i nor -u, and
+// GNU env inherits the environment unless told otherwise, so the token would reach git, tmux and the
+// dispatched provider session. Upstream makes that concrete rather than theoretical: gh consults
+// GH_TOKEN then GITHUB_TOKEN, and those OVERRIDE credentials stored by `gh auth login` -- so an
+// ambient publication token does not merely leak into a worker, it SILENTLY REPLACES the identity
+// that worker was supposed to act as.
+//
+// AND FILE-BACKED DELIVERY ALONE WOULD NOT HAVE FIXED IT, which is the part worth writing down
+// because it is the tempting next move. Moving the token from an environment variable to a file
+// stops automatic inheritance and does NOT create an authorization boundary: both units run as the
+// deployment service user and the worker is spawned beneath that process, so a file readable by that
+// principal is readable by the worker -- the more so for a predictable path such as this one. The
+// transport changed; the set of principals that can read it did not.
+//
+// THE TWO CREDENTIALS ARE TWO CAPABILITIES, DECLARED AND UNBUILT. Publication needs only to LIST
+// pull requests (Pull requests: read). A worker needs to PUSH a branch and OPEN a pull request
+// (Pull requests: write plus Contents). A read-only observer and a code-authoring agent have
+// materially different authority and are one token only by accident of both addressing GitHub.
+// Neither is modeled today: the dispatch platform declares a git workspace, tmux, environment
+// binding and validation tools, and declares NO GitHub-authoring capability, no worker identity and
+// no credential source proving a worker can push at all.
+//
+// SO THIS ROW IS THE NAME AND NOTHING ELSE, and publication stays refused rather than being restored
+// by a grant nobody bounded. Restoring it needs a publication-only consumer boundary -- an
+// uncredentialed belt handing a typed request to a minimal publisher the worker principal cannot
+// read -- which both ingress paths then share. Stripping GH_TOKEN/GITHUB_TOKEN at the provider spawn
+// is NOT the interim, and that ordering is deliberate: with no worker credential modeled or
+// observed, removing the variables could take away the only authentication a worker currently has
+// and break its ability to offer finished work, trading a scope defect for a capability loss. That
+// strip lands only AFTER a worker source is observed in the exact spawned environment.
+//
 // IT IS NOT A DEPLOYMENT MEMBER AND THE APPLY DOES NOT WRITE IT. gunbc-tree-sync.env is written by
 // the apply because its content is a RUNNER PATH the deploy knows; a token is not derivable from
 // anything in this graph and must not become one. So the host owns the file, the graph owns only its
