@@ -1,0 +1,629 @@
+module gunbc.fleet_fan_wiring
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_fan_tach_expectation {
+  ChassisBayHeader,
+  FanHeaderExpectationRow,
+  HostFanTachExpectation,
+  ProcessorCoolerHeader,
+  TachExpected,
+  TachNotExpected,
+  expected_tach_headers,
+  srv1_fan_tach_expectation,
+  srv2_fan_tach_expectation,
+  srv3_fan_tach_expectation,
+  srv4_fan_tach_expectation,
+}
+import gunbc.fleet_intent_network {
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+  operator_host_srv4,
+}
+
+// THREE POPULATIONS, NOT ONE, AND THIS MODULE IS THE MIDDLE ONE.
+//
+// gunbc.fleet_fan_tach_expectation answers WHERE ROTATION IS EXPECTED - one entry per board
+// header, operator-declared and corroborated by observation. It is deliberately silent about
+// everything below that, and the silence was load-bearing enough to be worth its own module
+// rather than more fields on that one:
+//
+//   physical fan count  !=  PWM channel count  !=  tach channel count
+//
+// is NORMAL wiring, not an exception. A cooler that ships two fans on one splitter presents ONE
+// header to the board, receives ONE PWM signal, and returns ONE tach signal for two spinning
+// parts - so a header count can never establish a fan count in either direction. Reading five
+// headers as five fans is the error this module exists to make unwritable.
+//
+// The three layers and their DISJOINT remedies, which is the test that they are really three:
+//
+//   expectation  rotation expected, nothing wired      -> inspect the chassis build
+//   wiring       fan model unobserved                 -> read the label on the part
+//   wiring       tach not carried                     -> inspect the signal path
+//   endpoint     header maps to no BMC channel        -> read the board/firmware mapping
+//
+// Four different people fix those four things. Collapsing any pair of them sends a ticket to
+// the wrong one.
+
+// WHETHER WE KNOW WHAT PART IS ON THE HEADER. FanModelUnobserved is not a defect and must not
+// block anything downstream: an unknown chassis fan still occupies a position, still receives
+// PWM, and still contributes its control endpoint. Requiring a catalog row to enter the
+// population would have forced a fabricated row for the 2U chassis fans, whose model nobody has
+// read off the part - the fabricated-plausible-output failure, paid in inventory.
+// HOW WE KNOW IS A SECOND FACT, and folding it into the binding is the same conflation this
+// module exists to undo one level up. A part someone READ OFF THE LABEL and a part someone TOLD
+// US ABOUT are both bindings and license different things: a declared model may be used to pick
+// a curve or a spare, and may not be cited as the physical inventory of a machine nobody opened.
+// The two also fail differently -- a label is misread, a declaration is remembered wrong or
+// describes what was ordered rather than what went in -- so the remedy differs too: re-read the
+// label, or ask again.
+//
+// AND A PACKAGE SKU IS NOT A MODEL. "P8 PWM PST (5 Pack)" names a procurement package, and
+// ACFAN00154A is that package's identifier, not the identifier of each fan inside it; likewise
+// "P8 PWM PST" and "P8 PWM PST CO" are different products and the CO variant is not implied by
+// the base name. A catalog row for the package would put a quantity-5 fact where a per-header
+// part belongs.
+// AND NEITHER LIVE BINDING WAS ACTUALLY OPERATOR-DECLARED, which is why this arm exists rather
+// than the two-arm split a review round proposed and I first shipped. The operator named the
+// COOLERS - a Noctua NH-D9 AMP-4926 4U and a Dynatron W1 - not the fan part numbers. NF-A9
+// HS-PWM and DF126025BU-PWMH came from those assemblies' own specifications. So marking the
+// headers OperatorDeclared asserted a sentence nobody said, in the same carrier that exists to
+// keep such assertions honest; the evidence is a DERIVATION from a declared assembly, and its
+// failure mode is different again - the assembly is right and the bundled part changed, or the
+// spec names a variant.
+//
+// The assembly split is not decoration either: the Dynatron cooler has a cited catalog row and
+// the Noctua one does not, so AssemblyNamedNotCatalogued makes that gap a state something can
+// read instead of a silence. Minting a Noctua row here would have meant guessing a socket, a
+// design power and a rack height to satisfy a shape.
+type DeclaredAssembly
+  = AssemblyCatalogued { catalog: DeclarationRef }
+  | AssemblyNamedNotCatalogued { model_label: NonEmptyStr }
+
+// THE CATALOG AND THE EVIDENCE MUST NOT BE TWO WRITABLE FIELDS. `FanModelExact { catalog,
+// evidence }` let a use site pair ANY catalog with ANY evidence, so "this Dynatron fan is derived
+// from a Noctua cooler" was authorable -- and was authored, by me, as a witness fixture, where it
+// passed. A carrier built to keep provenance honest was demonstrating the incoherence it exists
+// to prevent, in its own green evidence.
+//
+// Each arm therefore OWNS its catalog. The derived arm owns it through a specification that names
+// one assembly and the one fan that assembly's own spec bundles, authored as a single declaration
+// -- so the mismatch is not refused at a use site, it has no use site to be written at. That is
+// construction rather than validation, and it is honest about its limit: authoring a WRONG
+// specification row is still possible. Measured, not asserted -- pointing dynatron_w1_bundled_fan
+// at the Noctua fan leaves the witness green, while all three other mutations in this file go
+// red. What is gone is pairing two independently correct facts into a false one at a use site,
+// which is the failure that actually happened.
+//
+// NEXT RUNG, and why it is not taken here. The catalogued arm could stop being authored at all:
+// a cooler's own catalog row is where its bundled fan belongs (the vendor's specification names
+// it), so CpuCoolerCatalogRow gaining that field would make dynatron_w1_bundled_fan DERIVED and
+// the wrong-fan mutation unwritable rather than merely unlikely. That is a change to an extdeps
+// type with six fixture consumers outside this lane, and it closes only the catalogued arm --
+// the Noctua assembly has no catalog row at all, so its edge stays authored either way. TRIGGER:
+// the bundled-fan field lands on CpuCoolerCatalogRow, and AssemblyCatalogued reads through it.
+type AssemblyBundledFanSpecification {
+  assembly: DeclaredAssembly
+  fan_catalog: DeclarationRef
+}
+
+type InstalledFanModelStanding
+  = FanModelLabelObserved { catalog: DeclarationRef }
+  | FanModelOperatorDeclaredPart { catalog: DeclarationRef }
+  | FanModelDerivedFromAssembly { specification: AssemblyBundledFanSpecification }
+  | FanModelUnobserved
+
+fn installed_fan_catalog(standing: InstalledFanModelStanding) -> DeclarationRef? {
+  match standing {
+    FanModelLabelObserved { catalog } => Present { value: catalog }
+    FanModelOperatorDeclaredPart { catalog } => Present { value: catalog }
+    FanModelDerivedFromAssembly { specification } =>
+      Present { value: specification.fan_catalog }
+    FanModelUnobserved => none
+  }
+}
+
+// WHETHER A TACH SIGNAL REACHES THE BOARD FROM THIS HEADER, which is a WIRING fact and not a
+// health fact. TachSourceUnobserved is ignorance about the wiring itself.
+//
+// A SPLITTER IS NOT AUTOMATICALLY THE TachNotCarried CASE, and an earlier revision of this block
+// said it was, contradicting this module's own opening three lines up. The supplied Noctua NA-YC1
+// omits the RPM conductor on ONE branch precisely so the OTHER branch still returns a signal: two
+// fans driven, one tach reported. So the header keeps its readback and what is lost is COVERAGE
+// -- the second rotor is unrepresented -- which is why represented_fan_count sits on the carrying
+// arm. A splitter that suppresses the return signal entirely is a different realization and is
+// what TachNotCarried actually names.
+//
+// THIS IS THE ARM THAT MUST NEVER BE CONSTRUCTED FROM A READING. A header that reads absent
+// forever still has whatever tach carriage it was built with; concluding TachNotCarried from
+// repeated absence would convert a dead fan into a nominal design fact and close the ticket.
+// The remedy for absence is fan_header_verdict in the population module, judged against the
+// declared population - never a rewrite of this field.
+type FanTachSourceStanding
+  = TachCarriedByDrivenFan { representation: TachRepresentationStanding }
+  | TachNotCarried
+  | TachSourceUnobserved
+
+// HOW MANY FANS HANG OFF THIS HEADER IS OBSERVED, DERIVED, OR UNKNOWN -- three states, and an
+// earlier revision of this module wrote all three as one Int. That let an ASSEMBLY EXPECTATION
+// occupy a field whose name claims an installed fact: "the cooler ships two fans and a splitter"
+// supports `expected 2`, never `this header drives 2`, and nobody has opened srv1 or srv2. The
+// parent authority says so in as many words, so the child was contradicting it while looking
+// like a refinement.
+//
+// DrivenFanCountDerivedFromAssembly carries the specification it came from, which is what makes
+// it a claim someone can check rather than a number someone typed.
+type DrivenFanCountStanding
+  = DrivenFanCountObserved { count: Int }
+  | DrivenFanCountDerivedFromAssembly {
+      expected_count: Int
+      specification: AssemblyBundledFanSpecification
+    }
+  | DrivenFanCountUnobserved
+
+// ONE HEADER'S REALIZATION.
+type FanHeaderWiring {
+  header: NonEmptyStr
+  driven_fan_count: DrivenFanCountStanding
+  model: InstalledFanModelStanding
+  tach_source: FanTachSourceStanding
+}
+
+// AND HOW MANY ROTORS THE TACH SPEAKS FOR IS ITS OWN QUESTION, with its own unknown. Observing a
+// live rpm value establishes that the header CARRIES a signal; it establishes nothing about how
+// many spinning parts that one signal covers, which is precisely the fact a splitter changes.
+type TachRepresentationStanding
+  = TachRepresentationObserved { represented_fan_count: Int }
+  | TachRepresentationUnobserved
+
+// THE EVIDENCE ARM DECIDES SOMETHING, or it is vocabulary. A physical-inventory claim - what is
+// actually bolted into this machine - is admitted ONLY by a label somebody read. A derivation
+// from a declared assembly is enough to pick a curve or order a spare and is NOT enough to say
+// the machine was inspected, which is exactly the claim an inventory answers. Without this
+// consumer the split would be good naming that nothing enforces; with it, weakening a binding's
+// evidence changes an outcome.
+type PhysicalInventoryRefusalCause
+  = PhysicalLabelNotObservedDeclaredPart
+  | PhysicalLabelNotObservedAssemblyDerived { specification: AssemblyBundledFanSpecification }
+  | PhysicalModelUnobserved
+
+type PhysicalInventoryConfirmation
+  = PhysicalInventoryConfirmed { catalog: DeclarationRef }
+  | PhysicalInventoryRefused { cause: PhysicalInventoryRefusalCause }
+
+fn physical_inventory_confirmation(
+  standing: InstalledFanModelStanding,
+) -> PhysicalInventoryConfirmation {
+  match standing {
+    FanModelUnobserved =>
+      PhysicalInventoryRefused { cause: PhysicalModelUnobserved }
+    FanModelLabelObserved { catalog } => PhysicalInventoryConfirmed { catalog: catalog }
+    FanModelOperatorDeclaredPart { catalog } =>
+      PhysicalInventoryRefused { cause: PhysicalLabelNotObservedDeclaredPart }
+    FanModelDerivedFromAssembly { specification } =>
+      PhysicalInventoryRefused {
+        cause: PhysicalLabelNotObservedAssemblyDerived { specification: specification },
+      }
+  }
+}
+
+// THE WEAKER CONSUMER STAYS ADMITTED, and it is the half that makes the refusal above a boundary
+// rather than a blanket. Selecting a curve or a spare needs the PART, not the inspection, so
+// every bound model answers here regardless of how it came to be known. If both consumers moved
+// together the evidence axis would be deciding nothing.
+// AN ADMISSION THAT DOES NOT RETURN ITS SUBJECT CONFINES NOTHING. The previous form answered
+// Bool, so a caller could admit the Dynatron-derived standing and then select the Noctua catalog
+// -- the admission and the thing admitted travelled separately, which is the same shape as the
+// catalog/evidence pairing this module already closed one level up. The selection now CARRIES the
+// catalog, so a downstream curve or spare takes it from here and has no second argument to
+// disagree with.
+type FanCatalogSelection
+  = FanCatalogSelectionAdmitted { catalog: DeclarationRef }
+  | FanCatalogSelectionRefusedModelUnobserved
+
+fn catalog_selection(standing: InstalledFanModelStanding) -> FanCatalogSelection {
+  match installed_fan_catalog(standing: standing) {
+    Present { value: catalog } => FanCatalogSelectionAdmitted { catalog: catalog }
+    none => FanCatalogSelectionRefusedModelUnobserved
+  }
+}
+
+type HostFanWiring {
+  host: HostIdentity
+  headers: List<FanHeaderWiring>
+}
+
+// A DERIVED ENDPOINT CARRIES ITS HOST. The bare string "FAN1" is not an identity: srv3's FAN1
+// and srv4's FAN1 are different headers on different machines with different neighbours, and a
+// derivation that returned bare strings would let one host's list travel to another host's
+// configuration with nothing refusing. That is not hypothetical - it is exactly the pairing the
+// projected-config digest currently admits.
+type FanHeaderIdentity {
+  host: HostIdentity
+  header: NonEmptyStr
+}
+
+// WHY THESE ARE TWO FUNCTIONS AND NOT ONE LIST.
+//
+// The OpenBMC fan PID's `inputs` array is not a tach list. The controller READS each entry as an
+// RPM input and WRITES the commanded PWM percentage to every one of them. So a single field
+// named required_tach_inputs conflates two coverage questions that come apart in the wiring:
+//
+//   actuation coverage      does every populated header receive a commanded duty?
+//   observability coverage  does every populated header report a speed back?
+//
+// A splitter header answers YES to the first and NO to the second, and that is correct rather
+// than a fault. Under the fleet's current pure-feed-forward configuration the tach readback does
+// not affect commanded duty at all, so the two lists are not merely differently derived - they
+// govern different things, and a gap in each has a different consequence.
+
+// EVERY WIRED HEADER IS ACTUATED, whatever we know about the part on it. Model standing is
+// deliberately not consulted: an unknown fan is still driven.
+fn control_endpoints(wiring: HostFanWiring) -> List<FanHeaderIdentity> {
+  map(
+    wiring.headers,
+    binding => FanHeaderIdentity { host: wiring.host, header: binding.header },
+  )
+}
+
+fn tach_carries_readback(standing: FanTachSourceStanding) -> Bool {
+  match standing {
+    TachCarriedByDrivenFan { representation } => true
+    TachNotCarried => false
+    TachSourceUnobserved => false
+  }
+}
+
+fn tach_source_unobserved(standing: FanTachSourceStanding) -> Bool {
+  match standing {
+    TachSourceUnobserved => true
+    TachCarriedByDrivenFan { representation } => false
+    TachNotCarried => false
+  }
+}
+
+// AN UNOBSERVED SIGNAL PATH REFUSES THE POPULATION; IT DOES NOT SHRINK IT. The previous form
+// dropped TachSourceUnobserved headers and returned the remainder as the answer, which reads
+// "this header is known not to be a readback endpoint" from "we do not know whether this header
+// carries tach" -- the empty-observation narrow, and strictly worse than the widen it was
+// avoiding, because a widen is expensive and a narrow is silently uncovered. Its own witness had
+// enshrined the collapse as the contract, asserting that flipping one known header to unobserved
+// SHOULD drop the population from four to three.
+//
+// Excluding the header was still right; returning the remainder AS THE POPULATION was not. A
+// consumer that needs the exact OpenBMC readback set now gets a typed refusal naming which
+// headers are unresolved, so the deficit is countable and has an owner instead of being absorbed
+// into a smaller list nobody can tell from a complete one.
+type TachReadbackEndpointDerivation
+  = TachReadbackEndpointsEstablished { endpoints: List<FanHeaderIdentity> }
+  | TachReadbackEndpointsRefused { unobserved_headers: List<FanHeaderIdentity> }
+
+fn tach_readback_endpoint_derivation(wiring: HostFanWiring) -> TachReadbackEndpointDerivation {
+  let unobserved = map(
+    filter(wiring.headers, binding => tach_source_unobserved(standing: binding.tach_source)),
+    binding => FanHeaderIdentity { host: wiring.host, header: binding.header },
+  )
+  if unobserved.length() > 0 {
+    TachReadbackEndpointsRefused { unobserved_headers: unobserved }
+  } else {
+    TachReadbackEndpointsEstablished {
+      endpoints: map(
+        filter(wiring.headers, binding => tach_carries_readback(standing: binding.tach_source)),
+        binding => FanHeaderIdentity { host: wiring.host, header: binding.header },
+      ),
+    }
+  }
+}
+
+// HOW MANY ROTORS THIS HEADER'S TACH SPEAKS FOR, and the previous form of this function returned
+// an Int -- so a header that is absent from the roster, a header whose tach is known not carried,
+// a header whose signal path nobody inspected, and a duplicated header all answered 0. Five
+// states, five different owners, one number: the same narrow the readback population had just
+// been repaired for, reintroduced one layer down in the repair itself, by me, in the same commit.
+//
+// Duplicates get their own arm rather than being summed. Two rows for one header is a broken
+// roster, and adding their counts produces a plausible total that is nobody's fact.
+type RepresentedFanCountStanding
+  = RepresentedFanCountObserved { header: NonEmptyStr, count: Int }
+  | RepresentedFanCountUnobserved { header: NonEmptyStr }
+  | HeaderTachNotCarried { header: NonEmptyStr }
+  | HeaderAbsentFromWiring { header: NonEmptyStr }
+  | HeaderDuplicatedInWiring { header: NonEmptyStr, row_count: Int }
+
+fn represented_fan_count_for_header(
+  wiring: HostFanWiring,
+  header: NonEmptyStr,
+) -> RepresentedFanCountStanding {
+  let rows = filter(wiring.headers, binding => binding.header == header)
+  if rows.length() == 0 {
+    HeaderAbsentFromWiring { header: header }
+  } else if rows.length() > 1 {
+    HeaderDuplicatedInWiring { header: header, row_count: rows.length() }
+  } else {
+    fold(
+      rows,
+      init: HeaderAbsentFromWiring { header: header },
+      f: (acc, binding) =>
+        match binding.tach_source {
+          TachNotCarried => HeaderTachNotCarried { header: header }
+          TachSourceUnobserved => RepresentedFanCountUnobserved { header: header }
+          TachCarriedByDrivenFan { representation } =>
+            match representation {
+              TachRepresentationUnobserved =>
+                RepresentedFanCountUnobserved { header: header }
+              TachRepresentationObserved { represented_fan_count } =>
+                RepresentedFanCountObserved {
+                  header: header,
+                  count: represented_fan_count,
+                }
+            }
+        },
+    )
+  }
+}
+
+// THE TOTAL CARRIES ITS WEAKEST PROVENANCE. The per-header standing was made honest one commit
+// ago and then this aggregate threw that away: driven_fan_count_value turned an ASSEMBLY
+// EXPECTATION into an ordinary numeric contribution, the sum came back as InstalledFanCountExact,
+// and the witness asserted srv1 has exactly six installed fans -- on a machine where FAN1's two
+// are specified by a cooler datasheet and nobody has opened the case.
+//
+//   the assembly is specified to contain two fans
+//     -> the machine is reported to contain exactly two installed fans there
+//
+// That is the provenance collapse this module exists to prevent, committed at the aggregate after
+// being closed at the element. A total is only exact when every contribution is observed; mixing
+// observed with derived produces a MIXED standing that names which headers were which, so a
+// consumer can decide for itself whether a datasheet is good enough for what it is doing.
+type InstalledFanCountStanding
+  = InstalledFanCountObservedExact { count: Int }
+  | InstalledFanCountMixed {
+      observed_count: Int
+      assembly_expected_additional: Int
+      assembly_derived_headers: List<NonEmptyStr>
+      unobserved_headers: List<NonEmptyStr>
+    }
+
+fn headers_with_driven_standing(
+  wiring: HostFanWiring,
+  want_derived: Bool,
+) -> List<NonEmptyStr> {
+  map(
+    filter(
+      wiring.headers,
+      binding =>
+        match binding.driven_fan_count {
+          DrivenFanCountDerivedFromAssembly { expected_count, specification } => want_derived
+          DrivenFanCountUnobserved => !want_derived
+          DrivenFanCountObserved { count } => false
+        },
+    ),
+    binding => binding.header,
+  )
+}
+
+fn installed_fan_count_standing(wiring: HostFanWiring) -> InstalledFanCountStanding {
+  let derived_headers = headers_with_driven_standing(wiring: wiring, want_derived: true)
+  let unobserved_headers = headers_with_driven_standing(wiring: wiring, want_derived: false)
+  let observed_count = fold(
+    wiring.headers,
+    init: 0,
+    f: (acc, binding) =>
+      match binding.driven_fan_count {
+        DrivenFanCountObserved { count } => acc + count
+        other => acc
+      },
+  )
+  let derived_count = fold(
+    wiring.headers,
+    init: 0,
+    f: (acc, binding) =>
+      match binding.driven_fan_count {
+        DrivenFanCountDerivedFromAssembly { expected_count, specification } =>
+          acc + expected_count
+        other => acc
+      },
+  )
+  if derived_headers.length() == 0 && unobserved_headers.length() == 0 {
+    InstalledFanCountObservedExact { count: observed_count }
+  } else {
+    InstalledFanCountMixed {
+      observed_count: observed_count,
+      assembly_expected_additional: derived_count,
+      assembly_derived_headers: derived_headers,
+      unobserved_headers: unobserved_headers,
+    }
+  }
+}
+
+fn wired_headers(wiring: HostFanWiring) -> List<NonEmptyStr> {
+  map(wiring.headers, binding => binding.header)
+}
+
+// THE SEAM BETWEEN THE TWO LAYERS, CHECKED RATHER THAN ASSUMED.
+//
+// Expectation and wiring are separate authorities answering separate questions, which means they
+// can disagree - and a disagreement is exactly the interesting state. Wiring that covers a
+// header where no rotation is expected means someone plugged in a fan nobody recorded; wiring
+// that misses an expected header means rotation is expected somewhere nothing was wired. Both
+// are real conditions and neither is representable if one layer is derived from the other, which
+// is the reason this is a JOIN and not a projection.
+type FanWiringCoverage
+  = WiringCoversExpectation
+  | WiringMissesExpectedHeader { header: NonEmptyStr }
+  | WiringCoversUnexpectedHeader { header: NonEmptyStr }
+
+fn list_contains_header(headers: List<NonEmptyStr>, header: NonEmptyStr) -> Bool {
+  fold(headers, init: false, f: (acc, candidate) => if acc { true } else { candidate == header })
+}
+
+fn fan_wiring_coverage(
+  expectation: HostFanTachExpectation,
+  wiring: HostFanWiring,
+) -> FanWiringCoverage {
+  let populated = expected_tach_headers(expectation: expectation)
+  let wired = wired_headers(wiring: wiring)
+  let missing = fold(
+    populated,
+    init: none,
+    f: (acc, header) =>
+      match acc {
+        Present { value } => Present { value: value }
+        none => if list_contains_header(headers: wired, header: header) { none } else { Present { value: header } }
+      },
+  )
+  match missing {
+    Present { value: header } => WiringMissesExpectedHeader { header: header }
+    none =>
+      match fold(
+        wired,
+        init: none,
+        f: (acc, header) =>
+          match acc {
+            Present { value } => Present { value: value }
+            none => if list_contains_header(headers: populated, header: header) { none } else { Present { value: header } }
+          },
+      ) {
+        Present { value: header } => WiringCoversUnexpectedHeader { header: header }
+        none => WiringCoversExpectation
+      }
+  }
+}
+
+data dynatron_w1_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.cooling.dynatron",
+  decl_name: "dynatron_w1_catalog",
+  field: WholeDeclaration,
+}
+
+// ONE ROW PER ASSEMBLY-TO-BUNDLED-FAN EDGE, authored where the two halves are visible together.
+// Pairing an assembly with a fan is now an act of authorship in this list rather than something a
+// use site can improvise.
+data dynatron_w1_bundled_fan: AssemblyBundledFanSpecification = AssemblyBundledFanSpecification {
+  assembly: AssemblyCatalogued { catalog: dynatron_w1_ref },
+  fan_catalog: dynatron_df126025bu_pwmh_ref,
+}
+
+data noctua_nh_d9_amp_4926_bundled_fan: AssemblyBundledFanSpecification = AssemblyBundledFanSpecification {
+  assembly: AssemblyNamedNotCatalogued { model_label: "Noctua NH-D9 AMP-4926 4U" },
+  fan_catalog: noctua_nf_a9_hs_pwm_ref,
+}
+
+data noctua_nf_a9_hs_pwm_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.fans.noctua",
+  decl_name: "noctua_nf_a9_hs_pwm_catalog",
+  field: WholeDeclaration,
+}
+
+data dynatron_df126025bu_pwmh_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.fans.dynatron",
+  decl_name: "dynatron_df126025bu_pwmh_catalog",
+  field: WholeDeclaration,
+}
+
+fn chassis_bay_wiring(header: NonEmptyStr) -> FanHeaderWiring {
+  FanHeaderWiring {
+    header: header,
+    driven_fan_count: DrivenFanCountObserved { count: 1 },
+    model: FanModelUnobserved,
+    tach_source: TachCarriedByDrivenFan {
+      representation: TachRepresentationObserved { represented_fan_count: 1 },
+    },
+  }
+}
+
+// srv1/srv2 FAN1 IS AN ASSEMBLY EXPECTATION, NOT AN OBSERVATION, and this block previously said
+// the opposite on an argument that its own module now refutes. It read: five live tach channels
+// prove the splitter is not in use, "because a splitter suppresses one tach entirely". The NA-YC1
+// omits the RPM conductor on ONE branch precisely so the other still reports, so four chassis
+// headers plus one cooler header behind a splitter produce five channels too. The evidence was
+// consistent with both realizations and was read as deciding between them.
+//
+// What is actually known: the NH-D9 AMP-4926 4U ships two NF-A9 HS-PWM fans and an NA-YC1
+// splitter, and FAN1 publishes a live rpm value. What is NOT known, because nobody has opened
+// these two machines: how many fans hang off FAN1, and how many rotors its one signal speaks for.
+// The parent authority already says exactly this, so asserting 2 and 1 here made the child
+// contradict the module it builds on while looking like a refinement of it.
+data srv1_fan_wiring: HostFanWiring = HostFanWiring {
+  host: operator_host_srv1,
+  headers: [
+    FanHeaderWiring {
+      header: "FAN1",
+      driven_fan_count: DrivenFanCountDerivedFromAssembly {
+        expected_count: 2,
+        specification: noctua_nh_d9_amp_4926_bundled_fan,
+      },
+      model: FanModelDerivedFromAssembly { specification: noctua_nh_d9_amp_4926_bundled_fan },
+      tach_source: TachCarriedByDrivenFan { representation: TachRepresentationUnobserved },
+    },
+    chassis_bay_wiring(header: "FAN2"),
+    chassis_bay_wiring(header: "FAN3"),
+    chassis_bay_wiring(header: "FAN4"),
+    chassis_bay_wiring(header: "FAN5"),
+  ],
+}
+
+data srv2_fan_wiring: HostFanWiring = HostFanWiring {
+  host: operator_host_srv2,
+  headers: [
+    FanHeaderWiring {
+      header: "FAN1",
+      driven_fan_count: DrivenFanCountDerivedFromAssembly {
+        expected_count: 2,
+        specification: noctua_nh_d9_amp_4926_bundled_fan,
+      },
+      model: FanModelDerivedFromAssembly { specification: noctua_nh_d9_amp_4926_bundled_fan },
+      tach_source: TachCarriedByDrivenFan { representation: TachRepresentationUnobserved },
+    },
+    chassis_bay_wiring(header: "FAN2"),
+    chassis_bay_wiring(header: "FAN3"),
+    chassis_bay_wiring(header: "FAN4"),
+    chassis_bay_wiring(header: "FAN5"),
+  ],
+}
+
+// srv3/srv4: the Dynatron W1 carries ONE DF126025BU-PWMH. The three chassis fans are the ones
+// Rosewill preinstalls in the RSV-Z2600U and nobody has read a part number off them, so they
+// stand at FanModelUnobserved - which costs nothing downstream, because both derivations below
+// ignore model standing entirely.
+data srv3_fan_wiring: HostFanWiring = HostFanWiring {
+  host: operator_host_srv3,
+  headers: [
+    FanHeaderWiring {
+      header: "FAN1",
+      driven_fan_count: DrivenFanCountDerivedFromAssembly {
+        expected_count: 1,
+        specification: dynatron_w1_bundled_fan,
+      },
+      model: FanModelDerivedFromAssembly { specification: dynatron_w1_bundled_fan },
+      tach_source: TachCarriedByDrivenFan {
+        representation: TachRepresentationObserved { represented_fan_count: 1 },
+      },
+    },
+    chassis_bay_wiring(header: "FAN3"),
+    chassis_bay_wiring(header: "FAN4"),
+    chassis_bay_wiring(header: "FAN5"),
+  ],
+}
+
+data srv4_fan_wiring: HostFanWiring = HostFanWiring {
+  host: operator_host_srv4,
+  headers: [
+    FanHeaderWiring {
+      header: "FAN1",
+      driven_fan_count: DrivenFanCountDerivedFromAssembly {
+        expected_count: 1,
+        specification: dynatron_w1_bundled_fan,
+      },
+      model: FanModelDerivedFromAssembly { specification: dynatron_w1_bundled_fan },
+      tach_source: TachCarriedByDrivenFan {
+        representation: TachRepresentationObserved { represented_fan_count: 1 },
+      },
+    },
+    chassis_bay_wiring(header: "FAN2"),
+    chassis_bay_wiring(header: "FAN3"),
+    chassis_bay_wiring(header: "FAN4"),
+  ],
+}

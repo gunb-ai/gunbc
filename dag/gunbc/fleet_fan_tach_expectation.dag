@@ -89,6 +89,87 @@ fn expected_tach_headers(expectation: HostFanTachExpectation) -> List<NonEmptySt
   )
 }
 
+// THE ROSTER, AND A LOOKUP THAT REFUSES RATHER THAN GUESSING. A host with no expectation row has
+// no answer here, and the arm that would return an empty list instead is the one that turns
+// "nobody modelled this machine" into "this machine expects no tach at all" -- a permanently
+// satisfied requirement, which is the quietest way to stop monitoring a fleet.
+data fleet_fan_tach_expectations: List<HostFanTachExpectation> = [
+  srv1_fan_tach_expectation,
+  srv2_fan_tach_expectation,
+  srv3_fan_tach_expectation,
+  srv4_fan_tach_expectation,
+]
+
+// A DUPLICATE ROW REFUSES; IT IS NOT DECIDED BY AUTHORING ORDER. The first cut of this lookup was
+// a first-match fold with an annotation claiming it "refuses rather than guessing" -- true of the
+// ABSENT case and false of the duplicate one, which is the case the annotation was not thinking
+// about. That is the identical defect already closed in the alignment roster, reintroduced by the
+// same author in the function written to close a different one, three commits later.
+//
+// It is load-bearing rather than theoretical: bmc_fan_policy_apply_suitability consumes this
+// before admitting a projection, so two srv3 rows with different header sets would decide which
+// headers must report by which was typed first.
+//
+// DUPLICATE HEADERS INSIDE THE CHOSEN ROW REFUSE TOO. expected_tach_headers maps rows through
+// unchanged, so one header authored twice would appear twice in the required list and compare
+// unequal against any correctly-authored projection -- a refusal whose stated cause would be
+// topology drift when the real cause is a broken row.
+type HostFanTachExpectationAdmission
+  = HostFanTachExpectationEstablished { expectation: HostFanTachExpectation }
+  | HostFanTachExpectationAbsent
+  | HostFanTachExpectationDuplicate { count: Int }
+  | HostFanTachExpectationHeaderDuplicated { header: NonEmptyStr }
+
+fn expectation_rows_for_host(host: HostIdentity) -> List<HostFanTachExpectation> {
+  filter(fleet_fan_tach_expectations, row => row.host == host)
+}
+
+// The roster is a parameter here ONLY so a fixture can author the broken states the fleet roster
+// must never contain. Production reads host_fan_tach_expectation_admission, which closes it.
+fn tach_expectation_admission_over(
+  rows: List<HostFanTachExpectation>,
+  host: HostIdentity,
+) -> HostFanTachExpectationAdmission {
+  let matching = filter(rows, row => row.host == host)
+  if matching.length() == 0 {
+    HostFanTachExpectationAbsent
+  } else if matching.length() > 1 {
+    HostFanTachExpectationDuplicate { count: matching.length() }
+  } else {
+    fold(
+      matching,
+      init: HostFanTachExpectationAbsent,
+      f: (acc, row) =>
+        match first_duplicated_header(rows: row.headers) {
+          Present { value: header } =>
+            HostFanTachExpectationHeaderDuplicated { header: header }
+          none => HostFanTachExpectationEstablished { expectation: row }
+        },
+    )
+  }
+}
+
+fn first_duplicated_header(rows: List<FanHeaderExpectationRow>) -> NonEmptyStr? {
+  fold(
+    rows,
+    init: none,
+    f: (acc, row) =>
+      match acc {
+        Present { value } => Present { value: value }
+        none =>
+          if filter(rows, other => other.header == row.header).length() > 1 {
+            Present { value: row.header }
+          } else {
+            none
+          }
+      },
+  )
+}
+
+fn host_fan_tach_expectation_admission(host: HostIdentity) -> HostFanTachExpectationAdmission {
+  tach_expectation_admission_over(rows: fleet_fan_tach_expectations, host: host)
+}
+
 fn expected_tach_count(expectation: HostFanTachExpectation) -> Int {
   expected_tach_headers(expectation: expectation).length()
 }
