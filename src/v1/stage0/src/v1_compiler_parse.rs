@@ -2616,6 +2616,26 @@ pub fn occurrence_index_contains(
         })
 }
 
+pub fn occurrence_allocator_after_index(
+    alloc: OccurrenceIdAllocator,
+    entries: Rc<Vec<Rc<OccurrenceIndexEntry>>>,
+) -> OccurrenceIdAllocator {
+    entries.iter().cloned().fold(
+        alloc.clone(),
+        |current: OccurrenceIdAllocator, entry: Rc<OccurrenceIndexEntry>| {
+            if (current.next_id.clone()
+                <= entry.projection.clone().occurrence.clone().value.clone())
+            {
+                OccurrenceIdAllocator {
+                    next_id: (entry.projection.clone().occurrence.clone().value.clone() + 1),
+                }
+            } else {
+                current.clone()
+            }
+        },
+    )
+}
+
 pub fn stamp_parsed_node_list(
     nodes: Rc<Vec<Rc<Node>>>,
     ancestors: Rc<Vec<OccurrenceId>>,
@@ -3176,7 +3196,10 @@ pub fn parse_with_table_at(
         if has_err(r.err.clone()) {
             {
                 let occurrence_transport = occurrence_transport_from_parse_context(r.ctx.clone());
-                let occurrence_allocator = parse_context_occurrence_allocator(r.ctx.clone());
+                let occurrence_allocator = occurrence_allocator_after_index(
+                    parse_context_occurrence_allocator(r.ctx.clone()),
+                    occurrence_transport.index.clone().entries.clone(),
+                );
                 Rc::new(ParseWithTableResult {
                     result: Rc::new(ParseResult {
                         module: None,
@@ -3202,7 +3225,10 @@ pub fn parse_with_table_at(
                 );
                 let occurrence_transport =
                     occurrence_transport_from_parse_context(stamped.ctx.clone());
-                let occurrence_allocator = parse_context_occurrence_allocator(stamped.ctx.clone());
+                let occurrence_allocator = occurrence_allocator_after_index(
+                    parse_context_occurrence_allocator(stamped.ctx.clone()),
+                    occurrence_transport.index.clone().entries.clone(),
+                );
                 Rc::new(ParseWithTableResult {
                     result: Rc::new(ParseResult {
                         module: if has_err(stamped.err.clone()) {

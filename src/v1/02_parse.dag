@@ -1174,6 +1174,22 @@ fn occurrence_index_contains(
   )
 }
 
+fn occurrence_allocator_after_index(
+  alloc: OccurrenceIdAllocator,
+  entries: List<OccurrenceIndexEntry>
+) -> OccurrenceIdAllocator {
+  fold(
+    entries,
+    init: alloc,
+    f: (current, entry) =>
+      if current.next_id <= entry.projection.occurrence.value {
+        OccurrenceIdAllocator { next_id: entry.projection.occurrence.value + 1 }
+      } else {
+        current
+      }
+  )
+}
+
 fn stamp_parsed_node_list(
   nodes: List<Node>,
   ancestors: FreeMonoid<OccurrenceId>,
@@ -1627,7 +1643,10 @@ fn parse_with_table_at(
   let r = parse_module(tokens: token_stream_new(all: tokens), ctx: ctx)
   if has_err(err: r.err) {
     let occurrence_transport = occurrence_transport_from_parse_context(ctx: r.ctx)
-    let occurrence_allocator = parse_context_occurrence_allocator(ctx: r.ctx)
+    let occurrence_allocator = occurrence_allocator_after_index(
+      alloc: parse_context_occurrence_allocator(ctx: r.ctx),
+      entries: occurrence_transport.index.entries
+    )
     ParseWithTableResult {
       result: ParseResult { module: none, error: r.err },
       intern_table: intern_table_with_authored_token_ordinals(
@@ -1647,7 +1666,10 @@ fn parse_with_table_at(
       role: ParsedOccurrenceDeclaration { category: NamespaceSegmentOccurrence }
     )
     let occurrence_transport = occurrence_transport_from_parse_context(ctx: stamped.ctx)
-    let occurrence_allocator = parse_context_occurrence_allocator(ctx: stamped.ctx)
+    let occurrence_allocator = occurrence_allocator_after_index(
+      alloc: parse_context_occurrence_allocator(ctx: stamped.ctx),
+      entries: occurrence_transport.index.entries
+    )
     ParseWithTableResult {
       result: ParseResult {
         module: if has_err(err: stamped.err) { none } else { Present { value: stamped.node } },
