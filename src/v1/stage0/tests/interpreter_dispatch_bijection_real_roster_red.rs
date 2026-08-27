@@ -18,11 +18,12 @@
 //!
 //! ENROLLMENT: this check IS the `falsifier_self_host_wet` class (cargo build, process
 //! execution, real gunbc emit -- `gunbc.ci_layer_roots` `falsifier_self_host_wet_note`), but
-//! that lane's cadence is dark today (`falsifier_self_host_wet_cadence_active` is false in
-//! `src/v2/compiler/self_host/wet_receipt_enrollment.dag`), so this file executes only by hand
+//! that lane has no scheduled executor today (`std.witness_admission`
+//! `witness_cadence_has_scheduled_route` returns false for `FalsifierSelfHostWet`, because
+//! `falsifier.yml` was deleted at 611fd02770/#8283), so this file executes only by hand
 //! (`cargo test --release -p v1-compiler --test interpreter_dispatch_bijection_real_roster_red --
 //! --ignored`) -- the same dark-lane state as `artifact_store_fs_witness_test.dag` and
-//! `direct_rust_door_write_compile_witness_test.dag`. See `gunbc.ci_layer_roots`
+//! `direct_rust_door_write_compile_witness_test.dag`. See `v2.test.claim.witness_exclusion_reconciliation_test`
 //! `dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note` for the full accounting
 //! and shared dissolution trigger. Do not read this test's presence in the tree as "enrolled".
 
