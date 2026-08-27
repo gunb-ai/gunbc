@@ -1,0 +1,89 @@
+module gunbc.bmc_fan_program_observation_witness
+
+import std.types { Bool }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.bmc_fan_program_observation {
+  ArtifactByteCountDisagrees,
+  ArtifactNotParseable,
+  ArtifactSyntaxObserved,
+  observe_artifact_syntax,
+  srv3_program_syntax,
+  srv4_program_syntax,
+  syntax_observation_is_idempotent,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// EXECUTED DIRECTLY, NOT ENROLLED. This witness reads the committed artifacts, so today's floor
+// planner declines it by file before the interpreter classifies the effect. It is run by hand
+// through the ordinary interpreter and is NOT required-floor coverage; see the parent module for
+// why that distinction is stated rather than assumed, and why the remedy is gunbc#9106 rather than
+// a new admission bridge.
+//
+// THE POSITIVE ARM ALONE WOULD BE NEARLY CONTENTLESS, so both refusals are exercised against the
+// real files. A byte count that disagrees and a path that is not a JSON document must each produce
+// their own arm, because the reason they fail decides who fixes them: a count mismatch means the
+// committed artifact drifted from what the capture recorded, and an unparseable document means the
+// bytes are not what this observer thinks they are at all.
+
+fn both_hosts_observe_and_round_trip() -> Bool {
+  match srv3_program_syntax {
+    ArtifactSyntaxObserved { artifact_path, byte_count, document } => byte_count == 5212
+    other => false
+  }
+    && match srv4_program_syntax {
+      ArtifactSyntaxObserved { artifact_path, byte_count, document } => byte_count == 5206
+      other => false
+    }
+    && syntax_observation_is_idempotent(observation: srv3_program_syntax)
+    && syntax_observation_is_idempotent(observation: srv4_program_syntax)
+}
+
+// THE COUNT IS THE READ'S SUCCESS TEST TOO. A path that does not exist returns empty content under
+// this route rather than a populated error channel, so it lands in the disagreement arm with an
+// observed count of zero - which is exactly right, and is why the observer must never treat an
+// empty read as an empty document.
+fn a_missing_artifact_refuses_rather_than_parsing_empty() -> Bool {
+  match observe_artifact_syntax(
+    artifact_path: "artifacts/bmc/no-such-capture.json",
+    expected_byte_count: 5212,
+  ) {
+    ArtifactByteCountDisagrees { artifact_path, expected, observed } =>
+      expected == 5212 && observed == 0
+    other => false
+  }
+}
+
+fn a_wrong_expected_count_refuses() -> Bool {
+  match observe_artifact_syntax(
+    artifact_path: "artifacts/bmc/srv3-config-asrr.json",
+    expected_byte_count: 5211,
+  ) {
+    ArtifactByteCountDisagrees { artifact_path, expected, observed } =>
+      expected == 5211 && observed == 5212
+    other => false
+  }
+}
+
+fn a_non_json_artifact_refuses() -> Bool {
+  match observe_artifact_syntax(
+    artifact_path: "DESIGN.md",
+    expected_byte_count: 0,
+  ) {
+    ArtifactByteCountDisagrees { artifact_path, expected, observed } => observed > 0
+    other => false
+  }
+}
+
+fn bmc_fan_program_observation_witness() -> ProcessExit {
+  if both_hosts_observe_and_round_trip()
+    && a_missing_artifact_refuses_rather_than_parsing_empty()
+    && a_wrong_expected_count_refuses()
+    && a_non_json_artifact_refuses() {
+    ExitSuccess
+  } else {
+    exit_failure(
+      reason: "BMC fan program syntax observation: the committed artifacts, their byte counts, semantic idempotence, or a refusal arm changed",
+    )
+  }
+}

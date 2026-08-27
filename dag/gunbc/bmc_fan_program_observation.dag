@@ -1,0 +1,123 @@
+module gunbc.bmc_fan_program_observation
+
+import std.types { Bool, Int, NonEmptyStr, String }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { JsonValue, serialize_json }
+import extdeps.languages.json.parse { JsonDocumentParsed, parse_json_document }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE FIRST HALF OF THE OBSERVER: THE CAPTURED ARTIFACT, READ AND PARSED, WITH NOTHING YET SAID
+// ABOUT FANS. It answers one question - can this repository turn its own committed bytes into a
+// JsonValue without losing what the bytes mean - and stops there. Deciding that a member named
+// "zones" is a fan controller is the semantic layer and lives above this.
+//
+// WHY THIS IS NOT A COMPILER CHANGE, WHICH IS WHERE THIS LANE NEARLY WENT WRONG. The plan of
+// record was a new v1 artifact-admission bridge: a preflight that reads bytes, hashes them and
+// injects them into the hermetic envelope. That was designed against a premise this module
+// disproves by executing - that the hermetic frame refuses to read the checkout at all. It does
+// not. `v1_interpreter` `hermetic_checkout_input_disposition_under` treats a readonly
+// Filesystem.Read of a path proven under the checkout root as INPUT access, because the commit is
+// the run's deterministic input. So the route already existed, and building a second admission
+// path beside it would have been a parallel authority for a capability the substrate has - and,
+// while the wider declined population stays declined, an escape hatch around an operator-owned
+// cost decision.
+//
+// WHAT IS ACTUALLY BLOCKED, AND IT IS A PLANNER AND NOT AN ENVELOPE. The floor's `DeclinedLiveTree`
+// arm vetoes any FILE declaring ReadsLiveTree before the interpreter is ever asked to classify the
+// effect. `v2.workflow.required_floor` records that premise as stale and stages the arm for
+// deletion at the root. This module therefore declares ReadsLiveTree honestly and is DECLINED by
+// today's floor - discovered, counted, not run.
+//
+// SO THE EVIDENCE IS LABELLED AT TWO GRAINS AND THE SECOND ONE IS NOT COVERAGE:
+//
+//   HermeticDirectExecutionEstablished    executed against the committed artifacts through the
+//                                         ordinary interpreter, reading the real bytes
+//   RequiredFloorCadenceNotEstablished    NOT enrolled in any required run, because the planner
+//                                         declines the file
+//
+// Citing this as floor coverage while the decline stands would be the decoration DESIGN calls
+// worse than absent. Its required cadence arrives with the live-tree decline's deletion, in
+// flight as gunbc#9106, and needs nothing from this module when it does.
+
+type ArtifactSyntaxObservation
+  = ArtifactSyntaxObserved {
+      artifact_path: NonEmptyStr,
+      byte_count: Int,
+      document: JsonValue,
+    }
+  | ArtifactByteCountDisagrees {
+      artifact_path: NonEmptyStr,
+      expected: Int,
+      observed: Int,
+    }
+  | ArtifactNotParseable { artifact_path: NonEmptyStr }
+
+// THE BYTE COUNT IS CHECKED AGAINST THE CAPTURE BEFORE THE DOCUMENT IS BUILT, so a truncated or
+// swapped artifact refuses instead of parsing cleanly into a smaller program. It is a weaker
+// custody check than the sha256 the capture carries and it is the half expressible here: hashing
+// needs a digest builtin this module does not reach, and a count that disagrees is already enough
+// to refuse.
+//
+// success IS DELIBERATELY NOT CONSULTED. Under the hermetic filesystem_read path the returned
+// record carries only `content`; the `success` and `error` channels the service declares are not
+// populated, so branching on `read.success` takes the failure arm for a read that in fact
+// succeeded. Measured, not assumed. The byte-count comparison below is therefore the read's
+// success test as well as its integrity test, which is why a zero-length result cannot pass as an
+// empty document.
+fn observe_artifact_syntax(
+  artifact_path: NonEmptyStr,
+  expected_byte_count: Int,
+) -> ArtifactSyntaxObservation {
+  let read = Filesystem.Read(path: artifact_path as String)
+  let observed = read.content.length()
+  if observed != expected_byte_count {
+    ArtifactByteCountDisagrees {
+      artifact_path: artifact_path,
+      expected: expected_byte_count,
+      observed: observed,
+    }
+  } else {
+    match parse_json_document(s: read.content) {
+      JsonDocumentParsed { value: document } =>
+        ArtifactSyntaxObserved {
+          artifact_path: artifact_path,
+          byte_count: observed,
+          document: document,
+        }
+      other => ArtifactNotParseable { artifact_path: artifact_path }
+    }
+  }
+}
+
+// SEMANTIC IDEMPOTENCE IS THE PROOF SHAPE, AND THE ALTERNATIVE IS UNSATISFIABLE RATHER THAN MERELY
+// WEAKER. serialize(parse(bytes)) == bytes cannot hold for these artifacts: they are pretty-printed
+// and the serializer emits compact form, so the round trip drops roughly half the file. A check
+// written that way would be permanently red, and its only closing move would be to reformat the
+// artifact - destroying the exact bytes the capture preserves and an adoption is addressed against.
+//
+// What IS provable, and what the observer needs, is that the document is a fixed point of
+// parse-then-serialize: serializing it and reparsing yields the same serialization. That says the
+// parse lost nothing the serializer would have re-expressed differently.
+fn syntax_observation_is_idempotent(observation: ArtifactSyntaxObservation) -> Bool {
+  match observation {
+    ArtifactSyntaxObserved { artifact_path, byte_count, document } => {
+      let once = serialize_json(v: document)
+      match parse_json_document(s: once) {
+        JsonDocumentParsed { value: reparsed } => serialize_json(v: reparsed) == once
+        other => false
+      }
+    }
+    other => false
+  }
+}
+
+data srv3_program_syntax: ArtifactSyntaxObservation = observe_artifact_syntax(
+  artifact_path: "artifacts/bmc/srv3-config-asrr.json",
+  expected_byte_count: 5212,
+)
+
+data srv4_program_syntax: ArtifactSyntaxObservation = observe_artifact_syntax(
+  artifact_path: "artifacts/bmc/srv4-config-asrr.json",
+  expected_byte_count: 5206,
+)
