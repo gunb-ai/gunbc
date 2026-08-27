@@ -3,6 +3,7 @@
 // (dag/test/claim/namespace_occurrence_transport_test.dag). v1-test class: this file
 // deletes with src/v1 once its behavior is carried per the v1-test-migration coverage bar.
 use im::HashMap;
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use v1_compiler::std_occurrence_identity::{
@@ -144,6 +145,80 @@ fn node_occurrence_ids(node: &Node, ids: &mut Vec<i64>, synthetic_count: &mut us
             }
         }
         Some(MatchPattern::LitPattern { .. } | MatchPattern::Wildcard) | None => {}
+    }
+}
+
+fn node_occurrence_descriptions(node: &Node, wanted: i64, found: &mut Vec<String>) {
+    if matches!(node.occurrence_identity.as_ref(), NodeOccurrenceIdentity::OccurrenceMinted { id } if id.value == wanted)
+    {
+        found.push(format!(
+            "name={:?} span={}:{}-{}",
+            node.name, node.span.file, node.span.start, node.span.end
+        ));
+    }
+    for child in node
+        .children
+        .iter()
+        .chain(node.params.iter())
+        .chain(node.uses.iter())
+        .chain(node.properties.iter())
+    {
+        node_occurrence_descriptions(child, wanted, found);
+    }
+    for optional in [
+        node.body.as_ref(),
+        node.transport.as_ref(),
+        node.type_annotation.as_ref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        node_occurrence_descriptions(optional, wanted, found);
+    }
+    if let Some(InferredNode::Resolved { node: inferred }) = node.inferred.as_deref() {
+        node_occurrence_descriptions(inferred, wanted, found);
+    }
+    match node.match_pattern.as_deref() {
+        Some(MatchPattern::Bind { declaration }) => {
+            node_occurrence_descriptions(declaration, wanted, found)
+        }
+        Some(MatchPattern::VariantPattern { field_bindings, .. }) => {
+            for binding in field_bindings.iter() {
+                node_occurrence_descriptions(binding, wanted, found);
+            }
+        }
+        _ => {}
+    }
+}
+
+#[test]
+fn oci_digest_parser_does_not_reuse_authored_identity() {
+    let parsed = parse_source(
+        include_str!("../../../../dag/extdeps/container/oci/digest.dag"),
+        "dag/extdeps/container/oci/digest.dag",
+        occurrence_id_allocator_initial(),
+    );
+    assert!(parsed.result.error.is_none(), "{:?}", parsed.result.error);
+    let mut seen = HashSet::new();
+    if let Some(duplicate) = parsed
+        .occurrence_transport
+        .index
+        .entries
+        .iter()
+        .map(|entry| entry.projection.occurrence.value)
+        .find(|id| !seen.insert(*id))
+    {
+        let mut descriptions = Vec::new();
+        node_occurrence_descriptions(
+            parsed
+                .result
+                .module
+                .as_ref()
+                .expect("successful parse module"),
+            duplicate,
+            &mut descriptions,
+        );
+        panic!("duplicate authored identity {duplicate}: {descriptions:?}");
     }
 }
 
