@@ -29,7 +29,7 @@ data socket_inode_holder_bracket_note: String = "WHY THE PATTERN SPELLS THE BRAC
 // `set -o pipefail` is NOT the remedy here -- /bin/sh is dash on this platform and aborts on it
 // rather than accepting it -- so the producing stage's status is captured directly and the rows
 // travel through a temporary file, following the in-tree exemplar extdeps.rust.rustc.
-data find_pipe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: shell.Find.ListDirs / shell.Find.ListFilesByGlob transport argv -- hand-authored shell program expanded as a string literal to capture the producing stage's exit status; this edits the failure arm of an EXISTING transport and adds no new emission site, per the gunbc.githooks_pre_push_emit precedent. DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes these operations through orchestration emit or typed host_effect_apply without a medium-as-string scaffold.")
+data find_pipe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: shell.Find.FilesAndSymlinksWithMode / shell.Find.FilesByNameSorted transport argv -- hand-authored shell program expanded as a string literal to capture the producing stage's exit status; this edits the failure arm of an EXISTING transport and adds no new emission site, per the gunbc.githooks_pre_push_emit precedent. DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes these operations through orchestration emit or typed host_effect_apply without a medium-as-string scaffold.")
 
 service shell.Find {
   operation ListDirs {
